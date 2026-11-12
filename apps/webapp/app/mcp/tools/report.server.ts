@@ -1,9 +1,34 @@
 import { ReportPresenter } from "~/presenters/v3/reports/ReportPresenter.server";
 import { isReportKey, REPORT_KEYS } from "~/presenters/v3/reports/report-registry";
+import type { ReportViewModel } from "~/presenters/v3/reports/report-view-model";
 import { renderReportAnsi, renderReportMarkdown } from "~/presenters/v3/reports/renderMarkdown";
+import { fenceUntrusted } from "../gate/fence.server";
 import type { McpToolDefinition } from "../registry.server";
 import { defineReadTool, errorResult, resolveToolEnvironment, textResult } from "./define.server";
 import { GetReportInput } from "./schemas/report";
+
+function fenceReportViewModel(vm: ReportViewModel): ReportViewModel {
+  return {
+    ...vm,
+    scope: fenceUntrusted(vm.scope, "report-scope"),
+    findings: vm.findings.map((finding) =>
+      finding.attribution
+        ? {
+            ...finding,
+            attribution: {
+              ...finding.attribution,
+              key: fenceUntrusted(finding.attribution.key, "report-attribution"),
+            },
+          }
+        : finding
+    ),
+  };
+}
+
+export function renderReport(vm: ReportViewModel, color: boolean | undefined): string {
+  const fenced = fenceReportViewModel(vm);
+  return color ? renderReportAnsi(fenced) : renderReportMarkdown(fenced);
+}
 
 export const reportTools: McpToolDefinition[] = [
   defineReadTool({
@@ -28,7 +53,7 @@ export const reportTools: McpToolDefinition[] = [
       });
       if (!vm) return errorResult(`Unknown report "${input.key}".`);
 
-      return textResult(input.color ? renderReportAnsi(vm) : renderReportMarkdown(vm));
+      return textResult(renderReport(vm, input.color));
     },
   }),
 ];

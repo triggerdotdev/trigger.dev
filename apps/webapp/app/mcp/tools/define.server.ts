@@ -1,5 +1,7 @@
 import { z } from "zod";
+import { env } from "~/env.server";
 import { findEnvironmentById } from "~/models/runtimeEnvironment.server";
+import { requiresApproval } from "../gate/approval.server";
 import type { McpToolAuth } from "../gate/types";
 import {
   withMcpToolAuth,
@@ -7,6 +9,8 @@ import {
   type McpToolResult,
 } from "../gate/withMcpToolAuth.server";
 import type { McpToolDefinition } from "../registry.server";
+
+export const dashboardUrl = (path: string) => `${env.APP_ORIGIN}${path}`;
 
 export function textResult(text: string): McpToolResult {
   return { content: [{ type: "text", text }] };
@@ -38,10 +42,11 @@ export function defineReadTool<S extends z.ZodRawShape>(tool: {
       destructiveHint: false,
       title: tool.title,
     },
-    handler: async (args, identity, request) => {
+    confirm: requiresApproval(tool.auth) !== false,
+    handler: async (args, identity, request, extra) => {
       const parsed = schema.safeParse(args ?? {});
       if (!parsed.success) return errorResult(`Invalid arguments: ${parsed.error.message}`);
-      return gated(parsed.data, identity, request);
+      return gated(parsed.data, identity, request, extra);
     },
   };
 }

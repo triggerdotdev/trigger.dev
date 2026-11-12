@@ -434,6 +434,11 @@ export class S2RealtimeStreams implements StreamResponder, StreamIngestor {
       }
     );
 
+    if (res.status === 416) {
+      await cancelResponseBody(res);
+      return [];
+    }
+
     if (!res.ok) {
       const streamNotFound = await isS2StreamNotFound(res);
       await cancelResponseBody(res);
@@ -596,8 +601,15 @@ export class S2RealtimeStreams implements StreamResponder, StreamIngestor {
   }
 
   async readSessionInTailSeq(addressingKey: string): Promise<number | undefined> {
-    const s2Stream = this.toSessionStreamName(addressingKey, "in");
+    return this.#readTailSeq(this.toSessionStreamName(addressingKey, "in"));
+  }
 
+  /** The next seq of `.out` (0 when empty); undefined when the tail can't be read. */
+  async readSessionOutTailSeq(addressingKey: string): Promise<number | undefined> {
+    return this.#readTailSeq(this.toSessionStreamName(addressingKey, "out"));
+  }
+
+  async #readTailSeq(s2Stream: string): Promise<number | undefined> {
     const res = await this.#getTail(s2Stream, "records/tail", "S2 read tail", [404]);
     if (res === "missing") return 0;
     if (!res) return undefined;

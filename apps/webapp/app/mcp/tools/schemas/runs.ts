@@ -1,10 +1,6 @@
 import { MachinePresetName, RunStatus } from "@trigger.dev/core/v3/schemas";
 import { z } from "zod";
-import { CommonProjectsInput } from "./common";
-
-const CommonRunsInput = CommonProjectsInput.extend({
-  runId: z.string().describe("The ID of the run to get the details of, starts with run_"),
-});
+import { CommonProjectsInput, CommonRunsInput } from "./common";
 
 export const WaitForRunInput = CommonRunsInput.extend({
   timeoutInSeconds: z

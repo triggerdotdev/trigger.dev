@@ -1,3 +1,4 @@
+import { DashboardWidgetInput } from "@trigger.dev/core/v3/schemas";
 import { z } from "zod";
 import { CommonProjectsInput } from "./common";
 
@@ -6,6 +7,23 @@ export const ListDashboardsInput = CommonProjectsInput.pick({
   configPath: true,
   environment: true,
   branch: true,
+});
+
+export const CreateDashboardInput = ListDashboardsInput.extend({
+  title: z.string().describe("The dashboard title"),
+  description: z.string().optional().describe("An optional description"),
+  widgets: z
+    .array(DashboardWidgetInput)
+    .optional()
+    .describe("The widgets to add, in order. Leave out to create an empty dashboard."),
+});
+
+export const SetDashboardWidgetsInput = ListDashboardsInput.extend({
+  dashboardId: z.string().describe("The custom dashboard id, as listed by list_dashboards"),
+  title: z.string().optional().describe("A new title for the dashboard"),
+  widgets: z
+    .array(DashboardWidgetInput)
+    .describe("The full list of widgets the dashboard should have"),
 });
 
 export const RunDashboardQueryInput = CommonProjectsInput.extend({

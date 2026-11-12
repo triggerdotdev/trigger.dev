@@ -6,7 +6,6 @@ import { setTimeout as sleep } from "node:timers/promises";
 import { CURRENT_API_VERSION } from "~/api/versions";
 import { extractAISpanData } from "~/components/runs/v3/ai";
 import { $replica } from "~/db.server";
-import { env } from "~/env.server";
 import {
   ApiRunListPresenter,
   ApiRunListSearchParams,
@@ -31,7 +30,13 @@ import { runStore } from "~/v3/runStore.server";
 import { getTaskEventStoreTableForRun } from "~/v3/taskEventStore.server";
 import { fenceUntrusted } from "../gate/fence.server";
 import type { McpToolDefinition } from "../registry.server";
-import { defineReadTool, errorResult, resolveToolEnvironment, textResult } from "./define.server";
+import {
+  dashboardUrl,
+  defineReadTool,
+  errorResult,
+  resolveToolEnvironment,
+  textResult,
+} from "./define.server";
 import {
   formatRun,
   formatRunList,
@@ -45,8 +50,6 @@ import {
   ListRunsInput,
   WaitForRunInput,
 } from "./schemas/runs";
-
-const dashboardUrl = (path: string) => `${env.APP_ORIGIN}${path}`;
 
 const MAX_WAIT_MS = 60_000;
 const INITIAL_POLL_MS = 500;

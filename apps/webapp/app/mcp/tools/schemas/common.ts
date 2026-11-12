@@ -28,3 +28,7 @@ export const CommonProjectsInput = z.object({
 });
 
 export type CommonProjectsInput = z.output<typeof CommonProjectsInput>;
+
+export const CommonRunsInput = CommonProjectsInput.extend({
+  runId: z.string().describe("The ID of the run to get the details of, starts with run_"),
+});

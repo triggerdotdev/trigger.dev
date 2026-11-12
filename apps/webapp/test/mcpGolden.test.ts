@@ -27,6 +27,7 @@ vi.mock("~/db.server", () => ({
   $replica: new Proxy({}, { get: (_, prop) => mocks.db[prop] }),
   prisma: new Proxy({}, { get: (_, prop) => mocks.db[prop] }),
 }));
+vi.mock("~/v3/webhookEngine.server", () => ({ webhookEngine: {} }));
 vi.mock("~/services/rbac.server", () => ({
   rbac: new Proxy(
     {},

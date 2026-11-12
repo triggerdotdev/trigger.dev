@@ -137,6 +137,10 @@ export default function handleRequest(
     responseHeaders.set("Content-Security-Policy", "frame-ancestors 'self'");
   }
 
+  if (url.pathname.startsWith("/mcp/confirm")) {
+    responseHeaders.set("Content-Security-Policy", "frame-ancestors 'none'");
+  }
+
   responseHeaders.set(
     "Content-Security-Policy",
     withImgSrc(responseHeaders.get("Content-Security-Policy"), IMG_SRC_DIRECTIVE)

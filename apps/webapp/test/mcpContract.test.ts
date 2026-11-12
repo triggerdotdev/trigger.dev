@@ -29,29 +29,13 @@ const LOCAL_ONLY = [
   "initialize_project",
 ];
 
-const pendingWriteTools = [
-  "submit_feedback",
-  "create_project_in_org",
-  "trigger_task",
-  "cancel_run",
-  "replay_run",
-  "create_dashboard",
-  "set_dashboard_widgets",
-  "promote_prompt_version",
-  "create_prompt_override",
-  "update_prompt_override",
-  "remove_prompt_override",
-  "reactivate_prompt_override",
-  "start_agent_chat",
-  "send_agent_message",
-  "close_agent_chat",
-  "write_session_channel",
-  "create_alert",
-  "resolve_alert",
-  "generate_webhook_secret",
-  "set_webhook_secret",
-  "replay_webhook_delivery",
-];
+const pendingWriteTools: string[] = [];
+
+const UNCONFIRMED_WRITE_TOOLS: Record<string, string> = {
+  submit_feedback: "only logs a report about the MCP server, touches no project data",
+  send_agent_message: "covered by the start_agent_chat confirmation for that chat",
+  close_agent_chat: "covered by the start_agent_chat confirmation for that chat",
+};
 
 type CliTool = {
   description?: string;
@@ -80,16 +64,20 @@ const cliWriteNames = [...cliAll.keys()].filter((name) => !cliReadable.has(name)
 
 // toolsMetadata also holds keys the CLI never registers (e.g. get_tasks), so use registered tools.
 const expectedRead = [...cliReadable.keys()].filter((name) => !LOCAL_ONLY.includes(name)).sort();
+const expectedWrite = cliWriteNames
+  .filter((name) => !LOCAL_ONLY.includes(name) && !pendingWriteTools.includes(name))
+  .sort();
+const expectedTools = [...expectedRead, ...expectedWrite].sort();
 
 const toJson = (shape: z.ZodRawShape) => z.toJSONSchema(z.object(shape), { io: "input" });
 
 describe("MCP remote/CLI contract", () => {
-  it("registers exactly the CLI read tools, each once, and nothing outside toolsMetadata", () => {
-    expect(mcpTools.map((t) => t.name).sort()).toEqual(expectedRead);
+  it("registers exactly the CLI read and write tools, each once, and nothing outside toolsMetadata", () => {
+    expect(mcpTools.map((t) => t.name).sort()).toEqual(expectedTools);
     for (const { name } of mcpTools) expect(Object.keys(toolsMetadata)).toContain(name);
   });
 
-  it.each(expectedRead)("%s matches the CLI title, description and input schema", (name) => {
+  it.each(expectedTools)("%s matches the CLI title, description and input schema", (name) => {
     const remote = mcpTools.find((t) => t.name === name)!;
     const cli = cliAll.get(name)!;
     const meta = toolsMetadata[name as keyof typeof toolsMetadata];
@@ -101,9 +89,25 @@ describe("MCP remote/CLI contract", () => {
     expect(toJson(remote.inputSchema)).toEqual(toJson(cli.inputSchema));
   });
 
-  it("lists the CLI write tools as pending and absent from the registry", () => {
+  it("marks every write tool non-read-only", () => {
+    for (const name of expectedWrite) {
+      expect(mcpTools.find((t) => t.name === name)!.annotations?.readOnlyHint).toBe(false);
+    }
+  });
+
+  it("holds every write tool for confirmation except the declared exceptions", () => {
+    const unconfirmed = mcpTools
+      .filter((t) => t.annotations?.readOnlyHint === false && t.confirm !== true)
+      .map((t) => t.name)
+      .sort();
+    expect(unconfirmed).toEqual(Object.keys(UNCONFIRMED_WRITE_TOOLS).sort());
+  });
+
+  it("leaves only the agent-chat and session write tools pending", () => {
     expect([...pendingWriteTools].sort()).toEqual(
-      cliWriteNames.filter((name) => !LOCAL_ONLY.includes(name)).sort()
+      cliWriteNames
+        .filter((name) => !LOCAL_ONLY.includes(name) && !expectedWrite.includes(name))
+        .sort()
     );
     const registered = mcpTools.map((t) => t.name);
     for (const name of pendingWriteTools) expect(registered).not.toContain(name);

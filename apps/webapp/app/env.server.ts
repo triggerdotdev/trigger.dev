@@ -463,6 +463,7 @@ const EnvironmentSchema = z
     // credential, so an instance that serves public traffic can refuse the admin API outright.
     ADMIN_API_ENABLED: BoolEnv.default(true),
     MCP_SERVER_ENABLED: BoolEnv.default(false),
+    MCP_CONFIRMATION_ERROR_MODE: z.enum(["rpc-error", "tool-error"]).default("rpc-error"),
     BILLING_SERVICE_SECRET: z.string().min(32).optional(),
     REMIX_APP_PORT: z.string().optional(),
     // Opt-in, dev-only: stream this process's logs over a local telnet/TCP socket on this port.

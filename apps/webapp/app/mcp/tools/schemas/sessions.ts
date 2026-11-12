@@ -38,3 +38,15 @@ export const ReadSessionChannelInput = CommonProjectsInput.extend({
     )
     .optional(),
 });
+
+export const WriteSessionChannelInput = CommonProjectsInput.extend({
+  sessionId: z
+    .string()
+    .describe("The session id (session_* friendlyId) or the externalId it was created with."),
+  channel: z.string().describe("The named side channel to write to."),
+  value: z
+    .union([z.string(), z.record(z.string(), z.unknown())])
+    .describe(
+      "The record to append to the channel's `in` stream. Pass an object for a structured record (e.g. { paused: true }) or a string for a raw record."
+    ),
+});

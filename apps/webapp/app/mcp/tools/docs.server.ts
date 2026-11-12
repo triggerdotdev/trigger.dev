@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { fenceUntrusted } from "../gate/fence.server";
 import type { McpToolDefinition } from "../registry.server";
 import type { McpToolResult } from "../gate/withMcpToolAuth.server";
 import { defineReadTool, errorResult } from "./define.server";
@@ -38,9 +39,10 @@ function boundResult(result: McpToolResult): McpToolResult {
   let remaining = MAX_RESULT_CHARS;
   const content = result.content.map((part) => {
     if (part.type !== "text") return part;
-    const text = part.text.slice(0, Math.max(remaining, 0));
-    remaining -= text.length;
-    return { ...part, text };
+    const overhead = fenceUntrusted("", "docs").length;
+    const fenced = fenceUntrusted(part.text.slice(0, Math.max(remaining - overhead, 0)), "docs");
+    remaining -= fenced.length;
+    return { ...part, text: fenced };
   });
   return { ...result, content };
 }

@@ -1,4 +1,5 @@
 import { postgresTest } from "@internal/testcontainers";
+import { UrlElicitationRequiredError } from "@modelcontextprotocol/server";
 import plugin, { signUserActorToken } from "@trigger.dev/rbac";
 import type { PrismaClient } from "@trigger.dev/database";
 import { createHash } from "node:crypto";
@@ -44,7 +45,8 @@ vi.mock("~/services/logger.server", () => ({
 
 import { fenceUntrusted } from "~/mcp/gate/fence.server";
 import { resolveMcpSubject } from "~/mcp/gate/resolveSubject.server";
-import type { McpIdentity } from "~/mcp/gate/types";
+import type { McpConfirmationStore } from "~/mcp/confirm/store.server";
+import type { McpIdentity, McpToolAuth } from "~/mcp/gate/types";
 import { withMcpToolAuth, type McpToolResult } from "~/mcp/gate/withMcpToolAuth.server";
 
 const ok: McpToolResult = { content: [{ type: "text", text: "ok" }] };
@@ -182,11 +184,16 @@ describe("withMcpToolAuth", () => {
     const capless = await uatCall(prisma, a.user.id);
     const orgScoped = await uatCall(prisma, a.user.id, { organizationId: a.organization.id });
     const { calls, handler } = spyHandler();
-    const write = withMcpToolAuth({ user: true, action: "write", subject: "runs" }, handler, "t");
+    const write = withMcpToolAuth(
+      { user: true, action: "write", subject: "runs", confirm: false },
+      handler,
+      "t"
+    );
     const read = withMcpToolAuth({ user: true, action: "read", subject: "runs" }, handler, "t");
 
     const cases = [
       { name: "pat write", tool: write, call: { identity, request }, allowed: true },
+      { name: "pat read", tool: read, call: { identity, request }, allowed: true },
       { name: "capless uat write", tool: write, call: capless, allowed: false },
       { name: "capless uat read", tool: read, call: capless, allowed: true },
       { name: "org-scoped uat", tool: read, call: orgScoped, allowed: false },
@@ -270,6 +277,90 @@ describe("withMcpToolAuth", () => {
     const result = await tool({ projectRef: a.project.externalRef }, identity, request);
 
     expect(result.isError).toBe(true);
+  });
+
+  // Catches: handlers not getting the authorized ability for per-resource checks.
+  postgresTest("passes the uat's ability to the handler", async ({ prisma }) => {
+    const { a } = await seed(prisma);
+    const args = { projectRef: a.project.externalRef };
+    const canTrigger: boolean[] = [];
+    const tool = withMcpToolAuth(
+      { action: "write", subject: "runs", confirm: false },
+      async (_args, ctx) => {
+        canTrigger.push(!!ctx.ability?.can("trigger", { type: "tasks", id: "my-task" }));
+        return ok;
+      },
+      "replay_run"
+    );
+
+    for (const cap of [["write:runs"], ["write:runs", "trigger:tasks"]]) {
+      const { identity, request } = await uatCall(prisma, a.user.id, { cap });
+      expect(await tool(args, identity, request)).toEqual(ok);
+    }
+    expect(canTrigger).toEqual([false, true]);
+  });
+
+  // Catches: a non-read tool running unapproved, or a denied call leaving a pending record.
+  postgresTest("holds writes for approval unless exempt", async ({ prisma }) => {
+    const { a, identity, request } = await seed(prisma);
+    const args = { projectRef: a.project.externalRef };
+    const pending: unknown[] = [];
+    const store: McpConfirmationStore = {
+      createPending: async (record) => {
+        pending.push(record);
+        return { id: "mcpc_test", url: "https://cloud.test/mcp/confirm/mcpc_test" };
+      },
+      get: async () => null,
+      approve: async () => false,
+      consumeApproved: async () => null,
+    };
+    const capped = await uatCall(prisma, a.user.id, { cap: ["read:runs"] });
+    const pat = { identity, request };
+    const write: McpToolAuth = { action: "write", subject: "runs" };
+    const cases = [
+      { name: "write", auth: write, call: pat, held: true, ran: false },
+      {
+        name: "update",
+        auth: { action: "update", subject: "runs" },
+        call: pat,
+        held: true,
+        ran: false,
+      },
+      {
+        name: "exempt write",
+        auth: { ...write, confirm: false },
+        call: pat,
+        held: false,
+        ran: true,
+      },
+      {
+        name: "read",
+        auth: { action: "read", subject: "runs" },
+        call: pat,
+        held: false,
+        ran: true,
+      },
+      { name: "denied write", auth: write, call: capped, held: false, ran: false },
+    ];
+
+    for (const c of cases) {
+      pending.length = 0;
+      const { calls, handler } = spyHandler();
+      const tool = withMcpToolAuth(c.auth, handler, "t", {
+        confirmations: () => store,
+        confirmationErrorMode: "rpc-error",
+      });
+      const thrown = await tool(args, c.call.identity, c.call.request).then(
+        () => false,
+        (e: unknown) => e instanceof UrlElicitationRequiredError
+      );
+      expect({ name: c.name, thrown, pending: pending.length, ran: calls.length }).toEqual({
+        name: c.name,
+        thrown: c.held,
+        pending: c.held ? 1 : 0,
+        ran: c.ran ? 1 : 0,
+      });
+    }
   });
 
   it("public tools run without args or rbac", async () => {

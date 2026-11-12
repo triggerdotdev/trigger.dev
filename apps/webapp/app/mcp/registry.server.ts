@@ -1,10 +1,14 @@
-import type {
-  CallToolResult,
-  McpServer,
-  ProtocolEra,
-  ToolAnnotations,
+import {
+  inputRequired,
+  inputResponse,
+  UrlElicitationRequiredError,
+  type CallToolResult,
+  type McpServer,
+  type ProtocolEra,
+  type ToolAnnotations,
 } from "@modelcontextprotocol/server";
 import { z } from "zod";
+import type { McpRequestExtra } from "./gate/types";
 import type { McpIdentity } from "./types";
 import { agentsTools } from "./tools/agents.server";
 import { alertsTools } from "./tools/alerts.server";
@@ -19,6 +23,16 @@ import { runsTools } from "./tools/runs.server";
 import { sessionsTools } from "./tools/sessions.server";
 import { tasksTools } from "./tools/tasks.server";
 import { webhooksTools } from "./tools/webhooks.server";
+import { agentChatTools } from "./tools/agentChat.server";
+import { alertsWriteTools } from "./tools/alertsWrite.server";
+import { dashboardsWriteTools } from "./tools/dashboardsWrite.server";
+import { feedbackTools } from "./tools/feedback.server";
+import { orgsWriteTools } from "./tools/orgsWrite.server";
+import { promptsWriteTools } from "./tools/promptsWrite.server";
+import { runsWriteTools } from "./tools/runsWrite.server";
+import { sessionsWriteTools } from "./tools/sessionsWrite.server";
+import { tasksWriteTools } from "./tools/tasksWrite.server";
+import { webhooksWriteTools } from "./tools/webhooksWrite.server";
 
 export type McpToolDefinition = {
   name: string;
@@ -26,7 +40,14 @@ export type McpToolDefinition = {
   description: string;
   inputSchema: z.ZodRawShape;
   annotations?: ToolAnnotations;
-  handler: (args: unknown, identity: McpIdentity, request: Request) => Promise<CallToolResult>;
+  /** The gate holds the call for user confirmation. */
+  confirm?: boolean;
+  handler: (
+    args: unknown,
+    identity: McpIdentity,
+    request: Request,
+    extra?: McpRequestExtra
+  ) => Promise<CallToolResult>;
 };
 
 export type McpToolContext = { identity: McpIdentity; request: Request; era: ProtocolEra };
@@ -54,6 +75,16 @@ export const mcpTools: McpToolDefinition[] = assertUniqueToolNames([
   ...webhooksTools,
   ...reportTools,
   ...docsTools,
+  ...agentChatTools,
+  ...alertsWriteTools,
+  ...dashboardsWriteTools,
+  ...feedbackTools,
+  ...orgsWriteTools,
+  ...promptsWriteTools,
+  ...runsWriteTools,
+  ...sessionsWriteTools,
+  ...tasksWriteTools,
+  ...webhooksWriteTools,
 ]);
 
 export function registerMcpTools(
@@ -70,7 +101,41 @@ export function registerMcpTools(
         inputSchema: z.object(tool.inputSchema),
         annotations: tool.annotations,
       },
-      (args: unknown) => tool.handler(args, ctx.identity, ctx.request)
+      async (args: unknown, extra) => {
+        try {
+          return await tool.handler(args, ctx.identity, ctx.request, {
+            signal: extra.mcpReq.signal,
+            requestId: extra.mcpReq.id,
+            era: ctx.era,
+          });
+        } catch (error) {
+          if (ctx.era === "modern" && error instanceof UrlElicitationRequiredError) {
+            const response = inputResponse(
+              extra.mcpReq.inputResponses,
+              error.elicitations[0].elicitationId
+            );
+            if (response.kind === "elicit" && response.action !== "accept") {
+              return confirmationToolError(error);
+            }
+            return server.server.getClientCapabilities()?.elicitation?.url
+              ? urlElicitationInputRequired(error)
+              : confirmationToolError(error);
+          }
+          throw error;
+        }
+      }
     );
   }
+}
+
+function urlElicitationInputRequired(error: UrlElicitationRequiredError) {
+  const [{ elicitationId, url, message }] = error.elicitations;
+  return inputRequired({
+    inputRequests: { [elicitationId]: inputRequired.elicitUrl({ url, message }) },
+  });
+}
+
+// -32042 cannot be sent on 2026-07-28, so clients without URL elicitation get the tool-error shape.
+function confirmationToolError(error: UrlElicitationRequiredError): CallToolResult {
+  return { content: [{ type: "text", text: error.elicitations[0].message }], isError: true };
 }
