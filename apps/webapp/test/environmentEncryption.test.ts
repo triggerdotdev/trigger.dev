@@ -490,10 +490,7 @@ describe("environment encryption", () => {
   // Catches: a policy revision forcing warm platform keys to unwrap again during a wrapping-key outage.
   postgresTest("keeps cached platform keys usable across policy revisions", async ({ prisma }) => {
     const { scope } = await seed(prisma);
-    const keys = new Map([
-      ["platform", "p".repeat(32)],
-      ["replacement", "r".repeat(32)],
-    ]);
+    const keys = new Map([["platform", "p".repeat(32)]]);
     let unwraps = 0;
     const encryption = service(prisma, {
       keyring: { activeKeyId: "platform", keys },
@@ -507,13 +504,11 @@ describe("environment encryption", () => {
         variables: [{ key: "TOKEN", value }],
       });
     expect(await write("before")).toEqual({ success: true });
-    const policy = await prisma.environmentEncryptionPolicy.findFirstOrThrow({
+    await prisma.environmentEncryptionPolicy.update({
       where: { environmentId: scope.environmentId },
+      data: { revision: { increment: 1 } },
     });
-    await encryption.rewrap(scope, policy.activeKeyId!, {
-      wrappingProvider: "PLATFORM_KEYRING",
-      wrappingKeyReference: "replacement",
-    });
+    await encryption.policies([scope], true);
     keys.clear();
     expect(await repository.getEnvironmentVariables(scope.projectId, scope.environmentId)).toEqual([
       { key: "TOKEN", value: "before" },
@@ -558,41 +553,24 @@ describe("environment encryption", () => {
   });
 
   // Catches: key rotation accepting ciphertext prepared before the active-write policy changed.
-  postgresTest(
-    "fences stale writes while retaining old-key reads and supporting rewrap",
-    async ({ prisma }) => {
-      const { scope } = await seed(prisma);
-      const encryption = service(prisma);
-      const old = await encryption.prepareWrite(scope);
-      const context = {
-        environmentId: scope.environmentId,
-        purpose: "environment-variable" as const,
-        objectId: "secret",
-      };
-      const value = encryption.encrypt(old, context, "original");
-      await encryption.rotate(scope);
-      await expect($transaction(prisma, (tx) => encryption.assertWrite(tx, [old]))).rejects.toThrow(
-        "policy changed"
-      );
-      expect(
-        await encryption.decryptMany([{ projectId: scope.projectId, context, value }])
-      ).toEqual(["original"]);
-      const before = await prisma.environmentEncryptionKey.findFirstOrThrow({
-        where: { id: old.keyId! },
-      });
-      await encryption.rewrap(scope, old.keyId!, {
-        wrappingProvider: "PLATFORM_KEYRING",
-        wrappingKeyReference: "legacy",
-      });
-      const after = await prisma.environmentEncryptionKey.findFirstOrThrow({
-        where: { id: old.keyId! },
-      });
-      expect(after.wrappedKey).not.toEqual(before.wrappedKey);
-      expect(
-        await encryption.decryptMany([{ projectId: scope.projectId, context, value }])
-      ).toEqual(["original"]);
-    }
-  );
+  postgresTest("fences stale writes while retaining old-key reads", async ({ prisma }) => {
+    const { scope } = await seed(prisma);
+    const encryption = service(prisma);
+    const old = await encryption.prepareWrite(scope);
+    const context = {
+      environmentId: scope.environmentId,
+      purpose: "environment-variable" as const,
+      objectId: "secret",
+    };
+    const value = encryption.encrypt(old, context, "original");
+    await encryption.rotate(scope);
+    await expect($transaction(prisma, (tx) => encryption.assertWrite(tx, [old]))).rejects.toThrow(
+      "policy changed"
+    );
+    expect(await encryption.decryptMany([{ projectId: scope.projectId, context, value }])).toEqual([
+      "original",
+    ]);
+  });
 
   // Catches: inherited env vars being decrypted with the child's identity instead of their owning parent's identity.
   postgresTest(

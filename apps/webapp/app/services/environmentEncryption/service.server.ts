@@ -430,34 +430,6 @@ export class EnvironmentEncryptionService {
       this.#invalidatePolicy(scope.environmentId);
     }
   }
-
-  async rewrap(scope: Scope, keyId: string, target: WrappingPolicy) {
-    const policies = await this.policies([scope], true);
-    const policy = policies.get(scope.environmentId)!.policy;
-    if (!policy) throw new Error("Missing environment encryption policy");
-    const keys = await this.#loadKeys([{ ...scope, keyId }]);
-    const key = keys.get(this.#cacheKey(scope.environmentId, keyId))!;
-    const wrapped = await this.#wrapVerified(target, scope.environmentId, keyId, key);
-    await this.options.transaction(async (tx) => {
-      await lockEnvironment(tx, scope);
-      const current = await tx.environmentEncryptionPolicy.findFirst({
-        where: { environmentId: scope.environmentId },
-      });
-      if (current?.revision !== policy.revision) throw new EncryptionPolicyChangedError();
-      await tx.environmentEncryptionKey.update({
-        where: { id: keyId },
-        data: { ...policyFields(target), ...wrapped, revision: { increment: 1 } },
-      });
-      await tx.environmentEncryptionPolicy.update({
-        where: { environmentId: scope.environmentId },
-        data: {
-          ...(policy.activeKeyId === keyId ? policyFields(target) : {}),
-          revision: { increment: 1 },
-        },
-      });
-    });
-    this.#invalidatePolicy(scope.environmentId);
-  }
 }
 
 async function lockEnvironment(
