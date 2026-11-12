@@ -201,7 +201,7 @@ export async function ensureUserForDirectory(params: {
 // role Directory Sync must never strip (it can't be auto-granted and is the
 // org's recovery anchor), so deprovision is guarded against removing the last
 // one. Identified by the RBAC system role; OSS-safe (no plugin → not Owner).
-function isOwnerRole(role: { name: string; isSystem: boolean } | null): boolean {
+export function isOwnerRole(role: { name: string; isSystem: boolean } | null): boolean {
   return !!role && role.isSystem && role.name === "Owner";
 }
 

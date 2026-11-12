@@ -1,7 +1,9 @@
 import type { PrismaClient } from "@trigger.dev/database";
 import { $transaction } from "~/db.server";
+import { rbac } from "~/services/rbac.server";
 import { ServiceValidationError } from "~/v3/services/common.server";
 import { deleteOrgMember } from "./deleteOrgMember.server";
+import { isOwnerRole } from "./orgMember.server";
 export async function removeTeamMember(
   {
     userId,
@@ -41,9 +43,29 @@ export async function removeTeamMember(
         throw new ServiceValidationError("Member not found in this organization", 404);
       }
 
-      const memberCount = await tx.orgMember.count({ where: { organizationId: org.id } });
-      if (memberCount <= 1) {
+      const members = await tx.orgMember.findMany({
+        where: { organizationId: org.id },
+        select: { userId: true },
+      });
+      if (members.length <= 1) {
         throw new ServiceValidationError("Cannot remove the last member of an organization", 400);
+      }
+
+      // The org must keep an Owner, the same guard removeOrgMemberForDirectory
+      // applies. A no-op without an RBAC plugin, where nobody holds Owner.
+      const roles = await rbac.getUserRoles(
+        members.map((m) => m.userId),
+        org.id
+      );
+      const isOwner = (memberUserId: string) => isOwnerRole(roles.get(memberUserId) ?? null);
+      if (
+        isOwner(target.userId) &&
+        !members.some((m) => m.userId !== target.userId && isOwner(m.userId))
+      ) {
+        throw new ServiceValidationError(
+          "An organization needs at least one Owner. Make someone else an Owner first.",
+          400
+        );
       }
 
       await deleteOrgMember(tx, { id: target.id, organizationId: org.id });
