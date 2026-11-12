@@ -1,5 +1,13 @@
 # @trigger.dev/sdk
 
+## 4.8.6
+
+### Patch Changes
+
+- `concurrencyKey` now also takes an object, so one run can be limited by two limits keyed by different things, like a cap per session and a cap per organization. `default` is the run's own key and every other entry gives a named limit its own key: `concurrencyKey: { default: sessionId, [orgLimit.name]: orgId }`. A string key works as before. ([`4961fc474`](https://github.com/triggerdotdev/trigger.dev/commit/4961fc474c2fe155e557573f48c5eb95868d3015))
+- Updated dependencies:
+  - `@trigger.dev/core@4.8.6`
+
 ## 4.8.5
 
 ### Patch Changes

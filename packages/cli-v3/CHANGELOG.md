@@ -1,5 +1,16 @@
 # trigger.dev
 
+## 4.8.6
+
+### Patch Changes
+
+- Show CLI command errors in the same error format as other CLI errors, and keep them visible with `--log-level error`. ([`c515c3f74`](https://github.com/triggerdotdev/trigger.dev/commit/c515c3f74656fe79e311acb1d32fe8f091f18a8d))
+- Report a run whose process the kernel killed for running out of memory as `TASK_PROCESS_OOM_KILLED`, rather than as a generic exit after `SIGKILL`, when the out-of-memory kill is counted in the run's cgroup. ([`7a2a7dc80`](https://github.com/triggerdotdev/trigger.dev/commit/7a2a7dc801fc5bc97a03add95dc1b2a12f978e58))
+- Updated dependencies:
+  - `@trigger.dev/build@4.8.6`
+  - `@trigger.dev/core@4.8.6`
+  - `@trigger.dev/schema-to-json@4.8.6`
+
 ## 4.8.5
 
 ### Patch Changes
