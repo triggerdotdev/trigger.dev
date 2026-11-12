@@ -266,7 +266,11 @@ function capRequestBody(
     if (enforced) {
       report.measured(declared);
       report.exceeded(declared, true);
-      if (!res.headersSent) cap.refuse(res);
+      if (res.headersSent) return;
+      // Nothing was read, so the connection can't carry another request: Node closes it once
+      // the 413 is written, instead of reading the rest of the upload to discard it.
+      res.setHeader("Connection", "close");
+      cap.refuse(res);
       return;
     }
     whenOver(() => {

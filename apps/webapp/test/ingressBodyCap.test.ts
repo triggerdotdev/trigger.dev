@@ -1,7 +1,7 @@
 import { createRequestHandler } from "@remix-run/express";
 import express, { type ErrorRequestHandler } from "express";
 import http, { type Server } from "node:http";
-import type { AddressInfo } from "node:net";
+import net, { type AddressInfo } from "node:net";
 import { Readable } from "node:stream";
 import { afterEach, describe, expect, it } from "vitest";
 import {
@@ -442,6 +442,37 @@ describe("the default limit", () => {
 
     expect(response.status).toBe(413);
     expect(ended).toBe(false);
+  });
+});
+
+describe("the connection of a refused request", () => {
+  // Catches: a connection left open with the rest of the upload unread until it times out.
+  it.each(["chunked", "declared"])("closes once the 413 is sent, for a %s body", async (kind) => {
+    const { url } = await listen();
+    const { port } = new URL(url);
+
+    const socket = net.connect(Number(port), "127.0.0.1");
+    let response = "";
+    socket.on("data", (data) => (response += data.toString()));
+    const started = Date.now();
+    const closed = new Promise<number>((resolve) => {
+      socket.on("close", () => resolve(Date.now() - started));
+    });
+    socket.on("error", () => {});
+    const chunk = Buffer.alloc(2 * DEFAULT_LIMIT_BYTES, "a");
+    socket.write(
+      "POST /api/v1/schedules HTTP/1.1\r\nHost: localhost\r\nConnection: keep-alive\r\n" +
+        (kind === "chunked"
+          ? "Transfer-Encoding: chunked\r\n\r\n"
+          : `Content-Length: ${4 * DEFAULT_LIMIT_BYTES}\r\n\r\n`)
+    );
+    if (kind === "chunked") socket.write(`${chunk.byteLength.toString(16)}\r\n`);
+    socket.write(chunk);
+    if (kind === "chunked") socket.write("\r\n");
+    // The upload is never finished.
+
+    expect(await closed).toBeLessThan(1000);
+    expect(response).toMatch(/^HTTP\/1\.1 413/);
   });
 });
 
