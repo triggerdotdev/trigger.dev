@@ -30,16 +30,18 @@ export async function removeTeamMember(
 
   // Checked again inside the transaction, which is what makes them race-free. Checking here first
   // keeps a removal that would be rejected from saving fingerprints for keys it never issues.
-  const [targetCount, memberCount] = await Promise.all([
-    prismaClient.orgMember.count({ where: { id: memberId, organizationId: org.id } }),
-    prismaClient.orgMember.count({ where: { organizationId: org.id } }),
-  ]);
-  if (targetCount === 0) {
+  const currentMembers = await prismaClient.orgMember.findMany({
+    where: { organizationId: org.id },
+    select: { id: true, userId: true },
+  });
+  const currentTarget = currentMembers.find((m) => m.id === memberId);
+  if (!currentTarget) {
     throw new ServiceValidationError("Member not found in this organization", 404);
   }
-  if (memberCount <= 1) {
+  if (currentMembers.length <= 1) {
     throw new ServiceValidationError("Cannot remove the last member of an organization", 400);
   }
+  await assertOrgKeepsAnOwner(org.id, currentMembers, currentTarget.userId);
 
   // The new development keys' fingerprints are saved first: a failed save fails the removal.
   const actor = userActor(userId);
@@ -76,22 +78,7 @@ export async function removeTeamMember(
         throw new ServiceValidationError("Cannot remove the last member of an organization", 400);
       }
 
-      // The org must keep an Owner, the same guard removeOrgMemberForDirectory
-      // applies. A no-op without an RBAC plugin, where nobody holds Owner.
-      const roles = await rbac.getUserRoles(
-        members.map((m) => m.userId),
-        org.id
-      );
-      const isOwner = (memberUserId: string) => isOwnerRole(roles.get(memberUserId) ?? null);
-      if (
-        isOwner(target.userId) &&
-        !members.some((m) => m.userId !== target.userId && isOwner(m.userId))
-      ) {
-        throw new ServiceValidationError(
-          "An organization needs at least one Owner. Make someone else an Owner first.",
-          400
-        );
-      }
+      await assertOrgKeepsAnOwner(org.id, members, target.userId);
 
       const { credentials } = await deleteOrgMember(
         tx,
@@ -107,4 +94,29 @@ export async function removeTeamMember(
   }
   recordMemberRemovalCredentials(result.credentials, actor);
   return result.target;
+}
+
+/**
+ * The org must keep an Owner, the same guard removeOrgMemberForDirectory applies. A no-op without
+ * an RBAC plugin, where nobody holds Owner.
+ */
+async function assertOrgKeepsAnOwner(
+  organizationId: string,
+  members: { userId: string }[],
+  targetUserId: string
+) {
+  const roles = await rbac.getUserRoles(
+    members.map((m) => m.userId),
+    organizationId
+  );
+  const isOwner = (memberUserId: string) => isOwnerRole(roles.get(memberUserId) ?? null);
+  if (
+    isOwner(targetUserId) &&
+    !members.some((m) => m.userId !== targetUserId && isOwner(m.userId))
+  ) {
+    throw new ServiceValidationError(
+      "An organization needs at least one Owner. Make someone else an Owner first.",
+      400
+    );
+  }
 }
