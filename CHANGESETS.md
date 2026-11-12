@@ -6,7 +6,7 @@ Trigger.dev uses [changesets](https://github.com/changesets/changesets) to manag
 
 Changesets and `.server-changes/` files are user-facing release notes, not a catalog of every change. Add one only when the change is something a user would notice or act on. Skip it for internal-only changes, refactors, chores, and packages that are not consumed independently (e.g. `@trigger.dev/redis-worker`). Anyone who wants the exact history reads the commits.
 
-To add a changeset, use `pnpm run changeset:add` and follow the [Changesets adding-a-changeset guide](https://github.com/changesets/changesets/blob/main/docs/adding-a-changeset.md). Please only ever select one of our public packages when adding a changeset.
+To add a changeset, use `pnpm run changeset:add` and follow the [Changesets adding-a-changeset guide](https://github.com/changesets/changesets/blob/main/docs/guide/getting-started.md#usage). Please only ever select one of our public packages when adding a changeset.
 
 ## Adding a server change (server-only changes)
 

@@ -295,7 +295,7 @@ If your change touches core infrastructure, modifies widely-used code paths, or 
 
 ## Adding changesets
 
-We use [changesets](https://github.com/changesets/changesets) to manage our package versions and changelogs. If you've never used changesets before, first read [their guide here](https://github.com/changesets/changesets/blob/main/docs/adding-a-changeset.md).
+We use [changesets](https://github.com/changesets/changesets) to manage our package versions and changelogs. If you've never used changesets before, first read [their guide here](https://github.com/changesets/changesets/blob/main/docs/guide/getting-started.md#usage).
 
 Changesets are user-facing release notes, not a catalog of every change. If you are contributing a **user-facing** change to a package in this monorepo (anything in `/packages` or `/integrations` that a user would notice or act on), add a changeset to your Pull Request before it can be merged. Skip the changeset for internal-only changes, refactors, chores, and packages that are not consumed independently (e.g. `@trigger.dev/redis-worker`), where a version bump means nothing to a user.
 
