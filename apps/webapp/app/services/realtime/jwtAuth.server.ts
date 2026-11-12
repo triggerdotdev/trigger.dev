@@ -4,10 +4,18 @@ import {
   validateJWT,
   type ValidationResult,
 } from "@trigger.dev/core/v3/jwt";
-import { resolveJwtSigningKey, resolvePublicTokenSubject } from "@trigger.dev/rbac";
+import {
+  resolveJwtSigningKey,
+  resolvePublicTokenSubject,
+  sourcePersonalAccessTokenCheck,
+  sourcePersonalAccessTokenClaim,
+} from "@trigger.dev/rbac";
 import { $replica } from "~/db.server";
 import { findEnvironmentById } from "~/models/runtimeEnvironment.server";
-import { publicTokenSubjects } from "~/services/publicTokenSubject.server";
+import {
+  publicTokenSubjects,
+  sourcePersonalAccessTokens,
+} from "~/services/publicTokenSubject.server";
 import type { AuthenticatedEnvironment } from "../apiAuth.server";
 
 type ValidatePublicJwtKeySuccess = {
@@ -86,6 +94,19 @@ export async function validatePublicJwtKey(token: string): Promise<ValidatePubli
         };
       }
     }
+  }
+
+  // A JWT from the PAT/UAT exchange also names its source PAT, and dies with it.
+  const sourcePat = sourcePersonalAccessTokenClaim(result.payload, sourcePersonalAccessTokens);
+  if (
+    sourcePat &&
+    !(sourcePat.id && (await sourcePersonalAccessTokenCheck.isActive($replica, sourcePat.id)))
+  ) {
+    return {
+      ok: false,
+      error:
+        "Public Access Token is invalid. See https://trigger.dev/docs/frontend/overview#authentication for more information.",
+    };
   }
 
   return {

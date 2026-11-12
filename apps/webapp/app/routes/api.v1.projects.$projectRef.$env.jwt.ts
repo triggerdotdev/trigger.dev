@@ -23,7 +23,10 @@ import {
 import { validateJwtExpiration } from "~/services/jwtExpiration.server";
 import { logger } from "~/services/logger.server";
 import { authorizePatEnvironmentAccess } from "~/services/environmentVariableApiAccess.server";
-import { publicTokenSubject } from "~/services/publicTokenSubject.server";
+import {
+  publicTokenSubject,
+  sourcePersonalAccessTokens,
+} from "~/services/publicTokenSubject.server";
 
 const ParamsSchema = z.object({
   projectRef: z.string(),
@@ -167,12 +170,27 @@ export async function action({ request, params }: ActionFunctionArgs) {
         ? authenticationResult.result.userId
         : undefined);
 
+    // The PAT this JWT derives from (a UAT's source PAT, or the PAT itself). Every use of the
+    // JWT rechecks it, so revoking or expiring the PAT ends the JWT too.
+    const sourcePatId = isUat
+      ? userActor?.pat
+      : authenticationResult.type === "personalAccessToken"
+        ? authenticationResult.result.tokenId
+        : undefined;
+
     const claims = {
       sub: publicTokenSubject(runtimeEnv.id),
       pub: true,
       ...(scopes ? { scopes } : {}),
       ...(actorUserId
-        ? { act: { sub: actorUserId, client: userActor?.client ?? "personal-access-token" } }
+        ? {
+            act: {
+              sub: actorUserId,
+              client: userActor?.client ?? "personal-access-token",
+              // Sealed, so the PAT's id never appears in the token.
+              ...(sourcePatId ? { pat: sourcePersonalAccessTokens.encode(sourcePatId) } : {}),
+            },
+          }
         : {}),
     };
 

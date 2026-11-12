@@ -31,6 +31,7 @@ import { runStore } from "~/v3/runStore.server";
 import { ServiceValidationError } from "~/v3/services/baseService.server";
 import { OutOfEntitlementError, TriggerTaskService } from "~/v3/services/triggerTask.server";
 import { publicTokenSubject } from "~/services/publicTokenSubject.server";
+import { inheritedSourcePatClaim } from "~/services/publicAccessTokenResponse.server";
 
 const ParamsSchema = z.object({
   taskId: z.string(),
@@ -229,7 +230,7 @@ async function responseHeaders(
 
   const jwt = await internal_generateJWT({
     secretKey: extractJwtSigningSecretKey(environment),
-    payload: claims,
+    payload: { ...claims, ...inheritedSourcePatClaim(authentication.actor) },
     expirationTime: "1h",
   });
 

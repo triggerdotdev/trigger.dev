@@ -11,7 +11,15 @@ import {
 import { createHash } from "node:crypto";
 import { buildJwtAbility, permissiveAbility } from "./ability.js";
 import { clientIpFromHeaders, isIpAllowed } from "./ipAllowlist.js";
-import { resolvePublicTokenSubject, type PublicTokenSubjectCodec } from "./publicTokenSubject.js";
+import {
+  sourcePersonalAccessTokenCheck,
+  sourcePersonalAccessTokenClaim,
+} from "./personalAccessTokenExpiry.js";
+import {
+  resolvePublicTokenSubject,
+  type PublicTokenSubjectCodec,
+  type SealedIdCodec,
+} from "./publicTokenSubject.js";
 import { recordingApiKeyAbility, type ApiKeyScopeRecorder } from "./scopeUsage.js";
 
 export type BearerCredentialClients = {
@@ -75,17 +83,20 @@ export function resolveJwtSigningKey(env: {
  */
 export type BearerCredentialResolverOptions = {
   publicTokenSubjects?: PublicTokenSubjectCodec;
+  sourcePersonalAccessTokens?: SealedIdCodec;
 };
 
 export class BearerCredentialResolver {
   private readonly prisma: PrismaClient;
   private readonly replica: PrismaClient;
   private readonly publicTokenSubjects?: PublicTokenSubjectCodec;
+  private readonly sourcePersonalAccessTokens?: SealedIdCodec;
 
   constructor(clients: BearerCredentialClients, options?: BearerCredentialResolverOptions) {
     this.prisma = clients.primary;
     this.replica = clients.replica;
     this.publicTokenSubjects = options?.publicTokenSubjects;
+    this.sourcePersonalAccessTokens = options?.sourcePersonalAccessTokens;
   }
 
   async authenticate(
@@ -203,6 +214,26 @@ export class BearerCredentialResolver {
       const act = result.payload.act as { sub?: unknown } | undefined;
       const actSub = typeof act?.sub === "string" ? act.sub : undefined;
 
+      // A JWT from the PAT/UAT exchange also names its source PAT, and dies with it.
+      const sourcePat = sourcePersonalAccessTokenClaim(
+        result.payload,
+        this.sourcePersonalAccessTokens
+      );
+      if (
+        sourcePat &&
+        !(
+          sourcePat.id &&
+          (await sourcePersonalAccessTokenCheck.isActive(this.replica, sourcePat.id))
+        )
+      ) {
+        return {
+          ok: false,
+          status: 401,
+          error: "Public Access Token is invalid",
+          resolution: { credentialKind: "public_jwt", lookupPath },
+        };
+      }
+
       return {
         ok: true,
         environment: toAuthenticatedEnvironment(env),
@@ -213,7 +244,13 @@ export class BearerCredentialResolver {
           projectId: env.projectId,
         },
         ability: buildJwtAbility(scopes),
-        jwt: { realtime, oneTimeUse, ...(actSub ? { act: { sub: actSub } } : {}) },
+        jwt: {
+          realtime,
+          oneTimeUse,
+          ...(actSub
+            ? { act: { sub: actSub, ...(sourcePat ? { pat: sourcePat.sealed } : {}) } }
+            : {}),
+        },
         resolution: { credentialKind: "public_jwt", lookupPath },
       };
     }

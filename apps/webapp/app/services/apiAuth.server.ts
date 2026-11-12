@@ -60,6 +60,7 @@ const ClaimsSchema = z.object({
     .object({
       sub: z.string(),
       client: z.string().optional(),
+      pat: z.string().optional(),
     })
     .optional(),
 });
@@ -92,10 +93,12 @@ export type ApiAuthenticationResultSuccess = {
   // Present when the request used a public JWT minted from a PAT/UAT exchange
   // that stamped an `act` delegation claim. `actor.sub` is the acting user id,
   // used for attribution (e.g. who resolved an error). Absent for plain env
-  // API keys (no user) and JWTs minted without delegation.
+  // API keys (no user) and JWTs minted without delegation. `actor.pat` is the
+  // source PAT, which tokens minted for the request inherit.
   actor?: {
     sub: string;
     client?: string;
+    pat?: string;
   };
 };
 

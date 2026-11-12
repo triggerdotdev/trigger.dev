@@ -42,7 +42,11 @@ vi.mock("@triggerdotdev/plugins/rbac", async () => {
 
 import { RoleBaseAccessFallback } from "./fallback.js";
 import loader from "./index.js";
-import { rejectExpiredPersonalAccessToken } from "./personalAccessTokenExpiry.js";
+import {
+  rejectExpiredPersonalAccessToken,
+  SOURCE_PAT_CHECK_TTL_MS,
+  SourcePersonalAccessTokenCheck,
+} from "./personalAccessTokenExpiry.js";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
@@ -334,3 +338,89 @@ postgresTest(
     });
   }
 );
+
+/** A clock the test moves by hand, so the cache window is exact. */
+function manualClock(start = Date.now()) {
+  let now = start;
+  return { now: () => now, advance: (ms: number) => (now += ms) };
+}
+
+/** Catches: a revocation landing before the window ends, i.e. the cache not being used. */
+postgresTest(
+  "the source PAT check reuses its answer within the window, then rechecks",
+  async ({ prisma }) => {
+    const { row } = await seedToken(prisma, null);
+    const clock = manualClock();
+    const check = new SourcePersonalAccessTokenCheck({ now: clock.now });
+
+    await expect(check.isActive(prisma, row.id)).resolves.toBe(true);
+    await prisma.personalAccessToken.update({
+      where: { id: row.id },
+      data: { revokedAt: new Date() },
+    });
+
+    clock.advance(SOURCE_PAT_CHECK_TTL_MS - 1);
+    await expect(check.isActive(prisma, row.id)).resolves.toBe(true);
+
+    clock.advance(1);
+    await expect(check.isActive(prisma, row.id)).resolves.toBe(false);
+  }
+);
+
+/** Catches: the check applying only revocation, not expiry, on a fresh lookup. */
+postgresTest("the source PAT check rejects an expired or idle PAT", async ({ prisma }) => {
+  const expired = await seedToken(prisma, new Date(Date.now() - 1000));
+  const idle = await seedToken(prisma, null, {
+    idleTimeoutSeconds: 7 * 24 * 60 * 60,
+    lastAccessedAt: new Date(Date.now() - 8 * DAY_MS),
+  });
+  const check = new SourcePersonalAccessTokenCheck();
+
+  await expect(check.isActive(prisma, expired.row.id)).resolves.toBe(false);
+  await expect(check.isActive(prisma, idle.row.id)).resolves.toBe(false);
+});
+
+/**
+ * Catches: caching a missing row, which turns replica lag on a just-created PAT into a full
+ * window of rejections.
+ */
+postgresTest("the source PAT check doesn't cache a PAT it can't find", async ({ prisma }) => {
+  const { row } = await seedToken(prisma, null);
+  const laterId = `${row.id}later`;
+  const check = new SourcePersonalAccessTokenCheck();
+
+  await expect(check.isActive(prisma, laterId)).resolves.toBe(false);
+
+  // The row shows up (as when the replica catches up), well inside the window.
+  await prisma.personalAccessToken.create({
+    data: {
+      id: laterId,
+      name: "test",
+      userId: row.userId,
+      encryptedToken: {},
+      obfuscatedToken: "tr_pat_test",
+      hashedToken: `${row.hashedToken}later`,
+    },
+  });
+
+  await expect(check.isActive(prisma, laterId)).resolves.toBe(true);
+});
+
+/** Catches: an unbounded cache, or a full one that keeps serving the oldest answer. */
+postgresTest("the source PAT check drops its oldest answer when full", async ({ prisma }) => {
+  const first = await seedToken(prisma, null);
+  const second = await seedToken(prisma, null);
+  const third = await seedToken(prisma, null);
+  const check = new SourcePersonalAccessTokenCheck({ maxEntries: 2 });
+
+  await check.isActive(prisma, first.row.id);
+  await check.isActive(prisma, second.row.id);
+  await prisma.personalAccessToken.update({
+    where: { id: first.row.id },
+    data: { revokedAt: new Date() },
+  });
+  await check.isActive(prisma, third.row.id);
+
+  // The first answer was evicted, so this looks the revoked PAT up again.
+  await expect(check.isActive(prisma, first.row.id)).resolves.toBe(false);
+});

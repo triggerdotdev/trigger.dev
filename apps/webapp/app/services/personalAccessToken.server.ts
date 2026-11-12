@@ -17,6 +17,7 @@ import { decryptToken, encryptToken, hashToken } from "~/utils/tokens.server";
 import { EncryptedValueSchema as EncryptedSecretValueSchema } from "~/utils/encryptionKeyring.server";
 import { env } from "~/env.server";
 import {
+  isPersonalAccessTokenActive,
   isUserActorToken,
   personalAccessTokenExpiry,
   personalAccessTokenExpiryMessage,
@@ -527,12 +528,7 @@ export async function personalAccessTokenUnauthorizedResponse(
  */
 export async function assertSourcePatActive(claims: UserActorClaims): Promise<boolean> {
   if (!claims.pat) return true;
-
-  const found = await prisma.personalAccessToken.findFirst({
-    where: { id: claims.pat, revokedAt: null },
-    select: expiryColumns,
-  });
-  return found !== null && !personalAccessTokenExpiry(found);
+  return isPersonalAccessTokenActive(prisma, claims.pat);
 }
 
 /**

@@ -552,8 +552,13 @@ export type BearerAuthResult =
       ability: RbacAbility;
       // `act` carries the acting user (`act.sub`) when the public JWT was
       // minted from a PAT/UAT exchange that stamped a delegation claim. Hosts
-      // surface it for attribution (e.g. who resolved an error).
-      jwt?: { realtime?: { skipColumns?: string[] }; oneTimeUse?: boolean; act?: { sub: string } };
+      // surface it for attribution (e.g. who resolved an error). `act.pat` is
+      // the source PAT, which tokens minted for the request inherit.
+      jwt?: {
+        realtime?: { skipColumns?: string[] };
+        oneTimeUse?: boolean;
+        act?: { sub: string; pat?: string };
+      };
     };
 
 export type BearerAuthOptions = {

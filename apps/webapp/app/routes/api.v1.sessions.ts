@@ -276,7 +276,9 @@ const { action } = createActionApiRoute(
       // the externalId; otherwise the friendlyId. Mirrors the
       // canonical addressing key used server-side.
       const addressingKey = session.externalId ?? session.friendlyId;
-      const publicAccessToken = await mintSessionToken(authentication.environment, addressingKey);
+      const publicAccessToken = await mintSessionToken(authentication.environment, addressingKey, {
+        actor: authentication.actor,
+      });
 
       const sessionItem: SessionItem = {
         ...serializeSession(session),
