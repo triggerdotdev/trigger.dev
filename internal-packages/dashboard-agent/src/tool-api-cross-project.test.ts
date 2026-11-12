@@ -648,13 +648,14 @@ describe("curated objects carry a ready-made evidence uri", () => {
  * to the conversation's scope — the failure this whole change exists to remove.
  */
 describe("a source read from a sibling project", () => {
-  const DEFAULT_SNAPSHOT: RepoSnapshot = {
-    tarballUrl: "http://unused.invalid/never-fetched",
+  const snapshotAt = (sha: string): RepoSnapshot => ({
+    tarballUrl: `https://codeload.github.com/acme/demo/legacy.tar.gz/${sha}`,
     owner: "acme",
     repo: "demo",
-    sha: "a".repeat(40),
-  };
-  const SIBLING_SNAPSHOT: RepoSnapshot = { ...DEFAULT_SNAPSHOT, sha: "b".repeat(40) };
+    sha,
+  });
+  const DEFAULT_SNAPSHOT = snapshotAt("a".repeat(40));
+  const SIBLING_SNAPSHOT = snapshotAt("b".repeat(40));
   const PATH = "src/trigger/order.ts";
   const SIBLING_ENV = "env_other_prod";
   const CONVERSATION_ENV = "env_here";

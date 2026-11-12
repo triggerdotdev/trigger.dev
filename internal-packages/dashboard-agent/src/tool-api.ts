@@ -39,7 +39,9 @@ import type { DashboardAgentToolContext } from "./tool-context";
 import { bareFingerprint, recordRead } from "./tool-read-scope";
 import type { ScopedReadKind, SourceReadLedger } from "./tool-source-ledger";
 import {
+  capRows,
   clampPeriod,
+  curateCommit,
   curateDeploy,
   curateEnvironments,
   curateError,
@@ -54,7 +56,9 @@ import {
   derivePhases,
   fenceUntrusted,
   getReportModelOutput,
+  listErrorsModelOutput,
   renderViewModelOutput,
+  runTraceModelOutput,
   type TraceSource,
 } from "./tool-curation";
 import { searchTriggerDocs } from "./tool-docs";
@@ -234,6 +238,15 @@ function isNotFound(result: { ok: false; status?: number } | object): boolean {
   return "status" in result && (result as { status?: number }).status === 404;
 }
 
+/** One escaped path segment, or undefined for an id the URL would collapse. */
+export function pathSegment(id: string): string | undefined {
+  return id === "" || id === "." || id === ".." ? undefined : encodeURIComponent(id);
+}
+
+export function invalidId(id: string): { error: string } {
+  return { error: `"${id}" isn't a valid id.` };
+}
+
 /** A name-addressed project route, with both model-supplied segments escaped. */
 function envPath(target: EnvTarget, suffix: string): string {
   const project = encodeURIComponent(target.projectRef);
@@ -362,10 +375,10 @@ async function readQueueGrounding(
   queue: string,
   kind: "task" | "custom"
 ): Promise<QueueGrounding> {
+  const segment = pathSegment(queueNameForKind(queue, kind));
+  if (!segment) return GROUNDING_UNAVAILABLE;
   const result = await envApiGet(
-    `/api/v1/dashboard-agent/queues/${encodeURIComponent(
-      queueNameForKind(queue, kind)
-    )}/grounding?type=${kind}`,
+    `/api/v1/dashboard-agent/queues/${segment}/grounding?type=${kind}`,
     target
   );
   if (isEnvUnavailable(result) || !result.ok) return GROUNDING_UNAVAILABLE;
@@ -426,10 +439,10 @@ function runQueryModelOutput(output: any) {
     return { ...rest, error: `${fenceUntrusted("queryError", dbError)}${note}` };
   }
   if (!Array.isArray(output?.rows)) return output;
-  return {
-    ...output,
-    rows: output.rows.map((row: unknown) => fenceUntrusted("queryRow", JSON.stringify(row))),
-  };
+  const { rows, note } = capRows(
+    output.rows.map((row: unknown) => fenceUntrusted("queryRow", JSON.stringify(row)))
+  );
+  return { ...output, rows, ...(note ? { truncated: true, note } : {}) };
 }
 
 /** Failed `run_query` calls in a row before the tool tells the model to stop and answer. */
@@ -577,13 +590,12 @@ export function buildApiTools(args: {
     get_run: tool({
       ...getRunSchema,
       execute: async (input) => {
+        const { runId } = input;
         const resolved = await resolveTarget(input, ctx, "read runs from");
         if (!resolved.ok) return { error: resolved.error };
-        const { runId } = input;
-        const result = await envApiGet(
-          `/api/v3/runs/${encodeURIComponent(runId)}`,
-          resolved.target
-        );
+        const segment = pathSegment(runId);
+        if (!segment) return invalidId(runId);
+        const result = await envApiGet(`/api/v3/runs/${segment}`, resolved.target);
         if (isEnvUnavailable(result)) return envUnavailableError(result, "read runs from");
         if (!result.ok) {
           if (isNotFound(result)) return notFoundIn(resolved, `Run ${runId}`);
@@ -605,23 +617,22 @@ export function buildApiTools(args: {
     get_run_trace: tool({
       ...getRunTraceSchema,
       execute: async (input) => {
+        const { runId } = input;
         const resolved = await resolveTarget(input, ctx, "read runs from");
         if (!resolved.ok) return { error: resolved.error };
-        const { runId } = input;
+        const segment = pathSegment(runId);
+        if (!segment) return invalidId(runId);
         // The run row comes along for the timeline's queue wait and finish time.
         const [agentResult, runResult] = await Promise.all([
-          envApiGet(
-            `/api/v1/dashboard-agent/runs/${encodeURIComponent(runId)}/trace`,
-            resolved.target
-          ),
-          envApiGet(`/api/v3/runs/${encodeURIComponent(runId)}`, resolved.target),
+          envApiGet(`/api/v1/dashboard-agent/runs/${segment}/trace`, resolved.target),
+          envApiGet(`/api/v3/runs/${segment}`, resolved.target),
         ]);
         if (isEnvUnavailable(agentResult))
           return envUnavailableError(agentResult, "read runs from");
         // Older self-hosted webapps don't have the agent trace route yet.
         const useLegacy = !agentResult.ok && isNotFound(agentResult);
         const result = useLegacy
-          ? await envApiGet(`/api/v1/runs/${encodeURIComponent(runId)}/trace`, resolved.target)
+          ? await envApiGet(`/api/v1/runs/${segment}/trace`, resolved.target)
           : agentResult;
         if (useLegacy && !warnedLegacyTrace) {
           warnedLegacyTrace = true;
@@ -662,6 +673,7 @@ export function buildApiTools(args: {
         if (timeline) reads?.recordRunTimeline(runId, timeline);
         return { ...curated, spans, source, ...(timeline ? { timeline } : {}) };
       },
+      toModelOutput: ({ output }) => ({ type: "json", value: runTraceModelOutput(output) }),
     }),
 
     list_errors: tool({
@@ -693,18 +705,18 @@ export function buildApiTools(args: {
         );
         return { ...curated, errors };
       },
+      toModelOutput: ({ output }) => ({ type: "json", value: listErrorsModelOutput(output) }),
     }),
 
     get_error: tool({
       ...getErrorSchema,
       execute: async (input) => {
+        const { errorId } = input;
         const resolved = await resolveTarget(input, ctx, "read errors from");
         if (!resolved.ok) return { error: resolved.error };
-        const { errorId } = input;
-        const result = await envApiGet(
-          `/api/v1/errors/${encodeURIComponent(errorId)}`,
-          resolved.target
-        );
+        const segment = pathSegment(errorId);
+        if (!segment) return invalidId(errorId);
+        const result = await envApiGet(`/api/v1/errors/${segment}`, resolved.target);
         if (isEnvUnavailable(result)) return envUnavailableError(result, "read errors from");
         if (!result.ok) {
           if (isNotFound(result)) return notFoundIn(resolved, `Error ${errorId}`);
@@ -866,13 +878,15 @@ export function buildApiTools(args: {
     get_report: tool({
       ...getReportSchema,
       execute: async (input) => {
+        const reportKey = input.key ?? "health";
         const resolved = await resolveTarget(input, ctx, "report on");
         if (!resolved.ok) return { error: resolved.error };
-        const reportKey = input.key ?? "health";
+        const segment = pathSegment(reportKey);
+        if (!segment) return invalidId(reportKey);
         const sp = new URLSearchParams({ format: "json" });
         if (input.period) sp.append("period", input.period);
         const result = await envApiGet(
-          `/api/v1/reports/${encodeURIComponent(reportKey)}?${sp.toString()}`,
+          `/api/v1/reports/${segment}?${sp.toString()}`,
           resolved.target
         );
         if (isEnvUnavailable(result)) return envUnavailableError(result, "report on");
@@ -898,10 +912,15 @@ export function buildApiTools(args: {
     get_queue: tool({
       ...getQueueSchema,
       execute: async (input) => {
+        const { queue, type, period } = input;
         const resolved = await resolveTarget(input, ctx, "read queues from");
         if (!resolved.ok) return { error: resolved.error };
+        const segments = {
+          task: pathSegment(queueNameForKind(queue, "task")),
+          custom: pathSegment(queueNameForKind(queue, "custom")),
+        };
+        if (!segments.task || !segments.custom) return invalidId(queue);
         const { target } = resolved;
-        const { queue, type, period } = input;
         let legacyEngine = false;
         const watchEngine = (result: EnvFetchResult) => {
           if (isLegacyEngineRead(result)) legacyEngine = true;
@@ -914,7 +933,7 @@ export function buildApiTools(args: {
           if (period) sp.append("period", period);
           // Queue names may contain `/`; encode them as a single path segment.
           const result = await envApiGet(
-            `/api/v1/queues/${encodeURIComponent(queueNameForKind(queue, kind))}/metrics?${sp.toString()}`,
+            `/api/v1/queues/${segments[kind]}/metrics?${sp.toString()}`,
             target
           );
           return watchEngine(result);
@@ -923,10 +942,7 @@ export function buildApiTools(args: {
         // Live state first: metrics are a window and can't say "paused" — a queue nobody
         // is running isn't the same as a queue someone stopped.
         const live = async (kind: "task" | "custom") => {
-          const result = await envApiGet(
-            `/api/v1/queues/${encodeURIComponent(queueNameForKind(queue, kind))}?type=${kind}`,
-            target
-          );
+          const result = await envApiGet(`/api/v1/queues/${segments[kind]}?type=${kind}`, target);
           return readQueueLiveState(watchEngine(result));
         };
 
@@ -978,7 +994,10 @@ export function buildApiTools(args: {
           if (!workers.ok) return base;
           return {
             ...base,
-            consumerTasks: consumerTasksForQueue(workers.data, queueNameForKind(queue, "custom")),
+            consumerTasks: consumerTasksForQueue(
+              workers.data,
+              queueNameForKind(queue, "custom")
+            ).map((slug) => fenceUntrusted("taskSlug", slug)),
           };
         };
 
@@ -1114,13 +1133,15 @@ export function buildApiTools(args: {
       ...correlateVersionSchema,
       execute: async (input) => {
         if (!hasAuth) return NO_AUTH;
+        const { runId } = input;
         const resolved = await resolveTarget(input, ctx, "resolve the run's version");
         if (!resolved.ok) return { error: resolved.error };
-        const { runId } = input;
+        const segment = pathSegment(runId);
+        if (!segment) return invalidId(runId);
         // A user-level route, so this uses the delegated token rather than the env JWT.
         const result = await apiGet(
           origin,
-          envPath(resolved.target, `/runs/${encodeURIComponent(runId)}/commit`),
+          envPath(resolved.target, `/runs/${segment}/commit`),
           userActorToken!,
           resolved.target.branch
         );
@@ -1133,7 +1154,7 @@ export function buildApiTools(args: {
           }
           return { error: `Couldn't resolve the commit for ${runId}${fetchReason(result)}.` };
         }
-        return result.data;
+        return curateCommit(result.data);
       },
     }),
 

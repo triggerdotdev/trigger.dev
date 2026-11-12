@@ -1643,7 +1643,7 @@ describe("buildDashboardAgentTools", () => {
   });
 
   const codeSnapshot: RepoSnapshot = {
-    tarballUrl: "http://unused.invalid/never-fetched",
+    tarballUrl: `https://codeload.github.com/acme/orders/legacy.tar.gz/${"c".repeat(40)}`,
     owner: "acme",
     repo: "orders",
     sha: "c".repeat(40),
@@ -2214,14 +2214,15 @@ describe("buildDashboardAgentTools", () => {
     await expect(
       callTool("get_current_page", {}, { ...SCOPE, pageContext, currentPage: "/runs/run_1" })
     ).resolves.toEqual({
-      page: pageContext.page,
+      // Catches: page identifiers reaching the model unfenced.
+      page: { ...pageContext.page, taskId: "«untrusted:taskId» send-receipt «/untrusted:taskId»" },
       signals: pageContext.signals,
-      path: "/runs/run_1",
+      path: "«untrusted:path» /runs/run_1 «/untrusted:path»",
     });
 
     // Only a raw path degrades to the `other` page kind.
     await expect(callTool("get_current_page", {}, { currentPage: "/some/page" })).resolves.toEqual({
-      page: { kind: "other", path: "/some/page" },
+      page: { kind: "other", path: "«untrusted:path» /some/page «/untrusted:path»" },
       signals: [],
     });
 
@@ -2248,7 +2249,7 @@ describe("buildDashboardAgentTools", () => {
       }
     );
 
-    expect(first.page).toEqual({ kind: "queue", name: "email" });
+    expect(first.page).toEqual({ kind: "queue", name: "«untrusted:name» email «/untrusted:name»" });
     expect(second.page).toEqual({ kind: "run", runId: "run_2" });
   });
 });

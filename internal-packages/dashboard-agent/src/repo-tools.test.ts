@@ -1,8 +1,11 @@
 import { execFileSync } from "node:child_process";
-import { mkdir, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readdir, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { gzipSync } from "node:zlib";
+import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import {
+  assertGunzipsWithin,
   buildRepoTools,
   disposeRepoWorkspaces,
   MAX_READ_BYTES,
@@ -14,18 +17,20 @@ import {
 // The code tools normally download + extract a tarball. Here we pre-seed the
 // deterministic workspace path with a `.ready` marker, so `ensureWorkspace`
 // serves it without any network fetch and the tools run fully offline.
+const SHA = "deadbeef".repeat(5);
 const snapshot: RepoSnapshot = {
-  tarballUrl: "http://unused.invalid/never-fetched",
+  tarballUrl: `https://codeload.github.com/acme/demo/legacy.tar.gz/${SHA}?token=t`,
   owner: "acme",
   repo: "demo",
-  sha: "deadbeefdeadbeef",
+  sha: SHA,
   defaultBranch: "main",
 };
 
 // A second snapshot at a different commit, returned by the run-SHA resolver for
 // a known run id. Its order.ts has a different LIMIT so we can tell them apart.
 const pinnedSnapshot: RepoSnapshot = {
-  tarballUrl: "http://unused.invalid/never-fetched",
+  tarballUrl:
+    "https://codeload.github.com/acme/demo/legacy.tar.gz/cafebabecafebabecafebabecafebabecafebabe",
   owner: "acme",
   repo: "demo",
   sha: "cafebabecafebabecafebabecafebabecafebabe",
@@ -90,7 +95,7 @@ describe("repo-tools", () => {
     expect(res).toEqual({
       owner: "acme",
       repo: "demo",
-      sha: "deadbeefdeadbeef",
+      sha: SHA,
       defaultBranch: "main",
     });
   });
@@ -214,6 +219,85 @@ describe("repo-tools", () => {
       const res: any = await call(buildRepoTools(bad, CTX).read_file, { path: "README.md" });
       expect(res.error).toMatch(/Couldn't load the repository/);
       expect(res.error).toMatch(/not a valid URL|not allowed/);
+    }
+  });
+
+  // Catches: repo source reaching the model unfenced.
+  it.each<[string, object, string]>([
+    ["read_file", { path: "src/trigger/order.ts" }, "content"],
+    ...(hasRg
+      ? ([
+          ["search_code", { query: "const LIMIT" }, "matches"],
+          ["list_files", {}, "files"],
+        ] as [string, object, string][])
+      : []),
+  ])("%s fences the model's copy", async (name, input, field) => {
+    const tool = (tools as any)[name];
+    const output = await call(tool, input);
+    const { value } = tool.toModelOutput({ toolCallId: "tc1", input, output });
+    expect(value[field]).toMatch(/^«untrusted:source» [\s\S]+ «\/untrusted:source»$/);
+  });
+
+  // Catches: a snapshot labelled as one repo extracting another's archive into its workspace.
+  // A ready workspace already exists under these labels, so a late check would serve it.
+  it("refuses an archive URL that doesn't match the snapshot's labels", async () => {
+    const forged: RepoSnapshot = {
+      ...snapshot,
+      tarballUrl: `https://codeload.github.com/evil/x/legacy.tar.gz/${SHA}?token=t`,
+    };
+    const fetchSpy = vi.fn();
+    vi.stubGlobal("fetch", fetchSpy);
+    try {
+      const res: any = await call(buildRepoTools(forged, CTX).read_file, { path: "README.md" });
+      expect(res.content).toBeUndefined();
+      expect(res.error).toMatch(/doesn't match/);
+      expect(fetchSpy).not.toHaveBeenCalled();
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  // Catches: buffering the whole archive before checking its size.
+  // Catches: an oversized download leaving its scratch dir behind.
+  it("stops reading a download once it passes the size cap", async () => {
+    const scratchDirs = async () =>
+      (await readdir(tmpdir())).filter((name) => name.startsWith("dashboard-agent-tar-"));
+    const before = await scratchDirs();
+    const chunk = new Uint8Array(1024 * 1024);
+    let pulls = 0;
+    const body = new ReadableStream<Uint8Array>({
+      pull(controller) {
+        if (++pulls > 200) controller.close();
+        else controller.enqueue(chunk);
+      },
+    });
+    vi.stubGlobal("fetch", async () => new Response(body));
+    try {
+      const big: RepoSnapshot = {
+        tarballUrl: `https://codeload.github.com/acme/big/legacy.tar.gz/${"c".repeat(40)}?token=t`,
+        owner: "acme",
+        repo: "big",
+        sha: "c".repeat(40),
+      };
+      const res: any = await call(buildRepoTools(big, CTX).read_file, { path: "README.md" });
+      expect(res.error).toMatch(/too large/);
+      expect(pulls).toBeLessThan(110);
+      expect((await scratchDirs()).filter((name) => !before.includes(name))).toEqual([]);
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  // Catches: extracting an archive that expands without bound.
+  it("rejects an archive that expands past the extracted cap", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "gz-"));
+    const path = join(dir, "bomb.gz");
+    await writeFile(path, gzipSync(Buffer.alloc(64 * 1024)));
+    try {
+      await expect(assertGunzipsWithin(path, 1024)).rejects.toThrow(/expands past/);
+      await expect(assertGunzipsWithin(path, 1024 * 1024)).resolves.toBeUndefined();
+    } finally {
+      await rm(dir, { recursive: true, force: true });
     }
   });
 

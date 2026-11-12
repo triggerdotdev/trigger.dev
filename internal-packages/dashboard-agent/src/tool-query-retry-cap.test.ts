@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import { buildApiTools, MAX_CONSECUTIVE_QUERY_FAILURES } from "./tool-api";
+import { MAX_RESULT_CHARS } from "./tool-curation";
 import type { DashboardAgentApiClient } from "./tool-api-client";
 
 /**
@@ -169,4 +170,15 @@ describe("run_query's consecutive-failure cap", () => {
     expect(fenced).not.toContain("Stop querying");
     expect(outside).toContain("Stop querying and answer the user");
   });
+});
+
+// Catches: run_query handing the model every fenced row, past the result budget.
+it("run_query keeps the model's copy within the character budget", async () => {
+  const rows = Array.from({ length: 200 }, (_, i) => ({ i, text: "x".repeat(1000) }));
+  const run = queryTool(async () => ({ ok: true as const, rows }));
+
+  const { value } = await run.tool.toModelOutput({ output: await run("SELECT 1") });
+
+  expect(JSON.stringify(value.rows).length).toBeLessThanOrEqual(MAX_RESULT_CHARS);
+  expect(value.note).toContain("dropped");
 });
