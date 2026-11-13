@@ -336,9 +336,14 @@ export const providerProducers = Object.fromEntries(
       producerName(provider),
       () => {
         const setupPrompt = webhookSetupPrompts[provider as WebhookProviderId];
+        const secretCapture = "secretCapture" in entry ? entry.secretCapture : undefined;
         return {
           provider,
-          verifier: { kind: "config" as const, config: entry.config() },
+          verifier: {
+            kind: "config" as const,
+            config: entry.config(),
+            ...(secretCapture ? { secretCapture } : {}),
+          },
           secretProvisioning: entry.secretProvisioning,
           ...(setupPrompt ? { setupPrompt } : {}),
         };

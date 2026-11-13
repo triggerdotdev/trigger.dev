@@ -1,6 +1,7 @@
 import {
   discordVerifierConfig,
   stripeVerifierConfig,
+  webhookProviderConfigs,
   webhookSetupPrompts,
 } from "@trigger.dev/core/webhooks";
 import { describe, expect, it } from "vitest";
@@ -70,6 +71,31 @@ describe("renderWebhookSetupPrompt", () => {
     expect(github).toContain("Generate one with `generate_webhook_secret`");
     expect(github).not.toContain("Store it with `set_webhook_secret`");
     expect(github).toContain("Find where github lets you add a webhook.");
+  });
+
+  // Catches: an agent storing a provider-captured token with set_webhook_secret, which drops the
+  // capture marker and hides the token the user must paste back into the provider.
+  it("lets a capturing source store its own secret instead of asking for set_webhook_secret", () => {
+    const notion = endpoint({
+      source: "notion",
+      setupPrompt: webhookSetupPrompts.notion ?? null,
+      verifierArtifact: {
+        kind: "config",
+        config: webhookProviderConfigs.notion.config(),
+        secretCapture: webhookProviderConfigs.notion.secretCapture,
+      },
+    });
+
+    const before = renderWebhookSetupPrompt(notion, context);
+    expect(before).toContain("Don't store a secret.");
+    expect(before).not.toContain("Store it with `set_webhook_secret`");
+
+    const after = renderWebhookSetupPrompt({ ...notion, hasSigningSecret: true }, context);
+    expect(after).not.toContain("only replace it when");
+    // Clearing has to come before registering: the provider sends its token on creation.
+    expect(after.indexOf("Clear signing secret")).toBeLessThan(
+      after.indexOf("register the webhook URL")
+    );
   });
 
   it("asks for the public key on an asymmetric source and warns before replacing a set secret", () => {

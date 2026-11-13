@@ -14,6 +14,7 @@ import {
   PeriodicExportingMetricReader,
 } from "@opentelemetry/sdk-metrics";
 import { WebhookDeliveryId, WebhookEndpointId } from "@trigger.dev/core/v3/isomorphic";
+import { webhookProviderConfigs } from "@trigger.dev/core/webhooks";
 import { expect } from "vitest";
 import { WebhookEngine } from "./index.js";
 import { parseFilter } from "./filter/index.js";
@@ -163,6 +164,7 @@ function buildEngine(
     workerDisabled?: boolean;
     resolveSigningSecret?: (key: string) => Promise<string | readonly string[] | undefined>;
     resolveVerifyToken?: (endpointId: string) => Promise<string | undefined>;
+    adoptSigningSecret?: (endpointId: string, secret: string) => Promise<boolean>;
     deliverToSession?: DeliverWebhookToSessionCallback;
     meter?: Meter;
     retentionDays?: (environmentId: string) => Promise<number>;
@@ -172,6 +174,7 @@ function buildEngine(
   return new WebhookEngine({
     meter: over?.meter,
     resolveVerifyToken: over?.resolveVerifyToken,
+    adoptSigningSecret: over?.adoptSigningSecret,
     prisma,
     replica: over?.replica,
     redis: redisOptions,
@@ -368,6 +371,107 @@ containerTestWithIsolatedRedis(
     }
   },
   120_000
+);
+
+// Catches: an endpoint that declares secretCapture rejecting the provider's unsigned verification
+// request (the token never arrives), or accepting one after a secret is already set.
+containerTestWithIsolatedRedis(
+  "a declared secretCapture adopts the provider's unsigned verification token once, then verifies with it",
+  async ({ prisma, redisOptions }) => {
+    const notion = webhookProviderConfigs.notion;
+    const createNotionEndpoint = (secretCapture?: { bodyPath: string }) =>
+      prisma.webhookEndpoint.create({
+        data: {
+          friendlyId: WebhookEndpointId.generate().friendlyId,
+          opaqueId: `op_${randomBytes(12).toString("hex")}`,
+          organizationId: "org_test",
+          projectId: "proj_test",
+          runtimeEnvironmentId: "env_test",
+          environmentType: "PRODUCTION",
+          source: "notion",
+          declaredId: secretCapture ? "handle-notion" : "handle-notion-undeclared",
+          routingTargets: [{ type: "task", id: "handle-notion", taskId: "handle-notion" }],
+          verifierArtifact: {
+            kind: "config",
+            config: notion.config(),
+            ...(secretCapture ? { secretCapture } : {}),
+          },
+          status: "ACTIVE",
+        },
+      });
+    const endpoint = await createNotionEndpoint(notion.secretCapture);
+    const undeclared = await createNotionEndpoint();
+
+    // Models the webapp port, in its order: store the secret only if none exists, then point the
+    // endpoint at it. The real port and its storage are covered against Postgres in the webapp.
+    const stored = new Map<string, string>();
+    const adopted: Array<{ endpointId: string; secret: string }> = [];
+    const adoptSigningSecret = async (endpointId: string, secret: string) => {
+      const key = `secret:${endpointId}`;
+      const created = !stored.has(key);
+      if (created) stored.set(key, secret);
+      await prisma.webhookEndpoint.updateMany({
+        where: { id: endpointId, signingSecretKey: null },
+        data: { signingSecretKey: key },
+      });
+      if (created) adopted.push({ endpointId, secret });
+      return created || stored.get(key) === secret;
+    };
+    const { triggerTask, calls } = makeTriggerTaskStub();
+    const engine = buildEngine(prisma, redisOptions, triggerTask, {
+      adoptSigningSecret,
+      resolveSigningSecret: async (key) => stored.get(key),
+    });
+
+    const post = (opaqueId: string, body: string, headers: Record<string, string> = {}) =>
+      engine.ingest({
+        opaqueId,
+        rawBytes: new TextEncoder().encode(body),
+        headers,
+        url: `https://api.example.com/webhooks/v1/ingest/${opaqueId}`,
+      });
+    const token = "secret_notion_verification_token";
+
+    try {
+      // Not a capture request: no declaration, not JSON, or no string at the path.
+      expect(
+        (await post(undeclared.opaqueId, JSON.stringify({ verification_token: token }))).outcome
+      ).toBe("secret_missing");
+      expect((await post(endpoint.opaqueId, "verification_token")).outcome).toBe("secret_missing");
+      expect(
+        (await post(endpoint.opaqueId, JSON.stringify({ verification_token: 42 }))).outcome
+      ).toBe("secret_missing");
+      expect(adopted).toEqual([]);
+
+      const first = await post(endpoint.opaqueId, JSON.stringify({ verification_token: token }));
+      expect(first.outcome).toBe("secret_adopted");
+      expect(adopted).toEqual([{ endpointId: endpoint.id, secret: token }]);
+
+      // Once a secret is set, an unsigned capture request is just an unverified delivery.
+      const second = await post(
+        endpoint.opaqueId,
+        JSON.stringify({ verification_token: "secret_someone_else" })
+      );
+      expect(second.outcome).toBe("verification_failed");
+      expect(adopted).toHaveLength(1);
+
+      const event = JSON.stringify({ id: "evt_notion_1", type: "page.created" });
+      const sig = createHmac("sha256", token).update(event).digest("hex");
+      const delivered = await post(endpoint.opaqueId, event, {
+        "x-notion-signature": `sha256=${sig}`,
+      });
+      expect(delivered.outcome).toBe("accepted");
+      await waitFor(async () => calls.length === 1);
+      expect(calls[0].taskId).toBe("handle-notion");
+
+      // The verification requests themselves were never recorded.
+      expect(
+        await prisma.webhookDelivery.count({ where: { webhookEndpointId: endpoint.id } })
+      ).toBe(1);
+    } finally {
+      await engine.quit();
+    }
+  }
 );
 
 containerTestWithIsolatedRedis(

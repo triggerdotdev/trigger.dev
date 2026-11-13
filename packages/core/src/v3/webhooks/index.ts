@@ -1,6 +1,7 @@
 import type {
   WebhookAsymmetricConfig,
   WebhookHmacConfig,
+  WebhookSecretCaptureConfig,
   WebhookSecretProvisioning,
   WebhookValueSource,
   WebhookVerifierConfig,
@@ -286,6 +287,9 @@ export const webhookProviderConfigs = {
   },
   notion: {
     secretProvisioning: "provider",
+    // Notion sends the signing secret as `verification_token` in an unsigned POST when the
+    // subscription is created, and signs every later delivery with it.
+    secretCapture: { bodyPath: "verification_token" },
     config: () =>
       hmacVerifierConfig({
         header: "x-notion-signature",
@@ -508,7 +512,11 @@ export const webhookProviderConfigs = {
   },
 } satisfies Record<
   string,
-  { secretProvisioning: WebhookSecretProvisioning; config: () => WebhookVerifierConfig }
+  {
+    secretProvisioning: WebhookSecretProvisioning;
+    config: () => WebhookVerifierConfig;
+    secretCapture?: WebhookSecretCaptureConfig;
+  }
 >;
 
 export type WebhookProviderId = keyof typeof webhookProviderConfigs;
@@ -570,6 +578,13 @@ export const webhookSetupPrompts: Partial<Record<WebhookPresetId | WebhookProvid
     "Autumn's webhooks are in beta, and Autumn support turns them on per account.",
     "Once they are on, add the webhook URL as an endpoint in the Autumn dashboard's webhook settings and select the event types the subscribers need. Autumn delivers through Svix, which shows the endpoint's signing secret (it starts with whsec_); store it on Trigger.dev.",
     "Subscribers' filters compare `event.type`, for example `billing.updated`.",
+  ].join("\n"),
+  notion: [
+    "These settings are in the Notion connection's settings (https://app.notion.com/developers/connections); tell the user each step.",
+    "1. Deploy the endpoint first and make sure its signing secret is unset: Notion sends a verification token as soon as the subscription is created, and the endpoint stores it as its signing secret only while it has none. If the endpoint already has a secret (for example when re-creating a subscription), select Clear signing secret on the endpoint page before creating the new one.",
+    "2. Open the connection's Webhooks tab, select + Create a subscription, enter the webhook URL, choose the event types the subscribers need, and select Create subscription.",
+    "3. The endpoint page on Trigger.dev shows the token under Connect. Copy it, select Verify in Notion's Webhooks tab, paste it, and select Verify subscription. If no token arrived, select Resend token in that dialog.",
+    "Subscribers' filters compare `event.type`, for example `page.content_updated`. Notion groups rapid edits into one `page.content_updated` event, so it can arrive a minute or two after the edit.",
   ].join("\n"),
   supabase: [
     "Supabase database webhooks aren't signed, so the endpoint checks a shared secret you choose. Generate it on Trigger.dev first.",

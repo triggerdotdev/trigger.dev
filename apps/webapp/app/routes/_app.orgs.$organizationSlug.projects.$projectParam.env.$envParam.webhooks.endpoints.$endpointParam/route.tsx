@@ -1,4 +1,4 @@
-import { BookOpenIcon, KeyIcon, SparklesIcon } from "@heroicons/react/24/solid";
+import { BookOpenIcon, KeyIcon, SparklesIcon, TrashIcon } from "@heroicons/react/24/solid";
 import {
   useFetcher,
   useNavigation,
@@ -75,7 +75,10 @@ import { throwPermissionDenied } from "~/utils/permissionDenied";
 import { parseFiniteInt } from "~/utils/searchParams";
 import { webhookEngine, webhookVerifyTokenKey } from "~/v3/webhookEngine.server";
 import {
+  capturedWebhookSigningSecret,
+  clearWebhookSigningSecret,
   generateWebhookSigningSecret,
+  hideCapturedWebhookSigningSecret,
   storeWebhookSigningSecret,
 } from "~/v3/webhookSigningSecret.server";
 import { requireWebhooksAccess } from "~/v3/webhooksAccess.server";
@@ -221,14 +224,26 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
     .then((endpoints) => endpoints.filter((e) => e.friendlyId === endpoint.friendlyId))
     .catch(() => [] as Awaited<ReturnType<typeof presenter.listComposerEndpoints>>);
 
+  const canWrite = await canWriteWebhooks(request, {
+    userId: user.id,
+    organizationId: project.organizationId,
+    projectId: project.id,
+    environmentType: environment.type,
+  });
+
+  // A secret the provider sent itself (Notion's verification token) has to be pasted back into the
+  // provider, so it is shown to users who can change the endpoint until they hide it.
+  const secretCapture =
+    verifier.success && "secretCapture" in verifier.data ? verifier.data.secretCapture : undefined;
+  const capturedSecret =
+    canWrite && secretCapture && endpoint.hasSigningSecret
+      ? await capturedWebhookSigningSecret(endpoint.id)
+      : null;
+
   return typeddefer({
     canCancelWaiters: await canCancelWaiters(request, { user, project, environment }),
-    canWrite: await canWriteWebhooks(request, {
-      userId: user.id,
-      organizationId: project.organizationId,
-      projectId: project.id,
-      environmentType: environment.type,
-    }),
+    canWrite,
+    capturedSecret,
     endpoint,
     ingestUrl,
     routing,
@@ -319,6 +334,16 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
       : { success: false as const, error: result.error };
   }
 
+  if (intent === "clear-secret") {
+    await clearWebhookSigningSecret(endpoint.id);
+    return { success: true as const };
+  }
+
+  if (intent === "hide-captured-secret") {
+    await hideCapturedWebhookSigningSecret(endpoint.id);
+    return { success: true as const };
+  }
+
   if (intent === "generate-verify-token") {
     const verifier = WebhookVerifierArtifact.safeParse(endpoint.verifierArtifact);
     const getHandshake =
@@ -360,6 +385,7 @@ export default function Page() {
     composerEndpoints,
     canCancelWaiters: canCancel,
     canWrite,
+    capturedSecret,
   } = useTypedLoaderData<typeof loader>();
   const organization = useOrganization();
   const project = useProject();
@@ -521,6 +547,7 @@ export default function Page() {
               routing={routing}
               verifier={verifier}
               hasVerifyToken={hasVerifyToken}
+              capturedSecret={capturedSecret}
               canWrite={canWrite}
             />
           </ResizablePanel>
@@ -538,11 +565,13 @@ function EndpointSidebar({
   routing,
   verifier,
   hasVerifyToken,
+  capturedSecret,
   canWrite,
 }: {
   endpoint: WebhookEndpointDetail;
   ingestUrl: string;
   hasVerifyToken: boolean;
+  capturedSecret: LoaderData["capturedSecret"];
   routing: LoaderData["routing"];
   verifier: LoaderData["verifier"];
   canWrite: boolean;
@@ -567,6 +596,8 @@ function EndpointSidebar({
     (endpoint.secretProvisioning === "integrator" || endpoint.secretProvisioning === "either");
   const getHandshake =
     verifier && verifier.kind !== "bundle" ? (verifier.getHandshake ?? undefined) : undefined;
+  const secretCapture =
+    verifier && verifier.kind !== "bundle" ? (verifier.secretCapture ?? undefined) : undefined;
 
   return (
     <div className="grid h-full grid-rows-[auto_1fr] overflow-hidden bg-background-bright">
@@ -603,12 +634,25 @@ function EndpointSidebar({
                       <span className="size-2 rounded-full bg-success" />
                       <span>Ready</span>
                     </span>
+                  ) : secretCapture ? (
+                    <span className="flex items-center gap-1.5 text-warning">
+                      <span className="size-2 rounded-full bg-warning" />
+                      <span>Waiting for the provider's verification request</span>
+                    </span>
                   ) : (
                     <span className="flex items-center gap-1.5 text-warning">
                       <span className="size-2 rounded-full bg-warning" />
                       <span>Needs {credentialNoun}, all deliveries are rejected</span>
                     </span>
                   )}
+                  {secretCapture && !endpoint.hasSigningSecret ? (
+                    <Hint>
+                      The provider sends its signing secret to this URL when you create the
+                      subscription. It's stored automatically and shown here so you can paste it
+                      back into the provider.
+                    </Hint>
+                  ) : null}
+                  {capturedSecret ? <CapturedSecret secret={capturedSecret.secret} /> : null}
                   <div className="flex flex-wrap items-center gap-2">
                     {canGenerate ? (
                       <GenerateSecretDialog
@@ -622,6 +666,13 @@ function EndpointSidebar({
                       variant={canGenerate ? "tertiary/small" : "secondary/small"}
                       disabledReason={disabledReason}
                     />
+                    {endpoint.hasSigningSecret ? (
+                      <ClearSecretDialog
+                        credentialNoun={credentialNoun}
+                        capturesSecret={secretCapture !== undefined}
+                        disabledReason={disabledReason}
+                      />
+                    ) : null}
                   </div>
                 </div>
               </Property.Value>
@@ -967,6 +1018,99 @@ function SetSecretDialog({
         </fetcher.Form>
       </DialogContent>
     </Dialog>
+  );
+}
+
+// Removes the signing secret. Deliveries are rejected until a new one is set; a source that sends its
+// own secret (Notion) stores the next verification token, which is how a re-created subscription
+// gets its new token onto the endpoint.
+function ClearSecretDialog({
+  credentialNoun,
+  capturesSecret,
+  disabledReason,
+}: {
+  credentialNoun: string;
+  capturesSecret: boolean;
+  disabledReason?: string;
+}) {
+  const fetcher = useFetcher<typeof action>();
+  const [open, setOpen] = useState(false);
+  const isSubmitting = fetcher.state !== "idle";
+
+  useEffect(() => {
+    if (fetcher.state === "idle" && fetcher.data?.success) {
+      // oxlint-disable-next-line react/set-state-in-effect -- This effect intentionally synchronizes route state after an external or lifecycle change.
+      setOpen(false);
+    }
+  }, [fetcher.state, fetcher.data]);
+
+  return (
+    <Dialog open={open} onOpenChange={setOpen}>
+      <DialogTrigger asChild>
+        <Button
+          variant="tertiary/small"
+          LeadingIcon={TrashIcon}
+          disabled={disabledReason !== undefined}
+          tooltip={disabledReason}
+        >
+          Clear {credentialNoun}
+        </Button>
+      </DialogTrigger>
+      <DialogContent>
+        <DialogHeader>Clear {credentialNoun}</DialogHeader>
+        <fetcher.Form method="post" className="flex flex-col gap-3 pt-2">
+          <input type="hidden" name="intent" value="clear-secret" />
+          <Paragraph variant="small" className="text-text-dimmed">
+            Every delivery to this endpoint is rejected until a new {credentialNoun} is set.
+          </Paragraph>
+          {capturesSecret ? (
+            <Paragraph variant="small" className="text-text-dimmed">
+              The provider's next verification request is stored as the new signing secret. Clear it
+              before you re-create the subscription or resend its verification token.
+            </Paragraph>
+          ) : null}
+          {fetcher.data && !fetcher.data.success ? (
+            <Paragraph variant="small" className="text-error">
+              {fetcher.data.error}
+            </Paragraph>
+          ) : null}
+          <div className="flex justify-end gap-2">
+            <Button
+              type="button"
+              variant="tertiary/small"
+              onClick={() => setOpen(false)}
+              disabled={isSubmitting}
+            >
+              Cancel
+            </Button>
+            <Button type="submit" variant="danger/small" disabled={isSubmitting}>
+              {isSubmitting ? "Clearing…" : `Clear ${credentialNoun}`}
+            </Button>
+          </div>
+        </fetcher.Form>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+// The provider sent this secret in its verification request and the endpoint adopted it. The
+// provider asks for it back to confirm the subscription, so it stays visible until hidden.
+function CapturedSecret({ secret }: { secret: string }) {
+  const fetcher = useFetcher<typeof action>();
+  return (
+    <div className="flex w-full flex-col items-start gap-1.5">
+      <Hint>
+        The provider sent this verification token, which is now the signing secret. Paste it into
+        the provider to verify the subscription.
+      </Hint>
+      <ClipboardField value={secret} variant="secondary/small" secure secureRevealStart={7} />
+      <fetcher.Form method="post">
+        <input type="hidden" name="intent" value="hide-captured-secret" />
+        <Button type="submit" variant="tertiary/small" disabled={fetcher.state !== "idle"}>
+          Hide token
+        </Button>
+      </fetcher.Form>
+    </div>
   );
 }
 

@@ -41,11 +41,16 @@ vi.mock("~/db.server", () => ({
   webhookReplica: mocks.dbProxy(),
   webhookPartitionPrisma: mocks.dbProxy(),
   boundedIn: <T>(values: T[]) => values,
+  // Mirrors the real helper's overloads: an optional span name comes before the callback.
   $transaction: (
     db: PrismaClient,
-    fn: Parameters<PrismaClient["$transaction"]>[0],
-    options: object
-  ) => db.$transaction(fn as never, options),
+    fnOrName: string | Parameters<PrismaClient["$transaction"]>[0],
+    fnOrOptions?: Parameters<PrismaClient["$transaction"]>[0] | object,
+    options?: object
+  ) =>
+    typeof fnOrName === "string"
+      ? db.$transaction(fnOrOptions as never, options)
+      : db.$transaction(fnOrName as never, fnOrOptions as object | undefined),
 }));
 vi.mock("~/services/rbac.server", () => ({
   rbac: new Proxy(

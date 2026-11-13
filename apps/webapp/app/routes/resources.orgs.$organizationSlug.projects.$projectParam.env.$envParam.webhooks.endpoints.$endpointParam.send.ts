@@ -251,6 +251,12 @@ export async function action({ request, params }: ActionFunctionArgs): Promise<W
         httpStatus: answer.status,
         responseBody: answer.body ?? "",
       };
+    case "secret_adopted":
+      return {
+        success: true,
+        httpStatus: answer.status,
+        responseBody: answer.body ?? "",
+      };
     case "secret_missing":
       return {
         success: false,

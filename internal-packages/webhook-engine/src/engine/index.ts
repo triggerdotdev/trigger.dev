@@ -87,6 +87,10 @@ const TERMINAL_DELIVERY_STATUSES = new Set(["SUCCEEDED", "FAILED", "FILTERED", "
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
+// A captured-secret request is a tiny JSON object; anything larger isn't one, so it isn't parsed.
+const MAX_SECRET_CAPTURE_BODY_BYTES = 4 * 1024;
+const MAX_CAPTURED_SECRET_LENGTH = 512;
+
 /**
  * Waiter idempotency keys live in the environment's waitpoint key space, so they get their own
  * prefix: a waiter's key can never find a token some other caller created.
@@ -388,7 +392,16 @@ export class WebhookEngine {
       span.setAttribute("opaqueId", input.opaqueId);
 
       const resolved = await this.#resolveEndpoint(input.opaqueId);
-      if (!resolved.ok) return resolved.result;
+      if (!resolved.ok) {
+        if (resolved.result.outcome === "secret_missing" && resolved.endpoint) {
+          const captured = await this.#captureSigningSecret(resolved.endpoint, input.rawBytes);
+          if (captured) {
+            span.setAttribute("webhook.secret_adopted", true);
+            return captured;
+          }
+        }
+        return resolved.result;
+      }
       const { endpoint, secrets } = resolved;
 
       // 3. Verify inline. safeParse the Json artifact so a corrupt row is a 400, not a 5xx storm.
@@ -1289,9 +1302,52 @@ export class WebhookEngine {
     });
   }
 
+  /**
+   * A provider that sends the signing secret in an unsigned first request (the artifact's
+   * `secretCapture`, e.g. Notion's `verification_token`): while the endpoint has no secret, adopt
+   * the string at `bodyPath` through the injected port and answer 200 without recording anything.
+   * Returns undefined when the request isn't one (no declaration, not JSON, no string there) or a
+   * secret was set meanwhile, so the caller answers `secret_missing` as before.
+   */
+  async #captureSigningSecret(
+    endpoint: WebhookEndpoint,
+    rawBytes: Uint8Array
+  ): Promise<IngestResult | undefined> {
+    const adopt = this.options.adoptSigningSecret;
+    if (!adopt || endpoint.signingSecretKey) return undefined;
+    const artifact = WebhookVerifierArtifact.safeParse(endpoint.verifierArtifact);
+    if (!artifact.success || !("secretCapture" in artifact.data)) return undefined;
+    const capture = artifact.data.secretCapture;
+    if (!capture || rawBytes.byteLength > MAX_SECRET_CAPTURE_BODY_BYTES) return undefined;
+
+    let body: unknown;
+    try {
+      body = JSON.parse(new TextDecoder().decode(rawBytes));
+    } catch {
+      return undefined;
+    }
+    const secret = resolveBodyPath(body, capture.bodyPath);
+    if (
+      typeof secret !== "string" ||
+      secret.length === 0 ||
+      secret.length > MAX_CAPTURED_SECRET_LENGTH
+    ) {
+      return undefined;
+    }
+
+    if (!(await adopt(endpoint.id, secret))) return undefined;
+    this.logger.info("webhook signing secret adopted from the provider's verification request", {
+      endpointId: endpoint.id,
+    });
+    return { outcome: "secret_adopted", response: artifactResponseContract(artifact.data) };
+  }
+
   async #resolveEndpoint(
     opaqueId: string
-  ): Promise<({ ok: true } & ResolvedEndpoint) | { ok: false; result: IngestResult }> {
+  ): Promise<
+    | ({ ok: true } & ResolvedEndpoint)
+    | { ok: false; result: IngestResult; endpoint?: WebhookEndpoint }
+  > {
     // Single-row via the global @unique on opaqueId (Q2).
     const endpoint = await this.replica.webhookEndpoint.findFirst({ where: { opaqueId } });
     if (!endpoint) return { ok: false, result: { outcome: "endpoint_not_found" } };
@@ -1309,6 +1365,7 @@ export class WebhookEngine {
       const artifact = WebhookVerifierArtifact.safeParse(endpoint.verifierArtifact);
       return {
         ok: false,
+        endpoint,
         result: {
           outcome: "secret_missing",
           response: artifact.success ? artifactResponseContract(artifact.data) : undefined,

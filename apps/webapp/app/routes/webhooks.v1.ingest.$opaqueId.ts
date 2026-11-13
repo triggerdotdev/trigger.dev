@@ -55,6 +55,9 @@ export async function action({ request, params }: ActionFunctionArgs) {
     case "secret_missing":
       logger.warn("webhook ingress rejected: signing secret unset", { opaqueId });
       break;
+    case "secret_adopted":
+      logger.info("webhook ingress adopted the provider's signing secret", { opaqueId });
+      break;
     case "verification_failed":
       logger.info("webhook ingress verification failed", { opaqueId });
       break;
