@@ -18,6 +18,7 @@ export default defineConfig({
   test: {
     include: [
       "test/secretProxy.test.ts",
+      "test/secretProxySupervisor.test.ts",
       "test/workerQueueEnvironmentOverrides.test.ts",
       "test/environmentEncryption.test.ts",
       "test/vercelExistingVariables.test.ts",

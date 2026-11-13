@@ -55,6 +55,8 @@ export default defineConfig({
     // *.e2e.full.test.ts: full auth suite, runs via vitest.e2e.full.config.ts
     // (needs a globalSetup-spawned webapp + Postgres container).
     exclude: [
+      // Requires native Rust and privileged k3s; run by the supervisor integration workflow.
+      "test/secretProxySupervisor.test.ts",
       "test/**/*.e2e.test.ts",
       "test/**/*.e2e.full.test.ts",
       "test/**/*.perf.test.ts",

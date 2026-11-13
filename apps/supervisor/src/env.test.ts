@@ -22,6 +22,65 @@ const base = {
   OTEL_EXPORTER_OTLP_ENDPOINT: "http://localhost:4318",
 };
 
+describe("secret proxy lane", () => {
+  const enabled = {
+    ...base,
+    SECRET_PROXY_INTERCEPTOR_SOCKET: "/run/interceptor.sock",
+    SECRET_PROXY_UNSAFE_LAB_ENABLED: "true",
+    KUBERNETES_FORCE_ENABLED: "true",
+    KUBERNETES_RUN_CRD_ENABLED: "true",
+    KUBERNETES_RUNNER_RUNTIME: "microvm",
+    WORKLOAD_TOKEN_ENFORCEMENT: "enforce",
+    WORKLOAD_TOKEN_SECRET: "test-deployment-key",
+  };
+
+  it("rejects automatic binding without an explicit unsafe lab opt-in", () => {
+    for (const value of [undefined, "false"]) {
+      const result = Env.safeParse({ ...enabled, SECRET_PROXY_UNSAFE_LAB_ENABLED: value });
+      expect(result.success).toBe(false);
+      if (!result.success) {
+        expect(
+          result.error.issues.some((issue) => issue.path[0] === "SECRET_PROXY_UNSAFE_LAB_ENABLED")
+        ).toBe(true);
+      }
+    }
+  });
+
+  // Catches: warm-pool churn or checkpoint creation on the proxy lab lane, and disabled snapshot cleanup.
+  it("disables warm and checkpoint services only on the lab lane without disabling deletes", () => {
+    const services = {
+      TRIGGER_WARM_START_URL: "http://warm.example",
+      TRIGGER_WARM_START_DISPATCH_URL: "http://dispatch.example",
+      TRIGGER_CHECKPOINT_URL: "http://checkpoint.example",
+      TRIGGER_SNAPSHOT_DELETE_URL: "http://snapshot-delete.example",
+      COMPUTE_SNAPSHOTS_ENABLED: "true",
+    };
+    const lab = Env.parse({ ...enabled, ...services });
+    expect(lab.TRIGGER_WARM_START_URL).toBeUndefined();
+    expect(lab.TRIGGER_WARM_START_DISPATCH_URL).toBeUndefined();
+    expect(lab.TRIGGER_CHECKPOINT_URL).toBeUndefined();
+    expect(lab.COMPUTE_SNAPSHOTS_ENABLED).toBe(false);
+    expect(lab.TRIGGER_SNAPSHOT_DELETE_URL).toBe(services.TRIGGER_SNAPSHOT_DELETE_URL);
+    const ordinary = Env.parse({ ...base, ...services });
+    expect(ordinary.TRIGGER_WARM_START_URL).toBe(services.TRIGGER_WARM_START_URL);
+    expect(ordinary.TRIGGER_WARM_START_DISPATCH_URL).toBe(services.TRIGGER_WARM_START_DISPATCH_URL);
+    expect(ordinary.TRIGGER_CHECKPOINT_URL).toBe(services.TRIGGER_CHECKPOINT_URL);
+    expect(ordinary.COMPUTE_SNAPSHOTS_ENABLED).toBe(true);
+  });
+
+  it("accepts only enforced native microVM placement", () => {
+    expect(Env.safeParse(enabled).success).toBe(true);
+    for (const config of [
+      { KUBERNETES_FORCE_ENABLED: "false" },
+      { KUBERNETES_RUN_CRD_ENABLED: "false" },
+      { KUBERNETES_RUNNER_RUNTIME: "container" },
+      { WORKLOAD_TOKEN_ENFORCEMENT: "log" },
+    ]) {
+      expect(Env.safeParse({ ...enabled, ...config }).success).toBe(false);
+    }
+  });
+});
+
 describe("worker queue selection", () => {
   const ondemand = {
     class: "ondemand",
