@@ -1,0 +1,54 @@
+---
+title: "Firecrawl webhooks"
+sidebarTitle: "Firecrawl"
+description: "Receive Firecrawl webhooks on a hosted Trigger.dev endpoint: the source, where to register the URL in Firecrawl, and how to set the signing credential."
+---
+
+**`webhooks.firecrawl()` verifies Firecrawl's signature on every request, so subscribers only receive genuine Firecrawl events.**
+
+```ts /trigger/firecrawl.ts
+import { webhook, webhooks } from "@trigger.dev/sdk";
+
+export const firecrawl = webhooks.endpoint.define({
+  id: "firecrawl",
+  source: webhooks.firecrawl(),
+});
+
+export const firecrawlEvents = webhook({
+  id: "firecrawl-events",
+  endpoint: firecrawl,
+  filter: "event.type == 'crawl.completed'",
+  onEvent: async ({ event }) => {
+    console.log(event);
+  },
+});
+```
+
+| | |
+| --- | --- |
+| Source | `webhooks.firecrawl()` |
+| Verification | HMAC-SHA256 in `x-firecrawl-signature` |
+| Credential | Signing secret issued by Firecrawl |
+| Event type | `event.type` |
+| Firecrawl docs | [Firecrawl webhook docs](https://docs.firecrawl.dev/webhooks/overview) |
+
+## Set up Firecrawl
+
+1. Start `trigger dev` or deploy, then copy the endpoint's **Webhook URL** from the **Webhooks** page.
+2. Copy the webhook secret from the **Advanced** tab of your Firecrawl account settings. It is one secret for the whole account.
+3. Choose **Set signing secret** on the Trigger.dev endpoint and paste it.
+4. Firecrawl has no webhook settings page. Pass a `webhook` object with the URL and events on each crawl, batch scrape, extract or agent request instead:
+
+   ```ts Your crawl code
+   await firecrawl.crawl("https://example.com", {
+     webhook: {
+       url: "<webhook URL>",
+       events: ["started", "page", "completed"],
+     },
+   });
+   ```
+5. Start a crawl with the `webhook` object, or use the endpoint's **Test** tab, and check the endpoint's **Deliveries** tab. See [Verify the connection](/webhooks/connect#verify-the-connection) if nothing arrives.
+
+## Example task
+
+The [Firecrawl URL crawl example](/guides/examples/firecrawl-url-crawl) crawls a site from a task. Add the `webhook` object above to receive each page as a delivery.

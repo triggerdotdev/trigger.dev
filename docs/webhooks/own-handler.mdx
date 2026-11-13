@@ -1,0 +1,58 @@
+---
+title: "Use your own webhook handler"
+sidebarTitle: "Using your own handler"
+description: "Receive a webhook in a route in your own app, verify it yourself, and trigger a task from it instead of using a hosted endpoint."
+---
+
+**A webhook handler in your own app can trigger a task with `tasks.trigger()`, the same way any backend code does.** Use it when you need to handle the request yourself. For most providers, a hosted [webhook endpoint](/webhooks/overview) does the same job with less code.
+
+## When to use your own handler
+
+| Use a hosted endpoint | Use your own handler |
+| --- | --- |
+| You want Trigger.dev to verify signatures, deduplicate retries and record deliveries. | You already have a handler in production and only want to move the work into a task. |
+| One event should reach several tasks, agents or waiting runs. | The provider needs a response body that your code computes from the request. |
+| You want to replay deliveries and see which runs each one started. | The request must pass through your app first, for example to look up a tenant before triggering. |
+
+## Trigger a task from your route
+
+Verify the request with the provider's SDK, then trigger the task. This Next.js route uses Stripe's SDK; import the task as a type so the route doesn't bundle the task code.
+
+```ts app/api/webhooks/stripe/route.ts
+import Stripe from "stripe";
+import { tasks } from "@trigger.dev/sdk";
+import type { handleStripeEvent } from "@/trigger/handle-stripe-event";
+
+const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!);
+
+export async function POST(request: Request) {
+  const body = await request.text();
+
+  // Verify the signature before trusting the body
+  const event = stripe.webhooks.constructEvent(
+    body,
+    request.headers.get("stripe-signature")!,
+    process.env.STRIPE_WEBHOOK_SECRET!
+  );
+
+  await tasks.trigger<typeof handleStripeEvent>("handle-stripe-event", event, {
+    // Retries of the same event start one run
+    idempotencyKey: event.id,
+  });
+
+  return Response.json({ received: true });
+}
+```
+
+Return quickly: the task runs in the background, so the provider gets its response before the work starts.
+
+## Framework guides
+
+<CardGroup cols={2}>
+  <Card title="Custom webhook handler with Next.js" icon="N" href="/guides/frameworks/nextjs-webhooks">
+    Handle a webhook in a Next.js API route and trigger a task.
+  </Card>
+  <Card title="Custom webhook handler with Remix" icon="R" href="/guides/frameworks/remix-webhooks">
+    Handle a webhook in a Remix action and trigger a task.
+  </Card>
+</CardGroup>

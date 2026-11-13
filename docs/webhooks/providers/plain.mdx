@@ -1,0 +1,41 @@
+---
+title: "Plain webhooks"
+sidebarTitle: "Plain"
+description: "Receive Plain webhooks on a hosted Trigger.dev endpoint: the source, where to register the URL in Plain, and how to set the signing credential."
+---
+
+**`webhooks.plain()` verifies Plain's signature on every request, so subscribers only receive genuine Plain events.**
+
+```ts /trigger/plain.ts
+import { webhook, webhooks } from "@trigger.dev/sdk";
+
+export const plain = webhooks.endpoint.define({
+  id: "plain",
+  source: webhooks.plain(),
+});
+
+export const plainEvents = webhook({
+  id: "plain-events",
+  endpoint: plain,
+  filter: "event.type == 'thread.thread_created'",
+  onEvent: async ({ event }) => {
+    console.log(event);
+  },
+});
+```
+
+| | |
+| --- | --- |
+| Source | `webhooks.plain()` |
+| Verification | HMAC-SHA256 in `plain-request-signature` |
+| Credential | Signing secret issued by Plain |
+| Event type | `event.type` |
+| Plain docs | [Plain webhook docs](https://www.plain.com/docs/api-reference/webhooks) |
+
+## Set up Plain
+
+1. Start `trigger dev` or deploy, then copy the endpoint's **Webhook URL** from the **Webhooks** page.
+2. As a workspace admin, view or generate the request signing secret under **Settings > Request signing**. It is one secret for the whole workspace, so read the existing one if other webhook targets use it.
+3. Choose **Set signing secret** on the Trigger.dev endpoint and paste it.
+4. Add the target under **Settings > Webhooks > Add webhook target**, with the webhook URL and the events your subscribers need.
+5. Send a test event from Plain, or use the endpoint's **Test** tab, and check the endpoint's **Deliveries** tab. See [Verify the connection](/webhooks/connect#verify-the-connection) if nothing arrives.

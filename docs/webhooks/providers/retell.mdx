@@ -1,0 +1,41 @@
+---
+title: "Retell AI webhooks"
+sidebarTitle: "Retell AI"
+description: "Receive Retell AI webhooks on a hosted Trigger.dev endpoint: the source, where to register the URL in Retell AI, and how to set the signing credential."
+---
+
+**`webhooks.retell()` verifies Retell AI's signature on every request, so subscribers only receive genuine Retell AI events.**
+
+```ts /trigger/retell.ts
+import { webhook, webhooks } from "@trigger.dev/sdk";
+
+export const retell = webhooks.endpoint.define({
+  id: "retell",
+  source: webhooks.retell(),
+});
+
+export const retellEvents = webhook({
+  id: "retell-events",
+  endpoint: retell,
+  onEvent: async ({ event }) => {
+    console.log(event);
+  },
+});
+```
+
+To run a subscriber only for some events, add a [filter](/webhooks/filters) on `event.event`.
+
+| | |
+| --- | --- |
+| Source | `webhooks.retell()` |
+| Verification | HMAC-SHA256 in `x-retell-signature` |
+| Credential | Signing secret issued by Retell AI |
+| Event type | `event.event` |
+| Retell AI docs | [Retell AI webhook docs](https://docs.retellai.com/features/secure-webhook) |
+
+## Set up Retell AI
+
+1. Start `trigger dev` or deploy, then copy the endpoint's **Webhook URL** from the **Webhooks** page.
+2. Add the webhook URL as a webhook in Retell AI and select the events your subscribers need. See Retell AI's [webhook docs](https://docs.retellai.com/features/secure-webhook) for where its webhook settings are.
+3. Copy the signing secret Retell AI shows for the webhook, then choose **Set signing secret** on the Trigger.dev endpoint.
+4. Send a test event from Retell AI, or use the endpoint's **Test** tab, and check the endpoint's **Deliveries** tab. See [Verify the connection](/webhooks/connect#verify-the-connection) if nothing arrives.

@@ -1,0 +1,41 @@
+---
+title: "Replicate webhooks"
+sidebarTitle: "Replicate"
+description: "Receive Replicate webhooks on a hosted Trigger.dev endpoint: the source, where to register the URL in Replicate, and how to set the signing credential."
+---
+
+**`webhooks.replicate()` verifies Replicate's signature on every request, so subscribers only receive genuine Replicate events.**
+
+```ts /trigger/replicate.ts
+import { webhook, webhooks } from "@trigger.dev/sdk";
+
+export const replicate = webhooks.endpoint.define({
+  id: "replicate",
+  source: webhooks.replicate(),
+});
+
+export const replicateEvents = webhook({
+  id: "replicate-events",
+  endpoint: replicate,
+  onEvent: async ({ event }) => {
+    console.log(event);
+  },
+});
+```
+
+To run a subscriber only for some events, add a [filter](/webhooks/filters) on `event.status`.
+
+| | |
+| --- | --- |
+| Source | `webhooks.replicate()` |
+| Verification | Standard Webhooks (`webhook-id`, `webhook-timestamp`, `webhook-signature`) |
+| Credential | Signing secret issued by Replicate |
+| Event type | `event.status` |
+| Replicate docs | [Replicate webhook docs](https://replicate.com/docs/topics/webhooks/verify-webhook) |
+
+## Set up Replicate
+
+1. Start `trigger dev` or deploy, then copy the endpoint's **Webhook URL** from the **Webhooks** page.
+2. Add the webhook URL as an endpoint in Replicate's webhook settings and subscribe it to the event types your subscribers need.
+3. Copy the endpoint's signing secret (it starts with `whsec_`), then choose **Set signing secret** on the Trigger.dev endpoint.
+4. Send a test event from Replicate, or use the endpoint's **Test** tab, and check the endpoint's **Deliveries** tab. See [Verify the connection](/webhooks/connect#verify-the-connection) if nothing arrives.

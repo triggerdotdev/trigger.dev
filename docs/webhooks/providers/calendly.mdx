@@ -1,0 +1,41 @@
+---
+title: "Calendly webhooks"
+sidebarTitle: "Calendly"
+description: "Receive Calendly webhooks on a hosted Trigger.dev endpoint: the source, where to register the URL in Calendly, and how to set the signing credential."
+---
+
+**`webhooks.calendly()` verifies Calendly's signature on every request, so subscribers only receive genuine Calendly events.**
+
+```ts /trigger/calendly.ts
+import { webhook, webhooks } from "@trigger.dev/sdk";
+
+export const calendly = webhooks.endpoint.define({
+  id: "calendly",
+  source: webhooks.calendly(),
+});
+
+export const calendlyEvents = webhook({
+  id: "calendly-events",
+  endpoint: calendly,
+  onEvent: async ({ event }) => {
+    console.log(event);
+  },
+});
+```
+
+To run a subscriber only for some events, add a [filter](/webhooks/filters) on `event.event`.
+
+| | |
+| --- | --- |
+| Source | `webhooks.calendly()` |
+| Verification | HMAC-SHA256 in `calendly-webhook-signature` |
+| Credential | Signing secret issued by Calendly |
+| Event type | `event.event` |
+| Calendly docs | [Calendly webhook docs](https://developer.calendly.com/api-docs/4c305798a61d3-webhook-signatures) |
+
+## Set up Calendly
+
+1. Start `trigger dev` or deploy, then copy the endpoint's **Webhook URL** from the **Webhooks** page.
+2. Add the webhook URL as a webhook in Calendly and select the events your subscribers need. See Calendly's [webhook docs](https://developer.calendly.com/api-docs/4c305798a61d3-webhook-signatures) for where its webhook settings are.
+3. Copy the signing secret Calendly shows for the webhook, then choose **Set signing secret** on the Trigger.dev endpoint.
+4. Send a test event from Calendly, or use the endpoint's **Test** tab, and check the endpoint's **Deliveries** tab. See [Verify the connection](/webhooks/connect#verify-the-connection) if nothing arrives.

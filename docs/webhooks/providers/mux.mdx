@@ -1,0 +1,40 @@
+---
+title: "Mux webhooks"
+sidebarTitle: "Mux"
+description: "Receive Mux webhooks on a hosted Trigger.dev endpoint: the source, where to register the URL in Mux, and how to set the signing credential."
+---
+
+**`webhooks.mux()` verifies Mux's signature on every request, so subscribers only receive genuine Mux events.**
+
+```ts /trigger/mux.ts
+import { webhook, webhooks } from "@trigger.dev/sdk";
+
+export const mux = webhooks.endpoint.define({
+  id: "mux",
+  source: webhooks.mux(),
+});
+
+export const muxEvents = webhook({
+  id: "mux-events",
+  endpoint: mux,
+  filter: "event.type == 'video.asset.ready'",
+  onEvent: async ({ event }) => {
+    console.log(event);
+  },
+});
+```
+
+| | |
+| --- | --- |
+| Source | `webhooks.mux()` |
+| Verification | HMAC-SHA256 in `mux-signature` |
+| Credential | Signing secret issued by Mux |
+| Event type | `event.type` |
+| Mux docs | [Mux webhook docs](https://www.mux.com/docs/core/verify-webhook-signatures) |
+
+## Set up Mux
+
+1. Start `trigger dev` or deploy, then copy the endpoint's **Webhook URL** from the **Webhooks** page.
+2. In the [Mux webhook settings](https://dashboard.mux.com/settings/webhooks), select the environment your app uses and add the webhook URL. Mux sends every event in that environment.
+3. Copy that webhook's signing secret, then choose **Set signing secret** on the Trigger.dev endpoint.
+4. Send a test event from Mux, or use the endpoint's **Test** tab, and check the endpoint's **Deliveries** tab. See [Verify the connection](/webhooks/connect#verify-the-connection) if nothing arrives.

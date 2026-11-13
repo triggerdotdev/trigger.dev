@@ -1,0 +1,41 @@
+---
+title: "DocuSign webhooks"
+sidebarTitle: "DocuSign"
+description: "Receive DocuSign webhooks on a hosted Trigger.dev endpoint: the source, where to register the URL in DocuSign, and how to set the signing credential."
+---
+
+**`webhooks.docusign()` verifies DocuSign's signature on every request, so subscribers only receive genuine DocuSign events.**
+
+```ts /trigger/docusign.ts
+import { webhook, webhooks } from "@trigger.dev/sdk";
+
+export const docusign = webhooks.endpoint.define({
+  id: "docusign",
+  source: webhooks.docusign(),
+});
+
+export const docusignEvents = webhook({
+  id: "docusign-events",
+  endpoint: docusign,
+  onEvent: async ({ event }) => {
+    console.log(event);
+  },
+});
+```
+
+To run a subscriber only for some events, add a [filter](/webhooks/filters) on `event.event`.
+
+| | |
+| --- | --- |
+| Source | `webhooks.docusign()` |
+| Verification | HMAC-SHA256 in `x-docusign-signature-1` |
+| Credential | Signing secret you generate on Trigger.dev, or one issued by DocuSign |
+| Event type | `event.event` |
+| DocuSign docs | [DocuSign webhook docs](https://developers.docusign.com/platform/webhooks/connect/) |
+
+## Set up DocuSign
+
+1. Start `trigger dev` or deploy, then copy the endpoint's **Webhook URL** from the **Webhooks** page.
+2. Add the webhook URL as a webhook in DocuSign and select the events your subscribers need. See DocuSign's [webhook docs](https://developers.docusign.com/platform/webhooks/connect/) for where its webhook settings are.
+3. If DocuSign shows a signing secret when you create the webhook, copy it and choose **Set signing secret** on the Trigger.dev endpoint. If DocuSign asks you for a secret, choose **Generate secret** on the endpoint and paste the value into DocuSign.
+4. Send a test event from DocuSign, or use the endpoint's **Test** tab, and check the endpoint's **Deliveries** tab. See [Verify the connection](/webhooks/connect#verify-the-connection) if nothing arrives.

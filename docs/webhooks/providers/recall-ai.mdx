@@ -1,0 +1,41 @@
+---
+title: "Recall.ai webhooks"
+sidebarTitle: "Recall.ai"
+description: "Receive Recall.ai webhooks on a hosted Trigger.dev endpoint: the source, where to register the URL in Recall.ai, and how to set the signing credential."
+---
+
+**`webhooks.recallai()` verifies Recall.ai's signature on every request, so subscribers only receive genuine Recall.ai events.**
+
+```ts /trigger/recall-ai.ts
+import { webhook, webhooks } from "@trigger.dev/sdk";
+
+export const recallai = webhooks.endpoint.define({
+  id: "recall-ai",
+  source: webhooks.recallai(),
+});
+
+export const recallaiEvents = webhook({
+  id: "recall-ai-events",
+  endpoint: recallai,
+  onEvent: async ({ event }) => {
+    console.log(event);
+  },
+});
+```
+
+To run a subscriber only for some events, add a [filter](/webhooks/filters) on `event.event`.
+
+| | |
+| --- | --- |
+| Source | `webhooks.recallai()` |
+| Verification | Standard Webhooks (`webhook-id`, `webhook-timestamp`, `webhook-signature`) |
+| Credential | Signing secret issued by Recall.ai |
+| Event type | `event.event` |
+| Recall.ai docs | [Recall.ai webhook docs](https://docs.recall.ai/docs/authenticating-requests-from-recallai) |
+
+## Set up Recall.ai
+
+1. Start `trigger dev` or deploy, then copy the endpoint's **Webhook URL** from the **Webhooks** page.
+2. Add the webhook URL as an endpoint in Recall.ai's webhook settings and subscribe it to the event types your subscribers need.
+3. Copy the endpoint's signing secret (it starts with `whsec_`), then choose **Set signing secret** on the Trigger.dev endpoint.
+4. Send a test event from Recall.ai, or use the endpoint's **Test** tab, and check the endpoint's **Deliveries** tab. See [Verify the connection](/webhooks/connect#verify-the-connection) if nothing arrives.

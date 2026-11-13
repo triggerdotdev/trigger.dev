@@ -1,0 +1,40 @@
+---
+title: "Langfuse webhooks"
+sidebarTitle: "Langfuse"
+description: "Receive Langfuse webhooks on a hosted Trigger.dev endpoint: the source, where to register the URL in Langfuse, and how to set the signing credential."
+---
+
+**`webhooks.langfuse()` verifies Langfuse's signature on every request, so subscribers only receive genuine Langfuse events.**
+
+```ts /trigger/langfuse.ts
+import { webhook, webhooks } from "@trigger.dev/sdk";
+
+export const langfuse = webhooks.endpoint.define({
+  id: "langfuse",
+  source: webhooks.langfuse(),
+});
+
+export const langfuseEvents = webhook({
+  id: "langfuse-events",
+  endpoint: langfuse,
+  filter: "event.type == 'prompt-version' && event.action == 'created'",
+  onEvent: async ({ event }) => {
+    console.log(event);
+  },
+});
+```
+
+| | |
+| --- | --- |
+| Source | `webhooks.langfuse()` |
+| Verification | HMAC-SHA256 in `x-langfuse-signature` |
+| Credential | Signing secret issued by Langfuse |
+| Event type | `event.type` |
+| Langfuse docs | [Langfuse webhook docs](https://langfuse.com/docs/prompt-management/features/webhooks-slack-integrations) |
+
+## Set up Langfuse
+
+1. Start `trigger dev` or deploy, then copy the endpoint's **Webhook URL** from the **Webhooks** page.
+2. In the Langfuse project, go to **Prompts > Automations > Create Automation**. Choose the prompt version event and the actions (created, updated, deleted) your subscribers need, and set the request URL to the webhook URL.
+3. Copy the signing secret Langfuse shows (it starts with `lf-whsec_`), then choose **Set signing secret** on the Trigger.dev endpoint.
+4. Send a test event from Langfuse, or use the endpoint's **Test** tab, and check the endpoint's **Deliveries** tab. See [Verify the connection](/webhooks/connect#verify-the-connection) if nothing arrives.

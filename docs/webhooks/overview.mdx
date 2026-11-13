@@ -6,6 +6,15 @@ sidebarTitle: "Overview"
 
 **A webhook endpoint is one hosted URL that you register with a provider.** Trigger.dev verifies every request against the endpoint's [source](/webhooks/sources), records it as a [delivery](/webhooks/deliveries), and hands the event to everything subscribed to the endpoint.
 
+<Note>
+  Webhooks are in public beta for every organization, in `@trigger.dev/sdk` 4.8.1 and later. The API
+  may change before general availability; we announce changes in the
+  [changelog](https://trigger.dev/changelog). Send bugs and feedback to
+  [eric@trigger.dev](mailto:eric@trigger.dev) with the delivery id (`whd_...`) or run id.
+</Note>
+
+[Built-in sources](/webhooks/providers) cover Stripe, GitHub, Firecrawl, Linear and more than 40 other providers. To set one up from scratch, follow the [quick start](/webhooks/quick-start).
+
 Declare the endpoint once, then subscribe to it:
 
 ```ts /trigger/stripe.ts
@@ -91,16 +100,27 @@ A delivery that no subscriber's filter matches starts no run for any subscriber,
 
 Each plan sets limits on the ingest rate, waiting runs, processing concurrency and how long deliveries are kept. See [Limits](/limits#webhook-ingest-rate-limits).
 
+Webhooks are open source, so they also work self-hosted. See [Self-hosting webhooks](/self-hosting/env/webapp#webhooks) to turn them on.
+
 ## Connect it
 
 Every endpoint can produce a setup prompt for an AI coding agent. It holds the URL, the events your subscribers filter on, and the steps for registering the endpoint and its signing secret with the provider. Copy it from the endpoints list or the endpoint's page, or read it with the MCP server's `get_webhook_endpoint_details` tool. See [Connect a provider](/webhooks/connect).
 
 <CardGroup cols={2}>
+  <Card title="Quick start" icon="rocket" href="/webhooks/quick-start">
+    Install the SDK, declare an endpoint, and receive your first event.
+  </Card>
   <Card title="Connect a provider" icon="plug" href="/webhooks/connect">
     Register the URL and signing secret, then send a test event.
   </Card>
+  <Card title="Providers" icon="list" href="/webhooks/providers">
+    Set up each built-in provider source.
+  </Card>
+  <Card title="Custom providers" icon="code" href="/webhooks/custom-providers">
+    Verify a provider that has no built-in source.
+  </Card>
   <Card title="Sources and verification" icon="shield-check" href="/webhooks/sources">
-    Choose a provider source or define a custom verification scheme.
+    How sources verify requests and type the event.
   </Card>
   <Card title="Filters" icon="filter" href="/webhooks/filters">
     Choose which events reach each subscriber.

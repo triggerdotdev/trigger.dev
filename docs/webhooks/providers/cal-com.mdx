@@ -1,0 +1,41 @@
+---
+title: "Cal.com webhooks"
+sidebarTitle: "Cal.com"
+description: "Receive Cal.com webhooks on a hosted Trigger.dev endpoint: the source, where to register the URL in Cal.com, and how to set the signing credential."
+---
+
+**`webhooks.calCom()` verifies Cal.com's signature on every request, so subscribers only receive genuine Cal.com events.**
+
+```ts /trigger/cal-com.ts
+import { webhook, webhooks } from "@trigger.dev/sdk";
+
+export const calCom = webhooks.endpoint.define({
+  id: "cal-com",
+  source: webhooks.calCom(),
+});
+
+export const calComEvents = webhook({
+  id: "cal-com-events",
+  endpoint: calCom,
+  onEvent: async ({ event }) => {
+    console.log(event);
+  },
+});
+```
+
+To run a subscriber only for some events, add a [filter](/webhooks/filters) on `event.triggerEvent`.
+
+| | |
+| --- | --- |
+| Source | `webhooks.calCom()` |
+| Verification | HMAC-SHA256 in `x-cal-signature-256` |
+| Credential | Signing secret you generate on Trigger.dev, or one issued by Cal.com |
+| Event type | `event.triggerEvent` |
+| Cal.com docs | [Cal.com webhook docs](https://cal.com/docs/developing/guides/automation/webhooks) |
+
+## Set up Cal.com
+
+1. Start `trigger dev` or deploy, then copy the endpoint's **Webhook URL** from the **Webhooks** page.
+2. Add the webhook URL as a webhook in Cal.com and select the events your subscribers need. See Cal.com's [webhook docs](https://cal.com/docs/developing/guides/automation/webhooks) for where its webhook settings are.
+3. If Cal.com shows a signing secret when you create the webhook, copy it and choose **Set signing secret** on the Trigger.dev endpoint. If Cal.com asks you for a secret, choose **Generate secret** on the endpoint and paste the value into Cal.com.
+4. Send a test event from Cal.com, or use the endpoint's **Test** tab, and check the endpoint's **Deliveries** tab. See [Verify the connection](/webhooks/connect#verify-the-connection) if nothing arrives.

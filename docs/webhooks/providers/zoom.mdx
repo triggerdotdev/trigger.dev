@@ -1,0 +1,41 @@
+---
+title: "Zoom webhooks"
+sidebarTitle: "Zoom"
+description: "Receive Zoom webhooks on a hosted Trigger.dev endpoint: the source, where to register the URL in Zoom, and how to set the signing credential."
+---
+
+**`webhooks.zoom()` verifies Zoom's signature on every request, so subscribers only receive genuine Zoom events.**
+
+```ts /trigger/zoom.ts
+import { webhook, webhooks } from "@trigger.dev/sdk";
+
+export const zoom = webhooks.endpoint.define({
+  id: "zoom",
+  source: webhooks.zoom(),
+});
+
+export const zoomEvents = webhook({
+  id: "zoom-events",
+  endpoint: zoom,
+  onEvent: async ({ event }) => {
+    console.log(event);
+  },
+});
+```
+
+To run a subscriber only for some events, add a [filter](/webhooks/filters) on `event.event`.
+
+| | |
+| --- | --- |
+| Source | `webhooks.zoom()` |
+| Verification | HMAC-SHA256 in `x-zm-signature` |
+| Credential | Signing secret issued by Zoom |
+| Event type | `event.event` |
+| Zoom docs | [Zoom webhook docs](https://developers.zoom.us/docs/api/webhooks/) |
+
+## Set up Zoom
+
+1. Start `trigger dev` or deploy, then copy the endpoint's **Webhook URL** from the **Webhooks** page.
+2. Add the webhook URL as a webhook in Zoom and select the events your subscribers need. See Zoom's [webhook docs](https://developers.zoom.us/docs/api/webhooks/) for where its webhook settings are.
+3. Copy the signing secret Zoom shows for the webhook, then choose **Set signing secret** on the Trigger.dev endpoint.
+4. Send a test event from Zoom, or use the endpoint's **Test** tab, and check the endpoint's **Deliveries** tab. See [Verify the connection](/webhooks/connect#verify-the-connection) if nothing arrives.

@@ -1,0 +1,41 @@
+---
+title: "Sentry webhooks"
+sidebarTitle: "Sentry"
+description: "Receive Sentry webhooks on a hosted Trigger.dev endpoint: the source, where to register the URL in Sentry, and how to set the signing credential."
+---
+
+**`webhooks.sentry()` verifies Sentry's signature on every request, so subscribers only receive genuine Sentry events.**
+
+```ts /trigger/sentry.ts
+import { webhook, webhooks } from "@trigger.dev/sdk";
+
+export const sentry = webhooks.endpoint.define({
+  id: "sentry",
+  source: webhooks.sentry(),
+});
+
+export const sentryEvents = webhook({
+  id: "sentry-events",
+  endpoint: sentry,
+  onEvent: async ({ event }) => {
+    console.log(event);
+  },
+});
+```
+
+To run a subscriber only for some events, add a [filter](/webhooks/filters) on `header.sentry-hook-resource`.
+
+| | |
+| --- | --- |
+| Source | `webhooks.sentry()` |
+| Verification | HMAC-SHA256 in `sentry-hook-signature` |
+| Credential | Signing secret you generate on Trigger.dev, or one issued by Sentry |
+| Event type | `header.sentry-hook-resource` |
+| Sentry docs | [Sentry webhook docs](https://docs.sentry.io/product/integrations/integration-platform/webhooks/) |
+
+## Set up Sentry
+
+1. Start `trigger dev` or deploy, then copy the endpoint's **Webhook URL** from the **Webhooks** page.
+2. Add the webhook URL as a webhook in Sentry and select the events your subscribers need. See Sentry's [webhook docs](https://docs.sentry.io/product/integrations/integration-platform/webhooks/) for where its webhook settings are.
+3. If Sentry shows a signing secret when you create the webhook, copy it and choose **Set signing secret** on the Trigger.dev endpoint. If Sentry asks you for a secret, choose **Generate secret** on the endpoint and paste the value into Sentry.
+4. Send a test event from Sentry, or use the endpoint's **Test** tab, and check the endpoint's **Deliveries** tab. See [Verify the connection](/webhooks/connect#verify-the-connection) if nothing arrives.

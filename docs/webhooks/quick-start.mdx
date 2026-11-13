@@ -1,0 +1,127 @@
+---
+title: "Webhooks quick start"
+sidebarTitle: "Quick start"
+description: "Declare a hosted webhook endpoint, run it in dev, and see your first verified delivery start a task run in under 5 minutes."
+---
+
+Install the SDK, declare an endpoint with a subscriber, and send it a test event. By the end, a verified delivery starts a run of your task.
+
+This guide uses the [GitHub source](/webhooks/providers/github) because you generate its signing secret on Trigger.dev, so you don't need a GitHub account to finish it. The steps are the same for every [provider](/webhooks/providers).
+
+<Steps>
+
+<Step title="Add Trigger.dev to your project">
+
+Skip this step if your project already uses Trigger.dev 4.8.1 or later.
+
+<CodeGroup>
+
+```bash npm
+npx trigger.dev@latest init
+```
+
+```bash pnpm
+pnpm dlx trigger.dev@latest init
+```
+
+```bash bun
+bunx trigger.dev@latest init
+```
+
+</CodeGroup>
+
+To upgrade an existing project, install the SDK and CLI from `@latest`:
+
+<CodeGroup>
+
+```bash npm
+npm i @trigger.dev/sdk@latest
+npm i -D trigger.dev@latest
+```
+
+```bash pnpm
+pnpm add @trigger.dev/sdk@latest
+pnpm add -D trigger.dev@latest
+```
+
+```bash bun
+bun add @trigger.dev/sdk@latest
+bun add -D trigger.dev@latest
+```
+
+</CodeGroup>
+
+</Step>
+
+<Step title="Declare the endpoint and a subscriber">
+
+Create a file in your `/trigger` directory. The endpoint is the hosted URL; the subscriber is the task that runs for each event.
+
+```ts /trigger/github.ts
+import { webhook, webhooks } from "@trigger.dev/sdk";
+
+export const github = webhooks.endpoint.define({
+  id: "github",
+  source: webhooks.github(),
+});
+
+export const githubEvents = webhook({
+  id: "github-events",
+  endpoint: github,
+  onEvent: async ({ event, headers }) => {
+    // GitHub sends the event name in a header
+    console.log("Received", headers.get("x-github-event"), event);
+  },
+});
+```
+
+</Step>
+
+<Step title="Run the dev server">
+
+<CodeGroup>
+
+```bash npm
+npx trigger.dev@latest dev
+```
+
+```bash pnpm
+pnpm dlx trigger.dev@latest dev
+```
+
+```bash bun
+bunx trigger.dev@latest dev
+```
+
+</CodeGroup>
+
+The CLI registers the endpoint, and it appears on the dev environment's **Webhooks** page with the **Signing secret** column set to **Needs secret**.
+
+</Step>
+
+<Step title="Generate the signing secret">
+
+Open the `github` endpoint and choose **Generate secret**. The column changes to **Ready**. Every delivery is rejected until an endpoint has its secret.
+
+</Step>
+
+<Step title="Send a test event">
+
+Open the endpoint's **Test** tab and send the sample event. The delivery appears on the **Deliveries** tab with the `github-events` subscriber listed. Follow the link to its run to see the logged event.
+
+</Step>
+
+</Steps>
+
+## Connect the real provider
+
+To receive real events, register the endpoint's **Webhook URL** and the same secret with the provider. Each [provider page](/webhooks/providers) lists where to add them.
+
+<CardGroup cols={2}>
+  <Card title="Connect a provider" icon="plug" href="/webhooks/connect">
+    Register the URL and secret by hand or with an AI coding agent.
+  </Card>
+  <Card title="Filters" icon="filter" href="/webhooks/filters">
+    Run a subscriber only for the events it handles.
+  </Card>
+</CardGroup>

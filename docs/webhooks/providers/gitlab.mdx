@@ -1,0 +1,41 @@
+---
+title: "GitLab webhooks"
+sidebarTitle: "GitLab"
+description: "Receive GitLab webhooks on a hosted Trigger.dev endpoint: the source, where to register the URL in GitLab, and how to set the signing credential."
+---
+
+**`webhooks.gitlab()` checks the secret token GitLab sends with every request, so subscribers only receive genuine GitLab events.**
+
+```ts /trigger/gitlab.ts
+import { webhook, webhooks } from "@trigger.dev/sdk";
+
+export const gitlab = webhooks.endpoint.define({
+  id: "gitlab",
+  source: webhooks.gitlab(),
+});
+
+export const gitlabEvents = webhook({
+  id: "gitlab-events",
+  endpoint: gitlab,
+  onEvent: async ({ event }) => {
+    console.log(event);
+  },
+});
+```
+
+To run a subscriber only for some events, add a [filter](/webhooks/filters) on `header.x-gitlab-event`.
+
+| | |
+| --- | --- |
+| Source | `webhooks.gitlab()` |
+| Verification | Shared secret in `x-gitlab-token` |
+| Credential | Secret you generate on Trigger.dev |
+| Event type | `header.x-gitlab-event` |
+| GitLab docs | [GitLab webhook docs](https://docs.gitlab.com/user/project/integrations/webhooks/) |
+
+## Set up GitLab
+
+1. Start `trigger dev` or deploy, then copy the endpoint's **Webhook URL** from the **Webhooks** page.
+2. Choose **Generate secret** on the Trigger.dev endpoint and copy the value.
+3. In the GitLab project or group, go to **Settings > Webhooks** and add a webhook with the webhook URL. Paste the secret into **Secret token** and select the triggers your subscribers need. GitLab sends the event name in the `x-gitlab-event` header.
+4. Send a test event from GitLab, or use the endpoint's **Test** tab, and check the endpoint's **Deliveries** tab. See [Verify the connection](/webhooks/connect#verify-the-connection) if nothing arrives.

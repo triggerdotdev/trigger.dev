@@ -1,0 +1,41 @@
+---
+title: "PlanetScale webhooks"
+sidebarTitle: "PlanetScale"
+description: "Receive PlanetScale webhooks on a hosted Trigger.dev endpoint: the source, where to register the URL in PlanetScale, and how to set the signing credential."
+---
+
+**`webhooks.planetscale()` verifies PlanetScale's signature on every request, so subscribers only receive genuine PlanetScale events.**
+
+```ts /trigger/planetscale.ts
+import { webhook, webhooks } from "@trigger.dev/sdk";
+
+export const planetscale = webhooks.endpoint.define({
+  id: "planetscale",
+  source: webhooks.planetscale(),
+});
+
+export const planetscaleEvents = webhook({
+  id: "planetscale-events",
+  endpoint: planetscale,
+  filter: "event.event == 'branch.ready'",
+  onEvent: async ({ event }) => {
+    console.log(event);
+  },
+});
+```
+
+| | |
+| --- | --- |
+| Source | `webhooks.planetscale()` |
+| Verification | HMAC-SHA256 in `x-planetscale-signature` |
+| Credential | Signing secret issued by PlanetScale |
+| Event type | `event.event` |
+| PlanetScale docs | [PlanetScale webhook docs](https://planetscale.com/docs/api/webhooks) |
+
+## Set up PlanetScale
+
+1. Start `trigger dev` or deploy, then copy the endpoint's **Webhook URL** from the **Webhooks** page.
+2. Select the database in PlanetScale, then **Settings > Webhooks > Add webhook**. Enter the webhook URL and select the events your subscribers need. This needs the database administrator role.
+3. In the webhook's menu, choose **Show secret**, copy it, and choose **Set signing secret** on the Trigger.dev endpoint.
+4. Choose **Test webhook** in the same menu to send a `webhook.test` event.
+5. Send a test event from PlanetScale, or use the endpoint's **Test** tab, and check the endpoint's **Deliveries** tab. See [Verify the connection](/webhooks/connect#verify-the-connection) if nothing arrives.

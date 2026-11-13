@@ -1,0 +1,39 @@
+---
+title: "WhatsApp webhooks"
+sidebarTitle: "WhatsApp"
+description: "Receive WhatsApp webhooks on a hosted Trigger.dev endpoint: the source, where to register the URL in WhatsApp, and how to set the signing credential."
+---
+
+**`webhooks.whatsapp()` verifies WhatsApp's signature on every request, so subscribers only receive genuine WhatsApp events.**
+
+```ts /trigger/whatsapp.ts
+import { webhook, webhooks } from "@trigger.dev/sdk";
+
+export const whatsapp = webhooks.endpoint.define({
+  id: "whatsapp",
+  source: webhooks.whatsapp(),
+});
+
+export const whatsappEvents = webhook({
+  id: "whatsapp-events",
+  endpoint: whatsapp,
+  onEvent: async ({ event }) => {
+    console.log(event);
+  },
+});
+```
+
+| | |
+| --- | --- |
+| Source | `webhooks.whatsapp()` |
+| Verification | HMAC-SHA256 in `x-hub-signature-256`, keyed by the App Secret |
+| Credential | Signing secret issued by WhatsApp |
+| WhatsApp docs | [WhatsApp webhook docs](https://developers.facebook.com/docs/whatsapp/cloud-api/guides/set-up-webhooks/) |
+
+## Set up WhatsApp
+
+1. Start `trigger dev` or deploy, then copy the endpoint's **Webhook URL** from the **Webhooks** page.
+2. In the Meta app dashboard, set the WhatsApp webhook's callback URL to the webhook URL. Meta verifies the URL with a GET request that needs a verify token; see [Verify a WhatsApp endpoint URL](/webhooks/connect#verify-a-whatsapp-endpoint-url).
+3. Copy the app's **App Secret**, then choose **Set signing secret** on the Trigger.dev endpoint. Meta signs event deliveries with it.
+4. Subscribe the webhook to the fields your subscribers need, such as `messages`.
+5. Send a test event from WhatsApp, or use the endpoint's **Test** tab, and check the endpoint's **Deliveries** tab. See [Verify the connection](/webhooks/connect#verify-the-connection) if nothing arrives.

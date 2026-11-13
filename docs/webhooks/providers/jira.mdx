@@ -1,0 +1,41 @@
+---
+title: "Jira webhooks"
+sidebarTitle: "Jira"
+description: "Receive Jira webhooks on a hosted Trigger.dev endpoint: the source, where to register the URL in Jira, and how to set the signing credential."
+---
+
+**`webhooks.jira()` verifies Jira's signature on every request, so subscribers only receive genuine Jira events.**
+
+```ts /trigger/jira.ts
+import { webhook, webhooks } from "@trigger.dev/sdk";
+
+export const jira = webhooks.endpoint.define({
+  id: "jira",
+  source: webhooks.jira(),
+});
+
+export const jiraEvents = webhook({
+  id: "jira-events",
+  endpoint: jira,
+  onEvent: async ({ event }) => {
+    console.log(event);
+  },
+});
+```
+
+To run a subscriber only for some events, add a [filter](/webhooks/filters) on `event.webhookEvent`.
+
+| | |
+| --- | --- |
+| Source | `webhooks.jira()` |
+| Verification | HMAC-SHA256 in `x-hub-signature` |
+| Credential | Signing secret you generate on Trigger.dev, or one issued by Jira |
+| Event type | `event.webhookEvent` |
+| Jira docs | [Jira webhook docs](https://developer.atlassian.com/cloud/jira/platform/webhooks/) |
+
+## Set up Jira
+
+1. Start `trigger dev` or deploy, then copy the endpoint's **Webhook URL** from the **Webhooks** page.
+2. Add the webhook URL as a webhook in Jira and select the events your subscribers need. See Jira's [webhook docs](https://developer.atlassian.com/cloud/jira/platform/webhooks/) for where its webhook settings are.
+3. If Jira shows a signing secret when you create the webhook, copy it and choose **Set signing secret** on the Trigger.dev endpoint. If Jira asks you for a secret, choose **Generate secret** on the endpoint and paste the value into Jira.
+4. Send a test event from Jira, or use the endpoint's **Test** tab, and check the endpoint's **Deliveries** tab. See [Verify the connection](/webhooks/connect#verify-the-connection) if nothing arrives.

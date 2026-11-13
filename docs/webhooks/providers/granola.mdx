@@ -1,0 +1,44 @@
+---
+title: "Granola webhooks"
+sidebarTitle: "Granola"
+description: "Receive Granola webhooks on a hosted Trigger.dev endpoint: the source, where to register the URL in Granola, and how to set the signing credential."
+---
+
+**`webhooks.granola()` verifies Granola's signature on every request, so subscribers only receive genuine Granola events.**
+
+```ts /trigger/granola.ts
+import { webhook, webhooks } from "@trigger.dev/sdk";
+
+export const granola = webhooks.endpoint.define({
+  id: "granola",
+  source: webhooks.granola(),
+});
+
+export const granolaEvents = webhook({
+  id: "granola-events",
+  endpoint: granola,
+  filter: "event.event_type == 'note.generated'",
+  onEvent: async ({ event }) => {
+    console.log(event);
+  },
+});
+```
+
+| | |
+| --- | --- |
+| Source | `webhooks.granola()` |
+| Verification | Standard Webhooks (`webhook-id`, `webhook-timestamp`, `webhook-signature`) |
+| Credential | Signing secret issued by Granola |
+| Event type | `event.event_type` |
+| Granola docs | [Granola webhook docs](https://docs.granola.ai/webhooks) |
+
+## Set up Granola
+
+1. Start `trigger dev` or deploy, then copy the endpoint's **Webhook URL** from the **Webhooks** page.
+2. Create the endpoint in Granola under **Settings > Connectors > Webhooks**, or under a folder's **Integrations > Webhooks** to limit it to that folder. Granola webhooks need a Business or Enterprise plan.
+3. Granola shows the signing secret (it starts with `whsec_`) once, when the endpoint is created. Choose **Set signing secret** on the Trigger.dev endpoint and paste it.
+4. Send a test event from Granola, or use the endpoint's **Test** tab, and check the endpoint's **Deliveries** tab. See [Verify the connection](/webhooks/connect#verify-the-connection) if nothing arrives.
+
+## Fetching the note
+
+Deliveries carry the note id but not its content. Fetch the note with Granola's API inside `onEvent`.

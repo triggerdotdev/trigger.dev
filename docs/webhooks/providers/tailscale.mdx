@@ -1,0 +1,44 @@
+---
+title: "Tailscale webhooks"
+sidebarTitle: "Tailscale"
+description: "Receive Tailscale webhooks on a hosted Trigger.dev endpoint: the source, where to register the URL in Tailscale, and how to set the signing credential."
+---
+
+**`webhooks.tailscale()` verifies Tailscale's signature on every request, so subscribers only receive genuine Tailscale events.**
+
+```ts /trigger/tailscale.ts
+import { webhook, webhooks } from "@trigger.dev/sdk";
+
+export const tailscale = webhooks.endpoint.define({
+  id: "tailscale",
+  source: webhooks.tailscale(),
+});
+
+export const tailscaleEvents = webhook({
+  id: "tailscale-events",
+  endpoint: tailscale,
+  filter: "event any ( type == 'nodeCreated' )",
+  onEvent: async ({ event }) => {
+    console.log(event);
+  },
+});
+```
+
+| | |
+| --- | --- |
+| Source | `webhooks.tailscale()` |
+| Verification | HMAC-SHA256 in `tailscale-webhook-signature` |
+| Credential | Signing secret issued by Tailscale |
+| Tailscale docs | [Tailscale webhook docs](https://tailscale.com/kb/1213/webhooks) |
+
+## Set up Tailscale
+
+1. Start `trigger dev` or deploy, then copy the endpoint's **Webhook URL** from the **Webhooks** page.
+2. On the **Webhooks** page of the Tailscale admin console, select **Add endpoint**, enter the webhook URL, and choose the events your subscribers need. This needs the Owner, Admin, Network admin or IT admin role.
+3. Tailscale shows the webhook secret once, right after the endpoint is added. Copy it then, and choose **Set signing secret** on the Trigger.dev endpoint.
+4. Use the endpoint's menu, **Test endpoint > Send test event**, to confirm delivery.
+5. Send a test event from Tailscale, or use the endpoint's **Test** tab, and check the endpoint's **Deliveries** tab. See [Verify the connection](/webhooks/connect#verify-the-connection) if nothing arrives.
+
+## Batched events
+
+Each request body is a JSON array of events, and Tailscale can batch several into one request. Filters match an event anywhere in the array with `event any ( ... )`, and a handler should process every event in the array.

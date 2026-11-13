@@ -1,0 +1,40 @@
+---
+title: "PagerDuty webhooks"
+sidebarTitle: "PagerDuty"
+description: "Receive PagerDuty webhooks on a hosted Trigger.dev endpoint: the source, where to register the URL in PagerDuty, and how to set the signing credential."
+---
+
+**`webhooks.pagerduty()` verifies PagerDuty's signature on every request, so subscribers only receive genuine PagerDuty events.**
+
+```ts /trigger/pagerduty.ts
+import { webhook, webhooks } from "@trigger.dev/sdk";
+
+export const pagerduty = webhooks.endpoint.define({
+  id: "pagerduty",
+  source: webhooks.pagerduty(),
+});
+
+export const pagerdutyEvents = webhook({
+  id: "pagerduty-events",
+  endpoint: pagerduty,
+  filter: "event.event.event_type == 'incident.triggered'",
+  onEvent: async ({ event }) => {
+    console.log(event);
+  },
+});
+```
+
+| | |
+| --- | --- |
+| Source | `webhooks.pagerduty()` |
+| Verification | HMAC-SHA256 in `x-pagerduty-signature` |
+| Credential | Signing secret you generate on Trigger.dev, or one issued by PagerDuty |
+| Event type | `event.event.event_type` |
+| PagerDuty docs | [PagerDuty webhook docs](https://developer.pagerduty.com/docs/webhooks/webhook-signatures/) |
+
+## Set up PagerDuty
+
+1. Start `trigger dev` or deploy, then copy the endpoint's **Webhook URL** from the **Webhooks** page.
+2. Add the webhook URL as a webhook in PagerDuty and select the events your subscribers need. See PagerDuty's [webhook docs](https://developer.pagerduty.com/docs/webhooks/webhook-signatures/) for where its webhook settings are.
+3. If PagerDuty shows a signing secret when you create the webhook, copy it and choose **Set signing secret** on the Trigger.dev endpoint. If PagerDuty asks you for a secret, choose **Generate secret** on the endpoint and paste the value into PagerDuty.
+4. Send a test event from PagerDuty, or use the endpoint's **Test** tab, and check the endpoint's **Deliveries** tab. See [Verify the connection](/webhooks/connect#verify-the-connection) if nothing arrives.

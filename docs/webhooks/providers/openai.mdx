@@ -1,0 +1,40 @@
+---
+title: "OpenAI webhooks"
+sidebarTitle: "OpenAI"
+description: "Receive OpenAI webhooks on a hosted Trigger.dev endpoint: the source, where to register the URL in OpenAI, and how to set the signing credential."
+---
+
+**`webhooks.openai()` verifies OpenAI's signature on every request, so subscribers only receive genuine OpenAI events.**
+
+```ts /trigger/openai.ts
+import { webhook, webhooks } from "@trigger.dev/sdk";
+
+export const openai = webhooks.endpoint.define({
+  id: "openai",
+  source: webhooks.openai(),
+});
+
+export const openaiEvents = webhook({
+  id: "openai-events",
+  endpoint: openai,
+  filter: "event.type == 'batch.completed'",
+  onEvent: async ({ event }) => {
+    console.log(event);
+  },
+});
+```
+
+| | |
+| --- | --- |
+| Source | `webhooks.openai()` |
+| Verification | Standard Webhooks (`webhook-id`, `webhook-timestamp`, `webhook-signature`) |
+| Credential | Signing secret issued by OpenAI |
+| Event type | `event.type` |
+| OpenAI docs | [OpenAI webhook docs](https://platform.openai.com/docs/guides/webhooks) |
+
+## Set up OpenAI
+
+1. Start `trigger dev` or deploy, then copy the endpoint's **Webhook URL** from the **Webhooks** page.
+2. Add the webhook URL as an endpoint in OpenAI's webhook settings and subscribe it to the event types your subscribers need.
+3. Copy the endpoint's signing secret (it starts with `whsec_`), then choose **Set signing secret** on the Trigger.dev endpoint.
+4. Send a test event from OpenAI, or use the endpoint's **Test** tab, and check the endpoint's **Deliveries** tab. See [Verify the connection](/webhooks/connect#verify-the-connection) if nothing arrives.
