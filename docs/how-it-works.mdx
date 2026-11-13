@@ -14,12 +14,15 @@ This page explains the machinery underneath: how a run executes, what happens wh
 
 A task is an async function with an `id`. This one is a research agent: it calls the model in a loop, and each tool call runs as its own task.
 
-```ts /trigger/research-agent.ts
+```typescript /trigger/research-agent.ts
 import { schemaTask, task } from "@trigger.dev/sdk";
 import { ai } from "@trigger.dev/sdk/ai";
 import { generateText, stepCountIs, tool } from "ai";
 import { anthropic } from "@ai-sdk/anthropic";
 import { z } from "zod";
+
+// Only fetch from hosts you trust, so the model can't be steered to internal services
+const ALLOWED_HOSTS = new Set(["en.wikipedia.org", "developer.mozilla.org"]);
 
 // A tool backed by a task: each call is a child run with its own retries and trace
 export const fetchPage = schemaTask({
@@ -28,7 +31,12 @@ export const fetchPage = schemaTask({
   schema: z.object({ url: z.string().url() }),
   retry: { maxAttempts: 3 },
   run: async ({ url }) => {
-    const response = await fetch(url);
+    const { protocol, hostname } = new URL(url);
+    if (protocol !== "https:" || !ALLOWED_HOSTS.has(hostname)) {
+      throw new Error(`Fetching ${hostname} is not allowed`);
+    }
+
+    const response = await fetch(url, { redirect: "error" });
     return { text: (await response.text()).slice(0, 20_000) };
   },
 });
@@ -58,7 +66,7 @@ export const researchAgent = task({
 
 Trigger the agent from your backend. The call returns a handle straight away, and the agent runs in the background:
 
-```ts Your backend code
+```typescript Your backend code
 import { tasks } from "@trigger.dev/sdk";
 import type { researchAgent } from "./trigger/research-agent";
 //     👆 type-only import, so your backend doesn't bundle the agent
@@ -72,9 +80,9 @@ export async function POST(request: Request) {
 }
 ```
 
-Use the handle's `id` to check the run's status, and its `publicAccessToken` to [stream output to your frontend](#streaming-agent-output-to-your-frontend).
+Use the handle's `id` to check the run's status, and pass its `publicAccessToken` to your frontend to [subscribe to the run in realtime](/realtime/overview). To show the agent's output as it's generated, write it to a stream, as in [Streaming agent output to your frontend](#streaming-agent-output-to-your-frontend).
 
-For conversational agents where a user sends messages back and forth, use [`chat.agent`](/ai-chat/overview). It runs each conversation as one long-lived task on the same machinery described below.
+For conversational agents where a user sends messages back and forth, use [`chat.agent`](/ai-chat/overview). It runs each conversation as a durable session on the same machinery described below.
 
 ## Architecture
 
@@ -100,7 +108,7 @@ Agents spend much of their time waiting: for a sub-agent to finish, for a schedu
 
 This agent drafts a reply, then waits for a human to approve it before sending:
 
-```ts /trigger/support-agent.ts
+```typescript /trigger/support-agent.ts
 import { task, wait } from "@trigger.dev/sdk";
 import { generateText } from "ai";
 import { anthropic } from "@ai-sdk/anthropic";
@@ -180,7 +188,7 @@ Model calls are slow and cost money, so an agent shouldn't redo work it has alre
 
 <CodeGroup>
 
-```ts /trigger/report-agent.ts
+```typescript /trigger/report-agent.ts
 import { idempotencyKeys, task } from "@trigger.dev/sdk";
 import { gatherSources, writeReport, publishReport } from "./steps.js";
 
@@ -208,7 +216,7 @@ export const reportAgent = task({
 });
 ```
 
-```ts /trigger/steps.ts
+```typescript /trigger/steps.ts
 import { task } from "@trigger.dev/sdk";
 import { generateText } from "ai";
 import { anthropic } from "@ai-sdk/anthropic";
@@ -274,13 +282,13 @@ Read more in [Idempotency](/idempotency) and [Errors and retrying](/errors-retry
 
 A run can stream data to your frontend or backend while it executes, such as model tokens, tool progress, or intermediate results. Define a stream, pipe into it from the task, and read it anywhere with the run ID:
 
-```ts /trigger/streams.ts
+```typescript /trigger/streams.ts
 import { streams } from "@trigger.dev/sdk";
 
 export const answerStream = streams.define<string>({ id: "answer" });
 ```
 
-```ts /trigger/streaming-agent.ts
+```typescript /trigger/streaming-agent.ts
 import { task } from "@trigger.dev/sdk";
 import { streamText } from "ai";
 import { anthropic } from "@ai-sdk/anthropic";
@@ -307,7 +315,7 @@ Streams resume after a dropped connection, so a page refresh picks up where it l
 
 ## Chat agents
 
-[`chat.agent`](/ai-chat/overview) builds on everything above for multi-turn chat. Each conversation is one long-lived task: it streams a reply, waits for the next message, and is checkpointed between turns so an idle chat uses no compute. The conversation survives page refreshes, deploys, and crashes, and it works with the AI SDK's `useChat`.
+[`chat.agent`](/ai-chat/overview) builds on everything above for multi-turn chat. Each conversation is a durable session. A run streams a reply, waits for the next message, and is checkpointed between turns, so an idle chat uses no compute and keeps its in-memory state. If the run exits (after a deploy, a crash, or a long idle gap), the next message starts a new run that reloads the conversation history from a snapshot, but not in-memory state. The conversation survives page refreshes, deploys, and crashes, and it works with the AI SDK's `useChat`.
 
 For the turn loop, sessions, and what survives each kind of failure, see [How the AI Agents SDK works](/ai-chat/how-it-works).
 
@@ -315,7 +323,7 @@ For the turn loop, sessions, and what survives each kind of failure, see [How th
 
 The CLI sets up Trigger.dev in your project, runs your agents locally, and deploys them:
 
-```sh
+```bash
 npx trigger.dev@latest login # Log in to your Trigger.dev account
 npx trigger.dev@latest init # Initialize Trigger.dev in your project
 npx trigger.dev@latest dev # Run your tasks locally
@@ -324,7 +332,7 @@ npx trigger.dev@latest deploy # Deploy your tasks to the Trigger.dev instance
 
 The CLI works with Trigger.dev Cloud and self-hosted instances. Use profiles to switch between accounts or instances:
 
-```sh
+```bash
 npx trigger.dev@latest login --profile <profile> -a https://trigger.example.com # Log in to a self-hosted instance
 npx trigger.dev@latest dev --profile <profile> # Run your tasks locally against that profile
 npx trigger.dev@latest deploy --profile <profile> # Deploy your tasks to that instance
@@ -373,7 +381,7 @@ Every run produces an OpenTelemetry trace. Subtask and sub-agent runs are linked
 
 Because traces are standard OpenTelemetry, you can add instrumentation for the libraries your agent uses. This config instruments Prisma and the AWS SDK:
 
-```ts trigger.config.ts
+```typescript trigger.config.ts
 import { defineConfig } from "@trigger.dev/sdk";
 import { PrismaInstrumentation } from "@prisma/instrumentation";
 import { AwsInstrumentation } from "@opentelemetry/instrumentation-aws-sdk";
