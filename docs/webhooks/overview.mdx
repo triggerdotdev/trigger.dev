@@ -57,36 +57,7 @@ Stripe gets one URL. A checkout event runs `fulfill-order`, a refund runs `recor
 | Chat frontend | a [channel connector](/webhooks/channels) such as `chat.channels.custom({ endpoint })` | Runs a turn on the conversation's session and posts the reply back. |
 | Waiting run | [`webhooks.waiter.create(endpoint, { match })`](/webhooks/waiters) | Resumes a run that is waiting for this event. |
 
-Each subscriber has its own [filter](/webhooks/filters), so one delivery can reach several subscribers and skip the rest. An endpoint can have up to 25 subscribers. An endpoint with no subscribers still gets a URL, so you can register it with the provider before writing the handlers.
-
-## The handler
-
-`onEvent` receives:
-
-| Argument | Value |
-| --- | --- |
-| `event` | The verified request body, parsed as JSON. Its TypeScript type comes from the [source](/webhooks/verification#typing-the-event). |
-| `headers` | Request headers as a Web `Headers` object, with case-insensitive `get()` and `has()` methods. Credentials such as signatures are removed. |
-| `endpoint` | The endpoint the delivery arrived on: `id`, `declaredId`, `tenantId`, `externalRef`, and the `metadata` you declared. |
-| `ctx` | The same [run context](/context) that regular tasks receive. |
-
-`webhook()` also takes the options a [task](/tasks/overview) does, such as `queue`, `concurrency`, `machine`, `retry`, `maxDuration` and the lifecycle hooks. For example, to handle one delivery at a time:
-
-```ts
-export const orders = webhook({
-  id: "stripe-orders",
-  endpoint: stripe,
-  queue: { concurrencyLimit: 1 },
-  retry: { maxAttempts: 5 },
-  onEvent: async ({ event }) => {
-    // ...
-  },
-});
-```
-
-The limit covers every delivery the task handles. To process each customer's events in order while different customers run in parallel, route them to an agent with [session routing](/webhooks/session-routing): deliveries with the same key land in one session and are handled one after another.
-
-`webhooks.endpoint.define` also takes a `description` and `metadata`. The metadata is passed to every subscriber as `endpoint.metadata`. The endpoint `id` can't start with `wh_`, which is reserved for the ids Trigger.dev generates.
+Each subscriber has its own [filter](/webhooks/filters), so one delivery can reach several subscribers and skip the rest. An endpoint can have up to 25 subscribers. An endpoint with no subscribers still gets a URL, so you can register it with the provider before writing the handlers. See [Webhook tasks](/webhooks/webhook-tasks) for what a handler receives and the options it takes.
 
 <CardGroup cols={3}>
   <Card title="Quick start" icon="rocket" href="/webhooks/quick-start">

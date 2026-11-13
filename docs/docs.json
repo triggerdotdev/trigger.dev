@@ -231,6 +231,7 @@
               "webhooks/verification",
               "webhooks/deliveries",
               "webhooks/filters",
+              "webhooks/webhook-tasks",
               "webhooks/waiters",
               "webhooks/session-routing",
               "webhooks/channels",
