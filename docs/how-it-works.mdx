@@ -1,110 +1,130 @@
 ---
 title: "How Trigger.dev works"
 sidebarTitle: "How it works"
-description: "How Trigger.dev runs AI agents and workflows as durable tasks: no timeouts, checkpointed waits for tools, sub-agents and humans, retries that skip finished steps, and streaming to your frontend."
+description: "Understand how Trigger.dev runs durable AI agents and workflows."
 ---
 
-**Trigger.dev runs your AI agents as durable TypeScript tasks, with no timeouts, retries on failure, and checkpointed waits that don't burn compute.**
+## Introduction
 
-An agent doesn't fit inside a request. It calls a model in a loop, calls tools, hands work to sub-agents, waits on a human to approve something, and streams progress back to a user the whole time. A single run can take seconds or days. You write that loop as a normal async function, and we run it on managed compute, keep it alive across failures and deploys, and give you a trace of every step.
+Trigger.dev is the open source platform for building and running durable AI agents and workflows in TypeScript. You write tasks and agents in your existing codebase, and they run on Trigger.dev with retries, queues, waits, full tracing, and elastic scaling. There's no execution timeout, so you can offload work that takes a long time to complete, such as AI agents with human-in-the-loop approvals, processing videos, or sending multi-day email campaigns.
 
-This page explains the machinery underneath: how a run executes, what happens when an agent waits, how retries avoid repeating finished work, and how output reaches your frontend.
+To build durable chat agents, see [AI Agents](/ai-chat/overview).
 
-## An agent as a task
+For example, the below task processes a video with `ffmpeg` and sends the results to an s3 bucket, then updates a database with the results and sends an email to the user.
 
-A task is an async function with an `id`. This one is a research agent: it calls the model in a loop, and each tool call runs as its own task.
+```ts /trigger/video.ts
+import { logger, task } from "@trigger.dev/sdk";
+import { updateVideoUrl } from "../db.js";
+import ffmpeg from "fluent-ffmpeg";
+import { Readable } from "node:stream";
+import type { ReadableStream } from "node:stream/web";
+import * as fs from "node:fs/promises";
+import * as path from "node:path";
+import { S3Client, PutObjectCommand } from "@aws-sdk/client-s3";
+import { sendEmail } from "../email.js";
+import { getVideo } from "../db.js";
 
-```typescript /trigger/research-agent.ts
-import { schemaTask, task } from "@trigger.dev/sdk";
-import { ai } from "@trigger.dev/sdk/ai";
-import { generateText, stepCountIs, tool } from "ai";
-import { anthropic } from "@ai-sdk/anthropic";
-import { z } from "zod";
-
-// Only fetch from hosts you trust, so the model can't be steered to internal services
-const ALLOWED_HOSTS = new Set(["en.wikipedia.org", "developer.mozilla.org"]);
-
-// A tool backed by a task: each call is a child run with its own retries and trace
-export const fetchPage = schemaTask({
-  id: "fetch-page",
-  description: "Fetch a web page and return its text",
-  schema: z.object({ url: z.string().url() }),
-  retry: { maxAttempts: 3 },
-  run: async ({ url }) => {
-    let current = new URL(url);
-
-    // Follow redirects by hand so every hop is checked against the allowlist
-    for (let hop = 0; hop < 5; hop++) {
-      if (current.protocol !== "https:" || !ALLOWED_HOSTS.has(current.hostname)) {
-        throw new Error(`Fetching ${current.hostname} is not allowed`);
-      }
-
-      const response = await fetch(current, { redirect: "manual" });
-      const location = response.headers.get("location");
-
-      if (response.status >= 300 && response.status < 400 && location) {
-        current = new URL(location, current);
-        continue;
-      }
-
-      // Throwing on 4xx/5xx lets the task's retry config handle failures like 429 or 503
-      if (!response.ok) {
-        throw new Error(`Fetching ${current} failed with status ${response.status}`);
-      }
-
-      return { text: (await response.text()).slice(0, 20_000) };
-    }
-
-    throw new Error(`Too many redirects fetching ${url}`);
-  },
+// Initialize S3 client
+const s3Client = new S3Client({
+  region: process.env.AWS_REGION,
 });
 
-export const researchAgent = task({
-  id: "research-agent",
-  retry: { maxAttempts: 3 },
-  run: async ({ question }: { question: string }) => {
-    const { text } = await generateText({
-      model: anthropic("claude-sonnet-4-5"),
-      system: "You are a research agent. Fetch sources before you answer.",
-      prompt: question,
-      tools: {
-        fetchPage: tool({
-          description: fetchPage.description ?? "",
-          inputSchema: fetchPage.schema!,
-          execute: ai.toolExecute(fetchPage),
-        }),
-      },
-      stopWhen: stepCountIs(20),
+export const convertVideo = task({
+  id: "convert-video",
+  retry: {
+    maxAttempts: 5,
+    minTimeoutInMs: 1000,
+    maxTimeoutInMs: 10000,
+    factor: 2,
+  },
+  run: async ({ videoId }: { videoId: string }) => {
+    const { url, userId } = await getVideo(videoId);
+
+    const outputPath = path.join("/tmp", `output_${videoId}.mp4`);
+
+    const response = await fetch(url);
+
+    await new Promise((resolve, reject) => {
+      ffmpeg(Readable.fromWeb(response.body as ReadableStream))
+        .videoFilters("scale=iw/2:ih/2")
+        .output(outputPath)
+        .on("end", resolve)
+        .on("error", reject)
+        .run();
     });
 
-    return { answer: text };
+    const processedContent = await fs.readFile(outputPath);
+
+    // Upload to S3
+    const s3Key = `processed-videos/output_${videoId}.mp4`;
+
+    const uploadParams = {
+      Bucket: process.env.S3_BUCKET,
+      Key: s3Key,
+      Body: processedContent,
+    };
+
+    await s3Client.send(new PutObjectCommand(uploadParams));
+    const s3Url = `https://${process.env.S3_BUCKET}.s3.amazonaws.com/${s3Key}`;
+
+    logger.info("Video converted", { videoId, s3Url });
+
+    // Update database
+    await updateVideoUrl(videoId, s3Url);
+
+    await sendEmail(
+      userId,
+      "Video Processing Complete",
+      `Your video has been processed and is available at: ${s3Url}`
+    );
+
+    return { success: true, s3Url };
   },
 });
 ```
 
-Trigger the agent from your backend. The call returns a handle straight away, and the agent runs in the background:
+Now in your application, you can trigger this task by calling:
 
-```typescript Your backend code
+```ts
+import { NextResponse } from "next/server";
 import { tasks } from "@trigger.dev/sdk";
-import type { researchAgent } from "./trigger/research-agent";
-//     👆 type-only import, so your backend doesn't bundle the agent
+import type { convertVideo } from "./trigger/video";
+//     👆 **type-only** import
 
 export async function POST(request: Request) {
-  const { question } = await request.json();
+  const body = await request.json();
 
-  const handle = await tasks.trigger<typeof researchAgent>("research-agent", { question });
+  // Trigger the task, this will return before the task is completed
+  const handle = await tasks.trigger<typeof convertVideo>("convert-video", body);
 
-  return Response.json(handle); // { id: "run_cm4f2x9...", publicAccessToken: "..." }
+  return NextResponse.json(handle);
 }
 ```
 
-Use the handle's `id` to check the run's status, and pass its `publicAccessToken` to your frontend to [subscribe to the run in realtime](/realtime/overview). To show the agent's output as it's generated, write it to a stream, as in [Streaming agent output to your frontend](#streaming-agent-output-to-your-frontend).
+This will schedule the task to run in the background and return a handle that you can use to check the status of the task. This allows your backend application to respond quickly to the user and offload the long-running task to Trigger.dev.
 
-For conversational agents where a user sends messages back and forth, use [`chat.agent`](/ai-chat/overview). It runs each conversation as a durable session on the same machinery described below.
+## The CLI
 
-## Architecture
+Trigger.dev comes with a CLI that allows you to initialize Trigger.dev into your project, deploy your tasks, and run your tasks locally. You can run it via `npx` like so:
 
-When you run `npx trigger.dev@latest deploy`, we build your task code and deploy it to your Trigger.dev instance. When you trigger a task, we queue the run, then execute it in an isolated container with the [machine](/machines) size you configured. A simplified view of one run:
+```sh
+npx trigger.dev@latest login # Log in to your Trigger.dev account
+npx trigger.dev@latest init # Initialize Trigger.dev in your project
+npx trigger.dev@latest dev # Run your tasks locally
+npx trigger.dev@latest deploy # Deploy your tasks to the Trigger.dev instance
+```
+
+All these commands work with the Trigger.dev cloud and/or your self-hosted instance. It supports multiple profiles so you can easily switch between different accounts or instances.
+
+```sh
+npx trigger.dev@latest login --profile <profile> -a https://trigger.example.com # Log in to a specific profile into a self-hosted instance
+npx trigger.dev@latest dev --profile <profile> # Initialize Trigger.dev in your project
+npx trigger.dev@latest deploy --profile <profile> # Deploy your tasks to the Trigger.dev instance
+```
+
+## Trigger.dev architecture
+
+Trigger.dev implements a serverless architecture (without timeouts!) that allows you to run your tasks in a scalable and reliable way. When you run `npx trigger.dev@latest deploy`, we build and deploy your task code to your Trigger.dev instance. Then, when you trigger a task from your application, it's run in a secure, isolated environment with the resources you need to complete the task. A simplified diagram for a task execution looks like this:
 
 ```mermaid
 sequenceDiagram
@@ -113,293 +133,318 @@ sequenceDiagram
   participant Task Worker
 
   App->>Trigger.dev: Trigger task
-  Trigger.dev-->>App: Run handle
+  Trigger.dev-->>App: Task handle
   Trigger.dev->>Task Worker: Run task
   Task Worker-->>Trigger.dev: Task completed
 ```
 
-Behind this sit the run queue, the scheduler, the worker pool, and the logging pipeline. There is no execution timeout: a run lasts as long as your code does, up to the [`maxDuration`](/runs/max-duration) you set.
+In reality there are many more components involved, such as the task queue, the task scheduler, and the task worker pool, logging (etc.), but this diagram gives you a high-level overview of how Trigger.dev works.
 
-## Waiting without paying for compute
+## The Checkpoint-Resume System
 
-Agents spend much of their time waiting: for a sub-agent to finish, for a scheduled follow-up, or for a person to approve an action. While a run waits, we checkpoint it and free the machine, so a run can wait for days without holding a container.
+Trigger.dev implements a powerful Checkpoint-Resume System that enables efficient execution of long-running background tasks in a serverless-like environment. This system allows tasks to pause, checkpoint their state, and resume seamlessly, optimizing resource usage and enabling complex workflows.
 
-This agent drafts a reply, then waits for a human to approve it before sending:
+Here's how the Checkpoint-Resume System works:
 
-```typescript /trigger/support-agent.ts
+1. **Task Execution**: When a task is triggered, it runs in an isolated environment with all necessary resources.
+
+2. **Subtask Handling**: If a task needs to trigger a subtask, it can do so and wait for its completion using `triggerAndWait`
+
+3. **State Checkpointing**: While waiting for a subtask or during a long programmed pause (e.g., `wait.for({ minutes: 5 })`), the system uses CRIU (Checkpoint/Restore In Userspace) to create a checkpoint of the task's entire state, including memory, CPU registers, and open file descriptors. A `wait.for()` or `wait.until()` shorter than 60 seconds doesn't checkpoint — see [Wait](/wait).
+
+4. **Resource Release**: After checkpointing, the parent task's resources are released, freeing up the execution environment.
+
+5. **Efficient Storage**: The checkpoint is efficiently compressed and stored on disk, ready to be restored when needed.
+
+6. **Event-Driven Resumption**: When a subtask completes or a wait period ends, Trigger.dev's event system triggers the restoration process.
+
+7. **State Restoration**: The checkpoint is loaded back into a new execution environment, restoring the task to its exact state before suspension.
+
+8. **Seamless Continuation**: The task resumes execution from where it left off, with any subtask results or updated state seamlessly integrated.
+
+This approach allows Trigger.dev to manage resources efficiently, handle complex task dependencies, and provide a virtually limitless execution time for your tasks, all while maintaining the simplicity and scalability of a serverless architecture.
+
+Example of a parent and child task using the Checkpoint-Resume System:
+
+```ts
 import { task, wait } from "@trigger.dev/sdk";
-import { generateText } from "ai";
-import { anthropic } from "@ai-sdk/anthropic";
-import { sendReply, notifyReviewer } from "../support.js";
-import { researchAgent } from "./research-agent.js";
 
-export const supportAgent = task({
-  id: "support-agent",
-  run: async ({ ticketId, question }: { ticketId: string; question: string }) => {
-    // Hand research to a sub-agent. This run is checkpointed while it waits
-    const research = await researchAgent.triggerAndWait({ question }).unwrap();
+export const parentTask = task({
+  id: "parent-task",
+  run: async () => {
+    console.log("Starting parent task");
 
-    const { text: draft } = await generateText({
-      model: anthropic("claude-sonnet-4-5"),
-      prompt: `Write a reply to: ${question}\n\nResearch:\n${research.answer}`,
-    });
+    // This will cause the parent task to be checkpointed and suspended
+    const result = await childTask.triggerAndWait({ data: "some data" });
 
-    // Pause until a reviewer approves or rejects the draft, for up to 7 days
-    const token = await wait.createToken({ timeout: "7d" });
-    await notifyReviewer({ ticketId, draft, tokenId: token.id });
+    console.log("Child task result:", result);
 
-    const approval = await wait.forToken<{ approved: boolean }>(token);
+    // This will also cause the task to be checkpointed and suspended
+    await wait.for({ minutes: 5 });
 
-    if (approval.ok && approval.output.approved) {
-      await sendReply(ticketId, draft);
-    }
+    console.log("Resumed after 5 minutes");
 
-    return { sent: approval.ok && approval.output.approved };
+    return "Parent task completed";
+  },
+});
+
+export const childTask = task({
+  id: "child-task",
+  run: async (payload: { data: string }) => {
+    console.log("Starting child task with data:", payload.data);
+
+    // Simulate some work
+    await sleep(5);
+
+    return "Child task result";
   },
 });
 ```
 
-Your reviewer UI or backend completes the token with [`wait.completeToken()`](/wait-for-token), and the run resumes on the next line.
-
-### The Checkpoint-Resume System
-
-1. **Execution**: a triggered run executes in an isolated container.
-2. **Wait**: the run calls `triggerAndWait`, `wait.forToken`, `wait.for`, or `wait.until`.
-3. **Checkpoint**: we use CRIU (Checkpoint/Restore In Userspace) to capture the run's whole process state, including memory, CPU registers, and open file descriptors. A `wait.for()` or `wait.until()` shorter than 60 seconds doesn't checkpoint; see [Wait](/wait).
-4. **Release**: the container shuts down, and the run stops using compute and concurrency.
-5. **Storage**: the checkpoint is compressed and stored until it's needed.
-6. **Resume**: when the sub-agent finishes, the token completes, or the wait ends, we restore the checkpoint into a new container.
-7. **Continue**: the run picks up on the line after the wait, with every variable, in-flight promise, and in-memory cache as it was.
+The diagram below illustrates the flow of the parent and child tasks using the Checkpoint-Resume System:
 
 ```mermaid
 sequenceDiagram
     participant App
     participant Trigger.dev
-    participant Agent as Support agent
-    participant Sub as Research agent
-    participant Storage as Checkpoint storage
-    participant Reviewer
+    participant Parent Task
+    participant Child Task
+    participant CR System
+    participant Storage
 
-    App->>Trigger.dev: Trigger support agent
-    Trigger.dev->>Agent: Start execution
-    Agent->>Sub: triggerAndWait
-    Agent->>Storage: Checkpoint, release machine
-    Sub->>Trigger.dev: Complete
-    Trigger.dev->>Storage: Restore support agent
-    Storage->>Agent: Resume with research result
-    Agent->>Trigger.dev: wait.forToken
-    Agent->>Storage: Checkpoint, release machine
-    Reviewer->>Trigger.dev: Complete token (approved)
-    Trigger.dev->>Storage: Restore support agent
-    Storage->>Agent: Resume with approval
-    Agent->>Trigger.dev: Complete execution
+    App->>Trigger.dev: Trigger parent task
+    Trigger.dev->>Parent Task: Start execution
+    Parent Task->>Child Task: Trigger child task
+    Parent Task->>CR System: Request snapshot
+    CR System->>Storage: Store snapshot
+    CR System-->>Parent Task: Confirm snapshot stored
+    Parent Task->>Trigger.dev: Release resources
+
+    Child Task->>Trigger.dev: Complete execution
+    Trigger.dev->>CR System: Request parent task restoration
+    CR System->>Storage: Retrieve snapshot
+    CR System->>Parent Task: Restore state
+    Parent Task->>Trigger.dev: Resume execution
+    Parent Task->>Trigger.dev: Complete execution
 ```
 
 <Note>
-  In the Trigger.dev Cloud we don't charge for time spent waiting on sub-agents and subtasks, or
-  for checkpointed waits.
+  This is why, in the Trigger.dev Cloud, we don't charge for the time waiting for subtasks or the
+  time spent in a paused state.
 </Note>
 
-## Retries that don't repeat finished work
+## Durable execution
 
-Model calls are slow and cost money, so an agent shouldn't redo work it has already finished when a later step fails. Split the agent into steps that each run as a subtask, and give each step an idempotency key. When the parent retries, finished steps return their cached output instead of running again.
+Trigger.dev's Checkpoint-Resume System, combined with idempotency keys, enables durable execution of complex workflows. This approach allows for efficient retries and caching of results, ensuring that work is not unnecessarily repeated in case of failures.
+
+### How it works
+
+1. **Task breakdown**: Complex workflows are broken down into smaller, independent subtasks.
+2. **Idempotency keys**: Each subtask is assigned a unique idempotency key.
+3. **Result caching**: The output of each subtask is cached based on its idempotency key.
+4. **Intelligent retries**: If a failure occurs, only the failed subtask and subsequent tasks are retried.
+
+### Example: Video processing workflow
+
+Let's rewrite the `convert-video` task above to be more durable:
 
 <CodeGroup>
 
-```typescript /trigger/report-agent.ts
-import { idempotencyKeys, task } from "@trigger.dev/sdk";
-import { gatherSources, writeReport, publishReport } from "./steps.js";
+```ts /trigger/video.ts
+import { idempotencyKeys, logger, task } from "@trigger.dev/sdk";
+import { processVideo, sendUserEmail, uploadToS3 } from "./tasks.js";
+import { updateVideoUrl } from "../db.js";
 
-export const reportAgent = task({
-  id: "report-agent",
-  retry: { maxAttempts: 5 },
-  run: async ({ topic }: { topic: string }) => {
-    // Scoped to this run, so it stays the same across retries of this run
-    const idempotencyKey = await idempotencyKeys.create(topic);
+export const convertVideo = task({
+  id: "convert-video",
+  retry: {
+    maxAttempts: 5,
+    minTimeoutInMs: 1000,
+    maxTimeoutInMs: 10000,
+    factor: 2,
+  },
+  run: async ({ videoId }: { videoId: string }) => {
+    // Automatically scope the idempotency key to this run, across retries
+    const idempotencyKey = await idempotencyKeys.create(videoId);
 
-    const { sources } = await gatherSources
-      .triggerAndWait({ topic }, { idempotencyKey })
-      .unwrap(); // Returns the output, or throws if the subtask failed
+    // Process video
+    const { processedContent } = await processVideo
+      .triggerAndWait({ videoId }, { idempotencyKey })
+      .unwrap(); // Calling unwrap will return the output of the subtask, or throw an error if the subtask failed
 
-    const { report } = await writeReport
-      .triggerAndWait({ topic, sources }, { idempotencyKey })
+    // Upload to S3
+    const { s3Url } = await uploadToS3
+      .triggerAndWait({ processedContent, videoId }, { idempotencyKey })
       .unwrap();
 
-    const { url } = await publishReport
-      .triggerAndWait({ report }, { idempotencyKey })
-      .unwrap();
+    // Update database
+    await updateVideoUrl(videoId, s3Url);
 
-    return { url };
+    // Send email
+    await sendUserEmail.triggerAndWait({ videoId, s3Url }, { idempotencyKey }).unwrap();
+
+    return { success: true, s3Url };
   },
 });
 ```
 
-```typescript /trigger/steps.ts
-import { task } from "@trigger.dev/sdk";
-import { generateText } from "ai";
-import { anthropic } from "@ai-sdk/anthropic";
-import { searchWeb, saveToCms } from "../services.js";
+```ts /trigger/tasks.ts
+import { task, logger } from "@trigger.dev/sdk";
+import ffmpeg from "fluent-ffmpeg";
+import { Readable } from "node:stream";
+import type { ReadableStream } from "node:stream/web";
+import * as fs from "node:fs/promises";
+import * as path from "node:path";
+import { S3Client, PutObjectCommand } from "@aws-sdk/client-s3";
+import { sendEmail } from "../email.js";
+import { getVideo } from "../db.js";
 
-export const gatherSources = task({
-  id: "gather-sources",
-  run: async ({ topic }: { topic: string }) => {
-    return { sources: await searchWeb(topic) };
-  },
+// Initialize S3 client
+const s3Client = new S3Client({
+  region: process.env.AWS_REGION,
 });
 
-export const writeReport = task({
-  id: "write-report",
-  run: async ({ topic, sources }: { topic: string; sources: string[] }) => {
-    const { text } = await generateText({
-      model: anthropic("claude-sonnet-4-5"),
-      prompt: `Write a report on ${topic} using these sources:\n${sources.join("\n")}`,
+export const processVideo = task({
+  id: "process-video",
+  run: async ({ videoId }: { videoId: string }) => {
+    const { url } = await getVideo(videoId);
+
+    const outputPath = path.join("/tmp", `output_${videoId}.mp4`);
+    const response = await fetch(url);
+
+    await logger.trace("ffmpeg", async (span) => {
+      await new Promise((resolve, reject) => {
+        ffmpeg(Readable.fromWeb(response.body as ReadableStream))
+          .videoFilters("scale=iw/2:ih/2")
+          .output(outputPath)
+          .on("end", resolve)
+          .on("error", reject)
+          .run();
+      });
     });
 
-    return { report: text };
+    const processedContent = await fs.readFile(outputPath);
+
+    await fs.unlink(outputPath);
+
+    return { processedContent: processedContent.toString("base64") };
   },
 });
 
-export const publishReport = task({
-  id: "publish-report",
-  run: async ({ report }: { report: string }) => {
-    return { url: await saveToCms(report) };
+export const uploadToS3 = task({
+  id: "upload-to-s3",
+  run: async (payload: { processedContent: string; videoId: string }) => {
+    const { processedContent, videoId } = payload;
+
+    const s3Key = `processed-videos/output_${videoId}.mp4`;
+
+    const uploadParams = {
+      Bucket: process.env.S3_BUCKET,
+      Key: s3Key,
+      Body: Buffer.from(processedContent, "base64"),
+    };
+
+    await s3Client.send(new PutObjectCommand(uploadParams));
+    const s3Url = `https://${process.env.S3_BUCKET}.s3.amazonaws.com/${s3Key}`;
+
+    return { s3Url };
+  },
+});
+
+export const sendUserEmail = task({
+  id: "send-user-email",
+  run: async ({ videoId, s3Url }: { videoId: string; s3Url: string }) => {
+    const { userId } = await getVideo(videoId);
+
+    return await sendEmail(
+      userId,
+      "Video Processing Complete",
+      `Your video has been processed and is available at: ${s3Url}`
+    );
   },
 });
 ```
 
 </CodeGroup>
 
-If `publish-report` fails, the parent retries from the start, but `gather-sources` and `write-report` return their cached results, so the model isn't called again:
+### How retries work
+
+Let's say the email sending fails in our video processing workflow. Here's how the retry process works:
+
+1. The main task throws an error and is scheduled for retry.
+2. When retried, it starts from the beginning, but leverages cached results for completed subtasks.
+
+Here's a sequence diagram illustrating this process:
 
 ```mermaid
 sequenceDiagram
-  participant Main as Report agent
-  participant Gather as Gather sources
-  participant Write as Write report
-  participant Publish as Publish report
+  participant Main as Main Task
+  participant Process as Process Video
+  participant Upload as Upload to S3
+  participant DB as Update Database
+  participant Email as Send Email
 
-  Main->>Gather: triggerAndWait (1st attempt)
-  Gather-->>Main: Return result
-  Main->>Write: triggerAndWait (1st attempt)
-  Write-->>Main: Return result
-  Main->>Publish: triggerAndWait (1st attempt)
-  Publish--xMain: Fail
+  Main->>Process: triggerAndWait (1st attempt)
+  Process-->>Main: Return result
+  Main->>Upload: triggerAndWait (1st attempt)
+  Upload-->>Main: Return result
+  Main->>DB: Update
+  Main->>Email: triggerAndWait (1st attempt)
+  Email--xMain: Fail
   Main-->>Main: Schedule retry
 
-  Main->>Gather: triggerAndWait (2nd attempt)
-  Gather-->>Main: Return cached result
-  Main->>Write: triggerAndWait (2nd attempt)
-  Write-->>Main: Return cached result
-  Main->>Publish: triggerAndWait (2nd attempt)
-  Publish-->>Main: Success
+  Main->>Process: triggerAndWait (2nd attempt)
+  Process-->>Main: Return cached result
+  Main->>Upload: triggerAndWait (2nd attempt)
+  Upload-->>Main: Return cached result
+  Main->>DB: Update (idempotent)
+  Main->>Email: triggerAndWait (2nd attempt)
+  Email-->>Main: Success
 ```
-
-Read more in [Idempotency](/idempotency) and [Errors and retrying](/errors-retrying).
-
-## Streaming agent output to your frontend
-
-A run can stream data to your frontend or backend while it executes, such as model tokens, tool progress, or intermediate results. Define a stream, pipe into it from the task, and read it anywhere with the run ID:
-
-```typescript /trigger/streams.ts
-import { streams } from "@trigger.dev/sdk";
-
-export const answerStream = streams.define<string>({ id: "answer" });
-```
-
-```typescript /trigger/streaming-agent.ts
-import { task } from "@trigger.dev/sdk";
-import { streamText } from "ai";
-import { anthropic } from "@ai-sdk/anthropic";
-import { answerStream } from "./streams.js";
-
-export const streamingAgent = task({
-  id: "streaming-agent",
-  run: async ({ question }: { question: string }) => {
-    const result = streamText({
-      model: anthropic("claude-sonnet-4-5"),
-      prompt: question,
-    });
-
-    // Every token is written to the stream as the model produces it
-    const { waitUntilComplete } = answerStream.pipe(result.textStream);
-    await waitUntilComplete();
-
-    return { answer: await result.text };
-  },
-});
-```
-
-Streams resume after a dropped connection, so a page refresh picks up where it left off. In React, read a stream with `useRealtimeStream` from `@trigger.dev/react-hooks`. To send data into a running agent, such as a cancel signal or a user's answer, use [input streams](/tasks/streams#input-streams). See [Streams](/tasks/streams) and [Realtime](/realtime/overview).
-
-## Chat agents
-
-[`chat.agent`](/ai-chat/overview) builds on everything above for multi-turn chat. Each conversation is a durable session. A run streams a reply, waits for the next message, and is checkpointed between turns, so an idle chat uses no compute and keeps its in-memory state. If the run exits (after a deploy, a crash, or a long idle gap), the next message starts a new run that reloads the conversation history from a snapshot, but not in-memory state. The conversation survives page refreshes, deploys, and crashes, and it works with the AI SDK's `useChat`.
-
-For the turn loop, sessions, and what survives each kind of failure, see [How the AI Agents SDK works](/ai-chat/how-it-works).
-
-## The CLI
-
-The CLI sets up Trigger.dev in your project, runs your agents locally, and deploys them:
-
-```bash
-npx trigger.dev@latest login # Log in to your Trigger.dev account
-npx trigger.dev@latest init # Initialize Trigger.dev in your project
-npx trigger.dev@latest dev # Run your tasks locally
-npx trigger.dev@latest deploy # Deploy your tasks to the Trigger.dev instance
-```
-
-The CLI works with Trigger.dev Cloud and self-hosted instances. Use profiles to switch between accounts or instances:
-
-```bash
-npx trigger.dev@latest login --profile <profile> -a https://trigger.example.com # Log in to a self-hosted instance
-npx trigger.dev@latest dev --profile <profile> # Run your tasks locally against that profile
-npx trigger.dev@latest deploy --profile <profile> # Deploy your tasks to that instance
-```
-
-If you build with a coding agent, the [MCP server](/mcp-introduction) and [agent skills](/skills) let it write, run, and debug tasks for you.
 
 ## The build system
 
-When you run `npx trigger.dev@latest deploy` or `npx trigger.dev@latest dev`, we build your task code with [esbuild](https://esbuild.github.io/). When deploying, the code is packaged into a Docker image and deployed to your Trigger.dev instance. In dev mode, the code is built and run on your machine.
+When you run `npx trigger.dev@latest deploy` or `npx trigger.dev@latest dev`, we build your task code using our build system, which is powered by [esbuild](https://esbuild.github.io/). When deploying, the code is packaged up into a Docker image and deployed to your Trigger.dev instance. When running in dev mode, the code is built and run locally on your machine. Some features of our build system include:
 
-- **Bundled by default**: code and dependencies are bundled and tree-shaken.
-- **Build extensions**: use or write extensions to transform your code or the resulting Docker image, for example to add Python, Playwright, or system packages your agent's tools need.
-- **ESM output**: we output ESM, which allows tree-shaking.
+- **Bundled by default**: Code + dependencies are bundled and tree-shaked by default.
+- **Build extensions**: Use and write custom build extensions to transform your code or the resulting docker image.
+- **ESM ouput**: We output to ESM, which allows tree-shaking and better performance.
 
-Run deploy with the `--dry-run` flag to review the Containerfile and build output.
+You can review the build output by running deploy with the `--dry-run` flag, which will output the Containerfile and the build output.
 
-Learn more in the [configuration docs](/config/config-file).
+Learn more about working with our build system in the [configuration docs](/config/config-file).
 
 ## Dev mode
 
-When you run `npx trigger.dev@latest dev`, your task code runs locally on your machine. Scheduling still happens in the Trigger.dev instance, so waits, retries, and streams behave the same as in production.
+When you run `npx trigger.dev@latest dev`, we run your task code locally on your machine. All scheduling is still done in the Trigger.dev server instance, but the task code is run locally. This allows you to develop and test your tasks locally before deploying them to the cloud, and is especially useful for debugging and testing.
 
-- The same build system runs in dev mode, so your code behaves the same locally as when deployed.
-- Saving a file spins up a new version automatically.
+- The same build system is used in dev mode, so you can be sure that your code will run the same locally as it does in the cloud.
+- Changes are automatically detected and a new version is spun up when you save your code.
 - Add debuggers and breakpoints to your code and debug it locally.
-- Each run executes in a separate process, so runs execute in parallel.
+- Each task is run in a separate process, so you can run multiple tasks in parallel.
 - Stopping the dev server stops your local task processes. If the CLI is killed abruptly (for example by a package manager sending SIGKILL), in-flight runs are cancelled automatically. After a normal Ctrl-C stop, in-flight runs are not cancelled and can end with a `TASK_RUN_STALLED_EXECUTING` error once the 5 minute heartbeat timeout passes.
 
 <Note>
-  Trigger.dev does not support an "offline" dev mode, where tasks run without an internet
-  connection. [Let us know](https://feedback.trigger.dev/) if you need it.
+  Trigger.dev currently does not support "offline" dev mode, where you can run tasks without an
+  internet connection. [Please let us know](https://feedback.trigger.dev/) if this is a feature you
+  want/need.
 </Note>
 
 ## Staging and production environments
 
-Trigger.dev supports deploying to `prod` and `staging` environments, so you can test an agent in staging before it reaches production. Deploy to a different environment with `npx trigger.dev@latest deploy --env <env>`, where `<env>` is `prod`, `staging` or `preview` (the branch is detected from git, or you can pass `--branch`). Each environment has its own API key, which you use to trigger tasks in that environment.
+Trigger.dev supports deploying to `prod` and `staging` environments. This allows you to test your tasks in a staging environment before deploying them to production. You can deploy to a different environment by running `npx trigger.dev@latest deploy --env <env>`, where `<env>` is `prod`, `staging` or `preview` (the branch is detected from git, or you can pass `--branch`). Each environment has its own API Key, which you can use to trigger tasks in that environment.
 
-For more isolated environments, use [preview branches](/deployment/preview-branches) to create a separate environment for each branch of your code.
+For additional isolated environments, you can use [preview branches](/deployment/preview-branches), which allow you to create separate environments for each branch of your code.
 
-## Observability
+## OpenTelemetry
 
-Every run produces an OpenTelemetry trace. Subtask and sub-agent runs are linked to their parent, so one trace shows the whole agent: each model call, tool call, wait, and retry. With [AI observability](/ai/observability), each AI SDK call you opt in becomes its own span with the model, token usage, and cost.
+The Trigger.dev logging and task dashboard is powered by OpenTelemetry traces and logs, which allows you to trace your tasks and auto-instrument your code. We also auto-correlate logs from subtasks and parent tasks, making it easy view the entire trace of a task execution. A single run of the video processing task above looks like this in the dashboard:
 
-![OpenTelemetry trace of a run in the Trigger.dev dashboard](/images/opentelemetry-trace.png)
+![OpenTelemetry trace](/images/opentelemetry-trace.png)
 
-Because traces are standard OpenTelemetry, you can add instrumentation for the libraries your agent uses. This config instruments Prisma and the AWS SDK:
+Because we use standard OpenTelemetry, you can instrument your code and OpenTelemetry compatible libraries to get detailed traces and logs of your tasks. The above trace instruments both Prisma and the AWS SDK:
 
-```typescript trigger.config.ts
+```ts trigger.config.ts
 import { defineConfig } from "@trigger.dev/sdk";
 import { PrismaInstrumentation } from "@prisma/instrumentation";
 import { AwsInstrumentation } from "@opentelemetry/instrumentation-aws-sdk";
