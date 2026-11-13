@@ -88,6 +88,25 @@ describe("renderWebhookSetupPrompt", () => {
     expect(prompt).toContain("pass `previousSecretTtlSeconds`");
   });
 
+  it("stores an asymmetric source's public key before registering the URL", () => {
+    const discord = renderWebhookSetupPrompt(
+      endpoint({
+        source: "discord",
+        setupPrompt: webhookSetupPrompts.discord ?? null,
+        verifierArtifact: { kind: "preset", preset: "discord", config: discordVerifierConfig() },
+      }),
+      context
+    );
+    expect(discord).toMatch(
+      /1\. discord signs deliveries with a key pair\..*before registering the URL\./
+    );
+    expect(discord).toContain("2. Register the webhook URL with discord");
+
+    const stripe = renderWebhookSetupPrompt(endpoint(), context);
+    expect(stripe).toContain("1. Register the webhook URL with stripe");
+    expect(stripe).toContain("2. stripe issues the signing secret");
+  });
+
   it("asks which events to send when nothing subscribes yet", () => {
     const prompt = renderWebhookSetupPrompt(endpoint({ routingTargets: [] }), context);
 

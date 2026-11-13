@@ -524,10 +524,11 @@ const svixFamilySetupPrompt = [
  */
 export const webhookSetupPrompts: Partial<Record<WebhookPresetId | WebhookProviderId, string>> = {
   stripe: [
-    "Stripe issues the signing secret when a webhook endpoint is created, and returns it only in the create response.",
-    "Create the endpoint with the Stripe CLI or API, not the Dashboard, so you can read the secret from the response:",
+    "Stripe issues a signing secret (it starts with whsec_) for each webhook endpoint.",
+    "Create the endpoint with the Stripe CLI or API to read the secret from the response:",
     '  stripe webhook_endpoints create -d url="<webhook URL>" -d "enabled_events[]=<event type>"',
     "or POST https://api.stripe.com/v1/webhook_endpoints with `url` and `enabled_events[]`. The response's `secret` field is the signing secret.",
+    "In the Stripe Dashboard, the user can instead open the Webhooks tab in Workbench, choose Create an event destination with the Snapshot payload format and the webhook URL, then choose Reveal secret on the destination's settings page.",
     "Choose enabled_events from the subscribers' filters, which compare `event.type`. Use `*` only when a subscriber has no filter.",
     "Use a test mode key for dev and staging environments and a live mode key for production.",
   ].join("\n"),
@@ -543,8 +544,8 @@ export const webhookSetupPrompts: Partial<Record<WebhookPresetId | WebhookProvid
   "standard-webhooks": svixFamilySetupPrompt,
   discord: [
     "These settings are in the Discord Developer Portal (https://discord.com/developers/applications); tell the user each step.",
-    "1. Open the application, then its Webhooks page. Set the Endpoint URL to the webhook URL, turn Events on and select the event types the subscribers need. Discord sends a PING that the endpoint answers once it is deployed.",
-    "2. The public key is on the application's General Information page, under Public Key.",
+    "1. Open the application. The public key is on its General Information page, under Public Key. Store it on the endpoint first: Discord sends a signed PING when the Endpoint URL is saved, and the endpoint can only answer it once the key is set.",
+    "2. Open the application's Webhooks page. Set the Endpoint URL to the webhook URL, turn Events on and select the event types the subscribers need.",
   ].join("\n"),
   shopify: [
     "Shopify signs webhooks with the app's client secret, or for webhooks created in the store admin, with the key shown on that page.",
@@ -567,8 +568,9 @@ export const webhookSetupPrompts: Partial<Record<WebhookPresetId | WebhookProvid
     "Subscribers' filters compare `event.event_type`, for example `note.generated`.",
   ].join("\n"),
   autumn: [
-    "Autumn's webhooks are in beta, and Autumn support turns them on per account.",
-    "Once they are on, add the webhook URL as an endpoint in the Autumn dashboard's webhook settings and select the event types the subscribers need. Autumn delivers through Svix, which shows the endpoint's signing secret (it starts with whsec_); store it on Trigger.dev.",
+    "These settings are in the Autumn dashboard; tell the user each step.",
+    "Under Developer > Webhooks, choose Add Endpoint, enter the webhook URL and select the event types the subscribers need. Autumn delivers through Svix, which shows the endpoint's signing secret (it starts with whsec_); store it on Trigger.dev.",
+    "Send Test Event on the endpoint confirms delivery.",
     "Subscribers' filters compare `event.type`, for example `billing.updated`.",
   ].join("\n"),
   supabase: [
