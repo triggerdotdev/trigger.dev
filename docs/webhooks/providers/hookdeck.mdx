@@ -77,18 +77,19 @@ You can also point a Hookdeck destination at the [trigger task API](/management/
    ```javascript
    addHandler("transform", (request, context) => {
      request.body = { payload: request.body };
+     request.headers["content-type"] = "application/json";
      return request;
    });
    ```
 
-3. Create a connection from your source to that destination and transformation.
+3. Create a connection from your source to that destination and transformation. Turn on authentication for the Hookdeck source, such as the provider's signature verification: the destination's API key only authenticates Hookdeck to Trigger.dev, so an unauthenticated source would forward anyone's requests.
 
 ```ts /trigger/webhook-handler.ts
 import { task } from "@trigger.dev/sdk";
 
 export const webhookHandler = task({
   id: "webhook-handler",
-  run: async (payload: Record<string, unknown>) => {
+  run: async (payload: unknown) => {
     console.log("Received webhook:", payload);
   },
 });
