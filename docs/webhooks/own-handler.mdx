@@ -48,6 +48,8 @@ export async function POST(request: Request) {
 
 Return quickly: the task runs in the background, so the provider gets its response before the work starts.
 
+Set `TRIGGER_SECRET_KEY` in your app to a named [**Trigger only**](/apikeys) API key from the Trigger.dev environment the app uses, so the route can trigger tasks but do nothing else.
+
 ## Framework guides
 
 <CardGroup cols={2}>

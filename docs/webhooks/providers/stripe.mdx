@@ -1,10 +1,10 @@
 ---
-title: "Stripe webhooks"
+title: "Receive and verify Stripe webhooks"
 sidebarTitle: "Stripe"
-description: "Receive Stripe webhooks on a hosted Trigger.dev endpoint: the source, where to register the URL in Stripe, and how to set the signing credential."
+description: "Verify Stripe's webhook signature and run a Trigger.dev task for each Stripe event, such as checkout.session.completed. Register the endpoint in Stripe, set the whsec_ signing secret, and filter by event type."
 ---
 
-**`webhooks.stripe()` verifies Stripe's signature on every request, so subscribers only receive genuine Stripe events.**
+**`webhooks.stripe()` verifies the `stripe-signature` header on every request, so subscribers only receive genuine Stripe events.**
 
 ```ts /trigger/stripe.ts
 import { webhook, webhooks } from "@trigger.dev/sdk";
@@ -14,12 +14,12 @@ export const stripe = webhooks.endpoint.define({
   source: webhooks.stripe(),
 });
 
-export const stripeEvents = webhook({
-  id: "stripe-events",
+export const fulfillCheckout = webhook({
+  id: "fulfill-checkout",
   endpoint: stripe,
   filter: "event.type == 'checkout.session.completed'",
   onEvent: async ({ event }) => {
-    console.log(event);
+    console.log("Checkout completed", event.data.object.id);
   },
 });
 ```
@@ -28,23 +28,33 @@ export const stripeEvents = webhook({
 | --- | --- |
 | Source | `webhooks.stripe()` |
 | Verification | HMAC-SHA256 in `stripe-signature`, with a timestamp tolerance |
-| Credential | Signing secret issued by Stripe |
+| Credential | Signing secret issued by Stripe (starts with `whsec_`) |
 | Event type | `event.type` |
 | Stripe docs | [Stripe webhook docs](https://docs.stripe.com/webhooks) |
 
 ## Set up Stripe
 
 1. Start `trigger dev` or deploy, then copy the endpoint's **Webhook URL** from the **Webhooks** page.
-2. Create the webhook endpoint with the Stripe CLI or API, not the Dashboard, so you can read the signing secret from the response:
+2. In the Stripe Dashboard, open the **Webhooks** tab in Workbench and choose **Create an event destination**. Choose the **Snapshot** payload format, select the events you want, choose **Webhook endpoint** and paste the Webhook URL.
+3. On the destination's settings page, choose **Reveal secret** and copy the signing secret.
+4. Choose **Set signing secret** on the Trigger.dev endpoint and paste the secret.
+5. Use a test mode destination for dev and staging environments and a live mode destination for production. Each has its own signing secret.
 
-   ```bash
-   stripe webhook_endpoints create -d url="<webhook URL>" -d "enabled_events[]=checkout.session.completed"
-   ```
+To create the destination from the Stripe CLI instead, the response's `secret` field is the signing secret:
 
-   The response's `secret` field is the signing secret; Stripe only returns it when the endpoint is created.
-3. Choose **Set signing secret** on the Trigger.dev endpoint and paste the secret.
-4. Use a test mode key for dev and staging environments and a live mode key for production.
-5. Send a test event from Stripe, or use the endpoint's **Test** tab, and check the endpoint's **Deliveries** tab. See [Verify the connection](/webhooks/connect#verify-the-connection) if nothing arrives.
+```bash
+stripe webhook_endpoints create -d url="<webhook URL>" -d "enabled_events[]=checkout.session.completed"
+```
+
+## Test locally
+
+Your dev environment has its own Webhook URL, so you don't need `stripe listen` or a tunnel. With `trigger dev` running and a test mode destination pointing at the dev URL, send a test event with the Stripe CLI:
+
+```bash
+stripe trigger checkout.session.completed
+```
+
+The delivery appears on the endpoint's **Deliveries** tab with a link to the run it started. You can also send a sample event from the endpoint's **Test** tab. See [Verify the connection](/webhooks/connect#verify-the-connection) if nothing arrives.
 
 ## Typing the event
 
@@ -59,3 +69,18 @@ export const stripe = webhooks.endpoint.define({
   source: webhooks.stripe<Stripe.Event>(),
 });
 ```
+
+## Handle Stripe webhooks in your own route
+
+If you already receive Stripe webhooks in your app, verify them with `stripe.webhooks.constructEvent()` and trigger a task from the route with `tasks.trigger()`. See [Use your own webhook handler](/webhooks/own-handler) for a Next.js example.
+
+## Next steps
+
+<CardGroup cols={2}>
+  <Card title="Filters" icon="filter" href="/webhooks/filters">
+    Run each subscriber only for the Stripe events it handles.
+  </Card>
+  <Card title="Waiters" icon="hourglass" href="/webhooks/waiters">
+    Pause a run until a matching Stripe event arrives.
+  </Card>
+</CardGroup>

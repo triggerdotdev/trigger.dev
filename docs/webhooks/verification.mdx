@@ -73,7 +73,7 @@ export const composioEvents = webhook({
 
 </CodeGroup>
 
-The available presets are `stripe()`, `github()`, `svix()`, `standardWebhooks()`, `square()`, and `discord()`. More than 40 named providers build on the same verifiers; see [Providers](/webhooks/providers) for the full list and each provider's setup.
+The available presets are `stripe()`, `github()`, `svix()`, `standardWebhooks()`, `square()`, and `discord()`.
 
 ### Svix and Standard Webhooks
 
@@ -85,6 +85,14 @@ The available presets are `stripe()`, `github()`, `svix()`, `standardWebhooks()`
 | `standardWebhooks()` | `webhook-id`, `webhook-timestamp`, `webhook-signature` |
 
 Named sources such as `webhooks.clerk()` and `webhooks.composio()` select the corresponding configuration.
+
+## Named providers
+
+More than 40 named providers, such as `webhooks.firecrawl()`, `webhooks.linear()` and `webhooks.hookdeck()`, build on the same verifiers. [Providers](/webhooks/providers) lists every one, with where to register the URL and set the signing secret.
+
+## Custom providers
+
+For a provider without a built-in source, describe its signature scheme with `webhooks.custom()`. See [Custom providers](/webhooks/custom-providers) for the verification schemes and options.
 
 ## Endpoint validation
 

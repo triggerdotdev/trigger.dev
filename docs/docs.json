@@ -902,6 +902,14 @@
       "destination": "/webhooks/providers/hookdeck"
     },
     {
+      "source": "/examples/stripe-webhook",
+      "destination": "/webhooks/providers/stripe"
+    },
+    {
+      "source": "/examples/hookdeck-webhook",
+      "destination": "/webhooks/providers/hookdeck"
+    },
+    {
       "source": "/webhooks/private-beta",
       "destination": "/webhooks/overview",
       "permanent": true
