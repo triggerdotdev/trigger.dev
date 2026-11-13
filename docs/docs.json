@@ -175,11 +175,11 @@
               "webhooks/how-it-works",
               "webhooks/own-handler",
               {
-                "group": "Connect providers",
+                "group": "Providers",
                 "expanded": true,
                 "pages": [
                   {
-                    "group": "Providers",
+                    "group": "Built-in providers",
                     "pages": [
                       "webhooks/providers",
                       "webhooks/providers/attio",
