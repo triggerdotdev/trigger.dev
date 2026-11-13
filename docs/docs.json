@@ -254,10 +254,7 @@
               {
                 "group": "Deliveries and limits",
                 "expanded": true,
-                "pages": [
-                  "webhooks/deliveries",
-                  "webhooks/pricing-and-limits"
-                ]
+                "pages": ["webhooks/deliveries", "webhooks/pricing-and-limits"]
               }
             ]
           },
