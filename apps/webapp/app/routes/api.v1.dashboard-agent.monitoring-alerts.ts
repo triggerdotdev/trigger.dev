@@ -14,7 +14,7 @@ import {
   resolveAgentAlertContext,
   type AgentAlertContextError,
 } from "~/services/dashboardAgentAlertContext.server";
-import { authorizeWatchEnvironmentById } from "~/services/dashboardAgentWatches.server";
+import { authorizeAgentEnvironmentById } from "~/services/dashboardAgentChatContext.server";
 import { prisma } from "~/db.server";
 import { logger } from "~/services/logger.server";
 import {
@@ -96,7 +96,7 @@ export async function loader({ request }: LoaderFunctionArgs) {
       return json({ error: "Invalid request" }, { status: 400 });
     }
 
-    const environment = await authorizeWatchEnvironmentById({
+    const environment = await authorizeAgentEnvironmentById({
       userId: auth.userId,
       environmentId: auth.environmentId,
     });

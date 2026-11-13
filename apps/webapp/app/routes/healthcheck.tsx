@@ -6,6 +6,8 @@ import { getAdminAuditController } from "~/services/adminAudit/adminAudit.server
 import { getExternalOidcController } from "~/services/oidc/externalOidc.server";
 import { getSecurityNoticesController } from "~/services/securityNotices.server";
 import { getDeploymentAccessController } from "~/v3/deploymentAccess.server";
+import { getDeploymentChecksController } from "~/v3/deploymentChecks.server";
+import { getAuditLogController } from "~/services/auditLogs/auditLogs.server";
 import { isOtlpWorkerPoolHealthy } from "~/v3/otlpWorkerPool.server";
 
 export const loader: LoaderFunction = async ({ request }) => {
@@ -21,6 +23,8 @@ export const loader: LoaderFunction = async ({ request }) => {
     await getAdminAuditController();
     await getSecurityNoticesController();
     await getDeploymentAccessController();
+    await getDeploymentChecksController();
+    await getAuditLogController();
 
     if (env.OTEL_TRANSFORM_WORKER_POOL_ENABLED && !isOtlpWorkerPoolHealthy()) {
       console.log("healthcheck ❌ otlp worker pool has no alive workers");

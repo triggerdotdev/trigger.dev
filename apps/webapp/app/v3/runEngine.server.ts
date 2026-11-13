@@ -107,6 +107,10 @@ function createRunEngine() {
         lockTtlSeconds: env.RUN_ENGINE_QUEUE_RECONCILE_LOCK_TTL_SECONDS,
         maxPassesPerDequeue: env.RUN_ENGINE_QUEUE_RECONCILE_MAX_PASSES_PER_DEQUEUE,
       },
+      gateSkipAhead: {
+        enabled: env.RUN_ENGINE_QUEUE_GATE_SKIP_AHEAD_ENABLED === "1",
+        readMultiplier: env.RUN_ENGINE_QUEUE_GATE_SKIP_AHEAD_READ_MULTIPLIER,
+      },
       logLevel: env.RUN_ENGINE_RUN_QUEUE_LOG_LEVEL,
       redis: {
         keyPrefix: "engine:",
@@ -154,14 +158,6 @@ function createRunEngine() {
         batchMaxSize: env.RUN_ENGINE_TTL_WORKER_BATCH_MAX_SIZE,
         batchMaxWaitMs: env.RUN_ENGINE_TTL_WORKER_BATCH_MAX_WAIT_MS,
       },
-      ckVirtualTimeScheduling: env.RUN_ENGINE_CK_VTIME_SCHEDULING_ENABLED
-        ? {
-            enabled: true,
-            quantum: env.RUN_ENGINE_CK_VTIME_QUANTUM,
-            scanWindowMultiplier: env.RUN_ENGINE_CK_VTIME_WINDOW_MULTIPLIER,
-            stateTtlSeconds: env.RUN_ENGINE_CK_VTIME_STATE_TTL_SECONDS,
-          }
-        : undefined,
     },
     runLock: {
       redis: {

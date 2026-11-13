@@ -4,6 +4,18 @@
   "version": "0.0.1",
   "main": "./dist/src/index.js",
   "types": "./dist/src/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/src/index.d.ts",
+      "default": "./dist/src/index.js"
+    },
+    "./ipRanges": {
+      "@triggerdotdev/source": "./src/ipRanges.ts",
+      "types": "./dist/src/ipRanges.d.ts",
+      "default": "./dist/src/ipRanges.js"
+    },
+    "./package.json": "./package.json"
+  },
   "dependencies": {
     "@trigger.dev/core": "workspace:*",
     "@trigger.dev/plugins": "workspace:*"

@@ -1,8 +1,4 @@
-import type {
-  LanguageModelV3FinishReason,
-  LanguageModelV3StreamPart,
-  LanguageModelV3Usage,
-} from "@ai-sdk/provider";
+import type { LanguageModelV3StreamPart, LanguageModelV3Usage } from "@ai-sdk/provider";
 import { simulateReadableStream, type UIMessage, type UIMessageChunk } from "ai";
 import { MockLanguageModelV3 } from "ai/test";
 import { investigationSettlementMessage } from "@internal/dashboard-agent-db";
@@ -22,7 +18,9 @@ export const USAGE: LanguageModelV3Usage = {
   outputTokens: { total: 5, text: 5, reasoning: undefined },
 };
 
-export function finish(unified: LanguageModelV3FinishReason["unified"]): LanguageModelV3StreamPart {
+function finish(
+  unified: "stop" | "length" | "content-filter" | "tool-calls" | "error" | "other"
+): LanguageModelV3StreamPart {
   return { type: "finish", finishReason: { unified, raw: unified }, usage: USAGE };
 }
 
@@ -217,16 +215,6 @@ export function fakeStore(options: { investigations?: Map<string, FakeInvestigat
   return { store, calls, transcript, investigations };
 }
 
-/** Every message the runtime saved through the store, as `put` changes, in save order. */
-export function savedPuts(store: DashboardAgentStore): UIMessage[] {
-  const memory = store.transcript as MemoryTranscriptStorage;
-  return memory.changesets.flatMap(({ changeset }) =>
-    changeset.changes.flatMap((change) =>
-      change.op === "put" ? [change.message as UIMessage] : []
-    )
-  );
-}
-
 /** Why the runtime saved, in save order. */
 export function saveReasons(store: DashboardAgentStore): string[] {
   const memory = store.transcript as MemoryTranscriptStorage;
@@ -279,26 +267,6 @@ export function fakeEvalTrigger(): { trigger: DashboardAgentEvalTrigger; calls: 
     trigger: async (payload, options) => void calls.push({ payload, options }),
     calls,
   };
-}
-
-/**
- * Waits until `calls` has at least `count` entries, with a generous deadline.
- * Use this instead of a fixed setTimeout after sendMessage when asserting evals,
- * because onTurnComplete fires after the turn-complete chunk and the gap is not
- * bounded at 30 ms under load.
- */
-export async function waitForEvals(
-  calls: unknown[],
-  count: number,
-  timeoutMs = 5_000
-): Promise<void> {
-  const deadline = Date.now() + timeoutMs;
-  while (calls.length < count) {
-    if (Date.now() > deadline) {
-      throw new Error(`timed out waiting for ${count} eval(s); got ${calls.length}`);
-    }
-    await new Promise((r) => setTimeout(r, 10));
-  }
 }
 
 /** Stands in for the org opt-out check, so no test depends on a network call. */

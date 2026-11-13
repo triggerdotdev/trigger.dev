@@ -7,21 +7,19 @@
  * and the list is what the dot counts — so the same chat read twice counts once.
  */
 
-type UnreadChat = { id: string; hasUnreadWake?: boolean; hasUnreadWork?: boolean };
+type UnreadChat = { id: string; hasUnreadWork?: boolean };
 
 /**
  * The chat the panel has on screen. `leaving` is the read effect's cleanup: it runs after the
- * panel has already let go, so restoring the id there would keep hiding that chat's wakes.
+ * panel has already let go, so restoring the id there would keep hiding that chat's work.
  */
 export function nextVisibleChat(chatId: string, options: { leaving: boolean }): string | null {
   return options.leaving ? null : chatId;
 }
 
-/** Opening a chat settles everything unseen in it, not just the wake. */
+/** Opening a chat settles everything unseen in it. */
 export function markChatListRead<T extends UnreadChat>(chats: T[], chatId: string): T[] {
-  return chats.map((chat) =>
-    chat.id === chatId ? { ...chat, hasUnreadWake: false, hasUnreadWork: false } : chat
-  );
+  return chats.map((chat) => (chat.id === chatId ? { ...chat, hasUnreadWork: false } : chat));
 }
 
 /**
@@ -35,9 +33,7 @@ export function settleReadChats<T extends UnreadChat>(
   visibleChatId: string | null
 ): T[] {
   return chats.map((chat) =>
-    read.has(chat.id) || chat.id === visibleChatId
-      ? { ...chat, hasUnreadWake: false, hasUnreadWork: false }
-      : chat
+    read.has(chat.id) || chat.id === visibleChatId ? { ...chat, hasUnreadWork: false } : chat
   );
 }
 

@@ -145,7 +145,6 @@ function useGroupDraft({
               notifiers: flow.answers.notifiers ?? [],
               expiry: flow.answers.expiry,
             },
-            undefined,
             chatId
           )
         ),

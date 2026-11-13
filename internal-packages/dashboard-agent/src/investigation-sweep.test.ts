@@ -28,7 +28,7 @@ import {
   MAX_SWEEP_ATTEMPTS,
   sweepDashboardAgentInvestigations,
 } from "./investigation-sweep";
-import { watchConnectionString } from "./watch-task-adapters";
+import { agentDbConnectionString } from "./db-connection";
 
 const ORG = "org_sweep";
 const USER = "user_sweep";
@@ -558,18 +558,18 @@ describe("the investigation sweep's closing card", () => {
 
 describe("the investigation sweep database guard", () => {
   it("skips rather than throwing when neither url is set", () => {
-    expect(watchConnectionString({} as NodeJS.ProcessEnv)).toBeUndefined();
+    expect(agentDbConnectionString({} as NodeJS.ProcessEnv)).toBeUndefined();
   });
 
   it("falls back to the main database url", () => {
-    expect(watchConnectionString({ DATABASE_URL: "postgres://main" } as NodeJS.ProcessEnv)).toBe(
+    expect(agentDbConnectionString({ DATABASE_URL: "postgres://main" } as NodeJS.ProcessEnv)).toBe(
       "postgres://main"
     );
   });
 
   it("uses the agent's own url when it is set", () => {
     expect(
-      watchConnectionString({
+      agentDbConnectionString({
         DASHBOARD_AGENT_DATABASE_URL: "postgres://agent",
         DATABASE_URL: "postgres://main",
       } as NodeJS.ProcessEnv)
@@ -578,7 +578,7 @@ describe("the investigation sweep database guard", () => {
 
   it("treats an empty dedicated url as unset", () => {
     expect(
-      watchConnectionString({
+      agentDbConnectionString({
         DASHBOARD_AGENT_DATABASE_URL: "",
         DATABASE_URL: "postgres://main",
       } as NodeJS.ProcessEnv)

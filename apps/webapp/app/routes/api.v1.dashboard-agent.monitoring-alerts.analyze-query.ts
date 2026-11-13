@@ -5,10 +5,13 @@ import {
   authorizeAlerts,
   gateMonitoringAlerts,
 } from "~/services/dashboardAgentMonitoringAlerts.server";
-import { authorizeWatchEnvironmentById } from "~/services/dashboardAgentWatches.server";
+import { authorizeAgentEnvironmentById } from "~/services/dashboardAgentChatContext.server";
 import { querySchemas } from "~/v3/querySchemas";
 import { MonitoringAlertsAnalyzeBodySchema } from "~/v3/services/alerts/monitoringAlertsSchemas";
-import { analyzeQueryForAlert } from "~/v3/services/alerts/queryAlerts/analyzeQueryForAlert.server";
+import {
+  analyzeQueryForAlert,
+  toQuerySignal,
+} from "~/v3/services/alerts/queryAlerts/analyzeQueryForAlert.server";
 
 export async function action({ request }: ActionFunctionArgs) {
   if (request.method.toUpperCase() !== "POST") {
@@ -29,7 +32,7 @@ export async function action({ request }: ActionFunctionArgs) {
     return json({ error: "Invalid request", issues: body.error.issues }, { status: 400 });
   }
 
-  const environment = await authorizeWatchEnvironmentById({
+  const environment = await authorizeAgentEnvironmentById({
     userId: auth.userId,
     environmentId: auth.environmentId,
   });
@@ -48,5 +51,14 @@ export async function action({ request }: ActionFunctionArgs) {
     flags: { QUEUE_METRICS: env.QUEUE_METRICS_QUERY_TABLES_VISIBLE === "1" },
   });
 
-  return json({ analysis });
+  const choice = body.data.signal;
+  if (!choice) return json({ analysis });
+  const reasons = [...analysis.errors, ...analysis.unsupported].map((issue) => issue.message);
+  const result = analysis.ok
+    ? toQuerySignal(analysis, choice)
+    : { ok: false as const, message: [...new Set(reasons)].join("; ") };
+  return json({
+    analysis,
+    signal: result.ok ? { ok: true } : { ok: false, message: result.message },
+  });
 }

@@ -2,8 +2,7 @@ import { prisma, type PrismaClient } from "~/db.server";
 import { FEATURE_FLAG } from "~/v3/featureFlags";
 import { makeFlag } from "~/v3/featureFlags.server";
 
-export const EMPTY_ENV_VALUES_DISABLED =
-  "Empty environment variable values are not enabled for this organization.";
+export const EMPTY_ENV_VALUES_DISABLED = "Environment variable values can't be empty.";
 
 export async function emptyEnvironmentVariableValuesEnabled(
   organizationFeatureFlags: unknown,

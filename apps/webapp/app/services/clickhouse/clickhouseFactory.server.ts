@@ -944,6 +944,7 @@ function buildEventRepository(
         otlpMetricsFlushInterval: env.METRICS_CLICKHOUSE_FLUSH_INTERVAL_MS,
         otlpMetricsMaxConcurrency: env.METRICS_CLICKHOUSE_MAX_CONCURRENCY,
         logsSearchDualWriteActive: env.LOGS_SEARCH_DUAL_WRITE_ACTIVE,
+        logsSearchInsertAsync: env.LOGS_SEARCH_INSERT_ASYNC,
         logsSearchDualWriteOrganizationIds,
         logsSearchDualWriteMaxConcurrency: env.LOGS_SEARCH_DUAL_WRITE_MAX_CONCURRENCY,
         logsSearchDualWriteMaxPending: env.LOGS_SEARCH_DUAL_WRITE_MAX_PENDING,

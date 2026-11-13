@@ -1,12 +1,10 @@
-import { WATCH_REQUEST_MESSAGE_ID_PREFIX } from "./watch.js";
-
 /**
  * Message ids for the records the agent appends to a chat outside a user's turn.
  *
  * A watch wake, the investigation a wake triggers, its forced closing card and an
  * investigation settlement are all stored with `role: "assistant"`, exactly like an
  * ordinary answer. Only the id tells them apart, so the shapes live here — written once,
- * read by both the writer (`watch-actions`) and the panel.
+ * read by the panel.
  */
 
 export const WAKE_MESSAGE_ID_PREFIX = "wake:";
@@ -35,6 +33,8 @@ export function settledMessageId(messageId: string): string {
  * it and it never counts against the message cap.
  */
 export const WAKE_REQUEST_MESSAGE_ID_PREFIX = "wake-request:";
+/** Retired watch consent records, still present in older transcripts. */
+export const WATCH_REQUEST_MESSAGE_ID_PREFIX = "watch-request:";
 export const ALERT_CREATION_OPENING_MESSAGE_ID_PREFIX = "alert_creation:opening:";
 export const INVESTIGATE_REQUEST_MESSAGE_ID_PREFIX = "investigate-request:";
 

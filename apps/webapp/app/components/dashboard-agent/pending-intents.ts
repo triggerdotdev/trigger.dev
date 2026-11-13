@@ -40,11 +40,3 @@ export function pendingNavigateIntents(
 ): Array<Extract<AgentIntent, { kind: "navigate" }>> {
   return pendingToolIntents(messages, seen, "tool-navigate_to", "navigate");
 }
-
-// `schedule_watch` only proposes: the panel creates the watch.
-export function pendingWatchIntents(
-  messages: ReadonlyArray<ToolMessage>,
-  seen: Set<string>
-): Array<Extract<AgentIntent, { kind: "watch" }>> {
-  return pendingToolIntents(messages, seen, "tool-schedule_watch", "watch");
-}

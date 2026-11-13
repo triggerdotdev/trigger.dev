@@ -12,10 +12,7 @@ import {
 } from "drizzle-orm/pg-core";
 import { dashboardAgentSchema } from "./schema-base.js";
 
-// drizzle-kit reads this file, so the watch tables are re-exported here: the
-// generated SQL and the public surface stay exactly as they were.
 export * from "./schema-base.js";
-export * from "./watch-schema.js";
 
 export type ChatKind = "alert_creation";
 

@@ -7,6 +7,7 @@ import {
   getRunOpsSchemaSql,
   postgresUriWithDatabase,
   runSql,
+  POSTGRES_SETUP_CLIENT_TIMEOUTS,
   withTestPostgresSettings,
 } from "./utils";
 
@@ -59,8 +60,11 @@ export const getPrivatePostgres14 = () =>
 
 /** Boots every shared Postgres and builds its templates, so parallel test processes find them ready. */
 export async function warmSharedPostgres(): Promise<void> {
+  console.info("Warming shared Postgres 14 and 17 database templates...");
   await Promise.all([getSharedPostgres14(), getSharedPostgres17()]);
+  console.info("Database templates ready. Warming Postgres 17 run-ops template...");
   await getSharedRunOpsPostgres17();
+  console.info("Shared Postgres templates ready.");
 }
 
 /** A reusable Postgres container plus the name of a template database holding one schema. */
@@ -243,6 +247,7 @@ async function withAdmin<T>(
 ): Promise<T> {
   const admin = new Client({
     connectionString: postgresUriWithDatabase(container.getConnectionUri(), "postgres"),
+    ...POSTGRES_SETUP_CLIENT_TIMEOUTS,
   });
   await admin.connect();
   try {

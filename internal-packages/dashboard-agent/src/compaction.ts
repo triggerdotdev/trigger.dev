@@ -23,7 +23,7 @@ import { summaryPrompt } from "./prompts";
  * If the model loses an `investigationId` it opens a SECOND card for the same
  * question, which is the failure this module exists to prevent.
  *
- * Nothing else is pinned. Finished work and watches are the summary's job: a pin has
+ * Nothing else is pinned. Finished work is the summary's job: a pin has
  * to be exact, and only a live card is both exact and needed verbatim.
  */
 
@@ -137,12 +137,6 @@ export type DurableState = {
  * Only an `in_progress` card is state: a concluded or inconclusive one is finished
  * work the summary already covers, and pinning it would grow the note forever and
  * invite the model to keep revising a card that closed long ago.
- *
- * Watches are deliberately not read from here. A watch's lifecycle is server-side —
- * it can fire, expire, or be cancelled with nothing written back into the transcript
- * — so an old confirmation block cannot tell us whether it is still running. There is
- * no watch state on the store either, and nothing about a watch depends on the model
- * remembering it, so the summary is where a watch belongs.
  */
 export function collectDurableState(uiMessages: UIMessage[]): DurableState {
   const investigations: PinnedInvestigation[] = [];

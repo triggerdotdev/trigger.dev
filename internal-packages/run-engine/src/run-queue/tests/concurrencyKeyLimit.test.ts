@@ -32,10 +32,7 @@ const env = {
   organization: { id: "o1234" },
 };
 
-function createQueue(
-  redisContainer: any,
-  opts: { enabled?: boolean; vtime?: boolean; gates?: boolean } = {}
-) {
+function createQueue(redisContainer: any, opts: { enabled?: boolean; gates?: boolean } = {}) {
   const redis = {
     keyPrefix: "runqueue:test:",
     host: redisContainer.getHost(),
@@ -45,7 +42,6 @@ function createQueue(
     ...testOptions,
     concurrencyKeyLimitsEnabled: opts.enabled ?? true,
     gatesEnabled: opts.gates ?? false,
-    ...(opts.vtime ? { ckVirtualTimeScheduling: { enabled: true } } : {}),
     queueSelectionStrategy: new FairQueueSelectionStrategy({ redis, keys: testOptions.keys }),
     redis,
   });
@@ -108,74 +104,72 @@ async function settle(ms = 1500) {
 
 vi.setConfig({ testTimeout: 60_000 });
 
-for (const vtime of [false, true]) {
-  describe(`RunQueue per-key override (vtime=${vtime})`, () => {
-    redisTest("a raised override admits more runs of that key", async ({ redisContainer }) => {
-      const queue = createQueue(redisContainer, { vtime });
-      try {
-        await queue.updateQueueConcurrencyLimits(env, "task/my-task", 1);
-        await queue.updateQueueConcurrencyKeyLimit(env, "task/my-task", "a", 2, 60);
-        await enqueueKeyed(queue, [
-          { runId: "a1", key: "a" },
-          { runId: "a2", key: "a" },
-          { runId: "b1", key: "b" },
-          { runId: "b2", key: "b" },
-        ]);
-        expect(await waitFor(async () => (await runningForKey(queue, "a")) === 2)).toBe(true);
-        await settle();
-        expect(await runningForKey(queue, "a")).toBe(2);
-        expect(await runningForKey(queue, "b")).toBe(1);
-      } finally {
-        await queue.quit();
-      }
-    });
+describe("RunQueue per-key override", () => {
+  redisTest("a raised override admits more runs of that key", async ({ redisContainer }) => {
+    const queue = createQueue(redisContainer);
+    try {
+      await queue.updateQueueConcurrencyLimits(env, "task/my-task", 1);
+      await queue.updateQueueConcurrencyKeyLimit(env, "task/my-task", "a", 2, 60);
+      await enqueueKeyed(queue, [
+        { runId: "a1", key: "a" },
+        { runId: "a2", key: "a" },
+        { runId: "b1", key: "b" },
+        { runId: "b2", key: "b" },
+      ]);
+      expect(await waitFor(async () => (await runningForKey(queue, "a")) === 2)).toBe(true);
+      await settle();
+      expect(await runningForKey(queue, "a")).toBe(2);
+      expect(await runningForKey(queue, "b")).toBe(1);
+    } finally {
+      await queue.quit();
+    }
+  });
 
-    redisTest("a lowered override admits fewer runs of that key", async ({ redisContainer }) => {
-      const queue = createQueue(redisContainer, { vtime });
-      try {
-        await queue.updateQueueConcurrencyLimits(env, "task/my-task", 5);
-        await queue.updateQueueConcurrencyKeyLimit(env, "task/my-task", "a", 1, 60);
-        await enqueueKeyed(queue, [
+  redisTest("a lowered override admits fewer runs of that key", async ({ redisContainer }) => {
+    const queue = createQueue(redisContainer);
+    try {
+      await queue.updateQueueConcurrencyLimits(env, "task/my-task", 5);
+      await queue.updateQueueConcurrencyKeyLimit(env, "task/my-task", "a", 1, 60);
+      await enqueueKeyed(queue, [
+        { runId: "a1", key: "a" },
+        { runId: "a2", key: "a" },
+        { runId: "a3", key: "a" },
+      ]);
+      expect(await waitFor(async () => (await runningForKey(queue, "a")) === 1)).toBe(true);
+      await settle();
+      expect(await runningForKey(queue, "a")).toBe(1);
+      expect(await queue.lengthOfQueue(env, "task/my-task")).toBe(2);
+    } finally {
+      await queue.quit();
+    }
+  });
+
+  redisTest("the override is clamped to the environment limit", async ({ redisContainer }) => {
+    const queue = createQueue(redisContainer);
+    try {
+      const smallEnv = { ...env, maximumConcurrencyLimit: 2 };
+      await queue.updateEnvConcurrencyLimits(smallEnv);
+      await queue.updateQueueConcurrencyLimits(smallEnv, "task/my-task", 1);
+      await queue.updateQueueConcurrencyKeyLimit(smallEnv, "task/my-task", "a", 50, 60);
+      await enqueueKeyed(
+        queue,
+        [
           { runId: "a1", key: "a" },
           { runId: "a2", key: "a" },
           { runId: "a3", key: "a" },
-        ]);
-        expect(await waitFor(async () => (await runningForKey(queue, "a")) === 1)).toBe(true);
-        await settle();
-        expect(await runningForKey(queue, "a")).toBe(1);
-        expect(await queue.lengthOfQueue(env, "task/my-task")).toBe(2);
-      } finally {
-        await queue.quit();
-      }
-    });
-
-    redisTest("the override is clamped to the environment limit", async ({ redisContainer }) => {
-      const queue = createQueue(redisContainer, { vtime });
-      try {
-        const smallEnv = { ...env, maximumConcurrencyLimit: 2 };
-        await queue.updateEnvConcurrencyLimits(smallEnv);
-        await queue.updateQueueConcurrencyLimits(smallEnv, "task/my-task", 1);
-        await queue.updateQueueConcurrencyKeyLimit(smallEnv, "task/my-task", "a", 50, 60);
-        await enqueueKeyed(
-          queue,
-          [
-            { runId: "a1", key: "a" },
-            { runId: "a2", key: "a" },
-            { runId: "a3", key: "a" },
-          ],
-          smallEnv
-        );
-        expect(await waitFor(async () => (await runningForKey(queue, "a", smallEnv)) === 2)).toBe(
-          true
-        );
-        await settle();
-        expect(await runningForKey(queue, "a", smallEnv)).toBe(2);
-      } finally {
-        await queue.quit();
-      }
-    });
+        ],
+        smallEnv
+      );
+      expect(await waitFor(async () => (await runningForKey(queue, "a", smallEnv)) === 2)).toBe(
+        true
+      );
+      await settle();
+      expect(await runningForKey(queue, "a", smallEnv)).toBe(2);
+    } finally {
+      await queue.quit();
+    }
   });
-}
+});
 
 describe("RunQueue per-key override semantics", () => {
   redisTest(

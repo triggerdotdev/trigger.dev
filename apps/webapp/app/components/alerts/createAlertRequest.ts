@@ -13,6 +13,12 @@ import {
 
 export const CREATE_ALERT_PATH = "/resources/alerts/create";
 
+const CREATE_FAILED = "Failed to create the alert. Try again.";
+
+export function createAlertErrorMessage(status: number, error: string | undefined): string {
+  return (status === 400 || status === 422) && error ? error : CREATE_FAILED;
+}
+
 export function expiryToIso(exp: string | undefined): string | undefined {
   if (!exp || exp === "none") return undefined;
   const EVENT_HOURS: Record<string, number> = { deploy: 168, incident: 720 };
@@ -60,8 +66,16 @@ function limitFields(answers: FlowAnswers) {
       components: answers.components,
     };
   }
-  if (!cap || !isLimitCondition(answers.what)) return { conditionParams: params };
   const composite = isComposite(answers.what);
+  if (!cap || !isLimitCondition(answers.what)) {
+    return composite
+      ? {
+          conditionParams: params,
+          compositeMode: answers.compositeMode ?? "any",
+          components: answers.components,
+        }
+      : { conditionParams: params };
+  }
   const hasSignals = supportedSignalsFor(answers.what, answers.components).length > 0;
   const signals = hasSignals ? effectiveSignals(answers) : undefined;
   const { utilisationPct, ...rest } = params ?? {};
@@ -81,9 +95,16 @@ function limitFields(answers: FlowAnswers) {
   };
 }
 
+export type QueryAlertChatRequest = { transcriptChatId: string; planItemKey?: string };
+
+function chatRequestFields(chat: QueryAlertChatRequest | undefined) {
+  return { transcriptChatId: chat?.transcriptChatId, planItemKey: chat?.planItemKey };
+}
+
 export function createAlertRequestBody(
   ids: { organizationId: string; projectId: string; environmentId: string },
-  answers: FlowAnswers
+  answers: FlowAnswers,
+  chat?: QueryAlertChatRequest
 ) {
   const kind = resolveCapability(answers.what)?.allowedKinds[0] ?? "threshold";
   return {
@@ -91,6 +112,7 @@ export function createAlertRequestBody(
     projectId: ids.projectId,
     environmentId: ids.environmentId,
     name: alertName(answers),
+    ...chatRequestFields(chat),
     expiry:
       answers.expiry && EXPIRY_TOKEN_PATTERN.test(answers.expiry) ? answers.expiry : undefined,
     form: {
@@ -125,8 +147,6 @@ export type QueryAlertDraft = {
   notifiers: string[];
 };
 
-export type QueryAlertChatRequest = { transcriptChatId: string };
-
 export function queryAlertRequestBody(
   ids: { organizationId: string; projectId: string; environmentId: string },
   draft: QueryAlertDraft,
@@ -139,7 +159,7 @@ export function queryAlertRequestBody(
     projectId: ids.projectId,
     environmentId: ids.environmentId,
     name: draft.name,
-    transcriptChatId: chat?.transcriptChatId,
+    ...chatRequestFields(chat),
     expiry: draft.expiry && EXPIRY_TOKEN_PATTERN.test(draft.expiry) ? draft.expiry : undefined,
     form: {
       capabilityKey: "custom.query",

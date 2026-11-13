@@ -1,5 +1,15 @@
 # trigger.dev
 
+## 4.8.5
+
+### Patch Changes
+
+- Deployed tasks on the `node`, `node-22`, `node-24` and `node-26` runtimes now run on Node.js 22.23.5, 24.22.3 and 26.13.1, the November 2026 security releases. Redeploy with this version to pick them up. ([`b58c0f9e9`](https://github.com/triggerdotdev/trigger.dev/commit/b58c0f9e9e7b5b78d6a07d0a390f42767201ce42))
+- Updated dependencies:
+  - `@trigger.dev/build@4.8.5`
+  - `@trigger.dev/core@4.8.5`
+  - `@trigger.dev/schema-to-json@4.8.5`
+
 ## 4.8.4
 
 ### Patch Changes

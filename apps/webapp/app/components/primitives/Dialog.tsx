@@ -2,6 +2,7 @@
 
 import * as React from "react";
 import * as DialogPrimitive from "@radix-ui/react-dialog";
+import { useHydrated } from "remix-utils/use-hydrated";
 import { cn } from "~/utils/cn";
 import { ModalCloseButton } from "./ModalCloseButton";
 
@@ -9,13 +10,22 @@ const Dialog = DialogPrimitive.Root;
 
 const DialogTrigger = DialogPrimitive.Trigger;
 
-const DialogPortal = ({ children, ...props }: DialogPrimitive.DialogPortalProps) => (
-  <DialogPrimitive.Portal {...props}>
-    <div className="fixed inset-0 z-50 flex items-start justify-center sm:items-center">
-      {children}
-    </div>
-  </DialogPrimitive.Portal>
-);
+const DialogPortal = ({ children, ...props }: DialogPrimitive.DialogPortalProps) => {
+  // The Radix portal renders into document.body as soon as `document` exists, but the server
+  // renders nothing there. A dialog that is open on the first render (a route that is itself a
+  // dialog, loaded directly) would then fail hydration and React would re-render the whole page
+  // on the client. Render the portal only once hydrated; on client navigations this is immediate.
+  const isHydrated = useHydrated();
+  if (!isHydrated) return null;
+
+  return (
+    <DialogPrimitive.Portal {...props}>
+      <div className="fixed inset-0 z-50 flex items-start justify-center sm:items-center">
+        {children}
+      </div>
+    </DialogPrimitive.Portal>
+  );
+};
 DialogPortal.displayName = DialogPrimitive.Portal.displayName;
 
 const DialogOverlay = React.forwardRef<

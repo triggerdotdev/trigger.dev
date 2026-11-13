@@ -70,17 +70,15 @@ export type PromptVariables<T extends AnyPromptHandle> =
 function compileTemplate(template: string, variables: Record<string, unknown>): string {
   // Handle conditional sections: {{#key}}...{{/key}}
   let result = template.replace(/\{\{#(\w+)\}\}([\s\S]*?)\{\{\/\1\}\}/g, (_match, key, content) => {
-    const value = variables[key];
-    return value
-      ? content.replace(/\{\{(\w+)\}\}/g, (_m: string, k: string) => {
-          return String(variables[k] ?? "");
-        })
-      : "";
+    // oxlint-disable-next-line prefer-object-has-own -- Use the explicit own-property check required here.
+    const value = Object.prototype.hasOwnProperty.call(variables, key) ? variables[key] : undefined;
+    return value ? content : "";
   });
 
-  // Handle simple substitutions: {{key}}
+  // Substitute only once, so inserted values are never interpreted as template syntax.
   result = result.replace(/\{\{\s*(\w+)\s*\}\}/g, (_match, key) => {
-    const value = variables[key];
+    // oxlint-disable-next-line prefer-object-has-own -- Use the explicit own-property check required here.
+    const value = Object.prototype.hasOwnProperty.call(variables, key) ? variables[key] : undefined;
     return value !== undefined && value !== null ? String(value) : "";
   });
 

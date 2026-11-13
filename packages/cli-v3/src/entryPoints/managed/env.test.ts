@@ -28,3 +28,17 @@ describe("RunnerEnv.gatherProcessEnv", () => {
     }
   );
 });
+
+describe("RunnerEnv supervisor wait", () => {
+  // Catches: RunnerEnv dropping the supervisor wait variables as undeclared keys.
+  it("reads how long the runner was held for its supervisor", () => {
+    const env = new RunnerEnv({
+      ...requiredEnv,
+      TRIGGER_SUPERVISOR_WAIT_STARTED_AT_MS: "1762860000123",
+      TRIGGER_SUPERVISOR_WAIT_MS: "328",
+    });
+
+    expect(env.TRIGGER_SUPERVISOR_WAIT_STARTED_AT_MS).toEqual(new Date(1762860000123));
+    expect(env.TRIGGER_SUPERVISOR_WAIT_MS).toBe(328);
+  });
+});

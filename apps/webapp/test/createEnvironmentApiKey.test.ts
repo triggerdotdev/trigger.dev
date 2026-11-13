@@ -10,6 +10,8 @@ import {
   RootApiKeyNotVisibleError,
   revokeEnvironmentApiKey,
   updateEnvironmentApiKeyAccess,
+  updateEnvironmentApiKeyDescription,
+  updateEnvironmentApiKeyIpRanges,
 } from "~/models/api-key.server";
 import { removeTeamMember } from "~/models/removeTeamMember.server";
 import type { ApiKeyTelemetry } from "~/services/apiKeyTelemetry.server";
@@ -481,6 +483,54 @@ containerTest("refuses to edit revoked or expired keys", async ({ prisma }) => {
       select: { scopes: true },
     })
   ).resolves.toEqual([{ scopes: ["trigger:tasks"] }, { scopes: ["trigger:tasks"] }]);
+});
+
+containerTest("refuses to change or revoke system-issued keys", async ({ prisma }) => {
+  const { user, environment } = await setup(prisma);
+  const systemKey = await prisma.apiKey.create({
+    data: {
+      name: "Build key",
+      keyHash: uniqueId("hash"),
+      lastFour: "sysk",
+      runtimeEnvironmentId: environment.id,
+      presetId: "DEPLOY_ONLY",
+      scopes: ["read:deployments", "write:deployments"],
+      issuedBy: "SYSTEM",
+    },
+  });
+  const controller = policyController(async () => ({
+    ok: true,
+    policy: { presetId: "FULL_ACCESS", scopes: ["admin"] },
+  }));
+  const dependencies = { prismaClient: prisma, telemetryRecorder: telemetryRecorder() };
+  const target = { environmentId: environment.id, apiKeyId: systemKey.id };
+
+  await expect(
+    updateEnvironmentApiKeyAccess(
+      { ...target, taskEnvironmentId: environment.id, userId: user.id, presetId: "FULL_ACCESS" },
+      { ...dependencies, rbacController: controller }
+    )
+  ).rejects.toThrow("This key no longer exists. Reload the page to see your current keys.");
+  await expect(
+    updateEnvironmentApiKeyIpRanges(
+      { ...target, allowedIpRanges: ["203.0.113.0/24"] },
+      dependencies
+    )
+  ).rejects.toThrow("API key not found or already revoked");
+  await expect(
+    updateEnvironmentApiKeyDescription({ ...target, description: "mine now" }, dependencies)
+  ).rejects.toThrow("API key not found or already revoked");
+  await expect(revokeEnvironmentApiKey(target, dependencies)).rejects.toThrow(
+    "API key not found or already revoked"
+  );
+
+  await expect(prisma.apiKey.findFirst({ where: { id: systemKey.id } })).resolves.toMatchObject({
+    presetId: "DEPLOY_ONLY",
+    scopes: ["read:deployments", "write:deployments"],
+    allowedIpRanges: [],
+    description: null,
+    revokedAt: null,
+  });
 });
 
 test("only unexpected API key action errors are reported", () => {

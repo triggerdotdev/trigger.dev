@@ -29,10 +29,9 @@ export type DashboardAgentToolContext = {
   chatId?: string;
   // Structured view of the same page, when the host could classify it.
   pageContext?: AgentPageContext;
-  // Set by the host when watches are enabled for this turn. Off by default: without it
-  // the watch tools are never registered.
-  watchEnabled?: boolean;
-  // "alert_creation" while the user builds an alert: the draft tools are on regardless of watches.
+  // Set by the host from the org's alerts gate. Off by default: the monitoring alert tools are not attached.
+  alertsEnabled?: boolean;
+  // "alert_creation" while the user builds an alert: the draft tools are on regardless.
   toolScope?: string;
   alertDraft?: AlertCreationDraft;
   // Present only when the project has a connected GitHub repo. Adds the source tools.

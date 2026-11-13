@@ -1,16 +1,9 @@
 import { json } from "@remix-run/server-runtime";
 import { z } from "zod";
-import { boundedIn } from "@trigger.dev/database";
 import { getCapability, type NotifierRef } from "@internal/alert-contracts";
-import {
-  alertCreatedMessage,
-  answersFromCreateRequest,
-  createdCardFields,
-  type AlertCreatedMessage,
-} from "~/components/alerts/alertCreatedCard";
 import { environmentFullTitle } from "~/components/environments/EnvironmentLabel";
 import { $replica, prisma } from "~/db.server";
-import { appendCreatedMessage, ownsChat } from "~/v3/services/alerts/createdCardChat.server";
+import { ownsChat } from "~/v3/services/alerts/createdCardChat.server";
 import { dashboardAction } from "~/services/routeBuilders/dashboardBuilder";
 import { hasAccessToEnvironment } from "~/models/runtimeEnvironment.server";
 import {
@@ -26,6 +19,7 @@ import {
   InvalidQueryAlertError,
 } from "~/v3/services/alerts/createAlertFromDraft.server";
 import { validateAlertDraft } from "~/v3/services/alerts/validateAlertDraft.server";
+import { appendCreatedCard } from "~/v3/services/alerts/appendCreatedCard.server";
 import {
   buildCondition,
   buildScope,
@@ -194,50 +188,3 @@ export const action = dashboardAction(
     }
   }
 );
-
-async function appendCreatedCard({
-  alertId,
-  alertName,
-  body,
-  userId,
-  validChannelIds,
-  environmentTitle: envTitle,
-}: {
-  environmentTitle: string;
-  alertId: string;
-  alertName: string | null;
-  body: z.infer<typeof RequestSchema>;
-  userId: string;
-  validChannelIds: string[];
-}) {
-  let message: AlertCreatedMessage | undefined;
-  try {
-    const channels = validChannelIds.length
-      ? await $replica.projectAlertChannel.findMany({
-          where: { id: { in: boundedIn(validChannelIds) }, projectId: body.projectId },
-          select: { id: true, name: true, type: true },
-        })
-      : [];
-    const fields = createdCardFields(
-      answersFromCreateRequest(body),
-      channels,
-      alertName ?? undefined,
-      envTitle
-    );
-    message = fields ? alertCreatedMessage(alertId, fields) : undefined;
-    if (message && body.transcriptChatId) {
-      await appendCreatedMessage(
-        { chatId: body.transcriptChatId, userId, organizationId: body.organizationId },
-        alertId,
-        message
-      );
-    }
-  } catch (error) {
-    logger.error("Failed to append the alert created card", {
-      alertId,
-      chatId: body.transcriptChatId,
-      error,
-    });
-  }
-  return message;
-}

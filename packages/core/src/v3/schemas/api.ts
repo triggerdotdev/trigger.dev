@@ -2,6 +2,7 @@ import { z } from "zod/v4";
 import { discriminatedUnion } from "../utils/zod.js";
 import { DeserializedJsonSchema } from "../../schemas/json.js";
 import { EXTERNAL_DEPLOYMENT_ID_MAX_LENGTH } from "../externalDeploymentId.js";
+import { CONCURRENCY_LIMIT_NAME_PATTERN } from "../isomorphic/queueName.js";
 import {
   FlushedRunMetadata,
   GitMeta,
@@ -298,13 +299,56 @@ export type IdempotencyKeyOptionsSchema = z.infer<typeof IdempotencyKeyOptionsSc
 const ConcurrencyKeySchema = z.union([z.string(), z.number()]).transform((value) => String(value));
 
 /**
+ * A key per limit: `default` is the run's own `concurrencyKey`, and every other entry
+ * names a limit and gives that limit its own key for this run. A server that does not
+ * know this form rejects it rather than keying those limits by `default`.
+ */
+const ConcurrencyKeyMapSchema = z
+  /** The record parse drops an own `__proto__` entry, which would key that limit by `default`. */
+  .custom<Record<string, unknown>>((keys) => !Object.hasOwn(keys ?? {}, "__proto__"), {
+    message: "concurrencyKey entries can't be named `__proto__`",
+  })
+  .pipe(z.record(z.string(), ConcurrencyKeySchema))
+  .superRefine((keys, ctx) => {
+    if (!keys.default) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message:
+          "concurrencyKey needs a `default` key: runs are queued and scheduled fairly per default key, and limits without their own entry use it",
+      });
+    }
+    for (const [name, key] of Object.entries(keys)) {
+      if (name === "default") {
+        continue;
+      }
+      if (!CONCURRENCY_LIMIT_NAME_PATTERN.test(name)) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: [name],
+          message:
+            "concurrencyKey entries other than `default` are concurrency limit names: 1-122 characters using only letters, numbers, underscores and hyphens",
+        });
+      }
+      if (key.length < 1 || key.length > 128) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: [name],
+          message: "A concurrency limit's key must be 1-128 characters",
+        });
+      }
+    }
+  });
+
+const TriggerConcurrencyKeySchema = z.union([ConcurrencyKeySchema, ConcurrencyKeyMapSchema]);
+
+/**
  * Trigger-time named concurrency limits. The charset rule matches what the queue
  * concern enforces, so a bad name is a uniform up-front 400 on every path instead
  * of a late validation error after the request (or earlier batch items) succeeded.
  */
 const TriggerConcurrencyLimitsSchema = z
   .string()
-  .regex(/^[a-zA-Z0-9_-]{1,122}$/, {
+  .regex(CONCURRENCY_LIMIT_NAME_PATTERN, {
     message:
       "Concurrency limit names are 1-122 characters using only letters, numbers, underscores and hyphens",
   })
@@ -391,7 +435,7 @@ export const TriggerTaskRequestBody = z
           .max(3)
           .optional(),
         concurrency: TriggerConcurrencyLimitsSchema.optional(),
-        concurrencyKey: ConcurrencyKeySchema.optional(),
+        concurrencyKey: TriggerConcurrencyKeySchema.optional(),
         delay: z.string().or(z.coerce.date()).optional(),
         idempotencyKey: z
           .string()
@@ -468,7 +512,7 @@ export const BatchTriggerTaskItem = z.object({
   context: z.any().optional(),
   options: z
     .object({
-      concurrencyKey: ConcurrencyKeySchema.optional(),
+      concurrencyKey: TriggerConcurrencyKeySchema.optional(),
       delay: z.string().or(z.coerce.date()).optional(),
       idempotencyKey: z
         .string()

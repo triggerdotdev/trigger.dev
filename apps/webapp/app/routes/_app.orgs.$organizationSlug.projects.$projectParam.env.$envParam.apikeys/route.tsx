@@ -4,6 +4,7 @@ import { Outlet, useLocation, useParams, useRevalidator, useSearchParams } from 
 import { useState } from "react";
 import { type UseDataFunctionReturn, typedjson, useTypedLoaderData } from "remix-typedjson";
 import { z } from "zod";
+import { env } from "~/env.server";
 import { AdminDebugTooltip } from "~/components/admin/debugTooltip";
 import { CopyableText } from "~/components/primitives/CopyableText";
 import { CodeBlock } from "~/components/code/CodeBlock";
@@ -137,6 +138,8 @@ export const loader = dashboardLoader(
           canWriteApiKeys &&
           (await canManageOrganizationPresets(request, user.id, context.organizationId)),
         isRbacPluginAvailable,
+        // The dashboard checks IP ranges with the same rule the server applies on save.
+        allowPrivateIpRanges: env.API_KEY_ALLOW_PRIVATE_IP_RANGES,
         showRevoked: searchParams.showRevoked ?? false,
         loadedAt: Date.now(),
       });
@@ -161,6 +164,7 @@ export type ApiKeysOutletContext = {
   presets: ApiKeysData["presets"];
   capabilityCatalogue: ApiKeysData["capabilityCatalogue"];
   isRbacPluginAvailable: boolean;
+  allowPrivateIpRanges: boolean;
   canWriteApiKeys: boolean;
   canManagePresets: boolean;
   canEditAccess: boolean;
@@ -187,6 +191,7 @@ export default function Page() {
     canWriteApiKeys,
     canManagePresets,
     isRbacPluginAvailable,
+    allowPrivateIpRanges,
     showRevoked,
     hasVercelIntegration,
     availableTasks,
@@ -249,6 +254,7 @@ export default function Page() {
     presets,
     capabilityCatalogue,
     isRbacPluginAvailable,
+    allowPrivateIpRanges,
     canWriteApiKeys,
     canManagePresets,
     canEditAccess,
@@ -332,6 +338,7 @@ export default function Page() {
                   capabilityCatalogue={capabilityCatalogue}
                   isRbacPluginAvailable={isRbacPluginAvailable}
                   canManagePresets={canManagePresets}
+                  allowPrivateIpRanges={allowPrivateIpRanges}
                   environment={apiKeyEnvironmentLabel}
                 >
                   {(openCreateApiKey) => (
@@ -594,6 +601,7 @@ export default function Page() {
                                           ranges={apiKey.allowedIpRanges}
                                           lastUsedIp={apiKey.lastUsedIp}
                                           canWrite={canWriteApiKeys}
+                                          allowPrivateIpRanges={allowPrivateIpRanges}
                                         />
                                         <EditApiKeyNoteButton
                                           id={apiKey.id}

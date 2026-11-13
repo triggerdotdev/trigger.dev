@@ -1,6 +1,5 @@
 import { isExecutableIntent, type AgentIntent } from "@internal/dashboard-agent-contracts";
 import { DEMO_WORLD, demoRunUri, demoRunsUri } from "../ids";
-import { demoBacklogDrainWatch } from "./watches";
 
 export type DemoIntent = {
   intent: AgentIntent;
@@ -41,11 +40,6 @@ const demoAskIntent = demoIntent(
   "Asked a follow-up"
 );
 
-const demoWatchIntent = demoIntent(
-  { kind: "watch", spec: demoBacklogDrainWatch.spec },
-  `Watching ${DEMO_WORLD.backlogQueue} · checking every 5 min for up to 6h`
-);
-
 const demoProposeFixIntent = demoIntent(
   { kind: "propose_fix", investigationId: "demo:investigation-order-receipt" },
   "Rejected: proposing a fix isn't available yet"
@@ -55,6 +49,5 @@ export const demoIntents = {
   navigateToFailedRuns: demoNavigateToFailedRuns,
   navigateToRun: demoNavigateToRun,
   ask: demoAskIntent,
-  watch: demoWatchIntent,
   proposeFix: demoProposeFixIntent,
 } as const;

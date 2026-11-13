@@ -5,6 +5,7 @@ import { useEffect, useState } from "react";
 import { useTypedFetcher } from "remix-typedjson";
 import { InlineCode } from "~/components/code/InlineCode";
 import { EnvironmentCombo } from "~/components/environments/EnvironmentLabel";
+import { ExpiryDatePicker, type ExpiryPreset } from "~/components/ExpiryDatePicker";
 import { Button } from "~/components/primitives/Buttons";
 import { Callout } from "~/components/primitives/Callout";
 import { ClipboardField } from "~/components/primitives/ClipboardField";
@@ -22,12 +23,17 @@ import {
 } from "~/utils/apiKeyExpiry";
 import { cn } from "~/utils/cn";
 import { ApiKeyAccessFields, ApiKeyAccessInputs, ApiKeyAccessPane } from "./ApiKeyAccessPicker";
-import { ApiKeyExpiryPicker } from "./ApiKeyExpiryPicker";
 import { ApiKeyIpRangesField } from "./ApiKeyIpRanges";
 import { ApiKeyNoteInput } from "./ApiKeyNote";
 import { isApiKeyNoteTooLong } from "~/utils/apiKeyNote";
 import type { action, ApiKeyActionData } from "./route";
 import { useApiKeyAccess } from "./useApiKeyAccess";
+
+const API_KEY_EXPIRY_PRESETS: ExpiryPreset[] = [
+  { value: "30-days", label: "In 30 days", days: 30 },
+  { value: "90-days", label: "In 90 days", days: 90 },
+  { value: "1-year", label: "In 1 year", days: 365 },
+];
 
 type NewApiKeyDialogProps = {
   availableTasks: string[];
@@ -35,6 +41,7 @@ type NewApiKeyDialogProps = {
   capabilityCatalogue: ApiKeyCapabilityCatalogue | null;
   isRbacPluginAvailable: boolean;
   canManagePresets: boolean;
+  allowPrivateIpRanges: boolean;
   environment: React.ComponentProps<typeof EnvironmentCombo>["environment"];
   children?: (openDialog: () => void) => React.ReactNode;
   open: boolean;
@@ -50,6 +57,7 @@ export function NewApiKeyDialog({
   capabilityCatalogue,
   isRbacPluginAvailable,
   canManagePresets,
+  allowPrivateIpRanges,
   environment,
 }: NewApiKeyDialogProps) {
   const fetcher = useTypedFetcher<typeof action>();
@@ -69,7 +77,8 @@ export function NewApiKeyDialog({
     isRbacPluginAvailable,
     canManagePresets,
   });
-  const [ipRanges, setIpRanges] = useState("");
+  const [ipRanges, setIpRanges] = useState<string[]>([]);
+  const [ipRangesDraftInvalid, setIpRangesDraftInvalid] = useState(false);
   const [createdApiKey, setCreatedApiKey] = useState<string>();
 
   useEffect(() => {
@@ -94,7 +103,7 @@ export function NewApiKeyDialog({
       setExpiryDate(apiKeyExpiryDay(new Date(), DEFAULT_API_KEY_EXPIRY_DAYS));
       setExpiryError(false);
       access.reset();
-      setIpRanges("");
+      setIpRanges([]);
       setCreatedApiKey(undefined);
       setShowError(false);
     }
@@ -198,7 +207,10 @@ export function NewApiKeyDialog({
 
                   <InputGroup fullWidth>
                     <Label htmlFor="api-key-expiry">Expires</Label>
-                    <ApiKeyExpiryPicker
+                    <ExpiryDatePicker
+                      id="api-key-expiry"
+                      presets={API_KEY_EXPIRY_PRESETS}
+                      allowNever
                       expiration={expiration}
                       date={expiryDate}
                       onChange={(nextExpiration, date) => {
@@ -219,7 +231,12 @@ export function NewApiKeyDialog({
                   </div>
 
                   <div className="sm:col-span-2">
-                    <ApiKeyIpRangesField value={ipRanges} onChange={setIpRanges} />
+                    <ApiKeyIpRangesField
+                      entries={ipRanges}
+                      onChange={setIpRanges}
+                      allowPrivateIpRanges={allowPrivateIpRanges}
+                      onDraftInvalidChange={setIpRangesDraftInvalid}
+                    />
                   </div>
                 </div>
 
@@ -263,6 +280,7 @@ export function NewApiKeyDialog({
                   disabled={
                     !name.trim() ||
                     isApiKeyNoteTooLong(note) ||
+                    ipRangesDraftInvalid ||
                     !canSubmitAccess ||
                     fetcher.state !== "idle"
                   }

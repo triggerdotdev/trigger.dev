@@ -24,11 +24,23 @@ import {
 } from "~/components/dashboard-agent/alert-creation/flow-state";
 import { formatNumber } from "~/utils/numberFormatter";
 import { limitScopeLabel } from "./limitSummary";
+import { QUERY_CONDITION_LABELS, QUERY_SCOPE_LABEL } from "./queryAlertLink";
 
 export const ALERT_CREATION_OPENING_TEXT = "Create a new alert";
 export const REVIEW_MESSAGE =
   "That's everything I need. The alert below is what I'll create — create it when you're happy, or keep changing it in words.";
+const PLAN_CREATED_MESSAGE = "Created.";
+const PLAN_ITEM_KEY_SEPARATOR = "\n";
 export const EXPIRY_TOKEN_PATTERN = /^(none|deploy|incident|\d+h)$/;
+
+export function joinPlanItemKeys(keys: (string | undefined)[]): string | undefined {
+  const present = keys.filter((key): key is string => Boolean(key));
+  return present.length ? present.join(PLAN_ITEM_KEY_SEPARATOR) : undefined;
+}
+
+export function splitPlanItemKeys(key: string): string[] {
+  return key.split(PLAN_ITEM_KEY_SEPARATOR);
+}
 
 export type CreatedCardFields = {
   name: string;
@@ -106,7 +118,8 @@ function createdCardRows(fields: CreatedCardFields): AlertCreatedRow[] {
 function createdBlock(
   alertId: string,
   name: string,
-  rows: AlertCreatedRow[]
+  rows: AlertCreatedRow[],
+  planItemKey?: string
 ): EnvelopedAlertCreatedBlock {
   return {
     type: "alert_created",
@@ -116,14 +129,16 @@ function createdBlock(
     alertId,
     name,
     rows,
+    ...(planItemKey ? { planItemKey } : {}),
   };
 }
 
 export function alertCreatedBlock(
   alertId: string,
-  fields: CreatedCardFields
+  fields: CreatedCardFields,
+  planItemKey?: string
 ): EnvelopedAlertCreatedBlock {
-  return createdBlock(alertId, fields.name, createdCardRows(fields));
+  return createdBlock(alertId, fields.name, createdCardRows(fields), planItemKey);
 }
 
 const GROUP_MEMBERS_SHOWN = 5;
@@ -139,18 +154,24 @@ export type GroupCreatedFields = {
 
 export function groupCreatedBlock(
   alertId: string,
-  fields: GroupCreatedFields
+  fields: GroupCreatedFields,
+  planItemKey?: string
 ): EnvelopedAlertCreatedBlock {
   const shown = fields.memberNames.slice(0, GROUP_MEMBERS_SHOWN);
   const more = fields.memberNames.length - shown.length;
-  return createdBlock(alertId, fields.name, [
-    lifetimeRow(fields),
-    {
-      label: "Watching",
-      value: `Raises when: ${fields.compositeMode} of ${fields.memberNames.length} alerts (${shown.join(", ")}${more > 0 ? `, +${more} more` : ""}).`,
-    },
-    { label: "Notifying", value: `Notifying: ${fields.channelNames.join(", ") || "None"}.` },
-  ]);
+  return createdBlock(
+    alertId,
+    fields.name,
+    [
+      lifetimeRow(fields),
+      {
+        label: "Watching",
+        value: `Raises when: ${fields.compositeMode} of ${fields.memberNames.length} alerts (${shown.join(", ")}${more > 0 ? `, +${more} more` : ""}).`,
+      },
+      { label: "Notifying", value: `Notifying: ${fields.channelNames.join(", ") || "None"}.` },
+    ],
+    planItemKey
+  );
 }
 
 export type AlertCreatedMessage = {
@@ -179,16 +200,26 @@ function createdMessage(
 
 export function alertCreatedMessage(
   alertId: string,
-  fields: CreatedCardFields
+  fields: CreatedCardFields,
+  planItemKey?: string
 ): AlertCreatedMessage {
-  return createdMessage(alertId, alertCreatedBlock(alertId, fields));
+  return createdMessage(
+    alertId,
+    alertCreatedBlock(alertId, fields, planItemKey),
+    planItemKey ? PLAN_CREATED_MESSAGE : REVIEW_MESSAGE
+  );
 }
 
 export function groupCreatedMessage(
   alertId: string,
-  fields: GroupCreatedFields
+  fields: GroupCreatedFields,
+  planItemKey?: string
 ): AlertCreatedMessage {
-  return createdMessage(alertId, groupCreatedBlock(alertId, fields), GROUP_CREATED_MESSAGE);
+  return createdMessage(
+    alertId,
+    groupCreatedBlock(alertId, fields, planItemKey),
+    GROUP_CREATED_MESSAGE
+  );
 }
 
 export function alertCreationOpeningMessage(chatId: string) {
@@ -206,6 +237,7 @@ type CreateAlertRequestCard = {
     scopeType: string;
     scopeValue?: string;
     conditionKind: string;
+    operator?: string;
     value?: number;
     windowMinutes?: number;
     quietWindowMinutes?: number;
@@ -217,6 +249,40 @@ type CreateAlertRequestCard = {
     notifierChannelIds: string[];
   };
 };
+
+function queryConditionSummary({ form }: CreateAlertRequestCard): string {
+  switch (form.conditionKind) {
+    case "threshold":
+      return `${QUERY_CONDITION_LABELS.threshold}: ${form.operator ?? ">"} ${form.value} over ${form.windowMinutes}m`;
+    case "absence":
+      return `${QUERY_CONDITION_LABELS.absence} (${form.quietWindowMinutes}m)`;
+    default:
+      return QUERY_CONDITION_LABELS.match;
+  }
+}
+
+export function requestCardFields(
+  body: CreateAlertRequestCard,
+  channels: AlertChannel[],
+  name?: string,
+  environmentTitle?: string
+): CreatedCardFields | null {
+  const answers = answersFromCreateRequest(body);
+  if (body.form.capabilityKey !== "custom.query") {
+    return createdCardFields(answers, channels, name, environmentTitle);
+  }
+  return {
+    name: name ?? QUERY_SCOPE_LABEL,
+    conditionSummary: queryConditionSummary(body),
+    scopeLabel: QUERY_SCOPE_LABEL,
+    environmentTitle,
+    behavior: "recurring",
+    notifyLabel: notifyLabel(answers, channels),
+    ...(isExpiryTimestamp(answers.expiry)
+      ? { expiresAt: new Date(answers.expiry!).toISOString() }
+      : { expiryLabel: expiryLabel(answers.expiry) }),
+  };
+}
 
 export function answersFromCreateRequest(body: CreateAlertRequestCard): FlowAnswers {
   const { form } = body;

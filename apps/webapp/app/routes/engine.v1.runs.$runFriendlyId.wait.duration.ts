@@ -8,6 +8,7 @@ import { z } from "zod";
 import { prisma } from "~/db.server";
 import { logger } from "~/services/logger.server";
 import { createActionApiRoute, everyResource } from "~/services/routeBuilders/apiBuilder.server";
+import { keyedWaitpointBudgetResponse } from "~/services/routeBuilders/keyedWaitpointBudget.server";
 import { resolveIdempotencyKeyTTL } from "~/utils/idempotencyKeys.server";
 import { engine } from "~/v3/runEngine.server";
 import { runStore } from "~/v3/runStore.server";
@@ -88,6 +89,11 @@ const { action } = createActionApiRoute(
         },
       });
     } catch (error) {
+      // Expected under load and retryable, so it is not reported as an error.
+      const busy = keyedWaitpointBudgetResponse(error, {
+        environmentId: authentication.environment.id,
+      });
+      if (busy) throw busy;
       logger.error("Failed to wait for duration dev", {
         environmentId: authentication.environment.id,
         error,

@@ -353,6 +353,53 @@ describe("legacy packet upload with a scoped credential", () => {
   });
 });
 
+describe("system-issued API key", () => {
+  it("authenticates on a deploy route", async () => {
+    const { project, environment } = await seedTestEnvironment(server.prisma);
+    await server.prisma.runtimeEnvironment.update({
+      where: { id: environment.id },
+      data: { type: "PRODUCTION" },
+    });
+    const token = generateAdditionalApiKey("PRODUCTION").apiKey;
+    await server.prisma.apiKey.create({
+      data: {
+        name: "Build key",
+        keyHash: createHash("sha256").update(token).digest("hex"),
+        lastFour: token.slice(-4),
+        runtimeEnvironmentId: environment.id,
+        presetId: "DEPLOY_ONLY",
+        scopes: [
+          "read:deployments",
+          "write:deployments",
+          "read:envvars",
+          "write:envvars",
+          "write:branches",
+        ],
+        expiresAt: new Date(Date.now() + 60 * 60 * 1000),
+        issuedBy: "SYSTEM",
+      },
+    });
+    const deployment = await server.prisma.workerDeployment.create({
+      data: {
+        friendlyId: `deployment_${environment.shortcode}`,
+        shortCode: environment.shortcode,
+        contentHash: environment.shortcode,
+        version: "20261112.1",
+        projectId: project.id,
+        environmentId: environment.id,
+        status: "BUILDING",
+      },
+    });
+
+    const res = await server.webapp.fetch(`/api/v1/deployments/${deployment.friendlyId}`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+
+    expect(res.status).toBe(200);
+    expect(await res.json()).toMatchObject({ id: deployment.friendlyId, status: "BUILDING" });
+  });
+});
+
 describe("JWT bearer auth — baseline behavior", () => {
   it("valid JWT on JWT-enabled route: auth passes", async () => {
     const { environment } = await seedTestEnvironment(server.prisma);

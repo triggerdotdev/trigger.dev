@@ -88,6 +88,7 @@ import {
   type TriggerAndSubscribeOptions,
   type TriggerAndWaitOptions,
   type TriggerApiRequestOptions,
+  type ConcurrencyKey,
   type TriggerOptions,
   type TaskConcurrency,
   type ConcurrencyLimitOptions,
@@ -95,6 +96,7 @@ import {
 } from "@trigger.dev/core/v3";
 import { resolveTriggerExternalDeploymentId, scopedEnvVar } from "./externalDeploymentId.js";
 import { tracer } from "./tracer.js";
+import { triggerConcurrencyKeyBody } from "@trigger.dev/core/v3/isomorphic";
 import { triggerConcurrencyBody, validateConcurrencyLimitName } from "./concurrency-shared.js";
 
 export type {
@@ -117,6 +119,7 @@ export type {
   TaskSchema,
   TaskWithSchema,
   TaskWithSchemaOptions,
+  ConcurrencyKey,
   TriggerOptions,
 };
 
@@ -844,7 +847,7 @@ export async function batchTriggerById<TTask extends AnyTask>(
           options: {
             ...triggerQueueBody(item.options?.queue),
             ...triggerConcurrencyBody(item.options?.concurrency),
-            concurrencyKey: item.options?.concurrencyKey,
+            ...triggerConcurrencyKeyBody(item.options?.concurrencyKey),
             test: taskContext.ctx?.run.isTest,
             payloadType: payloadPacket.dataType,
             delay: item.options?.delay,
@@ -1105,7 +1108,7 @@ export async function batchTriggerByIdAndWait<TTask extends AnyTask>(
             lockToVersion: taskContext.worker?.version,
             ...triggerQueueBody(item.options?.queue),
             ...triggerConcurrencyBody(item.options?.concurrency),
-            concurrencyKey: item.options?.concurrencyKey,
+            ...triggerConcurrencyKeyBody(item.options?.concurrencyKey),
             test: taskContext.ctx?.run.isTest,
             payloadType: payloadPacket.dataType,
             delay: item.options?.delay,
@@ -1371,7 +1374,7 @@ export async function batchTriggerTasks<TTasks extends readonly AnyTask[]>(
           options: {
             ...triggerQueueBody(item.options?.queue),
             ...triggerConcurrencyBody(item.options?.concurrency),
-            concurrencyKey: item.options?.concurrencyKey,
+            ...triggerConcurrencyKeyBody(item.options?.concurrencyKey),
             test: taskContext.ctx?.run.isTest,
             payloadType: payloadPacket.dataType,
             delay: item.options?.delay,
@@ -1637,7 +1640,7 @@ export async function batchTriggerAndWaitTasks<TTasks extends readonly AnyTask[]
             lockToVersion: taskContext.worker?.version,
             ...triggerQueueBody(item.options?.queue),
             ...triggerConcurrencyBody(item.options?.concurrency),
-            concurrencyKey: item.options?.concurrencyKey,
+            ...triggerConcurrencyKeyBody(item.options?.concurrencyKey),
             test: taskContext.ctx?.run.isTest,
             payloadType: payloadPacket.dataType,
             delay: item.options?.delay,
@@ -2124,7 +2127,7 @@ async function* transformBatchItemsStream<TTask extends AnyTask>(
       options: {
         ...triggerQueueBody(item.options?.queue),
         ...triggerConcurrencyBody(item.options?.concurrency),
-        concurrencyKey: item.options?.concurrencyKey,
+        ...triggerConcurrencyKeyBody(item.options?.concurrencyKey),
         test: taskContext.ctx?.run.isTest,
         payloadType: payloadPacket.dataType,
         delay: item.options?.delay,
@@ -2181,7 +2184,7 @@ async function* transformBatchItemsStreamForWait<TTask extends AnyTask>(
         lockToVersion: taskContext.worker?.version,
         ...triggerQueueBody(item.options?.queue),
         ...triggerConcurrencyBody(item.options?.concurrency),
-        concurrencyKey: item.options?.concurrencyKey,
+        ...triggerConcurrencyKeyBody(item.options?.concurrencyKey),
         test: taskContext.ctx?.run.isTest,
         payloadType: payloadPacket.dataType,
         delay: item.options?.delay,
@@ -2232,7 +2235,7 @@ async function* transformBatchByTaskItemsStream<TTasks extends readonly AnyTask[
       options: {
         ...triggerQueueBody(item.options?.queue),
         ...triggerConcurrencyBody(item.options?.concurrency),
-        concurrencyKey: item.options?.concurrencyKey,
+        ...triggerConcurrencyKeyBody(item.options?.concurrencyKey),
         test: taskContext.ctx?.run.isTest,
         payloadType: payloadPacket.dataType,
         delay: item.options?.delay,
@@ -2288,7 +2291,7 @@ async function* transformBatchByTaskItemsStreamForWait<TTasks extends readonly A
         lockToVersion: taskContext.worker?.version,
         ...triggerQueueBody(item.options?.queue),
         ...triggerConcurrencyBody(item.options?.concurrency),
-        concurrencyKey: item.options?.concurrencyKey,
+        ...triggerConcurrencyKeyBody(item.options?.concurrencyKey),
         test: taskContext.ctx?.run.isTest,
         payloadType: payloadPacket.dataType,
         delay: item.options?.delay,
@@ -2337,7 +2340,7 @@ async function* transformSingleTaskBatchItemsStream<TPayload>(
       options: {
         ...triggerQueueBody(item.options?.queue, queue),
         ...triggerConcurrencyBody(item.options?.concurrency),
-        concurrencyKey: item.options?.concurrencyKey,
+        ...triggerConcurrencyKeyBody(item.options?.concurrencyKey),
         test: taskContext.ctx?.run.isTest,
         payloadType: payloadPacket.dataType,
         delay: item.options?.delay,
@@ -2398,7 +2401,7 @@ async function* transformSingleTaskBatchItemsStreamForWait<TPayload>(
         lockToVersion: taskContext.worker?.version,
         ...triggerQueueBody(item.options?.queue, queue),
         ...triggerConcurrencyBody(item.options?.concurrency),
-        concurrencyKey: item.options?.concurrencyKey,
+        ...triggerConcurrencyKeyBody(item.options?.concurrencyKey),
         test: taskContext.ctx?.run.isTest,
         payloadType: payloadPacket.dataType,
         delay: item.options?.delay,
@@ -2448,7 +2451,7 @@ async function trigger_internal<TRunTypes extends AnyRunTypes>(
       options: {
         ...triggerQueueBody(options?.queue),
         ...triggerConcurrencyBody(options?.concurrency),
-        concurrencyKey: options?.concurrencyKey,
+        ...triggerConcurrencyKeyBody(options?.concurrencyKey),
         test: taskContext.ctx?.run.isTest,
         payloadType: triggerPayloadPacket.dataType,
         payloadSize,
@@ -2534,7 +2537,7 @@ async function batchTrigger_internal<TRunTypes extends AnyRunTypes>(
           options: {
             ...triggerQueueBody(item.options?.queue, queue),
             ...triggerConcurrencyBody(item.options?.concurrency),
-            concurrencyKey: item.options?.concurrencyKey,
+            ...triggerConcurrencyKeyBody(item.options?.concurrencyKey),
             test: taskContext.ctx?.run.isTest,
             payloadType: payloadPacket.dataType,
             delay: item.options?.delay,
@@ -2714,7 +2717,7 @@ async function triggerAndWait_internal<TIdentifier extends string, TPayload, TOu
             lockToVersion: taskContext.worker?.version, // Lock to current version because we're waiting for it to finish
             ...triggerQueueBody(options?.queue),
             ...triggerConcurrencyBody(options?.concurrency),
-            concurrencyKey: options?.concurrencyKey,
+            ...triggerConcurrencyKeyBody(options?.concurrencyKey),
             test: taskContext.ctx?.run.isTest,
             payloadType: triggerPayloadPacket.dataType,
             payloadSize,
@@ -2804,7 +2807,7 @@ async function triggerAndSubscribe_internal<TIdentifier extends string, TPayload
             lockToVersion: taskContext.worker?.version,
             ...triggerQueueBody(options?.queue),
             ...triggerConcurrencyBody(options?.concurrency),
-            concurrencyKey: options?.concurrencyKey,
+            ...triggerConcurrencyKeyBody(options?.concurrencyKey),
             test: taskContext.ctx?.run.isTest,
             payloadType: triggerPayloadPacket.dataType,
             payloadSize,
@@ -2973,7 +2976,7 @@ async function batchTriggerAndWait_internal<TIdentifier extends string, TPayload
             lockToVersion: taskContext.worker?.version,
             ...triggerQueueBody(item.options?.queue, queue),
             ...triggerConcurrencyBody(item.options?.concurrency),
-            concurrencyKey: item.options?.concurrencyKey,
+            ...triggerConcurrencyKeyBody(item.options?.concurrencyKey),
             test: taskContext.ctx?.run.isTest,
             payloadType: payloadPacket.dataType,
             delay: item.options?.delay,

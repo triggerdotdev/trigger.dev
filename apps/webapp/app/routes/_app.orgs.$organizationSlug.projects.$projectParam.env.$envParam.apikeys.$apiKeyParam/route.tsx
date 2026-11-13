@@ -208,6 +208,7 @@ function ApiKeyInspector({
               ranges={row.allowedIpRanges}
               lastUsedIp={row.lastUsedIp}
               canWrite={context.canWriteApiKeys}
+              allowPrivateIpRanges={context.allowPrivateIpRanges}
               appearance="button"
             />
             {revokeButton}

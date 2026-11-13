@@ -95,3 +95,21 @@ describe("concurrencyKey coercion", () => {
     });
   });
 });
+
+describe("object concurrencyKey", () => {
+  const trigger = (concurrencyKey: unknown) =>
+    TriggerTaskRequestBody.safeParse({ payload: {}, options: { concurrencyKey } }).success;
+  const batchItem = (concurrencyKey: unknown) =>
+    BatchItemNDJSON.safeParse({ index: 0, task: "t", options: { concurrencyKey } }).success;
+
+  // Catches: an entry the record parse drops (`__proto__`) or a missing default being accepted.
+  it("rejects an entry it cannot key and a missing default", () => {
+    const valid = { default: "s", org: "o" };
+    const proto = JSON.parse('{"default":"s","__proto__":"o"}');
+    const noDefault = { org: "o" };
+
+    expect([trigger(valid), batchItem(valid)]).toEqual([true, true]);
+    expect([trigger(proto), batchItem(proto)]).toEqual([false, false]);
+    expect([trigger(noDefault), batchItem(noDefault)]).toEqual([false, false]);
+  });
+});

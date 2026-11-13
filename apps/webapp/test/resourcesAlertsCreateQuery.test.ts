@@ -370,7 +370,8 @@ describe("resources.alerts.create action: query alerts", () => {
     expect(resp.status).toBe(400);
   });
 
-  test("a query create with transcriptChatId persists the created card", async ({
+  // Catches: a match query alert created from a plan leaving no created card in the chat.
+  test("a query create with transcriptChatId persists the created card with its plan item key", async ({
     prisma,
     postgresContainer,
   }) => {
@@ -402,7 +403,7 @@ describe("resources.alerts.create action: query alerts", () => {
             windowMinutes: 10,
             notifiers: [channelId],
           },
-          { chatId: "chat_mine", transcriptChatId: "chat_mine" }
+          { transcriptChatId: "chat_mine", planItemKey: "call_1:p1:abc" }
         )
       );
       expect(resp.status).toBe(200);
@@ -412,8 +413,45 @@ describe("resources.alerts.create action: query alerts", () => {
         chatId: "chat_mine",
         userId: seeded.user.id,
         organizationId: seeded.organization.id,
-      })) as Array<{ id: string }>;
-      expect(messages.map((m) => m.id)).toContain(`alert_created:${data.alertId}`);
+      })) as Array<{ id: string; parts: Array<{ data?: { blocks?: unknown[] } }> }>;
+      const created = messages.find((m) => m.id === `alert_created:${data.alertId}`);
+      expect(created?.parts[1].data?.blocks?.[0]).toMatchObject({
+        alertId: data.alertId,
+        planItemKey: "call_1:p1:abc",
+      });
+
+      const matchResp = await callAction(
+        seeded.user.id,
+        queryAlertRequestBody(
+          {
+            organizationId: seeded.organization.id,
+            projectId: seeded.project.id,
+            environmentId: seeded.environment.id,
+          },
+          {
+            query: "SELECT run_id, completed_at FROM runs WHERE status = 'Failed'",
+            name: "New failed runs",
+            mode: "match",
+            operator: ">",
+            windowMinutes: 60,
+            notifiers: [channelId],
+          },
+          { transcriptChatId: "chat_mine", planItemKey: "call_1:p2:def" }
+        )
+      );
+      expect(matchResp.status).toBe(200);
+      const matchData = await matchResp.json();
+      const afterMatch = (await getChatMessages(agentDb.db, {
+        chatId: "chat_mine",
+        userId: seeded.user.id,
+        organizationId: seeded.organization.id,
+      })) as Array<{ id: string; parts: Array<{ data?: { blocks?: unknown[] } }> }>;
+      const matchCard = afterMatch.find((m) => m.id === `alert_created:${matchData.alertId}`);
+      expect(matchCard?.parts[1].data?.blocks?.[0]).toMatchObject({
+        alertId: matchData.alertId,
+        name: "New failed runs",
+        planItemKey: "call_1:p2:def",
+      });
     } finally {
       await agentDb.close();
     }

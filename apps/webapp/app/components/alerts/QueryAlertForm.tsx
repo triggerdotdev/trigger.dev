@@ -136,7 +136,7 @@ function QueryAlertFields({
   prefill: QueryAlertPrefill;
   onCreated: (alertId: string | undefined) => void;
 }) {
-  const draft = useQueryAlertDraft(prefill, onCreated);
+  const draft = useQueryAlertDraft(prefill, (alertId) => onCreated(alertId));
   const {
     analysis,
     signals,

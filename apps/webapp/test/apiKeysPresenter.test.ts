@@ -464,3 +464,54 @@ containerTest("marks only keys missing access their preset grants today", async 
     "Deleted preset": { label: "Custom", drift: [], matchesPreset: false },
   });
 });
+
+containerTest("never lists system-issued keys", async ({ prisma }) => {
+  const { organization, project, user } = await createTestOrgProjectWithMember(prisma);
+  const environment = await createRuntimeEnvironment(prisma, {
+    projectId: project.id,
+    organizationId: organization.id,
+    type: "PRODUCTION",
+    slug: uniqueId("prod"),
+  });
+  const userKey = await prisma.apiKey.create({
+    data: {
+      name: "User key",
+      keyHash: uniqueId("user-hash"),
+      lastFour: "user",
+      runtimeEnvironmentId: environment.id,
+      createdByUserId: user.id,
+      presetId: null,
+      scopes: ["read:deployments"],
+    },
+  });
+  const createSystemKey = (name: string, revokedAt: Date | null) =>
+    prisma.apiKey.create({
+      data: {
+        name,
+        keyHash: uniqueId(`${name}-hash`),
+        lastFour: "sysk",
+        runtimeEnvironmentId: environment.id,
+        presetId: "DEPLOY_ONLY",
+        scopes: ["read:deployments"],
+        issuedBy: "SYSTEM",
+        revokedAt,
+      },
+    });
+  await createSystemKey("Build key", null);
+  await createSystemKey("Revoked build key", new Date());
+  const presenter = new ApiKeysPresenter(prisma, {
+    apiKeyAccessOptions: async () => null,
+    describeApiKeyPolicy: async () => ({}),
+  });
+  const list = (showRevoked: boolean) =>
+    presenter.call({
+      userId: user.id,
+      organizationSlug: organization.slug,
+      projectSlug: project.slug,
+      environmentSlug: environment.slug,
+      showRevoked,
+    });
+
+  expect((await list(false)).apiKeys.map((key) => key.id)).toEqual([userKey.id]);
+  expect((await list(true)).apiKeys.map((key) => key.id)).toEqual([userKey.id]);
+});

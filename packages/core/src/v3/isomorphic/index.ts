@@ -9,3 +9,4 @@ export * from "./consts.js";
 export * from "./traceContext.js";
 export * from "./dates.js";
 export * from "./deploymentVersions.js";
+export * from "./concurrencyKey.js";

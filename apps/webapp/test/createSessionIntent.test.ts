@@ -68,10 +68,6 @@ vi.mock("~/services/dashboardAgent.server", () => ({
   startDashboardAgentSession: async () => {},
 }));
 
-vi.mock("~/v3/canUseDashboardAgentWatches.server", () => ({
-  canUseDashboardAgentWatches: async () => false,
-}));
-
 const loggedErrors = vi.hoisted(() => ({ list: [] as any[] }));
 vi.mock("~/services/logger.server", () => ({
   logger: {

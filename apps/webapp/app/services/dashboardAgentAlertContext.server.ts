@@ -1,13 +1,13 @@
 /**
- * From the turn's environment scope and a chat id to an authorized environment. Same order
- * of authority as the watches route: token environment, chat ownership, re-authorization.
+ * From the turn's environment scope and a chat id to an authorized environment. Order of
+ * authority: token environment, chat ownership, re-authorization.
  */
 
 import type { AuthenticatedEnvironment } from "~/services/apiAuth.server";
 import {
-  authorizeWatchEnvironmentById,
-  resolveChatWatchContext,
-} from "~/services/dashboardAgentWatches.server";
+  authorizeAgentEnvironmentById,
+  resolveChatOrganizationId,
+} from "~/services/dashboardAgentChatContext.server";
 
 export type AgentAlertContextError = "chat_not_found" | "invalid_target" | "environment_mismatch";
 
@@ -32,16 +32,19 @@ export async function resolveAgentAlertContext(params: {
     };
   }
 
-  const chat = await resolveChatWatchContext({ chatId: params.chatId, userId: params.userId });
-  if (!chat) {
+  const organizationId = await resolveChatOrganizationId({
+    chatId: params.chatId,
+    userId: params.userId,
+  });
+  if (!organizationId) {
     return { ok: false, code: "chat_not_found", error: "Chat not found" };
   }
 
-  const environment = await authorizeWatchEnvironmentById({
+  const environment = await authorizeAgentEnvironmentById({
     userId: params.userId,
     environmentId: params.environmentId,
   });
-  if (!environment || environment.organizationId !== chat.organizationId) {
+  if (!environment || environment.organizationId !== organizationId) {
     return { ok: false, code: "invalid_target", error: "Environment not found" };
   }
 

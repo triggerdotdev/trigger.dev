@@ -7,9 +7,11 @@ import { createInvestigationRenderer } from "./tool-investigations";
 import { buildLocateTool } from "./tool-locate";
 import { buildNavigationTools } from "./tool-navigation";
 import { createSourceReadLedger } from "./tool-source-ledger";
-import { buildAnalyzeQueryAlertTool, buildMonitoringAlertTools } from "./tool-monitoring-alerts";
-import { buildWatchSubscriptionTools } from "./tool-watch-subscriptions";
-import { buildWatchTools } from "./watch-tools";
+import {
+  buildAnalyzeQueryAlertTool,
+  buildMonitoringAlertTools,
+  buildPlanMonitoringTool,
+} from "./tool-monitoring-alerts";
 import type { DashboardAgentToolContext } from "./tool-context";
 
 export type { DashboardAgentToolContext } from "./tool-context";
@@ -39,28 +41,19 @@ export function buildDashboardAgentTools(ctx: DashboardAgentToolContext): ToolSe
     projectRef: ctx.projectRef,
     environmentId: ctx.environmentId,
     investigations: ctx.investigations,
-    watchEnabled: ctx.watchEnabled,
     reads: ledger,
   });
+
+  const alertTools = ctx.alertsEnabled || ctx.toolScope === "alert_creation";
 
   const apiTools: ToolSet = {
     ...buildApiTools({ ctx, client, renderInvestigations, reads: ledger }),
     ...buildNavigationTools({ ctx, environmentIdFor: client.environmentIdFor }),
-    // Alerts exist only to report a watch firing, so they come and go with the watch tool.
-    ...(ctx.watchEnabled
-      ? {
-          ...buildWatchTools({ ctx, reads: ledger }),
-          ...buildWatchSubscriptionTools({ ctx, client }),
-        }
-      : {}),
     ...buildLocateTool({ ctx, client, reads: ledger }),
-    ...(ctx.watchEnabled || ctx.toolScope === "alert_creation"
-      ? buildMonitoringAlertTools({ ctx, client })
-      : {}),
+    ...(alertTools ? buildMonitoringAlertTools({ ctx, client }) : {}),
     ...buildFeedbackTool({ ctx, client }),
-    ...(ctx.watchEnabled || ctx.toolScope === "alert_creation"
-      ? buildAnalyzeQueryAlertTool({ ctx, client })
-      : {}),
+    ...(alertTools ? buildAnalyzeQueryAlertTool({ ctx, client }) : {}),
+    ...(alertTools ? buildPlanMonitoringTool({ ctx, client }) : {}),
   };
 
   // Code mode: when the project has a connected repo, add the source tools.

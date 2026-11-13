@@ -7,13 +7,26 @@ import {
   boundedIn,
   Prisma,
   type PrismaClient,
+  type EnvironmentEncryptionPolicy,
   type RuntimeEnvironmentType,
 } from "@trigger.dev/database";
 import { z } from "zod";
 import { environmentFullTitle } from "~/components/environments/EnvironmentLabel";
-import { $replica, $transaction, prisma, type PrismaReplicaClient } from "~/db.server";
+import {
+  $replica,
+  $transaction,
+  prisma,
+  type PrismaReplicaClient,
+  type PrismaClientOrTransaction,
+} from "~/db.server";
 import { env } from "~/env.server";
 import { getSecretStore } from "~/services/secrets/secretStore.server";
+import { environmentEncryption } from "~/services/environmentEncryption/instance.server";
+import { EnvironmentSecretStore } from "~/services/environmentEncryption/secretStore.server";
+import type {
+  EnvironmentEncryptionService,
+  PreparedEnvironmentWrite,
+} from "~/services/environmentEncryption/service.server";
 import { deduplicateVariableArray } from "../deduplicateVariableArray.server";
 import { removeBlacklistedVariables } from "../environmentVariableRules.server";
 import { FEATURE_FLAG, resolveInternalApiOriginEnabled } from "../featureFlags";
@@ -57,10 +70,51 @@ function parseSecretKey(key: string) {
 const SecretValue = z.object({ secret: z.string() });
 
 export class EnvironmentVariablesRepository implements Repository {
+  #encryption?: EnvironmentEncryptionService;
+
   constructor(
     private prismaClient: PrismaClient = prisma,
-    private replicaClient: PrismaReplicaClient = $replica
-  ) {}
+    private replicaClient: PrismaReplicaClient = $replica,
+    encryption?: EnvironmentEncryptionService
+  ) {
+    this.#encryption = encryption;
+  }
+
+  private get encryption() {
+    return (this.#encryption ??= environmentEncryption(this.prismaClient));
+  }
+
+  #secretStore(
+    db: PrismaClientOrTransaction,
+    projectId: string,
+    environmentIds: string[],
+    prepared?: Map<string, PreparedEnvironmentWrite>
+  ) {
+    return new EnvironmentSecretStore(db, this.encryption, projectId, environmentIds, prepared);
+  }
+
+  async #prepareWrites(
+    projectId: string,
+    environments: Array<{
+      id: string;
+      encryptionPolicy: Pick<EnvironmentEncryptionPolicy, "activeKeyId" | "revision"> | null;
+    }>
+  ) {
+    return new Map(
+      await Promise.all(
+        environments.map(
+          async (environment) =>
+            [
+              environment.id,
+              await this.encryption.prepareWrite(
+                { projectId, environmentId: environment.id },
+                environment.encryptionPolicy
+              ),
+            ] as const
+        )
+      )
+    );
+  }
 
   async create(projectId: string, options: CreateEnvironmentVariables): Promise<CreateResult> {
     if (options.environmentIds.length === 0) {
@@ -75,8 +129,10 @@ export class EnvironmentVariablesRepository implements Repository {
       select: {
         organization: { select: { featureFlags: true } },
         environments: {
+          where: { id: { in: boundedIn(options.environmentIds) } },
           select: {
             id: true,
+            encryptionPolicy: { select: { activeKeyId: true, revision: true } },
           },
         },
         environmentVariables: {
@@ -90,6 +146,8 @@ export class EnvironmentVariablesRepository implements Repository {
                 environmentId: { in: boundedIn(options.environmentIds) },
               },
               select: {
+                id: true,
+                version: true,
                 environment: {
                   select: { id: true, type: true },
                 },
@@ -179,8 +237,24 @@ export class EnvironmentVariablesRepository implements Repository {
     }
 
     try {
+      const prepared = await this.#prepareWrites(projectId, project.environments);
+      const existingSecrets = new Map(
+        (
+          await this.#secretStore(
+            this.prismaClient,
+            projectId,
+            options.environmentIds
+          ).getSecretsByKeys(
+            SecretValue,
+            values.flatMap((v) =>
+              options.environmentIds.map((id) => secretKey(projectId, id, v.key))
+            )
+          )
+        ).map((secret) => [secret.key, secret.value])
+      );
       for (const variable of values) {
         const _result = await $transaction(this.prismaClient, "create env var", async (tx) => {
+          await this.encryption.assertWrite(tx, [...prepared.values()]);
           const environmentVariable = await tx.environmentVariable.upsert({
             where: {
               projectId_key: {
@@ -200,9 +274,7 @@ export class EnvironmentVariablesRepository implements Repository {
             update: {},
           });
 
-          const secretStore = getSecretStore("DATABASE", {
-            prismaClient: tx,
-          });
+          const secretStore = this.#secretStore(tx, projectId, options.environmentIds, prepared);
 
           // If parentEnvironmentId is provided and isSecret is not explicitly set,
           // look up if the parent has this variable marked as secret
@@ -236,11 +308,16 @@ export class EnvironmentVariablesRepository implements Repository {
             });
 
             // Check if value already exists and is the same, and no metadata change (e.g. isSecret toggle)
-            const existingSecret = await secretStore.getSecret(SecretValue, key);
+            const existingSecret = existingSecrets.get(key);
+            const previousValue = project.environmentVariables
+              .find((v) => v.key === variable.key)
+              ?.values.find((v) => v.environment.id === environmentId);
             const canSkip =
               existingSecret &&
               existingSecret.secret === variable.value &&
               existingValueRecord &&
+              existingValueRecord.id === previousValue?.id &&
+              existingValueRecord.version === previousValue.version &&
               (options.isSecret === undefined || existingValueRecord.isSecret === options.isSecret);
             if (canSkip) {
               continue;
@@ -326,8 +403,10 @@ export class EnvironmentVariablesRepository implements Repository {
       select: {
         organization: { select: { featureFlags: true } },
         environments: {
+          where: { id: { in: boundedIn(options.values.map((value) => value.environmentId)) } },
           select: {
             id: true,
+            encryptionPolicy: { select: { activeKeyId: true, revision: true } },
           },
         },
       },
@@ -370,10 +449,10 @@ export class EnvironmentVariablesRepository implements Repository {
     }
 
     try {
+      const prepared = await this.#prepareWrites(projectId, project.environments);
       await $transaction(this.prismaClient, "edit env var", async (tx) => {
-        const secretStore = getSecretStore("DATABASE", {
-          prismaClient: tx,
-        });
+        await this.encryption.assertWrite(tx, [...prepared.values()]);
+        const secretStore = this.#secretStore(tx, projectId, [...prepared.keys()], prepared);
 
         //create the secret values and references
         for (const value of values) {
@@ -450,8 +529,10 @@ export class EnvironmentVariablesRepository implements Repository {
       select: {
         organization: { select: { featureFlags: true } },
         environments: {
+          where: { id: options.environmentId },
           select: {
             id: true,
+            encryptionPolicy: { select: { activeKeyId: true, revision: true } },
           },
         },
       },
@@ -514,10 +595,10 @@ export class EnvironmentVariablesRepository implements Repository {
     }
 
     try {
+      const prepared = await this.#prepareWrites(projectId, project.environments);
       await $transaction(this.prismaClient, "edit env var value", async (tx) => {
-        const secretStore = getSecretStore("DATABASE", {
-          prismaClient: tx,
-        });
+        await this.encryption.assertWrite(tx, [...prepared.values()]);
+        const secretStore = this.#secretStore(tx, projectId, [options.environmentId], prepared);
 
         const key = secretKey(projectId, options.environmentId, environmentVariable.key);
         await secretStore.setSecret<{ secret: string }>(key, {
@@ -571,9 +652,11 @@ export class EnvironmentVariablesRepository implements Repository {
       return [];
     }
 
-    const secretStore = getSecretStore("DATABASE", {
-      prismaClient: this.prismaClient,
-    });
+    const secretStore = this.#secretStore(
+      this.prismaClient,
+      projectId,
+      project.environments.map((e) => e.id)
+    );
 
     const secrets = await secretStore.getSecrets(SecretValue, secretKeyProjectPrefix(projectId));
 
@@ -637,9 +720,11 @@ export class EnvironmentVariablesRepository implements Repository {
       uniqueItems.set(`${item.environmentId}:${item.key}`, item);
     }
 
-    const secretStore = getSecretStore("DATABASE", {
-      prismaClient: this.replicaClient,
-    });
+    const secretStore = this.#secretStore(
+      this.replicaClient,
+      projectId,
+      items.map((item) => item.environmentId)
+    );
 
     const storeKeys = Array.from(uniqueItems.values()).map((item) =>
       secretKey(projectId, item.environmentId, item.key)
@@ -734,9 +819,11 @@ export class EnvironmentVariablesRepository implements Repository {
     parentEnvironmentId?: string,
     readFromReplica?: boolean
   ): Promise<EnvironmentVariable[]> {
-    const secretStore = getSecretStore("DATABASE", {
-      prismaClient: readFromReplica ? this.replicaClient : this.prismaClient,
-    });
+    const secretStore = this.#secretStore(
+      readFromReplica ? this.replicaClient : this.prismaClient,
+      projectId,
+      parentEnvironmentId ? [parentEnvironmentId, environmentId] : [environmentId]
+    );
 
     const parentSecrets = parentEnvironmentId
       ? await secretStore.getSecrets(

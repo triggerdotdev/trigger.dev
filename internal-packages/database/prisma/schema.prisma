@@ -349,6 +349,9 @@ model OrgMemberInvite {
 }
 
 model RuntimeEnvironment {
+  encryptionPolicy EnvironmentEncryptionPolicy?
+  encryptionKeys   EnvironmentEncryptionKey[]
+
   id                 String    @id @default(cuid())
   slug               String
   apiKey             String    @unique
@@ -451,6 +454,11 @@ model RuntimeEnvironment {
   @@index([organizationId])
 }
 
+enum ApiKeyIssuer {
+  USER
+  SYSTEM
+}
+
 model ApiKey {
   id       String @id @default(cuid())
   name     String
@@ -466,6 +474,8 @@ model ApiKey {
   createdBy       User?   @relation(fields: [createdByUserId], references: [id], onDelete: SetNull, onUpdate: Cascade)
   createdByUserId String? @map("created_by_user_id")
 
+  issuedBy ApiKeyIssuer @default(USER) @map("issued_by")
+
   presetId String?  @map("preset_id")
   scopes   String[]
 
@@ -480,6 +490,7 @@ model ApiKey {
   createdAt  DateTime  @default(now()) @map("created_at")
 
   @@index([runtimeEnvironmentId, revokedAt, createdAt(sort: Desc)])
+  @@index([runtimeEnvironmentId, issuedBy, revokedAt, createdAt(sort: Desc)], map: "api_keys_env_issued_by_revoked_at_created_at_idx")
   @@map("api_keys")
 }
 
@@ -583,6 +594,36 @@ model Project {
 enum ProjectVersion {
   V2
   V3
+}
+
+enum EnvironmentKeyWrappingProvider {
+  PLATFORM_KEYRING
+  AWS_KMS
+}
+
+model EnvironmentEncryptionPolicy {
+  environmentId        String                         @id
+  environment          RuntimeEnvironment             @relation(fields: [environmentId], references: [id], onDelete: Cascade)
+  revision             Int                            @default(0)
+  wrappingProvider     EnvironmentKeyWrappingProvider?
+  wrappingKeyReference String?
+  activeKeyId          String?
+  activeKey            EnvironmentEncryptionKey?      @relation("activeEnvironmentKey", fields: [activeKeyId, environmentId], references: [id, environmentId], onDelete: NoAction, onUpdate: NoAction)
+}
+
+model EnvironmentEncryptionKey {
+  id                   String                         @id @default(cuid())
+  environmentId        String
+  environment          RuntimeEnvironment             @relation(fields: [environmentId], references: [id], onDelete: Cascade)
+  wrappedKey           Json
+  wrappingProvider     EnvironmentKeyWrappingProvider
+  wrappingKeyReference String
+  revision             Int                            @default(0)
+  createdAt            DateTime                       @default(now())
+  activeFor            EnvironmentEncryptionPolicy[]  @relation("activeEnvironmentKey")
+
+  @@unique([id, environmentId])
+  @@index([environmentId])
 }
 
 model SecretReference {
@@ -2401,6 +2442,8 @@ model EnvironmentVariableValue {
   @@unique([variableId, environmentId])
   @@index([environmentId])
   @@index([valueReferenceId])
+  // One environment's values by last update: the environment variables page's sort by updated
+  @@index([environmentId, updatedAt(sort: Desc), variableId])
 }
 
 model Checkpoint {

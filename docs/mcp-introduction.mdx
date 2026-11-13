@@ -299,7 +299,9 @@ After adding the config, restart your client. You should see a server named **tr
 
 ## Authentication
 
-The `search_docs` tool works without authentication, and so do the local-only tools `list_profiles`, `dev_server_status` and `stop_dev_server`. All other tools require you to be logged in via the [Trigger.dev CLI](/cli-login-commands). The first time you use an authenticated tool, your MCP client will prompt you to log in.
+The `search_docs` tool works without authentication, and so do the local-only tools `list_profiles`, `dev_server_status` and `stop_dev_server`. All other tools require you to be logged in via the [Trigger.dev CLI](/cli-login-commands). The first time you use an authenticated tool, your MCP client prompts you to log in.
+
+A login stops working after 7 days without use. The next authenticated tool call starts the login flow again. If your client supports confirmation prompts, it asks first. Then the browser opens, and the call continues once you approve. See [CLI login expiry](/cli-login-commands#login-expiry).
 
 <Accordion title="CLI Options">
 

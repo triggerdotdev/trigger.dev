@@ -7,7 +7,7 @@ import {
   type WeightedWorkerQueueSubscription,
   type WorkerQueueSubscription,
 } from "@trigger.dev/core/v3/workers";
-import type { WorkloadType } from "@trigger.dev/database";
+import type { WorkerInstanceGroupType, WorkloadType } from "@trigger.dev/database";
 import { z } from "zod";
 import { ServiceValidationError } from "~/v3/services/common.server";
 import { baseWorkerQueue } from "./workerQueueSplit.server";
@@ -28,6 +28,8 @@ export const WorkerQueueSubscriptionPolicyEnv = z
 export type WorkerQueueConsumerOptions = {
   workerGroupId: string;
   workerInstanceId: string;
+  /** An UNMANAGED group consumes only its own legacy queues, whatever its allowlist says. */
+  type: WorkerInstanceGroupType;
   masterQueue: string;
   region: string | null;
   workloadType: WorkloadType;
@@ -94,7 +96,7 @@ export function resolveWorkerQueueSubscriptions(
 
   for (const subscription of subscriptions) {
     const key = subscriptionKey(subscription);
-    if (!worker.allowedQueues.has(key)) {
+    if (worker.type === "UNMANAGED" || !worker.allowedQueues.has(key)) {
       throw new ServiceValidationError(
         `Worker group ${worker.workerGroupId} is not authorized to consume ${key}`,
         403
@@ -139,6 +141,7 @@ export function workerServesQueue(worker: WorkerQueueConsumer, workerQueue: stri
     return false;
   }
   return (
+    worker.type !== "UNMANAGED" &&
     parsed.version === WORKER_QUEUE_VERSION &&
     parsed.region === (worker.region ?? baseWorkerQueue(worker.masterQueue)) &&
     worker.allowedQueues.has(subscriptionKey(parsed))

@@ -50,6 +50,7 @@ containerTest(
       const worker = createWorkerQueueConsumer({
         workerGroupId: environment.project.defaultWorkerGroupId!,
         workerInstanceId: "test-instance",
+        type: "MANAGED",
         masterQueue: "legacy-region",
         region: "us-east-1",
         workloadType: "CONTAINER" as const,
@@ -164,6 +165,7 @@ function mixedGroup(
     worker: createWorkerQueueConsumer({
       workerGroupId: environment.project.defaultWorkerGroupId!,
       workerInstanceId,
+      type: "MANAGED",
       masterQueue,
       region: "us-east-1",
       workloadType,

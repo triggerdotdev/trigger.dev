@@ -12,10 +12,6 @@ import {
   runAttioWorkspaceSync,
 } from "~/services/attio.server";
 import { purgeDashboardAgentChatsForOrganization } from "~/services/dashboardAgentChatRetention.server";
-import {
-  rearmDashboardAgentWatchBatches,
-  sweepDashboardAgentWatches,
-} from "~/services/dashboardAgentWatchSweep.server";
 import { logger } from "~/services/logger.server";
 import {
   MembershipDevEnvironmentsSchema,
@@ -65,11 +61,6 @@ function initializeWorker() {
   };
 
   logger.debug(`👨‍🏭 Initializing common worker at host ${env.COMMON_WORKER_REDIS_HOST}`);
-
-  // Only schedule the agent watch cron where the agent is actually set up. Otherwise
-  // its sweeps hit a missing schema and drip a dead-letter entry every run.
-  const dashboardAgentConfigured =
-    env.DASHBOARD_AGENT_ENABLED === "1" || Boolean(env.DASHBOARD_AGENT_DATABASE_URL);
 
   // Alerts live in the dashboard-agent-db schema but are their own feature, unrelated
   // to whether the dashboard agent itself is enabled.
@@ -244,11 +235,10 @@ function initializeWorker() {
           maxAttempts: 1,
         },
       },
-      // The watch backstops: expiry, wake redelivery and dead batch chains.
+      // @deprecated, the legacy agent watch is gone; remove once the queue drains.
       "dashboardAgent.watchMaintenance": {
         schema: CronSchema,
-        visibilityTimeoutMs: 60_000 * 5,
-        ...(dashboardAgentConfigured ? { cron: "*/5 * * * *", jitterInMs: 30_000 } : {}),
+        visibilityTimeoutMs: 60_000,
         retry: {
           maxAttempts: 1,
         },
@@ -392,30 +382,7 @@ function initializeWorker() {
       },
       // @deprecated, moved to the dashboard agent project; remove once the queue drains.
       "dashboardAgent.maintenance": async () => {},
-      "dashboardAgent.watchMaintenance": async () => {
-        // Each backstop runs independently; the first failure is rethrown at the end.
-        let failure: unknown;
-
-        try {
-          const watches = await sweepDashboardAgentWatches();
-          if (watches.overdue > 0 || watches.undelivered > 0) {
-            logger.debug("Dashboard agent watch sweep", watches);
-          }
-        } catch (error) {
-          failure ??= error;
-        }
-
-        try {
-          const batches = await rearmDashboardAgentWatchBatches();
-          if (batches.stale > 0) {
-            logger.debug("Dashboard agent watch batch re-arm", batches);
-          }
-        } catch (error) {
-          failure ??= error;
-        }
-
-        if (failure) throw failure;
-      },
+      "dashboardAgent.watchMaintenance": async () => {},
       "alerts.evaluateTick": async () => {},
       "alerts.housekeeping": async () => {
         await runAlertsHousekeeping(

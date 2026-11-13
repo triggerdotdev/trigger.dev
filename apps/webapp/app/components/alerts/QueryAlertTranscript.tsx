@@ -1,10 +1,15 @@
 import { type ReactNode, useEffect, useState } from "react";
 import { AlertChannelsDialog } from "~/components/alerts/AlertChannelsDialog";
 import { alertCreatedBlock, REVIEW_MESSAGE } from "~/components/alerts/alertCreatedCard";
-import { AlertCreatedCard, WatchStyleReviewCard } from "~/components/alerts/creationCards";
+import {
+  AlertCreatedCard,
+  WatchStyleReviewCard,
+  type ReviewCardFields,
+} from "~/components/alerts/creationCards";
 import { NewChatButton } from "~/components/alerts/creationControls";
 import {
   QUERY_CONDITION_LABELS,
+  QUERY_SCOPE_LABEL,
   queryConditionModes,
   querySignalOptions,
   UNUSABLE_QUERY,
@@ -35,12 +40,16 @@ import { v3EnvironmentPath } from "~/utils/pathBuilder";
 
 export type QueryWatchPrefill = {
   query: string;
+  name?: string;
   period?: string;
   mode?: QueryAlertMode;
   measure?: string;
   operator?: ">" | "<";
   value?: number;
   windowSec?: number;
+  windowMinutes?: number;
+  expiry?: string;
+  notifiers?: string[];
 };
 
 export function queryWatchPrefill(
@@ -54,28 +63,15 @@ export function queryWatchPrefill(
 type Analyzed = Pick<QueryAlertPrefill, "analysis" | "names">;
 
 const DEFAULT_PERIOD = "7d";
-const QUERY_SCOPE_LABEL = "Custom query";
 const NEEDS_THRESHOLD = "Enter a threshold first";
 const OPERATORS = [
   { id: ">", label: "Above" },
   { id: "<", label: "Below" },
 ];
 
-export function QueryAlertTranscript({
-  prefill,
-  alertDetailPath,
-  onNewChat,
-  onCreated,
-  environmentTitle,
-  chat,
-}: {
-  prefill: QueryWatchPrefill;
-  alertDetailPath: (alertId: string) => string;
-  onNewChat?: () => void;
-  onCreated?: (info: { chatId?: string; name: string }) => void;
-  environmentTitle?: string;
-  chat?: QueryAlertChat;
-}) {
+type QueryAlertCreated = { alertId?: string; chatId?: string; name: string };
+
+export function useQueryAnalysis(prefill: QueryWatchPrefill) {
   const organization = useOrganization();
   const project = useProject();
   const environment = useEnvironment();
@@ -101,22 +97,32 @@ export function QueryAlertTranscript({
 
   const full: QueryAlertPrefill | undefined =
     analyzed && analyzed !== "error"
-      ? {
-          query: prefill.query,
-          period: prefill.period ?? DEFAULT_PERIOD,
-          mode: prefill.mode,
-          measure: prefill.measure,
-          operator: prefill.operator,
-          value: prefill.value,
-          windowSec: prefill.windowSec,
-          ...analyzed,
-        }
+      ? { ...prefill, period: prefill.period ?? DEFAULT_PERIOD, ...analyzed }
       : undefined;
   const blocked = full ? watchBlockedReasons(full.analysis, full.query) : [];
   const reasons =
     blocked.length || !full || querySignalOptions(full.analysis).length
       ? blocked
       : [UNUSABLE_QUERY];
+  return { analyzed, full, reasons };
+}
+
+export function QueryAlertTranscript({
+  prefill,
+  alertDetailPath,
+  onNewChat,
+  onCreated,
+  environmentTitle,
+  chat,
+}: {
+  prefill: QueryWatchPrefill;
+  alertDetailPath: (alertId: string) => string;
+  onNewChat?: () => void;
+  onCreated?: (info: QueryAlertCreated) => void;
+  environmentTitle?: string;
+  chat?: QueryAlertChat;
+}) {
+  const { analyzed, full, reasons } = useQueryAnalysis(prefill);
 
   const header = (
     <ChatTurn speaker="user">
@@ -170,6 +176,26 @@ export function QueryAlertTranscript({
   );
 }
 
+function queryReviewFields(
+  draft: ReturnType<typeof useQueryAlertDraft>,
+  environmentTitle?: string
+): ReviewCardFields {
+  const conditionSummary =
+    draft.mode === "threshold"
+      ? `${draft.measure} ${draft.operator} ${draft.valueText} for ${draft.windowMinutes}m`
+      : draft.mode === "absence"
+        ? `No matching results for ${draft.windowMinutes}m`
+        : QUERY_CONDITION_LABELS.match;
+  return {
+    name: draft.name,
+    conditionSummary,
+    scopeLabel: QUERY_SCOPE_LABEL,
+    environmentTitle,
+    behavior: "recurring",
+    notifyLabel: notifyLabel(draft.flow.answers, draft.channels),
+  };
+}
+
 function stepIds(signalCount: number, mode: QueryAlertMode): string[] {
   return [
     "query",
@@ -183,37 +209,20 @@ function stepIds(signalCount: number, mode: QueryAlertMode): string[] {
   ];
 }
 
-function QueryAlertChat({
-  prefill,
-  header,
-  alertDetailPath,
-  onNewChat,
-  onCreated,
-  environmentTitle,
-  chat,
-}: {
-  prefill: QueryAlertPrefill;
-  header: ReactNode;
-  alertDetailPath: (alertId: string) => string;
-  onNewChat?: () => void;
-  onCreated?: (info: { chatId?: string; name: string }) => void;
-  environmentTitle?: string;
-  chat?: QueryAlertChat;
-}) {
-  const [created, setCreated] = useState<{ id?: string }>();
-  const draft = useQueryAlertDraft(
-    prefill,
-    (id, chatId) => {
-      setCreated({ id });
-      onCreated?.({ chatId, name: draft.name });
-    },
-    chat
-  );
+export function useQueryAlertWizard(
+  draft: ReturnType<typeof useQueryAlertDraft>,
+  prefill: QueryAlertPrefill,
+  {
+    onDone,
+    startAt = "query",
+    initiallyAnswered = false,
+  }: { onDone: () => void; startAt?: string; initiallyAnswered?: boolean }
+) {
   const { analysis, signals, mode, flow, bounds } = draft;
-  const [stepId, setStepId] = useState("query");
-  const [answered, setAnswered] = useState<string[]>([]);
-  const [reviewing, setReviewing] = useState(false);
-  const [closed, setClosed] = useState(false);
+  const [stepId, setStepId] = useState(startAt);
+  const [answered, setAnswered] = useState<string[]>(() =>
+    initiallyAnswered ? stepIds(signals.length, mode) : []
+  );
 
   const ids = stepIds(signals.length, mode);
   const done = (id: string) => answered.includes(id);
@@ -222,13 +231,11 @@ function QueryAlertChat({
     const order = stepIds(signals.length, nextMode);
     const next = order[order.indexOf(from) + 1];
     if (next) setStepId(next);
-    else setReviewing(true);
+    else onDone();
   };
   const startOver = () => {
     setAnswered([]);
     setStepId("query");
-    setReviewing(false);
-    setClosed(false);
   };
 
   const continueOption = (disabledReason?: string) => [
@@ -364,21 +371,51 @@ function QueryAlertChat({
     }
   }
 
-  const summary =
-    mode === "threshold"
-      ? `${draft.measure} ${draft.operator} ${draft.valueText} for ${draft.windowMinutes}m`
-      : mode === "absence"
-        ? `No matching results for ${draft.windowMinutes}m`
-        : QUERY_CONDITION_LABELS.match;
+  return { steps, stepIndex, setStepId, select, advance, startOver };
+}
+
+function QueryAlertChat({
+  prefill,
+  header,
+  alertDetailPath,
+  onNewChat,
+  onCreated,
+  environmentTitle,
+  chat,
+}: {
+  prefill: QueryAlertPrefill;
+  header: ReactNode;
+  alertDetailPath: (alertId: string) => string;
+  onNewChat?: () => void;
+  onCreated?: (info: QueryAlertCreated) => void;
+  environmentTitle?: string;
+  chat?: QueryAlertChat;
+}) {
+  const [created, setCreated] = useState<{ id?: string }>();
+  const draft = useQueryAlertDraft(
+    prefill,
+    (id, chatId, name) => {
+      setCreated({ id });
+      onCreated?.({ alertId: id, chatId, name });
+    },
+    chat
+  );
+  const { analysis, flow } = draft;
+  const [reviewing, setReviewing] = useState(false);
+  const [closed, setClosed] = useState(false);
+  const wizard = useQueryAlertWizard(draft, prefill, { onDone: () => setReviewing(true) });
+  const { steps, stepIndex, setStepId, select, advance } = wizard;
+  const startOver = () => {
+    wizard.startOver();
+    setReviewing(false);
+    setClosed(false);
+  };
+
+  const fields = queryReviewFields(draft, environmentTitle);
   const expiry = flow.answers.expiry;
   const createdBlock = created
     ? alertCreatedBlock(created.id ?? "", {
-        name: draft.name,
-        conditionSummary: summary,
-        scopeLabel: QUERY_SCOPE_LABEL,
-        environmentTitle,
-        behavior: "recurring",
-        notifyLabel: notifyLabel(flow.answers, draft.channels),
+        ...fields,
         ...(isExpiryTimestamp(expiry)
           ? { expiresAt: new Date(expiry!).toISOString() }
           : { expiryLabel: expiryLabel(expiry) }),
@@ -394,14 +431,7 @@ function QueryAlertChat({
             <ChatTurn speaker="assistant">
               <div data-testid="query-alert-review" className="flex flex-col gap-2">
                 <WatchStyleReviewCard
-                  fields={{
-                    name: draft.name,
-                    conditionSummary: summary,
-                    scopeLabel: QUERY_SCOPE_LABEL,
-                    environmentTitle,
-                    behavior: "recurring",
-                    notifyLabel: notifyLabel(flow.answers, draft.channels),
-                  }}
+                  fields={fields}
                   actions={{
                     onCreate: () => void draft.create(),
                     submitting: draft.submitting,

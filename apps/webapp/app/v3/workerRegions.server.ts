@@ -34,7 +34,7 @@ export function regionForQueue(queue: string, groups: WorkerGroupRegionRow[]): s
 /**
  * Forward map: the compute backing queue for the region that `queue` belongs to, or undefined if
  * the region has no compute backing. `queue` is the resolved (container) worker queue; we look up
- * its region, then find a visible MICROVM group in the same region. Failing that, a group listed in
+ * its region, then find a visible, shared MICROVM group in the same region. Failing that, a group listed in
  * `mixedRuntimeGroupIds` is its own backing, as it carries compute consumers too. Returns the
  * backing group's queue and its `enableFastPath` so the caller adopts the backing's setting.
  */
@@ -49,7 +49,12 @@ export function backingForQueue(
   const backing =
     groups.find(
       (g) =>
-        g.workloadType === "MICROVM" && g.region === region && !g.hidden && g.masterQueue !== queue
+        g.workloadType === "MICROVM" &&
+        g.type === "MANAGED" &&
+        g.projectId === null &&
+        g.region === region &&
+        !g.hidden &&
+        g.masterQueue !== queue
     ) ?? (mixedRuntimeGroupIds.includes(self.id) ? self : undefined);
   if (!backing) return undefined;
   return { workerQueue: backing.masterQueue, enableFastPath: backing.enableFastPath };

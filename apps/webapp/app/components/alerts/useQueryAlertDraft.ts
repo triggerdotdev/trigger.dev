@@ -1,7 +1,11 @@
 import { useFetcher } from "@remix-run/react";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { alertChannelsResourcePath } from "~/components/alerts/alertChannelsResourcePath";
-import { CREATE_ALERT_PATH, queryAlertRequestBody } from "~/components/alerts/createAlertRequest";
+import {
+  CREATE_ALERT_PATH,
+  createAlertErrorMessage,
+  queryAlertRequestBody,
+} from "~/components/alerts/createAlertRequest";
 import {
   defaultQueryWindowMinutes,
   queryAlertNameKey,
@@ -22,15 +26,15 @@ import { v3EnvironmentPath } from "~/utils/pathBuilder";
 import type { PreviewQueryResponse } from "~/v3/services/alerts/previewQuery.server";
 
 export type QueryAlertChat = {
+  planItemKey?: string;
   ensure: () => Promise<{ chatId: string; release?: () => void } | undefined>;
 };
 
 const PREVIEW_FAILED = "Preview failed. Try again.";
-const CREATE_FAILED = "Failed to create the alert. Try again.";
 
 export function useQueryAlertDraft(
   prefill: QueryAlertPrefill,
-  onCreated: (alertId: string | undefined, chatId?: string) => void,
+  onCreated: (alertId: string | undefined, chatId: string | undefined, name: string) => void,
   chat?: QueryAlertChat
 ) {
   const organization = useOrganization();
@@ -63,6 +67,7 @@ export function useQueryAlertDraft(
   const bounds = queryWindowBounds(analysis.limits);
   const defaultWindow = defaultQueryWindowMinutes(prefill.period, analysis.limits);
   const [windowText, setWindowText] = useState(() => {
+    if (prefill.windowMinutes !== undefined) return String(prefill.windowMinutes);
     const windowSec = prefill.windowSec;
     if (typeof windowSec !== "number" || !Number.isFinite(windowSec)) return String(defaultWindow);
     return String(Math.min(bounds.max, Math.max(bounds.min, Math.ceil(windowSec / 60))));
@@ -73,10 +78,13 @@ export function useQueryAlertDraft(
     (Number.isInteger(windowMinutes) && windowMinutes >= bounds.min && windowMinutes <= bounds.max);
 
   const suggestedName = prefill.names[queryAlertNameKey(mode, measure)] ?? analysis.suggestedName;
-  const [editedName, setEditedName] = useState<string>();
+  const [editedName, setEditedName] = useState(prefill.name);
   const name = editedName ?? suggestedName;
 
-  const flow = useCreationFlowState(undefined, { notifiers: [] });
+  const flow = useCreationFlowState(undefined, {
+    notifiers: prefill.notifiers ?? [],
+    expiry: prefill.expiry,
+  });
   const [addingChannel, setAddingChannel] = useState(false);
   const channelsFetcher = useFetcher<{
     channels: AlertChannel[];
@@ -122,6 +130,7 @@ export function useQueryAlertDraft(
   const canPreview = windowValid && valueValid;
 
   const [submitting, setSubmitting] = useState(false);
+  const creatingRef = useRef(false);
   const [createError, setCreateError] = useState<string>();
   const canCreate =
     canPreview && hasNotifier && flow.answers.expiry !== undefined && name.trim() !== "";
@@ -152,6 +161,8 @@ export function useQueryAlertDraft(
   }
 
   async function create() {
+    if (creatingRef.current) return;
+    creatingRef.current = true;
     setSubmitting(true);
     setCreateError(undefined);
     let session: Awaited<ReturnType<QueryAlertChat["ensure"]>>;
@@ -178,25 +189,24 @@ export function useQueryAlertDraft(
               expiry: flow.answers.expiry,
               notifiers: flow.answers.notifiers ?? [],
             },
-            session && { transcriptChatId: session.chatId }
+            session && { transcriptChatId: session.chatId, planItemKey: chat?.planItemKey }
           )
         ),
       });
       const data = (await resp.json().catch(() => ({}))) as { alertId?: string; error?: string };
       if (!resp.ok) {
-        setCreateError(
-          (resp.status === 400 || resp.status === 422) && data.error ? data.error : CREATE_FAILED
-        );
+        setCreateError(createAlertErrorMessage(resp.status, data.error));
         setSubmitting(false);
+        creatingRef.current = false;
         session?.release?.();
         return;
       }
-      if (session) onCreated(data.alertId, session.chatId);
-      else onCreated(data.alertId);
+      onCreated(data.alertId, session?.chatId, name.trim());
     } catch {
       session?.release?.();
-      setCreateError(CREATE_FAILED);
+      setCreateError(createAlertErrorMessage(0, undefined));
       setSubmitting(false);
+      creatingRef.current = false;
     }
   }
 

@@ -107,4 +107,7 @@ function groupSize(v: GroupBodyShape) {
 
 export const MonitoringAlertsAnalyzeBodySchema = z.object({
   query: z.string().min(1).max(8192),
+  signal: z
+    .object({ mode: z.enum(["threshold", "absence", "match"]), measure: z.string().optional() })
+    .optional(),
 });

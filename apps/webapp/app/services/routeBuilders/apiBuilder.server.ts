@@ -29,6 +29,7 @@ import { WORKER_HEADERS } from "@trigger.dev/core/v3/runEngineWorker";
 import { ServiceValidationError } from "~/v3/services/common.server";
 import { EngineServiceValidationError } from "@internal/run-engine";
 import { unroutableIdResponse } from "./unroutableId.server";
+import { keyedWaitpointBudgetResponse } from "./keyedWaitpointBudget.server";
 import { tenantContext, tenantContextFromAuthEnvironment } from "~/services/tenantContext.server";
 import { withRequestFeature, type RequestFeatureName } from "~/services/requestFeature.server";
 
@@ -1477,6 +1478,9 @@ export function createActionApiRoute<
           logBoundaryError("Unroutable id", error, request.url);
           return await wrapResponse(request, unroutable, corsStrategy !== "none");
         }
+
+        const busy = keyedWaitpointBudgetResponse(error, { url: sanitizeHttpUrl(request.url) });
+        if (busy) return await wrapResponse(request, busy, corsStrategy !== "none");
 
         logBoundaryError("Error in action", error, request.url);
 

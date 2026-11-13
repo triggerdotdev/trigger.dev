@@ -8,7 +8,7 @@ import {
 } from "./unread-counts";
 
 const list = () => [
-  { id: "chat_a", hasUnreadWake: true, hasUnreadWork: true },
+  { id: "chat_a", hasUnreadWork: true },
   { id: "chat_b", hasUnreadWork: true },
   { id: "chat_c" },
 ];
@@ -35,17 +35,17 @@ describe("the work count is derived from the list", () => {
     expect(unreadWorkCount(all)).toBe(0);
   });
 
-  it("settles the wake alongside the work, so the row stops looking unread", () => {
+  it("settles the work, so the row stops looking unread", () => {
     const read = markChatListRead(list(), "chat_a");
-    expect(read[0]).toEqual({ id: "chat_a", hasUnreadWake: false, hasUnreadWork: false });
+    expect(read[0]).toEqual({ id: "chat_a", hasUnreadWork: false });
     // Every other chat is left exactly as it was.
     expect(read.slice(1)).toEqual(list().slice(1));
   });
 });
 
 /**
- * A wake in the chat on screen must not light the dot — but once the panel has let go of that
- * chat, its wakes have to reach the dot again.
+ * Work in the chat on screen must not light the dot — but once the panel has let go of that
+ * chat, its work has to reach the dot again.
  */
 describe("nextVisibleChat", () => {
   it("holds the chat while it is on screen", () => {
@@ -83,13 +83,13 @@ describe("the chat on screen", () => {
 describe("settleReadChats", () => {
   it("settles the chat on screen, however fresh the turn that just landed in it", () => {
     const settled = settleReadChats(list(), new Set(), "chat_a");
-    expect(settled[0]).toEqual({ id: "chat_a", hasUnreadWake: false, hasUnreadWork: false });
+    expect(settled[0]).toEqual({ id: "chat_a", hasUnreadWork: false });
     expect(settled.slice(1)).toEqual(list().slice(1));
   });
 
   it("settles the chats just read", () => {
     const settled = settleReadChats(list(), new Set(["chat_b"]), null);
-    expect(settled[1]).toEqual({ id: "chat_b", hasUnreadWake: false, hasUnreadWork: false });
+    expect(settled[1]).toEqual({ id: "chat_b", hasUnreadWork: false });
     expect(unreadWorkCount(settled)).toBe(1);
   });
 
@@ -135,9 +135,8 @@ describe("what the panel and the layout actually do with it", () => {
     expect(layout).not.toContain("panelOpen.current");
   });
 
-  it("re-seeds both counts when the environment changes under the layout", () => {
+  it("re-seeds the count when the environment changes under the layout", () => {
     expect(layout).toContain("seededEnvironment.current = environment.id;");
-    expect(layout).toContain("setUnreadWakes(initialUnreadWakes);");
     expect(layout).toContain("setUnreadWork(initialUnreadWork);");
   });
 });

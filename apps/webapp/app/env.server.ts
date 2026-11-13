@@ -292,9 +292,6 @@ const EnvironmentSchema = z
     // Free for now (TRI-12863): "0" (default) leaves the message quota unenforced,
     // unrecorded and hidden. The quota code stays in place behind this switch.
     DASHBOARD_AGENT_QUOTA_ENABLED: z.string().default("0"),
-    // Global default for the `dashboardAgentWatchEnabled` flag: "0" (default) ships
-    // watches dark. Per-org overrides win regardless.
-    DASHBOARD_AGENT_WATCH_ENABLED: z.string().default("0"),
     // Anthropic key for the dashboard agent's Head Start route only (the warm
     // first-turn step-1 LLM call runs in this process). The agent run itself
     // uses its own key on the Trigger side. When unset, Head Start is disabled
@@ -435,6 +432,14 @@ const EnvironmentSchema = z
       )
       .refine(isNotInsecureSecret, INSECURE_SECRET_MESSAGE),
     ENCRYPTION_KEYRING: z.string().transform(parseEncryptionKeyring).optional(),
+    ENVIRONMENT_ENCRYPTION_ENABLED: BoolEnv.default(false),
+    ENVIRONMENT_ENCRYPTION_KMS_KEY_ARN: z.preprocess(
+      (value) => (value === "" ? undefined : value),
+      z
+        .string()
+        .regex(/^arn:(aws|aws-us-gov|aws-cn):kms:[a-z0-9-]+:[0-9]{12}:key\/[a-zA-Z0-9-]+$/)
+        .optional()
+    ),
     PUBLIC_TOKEN_SEALED_SUBJECT_ENABLED: BoolEnv.default(false),
     PUBLIC_TOKEN_SUBJECT_SECRET: z
       .string()
@@ -1436,16 +1441,6 @@ const EnvironmentSchema = z
     RUN_ENGINE_TTL_CONSUMERS_DISABLED: BoolEnv.default(false),
     RUN_ENGINE_TTL_WORKER_BATCH_MAX_WAIT_MS: z.coerce.number().int().default(5_000),
 
-    // Fair (virtual-time) ordering across concurrency-key variants of a base queue.
-    // Off by default; when off the run queue behaves exactly as before.
-    RUN_ENGINE_CK_VTIME_SCHEDULING_ENABLED: BoolEnv.default(false),
-    // Fractional allowed: the vtime Lua serves weighted fair-queue tags, so a sub-1 quantum
-    // is a valid finer serve granularity. The weight hook is fixed at 1 today, so 1 stays the
-    // default, but the schema no longer blocks the capability the engine already has.
-    RUN_ENGINE_CK_VTIME_QUANTUM: z.coerce.number().finite().positive().default(1),
-    RUN_ENGINE_CK_VTIME_WINDOW_MULTIPLIER: z.coerce.number().int().positive().default(3),
-    RUN_ENGINE_CK_VTIME_STATE_TTL_SECONDS: z.coerce.number().int().positive().default(86400),
-
     /** Optional maximum TTL for all runs (e.g. "14d"). If set, runs without an explicit TTL
      *  will use this as their TTL, and runs with a TTL larger than this will be clamped. */
     RUN_ENGINE_DEFAULT_MAX_TTL: z.string().optional(),
@@ -1697,6 +1692,14 @@ const EnvironmentSchema = z
     RUN_ENGINE_QUEUE_RECONCILE_SCAN_COUNT: z.coerce.number().int().positive().default(100),
     RUN_ENGINE_QUEUE_RECONCILE_LOCK_TTL_SECONDS: z.coerce.number().int().positive().default(10),
     RUN_ENGINE_QUEUE_RECONCILE_MAX_PASSES_PER_DEQUEUE: z.coerce.number().int().min(0).default(2),
+    /** Read past gate-blocked sub-queues at dequeue. Applies to the concurrency-key dequeue. */
+    RUN_ENGINE_QUEUE_GATE_SKIP_AHEAD_ENABLED: z.string().default("0"),
+    RUN_ENGINE_QUEUE_GATE_SKIP_AHEAD_READ_MULTIPLIER: z.coerce
+      .number()
+      .int()
+      .min(2)
+      .max(20)
+      .default(10),
     RUN_ENGINE_TREAT_PRODUCTION_EXECUTION_STALLS_AS_OOM: z.string().default("0"),
     // Fallback for the deploymentStatusMode global flag: how dequeue treats a run whose
     // deployment hasn't finished deploying (off, shadow = log and count only, enforce).
@@ -2083,6 +2086,16 @@ const EnvironmentSchema = z
       .transform((v) => v ?? process.env.REDIS_PASSWORD),
     ALERTS_WORKER_REDIS_TLS_DISABLED: z.string().default(process.env.REDIS_TLS_DISABLED ?? "false"),
     ALERTS_WORKER_REDIS_CLUSTER_MODE_ENABLED: z.string().default("0"),
+
+    // Uses the common worker's Redis under its own key prefix.
+    DEPLOYMENT_CHECKS_WORKER_ENABLED: z.string().default(process.env.WORKER_ENABLED ?? "true"),
+    DEPLOYMENT_CHECKS_WORKER_CONCURRENCY_WORKERS: z.coerce.number().int().default(1),
+    DEPLOYMENT_CHECKS_WORKER_CONCURRENCY_TASKS_PER_WORKER: z.coerce.number().int().default(5),
+    DEPLOYMENT_CHECKS_WORKER_CONCURRENCY_LIMIT: z.coerce.number().int().default(5),
+    DEPLOYMENT_CHECKS_WORKER_SHUTDOWN_TIMEOUT_MS: z.coerce.number().int().default(300_000),
+    DEPLOYMENT_CHECKS_WORKER_LOG_LEVEL: z
+      .enum(["log", "error", "warn", "info", "debug"])
+      .default("info"),
 
     ALERT_ENGINE_WORKER_ENABLED: z.string().default(process.env.WORKER_ENABLED ?? "true"),
     ALERT_ENGINE_WORKER_CONCURRENCY_WORKERS: z.coerce.number().int().default(1),
@@ -2564,6 +2577,8 @@ const EnvironmentSchema = z
     LOGS_SEARCH_DUAL_WRITE_ORGANIZATION_IDS: z.string().default(""),
     LOGS_SEARCH_DUAL_WRITE_MAX_CONCURRENCY: z.coerce.number().int().min(1).max(10).default(2),
     LOGS_SEARCH_DUAL_WRITE_MAX_PENDING: z.coerce.number().int().min(1).max(100).default(4),
+    // Requires ClickHouse 26.2+ when enabled; leave disabled on 25.8.
+    LOGS_SEARCH_INSERT_ASYNC: BoolEnvWithDefault(false),
     // Logs-search write side (dual writer). Must share storage with
     // EVENTS_CLICKHOUSE_URL and allow writes. Unset: the dual writer uses the events client.
     LOGS_SEARCH_WRITER_CLICKHOUSE_URL: z.string().optional(),
@@ -2887,6 +2902,8 @@ const EnvironmentSchema = z
 
     /** Records admin API calls, admin dashboard mutations and admin PAT minting through the admin audit plugin. */
     ADMIN_AUDIT_ENABLED: BoolEnv.default(false),
+    /** Records customer audit log events through the audit log plugin, when it is installed. */
+    AUDIT_LOGS_RECORDING_ENABLED: BoolEnv.default(false),
     // Emit a console.log when the SSO fallback is selected because no
     // plugin is installed. Default off so OSS deployments stay quiet.
     SSO_LOG_FALLBACK: BoolEnv.default(false),

@@ -6,14 +6,13 @@ import {
   type DashboardAgentDbClient,
 } from "@internal/dashboard-agent-db";
 import { applyDashboardAgentMigrations } from "@internal/dashboard-agent-db/testing";
-import type { WatchDraft } from "@internal/dashboard-agent-contracts";
 import { postgresTest } from "@internal/testcontainers";
 import type { PrismaClient } from "@trigger.dev/database";
 import { afterEach, expect, describe, vi } from "vitest";
 
 const ctx = vi.hoisted(() => ({
   agentDb: undefined as unknown as DashboardAgentDb,
-  watchEnabled: true,
+  alertsEnabled: true,
   mintOpts: [] as Array<{ environmentId: string; alertWrites?: unknown }>,
 }));
 
@@ -28,8 +27,8 @@ vi.mock("~/services/session.server", () => ({
 vi.mock("~/v3/canAccessDashboardAgent.server", () => ({
   canAccessDashboardAgent: async () => true,
 }));
-vi.mock("~/v3/canUseDashboardAgentWatches.server", () => ({
-  canUseDashboardAgentWatches: async () => ctx.watchEnabled,
+vi.mock("~/v3/canUseAlertsList.server", () => ({
+  canUseAlertsList: async () => ctx.alertsEnabled,
 }));
 vi.mock("~/models/project.server", () => ({
   findProjectWithOrgFlagsBySlug: async (_org: string, projectParam: string) => ({
@@ -69,15 +68,6 @@ vi.mock("~/services/dashboardAgentQuota.server", () => ({
   recordAgentMessageSent: vi.fn(),
   resolveAgentMessageQuota: async () => null,
 }));
-vi.mock("~/services/dashboardAgentWatches.server", () => ({
-  authorizeWatchEnvironmentById: async ({ environmentId }: { environmentId: string }) => ({
-    id: environmentId,
-  }),
-  cancelDashboardAgentWatch: vi.fn(),
-  deleteChatWithWatches: vi.fn(),
-  listActiveWatchesForChats: async () => new Map(),
-  submitDashboardAgentWatch: vi.fn(async () => ({ ok: true, chatId: "chat", watching: true })),
-}));
 
 const ORG = "org_scope";
 const USER = "user_scope";
@@ -86,7 +76,6 @@ const { action: agentAction } =
   await import("~/routes/resources.orgs.$organizationSlug.projects.$projectParam.env.$envParam.dashboard-agent");
 const { action: inAction } =
   await import("~/routes/resources.orgs.$organizationSlug.projects.$projectParam.env.$envParam.dashboard-agent.in.$");
-const { submitDashboardAgentWatch } = await import("~/services/dashboardAgentWatches.server");
 
 let agentDbClient: DashboardAgentDbClient | undefined;
 
@@ -100,7 +89,6 @@ afterEach(async () => {
   await agentDbClient?.close();
   agentDbClient = undefined;
   vi.unstubAllGlobals();
-  vi.mocked(submitDashboardAgentWatch).mockClear();
 });
 
 function params(projectParam: string, envParam = "dev") {
@@ -147,30 +135,6 @@ function postRawTurn(projectParam: string, splat: string, envParam = "dev") {
   } as any);
 }
 
-const RUN_START_DRAFT: WatchDraft = {
-  spec: {
-    kind: "run_start",
-    runId: "run_1",
-    checkEveryMinutes: 1,
-    maxHours: 2,
-    note: "tell me when it starts",
-  },
-  followUp: { investigateOnAttention: false, notifyExternally: false },
-};
-
-function postWatchCreate(
-  projectParam: string,
-  chatId: string,
-  clientRequestId: string,
-  envParam = "dev"
-) {
-  return postAgent(
-    projectParam,
-    { intent: "watch-create", chatId, clientRequestId, draft: JSON.stringify(RUN_START_DRAFT) },
-    envParam
-  );
-}
-
 async function createChatIn(projectParam: string): Promise<string> {
   const response = await postAgent(projectParam, {
     intent: "create",
@@ -210,7 +174,7 @@ describe("the dashboard agent in-proxy path", () => {
   );
 
   postgresTest(
-    "asks for the alert write cap only when the turn has watch tools",
+    "asks for the alert write cap only when the turn has alert tools",
     async ({ prisma, postgresContainer }) => {
       await boot(prisma, postgresContainer.getConnectionUri());
       vi.stubGlobal(
@@ -223,13 +187,13 @@ describe("the dashboard agent in-proxy path", () => {
       expect((await postTurn("api", chatId)).status).toBe(200);
       expect(ctx.mintOpts.at(-1)?.alertWrites).toBeDefined();
 
-      ctx.watchEnabled = false;
+      ctx.alertsEnabled = false;
       try {
         expect((await postTurn("api", chatId)).status).toBe(200);
         expect(ctx.mintOpts).toHaveLength(2);
         expect(ctx.mintOpts.at(-1)?.alertWrites).toBeUndefined();
       } finally {
-        ctx.watchEnabled = true;
+        ctx.alertsEnabled = true;
       }
     },
     30_000
@@ -283,62 +247,6 @@ describe("the dashboard agent in-proxy path", () => {
         expect([splat, response.status]).toEqual([splat, 404]);
       }
       expect(upstream).toHaveBeenCalledTimes(1);
-    },
-    30_000
-  );
-
-  postgresTest(
-    "submits a watch in the scope of the page it came from, not the chat's first one",
-    async ({ prisma, postgresContainer }) => {
-      await boot(prisma, postgresContainer.getConnectionUri());
-
-      const chatId = await createChatIn("api");
-
-      const response = await postWatchCreate("web", chatId, "wreq_scope");
-      expect(response.status).toBe(200);
-
-      expect(submitDashboardAgentWatch).toHaveBeenCalledTimes(1);
-      const call = vi.mocked(submitDashboardAgentWatch).mock.calls[0]![0] as {
-        environment: { id: string };
-      };
-      expect(call.environment).toMatchObject({ id: "env_proj_web_dev" });
-    },
-    30_000
-  );
-
-  postgresTest(
-    "refuses the card's submit outright when the org has watches off",
-    async ({ prisma, postgresContainer }) => {
-      await boot(prisma, postgresContainer.getConnectionUri());
-      const chatId = await createChatIn("api");
-      ctx.watchEnabled = false;
-
-      try {
-        const response = await postWatchCreate("api", chatId, "wreq_flag_off");
-        expect(response.status).toBe(404);
-        expect(submitDashboardAgentWatch).not.toHaveBeenCalled();
-      } finally {
-        ctx.watchEnabled = true;
-      }
-    },
-    30_000
-  );
-
-  postgresTest(
-    "refuses a watch for a chat scoped to another organization",
-    async ({ prisma, postgresContainer }) => {
-      await boot(prisma, postgresContainer.getConnectionUri());
-
-      await createChat(ctx.agentDb, {
-        id: "chat_other_org",
-        organizationId: "org_other",
-        userId: USER,
-      });
-
-      const response = await postWatchCreate("api", "chat_other_org", "wreq_other_org");
-      expect(response.status).toBe(404);
-      expect(await response.json()).toMatchObject({ code: "chat_not_found" });
-      expect(submitDashboardAgentWatch).not.toHaveBeenCalled();
     },
     30_000
   );

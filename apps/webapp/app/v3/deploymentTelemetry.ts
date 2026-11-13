@@ -40,6 +40,7 @@ export const DeploymentTelemetryAttributes = {
   // From x-trigger-cli-version at init; null for pre-column history
   CLI_VERSION: "deployment.cli_version",
   TRIGGERED_VIA: "deployment.triggered_via",
+  TRUSTED_PUBLISHING: "deployment.trusted_publishing",
   COMMIT_SHA: "deployment.commit_sha",
   // error.* only on FAILED/TIMED_OUT; CANCELED uses canceled_reason
   ERROR_NAME: "deployment.error.name",

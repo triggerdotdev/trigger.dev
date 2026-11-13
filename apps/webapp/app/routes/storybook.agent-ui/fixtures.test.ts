@@ -1,9 +1,4 @@
-import {
-  safeParseStoredViewBlock,
-  viewBlockSchema,
-  watchExternalNotificationLine,
-} from "@internal/dashboard-agent-contracts";
-import { ErrorId } from "@trigger.dev/core/v3/isomorphic";
+import { safeParseStoredViewBlock, viewBlockSchema } from "@internal/dashboard-agent-contracts";
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import { DEMO_MARKER } from "~/components/dashboard-agent/demo/ids";
@@ -17,9 +12,6 @@ import {
   offerActionsBlock,
   revisedDiagnosisBlocks,
   untrustworthyReport,
-  watchConfirmationBlock,
-  watchDegradedConfirmationBlock,
-  watchSatisfiedBlock,
 } from "./fixtures";
 
 /**
@@ -30,13 +22,7 @@ import {
 
 describe("gallery view blocks", () => {
   it("parses every enveloped block through the schema the product persists with", () => {
-    for (const block of [
-      ...revisedDiagnosisBlocks,
-      offerActionsBlock,
-      watchConfirmationBlock,
-      watchDegradedConfirmationBlock,
-      watchSatisfiedBlock,
-    ]) {
+    for (const block of [...revisedDiagnosisBlocks, offerActionsBlock]) {
       const result = viewBlockSchema.safeParse(block);
       expect(result.success, JSON.stringify(result.error?.issues)).toBe(true);
     }
@@ -46,16 +32,6 @@ describe("gallery view blocks", () => {
     for (const block of [fullDiagnosis, externalServiceDiagnosis, lowConfidenceDiagnosis]) {
       const result = safeParseStoredViewBlock(block);
       expect(result.success, JSON.stringify(result.error?.issues)).toBe(true);
-    }
-  });
-
-  /** Every stored spec is normalized, so an unprefixed fingerprint is a shape no card sees. */
-  it("cites error fingerprints in the normalized form the watch service stores", () => {
-    for (const action of offerActionsBlock.actions) {
-      if (action.intent.kind !== "watch" || action.intent.spec.kind !== "error_recurrence")
-        continue;
-      const { fingerprint } = action.intent.spec;
-      expect(fingerprint).toBe(ErrorId.toId(fingerprint));
     }
   });
 
@@ -103,9 +79,6 @@ describe("gallery identifiers", () => {
     lowConfidenceDiagnosis,
     revisedDiagnosisBlocks,
     offerActionsBlock,
-    watchConfirmationBlock,
-    watchDegradedConfirmationBlock,
-    watchSatisfiedBlock,
     untrustworthyReport,
   };
 
@@ -114,36 +87,6 @@ describe("gallery identifiers", () => {
       if (!IDENTIFIER.test(value)) continue;
       expect(value, path).toContain(DEMO_MARKER);
     }
-  });
-
-  it("watches only demo subjects, whatever shape their id takes", () => {
-    for (const action of offerActionsBlock.actions) {
-      if (action.intent.kind !== "watch") continue;
-      const subject = Object.entries(action.intent.spec).filter(([key]) =>
-        ["queue", "runId", "fingerprint"].includes(key)
-      );
-      expect(subject.length).toBeGreaterThan(0);
-      for (const [key, value] of subject) expect(String(value), key).toContain(DEMO_MARKER);
-    }
-  });
-});
-
-describe("gallery watch confirmations", () => {
-  it("states the external outcome each confirmation claims", () => {
-    expect(watchConfirmationBlock.followUp).toContain(
-      watchExternalNotificationLine({ status: "enabled" })
-    );
-    expect(watchDegradedConfirmationBlock.followUp).toContain(
-      watchExternalNotificationLine({
-        status: "unavailable",
-        reason: "email_alerts_not_configured",
-      })
-    );
-  });
-
-  it("says the first check could not run on the degraded one, and not on the other", () => {
-    expect(watchDegradedConfirmationBlock.detail).toBeTruthy();
-    expect(watchConfirmationBlock.detail).toBeNull();
   });
 });
 

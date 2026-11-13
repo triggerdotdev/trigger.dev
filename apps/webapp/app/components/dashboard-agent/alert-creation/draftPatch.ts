@@ -68,11 +68,18 @@ export const alertDraftPatchSchema = z
 
 export type AlertDraftPatch = z.infer<typeof alertDraftPatchSchema>;
 
+function queryModeFromPatch(patch: AlertDraftPatch): QueryWatchPrefill["mode"] {
+  const condition = patch.condition;
+  if (condition?.kind === "absence") return "absence";
+  if (condition?.operator !== undefined || condition?.value !== undefined) return "threshold";
+  return patch.querySignalChoice?.mode;
+}
+
 export function queryWatchFromPatch(patch: AlertDraftPatch): QueryWatchPrefill | undefined {
   if (patch.area !== "query" || !patch.query?.trim()) return undefined;
   return {
     query: patch.query,
-    mode: patch.querySignalChoice?.mode,
+    mode: queryModeFromPatch(patch),
     measure: patch.querySignalChoice?.measure,
     operator: patch.condition?.operator,
     value: patch.condition?.value,
@@ -140,6 +147,13 @@ export function applyDraftPatch(answers: FlowAnswers, patch: AlertDraftPatch): F
     }
     if (patch.condition.windowSec !== undefined) {
       next.windowMinutes = Math.ceil(patch.condition.windowSec / 60);
+      const absence =
+        patch.condition.kind === "absence" ||
+        resolveCapability(next.what)?.allowedKinds[0] === "absence";
+      // Absence capabilities carry the quiet window in `condition`, in minutes.
+      if (absence && patch.condition.value === undefined) {
+        next.condition = String(next.windowMinutes);
+      }
     }
     if (patch.condition.params !== undefined) {
       next.conditionParams = patch.condition.params;

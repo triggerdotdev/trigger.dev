@@ -229,7 +229,7 @@ async function createToken(prisma: PrismaClient) {
   const created = await createPersonalAccessToken({
     name: "ci",
     userId: user.id,
-    expiresInDays: 30,
+    expiresAt: new Date(Date.now() + 30 * DAY_MS),
   });
   return { token: created.token, tokenId: created.id };
 }

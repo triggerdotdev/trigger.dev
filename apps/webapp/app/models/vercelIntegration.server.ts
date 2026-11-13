@@ -1450,8 +1450,13 @@ export class VercelIntegrationRepository {
                 });
 
                 if (existingVarValues.length > 0) {
-                  const secretStore = getSecretStore("DATABASE", { prismaClient: prisma });
-                  const SecretValue = z.object({ secret: z.string() });
+                  const decrypted = await envVarRepository.getVariableValuesForKeys(
+                    params.projectId,
+                    existingVarValues.map((value) => ({
+                      environmentId: mapping.runtimeEnvironmentId,
+                      key: value.variable.key,
+                    }))
+                  );
 
                   for (const varValue of existingVarValues) {
                     if (varValue.isSecret) {
@@ -1459,13 +1464,10 @@ export class VercelIntegrationRepository {
                     }
 
                     if (varValue.valueReference?.key) {
-                      const existingSecret = await ResultAsync.fromPromise(
-                        secretStore.getSecret(SecretValue, varValue.valueReference.key),
-                        () => null
-                      ).unwrapOr(null);
-                      if (existingSecret) {
-                        existingValues.set(varValue.variable.key, existingSecret.secret);
-                      }
+                      const value = decrypted.get(
+                        `${mapping.runtimeEnvironmentId}:${varValue.variable.key}`
+                      );
+                      if (value !== undefined) existingValues.set(varValue.variable.key, value);
                     }
                   }
                 }

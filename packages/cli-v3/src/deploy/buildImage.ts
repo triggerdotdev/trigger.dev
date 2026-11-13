@@ -721,13 +721,13 @@ export const BASE_IMAGE: Record<BuildRuntime, string> = {
   "bun-legacy": BUN_LEGACY_BASE_IMAGE,
   "bun-1.4":
     "triggerdotdev/bun:1.4-bookworm@sha256:91c471435cbf097e2301f17ec456cc398dc9ce9161d2317f4bbbd9cdae73a86e",
-  node: "triggerdotdev/node:24-bookworm@sha256:3cdc82425d824f1059fddd64b881947bf8edf4f0a5a9176145dba4889f8731ff",
+  node: "triggerdotdev/node:24-bookworm@sha256:5e793c37441944a967373ccaa870eeadd53b002659833df18a1c6cc60ee3cd88",
   "node-22":
-    "triggerdotdev/node:22-bookworm@sha256:40c519460ee37b51a8f3c6286e9aeb910231dec01e4d655fa8164cc28fbad5f2",
+    "triggerdotdev/node:22-bookworm@sha256:fbff16cfafe759265990b1d221024fa23b1d22ecbd15aec9b6723293bb6d4b47",
   "node-24":
-    "triggerdotdev/node:24-bookworm@sha256:3cdc82425d824f1059fddd64b881947bf8edf4f0a5a9176145dba4889f8731ff",
+    "triggerdotdev/node:24-bookworm@sha256:5e793c37441944a967373ccaa870eeadd53b002659833df18a1c6cc60ee3cd88",
   "node-26":
-    "triggerdotdev/node:26-bookworm@sha256:e319f1134f8d4228be3adda596d1b97568f8eb09a3fbdac736594d0cbbd7e5cb",
+    "triggerdotdev/node:26-bookworm@sha256:b3bc8ac5962eb3fd94ea4a52d48f98b4844d036214222d14222b08ca0190e17e",
 };
 
 export const BUILD_IMAGE: Record<BuildRuntime, string> = {
@@ -735,13 +735,13 @@ export const BUILD_IMAGE: Record<BuildRuntime, string> = {
   "bun-legacy": BUN_LEGACY_BUILD_IMAGE,
   "bun-1.4":
     "triggerdotdev/bun:1.4-bookworm-build@sha256:9b16175d5bd65d036beae9f04518c0b6c8327aa5d7855002188899fb6f9a7376",
-  node: "triggerdotdev/node:24-bookworm-build@sha256:34a3f4554d1684e078b104bd2b7ba6743776ad9002ebceef707dee91fa629c41",
+  node: "triggerdotdev/node:24-bookworm-build@sha256:a06fb6ae57b679ef6d26ced9665344fb975ea82c111838a42bf29255184de502",
   "node-22":
-    "triggerdotdev/node:22-bookworm-build@sha256:7a4395f00b0939040f17a988a5fa49c5386992f88bc1ba1dd2e35bec610cf735",
+    "triggerdotdev/node:22-bookworm-build@sha256:de596e0723275d046710b19982cf3358f4a6ba84ecb51ef81db145b24924c3ac",
   "node-24":
-    "triggerdotdev/node:24-bookworm-build@sha256:34a3f4554d1684e078b104bd2b7ba6743776ad9002ebceef707dee91fa629c41",
+    "triggerdotdev/node:24-bookworm-build@sha256:a06fb6ae57b679ef6d26ced9665344fb975ea82c111838a42bf29255184de502",
   "node-26":
-    "triggerdotdev/node:26-bookworm-build@sha256:86d5a599fc69a81e15c1276440702144cd3d857258fdaf78f8c9b864768c1ab9",
+    "triggerdotdev/node:26-bookworm-build@sha256:d9d5fcf3fef64b235b901a343d1fb6e9723c8521ac4e2f9a36a90c94874b3300",
 };
 
 // Preinstalled in the published base images; must match base-images/images.json

@@ -198,6 +198,9 @@ export class WaitpointListPresenter extends BasePresenter {
             projectId: environment.project.id,
           }
         : undefined;
+    // With the store enabled the cursor holds a separate position in each source.
+    const cut = nativeScope ? decodeMergedCursor(cursor) : undefined;
+    const legacyCursor = cut ? cut.legacy : cursor;
     const native = nativeScope
       ? await this.waitpointEngine.listStoreManualWaitpoints({
           ...nativeScope,
@@ -208,7 +211,7 @@ export class WaitpointListPresenter extends BasePresenter {
           outputIsError: filterOutputIsError,
           createdAtGte: createdAtGte?.toISOString(),
           createdAtLte: createdAtLte?.toISOString(),
-          cursor,
+          cursor: cut?.store,
           direction,
           limit: pageSize + 1,
         })
@@ -219,7 +222,9 @@ export class WaitpointListPresenter extends BasePresenter {
           where: {
             environmentId: environment.id,
             type: "MANUAL",
-            ...(cursor ? { id: direction === "forward" ? { lt: cursor } : { gt: cursor } } : {}),
+            ...(legacyCursor
+              ? { id: direction === "forward" ? { lt: legacyCursor } : { gt: legacyCursor } }
+              : {}),
             ...(id ? { friendlyId: id } : {}),
             ...(statusesToFilter.length ? { status: { in: boundedIn(statusesToFilter) } } : {}),
             ...(filterOutputIsError !== undefined ? { outputIsError: filterOutputIsError } : {}),
@@ -254,37 +259,45 @@ export class WaitpointListPresenter extends BasePresenter {
           },
         }),
       pageSize,
-      direction,
-      native
+      direction
     );
 
-    const hasMore = tokens.length > pageSize;
-
-    //get cursors for next and previous pages
     let next: string | undefined;
     let previous: string | undefined;
-    switch (direction) {
-      case "forward":
-        previous = cursor ? tokens.at(0)?.id : undefined;
-        if (hasMore) {
-          next = tokens[pageSize - 1]?.id;
-        }
-        break;
-      case "backward":
-        tokens.reverse();
-        if (hasMore) {
-          previous = tokens[1]?.id;
-          next = tokens[pageSize]?.id;
-        } else {
-          next = tokens[pageSize - 1]?.id;
-        }
-        break;
-    }
+    let tokensToReturn: WaitpointRow[];
+    if (native && cut) {
+      ({
+        tokens: tokensToReturn,
+        next,
+        previous,
+      } = mergeStorePage(tokens, native, pageSize, direction, cut, cursor));
+    } else {
+      const hasMore = tokens.length > pageSize;
 
-    const tokensToReturn =
-      direction === "backward" && hasMore
-        ? tokens.slice(1, pageSize + 1)
-        : tokens.slice(0, pageSize);
+      //get cursors for next and previous pages
+      switch (direction) {
+        case "forward":
+          previous = cursor ? tokens.at(0)?.id : undefined;
+          if (hasMore) {
+            next = tokens[pageSize - 1]?.id;
+          }
+          break;
+        case "backward":
+          tokens.reverse();
+          if (hasMore) {
+            previous = tokens[1]?.id;
+            next = tokens[pageSize]?.id;
+          } else {
+            next = tokens[pageSize - 1]?.id;
+          }
+          break;
+      }
+
+      tokensToReturn =
+        direction === "backward" && hasMore
+          ? tokens.slice(1, pageSize + 1)
+          : tokens.slice(0, pageSize);
+    }
 
     let hasAnyTokens = tokensToReturn.length > 0;
     if (!hasAnyTokens) {
@@ -346,12 +359,10 @@ export class WaitpointListPresenter extends BasePresenter {
   async #scanWaitpoints(
     scan: () => Promise<WaitpointRow[]>,
     pageSize: number,
-    direction: Direction,
-    native?: WaitpointRow[]
+    direction: Direction
   ): Promise<WaitpointRow[]> {
     const overfetch = pageSize + 1;
     const rows = await scan();
-    if (native?.length) rows.push(...native);
     rows.sort((a, b) =>
       direction === "forward" ? compareIdDesc(a.id, b.id) : compareIdAsc(a.id, b.id)
     );
@@ -365,6 +376,80 @@ export class WaitpointListPresenter extends BasePresenter {
     });
     return Boolean(found);
   }
+}
+
+type MergedCut = { legacy?: string; store?: string };
+
+const MERGED_CURSOR_PREFIX = "m.";
+
+// Opaque and URL-safe: "m." + base64url of [legacy id | null, store id | null]. Raw ids contain no ".".
+function encodeMergedCursor(legacy: string | undefined, store: string | undefined): string {
+  const json = JSON.stringify([legacy ?? null, store ?? null]);
+  return MERGED_CURSOR_PREFIX + Buffer.from(json).toString("base64url");
+}
+
+function decodeMergedCursor(cursor: string | undefined): MergedCut {
+  if (!cursor) return {};
+  if (cursor.startsWith(MERGED_CURSOR_PREFIX)) {
+    try {
+      const raw = cursor.slice(MERGED_CURSOR_PREFIX.length);
+      const value: unknown = JSON.parse(Buffer.from(raw, "base64url").toString());
+      if (
+        Array.isArray(value) &&
+        value.length === 2 &&
+        value.every((part) => part === null || typeof part === "string")
+      )
+        return { legacy: value[0] ?? undefined, store: value[1] ?? undefined };
+    } catch {}
+  }
+  // A bare id (an old URL, or a client mid-page across a deploy) cuts both sources at it, as before.
+  return { legacy: cursor, store: cursor };
+}
+
+// Two-way merge of the Postgres and store pages, each in its own id order for `direction` and
+// over-fetched by one. Each step takes the newer head (forward) or the older one (backward) by
+// createdAt, ties broken by id, so each source is consumed in order and the cut it leaves never
+// skips or repeats a token. A missing cut means the start of a source going forward, the end backward.
+function mergeStorePage(
+  legacy: WaitpointRow[],
+  store: WaitpointRow[],
+  pageSize: number,
+  direction: Direction,
+  cut: MergedCut,
+  cursor: string | undefined
+) {
+  const forward = direction === "forward";
+  const picked: WaitpointRow[] = [];
+  let l = 0;
+  let s = 0;
+  while (picked.length < pageSize && (l < legacy.length || s < store.length)) {
+    const a = legacy[l];
+    const b = store[s];
+    if (a && (!b || isNewer(a, b) === forward)) picked.push(legacy[l++]);
+    else picked.push(store[s++]);
+  }
+  const hasMore = l < legacy.length || s < store.length;
+  // Cut after the last row taken from each source, else the incoming cut.
+  const far = encodeMergedCursor(legacy[l - 1]?.id ?? cut.legacy, store[s - 1]?.id ?? cut.store);
+  // Cut at the incoming side of each source: its first fetched row, else nothing on that side.
+  const near = encodeMergedCursor(legacy[0]?.id, store[0]?.id);
+  // shortcut: where one source's id order disagrees with createdAt (cuid and gen-2 ids in one environment, or clock skew), the list follows that source's id order and backward pages can group those tokens differently from forward, each still listed once; carry page-start cuts in the cursor if customers notice.
+  return forward
+    ? {
+        tokens: picked,
+        next: hasMore ? far : undefined,
+        previous: cursor && picked.length ? near : undefined,
+      }
+    : {
+        tokens: picked.reverse(),
+        next: picked.length ? near : undefined,
+        previous: hasMore ? far : undefined,
+      };
+}
+
+function isNewer(a: WaitpointRow, b: WaitpointRow): boolean {
+  const diff = a.createdAt.getTime() - b.createdAt.getTime();
+  return diff !== 0 ? diff > 0 : a.id > b.id;
 }
 
 function compareIdAsc(a: string, b: string): number {

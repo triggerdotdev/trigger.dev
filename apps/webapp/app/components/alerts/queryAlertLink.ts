@@ -12,6 +12,7 @@ export type QueryAlertMode = "threshold" | "absence" | "match";
 
 export type QueryAlertPrefill = {
   query: string;
+  name?: string;
   period: string;
   analysis: QueryAlertAnalysis;
   names: Record<string, string>;
@@ -20,6 +21,9 @@ export type QueryAlertPrefill = {
   operator?: ">" | "<";
   value?: number;
   windowSec?: number;
+  windowMinutes?: number;
+  expiry?: string;
+  notifiers?: string[];
 };
 
 export function queryAlertNameKey(mode: QueryAlertMode, measure?: string) {
@@ -126,6 +130,8 @@ export function querySignalOptions(analysis: QueryAlertAnalysis): QuerySignalOpt
       : [{ id: "match", label: `New ${mode.sourceId} rows`, mode: "match" }]
   );
 }
+
+export const QUERY_SCOPE_LABEL = "Custom query";
 
 export const QUERY_CONDITION_LABELS: Record<QueryAlertMode, string> = {
   threshold: "Value crosses a threshold",

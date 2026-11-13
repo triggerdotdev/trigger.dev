@@ -7,6 +7,7 @@ const KEY_BYTES = 32;
 const NONCE_BYTES = 12;
 
 export const EncryptedValueSchema = z.object({
+  scheme: z.never().optional(),
   nonce: z.string(),
   ciphertext: z.string(),
   tag: z.string(),

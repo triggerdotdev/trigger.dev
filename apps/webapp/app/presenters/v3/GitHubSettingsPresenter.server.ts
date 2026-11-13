@@ -2,7 +2,7 @@ import { type PrismaClient } from "@trigger.dev/database";
 import { fromPromise, ok, ResultAsync } from "neverthrow";
 import { env } from "~/env.server";
 import { BranchTrackingConfigSchema, BuildFiltersSchema } from "~/v3/github";
-import { ignorePathLimits } from "~/v3/github/ignorePathLimits.server";
+import { ignorePatternLimits } from "~/v3/github/ignorePatternLimits.server";
 import { BasePresenter } from "./basePresenter.server";
 
 type GitHubSettingsOptions = {
@@ -24,7 +24,7 @@ export class GitHubSettingsPresenter extends BasePresenter {
         isPreviewEnvironmentEnabled: undefined,
         isStagingEnvironmentEnabled: undefined,
         isVercelIntegrationConnected: undefined,
-        ignorePathLimits: ignorePathLimits(),
+        ignorePatternLimits: ignorePatternLimits(),
       });
     }
 
@@ -194,7 +194,7 @@ export class GitHubSettingsPresenter extends BasePresenter {
         isPreviewEnvironmentEnabled,
         isStagingEnvironmentEnabled,
         isVercelIntegrationConnected,
-        ignorePathLimits: ignorePathLimits(),
+        ignorePatternLimits: ignorePatternLimits(),
       })
     );
   }
