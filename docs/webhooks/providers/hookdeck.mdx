@@ -67,3 +67,32 @@ export const paymentSucceeded = webhook({
 - **Secret rotation:** when you roll the signing secret in Hookdeck with an expiry, Hookdeck also signs each request with the previous secret in `X-Hookdeck-Signature-2`, so deliveries keep verifying until you store the new secret.
 - **Deduplication:** retries dedupe on `X-Hookdeck-Eventid`, which is the same on every attempt of a Hookdeck event.
 - **Custom header prefix:** if you changed the header prefix in the Hookdeck project's settings, pass it with `webhooks.hookdeck({ headerPrefix: "x-acme" })`. The prefix renames the event id header; the signature headers keep the `X-Hookdeck-` name.
+
+## Trigger a task through the API instead
+
+You can also point a Hookdeck destination at the [trigger task API](/management/tasks/trigger) without a hosted endpoint. Hookdeck authenticates with your API key instead of a signature, and a transformation wraps the body in the `payload` field the API expects.
+
+1. Create a destination with the URL `https://api.trigger.dev/api/v1/tasks/<task-id>/trigger`, method `POST`, and **Bearer token** authentication using a [**Trigger only**](/apikeys) environment API key.
+2. Add a [transformation](https://hookdeck.com/docs/transformations):
+
+   ```javascript
+   addHandler("transform", (request, context) => {
+     request.body = { payload: { ...request.body } };
+     return request;
+   });
+   ```
+
+3. Create a connection from your source to that destination and transformation.
+
+```ts /trigger/webhook-handler.ts
+import { task } from "@trigger.dev/sdk";
+
+export const webhookHandler = task({
+  id: "webhook-handler",
+  run: async (payload: Record<string, unknown>) => {
+    console.log("Received webhook:", payload);
+  },
+});
+```
+
+This path doesn't deduplicate Hookdeck retries, so each forwarded request starts a run, and the delivery isn't recorded on a Trigger.dev endpoint.
