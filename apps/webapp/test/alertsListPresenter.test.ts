@@ -4,11 +4,15 @@ import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import {
   appendAlertEvent,
   createAlert,
-  type getAlertHealthEvents,
+  type getAlertStateEvents,
 } from "~/v3/services/alerts/storage/alertStore.server";
 import { startAlertsPostgres } from "./helpers/alertTables";
 import { AlertDetailPresenter } from "~/presenters/v3/AlertDetailPresenter.server";
-import { AlertsListPresenter } from "~/presenters/v3/AlertsListPresenter.server";
+import {
+  listAlertRows,
+  listAlertStateBuckets,
+  listChannelIssueAlertIds,
+} from "~/presenters/v3/AlertsListPresenter.server";
 
 const bucketQuery = vi.hoisted(() => ({ calls: [] as string[][] }));
 
@@ -16,9 +20,9 @@ vi.mock("~/v3/services/alerts/storage/alertStore.server", async (importOriginal)
   const actual = (await importOriginal()) as Record<string, any>;
   return {
     ...actual,
-    getAlertHealthEvents: (...args: Parameters<typeof getAlertHealthEvents>) => {
+    getAlertStateEvents: (...args: Parameters<typeof getAlertStateEvents>) => {
       bucketQuery.calls.push([...args[1]]);
-      return actual.getAlertHealthEvents(...args);
+      return actual.getAlertStateEvents(...args);
     },
   };
 });
@@ -41,6 +45,26 @@ const BASE = {
   environmentId: "env_1",
   createdBy: "user_1",
 };
+
+async function present(
+  alertDb: PrismaClient,
+  args: Parameters<typeof listAlertRows>[1],
+  mainDb: PrismaClient = alertDb
+) {
+  const page = await listAlertRows(alertDb, args);
+  const [buckets, issueIds] = await Promise.all([
+    listAlertStateBuckets(alertDb, page.alerts),
+    listChannelIssueAlertIds(mainDb, page.alerts, args.environmentId),
+  ]);
+  return {
+    ...page,
+    rows: page.rows.map((row) => ({
+      ...row,
+      stateBuckets: buckets[row.id],
+      hasChannelIssue: issueIds.includes(row.id),
+    })),
+  };
+}
 
 const NO_FILTERS = { search: "", areas: [], period: undefined };
 
@@ -129,8 +153,7 @@ describe("AlertsListPresenter", () => {
       setUpdatedAt(eInactiveCompleted.id, "2026-01-01T00:01:00Z"),
     ]);
 
-    const presenter = new AlertsListPresenter(db);
-    const { rows } = await presenter.call({ environmentId: "env_1" });
+    const { rows } = await present(db, { environmentId: "env_1" });
 
     expect(rows.map((r) => r.name)).toEqual([
       "a2-needs-attention-expired",
@@ -185,8 +208,7 @@ describe("AlertsListPresenter", () => {
       notifiers: [],
     });
 
-    const presenter = new AlertsListPresenter(db);
-    const { rows } = await presenter.call({ environmentId: "env_1" });
+    const { rows } = await present(db, { environmentId: "env_1" });
 
     const withEventsRow = rows.find((r) => r.id === withEvents.id);
     const withoutEventsRow = rows.find((r) => r.id === withoutEvents.id);
@@ -222,7 +244,7 @@ describe("AlertsListPresenter", () => {
       data: { createdAt: new Date(createdAt) },
     });
 
-    const { rows } = await new AlertsListPresenter(db).call({ environmentId: "env_1" });
+    const { rows } = await present(db, { environmentId: "env_1" });
     const withEventRow = rows.find((r) => r.id === withEvent.id);
     const noEventsRow = rows.find((r) => r.id === noEvents.id);
 
@@ -255,7 +277,7 @@ describe("AlertsListPresenter", () => {
     const raisedAt = new Date(`${MONTH}-05T00:00:00Z`);
     await appendAlertEvent(db, { alertId: oldest, type: "raised", at: raisedAt });
 
-    const { rows } = await new AlertsListPresenter(db).call({ environmentId: "env_wide" });
+    const { rows } = await present(db, { environmentId: "env_wide" });
 
     expect(rows).toHaveLength(26);
     const row = rows.find((r) => r.id === oldest);
@@ -286,7 +308,7 @@ describe("AlertsListPresenter", () => {
         notifiers: [],
       });
     }
-    const { rows, truncated } = await new AlertsListPresenter(db).call({
+    const { rows, truncated } = await present(db, {
       environmentId: "env_cap",
       filters: { search: "", statuses: ["inactive"], areas: [], period: undefined },
     });
@@ -315,7 +337,7 @@ describe("AlertsListPresenter", () => {
       data: { createdAt: new Date("2026-01-01T00:00:00Z"), stoppedAt: new Date(stoppedAt) },
     });
 
-    const { rows } = await new AlertsListPresenter(db).call({ environmentId: "env_1" });
+    const { rows } = await present(db, { environmentId: "env_1" });
 
     expect(rows.find((r) => r.id === stopped.id)?.lastActivityAt).toEqual(new Date(stoppedAt));
   });
@@ -352,7 +374,7 @@ describe("AlertsListPresenter", () => {
       data: { createdAt: new Date(Date.now() - 10 * DAY) },
     });
 
-    const { rows } = await new AlertsListPresenter(db).call({ environmentId: ENV.environmentId });
+    const { rows } = await present(db, { environmentId: ENV.environmentId });
 
     expect(rows.find((r) => r.id === recurring.id)?.lastActivityAt).toEqual(occurredAt);
     expect(rows.map((r) => r.id)).toEqual([recurring.id, other.id]);
@@ -379,7 +401,7 @@ describe("AlertsListPresenter", () => {
     });
     await db.alert.update({ where: { id: alert.id }, data: { lastOccurrenceAt: occurredAt } });
 
-    const { rows } = await new AlertsListPresenter(db).call({
+    const { rows } = await present(db, {
       environmentId: ENV.environmentId,
       filters: { search: "", statuses: [], areas: [], period: "7d" },
     });
@@ -407,7 +429,7 @@ describe("AlertsListPresenter", () => {
       notifiers: [],
       groupId: group.id,
     });
-    const { rows } = await new AlertsListPresenter(db).call({ environmentId: "env_grouped" });
+    const { rows } = await present(db, { environmentId: "env_grouped" });
     expect(rows.map((r) => r.name)).toEqual(["the-group"]);
   });
 
@@ -423,8 +445,7 @@ describe("AlertsListPresenter", () => {
       name: "other-env",
     });
 
-    const presenter = new AlertsListPresenter(db);
-    const { rows } = await presenter.call({ environmentId: "env_other" });
+    const { rows } = await present(db, { environmentId: "env_other" });
 
     expect(rows.map((r) => r.name)).toEqual(["other-env"]);
   });
@@ -439,7 +460,7 @@ describe("AlertsListPresenter", () => {
       name: "absence-alert",
       notifiers: [],
     });
-    const { rows } = await new AlertsListPresenter(db).call({ environmentId: "env_absence" });
+    const { rows } = await present(db, { environmentId: "env_absence" });
     expect(rows.find((r) => r.id === alert.id)?.stateBuckets).toHaveLength(24);
   });
 
@@ -465,7 +486,7 @@ describe("AlertsListPresenter", () => {
     await appendAlertEvent(db, { alertId: alert.id, type: "raised", at: raisedAt });
     await appendAlertEvent(db, { alertId: alert.id, type: "recovered", at: recoveredAt });
 
-    const { rows } = await new AlertsListPresenter(db).call({
+    const { rows } = await present(db, {
       environmentId: "env_state_buckets",
     });
     const buckets = rows.find((r) => r.id === alert.id)!.stateBuckets!;
@@ -493,7 +514,7 @@ describe("AlertsListPresenter", () => {
       type: "raised",
       at: new Date(Date.now() - 60 * 3600_000),
     });
-    const { rows } = await new AlertsListPresenter(db).call({
+    const { rows } = await present(db, {
       environmentId: "env_state_seed",
     });
     const buckets = rows.find((r) => r.id === alert.id)!.stateBuckets!;
@@ -527,7 +548,7 @@ describe("AlertsListPresenter", () => {
       type: "recovered",
       at: new Date(now - 20 * hour),
     });
-    const { rows } = await new AlertsListPresenter(db).call({
+    const { rows } = await present(db, {
       environmentId: "env_state_remet",
     });
     const buckets = rows.find((r) => r.id === alert.id)!.stateBuckets!;
@@ -561,7 +582,7 @@ describe("AlertsListPresenter", () => {
       at: new Date(now - 20 * hour),
     });
     await appendAlertEvent(db, { alertId: alert.id, type: "resolved", at: resolvedAt });
-    const { rows } = await new AlertsListPresenter(db).call({
+    const { rows } = await present(db, {
       environmentId: "env_state_resolved",
     });
     const buckets = rows.find((r) => r.id === alert.id)!.stateBuckets!;
@@ -606,7 +627,7 @@ describe("AlertsListPresenter", () => {
         at: new Date(now - (i + 1) * 10_000),
       });
     }
-    const { rows } = await new AlertsListPresenter(db).call({
+    const { rows } = await present(db, {
       environmentId: "env_state_flap",
     });
     const buckets = rows.find((r) => r.id === alert.id)!.stateBuckets!;
@@ -624,7 +645,7 @@ describe("AlertsListPresenter", () => {
       name: "state-never",
       notifiers: [],
     });
-    const { rows } = await new AlertsListPresenter(db).call({
+    const { rows } = await present(db, {
       environmentId: "env_state_never",
     });
     const buckets = rows.find((r) => r.id === alert.id)!.stateBuckets!;
@@ -655,7 +676,7 @@ describe("AlertsListPresenter", () => {
       notifiers: [],
     });
 
-    const { rows } = await new AlertsListPresenter(db).call({ environmentId: "env_scope" });
+    const { rows } = await present(db, { environmentId: "env_scope" });
     const byId = new Map(rows.map((r) => [r.id, r]));
     expect(byId.get(parsed.id)!.scope).toEqual({ type: "queue", queue: "emails" });
     expect(byId.get(broken.id)!.scope).toBeUndefined();
@@ -676,9 +697,8 @@ describe("AlertsListPresenter", () => {
         notifiers: [],
       });
     }
-    const presenter = new AlertsListPresenter(db);
-    const first = await presenter.call({ environmentId: env, page: 1 });
-    const second = await presenter.call({ environmentId: env, page: 2 });
+    const first = await present(db, { environmentId: env, page: 1 });
+    const second = await present(db, { environmentId: env, page: 2 });
     expect(first.rows).toHaveLength(50);
     expect(first.totalPages).toBe(2);
     expect(first.rows.every((r) => r.stateBuckets)).toBe(true);
@@ -702,15 +722,14 @@ describe("AlertsListPresenter", () => {
         notifiers: [],
       });
     }
-    const presenter = new AlertsListPresenter(db);
     const filters = {
       search: "",
       statuses: ["needs_attention" as const],
       areas: [],
       period: undefined,
     };
-    const first = await presenter.call({ environmentId: env, page: 1, filters });
-    const second = await presenter.call({ environmentId: env, page: 2, filters });
+    const first = await present(db, { environmentId: env, page: 1, filters });
+    const second = await present(db, { environmentId: env, page: 2, filters });
     expect(first.rows).toHaveLength(50);
     expect(first.totalPages).toBe(2);
     expect(second.rows).toHaveLength(10);
@@ -718,18 +737,19 @@ describe("AlertsListPresenter", () => {
   });
 
   it("fetches state buckets only for the visible page", async () => {
-    const presenter = new AlertsListPresenter(db);
     bucketQuery.calls.length = 0;
-    const { rows } = await presenter.call({ environmentId: "env_paged", page: 2 });
+    const { rows, alerts } = await listAlertRows(db, { environmentId: "env_paged", page: 2 });
     expect(rows).toHaveLength(10);
+    expect(bucketQuery.calls).toHaveLength(0);
+    const buckets = await listAlertStateBuckets(db, alerts);
     expect(bucketQuery.calls).toHaveLength(1);
     expect(bucketQuery.calls[0]!.sort()).toEqual(rows.map((r) => r.id).sort());
+    expect(Object.keys(buckets).sort()).toEqual(rows.map((r) => r.id).sort());
   });
 
   it("clamps out-of-range pages", async () => {
-    const presenter = new AlertsListPresenter(db);
-    const low = await presenter.call({ environmentId: "env_paged", page: 0 });
-    const high = await presenter.call({ environmentId: "env_paged", page: 99 });
+    const low = await present(db, { environmentId: "env_paged", page: 0 });
+    const high = await present(db, { environmentId: "env_paged", page: 99 });
     expect(low.page).toBe(1);
     expect(low.rows).toHaveLength(50);
     expect(high.page).toBe(2);
@@ -749,15 +769,14 @@ describe("AlertsListPresenter", () => {
         notifiers: [],
       });
     for (let i = 0; i < 500; i++) await add(i);
-    const presenter = new AlertsListPresenter(db);
-    const exact = await presenter.call({ environmentId: env });
+    const exact = await present(db, { environmentId: env });
     expect(exact.truncated).toBe(false);
     expect(exact.totalPages).toBe(10);
     await add(500);
-    const capped = await presenter.call({ environmentId: env });
+    const capped = await present(db, { environmentId: env });
     expect(capped.truncated).toBe(true);
     expect(capped.totalPages).toBe(10);
-    const small = await presenter.call({ environmentId: "env_1" });
+    const small = await present(db, { environmentId: "env_1" });
     expect(small.truncated).toBe(false);
   }, 120_000);
 });
@@ -810,9 +829,13 @@ async function seedChannel(prisma: PrismaClient, environmentTypes: RuntimeEnviro
     });
   await alert("active");
   await alert("stopped");
-  const { rows } = await new AlertsListPresenter(db, prisma).call({
-    environmentId: environment.id,
-  });
+  const { rows } = await present(
+    db,
+    {
+      environmentId: environment.id,
+    },
+    prisma
+  );
   return Object.fromEntries(rows.map((r) => [r.name, r]));
 }
 
@@ -849,10 +872,14 @@ describe("AlertsListPresenter channel warning", () => {
       await create("bad", [{ type: "channel", channelId: channel.id }]);
       await create("healthy", []);
       const names = async (statuses: ("needs_attention" | "active")[]) => {
-        const { rows } = await new AlertsListPresenter(db, prisma).call({
-          environmentId: environment.id,
-          filters: { search: "", statuses, areas: [], period: undefined },
-        });
+        const { rows } = await present(
+          db,
+          {
+            environmentId: environment.id,
+            filters: { search: "", statuses, areas: [], period: undefined },
+          },
+          prisma
+        );
         return rows.map((r) => r.name);
       };
       expect((await names(["active"])).sort()).toEqual(["bad", "healthy"]);
@@ -877,13 +904,14 @@ describe("AlertsListPresenter channel warning", () => {
         name: "raised",
         notifiers: [{ type: "channel", channelId: channel.id }],
       });
-      const presenter = new AlertsListPresenter(db, prisma);
       const list = (statuses: ("needs_attention" | "active" | "inactive")[]) =>
-        presenter
-          .call({ environmentId: environment.id, filters: { ...NO_FILTERS, statuses } })
-          .then((r) => r.rows.map((row) => row.name));
+        present(
+          db,
+          { environmentId: environment.id, filters: { ...NO_FILTERS, statuses } },
+          prisma
+        ).then((r) => r.rows.map((row) => row.name));
 
-      const { rows } = await presenter.call({ environmentId: environment.id });
+      const { rows } = await present(db, { environmentId: environment.id }, prisma);
       expect(rows[0]).toMatchObject({ status: "needs_attention", hasChannelIssue: true });
       expect(await list(["needs_attention"])).toEqual(["raised"]);
       expect(await list(["active"])).toEqual([]);
@@ -906,9 +934,13 @@ describe("AlertsListPresenter channel warning", () => {
         notifiers: [{ type: "channel", channelId: "chan_deleted" }],
       });
 
-      const { rows } = await new AlertsListPresenter(db, prisma).call({
-        environmentId: "env_missing",
-      });
+      const { rows } = await present(
+        db,
+        {
+          environmentId: "env_missing",
+        },
+        prisma
+      );
       expect(rows[0]).toMatchObject({ status: "active", hasChannelIssue: true });
 
       const detail = await new AlertDetailPresenter(

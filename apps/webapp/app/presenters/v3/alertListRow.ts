@@ -22,7 +22,6 @@ export type AlertListRow = {
   environmentId: string;
   scope: AlertParams["scope"] | undefined;
   status: AlertListRowStatus;
-  hasChannelIssue: boolean;
   groupId: string | null;
   inactiveReason?: "completed" | "expired" | "stopped";
   lastEventAt: Date | string | null;
@@ -31,7 +30,6 @@ export type AlertListRow = {
   episode?: AlertEpisodeSummary;
   expiresAt: Date | string | null;
   lastActivityAt: Date | string;
-  stateBuckets?: AlertStateBucket[];
 };
 
 export function rowMatchesStatus(row: AlertListRow, status: AlertListRowStatus): boolean {

@@ -1151,42 +1151,45 @@ export async function getLatestAlertEventTimes(
   );
 }
 
-export type AlertHealthEvent = { type: string; at: Date; facts: Record<string, unknown> };
+export type AlertStateEvent = { type: string; at: Date };
 
-export async function getAlertHealthEvents(
+export async function getAlertStateEvents(
   db: PrismaClientOrTransaction,
   alertIds: string[],
-  since: Date
-): Promise<Map<string, AlertHealthEvent[]>> {
+  params: { since: Date; bucketSeconds: number; types: string[] }
+): Promise<Map<string, AlertStateEvent[]>> {
   if (alertIds.length === 0) return new Map();
 
-  const sinceAt = iso(since);
-  const rows = await db.$queryRaw<
-    Array<{ alert_id: string; type: string; at: Date; facts: Record<string, unknown> | null }>
-  >`
+  const sinceAt = iso(params.since);
+  const rows = await db.$queryRaw<Array<{ alert_id: string; type: string; at: Date }>>`
     WITH ids AS (
       SELECT unnest(${alertIdArray(alertIds)}) AS id
     )
-    SELECT ids.id AS alert_id, w.type, w.at, w.facts FROM ids
+    SELECT ids.id AS alert_id, w.type, w.at FROM ids
     JOIN LATERAL (
-      SELECT "type" AS type, "at" AS at, "facts" AS facts
-      FROM "AlertEvent"
-      WHERE "alertId" = ids.id AND "at" >= ${sinceAt}
-      ORDER BY "at" DESC LIMIT 1000
+      SELECT DISTINCT ON (bucket, type) type, at FROM (
+        SELECT "type" AS type, "at" AS at,
+          date_bin(make_interval(secs => ${params.bucketSeconds}::int), "at", ${sinceAt}) AS bucket
+        FROM "AlertEvent"
+        WHERE "alertId" = ids.id
+          AND "at" >= ${sinceAt}
+          AND "type" = ANY(ARRAY[${Prisma.join(params.types)}]::text[])
+      ) e
+      ORDER BY bucket, type, at DESC
     ) w ON true
     UNION ALL
-    SELECT ids.id AS alert_id, s.type, s.at, s.facts FROM ids
+    SELECT ids.id AS alert_id, s.type, s.at FROM ids
     JOIN LATERAL (
-      SELECT "type" AS type, "at" AS at, "facts" AS facts
+      SELECT "type" AS type, "at" AS at
       FROM "AlertEvent"
       WHERE "alertId" = ids.id AND "at" < ${sinceAt}
       ORDER BY "at" DESC LIMIT 1
     ) s ON true`;
 
-  const result = new Map<string, AlertHealthEvent[]>();
+  const result = new Map<string, AlertStateEvent[]>();
   for (const row of rows) {
     const list = result.get(row.alert_id) ?? [];
-    list.push({ type: row.type, at: row.at, facts: row.facts ?? {} });
+    list.push({ type: row.type, at: row.at });
     result.set(row.alert_id, list);
   }
   return result;
