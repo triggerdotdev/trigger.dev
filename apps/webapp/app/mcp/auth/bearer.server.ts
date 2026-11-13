@@ -18,7 +18,7 @@ export type McpBearerAuthDeps = {
     bearer: string,
     audience: string
   ) => Promise<UserActorClaims | undefined>;
-  touchPat: (tokenId: string, lastAccessedAt: Date | null) => Promise<unknown>;
+  touchPat: (tokenId: string, lastAccessedAt: Date | null | undefined) => Promise<unknown>;
   resourceMetadataUrl: string;
   /** User-actor tokens must be minted for this audience, the MCP resource. */
   audience: string;
@@ -54,6 +54,7 @@ export function createMcpBearerAuthenticator(deps: McpBearerAuthDeps) {
       if (!claims?.pat) {
         return unauthorized({ error: "Invalid user-actor token" });
       }
+      await deps.touchPat(claims.pat, undefined);
       return {
         ok: true,
         identity: {

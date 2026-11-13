@@ -54,6 +54,7 @@ import {
 const MAX_WAIT_MS = 60_000;
 const INITIAL_POLL_MS = 500;
 const MAX_POLL_MS = 5_000;
+const MAX_TRACE_PAGE_LINES = 2_000;
 
 type ListRuns = (
   environment: AuthenticatedEnvironment,
@@ -287,7 +288,7 @@ export function createRunsTools(options: RunsToolsOptions = {}): McpToolDefiniti
       if (!trace && offset > 0) return errorResult("Trace not found");
 
       const allLines = trace ? formatRunTrace(trace).split("\n") : [];
-      const end = offset + Math.max(input.maxTraceLines, 1);
+      const end = offset + Math.min(Math.max(input.maxTraceLines, 1), MAX_TRACE_PAGE_LINES);
       const pageLines = allLines.slice(offset, end);
 
       const content: string[] = [];

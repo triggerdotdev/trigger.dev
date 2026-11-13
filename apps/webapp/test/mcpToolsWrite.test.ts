@@ -18,6 +18,7 @@ vi.hoisted(() => {
     DATABASE_URL: "postgresql://unused:unused@localhost:5432/unused",
     DIRECT_URL: "postgresql://unused:unused@localhost:5432/unused",
     MAGIC_LINK_SECRET: "magic-link-secret-for-tests",
+    SESSION_SECRET: "test-user-actor-secret",
     ENCRYPTION_KEY: "0123456789abcdef0123456789abcdef",
     DEPLOY_REGISTRY_HOST: "registry.test",
     V4_DEPLOY_REGISTRY_HOST: "registry.test",
@@ -296,7 +297,7 @@ describe("mcp write tools", () => {
       const before = await projects();
 
       const denied = await asUat(["read:all"], "capped");
-      expect(textOf(denied)).toBe("Not authorized");
+      expect(textOf(denied)).toBe("Insufficient scope: this tool requires write:projects");
       expect(await projects()).toBe(before);
 
       const allowed = await asUat(["write:projects"], "capped-ok");
@@ -408,7 +409,7 @@ describe("mcp write tools", () => {
         request
       );
       expect(denied.isError).toBe(true);
-      expect(textOf(denied)).toBe("Not authorized");
+      expect(textOf(denied)).toBe("Insufficient scope: this tool requires trigger:tasks");
       expect(triggerTask).toHaveBeenCalledTimes(1);
     }
   );

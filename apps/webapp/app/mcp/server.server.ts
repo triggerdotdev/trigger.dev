@@ -20,6 +20,7 @@ import {
 } from "./registry.server";
 
 export type McpRouterOptions = {
+  allowedOrigin: string;
   authenticate: (request: Request) => Promise<McpBearerAuthResult>;
   rateLimit: RequestHandler;
   preAuth?: McpPreAuthRateLimit;
@@ -40,6 +41,7 @@ export function createMcpRouter(options: McpRouterOptions): express.Router {
     registerMcpTools(server, tools, ctx);
     return server;
   };
+  router.all("/", hostOriginGuard(options.allowedOrigin));
   const modernContexts = new WeakMap<Request, Omit<McpToolContext, "era">>();
   const modern = createMcpHandler(
     ({ era, requestInfo }) => {
@@ -75,6 +77,14 @@ export function createMcpRouter(options: McpRouterOptions): express.Router {
       const request: Request = res.locals.mcpRequest;
       const ctx = { identity: res.locals.mcpIdentity, request };
       try {
+        if (Array.isArray(req.body)) {
+          res.status(400).json({
+            jsonrpc: "2.0",
+            id: null,
+            error: { code: -32600, message: "Batch requests are not supported" },
+          });
+          return;
+        }
         if (await isLegacyRequest(request, req.body)) {
           const server = buildServer({ ...ctx, era: "legacy" });
           await pipeFetchResponse(res, await serveLegacy(server, request, req.body, res));
@@ -103,6 +113,23 @@ export function createMcpRouter(options: McpRouterOptions): express.Router {
   router.use(bodyErrorHandler);
 
   return router;
+}
+
+function hostOriginGuard(allowedOrigin: string): RequestHandler {
+  const { host, origin: allowed } = new URL(allowedOrigin);
+  const allowedHost = host.toLowerCase();
+  return (req, res, next) => {
+    if (req.headers.host?.toLowerCase() !== allowedHost) {
+      res.status(404).end();
+      return;
+    }
+    const origin = req.headers.origin;
+    if (origin !== undefined && origin !== allowed) {
+      res.status(403).end();
+      return;
+    }
+    next();
+  };
 }
 
 async function serveLegacy(

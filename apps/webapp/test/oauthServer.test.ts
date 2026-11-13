@@ -41,7 +41,12 @@ vi.mock("~/services/rbac.server", () => ({
 }));
 
 import { postgresTest, redisTest } from "@internal/testcontainers";
-import plugin, { signUserActorToken, verifyUserActorToken } from "@trigger.dev/rbac";
+import plugin, {
+  personalAccessTokenExpiry,
+  signUserActorToken,
+  verifyUserActorToken,
+} from "@trigger.dev/rbac";
+import { hashToken } from "~/utils/tokens.server";
 import { createMcpBearerAuthenticator } from "~/mcp/auth/bearer.server";
 import { withMcpToolAuth } from "~/mcp/gate/withMcpToolAuth.server";
 import { createMcpProtectedResourceHandler } from "~/mcp/protectedResource.server";
@@ -49,6 +54,7 @@ import { MCP_SCOPES, mcpResource } from "~/services/oauth/metadata.server";
 import {
   createPersonalAccessToken,
   resolveAndRecheckUserActorClaims,
+  updateLastAccessedAtIfStale,
 } from "~/services/personalAccessToken.server";
 import { loader as authorizeLoader } from "~/routes/oauth.authorize";
 import {
@@ -63,6 +69,7 @@ import {
   type MetadataTransport,
 } from "~/services/oauth/cimdFetch.server";
 import { registerClient, resolveClient } from "~/services/oauth/clients.server";
+import { sweepOAuthClients } from "~/services/oauth/clientSweep.server";
 import { action as tokenAction } from "~/routes/oauth.token";
 import { action as revokeAction } from "~/routes/oauth.revoke";
 import { OAUTH_IP_LIMITS, checkOAuthIpRateLimit } from "~/services/oauth/rateLimit.server";
@@ -208,9 +215,6 @@ describe("OAuth authorization server", () => {
         cap: ["read:runs", "read:query"],
       });
 
-      const reused = await exchangeAuthorizationCode(tokenParams(clientId, code, verifier), audit);
-      expect(reused).toMatchObject({ ok: false, body: { error: "invalid_grant" } });
-
       const rotated = await exchangeRefreshToken(
         refreshParams(clientId, issued.body.refresh_token)
       );
@@ -232,6 +236,178 @@ describe("OAuth authorization server", () => {
       expect(afterReplay.ok).toBe(false);
     }
   );
+
+  // Catches: an authorization code that can be exchanged twice, sequentially or concurrently.
+  postgresTest("authorization code is single-use", async ({ prisma }) => {
+    db.client = prisma;
+    const user = await createUser(prisma);
+    const clientId = await register();
+    const { verifier, challenge } = pkce();
+    const code = await authorize(clientId, challenge, user.id);
+    const sign = async () => {
+      const deadline = Date.now() + 10_000;
+      for (;;) {
+        const [{ waiting }] = await prisma.$queryRaw<{ waiting: number }[]>`
+          SELECT count(*)::int AS waiting FROM pg_locks WHERE NOT granted`;
+        if (waiting > 0) return "access-token";
+        if (Date.now() > deadline) throw new Error("second exchange never overlapped");
+        await new Promise((resolve) => setTimeout(resolve, 10));
+      }
+    };
+    const exchange = () =>
+      exchangeAuthorizationCode(tokenParams(clientId, code, verifier), audit, sign);
+
+    const [first, second] = await Promise.all([exchange(), exchange()]);
+    const results = [first, second];
+    expect(results.filter((r) => r.ok)).toHaveLength(1);
+    expect(results.find((r) => !r.ok)).toMatchObject({
+      ok: false,
+      body: { error: "invalid_grant" },
+    });
+
+    expect(await livePats(user.id)).toBe(0);
+    expect(await exchange()).toMatchObject({ ok: false, body: { error: "invalid_grant" } });
+  });
+
+  // Catches: revoking on replay before PKCE is verified, letting a code holder kill the grant.
+  postgresTest("a replay with a wrong verifier does not revoke the grant", async ({ prisma }) => {
+    db.client = prisma;
+    const user = await createUser(prisma);
+    const clientId = await register();
+    const { verifier, challenge } = pkce();
+    const code = await authorize(clientId, challenge, user.id);
+    await exchangeAuthorizationCode(tokenParams(clientId, code, verifier), audit);
+
+    const bogus = await exchangeAuthorizationCode(
+      tokenParams(clientId, code, pkce().verifier),
+      audit
+    );
+    expect(bogus).toMatchObject({ ok: false, body: { error: "invalid_grant" } });
+    expect(await livePats(user.id)).toBe(1);
+  });
+
+  // Catches: the UAT bearer path writing lastAccessedAt on every call instead of only when stale.
+  postgresTest("UAT bearer calls touch the grant PAT only when stale", async ({ prisma }) => {
+    db.client = prisma;
+    db.rbac = plugin.create(
+      { primary: prisma, replica: prisma },
+      { forceFallback: true, userActorSecret: mockEnv.SESSION_SECRET }
+    );
+    const user = await createUser(prisma);
+    const issued = await grant(await register(), user.id);
+    const authenticate = createMcpBearerAuthenticator({
+      rbac: db.rbac,
+      failureBody: (failure) => failure,
+      recheckUserActorClaims: resolveAndRecheckUserActorClaims,
+      touchPat: updateLastAccessedAtIfStale,
+      resourceMetadataUrl: `${RESOURCE}/prm`,
+      audience: mcpResource(),
+    });
+    const call = () =>
+      authenticate(
+        new Request(RESOURCE, { headers: { Authorization: `Bearer ${issued.access_token}` } })
+      );
+
+    const updateMany = vi.spyOn(prisma.personalAccessToken, "updateMany");
+    expect((await call()).ok).toBe(true);
+    expect((await call()).ok).toBe(true);
+
+    expect(updateMany).toHaveBeenCalledTimes(1);
+    updateMany.mockRestore();
+    const pat = await prisma.personalAccessToken.findFirstOrThrow({ where: { userId: user.id } });
+    expect(pat.lastAccessedAt).not.toBeNull();
+  });
+
+  // Catches: refresh not counting use toward the grant PAT's idle expiry, or not checking it.
+  postgresTest("grant PAT idle expiry follows use", async ({ prisma }) => {
+    db.client = prisma;
+    const day = 24 * 60 * 60 * 1000;
+    const real = Date.now();
+    const patExpired = async (patId: string) => {
+      const row = await prisma.personalAccessToken.findFirstOrThrow({ where: { id: patId } });
+      return personalAccessTokenExpiry(row) !== undefined;
+    };
+    try {
+      vi.useFakeTimers({ toFake: ["Date"] });
+      const user = await createUser(prisma);
+      const clientId = await register();
+      const used = await grant(clientId, user.id);
+      const idle = await grant(clientId, user.id);
+
+      vi.setSystemTime(real + 29 * day);
+      const refreshed = await exchangeRefreshToken(refreshParams(clientId, used.refresh_token));
+      if (!refreshed.ok) throw new Error(refreshed.body.error_description);
+
+      const claims = await verifyUserActorToken(
+        mockEnv.SESSION_SECRET,
+        refreshed.body.access_token,
+        {
+          audience: RESOURCE,
+        }
+      );
+      vi.setSystemTime(real + 31 * day);
+      expect(await patExpired(claims!.pat)).toBe(false);
+
+      await prisma.oAuthRefreshToken.updateMany({
+        where: { hashedToken: hashToken(idle.refresh_token) },
+        data: { idleExpiresAt: new Date(real + 90 * day) },
+      });
+      const stale = await exchangeRefreshToken(refreshParams(clientId, idle.refresh_token));
+      expect(stale).toMatchObject({ ok: false, body: { error: "invalid_grant" } });
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  // Catches: dropping the revoke on code replay, or minting the grant PAT without idle expiry.
+  postgresTest(
+    "a replayed code revokes the grant it minted, and the grant PAT idle-expires",
+    async ({ prisma }) => {
+      db.client = prisma;
+      const user = await createUser(prisma);
+      const clientId = await register();
+      const { verifier, challenge } = pkce();
+      const code = await authorize(clientId, challenge, user.id);
+
+      const issued = await exchangeAuthorizationCode(tokenParams(clientId, code, verifier), audit);
+      if (!issued.ok) throw new Error(issued.body.error_description);
+      const claims = await verifyUserActorToken(mockEnv.SESSION_SECRET, issued.body.access_token, {
+        audience: RESOURCE,
+      });
+      const live = await prisma.personalAccessToken.findFirstOrThrow({
+        where: { id: claims!.pat },
+      });
+      expect(live.revokedAt).toBeNull();
+      expect(live.idleTimeoutSeconds).toBe(mockEnv.OAUTH_GRANT_IDLE_DAYS * 24 * 60 * 60);
+
+      const replay = await exchangeAuthorizationCode(tokenParams(clientId, code, verifier), audit);
+      expect(replay).toMatchObject({ ok: false, body: { error: "invalid_grant" } });
+
+      const revoked = await prisma.personalAccessToken.findFirstOrThrow({
+        where: { id: claims!.pat },
+      });
+      expect(revoked.revokedAt).not.toBeNull();
+      const refreshed = await exchangeRefreshToken(
+        refreshParams(clientId, issued.body.refresh_token)
+      );
+      expect(refreshed.ok).toBe(false);
+    }
+  );
+
+  // Catches: a dedupe hit on /register not refreshing the client, so the sweep deletes it.
+  postgresTest("re-registering an old client keeps it past the sweep", async ({ prisma }) => {
+    db.client = prisma;
+    const clientId = await register();
+    const old = new Date(Date.now() - 31 * 24 * 60 * 60 * 1000);
+    await prisma.oAuthClient.update({
+      where: { clientId },
+      data: { createdAt: old, updatedAt: old },
+    });
+
+    expect(await register()).toBe(clientId);
+    expect(await sweepOAuthClients(prisma)).toEqual({ deleted: 0, failedChunks: 0 });
+    expect(await prisma.oAuthClient.count({ where: { clientId } })).toBe(1);
+  });
 
   postgresTest("a granted write scope caps the access token", async ({ prisma }) => {
     db.client = prisma;
@@ -683,7 +859,72 @@ describe("OAuth authorization server", () => {
       const result = await validateAuthorizationRequest(
         authorizeParams(clientId, pkce().challenge, extra)
       );
-      expect(result).toMatchObject({ ok: false, redirect: true, error: { error } });
+      expect(result).toMatchObject({ ok: false, redirect: false, error: { error } });
+    }
+  );
+
+  postgresTest(
+    "a bad parameter redirects to a preregistered client but not a dynamic or metadata one",
+    async ({ prisma }) => {
+      db.client = prisma;
+      session.user = { id: (await createUser(prisma)).id, isImpersonating: false };
+      await prisma.oAuthClient.create({
+        data: { kind: "PREREGISTERED", clientId: "trigger-test", redirectUris: [REDIRECT_URI] },
+      });
+      const call = (clientId: string) =>
+        authorizeLoader({
+          request: new Request(
+            `https://app.example.com/oauth/authorize?${authorizeParams(clientId, pkce().challenge, {
+              response_type: "token",
+            })}`
+          ),
+          params: {},
+          context: {},
+        } as any);
+
+      const preregistered = await call("trigger-test");
+      expect(preregistered.status).toBe(302);
+      expect(new URL(preregistered.headers.get("Location")!).searchParams.get("error")).toBe(
+        "unsupported_response_type"
+      );
+
+      const cimdId = "https://client.example.com/metadata.json";
+      await prisma.oAuthClient.create({
+        data: {
+          kind: "CIMD",
+          clientId: cimdId,
+          metadataUrl: cimdId,
+          redirectUris: [REDIRECT_URI],
+          metadataExpiresAt: new Date(Date.now() + 60_000),
+        },
+      });
+      for (const clientId of [await register(), cimdId]) {
+        const response = await call(clientId);
+        expect(response.status).toBe(400);
+        expect(response.headers.get("Location")).toBeNull();
+      }
+    }
+  );
+
+  redisTest(
+    "authorize returns 429 once an IP exceeds its limit, for any client_id",
+    async ({ redisOptions }) => {
+      mockEnv.RATE_LIMIT_REDIS_HOST = redisOptions.host!;
+      mockEnv.RATE_LIMIT_REDIS_PORT = redisOptions.port!;
+      mockEnv.RATE_LIMIT_REDIS_PASSWORD = redisOptions.password;
+      session.user = { id: "u", isImpersonating: false };
+      const send = () =>
+        authorizeLoader({
+          request: new Request("https://app.example.com/oauth/authorize?client_id=plain", {
+            headers: { "x-forwarded-for": "203.0.113.9" },
+          }),
+          params: {},
+          context: {},
+        } as any);
+      for (let i = 0; i < OAUTH_IP_LIMITS.cimd; i++) {
+        expect((await send()).status).not.toBe(429);
+      }
+      expect((await send()).status).toBe(429);
     }
   );
 

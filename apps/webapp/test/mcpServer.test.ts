@@ -12,21 +12,31 @@ import { createMcpRouter } from "~/mcp/server.server";
 
 vi.setConfig({ testTimeout: 60_000 });
 
+const mocks = vi.hoisted(() => ({ info: vi.fn() }));
+
+vi.mock("~/services/logger.server", () => ({
+  logger: { debug: vi.fn(), error: vi.fn(), warn: vi.fn(), info: mocks.info },
+}));
+
 const ORIGIN = "https://mcp.test";
 const PRM_PATH = "/.well-known/oauth-protected-resource";
 const SECRET = "test-secret";
 const AUDIENCE = `${ORIGIN}/mcp`;
 
-type TestServer = { baseUrl: string; limited: string[]; touched: string[] };
+type TestServer = { baseUrl: string; origin: string; limited: string[]; touched: string[] };
 
 async function withServer(
   prisma: PrismaClient,
   fn: (server: TestServer) => Promise<void>,
-  tools?: McpToolDefinition[]
+  tools?: McpToolDefinition[],
+  allowedOrigin?: string | ((origin: string) => string)
 ) {
   const limited: string[] = [];
   const touched: string[] = [];
   const app = express();
+  const server = app.listen(0);
+  await new Promise<void>((resolve) => server.once("listening", () => resolve()));
+  const origin = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
   app.get(
     PRM_PATH,
     createMcpProtectedResourceHandler({
@@ -38,6 +48,8 @@ async function withServer(
   app.use(
     "/mcp",
     createMcpRouter({
+      allowedOrigin:
+        typeof allowedOrigin === "function" ? allowedOrigin(origin) : (allowedOrigin ?? origin),
       authenticate: createMcpBearerAuthenticator({
         rbac: plugin.create(prisma, { forceFallback: true, userActorSecret: SECRET }),
         failureBody: (failure) => ({ error: failure.error, code: failure.code }),
@@ -63,11 +75,8 @@ async function withServer(
       },
     })
   );
-  const server = app.listen(0);
-  await new Promise<void>((resolve) => server.once("listening", () => resolve()));
   try {
-    const baseUrl = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
-    await fn({ baseUrl, limited, touched });
+    await fn({ baseUrl: origin, origin, limited, touched });
   } finally {
     await new Promise<void>((resolve) => server.close(() => resolve()));
   }
@@ -94,13 +103,19 @@ async function seedPat(prisma: PrismaClient, expiresAt: Date | null) {
   return { token, tokenId: pat.id, userId: user.id };
 }
 
-function postMcp(baseUrl: string, body: unknown, token?: string) {
+function postMcp(
+  baseUrl: string,
+  body: unknown,
+  token?: string,
+  extraHeaders: Record<string, string> = {}
+) {
   return fetch(`${baseUrl}/mcp`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
       Accept: "application/json, text/event-stream",
       ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      ...extraHeaders,
     },
     body: typeof body === "string" ? body : JSON.stringify(body),
   });
@@ -117,6 +132,62 @@ async function expectRegisteredTools(res: Response) {
 const toolsList = { jsonrpc: "2.0", id: 1, method: "tools/list", params: {} };
 
 describe("MCP server", () => {
+  // Mutation: drop the Host check, or run it after auth.
+  postgresTest("a foreign Host is 404 before auth runs", async ({ prisma }) => {
+    await withServer(
+      prisma,
+      async ({ baseUrl, limited }) => {
+        const res = await postMcp(baseUrl, toolsList);
+        expect(res.status).toBe(404);
+        expect(limited).toEqual([]);
+      },
+      undefined,
+      ORIGIN
+    );
+  });
+
+  // Mutation: mount the guard on the whole router instead of the endpoint.
+  postgresTest("the guard leaves /mcp/confirm paths to the next handler", async ({ prisma }) => {
+    await withServer(
+      prisma,
+      async ({ baseUrl }) => {
+        const res = await fetch(`${baseUrl}/mcp/confirm/x`);
+        expect(res.status).toBe(404);
+        expect(await res.text()).toContain("Cannot GET");
+      },
+      undefined,
+      ORIGIN
+    );
+  });
+
+  // Mutation: compare Origin to the raw configured string.
+  postgresTest("Origin match normalises the configured origin", async ({ prisma }) => {
+    await withServer(
+      prisma,
+      async ({ baseUrl }) => {
+        const url = baseUrl.replace("127.0.0.1", "localhost");
+        const res = await postMcp(url, toolsList, undefined, { Origin: url });
+        expect(res.status).toBe(401);
+      },
+      undefined,
+      (origin) => `${origin.replace("127.0.0.1", "LOCALHOST")}/`
+    );
+  });
+
+  // Mutation: reject an absent Origin, skip the Origin check, or accept any Origin.
+  postgresTest.for([
+    ["no Origin", undefined, 401],
+    ["the MCP origin", "own", 401],
+    ["a foreign Origin", "https://evil.test", 403],
+  ] as const)("Origin %s is gated without CORS headers", async ([, origin, status], { prisma }) => {
+    await withServer(prisma, async (server) => {
+      const headers = origin ? { Origin: origin === "own" ? server.origin : origin } : undefined;
+      const res = await postMcp(server.baseUrl, toolsList, undefined, headers);
+      expect(res.status).toBe(status);
+      expect(res.headers.get("access-control-allow-origin")).toBeNull();
+    });
+  });
+
   // Mutation: drop WWW-Authenticate, rate limit before auth, or parse the body before auth.
   postgresTest.for([
     ["valid JSON", toolsList],
@@ -182,6 +253,64 @@ describe("MCP server", () => {
     });
   });
 
+  // Catches: dropping the scopeChallenge from registerMcpTools.
+  postgresTest(
+    "a modern call missing the tool's scope gets a 403 challenge",
+    async ({ prisma }) => {
+      const handler = vi.fn(async () => ({ content: [{ type: "text" as const, text: "ran" }] }));
+      const probe: McpToolDefinition = {
+        name: "probe",
+        description: "Needs read:runs",
+        inputSchema: {},
+        auth: { action: "read", subject: "runs" },
+        handler,
+      };
+      await withServer(
+        prisma,
+        async ({ baseUrl }) => {
+          const { userId, tokenId } = await seedPat(prisma, null);
+          const uat = await signUserActorToken(SECRET, {
+            userId,
+            client: "test",
+            pat: tokenId,
+            audience: AUDIENCE,
+            cap: ["read:projects"],
+          });
+          const modern = "2026-07-28";
+          const request = {
+            jsonrpc: "2.0",
+            id: 1,
+            method: "tools/call",
+            params: {
+              name: "probe",
+              _meta: {
+                "io.modelcontextprotocol/protocolVersion": modern,
+                "io.modelcontextprotocol/clientCapabilities": {},
+                "io.modelcontextprotocol/clientInfo": { name: "t", version: "1" },
+              },
+            },
+          };
+          const res = await postMcp(baseUrl, request, uat, {
+            "MCP-Protocol-Version": modern,
+            "Mcp-Method": "tools/call",
+            "Mcp-Name": "probe",
+          });
+
+          expect(res.status).toBe(403);
+          const challenge = res.headers.get("www-authenticate") ?? "";
+          expect(challenge).toContain('error="insufficient_scope"');
+          expect(challenge).toContain('scope="read:projects read:runs"');
+          expect(mocks.info).toHaveBeenCalledWith(
+            "mcp.tool",
+            expect.objectContaining({ tool: "probe", outcome: "insufficient_scope", userId })
+          );
+          expect(handler).not.toHaveBeenCalled();
+        },
+        [probe]
+      );
+    }
+  );
+
   // Mutation: verify user-actor tokens against the default API audience.
   postgresTest("UAT minted for the API gets 401", async ({ prisma }) => {
     await withServer(prisma, async ({ baseUrl }) => {
@@ -222,6 +351,30 @@ describe("MCP server", () => {
         expect(body.result.content[0].text).toBe(userId);
       },
       [whoami]
+    );
+  });
+
+  // Catches: removing the batch guard, so one rate-limited POST runs many JSON-RPC messages.
+  postgresTest("JSON-RPC batch gets 400 and runs no handler", async ({ prisma }) => {
+    const handler = vi.fn(async () => ({ content: [{ type: "text" as const, text: "ok" }] }));
+    const probe: McpToolDefinition = {
+      name: "probe",
+      description: "Counts calls",
+      inputSchema: {},
+      handler,
+    };
+    await withServer(
+      prisma,
+      async ({ baseUrl }) => {
+        const { token } = await seedPat(prisma, null);
+        const call = { jsonrpc: "2.0", id: 1, method: "tools/call", params: { name: "probe" } };
+        const res = await postMcp(baseUrl, [call, { ...call, id: 2 }], token);
+        expect(res.status).toBe(400);
+        const body = (await res.json()) as { error: { code: number } };
+        expect(body.error.code).toBe(-32600);
+        expect(handler).not.toHaveBeenCalled();
+      },
+      [probe]
     );
   });
 

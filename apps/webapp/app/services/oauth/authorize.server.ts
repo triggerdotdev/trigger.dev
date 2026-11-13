@@ -52,13 +52,10 @@ export async function validateAuthorizationRequest(
   }
 
   const state = params.get("state");
-  const fail = (error: OAuthError): AuthorizationRequestResult => ({
-    ok: false,
-    redirect: true,
-    error,
-    redirectUri,
-    state,
-  });
+  const fail = (error: OAuthError): AuthorizationRequestResult =>
+    client.kind !== "PREREGISTERED"
+      ? { ok: false, redirect: false, error }
+      : { ok: false, redirect: true, error, redirectUri, state };
 
   if (params.get("response_type") !== "code") {
     return fail(oauthError("unsupported_response_type", "response_type must be code"));

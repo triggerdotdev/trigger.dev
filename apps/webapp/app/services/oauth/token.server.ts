@@ -1,5 +1,10 @@
 import type { PrismaClientOrTransaction } from "@trigger.dev/database";
-import { isUserActorToken, signUserActorToken, verifyUserActorToken } from "@trigger.dev/rbac";
+import {
+  isUserActorToken,
+  personalAccessTokenExpiry,
+  signUserActorToken,
+  verifyUserActorToken,
+} from "@trigger.dev/rbac";
 import type { AdminAuditSourceEndpoint } from "@trigger.dev/plugins";
 import { randomBytes } from "node:crypto";
 import { $transaction, prisma } from "~/db.server";
@@ -10,6 +15,7 @@ import {
   codeChallengeFor,
   createPersonalAccessToken,
   safeEqual,
+  updateLastAccessedAtIfStale,
 } from "~/services/personalAccessToken.server";
 import { hashToken } from "~/utils/tokens.server";
 import { oauthCodeKey } from "./authorize.server";
@@ -141,7 +147,6 @@ export async function exchangeAuthorizationCode(
   const code = await prisma.authorizationCode.findFirst({
     where: {
       code: oauthCodeKey(codeValue),
-      personalAccessTokenId: null,
       createdAt: { gte: new Date(Date.now() - AUTHORIZATION_CODE_TTL_MS) },
     },
     include: { oauthClient: true },
@@ -166,6 +171,10 @@ export async function exchangeAuthorizationCode(
   if (resource !== null && resource !== code.resource) {
     return { ok: false, body: oauthError("invalid_target", "resource does not match the code") };
   }
+  if (code.personalAccessTokenId) {
+    await revokeGrant(code.personalAccessTokenId);
+    return invalidGrant("Code already used");
+  }
 
   const userId = code.approvedByUserId;
   const client = code.oauthClient;
@@ -173,8 +182,12 @@ export async function exchangeAuthorizationCode(
 
   const result = await $transaction(prisma, "oauth.exchangeAuthorizationCode", async (tx) => {
     await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`oauth_grant:${userId}:${client.id}`}))`;
-    const consumed = await tx.authorizationCode.deleteMany({ where: { id: code.id } });
-    if (consumed.count !== 1) return null;
+    const current = await tx.authorizationCode.findFirst({
+      where: { id: code.id },
+      select: { personalAccessTokenId: true },
+    });
+    if (!current) return { replayedPatId: null };
+    if (current.personalAccessTokenId) return { replayedPatId: current.personalAccessTokenId };
 
     if (client.kind === "PREREGISTERED") {
       await revokeGrants(tx, { userId, oauthClientId: client.id });
@@ -186,11 +199,16 @@ export async function exchangeAuthorizationCode(
         userId,
         auditSource,
         expiresAt: new Date(Date.now() + env.OAUTH_GRANT_ABSOLUTE_DAYS * DAY_MS),
+        idleTimeoutSeconds: env.OAUTH_GRANT_IDLE_DAYS * (DAY_MS / 1000),
         oauthClientId: client.id,
         skipAudit: true,
       },
       tx
     );
+    await tx.authorizationCode.update({
+      where: { id: code.id },
+      data: { personalAccessTokenId: pat.id },
+    });
     await revokeGrantsBeyondCap(tx, userId, client.id);
 
     const issued = await issueTokens(tx, sign, {
@@ -206,6 +224,10 @@ export async function exchangeAuthorizationCode(
   });
 
   if (!result) return invalidGrant("Code already used");
+  if ("replayedPatId" in result) {
+    if (result.replayedPatId) await revokeGrant(result.replayedPatId);
+    return invalidGrant("Code already used");
+  }
   void recordAdminPatCreated({
     userId,
     tokenId: result.patId,
@@ -284,7 +306,7 @@ export async function exchangeRefreshToken(
   }
 
   const pat = row.personalAccessToken;
-  if (row.idleExpiresAt <= now || pat.revokedAt || (pat.expiresAt && pat.expiresAt <= now)) {
+  if (row.idleExpiresAt <= now || pat.revokedAt || personalAccessTokenExpiry(pat, now)) {
     return invalidGrant("Grant expired or revoked");
   }
 
@@ -293,6 +315,8 @@ export async function exchangeRefreshToken(
   if (!scope.every((s) => row.scope.includes(s))) {
     return { ok: false, body: oauthError("invalid_scope", "scope exceeds the grant") };
   }
+
+  await updateLastAccessedAtIfStale(pat.id, pat.lastAccessedAt);
 
   const body = await $transaction(prisma, "oauth.exchangeRefreshToken", async (tx) => {
     const claimed = await tx.oAuthRefreshToken.updateMany({

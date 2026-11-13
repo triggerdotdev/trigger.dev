@@ -114,7 +114,7 @@ export async function registerClient(
         selfReportedName: client_name,
         dedupeKey,
       },
-      update: {},
+      update: { updatedAt: new Date() },
     })
     .catch(async (error) => {
       // A concurrent registration of the same client won the insert.

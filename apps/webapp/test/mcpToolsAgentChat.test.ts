@@ -1,6 +1,6 @@
 import { containerTest, redisTest } from "@internal/testcontainers";
 import plugin, { signUserActorToken } from "@trigger.dev/rbac";
-import type { PrismaClient } from "@trigger.dev/database";
+import type { Prisma, PrismaClient } from "@trigger.dev/database";
 import Redis, { type RedisOptions } from "ioredis";
 import { createHash } from "node:crypto";
 import { describe, expect, vi } from "vitest";
@@ -19,6 +19,7 @@ vi.hoisted(() => {
     DATABASE_URL: "postgresql://unused:unused@localhost:5432/unused",
     DIRECT_URL: "postgresql://unused:unused@localhost:5432/unused",
     MAGIC_LINK_SECRET: "magic-link-secret-for-tests",
+    SESSION_SECRET: "test-user-actor-secret",
     ENCRYPTION_KEY: "0123456789abcdef0123456789abcdef",
     DEPLOY_REGISTRY_HOST: "registry.test",
     V4_DEPLOY_REGISTRY_HOST: "registry.test",
@@ -178,15 +179,21 @@ async function withStore(
   }
 }
 
-async function uat(userId: string, cap: string[]) {
+async function uat(userId: string, cap: string[], { pat = "pat_src", clientId = "" } = {}) {
   const token = await signUserActorToken(SECRET, {
     userId,
     client: "mcp",
-    pat: "pat_src",
+    pat,
     audience: mcpResource(),
     cap,
   });
-  const identity: McpIdentity = { kind: "uat", userId, sourceTokenId: "pat_src", cap };
+  const identity: McpIdentity = {
+    kind: "uat",
+    userId,
+    sourceTokenId: pat,
+    cap,
+    ...(clientId ? { clientId } : {}),
+  };
   const request = new Request("https://api.trigger.dev/mcp", {
     headers: { Authorization: `Bearer ${token}` },
   });
@@ -196,7 +203,8 @@ async function uat(userId: string, cap: string[]) {
 function seedChatSession(
   prisma: PrismaClient,
   environment: { id: string; projectId: string; organizationId: string },
-  taskIdentifier: string
+  taskIdentifier: string,
+  extra: { metadata?: Prisma.InputJsonValue; currentRunId?: string } = {}
 ) {
   return prisma.session.create({
     data: {
@@ -208,10 +216,52 @@ function seedChatSession(
       environmentType: "PRODUCTION",
       organizationId: environment.organizationId,
       taskIdentifier,
-      triggerConfig: { basePayload: {} },
+      triggerConfig: { basePayload: { metadata: { v: 1 } } },
+      ...extra,
     },
   });
 }
+
+async function seedLiveRun(
+  prisma: PrismaClient,
+  environment: { id: string; projectId: string; organizationId: string }
+) {
+  const s = uniqueId("r");
+  return prisma.taskRun.create({
+    data: {
+      friendlyId: `run_${s}`,
+      taskIdentifier: "my-agent",
+      status: "EXECUTING",
+      payload: "{}",
+      payloadType: "application/json",
+      traceId: `trace_${s}`,
+      spanId: `span_${s}`,
+      queue: "task/my-agent",
+      runtimeEnvironmentId: environment.id,
+      projectId: environment.projectId,
+      organizationId: environment.organizationId,
+      environmentType: "PRODUCTION",
+      engine: "V2",
+    },
+  });
+}
+
+const binding = (userId: string, client: string, task = "my-agent") => ({
+  mcpBinding: { userId, client, task },
+});
+
+const startChat = (
+  tools: McpToolDefinition[],
+  projectRef: string,
+  identity: McpIdentity,
+  request: Request,
+  args: { agentId?: string; clientData?: Record<string, unknown> } = {}
+) =>
+  tool(tools, "start_agent_chat")(
+    { projectRef, environment: "prod", agentId: "my-agent", chatId: "chat_1", ...args },
+    identity,
+    request
+  );
 
 const send = (tools: McpToolDefinition[], identity: McpIdentity, request: Request) =>
   tool(tools, "send_agent_message")({ chatId: "chat_1", message: "hi" }, identity, request);
@@ -873,35 +923,115 @@ describe("start_agent_chat", () => {
     }
   );
 
-  // Catches: a reused chatId running the session's stored task instead of the authorized agent.
+  // Catches: resume rewriting the session's trigger config, or the PAT binding not keyed by token.
   containerTest(
-    "refuses a reused chatId bound to another task",
+    "resumes its own session after the handle expired without rewriting it",
     async ({ prisma, redisOptions }) => {
-      const { a, environment } = await seed(prisma);
-      const session = await seedChatSession(prisma, environment, "task-b");
+      const { a, environment, identity, request } = await seed(prisma);
+      const run = await seedLiveRun(prisma, environment);
+      const session = await seedChatSession(prisma, environment, "my-agent", {
+        metadata: binding(a.user.id, "pat:pat_src"),
+        currentRunId: run.id,
+      });
       await withStore(redisOptions, async (store) => {
-        const { identity, request } = await uat(a.user.id, [
-          "write:sessions",
-          "trigger:tasks:task-a",
-        ]);
+        const { io } = stubIO([]);
+        const tools = createAgentChatTools({ store, streamIO: () => io });
 
-        const result = await tool(createAgentChatTools({ store }), "start_agent_chat")(
-          {
-            projectRef: a.project.externalRef,
-            environment: "prod",
-            agentId: "task-a",
-            chatId: "chat_1",
-          },
+        const result = await startChat(tools, a.project.externalRef, identity, request, {
+          clientData: { v: 2 },
+        });
+
+        expect(textOf(result)).toContain(`- Session ID: ${session.friendlyId}`);
+        expect(await store.get(a.user.id, "pat_src:pat", "chat_1")).toMatchObject({
+          sessionId: session.friendlyId,
+          clientData: { v: 2 },
+        });
+        expect(await prisma.session.findUniqueOrThrow({ where: { id: session.id } })).toMatchObject(
+          { triggerConfig: session.triggerConfig, metadata: session.metadata }
+        );
+      });
+    }
+  );
+
+  // Catches: dropping the user, client, task, session-task or presence check on a reused chatId.
+  containerTest.for([
+    { name: "another OAuth client", user: "own", client: "uat:client-b", task: "my-agent" },
+    { name: "another user", user: "other_user", client: "uat:client-a", task: "my-agent" },
+    { name: "another task", user: "own", client: "uat:client-a", task: "task-b" },
+    { name: "no binding", user: undefined, client: "", task: "my-agent" },
+    {
+      name: "a session task its binding does not name",
+      user: "own",
+      client: "uat:client-a",
+      task: "my-agent",
+      sessionTask: "task-b",
+    },
+  ])(
+    "refuses a reused chatId bound to $name",
+    async ({ user, client: boundClient, task, sessionTask }, { prisma, redisOptions }) => {
+      const { a, environment } = await seed(prisma);
+      const session = await seedChatSession(prisma, environment, sessionTask ?? task, {
+        metadata: user && binding(user === "own" ? a.user.id : user, boundClient, task),
+      });
+      await withStore(redisOptions, async (store) => {
+        const { identity, request } = await uat(a.user.id, ["write:sessions", "trigger:tasks"], {
+          clientId: "client-a",
+        });
+
+        const result = await startChat(
+          createAgentChatTools({ store }),
+          a.project.externalRef,
           identity,
           request
         );
 
         expect(result.isError).toBe(true);
-        expect(textOf(result)).toContain("is bound to a different agent");
-        expect(await prisma.session.findUniqueOrThrow({ where: { id: session.id } })).toMatchObject(
-          { currentRunId: null }
+        expect(textOf(result)).toContain(
+          user ? "belongs to another client or agent" : "started without a binding"
         );
-        expect(await store.get(a.user.id, "pat_src:uat:", "chat_1")).toBeNull();
+        expect(await prisma.session.findUniqueOrThrow({ where: { id: session.id } })).toEqual(
+          session
+        );
+        expect(await store.get(a.user.id, "pat_src:uat:client-a", "chat_1")).toBeNull();
+      });
+    }
+  );
+
+  // Catches: the UAT binding keyed by token, so re-consent locks the user out of their chat.
+  containerTest(
+    "resumes after re-consent under the same OAuth client",
+    async ({ prisma, redisOptions }) => {
+      const { a, environment } = await seed(prisma);
+      await prisma.personalAccessToken.create({
+        data: {
+          id: "pat_new",
+          name: "mcp-new",
+          encryptedToken: {},
+          obfuscatedToken: "tr_pat_****",
+          hashedToken: createHash("sha256").update(uniqueId("tok")).digest("hex"),
+          userId: a.user.id,
+        },
+      });
+      const run = await seedLiveRun(prisma, environment);
+      const session = await seedChatSession(prisma, environment, "my-agent", {
+        metadata: binding(a.user.id, "uat:client-a"),
+        currentRunId: run.id,
+      });
+      await withStore(redisOptions, async (store) => {
+        const { io } = stubIO([]);
+        const { identity, request } = await uat(a.user.id, ["write:sessions", "trigger:tasks"], {
+          pat: "pat_new",
+          clientId: "client-a",
+        });
+
+        const result = await startChat(
+          createAgentChatTools({ store, streamIO: () => io }),
+          a.project.externalRef,
+          identity,
+          request
+        );
+
+        expect(textOf(result)).toContain(`- Session ID: ${session.friendlyId}`);
       });
     }
   );

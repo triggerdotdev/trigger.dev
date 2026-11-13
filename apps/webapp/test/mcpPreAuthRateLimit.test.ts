@@ -30,9 +30,13 @@ async function withServer(
 ) {
   let authCalls = 0;
   const app = express();
+  const server = app.listen(0);
+  await new Promise<void>((resolve) => server.once("listening", () => resolve()));
+  const origin = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
   app.use(
     "/mcp",
     createMcpRouter({
+      allowedOrigin: origin,
       authenticate: async (request) => {
         authCalls++;
         if (request.headers.get("authorization") === "Bearer valid") {
@@ -45,9 +49,7 @@ async function withServer(
       preAuth,
     })
   );
-  const server = app.listen(0);
-  await new Promise<void>((resolve) => server.once("listening", () => resolve()));
-  const url = `http://127.0.0.1:${(server.address() as AddressInfo).port}/mcp`;
+  const url = `${origin}/mcp`;
   try {
     await fn(
       (headers) =>

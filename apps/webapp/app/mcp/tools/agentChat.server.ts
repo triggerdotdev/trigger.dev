@@ -1,4 +1,4 @@
-import type { Prisma, TaskRunStatus } from "@trigger.dev/database";
+import type { TaskRunStatus } from "@trigger.dev/database";
 import {
   controlSubtype,
   CreateSessionRequestBody,
@@ -87,9 +87,17 @@ type CreatedChatSession =
   | { ok: true; sessionId: string; runId: string; isCached: boolean }
   | { ok: false; error: string };
 
+const ChatBinding = z.object({ userId: z.string(), client: z.string(), task: z.string() });
+type ChatBinding = z.infer<typeof ChatBinding>;
+
 type CreateChatSession = (
   environment: AuthenticatedEnvironment,
-  input: { chatId: string; agentId: string; clientData?: Record<string, unknown> }
+  input: {
+    chatId: string;
+    agentId: string;
+    binding: ChatBinding;
+    clientData?: Record<string, unknown>;
+  }
 ) => Promise<CreatedChatSession>;
 
 export type AgentChatToolsOptions = {
@@ -488,7 +496,7 @@ function sessionStreamIO(
 
 const createChatSession: CreateChatSession = async (
   environment,
-  { chatId, agentId, clientData }
+  { chatId, agentId, binding, clientData }
 ) => {
   if (!isSafeSessionExternalId(chatId)) return { ok: false, error: SESSION_EXTERNAL_ID_FOLD_ERROR };
 
@@ -520,8 +528,28 @@ const createChatSession: CreateChatSession = async (
       type: body.data.type,
       taskIdentifier: agentId,
       triggerConfig,
+      metadata: { mcpBinding: binding },
       refreshTriggerConfig: false,
     });
+
+    if (isCached) {
+      const stored = z.object({ mcpBinding: ChatBinding }).safeParse(session.metadata);
+      if (!stored.success) {
+        return { ok: false, error: "This chat was started without a binding; start a new chatId" };
+      }
+      const { userId, client, task } = stored.data.mcpBinding;
+      if (
+        userId !== binding.userId ||
+        client !== binding.client ||
+        task !== binding.task ||
+        session.taskIdentifier !== binding.task
+      ) {
+        return {
+          ok: false,
+          error: "This chat belongs to another client or agent; use a new chatId",
+        };
+      }
+    }
 
     if (session.closedAt) {
       return {
@@ -534,24 +562,6 @@ const createChatSession: CreateChatSession = async (
         ok: false,
         error: "Session is expired; use a different externalId to create a new session",
       };
-    }
-
-    if (isCached && session.taskIdentifier !== agentId) {
-      return {
-        ok: false,
-        error: `Chat ${chatId} is bound to a different agent; use a different chatId`,
-      };
-    }
-
-    if (isCached) {
-      Object.assign(
-        session,
-        await prisma.session.update({
-          where: { id: session.id },
-          data: { triggerConfig: triggerConfig as unknown as Prisma.InputJsonValue },
-          select: { triggerConfig: true, updatedAt: true },
-        })
-      );
     }
 
     const ensured = await ensureRunForSession({
@@ -592,6 +602,9 @@ function findHandleEnvironment(handle: McpChatHandle, userId: string) {
 
 const chatHandleScope = (identity: McpIdentity) =>
   `${confirmationTokenId(identity)}:${confirmationClient(identity)}`;
+
+const chatBindingClient = (identity: McpIdentity) =>
+  identity.kind === "pat" ? `pat:${identity.tokenId}` : confirmationClient(identity);
 
 const canTriggerTask =
   (ctx: McpToolContext, envType: AuthenticatedEnvironment["type"]) => (taskIdentifier: string) =>
@@ -668,6 +681,7 @@ export function createAgentChatTools(options: AgentChatToolsOptions = {}): McpTo
       inputSchema: tool.shape,
       annotations: { title: tool.title, readOnlyHint: false, destructiveHint: true },
       confirm: requiresApproval(auth) !== false,
+      auth,
       handler: async (args, identity, request, extra) => {
         const parsed = schema.safeParse(args ?? {});
         if (!parsed.success) return errorResult(`Invalid arguments: ${parsed.error.message}`);
@@ -714,6 +728,11 @@ export function createAgentChatTools(options: AgentChatToolsOptions = {}): McpTo
         const session = await createSession(environment, {
           chatId,
           agentId: input.agentId,
+          binding: {
+            userId: ctx.identity.userId,
+            client: chatBindingClient(ctx.identity),
+            task: input.agentId,
+          },
           clientData: input.clientData,
         });
         if (!session.ok) return errorResult(session.error);

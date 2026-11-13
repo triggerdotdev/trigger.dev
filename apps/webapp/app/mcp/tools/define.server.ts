@@ -43,6 +43,7 @@ export function defineReadTool<S extends z.ZodRawShape>(tool: {
       title: tool.title,
     },
     confirm: requiresApproval(tool.auth) !== false,
+    auth: tool.auth,
     handler: async (args, identity, request, extra) => {
       const parsed = schema.safeParse(args ?? {});
       if (!parsed.success) return errorResult(`Invalid arguments: ${parsed.error.message}`);

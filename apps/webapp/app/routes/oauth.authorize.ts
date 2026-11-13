@@ -19,14 +19,12 @@ export async function loader({ request }: LoaderFunctionArgs) {
   assertNotImpersonating(user);
   const params = new URL(request.url).searchParams;
 
-  if (params.get("client_id")?.startsWith("https://")) {
-    const retryAfter = await checkOAuthIpRateLimit("cimd", request);
-    if (retryAfter !== null) {
-      return json(
-        { error: "too_many_requests" },
-        { status: 429, headers: { "Retry-After": retryAfter.toString() } }
-      );
-    }
+  const retryAfter = await checkOAuthIpRateLimit("cimd", request);
+  if (retryAfter !== null) {
+    return json(
+      { error: "too_many_requests" },
+      { status: 429, headers: { "Retry-After": retryAfter.toString() } }
+    );
   }
 
   const result = await validateAuthorizationRequest(params);

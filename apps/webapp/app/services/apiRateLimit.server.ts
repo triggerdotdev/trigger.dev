@@ -12,6 +12,7 @@ import {
   authorizationRateLimitMiddleware,
   type RateLimitTenant,
 } from "./authorizationRateLimitMiddleware.server";
+import { mcpResource } from "./oauth/metadata.server";
 import { deploymentApiPaths } from "./deploymentApiPaths.server";
 import type { Duration } from "./rateLimiter.server";
 import { FEATURE_FLAG, FeatureFlagCatalog } from "~/v3/featureFlags";
@@ -27,7 +28,11 @@ export function jwtActorRateLimitIdentifier(environmentId: string, actorSub: str
 }
 
 export async function userActorRateLimitIdentifier(token: string): Promise<string | undefined> {
-  const claims = await verifyUserActorToken(env.SESSION_SECRET, token).catch(() => undefined);
+  const claims =
+    (await verifyUserActorToken(env.SESSION_SECRET, token).catch(() => undefined)) ??
+    (await verifyUserActorToken(env.SESSION_SECRET, token, { audience: mcpResource() }).catch(
+      () => undefined
+    ));
   if (!claims) return undefined;
   return claims.pat ? `pat:${claims.pat}` : `user:${claims.userId}`;
 }

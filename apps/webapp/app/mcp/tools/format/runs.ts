@@ -360,10 +360,10 @@ function formatRunSummary(run: ListRunResponseItem): string {
   const parts: string[] = [];
 
   parts.push(`${run.id}`);
-  parts.push(`${run.taskIdentifier}`);
+  parts.push(fenceUntrusted(run.taskIdentifier, "run-task"));
   parts.push(`${formatStatus(run.status)}`);
 
-  parts.push(`env:${run.env.name}`);
+  parts.push(`env:${fenceUntrusted(run.env.name, "run-env")}`);
 
   let timeInfo = "";
   if (run.finishedAt) {

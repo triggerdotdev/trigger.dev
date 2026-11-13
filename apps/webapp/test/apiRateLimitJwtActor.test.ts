@@ -22,6 +22,7 @@ vi.mock("~/env.server", () => ({
     API_RATE_LIMIT_JWT_WINDOW: "1m",
     API_RATE_LIMIT_JWT_TOKENS: 100,
     SESSION_SECRET: "test-secret",
+    MCP_ORIGIN: "https://mcp.test",
   },
 }));
 vi.mock("~/models/runtimeEnvironment.server", () => ({
@@ -263,6 +264,24 @@ describe("resolveApiRateLimitOverride — user-actor tokens", () => {
     expect(a?.identifier).toBe(expected);
     expect(b?.identifier).toBe(expected);
     expect(mocks.resolvePrivateApiKeyRateLimitScope).not.toHaveBeenCalled();
+  });
+
+  // Catches: dropping the MCP-audience retry, so every refreshed MCP token gets its own bucket.
+  it("keys MCP-audience UATs from the same grant on one bucket", async () => {
+    const mintMcp = (sessionId: string) =>
+      signUserActorToken("test-secret", {
+        userId: "usr_1",
+        pat: "pat_1",
+        client: "mcp",
+        sessionId,
+        audience: "https://mcp.test/mcp",
+      });
+
+    const a = await resolveApiRateLimitOverride(`Bearer ${await mintMcp("s1")}`);
+    const b = await resolveApiRateLimitOverride(`Bearer ${await mintMcp("s2")}`);
+
+    expect(a?.identifier).toBe("pat:pat_1");
+    expect(b?.identifier).toBe("pat:pat_1");
   });
 
   it("does not share a bucket between different PATs", async () => {

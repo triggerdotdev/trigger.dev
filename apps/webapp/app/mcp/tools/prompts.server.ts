@@ -30,9 +30,9 @@ export const promptsTools: McpToolDefinition[] = [
       for (const p of prompts) {
         const status = p.hasOverride ? " (override active)" : "";
         const version = p.currentVersion ? `v${p.currentVersion.version}` : "no current";
-        lines.push(`- **${p.slug}** — ${version}${status}`);
+        lines.push(`- **${fence(p.slug)}** — ${version}${status}`);
         if (p.description) lines.push(`  ${fence(p.description)}`);
-        if (p.defaultModel) lines.push(`  Model: ${p.defaultModel}`);
+        if (p.defaultModel) lines.push(`  Model: ${fence(p.defaultModel)}`);
       }
 
       return textResult(lines.join("\n"));
@@ -63,10 +63,10 @@ export const promptsTools: McpToolDefinition[] = [
 
       if (versions.length === 0) return textResult("No versions found.");
 
-      const lines = [`## Versions for "${input.slug}"\n`];
+      const lines = [`## Versions for ${fence(input.slug)}\n`];
       for (const v of versions) {
         const labels = v.labels.length > 0 ? ` [${v.labels.join(", ")}]` : "";
-        const model = v.model ? ` · ${v.model}` : "";
+        const model = v.model ? ` · ${fence(v.model)}` : "";
         const msg = v.commitMessage ? ` — ${fence(v.commitMessage)}` : "";
         lines.push(`- **v${v.version}**${labels} (${v.source})${model}${msg}`);
         if (v.textContent) {

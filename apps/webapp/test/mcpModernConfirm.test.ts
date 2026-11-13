@@ -50,17 +50,18 @@ let baseUrl = "";
 let close = () => {};
 beforeAll(async () => {
   const app = express();
+  const server = app.listen(0);
+  await new Promise<void>((resolve) => server.once("listening", () => resolve()));
+  baseUrl = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
   app.use(
     "/mcp",
     createMcpRouter({
+      allowedOrigin: baseUrl,
       authenticate: async () => ({ ok: true, identity: IDENTITY }),
       rateLimit: (_req, _res, next) => next(),
       tools: [tool],
     })
   );
-  const server = app.listen(0);
-  await new Promise<void>((resolve) => server.once("listening", () => resolve()));
-  baseUrl = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
   close = () => server.close();
 });
 afterAll(() => close());

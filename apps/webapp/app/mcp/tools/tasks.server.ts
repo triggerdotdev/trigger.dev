@@ -60,7 +60,7 @@ const getCurrentWorker = defineReadTool({
       for (const task of tasks) {
         const label = task.triggerSource === "AGENT" ? " [agent]" : "";
         contents.push(
-          `- ${task.slug}${label} in ${fenceUntrusted(task.filePath, "task-file-path")}`
+          `- ${fenceUntrusted(task.slug, "task-slug")}${label} in ${fenceUntrusted(task.filePath, "task-file-path")}`
         );
       }
 
@@ -109,12 +109,12 @@ const getTaskSchema = defineReadTool({
     const task = current.tasks.find((t) => t.slug === input.taskSlug);
 
     if (!task) {
-      const available = current.tasks.map((t) => t.slug).join(", ");
+      const available = fenceUntrusted(current.tasks.map((t) => t.slug).join(", "), "task-slug");
       return errorResult(`Task "${input.taskSlug}" not found. Available tasks: ${available}`);
     }
 
     const content = [
-      `## ${task.slug}`,
+      `## ${fenceUntrusted(task.slug, "task-slug")}`,
       "",
       `**File:** ${fenceUntrusted(task.filePath, "task-file-path")}`,
     ];

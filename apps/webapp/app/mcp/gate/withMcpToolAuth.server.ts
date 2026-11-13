@@ -14,6 +14,7 @@ import {
 } from "../confirm/confirmation.server";
 import type { McpConfirmationStore } from "../confirm/store.server";
 import { requiresApproval } from "./approval.server";
+import { fenceUntrusted } from "./fence.server";
 import { resolveMcpSubject } from "./resolveSubject.server";
 import type {
   McpConfirmSpec,
@@ -48,14 +49,53 @@ async function confirmationDefaults(options: McpGateOptions) {
   };
 }
 
-type Outcome = "ok" | "denied" | "user_denied" | "error" | "pending" | "confirmed";
+type Outcome =
+  | "ok"
+  | "denied"
+  | "insufficient_scope"
+  | "forbidden"
+  | "user_denied"
+  | "error"
+  | "pending"
+  | "confirmed";
+
+type Denial = "denied" | "insufficient_scope" | "forbidden";
 
 const NO_EXTRA: McpRequestExtra = { signal: new AbortController().signal, requestId: "" };
 
-const denied = (): McpToolResult => ({
-  content: [{ type: "text", text: "Not authorized" }],
+const errorText = (text: string): McpToolResult => ({
+  content: [{ type: "text", text }],
   isError: true,
 });
+
+const requiredScopes = (auth: { action: string; subject: string }) => [
+  `${auth.action}:${auth.subject}`,
+];
+
+export function missingScopes(
+  auth: McpToolAuth,
+  identity: McpIdentity,
+  resource?: { type: string; id?: string }
+): string[] {
+  if ("public" in auth || identity.kind !== "uat") return [];
+  const cap = identity.cap ?? CAPLESS_USER_ACTOR_SCOPES;
+  const scope = requiredScopes(auth)[0];
+  const allowed = resource
+    ? buildJwtAbility(cap).can(auth.action, resource)
+    : buildJwtAbility(cap).can(auth.action, { type: auth.subject }) ||
+      cap.some((s) => s.startsWith(`${scope}:`));
+  return allowed ? [] : [scope];
+}
+
+function denialResult(denial: Denial, auth: McpToolAuth): McpToolResult {
+  if ("public" in auth || denial === "denied") return errorText("Not authorized");
+  if (denial === "insufficient_scope") {
+    return errorText(`Insufficient scope: this tool requires ${requiredScopes(auth).join(", ")}`);
+  }
+  return errorText(
+    `Not authorized: your role in this organization does not allow ${auth.action} on ${auth.subject}`
+  );
+}
 
 const failed = (): McpToolResult => ({
   content: [{ type: "text", text: "The tool failed. Try again later." }],
@@ -103,34 +143,43 @@ async function authorizeUser(
   auth: { action: string; subject: string },
   identity: McpIdentity,
   request: Request
-): Promise<boolean> {
-  if (identity.kind === "uat" && (identity.organizationId || identity.environmentId)) return false;
-  if (!(await authenticate(identity, request, {}))) return false;
+): Promise<Denial | null> {
+  if (identity.kind === "uat" && (identity.organizationId || identity.environmentId)) {
+    return "denied";
+  }
+  if (!(await authenticate(identity, request, {}))) return "denied";
   // Without an org the plugin's ability denies everything, so cap-check delegated tokens directly.
-  if (identity.kind === "pat") return true;
-  return buildJwtAbility(identity.cap ?? CAPLESS_USER_ACTOR_SCOPES).can(auth.action, {
-    type: auth.subject,
-  });
+  if (identity.kind === "pat") return null;
+  const cap = buildJwtAbility(identity.cap ?? CAPLESS_USER_ACTOR_SCOPES);
+  return cap.can(auth.action, { type: auth.subject }) ? null : "insufficient_scope";
 }
+
+type Authorization = {
+  denial: Denial | null;
+  subject: McpSubject | null;
+  ability?: RbacAbility;
+};
 
 async function authorize(
   auth: McpToolAuth,
   args: unknown,
   identity: McpIdentity,
   request: Request
-): Promise<{ ok: boolean; subject: McpSubject | null; ability?: RbacAbility }> {
-  if ("public" in auth) return { ok: true, subject: null };
-  if ("user" in auth) return { ok: await authorizeUser(auth, identity, request), subject: null };
+): Promise<Authorization> {
+  if ("public" in auth) return { denial: null, subject: null };
+  if ("user" in auth) {
+    return { denial: await authorizeUser(auth, identity, request), subject: null };
+  }
 
   const subject = await (auth.resolveSubject ?? resolveMcpSubject)(args, identity);
-  if (!subject) return { ok: false, subject: null };
-  if (outsideTokenScope(identity, subject)) return { ok: false, subject };
+  if (!subject) return { denial: "denied", subject: null };
+  if (outsideTokenScope(identity, subject)) return { denial: "denied", subject };
 
   const ability = await authenticate(identity, request, {
     organizationId: subject.organizationId,
     projectId: subject.projectId,
   });
-  if (!ability) return { ok: false, subject };
+  if (!ability) return { denial: "denied", subject };
 
   const id = auth.resourceId?.(args);
   const resource = {
@@ -138,7 +187,11 @@ async function authorize(
     ...(id ? { id } : {}),
     ...(subject.environmentType ? { envType: subject.environmentType } : {}),
   };
-  return { ok: ability.can(auth.action, resource), subject, ability };
+  if (ability.can(auth.action, resource)) return { denial: null, subject, ability };
+  const denial = missingScopes(auth, identity, resource).length
+    ? "insufficient_scope"
+    : "forbidden";
+  return { denial, subject, ability };
 }
 
 async function confirm(
@@ -176,7 +229,7 @@ async function confirm(
     approved: false,
     id,
     url,
-    message: `Confirmation required. Open ${url} to approve "${tool}" for ${target}, then call the same tool again with identical arguments.`,
+    message: `Confirmation required. Open ${url} to approve "${tool}" for ${fenceUntrusted(target, "confirmation-target")}, then call the same tool again with identical arguments.`,
   };
 }
 
@@ -200,9 +253,9 @@ export function withMcpToolAuth<TArgs>(
     try {
       const authorization = await authorize(auth, args, identity, request);
       subject = authorization.subject;
-      if (!authorization.ok) {
-        outcome = "denied";
-        return denied();
+      if (authorization.denial) {
+        outcome = authorization.denial;
+        return denialResult(authorization.denial, auth);
       }
 
       let confirmation: { id: string } | undefined;
@@ -255,10 +308,12 @@ export function withMcpToolAuth<TArgs>(
       logger.info("mcp.tool", {
         userId: identity.userId,
         tokenKind: identity.kind,
+        tokenId: identity.kind === "pat" ? identity.tokenId : identity.sourceTokenId,
         clientId: identity.kind === "uat" ? identity.clientId : undefined,
         tool,
         organizationId: subject?.organizationId,
         projectId: subject?.projectId,
+        environmentId: subject?.environmentId,
         confirmationId,
         outcome,
         durationMs: Math.round(performance.now() - startedAt),

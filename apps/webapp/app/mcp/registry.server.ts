@@ -5,10 +5,14 @@ import {
   type CallToolResult,
   type McpServer,
   type ProtocolEra,
+  type ScopeChallengeHandler,
   type ToolAnnotations,
 } from "@modelcontextprotocol/server";
 import { z } from "zod";
-import type { McpRequestExtra } from "./gate/types";
+import { logger } from "~/services/logger.server";
+import { MCP_SCOPES } from "~/services/oauth/metadata.server";
+import type { McpRequestExtra, McpToolAuth } from "./gate/types";
+import { missingScopes } from "./gate/withMcpToolAuth.server";
 import type { McpIdentity } from "./types";
 import { agentsTools } from "./tools/agents.server";
 import { alertsTools } from "./tools/alerts.server";
@@ -42,6 +46,7 @@ export type McpToolDefinition = {
   annotations?: ToolAnnotations;
   /** The gate holds the call for user confirmation. */
   confirm?: boolean;
+  auth?: McpToolAuth;
   handler: (
     args: unknown,
     identity: McpIdentity,
@@ -100,6 +105,10 @@ export function registerMcpTools(
         description: tool.description,
         inputSchema: z.object(tool.inputSchema),
         annotations: tool.annotations,
+        scopeChallenge:
+          ctx.era === "modern" && tool.auth
+            ? scopeChallengeFor(tool.name, tool.auth, ctx.identity)
+            : undefined,
       },
       async (args: unknown, extra) => {
         try {
@@ -126,6 +135,27 @@ export function registerMcpTools(
       }
     );
   }
+}
+
+function scopeChallengeFor(
+  tool: string,
+  auth: McpToolAuth,
+  identity: McpIdentity
+): ScopeChallengeHandler {
+  return () => {
+    const [first, ...rest] = missingScopes(auth, identity);
+    if (!first || identity.kind !== "uat") return undefined;
+    logger.info("mcp.tool", {
+      userId: identity.userId,
+      tokenKind: identity.kind,
+      tokenId: identity.sourceTokenId,
+      clientId: identity.clientId,
+      tool,
+      outcome: "insufficient_scope",
+    });
+    const held = (identity.cap ?? []).filter((s) => MCP_SCOPES.includes(s));
+    return { scopes: [...new Set([...held, first, ...rest])] as [string, ...string[]] };
+  };
 }
 
 function urlElicitationInputRequired(error: UrlElicitationRequiredError) {

@@ -20,6 +20,7 @@ import { Header1 } from "~/components/primitives/Headers";
 import { Paragraph } from "~/components/primitives/Paragraph";
 import { describeMcpSubject } from "~/mcp/confirm/confirmation.server";
 import { getMcpConfirmationStore } from "~/mcp/confirm/storeInstance.server";
+import { assertNotImpersonating } from "~/services/oauth/authorize.server";
 import { describeOAuthClientName } from "~/services/oauth/consent.server";
 import { requireUser } from "~/services/session.server";
 import { commitSession, getUserSession } from "~/services/sessionStorage.server";
@@ -46,6 +47,7 @@ function notFound(): never {
 
 export async function loader({ request, params }: LoaderFunctionArgs) {
   const user = await requireUser(request);
+  assertNotImpersonating(user);
   const record = await getMcpConfirmationStore().get(params.confirmationId ?? "", user.id);
   if (!record || record.consumedAt) notFound();
 
@@ -75,6 +77,7 @@ export async function action({ request, params }: ActionFunctionArgs) {
     throw new Response("Method not allowed", { status: 405, headers: { Allow: "POST" } });
   }
   const user = await requireUser(request);
+  assertNotImpersonating(user);
   const session = await getUserSession(request);
   const expected = session.get(CSRF_KEY);
   const formData = await request.formData();

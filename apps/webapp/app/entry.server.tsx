@@ -410,6 +410,7 @@ export { socketIo } from "./v3/handleSocketIo.server";
 export { wss } from "./v3/handleWebsockets.server";
 export const mcpRouter = env.MCP_SERVER_ENABLED
   ? createMcpRouter({
+      allowedOrigin: env.MCP_ORIGIN,
       authenticate: createMcpBearerAuthenticator({
         rbac,
         failureBody: personalAccessTokenAuthFailureBody,

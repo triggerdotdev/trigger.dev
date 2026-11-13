@@ -1,5 +1,6 @@
 import { postgresTest } from "@internal/testcontainers";
 import type { PrismaClient } from "@trigger.dev/database";
+import { createHash, randomBytes } from "node:crypto";
 import { describe, expect, it, vi } from "vitest";
 
 vi.setConfig({ testTimeout: 60_000 });
@@ -14,22 +15,36 @@ vi.mock("~/db.server", () => ({
   get $replica() {
     return db.client;
   },
+  $transaction: (client: PrismaClient, _name: string, fn: (tx: PrismaClient) => Promise<unknown>) =>
+    client.$transaction(fn as never),
 }));
-vi.mock("~/env.server", () => ({
-  env: {
-    SESSION_SECRET: "test-session-secret-test-session-secret",
-    APP_ORIGIN: "https://cloud.example.com",
-    NODE_ENV: "test",
-    get MCP_SERVER_ENABLED() {
-      return flags.mcpEnabled;
-    },
-  },
-}));
+vi.mock("~/env.server", async () => {
+  const { withLegacyEncryptionKeyring } = await import("./helpers/encryptionEnv");
+  return {
+    env: withLegacyEncryptionKeyring({
+      SESSION_SECRET: "test-session-secret-test-session-secret",
+      ENCRYPTION_KEY: "0123456789abcdef0123456789abcdef",
+      APP_ORIGIN: "https://cloud.example.com",
+      MCP_ORIGIN: "https://mcp.example.com",
+      NODE_ENV: "test",
+      OAUTH_GRANT_IDLE_DAYS: 30,
+      OAUTH_GRANT_ABSOLUTE_DAYS: 90,
+      get MCP_SERVER_ENABLED() {
+        return flags.mcpEnabled;
+      },
+    }),
+  };
+});
 vi.mock("~/services/rbac.server", () => ({ rbac: {} }));
 
 import { MCP_SCOPES } from "~/services/oauth/metadata.server";
 import { getCsrfToken } from "~/services/csrf.server";
-import { oauthCodeKey } from "~/services/oauth/authorize.server";
+import {
+  createOAuthAuthorizationCode,
+  oauthCodeKey,
+  validateAuthorizationRequest,
+} from "~/services/oauth/authorize.server";
+import { exchangeAuthorizationCode } from "~/services/oauth/token.server";
 import {
   consentDocumentHeaders,
   decideOAuthConsent,
@@ -355,6 +370,88 @@ describe("OAuth consent", () => {
     const row = await prisma.authorizationCode.findUniqueOrThrow({ where: { id: code.id } });
     expect(row.approvedByUserId).toBeNull();
   });
+
+  // Catches: dropping the requester binding so any signed-in user can approve another's code.
+  postgresTest("a different signed-in user is refused, not re-confirmed", async ({ prisma }) => {
+    const a = await seedUser(prisma);
+    const b = await seedUser(prisma);
+    const code = await seedCode(prisma, a, preregistered());
+
+    expect(await loadOAuthConsent(new Request(PAGE), code.code, b.id)).toEqual({
+      status: "invalid",
+    });
+    expect((await decide(code, b.id, "approve")).status).toBe("invalid");
+
+    const row = await prisma.authorizationCode.findUniqueOrThrow({ where: { id: code.id } });
+    expect(row.approvedByUserId).toBeNull();
+  });
+
+  // Catches: the switch-account path not starting a fresh flow bound to the new user.
+  postgresTest("switch account starts a new flow the new user can approve", async ({ prisma }) => {
+    const a = await seedUser(prisma);
+    const b = await seedUser(prisma);
+    const first = await seedCode(prisma, a, preregistered());
+
+    const view = await loadOAuthConsent(new Request(PAGE), first.code, a.id);
+    const path = (view as { reauthorizePath: string }).reauthorizePath;
+    const validated = await validateAuthorizationRequest(new URL(path, "https://x").searchParams);
+    if (!validated.ok) throw new Error("reauthorize request rejected");
+    const fresh = await createOAuthAuthorizationCode(validated.request, b.id);
+
+    expect(fresh.code).not.toBe(first.code);
+    expect((await decide(first, b.id, "approve")).status).toBe("invalid");
+    expect((await decide(fresh, b.id, "approve")).status).toBe("redirect");
+    const row = await prisma.authorizationCode.findUniqueOrThrow({ where: { id: first.id } });
+    expect(row.approvedByUserId).toBeNull();
+  });
+
+  // Catches: a pre-registered client's earlier grant surviving re-authorization.
+  postgresTest(
+    "re-authorizing a pre-registered client replaces the earlier grant",
+    async ({ prisma }) => {
+      const user = await seedUser(prisma);
+      const client = preregistered();
+      await prisma.oAuthClient.create({ data: client });
+
+      async function authorizeAndExchange() {
+        const verifier = randomBytes(32).toString("base64url");
+        const params = new URLSearchParams({
+          response_type: "code",
+          client_id: client.clientId,
+          redirect_uri: REDIRECT_URI,
+          code_challenge: createHash("sha256").update(verifier).digest("base64url"),
+          code_challenge_method: "S256",
+          scope: "read:runs",
+          resource: "https://mcp.example.com/mcp",
+        });
+        const validated = await validateAuthorizationRequest(params);
+        if (!validated.ok) throw new Error("authorize request rejected");
+        const code = await createOAuthAuthorizationCode(validated.request, user.id);
+        expect((await loadOAuthConsent(new Request(PAGE), code.code, user.id)).status).toBe(
+          "consent"
+        );
+        expect((await decide(code, user.id, "approve")).status).toBe("redirect");
+        const result = await exchangeAuthorizationCode(
+          new URLSearchParams({
+            grant_type: "authorization_code",
+            code: code.code,
+            client_id: client.clientId,
+            redirect_uri: REDIRECT_URI,
+            code_verifier: verifier,
+          }),
+          { ip: null, userAgent: null },
+          async () => "access-token"
+        );
+        expect(result.ok).toBe(true);
+      }
+
+      await authorizeAndExchange();
+      await authorizeAndExchange();
+
+      const pats = await prisma.personalAccessToken.findMany({ where: { userId: user.id } });
+      expect(pats.map((pat) => pat.revokedAt === null).sort()).toEqual([false, true]);
+    }
+  );
 
   postgresTest("a CLI code is not treated as an OAuth code", async ({ prisma }) => {
     db.client = prisma;

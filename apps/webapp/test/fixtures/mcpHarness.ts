@@ -197,9 +197,13 @@ export async function withServer(
       scopes: ["read:runs"],
     })
   );
+  const server = app.listen(0);
+  await new Promise<void>((resolve) => server.once("listening", () => resolve()));
+  const baseUrl = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
   app.use(
     "/mcp",
     createMcpRouter({
+      allowedOrigin: baseUrl,
       authenticate: createMcpBearerAuthenticator({
         rbac: plugin.create(prisma, { forceFallback: true }),
         failureBody: (failure) => ({ error: failure.error, code: failure.code }),
@@ -212,10 +216,8 @@ export async function withServer(
       rateLimit,
     })
   );
-  const server = app.listen(0);
-  await new Promise<void>((resolve) => server.once("listening", () => resolve()));
   try {
-    await fn(`http://127.0.0.1:${(server.address() as AddressInfo).port}`);
+    await fn(baseUrl);
   } finally {
     await new Promise<void>((resolve) => server.close(() => resolve()));
   }

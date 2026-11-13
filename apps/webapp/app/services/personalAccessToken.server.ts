@@ -329,8 +329,15 @@ export type PersonalAccessTokenAuthenticationResult = {
  */
 export async function updateLastAccessedAtIfStale(
   tokenId: string,
-  lastAccessedAt: Date | null
+  lastAccessedAt: Date | null | undefined
 ): Promise<Date> {
+  if (lastAccessedAt === undefined) {
+    const row = await prisma.personalAccessToken.findFirst({
+      where: { id: tokenId },
+      select: { lastAccessedAt: true },
+    });
+    lastAccessedAt = row?.lastAccessedAt ?? null;
+  }
   if (lastAccessedAt && Date.now() - lastAccessedAt.getTime() <= PAT_LAST_ACCESSED_THROTTLE_MS) {
     return lastAccessedAt; // fresh — no roundtrip
   }
@@ -571,7 +578,7 @@ export async function resolveAndRecheckUserActorClaims(
   audience?: string
 ): Promise<UserActorClaims | undefined> {
   const verified = await verifyUserActorToken(env.SESSION_SECRET, bearer, { audience });
-  const resolved = verified ?? claims;
+  const resolved = audience ? verified : (verified ?? claims);
   if (!resolved) return undefined;
   return (await assertSourcePatActive(resolved)) ? resolved : undefined;
 }

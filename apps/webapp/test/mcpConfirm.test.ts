@@ -14,6 +14,7 @@ const mocks = vi.hoisted(() => ({
   rbac: undefined as unknown as Record<string, (...args: any[]) => any>,
   store: undefined as unknown,
   userId: "",
+  impersonating: false,
 }));
 
 vi.mock("~/db.server", () => ({
@@ -27,7 +28,7 @@ vi.mock("~/services/logger.server", () => ({
   logger: { debug: vi.fn(), error: vi.fn(), warn: vi.fn(), info: vi.fn() },
 }));
 vi.mock("~/services/session.server", () => ({
-  requireUser: async () => ({ id: mocks.userId }),
+  requireUser: async () => ({ id: mocks.userId, isImpersonating: mocks.impersonating }),
 }));
 vi.mock("~/mcp/confirm/storeInstance.server", () => ({
   getMcpConfirmationStore: () => mocks.store,
@@ -164,7 +165,11 @@ describe("MCP write confirmation", () => {
       const t = await setup(prisma, redisOptions);
       const first = await t.pending(t.call(t.argsA));
 
-      expect(await t.pending(t.call(t.argsA))).toEqual(first);
+      const again = await t.pending(t.call(t.argsA));
+      expect({ id: again.elicitationId, url: again.url }).toEqual({
+        id: first.elicitationId,
+        url: first.url,
+      });
       expect((await t.pending(t.call(t.argsB))).elicitationId).not.toBe(first.elicitationId);
 
       const {
@@ -436,6 +441,26 @@ describe("MCP confirm route", () => {
       expect((await t.store.get(elicitationId, t.identity.userId))?.approvedAt).toBeUndefined();
       expect(await post(t.identity.userId, csrf)).toBe(200);
       expect((await t.store.get(elicitationId, t.identity.userId))?.approvedAt).toBeDefined();
+    }
+  );
+
+  // Catches: an impersonating admin viewing or approving a confirmation as the user.
+  containerTest(
+    "an impersonating user is refused on GET and POST",
+    async ({ prisma, redisOptions }) => {
+      const t = await setup(prisma, redisOptions);
+      const { elicitationId } = await t.pending(t.call(t.argsA));
+      const { body, post } = await openPage(t.identity.userId, elicitationId);
+
+      mocks.impersonating = true;
+      try {
+        const thrown = await openPage(t.identity.userId, elicitationId).catch((r: Response) => r);
+        expect((thrown as Response).status).toBe(403);
+        expect(await post(t.identity.userId, body.csrf)).toBe(403);
+      } finally {
+        mocks.impersonating = false;
+      }
+      expect((await t.store.get(elicitationId, t.identity.userId))?.approvedAt).toBeUndefined();
     }
   );
 

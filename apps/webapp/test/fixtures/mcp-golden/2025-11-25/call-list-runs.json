@@ -21,7 +21,7 @@
         "content": [
           {
             "type": "text",
-            "text": "Found 1 run\n\n1. <RUN_ID> | my-task | executing | env:prod | created 2025-01-01 00:00:00 UTC\n"
+            "text": "Found 1 run\n\n1. <RUN_ID> | <untrusted-data source=\"run-task\" boundary=\"<BOUNDARY>\">my-task</untrusted-data boundary=\"<BOUNDARY>\"> | executing | env:<untrusted-data source=\"run-env\" boundary=\"<BOUNDARY>\">prod</untrusted-data boundary=\"<BOUNDARY>\"> | created 2025-01-01 00:00:00 UTC\n"
           }
         ]
       },

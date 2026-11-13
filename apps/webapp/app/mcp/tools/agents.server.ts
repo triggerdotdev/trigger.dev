@@ -39,7 +39,9 @@ export const agentsTools: McpToolDefinition[] = [
       ];
 
       for (const agent of agents) {
-        contents.push(`- **${agent.slug}** (${fenceUntrusted(agent.filePath, "agent")})`);
+        contents.push(
+          `- **${fenceUntrusted(agent.slug, "agent-slug")}** (${fenceUntrusted(agent.filePath, "agent")})`
+        );
       }
 
       contents.push("");
