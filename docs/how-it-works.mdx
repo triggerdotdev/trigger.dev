@@ -31,13 +31,31 @@ export const fetchPage = schemaTask({
   schema: z.object({ url: z.string().url() }),
   retry: { maxAttempts: 3 },
   run: async ({ url }) => {
-    const { protocol, hostname } = new URL(url);
-    if (protocol !== "https:" || !ALLOWED_HOSTS.has(hostname)) {
-      throw new Error(`Fetching ${hostname} is not allowed`);
+    let current = new URL(url);
+
+    // Follow redirects by hand so every hop is checked against the allowlist
+    for (let hop = 0; hop < 5; hop++) {
+      if (current.protocol !== "https:" || !ALLOWED_HOSTS.has(current.hostname)) {
+        throw new Error(`Fetching ${current.hostname} is not allowed`);
+      }
+
+      const response = await fetch(current, { redirect: "manual" });
+      const location = response.headers.get("location");
+
+      if (response.status >= 300 && response.status < 400 && location) {
+        current = new URL(location, current);
+        continue;
+      }
+
+      // Throwing on 4xx/5xx lets the task's retry config handle failures like 429 or 503
+      if (!response.ok) {
+        throw new Error(`Fetching ${current} failed with status ${response.status}`);
+      }
+
+      return { text: (await response.text()).slice(0, 20_000) };
     }
 
-    const response = await fetch(url, { redirect: "error" });
-    return { text: (await response.text()).slice(0, 20_000) };
+    throw new Error(`Too many redirects fetching ${url}`);
   },
 });
 
