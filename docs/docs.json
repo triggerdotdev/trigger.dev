@@ -235,8 +235,7 @@
                       "webhooks/providers/vercel",
                       "webhooks/providers/whatsapp",
                       "webhooks/providers/workos",
-                      "webhooks/providers/zendesk",
-                      "webhooks/providers/zoom"
+                      "webhooks/providers/zendesk"
                     ]
                   },
                   "webhooks/custom-providers",
@@ -900,6 +899,10 @@
     {
       "source": "/guides/examples/hookdeck-webhook",
       "destination": "/webhooks/providers/hookdeck"
+    },
+    {
+      "source": "/webhooks/providers/zoom",
+      "destination": "/webhooks/providers"
     },
     {
       "source": "/examples/stripe-webhook",
