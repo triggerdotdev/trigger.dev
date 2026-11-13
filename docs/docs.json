@@ -193,7 +193,6 @@
                       "webhooks/providers",
                       "webhooks/providers/attio",
                       "webhooks/providers/autumn",
-                      "webhooks/providers/brex",
                       "webhooks/providers/cal-com",
                       "webhooks/providers/calendly",
                       "webhooks/providers/clerk",
@@ -207,14 +206,12 @@
                       "webhooks/providers/granola",
                       "webhooks/providers/hookdeck",
                       "webhooks/providers/infisical",
-                      "webhooks/providers/intercom",
                       "webhooks/providers/jira",
                       "webhooks/providers/langfuse",
                       "webhooks/providers/linear",
                       "webhooks/providers/loops",
                       "webhooks/providers/metronome",
                       "webhooks/providers/mux",
-                      "webhooks/providers/notion",
                       "webhooks/providers/openai",
                       "webhooks/providers/pagerduty",
                       "webhooks/providers/plain",
@@ -899,6 +896,18 @@
     {
       "source": "/guides/examples/hookdeck-webhook",
       "destination": "/webhooks/providers/hookdeck"
+    },
+    {
+      "source": "/webhooks/providers/notion",
+      "destination": "/webhooks/providers"
+    },
+    {
+      "source": "/webhooks/providers/brex",
+      "destination": "/webhooks/providers"
+    },
+    {
+      "source": "/webhooks/providers/intercom",
+      "destination": "/webhooks/providers"
     },
     {
       "source": "/webhooks/providers/zoom",
