@@ -1,10 +1,12 @@
 ---
 title: "Use your own webhook handler"
 sidebarTitle: "Using your own handler"
-description: "Receive a webhook in a route in your own app, verify it yourself, and trigger a task from it instead of using a hosted endpoint."
+description: "Trigger.dev has built-in webhook endpoints, which we recommend for most projects. If you prefer to handle webhooks yourself, receive them in your own app and trigger runs from there."
 ---
 
-**A webhook handler in your own app can trigger a task with `tasks.trigger()`, the same way any backend code does.** Use it when you need to handle the request yourself. For most providers, a hosted [webhook endpoint](/webhooks/overview) does the same job with less code.
+**Trigger.dev has built-in webhook endpoints, and we recommend them for most projects.** They verify each provider's signature, drop duplicate retries, record every delivery, and route events to tasks, agents and waiting runs. See [Webhooks](/webhooks/overview).
+
+If you prefer to handle webhooks yourself, receive them in a route in your own app and trigger runs from there with `tasks.trigger()`, the same way any backend code does.
 
 ## When to use your own handler
 
