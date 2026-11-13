@@ -756,7 +756,8 @@ function PurchaseConcurrencyModal({
               You can purchase bundles of {concurrencyPricing.stepSize} concurrency for{" "}
               {formatCurrency(concurrencyPricing.centsPerStep / 100, false)}/month. Or you can
               remove any extra concurrency after you have unallocated it from your environments
-              first.
+              first. Removing concurrency will take effect at the start of the next billing cycle
+              (1st of the month).
             </Paragraph>
             <Fieldset>
               <InputGroup fullWidth>
