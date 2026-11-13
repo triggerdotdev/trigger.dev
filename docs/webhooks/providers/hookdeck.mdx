@@ -17,7 +17,6 @@ export const hookdeck = webhooks.endpoint.define({
 export const hookdeckEvents = webhook({
   id: "hookdeck-events",
   endpoint: hookdeck,
-  filter: "event.type == 'payment_intent.succeeded'",
   onEvent: async ({ event }) => {
     console.log(event);
   },
@@ -77,7 +76,7 @@ You can also point a Hookdeck destination at the [trigger task API](/management/
 
    ```javascript
    addHandler("transform", (request, context) => {
-     request.body = { payload: { ...request.body } };
+     request.body = { payload: request.body };
      return request;
    });
    ```

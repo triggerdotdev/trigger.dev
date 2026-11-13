@@ -1,10 +1,10 @@
 ---
 title: "Webhook tasks"
 sidebarTitle: "Webhook tasks"
-description: "What a webhook() handler receives, the task options it takes, how to order deliveries per customer, and the options an endpoint takes."
+description: "What a webhook() handler receives, the task options it takes, how to group deliveries per customer, and the options an endpoint takes."
 ---
 
-**A webhook task is a [task](/tasks/overview) with an endpoint attached: `webhook()` runs `onEvent` once for each delivery that passes its [filter](/webhooks/filters).**
+**A webhook task is a [task](/tasks/overview) with an endpoint attached: `webhook()` starts a task run for each delivery that passes its [filter](/webhooks/filters).** If an attempt fails, the run retries and calls `onEvent` again, so keep its side effects safe to repeat.
 
 ## Handler arguments
 
@@ -13,7 +13,7 @@ description: "What a webhook() handler receives, the task options it takes, how 
 | Argument | Value |
 | --- | --- |
 | `event` | The verified request body, parsed as JSON. Its TypeScript type comes from the [source](/webhooks/verification#typing-the-event). |
-| `headers` | Request headers as a Web `Headers` object, with case-insensitive `get()` and `has()` methods. `authorization`, `proxy-authorization`, `cookie`, `set-cookie` and shared-secret headers are removed; signature headers such as `stripe-signature` are kept. Stored headers are capped at 4 KB. |
+| `headers` | Request headers as a Web `Headers` object, with case-insensitive `get()` and `has()` methods. `authorization`, `proxy-authorization`, `cookie`, `set-cookie` and shared-secret headers are removed; other headers, including signature headers such as `stripe-signature`, share a 4 KB budget, so a large set of headers can drop some. Headers a live waiter matches on are always kept. |
 | `endpoint` | The endpoint the delivery arrived on: `id`, `declaredId`, `tenantId`, `externalRef`, and the `metadata` you declared. |
 | `ctx` | The same [run context](/context) that regular tasks receive. |
 
@@ -37,9 +37,9 @@ export const orders = webhook({
 });
 ```
 
-## Ordering per customer
+## Group deliveries per customer
 
-The limit covers every delivery the task handles. To process each customer's events in order while different customers run in parallel, route them to an agent with [session routing](/webhooks/session-routing): deliveries with the same key land in one session and are handled one after another.
+The limit covers every delivery the task handles. To group each customer's events while different customers run in parallel, route them to an agent with [session routing](/webhooks/session-routing): deliveries with the same key land in one session and are handled one at a time. A retried delivery can reach the session after a later one, so don't rely on arrival order.
 
 ## Endpoint options
 

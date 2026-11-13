@@ -89,7 +89,7 @@ When the source maps a provider event ID, that ID becomes the key, so the provid
 
 | Key | Providers |
 | --- | --- |
-| A header | GitHub (`X-GitHub-Delivery`); Svix, Clerk, Resend and Autumn (`svix-id`); Standard Webhooks, OpenAI, Replicate, Recall.ai, Composio, Loops and Granola (`webhook-id`); Linear (`Linear-Delivery`); PagerDuty (`X-Webhook-Id`); Jira (`X-Atlassian-Webhook-Identifier`); Zendesk (`X-Zendesk-Webhook-Invocation-Id`); Attio (`Idempotency-Key`); Shopify (`X-Shopify-Webhook-Id`); Hookdeck (`X-Hookdeck-Eventid`, or `<prefix>-eventid` with a custom header prefix) |
+| A header | GitHub (`X-GitHub-Delivery`); Svix, Clerk, Resend and Autumn (`svix-id`); Standard Webhooks, OpenAI, Replicate, Recall.ai, Loops and Granola (`webhook-id`); Linear (`Linear-Delivery`); PagerDuty (`X-Webhook-Id`); Jira (`X-Atlassian-Webhook-Identifier`); Zendesk (`X-Zendesk-Webhook-Invocation-Id`); Attio (`Idempotency-Key`); Shopify (`X-Shopify-Webhook-Id`); Hookdeck (`X-Hookdeck-Eventid`, or `<prefix>-eventid` with a custom header prefix) |
 | A body field | Stripe, Vercel, WorkOS, Metronome, Mux, Langfuse and Plain (`id`); Square, Slack and Typeform (`event_id`); Firecrawl (`webhookId`) |
 
 The other built-in providers (Calendly, Cal.com, Sentry, DocuSign, ElevenLabs, Vapi, Retell, Tailscale, Infisical, PlanetScale, Supabase, Discord, GitLab and WhatsApp) use the fallback below.

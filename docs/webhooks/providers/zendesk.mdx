@@ -1,7 +1,7 @@
 ---
 title: "Zendesk webhooks"
 sidebarTitle: "Zendesk"
-description: "Receive and verify Zendesk webhooks with Trigger.dev. Check the HMAC-SHA256 signature in x-zendesk-webhook-signature and run a task for each Zendesk event, filtered on event.status."
+description: "Receive and verify Zendesk webhooks with Trigger.dev. Check the HMAC-SHA256 signature in x-zendesk-webhook-signature and run a task for each Zendesk event, filtered on its event type."
 ---
 
 **`webhooks.zendesk()` verifies the HMAC-SHA256 signature Zendesk sends in `x-zendesk-webhook-signature` on every request.**
@@ -23,14 +23,14 @@ export const zendeskEvents = webhook({
 });
 ```
 
-To run a subscriber only for some events, add a [filter](/webhooks/filters) on `event.status`.
+To run a subscriber only for some events, add a [filter](/webhooks/filters) on `event.type` for Zendesk event subscriptions. For trigger and automation webhooks, you write the JSON body, so filter on a field your template sends.
 
 | Setting | Value |
 | --- | --- |
 | Source | `webhooks.zendesk()` |
 | Verification | HMAC-SHA256 in `x-zendesk-webhook-signature` |
 | Credential | Signing secret issued by Zendesk |
-| Event type | `event.status` |
+| Event type | `event.type` for event subscriptions; a field from your template for triggers and automations |
 | Zendesk docs | [Zendesk webhook docs](https://developer.zendesk.com/documentation/webhooks/verifying/) |
 
 ## Set up Zendesk

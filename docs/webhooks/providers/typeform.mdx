@@ -38,4 +38,5 @@ To run a subscriber only for some events, add a [filter](/webhooks/filters) on `
 1. Start `trigger dev` or deploy, then copy the endpoint's **Webhook URL** from the **Webhooks** page.
 2. Choose **Generate secret** on the Trigger.dev endpoint and copy the value.
 3. In Typeform, open the form's **Connect > Webhooks** and add a webhook with the webhook URL. Edit it and paste the secret into **Secret**. You can also set `secret` when you create the webhook with Typeform's API.
-4. Send a test event from Typeform, or use the endpoint's **Test** tab, and check the endpoint's **Deliveries** tab. See [Verify the connection](/webhooks/connect#verify-the-connection) if nothing arrives.
+4. Turn the webhook **On**. Typeform creates dashboard webhooks switched off.
+5. Send a test event from Typeform, or use the endpoint's **Test** tab, and check the endpoint's **Deliveries** tab. See [Verify the connection](/webhooks/connect#verify-the-connection) if nothing arrives.

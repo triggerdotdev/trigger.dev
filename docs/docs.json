@@ -196,7 +196,6 @@
                       "webhooks/providers/cal-com",
                       "webhooks/providers/calendly",
                       "webhooks/providers/clerk",
-                      "webhooks/providers/composio",
                       "webhooks/providers/discord",
                       "webhooks/providers/docusign",
                       "webhooks/providers/elevenlabs",
@@ -904,6 +903,10 @@
     },
     {
       "source": "/webhooks/providers/intercom",
+      "destination": "/webhooks/providers"
+    },
+    {
+      "source": "/webhooks/providers/composio",
       "destination": "/webhooks/providers"
     },
     {

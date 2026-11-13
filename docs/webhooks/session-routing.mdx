@@ -4,7 +4,7 @@ description: "Route verified webhook deliveries to a durable per-key session ins
 sidebarTitle: "Session routing"
 ---
 
-**Session routing sends deliveries that share a key (a customer, an installation, an issue) to one durable [session](/ai-chat/sessions), handled in order with state carried across them.** A plain [`webhook()`](/webhooks/overview) starts a fresh, stateless run for every delivery instead.
+**Session routing sends deliveries that share a key (a customer, an installation, an issue) to one durable [session](/ai-chat/sessions), handled one at a time with state carried across them.** A plain [`webhook()`](/webhooks/overview) starts a fresh, stateless run for every delivery instead.
 
 Instead of a handler, you declare a `chat.event` on an [endpoint](/webhooks/overview) and list it on an agent. The verified delivery is routed to a find-or-created session and arrives as an [action](/ai-chat/actions).
 

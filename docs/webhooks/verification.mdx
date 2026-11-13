@@ -57,14 +57,14 @@ export const svixEvents = webhook({
 });
 ```
 
-```ts /trigger/composio.ts
+```ts /trigger/my-provider.ts
 import { webhook, webhooks } from "@trigger.dev/sdk";
 
-export const composio = webhooks.endpoint.define({ id: "composio", source: webhooks.standardWebhooks() });
+export const myProvider = webhooks.endpoint.define({ id: "my-provider", source: webhooks.standardWebhooks() });
 
-export const composioEvents = webhook({
-  id: "composio-events",
-  endpoint: composio,
+export const myProviderEvents = webhook({
+  id: "my-provider-events",
+  endpoint: myProvider,
   onEvent: async ({ event }) => {
     console.log(event);
   },
@@ -84,7 +84,7 @@ The available presets are `stripe()`, `github()`, `svix()`, `standardWebhooks()`
 | `svix()` | `svix-id`, `svix-timestamp`, `svix-signature` |
 | `standardWebhooks()` | `webhook-id`, `webhook-timestamp`, `webhook-signature` |
 
-Named sources such as `webhooks.clerk()` and `webhooks.composio()` select the corresponding configuration.
+Named sources such as `webhooks.clerk()` and `webhooks.openai()` select the corresponding configuration.
 
 ## Named providers
 
