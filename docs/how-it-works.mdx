@@ -1,12 +1,14 @@
 ---
 title: "How Trigger.dev works"
 sidebarTitle: "How it works"
-description: "Understand how Trigger.dev works and how it can help you."
+description: "Understand how Trigger.dev runs durable AI agents and workflows."
 ---
 
 ## Introduction
 
-Trigger.dev allows you to integrate long-running async tasks into your application and run them in the background. This allows you to offload tasks that take a long time to complete, such as sending multi-day email campaigns, processing videos, or running long chains of AI tasks.
+Trigger.dev is the open source platform for building and running durable AI agents and workflows in TypeScript. You write tasks and agents in your existing codebase, and they run on Trigger.dev with retries, queues, waits, full tracing, and elastic scaling. There's no execution timeout, so you can offload work that takes a long time to complete, such as AI agents with human-in-the-loop approvals, processing videos, or sending multi-day email campaigns.
+
+To build durable chat agents, see [AI Agents](/ai-chat/overview).
 
 For example, the below task processes a video with `ffmpeg` and sends the results to an s3 bucket, then updates a database with the results and sends an email to the user.
 
