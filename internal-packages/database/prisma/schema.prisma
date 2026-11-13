@@ -2602,6 +2602,14 @@ enum WorkerDeploymentType {
   V1
 }
 
+enum DeploymentInitiatedByCredential {
+  ROOT_API_KEY
+  SCOPED_API_KEY
+  PERSONAL_ACCESS_TOKEN
+  ORGANIZATION_ACCESS_TOKEN
+  TRUSTED_PUBLISHING
+}
+
 model WorkerDeployment {
   id String @id @default(cuid())
 
@@ -2649,6 +2657,9 @@ model WorkerDeployment {
   triggeredVia  String?
   commitSHA     String?
   externalId    String?
+
+  /// The kind of credential that started the deployment. Null when unknown.
+  initiatedByCredential DeploymentInitiatedByCredential?
 
   startedAt   DateTime?
   installedAt DateTime?

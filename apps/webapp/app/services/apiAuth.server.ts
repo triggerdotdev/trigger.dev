@@ -470,7 +470,8 @@ export async function authenticateApiKeyWithScope(
       environmentScoped:
         result.subject.type === "runToken" ||
         (result.subject.type === "apiKey" && result.subject.restricted),
-      credentialKind: result.subject.type === "runToken" ? "run_token" : undefined,
+      credentialKind:
+        result.subject.type === "runToken" ? "run_token" : result.resolution.credentialKind,
       environment: result.environment,
       ability: result.ability,
     },

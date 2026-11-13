@@ -4,8 +4,12 @@ import {
   InitializeDeploymentRequestBody,
   type InitializeDeploymentResponseBody,
 } from "@trigger.dev/core/v3";
+import type { DeploymentInitiatedByCredential } from "@trigger.dev/database";
 import { $replica } from "~/db.server";
-import { authenticateApiKeyWithScope } from "~/services/apiAuth.server";
+import {
+  type ApiAuthenticationResultSuccess,
+  authenticateApiKeyWithScope,
+} from "~/services/apiAuth.server";
 import { logger } from "~/services/logger.server";
 import { createLoaderApiRoute } from "~/services/routeBuilders/apiBuilder.server";
 import { ServiceValidationError } from "~/v3/services/baseService.server";
@@ -48,6 +52,7 @@ export async function action({ request, params }: ActionFunctionArgs) {
 
   try {
     const result = await service.call(authenticatedEnv, body.data, {
+      initiatedByCredential: initiatedByApiKey(authenticationResult.credentialKind),
       cliVersion: parseCliVersionHeader(request),
     });
     const { deployment, imageRef } = result;
@@ -90,6 +95,19 @@ export async function action({ request, params }: ActionFunctionArgs) {
 
     logger.error("Error initializing deployment", { error, environmentId: authenticatedEnv.id });
     return json({ error: "Internal server error" }, { status: 500 });
+  }
+}
+
+function initiatedByApiKey(
+  credentialKind: ApiAuthenticationResultSuccess["credentialKind"]
+): DeploymentInitiatedByCredential | null {
+  switch (credentialKind) {
+    case "root_api_key":
+      return "ROOT_API_KEY";
+    case "additional_api_key":
+      return "SCOPED_API_KEY";
+    default:
+      return null;
   }
 }
 

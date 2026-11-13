@@ -53,6 +53,7 @@ describe("authenticateApiKeyWithScope", () => {
       environment,
       ability,
       subject: { type: "apiKey", apiKeyId: "key_123" },
+      resolution: { credentialKind: "additional_api_key", lookupPath: "additional" },
     });
     const request = new Request("https://example.com", {
       headers: { Authorization: "Bearer tr_test_key" },
@@ -76,6 +77,7 @@ describe("authenticateApiKeyWithScope", () => {
         ok: true,
         apiKey: "tr_test_key",
         type: "PRIVATE",
+        credentialKind: "additional_api_key",
         environment,
         ability,
       },
@@ -90,6 +92,7 @@ describe("authenticateApiKeyWithScope", () => {
       environment,
       ability,
       subject: { type: "apiKey", apiKeyId: "key_123" },
+      resolution: { credentialKind: "additional_api_key", lookupPath: "additional" },
     });
     const request = new Request("https://example.com", {
       headers: { Authorization: "Bearer tr_preview_sk_test" },
@@ -121,6 +124,7 @@ describe("authenticateApiKeyWithScope", () => {
       environment,
       ability,
       subject: { type: "apiKey", apiKeyId: "key_123" },
+      resolution: { credentialKind: "additional_api_key", lookupPath: "additional" },
     });
     const request = new Request("https://example.com", {
       headers: { Authorization: "Bearer tr_prod_sk_test" },

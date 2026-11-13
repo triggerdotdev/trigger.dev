@@ -40,7 +40,7 @@ import {
   resolveExternalIdReuse,
   type ExternalIdReuseDeployment,
 } from "./initializeDeployment/resolveExternalIdReuse.server";
-import { type WorkerDeployment } from "@trigger.dev/database";
+import { type DeploymentInitiatedByCredential, type WorkerDeployment } from "@trigger.dev/database";
 import type { DeploymentAccessController } from "@trigger.dev/plugins";
 import { type PrismaClientOrTransaction } from "~/db.server";
 import { errAsync } from "neverthrow";
@@ -89,7 +89,8 @@ export class InitializeDeploymentService extends BaseService {
   public async call(
     environment: AuthenticatedEnvironment,
     payload: InitializeDeploymentRequestBody,
-    options?: {
+    options: {
+      initiatedByCredential: DeploymentInitiatedByCredential | null;
       cliVersion?: string;
       redeployOf?: string;
       buildEnvVars?: StoredEnvironmentValue;
@@ -111,7 +112,7 @@ export class InitializeDeploymentService extends BaseService {
           contentHash: payload.contentHash,
           hasGitMetadata: Boolean(payload.gitMeta?.commitSha || payload.gitMeta?.remoteUrl),
           triggeredVia: payload.triggeredVia,
-          cliVersion: options?.cliVersion,
+          cliVersion: options.cliVersion,
         },
         { controller: this._deploymentAccess }
       );
@@ -314,13 +315,13 @@ export class InitializeDeploymentService extends BaseService {
         }
       }
       const encryptedBuildEnvVars = await buildEnvVarsEnvelope(payload, {
-        copyFrom: options?.buildEnvVars,
+        copyFrom: options.buildEnvVars,
         encrypt: (plaintext) => {
           if (!prepared) throw new Error("Missing prepared build encryption key");
           return encryption.encrypt(prepared, context, plaintext);
         },
         decryptSource: async (value) => {
-          if (!options?.buildEnvVarsSourceId) throw new Error("Missing source deployment identity");
+          if (!options.buildEnvVarsSourceId) throw new Error("Missing source deployment identity");
           return (
             await encryption.decryptMany([
               {
@@ -390,7 +391,7 @@ export class InitializeDeploymentService extends BaseService {
           deploymentService
             .getEventStreamAccessToken(
               environment.project,
-              options?.trustedDeploy ? { shortCode: deploymentShortCode } : undefined
+              options.trustedDeploy ? { shortCode: deploymentShortCode } : undefined
             )
             .map((accessToken) => ({
               basin,
@@ -421,11 +422,11 @@ export class InitializeDeploymentService extends BaseService {
         : undefined;
 
       const buildServerMetadata: BuildServerMetadata | undefined =
-        payload.isNativeBuild || payload.buildId || options?.redeployOf
+        payload.isNativeBuild || payload.buildId || options.redeployOf
           ? {
               buildId: payload.buildId,
-              trustedDeploy: options?.trustedDeploy,
-              ...(options?.redeployOf ? { redeployOf: options.redeployOf } : {}),
+              trustedDeploy: options.trustedDeploy,
+              ...(options.redeployOf ? { redeployOf: options.redeployOf } : {}),
               ...(payload.isNativeBuild
                 ? {
                     isNativeBuild: payload.isNativeBuild,
@@ -508,8 +509,9 @@ export class InitializeDeploymentService extends BaseService {
             commitSHA: payload.gitMeta?.commitSha ?? undefined,
             externalId: payload.externalId,
             runtime,
-            cliVersion: options?.cliVersion,
+            cliVersion: options.cliVersion,
             triggeredVia: payload.triggeredVia ?? undefined,
+            initiatedByCredential: options.initiatedByCredential,
             startedAt: initialStatus === "BUILDING" ? new Date() : undefined,
           };
         },
