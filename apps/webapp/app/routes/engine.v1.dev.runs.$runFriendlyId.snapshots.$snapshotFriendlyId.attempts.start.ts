@@ -51,7 +51,7 @@ const { action } = createActionApiRoute(
       }
 
       // Resolved before the attempt exists, so an unavailable key leaves the run startable.
-      const variables = await resolveAttemptVariables(authentication.environment);
+      const { variables } = await resolveAttemptVariables(authentication.environment);
 
       const engineResult = await engine.startRunAttempt({
         runId: RunId.toId(runFriendlyId),

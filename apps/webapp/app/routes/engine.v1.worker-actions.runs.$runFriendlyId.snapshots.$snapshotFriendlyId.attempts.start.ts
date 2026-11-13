@@ -29,6 +29,7 @@ export const action = createActionWorkerApiRoute(
       workerCell: body.workerCell,
       workerLane: body.workerLane,
       supportsRunTokenRefresh: body.supportsRunTokenRefresh,
+      supportsSecretProxy: body.supportsSecretProxy,
       runnerId,
       environmentId,
     });

@@ -1,9 +1,6 @@
 import { postgresTest } from "@internal/testcontainers";
-import {
-  $transaction,
-  type PrismaClient,
-  type WorkerDeploymentStatus,
-} from "@trigger.dev/database";
+import { $transaction } from "~/db.server";
+import { type PrismaClient, type WorkerDeploymentStatus } from "@trigger.dev/database";
 import cuid from "cuid";
 import { describe, expect } from "vitest";
 import { deploymentBuildEnvVarsResponse } from "~/services/deploymentBuildEnvVars.server";
@@ -62,6 +59,36 @@ async function setup(db: PrismaClient) {
 }
 
 describe("deployment build env vars", () => {
+  // Catches: retained build snapshots exporting a variable after it has become proxy-only, even with unreadable stored ciphertext.
+  postgresTest(
+    "blocks stored build exports for proxy-only environments before decryption",
+    async ({ prisma }) => {
+      const { project, environment, createDeployment, read } = await setup(prisma);
+      const deployment = await createDeployment();
+      await prisma.environmentVariable.create({
+        data: {
+          projectId: project.id,
+          key: "API_TOKEN",
+          friendlyId: `envvar_${cuid()}`,
+          values: {
+            create: {
+              environmentId: environment.id,
+              isProxyOnly: true,
+              proxyConfig: { allowedHosts: ["api.example.com"] },
+            },
+          },
+        },
+      });
+      await prisma.workerDeployment.update({
+        where: { id: deployment.id },
+        data: { buildEnvVars: { invalid: "ciphertext" } },
+      });
+      const response = await read(deployment.friendlyId);
+      expect(response.status).toBe(403);
+      expect(await response.text()).not.toContain(variables.API_TOKEN);
+    }
+  );
+
   // Catches: the endpoint failing to read legacy envelopes after an environment's first key is initialized.
   postgresTest(
     "serves both legacy and environment-encrypted in-flight envelopes",

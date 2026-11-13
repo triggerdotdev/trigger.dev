@@ -63,6 +63,7 @@ export const FEATURE_FLAG = {
   apiRateLimitMetricsEnabled: "apiRateLimitMetricsEnabled",
   supportAccessSettingsEnabled: "supportAccessSettingsEnabled",
   runTokenInjection: "runTokenInjection",
+  secretProxy: "secretProxy",
   externalOidc: "externalOidc",
   trustedDeploysEnabled: "trustedDeploysEnabled",
   sessionTraceEnabled: "sessionTraceEnabled",
@@ -70,7 +71,7 @@ export const FEATURE_FLAG = {
 
 // Mirrors the core worker-queue enums; defined here because this module is imported client-side.
 const WorkerQueueCompatibilityFlag = z.enum(["any", "container", "compute"]);
-const WorkerQueueChannelFlag = z.enum(["stable", "canary"]);
+const WorkerQueueChannelFlag = z.enum(["stable", "canary", "proxy"]);
 
 export const WORKER_QUEUE_OVERRIDE_ENVIRONMENT_TYPES = [
   "PRODUCTION",
@@ -244,6 +245,9 @@ export const FeatureFlagCatalog = {
   // Injects a signed per-attempt TRIGGER_RUN_TOKEN into deployed runs. Org override wins over
   // the global value. Requires RUN_TOKEN_ISSUER_URL and an active internal run signing key.
   [FEATURE_FLAG.runTokenInjection]: z.boolean(),
+  // Enables proxy-only environment variables for an org: delivery checks on attempt start and
+  // dashboard/API mutation guards. Org override only; the global value is never read.
+  [FEATURE_FLAG.secretProxy]: z.boolean(),
   // Org override wins over the global value; off by default.
   [FEATURE_FLAG.externalOidc]: z.boolean(),
   [FEATURE_FLAG.trustedDeploysEnabled]: z.boolean(),
@@ -273,6 +277,7 @@ export const GLOBAL_LOCKED_FLAGS: FeatureFlagKey[] = [
   FEATURE_FLAG.runOpsMintKindFlippedAt,
   FEATURE_FLAG.runOpsMintShardSetPrev,
   FEATURE_FLAG.runOpsMintShardSetFlippedAt,
+  FEATURE_FLAG.secretProxy,
 ];
 
 // Flags that are read-only on the org-level dialog.

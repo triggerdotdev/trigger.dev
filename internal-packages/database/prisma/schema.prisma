@@ -2505,6 +2505,9 @@ model EnvironmentVariableValue {
   /// If true, the value is secret and cannot be revealed
   isSecret Boolean @default(false)
 
+  isProxyOnly       Boolean  @default(false)
+  proxyConfig       Json?
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 

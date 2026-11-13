@@ -1,0 +1,3 @@
+ALTER TABLE "EnvironmentVariableValue"
+ADD COLUMN IF NOT EXISTS "isProxyOnly" BOOLEAN NOT NULL DEFAULT false,
+ADD COLUMN IF NOT EXISTS "proxyConfig" JSONB;

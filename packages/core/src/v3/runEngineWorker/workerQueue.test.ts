@@ -49,6 +49,17 @@ describe("worker queue names", () => {
       "us-east-1:v2:ondemand:restore:compute:canary",
       { region: "us-east-1", version: "v2", ...restoreSubscription },
     ],
+    [
+      "us-east-1:v2:ondemand:fresh:compute:proxy",
+      {
+        region: "us-east-1",
+        version: "v2",
+        class: "ondemand",
+        phase: "fresh",
+        compat: "compute",
+        channel: "proxy",
+      },
+    ],
   ])("parses and formats %s", (name, queue) => {
     expect(parseWorkerQueue(name)).toEqual(queue);
     expect(formatWorkerQueue(queue)).toBe(name);

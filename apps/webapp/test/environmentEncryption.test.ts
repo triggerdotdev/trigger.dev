@@ -1,9 +1,6 @@
 import { postgresTest } from "@internal/testcontainers";
-import {
-  $transaction,
-  type PrismaClient,
-  type PrismaTransactionClient,
-} from "@trigger.dev/database";
+import { $transaction } from "~/db.server";
+import { type PrismaClient, type PrismaTransactionClient } from "@trigger.dev/database";
 import { describe, expect, it } from "vitest";
 import { randomBytes } from "node:crypto";
 import {
@@ -72,7 +69,7 @@ async function seed(
 }
 
 describe("environment encryption", () => {
-  // Catches: a historical non-JSON value blocking valid variables, or decryption failures being silently skipped as malformed JSON.
+  // Catches: orphaned prefix values being dropped, malformed JSON blocking valid variables, or authentication failures being hidden.
   postgresTest(
     "skips malformed JSON but never hides ciphertext authentication failures",
     async ({ prisma }) => {
@@ -547,7 +544,6 @@ describe("environment encryption", () => {
           reader.decryptMany([{ ...item, value: { ...value, keyId: "missing-key" } }], replica)
         ).rejects.toBeInstanceOf(EnvironmentKeyUnavailableError);
       },
-      () => {},
       { isolationLevel: "RepeatableRead", timeout: 30_000 }
     );
   });

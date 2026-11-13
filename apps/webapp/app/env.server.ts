@@ -432,6 +432,16 @@ const EnvironmentSchema = z
       )
       .refine(isNotInsecureSecret, INSECURE_SECRET_MESSAGE),
     ENCRYPTION_KEYRING: z.string().transform(parseEncryptionKeyring).optional(),
+    SECRET_PROXY_ENABLED: BoolEnv.default(false),
+    SECRET_PROXY_RESOLVER_ENABLED: BoolEnv.default(false),
+    SECRET_PROXY_PLACEHOLDER_KEYS: z.preprocess(
+      (value) => (value === "" ? undefined : value),
+      z.string().optional()
+    ),
+    SECRET_PROXY_SERVICE_TOKEN: z.preprocess(
+      (value) => (value === "" ? undefined : value),
+      z.string().min(32).optional()
+    ),
     ENVIRONMENT_ENCRYPTION_ENABLED: BoolEnv.default(false),
     ENVIRONMENT_ENCRYPTION_KMS_KEY_ARN: z.preprocess(
       (value) => (value === "" ? undefined : value),

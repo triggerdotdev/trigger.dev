@@ -2,13 +2,11 @@ import { containerTest, assertNonNullable } from "@internal/testcontainers";
 import { RunEngine } from "@internal/run-engine";
 import { setupAuthenticatedEnvironment, setupBackgroundWorker } from "@internal/run-engine/tests";
 import { trace } from "@opentelemetry/api";
+import { SnapshotId } from "@trigger.dev/core/v3/isomorphic";
 import { expect, onTestFinished, vi } from "vitest";
-import { AuthenticatedWorkerInstance } from "~/v3/services/worker/workerGroupTokenService.server";
 
 vi.hoisted(() => {
   Object.assign(process.env, {
-    DATABASE_URL: "postgresql://postgres:postgres@localhost:5432/test",
-    DIRECT_URL: "postgresql://postgres:postgres@localhost:5432/test",
     MAGIC_LINK_SECRET: "test-magic-link-secret",
     ENCRYPTION_KEY: "test-encryption-key-for-e2e!!!!!",
     DEPLOY_REGISTRY_HOST: "registry.example.com",
@@ -24,7 +22,12 @@ vi.setConfig({ testTimeout: 60_000 });
 // Catches: unscoped suspend authorization or rejecting legitimate post-cutoff requests.
 containerTest(
   "gates suspend preflight while restore heartbeats and legacy completion remain compatible",
-  async ({ prisma, redisOptions }) => {
+  async ({ prisma, redisOptions, postgresContainer }) => {
+    process.env.DATABASE_URL = postgresContainer.getConnectionUri();
+    process.env.DIRECT_URL = postgresContainer.getConnectionUri();
+    delete process.env.DATABASE_READ_REPLICA_URL;
+    const { AuthenticatedWorkerInstance } =
+      await import("~/v3/services/worker/workerGroupTokenService.server");
     const engine = new RunEngine({
       prisma,
       worker: { redis: redisOptions, workers: 1, tasksPerWorker: 10, pollIntervalMs: 100 },
@@ -158,7 +161,7 @@ containerTest(
     // Catches: deploying the webapp before old reporters upgrade must not lose completed snapshots.
     const checkpoint = await worker.createCheckpoint({
       runFriendlyId: run.friendlyId,
-      snapshotFriendlyId: blocked.friendlyId,
+      snapshotFriendlyId: SnapshotId.toFriendlyId(blocked.id),
       checkpoint: { type: "COMPUTE", location: "node/snapshot" },
     });
     expect(checkpoint.ok).toBe(true);

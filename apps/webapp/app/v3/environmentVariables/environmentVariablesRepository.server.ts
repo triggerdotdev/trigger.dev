@@ -21,14 +21,25 @@ import {
 } from "~/db.server";
 import { env } from "~/env.server";
 import { getSecretStore } from "~/services/secrets/secretStore.server";
+import {
+  effectiveEnvironmentVariables,
+  assertVariablesNotProxyOnly,
+} from "~/services/secretProxy/variables.server";
 import { environmentEncryption } from "~/services/environmentEncryption/instance.server";
-import { EnvironmentSecretStore } from "~/services/environmentEncryption/secretStore.server";
+import { secretProxyEnabled } from "~/services/secretProxy/featureFlag.server";
+import {
+  EnvironmentSecretStore,
+  protectedSecretKeys,
+} from "~/services/environmentEncryption/secretStore.server";
 import type {
   EnvironmentEncryptionService,
   PreparedEnvironmentWrite,
 } from "~/services/environmentEncryption/service.server";
 import { deduplicateVariableArray } from "../deduplicateVariableArray.server";
-import { removeBlacklistedVariables } from "../environmentVariableRules.server";
+import {
+  isBlacklistedVariable,
+  removeBlacklistedVariables,
+} from "../environmentVariableRules.server";
 import { FEATURE_FLAG, resolveInternalApiOriginEnabled } from "../featureFlags";
 import { globalFlagsRegistry } from "../globalFlagsRegistry.server";
 import { generateFriendlyId } from "../friendlyIdentifiers";
@@ -88,9 +99,17 @@ export class EnvironmentVariablesRepository implements Repository {
     db: PrismaClientOrTransaction,
     projectId: string,
     environmentIds: string[],
-    prepared?: Map<string, PreparedEnvironmentWrite>
+    prepared?: Map<string, PreparedEnvironmentWrite>,
+    protectedKeys?: ReadonlySet<string>
   ) {
-    return new EnvironmentSecretStore(db, this.encryption, projectId, environmentIds, prepared);
+    return new EnvironmentSecretStore(
+      db,
+      this.encryption,
+      projectId,
+      environmentIds,
+      prepared,
+      protectedKeys
+    );
   }
 
   async #prepareWrites(
@@ -238,12 +257,15 @@ export class EnvironmentVariablesRepository implements Repository {
 
     try {
       const prepared = await this.#prepareWrites(projectId, project.environments);
+      const proxyEnabled = secretProxyEnabled(project.organization.featureFlags);
       const existingSecrets = new Map(
         (
           await this.#secretStore(
             this.prismaClient,
             projectId,
-            options.environmentIds
+            options.environmentIds,
+            undefined,
+            proxyEnabled ? undefined : new Set()
           ).getSecretsByKeys(
             SecretValue,
             values.flatMap((v) =>
@@ -254,6 +276,11 @@ export class EnvironmentVariablesRepository implements Repository {
       );
       for (const variable of values) {
         const _result = await $transaction(this.prismaClient, "create env var", async (tx) => {
+          if (proxyEnabled) {
+            await assertVariablesNotProxyOnly(tx, projectId, options.environmentIds, [
+              variable.key,
+            ]);
+          }
           await this.encryption.assertWrite(tx, [...prepared.values()]);
           const environmentVariable = await tx.environmentVariable.upsert({
             where: {
@@ -274,7 +301,13 @@ export class EnvironmentVariablesRepository implements Repository {
             update: {},
           });
 
-          const secretStore = this.#secretStore(tx, projectId, options.environmentIds, prepared);
+          const secretStore = this.#secretStore(
+            tx,
+            projectId,
+            options.environmentIds,
+            prepared,
+            new Set()
+          );
 
           // If parentEnvironmentId is provided and isSecret is not explicitly set,
           // look up if the parent has this variable marked as secret
@@ -450,9 +483,24 @@ export class EnvironmentVariablesRepository implements Repository {
 
     try {
       const prepared = await this.#prepareWrites(projectId, project.environments);
+      const proxyEnabled = secretProxyEnabled(project.organization.featureFlags);
       await $transaction(this.prismaClient, "edit env var", async (tx) => {
+        if (proxyEnabled) {
+          await assertVariablesNotProxyOnly(
+            tx,
+            projectId,
+            values.map((value) => value.environmentId),
+            [environmentVariable.key]
+          );
+        }
         await this.encryption.assertWrite(tx, [...prepared.values()]);
-        const secretStore = this.#secretStore(tx, projectId, [...prepared.keys()], prepared);
+        const secretStore = this.#secretStore(
+          tx,
+          projectId,
+          [...prepared.keys()],
+          prepared,
+          new Set()
+        );
 
         //create the secret values and references
         for (const value of values) {
@@ -596,9 +644,24 @@ export class EnvironmentVariablesRepository implements Repository {
 
     try {
       const prepared = await this.#prepareWrites(projectId, project.environments);
+      const proxyEnabled = secretProxyEnabled(project.organization.featureFlags);
       await $transaction(this.prismaClient, "edit env var value", async (tx) => {
+        if (proxyEnabled) {
+          await assertVariablesNotProxyOnly(
+            tx,
+            projectId,
+            [options.environmentId],
+            [environmentVariable.key]
+          );
+        }
         await this.encryption.assertWrite(tx, [...prepared.values()]);
-        const secretStore = this.#secretStore(tx, projectId, [options.environmentId], prepared);
+        const secretStore = this.#secretStore(
+          tx,
+          projectId,
+          [options.environmentId],
+          prepared,
+          new Set()
+        );
 
         const key = secretKey(projectId, options.environmentId, environmentVariable.key);
         await secretStore.setSecret<{ secret: string }>(key, {
@@ -813,49 +876,56 @@ export class EnvironmentVariablesRepository implements Repository {
     return this.getEnvironmentVariables(projectId, environmentId, parentEnvironmentId);
   }
 
-  async #getSecretEnvironmentVariables(
+  async resolveEnvironmentVariables(
     projectId: string,
     environmentId: string,
     parentEnvironmentId?: string,
-    readFromReplica?: boolean
-  ): Promise<EnvironmentVariable[]> {
-    const secretStore = this.#secretStore(
-      readFromReplica ? this.replicaClient : this.prismaClient,
+    // Unset means enabled: callers that do not know the org flag keep full protection.
+    options?: { readFromReplica?: boolean; proxyEnabled?: boolean }
+  ) {
+    const db = options?.readFromReplica ? this.replicaClient : this.prismaClient;
+    const environmentIds = parentEnvironmentId
+      ? [parentEnvironmentId, environmentId]
+      : [environmentId];
+    const protectedKeys =
+      options?.proxyEnabled === false
+        ? new Set<string>()
+        : await protectedSecretKeys(db, projectId, environmentIds);
+    const proxyValues = protectedKeys.size
+      ? (
+          await effectiveEnvironmentVariables(db, projectId, environmentId, parentEnvironmentId)
+        ).filter((value) => value.isProxyOnly)
+      : [];
+    // A protected child value must not fall back to an ordinary parent value.
+    for (const value of proxyValues) {
+      for (const id of environmentIds) protectedKeys.add(secretKey(projectId, id, value.key));
+    }
+    const secretStore = new EnvironmentSecretStore(
+      db,
+      this.encryption,
       projectId,
-      parentEnvironmentId ? [parentEnvironmentId, environmentId] : [environmentId]
+      environmentIds,
+      undefined,
+      protectedKeys
     );
-
     const parentSecrets = parentEnvironmentId
       ? await secretStore.getSecrets(
           SecretValue,
           secretKeyEnvironmentPrefix(projectId, parentEnvironmentId)
         )
       : [];
-
     const childSecrets = await secretStore.getSecrets(
       SecretValue,
       secretKeyEnvironmentPrefix(projectId, environmentId)
     );
-
-    // Merge the secrets, we want child ones to override parent ones
-    const mergedSecrets = new Map<string, string>();
-    for (const secret of parentSecrets) {
-      const { key: parsedKey } = parseSecretKey(secret.key);
-      mergedSecrets.set(parsedKey, secret.value.secret);
+    const merged = new Map<string, string>();
+    for (const secret of [...parentSecrets, ...childSecrets]) {
+      merged.set(parseSecretKey(secret.key).key, secret.value.secret);
     }
-    for (const secret of childSecrets) {
-      const { key: parsedKey } = parseSecretKey(secret.key);
-      mergedSecrets.set(parsedKey, secret.value.secret);
-    }
-
-    const merged = Array.from(mergedSecrets.entries()).map(([key, value]) => {
-      return {
-        key,
-        value,
-      };
-    });
-
-    return removeBlacklistedVariables(merged);
+    return {
+      variables: removeBlacklistedVariables([...merged].map(([key, value]) => ({ key, value }))),
+      proxyValues,
+    };
   }
 
   async getEnvironmentVariables(
@@ -864,12 +934,9 @@ export class EnvironmentVariablesRepository implements Repository {
     parentEnvironmentId?: string,
     options?: { readFromReplica?: boolean }
   ): Promise<EnvironmentVariable[]> {
-    return this.#getSecretEnvironmentVariables(
-      projectId,
-      environmentId,
-      parentEnvironmentId,
-      options?.readFromReplica
-    );
+    return (
+      await this.resolveEnvironmentVariables(projectId, environmentId, parentEnvironmentId, options)
+    ).variables;
   }
 
   async delete(projectId: string, options: DeleteEnvironmentVariable): Promise<Result> {
@@ -891,32 +958,31 @@ export class EnvironmentVariablesRepository implements Repository {
       return { success: false as const, error: "Project not found" };
     }
 
-    const environmentVariable = await this.prismaClient.environmentVariable.findFirst({
-      select: {
-        id: true,
-        key: true,
-        values: {
+    try {
+      await $transaction(this.prismaClient, "delete env var", async (tx) => {
+        // Enrollment and creation take this identity lock; capture their committed values after it.
+        await tx.$queryRaw`SELECT id FROM "EnvironmentVariable" WHERE id = ${options.id} AND "projectId" = ${projectId} FOR UPDATE`;
+        const environmentVariable = await tx.environmentVariable.findFirst({
           select: {
             id: true,
-            environmentId: true,
-            valueReference: {
+            key: true,
+            values: {
               select: {
-                key: true,
+                id: true,
+                environmentId: true,
+                valueReference: { select: { key: true } },
               },
             },
           },
-        },
-      },
-      where: {
-        id: options.id,
-      },
-    });
-    if (!environmentVariable) {
-      return { success: false as const, error: "Environment variable not found" };
-    }
-
-    try {
-      await $transaction(this.prismaClient, "delete env var", async (tx) => {
+          where: { id: options.id, projectId },
+        });
+        if (!environmentVariable) throw new Error("Environment variable not found");
+        await assertVariablesNotProxyOnly(
+          tx,
+          projectId,
+          environmentVariable.values.map((value) => value.environmentId),
+          [environmentVariable.key]
+        );
         await tx.environmentVariable.delete({
           where: {
             id: options.id,
@@ -1010,6 +1076,12 @@ export class EnvironmentVariablesRepository implements Repository {
 
     try {
       await $transaction(this.prismaClient, "delete env var value", async (tx) => {
+        await assertVariablesNotProxyOnly(
+          tx,
+          projectId,
+          [options.environmentId],
+          [environmentVariable.key]
+        );
         const secretStore = getSecretStore("DATABASE", {
           prismaClient: tx,
         });
@@ -1067,16 +1139,26 @@ export async function resolveVariablesForEnvironment(
   runtimeEnvironment: RuntimeEnvironmentForEnvRepo,
   parentEnvironment?: RuntimeEnvironmentForEnvRepo
 ) {
-  let projectSecrets = await environmentVariablesRepository.getEnvironmentVariables(
+  return (await prepareVariablesForEnvironment(runtimeEnvironment, parentEnvironment)).variables;
+}
+
+export async function prepareVariablesForEnvironment(
+  runtimeEnvironment: RuntimeEnvironmentForEnvRepo,
+  parentEnvironment?: RuntimeEnvironmentForEnvRepo,
+  options?: { proxyEnabled?: boolean }
+) {
+  const resolved = await environmentVariablesRepository.resolveEnvironmentVariables(
     runtimeEnvironment.projectId,
     runtimeEnvironment.id,
     parentEnvironment?.id,
-    { readFromReplica: env.CONTROL_PLANE_DEQUEUE_READS_FROM_REPLICA === "1" }
+    {
+      readFromReplica: env.CONTROL_PLANE_DEQUEUE_READS_FROM_REPLICA === "1",
+      proxyEnabled: options?.proxyEnabled,
+    }
   );
 
-  projectSecrets = renameVariables(projectSecrets, {
-    OTEL_RESOURCE_ATTRIBUTES: "CUSTOM_OTEL_RESOURCE_ATTRIBUTES",
-  });
+  const renames = { OTEL_RESOURCE_ATTRIBUTES: "CUSTOM_OTEL_RESOURCE_ATTRIBUTES" };
+  const projectSecrets = renameVariables(resolved.variables, renames);
 
   const overridableTriggerVariables = await resolveOverridableTriggerVariables(runtimeEnvironment);
 
@@ -1097,7 +1179,16 @@ export async function resolveVariablesForEnvironment(
     ...builtInVariables,
   ]);
 
-  return result;
+  return {
+    variables: result,
+    proxyValues: resolved.proxyValues
+      .filter(
+        (value) =>
+          !isBlacklistedVariable(value.key) &&
+          !builtInVariables.some((builtIn) => builtIn.key === value.key)
+      )
+      .map((value) => ({ ...value, key: renames[value.key as keyof typeof renames] ?? value.key })),
+  };
 }
 
 function renameVariables(variables: EnvironmentVariable[], renameMap: Record<string, string>) {

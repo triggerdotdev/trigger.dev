@@ -32,6 +32,7 @@ import { matchesAnyManagedWorkerSecret } from "./managedWorkerSecret.server";
 import { sanitizeWorkerHeaders } from "./sanitizeWorkerHeaders";
 import { json } from "@remix-run/server-runtime";
 import { createHash } from "crypto";
+import { decodeJwt } from "jose";
 import { customAlphabet } from "nanoid";
 import { z } from "zod";
 import { env } from "~/env.server";
@@ -47,9 +48,13 @@ import {
 import { generateJWTTokenForEnvironment } from "~/services/apiAuth.server";
 import { logger } from "~/services/logger.server";
 import { mintRunToken, runTokenInjectionEnabled } from "~/services/oidc/runToken.server";
+import { secretProxyEnabled } from "~/services/secretProxy/featureFlag.server";
 import { defaultMachine } from "~/services/platform.v3.server";
 import { singleton } from "~/utils/singleton";
 import { resolveAttemptVariables } from "~/services/environmentEncryption/attemptVariables.server";
+import { secretProxy } from "~/services/secretProxy/instance.server";
+import type { SecretProxyExecutionMetadata } from "~/services/secretProxy/service.server";
+import { failAttemptForSecretProxySigning } from "~/services/secretProxy/attemptFailure.server";
 import type { EnvironmentVariable } from "~/v3/environmentVariables/repository";
 import { machinePresetFromName } from "~/v3/machinePresets.server";
 import { meteringClaims } from "~/v3/utils/meteringClaims.server";
@@ -628,6 +633,7 @@ export class AuthenticatedWorkerInstance extends WithRunEngine {
     runnerId,
     environmentId,
     supportsRunTokenRefresh,
+    supportsSecretProxy,
   }: {
     runFriendlyId: string;
     snapshotFriendlyId: string;
@@ -637,9 +643,11 @@ export class AuthenticatedWorkerInstance extends WithRunEngine {
     runnerId?: string;
     environmentId?: string;
     supportsRunTokenRefresh?: boolean;
+    supportsSecretProxy?: boolean;
   }): Promise<
     StartRunAttemptResult & {
       envVars: Record<string, string>;
+      secretProxy?: SecretProxyExecutionMetadata;
     }
   > {
     const runId = fromFriendlyId(runFriendlyId);
@@ -648,9 +656,30 @@ export class AuthenticatedWorkerInstance extends WithRunEngine {
 
     // Resolved before the attempt exists, so an unavailable key leaves the run startable.
     const environment = await this.findAttemptEnvironment(runId, environmentId);
-    const variables = await resolveAttemptVariables(
+    const prepared = await resolveAttemptVariables(
       environment,
-      environment.parentEnvironment ?? undefined
+      environment.parentEnvironment ?? undefined,
+      // Without the org row loaded, keep full protection rather than assume the flag is off.
+      environment.organization
+        ? { proxyEnabled: secretProxyEnabled(environment.organization.featureFlags) }
+        : undefined
+    );
+
+    const runTokenAvailable =
+      supportsRunTokenRefresh === true &&
+      environmentId === environment.id &&
+      runTokenInjectionEnabled(environment.organization?.featureFlags);
+    const proxy = prepared.proxyValues.length
+      ? secretProxy(
+          env.CONTROL_PLANE_DEQUEUE_READS_FROM_REPLICA === "1" ? this._replica : this._prisma
+        )
+      : undefined;
+    const proxyHosts = await proxy?.preflightRuntime(
+      environment.projectId,
+      environment.id,
+      prepared.proxyValues,
+      runTokenAvailable,
+      supportsSecretProxy === true && isWarmStart !== true
     );
 
     const stamped = acceptsWorkerStamp(this.type);
@@ -668,12 +697,34 @@ export class AuthenticatedWorkerInstance extends WithRunEngine {
 
     const defaultMachinePreset = machinePresetFromName(defaultMachine);
 
-    const runToken =
-      supportsRunTokenRefresh === true &&
-      environmentId === environment.id &&
-      runTokenInjectionEnabled(environment.organization?.featureFlags)
-        ? await this.mintRunTokenOrSkip(environment, engineResult)
-        : undefined;
+    const runToken = runTokenAvailable
+      ? await this.mintRunTokenOrSkip(environment, engineResult)
+      : undefined;
+
+    let secretProxyMetadata: SecretProxyExecutionMetadata | undefined;
+    let variables = prepared.variables;
+    if (proxy) {
+      if (!runToken) {
+        return failAttemptForSecretProxySigning({
+          engine: this._engine,
+          run: engineResult.run,
+          snapshotId: engineResult.snapshot.id,
+          environmentId: environment.id,
+          workerId: this.workerInstanceId,
+          runnerId,
+        });
+      }
+      const delivery = proxy.finalizeRuntime(prepared.proxyValues, proxyHosts!, {
+        runId: engineResult.execution.run.id,
+        attempt: engineResult.execution.attempt.number,
+        expiresAtMs: decodeJwt(runToken).exp! * 1000,
+      });
+      secretProxyMetadata = delivery.secretProxy;
+      variables = [
+        ...variables.filter((variable) => variable.key !== "TRIGGER_SECRET_KEY"),
+        ...delivery.placeholders,
+      ];
+    }
 
     const envVars = await this.getEnvVars(
       variables,
@@ -692,6 +743,7 @@ export class AuthenticatedWorkerInstance extends WithRunEngine {
     return {
       ...engineResult,
       envVars,
+      ...(secretProxyMetadata ? { secretProxy: secretProxyMetadata } : {}),
     };
   }
 
@@ -726,7 +778,7 @@ export class AuthenticatedWorkerInstance extends WithRunEngine {
     return environment;
   }
 
-  // A signing failure must not fail the attempt: the run still has TRIGGER_SECRET_KEY.
+  // Normal runs retain TRIGGER_SECRET_KEY; proxy-only delivery fails closed below if signing fails.
   private async mintRunTokenOrSkip(
     environment: RuntimeEnvironment,
     engineResult: StartRunAttemptResult
