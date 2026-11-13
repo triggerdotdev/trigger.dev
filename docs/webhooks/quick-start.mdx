@@ -95,19 +95,21 @@ bunx trigger.dev@latest dev
 
 </CodeGroup>
 
-The CLI registers the endpoint, and it appears on the dev environment's **Webhooks** page with the **Signing secret** column set to **Needs secret**.
+The CLI registers the `github` endpoint you declared in your **Development** environment.
 
 </Step>
 
 <Step title="Generate the signing secret">
 
-Open the `github` endpoint and choose **Generate secret**. The column changes to **Ready**. Every delivery is rejected until an endpoint has its secret.
+In the [Trigger.dev dashboard](https://cloud.trigger.dev), open your project, make sure the **Development** environment is selected, and choose **Webhooks** in the side menu. The `github` endpoint is listed with its **Signing secret** column set to **Needs secret**. Every delivery is rejected until an endpoint has its secret.
+
+Open the `github` endpoint and choose **Generate secret**. The secret is shown once: copy it if you'll connect GitHub later. Back on the **Webhooks** page, the column now says **Ready**.
 
 </Step>
 
 <Step title="Send a test event">
 
-Open the endpoint's **Test** tab and send the sample event. The delivery appears on the **Deliveries** tab with the `github-events` subscriber listed. Follow the link to its run to see the logged event.
+On the `github` endpoint's page, open the **Test** tab, pick a sample event and choose **Send event**. The delivery appears on the **Deliveries** tab. Open it to see that it reached the `github-events` subscriber, then follow the link to the run to see the logged event.
 
 </Step>
 
