@@ -71,6 +71,11 @@ import {
 } from "./errors.js";
 import type { EventBus, EventBusEvents } from "./eventBus.js";
 import { RunLocker } from "./locking.js";
+import {
+  refusalExplainsStall,
+  RETURNED_WHILE_RESUMING_ERROR,
+  StaleCompletionNotes,
+} from "./staleCompletions.js";
 import { getFinalRunStatuses } from "./statuses.js";
 import { BatchSystem } from "./systems/batchSystem.js";
 import { CheckpointSystem } from "./systems/checkpointSystem.js";
@@ -142,6 +147,7 @@ export class RunEngine {
   private pendingExecutingStallsCounter: Counter;
   private snapshotsSinceReplicaRetryDelay: { minMs: number; maxMs: number };
   private heartbeatTimeouts: HeartbeatTimeouts;
+  private staleCompletionNotes: StaleCompletionNotes;
   private repairSnapshotTimeoutMs: number;
   private batchQueue: BatchQueue;
   private batchQueueConsumersEnabled: boolean;
@@ -619,6 +625,13 @@ export class RunEngine {
       ...(options.heartbeatTimeoutsMs ?? {}),
     };
 
+    // Shares the lock client: one small key per refused completion, read only when a run stalls.
+    this.staleCompletionNotes = new StaleCompletionNotes({
+      redis: this.runLockRedis,
+      ttlMs: 2 * Math.max(...Object.values(this.heartbeatTimeouts)),
+      logger: this.logger,
+    });
+
     this.repairSnapshotTimeoutMs = options.repairSnapshotTimeoutMs ?? 60_000;
 
     const resources: SystemResources = {
@@ -795,6 +808,8 @@ export class RunEngine {
       finalizationGuardDelayMs: this.options.finalizationGuardDelayMs,
       duplicateAttemptStartCheck: this.options.duplicateAttemptStartCheck,
       redisOptions: this.options.cache?.redis ?? this.options.runLock.redis,
+      staleCompletionNotes: this.staleCompletionNotes,
+      staleCompletionMode: this.options.staleCompletionMode,
     });
 
     this.billingCache = new BillingCache({
@@ -3756,6 +3771,40 @@ export class RunEngine {
         }
         case "EXECUTING":
         case "EXECUTING_WITH_WAITPOINTS": {
+          // The task already returned and its completion was refused: the process is not dead or
+          // blocked, so say what happened. No retry, the task's code ran to its end once. Notes
+          // are only written in "enforce" mode, so the other modes skip the read.
+          const refusal =
+            this.options.staleCompletionMode === "enforce"
+              ? await this.staleCompletionNotes.read(runId)
+              : undefined;
+          if (
+            refusal &&
+            refusalExplainsStall({
+              note: refusal,
+              snapshot: latestSnapshot,
+              timeoutMs: this.heartbeatTimeouts[latestSnapshot.executionStatus],
+            })
+          ) {
+            this.logger.info(
+              "RunEngine.#handleStalledSnapshot() stalled after a refused completion",
+              {
+                runId,
+                snapshotId: latestSnapshot.id,
+                postedSnapshotId: refusal.postedSnapshotId,
+                refusedAtSnapshotId: refusal.latestSnapshotId,
+              }
+            );
+
+            await this.runAttemptSystem.attemptFailed({
+              runId,
+              snapshotId: latestSnapshot.id,
+              completion: { ok: false, id: runId, error: RETURNED_WHILE_RESUMING_ERROR },
+              tx: prisma,
+            });
+            break;
+          }
+
           // TODO: derive the retry delay from the run's retry settings.
           const retryDelay = 250;
 

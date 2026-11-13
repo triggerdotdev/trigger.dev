@@ -1115,6 +1115,12 @@ const EnvironmentSchema = z
     CARD_VERIFICATION_REQUIRED_FROM: z.string().datetime().optional(),
     // Whether an attempt start for a run that already has an attempt executing is logged or refused.
     RUN_ENGINE_DUPLICATE_ATTEMPT_START_CHECK: z.enum(["off", "log", "enforce"]).default("log"),
+    // What the engine does with an attempt completion that names a snapshot that is no longer the
+    // latest. "count" refuses it as before and only counts what "enforce" would do, with no extra
+    // database read or Redis call. "classify" adds the one read the count needs to be exact.
+    // "enforce" fails a run at once when its task returned while the run was resuming from a wait,
+    // and reports a stall that follows a refused completion as that, not as out of memory.
+    RUN_ENGINE_STALE_COMPLETION_MODE: z.enum(["count", "classify", "enforce"]).default("count"),
 
     // Lifetimes, in days, offered when creating a personal access token on the dashboard, and the
     // preselected one. A default that isn't in the list falls back to the first option.

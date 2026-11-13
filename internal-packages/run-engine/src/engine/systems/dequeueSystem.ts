@@ -18,6 +18,7 @@ import type {
   ResolvedWorkerDeployment,
   ResolvedWorkerTask,
 } from "../controlPlaneResolver.js";
+import { CONTINUED_WHILST_EXECUTING_DESCRIPTION } from "../consts.js";
 import { deletedEnvironmentReason, MISSING_ENVIRONMENT_REASON } from "../controlPlaneResolver.js";
 
 import { sendNotificationToWorker } from "../eventBus.js";
@@ -392,7 +393,7 @@ export class DequeueSystem {
                     },
                     snapshot: {
                       executionStatus: "EXECUTING",
-                      description: "Run was continued, whilst still executing.",
+                      description: CONTINUED_WHILST_EXECUTING_DESCRIPTION,
                     },
                     previousSnapshotId: snapshot.id,
                     previousSnapshot: snapshot,
