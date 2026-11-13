@@ -806,6 +806,32 @@ describe("routes with their own limit", () => {
     expect(events).toMatchObject([{ cap: "attempt-completion" }]);
   });
 
+  // Catches: a deployment failure carrying the indexer's full output being held to the default.
+  it("takes a deployment failure report over the default", async () => {
+    const { url, events } = await listen();
+    const size = 1_200_000;
+
+    const response = await postChunked(`${url}/api/v1/deployments/deployment_123/fail`, size);
+
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual({ bytes: size });
+    expect(events).toEqual([]);
+  });
+
+  // Catches: the deployment failure route having no limit at all.
+  it("refuses a deployment failure report over its limit", async () => {
+    const { url, events } = await listen();
+
+    const response = await postChunked(
+      `${url}/api/v1/deployments/deployment_123/fail`,
+      5 * 1024 * 1024,
+      256 * 1024
+    ).catch(() => undefined);
+
+    if (response) expect(response.status).toBe(413);
+    expect(events).toMatchObject([{ cap: "deployment-failure" }]);
+  });
+
   // Catches: the waiter callback path being held to the default when the webhook limit is larger.
   it.each(["/webhooks/v1/ingest/wh_abc", "/webhooks/v1/ingest/wh_abc/w/waiter_token"])(
     "takes a webhook body up to the webhook limit on %s",

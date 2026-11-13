@@ -150,6 +150,9 @@ const ANALYTICS_PROXY_MAX_BODY_BYTES = 20 * 1024 * 1024;
 /** Largest worker manifest: it carries the source of every task file. */
 const WORKER_MANIFEST_MAX_BODY_BYTES = 32 * 1024 * 1024;
 
+/** A deployment failure report: it can carry everything the indexer wrote to stderr. */
+const DEPLOYMENT_FAILURE_MAX_BODY_BYTES = 4 * 1024 * 1024;
+
 /** The other fields of a dashboard form that carries a payload. */
 const FORM_FIELDS_SLACK_BYTES = 64 * 1024;
 
@@ -208,6 +211,11 @@ export function routeIngressCaps(limits: RouteBodyLimits): IngressBodyCap[] {
       "worker-manifest",
       /^\/api\/v1\/(?:projects|deployments)\/[^/]+\/background-workers$/,
       WORKER_MANIFEST_MAX_BODY_BYTES
+    ),
+    cap(
+      "deployment-failure",
+      /^\/api\/v1\/deployments\/[^/]+\/fail$/,
+      DEPLOYMENT_FAILURE_MAX_BODY_BYTES
     ),
     cap(
       "webhook-ingest",
