@@ -36,8 +36,8 @@ To run a subscriber only for some events, add a [filter](/webhooks/filters) on `
 ## Set up Discord
 
 1. Start `trigger dev` or deploy, then copy the endpoint's **Webhook URL** from the **Webhooks** page.
-2. In the [Discord Developer Portal](https://discord.com/developers/applications), open the application, then its **Webhooks** page. Set the **Endpoint URL** to the webhook URL, turn **Events** on, and select the event types your subscribers need.
-3. Copy the **Public Key** from the application's **General Information** page, then choose **Set public key** on the Trigger.dev endpoint. Discord sends a PING that the endpoint answers once the key is set.
+2. In the [Discord Developer Portal](https://discord.com/developers/applications), open the application and copy the **Public Key** from its **General Information** page. Choose **Set public key** on the Trigger.dev endpoint and paste it.
+3. Open the application's **Webhooks** page. Set the **Endpoint URL** to the webhook URL, turn **Events** on, and select the event types your subscribers need. Discord sends a PING when you save, and the endpoint can only answer it once the public key is set.
 4. Send a test event from Discord, or use the endpoint's **Test** tab, and check the endpoint's **Deliveries** tab. See [Verify the connection](/webhooks/connect#verify-the-connection) if nothing arrives.
 
 ## Endpoint validation

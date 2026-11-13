@@ -77,7 +77,7 @@ A path reads from one of three namespaces:
 
 - `event.*`: the verified, parsed request body, for example `event.data.object.amount`.
 - `header.*`: an inbound request header, matched case-insensitively, for example `header.x-github-event`.
-- `webhook.*`: endpoint and delivery metadata: `source`, `id`, `deliveryId`, `externalRef`, and `tenantId`. The last two depend on the endpoint configuration.
+- `webhook.*`: endpoint and delivery metadata: `source`, `id`, `deliveryId`, `externalRef`, and `tenantId`. The last two depend on the endpoint configuration. `deliveryId` is the provider's event ID, or a hash of the request when the provider sends none; it isn't the `whd_` delivery id.
 
 Paths must have non-empty segments. `event.data.amount` is valid; `event.`, `event..amount`, and `event.amount.` are rejected.
 

@@ -36,7 +36,7 @@ The endpoint's other subscribers, such as a `webhook()` task, still get the same
 The `key` is what makes routing durable: two deliveries that resolve to the same key reach the same session; a different key gets its own. It is a template string, evaluated server-side at ingest, whose `{...}` placeholders read three namespaces:
 
 - `{event.*}`: the parsed event body.
-- `{webhook.*}`: endpoint metadata (`externalRef`, `tenantId`, `id`, `source`, `deliveryId`).
+- `{webhook.*}`: endpoint metadata (`externalRef`, `tenantId`, `id`, `source`, `deliveryId`). Here `deliveryId` is the provider's event ID, not the `whd_` id.
 - `{header.name}`: an inbound header.
 
 These are the same namespaces [filter](/webhooks/filters) expressions use. Every placeholder names one: a bare `{customer}` is an error.

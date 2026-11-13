@@ -58,7 +58,7 @@ curl -X POST "https://api.trigger.dev/api/v1/webhooks/deliveries/whd_1234/replay
   -H "Authorization: Bearer $TRIGGER_SECRET_KEY"
 ```
 
-Add `?targetId=` to send it to one subscriber regardless of its filter. `targetId` is the subscriber id: a `webhook()` task's id, or `agentId:eventId` for an agent's `chat.event` or channel. A replay never resumes waiting runs.
+Add `?targetId=` to send it to one subscriber regardless of its filter. `targetId` is the subscriber id: a `webhook()` task's id, `agentId:eventId` for an agent's `chat.event`, or `agentId:connectorId` for a channel. A replay never resumes waiting runs.
 
 ## From an agent or the API
 

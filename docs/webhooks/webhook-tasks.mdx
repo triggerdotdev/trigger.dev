@@ -13,7 +13,7 @@ description: "What a webhook() handler receives, the task options it takes, how 
 | Argument | Value |
 | --- | --- |
 | `event` | The verified request body, parsed as JSON. Its TypeScript type comes from the [source](/webhooks/verification#typing-the-event). |
-| `headers` | Request headers as a Web `Headers` object, with case-insensitive `get()` and `has()` methods. Credentials such as signatures are removed. |
+| `headers` | Request headers as a Web `Headers` object, with case-insensitive `get()` and `has()` methods. `authorization`, `proxy-authorization`, `cookie`, `set-cookie` and shared-secret headers are removed; signature headers such as `stripe-signature` are kept. Stored headers are capped at 4 KB. |
 | `endpoint` | The endpoint the delivery arrived on: `id`, `declaredId`, `tenantId`, `externalRef`, and the `metadata` you declared. |
 | `ctx` | The same [run context](/context) that regular tasks receive. |
 

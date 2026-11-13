@@ -36,6 +36,6 @@ To run a subscriber only for some events, add a [filter](/webhooks/filters) on `
 ## Set up Replicate
 
 1. Start `trigger dev` or deploy, then copy the endpoint's **Webhook URL** from the **Webhooks** page.
-2. Add the webhook URL as an endpoint in Replicate's webhook settings and subscribe it to the event types your subscribers need.
-3. Copy the endpoint's signing secret (it starts with `whsec_`), then choose **Set signing secret** on the Trigger.dev endpoint.
-4. Send a test event from Replicate, or use the endpoint's **Test** tab, and check the endpoint's **Deliveries** tab. See [Verify the connection](/webhooks/connect#verify-the-connection) if nothing arrives.
+2. Replicate has no webhook settings page. Pass the webhook URL as `webhook` when you create a prediction, with `webhook_events_filter` set to the events you want (`start`, `output`, `logs`, `completed`).
+3. Get your signing secret from `GET https://api.replicate.com/v1/webhooks/default/secret`. It starts with `whsec_` and is the same for every webhook on your user or organization. Choose **Set signing secret** on the Trigger.dev endpoint and paste it.
+4. Create a prediction with the webhook set, or use the endpoint's **Test** tab, and check the endpoint's **Deliveries** tab. See [Verify the connection](/webhooks/connect#verify-the-connection) if nothing arrives.

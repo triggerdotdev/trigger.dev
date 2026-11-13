@@ -29,13 +29,13 @@ To run a subscriber only for some events, add a [filter](/webhooks/filters) on `
 | --- | --- |
 | Source | `webhooks.brex()` |
 | Verification | Svix (`svix-id`, `svix-timestamp`, `svix-signature`) |
-| Credential | Signing secret issued by Brex |
+| Credential | Signing secret from `GET /v1/webhooks/secrets` |
 | Event type | `event.event_type` |
 | Brex docs | [Brex webhook docs](https://developer.brex.com/guides/webhooks) |
 
 ## Set up Brex
 
 1. Start `trigger dev` or deploy, then copy the endpoint's **Webhook URL** from the **Webhooks** page.
-2. Add the webhook URL as an endpoint in Brex's webhook settings and subscribe it to the event types your subscribers need.
-3. Copy the endpoint's signing secret (it starts with `whsec_`), then choose **Set signing secret** on the Trigger.dev endpoint.
+2. Brex has no webhook settings page. Register the webhook URL with `POST /v1/webhooks`, passing `url` and the `event_types` your subscribers need. Brex allows one webhook endpoint per customer.
+3. Get the signing secret from `GET /v1/webhooks/secrets`, then choose **Set signing secret** on the Trigger.dev endpoint and paste it. The secret has no `whsec_` prefix. During a key rotation the call returns two secrets; use the new one.
 4. Send a test event from Brex, or use the endpoint's **Test** tab, and check the endpoint's **Deliveries** tab. See [Verify the connection](/webhooks/connect#verify-the-connection) if nothing arrives.

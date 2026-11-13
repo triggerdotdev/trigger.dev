@@ -29,13 +29,13 @@ To run a subscriber only for some events, add a [filter](/webhooks/filters) on `
 | --- | --- |
 | Source | `webhooks.retell()` |
 | Verification | HMAC-SHA256 in `x-retell-signature` |
-| Credential | Signing secret issued by Retell AI |
+| Credential | The Retell AI API key with the webhook badge |
 | Event type | `event.event` |
 | Retell AI docs | [Retell AI webhook docs](https://docs.retellai.com/features/secure-webhook) |
 
 ## Set up Retell AI
 
 1. Start `trigger dev` or deploy, then copy the endpoint's **Webhook URL** from the **Webhooks** page.
-2. Add the webhook URL as a webhook in Retell AI and select the events your subscribers need. See Retell AI's [webhook docs](https://docs.retellai.com/features/secure-webhook) for where its webhook settings are.
-3. Copy the signing secret Retell AI shows for the webhook, then choose **Set signing secret** on the Trigger.dev endpoint.
+2. In Retell AI, set the webhook URL as the account-level webhook in the system settings' **Webhooks** tab, or as an agent's **Agent Level Webhook URL** under **Webhook settings** in the agent editor. An agent-level URL replaces the account-level one for that agent.
+3. Retell AI signs with an API key, not a per-webhook secret. Copy the API key that has the webhook badge next to it, then choose **Set signing secret** on the Trigger.dev endpoint and paste it.
 4. Send a test event from Retell AI, or use the endpoint's **Test** tab, and check the endpoint's **Deliveries** tab. See [Verify the connection](/webhooks/connect#verify-the-connection) if nothing arrives.
