@@ -60,3 +60,5 @@ If a provider sends no event ID, the key comes from the body, timestamp and sign
 ## Every delivery is recorded
 
 Each delivery keeps its headers, body and the result for every subscriber, with links to the runs it started. A filtered delivery shows which clause failed and with what value. You can replay a delivery from the dashboard, the REST API or the MCP server. See [Deliveries and endpoints](/webhooks/deliveries).
+
+For the design choices and infrastructure behind this, read [How we built webhooks](https://trigger.dev/blog/how-we-built-webhooks).
