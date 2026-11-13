@@ -173,7 +173,7 @@
               "webhooks/overview",
               "webhooks/quick-start",
               "webhooks/how-it-works",
-              "webhooks/sources",
+              "webhooks/verification",
               "webhooks/connect",
               {
                 "group": "Providers",
@@ -856,6 +856,10 @@
     ]
   },
   "redirects": [
+    {
+      "source": "/webhooks/sources",
+      "destination": "/webhooks/verification"
+    },
     {
       "source": "/webhooks/public-beta",
       "destination": "/webhooks/overview"

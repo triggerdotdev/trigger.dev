@@ -27,7 +27,7 @@ export const largePayments = webhook({
 
 The same `filter` works on a [`chat.event`](/webhooks/session-routing#filtering), a channel connector, and a [waiter](/webhooks/waiters), where it is checked after the waiter's `match`.
 
-The filter is checked against the [endpoint's event type](/webhooks/sources#typing-the-event). Concrete types catch missing fields and incompatible literals. Fields typed as `unknown`, including values in Stripe's default `data.object`, allow arbitrary non-empty field paths. Operator literals and path structure are still checked. A filter built at runtime (typed as `string` rather than a string literal) skips the compile-time check, and is validated when the endpoint is deployed.
+The filter is checked against the [endpoint's event type](/webhooks/verification#typing-the-event). Concrete types catch missing fields and incompatible literals. Fields typed as `unknown`, including values in Stripe's default `data.object`, allow arbitrary non-empty field paths. Operator literals and path structure are still checked. A filter built at runtime (typed as `string` rather than a string literal) skips the compile-time check, and is validated when the endpoint is deployed.
 
 ## Narrow a union event
 

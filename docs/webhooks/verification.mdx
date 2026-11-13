@@ -1,10 +1,10 @@
 ---
-title: "Sources and verification"
-description: "Choose an endpoint's source, configure verification, and type the event its subscribers receive."
-sidebarTitle: "Sources & verification"
+title: "Webhook verification"
+description: "How an endpoint verifies each provider's requests, answers provider handshakes, and types the event its subscribers receive."
+sidebarTitle: "Verification"
 ---
 
-An endpoint's `source` defines how Trigger.dev verifies requests and types the event every subscriber receives. Choose a [built-in provider source](/webhooks/providers), such as `webhooks.stripe()` or `webhooks.firecrawl()`, or supply a verification configuration with [`webhooks.custom()`](/webhooks/custom-providers).
+**An endpoint's `source` tells Trigger.dev how to verify a provider's requests and what type the event has.** Use a [built-in provider](/webhooks/providers), such as `webhooks.stripe()` or `webhooks.firecrawl()`, or describe the provider's scheme with [`webhooks.custom()`](/webhooks/custom-providers).
 
 ## Presets
 
@@ -126,4 +126,4 @@ For `webhooks.custom<T>()`, pass your own event type as `T`. The endpoint's even
 
 Requests must pass verification before they reach any subscriber. Sources can check a signature or credential, enforce a timestamp tolerance, and derive an idempotency key for [deduplication](/webhooks/deliveries#deduplication). Verification failures return the source's rejected HTTP status (`400` by default).
 
-To verify a provider without a built-in source, choose a scheme in a [custom source](/webhooks/custom-providers#verification-schemes).
+To verify a provider that isn't built in, choose a scheme in a [custom source](/webhooks/custom-providers#verification-schemes).
