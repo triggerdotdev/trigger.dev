@@ -1,0 +1,225 @@
+---
+title: "Run Apify Actors with Trigger.dev"
+sidebarTitle: "Apify Actor run"
+description: "These examples demonstrate how to run an Apify Actor from a Trigger.dev task, either waiting for the results or resuming the run with a webhook."
+---
+
+import ScrapingWarning from "/snippets/web-scraping-warning.mdx";
+
+## Overview
+
+[Apify](https://apify.com) is a platform for web scraping and browser automation. Its [Apify Store](https://apify.com/store) has thousands of ready-made scrapers, called Actors, for sites like Google Maps, Amazon and Instagram. Actors run on Apify's infrastructure and proxies, so your task calls the Apify API instead of scraping from Trigger.dev's servers.
+
+Here are two ways to run an Actor from a Trigger.dev task:
+
+- [Example 1](#example-1-run-an-actor-and-wait-for-the-results): start the Actor and wait for it to finish. Use this for Actors that finish in seconds.
+- [Example 2](#example-2-run-a-long-actor-and-resume-on-a-webhook): start the Actor and pause the run until Apify calls back with a webhook. Use this for anything longer.
+
+<ScrapingWarning />
+
+## Prerequisites
+
+- A project with [Trigger.dev initialized](/quick-start)
+- An [Apify](https://apify.com) account and an [Apify API token](https://console.apify.com/settings/integrations?utm_source=trigger.dev&utm_medium=integrations)
+- The `apify-client` package installed in your project:
+
+```bash
+npm install apify-client
+```
+
+### Set your API token
+
+Add `APIFY_TOKEN` to your `.env` file for local development, and to your Trigger.dev dashboard on the Environment Variables page:
+
+```bash
+APIFY_TOKEN="<your-apify-token>"
+```
+
+### Mark apify-client as external
+
+Add `apify-client` to [`external`](/config/config-file#external) in your `trigger.config.ts` file. When it's bundled, `apify-client` fails on its first API call with `TypeError: ProxyAgent is not a constructor`.
+
+```ts trigger.config.ts
+import { defineConfig } from "@trigger.dev/sdk";
+
+export default defineConfig({
+  project: "<project ref>",
+  // Your other config settings...
+  build: {
+    external: ["apify-client"],
+  },
+});
+```
+
+### Create the Apify client
+
+Both examples share this client. The `x-apify-integration-platform` header tells Apify the requests come from Trigger.dev.
+
+```ts trigger/apify.ts
+import { ApifyClient } from "apify-client";
+
+export const apify = new ApifyClient({
+  token: process.env.APIFY_TOKEN,
+  requestInterceptors: [
+    (config) => {
+      // Identifies requests from Trigger.dev tasks to Apify
+      config.headers = { ...config.headers, "x-apify-integration-platform": "trigger.dev" };
+      return config;
+    },
+  ],
+});
+```
+
+## Example 1: run an Actor and wait for the results
+
+This task starts an Actor, waits for it to finish and returns the items from the run's default dataset. Your run stays active and counts towards compute usage while it waits, so keep this for Actors that finish in seconds and use [Example 2](#example-2-run-a-long-actor-and-resume-on-a-webhook) for anything longer.
+
+### Key features
+
+- `timeout` stops the Actor on Apify before `waitSecs` runs out, so the task never retries while an earlier Actor run is still going.
+- `maxItems` caps how many results a pay-per-result Actor charges you for. Nobody is watching a background job, so a cap stops a runaway crawl.
+- Throwing an error on a failed or timed-out Actor run lets your [retry settings](/errors-retrying) start the Actor again. An aborted run throws an `AbortTaskRunError` instead, because someone stopped it on purpose.
+- `call()` copies the Actor's log into your run logs. Pass `log: null` in the options to turn this off.
+
+### Task code
+
+```ts trigger/apify-actor-run.ts
+import { AbortTaskRunError, logger, task } from "@trigger.dev/sdk";
+import { apify } from "./apify";
+
+export const apifyActorRun = task({
+  id: "apify-actor-run",
+  maxDuration: 600,
+  retry: { maxAttempts: 3 },
+  run: async (payload: { actorId: string; input: Record<string, unknown> }) => {
+    const run = await apify.actor(payload.actorId).call(payload.input, {
+      timeout: 300, // Apify stops the Actor after 5 minutes, so it doesn't keep running after the task gives up
+      waitSecs: 360,
+      maxItems: 1000, // cap spend on pay-per-result Actors
+    });
+
+    if (run.status === "ABORTED") {
+      // Someone stopped the Actor on purpose, so don't start it again
+      throw new AbortTaskRunError(`Actor run ${run.id} was aborted`);
+    }
+
+    if (run.status !== "SUCCEEDED") {
+      throw new Error(`Actor run ${run.id} finished with status ${run.status}`);
+    }
+
+    const { items } = await apify.dataset(run.defaultDatasetId).listItems();
+
+    logger.info("Actor run finished", { runId: run.id, itemCount: items.length });
+
+    return { runId: run.id, datasetId: run.defaultDatasetId, items };
+  },
+});
+```
+
+### Testing your task
+
+You can test your task by triggering it from the Trigger.dev dashboard. This payload runs [Website Content Crawler](https://apify.com/apify/website-content-crawler) on three pages:
+
+```json
+{
+  "actorId": "apify/website-content-crawler",
+  "input": {
+    "startUrls": [{ "url": "https://docs.apify.com/academy" }],
+    "maxCrawlPages": 3,
+    "crawlerType": "cheerio",
+    "proxyConfiguration": { "useApifyProxy": true }
+  }
+}
+```
+
+## Example 2: run a long Actor and resume on a webhook
+
+This task starts an Actor with an [ad-hoc webhook](https://docs.apify.com/platform/integrations/webhooks/ad-hoc-webhooks) that points at a [wait token](/wait-for-token) callback URL. The run pauses on `wait.forToken()` until the Actor finishes, and [paused runs don't count towards compute usage](/wait), however long the Actor takes.
+
+### Key features
+
+- The webhook covers all four ways an Actor run can end, so a failed, aborted or timed-out Actor resumes your run with an error instead of leaving it waiting until the token times out.
+- `payloadTemplate` sends only `eventType` and `resource` (the Actor run). Whatever Apify posts to `token.url` becomes the token's result, so the `ApifyWebhookPayload` type matches this template, not Apify's default webhook payload.
+- The token `timeout` is longer than the Actor's `timeout`, so the Actor always finishes, and the webhook fires, before the token expires.
+- Webhook event types use underscores (`ACTOR.RUN.TIMED_OUT`), but a run's `status` uses a hyphen (`TIMED-OUT`). Compare `eventType` with event types and `status` with statuses.
+
+### Task code
+
+```ts trigger/apify-long-actor-run.ts
+import { AbortTaskRunError, logger, task, wait } from "@trigger.dev/sdk";
+import { apify } from "./apify";
+
+// Shape produced by the payloadTemplate below, not Apify's default webhook payload
+type ApifyWebhookPayload = {
+  eventType: string;
+  resource: { id: string; status: string; defaultDatasetId: string };
+};
+
+export const apifyLongActorRun = task({
+  id: "apify-long-actor-run",
+  retry: { maxAttempts: 3 },
+  run: async (payload: { actorId: string; input: Record<string, unknown> }) => {
+    const token = await wait.createToken({ timeout: "1h" });
+
+    const run = await apify.actor(payload.actorId).start(payload.input, {
+      timeout: 3000, // 50 minutes, shorter than the token timeout
+      maxItems: 1000,
+      webhooks: [
+        {
+          eventTypes: [
+            "ACTOR.RUN.SUCCEEDED",
+            "ACTOR.RUN.FAILED",
+            "ACTOR.RUN.ABORTED",
+            "ACTOR.RUN.TIMED_OUT",
+          ],
+          requestUrl: token.url,
+          payloadTemplate: `{ "eventType": {{eventType}}, "resource": {{resource}} }`,
+        },
+      ],
+    });
+
+    logger.info("Actor run started, waiting for webhook", { runId: run.id });
+
+    const result = await wait.forToken<ApifyWebhookPayload>(token).unwrap();
+
+    if (result.eventType === "ACTOR.RUN.ABORTED") {
+      // Someone stopped the Actor on purpose, so don't start it again
+      throw new AbortTaskRunError(`Actor run ${result.resource.id} was aborted`);
+    }
+
+    if (result.eventType !== "ACTOR.RUN.SUCCEEDED") {
+      throw new Error(`Actor run ${result.resource.id} finished as ${result.eventType}`);
+    }
+
+    const { items } = await apify.dataset(result.resource.defaultDatasetId).listItems();
+
+    logger.info("Actor run finished", { runId: result.resource.id, itemCount: items.length });
+
+    return { runId: result.resource.id, datasetId: result.resource.defaultDatasetId, items };
+  },
+});
+```
+
+### Testing your task
+
+Trigger the task from the Trigger.dev dashboard with the same payload as Example 1. The run trace shows `wait.forToken()` covering the time the Actor was running, and the run resumes once Apify sends the webhook.
+
+<Note>
+  Cancelling a Trigger.dev run doesn't stop the Actor run it started. Abort the Actor run in
+  [Apify Console](https://console.apify.com?utm_source=trigger.dev&utm_medium=integrations) or with `apify.run(runId).abort()`.
+</Note>
+
+<Note>
+  These examples aren't retry-safe: retries always start a new Actor run. In production, store the Actor run ID and resume that run on retry rather than starting over.
+</Note>
+
+<Note>
+  [Task outputs](/limits#task-payloads-and-outputs) have a size limit. Both examples return every dataset item, so a large crawl can fail the task even when the Actor succeeds. For big datasets, return only `datasetId` and read the items with `apify.dataset(datasetId).listItems({ offset, limit })` in the next step.
+</Note>
+
+## Learn more
+
+- [Wait for token](/wait-for-token)
+- [Apify ad-hoc webhooks](https://docs.apify.com/platform/integrations/webhooks/ad-hoc-webhooks)
+- [Apify JavaScript client](https://docs.apify.com/api/client/js/)
+- [Apify Store](https://apify.com/store)
