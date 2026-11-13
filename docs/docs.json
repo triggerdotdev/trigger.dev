@@ -173,8 +173,8 @@
               "webhooks/overview",
               "webhooks/quick-start",
               "webhooks/how-it-works",
-              "webhooks/verification",
               "webhooks/connect",
+              "webhooks/signing-secrets",
               {
                 "group": "Providers",
                 "pages": [
@@ -228,6 +228,7 @@
                 ]
               },
               "webhooks/custom-providers",
+              "webhooks/verification",
               "webhooks/deliveries",
               "webhooks/filters",
               "webhooks/waiters",

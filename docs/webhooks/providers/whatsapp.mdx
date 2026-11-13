@@ -33,7 +33,13 @@ export const whatsappEvents = webhook({
 ## Set up WhatsApp
 
 1. Start `trigger dev` or deploy, then copy the endpoint's **Webhook URL** from the **Webhooks** page.
-2. In the Meta app dashboard, set the WhatsApp webhook's callback URL to the webhook URL. Meta verifies the URL with a GET request that needs a verify token; see [Verify a WhatsApp endpoint URL](/webhooks/connect#verify-a-whatsapp-endpoint-url).
+2. In the Meta app dashboard, set the WhatsApp webhook's callback URL to the webhook URL. Meta checks the URL with a GET request that needs a verify token; see [Verify the callback URL](#verify-the-callback-url).
 3. Copy the app's **App Secret**, then choose **Set signing secret** on the Trigger.dev endpoint. Meta signs event deliveries with it.
 4. Subscribe the webhook to the fields your subscribers need, such as `messages`.
 5. Send a test event from WhatsApp, or use the endpoint's **Test** tab, and check the endpoint's **Deliveries** tab. See [Verify the connection](/webhooks/connect#verify-the-connection) if nothing arrives.
+
+## Verify the callback URL
+
+`webhooks.whatsapp()` also needs a verify token for Meta's URL check. On the endpoint, choose **Generate verify token** and paste the value into Meta's **Verify Token** field. Set Meta's App Secret as the signing secret, then validate the URL in Meta's dashboard.
+
+The verify token answers the URL check. The signing secret verifies event deliveries. See [Verification](/webhooks/verification#endpoint-validation) for the response behavior.

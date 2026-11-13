@@ -94,7 +94,7 @@ Some sources also define a response for the provider's endpoint-validation reque
 
 Slack's `url_verification` challenge is handled the same way by `@trigger.dev/slack`.
 
-`whatsapp()` answers Meta's GET verification request when `hub.mode` is `subscribe` and `hub.verify_token` matches the endpoint's verify token. It returns `hub.challenge` as text. The verify token is separate from the App Secret used to verify event signatures; see [Verify a WhatsApp endpoint URL](/webhooks/connect#verify-a-whatsapp-endpoint-url). Endpoints without GET verification return `405` to GET requests.
+`whatsapp()` answers Meta's GET verification request when `hub.mode` is `subscribe` and `hub.verify_token` matches the endpoint's verify token. It returns `hub.challenge` as text. The verify token is separate from the App Secret used to verify event signatures; see [Verify a WhatsApp endpoint URL](/webhooks/providers/whatsapp#verify-the-callback-url). Endpoints without GET verification return `405` to GET requests.
 
 ## Typing the event
 
