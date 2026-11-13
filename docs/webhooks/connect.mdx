@@ -4,7 +4,7 @@ description: "Register an endpoint's URL and signing credential with the provide
 sidebarTitle: "Connect a provider"
 ---
 
-Connect a provider to an [endpoint](/webhooks/overview) by registering the endpoint's URL with the provider and giving Trigger.dev the credential that verifies its requests. Each [provider page](/webhooks/providers) shows where that provider keeps its webhook settings; for a provider that isn't listed, define a [custom source](/webhooks/custom-providers) first.
+Connect a provider to an [endpoint](/webhooks/overview) by registering the endpoint's URL with the provider and giving Trigger.dev the credential that verifies its requests. Each [provider page](/webhooks/providers) shows where that provider keeps its webhook settings; for a provider that isn't listed, define a [custom provider](/webhooks/custom-providers) first.
 
 Deploy the project or start `trigger dev` first. Once the CLI finds the endpoint, it appears on the environment's **Webhooks** page. The **Signing secret** column shows **Ready** when the endpoint can verify deliveries and **Needs secret** until then. Every delivery is rejected while an endpoint needs its secret.
 
@@ -15,13 +15,10 @@ Deploy the project or start `trigger dev` first. Once the CLI finds the endpoint
     Open the endpoint from the Webhooks page and copy the **Webhook URL**.
   </Step>
   <Step title="Configure the provider">
-    Add the URL as the webhook destination in your provider's dashboard and select the events your subscribers need. The provider's setup determines where the verification credential comes from:
-
-    | Provider setup | Action |
-    | --- | --- |
-    | The provider supplies a signing secret, as Stripe and Svix do | Copy the secret from the provider, then choose **Set signing secret** on the endpoint. |
-    | The provider accepts a secret you choose, as GitHub does | Choose **Generate secret** on the endpoint, then paste the value into the provider's webhook configuration. |
-    | The provider uses an asymmetric signature, as Discord does | Copy the application's public key from the provider and choose **Set public key** on the endpoint. |
+    Add the URL as the webhook destination in your provider's dashboard and select the events your subscribers need.
+  </Step>
+  <Step title="Set the credential">
+    Choose **Set signing secret** and paste the secret the provider issues, choose **Generate secret** and paste the value into the provider, or choose **Set public key** for a provider that signs with a key pair. The [provider page](/webhooks/providers) says which one it needs; see [Signing secrets](/webhooks/signing-secrets#set-the-credential).
 
     Set the credential before sending a test event or asking the provider to validate the URL.
   </Step>

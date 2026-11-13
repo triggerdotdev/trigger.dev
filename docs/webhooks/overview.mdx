@@ -57,7 +57,7 @@ Stripe gets one URL. A checkout event runs `fulfill-order`, a refund runs `recor
 | Chat frontend | a [channel connector](/webhooks/channels) such as `chat.channels.custom({ endpoint })` | Runs a turn on the conversation's session and posts the reply back. |
 | Waiting run | [`webhooks.waiter.create(endpoint, { match })`](/webhooks/waiters) | Resumes a run that is waiting for this event. |
 
-Each subscriber has its own [filter](/webhooks/filters), so one delivery can reach several subscribers and skip the rest. An endpoint can have up to 25 subscribers. An endpoint with no subscribers still gets a URL, so you can register it with the provider before writing the handlers. See [Webhook tasks](/webhooks/webhook-tasks) for what a handler receives and the options it takes.
+Each subscriber has its own [filter](/webhooks/filters), so one delivery can reach several subscribers and skip the rest. An endpoint can have up to 25 tasks, agent sessions and channels subscribed; waiting runs don't count toward that limit. An endpoint with no subscribers still gets a URL, so you can register it with the provider before writing the handlers. See [Webhook tasks](/webhooks/webhook-tasks) for what a handler receives and the options it takes.
 
 <CardGroup cols={3}>
   <Card title="Quick start" icon="rocket" href="/webhooks/quick-start">

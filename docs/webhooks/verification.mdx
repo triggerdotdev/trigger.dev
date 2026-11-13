@@ -134,4 +134,4 @@ For `webhooks.custom<T>()`, pass your own event type as `T`. The endpoint's even
 
 Requests must pass verification before they reach any subscriber. Sources can check a signature or credential, enforce a timestamp tolerance, and derive an idempotency key for [deduplication](/webhooks/deliveries#deduplication). Verification failures return the source's rejected HTTP status (`400` by default).
 
-To verify a provider that isn't built in, choose a scheme in a [custom source](/webhooks/custom-providers#verification-schemes).
+To verify a provider that isn't built in, choose a scheme for a [custom provider](/webhooks/custom-providers#verification-schemes).

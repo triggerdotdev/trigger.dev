@@ -36,13 +36,7 @@ Each environment gets its own URL for each endpoint. Your dev environment has it
 
 ## One endpoint, many subscribers
 
-A provider account usually needs one URL, so every subscriber shares the endpoint. One delivery can reach up to 25 subscribers:
-
-| Subscriber | What a matching delivery does |
-| --- | --- |
-| Task, declared with `webhook()` | Starts a run with the event as its payload. |
-| [Waiter](/webhooks/waiters) | Resumes a run that paused until this event arrived. |
-| Agent session, via [session routing](/webhooks/session-routing) or a [channel](/webhooks/channels) | Delivers the event to the right conversation, so the agent acts with its full history. |
+A provider account usually needs one URL, so every subscriber shares the endpoint. One delivery can start task runs, resume [waiting runs](/webhooks/waiters) and reach agent sessions at the same time. See [What can subscribe](/webhooks/overview#what-can-subscribe).
 
 A delivery that no filter matches is recorded as `FILTERED` and starts no run, so it costs nothing. See [Pricing and limits](/webhooks/pricing-and-limits).
 
@@ -55,7 +49,7 @@ Duplicates are caught in two places:
 
 A waiter completes once, and an agent session skips an event it has already received. A resend after the retry window, such as resending an event from the provider's dashboard a week later, starts a new run, so keep side effects in your handler idempotent.
 
-If a provider sends no event ID, the key comes from the body, timestamp and signature. See [Deduplication](/webhooks/deliveries#deduplication).
+See [Deduplication](/webhooks/deliveries#deduplication) for the windows and the key each provider uses.
 
 ## Every delivery is recorded
 

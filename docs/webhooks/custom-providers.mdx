@@ -4,9 +4,9 @@ sidebarTitle: "Custom providers"
 description: "Verify webhooks from a provider that isn't built in by passing your own HMAC, shared-secret, URL-secret or public-key configuration to webhooks.custom()."
 ---
 
-**`webhooks.custom()` verifies any provider that signs or authenticates its webhooks with one of four supported schemes.** Use it when the provider isn't in the [built-in providers](/webhooks/providers). Subscribers, filters, deliveries and the [setup prompt](/webhooks/connect#set-it-up-with-an-ai-agent) work the same as with a built-in source.
+**`webhooks.custom()` verifies any provider that signs or authenticates its webhooks with one of four supported schemes.** Use it when the provider isn't in the [built-in providers](/webhooks/providers). Subscribers, filters, deliveries and the [setup prompt](/webhooks/connect#set-it-up-with-an-ai-agent) work the same as with a built-in provider.
 
-## Define a custom source
+## Define a custom provider
 
 Pass the verification configuration to `webhooks.custom()`. This source verifies an HMAC-SHA256 signature over the raw body in `x-webhook-signature` and uses the event's `id` for deduplication:
 
@@ -70,7 +70,7 @@ export const commands = webhook({
 
 ## Verification schemes
 
-Custom sources support these schemes:
+`webhooks.custom()` supports these schemes:
 
 | Scheme | Verification |
 | --- | --- |

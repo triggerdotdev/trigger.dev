@@ -1,7 +1,7 @@
 ---
 title: "Webhook providers"
 sidebarTitle: "All providers"
-description: "Every built-in webhook source, with its SDK function, the credential it verifies with, and a setup page for each provider."
+description: "Every built-in webhook provider, with its SDK function, the credential it verifies with, and a setup page for each provider."
 ---
 
 **Each built-in provider has a source function that verifies its signature scheme, so you declare the endpoint with one function call and set one credential.** Every provider below has a page with the source, where to register the URL, and how to set the credential.
@@ -55,4 +55,4 @@ description: "Every built-in webhook source, with its SDK function, the credenti
 | [Zendesk](/webhooks/providers/zendesk) | `webhooks.zendesk()` | You generate it, or the provider issues it |
 | [Zoom](/webhooks/providers/zoom) | `webhooks.zoom()` | Issued by the provider |
 
-For a provider that isn't listed, define a [custom source](/webhooks/custom-providers). For providers that sign with Svix or Standard Webhooks, `webhooks.svix()` and `webhooks.standardWebhooks()` also work; see [Sources and verification](/webhooks/verification#svix-and-standard-webhooks).
+For a provider that isn't listed, define a [custom provider](/webhooks/custom-providers). For providers that sign with Svix or Standard Webhooks, `webhooks.svix()` and `webhooks.standardWebhooks()` also work; see [Verification](/webhooks/verification#svix-and-standard-webhooks).
