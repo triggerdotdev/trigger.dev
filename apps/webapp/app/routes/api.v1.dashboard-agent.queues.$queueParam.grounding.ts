@@ -23,7 +23,7 @@ export const loader = createLoaderApiRoute(
     findResource: async () => 1, // dummy — the queue name is resolved in the reader
     authorization: {
       action: "read",
-      resource: () => ({ type: "query", id: "queue_grounding" }),
+      resource: () => ({ type: "queues" }),
     },
   },
   async ({ params, searchParams, authentication }) => {

@@ -35,6 +35,13 @@ export function alertActionDoneText(action: AlertChatAction, name: string): stri
     : `${name} is stopped.`;
 }
 
+function literalMarkdown(text: string): string {
+  const flat = text.replace(/\s+/g, " ");
+  const longestRun = Math.max(0, ...(flat.match(/`+/g) ?? []).map((run) => run.length));
+  const fence = "`".repeat(longestRun + 1);
+  return `${fence} ${flat} ${fence}`;
+}
+
 export type AlertActionMessage = {
   id: string;
   role: "assistant";
@@ -49,7 +56,7 @@ export function alertActionMessage(
   return {
     id: `${MESSAGE_ID_PREFIX}${toolCallId}`,
     role: "assistant",
-    parts: [{ type: "text", text: alertActionDoneText(action, name) }],
+    parts: [{ type: "text", text: alertActionDoneText(action, literalMarkdown(name)) }],
   };
 }
 

@@ -39,10 +39,13 @@ const MEMBER_ORG = "org_member";
 const OTHER_ORG = "org_other";
 const ENV_IN_MEMBER_ORG = "env_aaaa";
 
-function mintToken(opts: { environmentId?: string; client?: string } = {}) {
+function mintToken(
+  opts: { environmentId?: string; client?: string; organizationId?: string } = {}
+) {
   return signUserActorToken(SESSION_SECRET, {
     userId: USER_ID,
     client: opts.client ?? "dashboard-agent",
+    organizationId: opts.organizationId ?? MEMBER_ORG,
     ...(opts.environmentId ? { environmentId: opts.environmentId } : {}),
     cap: ["read:all"],
   });
@@ -98,8 +101,17 @@ describe("dashboard agent eval policy", () => {
     expect(response.status).toBe(400);
   });
 
-  it("answers no for an organization the token's user isn't a member of", async () => {
+  // Catches: the route answering for an organization named in the query instead of the token's.
+  it("403s an organization other than the token's", async () => {
     const token = await mintToken({ environmentId: ENV_IN_MEMBER_ORG });
+
+    const response = await call(token, OTHER_ORG);
+
+    expect(response.status).toBe(403);
+  });
+
+  it("answers no for an organization the token's user isn't a member of", async () => {
+    const token = await mintToken({ organizationId: OTHER_ORG });
 
     const response = await call(token, OTHER_ORG);
 

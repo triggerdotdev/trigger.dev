@@ -131,7 +131,7 @@ describe("resources.alerts.action", () => {
         ...viewer,
       })) as Array<{ id: string; parts: Array<{ text?: string }> }>;
       expect(messages.map((m) => [m.id, m.parts[0]?.text])).toEqual([
-        ["alert_action:call_1", "Queue depth is resolved. It re-arms and keeps monitoring."],
+        ["alert_action:call_1", "` Queue depth ` is resolved. It re-arms and keeps monitoring."],
       ]);
     } finally {
       await agentDb.close();
@@ -161,6 +161,49 @@ describe("resources.alerts.action", () => {
     );
     expect(resp.status).toBe(403);
     expect(await attention(prisma, other.alert.id)).toBe("needs_attention");
+  });
+
+  // Catches: hasAccessToEnvironment letting a member act in a colleague's dev environment.
+  test("returns 403 for a colleague's dev environment", async ({ prisma }) => {
+    const seeded = await seed(prisma);
+    const slug = seeded.organization.slug;
+    const colleague = await prisma.user.create({
+      data: { email: `c_${slug}@example.com`, authenticationMethod: "MAGIC_LINK" },
+    });
+    const member = await prisma.orgMember.create({
+      data: { organizationId: seeded.organization.id, userId: colleague.id, role: "ADMIN" },
+    });
+    const dev = await prisma.runtimeEnvironment.create({
+      data: {
+        slug: "dev",
+        type: "DEVELOPMENT",
+        apiKey: `tr_dev_${slug}`,
+        pkApiKey: `pk_dev_${slug}`,
+        shortcode: `d${slug.slice(0, 3)}`,
+        projectId: seeded.project.id,
+        organizationId: seeded.organization.id,
+        orgMemberId: member.id,
+      },
+    });
+    const { createAlert } = await import("~/v3/services/alerts/storage/alertStore.server");
+    const alert = await createAlert(prisma, {
+      organizationId: seeded.organization.id,
+      projectId: seeded.project.id,
+      environmentId: dev.id,
+      capabilityKey: "queue.depth",
+      name: "Dev depth",
+      params: { scope: { type: "all" } },
+      condition: { kind: "threshold", operator: ">", value: 1, windowSec: 300 },
+      createdBy: colleague.id,
+      notifiers: [{ type: "channel", channelId: "ch_unused" }],
+      attention: "needs_attention",
+    });
+    const resp = await callAction(
+      seeded.user.id,
+      body(seeded, { environmentId: dev.id, alertId: alert.id })
+    );
+    expect(resp.status).toBe(403);
+    expect(await attention(prisma, alert.id)).toBe("needs_attention");
   });
 
   // Catches: a missing ownsChat check writing into someone else's transcript.

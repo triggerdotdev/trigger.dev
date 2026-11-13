@@ -612,7 +612,7 @@ export function v3RunPath(
   searchParams?: URLSearchParams
 ) {
   const query = searchParams ? `?${searchParams.toString()}` : "";
-  return `${v3RunsPath(organization, project, environment)}/${run.friendlyId}${query}`;
+  return `${v3RunsPath(organization, project, environment)}/${encodeURIComponent(run.friendlyId)}${query}`;
 }
 
 export function v3RunRedirectPath(
@@ -921,7 +921,7 @@ export function v3ErrorPath(
   environment: EnvironmentForPath,
   error: { fingerprint: string }
 ) {
-  return `${v3ErrorsPath(organization, project, environment)}/${error.fingerprint}`;
+  return `${v3ErrorsPath(organization, project, environment)}/${encodeURIComponent(error.fingerprint)}`;
 }
 
 export function v3DeploymentsPath(
@@ -949,7 +949,7 @@ export function v3DeploymentVersionPath(
   environment: EnvironmentForPath,
   version: string
 ) {
-  return `${v3DeploymentsPath(organization, project, environment)}?version=${version}`;
+  return `${v3DeploymentsPath(organization, project, environment)}?version=${encodeURIComponent(version)}`;
 }
 
 export function branchesPath(

@@ -42,6 +42,15 @@ export async function createAlertAndSchedule(
   deps?: AlertLifecycleDeps
 ): Promise<Alert> {
   const alert = await createAlert(db, input);
+  await scheduleCreatedAlert(db, alert, deps);
+  return alert;
+}
+
+export async function scheduleCreatedAlert(
+  db: PrismaClientOrTransaction,
+  alert: Alert,
+  deps?: AlertLifecycleDeps
+): Promise<void> {
   try {
     await schedule(alert.id, deps ?? (await defaultDeps()));
   } catch (error) {
@@ -58,7 +67,6 @@ export async function createAlertAndSchedule(
     if (!kept) throw error;
     logger.warn("alerts.lifecycle.rollback_skipped", { alertId: alert.id });
   }
-  return alert;
 }
 
 export async function stopAlertAndUnschedule(

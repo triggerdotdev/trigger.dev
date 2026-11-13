@@ -30,6 +30,9 @@ export async function loader({ request }: LoaderFunctionArgs) {
   if (!parsed.success) {
     return json({ error: "organizationId is required" }, { status: 400 });
   }
+  if (parsed.data.organizationId !== authentication.userActor.organizationId) {
+    return json({ error: "Not allowed", code: "forbidden_organization" }, { status: 403 });
+  }
 
   const turnEvalsEnabled = await orgAllowsDashboardAgentTurnEvals({
     userId: authentication.userActor.userId,

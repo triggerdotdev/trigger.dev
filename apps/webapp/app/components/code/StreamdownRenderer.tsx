@@ -7,6 +7,16 @@ import { createStaleAssetRecovery } from "~/components/StaleAssetRecovery";
 import type * as ShikiThemeModule from "./shikiTheme";
 
 const SAFE_LINK_SCHEMES = new Set(["http:", "https:", "mailto:"]);
+const DOT_SEGMENT = /^(\.|%2e){1,2}$/i;
+
+function isDashboardLink(path: string): boolean {
+  if (path.startsWith("#")) return true;
+  if (!path.startsWith("/orgs/")) return false;
+  return !path
+    .split(/[?#]/)[0]
+    .split(/[/\\]/)
+    .some((segment) => DOT_SEGMENT.test(segment));
+}
 
 /**
  * URL policy for model-authored markdown. A remote image is fetched the moment it
@@ -32,10 +42,10 @@ export const restrictModelUrls: UrlTransform = (url, key, node) => {
     return undefined;
   }
 
-  // Links: relative and protocol-relative are fine; otherwise require a safe scheme.
-  if (normalized.startsWith("//")) return url;
+  // Links: relative only into the dashboard; otherwise require a safe scheme.
+  if (normalized.startsWith("//")) return undefined;
   const schemeMatch = /^([a-z][a-z0-9+.-]*):/i.exec(normalized);
-  if (!schemeMatch) return url;
+  if (!schemeMatch) return isDashboardLink(normalized) ? url : undefined;
   const scheme = `${schemeMatch[1].toLowerCase()}:`;
   if (scheme === "trigger:") return isTriggerUri(normalized) ? url : undefined;
   return SAFE_LINK_SCHEMES.has(scheme) ? url : undefined;

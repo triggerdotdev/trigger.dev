@@ -57,13 +57,23 @@ describe("restrictModelUrls (link href)", () => {
     );
     expect(restrictModelUrls("http://example.com", "href", link)).toBe("http://example.com");
     expect(restrictModelUrls("mailto:hi@trigger.dev", "href", link)).toBe("mailto:hi@trigger.dev");
-    expect(restrictModelUrls("/runs/123", "href", link)).toBe("/runs/123");
+    expect(restrictModelUrls("/orgs/acme/projects/p/runs/123", "href", link)).toBe(
+      "/orgs/acme/projects/p/runs/123"
+    );
   });
 
   it("drops unsafe link schemes", () => {
     expect(restrictModelUrls("javascript:alert(1)", "href", link)).toBeUndefined();
     expect(restrictModelUrls("data:text/html,<script>", "href", link)).toBeUndefined();
   });
+
+  // Catches: model links reaching same-origin routes like /logout or another host via //host.
+  it.each(["/logout", "//evil.example/x", "/orgs/a/../../logout", "/orgs/%2e%2e/logout", "x"])(
+    "drops a relative link outside the dashboard: %s",
+    (href) => {
+      expect(restrictModelUrls(href, "href", link)).toBeUndefined();
+    }
+  );
 
   it("keeps a valid trigger:// citation, but strips a malformed one", () => {
     expect(restrictModelUrls("trigger://proj_abc/env_123/run/run_456", "href", link)).toBe(

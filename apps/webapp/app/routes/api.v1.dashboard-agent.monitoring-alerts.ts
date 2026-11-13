@@ -1,6 +1,11 @@
 import { json, type ActionFunctionArgs, type LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { z } from "zod";
-import { getAlert, listAlerts, type Alert } from "~/v3/services/alerts/storage/alertStore.server";
+import {
+  createAlert,
+  getAlert,
+  listAlerts,
+  type Alert,
+} from "~/v3/services/alerts/storage/alertStore.server";
 import {
   alertParamsSchema,
   behaviorSchema,
@@ -15,16 +20,16 @@ import {
   type AgentAlertContextError,
 } from "~/services/dashboardAgentAlertContext.server";
 import { authorizeAgentEnvironmentById } from "~/services/dashboardAgentChatContext.server";
-import { prisma } from "~/db.server";
+import { $transaction, prisma } from "~/db.server";
 import { logger } from "~/services/logger.server";
 import {
   authenticateDashboardAgent,
   authorizeAlerts,
   gateMonitoringAlerts,
 } from "~/services/dashboardAgentMonitoringAlerts.server";
-import { createAlertAndSchedule } from "~/v3/services/alerts/alertLifecycle.server";
+import { scheduleCreatedAlert } from "~/v3/services/alerts/alertLifecycle.server";
 import {
-  createAlertFromDraft,
+  buildAlertFromDraft,
   InvalidQueryAlertError,
   QUERY_DOMAIN_ERRORS,
   type AlertDraftScope,
@@ -73,17 +78,22 @@ const looseNotifierRef = z.discriminatedUnion("type", [
   z.object({ type: z.literal("chat") }),
 ]);
 
+const MAX_ACTIVE_ALERTS_PER_PROJECT = 200;
+const MAX_SCOPE_VALUE_LENGTH = 256;
+
 const CreateBodySchema = z
   .object({
     chatId: z.string().min(1),
     capabilityKey: z.string().min(1),
     environment: z.enum(["dev", "staging", "prod", "preview"]).optional(),
-    name: z.string().optional(),
-    scope: alertParamsSchema.shape.scope.optional(),
+    name: z.string().max(120).optional(),
+    scope: alertParamsSchema.shape.scope
+      .refine((s) => Object.values(s).every((v) => v.length <= MAX_SCOPE_VALUE_LENGTH))
+      .optional(),
     windowSec: alertParamsSchema.shape.windowSec,
     condition: conditionSchema,
     behavior: behaviorSchema.optional(),
-    notifiers: z.array(looseNotifierRef).optional(),
+    notifiers: z.array(looseNotifierRef).max(20).optional(),
     query: z.string().max(8192).optional(),
     signal: z
       .object({ mode: z.enum(["threshold", "absence", "match"]), measure: z.string().optional() })
@@ -93,6 +103,26 @@ const CreateBodySchema = z
     (v) => v.capabilityKey === "custom.query" || (v.query === undefined && v.signal === undefined),
     { message: "query and signal are only valid for the custom.query capability", path: ["query"] }
   );
+
+function capReached() {
+  return json(
+    { error: `This project already has ${MAX_ACTIVE_ALERTS_PER_PROJECT} active alerts.` },
+    { status: 409 }
+  );
+}
+
+async function createWithinCap(input: Parameters<typeof createAlert>[1]): Promise<Alert | null> {
+  const alert = await $transaction(prisma, async (tx) => {
+    await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${input.projectId}))`;
+    const active = await tx.alert.count({
+      where: { projectId: input.projectId, lifecycle: "active" },
+    });
+    return active >= MAX_ACTIVE_ALERTS_PER_PROJECT ? null : createAlert(tx, input);
+  });
+  if (!alert) return null;
+  await scheduleCreatedAlert(prisma, alert);
+  return alert;
+}
 
 export async function loader({ request }: LoaderFunctionArgs) {
   const auth = await authenticateDashboardAgent(request);
@@ -303,20 +333,23 @@ export async function action({ request }: ActionFunctionArgs) {
 
   if (body.capabilityKey === "custom.query") {
     try {
-      const alert = await createAlertFromDraft(prisma, {
-        organizationId: environment.organizationId,
-        projectId: environment.project.id,
-        environmentId: environment.id,
-        capabilityKey: body.capabilityKey,
-        scope: scope as AlertDraftScope,
-        condition: body.condition,
-        expiresAt: body.behavior?.expiresAt ? new Date(body.behavior.expiresAt) : undefined,
-        notifiers,
-        name: body.name,
-        createdBy: auth.userId,
-        query: body.query,
-        querySignalChoice: body.signal,
-      });
+      const alert = await createWithinCap(
+        buildAlertFromDraft({
+          organizationId: environment.organizationId,
+          projectId: environment.project.id,
+          environmentId: environment.id,
+          capabilityKey: body.capabilityKey,
+          scope: scope as AlertDraftScope,
+          condition: body.condition,
+          expiresAt: body.behavior?.expiresAt ? new Date(body.behavior.expiresAt) : undefined,
+          notifiers,
+          name: body.name,
+          createdBy: auth.userId,
+          query: body.query,
+          querySignalChoice: body.signal,
+        })
+      );
+      if (!alert) return capReached();
       return json({
         created: true,
         alert: {
@@ -346,7 +379,7 @@ export async function action({ request }: ActionFunctionArgs) {
   }
 
   try {
-    const alert = await createAlertAndSchedule(prisma, {
+    const alert = await createWithinCap({
       organizationId: environment.organizationId,
       projectId: environment.project.id,
       environmentId: environment.id,
@@ -358,6 +391,7 @@ export async function action({ request }: ActionFunctionArgs) {
       name: body.name,
       createdBy: auth.userId,
     });
+    if (!alert) return capReached();
 
     return json({
       created: true,

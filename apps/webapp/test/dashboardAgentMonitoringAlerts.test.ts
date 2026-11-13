@@ -681,6 +681,97 @@ describe("dashboard-agent monitoring alerts route", () => {
     );
   });
 
+  // Catches: the agent create path accepting unbounded names or alerts past the project cap.
+  postgresTest(
+    "create rejects an oversized name and a project at the active alert cap",
+    async ({ prisma, postgresContainer }) => {
+      await boot(prisma, postgresContainer.getConnectionUri());
+      const env = makeEnv("org_1", "proj_1", "env_prod", "slugcap", "proj_refcap");
+      ctx.uatClaims = { userId: "user_1", environmentId: "env_prod", client: "dashboard-agent" };
+      ctx.alertContext = { ok: true, environment: env };
+      const create = (name: string) =>
+        action({
+          request: jsonRequest("https://test/api/v1/dashboard-agent/monitoring-alerts", {
+            chatId: "chat_1",
+            capabilityKey: "queue.depth",
+            name,
+            condition: { kind: "threshold", operator: ">", value: 100, windowSec: 300 },
+            notifiers: CHANNEL,
+          }),
+          params: {},
+          context: {},
+        } as any);
+
+      expect((await create("x".repeat(121))).status).toBe(400);
+
+      for (let i = 0; i < 200; i++) {
+        await createAlert(prisma, {
+          organizationId: "org_1",
+          projectId: "proj_1",
+          environmentId: "env_prod",
+          capabilityKey: "queue.depth",
+          name: `a${i}`,
+          params: { scope: { type: "all" } },
+          condition: { kind: "threshold", operator: ">", value: 1, windowSec: 300 },
+          createdBy: "user_1",
+          notifiers: [{ type: "channel", channelId: "chan_1" }],
+        });
+      }
+      expect((await create("one too many")).status).toBe(409);
+    }
+  );
+
+  // Catches: a count-then-create cap that a burst of concurrent creates slips past.
+  postgresTest(
+    "concurrent creates at the cap admit only one",
+    async ({ prisma, postgresContainer }) => {
+      await boot(prisma, postgresContainer.getConnectionUri());
+      const env = makeEnv("org_1", "proj_1", "env_prod", "slugrace", "proj_refrace");
+      ctx.uatClaims = { userId: "user_1", environmentId: "env_prod", client: "dashboard-agent" };
+      ctx.alertContext = { ok: true, environment: env };
+      for (let i = 0; i < 199; i++) {
+        await createAlert(prisma, {
+          organizationId: "org_1",
+          projectId: "proj_1",
+          environmentId: "env_prod",
+          capabilityKey: "queue.depth",
+          name: `a${i}`,
+          params: { scope: { type: "all" } },
+          condition: { kind: "threshold", operator: ">", value: 1, windowSec: 300 },
+          createdBy: "user_1",
+          notifiers: [{ type: "channel", channelId: "chan_1" }],
+        });
+      }
+      const create = () =>
+        action({
+          request: jsonRequest("https://test/api/v1/dashboard-agent/monitoring-alerts", {
+            chatId: "chat_1",
+            capabilityKey: "queue.depth",
+            condition: { kind: "threshold", operator: ">", value: 100, windowSec: 300 },
+            notifiers: CHANNEL,
+          }),
+          params: {},
+          context: {},
+        } as any);
+
+      const statuses = (await Promise.all(Array.from({ length: 5 }, create))).map((r) => r.status);
+      expect(statuses.sort()).toEqual([200, 409, 409, 409, 409]);
+
+      // A create waits on the project's lock, so admission can't interleave.
+      let settled = false;
+      let pending: Promise<Response> | undefined;
+      await prisma.$transaction(async (tx) => {
+        await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${"proj_1"}))`;
+        pending = create().finally(() => {
+          settled = true;
+        });
+        await new Promise((resolve) => setTimeout(resolve, 1500));
+        expect(settled).toBe(false);
+      });
+      expect((await pending!).status).toBe(409);
+    }
+  );
+
   postgresTest(
     "create stores params that satisfy alertParamsSchema",
     async ({ prisma, postgresContainer, engine }) => {
