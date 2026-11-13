@@ -27,8 +27,7 @@
               "manual-setup",
               "video-walkthrough",
               "how-it-works",
-              "limits",
-              "migrating-from-v3"
+              "limits"
             ]
           },
           {
@@ -600,7 +599,7 @@
           },
           {
             "group": "Migration guides",
-            "pages": ["migration-mergent", "migration-n8n"]
+            "pages": ["migrating-from-v3", "migration-mergent", "migration-n8n"]
           },
           {
             "group": "Use cases",
