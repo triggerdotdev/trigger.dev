@@ -24,6 +24,11 @@ import { validateJwtExpiration } from "~/services/jwtExpiration.server";
 import { logger } from "~/services/logger.server";
 import { authorizePatEnvironmentAccess } from "~/services/environmentVariableApiAccess.server";
 import {
+  isDashboardAgentUserActor,
+  readScopeType,
+  userActorReadableScopes,
+} from "~/services/userActorEnvironment.server";
+import {
   publicTokenSubject,
   sourcePersonalAccessTokens,
 } from "~/services/publicTokenSubject.server";
@@ -117,16 +122,21 @@ export async function action({ request, params }: ActionFunctionArgs) {
     // This mints a JWT signed with the environment's secret key. For a PAT
     // (a user), gate it on env-tier read:apiKeys so a restricted role can't
     // obtain deployed-environment credentials (and therefore can't deploy).
-    const denied = await authorizePatEnvironmentAccess({
-      request,
-      authType: authenticationResult.type,
-      organizationId: runtimeEnv.organizationId,
-      projectId: runtimeEnv.project.id,
-      envType: runtimeEnv.type,
-      resource: "apiKeys",
-      action: "read",
-    });
-    if (denied) return denied;
+    const authorizeApiKeyRead = () =>
+      authorizePatEnvironmentAccess({
+        request,
+        authType: authenticationResult.type,
+        organizationId: runtimeEnv.organizationId,
+        projectId: runtimeEnv.project.id,
+        envType: runtimeEnv.type,
+        resource: "apiKeys",
+        action: "read",
+      });
+    const dashboardAgent = isDashboardAgentUserActor(userActor);
+    if (!dashboardAgent) {
+      const denied = await authorizeApiKeyRead();
+      if (denied) return denied;
+    }
 
     const parsedBody = RequestBodySchema.safeParse(await request.json());
 
@@ -157,6 +167,24 @@ export async function action({ request, params }: ActionFunctionArgs) {
           : ceiling;
     } else {
       scopes = requestedScopes;
+    }
+
+    if (dashboardAgent) {
+      const readOnly =
+        !!requestedScopes?.length && requestedScopes.every((scope) => readScopeType(scope));
+      if (readOnly) {
+        const readable = await userActorReadableScopes(
+          request,
+          runtimeEnv,
+          scopes ?? [],
+          userActor!
+        );
+        if (readable instanceof Response) return readable;
+        scopes = readable;
+      } else {
+        const denied = await authorizeApiKeyRead();
+        if (denied) return denied;
+      }
     }
 
     // Attribution: stamp the acting user on the minted env JWT. A UAT carries

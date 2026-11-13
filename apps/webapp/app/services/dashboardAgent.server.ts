@@ -26,10 +26,8 @@ export const dashboardAgentWakeFeedCounter = singleton(
     })
 );
 
-// Read-only cap on the agent's delegated user-actor token. `read:apiKeys` is
-// what lets it exchange the token for an env JWT (the gate on the exchange
-// route); the rest scope the actual reads. No write/admin scopes, so even a
-// leaked token can't mutate anything.
+// Read-only cap on the agent's delegated user-actor token. No write/admin
+// scopes, so even a leaked token can't mutate anything.
 export const DASHBOARD_AGENT_UAT_CAP = [
   "read:apiKeys",
   "read:runs",
