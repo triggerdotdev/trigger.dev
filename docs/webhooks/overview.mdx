@@ -86,58 +86,14 @@ The limit covers every delivery the task handles. To process each customer's eve
 
 `webhooks.endpoint.define` also takes a `description` and `metadata`. The metadata is passed to every subscriber as `endpoint.metadata`. The endpoint `id` can't start with `wh_`, which is reserved for the ids Trigger.dev generates.
 
-## How it works
-
-The CLI finds your endpoints and subscribers during `trigger dev` and deployment, and each environment gets one endpoint per declared id. The endpoint holds the URL and the credential used to verify requests.
-
-A request must pass verification before anything else happens. Provider handshakes are answered directly and create no delivery. A verified request is checked for duplicates, recorded, and then routed: each subscriber's filter is checked, matching subscribers run, and waiting runs whose match fits the event are resumed. The delivery records a result per subscriber.
-
-## Pricing and limits
-
-Webhooks have no separate charge on Trigger.dev Cloud. Receiving, verifying, filtering and recording deliveries is included in every plan. The runs a delivery starts or resumes are billed like any other run: a per-run invocation cost plus compute time. See [pricing](https://trigger.dev/pricing).
-
-A delivery that no subscriber's filter matches starts no run for any subscriber, so it costs nothing. A run already waiting for that webhook still resumes. A run [waiting](/webhooks/waiters) for a webhook is suspended, so it uses no compute until the webhook arrives.
-
-Each plan sets limits on the ingest rate, waiting runs, processing concurrency and how long deliveries are kept. See [Limits](/limits#webhook-ingest-rate-limits).
-
-Webhooks are open source, so they also work self-hosted. See [Self-hosting webhooks](/self-hosting/env/webapp#webhooks) to turn them on.
-
-## Connect it
-
-Every endpoint can produce a setup prompt for an AI coding agent. It holds the URL, the events your subscribers filter on, and the steps for registering the endpoint and its signing secret with the provider. Copy it from the endpoints list or the endpoint's page, or read it with the MCP server's `get_webhook_endpoint_details` tool. See [Connect a provider](/webhooks/connect).
-
-<CardGroup cols={2}>
+<CardGroup cols={3}>
   <Card title="Quick start" icon="rocket" href="/webhooks/quick-start">
-    Install the SDK, declare an endpoint, and receive your first event.
-  </Card>
-  <Card title="Connect a provider" icon="plug" href="/webhooks/connect">
-    Register the URL and signing secret, then send a test event.
+    Declare an endpoint and receive your first event.
   </Card>
   <Card title="Providers" icon="list" href="/webhooks/providers">
-    Set up each built-in provider source.
+    Set up Stripe, GitHub, Firecrawl and 40+ other providers.
   </Card>
-  <Card title="Custom providers" icon="code" href="/webhooks/custom-providers">
-    Verify a provider that has no built-in source.
-  </Card>
-  <Card title="Sources and verification" icon="shield-check" href="/webhooks/sources">
-    How sources verify requests and type the event.
-  </Card>
-  <Card title="Filters" icon="filter" href="/webhooks/filters">
-    Choose which events reach each subscriber.
-  </Card>
-  <Card title="Waiters" icon="hourglass" href="/webhooks/waiters">
-    Pause a run until a matching webhook arrives.
-  </Card>
-  <Card title="Deliveries and endpoints" icon="inbox" href="/webhooks/deliveries">
-    Inspect received events and where each one went.
-  </Card>
-  <Card title="Session routing" icon="arrows-to-dot" href="/webhooks/session-routing">
-    Route deliveries to a durable per-key agent session.
-  </Card>
-  <Card title="Channels" icon="comments" href="/webhooks/channels">
-    Turn a webhook into a chat frontend for an agent.
-  </Card>
-  <Card title="Human-in-the-loop" icon="user-check" href="/webhooks/human-in-the-loop">
-    Approvals and interactive controls over a channel.
+  <Card title="How it works" icon="diagram-project" href="/webhooks/how-it-works">
+    What happens to a request, from verification to runs.
   </Card>
 </CardGroup>

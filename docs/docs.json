@@ -172,6 +172,7 @@
             "pages": [
               "webhooks/overview",
               "webhooks/quick-start",
+              "webhooks/how-it-works",
               "webhooks/sources",
               "webhooks/connect",
               {
@@ -235,7 +236,8 @@
               "webhooks/slack",
               "webhooks/linear",
               "webhooks/human-in-the-loop",
-              "webhooks/own-handler"
+              "webhooks/own-handler",
+              "webhooks/pricing-and-limits"
             ]
           },
           {
