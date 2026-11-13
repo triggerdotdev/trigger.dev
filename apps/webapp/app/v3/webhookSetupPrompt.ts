@@ -120,12 +120,19 @@ export function renderWebhookSetupPrompt(
     }
   }
 
+  const registerStep = `Register the webhook URL with ${source}, following the ${source} instructions below.`;
+  // A public key exists before the webhook does, and some key-pair sources send a signed
+  // verification request as soon as the URL is saved, so store the key first.
+  const [firstStep, secondStep] = asymmetric
+    ? [`${secretStep(endpoint, asymmetric)} Do this before registering the URL.`, registerStep]
+    : [registerStep, secretStep(endpoint, asymmetric)];
+
   lines.push(
     "",
     "## Steps",
     "",
-    `1. Register the webhook URL with ${source}, following the ${source} instructions below.`,
-    `2. ${secretStep(endpoint, asymmetric)}`,
+    `1. ${firstStep}`,
+    `2. ${secondStep}`,
     `3. Call \`get_webhook_endpoint_details\` and check that \`secretSet\` is true. If ${source} can send a test event, send one and confirm it shows up on the dashboard page above.`,
     "",
     "Treat the signing secret as a credential: pass it straight to the tool or API, and never print it, log it, write it to a file or commit it.",

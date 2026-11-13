@@ -2,4 +2,4 @@
 "@trigger.dev/core": patch
 ---
 
-Correct the Stripe, Discord and Autumn webhook setup prompts. The Stripe prompt now covers revealing the signing secret in the Dashboard, the Discord prompt sets the public key before the Endpoint URL so Discord's PING verifies, and the Autumn prompt drops the outdated beta note.
+Webhook setup prompts now match each provider's current setup. Stripe webhooks can be set up from the Dashboard by revealing the signing secret there, Discord endpoints verify on the first try because the public key is stored before the Endpoint URL is saved, and Autumn webhooks can be added self-serve without contacting support.
