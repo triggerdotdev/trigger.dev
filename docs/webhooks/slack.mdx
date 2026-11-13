@@ -247,7 +247,7 @@ Only buttons built with `button()` or `slackButton()` reach the agent. Buttons y
 
 ## Stopping
 
-Slack shows a stop button while the agent is working. It aborts the running turn through the run's `signal`, exactly like a browser chat's stop: the model call and any tool that honours the signal stop, the partial reply stays in the thread, and the status goes back to active. The next message continues the conversation.
+Slack shows a stop button while the agent is working. It aborts the running turn through the run's `signal`, as a browser chat's stop does: the model call and any tool that honors the signal stop, the partial reply stays in the thread, and the status goes back to active. The next message continues the conversation.
 
 - A stop pressed while nothing is running does nothing, and a repeated or delayed stop never stops a later turn.
 - A stop that reaches a session waiting on an approval cancels it: the buttons are replaced with "Stopped", the pending tool call is recorded as stopped so the model sees that on the next turn, and a later click resumes nothing.

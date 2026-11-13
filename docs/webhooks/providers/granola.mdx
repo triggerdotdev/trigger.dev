@@ -1,10 +1,10 @@
 ---
 title: "Granola webhooks"
 sidebarTitle: "Granola"
-description: "Receive Granola webhooks on a hosted Trigger.dev endpoint: the source, where to register the URL in Granola, and how to set the signing credential."
+description: "Receive and verify Granola webhooks with Trigger.dev. Check the Standard Webhooks signature and run a task for each Granola event, filtered on event.event_type."
 ---
 
-**`webhooks.granola()` verifies Granola's signature on every request, so subscribers only receive genuine Granola events.**
+**`webhooks.granola()` verifies the Standard Webhooks signature Granola sends in the `webhook-*` headers on every request.**
 
 ```ts /trigger/granola.ts
 import { webhook, webhooks } from "@trigger.dev/sdk";
@@ -24,7 +24,7 @@ export const granolaEvents = webhook({
 });
 ```
 
-| | |
+| Setting | Value |
 | --- | --- |
 | Source | `webhooks.granola()` |
 | Verification | Standard Webhooks (`webhook-id`, `webhook-timestamp`, `webhook-signature`) |

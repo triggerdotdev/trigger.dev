@@ -1,10 +1,10 @@
 ---
 title: "Slack webhooks"
 sidebarTitle: "Slack"
-description: "Receive Slack webhooks on a hosted Trigger.dev endpoint: the source, where to register the URL in Slack, and how to set the signing credential."
+description: "Receive and verify Slack webhooks with Trigger.dev. Check the HMAC-SHA256 signature in x-slack-signature and run a task for each Slack event, filtered on event.event.type."
 ---
 
-**`webhookSource()` from `@trigger.dev/slack` verifies Slack's signature on every request, so subscribers only receive genuine Slack events.**
+**`webhookSource()` from `@trigger.dev/slack` verifies the HMAC-SHA256 signature Slack sends in `x-slack-signature` on every request.**
 
 ```ts /trigger/slack.ts
 import { webhook, webhooks } from "@trigger.dev/sdk";
@@ -26,7 +26,7 @@ export const slackEvents = webhook({
 
 To run a subscriber only for some events, add a [filter](/webhooks/filters) on `event.event.type`.
 
-| | |
+| Setting | Value |
 | --- | --- |
 | Source | `webhookSource()` from `@trigger.dev/slack` |
 | Verification | HMAC-SHA256 in `x-slack-signature`, with a timestamp tolerance |

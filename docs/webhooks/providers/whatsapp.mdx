@@ -1,10 +1,10 @@
 ---
 title: "WhatsApp webhooks"
 sidebarTitle: "WhatsApp"
-description: "Receive WhatsApp webhooks on a hosted Trigger.dev endpoint: the source, where to register the URL in WhatsApp, and how to set the signing credential."
+description: "Receive and verify WhatsApp webhooks with Trigger.dev. Check the HMAC-SHA256 signature in x-hub-signature-256 and run a task for each WhatsApp event."
 ---
 
-**`webhooks.whatsapp()` verifies WhatsApp's signature on every request, so subscribers only receive genuine WhatsApp events.**
+**`webhooks.whatsapp()` verifies the HMAC-SHA256 signature WhatsApp sends in `x-hub-signature-256`, keyed by the App Secret on every request.**
 
 ```ts /trigger/whatsapp.ts
 import { webhook, webhooks } from "@trigger.dev/sdk";
@@ -23,7 +23,7 @@ export const whatsappEvents = webhook({
 });
 ```
 
-| | |
+| Setting | Value |
 | --- | --- |
 | Source | `webhooks.whatsapp()` |
 | Verification | HMAC-SHA256 in `x-hub-signature-256`, keyed by the App Secret |

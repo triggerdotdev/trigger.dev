@@ -1,7 +1,7 @@
 ---
 title: "Hookdeck webhooks"
 sidebarTitle: "Hookdeck"
-description: "Receive Hookdeck webhooks on a hosted Trigger.dev endpoint: the source, where to register the URL in Hookdeck, and how to set the signing credential."
+description: "Receive webhooks that Hookdeck forwards from any provider. Check the HMAC-SHA256 signature in x-hookdeck-signature and run a Trigger.dev task for each event."
 ---
 
 **`webhooks.hookdeck()` verifies requests that a Hookdeck connection forwards, so you can put Hookdeck in front of any provider.**
@@ -24,12 +24,12 @@ export const hookdeckEvents = webhook({
 });
 ```
 
-| | |
+| Setting | Value |
 | --- | --- |
 | Source | `webhooks.hookdeck()` |
 | Verification | HMAC-SHA256 in `x-hookdeck-signature` |
 | Credential | Signing secret issued by Hookdeck |
-| Event type | `event.type` |
+| Event type | The original provider's field, for example `event.type` for Stripe |
 | Hookdeck docs | [Hookdeck webhook docs](https://hookdeck.com/docs/authentication) |
 
 ## Set up Hookdeck

@@ -1,10 +1,10 @@
 ---
 title: "Discord webhooks"
 sidebarTitle: "Discord"
-description: "Receive Discord webhooks on a hosted Trigger.dev endpoint: the source, where to register the URL in Discord, and how to set the signing credential."
+description: "Receive and verify Discord webhooks with Trigger.dev. Check the Ed25519 signature in x-signature-ed25519 and run a task for each Discord event, filtered on event.event.type."
 ---
 
-**`webhooks.discord()` verifies Discord's signature on every request, so subscribers only receive genuine Discord events.**
+**`webhooks.discord()` verifies the Ed25519 signature Discord sends in `x-signature-ed25519` on every request.**
 
 ```ts /trigger/discord.ts
 import { webhook, webhooks } from "@trigger.dev/sdk";
@@ -25,7 +25,7 @@ export const discordEvents = webhook({
 
 To run a subscriber only for some events, add a [filter](/webhooks/filters) on `event.event.type`.
 
-| | |
+| Setting | Value |
 | --- | --- |
 | Source | `webhooks.discord()` |
 | Verification | Ed25519 signature in `x-signature-ed25519` |

@@ -1,10 +1,10 @@
 ---
 title: "Jira webhooks"
 sidebarTitle: "Jira"
-description: "Receive Jira webhooks on a hosted Trigger.dev endpoint: the source, where to register the URL in Jira, and how to set the signing credential."
+description: "Receive and verify Jira webhooks with Trigger.dev. Check the HMAC-SHA256 signature in x-hub-signature and run a task for each Jira event, filtered on event.webhookEvent."
 ---
 
-**`webhooks.jira()` verifies Jira's signature on every request, so subscribers only receive genuine Jira events.**
+**`webhooks.jira()` verifies the HMAC-SHA256 signature Jira sends in `x-hub-signature` on every request.**
 
 ```ts /trigger/jira.ts
 import { webhook, webhooks } from "@trigger.dev/sdk";
@@ -25,7 +25,7 @@ export const jiraEvents = webhook({
 
 To run a subscriber only for some events, add a [filter](/webhooks/filters) on `event.webhookEvent`.
 
-| | |
+| Setting | Value |
 | --- | --- |
 | Source | `webhooks.jira()` |
 | Verification | HMAC-SHA256 in `x-hub-signature` |

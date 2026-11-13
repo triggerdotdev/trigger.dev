@@ -1,10 +1,10 @@
 ---
 title: "Vercel webhooks"
 sidebarTitle: "Vercel"
-description: "Receive Vercel webhooks on a hosted Trigger.dev endpoint: the source, where to register the URL in Vercel, and how to set the signing credential."
+description: "Receive and verify Vercel webhooks with Trigger.dev. Check the HMAC-SHA1 signature in x-vercel-signature and run a task for each Vercel event, filtered on event.type."
 ---
 
-**`webhooks.vercel()` verifies Vercel's signature on every request, so subscribers only receive genuine Vercel events.**
+**`webhooks.vercel()` verifies the HMAC-SHA1 signature Vercel sends in `x-vercel-signature` on every request.**
 
 ```ts /trigger/vercel.ts
 import { webhook, webhooks } from "@trigger.dev/sdk";
@@ -24,7 +24,7 @@ export const vercelEvents = webhook({
 });
 ```
 
-| | |
+| Setting | Value |
 | --- | --- |
 | Source | `webhooks.vercel()` |
 | Verification | HMAC-SHA1 in `x-vercel-signature` |

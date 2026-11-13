@@ -1,10 +1,10 @@
 ---
 title: "Infisical webhooks"
 sidebarTitle: "Infisical"
-description: "Receive Infisical webhooks on a hosted Trigger.dev endpoint: the source, where to register the URL in Infisical, and how to set the signing credential."
+description: "Receive and verify Infisical webhooks with Trigger.dev. Check the HMAC-SHA256 signature in x-infisical-signature and run a task for each Infisical event, filtered on event.event."
 ---
 
-**`webhooks.infisical()` verifies Infisical's signature on every request, so subscribers only receive genuine Infisical events.**
+**`webhooks.infisical()` verifies the HMAC-SHA256 signature Infisical sends in `x-infisical-signature` on every request.**
 
 ```ts /trigger/infisical.ts
 import { webhook, webhooks } from "@trigger.dev/sdk";
@@ -24,7 +24,7 @@ export const infisicalEvents = webhook({
 });
 ```
 
-| | |
+| Setting | Value |
 | --- | --- |
 | Source | `webhooks.infisical()` |
 | Verification | HMAC-SHA256 in `x-infisical-signature` |

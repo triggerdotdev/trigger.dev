@@ -1,10 +1,10 @@
 ---
 title: "Autumn webhooks"
 sidebarTitle: "Autumn"
-description: "Receive Autumn webhooks on a hosted Trigger.dev endpoint: the source, where to register the URL in Autumn, and how to set the signing credential."
+description: "Receive and verify Autumn webhooks with Trigger.dev. Check the Svix signature and run a task for each Autumn event, filtered on event.type."
 ---
 
-**`webhooks.autumn()` verifies Autumn's signature on every request, so subscribers only receive genuine Autumn events.**
+**`webhooks.autumn()` verifies the Svix signature Autumn sends in the `svix-*` headers on every request.**
 
 ```ts /trigger/autumn.ts
 import { webhook, webhooks } from "@trigger.dev/sdk";
@@ -24,7 +24,7 @@ export const autumnEvents = webhook({
 });
 ```
 
-| | |
+| Setting | Value |
 | --- | --- |
 | Source | `webhooks.autumn()` |
 | Verification | Svix (`svix-id`, `svix-timestamp`, `svix-signature`) |

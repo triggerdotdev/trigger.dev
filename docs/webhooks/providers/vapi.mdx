@@ -1,10 +1,10 @@
 ---
 title: "Vapi webhooks"
 sidebarTitle: "Vapi"
-description: "Receive Vapi webhooks on a hosted Trigger.dev endpoint: the source, where to register the URL in Vapi, and how to set the signing credential."
+description: "Receive and verify Vapi webhooks with Trigger.dev. Check the HMAC-SHA256 signature in x-vapi-signature and run a task for each Vapi event, filtered on event.message.type."
 ---
 
-**`webhooks.vapi()` verifies Vapi's signature on every request, so subscribers only receive genuine Vapi events.**
+**`webhooks.vapi()` verifies the HMAC-SHA256 signature Vapi sends in `x-vapi-signature` on every request.**
 
 ```ts /trigger/vapi.ts
 import { webhook, webhooks } from "@trigger.dev/sdk";
@@ -25,7 +25,7 @@ export const vapiEvents = webhook({
 
 To run a subscriber only for some events, add a [filter](/webhooks/filters) on `event.message.type`.
 
-| | |
+| Setting | Value |
 | --- | --- |
 | Source | `webhooks.vapi()` |
 | Verification | HMAC-SHA256 in `x-vapi-signature` |

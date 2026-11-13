@@ -1,10 +1,10 @@
 ---
 title: "Intercom webhooks"
 sidebarTitle: "Intercom"
-description: "Receive Intercom webhooks on a hosted Trigger.dev endpoint: the source, where to register the URL in Intercom, and how to set the signing credential."
+description: "Receive and verify Intercom webhooks with Trigger.dev. Check the HMAC-SHA1 signature in x-hub-signature and run a task for each Intercom event, filtered on event.topic."
 ---
 
-**`webhooks.intercom()` verifies Intercom's signature on every request, so subscribers only receive genuine Intercom events.**
+**`webhooks.intercom()` verifies the HMAC-SHA1 signature Intercom sends in `x-hub-signature` on every request.**
 
 ```ts /trigger/intercom.ts
 import { webhook, webhooks } from "@trigger.dev/sdk";
@@ -25,7 +25,7 @@ export const intercomEvents = webhook({
 
 To run a subscriber only for some events, add a [filter](/webhooks/filters) on `event.topic`.
 
-| | |
+| Setting | Value |
 | --- | --- |
 | Source | `webhooks.intercom()` |
 | Verification | HMAC-SHA1 in `x-hub-signature` |

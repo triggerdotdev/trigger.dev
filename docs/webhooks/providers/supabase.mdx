@@ -1,7 +1,7 @@
 ---
 title: "Supabase webhooks"
 sidebarTitle: "Supabase"
-description: "Receive Supabase webhooks on a hosted Trigger.dev endpoint: the source, where to register the URL in Supabase, and how to set the signing credential."
+description: "Receive Supabase database webhooks with Trigger.dev. Check a shared bearer secret and run a task for each insert, update or delete."
 ---
 
 **`webhooks.supabase()` checks a shared secret on every request, because Supabase database webhooks aren't signed.**
@@ -24,7 +24,7 @@ export const supabaseEvents = webhook({
 });
 ```
 
-| | |
+| Setting | Value |
 | --- | --- |
 | Source | `webhooks.supabase()` |
 | Verification | Shared secret as `Authorization: Bearer` |

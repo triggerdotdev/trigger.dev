@@ -1,10 +1,10 @@
 ---
 title: "Linear webhooks"
 sidebarTitle: "Linear"
-description: "Receive Linear webhooks on a hosted Trigger.dev endpoint: the source, where to register the URL in Linear, and how to set the signing credential."
+description: "Receive and verify Linear webhooks with Trigger.dev. Check the HMAC-SHA256 signature in linear-signature and run a task for each Linear event, filtered on event.type."
 ---
 
-**`webhooks.linear()` verifies Linear's signature on every request, so subscribers only receive genuine Linear events.**
+**`webhooks.linear()` verifies the HMAC-SHA256 signature Linear sends in `linear-signature` on every request.**
 
 ```ts /trigger/linear.ts
 import { webhook, webhooks } from "@trigger.dev/sdk";
@@ -25,7 +25,7 @@ export const linearEvents = webhook({
 
 To run a subscriber only for some events, add a [filter](/webhooks/filters) on `event.type`.
 
-| | |
+| Setting | Value |
 | --- | --- |
 | Source | `webhooks.linear()` |
 | Verification | HMAC-SHA256 in `linear-signature` |

@@ -1,10 +1,10 @@
 ---
 title: "Retell AI webhooks"
 sidebarTitle: "Retell AI"
-description: "Receive Retell AI webhooks on a hosted Trigger.dev endpoint: the source, where to register the URL in Retell AI, and how to set the signing credential."
+description: "Receive and verify Retell AI webhooks with Trigger.dev. Check the HMAC-SHA256 signature in x-retell-signature and run a task for each Retell AI event, filtered on event.event."
 ---
 
-**`webhooks.retell()` verifies Retell AI's signature on every request, so subscribers only receive genuine Retell AI events.**
+**`webhooks.retell()` verifies the HMAC-SHA256 signature Retell AI sends in `x-retell-signature` on every request.**
 
 ```ts /trigger/retell.ts
 import { webhook, webhooks } from "@trigger.dev/sdk";
@@ -25,7 +25,7 @@ export const retellEvents = webhook({
 
 To run a subscriber only for some events, add a [filter](/webhooks/filters) on `event.event`.
 
-| | |
+| Setting | Value |
 | --- | --- |
 | Source | `webhooks.retell()` |
 | Verification | HMAC-SHA256 in `x-retell-signature` |

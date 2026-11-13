@@ -1,10 +1,10 @@
 ---
 title: "Calendly webhooks"
 sidebarTitle: "Calendly"
-description: "Receive Calendly webhooks on a hosted Trigger.dev endpoint: the source, where to register the URL in Calendly, and how to set the signing credential."
+description: "Receive and verify Calendly webhooks with Trigger.dev. Check the HMAC-SHA256 signature in calendly-webhook-signature and run a task for each Calendly event, filtered on event.event."
 ---
 
-**`webhooks.calendly()` verifies Calendly's signature on every request, so subscribers only receive genuine Calendly events.**
+**`webhooks.calendly()` verifies the HMAC-SHA256 signature Calendly sends in `calendly-webhook-signature` on every request.**
 
 ```ts /trigger/calendly.ts
 import { webhook, webhooks } from "@trigger.dev/sdk";
@@ -25,7 +25,7 @@ export const calendlyEvents = webhook({
 
 To run a subscriber only for some events, add a [filter](/webhooks/filters) on `event.event`.
 
-| | |
+| Setting | Value |
 | --- | --- |
 | Source | `webhooks.calendly()` |
 | Verification | HMAC-SHA256 in `calendly-webhook-signature` |

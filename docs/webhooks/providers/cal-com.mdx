@@ -1,10 +1,10 @@
 ---
 title: "Cal.com webhooks"
 sidebarTitle: "Cal.com"
-description: "Receive Cal.com webhooks on a hosted Trigger.dev endpoint: the source, where to register the URL in Cal.com, and how to set the signing credential."
+description: "Receive and verify Cal.com webhooks with Trigger.dev. Check the HMAC-SHA256 signature in x-cal-signature-256 and run a task for each Cal.com event, filtered on event.triggerEvent."
 ---
 
-**`webhooks.calCom()` verifies Cal.com's signature on every request, so subscribers only receive genuine Cal.com events.**
+**`webhooks.calCom()` verifies the HMAC-SHA256 signature Cal.com sends in `x-cal-signature-256` on every request.**
 
 ```ts /trigger/cal-com.ts
 import { webhook, webhooks } from "@trigger.dev/sdk";
@@ -25,7 +25,7 @@ export const calComEvents = webhook({
 
 To run a subscriber only for some events, add a [filter](/webhooks/filters) on `event.triggerEvent`.
 
-| | |
+| Setting | Value |
 | --- | --- |
 | Source | `webhooks.calCom()` |
 | Verification | HMAC-SHA256 in `x-cal-signature-256` |

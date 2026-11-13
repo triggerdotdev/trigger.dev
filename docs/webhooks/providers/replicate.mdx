@@ -1,10 +1,10 @@
 ---
 title: "Replicate webhooks"
 sidebarTitle: "Replicate"
-description: "Receive Replicate webhooks on a hosted Trigger.dev endpoint: the source, where to register the URL in Replicate, and how to set the signing credential."
+description: "Receive and verify Replicate webhooks with Trigger.dev. Check the Standard Webhooks signature and run a task for each Replicate event, filtered on event.status."
 ---
 
-**`webhooks.replicate()` verifies Replicate's signature on every request, so subscribers only receive genuine Replicate events.**
+**`webhooks.replicate()` verifies the Standard Webhooks signature Replicate sends in the `webhook-*` headers on every request.**
 
 ```ts /trigger/replicate.ts
 import { webhook, webhooks } from "@trigger.dev/sdk";
@@ -25,7 +25,7 @@ export const replicateEvents = webhook({
 
 To run a subscriber only for some events, add a [filter](/webhooks/filters) on `event.status`.
 
-| | |
+| Setting | Value |
 | --- | --- |
 | Source | `webhooks.replicate()` |
 | Verification | Standard Webhooks (`webhook-id`, `webhook-timestamp`, `webhook-signature`) |

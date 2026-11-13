@@ -1,10 +1,10 @@
 ---
 title: "Metronome webhooks"
 sidebarTitle: "Metronome"
-description: "Receive Metronome webhooks on a hosted Trigger.dev endpoint: the source, where to register the URL in Metronome, and how to set the signing credential."
+description: "Receive and verify Metronome webhooks with Trigger.dev. Check the HMAC-SHA256 signature in metronome-webhook-signature and run a task for each Metronome event, filtered on event.type."
 ---
 
-**`webhooks.metronome()` verifies Metronome's signature on every request, so subscribers only receive genuine Metronome events.**
+**`webhooks.metronome()` verifies the HMAC-SHA256 signature Metronome sends in `metronome-webhook-signature` on every request.**
 
 ```ts /trigger/metronome.ts
 import { webhook, webhooks } from "@trigger.dev/sdk";
@@ -25,7 +25,7 @@ export const metronomeEvents = webhook({
 
 To run a subscriber only for some events, add a [filter](/webhooks/filters) on `event.type`.
 
-| | |
+| Setting | Value |
 | --- | --- |
 | Source | `webhooks.metronome()` |
 | Verification | HMAC-SHA256 in `metronome-webhook-signature` |

@@ -1,10 +1,10 @@
 ---
 title: "Mux webhooks"
 sidebarTitle: "Mux"
-description: "Receive Mux webhooks on a hosted Trigger.dev endpoint: the source, where to register the URL in Mux, and how to set the signing credential."
+description: "Receive and verify Mux webhooks with Trigger.dev. Check the HMAC-SHA256 signature in mux-signature and run a task for each Mux event, filtered on event.type."
 ---
 
-**`webhooks.mux()` verifies Mux's signature on every request, so subscribers only receive genuine Mux events.**
+**`webhooks.mux()` verifies the HMAC-SHA256 signature Mux sends in `mux-signature` on every request.**
 
 ```ts /trigger/mux.ts
 import { webhook, webhooks } from "@trigger.dev/sdk";
@@ -24,7 +24,7 @@ export const muxEvents = webhook({
 });
 ```
 
-| | |
+| Setting | Value |
 | --- | --- |
 | Source | `webhooks.mux()` |
 | Verification | HMAC-SHA256 in `mux-signature` |

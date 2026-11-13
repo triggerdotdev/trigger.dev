@@ -1,10 +1,10 @@
 ---
 title: "Brex webhooks"
 sidebarTitle: "Brex"
-description: "Receive Brex webhooks on a hosted Trigger.dev endpoint: the source, where to register the URL in Brex, and how to set the signing credential."
+description: "Receive and verify Brex webhooks with Trigger.dev. Check the Svix signature and run a task for each Brex event, filtered on event.event_type."
 ---
 
-**`webhooks.brex()` verifies Brex's signature on every request, so subscribers only receive genuine Brex events.**
+**`webhooks.brex()` verifies the Svix signature Brex sends in the `svix-*` headers on every request.**
 
 ```ts /trigger/brex.ts
 import { webhook, webhooks } from "@trigger.dev/sdk";
@@ -25,7 +25,7 @@ export const brexEvents = webhook({
 
 To run a subscriber only for some events, add a [filter](/webhooks/filters) on `event.event_type`.
 
-| | |
+| Setting | Value |
 | --- | --- |
 | Source | `webhooks.brex()` |
 | Verification | Svix (`svix-id`, `svix-timestamp`, `svix-signature`) |

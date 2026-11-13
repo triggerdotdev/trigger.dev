@@ -1,10 +1,10 @@
 ---
 title: "Shopify webhooks"
 sidebarTitle: "Shopify"
-description: "Receive Shopify webhooks on a hosted Trigger.dev endpoint: the source, where to register the URL in Shopify, and how to set the signing credential."
+description: "Receive and verify Shopify webhooks with Trigger.dev. Check the HMAC-SHA256 signature in x-shopify-hmac-sha256 and run a task for each Shopify event, filtered on header.x-shopify-topic."
 ---
 
-**`webhooks.shopify()` verifies Shopify's signature on every request, so subscribers only receive genuine Shopify events.**
+**`webhooks.shopify()` verifies the HMAC-SHA256 signature Shopify sends in `x-shopify-hmac-sha256` on every request.**
 
 ```ts /trigger/shopify.ts
 import { webhook, webhooks } from "@trigger.dev/sdk";
@@ -24,7 +24,7 @@ export const shopifyEvents = webhook({
 });
 ```
 
-| | |
+| Setting | Value |
 | --- | --- |
 | Source | `webhooks.shopify()` |
 | Verification | HMAC-SHA256 in `x-shopify-hmac-sha256` |

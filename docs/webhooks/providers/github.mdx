@@ -1,10 +1,10 @@
 ---
 title: "GitHub webhooks"
 sidebarTitle: "GitHub"
-description: "Receive GitHub webhooks on a hosted Trigger.dev endpoint: the source, where to register the URL in GitHub, and how to set the signing credential."
+description: "Receive and verify GitHub webhooks with Trigger.dev. Check the HMAC-SHA256 signature in x-hub-signature-256 and run a task for each GitHub event, filtered on header.x-github-event."
 ---
 
-**`webhooks.github()` verifies GitHub's signature on every request, so subscribers only receive genuine GitHub events.**
+**`webhooks.github()` verifies the HMAC-SHA256 signature GitHub sends in `x-hub-signature-256` on every request.**
 
 ```ts /trigger/github.ts
 import { webhook, webhooks } from "@trigger.dev/sdk";
@@ -24,7 +24,7 @@ export const githubEvents = webhook({
 });
 ```
 
-| | |
+| Setting | Value |
 | --- | --- |
 | Source | `webhooks.github()` |
 | Verification | HMAC-SHA256 in `x-hub-signature-256` |

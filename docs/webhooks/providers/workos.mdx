@@ -1,10 +1,10 @@
 ---
 title: "WorkOS webhooks"
 sidebarTitle: "WorkOS"
-description: "Receive WorkOS webhooks on a hosted Trigger.dev endpoint: the source, where to register the URL in WorkOS, and how to set the signing credential."
+description: "Receive and verify WorkOS webhooks with Trigger.dev. Check the HMAC-SHA256 signature in workos-signature and run a task for each WorkOS event, filtered on event.event."
 ---
 
-**`webhooks.workos()` verifies WorkOS's signature on every request, so subscribers only receive genuine WorkOS events.**
+**`webhooks.workos()` verifies the HMAC-SHA256 signature WorkOS sends in `workos-signature` on every request.**
 
 ```ts /trigger/workos.ts
 import { webhook, webhooks } from "@trigger.dev/sdk";
@@ -25,7 +25,7 @@ export const workosEvents = webhook({
 
 To run a subscriber only for some events, add a [filter](/webhooks/filters) on `event.event`.
 
-| | |
+| Setting | Value |
 | --- | --- |
 | Source | `webhooks.workos()` |
 | Verification | HMAC-SHA256 in `workos-signature` |

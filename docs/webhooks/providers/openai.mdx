@@ -1,10 +1,10 @@
 ---
 title: "OpenAI webhooks"
 sidebarTitle: "OpenAI"
-description: "Receive OpenAI webhooks on a hosted Trigger.dev endpoint: the source, where to register the URL in OpenAI, and how to set the signing credential."
+description: "Receive and verify OpenAI webhooks with Trigger.dev. Check the Standard Webhooks signature and run a task for each OpenAI event, filtered on event.type."
 ---
 
-**`webhooks.openai()` verifies OpenAI's signature on every request, so subscribers only receive genuine OpenAI events.**
+**`webhooks.openai()` verifies the Standard Webhooks signature OpenAI sends in the `webhook-*` headers on every request.**
 
 ```ts /trigger/openai.ts
 import { webhook, webhooks } from "@trigger.dev/sdk";
@@ -24,7 +24,7 @@ export const openaiEvents = webhook({
 });
 ```
 
-| | |
+| Setting | Value |
 | --- | --- |
 | Source | `webhooks.openai()` |
 | Verification | Standard Webhooks (`webhook-id`, `webhook-timestamp`, `webhook-signature`) |

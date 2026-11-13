@@ -1,10 +1,10 @@
 ---
 title: "DocuSign webhooks"
 sidebarTitle: "DocuSign"
-description: "Receive DocuSign webhooks on a hosted Trigger.dev endpoint: the source, where to register the URL in DocuSign, and how to set the signing credential."
+description: "Receive and verify DocuSign webhooks with Trigger.dev. Check the HMAC-SHA256 signature in x-docusign-signature-1 and run a task for each DocuSign event, filtered on event.event."
 ---
 
-**`webhooks.docusign()` verifies DocuSign's signature on every request, so subscribers only receive genuine DocuSign events.**
+**`webhooks.docusign()` verifies the HMAC-SHA256 signature DocuSign sends in `x-docusign-signature-1` on every request.**
 
 ```ts /trigger/docusign.ts
 import { webhook, webhooks } from "@trigger.dev/sdk";
@@ -25,7 +25,7 @@ export const docusignEvents = webhook({
 
 To run a subscriber only for some events, add a [filter](/webhooks/filters) on `event.event`.
 
-| | |
+| Setting | Value |
 | --- | --- |
 | Source | `webhooks.docusign()` |
 | Verification | HMAC-SHA256 in `x-docusign-signature-1` |

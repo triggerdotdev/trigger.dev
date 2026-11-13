@@ -1,10 +1,10 @@
 ---
 title: "Composio webhooks"
 sidebarTitle: "Composio"
-description: "Receive Composio webhooks on a hosted Trigger.dev endpoint: the source, where to register the URL in Composio, and how to set the signing credential."
+description: "Receive and verify Composio webhooks with Trigger.dev. Check the Standard Webhooks signature and run a task for each Composio event, filtered on event.type."
 ---
 
-**`webhooks.composio()` verifies Composio's signature on every request, so subscribers only receive genuine Composio events.**
+**`webhooks.composio()` verifies the Standard Webhooks signature Composio sends in the `webhook-*` headers on every request.**
 
 ```ts /trigger/composio.ts
 import { webhook, webhooks } from "@trigger.dev/sdk";
@@ -25,7 +25,7 @@ export const composioEvents = webhook({
 
 To run a subscriber only for some events, add a [filter](/webhooks/filters) on `event.type`.
 
-| | |
+| Setting | Value |
 | --- | --- |
 | Source | `webhooks.composio()` |
 | Verification | Standard Webhooks (`webhook-id`, `webhook-timestamp`, `webhook-signature`) |

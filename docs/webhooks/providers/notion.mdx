@@ -1,10 +1,10 @@
 ---
 title: "Notion webhooks"
 sidebarTitle: "Notion"
-description: "Receive Notion webhooks on a hosted Trigger.dev endpoint: the source, where to register the URL in Notion, and how to set the signing credential."
+description: "Receive and verify Notion webhooks with Trigger.dev. Check the HMAC-SHA256 signature in x-notion-signature and run a task for each Notion event, filtered on event.type."
 ---
 
-**`webhooks.notion()` verifies Notion's signature on every request, so subscribers only receive genuine Notion events.**
+**`webhooks.notion()` verifies the HMAC-SHA256 signature Notion sends in `x-notion-signature` on every request.**
 
 ```ts /trigger/notion.ts
 import { webhook, webhooks } from "@trigger.dev/sdk";
@@ -24,7 +24,7 @@ export const notionEvents = webhook({
 });
 ```
 
-| | |
+| Setting | Value |
 | --- | --- |
 | Source | `webhooks.notion()` |
 | Verification | HMAC-SHA256 in `x-notion-signature` |

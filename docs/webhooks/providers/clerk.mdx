@@ -1,10 +1,10 @@
 ---
 title: "Clerk webhooks"
 sidebarTitle: "Clerk"
-description: "Receive Clerk webhooks on a hosted Trigger.dev endpoint: the source, where to register the URL in Clerk, and how to set the signing credential."
+description: "Receive and verify Clerk webhooks with Trigger.dev. Check the Svix signature and run a task for each Clerk event, filtered on event.type."
 ---
 
-**`webhooks.clerk()` verifies Clerk's signature on every request, so subscribers only receive genuine Clerk events.**
+**`webhooks.clerk()` verifies the Svix signature Clerk sends in the `svix-*` headers on every request.**
 
 ```ts /trigger/clerk.ts
 import { webhook, webhooks } from "@trigger.dev/sdk";
@@ -24,7 +24,7 @@ export const clerkEvents = webhook({
 });
 ```
 
-| | |
+| Setting | Value |
 | --- | --- |
 | Source | `webhooks.clerk()` |
 | Verification | Svix (`svix-id`, `svix-timestamp`, `svix-signature`) |

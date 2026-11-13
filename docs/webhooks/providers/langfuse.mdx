@@ -1,10 +1,10 @@
 ---
 title: "Langfuse webhooks"
 sidebarTitle: "Langfuse"
-description: "Receive Langfuse webhooks on a hosted Trigger.dev endpoint: the source, where to register the URL in Langfuse, and how to set the signing credential."
+description: "Receive and verify Langfuse webhooks with Trigger.dev. Check the HMAC-SHA256 signature in x-langfuse-signature and run a task for each Langfuse event, filtered on event.type."
 ---
 
-**`webhooks.langfuse()` verifies Langfuse's signature on every request, so subscribers only receive genuine Langfuse events.**
+**`webhooks.langfuse()` verifies the HMAC-SHA256 signature Langfuse sends in `x-langfuse-signature` on every request.**
 
 ```ts /trigger/langfuse.ts
 import { webhook, webhooks } from "@trigger.dev/sdk";
@@ -24,7 +24,7 @@ export const langfuseEvents = webhook({
 });
 ```
 
-| | |
+| Setting | Value |
 | --- | --- |
 | Source | `webhooks.langfuse()` |
 | Verification | HMAC-SHA256 in `x-langfuse-signature` |

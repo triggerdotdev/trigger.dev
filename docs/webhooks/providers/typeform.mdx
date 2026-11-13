@@ -1,10 +1,10 @@
 ---
 title: "Typeform webhooks"
 sidebarTitle: "Typeform"
-description: "Receive Typeform webhooks on a hosted Trigger.dev endpoint: the source, where to register the URL in Typeform, and how to set the signing credential."
+description: "Receive and verify Typeform webhooks with Trigger.dev. Check the HMAC-SHA256 signature in typeform-signature and run a task for each Typeform event, filtered on event.event_type."
 ---
 
-**`webhooks.typeform()` verifies Typeform's signature on every request, so subscribers only receive genuine Typeform events.**
+**`webhooks.typeform()` verifies the HMAC-SHA256 signature Typeform sends in `typeform-signature` on every request.**
 
 ```ts /trigger/typeform.ts
 import { webhook, webhooks } from "@trigger.dev/sdk";
@@ -25,7 +25,7 @@ export const typeformEvents = webhook({
 
 To run a subscriber only for some events, add a [filter](/webhooks/filters) on `event.event_type`.
 
-| | |
+| Setting | Value |
 | --- | --- |
 | Source | `webhooks.typeform()` |
 | Verification | HMAC-SHA256 in `typeform-signature` |

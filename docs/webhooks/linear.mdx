@@ -48,7 +48,7 @@ The `run()` loop is the same one a browser chat or a Slack thread uses. Verifica
 
 On the first turn of a session the connector frames Linear's payload for the model: who summoned it and on which issue, the workspace **guidance** rules for agents, Linear's formatted **issue context** (title, description, labels, project, comments), and the comment that mentioned it. An assignment with no comment reads as "assigned ENG-412 to you". Prior comments on the issue are seeded as transcript messages, so the agent can answer with the context a reader of the issue has.
 
-A follow-up prompt on the session is just the message. If the user hits **Stop** in Linear, see [Stopping](#stopping).
+A follow-up prompt on the session is the message itself. If the user hits **Stop** in Linear, see [Stopping](#stopping).
 
 Images and PDFs uploaded to Linear reach the model as files: screenshots in the prompt, in the comment that mentioned the agent, or in the issue description. The transcript keeps the upload link, and the `streamText` passed to `run()` downloads the file with the app's token when the model reads it, at most ten per message. A file that can't be downloaded reaches the model as a short note. A custom `inbound` keeps this by adding `linearFileParts(markdown)` to its message parts.
 
@@ -109,7 +109,7 @@ For manual control, `chat.surface<LinearRunSurface>()` returns the current turn'
 
 ## Approvals and choices
 
-A tool with no `execute` pauses the turn for a human decision, exactly as on [any channel](/webhooks/human-in-the-loop). On Linear the connector posts an elicitation card with Approve and Deny options. The card lays the tool input out as markdown: a list of proposed items becomes a numbered list with a bold title per item, a flat object becomes key and value bullets, and only shapes it cannot lay out fall back to JSON. For a card written for the tool, pass a renderer per tool name:
+A tool with no `execute` pauses the turn for a human decision, as on [any channel](/webhooks/human-in-the-loop). On Linear the connector posts an elicitation card with Approve and Deny options. The card lays the tool input out as markdown: a list of proposed items becomes a numbered list with a bold title per item, a flat object becomes key and value bullets, and only shapes it cannot lay out fall back to JSON. For a card written for the tool, pass a renderer per tool name:
 
 ```ts
 linear({

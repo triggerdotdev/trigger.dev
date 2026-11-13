@@ -4,7 +4,7 @@ sidebarTitle: "Stripe"
 description: "Verify Stripe's webhook signature and run a Trigger.dev task for each Stripe event, such as checkout.session.completed. Register the endpoint in Stripe, set the whsec_ signing secret, and filter by event type."
 ---
 
-**`webhooks.stripe()` verifies the `stripe-signature` header on every request, so subscribers only receive genuine Stripe events.**
+**`webhooks.stripe()` verifies the HMAC-SHA256 signature Stripe sends in `stripe-signature` on every request.**
 
 ```ts /trigger/stripe.ts
 import { webhook, webhooks } from "@trigger.dev/sdk";
@@ -24,7 +24,7 @@ export const fulfillCheckout = webhook({
 });
 ```
 
-| | |
+| Setting | Value |
 | --- | --- |
 | Source | `webhooks.stripe()` |
 | Verification | HMAC-SHA256 in `stripe-signature`, with a timestamp tolerance |

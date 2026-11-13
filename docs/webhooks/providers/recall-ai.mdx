@@ -1,10 +1,10 @@
 ---
 title: "Recall.ai webhooks"
 sidebarTitle: "Recall.ai"
-description: "Receive Recall.ai webhooks on a hosted Trigger.dev endpoint: the source, where to register the URL in Recall.ai, and how to set the signing credential."
+description: "Receive and verify Recall.ai webhooks with Trigger.dev. Check the Standard Webhooks signature and run a task for each Recall.ai event, filtered on event.event."
 ---
 
-**`webhooks.recallai()` verifies Recall.ai's signature on every request, so subscribers only receive genuine Recall.ai events.**
+**`webhooks.recallai()` verifies the Standard Webhooks signature Recall.ai sends in the `webhook-*` headers on every request.**
 
 ```ts /trigger/recall-ai.ts
 import { webhook, webhooks } from "@trigger.dev/sdk";
@@ -25,7 +25,7 @@ export const recallaiEvents = webhook({
 
 To run a subscriber only for some events, add a [filter](/webhooks/filters) on `event.event`.
 
-| | |
+| Setting | Value |
 | --- | --- |
 | Source | `webhooks.recallai()` |
 | Verification | Standard Webhooks (`webhook-id`, `webhook-timestamp`, `webhook-signature`) |

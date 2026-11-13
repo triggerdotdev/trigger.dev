@@ -1,10 +1,10 @@
 ---
 title: "Loops webhooks"
 sidebarTitle: "Loops"
-description: "Receive Loops webhooks on a hosted Trigger.dev endpoint: the source, where to register the URL in Loops, and how to set the signing credential."
+description: "Receive and verify Loops webhooks with Trigger.dev. Check the Standard Webhooks signature and run a task for each Loops event, filtered on event.eventName."
 ---
 
-**`webhooks.loops()` verifies Loops's signature on every request, so subscribers only receive genuine Loops events.**
+**`webhooks.loops()` verifies the Standard Webhooks signature Loops sends in the `webhook-*` headers on every request.**
 
 ```ts /trigger/loops.ts
 import { webhook, webhooks } from "@trigger.dev/sdk";
@@ -24,7 +24,7 @@ export const loopsEvents = webhook({
 });
 ```
 
-| | |
+| Setting | Value |
 | --- | --- |
 | Source | `webhooks.loops()` |
 | Verification | Standard Webhooks (`webhook-id`, `webhook-timestamp`, `webhook-signature`) |

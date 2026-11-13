@@ -1,10 +1,10 @@
 ---
 title: "PlanetScale webhooks"
 sidebarTitle: "PlanetScale"
-description: "Receive PlanetScale webhooks on a hosted Trigger.dev endpoint: the source, where to register the URL in PlanetScale, and how to set the signing credential."
+description: "Receive and verify PlanetScale webhooks with Trigger.dev. Check the HMAC-SHA256 signature in x-planetscale-signature and run a task for each PlanetScale event, filtered on event.event."
 ---
 
-**`webhooks.planetscale()` verifies PlanetScale's signature on every request, so subscribers only receive genuine PlanetScale events.**
+**`webhooks.planetscale()` verifies the HMAC-SHA256 signature PlanetScale sends in `x-planetscale-signature` on every request.**
 
 ```ts /trigger/planetscale.ts
 import { webhook, webhooks } from "@trigger.dev/sdk";
@@ -24,7 +24,7 @@ export const planetscaleEvents = webhook({
 });
 ```
 
-| | |
+| Setting | Value |
 | --- | --- |
 | Source | `webhooks.planetscale()` |
 | Verification | HMAC-SHA256 in `x-planetscale-signature` |

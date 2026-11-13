@@ -1,10 +1,10 @@
 ---
 title: "Tailscale webhooks"
 sidebarTitle: "Tailscale"
-description: "Receive Tailscale webhooks on a hosted Trigger.dev endpoint: the source, where to register the URL in Tailscale, and how to set the signing credential."
+description: "Receive and verify Tailscale webhooks with Trigger.dev. Check the HMAC-SHA256 signature in tailscale-webhook-signature and run a task for each Tailscale event."
 ---
 
-**`webhooks.tailscale()` verifies Tailscale's signature on every request, so subscribers only receive genuine Tailscale events.**
+**`webhooks.tailscale()` verifies the HMAC-SHA256 signature Tailscale sends in `tailscale-webhook-signature` on every request.**
 
 ```ts /trigger/tailscale.ts
 import { webhook, webhooks } from "@trigger.dev/sdk";
@@ -24,7 +24,7 @@ export const tailscaleEvents = webhook({
 });
 ```
 
-| | |
+| Setting | Value |
 | --- | --- |
 | Source | `webhooks.tailscale()` |
 | Verification | HMAC-SHA256 in `tailscale-webhook-signature` |

@@ -1,10 +1,10 @@
 ---
 title: "Attio webhooks"
 sidebarTitle: "Attio"
-description: "Receive Attio webhooks on a hosted Trigger.dev endpoint: the source, where to register the URL in Attio, and how to set the signing credential."
+description: "Receive and verify Attio webhooks with Trigger.dev. Check the HMAC-SHA256 signature in attio-signature and run a task for each Attio event."
 ---
 
-**`webhooks.attio()` verifies Attio's signature on every request, so subscribers only receive genuine Attio events.**
+**`webhooks.attio()` verifies the HMAC-SHA256 signature Attio sends in `attio-signature` on every request.**
 
 ```ts /trigger/attio.ts
 import { webhook, webhooks } from "@trigger.dev/sdk";
@@ -23,7 +23,7 @@ export const attioEvents = webhook({
 });
 ```
 
-| | |
+| Setting | Value |
 | --- | --- |
 | Source | `webhooks.attio()` |
 | Verification | HMAC-SHA256 in `attio-signature` |

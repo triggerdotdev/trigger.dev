@@ -1,10 +1,10 @@
 ---
 title: "GitLab webhooks"
 sidebarTitle: "GitLab"
-description: "Receive GitLab webhooks on a hosted Trigger.dev endpoint: the source, where to register the URL in GitLab, and how to set the signing credential."
+description: "Receive and verify GitLab webhooks with Trigger.dev. Check the secret token in x-gitlab-token and run a task for each GitLab event."
 ---
 
-**`webhooks.gitlab()` checks the secret token GitLab sends with every request, so subscribers only receive genuine GitLab events.**
+**`webhooks.gitlab()` checks the secret token GitLab sends in `x-gitlab-token` on every request.**
 
 ```ts /trigger/gitlab.ts
 import { webhook, webhooks } from "@trigger.dev/sdk";
@@ -25,7 +25,7 @@ export const gitlabEvents = webhook({
 
 To run a subscriber only for some events, add a [filter](/webhooks/filters) on `header.x-gitlab-event`.
 
-| | |
+| Setting | Value |
 | --- | --- |
 | Source | `webhooks.gitlab()` |
 | Verification | Shared secret in `x-gitlab-token` |

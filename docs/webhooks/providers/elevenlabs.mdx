@@ -1,10 +1,10 @@
 ---
 title: "ElevenLabs webhooks"
 sidebarTitle: "ElevenLabs"
-description: "Receive ElevenLabs webhooks on a hosted Trigger.dev endpoint: the source, where to register the URL in ElevenLabs, and how to set the signing credential."
+description: "Receive and verify ElevenLabs webhooks with Trigger.dev. Check the HMAC-SHA256 signature in elevenlabs-signature and run a task for each ElevenLabs event, filtered on event.type."
 ---
 
-**`webhooks.elevenlabs()` verifies ElevenLabs's signature on every request, so subscribers only receive genuine ElevenLabs events.**
+**`webhooks.elevenlabs()` verifies the HMAC-SHA256 signature ElevenLabs sends in `elevenlabs-signature` on every request.**
 
 ```ts /trigger/elevenlabs.ts
 import { webhook, webhooks } from "@trigger.dev/sdk";
@@ -25,7 +25,7 @@ export const elevenlabsEvents = webhook({
 
 To run a subscriber only for some events, add a [filter](/webhooks/filters) on `event.type`.
 
-| | |
+| Setting | Value |
 | --- | --- |
 | Source | `webhooks.elevenlabs()` |
 | Verification | HMAC-SHA256 in `elevenlabs-signature` |

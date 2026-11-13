@@ -1,10 +1,10 @@
 ---
 title: "Firecrawl webhooks"
 sidebarTitle: "Firecrawl"
-description: "Receive Firecrawl webhooks on a hosted Trigger.dev endpoint: the source, where to register the URL in Firecrawl, and how to set the signing credential."
+description: "Receive and verify Firecrawl webhooks with Trigger.dev. Check the HMAC-SHA256 signature in x-firecrawl-signature and run a task for each Firecrawl event, filtered on event.type."
 ---
 
-**`webhooks.firecrawl()` verifies Firecrawl's signature on every request, so subscribers only receive genuine Firecrawl events.**
+**`webhooks.firecrawl()` verifies the HMAC-SHA256 signature Firecrawl sends in `x-firecrawl-signature` on every request.**
 
 ```ts /trigger/firecrawl.ts
 import { webhook, webhooks } from "@trigger.dev/sdk";
@@ -24,7 +24,7 @@ export const firecrawlEvents = webhook({
 });
 ```
 
-| | |
+| Setting | Value |
 | --- | --- |
 | Source | `webhooks.firecrawl()` |
 | Verification | HMAC-SHA256 in `x-firecrawl-signature` |

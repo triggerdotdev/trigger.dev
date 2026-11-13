@@ -1,10 +1,10 @@
 ---
 title: "Sentry webhooks"
 sidebarTitle: "Sentry"
-description: "Receive Sentry webhooks on a hosted Trigger.dev endpoint: the source, where to register the URL in Sentry, and how to set the signing credential."
+description: "Receive and verify Sentry webhooks with Trigger.dev. Check the HMAC-SHA256 signature in sentry-hook-signature and run a task for each Sentry event, filtered on header.sentry-hook-resource."
 ---
 
-**`webhooks.sentry()` verifies Sentry's signature on every request, so subscribers only receive genuine Sentry events.**
+**`webhooks.sentry()` verifies the HMAC-SHA256 signature Sentry sends in `sentry-hook-signature` on every request.**
 
 ```ts /trigger/sentry.ts
 import { webhook, webhooks } from "@trigger.dev/sdk";
@@ -25,7 +25,7 @@ export const sentryEvents = webhook({
 
 To run a subscriber only for some events, add a [filter](/webhooks/filters) on `header.sentry-hook-resource`.
 
-| | |
+| Setting | Value |
 | --- | --- |
 | Source | `webhooks.sentry()` |
 | Verification | HMAC-SHA256 in `sentry-hook-signature` |

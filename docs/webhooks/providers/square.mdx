@@ -1,10 +1,10 @@
 ---
 title: "Square webhooks"
 sidebarTitle: "Square"
-description: "Receive Square webhooks on a hosted Trigger.dev endpoint: the source, where to register the URL in Square, and how to set the signing credential."
+description: "Receive and verify Square webhooks with Trigger.dev. Check the HMAC-SHA256 signature in x-square-hmacsha256-signature and run a task for each Square event, filtered on event.type."
 ---
 
-**`webhooks.square()` verifies Square's signature on every request, so subscribers only receive genuine Square events.**
+**`webhooks.square()` verifies the HMAC-SHA256 signature Square sends in `x-square-hmacsha256-signature` on every request.**
 
 ```ts /trigger/square.ts
 import { webhook, webhooks } from "@trigger.dev/sdk";
@@ -24,7 +24,7 @@ export const squareEvents = webhook({
 });
 ```
 
-| | |
+| Setting | Value |
 | --- | --- |
 | Source | `webhooks.square()` |
 | Verification | HMAC-SHA256 in `x-square-hmacsha256-signature` |
