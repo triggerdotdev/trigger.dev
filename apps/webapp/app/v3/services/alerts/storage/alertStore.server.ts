@@ -229,6 +229,22 @@ export async function getAlert(
   return row ? toAlert(row) : null;
 }
 
+export async function getAlertsByIds(
+  db: PrismaClientOrTransaction,
+  params: { ids: string[]; projectId: string; environmentId: string }
+): Promise<Alert[]> {
+  if (params.ids.length === 0) return [];
+  const rows = await db.alert.findMany({
+    where: {
+      id: { in: boundedIn(params.ids) },
+      projectId: params.projectId,
+      environmentId: params.environmentId,
+    },
+  });
+  const byId = new Map(rows.map((row) => [row.id, toAlert(row)]));
+  return params.ids.flatMap((id) => byId.get(id) ?? []);
+}
+
 const LIST_ALERTS_DEFAULT_LIMIT = 200;
 const LIST_ALERTS_MAX_LIMIT = 1000;
 
@@ -842,6 +858,25 @@ export async function listAlertEvents(
     take: params?.limit ?? 50,
   });
   return rows.map(toAlertEvent);
+}
+
+export async function listAlertEventsForAlerts(
+  db: PrismaClientOrTransaction,
+  alertIds: string[],
+  params: { limit: number; before: Date }
+): Promise<Map<string, AlertEvent[]>> {
+  if (alertIds.length === 0) return new Map();
+  const rows = await db.$queryRaw<AlertEventRow[]>`
+    SELECT e.* FROM unnest(${alertIdArray(alertIds)}) AS ids(id)
+    CROSS JOIN LATERAL (
+      SELECT * FROM "AlertEvent"
+      WHERE "alertId" = ids.id AND "at" < ${iso(params.before)}
+      ORDER BY "at" DESC LIMIT ${params.limit}::int
+    ) e
+    ORDER BY e."at" DESC`;
+  const byAlert = new Map<string, AlertEvent[]>(alertIds.map((id) => [id, []]));
+  for (const row of rows) byAlert.get(row.alertId)?.push(toAlertEvent(row));
+  return byAlert;
 }
 
 export async function firstAlertEventAt(db: PrismaClientOrTransaction, alertId: string) {

@@ -1,13 +1,13 @@
 import { z } from "zod";
 import { json, redirect } from "@remix-run/server-runtime";
 import { Form, useActionData, useNavigation, useSearchParams, useSubmit } from "@remix-run/react";
-import { typedjson, useTypedLoaderData } from "remix-typedjson";
+import { TypedAwait, typeddefer, useTypedLoaderData } from "remix-typedjson";
 import { ArrowLeftIcon, BellSlashIcon } from "@heroicons/react/20/solid";
 import { CheckMarkIcon } from "~/assets/icons/CheckMarkIcon";
 import { EditPencilIcon } from "~/assets/icons/EditPencilIcon";
 import { TrashIcon } from "~/assets/icons/TrashIcon";
 
-import { useState } from "react";
+import { Suspense, useState } from "react";
 import { alertInvestigatePrompt } from "~/components/dashboard-agent/investigate-prompts";
 import { Button } from "~/components/primitives/Buttons";
 import { Callout } from "~/components/primitives/Callout";
@@ -44,6 +44,7 @@ import { findEnvironmentBySlug } from "~/models/runtimeEnvironment.server";
 import { findProjectWithOrgFlagsBySlug } from "~/models/project.server";
 import {
   AlertDetailPresenter,
+  alertDetailName,
   type AlertDetail,
 } from "~/presenters/v3/AlertDetailPresenter.server";
 import { logger } from "~/services/logger.server";
@@ -52,14 +53,10 @@ import { dashboardAction, dashboardLoader } from "~/services/routeBuilders/dashb
 import { canUseAlertsList } from "~/v3/canUseAlertsList.server";
 import { pickThresholdSeries } from "~/components/alerts/alertSeriesTypes";
 import { GROUP_CAPABILITY_KEY, type NotifierRef } from "@internal/alert-contracts";
-import { getAlert } from "~/v3/services/alerts/storage/alertStore.server";
+import { getAlert, getAlertsByIds } from "~/v3/services/alerts/storage/alertStore.server";
 import { alertDisplayName } from "~/v3/services/alerts/alertDisplayName";
 import { editAlertGroup } from "~/v3/services/alerts/alertGroups.server";
-import {
-  groupScopeSummary,
-  type AlertSeriesBundle,
-  type GroupMemberTile,
-} from "~/components/alerts/groupMembers";
+import { groupScopeSummary, type GroupMemberTile } from "~/components/alerts/groupMembers";
 import {
   EMPTY_SERIES,
   loadAlertSeries,
@@ -107,7 +104,11 @@ import { AlertActivityTable } from "~/components/alerts/AlertActivityTable";
 import { activityRowLink } from "./activityRowLink";
 import { AlertDetailChart, AlertDetailFilterBar } from "~/components/alerts/AlertDetailChart";
 import { AlertDetailSidebar } from "~/components/alerts/AlertDetailSidebar";
-import { GroupMemberTiles, GroupMembershipBanner } from "~/components/alerts/GroupMemberTiles";
+import {
+  GroupMemberTiles,
+  GroupMemberTilesPlaceholder,
+  GroupMembershipBanner,
+} from "~/components/alerts/GroupMemberTiles";
 import { availableAlertChannelWhere } from "~/v3/services/alerts/validateNotifierChannels.server";
 import { EXPIRY_CHIPS } from "~/components/dashboard-agent/alert-creation/flow-state";
 export const meta = pageMeta("Alert");
@@ -160,62 +161,21 @@ export const loader = dashboardLoader(
       projectId: project.id,
       environmentId: environment.id,
     });
+    if (!rawAlert) {
+      throw new Response(undefined, { status: 404, statusText: "Alert not found" });
+    }
     const detailWindow = resolveAlertDetailWindow({
       rawAlert,
       params: { period, from: parseTimestamp(fromStr), to: parseTimestamp(toStr) },
       maxWindowDays: env.ALERT_DETAIL_MAX_WINDOW_DAYS,
     });
 
-    const presenter = new AlertDetailPresenter();
-    const alert = await presenter.call({
-      id: alertId,
-      projectId: project.id,
-      environmentId: environment.id,
-      eventsWindow: detailWindow,
-    });
-    if (!alert || !rawAlert) {
-      throw new Response(undefined, { status: 404, statusText: "Alert not found" });
-    }
-
     const now = new Date();
     const isGroup = rawAlert.capabilityKey === GROUP_CAPABILITY_KEY;
     const memberIds = isGroup
       ? ((rawAlert.condition as { memberAlertIds?: string[] }).memberAlertIds ?? [])
       : [];
-    let series: AlertSeriesBundle = EMPTY_SERIES;
-    let memberTiles: GroupMemberTile[] = [];
-    try {
-      if (!isGroup) {
-        series = await loadAlertSeries(prisma, {
-          alertId,
-          kind: alert.kind,
-          rawAlert,
-          window: detailWindow,
-          project,
-        });
-      }
-      if (isGroup) {
-        memberTiles = await loadGroupMemberTiles(
-          prisma,
-          {
-            memberIds,
-            concurrency: Math.max(1, Math.floor(env.ALERTS_QUERY_CONCURRENCY_LIMIT / 2)),
-            window: detailWindow,
-            project,
-            environmentId: environment.id,
-          },
-          {
-            getDetail: (id) =>
-              presenter.call({
-                id,
-                projectId: project.id,
-                environmentId: environment.id,
-                eventsWindow: detailWindow,
-              }),
-          }
-        );
-      }
-    } catch (error) {
+    const seriesFailed = (error: unknown) => {
       if (error instanceof Response) throw error;
       logger.error("Failed to load alert detail chart series", {
         organizationId: project.organizationId,
@@ -225,31 +185,86 @@ export const loader = dashboardLoader(
         alertId,
         error,
       });
-    }
+    };
 
-    const parentGroup = rawAlert.groupId
-      ? await getAlert(prisma, {
-          id: rawAlert.groupId,
+    const [alert, members, parentGroup, channels, legacyAlerts] = await Promise.all([
+      new AlertDetailPresenter().call({
+        id: alertId,
+        projectId: project.id,
+        environmentId: environment.id,
+        eventsWindow: detailWindow,
+      }),
+      getAlertsByIds(prisma, {
+        ids: memberIds,
+        projectId: project.id,
+        environmentId: environment.id,
+      }).catch((error) => {
+        logger.error("Failed to load alert group members", {
           projectId: project.id,
           environmentId: environment.id,
-        })
-      : null;
-
-    const channels: EditableChannel[] = await prisma.projectAlertChannel.findMany({
-      where: availableAlertChannelWhere({
-        projectId: project.id,
-        environmentType: environment.type,
+          alertId,
+          error,
+        });
+        return [];
       }),
-      select: { id: true, name: true, type: true },
-      orderBy: { createdAt: "desc" },
-    });
+      rawAlert.groupId
+        ? getAlert(prisma, {
+            id: rawAlert.groupId,
+            projectId: project.id,
+            environmentId: environment.id,
+          })
+        : null,
+      prisma.projectAlertChannel.findMany({
+        where: availableAlertChannelWhere({
+          projectId: project.id,
+          environmentType: environment.type,
+        }),
+        select: { id: true, name: true, type: true },
+        orderBy: { createdAt: "desc" },
+      }),
+      hasLegacyAlerts(project.id),
+    ]);
+    if (!alert) {
+      throw new Response(undefined, { status: 404, statusText: "Alert not found" });
+    }
 
-    return typedjson({
-      ...(await hasLegacyAlerts(project.id)),
+    const series = isGroup
+      ? EMPTY_SERIES
+      : await loadAlertSeries(prisma, {
+          alertId,
+          kind: alert.kind,
+          rawAlert,
+          window: detailWindow,
+          project,
+        }).catch((error) => {
+          seriesFailed(error);
+          return EMPTY_SERIES;
+        });
+    const memberTiles: Promise<{ tiles: GroupMemberTile[] }> = (
+      isGroup
+        ? loadGroupMemberTiles(prisma, {
+            members,
+            concurrency: Math.max(1, Math.floor(env.ALERTS_QUERY_CONCURRENCY_LIMIT / 2)),
+            window: detailWindow,
+            project,
+          }).catch((error) => {
+            seriesFailed(error);
+            return [];
+          })
+        : Promise.resolve([])
+    ).then((tiles) => ({ tiles }));
+    const memberList = members.map((member) => ({
+      id: member.id,
+      name: alertDetailName(member),
+    }));
+
+    return typeddefer({
+      ...legacyAlerts,
       alert: isGroup
-        ? { ...alert, scopeSummary: groupScopeSummary(memberTiles.map((t) => t.name)) }
+        ? { ...alert, scopeSummary: groupScopeSummary(memberList.map((m) => m.name)) }
         : alert,
       ...series,
+      members: memberList,
       memberTiles,
       memberOf: parentGroup ? { id: parentGroup.id, name: alertDisplayName(parentGroup) } : null,
       channels,
@@ -1076,6 +1091,7 @@ export default function Page() {
     permissions,
     queryGroups,
     querySeriesMode,
+    members,
     memberTiles,
     memberOf,
   } = useTypedLoaderData<typeof loader>();
@@ -1183,7 +1199,16 @@ export default function Page() {
                   />
                 )}
                 {isGroup && (
-                  <GroupMemberTiles tiles={memberTiles} window={detailWindow} now={now} />
+                  <Suspense fallback={<GroupMemberTilesPlaceholder count={members.length} />}>
+                    <TypedAwait
+                      resolve={memberTiles}
+                      errorElement={<GroupMemberTilesPlaceholder count={members.length} />}
+                    >
+                      {({ tiles }) => (
+                        <GroupMemberTiles tiles={tiles} window={detailWindow} now={now} />
+                      )}
+                    </TypedAwait>
+                  </Suspense>
                 )}
                 {isGroup ? (
                   <div className="h-96 shrink-0">
@@ -1205,7 +1230,7 @@ export default function Page() {
               <DetailSidebar
                 alert={displayAlert}
                 permissions={permissions}
-                members={memberTiles}
+                members={members}
                 inGroup={memberOf !== null}
                 onEdit={() => openEdit(false)}
                 onActivate={() => openEdit(true)}
