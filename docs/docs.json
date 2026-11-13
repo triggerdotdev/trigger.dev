@@ -173,8 +173,6 @@
               "webhooks/overview",
               "webhooks/quick-start",
               "webhooks/how-it-works",
-              "webhooks/connect",
-              "webhooks/signing-secrets",
               {
                 "group": "Providers",
                 "pages": [
@@ -228,16 +226,18 @@
                 ]
               },
               "webhooks/custom-providers",
-              "webhooks/verification",
-              "webhooks/deliveries",
-              "webhooks/filters",
+              "webhooks/connect",
+              "webhooks/signing-secrets",
               "webhooks/webhook-tasks",
+              "webhooks/filters",
               "webhooks/waiters",
               "webhooks/session-routing",
               "webhooks/channels",
               "webhooks/slack",
               "webhooks/linear",
               "webhooks/human-in-the-loop",
+              "webhooks/deliveries",
+              "webhooks/verification",
               "webhooks/own-handler",
               "webhooks/pricing-and-limits"
             ]
