@@ -67,13 +67,8 @@ export {
 } from "@trigger.dev/plugins";
 export type { ApiKeyCapabilityUsage, ApiKeyScopeUsage } from "@trigger.dev/plugins";
 export { resolveJwtSigningKey } from "./bearerCredentials.js";
-export {
-  clientIpFromHeaders,
-  isIpAllowed,
-  MAX_API_KEY_IP_RANGES,
-  parseIpRanges,
-  type ParseIpRangesResult,
-} from "./ipAllowlist.js";
+export { clientIpFromHeaders, isIpAllowed } from "./ipAllowlist.js";
+export { MAX_API_KEY_IP_RANGES, parseIpRanges, type ParseIpRangesResult } from "./ipRanges.js";
 export {
   createPublicTokenSubjectCodec,
   isSealedPublicTokenSubject,

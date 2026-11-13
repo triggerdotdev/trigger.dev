@@ -76,7 +76,7 @@ export default {
         "src/shims/esm.ts",
       ],
       ignoreDependencies: ["@epic-web/test-server", "execa", "find-up"],
-      ignoreBinaries: ["xdg-open"],
+      ignoreBinaries: ["xdg-open", "mkfifo"],
     },
     "packages/convex": {
       ignore: ["example/**"],

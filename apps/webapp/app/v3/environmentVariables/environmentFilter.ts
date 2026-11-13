@@ -162,17 +162,74 @@ export function selectEnvironmentVariablesFilter({
   return all;
 }
 
-// The search params that describe the list view: its filter, branches, search and page.
-const LIST_VIEW_SEARCH_PARAMS = ["env", "branch", "search", "page"];
+const ENVIRONMENT_VARIABLES_SORTS = ["updated", "updated-asc"] as const;
 
 /**
- * The list view's search params from a request URL, as a query string ("?..." or ""), so an
- * action can send the user back to the view they acted from. Other params are dropped.
+ * The list's order. `updated` is newest first, by the most recent update among a key's values in
+ * view. `updated-asc` is oldest first, by the oldest. With one environment in view a key has one
+ * value, so both go by it. No sort means alphabetical by key.
  */
-export function listViewSearch(url: string | URL): string {
-  const searchParams = new URL(url).searchParams;
+export type EnvironmentVariablesSort = (typeof ENVIRONMENT_VARIABLES_SORTS)[number];
+
+/**
+ * Whether a view can be sorted by last update. Only where the sort reads a bounded number of
+ * values: a view of one environment, or Preview narrowed to one branch (the Preview base plus
+ * that branch). "All" and Preview with every branch or several can't, and list alphabetically
+ * whatever sort is asked for.
+ */
+export function canSortEnvironmentVariablesView(view: {
+  filter: EnvironmentVariablesFilter;
+  environmentIds: string[];
+  branchEnvironmentIds?: string[];
+}): boolean {
+  if (view.filter === "all") {
+    return false;
+  }
+  if (view.environmentIds.length === 1) {
+    return true;
+  }
+  return (
+    view.filter === "preview" &&
+    view.branchEnvironmentIds?.length === 1 &&
+    view.environmentIds.length === 2
+  );
+}
+
+export function parseEnvironmentVariablesSort(
+  value: string | null | undefined
+): EnvironmentVariablesSort | undefined {
+  return ENVIRONMENT_VARIABLES_SORTS.find((sort) => sort === value);
+}
+
+/** What a click on the Updated header switches to: newest first, oldest first, alphabetical. */
+export function nextEnvironmentVariablesSort(
+  sort: EnvironmentVariablesSort | undefined
+): EnvironmentVariablesSort | undefined {
+  switch (sort) {
+    case undefined:
+      return "updated";
+    case "updated":
+      return "updated-asc";
+    case "updated-asc":
+      return undefined;
+  }
+}
+
+// The search params that describe the list view: its filter, branches, search, sort and page.
+const LIST_VIEW_SEARCH_PARAMS = ["env", "branch", "search", "sort", "page"];
+
+/**
+ * The list view's search params from a URL (or its search params), as a query string ("?..." or ""), so an
+ * action can send the user back to the view they acted from. Other params are dropped, apart
+ * from the ones named in `alsoKeep`.
+ */
+export function listViewSearch(
+  url: string | URL | URLSearchParams,
+  alsoKeep: string[] = []
+): string {
+  const searchParams = url instanceof URLSearchParams ? url : new URL(url).searchParams;
   const kept = new URLSearchParams();
-  for (const name of LIST_VIEW_SEARCH_PARAMS) {
+  for (const name of [...LIST_VIEW_SEARCH_PARAMS, ...alsoKeep]) {
     for (const value of searchParams.getAll(name)) {
       if (value) {
         kept.append(name, value);

@@ -19,6 +19,7 @@ import { Callout } from "~/components/primitives/Callout";
 import { ClipboardField } from "~/components/primitives/ClipboardField";
 import { DateTime } from "~/components/primitives/DateTime";
 import { Dialog, DialogContent, DialogHeader, DialogTrigger } from "~/components/primitives/Dialog";
+import { ExpiryDatePicker, type ExpiryPreset } from "~/components/ExpiryDatePicker";
 import { Fieldset } from "~/components/primitives/Fieldset";
 import { FormButtons } from "~/components/primitives/FormButtons";
 import { FormError } from "~/components/primitives/FormError";
@@ -55,6 +56,7 @@ import {
   revokePersonalAccessToken,
 } from "~/services/personalAccessToken.server";
 import { requireUserId } from "~/services/session.server";
+import { apiKeyExpiryDay, apiKeyExpiryTimestamp } from "~/utils/apiKeyExpiry";
 import { docsPath, personalAccessTokensPath } from "~/utils/pathBuilder";
 
 import { WhenAgentUnavailable } from "~/components/dashboard-agent/WhenAgentUnavailable";
@@ -182,8 +184,8 @@ const CreateTokenSchema = z.discriminatedUnion("action", [
     // dropdown and submits no roleId; the action passes that through
     // and createPersonalAccessToken just doesn't write a TokenRole.
     roleId: z.string().optional(),
-    // Checked against the configured lifetimes in the action.
-    expiresInDays: z.coerce.number({ error: "Choose when the token expires" }).int().positive(),
+    // Checked against the allowed range in the action.
+    expiresAt: z.coerce.date({ error: "Choose when the token expires" }),
   }),
   z.object({
     action: z.literal("revoke"),
@@ -220,11 +222,15 @@ export const action: ActionFunction = async ({ request }) => {
           }
         }
 
-        const { expiresInDays } = submission.value;
-        if (!isAllowedPersonalAccessTokenExpiry(expiresInDays)) {
+        const { expiresAt } = submission.value;
+        if (!isAllowedPersonalAccessTokenExpiry(expiresAt)) {
+          const { options, maxDays } = personalAccessTokenExpiryOptions();
+          const longest = options.find((option) => option.value === maxDays)?.label;
           return json(
             submission.reply({
-              fieldErrors: { expiresInDays: ["Choose one of the listed expiration options"] },
+              fieldErrors: {
+                expiresAt: [`Choose a date from today to ${longest} from now`],
+              },
             }),
             { status: 400 }
           );
@@ -234,7 +240,7 @@ export const action: ActionFunction = async ({ request }) => {
           name: submission.value.tokenName,
           userId,
           roleId: submittedRoleId,
-          expiresInDays,
+          expiresAt,
           auditSource: {
             ip: extractClientIp(request.headers.get("x-forwarded-for")),
             userAgent: request.headers.get("user-agent"),
@@ -407,12 +413,25 @@ function CreatePersonalAccessToken({
 }: {
   roles: SystemRole[];
   defaultRoleId: string;
-  expiryOptions: { options: PersonalAccessTokenExpiryOption[]; defaultDays: number };
+  expiryOptions: {
+    options: PersonalAccessTokenExpiryOption[];
+    defaultDays: number;
+    maxDays: number;
+  };
 }) {
   const fetcher = useFetcher<typeof action>();
   const lastSubmission = fetcher.data as any;
+  const expiryPresets: ExpiryPreset[] = expiryOptions.options.map((option) => ({
+    value: String(option.value),
+    label: `In ${option.label}`,
+    days: option.value,
+  }));
+  const [expiration, setExpiration] = useState(String(expiryOptions.defaultDays));
+  const [expiryDate, setExpiryDate] = useState<Date | undefined>(() =>
+    apiKeyExpiryDay(new Date(), expiryOptions.defaultDays)
+  );
 
-  const [form, { tokenName, expiresInDays }] = useForm({
+  const [form, { tokenName, expiresAt }] = useForm({
     id: "create-personal-access-token",
     // TODO: type this
     lastResult: lastSubmission as any,
@@ -508,26 +527,30 @@ function CreatePersonalAccessToken({
             )}
 
             <InputGroup>
-              <Label htmlFor={expiresInDays.id}>Expiration</Label>
-              <Select
-                name={expiresInDays.name}
-                id={expiresInDays.id}
-                variant="tertiary/small"
-                defaultValue={String(expiryOptions.defaultDays)}
-                text={(value: string) =>
-                  expiryOptions.options.find((o) => String(o.value) === value)?.label ??
-                  "Select an expiration"
-                }
-                dropdownIcon
-              >
-                {expiryOptions.options.map((option) => (
-                  <SelectItem key={option.value} value={String(option.value)}>
-                    {option.label}
-                  </SelectItem>
-                ))}
-              </Select>
-              <Hint>The token stops working after this. Create a new one to replace it.</Hint>
-              <FormError id={expiresInDays.errorId}>{expiresInDays.errors}</FormError>
+              <Label htmlFor="personal-access-token-expiry">Expiration</Label>
+              {expiryDate ? (
+                <input
+                  type="hidden"
+                  name={expiresAt.name}
+                  value={apiKeyExpiryTimestamp(expiryDate).toISOString()}
+                />
+              ) : null}
+              <ExpiryDatePicker
+                id="personal-access-token-expiry"
+                presets={expiryPresets}
+                maxDays={expiryOptions.maxDays}
+                expiration={expiration}
+                date={expiryDate}
+                onChange={(nextExpiration, date) => {
+                  setExpiration(nextExpiration);
+                  setExpiryDate(date);
+                }}
+              />
+              <Hint>
+                The token stops working at the end of the chosen day, UTC. Create a new one to
+                replace it.
+              </Hint>
+              <FormError id={expiresAt.errorId}>{expiresAt.errors}</FormError>
             </InputGroup>
 
             <FormButtons

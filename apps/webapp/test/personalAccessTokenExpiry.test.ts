@@ -59,6 +59,8 @@ vi.setConfig({ testTimeout: 60_000 });
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
+const inDays = (days: number) => new Date(Date.now() + days * DAY_MS);
+
 let userCounter = 0;
 
 async function createUser(prisma: any) {
@@ -90,22 +92,19 @@ describe("personal access token expiry", () => {
   });
 
   postgresTest(
-    "a token created with a lifetime expires that many days later",
+    "a token created with an expiry date keeps it and reports it as validUntil",
     async ({ prisma }) => {
       db.client = prisma;
       const user = await createUser(prisma);
-      const before = Date.now();
+      const expiresAt = new Date(Date.now() + 30 * DAY_MS);
 
       const created = await createPersonalAccessToken({
         name: "ci",
         userId: user.id,
-        expiresInDays: 30,
+        expiresAt,
       });
 
-      expect(created.expiresAt).not.toBeNull();
-      const lifetime = created.expiresAt!.getTime() - before;
-      expect(lifetime).toBeGreaterThanOrEqual(30 * DAY_MS);
-      expect(lifetime).toBeLessThan(30 * DAY_MS + 60_000);
+      expect(created.expiresAt).toEqual(expiresAt);
       await expect(authenticatePersonalAccessToken(created.token)).resolves.toMatchObject({
         userId: user.id,
         tokenId: created.id,
@@ -120,7 +119,7 @@ describe("personal access token expiry", () => {
     const created = await createPersonalAccessToken({
       name: "ci",
       userId: user.id,
-      expiresInDays: 30,
+      expiresAt: inDays(30),
     });
     const expiredAt = new Date(Date.now() - 1000);
     await expire(prisma, created.id, expiredAt);
@@ -158,12 +157,12 @@ describe("personal access token expiry", () => {
     const live = await createPersonalAccessToken({
       name: "live",
       userId: user.id,
-      expiresInDays: 90,
+      expiresAt: inDays(90),
     });
     const old = await createPersonalAccessToken({
       name: "old",
       userId: user.id,
-      expiresInDays: 30,
+      expiresAt: inDays(30),
     });
     await expire(prisma, old.id, new Date(Date.now() - DAY_MS));
 
@@ -179,17 +178,17 @@ describe("personal access token expiry", () => {
     const soon = await createPersonalAccessToken({
       name: "soon",
       userId: user.id,
-      expiresInDays: 30,
+      expiresAt: inDays(30),
     });
     const later = await createPersonalAccessToken({
       name: "later",
       userId: user.id,
-      expiresInDays: 30,
+      expiresAt: inDays(30),
     });
     const old = await createPersonalAccessToken({
       name: "old",
       userId: user.id,
-      expiresInDays: 30,
+      expiresAt: inDays(30),
     });
     const never = await createPersonalAccessToken({ name: "cli", userId: user.id });
     await expire(prisma, soon.id, new Date(Date.now() + 3 * DAY_MS));
@@ -212,7 +211,7 @@ describe("personal access token expiry", () => {
     const created = await createPersonalAccessToken({
       name: "ci",
       userId: user.id,
-      expiresInDays: 30,
+      expiresAt: inDays(30),
     });
     await expire(prisma, created.id, new Date(Date.now() - DAY_MS));
     await prisma.personalAccessToken.update({
@@ -262,16 +261,26 @@ describe("personal access token expiry options and errors", () => {
         { value: 365, label: "1 year" },
       ],
       defaultDays: 90,
+      maxDays: 365,
     });
   });
 
-  it("only the configured lifetimes are accepted", () => {
-    for (const days of [30, 90, 365]) {
-      expect(isAllowedPersonalAccessTokenExpiry(days)).toBe(true);
-    }
-    for (const days of [0, 7, 3650, Number.NaN]) {
-      expect(isAllowedPersonalAccessTokenExpiry(days)).toBe(false);
-    }
+  // Catches: a hand-made create request getting a far-future or past expiry, or the dashboard's
+  // last offered day being rejected.
+  it("any expiry from now to the end of the UTC day a year from today is accepted", () => {
+    const now = new Date("2026-11-11T10:00:00.000Z");
+    const allowed = (iso: string) => isAllowedPersonalAccessTokenExpiry(new Date(iso), now);
+
+    // The end of a chosen day, as the dashboard sends it: today, a custom date, the longest.
+    expect(allowed("2026-11-12T00:00:00.000Z")).toBe(true);
+    expect(allowed("2027-02-08T00:00:00.000Z")).toBe(true);
+    expect(allowed("2027-11-12T00:00:00.000Z")).toBe(true);
+
+    expect(allowed("2026-11-11T10:00:00.000Z")).toBe(false);
+    expect(allowed("2026-11-10T00:00:00.000Z")).toBe(false);
+    expect(allowed("2027-11-12T00:00:00.001Z")).toBe(false);
+    expect(allowed("2099-01-01T00:00:00.000Z")).toBe(false);
+    expect(isAllowedPersonalAccessTokenExpiry(new Date(Number.NaN), now)).toBe(false);
   });
 });
 

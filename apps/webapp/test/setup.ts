@@ -34,6 +34,9 @@ function createWorkerStub() {
 vi.mock("~/v3/commonWorker.server", () => ({ commonWorker: createWorkerStub() }));
 vi.mock("~/v3/batchTriggerWorker.server", () => ({ batchTriggerWorker: createWorkerStub() }));
 vi.mock("~/v3/alertsWorker.server", () => ({ alertsWorker: createWorkerStub() }));
+vi.mock("~/v3/deploymentChecksWorker.server", () => ({
+  queueDeploymentCheck: vi.fn().mockResolvedValue(undefined),
+}));
 
 // RunEngine and the socket.io server are further singletons that open eager
 // ioredis connections at import via the same pattern. No test

@@ -22,6 +22,7 @@ import {
   removeSessionStreamWaitpoint,
 } from "~/services/sessionStreamWaitpointCache.server";
 import { createActionApiRoute, everyResource } from "~/services/routeBuilders/apiBuilder.server";
+import { keyedWaitpointBudgetResponse } from "~/services/routeBuilders/keyedWaitpointBudget.server";
 import { logger } from "~/services/logger.server";
 import { parseDelay } from "~/utils/delays";
 import { resolveIdempotencyKeyTTL } from "~/utils/idempotencyKeys.server";
@@ -230,6 +231,11 @@ const { action, loader } = createActionApiRoute(
       if (error instanceof ServiceValidationError) {
         return json({ error: error.message }, { status: 422 });
       }
+      // Expected under load and retryable, so it is not reported as an error.
+      const busy = keyedWaitpointBudgetResponse(error, {
+        environmentId: authentication.environment.id,
+      });
+      if (busy) return busy;
       // Don't forward raw internal error messages (could leak Prisma/engine
       // details). Log server-side and return a generic 500.
       logger.error("Failed to create session-stream waitpoint", {

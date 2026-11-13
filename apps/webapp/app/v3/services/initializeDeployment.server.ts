@@ -8,7 +8,9 @@ import { resolveBuildRuntime } from "@trigger.dev/core/v3/build";
 import { customAlphabet } from "nanoid";
 import { env } from "~/env.server";
 import { type AuthenticatedEnvironment } from "~/services/apiAuth.server";
-import { type EncryptedSecretValue } from "~/services/secrets/secretStore.server";
+import cuid from "cuid";
+import { type StoredEnvironmentValue } from "~/services/environmentEncryption/crypto.server";
+import { environmentEncryption } from "~/services/environmentEncryption/instance.server";
 import { logger } from "~/services/logger.server";
 import { generateFriendlyId } from "../friendlyIdentifiers";
 import { createRemoteImageBuild, remoteBuildsEnabled } from "../remoteImageBuilder.server";
@@ -88,7 +90,8 @@ export class InitializeDeploymentService extends BaseService {
     options?: {
       cliVersion?: string;
       redeployOf?: string;
-      buildEnvVars?: EncryptedSecretValue;
+      buildEnvVars?: StoredEnvironmentValue;
+      buildEnvVarsSourceId?: string;
       trustedDeploy?: BuildServerMetadata["trustedDeploy"];
     }
   ): Promise<InitializeDeploymentResult> {
@@ -280,10 +283,39 @@ export class InitializeDeploymentService extends BaseService {
 
       span.setAttribute("outcome", "created");
 
+      const deploymentId = cuid();
+      const encryption = environmentEncryption(this._prisma);
+      const prepared =
+        payload.isNativeBuild && payload.fromBundle
+          ? await encryption.prepareWrite({
+              projectId: environment.projectId,
+              environmentId: environment.id,
+            })
+          : undefined;
+      const context = {
+        environmentId: environment.id,
+        purpose: "build-env-vars" as const,
+        objectId: deploymentId,
+      };
       // Before cancelling superseded deployments, so an invalid payload leaves them running
       const encryptedBuildEnvVars = await buildEnvVarsEnvelope(payload, {
         copyFrom: options?.buildEnvVars,
-        encryptionKey: env.ENCRYPTION_KEYRING,
+        encrypt: (plaintext) => {
+          if (!prepared) throw new Error("Missing prepared build encryption key");
+          return encryption.encrypt(prepared, context, plaintext);
+        },
+        decryptSource: async (value) => {
+          if (!options?.buildEnvVarsSourceId) throw new Error("Missing source deployment identity");
+          return (
+            await encryption.decryptMany([
+              {
+                projectId: environment.projectId,
+                value,
+                context: { ...context, objectId: options.buildEnvVarsSourceId },
+              },
+            ])
+          )[0]!;
+        },
         maxKeys: env.DEPLOYMENT_BUILD_ENV_VARS_MAX_KEYS,
         maxBytes: env.DEPLOYMENT_BUILD_ENV_VARS_SIZE_LIMIT_BYTES,
       });
@@ -440,6 +472,7 @@ export class InitializeDeploymentService extends BaseService {
           });
 
           return {
+            id: deploymentId,
             // Regenerated per attempt: each attempt is a fresh `create` that
             // must satisfy `WorkerDeployment.friendlyId @unique`, so reusing a
             // friendlyId across retries would risk a spurious P2002 on
@@ -469,6 +502,9 @@ export class InitializeDeploymentService extends BaseService {
           archiveGuard: {
             type: environment.type,
           },
+          beforeCreate: prepared?.keyId
+            ? (tx) => encryption.assertWrite(tx, [prepared])
+            : undefined,
         }
       );
 

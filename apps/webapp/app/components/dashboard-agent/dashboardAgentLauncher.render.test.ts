@@ -9,7 +9,6 @@ function markup(open: boolean) {
   const agent = {
     open,
     setOpen: () => {},
-    unreadWakes: 0,
     unreadWork: 0,
   } as unknown as React.ComponentProps<typeof DashboardAgentProvider>["value"];
   return renderToStaticMarkup(

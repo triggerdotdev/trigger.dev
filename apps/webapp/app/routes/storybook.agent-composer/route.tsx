@@ -33,9 +33,6 @@ import {
   FLOATING_HEIGHT,
   FLOATING_WIDTH,
 } from "~/components/dashboard-agent/panel-layout";
-import { watchDraftFor } from "~/components/dashboard-agent/watch-card";
-import { WatchCard } from "~/components/dashboard-agent/WatchCard";
-import { queueWatchRecommendation } from "~/components/dashboard-agent/watch-recommendations";
 import { cn } from "~/utils/cn";
 import { GalleryPage, noop, PANEL_FRAME } from "../storybook.agent-ui/gallery";
 
@@ -91,11 +88,6 @@ function ContextBanner({
   );
 }
 
-function ProposedWatchCard() {
-  const [draft, setDraft] = useState(() => watchDraftFor(queueWatchRecommendation("email-sends")));
-  return <WatchCard draft={draft} onChange={setDraft} onSubmit={noop} onCancel={noop} />;
-}
-
 /** The end of a conversation, so a docked composer sits where it does in a real chat. */
 function TranscriptTail({ inFlight = false }: { inFlight?: boolean }) {
   return (
@@ -123,7 +115,6 @@ function DockedComposer({
   context = <ContextBanner />,
   quotaRemaining,
   capReached,
-  watchCard = false,
   width,
   height = 384,
   fullscreen = false,
@@ -135,7 +126,6 @@ function DockedComposer({
   quotaRemaining?: number;
   /** Swaps the composer for the upgrade block, as `atMessageCap` does. */
   capReached?: { limit: number; planResolved: boolean };
-  watchCard?: boolean;
   width?: number;
   height?: number;
   fullscreen?: boolean;
@@ -145,11 +135,6 @@ function DockedComposer({
     <div className={cn(PANEL_FRAME, "flex flex-col overflow-hidden")} style={{ width, height }}>
       <AgentPanelColumn fullscreen={fullscreen}>
         <TranscriptTail inFlight={isStreaming} />
-        {watchCard ? (
-          <div className="px-3 pb-2">
-            <ProposedWatchCard />
-          </div>
-        ) : null}
         {capReached ? (
           <AgentUpgradeBlockView
             limit={capReached.limit}
@@ -188,11 +173,9 @@ const HERO_FRAME = cn(PANEL_FRAME, "flex h-[32rem] flex-col");
 /** The real new-chat draft, with the page's suggested prompts under it. */
 function NewChatHero({
   pageContext,
-  watchCard = false,
   fullscreen = false,
 }: {
   pageContext: AgentPageContext;
-  watchCard?: boolean;
   fullscreen?: boolean;
 }) {
   return (
@@ -204,7 +187,6 @@ function NewChatHero({
           environmentSlug="prod"
           entityId={RUN_ID}
           pageContext={pageContext}
-          watchCard={watchCard ? <ProposedWatchCard /> : undefined}
           autoFocus={false}
         />
       </AgentPanelColumn>
@@ -319,11 +301,9 @@ const STATES: Record<string, React.ReactNode> = {
       }
     />
   ),
-  "composer-docked-watch-card": <DockedComposer watchCard height={FLOATING_HEIGHT} />,
 
   "composer-hero-new-chat": <NewChatHero pageContext={demoPageContexts.failedRun} />,
   "composer-hero-draft": <EmptyChatHero initialValue={SHORT_DRAFT} />,
-  "composer-hero-watch-card": <NewChatHero pageContext={demoPageContexts.queue} watchCard />,
   "composer-hero-fullscreen": <NewChatHero pageContext={demoPageContexts.runs} fullscreen />,
 
   "composer-limit-near": (

@@ -13,7 +13,6 @@ import {
   persistTurn,
   settleInvestigationAndCloseCard,
   upsertInvestigationRevision,
-  watchInvestigationId,
   type DashboardAgentDb,
   type DashboardAgentDbClient,
 } from "@internal/dashboard-agent-db";
@@ -726,14 +725,13 @@ describe("countUserMessages", () => {
 });
 
 /**
- * A consented watch seeds its card in one run and revises it in another, with no
- * hand-off between them: both name the row off the watch. So seeding twice has to
- * converge on one card, and a row under that id in another chat must be refused
- * rather than revised.
+ * A card can be seeded in one run and revised in another, with no hand-off between
+ * them: both name the row by the same id. So seeding twice has to converge on one
+ * card, and a row under that id in another chat must be refused rather than revised.
  */
 describe("seedInvestigation", () => {
   postgresTest(
-    "opens the watch's card once and hands the same row back after that",
+    "opens the card once and hands the same row back after that",
     async ({ prisma, postgresContainer }) => {
       await boot(prisma, postgresContainer.getConnectionUri(), "chat_seed");
       await createChat(agentDb, {
@@ -742,7 +740,7 @@ describe("seedInvestigation", () => {
         userId: USER_ID,
       });
 
-      const id = watchInvestigationId("watch_seed");
+      const id = "inv_seed";
       const seed = (chatId: string) =>
         seedInvestigation(agentDb, {
           id,

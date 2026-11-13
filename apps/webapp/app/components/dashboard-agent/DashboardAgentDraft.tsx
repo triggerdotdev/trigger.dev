@@ -16,9 +16,7 @@ export function DashboardAgentDraft({
   entityId,
   pageContext,
   promotedPrompt,
-  watchCard,
   capReached,
-  watchEnabled = false,
   autoFocus,
 }: {
   onSubmit: (text: string) => void;
@@ -27,10 +25,7 @@ export function DashboardAgentDraft({
   entityId?: string;
   pageContext?: AgentPageContext;
   promotedPrompt?: SuggestedPrompt;
-  watchCard?: React.ReactNode;
   capReached?: { limit: number; planResolved: boolean } | null;
-  /** Withholds the `watch` chip while watch functionality is behind its flag. */
-  watchEnabled?: boolean;
   /** Off where several drafts share a page, e.g. the gallery. */
   autoFocus?: boolean;
 }) {
@@ -54,11 +49,9 @@ export function DashboardAgentDraft({
       pageContext={pageContext}
       promoted={promotedPrompt}
       promptsDisabledReason={capReached ? MESSAGE_QUOTA_REACHED_REASON : undefined}
-      watchEnabled={watchEnabled}
       composer={
         capReached ? (
           <div className="flex w-full flex-col gap-3">
-            {watchCard}
             <AgentUpgradeBlock
               limit={capReached.limit}
               planResolved={capReached.planResolved}
@@ -73,7 +66,6 @@ export function DashboardAgentDraft({
           </div>
         ) : (
           <div className="flex w-full flex-col gap-3">
-            {watchCard}
             <DashboardAgentComposer
               layout="hero"
               value={input}

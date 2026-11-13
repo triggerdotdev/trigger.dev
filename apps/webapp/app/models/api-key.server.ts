@@ -489,7 +489,7 @@ export async function updateEnvironmentApiKeyAccess(
 
   const findApiKey = () =>
     prismaClient.apiKey.findFirst({
-      where: { id: apiKeyId, runtimeEnvironmentId: environment.id },
+      where: { id: apiKeyId, runtimeEnvironmentId: environment.id, issuedBy: "USER" },
       select: { revokedAt: true, expiresAt: true, presetId: true, scopes: true },
     });
   const reject = (uneditable: UneditableApiKey): never => {
@@ -514,6 +514,7 @@ export async function updateEnvironmentApiKeyAccess(
         where: {
           id: apiKeyId,
           runtimeEnvironmentId: environment.id,
+          issuedBy: "USER",
           revokedAt: null,
           OR: [{ expiresAt: null }, { expiresAt: { gt: new Date() } }],
         },
@@ -589,6 +590,7 @@ export async function revokeEnvironmentApiKey(
         where: {
           id: apiKeyId,
           runtimeEnvironmentId: environmentId,
+          issuedBy: "USER",
           revokedAt: null,
         },
         data: { revokedAt: new Date() },
@@ -637,7 +639,12 @@ export async function updateEnvironmentApiKeyIpRanges(
   const result = await (async () => {
     try {
       return await prismaClient.apiKey.updateMany({
-        where: { id: apiKeyId, runtimeEnvironmentId: environmentId, revokedAt: null },
+        where: {
+          id: apiKeyId,
+          runtimeEnvironmentId: environmentId,
+          issuedBy: "USER",
+          revokedAt: null,
+        },
         data: { allowedIpRanges: ipRanges.ranges },
       });
     } catch (error) {
@@ -714,7 +721,12 @@ export async function updateEnvironmentApiKeyDescription(
   const result = await (async () => {
     try {
       return await prismaClient.apiKey.updateMany({
-        where: { id: apiKeyId, runtimeEnvironmentId: environmentId, revokedAt: null },
+        where: {
+          id: apiKeyId,
+          runtimeEnvironmentId: environmentId,
+          issuedBy: "USER",
+          revokedAt: null,
+        },
         data: { description: note },
       });
     } catch (error) {

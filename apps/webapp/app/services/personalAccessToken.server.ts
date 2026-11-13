@@ -56,8 +56,8 @@ type CreatePersonalAccessTokenOptions = {
   roleId?: string;
   /** Where the mint came from, for the admin audit trail when the user is an admin. */
   auditSource?: AdminAuditSourceEndpoint;
-  /** Days until the token stops working. Omitted for tokens that don't expire. */
-  expiresInDays?: number;
+  /** When the token stops working. Omitted for tokens that don't expire. */
+  expiresAt?: Date;
   /** Seconds without use after which the token stops working. Omitted for no idle limit. */
   idleTimeoutSeconds?: number;
 };
@@ -76,10 +76,14 @@ export type PersonalAccessTokenExpiryOption = {
   label: string;
 };
 
-/** The lifetimes a dashboard-created token can have, and the preselected one. */
+/**
+ * The lifetimes offered when creating a token on the dashboard, the preselected one, and the
+ * longest, which also bounds a custom date.
+ */
 export function personalAccessTokenExpiryOptions(): {
   options: PersonalAccessTokenExpiryOption[];
   defaultDays: number;
+  maxDays: number;
 } {
   const days = env.PERSONAL_ACCESS_TOKEN_EXPIRY_DAYS;
   const defaultDays = days.includes(env.PERSONAL_ACCESS_TOKEN_DEFAULT_EXPIRY_DAYS)
@@ -88,11 +92,23 @@ export function personalAccessTokenExpiryOptions(): {
   return {
     options: days.map((value) => ({ value, label: expiryLabel(value) })),
     defaultDays,
+    maxDays: Math.max(...days),
   };
 }
 
-export function isAllowedPersonalAccessTokenExpiry(days: number): boolean {
-  return env.PERSONAL_ACCESS_TOKEN_EXPIRY_DAYS.includes(days);
+/**
+ * Whether a dashboard-created token can expire at `expiresAt`: in the future, and no later than
+ * the end of the UTC day the longest offered lifetime from today. The dashboard sends the end of
+ * the chosen UTC day.
+ */
+export function isAllowedPersonalAccessTokenExpiry(
+  expiresAt: Date,
+  now: Date = new Date()
+): boolean {
+  const { maxDays } = personalAccessTokenExpiryOptions();
+  const latest = Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() + maxDays + 1);
+  const time = expiresAt.getTime();
+  return time > now.getTime() && time <= latest;
 }
 
 function expiryLabel(days: number) {
@@ -776,7 +792,7 @@ export async function createPersonalAccessToken({
   userId,
   roleId,
   auditSource,
-  expiresInDays,
+  expiresAt,
   idleTimeoutSeconds,
 }: CreatePersonalAccessTokenOptions) {
   const token = createToken();
@@ -789,10 +805,7 @@ export async function createPersonalAccessToken({
       encryptedToken,
       obfuscatedToken: obfuscateToken(token),
       hashedToken: hashToken(token),
-      expiresAt:
-        expiresInDays === undefined
-          ? undefined
-          : new Date(Date.now() + expiresInDays * SECONDS_PER_DAY * 1000),
+      expiresAt,
       idleTimeoutSeconds,
     },
   });

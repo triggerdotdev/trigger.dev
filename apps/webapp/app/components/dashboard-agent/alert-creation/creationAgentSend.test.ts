@@ -128,7 +128,7 @@ describe("error sanitization", () => {
 });
 
 describe("creation session tool scope", () => {
-  it("fails when the creation session scope includes create_monitoring_alert", () => {
+  it("puts a creation turn in the alert_creation tool scope", () => {
     const base = { userId: "user_1", organizationId: "org_1" };
     expect(creationTurnClientData(base, {}).toolScope).toBe("alert_creation");
   });

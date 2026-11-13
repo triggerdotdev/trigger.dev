@@ -72,6 +72,27 @@ The name of the preview branch matches the branch name of the pull request.
   Preview branch deployments require the preview environment to be enabled on your project. Learn more about [preview branches](/deployment/preview-branches).
 </Note>
 
+## Ignored branches
+
+Ignored branches stop pull requests from matching branches from getting a preview deployment, for example Dependabot updates.
+
+Open **Integrations** in your project settings and add the patterns in the git settings panel, one per line. Use **Test a branch** to check which pattern, if any, matches a branch.
+
+```text
+dependabot/**
+skip-preview/**
+```
+
+- Patterns match the whole branch name. `*` stays within one part of the name and `**` also crosses `/`, so `skip-preview/**` matches `skip-preview/login` and `skip-preview` itself.
+- Negation (`!`), braces (`{a,b}`) and extglob groups like `@(a|b)` aren't supported. A pattern can use `**` at most twice and `*` at most twice more, and you can add up to 100 patterns of up to 256 characters each.
+- Only previews are affected: pushes to your production and staging branches always deploy, and a preview deployed before you added a pattern is archived as usual.
+
+When a preview is skipped, the pull request's Trigger.dev check is marked as skipped with the matching pattern. Re-run that check from GitHub to deploy the preview anyway.
+
+<Warning>
+  If your project is connected to Vercel, ignore the same branches in both places. A Vercel preview of a branch that Trigger.dev ignores has no task deployment for its commit, so with [version skew protection](/vercel-integration#version-skew-protection) its runs wait for one and [expire after an hour](/deployment/atomic-deployment#waiting-and-expiry).
+</Warning>
+
 ## Ignored paths
 
 Skip builds for pushes that only touch files your tasks do not depend on, such as docs or another app in a monorepo.

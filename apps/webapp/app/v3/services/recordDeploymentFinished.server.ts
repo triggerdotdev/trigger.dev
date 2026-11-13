@@ -1,4 +1,5 @@
 import { ROOT_CONTEXT, SpanStatusCode } from "@opentelemetry/api";
+import { BuildServerMetadata } from "@trigger.dev/core/v3";
 import { type WorkerDeployment, type WorkerDeploymentStatus } from "@trigger.dev/database";
 import { logger } from "~/services/logger.server";
 import { SEMINTATTRS_FORCE_RECORDING, tracer } from "~/v3/tracer.server";
@@ -61,6 +62,7 @@ export function recordDeploymentFinished(params: {
 }): void {
   try {
     const { status, deployment, environment, reason } = params;
+    const metadata = BuildServerMetadata.safeParse(deployment.buildServerMetadata);
 
     const isFailure = status === "FAILED" || status === "TIMED_OUT";
     const terminalAt =
@@ -85,6 +87,7 @@ export function recordDeploymentFinished(params: {
           [ATTRS.VERSION]: deployment.version,
           [ATTRS.STATUS]: status,
           [ATTRS.SUCCESS]: status === "DEPLOYED",
+          [ATTRS.TRUSTED_PUBLISHING]: metadata.success && !!metadata.data.trustedDeploy,
           [ATTRS.BUILD_PATH]: deriveBuildPath(deployment.buildServerMetadata),
           [ATTRS.WORKER_TYPE]: deployment.type,
           [ATTRS.RUNTIME]: deployment.runtime ?? undefined,
@@ -143,6 +146,7 @@ export function recordDeploymentInitialized(params: {
 }): void {
   try {
     const { deployment, environment } = params;
+    const metadata = BuildServerMetadata.safeParse(deployment.buildServerMetadata);
 
     const span = tracer.startSpan(
       "deployment.initialized",
@@ -160,6 +164,7 @@ export function recordDeploymentInitialized(params: {
           [ATTRS.DEPLOYMENT_ID]: deployment.friendlyId,
           [ATTRS.VERSION]: deployment.version,
           [ATTRS.STATUS]: deployment.status,
+          [ATTRS.TRUSTED_PUBLISHING]: metadata.success && !!metadata.data.trustedDeploy,
           [ATTRS.BUILD_PATH]: deriveBuildPath(deployment.buildServerMetadata),
           [ATTRS.WORKER_TYPE]: deployment.type,
           [ATTRS.RUNTIME]: deployment.runtime ?? undefined,

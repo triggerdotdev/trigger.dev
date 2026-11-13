@@ -39,7 +39,6 @@ vi.mock("./DashboardAgentMessages", () => ({ DashboardAgentMessages: () => null 
 vi.mock("./DashboardAgentHero", () => ({ DashboardAgentHero: () => null }));
 vi.mock("./DashboardAgentComposer", () => ({ DashboardAgentComposer: () => null }));
 vi.mock("./DashboardAgentContextBanner", () => ({ DashboardAgentContextBanner: () => null }));
-vi.mock("./WatchChips", () => ({ WatchChips: () => null }));
 vi.mock("./AgentUpgradeGate", () => ({
   AgentUpgradeBlock: () => null,
   AgentQuotaNotice: () => null,
@@ -64,8 +63,6 @@ function render(props: Partial<ComponentProps<typeof DashboardAgentChat>>) {
         actionPath: "/resources/agent",
         projectName: "Proj",
         environmentSlug: "prod",
-        watches: [],
-        onCancelWatch: () => {},
         onTurnSettled: () => {},
         refusalGenRef: { current: 0 },
         onNewChat: () => {},

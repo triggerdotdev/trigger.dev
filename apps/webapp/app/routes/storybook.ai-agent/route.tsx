@@ -8,8 +8,6 @@ import {
   DashboardAgentProvider,
 } from "~/components/dashboard-agent/dashboardAgentLauncher";
 import { failedRunPrompt } from "~/components/dashboard-agent/investigate-prompts";
-import { runWatchRecommendation } from "~/components/dashboard-agent/watch-recommendations";
-import { WatchButton } from "~/components/dashboard-agent/WatchButton";
 import { Button, type ButtonVariant } from "~/components/primitives/Buttons";
 import {
   ClientTabs,
@@ -33,19 +31,16 @@ import {
 } from "~/components/primitives/AgentDotMatrix";
 import { cn } from "~/utils/cn";
 
-// Storybook-only stand-in for the real provider, so InvestigateButton/WatchButton/
+// Storybook-only stand-in for the real provider, so InvestigateButton/
 // DashboardAgentLauncher render instead of bailing out with no panel to open.
 const storybookAgent = {
   open: false,
   setOpen: () => {},
   openWith: () => {},
-  openWithWatch: () => {},
   openCreateAlert: () => {},
   openEditAlert: () => {},
   openGroupAlerts: () => {},
-  unreadWakes: 0,
   unreadWork: 0,
-  watchEnabled: false,
 };
 
 // Experiments for the trigger.dev AI dashboard-agent identity: a resting logo
@@ -551,7 +546,6 @@ function SparklesTab() {
             prompt={failedRunPrompt("run_storybook")}
             label="Investigate this error"
           />
-          <WatchButton spec={runWatchRecommendation("run_storybook")} label="Watch…" />
         </div>
       </div>
     </DashboardAgentProvider>

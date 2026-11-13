@@ -103,6 +103,35 @@ export type {
   AdminAuditSourceEndpoint,
 } from "./adminAudit.js";
 export type {
+  AuditLogAction,
+  AuditLogActor,
+  AuditLogActorType,
+  AuditLogCategory,
+  AuditLogChanges,
+  AuditLogContext,
+  AuditLogController,
+  AuditLogCredential,
+  AuditLogCredentialFingerprintInput,
+  AuditLogCredentialKind,
+  AuditLogCredentialRevokedInput,
+  AuditLogCredentialRevokeReason,
+  AuditLogEndpoint,
+  AuditLogEnvironmentType,
+  AuditLogEvent,
+  AuditLogEventPage,
+  AuditLogEventQuery,
+  AuditLogFingerprintedCredentialKind,
+  AuditLogInput,
+  AuditLogListedAction,
+  AuditLogListedCategory,
+  AuditLogListedEvent,
+  AuditLogOrigin,
+  AuditLogPlugin,
+  AuditLogPluginConfig,
+  AuditLogSource,
+  AuditLogTarget,
+} from "./auditLog.js";
+export type {
   ExternalOidcController,
   ExternalOidcEnvironment,
   ExternalOidcMintResult,
@@ -214,3 +243,15 @@ export type {
   SignInCheck,
   SignInDecision,
 } from "./accessPolicy.js";
+
+export type {
+  DeploymentCheckDecision,
+  DeploymentCheckDecisionInput,
+  DeploymentCheckInput,
+  DeploymentCheckOutcome,
+  DeploymentCheckPlan,
+  DeploymentCheckResult,
+  DeploymentChecksController,
+  DeploymentChecksPlugin,
+  DeploymentChecksPluginConfig,
+} from "./deploymentChecks.js";

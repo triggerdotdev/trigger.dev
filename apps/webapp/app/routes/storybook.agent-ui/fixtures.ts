@@ -6,16 +6,10 @@ import {
   type InvestigationCapabilities,
   type ReportViewModelPayload,
   type ViewBlock,
-  type WatchResultBlock as WatchResultBlockPayload,
 } from "@internal/dashboard-agent-contracts";
 import * as demoFixtures from "~/components/dashboard-agent/demo/fixtures";
-import { DEMO_WORLD, demoId, demoRunsUri } from "~/components/dashboard-agent/demo/ids";
+import { DEMO_WORLD, demoRunsUri } from "~/components/dashboard-agent/demo/ids";
 import type { TurnActivity } from "~/components/dashboard-agent/DashboardAgentMessages";
-import { watchConfirmationBlockBody, watchOneShotBlockBody } from "~/presenters/v3/dashboardAgent";
-import {
-  queueWatchRecommendation,
-  runWatchRecommendation,
-} from "~/components/dashboard-agent/watch-recommendations";
 
 export function investigationBlock(
   fixture: (typeof demoFixtures.demoInvestigations)[keyof typeof demoFixtures.demoInvestigations],
@@ -47,11 +41,6 @@ const {
   toolPart,
   userMessage,
 } = demoFixtures;
-
-const DEMO_WATCH_ID = demoId("watch_gallery");
-
-// A stored error_recurrence spec holds the internal id, so the demo one drops its prefix.
-const DEMO_FINGERPRINT = DEMO_WORLD.errorFingerprint.replace(/^error_/, "");
 
 /** One transcript the message gallery renders, with the turn state it belongs to. */
 export type DemoTranscript = {
@@ -300,68 +289,10 @@ export const offerActionsBlock: ViewBlock = {
   version: VIEW_BLOCK_VERSION,
   actions: [
     {
-      label: "Set up a watch",
-      intent: {
-        kind: "watch",
-        spec: {
-          kind: "error_recurrence",
-          fingerprint: DEMO_FINGERPRINT,
-          checkEveryMinutes: 15,
-          maxHours: 6,
-          note: "the TypeError in send-order-receipt",
-        },
-      },
-    },
-    {
       label: "See its failed runs",
       intent: { kind: "navigate", target: demoRunsUri() },
     },
   ],
-};
-
-/* ------------------------------------------------------------------ *
- * Watch result blocks
- * ------------------------------------------------------------------ */
-
-const WATCH_BLOCK_ENVELOPE = {
-  id: `watch:${DEMO_WATCH_ID}`,
-  revision: 0,
-  version: VIEW_BLOCK_VERSION,
-} as const;
-
-/** Both opt-ins took effect: the happy path a submit with `notifyExternally` produces. */
-export const watchConfirmationBlock: WatchResultBlockPayload = {
-  ...watchConfirmationBlockBody({
-    spec: queueWatchRecommendation(DEMO_WORLD.queue),
-    watchId: DEMO_WATCH_ID,
-    followUp: { investigateOnAttention: true, external: { status: "enabled" } },
-  }),
-  ...WATCH_BLOCK_ENVELOPE,
-};
-
-/**
- * The same submit, degraded: the creation-time check couldn't run and the email
- * subscription failed. Neither fails the watch — both are said out loud instead.
- */
-export const watchDegradedConfirmationBlock: WatchResultBlockPayload = {
-  ...watchConfirmationBlockBody({
-    spec: queueWatchRecommendation(DEMO_WORLD.queue),
-    watchId: DEMO_WATCH_ID,
-    unavailable: true,
-    followUp: {
-      investigateOnAttention: true,
-      external: { status: "unavailable", reason: "email_alerts_not_configured" },
-    },
-  }),
-  ...WATCH_BLOCK_ENVELOPE,
-};
-
-export const watchSatisfiedBlock: WatchResultBlockPayload = {
-  ...watchOneShotBlockBody({
-    spec: runWatchRecommendation(DEMO_WORLD.failedRunId),
-    result: "satisfied",
-  }),
-  ...WATCH_BLOCK_ENVELOPE,
 };
 
 /* ------------------------------------------------------------------ *

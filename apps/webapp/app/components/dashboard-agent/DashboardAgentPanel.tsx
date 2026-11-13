@@ -2,7 +2,7 @@ import type { UIMessage } from "@ai-sdk/react";
 import { useFetcher, useLocation, useNavigate, useRevalidator } from "@remix-run/react";
 import { generateFriendlyId } from "@trigger.dev/core/v3/isomorphic";
 import { motion } from "framer-motion";
-import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { environmentFullTitle } from "~/components/environments/EnvironmentLabel";
 import { Spinner } from "~/components/primitives/Spinner";
 import { useToast } from "~/components/primitives/Toast";
@@ -28,19 +28,17 @@ import {
 } from "./last-chat-storage";
 import { DashboardAgentDraft } from "./DashboardAgentDraft";
 import { DraftQuotaPoller } from "./DraftQuotaPoller";
+import { MonitoringPlanHostProvider, type MonitoringPlanHost } from "./MonitoringPlanBlock";
+import { useMonitoringPlanState } from "./useMonitoringPlanState";
 import {
   parseQuotaReachedResponse,
   shouldClearCapReached,
   type MessageQuota,
 } from "./message-quota";
-import { WatchCard } from "./WatchCard";
-import { watchDraftFor } from "./watch-card";
-import { NO_WATCH_CARD, watchCardReducer } from "./watch-card-state";
-import { forgetWatchActivity, rememberWatchActivity } from "./watch-activity";
 import type { TurnActivity } from "./DashboardAgentMessages";
 import { DashboardAgentHeader } from "./DashboardAgentHeader";
 import type { DashboardAgentChat as DashboardAgentChatListItem } from "./DashboardAgentHistory";
-import type { SuggestedPrompt, WatchSpec } from "@internal/dashboard-agent-contracts";
+import type { SuggestedPrompt } from "@internal/dashboard-agent-contracts";
 import { resolveOpenedChat, type OpenedChatResponse } from "./opened-chat";
 import type { AgentPageContext } from "./page-context-types";
 import { agentPageEntityId } from "./page-label";
@@ -163,7 +161,6 @@ export function DashboardAgentPanel({
   openChatRequest,
   newChatSeq,
   promotedPrompt,
-  watchRequest,
   onChatRead,
   onUnreadWorkChange,
   onTurnActivityChange,
@@ -171,7 +168,6 @@ export function DashboardAgentPanel({
   onModeChange,
   dragHandleProps,
   dragHandleClassName,
-  watchEnabled = false,
   openSource,
 }: {
   onClose: () => void;
@@ -180,8 +176,6 @@ export function DashboardAgentPanel({
   /** Spread onto the header, which is the floating window's drag handle; already filtered by `FloatingAgentWindow`. */
   dragHandleProps?: DragHandleProps;
   dragHandleClassName?: string;
-  /** Withholds every watch affordance while the flag is off. Defaults false until sourced. */
-  watchEnabled?: boolean;
   /** The contextual entry point this chat was opened from; drives the header's "Manual setup" action. */
   openSource?: AgentOpenSource;
   /** Prefill for in-place alert creation (from contextual pages). */
@@ -193,7 +187,6 @@ export function DashboardAgentPanel({
   openChatRequest?: { chatId: string; seq: number };
   newChatSeq?: number;
   promotedPrompt?: SuggestedPrompt;
-  watchRequest?: { spec: WatchSpec; seq: number };
   onChatRead?: (chatId: string, options: { leaving: boolean }) => void;
   /** How many chats still hold work their owner hasn't seen. */
   onUnreadWorkChange?: (count: number) => void;
@@ -215,8 +208,6 @@ export function DashboardAgentPanel({
   const storageKey = lastChatStorageKey(organization.id);
 
   const panelRef = useRef<HTMLDivElement | null>(null);
-  // Declared before the chat plumbing: changing chat dispatches into it.
-  const [watchCard, dispatchWatchCard] = useReducer(watchCardReducer, NO_WATCH_CARD);
   const [chats, setChats] = useState<DashboardAgentChatListItem[]>([]);
   // Until the list has arrived, the page load's server count is the better answer.
   const [chatsLoaded, setChatsLoaded] = useState(false);
@@ -314,11 +305,6 @@ export function DashboardAgentPanel({
           const read = justRead.current;
           justRead.current = new Set();
           const chats = data.chats ?? [];
-          // Reloaded after every turn and after a watch is created, so this is where the browser
-          // learns whether the wake feed is worth polling.
-          const pending = chats.some((chat) => chat.hasActiveWatch || chat.hasUnreadWake);
-          if (pending) rememberWatchActivity(organization.id);
-          else forgetWatchActivity(organization.id);
           const settled = settleReadChats(chats, read, visibleChatId.current);
           setChats(settled);
           setChatsLoaded(true);
@@ -327,7 +313,7 @@ export function DashboardAgentPanel({
           toast.error("We couldn't load your previous chats. Try again in a moment.");
         }
       }),
-    [actionPath, organization.id, toast, justRead, visibleChatId]
+    [actionPath, toast, justRead, visibleChatId]
   );
 
   // Bumped on each open so a slower earlier open can't overwrite a newer one.
@@ -338,10 +324,8 @@ export function DashboardAgentPanel({
     { text: string; seq: number; chatId: string } | undefined
   >(undefined);
 
-  // The one way the panel changes chat: it invalidates any in-flight open and abandons a
-  // half-configured watch card, which would otherwise be submitted against the new chat.
+  // The one way the panel changes chat: it invalidates any in-flight open.
   const claimChatSlot = useCallback(() => {
-    dispatchWatchCard({ type: "chat-changed" });
     setCapReached(null);
     setSendRequest(undefined);
     return ++openChatRequestSeq.current;
@@ -517,7 +501,7 @@ export function DashboardAgentPanel({
     justRead.current.add(chatId);
 
     setChats((previous) => markChatListRead(previous, chatId));
-    // Read again on the way out: a wake can land while the chat is open.
+    // Read again on the way out: an answer can land while the chat is open.
     return () => {
       onChatRead?.(chatId, { leaving: true });
       visibleChatId.current = nextVisibleChat(chatId, { leaving: true });
@@ -688,108 +672,7 @@ export function DashboardAgentPanel({
     { chatId: string; messages: UIMessage[]; seq: number } | undefined
   >(undefined);
 
-  const handledWatchSeq = useRef<number | undefined>(undefined);
-  useEffect(() => {
-    if (!watchEnabled || !watchRequest || handledWatchSeq.current === watchRequest.seq) return;
-    handledWatchSeq.current = watchRequest.seq;
-    dispatchWatchCard({
-      type: "open",
-      draft: watchDraftFor(watchRequest.spec),
-      requestId: generateFriendlyId("wreq"),
-    });
-  }, [watchRequest, watchEnabled]);
-
-  // Nothing is posted or persisted until the card is submitted.
-  const openWatchCard = useCallback(
-    (spec: WatchSpec) => {
-      if (!watchEnabled) return;
-      dispatchWatchCard({
-        type: "open",
-        draft: watchDraftFor(spec),
-        requestId: generateFriendlyId("wreq"),
-      });
-    },
-    [watchEnabled]
-  );
-
-  const dismissWatchCard = () => dispatchWatchCard({ type: "dismissed" });
   const activeChatId = active?.chatId;
-
-  const submitWatch = useCallback(async () => {
-    const draft = watchCard.draft;
-    if (!draft) return;
-    // Held across retries, so a resubmit repairs the same pair of records.
-    const clientRequestId = watchCard.requestId ?? generateFriendlyId("wreq");
-    dispatchWatchCard({ type: "submitting", requestId: clientRequestId });
-    try {
-      const body = new FormData();
-      body.set("intent", "watch-create");
-      body.set("draft", JSON.stringify(draft));
-      body.set("clientRequestId", clientRequestId);
-      // A watch is chat-bound: with no chat open the server creates one.
-      if (activeChatId) body.set("chatId", activeChatId);
-
-      const res = await fetch(actionPath, { method: "POST", body });
-      const data = (await res.json()) as {
-        chatId?: string;
-        messages?: UIMessage[];
-        error?: string;
-      };
-      if (!res.ok || !data.chatId || !data.messages) {
-        dispatchWatchCard({
-          type: "failed",
-          error: data.error ?? "We couldn't start that watch. Try again in a moment.",
-        });
-        return;
-      }
-
-      const messages = data.messages;
-      if (activeChatId === data.chatId) {
-        setAppendedMessages((current) => ({
-          chatId: data.chatId!,
-          messages,
-          seq: (current?.seq ?? 0) + 1,
-        }));
-        dispatchWatchCard({ type: "submitted" });
-      } else {
-        claimChatSlot();
-        // No session: nothing is streaming and the records are the whole chat.
-        setActive({
-          chatId: data.chatId,
-          messages,
-          session: null,
-          organizationId: organization.id,
-        });
-      }
-      void loadHistory();
-    } catch (error) {
-      console.error("Dashboard agent: failed to create watch", error);
-      dispatchWatchCard({
-        type: "failed",
-        error: "We couldn't start that watch. Try again in a moment.",
-      });
-    }
-  }, [
-    watchCard.draft,
-    watchCard.requestId,
-    activeChatId,
-    actionPath,
-    organization.id,
-    claimChatSlot,
-    loadHistory,
-  ]);
-
-  const watchCardElement =
-    watchEnabled && watchCard.draft ? (
-      <WatchCard
-        draft={watchCard.draft}
-        onChange={(draft) => dispatchWatchCard({ type: "edit", draft })}
-        onSubmit={() => void submitWatch()}
-        onCancel={dismissWatchCard}
-        pending={watchCard.pending}
-        error={watchCard.error}
-      />
-    ) : null;
 
   const newChat = useCallback(() => {
     setDismissedEditSeq(activeEditRef.current?.seq);
@@ -857,43 +740,6 @@ export function DashboardAgentPanel({
     [actionPath, active?.chatId, newChat, loadHistory, toast]
   );
 
-  const cancelWatch = useCallback(
-    async (watchId: string) => {
-      const chatId = active?.chatId;
-      if (!chatId) return;
-      setChats((previous) =>
-        previous.map((chat) =>
-          chat.id === chatId
-            ? { ...chat, watches: (chat.watches ?? []).filter((watch) => watch.id !== watchId) }
-            : chat
-        )
-      );
-      const body = new FormData();
-      body.set("intent", "watch-cancel");
-      body.set("chatId", chatId);
-      body.set("watchId", watchId);
-      try {
-        const res = await fetch(actionPath, { method: "POST", body });
-        if (!res.ok) throw new Error(`Watch cancel failed (${res.status})`);
-        // Empty when the watch had already resolved: then nothing was written.
-        const data = (await res.json()) as { messages?: UIMessage[] };
-        if (data.messages?.length) {
-          const messages = data.messages;
-          setAppendedMessages((current) => ({
-            chatId,
-            messages,
-            seq: (current?.seq ?? 0) + 1,
-          }));
-        }
-      } catch (error) {
-        console.error("Dashboard agent: failed to cancel watch", error);
-        toast.error("We couldn't stop that watch. Try again in a moment.");
-      }
-      void loadHistory();
-    },
-    [actionPath, active?.chatId, loadHistory, toast]
-  );
-
   // Titles are written when the first turn settles, so a new chat has none yet.
   const activeChat = active ? chats.find((chat) => chat.id === active.chatId) : undefined;
   const activeChatClientData = useMemo(
@@ -901,8 +747,10 @@ export function DashboardAgentPanel({
     [clientData, activeChat?.kind]
   );
 
-  // Not filtered to active: the wake banner needs watches that already fired.
-  const chatWatches = activeChat?.watches ?? [];
+  const plans = useMonitoringPlanState(active?.chatId);
+  const [wizardSlot, setWizardSlot] = useState<HTMLElement | null>(null);
+  const [planShown, setPlanShown] = useState(false);
+  const showPlan = useCallback(() => setPlanShown(true), []);
 
   const channelsFetcher = useFetcher<{
     channels: AlertChannel[];
@@ -910,15 +758,16 @@ export function DashboardAgentPanel({
     limits?: { used: number; limit: number };
   }>();
   const channelsFetchedRef = useRef(false);
+  const wantsChannels = inCreationMode || inEditMode || planShown;
   useEffect(() => {
-    if ((inCreationMode || inEditMode) && !channelsFetchedRef.current) {
+    if (wantsChannels && !channelsFetchedRef.current) {
       channelsFetchedRef.current = true;
       channelsFetcher.load(alertChannelsResourcePath(project.id, false, environment.id));
     }
-    if (!inCreationMode && !inEditMode) {
+    if (!wantsChannels) {
       channelsFetchedRef.current = false;
     }
-  }, [inCreationMode, inEditMode, project.id, environment.id]); // eslint-disable-line -- fetcher is stable
+  }, [wantsChannels, project.id, environment.id]); // eslint-disable-line -- fetcher is stable
   const knownChannels = channelsFetcher.data?.channels;
   const alertChannels: AlertChannel[] = knownChannels ?? [];
   const channelLimits = channelsFetcher.data?.limits;
@@ -1197,6 +1046,25 @@ export function DashboardAgentPanel({
       channelsFetcher.load(alertChannelsResourcePath(project.id, false, environment.id)),
     connectReturnTo: `${v3AlertCreatePath(organization, project, environment)}&add=slack`,
   };
+  const planHost: MonitoringPlanHost = {
+    ...plans,
+    markCreated: (ref, alertId, block) => {
+      plans.markCreated(ref, alertId, block);
+      revalidator.revalidate();
+    },
+    chatId: active?.chatId,
+    channels: channelsFetcher.data?.channels,
+    environmentTitle: environmentFullTitle(environment),
+    alertDetailPath: (id) => v3AlertPath(organization, project, environment, id),
+    addChannel: addChannelAccess,
+    queueMetricsEnabled,
+    onShown: showPlan,
+    sendText: (text) => {
+      if (active) setSendRequest({ text, seq: ++creationSendSeq.current, chatId: active.chatId });
+    },
+    wizardSlot,
+    setWizardSlot,
+  };
 
   /* oxlint-disable jsx-a11y/no-static-element-interactions -- Escape handling intentionally bubbles from focused controls inside the panel. */
   return (
@@ -1323,43 +1191,42 @@ export function DashboardAgentPanel({
             </div>
           )
         ) : active ? (
-          <DashboardAgentChat
-            key={active.chatId}
-            chatId={active.chatId}
-            initialMessages={active.messages}
-            session={active.session}
-            pendingFirstMessage={active.pendingFirstMessage}
-            streaming={active.streaming}
-            sendRequest={
-              sendRequest && sendRequest.chatId === active.chatId ? sendRequest : undefined
-            }
-            clientData={inCreationMode ? creationClientData : activeChatClientData}
-            apiOrigin={apiOrigin}
-            actionPath={actionPath}
-            projectName={project.name}
-            environmentSlug={environment.slug}
-            entityId={entityId}
-            promotedPrompt={promotedPrompt}
-            watches={chatWatches}
-            pagePaths={pagePaths}
-            watchCard={watchCardElement}
-            appendedMessages={
-              appendedMessages?.chatId === active.chatId ? appendedMessages : undefined
-            }
-            onWatchIntent={openWatchCard}
-            onCancelWatch={cancelWatch}
-            onTurnSettled={loadHistory}
-            onAlertDraftPatch={inCreationMode ? creationCallbacks.onAlertDraftPatch : undefined}
-            onCreationTextReply={inCreationMode ? creationCallbacks.onCreationTextReply : undefined}
-            onTurnError={inCreationMode ? creationCallbacks.onTurnError : undefined}
-            onActivityChange={handleActivityChange}
-            onQuotaChange={handleQuotaChange}
-            refusalGenRef={refusalGenRef}
-            onNewChat={newChat}
-            showNewChat={active !== null}
-            watchEnabled={watchEnabled}
-            headless={inCreationMode || inEditMode}
-          />
+          <MonitoringPlanHostProvider value={planHost}>
+            <DashboardAgentChat
+              key={active.chatId}
+              chatId={active.chatId}
+              initialMessages={active.messages}
+              session={active.session}
+              pendingFirstMessage={active.pendingFirstMessage}
+              streaming={active.streaming}
+              sendRequest={
+                sendRequest && sendRequest.chatId === active.chatId ? sendRequest : undefined
+              }
+              clientData={inCreationMode ? creationClientData : activeChatClientData}
+              apiOrigin={apiOrigin}
+              actionPath={actionPath}
+              projectName={project.name}
+              environmentSlug={environment.slug}
+              entityId={entityId}
+              promotedPrompt={promotedPrompt}
+              pagePaths={pagePaths}
+              appendedMessages={
+                appendedMessages?.chatId === active.chatId ? appendedMessages : undefined
+              }
+              onTurnSettled={loadHistory}
+              onAlertDraftPatch={inCreationMode ? creationCallbacks.onAlertDraftPatch : undefined}
+              onCreationTextReply={
+                inCreationMode ? creationCallbacks.onCreationTextReply : undefined
+              }
+              onTurnError={inCreationMode ? creationCallbacks.onTurnError : undefined}
+              onActivityChange={handleActivityChange}
+              onQuotaChange={handleQuotaChange}
+              refusalGenRef={refusalGenRef}
+              onNewChat={newChat}
+              showNewChat={active !== null}
+              headless={inCreationMode || inEditMode}
+            />
+          </MonitoringPlanHostProvider>
         ) : inCreationMode || inEditMode ? null : (
           <>
             {capReached ? (
@@ -1376,9 +1243,7 @@ export function DashboardAgentPanel({
               entityId={entityId}
               pageContext={pageContext}
               promotedPrompt={promotedPrompt}
-              watchCard={watchCardElement}
               capReached={capReached}
-              watchEnabled={watchEnabled}
             />
           </>
         )}

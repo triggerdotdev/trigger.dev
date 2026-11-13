@@ -1,5 +1,6 @@
 import { AsyncLocalStorage } from "node:async_hooks";
 import type { RedisClient } from "@internal/redis";
+import { WaitpointKeyTransactionBudgetExhaustedError } from "@internal/run-store";
 
 type Command = Parameters<RedisClient["sendCommand"]>[0];
 
@@ -13,7 +14,7 @@ function creationBudgetRemaining(): number | undefined {
   const until = budget.getStore()?.deadline;
   if (until === undefined) return undefined;
   const remaining = Math.floor(until - performance.now());
-  if (remaining <= 0) throw new Error("Keyed waitpoint creation transaction budget exhausted");
+  if (remaining <= 0) throw new WaitpointKeyTransactionBudgetExhaustedError();
   return remaining;
 }
 
@@ -32,7 +33,7 @@ export async function prepareWithinCreationBudget(prepare: () => Promise<void>):
       prepare(),
       new Promise<never>((_, reject) => {
         timer = setTimeout(
-          () => reject(new Error("Keyed waitpoint creation transaction budget exhausted")),
+          () => reject(new WaitpointKeyTransactionBudgetExhaustedError()),
           remaining
         );
       }),
@@ -67,8 +68,7 @@ export function installCreationBudget(client: RedisClient): void {
       if (until !== undefined) {
         commandDeadlines.set(command, until);
         const remaining = Math.floor(until - performance.now());
-        if (remaining <= 0)
-          throw new Error("Keyed waitpoint creation transaction budget exhausted");
+        if (remaining <= 0) throw new WaitpointKeyTransactionBudgetExhaustedError();
         command.setTimeout(
           Math.min(
             configuredTimeout && configuredTimeout > 0 ? configuredTimeout : 2_000,

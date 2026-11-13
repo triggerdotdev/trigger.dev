@@ -2,24 +2,19 @@ import { json, type ActionFunctionArgs, type LoaderFunctionArgs } from "@remix-r
 import {
   appendChatMessageOnceByChatId,
   chatExists,
-  countUnreadWatchWakes,
   countChatsWithUnreadWork,
   ALERT_CREATION_CHAT_TITLE,
   createChat,
   getChatMessages,
   getChatScope,
   getSession,
-  getWatch,
   listChatIdsWithOpenInvestigations,
-  listChatIdsWithUnreadWakes,
   listChats,
   markChatRead,
-  readWatchWakeFeed,
   renameChat,
   setChatPinned,
   softDeleteChat,
 } from "@internal/dashboard-agent-db";
-import { watchDraftSchema, type WatchDraft } from "@internal/dashboard-agent-contracts";
 import { dashboardAgentProvider } from "@internal/dashboard-agent/model-provider";
 import { generateFriendlyId } from "@trigger.dev/core/v3/isomorphic";
 import type { UIMessage } from "ai";
@@ -34,19 +29,10 @@ import {
 import { MESSAGE_QUOTA_REACHED_ERROR } from "~/components/dashboard-agent/message-quota";
 import { alertCreationOpeningMessage } from "~/components/alerts/alertCreatedCard";
 import { MAX_URIS_PER_RESOLVE_REQUEST } from "~/components/dashboard-agent/resolve-uris";
-import type { RuntimeEnvironmentType } from "@trigger.dev/database";
 import { $replica } from "~/db.server";
 import { env } from "~/env.server";
 import { findProjectWithOrgFlagsBySlug } from "~/models/project.server";
 import { findEnvironmentBySlug } from "~/models/runtimeEnvironment.server";
-import {
-  authorizeWatchEnvironmentById,
-  cancelDashboardAgentWatch,
-  deleteChatWithWatches,
-  listActiveWatchesForChats,
-  submitDashboardAgentWatch,
-  type ChatWatchChip,
-} from "~/services/dashboardAgentWatches.server";
 import {
   dashboardAgentUserApiOrigin,
   dashboardAgentWakeFeedCounter,
@@ -59,7 +45,6 @@ import {
 import { dashboardAgentTags } from "~/services/dashboardAgentTags";
 import { dashboardAgentEnvironmentAddress } from "~/services/dashboardAgentEnvironmentAddress.server";
 import { wellFormMessageText } from "~/services/dashboardAgentMessageText.server";
-import { watchErrorStatus } from "~/services/dashboardAgentWatchErrorStatus.server";
 import { startDashboardAgentHeadStart } from "~/services/dashboardAgentHeadStart.server";
 import { dashboardAgentDb } from "~/services/dashboardAgentDb.server";
 import {
@@ -73,8 +58,7 @@ import { resolveTriggerUrisInOrganization } from "~/services/resolveTriggerUriIn
 import { getImpersonatorUserId, requireUser } from "~/services/session.server";
 import { EnvironmentParamSchema } from "~/utils/pathBuilder";
 import { canAccessDashboardAgent } from "~/v3/canAccessDashboardAgent.server";
-import { canUseDashboardAgentWatches } from "~/v3/canUseDashboardAgentWatches.server";
-import { canAcrossEnvironments } from "~/v3/services/dashboardResourceAccess.server";
+import { canUseAlertsList } from "~/v3/canUseAlertsList.server";
 // The client-metadata whitelist lives with the `in` proxy, the other mint site, so the two cannot
 // drift apart.
 import {
@@ -94,8 +78,6 @@ const ActionBody = z.object({
     "read",
     "resolve",
     "resolve-many",
-    "watch-cancel",
-    "watch-create",
   ]),
   // Omitted for `create` (the server generates it); required for the rest.
   chatId: z.string().min(1).optional(),
@@ -108,17 +90,10 @@ const ActionBody = z.object({
   uri: z.string().optional(),
   // A JSON array of `trigger://` URIs, for `resolve-many`.
   uris: z.string().optional(),
-  // The watch to cancel, for `watch-cancel`.
-  watchId: z.string().min(1).optional(),
-  // The configured card, for `watch-create`: a JSON `WatchDraft`.
-  draft: z.string().optional(),
-  // Stable per card submission, so a retried `watch-create` repairs instead of repeating.
-  // Required for `watch-create`: see the check in that branch.
-  clientRequestId: z.string().min(1).max(64).optional(),
 });
 
 // History list by default. `?chatId=` returns the stored transcript plus session,
-// `?unread=1` the unread wake count and recent wakes, `?quota=1` the message count.
+// `?unread=1` the unread work count, `?quota=1` the message count.
 export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   const user = await requireUser(request);
   const userId = user.id;
@@ -138,9 +113,8 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
 
   const searchParams = new URL(request.url).searchParams;
 
-  // The wake poll runs once a minute per open tab, so it reads only the org id it needs
-  // and asks the agent DB one question. The list is recent deliveries, not unread ones;
-  // the client dedupes by id.
+  // The unread poll runs once a minute per open tab, so it reads only the org id it needs
+  // and asks the agent DB one question.
   if (searchParams.get("unread") === "1") {
     dashboardAgentWakeFeedCounter.inc();
     const scoped = await $replica.project.findFirst({
@@ -148,43 +122,24 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
         slug: projectParam,
         organization: { slug: organizationSlug, members: { some: { userId } } },
       },
-      select: { organizationId: true, organization: { select: { featureFlags: true } } },
+      select: { organizationId: true },
     });
     if (!scoped) return json({ error: "Project not found" }, { status: 404 });
 
-    // No watches means no wakes: the feed isn't read at all when they're off.
-    const watchEnabled =
-      !actingUserId &&
-      (await canUseDashboardAgentWatches({
-        userId,
-        organizationSlug,
-        orgFeatureFlags: (scoped.organization.featureFlags as Record<string, unknown>) ?? {},
-      }));
+    // The poll is where a closed panel learns about unread work.
+    const unreadWork = await countChatsWithUnreadWork(dashboardAgentDb, {
+      organizationId: scoped.organizationId,
+      userId,
+      actingUserId,
+      // The chat the panel has on screen, if any: it is being read as this is counted.
+      excludeChatId: searchParams.get("chatId") ?? undefined,
+    });
 
-    const [feed, unreadWork] = await Promise.all([
-      watchEnabled
-        ? readWatchWakeFeed(dashboardAgentDb, {
-            organizationId: scoped.organizationId,
-            userId,
-            deliveredAfter: new Date(Date.now() - 15 * 60 * 1000),
-          })
-        : { unreadWakes: 0, wakes: [] },
-      // The dot has two sources; the poll is where a closed panel learns about either.
-      countChatsWithUnreadWork(dashboardAgentDb, {
-        organizationId: scoped.organizationId,
-        userId,
-        actingUserId,
-        // The chat the panel has on screen, if any: it is being read as this is counted.
-        excludeChatId: searchParams.get("chatId") ?? undefined,
-      }),
-    ]);
-
-    return json({ ...feed, unreadWork });
+    return json({ unreadWork });
   }
 
   const project = await findProjectWithOrgFlagsBySlug(organizationSlug, projectParam, userId);
   if (!project) return json({ error: "Project not found" }, { status: 404 });
-  const orgFeatureFlags = (project.organization.featureFlags as Record<string, unknown>) ?? {};
 
   // The per-period counter, org-wide: a deleted chat can't lower it within the period.
   if (searchParams.get("quota") === "1") {
@@ -250,78 +205,25 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
     withMessagesOnly: true,
   });
 
-  const watchEnabled =
-    !actingUserId &&
-    (await canUseDashboardAgentWatches({
-      userId,
-      organizationSlug,
-      orgFeatureFlags,
-    }));
-
-  // One query each for all the listed chats, never one per row. With watches off the
-  // history carries none, so an org that loses the flag stops seeing its old ones.
-  const [watchesByChat, unreadWakes, unreadChatIds, investigatingChatIds] = await Promise.all([
-    watchEnabled
-      ? listActiveWatchesForChats({
-          chatIds: chats.map((chat) => chat.id),
-          organizationId: project.organizationId,
-          userId,
-        })
-      : ({} as Record<string, ChatWatchChip[]>),
-    watchEnabled
-      ? countUnreadWatchWakes(dashboardAgentDb, {
-          organizationId: project.organizationId,
-          userId,
-        })
-      : 0,
-    watchEnabled
-      ? listChatIdsWithUnreadWakes(dashboardAgentDb, {
-          organizationId: project.organizationId,
-          userId,
-        })
-      : new Set<string>(),
-    listChatIdsWithOpenInvestigations(dashboardAgentDb, {
-      organizationId: project.organizationId,
-      userId,
-      actingUserId,
-    }),
-  ]);
+  // One query for all the listed chats, never one per row.
+  const investigatingChatIds = await listChatIdsWithOpenInvestigations(dashboardAgentDb, {
+    organizationId: project.organizationId,
+    userId,
+    actingUserId,
+  });
 
   return json({
-    chats: chats.map((chat) => {
-      const watches = watchesByChat[chat.id] ?? [];
-      return {
-        ...chat,
-        watches,
-        hasUnreadWake: unreadChatIds.has(chat.id),
-        // Work that finished while the chat was closed: the transcript moved on after the
-        // last time its owner looked. A wake is one way that happens, an answer is another.
-        hasUnreadWork:
-          chat.lastMessageAt !== null &&
-          (chat.lastReadAt === null || chat.lastMessageAt > chat.lastReadAt),
-        // `watches` also carries fired and expired rows, so check for active here.
-        hasActiveWatch: watches.some((watch) => watch.status === "active"),
-        hasOpenInvestigation: investigatingChatIds.has(chat.id),
-      };
-    }),
-    unreadWakes,
+    chats: chats.map((chat) => ({
+      ...chat,
+      // Work that finished while the chat was closed: the transcript moved on after the
+      // last time its owner looked.
+      hasUnreadWork:
+        chat.lastMessageAt !== null &&
+        (chat.lastReadAt === null || chat.lastMessageAt > chat.lastReadAt),
+      hasOpenInvestigation: investigatingChatIds.has(chat.id),
+    })),
   });
 };
-
-async function alertWriteAuthorizer(
-  request: Request,
-  userId: string,
-  environment: { organizationId: string; project: { id: string } }
-) {
-  const { rbac } = await import("~/services/rbac.server");
-  const auth = await rbac.authenticateSession(request, {
-    userId,
-    organizationId: environment.organizationId,
-    projectId: environment.project.id,
-  });
-  return (environmentTypes: RuntimeEnvironmentType[]) =>
-    auth.ok && canAcrossEnvironments(auth.ability, "write", "alerts", environmentTypes);
-}
 
 function messageTooLarge() {
   return json({ error: MESSAGE_TOO_LARGE_ERROR, code: MESSAGE_TOO_LARGE_CODE }, { status: 413 });
@@ -402,13 +304,11 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
     }
     // Only the whitelisted page context survives; the rest is injected below.
     const clientContext = pickAgentClientMetadata(clientData);
-    // Server-resolved, never sent by the browser: off means the turn gets no watch
-    // tools and no watch guidance.
-    const watchEnabled =
+    // Server-resolved, never sent by the browser.
+    const alertsEnabled =
       !actingUserId &&
-      (await canUseDashboardAgentWatches({
+      (await canUseAlertsList({
         userId,
-        organizationSlug,
         orgFeatureFlags,
       }));
 
@@ -439,10 +339,10 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
             // The agent validates run metadata against its clientDataSchema, so the
             // per-turn client context must accompany the injected auth and context fields.
             ...clientContext,
-            watchEnabled,
+            alertsEnabled,
             userActorToken: await mintDashboardAgentUserActorToken(userId, {
               environmentId: runtimeEnv.id,
-              ...(watchEnabled ? { alertWrites: { request } } : {}),
+              ...(alertsEnabled ? { alertWrites: { request } } : {}),
             }),
             apiOrigin: dashboardAgentUserApiOrigin(),
             projectRef: project.externalRef,
@@ -474,7 +374,7 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
             messages: [firstMessage],
             mode: repoSnapshot ? "code" : "assistant",
             metadata: headStartMetadata,
-            watchEnabled,
+            alertsEnabled,
             tags,
           });
         } else {
@@ -487,7 +387,7 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
             tags,
             clientData: {
               ...clientContext,
-              watchEnabled,
+              alertsEnabled,
               organizationId: project.organizationId,
               userId,
               projectId: project.id,
@@ -650,93 +550,6 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
     return json({ resolved });
   }
 
-  // The configuration card's submit path. The environment comes from the URL and goes
-  // through the same re-authorization a background tick passes, never from the body.
-  if (parsed.data.intent === "watch-create") {
-    if (
-      actingUserId ||
-      !(await canUseDashboardAgentWatches({ userId, organizationSlug, orgFeatureFlags }))
-    ) {
-      return json({ error: "Not found" }, { status: 404 });
-    }
-
-    // No fallback: a per-condition key would identify the condition rather than this
-    // submit, so a re-watch could replay a stale terminal outcome.
-    const clientRequestId = parsed.data.clientRequestId;
-    if (!clientRequestId) {
-      return json({ error: "That watch isn't valid.", code: "invalid_request" }, { status: 400 });
-    }
-
-    let draft: WatchDraft;
-    try {
-      const result = watchDraftSchema.safeParse(JSON.parse(parsed.data.draft ?? ""));
-      if (!result.success) {
-        return json({ error: "That watch isn't valid.", code: "invalid_request" }, { status: 400 });
-      }
-      draft = result.data;
-    } catch (error) {
-      if (!(error instanceof SyntaxError)) throw error;
-      return json({ error: "That watch isn't valid.", code: "invalid_request" }, { status: 400 });
-    }
-
-    const runtimeEnv = await findEnvironmentBySlug(project.id, envParam, userId);
-    if (!runtimeEnv) return json({ error: "Environment not found" }, { status: 404 });
-
-    const environment = await authorizeWatchEnvironmentById({
-      userId,
-      environmentId: runtimeEnv.id,
-    });
-    if (!environment) {
-      return json({ error: "Environment not found", code: "invalid_target" }, { status: 404 });
-    }
-
-    // A watch is chat-bound, so a card submitted from a fresh panel creates a chat.
-    const targetChatId = parsed.data.chatId;
-    if (
-      targetChatId &&
-      !(await chatExists(dashboardAgentDb, {
-        chatId: targetChatId,
-        userId,
-        actingUserId,
-        organizationId: project.organizationId,
-      }))
-    ) {
-      return json({ error: "Chat not found", code: "chat_not_found" }, { status: 404 });
-    }
-
-    // The request record is written before the watch and the confirmation after, so a
-    // half-finished submit is repairable and never leaves a watch nobody can see.
-    const result = await submitDashboardAgentWatch({
-      environment,
-      userId,
-      organizationId: project.organizationId,
-      chatId: targetChatId,
-      clientRequestId,
-      draft,
-      authorizeAlerts: draft.followUp.notifyExternally
-        ? await alertWriteAuthorizer(request, userId, environment)
-        : () => false,
-    });
-
-    if (!result.ok) {
-      return json(
-        {
-          error: result.error,
-          code: result.code,
-          ...(result.existingId ? { existingId: result.existingId } : {}),
-        },
-        { status: watchErrorStatus(result.code) }
-      );
-    }
-
-    return json({
-      chatId: result.chatId,
-      watching: result.watching,
-      watchId: result.watchId,
-      messages: result.messages,
-    });
-  }
-
   const { intent, chatId } = parsed.data;
   if (!chatId) return json({ error: "chatId is required" }, { status: 400 });
 
@@ -779,13 +592,10 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
           }),
           clientData: {
             ...withChatScope(pickAgentClientMetadata(clientData), chat),
-            // Server-resolved, like every other field here: the resumed run's first turn
-            // gets no watch tools while the flag is off.
-            watchEnabled:
+            alertsEnabled:
               !actingUserId &&
-              (await canUseDashboardAgentWatches({
+              (await canUseAlertsList({
                 userId,
-                organizationSlug,
                 orgFeatureFlags,
               })),
             organizationId: project.organizationId,
@@ -879,7 +689,7 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
 
     case "delete": {
       // Existence check gives a 404 for a chat this caller can't see; the delete itself
-      // is org- and owner-scoped too, and ends the chat's watches in the same transaction.
+      // is org- and owner-scoped too.
       if (
         !(await chatExists(dashboardAgentDb, {
           chatId,
@@ -890,46 +700,13 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
       ) {
         return json({ error: "Chat not found" }, { status: 404 });
       }
-      // The delete and the watch cancellations land in one transaction.
-      const { cancelledWatches } = await deleteChatWithWatches({
+      await softDeleteChat(dashboardAgentDb, {
         chatId,
         userId,
         actingUserId,
         organizationId: project.organizationId,
       });
-      return json({ ok: true, cancelledWatches });
-    }
-
-    // Ownership goes through the chat: the watch must belong to the named chat, and
-    // that chat to this user in this org.
-    case "watch-cancel": {
-      const watchId = parsed.data.watchId;
-      if (!watchId) return json({ error: "watchId is required" }, { status: 400 });
-
-      const watch = await getWatch(dashboardAgentDb, { id: watchId });
-      if (!watch || watch.chatId !== chatId) {
-        return json({ error: "Watch not found" }, { status: 404 });
-      }
-
-      if (
-        !(await chatExists(dashboardAgentDb, {
-          chatId,
-          userId,
-          actingUserId,
-          organizationId: project.organizationId,
-        }))
-      ) {
-        return json({ error: "Chat not found" }, { status: 404 });
-      }
-
-      // Only an active row is cancelled, so an already-resolved watch keeps its outcome,
-      // this is a no-op and no note is written.
-      const { messages } = await cancelDashboardAgentWatch({
-        watchId,
-        userId,
-        organizationId: project.organizationId,
-      });
-      return json({ ok: true, messages });
+      return json({ ok: true });
     }
   }
 };

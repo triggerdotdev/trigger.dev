@@ -97,14 +97,19 @@ export async function startDashboardAgentHeadStart(params: {
   messages: UIMessage[];
   mode: "assistant" | "code";
   metadata: Record<string, unknown>;
-  watchEnabled: boolean;
+  alertsEnabled: boolean;
   scope?: DashboardAgentScope;
   alertDraft?: AlertCreationDraft;
   tags?: string[];
 }): Promise<void> {
-  const opts = { watchEnabled: params.watchEnabled, scope: params.scope };
-  const tools = toolSchemasFor(params.mode, opts);
-  const system = systemPromptFor(params.mode, opts);
+  const tools = toolSchemasFor(params.mode, {
+    alertsEnabled: params.alertsEnabled,
+    scope: params.scope,
+  });
+  const system = systemPromptFor(params.mode, {
+    alertsEnabled: params.alertsEnabled,
+    scope: params.scope,
+  });
 
   const { completion } = await chatServer.startHeadStart({
     agentId: TASK_ID,

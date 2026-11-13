@@ -1,8 +1,4 @@
-import {
-  countChatsWithUnreadWork,
-  readDashboardAgentWakeActivity,
-  type DashboardAgentWakeActivity,
-} from "@internal/dashboard-agent-db";
+import { countChatsWithUnreadWork } from "@internal/dashboard-agent-db";
 import { Outlet, useLoaderData } from "@remix-run/react";
 import { redirect, type LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { RouteErrorDisplay } from "~/components/ErrorDisplay";
@@ -22,7 +18,6 @@ import { selectAccessibleEnvironment } from "~/utils/environmentAccess";
 import { EnvironmentParamSchema, v3ProjectPath } from "~/utils/pathBuilder";
 import { getPromotedDashboardAgentPrompt } from "~/components/dashboard-agent/suggested-prompts/promotedPrompt.server";
 import { canAccessDashboardAgent } from "~/v3/canAccessDashboardAgent.server";
-import { canUseAlertsList } from "~/v3/canUseAlertsList.server";
 
 export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   const user = await requireUser(request);
@@ -112,44 +107,25 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   const dashboardAgentActingUserId = user.isImpersonating
     ? await getImpersonatorUserId(request)
     : undefined;
-  const dashboardAgentWatchEnabled =
-    hasDashboardAgentAccess && !dashboardAgentActingUserId
-      ? await canUseAlertsList({
-          orgFeatureFlags: (project.organization.featureFlags as Record<string, unknown>) ?? {},
-          user,
-        })
-      : false;
-
   const promotedDashboardAgentPrompt = hasDashboardAgentAccess
     ? await getPromotedDashboardAgentPrompt({
         orgFeatureFlags: (project.organization.featureFlags as Record<string, unknown>) ?? {},
       })
     : null;
 
-  // One narrow read per page load, so the wake signal reaches a browser that has never opened
-  // the panel — including one whose watch hasn't fired yet. The poll never asks for this.
-  const noWakeActivity: DashboardAgentWakeActivity = { unreadWakes: 0, hasActiveWatches: false };
-  let dashboardAgentActivity = noWakeActivity;
+  // One narrow read per page load, so the unread dot reaches a browser that has never opened
+  // the panel.
   let dashboardAgentUnreadWork = 0;
   if (hasDashboardAgentAccess) {
     try {
-      [dashboardAgentActivity, dashboardAgentUnreadWork] = await Promise.all([
-        // Not read at all with watches off, so a rolled-back flag leaves no wake dot behind.
-        dashboardAgentWatchEnabled
-          ? readDashboardAgentWakeActivity(dashboardAgentDb, {
-              organizationId: project.organization.id,
-              userId: user.id,
-            })
-          : noWakeActivity,
-        countChatsWithUnreadWork(dashboardAgentDb, {
-          organizationId: project.organization.id,
-          userId: user.id,
-          actingUserId: dashboardAgentActingUserId,
-        }),
-      ]);
+      dashboardAgentUnreadWork = await countChatsWithUnreadWork(dashboardAgentDb, {
+        organizationId: project.organization.id,
+        userId: user.id,
+        actingUserId: dashboardAgentActingUserId,
+      });
     } catch (error) {
       // The dashboard must load even when the agent's store doesn't answer.
-      logger.error("Failed to read dashboard agent wake activity", { error, organizationSlug });
+      logger.error("Failed to read dashboard agent unread work", { error, organizationSlug });
     }
   }
 
@@ -157,29 +133,19 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
     ...project,
     securityNoticeBanner: await securityNoticeBannerPromise,
     hasDashboardAgentAccess,
-    dashboardAgentWatchEnabled,
     promotedDashboardAgentPrompt,
-    dashboardAgentActivity,
     dashboardAgentUnreadWork,
   };
 };
 
 export default function Page() {
-  const {
-    hasDashboardAgentAccess,
-    dashboardAgentWatchEnabled,
-    promotedDashboardAgentPrompt,
-    dashboardAgentActivity,
-    dashboardAgentUnreadWork,
-  } = useLoaderData<typeof loader>();
+  const { hasDashboardAgentAccess, promotedDashboardAgentPrompt, dashboardAgentUnreadWork } =
+    useLoaderData<typeof loader>();
   return (
     <DashboardAgent
       hasAccess={hasDashboardAgentAccess}
-      watchEnabled={dashboardAgentWatchEnabled}
       promotedPrompt={promotedDashboardAgentPrompt ?? undefined}
-      initialUnreadWakes={dashboardAgentActivity.unreadWakes}
       initialUnreadWork={dashboardAgentUnreadWork}
-      hasActiveWatches={dashboardAgentActivity.hasActiveWatches}
     >
       <Outlet />
     </DashboardAgent>

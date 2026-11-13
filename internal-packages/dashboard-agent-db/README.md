@@ -31,7 +31,7 @@ of truth.
   project/env context the chat ran in), and `next_message_position`, the allocator the
   transcript's ordering comes from. No transcript of its own. Soft-deleted via
   `deleted_at`, pinned via `pinned_at`, read-marked via `last_read_at` (NULL = never
-  read, so every watch wake in it counts as unread).
+  read).
 - `chat_messages` — the transcript, one row per message. Identity is
   `(chat_id, message_id)` and order is `position`, unique per chat and reserved from
   `chats.next_message_position` by the same single statement that reads it, so
@@ -39,8 +39,8 @@ of truth.
   payload so the message-quota count is an index scan.
 
   Three write modes, and only the third may change a message the chat already holds:
-  a new message is a plain insert; a redelivered durable event (a watch wake, a
-  settlement card) is `ON CONFLICT DO NOTHING` on `(chat_id, message_id)`, so it
+  a new message is a plain insert; a redelivered durable event (a settlement
+  card) is `ON CONFLICT DO NOTHING` on `(chat_id, message_id)`, so it
   leaves the recorded row untouched; a deliberate finalisation is
   `finalizeChatMessage`, which rewrites one body under a verified `role` and never
   moves the id or the position. So re-sending a whole turn snapshot is a no-op.
@@ -66,17 +66,6 @@ of truth.
   `revision` is bumped by a single atomic `revision = revision + 1` update, and the
   `chat_id`/`project_ref`/`environment_ref` triple must match on every commit.
   `state` is intentionally untyped JSONB — the payload shape isn't frozen yet.
-- `watches` — "tell me when X happens", checked by a periodic task. `status`
-  (`active | fired | expired | cancelled`) and `delivery_status`
-  (`not_required | pending | delivering | delivered`) are guarded in the query layer with
-  `WHERE status = 'active' … RETURNING`, so concurrent fire/expire/cancel resolves
-  to one winner. The org/project/env/user identity is a snapshot taken at creation
-  and never updated — a watch fires with exactly the access its creator had.
-  `identity` is the dedup key for the watched thing: a partial unique index on
-  `(chat_id, project_id, environment_id, identity) WHERE status = 'active'` is what
-  actually prevents duplicates, since a read-then-insert check can't be race-proof.
-  A chat may hold at most three active watches, enforced by counting and inserting
-  in one transaction under a per-chat advisory lock.
 
 ## Migrations
 

@@ -18,18 +18,21 @@ import {
   ChatText,
   ChatTranscript,
   ChatTurn,
-  ChatWakeSlot,
 } from "./chat-layout";
 import { reuseWinners } from "./investigation-winners";
 import { stripModelImages } from "./model-markdown";
+import {
+  MonitoringPlanBlock,
+  PlanMessagesProvider,
+  useFollowedByPlan,
+  useLiveProposal,
+} from "./MonitoringPlanBlock";
 import { isProsePart } from "./prose-part";
 import { reportBlockFromToolPart } from "./report-block-adapter";
 import { shouldShowLiveTurnError } from "./turn-error";
 import type { ResolvedUri } from "./ReportView";
-import { answerContinuesAfter, turnAlreadyOffersWatch, turnProposesWatch } from "./view-actions";
-import { latestRevisionBlocks } from "./view-blocks";
+import { answerContinuesAfter } from "./view-actions";
 import { ViewBlocks } from "./view-catalog";
-import { findWakeWatch, WakeBanner, wakeRefFromMessageId, type WakeWatch } from "./WakeBanner";
 
 export type { TurnActivity };
 
@@ -41,13 +44,9 @@ export type DashboardAgentMessagesProps = {
   /** Set to disable the retry button and say why, e.g. over the message cap. */
   retryDisabledReason?: string;
   onDismissError?: () => void;
-  onIntent?: (intent: AgentIntent) => void;
+  onIntent?: (intent: AgentIntent) => boolean | void;
   resolveUri?: (uri: string) => ResolvedUri | null;
   pagePaths?: Record<string, string>;
-  /** Optional: without it a wake banner falls back to kind-agnostic wording. */
-  watches?: WakeWatch[];
-  /** Withholds the wake banner and watch result cards while the flag is off. */
-  watchEnabled?: boolean;
 };
 
 // Cached so a stripped message keeps its identity across renders and memoization holds:
@@ -195,6 +194,13 @@ function renderDashboardPart(
     ));
   }
 
+  if (type === "tool-plan_monitoring" && p.state === "output-available") {
+    const plan = part as { toolCallId?: string; output?: unknown };
+    return (
+      <MonitoringPlanBlock key={i} planKey={plan.toolCallId ?? String(i)} output={plan.output} />
+    );
+  }
+
   if (type.startsWith("tool-")) {
     // In-flight calls render nothing here; `liveProgress` owns the turn's progress line.
     if (IN_FLIGHT_TOOL_STATES.has(p.state ?? "")) return null;
@@ -246,20 +252,17 @@ const DashboardAgentTurn = memo(function DashboardAgentTurn({
   onIntent,
   resolveUri,
   pagePaths,
-  watches,
   investigationWinners,
-  watchEnabled = false,
 }: {
   message: UIMessage;
-  onIntent?: (intent: AgentIntent) => void;
+  onIntent?: (intent: AgentIntent) => boolean | void;
   resolveUri?: (uri: string) => ResolvedUri | null;
   pagePaths?: Record<string, string>;
-  watches?: WakeWatch[];
   /** See {@link winningInvestigationOccurrences}. */
   investigationWinners?: Map<string, string>;
-  /** Withholds the wake banner and watch result cards while the flag is off. */
-  watchEnabled?: boolean;
 }) {
+  const isLiveProposal = useLiveProposal();
+  const followedByPlan = useFollowedByPlan(message.id);
   if (message.role === "user") {
     return (
       <ChatTurn speaker="user">
@@ -279,20 +282,13 @@ const DashboardAgentTurn = memo(function DashboardAgentTurn({
       ? withoutSupersededInvestigations(raw, `${message.id}:${i}`, investigationWinners)
       : null;
   });
-  // One answer for the whole turn: two `render_view` parts each deciding for themselves
-  // would show the watch button twice. `ViewBlocks` collapses revisions the same way.
-  const watchOfferedInTurn =
-    turnProposesWatch(parts as never) ||
-    turnAlreadyOffersWatch(
-      blocksByPart
-        .filter((blocks): blocks is unknown[] => blocks !== null)
-        .map((blocks) => latestRevisionBlocks(blocks as never))
-    );
-
   const body: React.ReactNode[] = [];
   const actionRows: React.ReactNode[] = [];
+  const liveProposal = parts.some((part, i) => isLiveProposal(part, i));
   for (let i = 0; i < parts.length; i++) {
     const part = parts[i]!;
+    const prose = part.type === "text" || part.type === "reasoning";
+    if (liveProposal && prose) continue;
 
     const blocks = blocksByPart[i];
     if (blocks) {
@@ -305,8 +301,7 @@ const DashboardAgentTurn = memo(function DashboardAgentTurn({
             resolveUri={resolveUri}
             pagePaths={pagePaths}
             answered={answerContinuesAfter(parts as never, i)}
-            watchOfferedInTurn={watchOfferedInTurn}
-            watchEnabled={watchEnabled}
+            followedByPlan={followedByPlan}
           />
         </ChatCardSlot>
       );
@@ -330,23 +325,9 @@ const DashboardAgentTurn = memo(function DashboardAgentTurn({
       continue;
     }
 
-    body.push(renderDashboardPart(part, i, resolveUri));
-  }
-
-  const wake = watchEnabled ? wakeRefFromMessageId(message.id) : undefined;
-  if (wake) {
-    return (
-      <ChatTurn>
-        <ChatWakeSlot
-          banner={
-            <WakeBanner outcome={wake.outcome} watch={findWakeWatch(watches, wake.watchId)} />
-          }
-        >
-          {body}
-          {actionRows}
-        </ChatWakeSlot>
-      </ChatTurn>
-    );
+    const rendered = renderDashboardPart(part, i, resolveUri);
+    if (part.type === "tool-plan_monitoring") actionRows.push(rendered);
+    else body.push(rendered);
   }
 
   return (
@@ -367,8 +348,6 @@ export function DashboardAgentTurns({
   onIntent,
   resolveUri,
   pagePaths,
-  watches,
-  watchEnabled = false,
 }: DashboardAgentMessagesProps) {
   // Must be the exact parts the turns render: the winners map keys by part index.
   const stripped = useMemo(() => messages.map(stripStepParts), [messages]);
@@ -382,7 +361,7 @@ export function DashboardAgentTurns({
   const liveError = shouldShowLiveTurnError(error, stripped) ? error : undefined;
 
   return (
-    <>
+    <PlanMessagesProvider messages={stripped}>
       {stripped.map((message) => (
         <DashboardAgentTurn
           key={message.id}
@@ -390,9 +369,7 @@ export function DashboardAgentTurns({
           onIntent={onIntent}
           resolveUri={resolveUri}
           pagePaths={pagePaths}
-          watches={watches}
           investigationWinners={investigationWinners}
-          watchEnabled={watchEnabled}
         />
       ))}
       {progress && (
@@ -441,7 +418,7 @@ export function DashboardAgentTurns({
           </ChatCardSlot>
         </ChatTurn>
       )}
-    </>
+    </PlanMessagesProvider>
   );
 }
 

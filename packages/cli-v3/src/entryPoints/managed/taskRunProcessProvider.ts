@@ -1,6 +1,7 @@
 import type { WorkerManifest } from "@trigger.dev/core/v3";
 import { generateFriendlyId } from "@trigger.dev/core/v3";
 import { TaskRunProcess } from "../../executions/taskRunProcess.js";
+import { OWN_CGROUP_OOM_KILL_COUNTER } from "../../executions/oomKills.js";
 import type { RunnerEnv } from "./env.js";
 import type { RunLogger, SendDebugLogOptions } from "./logger.js";
 
@@ -265,6 +266,8 @@ export class TaskRunProcessProvider {
         memory: Number(this.env.TRIGGER_MACHINE_MEMORY),
       },
       isWarmStart,
+      // This runner's cgroup holds only the controller and the one task process it runs.
+      oomKillCounter: OWN_CGROUP_OOM_KILL_COUNTER,
     }).initialize();
 
     return taskRunProcess;

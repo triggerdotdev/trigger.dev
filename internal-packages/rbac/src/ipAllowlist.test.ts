@@ -1,10 +1,6 @@
 import { describe, expect, it } from "vitest";
-import {
-  clientIpFromHeaders,
-  isIpAllowed,
-  MAX_API_KEY_IP_RANGES,
-  parseIpRanges,
-} from "./ipAllowlist.js";
+import { clientIpFromHeaders, isIpAllowed } from "./ipAllowlist.js";
+import { MAX_API_KEY_IP_RANGES, parseIpRanges } from "./ipRanges.js";
 
 describe("clientIpFromHeaders", () => {
   // Catches: trusting a client-supplied X-Forwarded-For entry instead of the one the load balancer appended.

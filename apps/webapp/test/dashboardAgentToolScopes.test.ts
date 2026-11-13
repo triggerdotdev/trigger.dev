@@ -108,7 +108,7 @@ describe("what the agent's delegated token may read", () => {
 
 describe("alert_creation tool scope", () => {
   it("fails when a chat with clientData.toolScope=alert_creation still exposes create_monitoring_alert", () => {
-    const tools = toolSchemasFor("assistant", { watchEnabled: true, scope: "alert_creation" });
+    const tools = toolSchemasFor("assistant", { scope: "alert_creation" });
     expect(tools).not.toHaveProperty("create_monitoring_alert");
     expect(tools).not.toHaveProperty("resolve_monitoring_alert");
     expect(tools).not.toHaveProperty("list_monitoring_alerts");

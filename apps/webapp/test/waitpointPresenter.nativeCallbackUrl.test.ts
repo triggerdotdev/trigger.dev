@@ -9,6 +9,7 @@ import { WaitpointId } from "@trigger.dev/core/v3/isomorphic";
 import { describe, expect, vi } from "vitest";
 import { WaitpointPresenter } from "~/presenters/v3/WaitpointPresenter.server";
 import { resolveScopedWaitpointCallback } from "~/services/scopedWaitpointCallback.server";
+import { generateScopedHttpCallbackHash } from "~/services/httpCallbackHash.server";
 import { ControlPlaneCache } from "~/v3/runOpsMigration/controlPlaneCache.server";
 import { ControlPlaneResolver } from "~/v3/runOpsMigration/controlPlaneResolver.server";
 import { createWaitpointStoreEnabledResolver } from "~/v3/utils/waitpointStoreEnabled.server";
@@ -113,19 +114,32 @@ describe("waitpoint presenter native callback URL", () => {
           expect(waitpointFriendlyId).toBe(waitpoint.friendlyId);
           expect(hash).toMatch(/^wp1\./);
 
-          const resolved = await resolveScopedWaitpointCallback(
-            WaitpointId.toId(waitpointFriendlyId!),
-            hash!,
-            {
-              resolveEnvironment: (id) => resolver.resolveAuthenticatedEnv(id),
-              isWaitpointStoreEnabled: (org) => engine.waitpointSystem.isWaitpointStoreEnabled(org),
-              getWaitpoint: (callbackScope) => engine.getStoreDateTimeWaitpoint(callbackScope),
+          // Catches: previously issued branch-key scoped callbacks failing after auth normalization.
+          const callbackScope = { waitpointId: waitpoint.id, environmentId: branch.id };
+          for (const [callbackHash, valid] of [
+            [hash!, true],
+            [generateScopedHttpCallbackHash(callbackScope, branch.apiKey), true],
+            [generateScopedHttpCallbackHash(callbackScope, "unrelated-key"), false],
+          ] as const) {
+            const resolved = await resolveScopedWaitpointCallback(
+              WaitpointId.toId(waitpointFriendlyId!),
+              callbackHash,
+              {
+                resolveEnvironment: (id) => resolver.resolveAuthenticatedEnv(id),
+                isWaitpointStoreEnabled: (org) =>
+                  engine.waitpointSystem.isWaitpointStoreEnabled(org),
+                getWaitpoint: (scope) => engine.getStoreDateTimeWaitpoint(scope),
+              }
+            );
+            if (valid) {
+              expect("error" in resolved ? resolved : resolved.waitpoint).toMatchObject({
+                id: waitpoint.id,
+                status: "PENDING",
+              });
+            } else {
+              expect(resolved).toMatchObject({ status: 401 });
             }
-          );
-          expect("error" in resolved ? resolved : resolved.waitpoint).toMatchObject({
-            id: waitpoint.id,
-            status: "PENDING",
-          });
+          }
         }
 
         await engine.completeWaitpoint({

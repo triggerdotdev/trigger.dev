@@ -13,6 +13,17 @@ export interface WaitpointKeyTransactionClient {
   $disconnect(): Promise<void>;
 }
 
+/** Keyed creation ran out of its time budget under load. Retriable: the key makes a retry safe. */
+export class WaitpointKeyTransactionBudgetExhaustedError extends Error {
+  constructor() {
+    super("Keyed waitpoint creation transaction budget exhausted");
+    this.name = "WaitpointKeyTransactionBudgetExhaustedError";
+  }
+}
+
+/** Injected like the store's other metrics, so the package stays free of a metrics dependency. */
+export type WaitpointKeyTransactionLaneMetrics = { recordBudgetExhausted(): void };
+
 type Waiter = { enter(release: () => void): void; reject(error: Error): void };
 type OrganizationQueue = { organizationId: string; active: boolean; waiters: Set<Waiter> };
 
@@ -25,9 +36,27 @@ export class WaitpointKeyTransactionLane {
   #closed = false;
   #close?: Promise<void>;
 
-  constructor(private readonly createClient: () => WaitpointKeyTransactionClient) {}
+  constructor(
+    private readonly createClient: () => WaitpointKeyTransactionClient,
+    private readonly metrics?: WaitpointKeyTransactionLaneMetrics
+  ) {}
 
   async run<R>(
+    organizationId: string,
+    acceptUntil: number,
+    fn: (tx: PrismaClientOrTransaction) => Promise<R>
+  ): Promise<R> {
+    try {
+      return await this.#run(organizationId, acceptUntil, fn);
+    } catch (error) {
+      // Counted once here, so the engine's budget checks inside `fn` are counted too.
+      if (error instanceof WaitpointKeyTransactionBudgetExhaustedError)
+        this.metrics?.recordBudgetExhausted();
+      throw error;
+    }
+  }
+
+  async #run<R>(
     organizationId: string,
     acceptUntil: number,
     fn: (tx: PrismaClientOrTransaction) => Promise<R>
@@ -35,7 +64,7 @@ export class WaitpointKeyTransactionLane {
     if (this.#closed) throw new Error("Waitpoint key transaction lane is closed");
     if (!organizationId) throw new Error("Keyed waitpoint creation requires organization context");
     const remaining = acceptUntil - Date.now();
-    if (remaining <= 0) throw new Error("Keyed waitpoint creation transaction budget exhausted");
+    if (remaining <= 0) throw new WaitpointKeyTransactionBudgetExhaustedError();
     let organization = this.#organizations.get(organizationId);
     if (!organization) {
       organization = { organizationId, active: false, waiters: new Set() };
@@ -58,7 +87,7 @@ export class WaitpointKeyTransactionLane {
       const timer = setTimeout(() => {
         queue.waiters.delete(waiter);
         this.#retireIfIdle(queue);
-        reject(new Error("Keyed waitpoint creation transaction budget exhausted"));
+        reject(new WaitpointKeyTransactionBudgetExhaustedError());
       }, remaining);
       queue.waiters.add(waiter);
       if (!queue.active) this.#ready.add(queue);
@@ -66,14 +95,12 @@ export class WaitpointKeyTransactionLane {
     });
     try {
       const budget = acceptUntil - Date.now();
-      if (this.#closed || budget <= 0)
-        throw new Error("Keyed waitpoint creation transaction budget exhausted");
+      if (this.#closed || budget <= 0) throw new WaitpointKeyTransactionBudgetExhaustedError();
       this.#client ??= this.createClient();
       return await this.#client.$transaction(
         async (tx) => {
           const statementBudget = acceptUntil - Date.now();
-          if (statementBudget <= 0)
-            throw new Error("Keyed waitpoint creation transaction budget exhausted");
+          if (statementBudget <= 0) throw new WaitpointKeyTransactionBudgetExhaustedError();
           // Prisma's callback timeout does not cancel a running PG query. Bound the first
           // advisory-lock wait at the server too. These are transaction-local, per-statement
           // limits; the caller's creation deadline still fences later publication.

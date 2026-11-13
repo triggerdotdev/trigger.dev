@@ -6,6 +6,7 @@ export const FEATURE_FLAG = {
   waitpointStoreEnabled: "waitpointStoreEnabled",
   snapshotStoreMode: "snapshotStoreMode",
   allowEmptyEnvironmentVariableValues: "allowEmptyEnvironmentVariableValues",
+  environmentEncryptionEnabled: "environmentEncryptionEnabled",
   defaultWorkerInstanceGroupId: "defaultWorkerInstanceGroupId",
   taskEventRepository: "taskEventRepository",
   hasQueryAccess: "hasQueryAccess",
@@ -15,7 +16,6 @@ export const FEATURE_FLAG = {
   hasAiAccess: "hasAiAccess",
   hasDashboardAgentAccess: "hasDashboardAgentAccess",
   dashboardAgentTurnEvalsEnabled: "dashboardAgentTurnEvalsEnabled",
-  dashboardAgentWatchEnabled: "dashboardAgentWatchEnabled",
   alertsEnabled: "alertsEnabled",
   promotedDashboardAgentPrompt: "promotedDashboardAgentPrompt",
   hasComputeAccess: "hasComputeAccess",
@@ -108,6 +108,7 @@ export const FeatureFlagCatalog = {
   // Organization override, then global default, then off.
   [FEATURE_FLAG.snapshotStoreMode]: z.enum(["off", "dual-write", "redis-read", "redis-only"]),
   [FEATURE_FLAG.allowEmptyEnvironmentVariableValues]: z.boolean(),
+  [FEATURE_FLAG.environmentEncryptionEnabled]: z.boolean(),
   [FEATURE_FLAG.defaultWorkerInstanceGroupId]: z.string(),
   [FEATURE_FLAG.taskEventRepository]: z.enum(["clickhouse", "clickhouse_v2", "postgres"]),
   [FEATURE_FLAG.hasQueryAccess]: z.coerce.boolean(),
@@ -131,11 +132,6 @@ export const FeatureFlagCatalog = {
   // Strict z.boolean(): coercion reads the string "false" as true, which would keep judging
   // an org that asked us to stop.
   [FEATURE_FLAG.dashboardAgentTurnEvalsEnabled]: z.boolean(),
-  // Gates the agent's watches — the tools, the prompt guidance and the watch UI.
-  // Per-org override wins over DASHBOARD_AGENT_WATCH_ENABLED; both default off.
-  // Strict z.boolean(): coercion reads the string "false" as true, which would
-  // turn the switch on for an org that never asked for it.
-  [FEATURE_FLAG.dashboardAgentWatchEnabled]: z.boolean(),
   [FEATURE_FLAG.alertsEnabled]: z.boolean(),
   // A JSON string because this catalog is scalar-only. Validated where it's read, in
   // `suggested-prompts/promotedPrompt.server.ts`.

@@ -227,6 +227,7 @@ describe("RunEngine dequeuing", () => {
           masterQueueCooloffPeriodMs: 12_345,
           masterQueueCooloffCountThreshold: 3,
           masterQueueConsumerDequeueCount: 7,
+          gateSkipAhead: { enabled: true, readMultiplier: 4 },
         },
         runLock: { redis: redisOptions },
         machines: {
@@ -244,6 +245,7 @@ describe("RunEngine dequeuing", () => {
           masterQueueCooloffPeriodMs: 12_345,
           masterQueueCooloffCountThreshold: 3,
           masterQueueConsumerDequeueCount: 7,
+          gateSkipAhead: { enabled: true, readMultiplier: 4 },
         });
       } finally {
         await engine.quit();
@@ -274,6 +276,7 @@ describe("RunEngine dequeuing", () => {
         expect(engine.runQueue.options.masterQueueCooloffPeriodMs).toBeUndefined();
         expect(engine.runQueue.options.masterQueueCooloffCountThreshold).toBeUndefined();
         expect(engine.runQueue.options.masterQueueConsumerDequeueCount).toBeUndefined();
+        expect(engine.runQueue.options.gateSkipAhead).toBeUndefined();
         // The defaults the webapp env schema also uses. Changing them changes every deployment
         // that does not set the env vars.
         expect(MASTER_QUEUE_DEFAULTS).toEqual({

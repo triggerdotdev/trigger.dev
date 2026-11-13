@@ -172,7 +172,7 @@ it("wires the real connected-repository form into the existing save endpoint", (
         connectedGitHubRepo: {
           branchTracking: { prod: { branch: "main" }, staging: { branch: "staging" } },
           previewDeploymentsEnabled: true,
-          buildFilters: { ignorePaths: ["docs/**"] },
+          buildFilters: { ignorePaths: ["docs/**"], ignoreBranches: ["dependabot/**"] },
           createdAt: new Date("2026-09-15T00:00:00Z"),
           repository: {
             id: "repo",
@@ -201,6 +201,7 @@ it("wires the real connected-repository form into the existing save endpoint", (
     expect(html).toContain('value="update-git-settings"');
     expect(html).toContain('value="/orgs/org/projects/project/env/prod/deployments"');
     expect(html).not.toContain('name="ignorePaths"');
+    expect(html).not.toContain('name="ignoreBranches"');
     expect(html).not.toContain("Disconnect");
     expect(html).not.toContain("Upgrade");
     expect((html.match(/ disabled=""/g) ?? []).length).toBeGreaterThanOrEqual(autosave ? 3 : 4);
@@ -264,7 +265,7 @@ function settingsForm(
       environmentSlug: "prod",
       billingPath: "/billing",
       redirectUrl: "/orgs/org/projects/project/env/prod/deployments",
-      ignorePathLimits: { maxPaths: 100, maxLength: 256 },
+      ignorePatternLimits: { maxPatterns: 100, maxLength: 256 },
       ...props,
     })
   );
@@ -290,13 +291,24 @@ it("keeps the legacy connected-repository form on its original layout and explic
 });
 
 it("lists stored ignored paths after the branch fields and submits them one per line", () => {
-  const html = settingsForm({}, { ignorePaths: ["docs/**", "*.md"] });
+  const html = settingsForm({}, { ignorePaths: ["docs/**", "*.md"], ignoreBranches: [] });
   expect(html).toContain('type="hidden" name="ignorePaths" value="docs/**\n*.md"');
   expect(html.indexOf('name="ignorePaths"')).toBeGreaterThan(
     html.indexOf('name="previewDeploymentsEnabled"')
   );
   expect(html.indexOf('name="ignorePaths"')).toBeLessThan(html.indexOf(">Save<"));
   expect(settingsForm()).toContain('type="hidden" name="ignorePaths" value=""');
+});
+
+it("lists stored ignored branches above the ignored paths and submits them one per line", () => {
+  // Catches: the settings form not submitting the branches field, so saving can't change it.
+  const html = settingsForm(
+    {},
+    { ignorePaths: [], ignoreBranches: ["noPreview*", "noPreview/**"] }
+  );
+  expect(html).toContain('type="hidden" name="ignoreBranches" value="noPreview*\nnoPreview/**"');
+  expect(html.indexOf('name="ignoreBranches"')).toBeLessThan(html.indexOf('name="ignorePaths"'));
+  expect(settingsForm()).toContain('type="hidden" name="ignoreBranches" value=""');
 });
 
 it("says ignored paths don't apply only while a Vercel integration is connected", () => {

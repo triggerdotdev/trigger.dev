@@ -100,3 +100,35 @@ containerTest("binds the key read to the caller's organization", async ({ prisma
     })
   ).rejects.toThrow("Environment not found");
 });
+
+containerTest("does not inspect a system-issued key", async ({ prisma }) => {
+  const { organization, project, user } = await createTestOrgProjectWithMember(prisma);
+  const environment = await createRuntimeEnvironment(prisma, {
+    projectId: project.id,
+    organizationId: organization.id,
+    type: "PRODUCTION",
+    slug: uniqueId("prod"),
+  });
+  const systemKey = await prisma.apiKey.create({
+    data: {
+      name: "Build key",
+      keyHash: uniqueId("build-hash"),
+      lastFour: "abcd",
+      runtimeEnvironmentId: environment.id,
+      presetId: null,
+      scopes: ["read:deployments"],
+      issuedBy: "SYSTEM",
+    },
+  });
+  const presenter = new ApiKeyUsagePresenter(prisma, { apiKeyScopeUsage: async () => null });
+
+  const result = await presenter.call({
+    userId: user.id,
+    organizationSlug: organization.slug,
+    projectSlug: project.slug,
+    environmentSlug: environment.slug,
+    apiKeyId: systemKey.id,
+  });
+
+  expect(result).toEqual({ environmentType: "PRODUCTION", apiKey: null, usage: null });
+});

@@ -1,7 +1,7 @@
 import { json, type ActionFunctionArgs } from "@remix-run/server-runtime";
 import { DASHBOARD_AGENT_FEEDBACK_LIMITS } from "@internal/dashboard-agent-contracts";
 import { z } from "zod";
-import { authorizeWatchEnvironmentById } from "~/services/dashboardAgentWatches.server";
+import { authorizeAgentEnvironmentById } from "~/services/dashboardAgentChatContext.server";
 import { logger } from "~/services/logger.server";
 import { telemetry } from "~/services/telemetry.server";
 import { authenticateUatOrApiRequest } from "~/services/uatRoutePreamble.server";
@@ -41,7 +41,7 @@ export async function action({ request }: ActionFunctionArgs) {
     return json({ error: "Invalid request", code: "invalid_request" }, { status: 400 });
   }
 
-  const environment = await authorizeWatchEnvironmentById({
+  const environment = await authorizeAgentEnvironmentById({
     userId: actor.userId,
     environmentId: actor.environmentId,
   });

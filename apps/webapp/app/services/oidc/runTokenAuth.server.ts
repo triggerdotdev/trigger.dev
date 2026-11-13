@@ -48,6 +48,10 @@ export async function resolveRunToken(
     return undefined;
   }
 
+  if (environment.parentEnvironment) {
+    environment.apiKey = environment.parentEnvironment.apiKey;
+  }
+
   return { claims, environment };
 }
 

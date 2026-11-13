@@ -1,12 +1,10 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
   user: { id: "user_me", admin: false, isImpersonating: false },
   project: null as unknown,
   updatedEnvironmentIds: [] as string[],
   hasAgentAccess: false,
-  watchEnabled: false,
-  wakeActivityReads: 0,
 }));
 
 vi.mock("~/db.server", () => ({
@@ -41,10 +39,6 @@ vi.mock("~/v3/canAccessDashboardAgent.server", () => ({
   canAccessDashboardAgent: async () => mocks.hasAgentAccess,
 }));
 
-vi.mock("~/v3/canUseAlertsList.server", () => ({
-  canUseAlertsList: async () => mocks.watchEnabled,
-}));
-
 vi.mock("~/components/dashboard-agent/suggested-prompts/promotedPrompt.server", () => ({
   getPromotedDashboardAgentPrompt: async () => undefined,
 }));
@@ -52,10 +46,6 @@ vi.mock("~/components/dashboard-agent/suggested-prompts/promotedPrompt.server", 
 vi.mock("~/services/dashboardAgentDb.server", () => ({ dashboardAgentDb: {} }));
 
 vi.mock("@internal/dashboard-agent-db", () => ({
-  readDashboardAgentWakeActivity: async () => {
-    mocks.wakeActivityReads += 1;
-    return { unreadWakes: 3, hasActiveWatches: true };
-  },
   countChatsWithUnreadWork: async () => 2,
 }));
 
@@ -149,64 +139,5 @@ describe("env.$envParam loader — development environment ownership", () => {
     await callLoader();
 
     expect(mocks.updatedEnvironmentIds).toEqual(["env_prod"]);
-  });
-});
-
-// A wake only exists while a watch does, so the launcher's dot must not survive the watch
-// flag being turned off — otherwise it is permanent, with no panel affordance to clear it.
-describe("env.$envParam loader — the dashboard agent's wake activity", () => {
-  beforeEach(() => {
-    mocks.project = projectWith([
-      { id: "env_prod", type: "PRODUCTION" as const, slug: "dev", orgMember: null },
-    ]);
-    mocks.hasAgentAccess = true;
-    mocks.wakeActivityReads = 0;
-  });
-
-  afterEach(() => {
-    mocks.hasAgentAccess = false;
-    mocks.watchEnabled = false;
-  });
-
-  it("reports no wakes and reads none when watches are off", async () => {
-    mocks.watchEnabled = false;
-
-    const data = (await callLoader()) as unknown as {
-      dashboardAgentWatchEnabled: boolean;
-      dashboardAgentActivity: { unreadWakes: number; hasActiveWatches: boolean };
-      dashboardAgentUnreadWork: number;
-    };
-
-    expect(data.dashboardAgentWatchEnabled).toBe(false);
-    expect(data.dashboardAgentActivity).toEqual({ unreadWakes: 0, hasActiveWatches: false });
-    expect(mocks.wakeActivityReads).toBe(0);
-    // The work count is not a watch signal, so it is still read.
-    expect(data.dashboardAgentUnreadWork).toBe(2);
-  });
-
-  it("reports the wakes it read when watches are on", async () => {
-    mocks.watchEnabled = true;
-
-    const data = (await callLoader()) as unknown as {
-      dashboardAgentActivity: { unreadWakes: number; hasActiveWatches: boolean };
-    };
-
-    expect(data.dashboardAgentActivity).toEqual({ unreadWakes: 3, hasActiveWatches: true });
-    expect(mocks.wakeActivityReads).toBe(1);
-  });
-
-  it("sets watchEnabled to the alerts flag result", async () => {
-    for (const enabled of [true, false]) {
-      mocks.watchEnabled = enabled;
-      const data = (await callLoader()) as unknown as { dashboardAgentWatchEnabled: boolean };
-      expect(data.dashboardAgentWatchEnabled).toBe(enabled);
-    }
-  });
-
-  it("is off without agent access even when alerts are enabled", async () => {
-    mocks.hasAgentAccess = false;
-    mocks.watchEnabled = true;
-    const data = (await callLoader()) as unknown as { dashboardAgentWatchEnabled: boolean };
-    expect(data.dashboardAgentWatchEnabled).toBe(false);
   });
 });

@@ -49,7 +49,8 @@ import { logger } from "~/services/logger.server";
 import { mintRunToken, runTokenInjectionEnabled } from "~/services/oidc/runToken.server";
 import { defaultMachine } from "~/services/platform.v3.server";
 import { singleton } from "~/utils/singleton";
-import { resolveVariablesForEnvironment } from "~/v3/environmentVariables/environmentVariablesRepository.server";
+import { resolveAttemptVariables } from "~/services/environmentEncryption/attemptVariables.server";
+import type { EnvironmentVariable } from "~/v3/environmentVariables/repository";
 import { machinePresetFromName } from "~/v3/machinePresets.server";
 import { meteringClaims } from "~/v3/utils/meteringClaims.server";
 import { refreshRunTokenOnHeartbeat } from "./runTokenRefresh.server";
@@ -327,6 +328,7 @@ export class WorkerGroupTokenService extends WithRunEngine {
           prisma: this._prisma,
           engine: this._engine,
           type: workerGroup.type,
+          projectId: workerGroup.projectId,
           name: workerGroup.name,
           workerGroupId: workerGroup.id,
           workerInstanceId: workerInstance.id,
@@ -442,6 +444,7 @@ type WorkerInstanceEnv = z.infer<typeof WorkerInstanceEnv>;
 export type AuthenticatedWorkerInstanceOptions = WithRunEngineOptions<
   WorkerQueueConsumerOptions & {
     type: WorkerInstanceGroupType;
+    projectId?: string | null;
     name: string;
     tokenValidUntil?: Date;
   }
@@ -449,6 +452,7 @@ export type AuthenticatedWorkerInstanceOptions = WithRunEngineOptions<
 
 export class AuthenticatedWorkerInstance extends WithRunEngine {
   readonly type: WorkerInstanceGroupType;
+  readonly projectId: string | null;
   readonly name: string;
   readonly workerGroupId: string;
   readonly workerInstanceId: string;
@@ -463,6 +467,9 @@ export class AuthenticatedWorkerInstance extends WithRunEngine {
     super({ prisma: opts.prisma, engine: opts.engine });
 
     this.type = opts.type;
+    this.projectId = opts.projectId ?? null;
+    if (this.type === "UNMANAGED" && !this.projectId)
+      throw new Error("Unmanaged worker group must belong to a project");
     this.name = opts.name;
     this.workerGroupId = opts.workerGroupId;
     this.workerInstanceId = opts.workerInstanceId;
@@ -635,16 +642,21 @@ export class AuthenticatedWorkerInstance extends WithRunEngine {
       envVars: Record<string, string>;
     }
   > {
-    await this.assertCreatedAtGate({
-      runId: fromFriendlyId(runFriendlyId),
-      environmentId,
-      action: "start",
-    });
+    const runId = fromFriendlyId(runFriendlyId);
+
+    await this.assertCreatedAtGate({ runId, environmentId, action: "start" });
+
+    // Resolved before the attempt exists, so an unavailable key leaves the run startable.
+    const environment = await this.findAttemptEnvironment(runId, environmentId);
+    const variables = await resolveAttemptVariables(
+      environment,
+      environment.parentEnvironment ?? undefined
+    );
 
     const stamped = acceptsWorkerStamp(this.type);
 
     const engineResult = await this._engine.startRunAttempt({
-      runId: fromFriendlyId(runFriendlyId),
+      runId,
       snapshotId: fromFriendlyId(snapshotFriendlyId),
       isWarmStart,
       workerCell: stamped ? workerCell : undefined,
@@ -656,12 +668,51 @@ export class AuthenticatedWorkerInstance extends WithRunEngine {
 
     const defaultMachinePreset = machinePresetFromName(defaultMachine);
 
+    const runToken =
+      supportsRunTokenRefresh === true &&
+      environmentId === environment.id &&
+      runTokenInjectionEnabled(environment.organization?.featureFlags)
+        ? await this.mintRunTokenOrSkip(environment, engineResult)
+        : undefined;
+
+    const envVars = await this.getEnvVars(
+      variables,
+      environment,
+      engineResult.run.id,
+      engineResult.execution.machine ?? defaultMachinePreset,
+      meteringClaims({
+        environmentType: environment.type,
+        region: engineResult.run.region,
+        workerQueue: engineResult.run.workerQueue,
+      }),
+      engineResult.run.taskEventStore ?? undefined,
+      runToken
+    );
+
+    return {
+      ...engineResult,
+      envVars,
+    };
+  }
+
+  // The engine validates the header's scope before any resolved variables are returned.
+  private async findAttemptEnvironment(runId: string, environmentId?: string) {
+    if (!environmentId) {
+      const run = await this._engine.runStore.findRun(
+        { id: runId },
+        { select: { runtimeEnvironmentId: true } }
+      );
+      if (!run) throw json({ error: "Run environment unavailable" }, { status: 503 });
+      environmentId = run.runtimeEnvironmentId;
+    }
+
     const environmentReader =
       env.CONTROL_PLANE_DEQUEUE_READS_FROM_REPLICA === "1" ? this._replica : this._prisma;
 
     const environment = await environmentReader.runtimeEnvironment.findFirst({
       where: {
-        id: engineResult.execution.environment.id,
+        id: environmentId,
+        ...(this.type === "UNMANAGED" ? { projectId: this.projectId! } : {}),
       },
       include: {
         parentEnvironment: true,
@@ -671,35 +722,8 @@ export class AuthenticatedWorkerInstance extends WithRunEngine {
           : {}),
       },
     });
-
-    const runToken =
-      environment &&
-      supportsRunTokenRefresh === true &&
-      environmentId === environment.id &&
-      runTokenInjectionEnabled(environment.organization?.featureFlags)
-        ? await this.mintRunTokenOrSkip(environment, engineResult)
-        : undefined;
-
-    const envVars = environment
-      ? await this.getEnvVars(
-          environment,
-          engineResult.run.id,
-          engineResult.execution.machine ?? defaultMachinePreset,
-          meteringClaims({
-            environmentType: environment.type,
-            region: engineResult.run.region,
-            workerQueue: engineResult.run.workerQueue,
-          }),
-          environment.parentEnvironment ?? undefined,
-          engineResult.run.taskEventStore ?? undefined,
-          runToken
-        )
-      : {};
-
-    return {
-      ...engineResult,
-      envVars,
-    };
+    if (!environment) throw json({ error: "Runtime environment unavailable" }, { status: 503 });
+    return environment;
   }
 
   // A signing failure must not fail the attempt: the run still has TRIGGER_SECRET_KEY.
@@ -939,16 +963,14 @@ export class AuthenticatedWorkerInstance extends WithRunEngine {
   }
 
   private async getEnvVars(
+    variables: EnvironmentVariable[],
     environment: RuntimeEnvironment,
     runId: string,
     machinePreset: MachinePreset,
     metering: Record<string, string>,
-    parentEnvironment?: RuntimeEnvironment,
     taskEventStore?: string,
     runToken?: string
   ): Promise<Record<string, string>> {
-    const variables = await resolveVariablesForEnvironment(environment, parentEnvironment);
-
     const jwt = await generateJWTTokenForEnvironment(environment, {
       ...metering,
       run_id: runId,

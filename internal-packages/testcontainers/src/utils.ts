@@ -67,9 +67,18 @@ export async function getRunOpsSchemaSql(): Promise<string> {
   return `${schemaSql}\nCREATE UNIQUE INDEX IF NOT EXISTS "TaskRunWaitpoint_taskRunId_waitpointId_batchIndex_null_key" ON "public"."TaskRunWaitpoint"("taskRunId", "waitpointId") WHERE "batchIndex" IS NULL;\n`;
 }
 
+export const POSTGRES_SETUP_CLIENT_TIMEOUTS = {
+  connectionTimeoutMillis: 10_000,
+  statement_timeout: 60_000,
+  query_timeout: 60_000,
+};
+
 /** Runs `sql` (one or more statements) on a short-lived raw pg connection. */
 export async function runSql(databaseUrl: string, sql: string) {
-  const client = new Client({ connectionString: databaseUrl });
+  const client = new Client({
+    connectionString: databaseUrl,
+    ...POSTGRES_SETUP_CLIENT_TIMEOUTS,
+  });
   await client.connect();
   try {
     await client.query(sql);
@@ -78,6 +87,7 @@ export async function runSql(databaseUrl: string, sql: string) {
   }
 }
 
+const SCHEMA_SQL_GENERATION_TIMEOUT_MS = 60_000;
 const schemaSqlCache = new Map<string, Promise<string>>();
 
 /**
@@ -110,7 +120,7 @@ async function readOrGenerateSchemaSql(key: string, prismaBin: string, schemaPat
   const result = await x(
     prismaBin,
     ["migrate", "diff", "--from-empty", "--to-schema-datamodel", schemaPath, "--script"],
-    { throwOnError: true }
+    { throwOnError: true, timeout: SCHEMA_SQL_GENERATION_TIMEOUT_MS }
   );
 
   mkdirSync(cacheDir, { recursive: true });

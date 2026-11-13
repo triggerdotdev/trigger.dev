@@ -7,10 +7,24 @@ import {
   WAKE_REQUEST_MESSAGE_ID_PREFIX,
   WATCH_REQUEST_MESSAGE_ID_PREFIX,
 } from "@internal/dashboard-agent-contracts";
-import { and, desc, eq, gt, inArray, ne, notLike, or, sql, isNull, type SQL } from "drizzle-orm";
+import {
+  and,
+  desc,
+  eq,
+  exists,
+  gt,
+  inArray,
+  like,
+  ne,
+  notLike,
+  or,
+  sql,
+  isNull,
+  type SQL,
+} from "drizzle-orm";
 import type { DashboardAgentDb } from "./client.js";
 import { generateInvestigationId } from "./ids.js";
-import { lockChatForWatches, type DashboardAgentDbOrTx } from "./internal.js";
+import type { DashboardAgentDbOrTx } from "./internal.js";
 import {
   agentMessageUsage,
   chatMessages,
@@ -18,22 +32,10 @@ import {
   chatSessions,
   chatTurnEvals,
   investigations,
-  watches,
-  watchSubmissions,
   type ChatKind,
   type Investigation,
   type NewChatTurnEval,
-  type Watch,
 } from "./schema.js";
-import {
-  cancelActiveWatchesForChat,
-  settlePendingWatchDeliveriesForChat,
-  settlePendingWatchDeliveriesForOrganization,
-} from "./watch-queries.js";
-
-// The watch, wake and batch-chain queries live in `watch-queries.js`, re-exported
-// here so every existing import path still resolves.
-export * from "./watch-queries.js";
 
 // Every query that touches user data must be scoped by `organizationId` and/or
 // `userId`. This file is where tenant isolation lives.
@@ -132,7 +134,7 @@ export async function getChatMessages(
 /**
  * Counted from the stored messages, not a counter column, so a deleted chat stops
  * counting. `excludeChatId` is for a caller that counts that chat's live messages itself.
- * A watch's consent record is a user message but not a turn the user spent, so it is
+ * A legacy watch consent record is a user message but not a turn the user spent, so it is
  * excluded here and by the client-side count.
  */
 export async function countUserMessages(
@@ -150,7 +152,7 @@ export async function countUserMessages(
         visibleTo(params.actingUserId),
         isNull(chats.deletedAt),
         eq(chatMessages.role, "user"),
-        // The user-role messages the user did not type: a watch consent record, and
+        // The user-role messages the user did not type: a legacy watch consent record, and
         // the request a wake or investigation turn answers.
         notLike(chatMessages.messageId, `${WATCH_REQUEST_MESSAGE_ID_PREFIX}%`),
         notLike(chatMessages.messageId, `${WAKE_REQUEST_MESSAGE_ID_PREFIX}%`),
@@ -202,9 +204,8 @@ export async function incrementAgentMessageUsage(
 }
 
 /**
- * Chats whose transcript moved on after their owner last looked. A watch wake is one way
- * that happens; an answer that landed while the panel was closed is another, and the panel
- * shows them the same way — a dot on the launcher, the chat lifted and highlighted.
+ * Chats whose transcript moved on after their owner last looked, such as an answer that
+ * landed while the panel was closed. The panel shows them — a dot on the launcher, the chat lifted and highlighted.
  */
 export async function countChatsWithUnreadWork(
   db: DashboardAgentDb,
@@ -306,13 +307,43 @@ export async function chatExists(
   return rows.length > 0;
 }
 
+/** The chat's org, the tenancy floor its agent requests can't leave. Owner-scoped. */
+export async function getChatOrganizationId(
+  db: DashboardAgentDb,
+  params: { chatId: string; userId: string }
+): Promise<string | null> {
+  const rows = await db
+    .select({ organizationId: chats.organizationId })
+    .from(chats)
+    .where(
+      and(eq(chats.id, params.chatId), eq(chats.userId, params.userId), isNull(chats.deletedAt))
+    )
+    .limit(1);
+  return rows[0]?.organizationId ?? null;
+}
+
 /** `chatExists` plus what a turn needs to keep the chat's scope; null when not visible. */
 export async function getChatScope(
   db: DashboardAgentDb,
   params: ChatViewer & { chatId: string }
-): Promise<{ kind: ChatKind | null; metadata: Record<string, unknown> } | null> {
+): Promise<{
+  kind: ChatKind | null;
+  metadata: Record<string, unknown>;
+  alertCreated: boolean;
+} | null> {
   const rows = await db
-    .select({ kind: chats.kind, metadata: chats.metadata })
+    .select({
+      kind: chats.kind,
+      metadata: chats.metadata,
+      alertCreated: exists(
+        db
+          .select({ one: sql`1` })
+          .from(chatMessages)
+          .where(
+            and(eq(chatMessages.chatId, chats.id), like(chatMessages.messageId, "alert_created:%"))
+          )
+      ),
+    })
     .from(chats)
     .where(
       and(
@@ -326,7 +357,11 @@ export async function getChatScope(
     .limit(1);
   const row = rows[0];
   if (!row) return null;
-  return { kind: row.kind ?? null, metadata: (row.metadata as Record<string, unknown>) ?? {} };
+  return {
+    kind: row.kind ?? null,
+    metadata: (row.metadata as Record<string, unknown>) ?? {},
+    alertCreated: Boolean(row.alertCreated),
+  };
 }
 
 /** Idempotent: the webapp's insert and the agent's ensure-exists race. */
@@ -425,48 +460,28 @@ export async function markChatRead(
 }
 
 /**
- * One transaction on purpose: a crash between the two halves would leave live
- * watches ticking against a chat the user can no longer see. Owner-scoped.
- * Already-deleted rows are skipped, so a retry can't push `deletedAt` forward
- * and move the retention cutoff.
+ * Owner-scoped. Already-deleted rows are skipped, so a retry can't push `deletedAt`
+ * forward and move the retention cutoff.
  */
 export async function softDeleteChat(
   db: DashboardAgentDb,
   params: ChatViewer & { chatId: string }
-): Promise<{ deleted: boolean; cancelledWatches: Watch[] }> {
-  return db.transaction(async (tx) => {
-    // The same lock `createWatch` takes, or a concurrent create lands an active
-    // watch on a chat this transaction already deleted.
-    await lockChatForWatches(tx, params.chatId);
-
-    const deleted = await tx
-      .update(chats)
-      .set({ deletedAt: sql`now()`, updatedAt: sql`now()` })
-      .where(
-        and(
-          eq(chats.id, params.chatId),
-          eq(chats.userId, params.userId),
-          visibleTo(params.actingUserId),
-          eq(chats.organizationId, params.organizationId),
-          isNull(chats.deletedAt)
-        )
+): Promise<{ deleted: boolean }> {
+  const deleted = await db
+    .update(chats)
+    .set({ deletedAt: sql`now()`, updatedAt: sql`now()` })
+    .where(
+      and(
+        eq(chats.id, params.chatId),
+        eq(chats.userId, params.userId),
+        visibleTo(params.actingUserId),
+        eq(chats.organizationId, params.organizationId),
+        isNull(chats.deletedAt)
       )
-      .returning({ id: chats.id });
+    )
+    .returning({ id: chats.id });
 
-    if (deleted.length === 0) return { deleted: false, cancelledWatches: [] };
-
-    const cancelledWatches = await cancelActiveWatchesForChat(tx, {
-      chatId: params.chatId,
-      reason: "chat_deleted",
-    });
-
-    // A wake already owed can no longer be delivered into a deleted chat, and an unsettled
-    // delivery is exempt from retention: settle it here, or the row is kept until the chat's
-    // hard delete (30 days) instead of the much shorter watch retention cutoff.
-    await settlePendingWatchDeliveriesForChat(tx, { chatId: params.chatId });
-
-    return { deleted: true, cancelledWatches };
-  });
+  return { deleted: deleted.length > 0 };
 }
 
 /** Enough of the payload to recognise it in an error, without logging a whole transcript. */
@@ -935,8 +950,6 @@ async function deleteChatsByIds(tx: DashboardAgentDbOrTx, ids: string[]): Promis
   await tx.delete(chatSessions).where(inArray(chatSessions.chatId, ids));
   await tx.delete(chatTurnEvals).where(inArray(chatTurnEvals.chatId, ids));
   await tx.delete(investigations).where(inArray(investigations.chatId, ids));
-  await tx.delete(watchSubmissions).where(inArray(watchSubmissions.chatId, ids));
-  await tx.delete(watches).where(inArray(watches.chatId, ids));
 
   const deleted = await tx.delete(chats).where(inArray(chats.id, ids)).returning({ id: chats.id });
   return deleted.map((row) => row.id);
@@ -988,13 +1001,6 @@ export async function softDeleteChatsForOrganization(
       .set({ deletedAt: sql`now()`, updatedAt: sql`now()` })
       .where(and(eq(chats.organizationId, params.organizationId), isNull(chats.deletedAt)))
       .returning({ id: chats.id });
-
-    // Same reason as in `softDeleteChat`: a wake owed to a chat nobody can open again is
-    // invisible to both delivery sweeps, and an unsettled delivery is exempt from retention
-    // until the chat's hard delete.
-    await settlePendingWatchDeliveriesForOrganization(tx, {
-      organizationId: params.organizationId,
-    });
 
     return rows.length;
   });

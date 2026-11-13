@@ -6,7 +6,6 @@ export type GalleryPageId =
   | "view-blocks"
   | "report"
   | "investigation"
-  | "watch"
   | "wizard";
 
 export type GalleryPage = {
@@ -22,7 +21,7 @@ export const GALLERY_PAGES: GalleryPage[] = [
     slug: "agent-ui",
     title: "Chat UI",
     blurb:
-      "The chat chrome: the blank-state hero, suggested prompts, the transcript and its one progress line, wake banners, watch chips and the context banner.",
+      "The chat chrome: the blank-state hero, suggested prompts, the transcript and its one progress line, and the context banner.",
   },
   {
     id: "composer",
@@ -51,13 +50,6 @@ export const GALLERY_PAGES: GalleryPage[] = [
     blurb: "One card per ending an investigation can have, plus the state while it is still going.",
   },
   {
-    id: "watch",
-    slug: "agent-watch",
-    title: "Watch card",
-    blurb:
-      "The configuration card, what a submitted card leaves in the transcript, and the wake headline.",
-  },
-  {
     id: "wizard",
     slug: "agent-wizard",
     title: "Wizard card",
@@ -78,9 +70,6 @@ export type GalleryGroup =
   | "investigation"
   | "report"
   | "chart"
-  | "watches"
-  | "watch-card"
-  | "wakes"
   | "hero"
   | "prompts"
   | "intents"
@@ -100,8 +89,6 @@ export const GALLERY_GROUPS: { group: GalleryGroup; page: GalleryPageId; label: 
   { group: "prompts", page: "chat", label: "Suggested prompts" },
   { group: "messages", page: "chat", label: "Message-level states" },
   { group: "intents", page: "chat", label: "Intent bubbles" },
-  { group: "wakes", page: "chat", label: "Wake banners" },
-  { group: "watches", page: "chat", label: "Watch chips" },
   { group: "banner", page: "chat", label: "Context banner" },
   { group: "wizard", page: "wizard", label: "Wizard card" },
   { group: "composer-docked", page: "composer", label: "Docked under a chat" },
@@ -115,7 +102,6 @@ export const GALLERY_GROUPS: { group: GalleryGroup; page: GalleryPageId; label: 
   { group: "chart", page: "view-blocks", label: "Chart card" },
   { group: "report", page: "report", label: "Report view" },
   { group: "investigation", page: "investigation", label: "Investigation card" },
-  { group: "watch-card", page: "watch", label: "Watch card" },
 ];
 
 export const MANIFEST: GallerySection[] = [
@@ -179,19 +165,11 @@ export const MANIFEST: GallerySection[] = [
     title: "Navigate — runs with filters",
     group: "intents",
   },
-  { sectionId: "intent-watch", title: "Watch started", group: "intents" },
   {
     sectionId: "intent-rejected-propose-fix",
     title: "Rejected — propose_fix is reserved",
     group: "intents",
   },
-
-  { sectionId: "wake-positive", title: "Positive", group: "wakes" },
-  { sectionId: "wake-attention", title: "Attention", group: "wakes" },
-  { sectionId: "wake-neutral-impossible", title: "Neutral — no longer possible", group: "wakes" },
-  { sectionId: "wake-unverified", title: "Unverified at the window's end", group: "wakes" },
-
-  { sectionId: "watches-live", title: "All four states, cancellable", group: "watches" },
 
   { sectionId: "banner-prod", title: "Production environment", group: "banner" },
   { sectionId: "banner-preview-long", title: "Preview branch with a long name", group: "banner" },
@@ -234,11 +212,6 @@ export const MANIFEST: GallerySection[] = [
     title: "Long branch name — the context truncates first",
     group: "composer-docked",
   },
-  {
-    sectionId: "composer-docked-watch-card",
-    title: "Watch card proposed — above the composer",
-    group: "composer-docked",
-  },
 
   {
     sectionId: "composer-hero-new-chat",
@@ -246,11 +219,6 @@ export const MANIFEST: GallerySection[] = [
     group: "composer-hero",
   },
   { sectionId: "composer-hero-draft", title: "Draft — Send enabled", group: "composer-hero" },
-  {
-    sectionId: "composer-hero-watch-card",
-    title: "Watch card proposed — above the composer",
-    group: "composer-hero",
-  },
   {
     sectionId: "composer-hero-fullscreen",
     title: "Full page — centred column",
@@ -317,7 +285,7 @@ export const MANIFEST: GallerySection[] = [
   },
   {
     sectionId: "view-blocks-actions-offer",
-    title: "Actions block — the watch offer as buttons",
+    title: "Actions block — next steps as buttons",
     group: "view-blocks",
   },
 
@@ -385,41 +353,6 @@ export const MANIFEST: GallerySection[] = [
     sectionId: "investigation-card-degraded",
     title: "Inconclusive, degraded after a tool failure — names what it couldn't read",
     group: "investigation",
-  },
-
-  { sectionId: "watch-card-compact", title: "Compact — the recommendation", group: "watch-card" },
-  { sectionId: "watch-card-expanded", title: "Expanded (Customize)", group: "watch-card" },
-  { sectionId: "watch-card-validation-error", title: "Validation error", group: "watch-card" },
-  { sectionId: "watch-card-pending", title: "Pending create", group: "watch-card" },
-  {
-    sectionId: "watch-card-queue-below",
-    title: "Customize — back below a threshold",
-    group: "watch-card",
-  },
-  {
-    sectionId: "watch-card-queue-stalled",
-    title: "Customize — stopped moving (no parameter)",
-    group: "watch-card",
-  },
-  {
-    sectionId: "watch-card-confirmation",
-    title: "Confirmation block — both opt-ins took effect",
-    group: "watch-card",
-  },
-  {
-    sectionId: "watch-card-confirmation-degraded",
-    title: "Confirmation block — first check and email both unavailable",
-    group: "watch-card",
-  },
-  {
-    sectionId: "watch-card-one-shot-satisfied",
-    title: "One-shot result — already true",
-    group: "watch-card",
-  },
-  {
-    sectionId: "watch-card-toast-headline",
-    title: "Wake toast headline (fact first)",
-    group: "watch-card",
   },
 ];
 

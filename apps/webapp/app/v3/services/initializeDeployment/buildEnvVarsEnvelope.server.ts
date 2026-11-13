@@ -1,28 +1,22 @@
 import { type InitializeDeploymentRequestBody } from "@trigger.dev/core/v3";
-import {
-  type EncryptedSecretValue,
-  encryptSecret,
-  decryptSecret,
-} from "~/services/secrets/secretStore.server";
-import type { EncryptionKeyring } from "~/utils/encryptionKeyring.server";
+import type { StoredEnvironmentValue } from "~/services/environmentEncryption/crypto.server";
 import { ServiceValidationError } from "../baseService.server";
 
 /** The envelope stored on a bundle deployment: the redeploy source's copy, or the payload's vars encrypted. */
 export async function buildEnvVarsEnvelope(
   payload: InitializeDeploymentRequestBody,
   options: {
-    copyFrom?: EncryptedSecretValue;
-    encryptionKey: EncryptionKeyring;
+    copyFrom?: StoredEnvironmentValue;
+    encrypt: (plaintext: string) => StoredEnvironmentValue;
+    decryptSource?: (value: StoredEnvironmentValue) => Promise<string>;
     maxKeys: number;
     maxBytes: number;
   }
-): Promise<EncryptedSecretValue | undefined> {
+): Promise<StoredEnvironmentValue | undefined> {
   if (!payload.isNativeBuild || !payload.fromBundle) return undefined;
   if (options.copyFrom) {
-    return encryptSecret(
-      options.encryptionKey,
-      await decryptSecret(options.encryptionKey, options.copyFrom)
-    );
+    if (!options.decryptSource) throw new Error("Missing source deployment encryption context");
+    return options.encrypt(await options.decryptSource(options.copyFrom));
   }
 
   // Stored even when empty: redeploying a bundle requires its envelope
@@ -45,5 +39,5 @@ export async function buildEnvVarsEnvelope(
     );
   }
 
-  return encryptSecret(options.encryptionKey, serialized);
+  return options.encrypt(serialized);
 }

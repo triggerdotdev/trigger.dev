@@ -1,10 +1,10 @@
 import { tool, type ToolSet } from "ai";
-import { bareFingerprint } from "./tool-read-scope";
 import {
   analyzeQueryAlertSchema,
-  createMonitoringAlertSchema,
   describeAlertCapabilitiesSchema,
   listMonitoringAlertsSchema,
+  planDecisionSchema,
+  planMonitoringSchema,
   resolveMonitoringAlertSchema,
   updateAlertDraftSchema,
 } from "./tool-schemas";
@@ -21,7 +21,12 @@ import {
   isScopeAllowed,
   validateConditionParams,
 } from "@internal/alert-contracts";
-import type { AlertDraftPatch } from "@internal/dashboard-agent-contracts";
+import type { LimitSignal } from "@internal/alert-contracts";
+import {
+  monitoringPlanDraftGaps,
+  type AlertDraftPatch,
+  type PlanDecisionOutput,
+} from "@internal/dashboard-agent-contracts";
 import type { DashboardAgentToolContext } from "./tool-context";
 
 function toResult(result: FetchResult): { data: unknown } | { error: string } {
@@ -35,6 +40,58 @@ function toResult(result: FetchResult): { data: unknown } | { error: string } {
     return { error: issues ? `${error} (${issues})` : error };
   }
   return { error: `Couldn't reach the monitoring alerts API: ${result.transport}` };
+}
+
+function supportedSignalsOf(
+  cap: NonNullable<ReturnType<typeof getCapability>>,
+  components?: string[]
+): LimitSignal[] {
+  if (cap.supportedSignals) return cap.supportedSignals;
+  const keys = components ?? cap.binding.compositeOf ?? [];
+  return (["approaching", "limited"] as const).filter((s) =>
+    keys.some((k) => getCapability(k)?.supportedSignals?.includes(s))
+  );
+}
+
+/** Drops signals the capability can't raise; an empty result falls back to the wizard default. */
+function normalizePlanDraft(draft: AlertDraftPatch): AlertDraftPatch {
+  const cap = draft.what ? getCapability(draft.what) : undefined;
+  if (draft.area === "query") {
+    const { condition: c, querySignalChoice: choice } = draft;
+    if (!c || !choice || (c.operator === undefined && c.value === undefined)) return draft;
+    return {
+      ...draft,
+      querySignalChoice: { ...choice, mode: "threshold" },
+      condition: { ...c, kind: "threshold" },
+    };
+  }
+  if (!cap) return draft;
+  const kind = cap.allowedKinds[0];
+  const defaulted: AlertDraftPatch["condition"] =
+    kind === "state" || kind === "occurrence"
+      ? { kind, ...(cap.binding.compositeOf ? { compositeMode: "any" as const } : {}) }
+      : undefined;
+  const condition = draft.condition ?? defaulted;
+  if (!condition) return draft;
+  if (!draft.condition) draft = { ...draft, condition };
+  const supported = supportedSignalsOf(cap, condition.components);
+  if (supported.length === 0 && condition.signals === undefined) return draft;
+  const parts = cap.binding.compositeOf
+    ? (condition.components ?? cap.binding.compositeOf)
+    : [cap.key];
+  const approachingRequired = !parts.every((k) =>
+    getCapability(k)?.supportedSignals?.includes("limited")
+  );
+  const kept = (condition.signals ?? []).filter((s) => supported.includes(s));
+  const signals = kept.length
+    ? supported.filter((s) => kept.includes(s) || (s === "approaching" && approachingRequired))
+    : supported.filter(
+        (s) =>
+          s === "limited" ||
+          (s === "approaching" &&
+            (approachingRequired || condition.params?.utilisationPct !== undefined))
+      );
+  return { ...draft, condition: { ...condition, signals: signals.length ? signals : undefined } };
 }
 
 function validateDraftPatch(patch: AlertDraftPatch): string[] {
@@ -82,10 +139,7 @@ function validateDraftPatch(patch: AlertDraftPatch): string[] {
       );
     }
     if (signals !== undefined) {
-      const supported =
-        cap.supportedSignals ??
-        (components ?? compositeOf)?.flatMap((key) => getCapability(key)?.supportedSignals ?? []) ??
-        [];
+      const supported = supportedSignalsOf(cap, components);
       const unsupported = signals.filter((s) => !supported.includes(s));
       if (unsupported.length > 0 || signals.length === 0) {
         errors.push(
@@ -110,6 +164,43 @@ function validateDraftPatch(patch: AlertDraftPatch): string[] {
 }
 
 export { validateDraftPatch as _validateDraftPatch };
+
+/** Condition fields a plan item needs for its capability's kind to be created as proposed. */
+function planConditionGaps(draft: AlertDraftPatch): string[] {
+  if (draft.area === "query") {
+    return draft.querySignalChoice?.mode === "threshold" && draft.condition?.value === undefined
+      ? ["condition.value"]
+      : [];
+  }
+  if (!draft.what) return [];
+  const kind = getCapability(draft.what)?.allowedKinds[0];
+  const condition = draft.condition ?? {};
+  if (kind === "threshold") {
+    return [
+      ...(condition.operator ? [] : ["condition.operator"]),
+      ...(condition.value === undefined ? ["condition.value"] : []),
+    ];
+  }
+  if (kind === "absence") return condition.windowSec === undefined ? ["condition.windowSec"] : [];
+  return [];
+}
+
+// Mirrors the review card: no scope falls back to "all" only when the capability allows it,
+// and a task/queue scope without its value leaves the card disabled.
+function planScopeGaps(draft: AlertDraftPatch): string[] {
+  if (draft.area === "query" || !draft.what) return [];
+  const cap = getCapability(draft.what);
+  if (!cap) return [];
+  const type = draft.scope?.type ?? (cap.allowedScopes.includes("all") ? "all" : undefined);
+  const needsValue = type !== undefined && type !== "all" && type !== "errorGroup";
+  const scope = draft.scope;
+  const errorGroupIncomplete =
+    type === "errorGroup" && !(scope?.taskIdentifier && (scope.fingerprint || scope.errorId));
+  if (type && !errorGroupIncomplete && !(needsValue && !scope?.value?.trim())) return [];
+  const kind = type ?? cap.allowedScopes[0];
+  const label = { queuePattern: "a queue pattern", errorGroup: "an error" }[kind as string];
+  return [`pick ${label ?? `a ${kind}`} (scope)`];
+}
 
 type OfferedCapability = {
   key: string;
@@ -177,60 +268,18 @@ export function buildMonitoringAlertTools(args: {
       },
     }),
 
-    create_monitoring_alert: tool({
-      ...createMonitoringAlertSchema,
-      execute: async ({
-        capabilityKey,
-        environment,
-        name,
-        scope,
-        condition,
-        behavior,
-        notifiers,
-        query,
-        signal,
-      }) => {
-        if (!hasAuth) return NO_AUTH;
-        if (!ctx.chatId) return { error: "No chat is available to create an alert from." };
-        if (scope?.type === "errorGroup" && (!scope.taskIdentifier || !scope.fingerprint)) {
-          return {
-            error:
-              "errorGroup scope needs taskIdentifier and fingerprint (from list_errors/get_error)",
-          };
+    ...(ctx.toolScope === "alert_creation"
+      ? {
+          update_alert_draft: tool({
+            ...updateAlertDraftSchema,
+            execute: async ({ patch, reason }) => {
+              const errors = validateDraftPatch(patch);
+              if (errors.length > 0) return { ok: false, errors };
+              return { ok: true, patch, ...(reason ? { reason } : {}) };
+            },
+          }),
         }
-        const result = toResult(
-          await apiPost(origin, "/api/v1/dashboard-agent/monitoring-alerts", userActorToken!, {
-            chatId: ctx.chatId,
-            capabilityKey,
-            ...(environment ? { environment } : {}),
-            ...(name ? { name } : {}),
-            ...(scope
-              ? {
-                  scope: scope.fingerprint
-                    ? { ...scope, fingerprint: bareFingerprint(scope.fingerprint) }
-                    : scope,
-                }
-              : {}),
-            condition,
-            ...(behavior ? { behavior } : {}),
-            notifiers,
-            ...(query ? { query } : {}),
-            ...(signal ? { signal } : {}),
-          })
-        );
-        if ("error" in result) return result;
-        return result.data;
-      },
-    }),
-
-    update_alert_draft: tool({
-      ...updateAlertDraftSchema,
-      execute: async ({ patch, reason }) => {
-        const errors = validateDraftPatch(patch);
-        if (errors.length > 0) return { ok: false, errors };
-        return { ok: true, patch, ...(reason ? { reason } : {}) };
-      },
-    }),
+      : {}),
 
     list_monitoring_alerts: tool({
       ...listMonitoringAlertsSchema,
@@ -295,6 +344,124 @@ export function buildAnalyzeQueryAlertTool(args: {
         if ("error" in result) return result;
         return result.data;
       },
+    }),
+  };
+}
+
+const SPIKE_WORDS = /spike|too many|(?<!\bno |\bnot )more than|piling|surge/i;
+const ABSENCE_WORDS =
+  /\b(no|zero|without)\b.*\b(runs?|activity|events?|triggers?)\b|\b(inactiv|silen|absen|stopped|stalled|idle)/i;
+
+const STANDALONE_NUMBER = /(?<![a-z0-9_./-])\d+(\.\d+)?(%|ms|s|m|h|d)?(?![a-z0-9])/i;
+
+function directionProblem(item: { title: string; summary?: string; draft: AlertDraftPatch }) {
+  const text = `${item.title} ${item.summary ?? ""}`;
+  return item.draft.area === "query" &&
+    item.draft.querySignalChoice?.mode === "absence" &&
+    !ABSENCE_WORDS.test(text) &&
+    SPIKE_WORDS.test(text)
+    ? ["the item is about a spike but its condition is absence; use threshold above a count"]
+    : [];
+}
+
+function planItemSummary(draft: AlertDraftPatch): string {
+  if (draft.area === "query") {
+    const choice = draft.querySignalChoice;
+    return ["custom.query", [choice?.mode, choice?.measure].filter(Boolean).join(" ")].join(" · ");
+  }
+  const c = draft.condition;
+  const condition = [c?.kind, c?.operator, c?.value].filter((v) => v !== undefined).join(" ");
+  const scope = draft.scope
+    ? [draft.scope.type, draft.scope.value ?? draft.scope.taskIdentifier].filter(Boolean).join(" ")
+    : "all";
+  return [draft.what, condition, scope].filter(Boolean).join(" · ").slice(0, 60);
+}
+
+/** Attached after analyze_query_alert: the tool key order is the cached prompt prefix. */
+export function buildPlanMonitoringTool(args: {
+  ctx: DashboardAgentToolContext;
+  client: DashboardAgentApiClient;
+}): ToolSet {
+  const { userActorToken } = args.ctx;
+  const { origin, hasAuth } = args.client;
+
+  // The server decides whether the signal fits the query; this only forwards its verdict.
+  async function queryProblem(draft: AlertDraftPatch): Promise<string | null> {
+    if (!hasAuth) return NO_AUTH.error;
+    const result = toResult(
+      await apiPost(
+        origin,
+        "/api/v1/dashboard-agent/monitoring-alerts/analyze-query",
+        userActorToken!,
+        { query: draft.query, signal: draft.querySignalChoice }
+      )
+    );
+    if ("error" in result) return result.error;
+    const signal = (result.data as { signal?: { ok: boolean; message?: string } } | undefined)
+      ?.signal;
+    if (!signal) return "The query couldn't be checked.";
+    return signal.ok ? null : (signal.message ?? "This query can't back an alert.");
+  }
+
+  return {
+    plan_monitoring: tool({
+      ...planMonitoringSchema,
+      execute: async (plan) => {
+        const seen = new Set<string>();
+        const items = plan.items.map((item) => ({
+          ...item,
+          draft: normalizePlanDraft(item.draft),
+        }));
+        const errors = await Promise.all(
+          items.map(async (item) => {
+            const { id, draft } = item;
+            const problems = [
+              ...(seen.has(id) ? ["duplicate id"] : []),
+              ...directionProblem(item),
+              ...(item.summary && STANDALONE_NUMBER.test(item.summary)
+                ? ["summary must not contain numbers; put values in condition"]
+                : []),
+              ...(item.detail && STANDALONE_NUMBER.test(item.detail)
+                ? ["detail must not contain numbers; put values in condition"]
+                : []),
+              ...[...monitoringPlanDraftGaps(draft), ...planConditionGaps(draft)].map(
+                (field) => `missing ${field}`
+              ),
+              ...planScopeGaps(draft),
+              ...validateDraftPatch(draft),
+            ];
+            seen.add(id);
+            if (problems.length === 0 && draft.area === "query") {
+              const problem = await queryProblem(draft);
+              if (problem) problems.push(problem);
+            }
+            return problems.length ? { id, message: problems.join("; ") } : null;
+          })
+        );
+        const failed = errors.filter((e) => e !== null);
+        if (failed.length > 0) {
+          return {
+            ok: false,
+            errors: failed,
+            retry: "Fix and call plan_monitoring again; do not tell the user about this.",
+          };
+        }
+        return {
+          ok: true,
+          plan: {
+            ...plan,
+            environmentId: args.ctx.environmentId,
+            items: items.map((item) => ({
+              ...item,
+              summary: item.summary ?? planItemSummary(item.draft),
+            })),
+          },
+        };
+      },
+    }),
+    plan_decision: tool({
+      ...planDecisionSchema,
+      execute: async ({ decision }): Promise<PlanDecisionOutput> => ({ ok: true, decision }),
     }),
   };
 }

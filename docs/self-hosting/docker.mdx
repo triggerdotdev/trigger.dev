@@ -364,6 +364,8 @@ We patch the latest released version line only, so keep an eye on new releases t
 
 You can also lock the versions of the bundled services, for example with `CLICKHOUSE_IMAGE_TAG`. If you do, or if you bring your own ClickHouse via `CLICKHOUSE_URL`, note that Trigger.dev requires ClickHouse 25.8 or newer.
 
+The optional `LOGS_SEARCH_INSERT_ASYNC` setting defaults to `false` and requires ClickHouse 26.2 or newer when enabled. Leave it disabled on ClickHouse 25.8.
+
 <Note>
   The bundled ClickHouse uses the official `clickhouse/clickhouse-server` image, and your existing
   data volume carries over automatically on upgrade. If you pinned `CLICKHOUSE_IMAGE_TAG` to a

@@ -13,7 +13,6 @@ export function DashboardAgentSuggestedPrompts({
   promoted,
   dismissedIds,
   disabledReason,
-  watchEnabled = false,
 }: {
   /** Receives the prompt text to send, not the button label. */
   onSelect: (prompt: string) => void;
@@ -24,8 +23,6 @@ export function DashboardAgentSuggestedPrompts({
   dismissedIds?: string[];
   /** Set to disable every chip and say why, e.g. over the message cap. */
   disabledReason?: string;
-  /** Withholds the `watch` chip while watch functionality is behind its flag. */
-  watchEnabled?: boolean;
 }) {
   // Read once on mount: re-reading per render churns the resolved set.
   const [storedDismissedIds] = useState<string[]>(() =>
@@ -38,9 +35,9 @@ export function DashboardAgentSuggestedPrompts({
     () =>
       resolveSuggestedPromptsBySlot(
         pageContext ?? { page: { kind: "other", path: "" }, signals: [] },
-        { promoted, dismissedIds: effectiveDismissedIds, watchEnabled }
+        { promoted, dismissedIds: effectiveDismissedIds }
       ),
-    [pageContext, promoted, effectiveDismissedIds, watchEnabled]
+    [pageContext, promoted, effectiveDismissedIds]
   );
 
   return (

@@ -13,8 +13,17 @@ import { recordDeploymentFinished } from "./recordDeploymentFinished.server";
 import { engine } from "../runEngine.server";
 import { tryCatch } from "@trigger.dev/core";
 import { externalDeploymentCacheInstance } from "~/services/externalDeploymentCacheInstance.server";
+import type { PrismaClientOrTransaction } from "~/db.server";
+import { queueDeploymentCheck } from "../deploymentChecksWorker.server";
 
 export class FinalizeDeploymentService extends BaseService {
+  constructor(
+    prisma?: PrismaClientOrTransaction,
+    private readonly queueCheck: (deploymentId: string) => Promise<void> = queueDeploymentCheck
+  ) {
+    super(prisma);
+  }
+
   public async call(
     authenticatedEnv: AuthenticatedEnvironment,
     id: string,
@@ -181,6 +190,7 @@ export class FinalizeDeploymentService extends BaseService {
     }
 
     await PerformDeploymentAlertsService.enqueue(deployment.id);
+    void this.queueCheck(deployment.id);
 
     return finalizedDeployment;
   }

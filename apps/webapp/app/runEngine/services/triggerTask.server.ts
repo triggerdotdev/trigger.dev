@@ -991,10 +991,7 @@ export class RunEngineTriggerTaskService {
       // `string` on the API path, but the BatchQueue worker rebuilds
       // body.options from Redis-stored items (Record<string, unknown>),
       // which can still carry the pre-fix shape from in-flight batches.
-      concurrencyKey:
-        typeof args.body.options?.concurrencyKey === "number"
-          ? String(args.body.options.concurrencyKey)
-          : args.body.options?.concurrencyKey,
+      concurrencyKey: runConcurrencyKey(args.body.options?.concurrencyKey),
       queue: args.queueName,
       lockedQueueId: args.lockedQueueId,
       gates: args.gates,
@@ -1090,4 +1087,17 @@ export class RunEngineTriggerTaskService {
       },
     };
   }
+}
+
+/**
+ * The run's own key: the `default` of an object concurrencyKey, else the value as a
+ * string (batch items rebuilt from stored options can still carry a number).
+ */
+function runConcurrencyKey(
+  concurrencyKey: string | number | Record<string, string> | undefined
+): string | undefined {
+  if (typeof concurrencyKey === "object" && concurrencyKey !== null) {
+    return concurrencyKey.default;
+  }
+  return typeof concurrencyKey === "number" ? String(concurrencyKey) : concurrencyKey;
 }

@@ -1,4 +1,4 @@
-import type { SuggestedPrompt, WatchSpec } from "@internal/dashboard-agent-contracts";
+import type { SuggestedPrompt } from "@internal/dashboard-agent-contracts";
 import { useLocation } from "@remix-run/react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
@@ -34,17 +34,7 @@ import {
 } from "./panel-layout";
 import { nextPendingTurnChatId } from "./pending-turn";
 import { nextVisibleChat } from "./unread-counts";
-import { createWakePendingCount, startWakePolling, wakesToToast } from "./wake-poll";
-import { shouldPollWakeFeed, subscribeWatchActivity } from "./watch-activity";
-import {
-  dismissWatchWakesSummaryToast,
-  showWatchWakesSummaryToast,
-  showWatchWakeToast,
-  WAKE_TOAST_MAX_INDIVIDUAL,
-  type WatchWake,
-} from "./WatchWakeToast";
-
-const TOASTED_WAKES_STORAGE_KEY = "tdev:dashboard-agent:toasted-wakes";
+import { shouldPollUnread, startUnreadPolling } from "./unread-poll";
 
 // Superseded by the account preference; a stray value here would otherwise pin the mode
 // forever if this cleanup effect never ran.
@@ -63,22 +53,13 @@ export function DashboardAgent({
   children,
   hasAccess = false,
   promotedPrompt,
-  /** From the page load: unread wakes waiting for this user, whatever this browser remembers. */
-  initialUnreadWakes = 0,
   initialUnreadWork = 0,
-  /** Also from the page load: a watch is running, so a wake can still arrive in this tab. */
-  hasActiveWatches = false,
-  /** From the chat loader; withholds every watch affordance until it turns up there. */
-  watchEnabled = false,
 }: {
   children: React.ReactNode;
   hasAccess?: boolean;
   promotedPrompt?: SuggestedPrompt;
-  initialUnreadWakes?: number;
   /** Chats whose transcript moved on since their owner last looked. */
   initialUnreadWork?: number;
-  hasActiveWatches?: boolean;
-  watchEnabled?: boolean;
 }) {
   const organization = useOrganization();
   const project = useProject();
@@ -88,10 +69,8 @@ export function DashboardAgent({
   const actionPath = `/resources/orgs/${organization.slug}/projects/${project.slug}/env/${environment.slug}/dashboard-agent`;
 
   const [open, setOpen] = useState(false);
-  // Seeded from the page load, so the launcher dot is right before the first poll answers.
-  const [unreadWakes, setUnreadWakes] = useState(initialUnreadWakes);
-  // Work that finished behind a closed panel. Counted server-side on page load and refreshed
-  // with the chat list; the wake poll doesn't carry it.
+  // Work that finished behind a closed panel. Seeded from the page load, so the launcher dot
+  // is right before the first poll answers.
   const [unreadWork, setUnreadWork] = useState(initialUnreadWork);
   // A turn this tab started may finish after the panel closes; that is exactly the case the
   // dot exists for, so the poll has to be running when it lands.
@@ -99,46 +78,18 @@ export function DashboardAgent({
   const handleTurnActivityChange = useCallback((chatId: string, active: boolean) => {
     setPendingTurnChatId((current) => nextPendingTurnChatId(current, { chatId, active }));
   }, []);
-  const toastedWakes = useRef(new Set<string>());
-  // The toast source is recent deliveries, not unread, so the dedupe must survive a reload.
-  useEffect(() => {
-    try {
-      const raw = window.localStorage.getItem(TOASTED_WAKES_STORAGE_KEY);
-      if (raw) for (const id of JSON.parse(raw) as string[]) toastedWakes.current.add(id);
-    } catch {
-      // Storage unavailable; the in-memory dedupe still applies.
-    }
-  }, []);
-  const rememberToasted = useCallback((watchId: string) => {
-    toastedWakes.current.add(watchId);
-    try {
-      // Newest ids only, so the key can't grow unbounded.
-      window.localStorage.setItem(
-        TOASTED_WAKES_STORAGE_KEY,
-        JSON.stringify([...toastedWakes.current].slice(-50))
-      );
-    } catch {
-      // Same as the read.
-    }
-  }, []);
-  // A wake in the on-screen chat toasts but must not light the dot. Read by the poll callback,
-  // which outlives the render that started it, so it has to be a ref.
+  // The chat on screen, read by the poll callback, which outlives the render that started it,
+  // so it has to be a ref.
   const visibleChat = useRef<string | null>(null);
 
-  // The count the still-visible grouped toast claims. Consecutive polls add to it so a
-  // later batch grows the summary instead of overwriting it with only its own count;
-  // reset when the user opens the panel, whichever route they took.
-  const wakePending = useRef(createWakePendingCount());
-
   // Switching environment re-runs the layout loader but does not remount it, so the seeds
-  // above would keep the old environment's counts.
+  // above would keep the old environment's count.
   const seededEnvironment = useRef(environment.id);
   useEffect(() => {
     if (seededEnvironment.current === environment.id) return;
     seededEnvironment.current = environment.id;
-    setUnreadWakes(initialUnreadWakes);
     setUnreadWork(initialUnreadWork);
-  }, [environment.id, initialUnreadWakes, initialUnreadWork]);
+  }, [environment.id, initialUnreadWork]);
   // Every open starts from the account preference; in-chat switches (toggle, drag-to-dock)
   // are transient and never write it back.
   const { mode, changeMode, resetToPreference, revertFullscreen } = useAgentPanelMode(
@@ -203,9 +154,6 @@ export function DashboardAgent({
   const [openChatRequest, setOpenChatRequest] = useState<
     { chatId: string; seq: number } | undefined
   >(undefined);
-  const [watchRequest, setWatchRequest] = useState<{ spec: WatchSpec; seq: number } | undefined>(
-    undefined
-  );
   // The contextual entry point a chat was opened from (e.g. the alerts page), read by the
   // header's "Manual setup" action. Cleared on close so it never leaks into the next chat.
   const [openSource, setOpenSource] = useState<AgentOpenSource | undefined>(undefined);
@@ -220,11 +168,7 @@ export function DashboardAgent({
   >(undefined);
 
   // The single entry point for opening the panel — every open route must go through it.
-  // Opening acknowledges the wakes counted so far, and the visible summary goes with the
-  // count it was claiming.
   const openPanel = useCallback(() => {
-    wakePending.current.acknowledge();
-    dismissWatchWakesSummaryToast();
     setOpen(true);
   }, []);
 
@@ -242,23 +186,12 @@ export function DashboardAgent({
       resetToPreference();
       setRequestedMessage(undefined);
       setOpenChatRequest(undefined);
-      setWatchRequest(undefined);
       setOpenSource(undefined);
       setCreateAlertPrefill(undefined);
       setEditAlertRequest(undefined);
       setGroupAlertsRequest(undefined);
     },
     [openPanel, resetToPreference]
-  );
-
-  const openChat = useCallback(
-    (chatId: string) => {
-      openPanel();
-      setEditAlertRequest(undefined);
-      setGroupAlertsRequest(undefined);
-      setOpenChatRequest((current) => ({ chatId, seq: (current?.seq ?? 0) + 1 }));
-    },
-    [openPanel]
   );
 
   const openWith = useCallback(
@@ -270,16 +203,6 @@ export function DashboardAgent({
       setGroupAlertsRequest(undefined);
       setOpenSource(options?.source);
       setRequestedMessage((current) => ({ text: trimmed, seq: (current?.seq ?? 0) + 1 }));
-    },
-    [openPanel]
-  );
-
-  const openWithWatch = useCallback(
-    (spec: WatchSpec) => {
-      openPanel();
-      setEditAlertRequest(undefined);
-      setGroupAlertsRequest(undefined);
-      setWatchRequest((current) => ({ spec, seq: (current?.seq ?? 0) + 1 }));
     },
     [openPanel]
   );
@@ -313,30 +236,20 @@ export function DashboardAgent({
     [openPanel]
   );
 
-  // Nothing to be woken about means nothing to poll for. The page load's unread count and
-  // active-watch flag are the ungated signals; the browser's own memory of a watch starts the
-  // poll without a reload. Once any says yes this tab keeps polling, so a wake reaches a tab
-  // that was open before the watch existed.
-  const [watching, setWatching] = useState(false);
-  useEffect(() => {
-    const sync = () => {
-      if (
-        shouldPollWakeFeed({
-          serverUnreadWakes: initialUnreadWakes,
-          serverHasActiveWatches: hasActiveWatches,
-          serverUnreadWork: initialUnreadWork,
-          turnInFlight: pendingTurnChatId !== null,
-          organizationId: organization.id,
-        })
-      )
-        setWatching(true);
-    };
-    sync();
-    return subscribeWatchActivity(sync);
-  }, [organization.id, initialUnreadWakes, hasActiveWatches, initialUnreadWork, pendingTurnChatId]);
+  // Nothing unread means nothing to poll for. Once polling starts this tab keeps it up.
+  const [polling, setPolling] = useState(false);
+  if (
+    !polling &&
+    shouldPollUnread({
+      serverUnreadWork: initialUnreadWork,
+      turnInFlight: pendingTurnChatId !== null,
+    })
+  ) {
+    setPolling(true);
+  }
 
   useEffect(() => {
-    if (!hasAccess || !watching) return;
+    if (!hasAccess || !polling) return;
 
     let cancelled = false;
     const load = async () => {
@@ -350,44 +263,15 @@ export function DashboardAgent({
           { signal: AbortSignal.timeout(UNREAD_REQUEST_TIMEOUT_MS) }
         );
         if (!res.ok) return;
-        const data = (await res.json()) as {
-          unreadWakes?: number;
-          unreadWork?: number;
-          wakes?: WatchWake[];
-        };
+        const data = (await res.json()) as { unreadWork?: number };
         if (cancelled) return;
         setUnreadWork(Math.max(0, data.unreadWork ?? 0));
-
-        if (!watchEnabled) {
-          setUnreadWakes(0);
-          return;
-        }
-
-        // The wakes list carries read ones too, so only unread ones are subtracted.
-        const unreadInView = (data.wakes ?? []).filter(
-          (wake) => wake.unread && wake.chatId === visibleChat.current
-        ).length;
-        setUnreadWakes(Math.max(0, (data.unreadWakes ?? 0) - unreadInView));
-
-        const fresh = wakesToToast(data.wakes, toastedWakes.current);
-        for (const wake of fresh) rememberToasted(wake.watchId);
-
-        if (fresh.length > 0) {
-          const plan = wakePending.current.plan(fresh, WAKE_TOAST_MAX_INDIVIDUAL);
-          if (plan.mode === "summary") {
-            showWatchWakesSummaryToast(plan.count, () => setPanelOpen(true));
-          } else {
-            for (const wake of [...plan.wakes].reverse()) {
-              showWatchWakeToast(wake, openChat);
-            }
-          }
-        }
       } catch {
         // Try again next tick.
       }
     };
 
-    const stop = startWakePolling({
+    const stop = startUnreadPolling({
       load,
       isHidden: () => document.hidden,
       onVisibilityChange: (listener) => {
@@ -400,14 +284,12 @@ export function DashboardAgent({
       cancelled = true;
       stop();
     };
-  }, [hasAccess, watching, watchEnabled, actionPath, setPanelOpen, openChat, rememberToasted]);
+  }, [hasAccess, polling, actionPath]);
 
-  // Zeroes the wake dot right away; the poll restores the truth if another chat has one. The
-  // work count is not touched here: the panel derives it from the chat list.
+  // The work count is not touched here: the panel derives it from the chat list.
   const markChatRead = useCallback(
     async (chatId: string, options: { leaving: boolean }) => {
       visibleChat.current = nextVisibleChat(chatId, options);
-      setUnreadWakes(0);
       const body = new FormData();
       body.set("intent", "read");
       body.set("chatId", chatId);
@@ -448,26 +330,12 @@ export function DashboardAgent({
       open,
       setOpen: setPanelOpen,
       openWith,
-      openWithWatch,
       openCreateAlert,
       openEditAlert,
       openGroupAlerts,
-      unreadWakes,
       unreadWork,
-      watchEnabled,
     }),
-    [
-      open,
-      setPanelOpen,
-      openWith,
-      openWithWatch,
-      openCreateAlert,
-      openEditAlert,
-      openGroupAlerts,
-      unreadWakes,
-      unreadWork,
-      watchEnabled,
-    ]
+    [open, setPanelOpen, openWith, openCreateAlert, openEditAlert, openGroupAlerts, unreadWork]
   );
 
   if (!hasAccess) {
@@ -524,14 +392,12 @@ export function DashboardAgent({
                     editAlertRequest={editAlertRequest}
                     groupAlertsRequest={groupAlertsRequest}
                     openChatRequest={openChatRequest}
-                    watchRequest={watchRequest}
                     newChatSeq={newChatSeq}
                     promotedPrompt={promotedPrompt}
                     onChatRead={markChatRead}
                     // The panel's own count, off the chat list it has already marked read.
                     onUnreadWorkChange={setUnreadWork}
                     onTurnActivityChange={handleTurnActivityChange}
-                    watchEnabled={watchEnabled}
                     mode={mode}
                     onModeChange={changeMode}
                     dragHandleProps={dragHandleProps}

@@ -13,30 +13,65 @@ export const BranchTrackingConfigSchema = z.object({
 export type BranchTrackingConfig = z.infer<typeof BranchTrackingConfigSchema>;
 
 export const BuildFiltersSchema = z.object({
-  ignorePaths: z.array(z.string()),
+  ignorePaths: z.array(z.string()).catch([]),
+  ignoreBranches: z.array(z.string()).catch([]),
 });
 
 export type BuildFilters = z.infer<typeof BuildFiltersSchema>;
 
-export type IgnorePathLimits = { maxPaths: number; maxLength: number };
+export type IgnoreKind = "paths" | "branches";
 
-export function ignorePathError(pattern: string, maxLength: number): string | undefined {
+export type IgnorePatternLimits = { maxPatterns: number; maxLength: number };
+
+const ignoreKindMessages = {
+  paths: {
+    noun: "paths",
+    negated: "Negated patterns aren't supported. List only the paths to ignore.",
+    leadingSlash: "Start from the repository root, without a leading slash.",
+    groups: "Escape ( ) and | with a backslash to match them, like app/\\(marketing\\)/**.",
+    trailingSlash: (suggestion: string) =>
+      `Matches no files. Use ${suggestion} for everything in the directory.`,
+  },
+  branches: {
+    noun: "branches",
+    negated: "Negated patterns aren't supported. List only the branches to ignore.",
+    leadingSlash: "Branch names never start with a slash.",
+    groups:
+      "Groups aren't supported. Put each alternative on its own line, or escape ( ) and | with a backslash to match them.",
+    trailingSlash: (suggestion: string) =>
+      `Branch names never end with a slash. Use ${suggestion} instead.`,
+  },
+} satisfies Record<IgnoreKind, unknown>;
+
+export function tooManyIgnorePatterns(kind: IgnoreKind, maxPatterns: number): string {
+  return `Add at most ${maxPatterns} ${ignoreKindMessages[kind].noun}.`;
+}
+
+export function ignorePatternError(
+  kind: IgnoreKind,
+  pattern: string,
+  maxLength: number
+): string | undefined {
+  const messages = ignoreKindMessages[kind];
   if (pattern.length > maxLength) {
     return `Use at most ${maxLength} characters.`;
   }
   const { negated, negatedExtglob, base } = picomatch.scan(pattern);
   if (negated || negatedExtglob) {
-    return "Negated patterns aren't supported. List only the paths to ignore.";
+    return messages.negated;
   }
   if (base.startsWith("/")) {
-    return "Start from the repository root, without a leading slash.";
+    return messages.leadingSlash;
+  }
+  if (kind === "branches" && pattern.startsWith("refs/heads/")) {
+    return "Use the branch name without refs/heads/.";
   }
   const unescaped = pattern.replace(/\\\//g, "/").replace(/\\./g, "");
   if (/[{}]/.test(unescaped)) {
     return "Braces aren't supported. Put each alternative on its own line.";
   }
   if (/[()|]/.test(unescaped)) {
-    return "Escape ( ) and | with a backslash to match them, like app/\\(marketing\\)/**.";
+    return messages.groups;
   }
   if (unescaped.includes("[!")) {
     return "Use [^...] to exclude characters, like [^_].";
@@ -56,7 +91,7 @@ export function ignorePathError(pattern: string, maxLength: number): string | un
   }
   if (pattern.endsWith("/")) {
     const suggestion = pattern.endsWith("**/") ? pattern.slice(0, -1) : `${pattern}**`;
-    return `Matches no files. Use ${suggestion} for everything in the directory.`;
+    return messages.trailingSlash(suggestion);
   }
   try {
     // Without debug, makeRe returns a never-matching regex instead of throwing.
@@ -67,24 +102,27 @@ export function ignorePathError(pattern: string, maxLength: number): string | un
   return undefined;
 }
 
-function splitIgnorePaths(text: string) {
+function splitIgnorePatterns(text: string) {
   return text
     .split(/\r?\n/)
     .map((line) => line.trim())
     .filter((line) => line.length > 0);
 }
 
-export function ignorePathsSchema({ maxPaths, maxLength }: IgnorePathLimits) {
+export function ignorePatternsSchema(
+  kind: IgnoreKind,
+  { maxPatterns, maxLength }: IgnorePatternLimits
+) {
   return z
     .string()
     .optional()
-    .transform((text) => splitIgnorePaths(text ?? ""))
+    .transform((text) => splitIgnorePatterns(text ?? ""))
     .superRefine((patterns, ctx) => {
-      if (patterns.length > maxPaths) {
-        ctx.addIssue({ code: "custom", message: `Add at most ${maxPaths} paths.` });
+      if (patterns.length > maxPatterns) {
+        ctx.addIssue({ code: "custom", message: tooManyIgnorePatterns(kind, maxPatterns) });
       }
       for (const pattern of patterns) {
-        const message = ignorePathError(pattern, maxLength);
+        const message = ignorePatternError(kind, pattern, maxLength);
         if (message) ctx.addIssue({ code: "custom", message: `${pattern}: ${message}` });
       }
     });

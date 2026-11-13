@@ -36,6 +36,11 @@ export async function resolveScopedWaitpointCallback<T extends CallbackEnvironme
       environment.id,
       hash,
       environment.parentEnvironment?.apiKey ?? environment.apiKey
+    ) &&
+    // Keep callback URLs issued with a branch key before run-token auth was normalized.
+    !(
+      environment.parentEnvironment &&
+      verifyScopedHttpCallbackHash(waitpointId, environment.id, hash, environment.apiKey)
     )
   ) {
     return { error: "Invalid URL, hash doesn't match", status: 401 };

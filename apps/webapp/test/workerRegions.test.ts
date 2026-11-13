@@ -122,6 +122,31 @@ describe("backingForQueue", () => {
     ];
     expect(backingForQueue("us-east-1", g, [])).toBeUndefined();
   });
+  // Catches: a project-scoped MICROVM group being chosen as the backing for other projects' runs.
+  it("ignores project-scoped MICROVM groups", () => {
+    const scoped = (overrides: Partial<WorkerGroupRegionRow>): WorkerGroupRegionRow => ({
+      id: "wg_scoped",
+      masterQueue: "us-east-1-scoped",
+      region: "us-east-1",
+      workloadType: "MICROVM",
+      hidden: false,
+      enableFastPath: true,
+      type: "MANAGED",
+      projectId: null,
+      ...overrides,
+    });
+    const container = groups[0]!;
+    expect(
+      backingForQueue(
+        "us-east-1",
+        [container, scoped({ type: "UNMANAGED", projectId: "proj_1" })],
+        []
+      )
+    ).toBeUndefined();
+    expect(
+      backingForQueue("us-east-1", [container, scoped({ projectId: "proj_1" })], [])
+    ).toBeUndefined();
+  });
 });
 
 describe("backingForQueue with a mixed-runtime group", () => {

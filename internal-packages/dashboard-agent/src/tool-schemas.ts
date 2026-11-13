@@ -6,10 +6,11 @@ import { alertAreaSchema } from "@internal/alert-contracts";
 import {
   alertDraftPatchSchema,
   DASHBOARD_AGENT_FEEDBACK_LIMITS,
+  monitoringPlanInputSchema,
   parseJsonText,
+  planDecisionInputSchema,
   runFiltersSchema,
-  viewBlockInputSchemaFor,
-  watchSpecSchema,
+  viewBlockInputSchema,
 } from "@internal/dashboard-agent-contracts";
 import { tool } from "ai";
 import { z } from "zod";
@@ -345,68 +346,16 @@ export const navigateToSchema = tool({
 // A new block needs a schema in dashboard-agent-contracts (src/blocks.ts) and a
 // renderer entry in components/dashboard-agent/view-catalog.tsx.
 
-const RENDER_VIEW_ACTIONS_WATCH_DOC =
-  "a `watch` intent opens the watch configuration card pre-filled with the spec you composed, ";
-
-function renderViewSchemaFor(options: { watchEnabled: boolean }) {
-  const watchDoc = options.watchEnabled ? RENDER_VIEW_ACTIONS_WATCH_DOC : "";
-  return tool({
-    description: `Render a structured view in the dashboard panel: a stack of catalog blocks, instead of plain prose. The catalog has four blocks: \`diagnosis\` (the 'why did this run fail?' failure card, after gathering evidence with the read/source tools), \`chart\` (a line/bar chart of run_query results), \`actions\` (a row of 1-3 buttons offering next steps - ${watchDoc}an \`ask\` intent sends the labelled question as the user's next message), and \`investigation\` (a live card for a hypothesis-driven investigation: report the state and the tool assigns and keeps its identity, so re-rendering it updates the same card). The result carries the \`investigationId\` it assigned - pass that back as \`investigationId\` when you render the same investigation again, including on a later turn. An investigation is rendered at least TWICE: once as \`in_progress\` when you open it, then again with the same \`investigationId\` carrying the final outcome (\`concluded\` or \`inconclusive\`), as the last tool call of the turn. A card left at \`in_progress\` is an unfinished answer whatever your prose says: the user is left staring at a spinner. Keep any accompanying message to a one-line lead-in.`,
-    inputSchema: z.object({
-      blocks: z
-        .array(viewBlockInputSchemaFor(options))
-        .min(1)
-        .describe("The blocks to render, top to bottom."),
-      investigationId: z
-        .string()
-        .optional()
-        .describe(
-          "The investigationId a previous render_view returned, to revise that same investigation instead of opening a new one. Use it on follow-up turns about the same investigation. Omit to start a new one."
-        ),
-    }),
-  });
-}
-
-export const renderViewSchema = renderViewSchemaFor({ watchEnabled: true });
-export const renderViewSchemaWithoutWatch = renderViewSchemaFor({ watchEnabled: false });
-
-// `watchSpecSchema` enforces the cadence floors and 24h ceiling. `since` for error
-// recurrence is server-set on persist, so it is absent here.
-
-export const scheduleWatchSchema = tool({
-  description:
-    "Fill in a watch for the user to confirm. Use this whenever they want to be told about a future event: a run starting or finishing, a queue draining, growing past a threshold or coming back below one, a queue that stops moving at all, runs waiting in a queue longer than a limit, an error recurring, the health report recovering. This is the ONLY way to answer that - never poll by calling read tools over and over. It does NOT start the watch: it opens a configuration card pre-filled with what you composed, and the user confirming that card is what starts it. So never say a watch is running, scheduled, or that you'll tell them later - say you've filled one in for them to review. A watch checks on its own cadence and reports ONCE; it stops within 24 hours either way. `note` is why the watch exists in the user's own words - it is shown with the result. Watches are limited to the current project/environment: naming a run, queue, error or report you read from another one is refused.",
+export const renderViewSchema = tool({
+  description: `Render a structured view in the dashboard panel: a stack of catalog blocks, instead of plain prose. The catalog has four blocks: \`diagnosis\` (the 'why did this run fail?' failure card, after gathering evidence with the read/source tools), \`chart\` (a line/bar chart of run_query results), \`actions\` (a row of 1-3 buttons offering next steps - an \`ask\` intent sends the labelled question as the user's next message), and \`investigation\` (a live card for a hypothesis-driven investigation: report the state and the tool assigns and keeps its identity, so re-rendering it updates the same card). The result carries the \`investigationId\` it assigned - pass that back as \`investigationId\` when you render the same investigation again, including on a later turn. An investigation is rendered at least TWICE: once as \`in_progress\` when you open it, then again with the same \`investigationId\` carrying the final outcome (\`concluded\` or \`inconclusive\`), as the last tool call of the turn. A card left at \`in_progress\` is an unfinished answer whatever your prose says: the user is left staring at a spinner. Keep any accompanying message to a one-line lead-in.`,
   inputSchema: z.object({
-    watch: watchSpecSchema.describe(
-      "What to watch, how often to check, and how long to keep watching. `note` is why the watch exists in the user's own words - it is shown when it fires."
-    ),
-  }),
-});
-
-export const listWatchSubscriptionsSchema = tool({
-  description:
-    'List this project\'s alert subscriptions - who is notified when a watch resolves, and whether each is enabled. Use this to answer "what alerts do I have?".',
-  inputSchema: z.object({}),
-});
-
-export const createWatchSubscriptionSchema = tool({
-  description:
-    "Subscribe to an email alert for every watch that resolves in this project, to the user's own account email. ONLY call this when the user explicitly asked for an alert - never as a helpful extra. If denied, relay that honestly and offer the dashboard notification, which is always on, instead.",
-  inputSchema: z.object({
-    email: z
+    blocks: z.array(viewBlockInputSchema).min(1).describe("The blocks to render, top to bottom."),
+    investigationId: z
       .string()
       .optional()
       .describe(
-        "Omit this - alerts only go to the user's own account email; any other address is rejected."
+        "The investigationId a previous render_view returned, to revise that same investigation instead of opening a new one. Use it on follow-up turns about the same investigation. Omit to start a new one."
       ),
-  }),
-});
-
-export const deleteWatchSubscriptionSchema = tool({
-  description:
-    "Turn one alert subscription off, by its id. Watch results still show in the dashboard.",
-  inputSchema: z.object({
-    alertId: z.string().describe("The alert id from list_watch_subscriptions."),
   }),
 });
 
@@ -513,69 +462,6 @@ export const describeAlertCapabilitiesSchema = tool({
   inputSchema: describeAlertCapabilitiesInputSchema,
 });
 
-export const createMonitoringAlertInputSchema = z.object({
-  capabilityKey: z.string().describe("From describe_alert_capabilities."),
-  environment: z
-    .enum(["dev", "staging", "prod", "preview"])
-    .optional()
-    .describe("Defaults to current."),
-  name: z.string().optional().describe("Name, no channel."),
-  scope: z
-    .object({
-      type: z.enum(["queue", "queuePattern", "task", "all", "errorGroup"]),
-      queue: z.string().optional(),
-      pattern: z.string().optional(),
-      taskIdentifier: z.string().optional(),
-      fingerprint: z.string().optional(),
-    })
-    .optional()
-    .describe("Defaults to all."),
-  condition: z.discriminatedUnion("kind", [
-    z.object({
-      kind: z.literal("threshold"),
-      operator: z.enum([">", "<"]),
-      value: z.number(),
-      windowSec: z.number(),
-      holdSec: z.number().optional(),
-    }),
-    z.object({
-      kind: z.literal("state"),
-      stateKey: z.string(),
-      holdSec: z.number().optional(),
-      params: z
-        .record(z.string(), z.number())
-        .optional()
-        .describe("Param overrides, e.g. thresholds."),
-      compositeMode: z.enum(["any", "all"]).optional().describe("Composite: any (default) or all."),
-      signals: z
-        .array(z.enum(["approaching", "limited"]))
-        .optional()
-        .describe("From supportedSignals."),
-      components: z.array(z.string()).optional().describe("Composite subset; default all."),
-    }),
-    z.object({ kind: z.literal("occurrence") }),
-    z.object({ kind: z.literal("absence"), quietWindowSec: z.number() }),
-  ]),
-  behavior: z
-    .object({ expiresAt: z.string().optional().describe("ISO 8601 with Z or offset") })
-    .optional()
-    .describe("Optional expiry; otherwise fires until stopped."),
-  notifiers: z
-    .array(z.object({ type: z.literal("channel"), channelId: z.string() }))
-    .min(1)
-    .describe("User-picked email, Slack or webhook channels."),
-  query: z.string().max(8192).optional().describe("custom.query: TRQL."),
-  signal: z
-    .object({ mode: z.enum(["threshold", "absence", "match"]), measure: z.string().optional() })
-    .optional()
-    .describe("custom.query: from analyze_query_alert."),
-});
-
-export const createMonitoringAlertSchema = tool({
-  description: "Create a monitoring alert. Ask the user to pick a channel first.",
-  inputSchema: createMonitoringAlertInputSchema,
-});
-
 export const listMonitoringAlertsSchema = tool({
   description: "List monitoring alerts for this project.",
   inputSchema: z.object({
@@ -618,7 +504,7 @@ const updateAlertDraftInputSchema = z.preprocess(
 
 export const updateAlertDraftSchema = tool({
   description:
-    "Patch the in-progress alert draft. Use this instead of create_monitoring_alert when the user is building an alert interactively. When recommending values, call it to pre-fill the wizard; never ask first.",
+    "Patch the in-progress alert draft when the user is building an alert interactively. When recommending values, call it to pre-fill the wizard; never ask first.",
   inputSchema: updateAlertDraftInputSchema,
 });
 
@@ -627,30 +513,34 @@ export const analyzeQueryAlertSchema = tool({
   inputSchema: z.object({ query: z.string().min(1).max(8192) }),
 });
 
+export const planMonitoringSchema = tool({
+  description:
+    "Propose alerts for a monitoring goal. The user confirms the proposal, then a wizard creates the alerts; nothing is created by this call.",
+  inputSchema: monitoringPlanInputSchema,
+});
+
+export const planDecisionSchema = tool({
+  description: "Confirm or dismiss the pending plan when the user answers it in text.",
+  inputSchema: planDecisionInputSchema,
+});
+
 export const DASHBOARD_AGENT_MONITORING_ALERT_TOOL_NAMES = [
   "describe_alert_capabilities",
-  "create_monitoring_alert",
   "update_alert_draft",
   "list_monitoring_alerts",
   "resolve_monitoring_alert",
   "analyze_query_alert",
+  "plan_monitoring",
+  "plan_decision",
 ] as const;
+
+export const DASHBOARD_AGENT_ALERT_CREATION_ONLY_TOOLS = ["update_alert_draft"] as const;
 
 export const DASHBOARD_AGENT_ALERT_CREATION_EXCLUDED_TOOLS = [
-  "create_monitoring_alert",
   "resolve_monitoring_alert",
   "list_monitoring_alerts",
-  "schedule_watch",
-  "list_watch_subscriptions",
-  "create_watch_subscription",
-  "delete_watch_subscription",
-] as const;
-
-export const DASHBOARD_AGENT_WATCH_TOOL_NAMES = [
-  "schedule_watch",
-  "list_watch_subscriptions",
-  "create_watch_subscription",
-  "delete_watch_subscription",
+  "plan_monitoring",
+  "plan_decision",
 ] as const;
 
 /** The schema-only tool set, in the same key order `tools.ts` attaches executes in. */
@@ -676,18 +566,15 @@ export const dashboardAgentToolSchemas = {
   search_docs: searchDocsSchema,
   get_current_page: getCurrentPageSchema,
   navigate_to: navigateToSchema,
-  schedule_watch: scheduleWatchSchema,
-  list_watch_subscriptions: listWatchSubscriptionsSchema,
-  create_watch_subscription: createWatchSubscriptionSchema,
-  delete_watch_subscription: deleteWatchSubscriptionSchema,
   locate: locateSchema,
   describe_alert_capabilities: describeAlertCapabilitiesSchema,
-  create_monitoring_alert: createMonitoringAlertSchema,
   update_alert_draft: updateAlertDraftSchema,
   list_monitoring_alerts: listMonitoringAlertsSchema,
   resolve_monitoring_alert: resolveMonitoringAlertSchema,
   submit_feedback: submitFeedbackSchema,
   analyze_query_alert: analyzeQueryAlertSchema,
+  plan_monitoring: planMonitoringSchema,
+  plan_decision: planDecisionSchema,
 };
 
 // Code mode adds the source tools. Same key order `buildDashboardAgentTools`
@@ -900,8 +787,8 @@ ${QUEUE_CHART_RECIPE}
 - The last two are two calls: run_query the ranking first, then chart the keys it returned as a quoted IN list. Charting concurrency_metrics_by_key without that IN list silently loses the newest buckets to the row cap.
 - Charts 6-9 only mean something for a queue that shards on concurrencyKey: when max_ck_backlogged is flat zero the queue has no keys, so say that rather than rendering an empty per-key chart.
 
-Building an alert from free text:
-- Turn the user's intent into exactly one update_alert_draft call carrying the minimal patch - never create_monitoring_alert for this.
+Building an alert from free text in alert_creation scope:
+- Turn the user's intent into exactly one update_alert_draft call carrying the minimal patch.
 - In alert_creation scope never create; after update_alert_draft succeeds, tell the user to press Continue.
 - Ask at most one clarifying question if ambiguous; else draft your best guess.
 - Non-query thresholds: above-only; refuse below/under, no update_alert_draft.
@@ -912,33 +799,27 @@ Building an alert from free text:
 - In alert_creation scope, asked for recommended values, answer briefly and in the same turn patch what and condition.params with describe_alert_capabilities defaults; never ask whether to apply them.
 - For a query alert, call analyze_query_alert first; never silently rewrite the user's query.
 - Take mode and measure from its modes; quote its errors and unsupported reasons verbatim.
-- In alert_creation scope patch area "query", query, querySignalChoice; else create custom.query with query and signal once the user confirms.
+- In alert_creation scope patch area "query", query, querySignalChoice.
 - Keep the reply to one short sentence with the tool call; in alert_creation scope it always ends, even after a clarifying question, by asking whether to continue the setup ("…or shall we continue the setup?").`;
 
-// Appended to the system prompt only for turns where watches are enabled: without the
-// watch tool the agent must not offer to tell the user later.
-export const DASHBOARD_AGENT_WATCH_PROMPT = `You have the watch tools too:
-- schedule_watch: fill in a watch - for something to happen (a run finishing, a queue draining, crossing a depth threshold either way, stalling, or its runs waiting past an SLA, an error recurring, health recovering) - and show it to the user to confirm.
-- list_watch_subscriptions: the project's alert subscriptions.
-- create_watch_subscription: subscribe to an email alert for watch fires.
-- delete_watch_subscription: turn one off.
-- render_view "actions" takes a watch intent too. Watch limits don't apply to alerts.
-
-Watches - telling the user later:
-- When the user wants to be told when something happens ("tell me when this run finishes", "let me know when the backlog drains", "tell me when it's back under 100", "tell me if that queue stops moving", "ping me if runs start waiting more than 5 minutes", "ping me if that error comes back", "tell me when prod is healthy again"), call schedule_watch. Never poll: repeating a read tool until the thing happens is not a watch, and you cannot wait inside a turn.
-- Offer a watch whenever your answer points at something worth monitoring that you can't resolve now: a recurring or unresolved error, a queue trending toward trouble, a condition the user would want to hear about the moment it changes. The offer is two things in this order: one short line ("Want me to set up a watch so you're told if it hits again?") as the LAST sentence of your answer, and THEN the render_view "actions" block with one button, emitted after that line as the final part of the turn with nothing after it - label it like "Set up a watch", intent {"kind":"watch","spec":{…}} carrying the same spec schedule_watch would compose. Clicking it opens the configuration card pre-filled, so the user answers with a click instead of typing "yeah". One offer per answer at most; skip it when the news is good, when the user is clearly just browsing, or when a card you just rendered already carries a watch button - an investigation card, or a health report card whose next steps offer "Watch recovery". That card is the offer, and repeating it puts two watch buttons on one answer. schedule_watch is still how you answer a user who asks for a watch in their own words.
-- An answer whose headline is an UNRESOLVED, recurring error ENDS with the watch offer - one line, "Want me to set up a watch so you're told if it hits again?", then the render_view "actions" block that makes it a button - not with generic advice alone. This is the offer rule above applied to its most common case; it is not optional there, and neither is the button.
-- schedule_watch does not start anything. It opens a configuration card pre-filled with what you composed, and the user confirming that card is what starts the watch. So say what you filled in - what is being watched, how often it checks, and when it gives up (the maxHours you set) - and that confirming starts it. Never say it's running, scheduled, or that you'll tell them later: "I've filled in a watch for you to review - confirm to start it", never "I'll let you know when it finishes". Pick the longest cadence that still answers in time - 1 minute only for a run's state, 5 minutes or more for backlog, error recurrence, and health.
-- The card settles everything after the user confirms: whether this chat can hold another watch, whether the same thing is already watched, and whether the condition is already true (in which case they get the answer instead of a watch). Never promise, predict, or pre-explain any of those.
-- A watch wake is a message you send unprompted, and it is narrated ONCE, briefly: what the outcome was, the numbers from the facts you were given, and one suggested next step. Nothing else - no new investigation, no fresh reads, no recap of the conversation.
-- The ONE exception to "no new investigation": the user consented on the card ("investigate attention outcomes"). That opt-in is the card's, it starts off, and you cannot set it - if they asked for it ("watch it and dig in if it goes wrong"), say it's there to tick before they confirm.
-- A consented investigation applies only to outcomes that need attention: a run that failed, a queue that stayed backed up, an error that came back. Good news and neutral news end the watch and nothing else happens. When the wake tells you the investigation has already started, say so in one short clause and stop: you conduct it yourself straight after, and the findings land in your next message with the card. The user never has to ask for them.
-- On an expiry, say which of the two happened: it didn't happen in the window, or the condition couldn't be verified at expiry (then give the last observation and don't claim either way).
-- Only call a wait "queue wait" when the facts measured it from when the run was queued. If the facts only have time from creation to start, call it that.
-- Being notified outside the chat is the card's other opt-in, also off by default. Don't offer an email after filling in a card - the card is where that's chosen.
-- After a wake that fired, and only if no alert is subscribed yet, your ONE suggested next step may be that same offer - one short line. Never create an alert unprompted.
-- Call create_watch_subscription only after the user confirms. If it comes back denied (plan or feature flag), say so plainly and add that the dashboard still shows the notification badge for every fire.
-- "What alerts do I have?" is list_watch_subscriptions. Turning one off is delete_watch_subscription - if which one is ambiguous, list them and ask which.`;
+// Appended to the system prompt only for turns with the plan tools, so a turn without
+// them is never told to offer a plan.
+export const DASHBOARD_AGENT_PLANNER_PROMPT = `Planning alerts for a monitoring goal:
+- When the user states a goal ("keep an eye on prod after this deploy", "make sure task X doesn't fail") rather than one concrete alert, call describe_alert_capabilities, then propose alerts in one plan_monitoring call: intro (up to 3 sentences: for a deploy, its version and quoted commit message; then what the N alerts cover, grouped by theme in parentheses, not a per-item list; then a short confirmation question), per item summary (<=60 chars: a title naming the signal and scope, no numbers, e.g. "Triggered runs spike", "handle-webhook failure rate"), detail (one generic sentence on what it watches and when it fires, in words, no thresholds or windows, e.g. "Fires when more runs than usual trigger in a short window.") and description. Numbers belong only in condition and intro.
+- An exploratory request ("watch if there is a spike", "is X ok after the deploy?", "check whether") gets evidence, not a plan: read the matching tool (triggered runs or volume: run_query plus a chart block via render_view; health: get_report; errors: list_errors; a deploy: list_deploys; never get_report for a runs-count question), answer in a short text whose LAST line is "Want me to set up a watch so you're told if it hits?", then a render_view "actions" block as the final part with one button "Set up a watch", intent {"kind":"ask","prompt":"Set up a watch"}. Don't call plan_monitoring that turn.
+- On "Set up a watch" or a yes to that question, call plan_monitoring only, with no more reads; intro cites the earlier evidence. A direct request with a concrete condition ("alert me when more than 500 runs trigger in 5 min", "watch handle-webhook failures") goes straight to plan_monitoring, no question. Nothing named: one health.all.
+- At most 3 items. A stability goal ("keep an eye on", "make sure X doesn't break", "watch prod after this deploy") always includes one health.all baseline, plus up to 2 items grounded in what was named or observed (task, deploy, error group, limit); with nothing specific, only health.all. When another item is a task failure rate or duration, set the baseline's condition components to ["health.flow", "health.liveness"] (summary "Flow + liveness baseline"). One concrete signal skips health.all. Never two items on one signal.
+- Custom query kind follows intent: spike / too many / more than / piling up is threshold above a count over a window (default like above N in 5m, N from the observed baseline); stops / nothing runs is absence. The summary states the direction ("Triggered runs spike").
+- Prefer curated capabilities; use a query alert, checked with analyze_query_alert, only when none fits. Omit notifiers; the user picks them.
+- When the goal or the current page names a task or queue, set it as each item's scope with its value (a task's runs page means that task).
+- A stated success %, failure % or failure rate is runs.failure_rate: threshold is a stated failure % as is, or 100 minus a success target; windowSec from the stated interval; health.execution is only for broad stability goals.
+- A plan creates nothing; once confirmed, a wizard sets it up.
+- Never relay plan errors to the user: fix the item and call plan_monitoring again. In a plan turn respond with the plan_monitoring call only; the user sees intro as your message.
+- Use plan_decision only when the user answers the plan you just proposed (no newer question of yours, not yet created or dismissed); otherwise answer normally. Agreement in any wording or language ("sounds good", "yes", "ok", "go ahead", "да"): plan_decision confirm, reply one short line ("Opening the setup."). Refusal ("not this", "no"): plan_decision dismiss, ask what to change. A change request: a new plan_monitoring call instead.
+- Set group when 2+ items watch one thing together (a deploy, a task, a model) and should raise as one alert.
+- Once a plan's alerts are created, answer questions about them in plain text. Call plan_monitoring again only when the user explicitly asks to watch something new, with only NEW items (never created ones; name the created alert in intro if relevant).
+- On follow-ups, call plan_monitoring again with the revised plan: same ids for unchanged items, new ids for new ones, same lineage; a new goal gets a new lineage.
+- Outside alert_creation scope, propose a query alert via plan_monitoring.`;
 
 // Used when the current project has a connected GitHub repo: the base prompt
 // plus the source-reading tools and how to use them.

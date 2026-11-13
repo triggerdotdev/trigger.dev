@@ -54,12 +54,9 @@ const agent = {
   open: false,
   setOpen: () => {},
   openWith: () => {},
-  openWithWatch: () => {},
   openCreateAlert: () => {},
   openEditAlert: () => {},
-  unreadWakes: 0,
   unreadWork: 0,
-  watchEnabled: false,
 };
 
 const widget = {

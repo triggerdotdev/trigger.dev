@@ -1,4 +1,7 @@
+import type { RunEngine } from "@internal/run-engine";
+import type { RunStore } from "@internal/run-store";
 import { tryCatch } from "@trigger.dev/core/v3";
+import { isStoreDateTimeWaitpoint } from "~/services/dashboardDateTimeWaitpoint.server";
 import { compareVersionParts } from "~/utils/semver";
 import { FEATURE_FLAG, isPlainFlagObject, SessionVersionFloor } from "~/v3/featureFlags";
 import type { SessionOutTail } from "./s2realtimeStreams.server";
@@ -95,6 +98,46 @@ type SessionInWaiters = {
   listSessionInWaitpoints(addressingKey: string): Promise<string[]>;
   isWaitpointBlockingRun(waitpointId: string, runId: string): Promise<boolean>;
 };
+
+/** One floor check's waitpoint test. Store-format ids share one read of the run's current blockers. */
+export function waitpointBlockingRunCheck(
+  environment: { id: string; projectId: string; organizationId: string },
+  deps: {
+    engine: Pick<RunEngine, "getStoreRunBlockingWaitpointIds" | "getStoreDateTimeWaitpoint">;
+    runStore: Pick<RunStore, "findWaitpoint" | "findWaitpointConnectedRunIds">;
+  }
+): SessionInWaiters["isWaitpointBlockingRun"] {
+  const storeBlockers = new Map<string, Promise<string[]>>();
+  return async (waitpointId, runId) => {
+    if (isStoreDateTimeWaitpoint(waitpointId)) {
+      let blockers = storeBlockers.get(runId);
+      if (!blockers) {
+        blockers = deps.engine.getStoreRunBlockingWaitpointIds({
+          runId,
+          organizationId: environment.organizationId,
+        });
+        storeBlockers.set(runId, blockers);
+      }
+      if (!(await blockers).includes(waitpointId)) return false;
+      // A completed waitpoint stays in the run's block until it is delivered, so check it too.
+      const waitpoint = await deps.engine.getStoreDateTimeWaitpoint({
+        waitpointId,
+        environmentId: environment.id,
+        projectId: environment.projectId,
+        organizationId: environment.organizationId,
+      });
+      return waitpoint?.status === "PENDING";
+    }
+    // Legacy ids keep their original read, which also counts a wait from an earlier attempt.
+    const waitpoint = await deps.runStore.findWaitpoint({
+      where: { id: waitpointId, environmentId: environment.id },
+      select: { status: true },
+    });
+    if (waitpoint?.status !== "PENDING") return false;
+    const runIds = await deps.runStore.findWaitpointConnectedRunIds(waitpointId);
+    return runIds.includes(runId);
+  };
+}
 
 async function isRunWaitingOnSessionIn(
   waiters: SessionInWaiters,

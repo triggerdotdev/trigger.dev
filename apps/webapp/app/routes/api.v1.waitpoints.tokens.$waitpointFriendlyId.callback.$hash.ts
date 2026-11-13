@@ -86,6 +86,11 @@ export async function action({ request, params }: ActionFunctionArgs) {
           waitpoint.id,
           hash,
           environment.parentEnvironment?.apiKey ?? environment.apiKey
+        ) &&
+        // Keep callback URLs issued with a branch key before run-token auth was normalized.
+        !(
+          environment.parentEnvironment &&
+          verifyHttpCallbackHash(waitpoint.id, hash, environment.apiKey)
         )
       ) {
         return json({ error: "Invalid URL, hash doesn't match" }, { status: 401 });

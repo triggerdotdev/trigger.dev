@@ -6,7 +6,6 @@ import { Dialog, DialogContent, DialogHeader } from "~/components/primitives/Dia
 import { FormButtons } from "~/components/primitives/FormButtons";
 import { Paragraph } from "~/components/primitives/Paragraph";
 import { AgentList, AgentListRow, AgentListRowAction } from "./list-row";
-import type { WatchChip } from "./WatchChips";
 
 // Date fields arrive as strings over the loader's JSON.
 export type DashboardAgentChat = {
@@ -14,19 +13,15 @@ export type DashboardAgentChat = {
   title: string;
   lastMessageAt: string | null;
   kind?: "alert_creation" | null;
-  watches?: WatchChip[];
-  hasUnreadWake?: boolean;
-  /** The chat answered, settled a card or woke while it was closed. */
+  /** The chat answered or settled a card while it was closed. */
   hasUnreadWork?: boolean;
-  hasActiveWatch?: boolean;
   hasOpenInvestigation?: boolean;
 };
 
 const ALERT_CREATION_TAG = "New alert";
 
-/** A wake is unread work too, so one predicate answers for both. */
 export function chatIsUnread(chat: DashboardAgentChat): boolean {
-  return (chat.hasUnreadWake ?? false) || (chat.hasUnreadWork ?? false);
+  return chat.hasUnreadWork ?? false;
 }
 
 // Must stay a stable sort on one key: everything else keeps the server's order.

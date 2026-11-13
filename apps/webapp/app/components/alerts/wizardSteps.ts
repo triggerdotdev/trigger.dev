@@ -105,7 +105,7 @@ function proseForStep(key: FlowStepKey, answers: FlowAnswers): string {
 }
 
 export function buildReviewFields(
-  flow: CreationFlowState,
+  flow: Pick<CreationFlowState, "answers">,
   channels: AlertChannel[],
   environmentTitle?: string
 ): ReviewCardFields | null {
@@ -858,57 +858,70 @@ export function allSteps(
             },
           };
         }
-        case "name": {
-          const name = alertName(answers);
-          const blank = answers.name !== undefined && !answers.name.trim();
-          return {
-            ...base,
-            id,
-            question: promptForStep("name", answers),
-            options: [],
-            multiSelect: true,
-            selected: blank ? [] : [id],
-            fields: [
-              {
-                id: "name",
-                ariaLabel: "Name",
-                live: true,
-                current: name,
-                parse: (text) => text.trim() || undefined,
-                onSubmit: flow.setName,
-                onClear: () => flow.setName(""),
-              },
-            ],
-            confirmLabel: "Continue",
-          };
-        }
+        case "name":
+          return nameStep(alertName(answers), answers.name, flow.setName);
         case "notifiers": {
-          const options = [
-            ...channels
-              .filter((ch, index) => channels.findIndex((c) => c.id === ch.id) === index)
-              .map((ch) => ({ id: ch.id, label: ch.name || ch.type })),
-          ];
-          const selected = (answers.notifiers ?? []).filter((v) => options.some((o) => o.id === v));
+          const step = notifiersStep(channels, answers.notifiers ?? [], addChannel);
+          const complete = isComplete(answers) && answers.expiry !== undefined;
           return {
-            ...base,
-            id,
-            question: promptForStep("notifiers", answers),
-            description: NOTIFIERS_DESCRIPTION,
-            descriptionAction: { label: "channels list" },
-            options: addChannel ? [...options, addChannelOption(addChannel)] : options,
-            multiSelect: true,
-            selected,
-            confirmDisabled:
-              !selected.length || !isComplete(answers) || answers.expiry === undefined,
-            error: selected.length
-              ? isComplete(answers) && answers.expiry !== undefined
-                ? undefined
-                : INCOMPLETE_DRAFT
-              : NO_NOTIFIER,
+            ...step,
+            confirmDisabled: !step.selected?.length || !complete,
+            error: step.error ?? (complete ? undefined : INCOMPLETE_DRAFT),
           };
         }
       }
     });
+}
+
+export function nameStep(
+  current: string,
+  typed: string | undefined,
+  setName: (name: string) => void
+): ChatWizardStep {
+  const blank = typed !== undefined && !typed.trim();
+  return {
+    id: "name",
+    allowSkip: false,
+    question: promptForStep("name", {}),
+    options: [],
+    multiSelect: true,
+    selected: blank ? [] : ["name"],
+    fields: [
+      {
+        id: "name",
+        ariaLabel: "Name",
+        live: true,
+        current,
+        parse: (text) => text.trim() || undefined,
+        onSubmit: setName,
+        onClear: () => setName(""),
+      },
+    ],
+    confirmLabel: "Continue",
+  };
+}
+
+export function notifiersStep(
+  channels: AlertChannel[],
+  notifiers: string[],
+  addChannel?: AddChannelAccess
+): ChatWizardStep {
+  const options = channels
+    .filter((ch, index) => channels.findIndex((c) => c.id === ch.id) === index)
+    .map((ch) => ({ id: ch.id, label: ch.name || ch.type }));
+  const selected = notifiers.filter((v) => options.some((o) => o.id === v));
+  return {
+    id: "notifiers",
+    allowSkip: false,
+    question: promptForStep("notifiers", {}),
+    description: NOTIFIERS_DESCRIPTION,
+    descriptionAction: { label: "channels list" },
+    options: addChannel ? [...options, addChannelOption(addChannel)] : options,
+    multiSelect: true,
+    selected,
+    confirmDisabled: !selected.length,
+    error: selected.length ? undefined : NO_NOTIFIER,
+  };
 }
 
 export function applyStepSelection(

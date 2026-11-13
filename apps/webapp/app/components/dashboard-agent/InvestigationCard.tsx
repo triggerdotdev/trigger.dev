@@ -380,7 +380,6 @@ export function InvestigationCard({
   resolveUri,
   onIntent,
   answered = false,
-  watchEnabled = false,
 }: {
   block: InvestigationBlock;
   defaultExpanded?: boolean;
@@ -388,8 +387,6 @@ export function InvestigationCard({
   onIntent?: (intent: AgentIntent) => void;
   /** The turn kept answering after this card, so "keep digging" has nothing to ask for. */
   answered?: boolean;
-  /** Withholds the card's own watch action while watch functionality is behind its flag. */
-  watchEnabled?: boolean;
 }) {
   const [expanded, setExpanded] = useState(defaultExpanded);
   const investigation = block.investigation;
@@ -398,7 +395,7 @@ export function InvestigationCard({
   const answeredActions = (block.capabilities?.actions ?? []).filter(
     (action) => !answered || action.kind !== "ask_follow_up"
   );
-  const cardActions = watchEnabled ? answeredActions : withoutWatchActions(answeredActions);
+  const cardActions = withoutWatchActions(answeredActions);
 
   return (
     <AgentCard>

@@ -16,10 +16,13 @@ import { seedTestEnvironment } from "./helpers/seedTestEnvironment";
 import { seedTestRun } from "./helpers/seedTestRun";
 import { seedTestPAT, seedTestUser } from "./helpers/seedTestPAT";
 import { assertRunTokenSchedules } from "./helpers/assertRunTokenSchedules";
+import { assertRunTokenWaitpoints } from "./helpers/assertRunTokenWaitpoints";
 
 import type * as Database from "~/db.server";
 import type * as V1 from "~/routes/api.v1.packets.$";
 import type * as V2 from "~/routes/api.v2.packets.$";
+
+vi.unmock("~/v3/runEngine.server");
 
 const ISSUER = "https://internal-token.example.com";
 const KEY_ID = "packet-api-test";
@@ -53,6 +56,13 @@ beforeAll(async () => {
   });
   await new Promise<void>((resolve) => s2AccountServer.listen(0, "127.0.0.1", resolve));
   const s2Port = (s2AccountServer.address() as AddressInfo).port;
+  vi.stubEnv("REDIS_HOST", redis.container.getHost());
+  vi.stubEnv("REDIS_PORT", String(redis.container.getPort()));
+  vi.stubEnv("REDIS_PASSWORD", redis.container.getPassword());
+  vi.stubEnv("REDIS_TLS_DISABLED", "true");
+  vi.stubEnv("RUN_ENGINE_WORKER_ENABLED", "0");
+  vi.stubEnv("RUN_ENGINE_TTL_SYSTEM_DISABLED", "true");
+  vi.stubEnv("RUN_ENGINE_TTL_CONSUMERS_DISABLED", "true");
   vi.stubEnv("SCHEDULE_WORKER_REDIS_HOST", redis.container.getHost());
   vi.stubEnv("SCHEDULE_WORKER_REDIS_PORT", String(redis.container.getPort()));
   vi.stubEnv("SCHEDULE_WORKER_REDIS_PASSWORD", redis.container.getPassword());
@@ -111,6 +121,8 @@ beforeAll(async () => {
 }, 120_000);
 
 afterAll(async () => {
+  const { engine } = await import("~/v3/runEngine.server");
+  await engine.quit();
   await telemetryMetrics?.shutdown();
   metrics.disable();
   await database?.$replica.$disconnect();
@@ -165,6 +177,10 @@ async function seedDeployedEnvironment() {
 }
 
 describe("run-token API authorization", () => {
+  it("creates usable preview and production waitpoint callbacks and public JWTs", async () => {
+    await assertRunTokenWaitpoints(database.prisma, tokenFor);
+  });
+
   it("rejects run tokens on non-builder envvar and deployment routes and API-key-only auth", async () => {
     const { environment, project } = await seedDeployedEnvironment();
     const token = await tokenFor(environment);

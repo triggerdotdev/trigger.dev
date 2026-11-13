@@ -13,7 +13,7 @@ import { logger } from "./logger.server";
 
 const TASK_ID = "dashboard-agent";
 
-// The wake poll runs once a minute per visible tab. That trade-off is only defensible while it
+// The unread poll runs once a minute per visible tab. That trade-off is only defensible while it
 // stays measurable, so count the requests. singleton: module-scope registration double-registers
 // under dev HMR.
 export const dashboardAgentWakeFeedCounter = singleton(

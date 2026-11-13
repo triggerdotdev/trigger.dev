@@ -130,11 +130,11 @@ vi.mock("~/services/dashboardAgentAlertContext.server", async (importOriginal) =
   };
 });
 
-vi.mock("~/services/dashboardAgentWatches.server", async (importOriginal) => {
+vi.mock("~/services/dashboardAgentChatContext.server", async (importOriginal) => {
   const actual = await importOriginal<Record<string, unknown>>();
   return {
     ...actual,
-    authorizeWatchEnvironmentById: async () =>
+    authorizeAgentEnvironmentById: async () =>
       ctx.alertContext?.ok ? ctx.alertContext.environment : null,
   };
 });
@@ -420,6 +420,42 @@ describe("dashboard-agent monitoring alerts route", () => {
 
         expect(response.status).toBe(403);
         expect((await response.json()).error).toContain("not enabled");
+      }
+    );
+
+    // The agent's plan_monitoring tool forwards this signal verdict as-is.
+    postgresTest(
+      "analyze-query checks the chosen signal against the query",
+      async ({ prisma, postgresContainer }) => {
+        await boot(prisma, postgresContainer.getConnectionUri());
+        useAgent("qanalyzesignal");
+        const verdict = async (query: string, signal: { mode: string; measure?: string }) => {
+          const response = await post(
+            "monitoring-alerts/analyze-query",
+            { query, signal },
+            analyzeAction
+          );
+          expect(response.status).toBe(200);
+          return (await response.json()).signal as { ok: boolean; message?: string };
+        };
+        const twoMeasures =
+          "SELECT count() AS runs, countIf(status = 'Failed') AS failures FROM runs";
+
+        expect(
+          await verdict("SELECT count() AS runs FROM runs WHERE task_identifier = 'checkout'", {
+            mode: "absence",
+          })
+        ).toEqual({ ok: true });
+        expect((await verdict(twoMeasures, { mode: "threshold" })).message).toContain(
+          "Choose a measure"
+        );
+        expect(await verdict(twoMeasures, { mode: "threshold", measure: "nope" })).toEqual({
+          ok: false,
+          message: expect.stringContaining('"nope"'),
+        });
+        expect(
+          await verdict("SELECT count() AS c FROM runs LIMIT 10", { mode: "threshold" })
+        ).toEqual({ ok: false, message: expect.stringContaining("Remove LIMIT") });
       }
     );
 

@@ -76,6 +76,7 @@ import {
   hasStoreWaitpoints,
   batchStoreWaitpointId,
   snapshotRouteFromSnapshot,
+  WaitpointKeyTransactionBudgetExhaustedError,
   type CompletedWaitpointRecord,
 } from "@internal/run-store";
 
@@ -1004,7 +1005,7 @@ export class WaitpointSystem {
     };
     await prepare?.(keyedCreation);
     if (Date.now() >= keyedCreation.acceptUntil) {
-      throw new Error("Keyed waitpoint creation transaction budget exhausted");
+      throw new WaitpointKeyTransactionBudgetExhaustedError();
     }
     return this.$.runStore.runInWaitpointKeyTransaction(
       owner,
@@ -1078,6 +1079,11 @@ export class WaitpointSystem {
     const scope = `${params.environmentId}:${this.$.runStore.getWaitpointKeyScope(this.#keyClaimOwner(params))}`;
     const id = await this.#waitpointStore.readIdempotencyKey(scope, params.idempotencyKey);
     return id ? this.readExistingStoreDateTimeWaitpoint({ ...params, waitpointId: id }) : null;
+  }
+
+  /** The run's current block edges from both stores, as continuation reads them. */
+  public readRunBlockState(runId: string, organizationId: string): Promise<RunBlockEdge[]> {
+    return this.coordinator.readRunBlockState(runId, { organizationId });
   }
 
   /** Internal, tenant-scoped history page; does not read or consume live fanout state. */

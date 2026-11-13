@@ -4,10 +4,12 @@ export function measureExecutionMetrics({
   attemptCreatedAt,
   dequeuedAt,
   podScheduledAt,
+  supervisorWait,
 }: {
   attemptCreatedAt: number;
   dequeuedAt?: number;
   podScheduledAt?: number;
+  supervisorWait?: { startedAt: number; durationMs: number };
 }): TaskRunExecutionMetrics {
   const metrics: TaskRunExecutionMetrics = [
     {
@@ -33,6 +35,15 @@ export function measureExecutionMetrics({
       event: "pod_scheduled",
       timestamp: podScheduledAt,
       duration: 0,
+    });
+  }
+
+  if (supervisorWait) {
+    metrics.push({
+      name: "start",
+      event: "supervisor_wait",
+      timestamp: supervisorWait.startedAt,
+      duration: supervisorWait.durationMs,
     });
   }
 

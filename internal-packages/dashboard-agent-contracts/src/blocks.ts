@@ -3,10 +3,9 @@
  * (emit/persist), envelope optional (`legacy*`, which must keep parsing forever).
  */
 import { evidenceRefSchema, evidenceSchema } from "./evidence.js";
-import { agentIntentSchema } from "./intent.js";
+import { agentIntentSchema, legacyWatchIntentSchema } from "./intent.js";
 import { runFiltersSchema } from "./run-filters.js";
 import { triggerUriSchema } from "./trigger-uri.js";
-import { watchSpecSchema } from "./watch.js";
 import { z } from "zod";
 
 /**
@@ -214,36 +213,25 @@ const navigateActionIntentSchema = z.object({
 const actionIntentSchema = z.union([
   askActionIntentSchema,
   navigateActionIntentSchema,
-  z.object({
-    kind: z.literal("watch"),
-    spec: watchSpecSchema,
-  }),
+  legacyWatchIntentSchema,
 ]);
 
 const ASK_NAVIGATE_INTENT_DOC =
   "`ask` sends the prompt as the user's next message, in their voice. `navigate` takes them to a page — ONLY with a canonical `trigger://` URI you already hold; an invalid target is silently dropped.";
 
 export const actionsBlockActionSchema = z.object({
-  label: z.string().min(1).describe("The button text, e.g. 'Set up a watch'."),
-  intent: actionIntentSchema.describe(
-    `What the button does. \`watch\` opens the watch configuration card pre-filled with your spec — the user confirming it is what starts the watch. ${ASK_NAVIGATE_INTENT_DOC}`
-  ),
+  label: z.string().min(1),
+  intent: actionIntentSchema,
 });
 
 export type ActionsBlockAction = z.infer<typeof actionsBlockActionSchema>;
 
 const actionsBlockBodySchema = z.object({
   type: z.literal("actions"),
-  actions: z
-    .array(actionsBlockActionSchema)
-    .min(1)
-    .max(3)
-    .describe(
-      "1-3 buttons, the one to take first. Keep labels short and imperative ('Set up a watch', 'See its failed runs')."
-    ),
+  actions: z.array(actionsBlockActionSchema).min(1).max(3),
 });
 
-const actionsBlockBodyInputSchemaWithoutWatch = z.object({
+const actionsBlockBodyInputSchema = z.object({
   type: z.literal("actions"),
   actions: z
     .array(
@@ -610,32 +598,6 @@ const investigationBlockBodyInputSchema = z.object({
   investigation: investigationStateInputSchema,
 });
 
-/**
- * Host-emitted only, so it is absent from `viewBlockInputSchema`. Wording is
- * frozen at append time: the block carries final English, not a message key.
- */
-export const watchResultOutcomeSchema = z.enum(["watching", "already_true", "impossible"]);
-export type WatchResultOutcome = z.infer<typeof watchResultOutcomeSchema>;
-
-const watchResultBlockBodySchema = z.object({
-  type: z.literal("watch_result"),
-  outcome: watchResultOutcomeSchema,
-  headline: z.string(),
-  /** Null on a one-shot result: nothing is watching. */
-  lifetime: z.string().nullable().default(null),
-  detail: z.string().nullable().default(null),
-  followUp: z.array(z.string()).max(4).default([]),
-  /** The live watch this confirms. Null on a one-shot result. */
-  watchId: z.string().nullable().default(null),
-});
-
-export const watchResultBlockSchema = watchResultBlockBodySchema.merge(blockEnvelopeSchema);
-export const legacyWatchResultBlockSchema =
-  watchResultBlockBodySchema.extend(optionalEnvelopeShape);
-
-export type EnvelopedWatchResultBlock = z.infer<typeof watchResultBlockSchema>;
-export type WatchResultBlock = z.infer<typeof legacyWatchResultBlockSchema>;
-
 export const alertCreatedRowSchema = z.object({
   label: z.string(),
   value: z.string(),
@@ -648,6 +610,7 @@ const alertCreatedBlockBodySchema = z.object({
   alertId: z.string(),
   name: z.string(),
   rows: z.array(alertCreatedRowSchema).default([]),
+  planItemKey: z.string().optional(),
 });
 
 export const alertCreatedBlockSchema = alertCreatedBlockBodySchema.merge(blockEnvelopeSchema);
@@ -658,27 +621,15 @@ export type EnvelopedAlertCreatedBlock = z.infer<typeof alertCreatedBlockSchema>
 export type AlertCreatedBlock = z.infer<typeof legacyAlertCreatedBlockSchema>;
 
 /**
- * What `render_view` accepts from the model. `report`, `watch_result` and
- * `alert_created` are host-emitted and so absent here.
+ * What `render_view` accepts from the model. `report` and `alert_created` are
+ * host-emitted and so absent here.
  */
 export const viewBlockInputSchema = z.discriminatedUnion("type", [
   diagnosisBlockBodySchema,
   chartBlockBodySchema,
-  actionsBlockBodySchema,
+  actionsBlockBodyInputSchema,
   investigationBlockBodyInputSchema,
 ]);
-
-const viewBlockInputSchemaWithoutWatch = z.discriminatedUnion("type", [
-  diagnosisBlockBodySchema,
-  chartBlockBodySchema,
-  actionsBlockBodyInputSchemaWithoutWatch,
-  investigationBlockBodyInputSchema,
-]);
-
-/** The model-facing input schema: with watches off it has no `watch` intent. */
-export function viewBlockInputSchemaFor(options: { watchEnabled?: boolean }) {
-  return options.watchEnabled ? viewBlockInputSchema : viewBlockInputSchemaWithoutWatch;
-}
 
 export type DiagnosisBlockBody = z.infer<typeof diagnosisBlockBodySchema>;
 export type ChartBlockBody = z.infer<typeof chartBlockBodySchema>;
@@ -721,7 +672,6 @@ export const viewBlockSchema = z.discriminatedUnion("type", [
   actionsBlockSchema,
   reportBlockSchema,
   investigationBlockSchema,
-  watchResultBlockSchema,
   alertCreatedBlockSchema,
 ]);
 
@@ -746,7 +696,6 @@ export const legacyViewBlockSchema = z.discriminatedUnion("type", [
   legacyActionsBlockSchema,
   legacyReportBlockSchema,
   legacyInvestigationBlockSchema,
-  legacyWatchResultBlockSchema,
   legacyAlertCreatedBlockSchema,
 ]);
 

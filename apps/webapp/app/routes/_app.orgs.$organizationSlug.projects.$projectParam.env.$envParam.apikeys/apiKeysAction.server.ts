@@ -31,7 +31,7 @@ import { dashboardAction } from "~/services/routeBuilders/dashboardBuilder";
 import { DISABLE_ROOT_API_KEY_VISIBILITY_CONFIRMATION } from "~/utils/apiKeyAccess";
 import { ApiKeyNoteField } from "~/utils/apiKeyNote";
 import { EnvironmentParamSchema } from "~/utils/pathBuilder";
-import { splitIpRangesInput } from "./ApiKeyIpRanges";
+import { splitIpRangesInput } from "~/utils/ipRangeEntries";
 
 const CapabilitiesField = z
   .string()
