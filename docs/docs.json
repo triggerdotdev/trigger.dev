@@ -135,6 +135,15 @@
                 ]
               },
               {
+                "group": "Channels",
+                "pages": [
+                  "webhooks/channels",
+                  "webhooks/slack",
+                  "webhooks/linear",
+                  "webhooks/human-in-the-loop"
+                ]
+              },
+              {
                 "group": "Patterns",
                 "pages": [
                   "ai-chat/patterns/sub-agents",
@@ -242,18 +251,8 @@
                 "pages": [
                   "webhooks/webhook-tasks",
                   "webhooks/filters",
-                  "webhooks/waiters"
-                ]
-              },
-              {
-                "group": "AI agents",
-                "expanded": true,
-                "pages": [
-                  "webhooks/session-routing",
-                  "webhooks/channels",
-                  "webhooks/slack",
-                  "webhooks/linear",
-                  "webhooks/human-in-the-loop"
+                  "webhooks/waiters",
+                  "webhooks/session-routing"
                 ]
               },
               {
