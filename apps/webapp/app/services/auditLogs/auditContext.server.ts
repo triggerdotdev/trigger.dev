@@ -54,6 +54,14 @@ export function getRequestAuditContext(
   }));
 }
 
+/**
+ * Who the request's auth functions said is acting: a user, an API key, an organization access
+ * token or a run. Null outside an authenticated request.
+ */
+export function getRequestActor(): AuditLogActor | null {
+  return getHttpContext()?.auditIdentity?.actor ?? null;
+}
+
 /** A dashboard session. While staff impersonate a user, the user is the actor. */
 export function noteSessionAuthentication(
   request: Request,

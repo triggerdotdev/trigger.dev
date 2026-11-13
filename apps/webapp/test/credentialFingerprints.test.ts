@@ -12,12 +12,14 @@ import {
 import { deleteOrgMember, prepareMemberRemovalKeys } from "~/models/deleteOrgMember.server";
 import { createEnvironment } from "~/models/organization.server";
 import { removeTeamMember } from "~/models/removeTeamMember.server";
+import { noteOrganizationAccessTokenAuthentication } from "~/services/auditLogs/auditContext.server";
 import { auditLogs } from "~/services/auditLogs/auditLogs.server";
 import {
   recordMemberRemovalCredentials,
   updateCredentialGrace,
   userActor,
 } from "~/services/credentialFingerprints.server";
+import { runWithHttpContext } from "~/services/httpAsyncStorage.server";
 import { UpsertBranchService } from "~/services/upsertBranch.server";
 import { generateAdditionalApiKey, hashApiKey } from "~/utils/apiKeys";
 import {
@@ -301,6 +303,64 @@ describe("root API key fingerprints", () => {
           environmentId: first.branch.id,
           createdBy: { type: "user", id: user.id },
         }),
+      ]);
+    }
+  );
+
+  // Catches: a branch created through the API without a user (an organization access token or an
+  // API key, as in CI) saved with no creator.
+  containerTest(
+    "a branch created with an organization access token names the token as its creator",
+    async ({ prisma }) => {
+      const { saved } = installAuditLogPlugin();
+      const { organization, project } = await createTestOrgProjectWithMember(prisma);
+      await prisma.runtimeEnvironment.create({
+        data: {
+          slug: "preview",
+          apiKey: uniqueId("tr_preview"),
+          pkApiKey: uniqueId("pk_preview"),
+          shortcode: uniqueId("sc"),
+          projectId: project.id,
+          organizationId: organization.id,
+          type: "PREVIEW",
+          isBranchableEnvironment: true,
+        },
+      });
+      const createBranch = (branchName: string) =>
+        new UpsertBranchService(prisma).call(
+          { type: "orgId", organizationId: organization.id },
+          { projectId: project.id, env: "preview", branchName }
+        );
+
+      const withToken = await runWithHttpContext(
+        {
+          requestId: "req_test",
+          path: "/api/v1/projects/proj/branches",
+          host: "api.trigger.dev",
+          method: "POST",
+          abortController: new AbortController(),
+        },
+        async () => {
+          noteOrganizationAccessTokenAuthentication(
+            new Request("https://api.trigger.dev/api/v1/projects/proj/branches", {
+              headers: { Authorization: "Bearer tr_oat_abcdefgh1234" },
+            }),
+            { tokenId: "oat_ci" }
+          );
+          return createBranch("ci-branch");
+        }
+      );
+      // Outside a request nothing says who acted, so the creator stays unknown.
+      const withoutRequest = await createBranch("job-branch");
+
+      if (!withToken.success) throw new Error(withToken.error);
+      if (!withoutRequest.success) throw new Error(withoutRequest.error);
+      expect(saved).toEqual([
+        expect.objectContaining({
+          environmentId: withToken.branch.id,
+          createdBy: { type: "oat", id: "oat_ci" },
+        }),
+        expect.objectContaining({ environmentId: withoutRequest.branch.id, createdBy: null }),
       ]);
     }
   );

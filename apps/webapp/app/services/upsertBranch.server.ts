@@ -21,6 +21,7 @@ import {
   saveRootApiKeyFingerprint,
   userActor,
 } from "./credentialFingerprints.server";
+import { getRequestActor } from "./auditLogs/auditContext.server";
 import { logger } from "./logger.server";
 import { getCurrentPlan, getLimit } from "./platform.v3.server";
 import { type z } from "zod";
@@ -224,7 +225,9 @@ export class UpsertBranchService {
             organizationId: parentEnvironment.organization.id,
             projectId: parentEnvironment.project.id,
           },
-          userId ? userActor(userId) : null
+          // Without a user (an organization access token or API key), whoever authenticated the
+          // request created it.
+          userId ? userActor(userId) : getRequestActor()
         );
       }
 
