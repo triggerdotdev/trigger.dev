@@ -1,6 +1,7 @@
 import { boundedIn, Prisma, type PrismaClientOrTransaction } from "@trigger.dev/database";
 import type { z } from "zod";
 import { logger } from "~/services/logger.server";
+import { recordSecretProxyFailure } from "../secretProxy/telemetry.server";
 import { safeJsonParse } from "~/utils/json";
 import { ENVIRONMENT_SECRET_VERSION } from "./crypto.server";
 import type { EnvironmentEncryptionService, PreparedEnvironmentWrite } from "./service.server";
@@ -21,7 +22,8 @@ export async function protectedSecretKeys(
   environmentIds: string[]
 ): Promise<Set<string>> {
   if (!environmentIds.length) return new Set();
-  const policies = await db.$queryRaw<Array<{ environmentId: string; key: string }>>(Prisma.sql`
+  const policies = await db
+    .$queryRaw<Array<{ environmentId: string; key: string }>>(Prisma.sql`
     WITH environments AS (
       SELECT id, "parentEnvironmentId"
       FROM "RuntimeEnvironment"
@@ -38,7 +40,11 @@ export async function protectedSecretKeys(
     JOIN "EnvironmentVariableValue" value ON value."environmentId" = e."parentEnvironmentId"
     JOIN "EnvironmentVariable" v ON v.id = value."variableId"
     WHERE value."isProxyOnly" = true AND v."projectId" = ${projectId}
-  `);
+  `)
+    .catch((error: unknown) => {
+      recordSecretProxyFailure("metadata", "dependency");
+      throw error;
+    });
   return new Set(
     policies.map(
       (policy) => `${environmentSecretPrefix(projectId, policy.environmentId)}${policy.key}`
@@ -130,7 +136,10 @@ export class EnvironmentSecretStore {
     const protectedKeys =
       this.protectedKeys ??
       (await protectedSecretKeys(this.db, this.projectId, [context.environmentId]));
-    if (protectedKeys.has(key)) throw new Error("Proxy-only variables require operator changes");
+    if (protectedKeys.has(key)) {
+      recordSecretProxyFailure("guard", "policy");
+      throw new Error("Proxy-only variables require operator changes");
+    }
     const prepared = this.prepared.get(context.environmentId);
     if (!prepared)
       throw new Error("Environment encryption must be prepared before starting a transaction");
@@ -148,7 +157,10 @@ export class EnvironmentSecretStore {
     const protectedKeys =
       this.protectedKeys ??
       (await protectedSecretKeys(this.db, this.projectId, [context.environmentId]));
-    if (protectedKeys.has(key)) throw new Error("Proxy-only variables require operator changes");
+    if (protectedKeys.has(key)) {
+      recordSecretProxyFailure("guard", "policy");
+      throw new Error("Proxy-only variables require operator changes");
+    }
     await this.db.secretStore.delete({ where: { key } });
   }
 }

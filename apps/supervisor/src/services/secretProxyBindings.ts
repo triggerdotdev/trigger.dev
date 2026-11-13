@@ -8,6 +8,8 @@ import { lstat } from "node:fs/promises";
 import { request } from "node:http";
 import { isIP } from "node:net";
 import { z } from "zod";
+import { Counter, Gauge } from "prom-client";
+import { register } from "../metrics.js";
 import { type K8sApi, withTimeout } from "../clients/kubernetes.js";
 import { attemptOfRunnerId } from "../util.js";
 import type { RestoreOutcomeReport } from "../workloadManager/runCrd.js";
@@ -23,6 +25,26 @@ const COMPLETION_RETRY_MS = 5 * 60_000;
 const MAX_COMPLETION_RETRIES = 1_024;
 const INITIAL_CONTROL_RETRY_MS = CLEANUP_INTERVAL_MS;
 const MAX_CONTROL_RETRY_MS = 60_000;
+
+const controlRequests = new Counter({
+  name: "supervisor_secret_proxy_control_requests_total",
+  help: "Local interceptor control calls by bounded operation and outcome",
+  labelNames: ["operation", "outcome"],
+  registers: [register],
+});
+for (const operation of ["reset", "lookup", "bind", "revoke"]) {
+  for (const outcome of ["success", "error"]) controlRequests.inc({ operation, outcome }, 0);
+}
+
+function readinessMetric(): Gauge {
+  const existing = register.getSingleMetric("supervisor_secret_proxy_ready");
+  if (existing instanceof Gauge) return existing;
+  return new Gauge({
+    name: "supervisor_secret_proxy_ready",
+    help: "Proxy supervisor startup reset succeeded; not per-allocation connectivity",
+    registers: [register],
+  });
+}
 
 const Runner = z.object({
   metadata: z.object({
@@ -210,56 +232,71 @@ async function interceptorRequest(
   method: "GET" | "PUT" | "DELETE",
   body?: object
 ): Promise<string> {
-  const socket = await lstat(socketPath);
-  if (
-    !socket.isSocket() ||
-    (socket.mode & 0o077) !== 0 ||
-    (socket.uid !== 0 && socket.uid !== process.getuid?.())
-  )
-    return denied();
-  return new Promise<string>((resolve, reject) => {
-    const fail = () => reject(new Error("Secret proxy control unavailable"));
-    const data = body === undefined ? undefined : JSON.stringify(body);
-    const req = request(
-      {
-        socketPath,
-        path,
-        method,
-        headers:
-          data === undefined
-            ? undefined
-            : {
-                "content-type": "application/json",
-                "content-length": Buffer.byteLength(data),
-              },
-      },
-      (res) => {
-        let bytes = 0;
-        const chunks: Buffer[] = [];
-        res.on("data", (chunk: Buffer) => {
-          bytes += chunk.length;
-          if (bytes > 16_384) req.destroy(new Error("Control response too large"));
-          else chunks.push(chunk);
-        });
-        res.on("error", fail);
-        res.on("end", () => {
-          const status = res.statusCode ?? 0;
-          const accepted =
-            method === "GET"
-              ? status === 200
-              : path === "/bindings"
-                ? status === 204
-                : (status >= 200 && status < 300) || (method === "DELETE" && status === 404);
-          if (accepted) resolve(Buffer.concat(chunks).toString("utf8"));
-          else fail();
-        });
-      }
-    );
-    const timer = setTimeout(() => req.destroy(new Error("Control timeout")), CONTROL_TIMEOUT_MS);
-    req.on("error", fail);
-    req.on("close", () => clearTimeout(timer));
-    req.end(data);
-  });
+  const operation =
+    method === "GET"
+      ? "lookup"
+      : path === "/bindings"
+        ? "reset"
+        : method === "PUT"
+          ? "bind"
+          : "revoke";
+  let outcome: "success" | "error" = "error";
+  try {
+    const socket = await lstat(socketPath);
+    if (
+      !socket.isSocket() ||
+      (socket.mode & 0o077) !== 0 ||
+      (socket.uid !== 0 && socket.uid !== process.getuid?.())
+    )
+      return denied();
+    const result = await new Promise<string>((resolve, reject) => {
+      const fail = () => reject(new Error("Secret proxy control unavailable"));
+      const data = body === undefined ? undefined : JSON.stringify(body);
+      const req = request(
+        {
+          socketPath,
+          path,
+          method,
+          headers:
+            data === undefined
+              ? undefined
+              : {
+                  "content-type": "application/json",
+                  "content-length": Buffer.byteLength(data),
+                },
+        },
+        (res) => {
+          let bytes = 0;
+          const chunks: Buffer[] = [];
+          res.on("data", (chunk: Buffer) => {
+            bytes += chunk.length;
+            if (bytes > 16_384) req.destroy(new Error("Control response too large"));
+            else chunks.push(chunk);
+          });
+          res.on("error", fail);
+          res.on("end", () => {
+            const status = res.statusCode ?? 0;
+            const accepted =
+              method === "GET"
+                ? status === 200
+                : path === "/bindings"
+                  ? status === 204
+                  : (status >= 200 && status < 300) || (method === "DELETE" && status === 404);
+            if (accepted) resolve(Buffer.concat(chunks).toString("utf8"));
+            else fail();
+          });
+        }
+      );
+      const timer = setTimeout(() => req.destroy(new Error("Control timeout")), CONTROL_TIMEOUT_MS);
+      req.on("error", fail);
+      req.on("close", () => clearTimeout(timer));
+      req.end(data);
+    });
+    outcome = "success";
+    return result;
+  } finally {
+    controlRequests.inc({ operation, outcome });
+  }
 }
 
 export async function interceptorControl(
@@ -323,6 +360,7 @@ export class SecretProxyBindings {
   private nextControlRetryAt = 0;
   private controlRetryMs = INITIAL_CONTROL_RETRY_MS;
   private readonly cleanup: NodeJS.Timeout;
+  private readonly readiness = readinessMetric();
 
   constructor(
     private readonly opts: {
@@ -333,6 +371,7 @@ export class SecretProxyBindings {
       completionGraceMs?: number;
     }
   ) {
+    this.readiness.set(0);
     this.cleanup = setInterval(() => void this.expire(), CLEANUP_INTERVAL_MS);
     this.cleanup.unref();
   }
@@ -343,7 +382,9 @@ export class SecretProxyBindings {
     try {
       await interceptorControl(this.opts.socketPath);
       this.ready = !this.stopped;
+      this.readiness.set(this.ready ? 1 : 0);
     } catch {
+      this.readiness.set(0);
       // Ordinary runs must remain available while proxy startup is retried.
       this.nextControlRetryAt = Date.now() + this.controlRetryMs;
       this.controlRetryMs = Math.min(this.controlRetryMs * 2, MAX_CONTROL_RETRY_MS);
@@ -642,7 +683,10 @@ export class SecretProxyBindings {
   }
 
   private async control(bindingId: string, body?: object): Promise<void> {
-    if (this.controlling >= MAX_IN_FLIGHT) return denied();
+    if (this.controlling >= MAX_IN_FLIGHT) {
+      controlRequests.inc({ operation: body === undefined ? "revoke" : "bind", outcome: "error" });
+      return denied();
+    }
     this.controlling++;
     const pending = interceptorControl(this.opts.socketPath, bindingId, body);
     this.controls.add(pending);
@@ -682,6 +726,7 @@ export class SecretProxyBindings {
 
   async stop(): Promise<void> {
     this.stopped = true;
+    this.readiness.set(0);
     clearInterval(this.cleanup);
     await Promise.allSettled([...this.controls]);
     // Bound shutdown fanout. Failed deletes remain subject to the node's hard expiry.

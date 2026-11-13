@@ -1,4 +1,6 @@
 import { json } from "@remix-run/server-runtime";
+import { env } from "~/env.server";
+import { recordSecretProxyDelivery } from "../secretProxy/telemetry.server";
 import {
   prepareVariablesForEnvironment,
   type RuntimeEnvironmentForEnvRepo,
@@ -13,8 +15,15 @@ export async function resolveAttemptVariables(
   options?: { proxyEnabled?: boolean }
 ) {
   try {
-    return await prepareVariablesForEnvironment(environment, parentEnvironment, options);
+    const prepared = await prepareVariablesForEnvironment(environment, parentEnvironment, options);
+    recordSecretProxyDelivery(
+      "prepare",
+      env.SECRET_PROXY_ENABLED,
+      prepared.proxyValues.length ? "protected" : "ordinary"
+    );
+    return prepared;
   } catch (error) {
+    recordSecretProxyDelivery("prepare", env.SECRET_PROXY_ENABLED, "error");
     if (!(error instanceof EnvironmentKeyUnavailableError)) throw error;
     environmentEncryptionTelemetry().failures.add(1, { reason: "attempt_start_unavailable" });
     throw json({ error: error.message }, { status: 503 });

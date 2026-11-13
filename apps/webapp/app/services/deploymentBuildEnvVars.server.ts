@@ -9,6 +9,7 @@ import { environmentEncryptionTelemetry } from "~/services/environmentEncryption
 import { EnvironmentKeyUnavailableError } from "~/services/environmentEncryption/wrapping.server";
 import { FINAL_DEPLOYMENT_STATUSES } from "~/v3/services/failDeployment.server";
 import { effectiveEnvironmentVariables } from "./secretProxy/variables.server";
+import { recordSecretProxyFailure } from "./secretProxy/telemetry.server";
 
 export async function deploymentBuildEnvVarsResponse(options: {
   db: PrismaClientOrTransaction;
@@ -38,6 +39,7 @@ export async function deploymentBuildEnvVarsResponse(options: {
 
     const metadata = await effectiveEnvironmentVariables(db, environment.projectId, environment.id);
     if (metadata.some((value) => value.isProxyOnly)) {
+      recordSecretProxyFailure("guard", "policy");
       return json(
         { error: "Stored build environment exports are disabled for proxy-only environments" },
         { status: 403 }

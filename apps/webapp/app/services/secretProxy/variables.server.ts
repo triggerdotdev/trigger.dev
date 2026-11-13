@@ -5,6 +5,8 @@ import {
 } from "../environmentEncryption/secretStore.server";
 import { proxyConfigHosts } from "./placeholder.server";
 
+import { recordSecretProxyFailure } from "./telemetry.server";
+
 export const MAX_PROXY_VARIABLES = 512;
 
 // Values and policies are selected before any secret-store read or decryption.
@@ -101,15 +103,21 @@ export async function assertVariablesNotProxyOnly(
 ) {
   if (!keys.length) return;
   // Serialize policy enrollment with mutation transactions, including inherited child overrides.
-  await db.$queryRaw(
-    Prisma.sql`SELECT id FROM "EnvironmentVariable" WHERE "projectId" = ${projectId} AND key = ANY(${keys}::text[]) ORDER BY id FOR UPDATE`
-  );
+  await db
+    .$queryRaw(
+      Prisma.sql`SELECT id FROM "EnvironmentVariable" WHERE "projectId" = ${projectId} AND key = ANY(${keys}::text[]) ORDER BY id FOR UPDATE`
+    )
+    .catch((error: unknown) => {
+      recordSecretProxyFailure("metadata", "dependency");
+      throw error;
+    });
   const protectedKeys = await protectedSecretKeys(db, projectId, environmentIds);
   if (
     environmentIds.some((id) =>
       keys.some((key) => protectedKeys.has(`${environmentSecretPrefix(projectId, id)}${key}`))
     )
   ) {
+    recordSecretProxyFailure("guard", "policy");
     throw new Error("Proxy-only variables can only be changed by the secret proxy operator");
   }
 }

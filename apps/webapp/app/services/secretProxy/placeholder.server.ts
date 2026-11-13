@@ -2,6 +2,7 @@ import { createHmac, timingSafeEqual } from "node:crypto";
 import { isIP } from "node:net";
 import { z } from "zod";
 import type { EffectiveEnvironmentVariable } from "./variables.server";
+import type { SecretProxyFailureReason } from "./telemetry.server";
 
 const MAX_KEY_ID_LENGTH = 32;
 const KeyId = z
@@ -19,7 +20,14 @@ const MAX_RETAINED_KEYS = 8;
 const MAX_EXECUTION_HOSTS = 256;
 export const SECRET_PROXY_MAX_RESPONSE_BYTES = 4 * 1024 * 1024;
 export const SECRET_PROXY_MAX_CREDENTIAL_BYTES = 64 * 1024;
-export class SecretProxyDeniedError extends Error {}
+export class SecretProxyDeniedError extends Error {
+  constructor(
+    message: string,
+    readonly reason: SecretProxyFailureReason
+  ) {
+    super(message);
+  }
+}
 export type PlaceholderKeyring = { activeKeyId: string; keys: Map<string, Buffer> };
 
 export function parsePlaceholderKeyring(input: string): PlaceholderKeyring {
@@ -74,11 +82,15 @@ export function secretProxyExecutionHosts(values: EffectiveEnvironmentVariable[]
   const destinations = new Set<string>();
   for (const value of values) {
     const hosts = ProxyAllowedHosts.safeParse(value.proxyAllowedHosts);
-    if (!hosts.success) throw new SecretProxyDeniedError("Invalid proxy-only destination policy");
+    if (!hosts.success)
+      throw new SecretProxyDeniedError("Invalid proxy-only destination policy", "policy");
     hosts.data.forEach((host) => destinations.add(host));
   }
   if (destinations.size > MAX_EXECUTION_HOSTS)
-    throw new SecretProxyDeniedError("Too many secret proxy destinations for an execution");
+    throw new SecretProxyDeniedError(
+      "Too many secret proxy destinations for an execution",
+      "limit"
+    );
   return [...destinations];
 }
 

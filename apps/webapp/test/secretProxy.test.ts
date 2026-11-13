@@ -6,7 +6,9 @@ import { PostgresRunStore } from "@internal/run-store";
 import { RunId } from "@trigger.dev/core/v3/isomorphic";
 import type { PrismaClient } from "@trigger.dev/database";
 import { $transaction } from "~/db.server";
-import { describe, expect, vi } from "vitest";
+import { afterAll, beforeAll, describe, expect, vi } from "vitest";
+import { metrics } from "@opentelemetry/api";
+import { createInMemoryMetrics } from "./utils/tracing";
 import { EnvironmentEncryptionService } from "~/services/environmentEncryption/service.server";
 import {
   EnvironmentSecretStore,
@@ -37,6 +39,16 @@ import {
   uniqueId,
   enrollProxyOnlyValue,
 } from "./fixtures/environmentVariablesFixtures";
+
+const telemetry = createInMemoryMetrics();
+beforeAll(() => {
+  metrics.disable();
+  metrics.setGlobalMeterProvider(telemetry.meterProvider);
+});
+afterAll(async () => {
+  await telemetry.shutdown();
+  metrics.disable();
+});
 
 const issuer = "https://runs.example.com";
 const serviceToken = "resolver-service-token-" + "x".repeat(32);
@@ -544,6 +556,28 @@ describe("secret proxy integration", () => {
       );
       expect(response.status).toBe(200);
       expect(response.headers.get("cache-control")).toBe("no-store");
+      // Catches: resolver refusals disappearing from exported telemetry or leaking request credentials into labels.
+      const exported = (await telemetry.getMetrics()).flatMap((resource) =>
+        resource.scopeMetrics.flatMap((scope) =>
+          scope.metrics.filter((metric) => metric.descriptor.name === "secret_proxy.failures")
+        )
+      );
+      const failures = exported.flatMap((metric) => metric.dataPoints);
+      expect(failures).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            attributes: { operation: "resolve", reason: "service_auth" },
+            value: 1,
+          }),
+          expect.objectContaining({
+            attributes: { operation: "resolve", reason: "limit" },
+            value: 1,
+          }),
+        ])
+      );
+      expect(JSON.stringify(exported)).not.toContain(token);
+      expect(JSON.stringify(exported)).not.toContain(handle);
+      expect(JSON.stringify(exported)).not.toContain("secret-one");
       const first = await f.service.resolve(serviceToken, token, requestFor(handle));
       expect(first.credentials).toHaveLength(1);
       expect(first.credentials[0]).toMatchObject({
@@ -807,6 +841,23 @@ describe("secret proxy integration", () => {
       await expect(
         disabled.preflightRuntime(f.project.id, f.environment.id, proxyValues, true, true)
       ).rejects.toBeInstanceOf(SecretProxyDeniedError);
+      // Catches: changing the enabled tag type silently disabling the rollout dashboard and monitor filters.
+      const disabledDenials = (await telemetry.getMetrics())
+        .flatMap((resource) =>
+          resource.scopeMetrics.flatMap((scope) =>
+            scope.metrics
+              .filter((metric) => metric.descriptor.name === "secret_proxy.delivery.requests")
+              .flatMap((metric) => metric.dataPoints)
+          )
+        )
+        .filter(
+          (point) =>
+            point.attributes.phase === "preflight" &&
+            point.attributes.enabled === "false" &&
+            point.attributes.outcome === "denied"
+        )
+        .at(-1);
+      expect(disabledDenials?.value).toBeGreaterThan(0);
       await expect(
         f.service.preflightRuntime(f.project.id, f.environment.id, proxyValues, true, false)
       ).rejects.toThrow("Worker does not support");

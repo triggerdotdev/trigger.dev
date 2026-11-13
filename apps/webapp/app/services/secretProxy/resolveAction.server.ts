@@ -8,6 +8,7 @@ import {
 } from "./service.server";
 import { z } from "zod";
 import { logger } from "../logger.server";
+import { recordSecretProxyFailure, type SecretProxyFailureReason } from "./telemetry.server";
 
 const headers = { "Cache-Control": "no-store", Pragma: "no-cache" };
 const resolutionDuration = singleton("secretProxyResolutionDuration", () =>
@@ -57,29 +58,35 @@ export async function resolveSecretProxyRequest(service: SecretProxyService, req
   return response;
 }
 
+function failure(reason: SecretProxyFailureReason, error: string, status: number) {
+  recordSecretProxyFailure("resolve", reason);
+  return json({ error }, { status, headers });
+}
+
 async function resolveRequest(service: SecretProxyService, request: Request) {
   const serviceToken = request.headers.get("x-trigger-secret-proxy-token");
   // Check the internal service credential before reading the body or examining a run token.
   if (!service.serviceAuthenticated(serviceToken)) {
-    return json({ error: "Unauthorized service" }, { status: 401, headers });
+    return failure("service_auth", "Unauthorized service", 401);
   }
-  if (request.method !== "POST")
-    return json({ error: "Method not allowed" }, { status: 405, headers });
+  if (request.method !== "POST") return failure("policy", "Method not allowed", 405);
   const authorization = request.headers.get("authorization");
-  if (!authorization?.startsWith("Bearer "))
-    return json({ error: "Invalid run token" }, { status: 401, headers });
+  if (!authorization?.startsWith("Bearer ")) return failure("token", "Invalid run token", 401);
   try {
     const body = await boundedJson(request);
     const result = await service.resolve(serviceToken, authorization.slice(7), body);
     return json(result, { headers });
   } catch (error) {
-    if (error instanceof Response) return error;
+    if (error instanceof Response) {
+      recordSecretProxyFailure("resolve", error.status === 413 ? "limit" : "policy");
+      return error;
+    }
     if (error instanceof SyntaxError || error instanceof z.ZodError) {
-      return json({ error: "Invalid request or policy" }, { status: 400, headers });
+      return failure("policy", "Invalid request or policy", 400);
     }
     if (error instanceof SecretProxyDeniedError) {
-      return json({ error: "Resolution denied" }, { status: 403, headers });
+      return failure(error.reason, "Resolution denied", 403);
     }
-    return json({ error: "Secret resolution unavailable" }, { status: 503, headers });
+    return failure("dependency", "Secret resolution unavailable", 503);
   }
 }

@@ -3,6 +3,7 @@ import type {
   WorkerApiRunRestoreOutcomeRequestBody,
 } from "@trigger.dev/core/v3/workers";
 import { chmod } from "node:fs/promises";
+import { register } from "../metrics.js";
 import { setTimeout as sleep } from "node:timers/promises";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { SecretProxyFixture, deploymentClaims, executionInput } from "./fixtures/secretProxy.js";
@@ -181,7 +182,21 @@ describe("SecretProxyBindings with real k3s and native interceptor UDS", () => {
       socketPath: fixture.socketPath,
     });
     try {
+      // Catches: swallowed startup-reset failures reporting proxy readiness or no observable control error.
+      const failedResets = async () => {
+        const metric = await register
+          .getSingleMetric("supervisor_secret_proxy_control_requests_total")!
+          .get();
+        return metric.values.find(
+          (point) => point.labels.operation === "reset" && point.labels.outcome === "error"
+        )!.value;
+      };
+      const before = await failedResets();
       await restarted.start();
+      expect(await failedResets()).toBeGreaterThan(before);
+      expect(await register.getSingleMetricAsString("supervisor_secret_proxy_ready")).toContain(
+        "supervisor_secret_proxy_ready 0"
+      );
       expect(await restarted.prepareStart(caller, false)).toBe(false);
       const response = acknowledged(caller, "snap_normal");
       expect(await restarted.complete(caller, "snap_normal", async () => response)).toEqual(
@@ -189,6 +204,9 @@ describe("SecretProxyBindings with real k3s and native interceptor UDS", () => {
       );
       await chmod(fixture.socketPath, 0o600);
       await restarted.start();
+      expect(await register.getSingleMetricAsString("supervisor_secret_proxy_ready")).toContain(
+        "supervisor_secret_proxy_ready 1"
+      );
       await registrationPresent(caller, false);
       expect(await restarted.prepareStart(caller, false)).toBe(false);
       expect(await restarted.prepareStart(fresh, false)).toBe(false);
