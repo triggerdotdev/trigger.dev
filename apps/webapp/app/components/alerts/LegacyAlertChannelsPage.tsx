@@ -1,6 +1,6 @@
 import { getFormProps, useForm } from "@conform-to/react";
 import { GlobeLinesIcon } from "~/assets/icons/GlobeLinesIcon";
-import { parseWithZod } from "@conform-to/zod/v4";
+import { parseWithZod } from "~/utils/conform";
 import {
   BellAlertIcon,
   BellSlashIcon,

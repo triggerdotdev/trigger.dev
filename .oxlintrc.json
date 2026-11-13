@@ -211,6 +211,57 @@
       "rules": {
         "react/jsx-no-undef": "off"
       }
+    },
+    {
+      "files": ["apps/webapp/**/*.ts", "apps/webapp/**/*.tsx"],
+      "rules": {
+        "no-restricted-imports": [
+          "error",
+          {
+            "paths": [
+              {
+                "name": "@conform-to/zod",
+                "importNames": ["parseWithZod"],
+                "message": "Import parseWithZod from \"~/utils/conform\" so every form gets its size limits."
+              },
+              {
+                "name": "@conform-to/zod/v3",
+                "importNames": ["parseWithZod"],
+                "message": "Import parseWithZod from \"~/utils/conform\" so every form gets its size limits."
+              },
+              {
+                "name": "@conform-to/zod/v4",
+                "importNames": ["parseWithZod"],
+                "message": "Import parseWithZod from \"~/utils/conform\" so every form gets its size limits."
+              },
+              {
+                "name": "@conform-to/react",
+                "importNames": ["parse"],
+                "message": "Import parseWithZod from \"~/utils/conform\" so every form gets its size limits."
+              },
+              {
+                "name": "@conform-to/react/future",
+                "importNames": ["parseSubmission"],
+                "message": "Import parseWithZod from \"~/utils/conform\" so every form gets its size limits."
+              },
+              {
+                "name": "@conform-to/dom",
+                "message": "Import parseWithZod from \"~/utils/conform\" so every form gets its size limits."
+              },
+              {
+                "name": "@conform-to/dom/future",
+                "message": "Import parseWithZod from \"~/utils/conform\" so every form gets its size limits."
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "files": ["apps/webapp/app/utils/conform.ts"],
+      "rules": {
+        "no-restricted-imports": "off"
+      }
     }
   ]
 }

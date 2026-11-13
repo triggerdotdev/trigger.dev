@@ -1,6 +1,6 @@
 import { getFormProps, useForm, type SubmissionResult } from "@conform-to/react";
 
-import { parseWithZod } from "@conform-to/zod/v4";
+import { parseWithZod } from "~/utils/conform";
 import { Form, useActionData } from "@remix-run/react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { z } from "zod";
