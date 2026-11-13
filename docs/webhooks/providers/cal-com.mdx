@@ -29,13 +29,13 @@ To run a subscriber only for some events, add a [filter](/webhooks/filters) on `
 | --- | --- |
 | Source | `webhooks.calCom()` |
 | Verification | HMAC-SHA256 in `x-cal-signature-256` |
-| Credential | Signing secret you generate on Trigger.dev, or one issued by Cal.com |
+| Credential | Secret you generate on Trigger.dev |
 | Event type | `event.triggerEvent` |
 | Cal.com docs | [Cal.com webhook docs](https://cal.com/docs/developing/guides/automation/webhooks) |
 
 ## Set up Cal.com
 
 1. Start `trigger dev` or deploy, then copy the endpoint's **Webhook URL** from the **Webhooks** page.
-2. Add the webhook URL as a webhook in Cal.com and select the events your subscribers need. See Cal.com's [webhook docs](https://cal.com/docs/developing/guides/automation/webhooks) for where its webhook settings are.
-3. If Cal.com shows a signing secret when you create the webhook, copy it and choose **Set signing secret** on the Trigger.dev endpoint. If Cal.com asks you for a secret, choose **Generate secret** on the endpoint and paste the value into Cal.com.
+2. Choose **Generate secret** on the Trigger.dev endpoint and copy the value.
+3. In Cal.com, open **Settings > Developer > Webhooks** and add a webhook with the webhook URL and the events your subscribers need. Paste the secret into its secret field. The secret is optional in Cal.com but required here: without it, Cal.com doesn't sign deliveries and every one is rejected. Cal.com hides the secret after you save.
 4. Send a test event from Cal.com, or use the endpoint's **Test** tab, and check the endpoint's **Deliveries** tab. See [Verify the connection](/webhooks/connect#verify-the-connection) if nothing arrives.
