@@ -1,0 +1,46 @@
+---
+title: "GitHub webhooks"
+sidebarTitle: "GitHub"
+description: "Receive and verify GitHub webhooks with Trigger.dev. Check the HMAC-SHA256 signature in x-hub-signature-256 and run a task for each GitHub event, filtered on header.x-github-event."
+---
+
+**`webhooks.github()` verifies the HMAC-SHA256 signature GitHub sends in `x-hub-signature-256` on every request.**
+
+```ts /trigger/github.ts
+import { webhook, webhooks } from "@trigger.dev/sdk";
+
+export const github = webhooks.endpoint.define({
+  id: "github",
+  source: webhooks.github(),
+});
+
+export const githubEvents = webhook({
+  id: "github-events",
+  endpoint: github,
+  filter: "header.x-github-event == 'issues'",
+  onEvent: async ({ event }) => {
+    console.log(event);
+  },
+});
+```
+
+| Setting | Value |
+| --- | --- |
+| Source | `webhooks.github()` |
+| Verification | HMAC-SHA256 in `x-hub-signature-256` |
+| Credential | Secret you generate on Trigger.dev |
+| Event type | `header.x-github-event` |
+| GitHub docs | [GitHub webhook docs](https://docs.github.com/en/webhooks/using-webhooks/validating-webhook-deliveries) |
+
+## Set up GitHub
+
+1. Start `trigger dev` or deploy, then copy the endpoint's **Webhook URL** from the **Webhooks** page.
+2. Choose **Generate secret** on the Trigger.dev endpoint and copy the value. GitHub accepts a secret you choose.
+3. Create the webhook. For a repository webhook with the `gh` CLI:
+
+   ```bash
+   gh api repos/OWNER/REPO/hooks -f name=web -f "config[url]=<webhook URL>" -f "config[content_type]=json" -f "config[secret]=<secret>" -f "events[]=issues" -F active=true
+   ```
+
+   Use `orgs/ORG/hooks` for an organization webhook. For a GitHub App, set the webhook URL and secret in the app's settings. Set the content type to `json`.
+4. Trigger an event in the repository, or use the endpoint's **Test** tab, and check the endpoint's **Deliveries** tab. See [Verify the connection](/webhooks/connect#verify-the-connection) if nothing arrives.

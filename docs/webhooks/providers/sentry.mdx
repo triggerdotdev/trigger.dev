@@ -1,0 +1,41 @@
+---
+title: "Sentry webhooks"
+sidebarTitle: "Sentry"
+description: "Receive and verify Sentry webhooks with Trigger.dev. Check the HMAC-SHA256 signature in sentry-hook-signature and run a task for each Sentry event, filtered on header.sentry-hook-resource."
+---
+
+**`webhooks.sentry()` verifies the HMAC-SHA256 signature Sentry sends in `sentry-hook-signature` on every request.**
+
+```ts /trigger/sentry.ts
+import { webhook, webhooks } from "@trigger.dev/sdk";
+
+export const sentry = webhooks.endpoint.define({
+  id: "sentry",
+  source: webhooks.sentry(),
+});
+
+export const sentryEvents = webhook({
+  id: "sentry-events",
+  endpoint: sentry,
+  onEvent: async ({ event }) => {
+    console.log(event);
+  },
+});
+```
+
+To run a subscriber only for some events, add a [filter](/webhooks/filters) on `header.sentry-hook-resource`.
+
+| Setting | Value |
+| --- | --- |
+| Source | `webhooks.sentry()` |
+| Verification | HMAC-SHA256 in `sentry-hook-signature` |
+| Credential | The integration's Client Secret, issued by Sentry |
+| Event type | `header.sentry-hook-resource` |
+| Sentry docs | [Sentry webhook docs](https://docs.sentry.io/integrations/integration-platform/webhooks/) |
+
+## Set up Sentry
+
+1. Start `trigger dev` or deploy, then copy the endpoint's **Webhook URL** from the **Webhooks** page.
+2. In Sentry, open **Settings > Developer Settings > Custom Integrations** and create an internal integration. Set its **Webhook URL** to the webhook URL, turn on alert rule action if you want alerts, and enable the resource types (such as issue, error or comment) your subscribers need.
+3. Sentry signs webhooks with the integration's **Client Secret**. Copy it from the integration's page, then choose **Set signing secret** on the Trigger.dev endpoint.
+4. Send a test event from Sentry, or use the endpoint's **Test** tab, and check the endpoint's **Deliveries** tab. See [Verify the connection](/webhooks/connect#verify-the-connection) if nothing arrives.

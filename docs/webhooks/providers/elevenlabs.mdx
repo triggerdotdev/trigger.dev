@@ -1,0 +1,41 @@
+---
+title: "ElevenLabs webhooks"
+sidebarTitle: "ElevenLabs"
+description: "Receive and verify ElevenLabs webhooks with Trigger.dev. Check the HMAC-SHA256 signature in elevenlabs-signature and run a task for each ElevenLabs event, filtered on event.type."
+---
+
+**`webhooks.elevenlabs()` verifies the HMAC-SHA256 signature ElevenLabs sends in `elevenlabs-signature` on every request.**
+
+```ts /trigger/elevenlabs.ts
+import { webhook, webhooks } from "@trigger.dev/sdk";
+
+export const elevenlabs = webhooks.endpoint.define({
+  id: "elevenlabs",
+  source: webhooks.elevenlabs(),
+});
+
+export const elevenlabsEvents = webhook({
+  id: "elevenlabs-events",
+  endpoint: elevenlabs,
+  onEvent: async ({ event }) => {
+    console.log(event);
+  },
+});
+```
+
+To run a subscriber only for some events, add a [filter](/webhooks/filters) on `event.type`.
+
+| Setting | Value |
+| --- | --- |
+| Source | `webhooks.elevenlabs()` |
+| Verification | HMAC-SHA256 in `elevenlabs-signature` |
+| Credential | Signing secret issued by ElevenLabs |
+| Event type | `event.type` |
+| ElevenLabs docs | [ElevenLabs webhook docs](https://elevenlabs.io/docs/eleven-agents/workflows/post-call-webhooks) |
+
+## Set up ElevenLabs
+
+1. Start `trigger dev` or deploy, then copy the endpoint's **Webhook URL** from the **Webhooks** page.
+2. Add the webhook URL as a webhook in ElevenLabs and select the events your subscribers need. See ElevenLabs's [webhook docs](https://elevenlabs.io/docs/eleven-agents/workflows/post-call-webhooks) for where its webhook settings are.
+3. Copy the signing secret ElevenLabs shows for the webhook, then choose **Set signing secret** on the Trigger.dev endpoint.
+4. Send a test event from ElevenLabs, or use the endpoint's **Test** tab, and check the endpoint's **Deliveries** tab. See [Verify the connection](/webhooks/connect#verify-the-connection) if nothing arrives.

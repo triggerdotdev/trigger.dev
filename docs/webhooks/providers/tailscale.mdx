@@ -1,0 +1,43 @@
+---
+title: "Tailscale webhooks"
+sidebarTitle: "Tailscale"
+description: "Receive and verify Tailscale webhooks with Trigger.dev. Check the HMAC-SHA256 signature in tailscale-webhook-signature and run a task for each Tailscale event."
+---
+
+**`webhooks.tailscale()` verifies the HMAC-SHA256 signature Tailscale sends in `tailscale-webhook-signature` on every request.**
+
+```ts /trigger/tailscale.ts
+import { webhook, webhooks } from "@trigger.dev/sdk";
+
+export const tailscale = webhooks.endpoint.define({
+  id: "tailscale",
+  source: webhooks.tailscale(),
+});
+
+export const tailscaleEvents = webhook({
+  id: "tailscale-events",
+  endpoint: tailscale,
+  filter: "event any ( type == 'nodeCreated' )",
+  onEvent: async ({ event }) => {
+    console.log(event);
+  },
+});
+```
+
+| Setting | Value |
+| --- | --- |
+| Source | `webhooks.tailscale()` |
+| Verification | HMAC-SHA256 in `tailscale-webhook-signature` |
+| Credential | Signing secret issued by Tailscale |
+| Tailscale docs | [Tailscale webhook docs](https://tailscale.com/docs/features/webhooks) |
+
+## Set up Tailscale
+
+1. Start `trigger dev` or deploy, then copy the endpoint's **Webhook URL** from the **Webhooks** page.
+2. On the **Webhooks** page of the Tailscale admin console, select **Add endpoint**, enter the webhook URL, and choose the events your subscribers need. This needs the Owner, Admin, Network admin or IT admin role.
+3. Tailscale shows the webhook secret once, right after the endpoint is added. Copy it then, and choose **Set signing secret** on the Trigger.dev endpoint.
+4. Use the Tailscale endpoint's menu, **Test endpoint > Send test event**, or use the endpoint's **Test** tab, and check the endpoint's **Deliveries** tab. See [Verify the connection](/webhooks/connect#verify-the-connection) if nothing arrives.
+
+## Batched events
+
+Each request body is a JSON array of events, and Tailscale can batch several into one request. Filters match an event anywhere in the array with `event any ( ... )`, and a handler should process every event in the array.

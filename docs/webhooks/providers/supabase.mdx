@@ -1,0 +1,41 @@
+---
+title: "Supabase webhooks"
+sidebarTitle: "Supabase"
+description: "Receive Supabase database webhooks with Trigger.dev. Check a shared bearer secret and run a task for each insert, update or delete."
+---
+
+**`webhooks.supabase()` checks a shared secret on every request, because Supabase database webhooks aren't signed.**
+
+```ts /trigger/supabase.ts
+import { webhook, webhooks } from "@trigger.dev/sdk";
+
+export const supabase = webhooks.endpoint.define({
+  id: "supabase",
+  source: webhooks.supabase(),
+});
+
+export const supabaseEvents = webhook({
+  id: "supabase-events",
+  endpoint: supabase,
+  filter: "event.type == 'INSERT' && event.table == 'orders'",
+  onEvent: async ({ event }) => {
+    console.log(event);
+  },
+});
+```
+
+| Setting | Value |
+| --- | --- |
+| Source | `webhooks.supabase()` |
+| Verification | Shared secret as `Authorization: Bearer` |
+| Credential | Secret you generate on Trigger.dev |
+| Event type | `event.type` |
+| Supabase docs | [Supabase webhook docs](https://supabase.com/docs/guides/database/webhooks) |
+
+## Set up Supabase
+
+1. Start `trigger dev` or deploy, then copy the endpoint's **Webhook URL** from the **Webhooks** page.
+2. Choose **Generate secret** on the Trigger.dev endpoint and copy the value. Supabase database webhooks aren't signed, so the endpoint checks this shared secret instead.
+3. On the **Database Webhooks** page of the Supabase dashboard, create a webhook on the table and events (`INSERT`, `UPDATE`, `DELETE`) your subscribers need, with type **HTTP Request**, method `POST`, and the webhook URL.
+4. Under **HTTP Headers**, add `Authorization` with the value `Bearer <secret>`.
+5. Insert a row into the table, or use the endpoint's **Test** tab, and check the endpoint's **Deliveries** tab. See [Verify the connection](/webhooks/connect#verify-the-connection) if nothing arrives.

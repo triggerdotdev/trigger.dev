@@ -1,0 +1,41 @@
+---
+title: "Infisical webhooks"
+sidebarTitle: "Infisical"
+description: "Receive and verify Infisical webhooks with Trigger.dev. Check the HMAC-SHA256 signature in x-infisical-signature and run a task for each Infisical event, filtered on event.event."
+---
+
+**`webhooks.infisical()` verifies the HMAC-SHA256 signature Infisical sends in `x-infisical-signature` on every request.**
+
+```ts /trigger/infisical.ts
+import { webhook, webhooks } from "@trigger.dev/sdk";
+
+export const infisical = webhooks.endpoint.define({
+  id: "infisical",
+  source: webhooks.infisical(),
+});
+
+export const infisicalEvents = webhook({
+  id: "infisical-events",
+  endpoint: infisical,
+  filter: "event.event == 'secrets.modified'",
+  onEvent: async ({ event }) => {
+    console.log(event);
+  },
+});
+```
+
+| Setting | Value |
+| --- | --- |
+| Source | `webhooks.infisical()` |
+| Verification | HMAC-SHA256 in `x-infisical-signature` |
+| Credential | Secret you generate on Trigger.dev |
+| Event type | `event.event` |
+| Infisical docs | [Infisical webhook docs](https://infisical.com/docs/documentation/platform/webhooks) |
+
+## Set up Infisical
+
+1. Start `trigger dev` or deploy, then copy the endpoint's **Webhook URL** from the **Webhooks** page.
+2. Choose **Generate secret** on the Trigger.dev endpoint and copy the value.
+3. In Infisical, go to **Project Settings > Webhooks** and create a **General** webhook with the webhook URL. Optionally limit it to an environment and secret path.
+4. Paste the secret into the webhook's secret key field. The secret is required: Infisical only signs webhooks that have one, and the endpoint rejects unsigned deliveries.
+5. Send a test event from Infisical, or use the endpoint's **Test** tab, and check the endpoint's **Deliveries** tab. See [Verify the connection](/webhooks/connect#verify-the-connection) if nothing arrives.

@@ -1,0 +1,87 @@
+---
+title: "Custom webhook providers"
+sidebarTitle: "Custom providers"
+description: "Verify webhooks from a provider that isn't built in by passing your own HMAC, shared-secret, URL-secret or public-key configuration to webhooks.custom()."
+---
+
+**`webhooks.custom()` verifies any provider that signs or authenticates its webhooks with one of four supported schemes.** Use it when the provider isn't in the [built-in providers](/webhooks/providers). Subscribers, filters, deliveries and the [setup prompt](/webhooks/connect#set-it-up-with-an-ai-agent) work the same as with a built-in provider.
+
+## Define a custom provider
+
+Pass the verification configuration to `webhooks.custom()`. This source verifies an HMAC-SHA256 signature over the raw body in `x-webhook-signature` and uses the event's `id` for deduplication:
+
+```ts /trigger/internal.ts
+import { webhook, webhooks } from "@trigger.dev/sdk";
+
+export const internal = webhooks.endpoint.define({
+  id: "internal",
+  source: webhooks.custom<{ id: string; message: string }>(
+    {
+      scheme: "hmac",
+      algorithm: "sha256",
+      encoding: "hex",
+      signatureHeader: "x-webhook-signature",
+      signingString: "raw",
+      idempotencyField: { from: "body", name: "id" },
+    },
+    { setupPrompt: "Add the URL under Settings > Webhooks in the admin app and paste the secret there." }
+  ),
+});
+
+export const internalEvents = webhook({
+  id: "internal-events",
+  endpoint: internal,
+  onEvent: async ({ event }) => {
+    console.log(event.message);
+  },
+});
+```
+
+To accept a signature from more than one header, list the extra headers in `additionalSignatureHeaders` (up to 4). Trigger.dev parses each one like `signatureHeader` and accepts a match in any of them. Use this when a provider sends a second signature, for example one signed with the previous secret during a rotation. `signatureHeader` is still required. The built-in [`hookdeck()`](/webhooks/providers/hookdeck) source already checks `X-Hookdeck-Signature-2` this way.
+
+The optional `setupPrompt` is the provider-specific part of the endpoint's [setup prompt](/webhooks/connect#set-it-up-with-an-ai-agent): where the provider's webhook settings are and how to register a URL there. Trigger.dev adds the URL, the subscribers' filters and the signing secret steps around it.
+
+## Form-encoded bodies
+
+A verified body sent as `application/x-www-form-urlencoded` reaches subscribers as an object of its fields, so filters, `chat.event` keys and waiter `match` paths read form fields the way they read JSON fields. A repeated field becomes an array of its values. Slack slash commands and other providers that post forms work this way.
+
+By default an accepted request gets a `200` with a small JSON receipt. Some providers show the response body to the user who triggered the request, so pass `response: { acceptedBody: "empty" }` to answer with an empty `200` instead:
+
+```ts /trigger/forms.ts
+import { webhook, webhooks } from "@trigger.dev/sdk";
+
+export const forms = webhooks.endpoint.define({
+  id: "forms",
+  source: webhooks.custom<{ command: string; text: string; user_id: string }>(
+    { scheme: "url-secret", placement: "query", paramName: "token" },
+    { response: { acceptedBody: "empty" } }
+  ),
+});
+
+export const commands = webhook({
+  id: "commands",
+  endpoint: forms,
+  filter: "event.command == '/deploy'",
+  onEvent: async ({ event }) => {
+    console.log(event.user_id, event.text);
+  },
+});
+```
+
+
+
+## Verification schemes
+
+`webhooks.custom()` supports these schemes:
+
+| Scheme | Verification |
+| --- | --- |
+| `hmac` | Computes an HMAC over the raw body or a signing template and compares it with a request header. |
+| `shared-secret` | Compares a static token supplied in a header, bearer token, basic authentication, or request body. |
+| `url-secret` | Compares a token in a URL query parameter. Hosted endpoints don't support path placement. |
+| `asymmetric` | Verifies an Ed25519, ECDSA (P-256 with SHA-256, P-384 with SHA-384), or RSA-SHA256 signature using the provider's public key. Set `prehash: "sha256"` when the provider signs a SHA-256 digest of the signing string instead of the string itself. |
+
+<Warning>
+  Query parameters can appear in access logs, proxies, and traces. Prefer a header-based scheme when
+  the provider supports one.
+</Warning>

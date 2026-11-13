@@ -67,7 +67,7 @@ Match on values you control, such as your own order id in the provider object's 
 | --- | --- |
 | `event.*` | The verified event body, for example `event.data.object.id`. |
 | `header.*` | A request header, matched case-insensitively, for example `header.x-shop-domain`. |
-| `webhook.*` | The endpoint: `id`, `source`, `externalRef`, `tenantId`, or `deliveryId`. |
+| `webhook.*` | The endpoint: `id`, `source`, `externalRef`, `tenantId`, or `deliveryId` (the provider's event ID, or a hash of the request when the provider sends none; not the `whd_` id). |
 
 A waiter can match up to five paths, and each value is a string, number or boolean. Paths are checked against the endpoint's event type at build time: an unknown field on a typed event, a path to an object, or a path without a namespace is a type error. The API refuses the same paths at create time.
 
@@ -96,7 +96,7 @@ if (result.ok) {
 | Output field | Value |
 | --- | --- |
 | `event` | The verified event body, typed by the endpoint's source. |
-| `headers` | The request headers, with credentials such as signatures removed. |
+| `headers` | The request headers, without `authorization`, cookie or shared-secret headers. Headers your `match` uses are always kept; the rest are capped at 4 KB. |
 | `deliveryId` | The delivery that resumed the run (`whd_...`). |
 | `endpoint` | The endpoint the delivery arrived on. |
 
