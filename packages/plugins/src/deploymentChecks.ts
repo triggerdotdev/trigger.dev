@@ -24,8 +24,11 @@ export type DeploymentCheckInput = {
   decision: DeploymentCheckDecision & { plan: Exclude<DeploymentCheckPlan, "skip"> };
 };
 
-/** pass and fail are answers. unavailable means there is no answer. */
-export type DeploymentCheckOutcome = "pass" | "fail" | "unavailable";
+/**
+ * pass, flagged and fail are answers. flagged is a pass that found something worth a look: it never
+ * stops a deployment. unavailable means there is no answer.
+ */
+export type DeploymentCheckOutcome = "pass" | "flagged" | "fail" | "unavailable";
 
 export type DeploymentCheckResult = {
   outcome: DeploymentCheckOutcome;
