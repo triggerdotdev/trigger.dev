@@ -6,7 +6,7 @@ sidebarTitle: "Linear agents"
 
 Linear opens an **agent session** when someone @mentions your app in an issue or delegates (assigns) an issue to it. `linear()` from `@trigger.dev/linear` is a [channel](/webhooks/channels) connector for those sessions: each one becomes a durable Trigger.dev [session](/ai-chat/sessions), the user's prompt runs as a turn, and the agent's work shows up in Linear as thoughts, actions, a plan, an approval card when it needs a decision, and a response when it is done.
 
-Linear and [Slack](/webhooks/slack) have deep integrations built on top of webhooks. Other [providers](/webhooks/providers) deliver raw events for your task to handle. The Linear connector also implements Linear's agent session UI, so you don't post thoughts, plans or approval cards yourself. To receive Linear events without an agent, see the [Linear provider page](/webhooks/providers/linear).
+Unlike other [providers](/webhooks/providers), which deliver raw events, Linear is a deep integration: the connector handles Linear's agent session UI for you.
 
 ```ts
 import { webhooks } from "@trigger.dev/sdk";

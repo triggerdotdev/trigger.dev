@@ -6,7 +6,7 @@ sidebarTitle: "Slack agents"
 
 **`slack()` from `@trigger.dev/slack` turns a `chat.agent` into a native Slack agent.** Each Slack agent session (a conversation with the agent, or a thread in a channel) becomes a durable Trigger.dev [session](/ai-chat/sessions). A message runs as a turn, the session shows the agent working, the reply streams into the thread as the model writes it, and Slack's stop button stops the turn.
 
-Slack and [Linear](/webhooks/linear) have deep integrations built on top of webhooks. Other [providers](/webhooks/providers) deliver raw events for your task to handle. The Slack connector also implements Slack's agent features, so you don't build status updates, streaming replies or approvals yourself. To receive Slack events without an agent, see the [Slack provider page](/webhooks/providers/slack).
+Unlike other [providers](/webhooks/providers), which deliver raw events, Slack is a deep integration: the connector handles Slack's agent features for you.
 
 ```ts /trigger/support.ts
 import { webhooks } from "@trigger.dev/sdk";
