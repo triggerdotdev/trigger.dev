@@ -103,13 +103,15 @@ The CLI registers the `github` endpoint you declared in your **Development** env
 
 In the [Trigger.dev dashboard](https://cloud.trigger.dev), open your project, make sure the **Development** environment is selected, and choose **Webhooks** in the side menu. The `github` endpoint is listed with its **Signing secret** column set to **Needs secret**. Every delivery is rejected until an endpoint has its secret.
 
-Open the `github` endpoint and choose **Generate secret**. The secret is shown once: copy it if you'll connect GitHub later. Back on the **Webhooks** page, the column now says **Ready**.
+Open the `github` endpoint, choose **Generate secret** and confirm. The secret is shown once: copy it if you'll connect GitHub later. Back on the **Webhooks** page, the column now says **Ready**.
 
 </Step>
 
 <Step title="Send a test event">
 
-On the `github` endpoint's page, open the **Test** tab, pick a sample event and choose **Send event**. The delivery appears on the **Deliveries** tab. Open it to see that it reached the `github-events` subscriber, then follow the link to the run to see the logged event.
+On the `github` endpoint's page, open the **Test** tab. It starts with a sample body. Under **Headers**, add `x-github-event` with a value such as `push` so the handler logs an event name, then choose **Send event**. The test is signed with the endpoint's secret and runs the full delivery pipeline. Sending the same body again is deduplicated to the first delivery, so change the body to send another.
+
+The delivery appears on the **Deliveries** tab. Open it and check **Targets** to see that it reached the `github-events` subscriber, then follow the link to the run to see the logged event.
 
 </Step>
 
