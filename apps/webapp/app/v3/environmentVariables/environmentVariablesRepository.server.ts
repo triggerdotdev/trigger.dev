@@ -20,7 +20,7 @@ import {
   type PrismaClientOrTransaction,
 } from "~/db.server";
 import { env } from "~/env.server";
-import { getSecretStore } from "~/services/secrets/secretStore.server";
+import { logger } from "~/services/logger.server";
 import {
   effectiveEnvironmentVariables,
   assertVariablesNotProxyOnly,
@@ -46,8 +46,8 @@ import { generateFriendlyId } from "../friendlyIdentifiers";
 import {
   type CreateEnvironmentVariables,
   type CreateResult,
-  type DeleteEnvironmentVariable,
   type DeleteEnvironmentVariableValue,
+  type DeleteValuesResult,
   type EditEnvironmentVariable,
   type EditEnvironmentVariableValue,
   type EnvironmentVariable,
@@ -79,6 +79,45 @@ function parseSecretKey(key: string) {
 }
 
 const SecretValue = z.object({ secret: z.string() });
+
+/**
+ * What a caller is told when a write throws. An error from the database never reaches them as
+ * text (it names tables, constraints and source lines): it is logged here and replaced with a
+ * sentence. Errors raised by this app keep their own message.
+ */
+function writeFailure(error: unknown, operation: string, projectId: string) {
+  if (!(error instanceof Error) || !error.name.startsWith("PrismaClient")) {
+    return {
+      success: false as const,
+      error: error instanceof Error ? error.message : "Something went wrong",
+    };
+  }
+
+  const code = error instanceof Prisma.PrismaClientKnownRequestError ? error.code : undefined;
+  // P2003 and P2025: a row this write depends on was deleted under it, in practice the variable
+  // or the value, by a delete that committed first. P2002: another request wrote the same row.
+  if (code === "P2003" || code === "P2025" || code === "P2002") {
+    logger.warn("Environment variable write lost to a concurrent change", {
+      operation,
+      projectId,
+      error,
+    });
+    return {
+      success: false as const,
+      conflict: true as const,
+      error:
+        code === "P2002"
+          ? "This environment variable was changed by someone else while your change was being saved. Try again."
+          : "This environment variable was deleted while your change was being saved. Try again.",
+    };
+  }
+
+  logger.error("Environment variable write failed", { operation, projectId, error });
+  return {
+    success: false as const,
+    error: "Something went wrong and your change wasn't saved. Try again.",
+  };
+}
 
 export class EnvironmentVariablesRepository implements Repository {
   #encryption?: EnvironmentEncryptionService;
@@ -410,20 +449,7 @@ export class EnvironmentVariablesRepository implements Repository {
         success: true as const,
       };
     } catch (error) {
-      if (error instanceof Prisma.PrismaClientKnownRequestError) {
-        // The error code for unique constraint violation in Prisma is P2002
-        if (error.code === "P2002") {
-          return {
-            success: false as const,
-            error: `There was already an existing field`,
-          };
-        }
-      }
-
-      return {
-        success: false as const,
-        error: error instanceof Error ? error.message : "Something went wrong",
-      };
+      return writeFailure(error, "create", projectId);
     }
   }
 
@@ -561,10 +587,7 @@ export class EnvironmentVariablesRepository implements Repository {
         success: true as const,
       };
     } catch (error) {
-      return {
-        success: false as const,
-        error: error instanceof Error ? error.message : "Something went wrong",
-      };
+      return writeFailure(error, "edit", projectId);
     }
   }
 
@@ -688,10 +711,7 @@ export class EnvironmentVariablesRepository implements Repository {
         success: true as const,
       };
     } catch (error) {
-      return {
-        success: false as const,
-        error: error instanceof Error ? error.message : "Something went wrong",
-      };
+      return writeFailure(error, "editValue", projectId);
     }
   }
 
@@ -939,86 +959,6 @@ export class EnvironmentVariablesRepository implements Repository {
     ).variables;
   }
 
-  async delete(projectId: string, options: DeleteEnvironmentVariable): Promise<Result> {
-    const project = await this.prismaClient.project.findFirst({
-      where: {
-        id: projectId,
-        deletedAt: null,
-      },
-      select: {
-        environments: {
-          select: {
-            id: true,
-          },
-        },
-      },
-    });
-
-    if (!project) {
-      return { success: false as const, error: "Project not found" };
-    }
-
-    try {
-      await $transaction(this.prismaClient, "delete env var", async (tx) => {
-        // Enrollment and creation take this identity lock; capture their committed values after it.
-        await tx.$queryRaw`SELECT id FROM "EnvironmentVariable" WHERE id = ${options.id} AND "projectId" = ${projectId} FOR UPDATE`;
-        const environmentVariable = await tx.environmentVariable.findFirst({
-          select: {
-            id: true,
-            key: true,
-            values: {
-              select: {
-                id: true,
-                environmentId: true,
-                valueReference: { select: { key: true } },
-              },
-            },
-          },
-          where: { id: options.id, projectId },
-        });
-        if (!environmentVariable) throw new Error("Environment variable not found");
-        await assertVariablesNotProxyOnly(
-          tx,
-          projectId,
-          environmentVariable.values.map((value) => value.environmentId),
-          [environmentVariable.key]
-        );
-        await tx.environmentVariable.delete({
-          where: {
-            id: options.id,
-          },
-        });
-
-        const secretStore = getSecretStore("DATABASE", {
-          prismaClient: tx,
-        });
-
-        //delete the secret values and references
-        for (const value of environmentVariable.values) {
-          const key = secretKey(projectId, value.environmentId, environmentVariable.key);
-          await secretStore.deleteSecret(key);
-
-          if (value.valueReference) {
-            await tx.secretReference.delete({
-              where: {
-                key: value.valueReference.key,
-              },
-            });
-          }
-        }
-      });
-
-      return {
-        success: true as const,
-      };
-    } catch (error) {
-      return {
-        success: false as const,
-        error: error instanceof Error ? error.message : "Something went wrong",
-      };
-    }
-  }
-
   async deleteValue(projectId: string, options: DeleteEnvironmentVariableValue): Promise<Result> {
     const project = await this.prismaClient.project.findFirst({
       where: {
@@ -1026,11 +966,7 @@ export class EnvironmentVariablesRepository implements Repository {
         deletedAt: null,
       },
       select: {
-        environments: {
-          select: {
-            id: true,
-          },
-        },
+        id: true,
       },
     });
 
@@ -1038,80 +974,135 @@ export class EnvironmentVariablesRepository implements Repository {
       return { success: false as const, error: "Project not found" };
     }
 
+    // Through the batch path, which locks the variable: whether this is its last value is
+    // decided inside the transaction, so a value being added meanwhile keeps its variable.
+    const result = await this.deleteValues(projectId, [options]);
+    if (!result.success) {
+      return result;
+    }
+    if (result.deleted.length > 0) {
+      return { success: true as const };
+    }
+
     const environmentVariable = await this.prismaClient.environmentVariable.findFirst({
-      select: {
-        id: true,
-        key: true,
-        values: {
+      select: { id: true },
+      where: { id: options.id, projectId },
+    });
+
+    return {
+      success: false as const,
+      error: environmentVariable
+        ? "Environment variable value not found"
+        : "Environment variable not found",
+    };
+  }
+
+  /**
+   * Deletes several values in one transaction: all of them or none. Each value goes with its
+   * secret, its secret reference and its row, and a variable left with no value goes with it. A value that is already gone is skipped, so the result lists
+   * what was deleted. The caller authorizes every environment first.
+   */
+  async deleteValues(
+    projectId: string,
+    values: DeleteEnvironmentVariableValue[]
+  ): Promise<DeleteValuesResult> {
+    const requested = new Set(values.map((value) => `${value.id}:${value.environmentId}`));
+    const variableIds = [...new Set(values.map((value) => value.id))];
+    const environmentIds = [...new Set(values.map((value) => value.environmentId))];
+
+    try {
+      const deleted = await $transaction(this.prismaClient, "delete env var values", async (tx) => {
+        // Lock the variables first, in id order, so overlapping batches queue instead of
+        // deadlocking and each counts only what it deleted. A value being added to one of them
+        // meanwhile either commits first, and keeps its variable below, or waits for this
+        // transaction and then fails on the deleted variable: never deleted unseen by the cascade.
+        await tx.$queryRaw`SELECT id FROM "EnvironmentVariable" WHERE "projectId" = ${projectId} AND id = ANY(${variableIds}) ORDER BY id FOR UPDATE`;
+
+        const variables = await tx.environmentVariable.findMany({
+          where: { projectId, id: { in: boundedIn(variableIds) } },
           select: {
             id: true,
-            environmentId: true,
-            valueReference: {
+            key: true,
+            values: {
+              where: { environmentId: { in: boundedIn(environmentIds) } },
               select: {
-                key: true,
+                id: true,
+                environmentId: true,
+                valueReference: { select: { key: true } },
               },
             },
           },
-        },
-      },
-      where: {
-        id: options.id,
-      },
-    });
-
-    if (!environmentVariable) {
-      return { success: false as const, error: "Environment variable not found" };
-    }
-
-    const value = environmentVariable.values.find((v) => v.environmentId === options.environmentId);
-
-    if (!value) {
-      return { success: false as const, error: "Environment variable value not found" };
-    }
-
-    // If this is the last value, delete the whole variable
-    if (environmentVariable.values.length === 1) {
-      return this.delete(projectId, { id: options.id });
-    }
-
-    try {
-      await $transaction(this.prismaClient, "delete env var value", async (tx) => {
-        await assertVariablesNotProxyOnly(
-          tx,
-          projectId,
-          [options.environmentId],
-          [environmentVariable.key]
-        );
-        const secretStore = getSecretStore("DATABASE", {
-          prismaClient: tx,
         });
 
-        const key = secretKey(projectId, options.environmentId, environmentVariable.key);
-        await secretStore.deleteSecret(key);
-
-        if (value.valueReference) {
-          await tx.secretReference.delete({
-            where: {
-              key: value.valueReference.key,
-            },
-          });
+        const found = variables.flatMap((variable) =>
+          variable.values
+            .filter((value) => requested.has(`${variable.id}:${value.environmentId}`))
+            .map((value) => ({ variable, value }))
+        );
+        if (found.length === 0) {
+          return [];
         }
 
-        await tx.environmentVariableValue.delete({
+        // One proxy-only value refuses the whole batch. Checked per environment, so a key is only
+        // looked up where it is being deleted: the same key may be proxy-only somewhere else.
+        // It locks the same variable rows, which this transaction already holds.
+        for (const environmentId of new Set(found.map(({ value }) => value.environmentId))) {
+          await assertVariablesNotProxyOnly(
+            tx,
+            projectId,
+            [environmentId],
+            found
+              .filter(({ value }) => value.environmentId === environmentId)
+              .map(({ variable }) => variable.key)
+          );
+        }
+
+        // By set, so a batch is four statements however many values it holds, and a row another
+        // request removed in the meantime doesn't fail the rest.
+        await tx.secretStore.deleteMany({
           where: {
-            id: value.id,
+            key: {
+              in: boundedIn(
+                found.map(({ variable, value }) =>
+                  secretKey(projectId, value.environmentId, variable.key)
+                )
+              ),
+            },
           },
         });
+        await tx.secretReference.deleteMany({
+          where: {
+            key: {
+              in: boundedIn(found.flatMap(({ value }) => value.valueReference?.key ?? [])),
+            },
+          },
+        });
+        await tx.environmentVariableValue.deleteMany({
+          where: { id: { in: boundedIn(found.map(({ value }) => value.id)) } },
+        });
+        // Checked after the values are gone, so a variable that gained a value first stays.
+        await tx.environmentVariable.deleteMany({
+          where: {
+            projectId,
+            id: { in: boundedIn([...new Set(found.map(({ variable }) => variable.id))]) },
+            values: { none: {} },
+          },
+        });
+
+        return found.map(({ variable, value }) => ({
+          id: variable.id,
+          key: variable.key,
+          environmentId: value.environmentId,
+        }));
       });
 
-      return {
-        success: true as const,
-      };
+      if (!deleted) {
+        return { success: false as const, error: "Something went wrong" };
+      }
+
+      return { success: true as const, deleted };
     } catch (error) {
-      return {
-        success: false as const,
-        error: error instanceof Error ? error.message : "Something went wrong",
-      };
+      return writeFailure(error, "deleteValues", projectId);
     }
   }
 }

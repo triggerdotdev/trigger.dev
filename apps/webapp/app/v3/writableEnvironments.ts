@@ -31,3 +31,34 @@ export function findUnauthorizedEnvironmentId(
   }
   return null;
 }
+
+export type RefusedEnvironment<E extends WriteCheckEnvironment> =
+  /** Not one of the project's environments, or an archived one. */
+  | { id: string; reason: "notFound" }
+  /** The role can't write environment variables of this environment type. */
+  | { id: string; reason: "noPermission"; environment: E }
+  /** A DEV environment owned by someone else. */
+  | { id: string; reason: "notOwner"; environment: E };
+
+/**
+ * Every submitted environment id the user may NOT write to, with why, for a write that names
+ * several environments and goes through only when all of them are allowed. Empty when every id
+ * is writable. `canWriteType` is the role's grant for an environment type.
+ */
+export function findRefusedEnvironments<E extends WriteCheckEnvironment>(
+  projectEnvironments: ReadonlyArray<E>,
+  submittedIds: ReadonlyArray<string>,
+  userId: string,
+  canWriteType: (type: E["type"]) => boolean
+): RefusedEnvironment<E>[] {
+  const byId = new Map(projectEnvironments.map((e) => [e.id, e]));
+  return [...new Set(submittedIds)].flatMap((id): RefusedEnvironment<E>[] => {
+    const environment = byId.get(id);
+    if (!environment) return [{ id, reason: "notFound" }];
+    if (!canWriteType(environment.type)) return [{ id, reason: "noPermission", environment }];
+    if (findUnauthorizedEnvironmentId([environment], [id], userId)) {
+      return [{ id, reason: "notOwner", environment }];
+    }
+    return [];
+  });
+}

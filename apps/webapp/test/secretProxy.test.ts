@@ -677,7 +677,7 @@ describe("secret proxy integration", () => {
 
   // Catches: deletion cascading away concurrently enrolled policy while orphaned ciphertext becomes ordinary plaintext.
   postgresTest(
-    "whole-variable deletion captures concurrent enrollment after taking the identity lock",
+    "value deletion captures concurrent enrollment after taking the identity lock",
     { timeout: 60_000 },
     async ({ prisma }) => {
       const f = await seed(prisma);
@@ -730,7 +730,10 @@ describe("secret proxy integration", () => {
       );
       await Promise.race([enrolled, enrolling]);
       const repository = new EnvironmentVariablesRepository(prisma, prisma, f.encryption);
-      const deleting = repository.delete(f.project.id, { id: original.variable.id });
+      const deleting = repository.deleteValue(f.project.id, {
+        id: original.variable.id,
+        environmentId: other.id,
+      });
       try {
         await vi.waitFor(
           async () => {
@@ -922,7 +925,6 @@ describe("secret proxy integration", () => {
             id: protectedValue.variable.id,
             environmentId: child.id,
           }),
-        () => repository.delete(f.project.id, { id: protectedValue.variable.id }),
       ]) {
         expect((await mutate()).success).toBe(false);
       }

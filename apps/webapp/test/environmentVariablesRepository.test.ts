@@ -24,6 +24,7 @@ import {
   createEnvironmentVariable,
   createRuntimeEnvironment,
   createTestOrgProjectWithMember as createBaseOrgProjectWithMember,
+  enrollProxyOnlyValue,
 } from "./fixtures/environmentVariablesFixtures";
 
 async function createTestOrgProjectWithMember(
@@ -761,3 +762,585 @@ postgresTest(
     ).toBe(false);
   }
 );
+
+describe("EnvironmentVariablesRepository.deleteValues", () => {
+  // Catches: a batch that leaves a secret or its reference behind, deletes a value it wasn't
+  // given, keeps a variable with no value left, or drops one that still has a value.
+  postgresTest(
+    "deletes exactly the named values with their secrets, and variables left with no value",
+    async ({ prisma }) => {
+      const { user, organization, project } = await createTestOrgProjectWithMember(prisma);
+      const [prod, staging] = await Promise.all(
+        (["PRODUCTION", "STAGING"] as const).map((type) =>
+          createRuntimeEnvironment(prisma, {
+            projectId: project.id,
+            organizationId: organization.id,
+            type,
+          })
+        )
+      );
+      const repository = new EnvironmentVariablesRepository(prisma, prisma);
+      const set = (key: string, environmentId: string) =>
+        createEnvironmentVariable(repository, project.id, {
+          environmentId,
+          key,
+          value: `${key}-value`,
+          userId: user.id,
+        });
+      await set("BOTH", prod.id);
+      await set("BOTH", staging.id);
+      await set("PROD_ONLY", prod.id);
+      await set("ALL_GONE", prod.id);
+      await set("ALL_GONE", staging.id);
+      const id = async (key: string) =>
+        (
+          await prisma.environmentVariable.findFirstOrThrow({
+            where: { projectId: project.id, key },
+          })
+        ).id;
+
+      const result = await repository.deleteValues(project.id, [
+        { id: await id("BOTH"), environmentId: prod.id },
+        { id: await id("PROD_ONLY"), environmentId: prod.id },
+        { id: await id("ALL_GONE"), environmentId: prod.id },
+        { id: await id("ALL_GONE"), environmentId: staging.id },
+      ]);
+
+      expect(result.success && result.deleted.map((value) => value.key).sort()).toEqual([
+        "ALL_GONE",
+        "ALL_GONE",
+        "BOTH",
+        "PROD_ONLY",
+      ]);
+      expect(await repository.getEnvironmentVariables(project.id, prod.id)).toEqual([]);
+      expect(await repository.getEnvironmentVariables(project.id, staging.id)).toEqual([
+        { key: "BOTH", value: "BOTH-value" },
+      ]);
+      expect(
+        (await prisma.environmentVariable.findMany({ where: { projectId: project.id } })).map(
+          (variable) => variable.key
+        )
+      ).toEqual(["BOTH"]);
+      const remainingKey = `environmentvariable:${project.id}:${staging.id}:BOTH`;
+      expect(
+        (
+          await prisma.secretStore.findMany({
+            where: { key: { startsWith: `environmentvariable:${project.id}:` } },
+          })
+        ).map((secret) => secret.key)
+      ).toEqual([remainingKey]);
+      expect(
+        (
+          await prisma.secretReference.findMany({
+            where: { key: { startsWith: `environmentvariable:${project.id}:` } },
+          })
+        ).map((reference) => reference.key)
+      ).toEqual([remainingKey]);
+    }
+  );
+
+  // Catches: a batch that fails because one of its values was deleted by someone else first, or
+  // one that reaches a variable of another project by its id.
+  postgresTest(
+    "skips a value that is already gone and never touches another project",
+    async ({ prisma }) => {
+      const { user, organization, project } = await createTestOrgProjectWithMember(prisma);
+      const prod = await createRuntimeEnvironment(prisma, {
+        projectId: project.id,
+        organizationId: organization.id,
+        type: "PRODUCTION",
+      });
+      const other = await createTestOrgProjectWithMember(prisma);
+      const otherProd = await createRuntimeEnvironment(prisma, {
+        projectId: other.project.id,
+        organizationId: other.organization.id,
+        type: "PRODUCTION",
+      });
+      const repository = new EnvironmentVariablesRepository(prisma, prisma);
+      for (const key of ["GONE", "KEPT_ELSEWHERE", "HERE"]) {
+        await createEnvironmentVariable(repository, project.id, {
+          environmentId: prod.id,
+          key,
+          value: "x",
+          userId: user.id,
+        });
+      }
+      await createEnvironmentVariable(repository, other.project.id, {
+        environmentId: otherProd.id,
+        key: "THEIRS",
+        value: "theirs",
+        userId: other.user.id,
+      });
+      const variables = await prisma.environmentVariable.findMany({
+        where: { projectId: { in: [project.id, other.project.id] } },
+      });
+      const id = (key: string) => variables.find((variable) => variable.key === key)!.id;
+      await repository.deleteValue(project.id, { id: id("GONE"), environmentId: prod.id });
+
+      const result = await repository.deleteValues(project.id, [
+        { id: id("GONE"), environmentId: prod.id },
+        { id: id("HERE"), environmentId: prod.id },
+        { id: id("THEIRS"), environmentId: otherProd.id },
+      ]);
+
+      expect(result).toEqual({
+        success: true,
+        deleted: [{ id: id("HERE"), key: "HERE", environmentId: prod.id }],
+      });
+      expect(await repository.getEnvironmentVariables(project.id, prod.id)).toEqual([
+        { key: "KEPT_ELSEWHERE", value: "x" },
+      ]);
+      expect(await repository.getEnvironmentVariables(other.project.id, otherProd.id)).toEqual([
+        { key: "THEIRS", value: "theirs" },
+      ]);
+    }
+  );
+
+  // Catches: a batch that deletes a variable while another request is adding a value to it,
+  // which takes the new value with it through the cascade.
+  postgresTest(
+    "keeps a variable that gains a value while the batch waits for it",
+    async ({ prisma }) => {
+      const { user, organization, project } = await createTestOrgProjectWithMember(prisma);
+      const [prod, staging] = await Promise.all(
+        (["PRODUCTION", "STAGING"] as const).map((type) =>
+          createRuntimeEnvironment(prisma, {
+            projectId: project.id,
+            organizationId: organization.id,
+            type,
+          })
+        )
+      );
+      const repository = new EnvironmentVariablesRepository(prisma, prisma);
+      await createEnvironmentVariable(repository, project.id, {
+        environmentId: prod.id,
+        key: "RACED",
+        value: "x",
+        userId: user.id,
+      });
+      const variable = await prisma.environmentVariable.findFirstOrThrow({
+        where: { projectId: project.id, key: "RACED" },
+      });
+
+      // Another request adds a Staging value and hasn't committed when the batch starts.
+      let commit!: () => void;
+      const committed = new Promise<void>((resolve) => (commit = resolve));
+      let inserted!: () => void;
+      const hasInserted = new Promise<void>((resolve) => (inserted = resolve));
+      const adding = prisma.$transaction(
+        async (tx) => {
+          await tx.environmentVariableValue.create({
+            data: { variableId: variable.id, environmentId: staging.id },
+          });
+          inserted();
+          await committed;
+        },
+        { timeout: 20_000 }
+      );
+      await hasInserted;
+      const deleting = repository.deleteValues(project.id, [
+        { id: variable.id, environmentId: prod.id },
+      ]);
+      await new Promise((resolve) => setTimeout(resolve, 500));
+      commit();
+      await adding;
+
+      expect(await deleting).toEqual({
+        success: true,
+        deleted: [{ id: variable.id, key: "RACED", environmentId: prod.id }],
+      });
+      expect(
+        await prisma.environmentVariableValue.findMany({
+          where: { variableId: variable.id },
+          select: { environmentId: true },
+        })
+      ).toEqual([{ environmentId: staging.id }]);
+    }
+  );
+
+  // Catches: two overlapping batches that both report the same values as deleted.
+  postgresTest("overlapping batches count each value once", async ({ prisma }) => {
+    const { user, organization, project } = await createTestOrgProjectWithMember(prisma);
+    const prod = await createRuntimeEnvironment(prisma, {
+      projectId: project.id,
+      organizationId: organization.id,
+      type: "PRODUCTION",
+    });
+    const repository = new EnvironmentVariablesRepository(prisma, prisma);
+    const keys = Array.from({ length: 20 }, (_, index) => `KEY_${index}`);
+    for (const key of keys) {
+      await createEnvironmentVariable(repository, project.id, {
+        environmentId: prod.id,
+        key,
+        value: "x",
+        userId: user.id,
+      });
+    }
+    const values = (
+      await prisma.environmentVariable.findMany({ where: { projectId: project.id } })
+    ).map((variable) => ({ id: variable.id, environmentId: prod.id }));
+
+    const results = await Promise.all([
+      repository.deleteValues(project.id, values),
+      repository.deleteValues(project.id, [...values].reverse()),
+    ]);
+
+    expect(
+      results.reduce((sum, result) => sum + (result.success ? result.deleted.length : NaN), 0)
+    ).toBe(keys.length);
+    expect(await prisma.environmentVariable.count({ where: { projectId: project.id } })).toBe(0);
+    expect(
+      await prisma.secretStore.count({
+        where: { key: { startsWith: `environmentvariable:${project.id}:` } },
+      })
+    ).toBe(0);
+  });
+
+  // Catches: a delete, single or batch, that removes a proxy-only value; a batch that deletes
+  // its other values before refusing; and a batch refused because one of its keys is proxy-only
+  // in an environment it isn't deleting from.
+  postgresTest(
+    "refuses a proxy-only value, all or nothing, and only where it is being deleted",
+    async ({ prisma }) => {
+      const { user, organization, project } = await createTestOrgProjectWithMember(prisma);
+      const [prod, staging] = await Promise.all(
+        (["PRODUCTION", "STAGING"] as const).map((type) =>
+          createRuntimeEnvironment(prisma, {
+            projectId: project.id,
+            organizationId: organization.id,
+            type,
+          })
+        )
+      );
+      const repository = new EnvironmentVariablesRepository(prisma, prisma);
+      for (const [key, environmentId] of [
+        ["TOKEN", prod.id],
+        ["TOKEN", staging.id],
+        ["PLAIN", prod.id],
+      ]) {
+        await createEnvironmentVariable(repository, project.id, {
+          environmentId,
+          key,
+          value: "x",
+          userId: user.id,
+        });
+      }
+      const variables = await prisma.environmentVariable.findMany({
+        where: { projectId: project.id },
+      });
+      const id = (key: string) => variables.find((variable) => variable.key === key)!.id;
+      await enrollProxyOnlyValue(prisma, {
+        environmentId: prod.id,
+        variableId: id("TOKEN"),
+        allowedHosts: ["api.example.com"],
+      });
+      const remaining = async () =>
+        (
+          await prisma.environmentVariableValue.findMany({
+            where: { variable: { projectId: project.id } },
+            select: { environmentId: true, variable: { select: { key: true } } },
+          })
+        )
+          .map((value) => `${value.variable.key}@${value.environmentId}`)
+          .sort();
+      const all = await remaining();
+      const refused = { success: false, error: expect.stringContaining("Proxy-only") };
+
+      expect(
+        await repository.deleteValue(project.id, { id: id("TOKEN"), environmentId: prod.id })
+      ).toMatchObject(refused);
+      expect(
+        await repository.deleteValues(project.id, [
+          { id: id("PLAIN"), environmentId: prod.id },
+          { id: id("TOKEN"), environmentId: prod.id },
+        ])
+      ).toMatchObject(refused);
+      expect(await remaining()).toEqual(all);
+      expect(
+        await prisma.secretStore.count({
+          where: { key: { startsWith: `environmentvariable:${project.id}:` } },
+        })
+      ).toBe(all.length);
+
+      // TOKEN is proxy-only in Prod only: its Staging value deletes, also next to a Prod value.
+      const result = await repository.deleteValues(project.id, [
+        { id: id("TOKEN"), environmentId: staging.id },
+        { id: id("PLAIN"), environmentId: prod.id },
+      ]);
+      expect(result.success && result.deleted.map((value) => value.key).sort()).toEqual([
+        "PLAIN",
+        "TOKEN",
+      ]);
+      expect(await remaining()).toEqual([`TOKEN@${prod.id}`]);
+    }
+  );
+
+  // Catches: a batch delete and a save of the same keys each holding a row the other waits
+  // for, which the database ends by failing one of them with a deadlock.
+  postgresTest("racing saves of the same keys never deadlock with a batch", async ({ prisma }) => {
+    const { organization, project } = await createTestOrgProjectWithMember(prisma);
+    // With the flag on, every save takes the proxy-only check's lock on its variable first.
+    await prisma.organization.update({
+      where: { id: organization.id },
+      data: { featureFlags: { allowEmptyEnvironmentVariableValues: true, secretProxy: true } },
+    });
+    const [prod, staging] = await Promise.all(
+      (["PRODUCTION", "STAGING"] as const).map((type) =>
+        createRuntimeEnvironment(prisma, {
+          projectId: project.id,
+          organizationId: organization.id,
+          type,
+        })
+      )
+    );
+    const repository = new EnvironmentVariablesRepository(prisma, prisma);
+    const keys = Array.from({ length: 8 }, (_, index) => `KEY_${index}`);
+    const environmentIds = [prod.id, staging.id];
+    const create = (order: string[]) =>
+      repository.create(project.id, {
+        override: true,
+        environmentIds,
+        variables: order.map((key) => ({ key, value: "x" })),
+      });
+
+    for (let round = 0; round < 6; round++) {
+      expect(await create(keys)).toMatchObject({ success: true });
+      const variables = await prisma.environmentVariable.findMany({
+        where: { projectId: project.id },
+      });
+      const batch = () =>
+        repository.deleteValues(
+          project.id,
+          variables.flatMap(({ id }) =>
+            environmentIds.map((environmentId) => ({ id, environmentId }))
+          )
+        );
+      const saves = () => [
+        create([...keys].reverse()),
+        ...variables.map(({ id }) =>
+          repository.edit(project.id, {
+            id,
+            values: [...environmentIds].reverse().map((environmentId) => ({
+              environmentId,
+              value: "y",
+            })),
+          })
+        ),
+      ];
+
+      // Each side goes first in turn.
+      const results = await Promise.all(
+        round % 2 === 0 ? [batch(), ...saves()] : [...saves(), batch()]
+      );
+
+      // A save may lose to the delete: that is a conflict, or its variable is reported missing.
+      // A deadlock is neither, it comes back as an unexplained failure.
+      expect(
+        results.filter(
+          (result) =>
+            !result.success &&
+            !("conflict" in result && result.conflict) &&
+            !/not found/i.test(result.error)
+        )
+      ).toEqual([]);
+      await batch();
+    }
+  });
+});
+
+// Resolves once another connection is waiting on a row lock, so a test can force the order of
+// two requests instead of sleeping and hoping.
+async function waitForBlockedQuery(prisma: {
+  $queryRaw: (query: TemplateStringsArray) => Promise<unknown>;
+}) {
+  for (let attempt = 0; attempt < 200; attempt++) {
+    const [{ blocked }] = (await prisma.$queryRaw`
+      SELECT count(*)::int AS blocked FROM pg_stat_activity
+      WHERE datname = current_database() AND wait_event_type = 'Lock'`) as [{ blocked: number }];
+    if (blocked > 0) return;
+    await new Promise((resolve) => setTimeout(resolve, 25));
+  }
+  throw new Error("No query blocked on a lock");
+}
+
+describe("EnvironmentVariablesRepository.deleteValue", () => {
+  // Catches: a single delete that decides "last value" before its transaction and then deletes
+  // the whole variable, taking a value added meanwhile with it through the cascade.
+  postgresTest(
+    "keeps a variable that gains a value while the delete waits for it",
+    async ({ prisma }) => {
+      const { user, organization, project } = await createTestOrgProjectWithMember(prisma);
+      const [prod, staging] = await Promise.all(
+        (["PRODUCTION", "STAGING"] as const).map((type) =>
+          createRuntimeEnvironment(prisma, {
+            projectId: project.id,
+            organizationId: organization.id,
+            type,
+          })
+        )
+      );
+      const repository = new EnvironmentVariablesRepository(prisma, prisma);
+      await createEnvironmentVariable(repository, project.id, {
+        environmentId: prod.id,
+        key: "RACED",
+        value: "x",
+        userId: user.id,
+      });
+      const variable = await prisma.environmentVariable.findFirstOrThrow({
+        where: { projectId: project.id, key: "RACED" },
+      });
+
+      // Another request adds a Staging value and hasn't committed when the delete starts.
+      let commit!: () => void;
+      const committed = new Promise<void>((resolve) => (commit = resolve));
+      let inserted!: () => void;
+      const hasInserted = new Promise<void>((resolve) => (inserted = resolve));
+      const adding = prisma.$transaction(
+        async (tx) => {
+          await tx.environmentVariableValue.create({
+            data: { variableId: variable.id, environmentId: staging.id },
+          });
+          inserted();
+          await committed;
+        },
+        { timeout: 20_000 }
+      );
+      await hasInserted;
+      const deleting = repository.deleteValue(project.id, {
+        id: variable.id,
+        environmentId: prod.id,
+      });
+      await waitForBlockedQuery(prisma);
+      commit();
+      await adding;
+
+      expect(await deleting).toEqual({ success: true });
+      expect(
+        await prisma.environmentVariableValue.findMany({
+          where: { variableId: variable.id },
+          select: { environmentId: true },
+        })
+      ).toEqual([{ environmentId: staging.id }]);
+    }
+  );
+
+  // Catches: a single delete that reports success for a value that was already gone, or loses
+  // the difference between a missing value and a missing variable.
+  postgresTest("reports a value or a variable that is already gone", async ({ prisma }) => {
+    const { user, organization, project } = await createTestOrgProjectWithMember(prisma);
+    const [prod, staging] = await Promise.all(
+      (["PRODUCTION", "STAGING"] as const).map((type) =>
+        createRuntimeEnvironment(prisma, {
+          projectId: project.id,
+          organizationId: organization.id,
+          type,
+        })
+      )
+    );
+    const repository = new EnvironmentVariablesRepository(prisma, prisma);
+    for (const environmentId of [prod.id, staging.id]) {
+      await createEnvironmentVariable(repository, project.id, {
+        environmentId,
+        key: "TWICE",
+        value: "x",
+        userId: user.id,
+      });
+    }
+    const { id } = await prisma.environmentVariable.findFirstOrThrow({
+      where: { projectId: project.id, key: "TWICE" },
+    });
+
+    expect(await repository.deleteValue(project.id, { id, environmentId: prod.id })).toEqual({
+      success: true,
+    });
+    expect(await repository.deleteValue(project.id, { id, environmentId: prod.id })).toEqual({
+      success: false,
+      error: "Environment variable value not found",
+    });
+    expect(await repository.deleteValue(project.id, { id, environmentId: staging.id })).toEqual({
+      success: true,
+    });
+    expect(await repository.deleteValue(project.id, { id, environmentId: staging.id })).toEqual({
+      success: false,
+      error: "Environment variable not found",
+    });
+    expect(
+      await prisma.secretStore.count({
+        where: { key: { startsWith: `environmentvariable:${project.id}:` } },
+      })
+    ).toBe(0);
+  });
+});
+
+describe("EnvironmentVariablesRepository saves that lose a race", () => {
+  // Catches: a create or edit that loses to a delete of the same variable and hands the caller
+  // the database's own error text, with nothing to tell a conflict from a bad request.
+  postgresTest(
+    "a save that loses to a delete of its variable is a conflict in plain words",
+    async ({ prisma }) => {
+      const { user, organization, project } = await createTestOrgProjectWithMember(prisma);
+      const [prod, staging] = await Promise.all(
+        (["PRODUCTION", "STAGING"] as const).map((type) =>
+          createRuntimeEnvironment(prisma, {
+            projectId: project.id,
+            organizationId: organization.id,
+            type,
+          })
+        )
+      );
+      const repository = new EnvironmentVariablesRepository(prisma, prisma);
+
+      // The variable is deleted by a request that commits only once the save is waiting on it.
+      const losesToDelete = async <T>(key: string, save: (variableId: string) => Promise<T>) => {
+        await createEnvironmentVariable(repository, project.id, {
+          environmentId: prod.id,
+          key,
+          value: "x",
+          userId: user.id,
+        });
+        const variable = await prisma.environmentVariable.findFirstOrThrow({
+          where: { projectId: project.id, key },
+        });
+        let commit!: () => void;
+        const committed = new Promise<void>((resolve) => (commit = resolve));
+        let deleted!: () => void;
+        const hasDeleted = new Promise<void>((resolve) => (deleted = resolve));
+        const deleting = prisma.$transaction(
+          async (tx) => {
+            await tx.environmentVariable.delete({ where: { id: variable.id } });
+            deleted();
+            await committed;
+          },
+          { timeout: 20_000 }
+        );
+        await hasDeleted;
+        const saving = save(variable.id);
+        await waitForBlockedQuery(prisma);
+        commit();
+        await deleting;
+        return saving;
+      };
+
+      const results = [
+        await losesToDelete("CREATED", () =>
+          repository.create(project.id, {
+            override: true,
+            environmentIds: [staging.id],
+            variables: [{ key: "CREATED", value: "y" }],
+          })
+        ),
+        await losesToDelete("EDITED", (id) =>
+          repository.edit(project.id, { id, values: [{ environmentId: staging.id, value: "y" }] })
+        ),
+        await losesToDelete("VALUE_EDITED", (id) =>
+          repository.editValue(project.id, { id, environmentId: prod.id, value: "y" })
+        ),
+      ];
+
+      for (const result of results) {
+        expect(result).toMatchObject({ success: false, conflict: true });
+        expect(JSON.stringify(result)).not.toMatch(/prisma|constraint|invocation|record/i);
+      }
+    }
+  );
+});

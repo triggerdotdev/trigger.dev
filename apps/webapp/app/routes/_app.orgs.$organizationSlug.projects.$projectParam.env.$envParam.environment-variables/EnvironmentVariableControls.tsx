@@ -51,6 +51,7 @@ import {
 } from "~/v3/environmentVariables/environmentVariableKey";
 import {
   DeleteEnvironmentVariableValue,
+  DeleteEnvironmentVariableValues,
   EditEnvironmentVariableValue,
 } from "~/v3/environmentVariables/repository";
 
@@ -139,6 +140,12 @@ export const schema = z.discriminatedUnion("action", [
     // The key open in the key panel when the delete was made, to return to it.
     panelKey: z.string().optional(),
     ...DeleteEnvironmentVariableValue.shape,
+  }),
+  z.object({
+    action: z.literal("delete-values"),
+    // The key open in the key panel when the delete was made, to return to it.
+    panelKey: z.string().optional(),
+    values: DeleteEnvironmentVariableValues,
   }),
   z.object({
     action: z.literal("update-vercel-sync"),
@@ -641,7 +648,7 @@ export function InlineValueEditor({
 }
 
 /** The messages in a form reply (conform's `reply()`), field errors included. */
-function submissionErrors(reply: unknown): string[] {
+export function submissionErrors(reply: unknown): string[] {
   if (typeof reply !== "object" || reply === null || !("error" in reply)) {
     return [];
   }

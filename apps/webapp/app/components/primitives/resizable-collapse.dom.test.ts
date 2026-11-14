@@ -407,3 +407,79 @@ describe("controlled expand guards", () => {
     expect(agentItem(context).collapsed).toBe(true);
   });
 });
+
+// The env vars and API keys side panels: a fill list with a 100px min next to a pixel-sized
+// collapsible panel. Narrowing the window below what both need and widening it again must give
+// the layout back, not keep the panel as a share of the narrow window.
+describe("side panel after the window was too narrow", () => {
+  const WIDE = 1216;
+
+  function mountSidePanel(collapsed: boolean) {
+    const [context, send] = groupMachine({
+      size: { width: WIDE, height: HEIGHT },
+      orientation: "horizontal",
+      groupId: "side-panel",
+    } as Parameters<typeof groupMachine>[0]);
+    send({
+      type: "registerPanel",
+      data: initializePanel({ id: "content", min: "100px" } as Parameters<
+        typeof initializePanel
+      >[0]),
+    });
+    send({
+      type: "registerPanelHandle",
+      data: initializePanelHandleData({ id: "handle", size: "3px" }),
+    });
+    send({
+      type: "registerPanel",
+      data: initializePanel({
+        id: "agent",
+        default: "480px",
+        min: "420px",
+        collapsible: true,
+        collapsed,
+        collapsedSize: "0px",
+      } as Parameters<typeof initializePanel>[0]),
+    });
+    send({ type: "setSize", size: { width: WIDE, height: HEIGHT } });
+    return { context, send };
+  }
+
+  function visitNarrow(send: ReturnType<typeof mountSidePanel>["send"], width: number) {
+    send({ type: "setSize", size: { width, height: HEIGHT } });
+    // Neither panel can go below its min, so the children overflow the group.
+    measure(send, { content: 100, agent: 420 });
+    send({ type: "setSize", size: { width: WIDE, height: HEIGHT } });
+    measure(send, { content: WIDE - 483, agent: 480 });
+  }
+
+  // Catches: a panel open since the first render kept 112.6% of the group after a visit to 376px.
+  it("keeps a panel open from the first render at its size", () => {
+    const { context, send } = mountSidePanel(false);
+    measure(send, { content: WIDE - 483, agent: 480 });
+    const before = buildTemplate(context);
+
+    visitNarrow(send, 376);
+    expect(buildTemplate(context)).toBe(before);
+  });
+
+  // Catches: a panel opened later kept 88.8% of the group after a visit to 476px, and
+  // reopened at that size after a collapse.
+  it("keeps a panel opened later at its size, also after closing and reopening", async () => {
+    const { context, send } = mountSidePanel(true);
+    measure(send, { content: WIDE, agent: 0 });
+    send({ type: "expandPanel", panelId: "agent", controlled: true });
+    await settled(context);
+    measure(send, { content: WIDE - 483, agent: 480 });
+    const before = buildTemplate(context);
+
+    visitNarrow(send, 476);
+    expect(buildTemplate(context)).toBe(before);
+
+    send({ type: "collapsePanel", panelId: "agent", controlled: true });
+    await vi.waitFor(() => expect(agentSize(context)).toBe(0));
+    send({ type: "expandPanel", panelId: "agent", controlled: true });
+    await settled(context);
+    expect(agentSize(context)).toBe(480);
+  });
+});

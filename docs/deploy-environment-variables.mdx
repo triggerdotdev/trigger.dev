@@ -79,11 +79,36 @@ You can edit an environment variable's values. You cannot edit the key name, you
 </Step>
 
 <Step title="Press delete">
-  This will immediately delete the variable. ![Environment variables
+  Confirm in the dialog to delete the variable's value from that environment. This can't be
+  undone. ![Environment variables
   page](/images/environment-variables-delete-popover.png)
 </Step>
 
 </Steps>
+
+#### Deleting several values at once
+
+Each row on the Environment Variables page is one value: a key in one environment or preview branch. You can select up to 100 values and delete them in one step.
+
+<Steps>
+
+<Step title="Tick the values to delete">
+  Tick the checkbox on each row, or tick the checkbox in the table header to select the values on
+  the current page. Shift-click selects a range. A bar at the bottom of the list shows how many
+  values are selected.
+</Step>
+
+<Step title="Press Delete in the bar">
+  The confirmation lists every selected value and counts them per environment.
+</Step>
+
+<Step title="Type the confirmation words and press Delete">
+  The selected values are deleted together. If any of them can't be deleted, none are.
+</Step>
+
+</Steps>
+
+The selection applies to the current view of the list, so it clears when you change the filter, search, sort or page. A row has no checkbox when you don't have permission to delete its value. Deleting a preview branch's override makes that branch use the Preview value again.
 
 ## Local development
 

@@ -32,6 +32,7 @@ import { useOrganization } from "~/hooks/useOrganizations";
 import { useProject } from "~/hooks/useProject";
 import { useSearchParams } from "~/hooks/useSearchParam";
 import { useShortcutKeys } from "~/hooks/useShortcutKeys";
+import { isTypingIn } from "~/utils/isTypingIn";
 import { useTypedMatchesData } from "~/hooks/useTypedMatchData";
 import {
   EnvironmentVariableKeyPresenter,
@@ -268,10 +269,13 @@ export default function Page() {
 
   // Dialogs opened from the panel close on Esc themselves; the same press mustn't also close
   // the panel. Radix traps focus inside an open dialog, so focus tells us one is open. While a
-  // value is edited in place, Esc ends the edit instead.
+  // value is edited in place, Esc ends the edit instead. Runs with an input focused, so a ticked
+  // row's checkbox doesn't swallow it, and leaves fields the user types in alone.
   useShortcutKeys({
     shortcut: { key: "esc" },
+    enabledOnInputElements: true,
     action: () => {
+      if (isTypingIn(document.activeElement)) return;
       if (document.activeElement?.closest("[role='dialog'], [role='alertdialog']")) return;
       if (activeEdit !== null) {
         stopEditing();

@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  findRefusedEnvironments,
   findUnauthorizedEnvironmentId,
   type WriteCheckEnvironment,
 } from "../app/v3/writableEnvironments.js";
@@ -51,5 +52,32 @@ describe("findUnauthorizedEnvironmentId", () => {
     expect(findUnauthorizedEnvironmentId(projectEnvs, ["env_not_in_project"], "user_me")).toBe(
       "env_not_in_project"
     );
+  });
+});
+
+describe("findRefusedEnvironments", () => {
+  const canWrite = (type: string) => type !== "PRODUCTION";
+
+  // Catches: a batch write let through because some of its environments are allowed, or a
+  // refused environment missing from the answer.
+  it("lists every refused environment with its reason, among allowed ones", () => {
+    expect(
+      findRefusedEnvironments(
+        projectEnvs,
+        ["env_staging", "env_prod", "env_dev_me", "env_dev_other", "env_not_in_project"],
+        "user_me",
+        canWrite
+      )
+    ).toEqual([
+      { id: "env_prod", reason: "noPermission", environment: prod },
+      { id: "env_dev_other", reason: "notOwner", environment: otherDev },
+      { id: "env_not_in_project", reason: "notFound" },
+    ]);
+  });
+
+  it("is empty when every environment is writable", () => {
+    expect(
+      findRefusedEnvironments(projectEnvs, ["env_staging", "env_dev_me"], "user_me", canWrite)
+    ).toEqual([]);
   });
 });

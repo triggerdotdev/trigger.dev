@@ -151,6 +151,66 @@ export function deleteValueDialog(
   }
 }
 
+/** A value picked for a batch delete, as the list has it. */
+type BatchDeleteRow = {
+  key: string;
+  environment: { type: RuntimeEnvironmentType; branchName: string | null };
+  previewBase: PreviewBaseState;
+};
+
+/**
+ * How a batch delete's confirm describes each picked value: what `deleteValueDialog` says of it
+ * alone, except that a branch override picked together with its key's Preview value is left
+ * with no value, since that Preview value goes in the same delete.
+ */
+export function batchDeleteItems<T extends BatchDeleteRow>(
+  rows: T[]
+): Array<{ row: T; dialog: DeleteValueDialog; previewDeletedToo: boolean }> {
+  const deletedPreviewKeys = new Set(
+    rows
+      .filter((row) => row.environment.type === "PREVIEW" && !row.environment.branchName)
+      .map((row) => row.key)
+  );
+
+  return rows.map((row) => {
+    const previewDeletedToo = !!row.environment.branchName && deletedPreviewKeys.has(row.key);
+    return {
+      row,
+      dialog: deleteValueDialog(row.environment, previewDeletedToo ? "unset" : row.previewBase),
+      previewDeletedToo,
+    };
+  });
+}
+
+/**
+ * The counts a batch delete's confirm leads with: values per environment type in the filter's
+ * order, and branch overrides by what the branch is left with. `previewDeleted` counts the
+ * overrides whose Preview value goes in the same delete, apart from those with none to begin with.
+ */
+export function batchDeleteSummary(
+  items: Array<{ row: BatchDeleteRow; dialog: DeleteValueDialog; previewDeletedToo: boolean }>
+) {
+  const overrides = { previewValue: 0, noValue: 0, previewDeleted: 0, unknown: 0 };
+  const byType = new Map<RuntimeEnvironmentType, number>();
+  for (const { row, dialog, previewDeletedToo } of items) {
+    if (previewDeletedToo) {
+      overrides.previewDeleted += 1;
+    } else if (dialog.kind === "removeOverride") {
+      overrides[dialog.afterRemoval] += 1;
+    } else {
+      byType.set(row.environment.type, (byType.get(row.environment.type) ?? 0) + 1);
+    }
+  }
+
+  return {
+    environments: KEY_PANEL_ENVIRONMENT_ORDER.flatMap((type) => {
+      const count = byType.get(type);
+      return count ? [{ type, count }] : [];
+    }),
+    overrides,
+  };
+}
+
 /**
  * The Preview base of a key as the list's rows show it. A key's rows always come together on
  * one page, so when the Preview environment is listed, a missing row means no Preview value.
