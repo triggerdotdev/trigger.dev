@@ -152,6 +152,31 @@ class FetchErrorWithSpan extends Error {
 
 const MAX_ATTEMPTS = 10;
 
+function resolveCallerAbortSignal(
+  input: RequestInfo | URL,
+  init?: RequestInit
+): AbortSignal | undefined {
+  if (init?.signal) {
+    return init.signal;
+  }
+
+  if (typeof Request !== "undefined" && input instanceof Request) {
+    return input.signal;
+  }
+
+  return undefined;
+}
+
+function createCallerAbortError(signal?: AbortSignal): Error {
+  if (signal?.reason instanceof Error) {
+    return signal.reason;
+  }
+
+  const error = new Error("This operation was aborted.");
+  error.name = "AbortError";
+  return error;
+}
+
 async function retryFetch(
   input: RequestInfo | URL,
   init?: RetryFetchRequestInit | undefined
@@ -160,36 +185,59 @@ async function retryFetch(
     "retry.fetch()",
     async (span) => {
       let attempt = 1;
+      const callerSignal = resolveCallerAbortSignal(input, init);
+
+      if (callerSignal?.aborted) {
+        throw createCallerAbortError(callerSignal);
+      }
 
       while (true) {
         try {
-          const abortController = new AbortController();
+          if (callerSignal?.aborted) {
+            throw createCallerAbortError(callerSignal);
+          }
 
+          const abortController = new AbortController();
           const timeoutId = init?.timeoutInMs
             ? setTimeout(() => {
                 abortController.abort();
-              }, init?.timeoutInMs)
+              }, init.timeoutInMs)
             : undefined;
 
-          init?.signal?.addEventListener("abort", () => {
-            abortController.abort();
-          });
+          const onCallerAbort = () => {
+            abortController.abort(callerSignal?.reason);
+          };
 
-          const [response, span] = await doFetchRequest(
-            input,
-            { ...(init ?? {}), signal: abortController.signal },
-            attempt
-          );
+          if (callerSignal) {
+            if (callerSignal.aborted) {
+              abortController.abort(callerSignal.reason);
+            } else {
+              callerSignal.addEventListener("abort", onCallerAbort, { once: true });
+            }
+          }
 
-          if (timeoutId) {
-            clearTimeout(timeoutId);
+          let response: Response;
+          let requestSpan: Span;
+
+          try {
+            [response, requestSpan] = await doFetchRequest(
+              input,
+              { ...(init ?? {}), signal: abortController.signal },
+              attempt
+            );
+          } finally {
+            if (timeoutId) {
+              clearTimeout(timeoutId);
+            }
+
+            if (callerSignal) {
+              callerSignal.removeEventListener("abort", onCallerAbort);
+            }
           }
 
           if (response.ok) {
-            span.setAttributes(createFetchResponseAttributes(response));
-
-            span.end();
-
+            requestSpan.setAttributes(createFetchResponseAttributes(response));
+            requestSpan.end();
             return response;
           }
 
@@ -199,67 +247,65 @@ async function retryFetch(
             attempt
           );
 
-          if (!nextRetry) {
-            span.setAttributes(createFetchResponseAttributes(response));
-
-            span.end();
-
-            return response;
-          }
-
-          if (attempt >= MAX_ATTEMPTS) {
-            span.setAttributes(createFetchResponseAttributes(response));
-
-            span.end();
-
+          if (!nextRetry || attempt >= MAX_ATTEMPTS) {
+            requestSpan.setAttributes(createFetchResponseAttributes(response));
+            requestSpan.end();
             return response;
           }
 
           if (nextRetry.type === "delay") {
             const continueDate = new Date(Date.now() + nextRetry.value);
-            span.setAttribute(SemanticInternalAttributes.RETRY_AT, continueDate.toISOString());
-            span.setAttribute(SemanticInternalAttributes.RETRY_COUNT, attempt);
-            span.setAttribute(SemanticInternalAttributes.RETRY_DELAY, `${nextRetry.value}ms`);
-
-            span.end();
-
+            requestSpan.setAttribute(
+              SemanticInternalAttributes.RETRY_AT,
+              continueDate.toISOString()
+            );
+            requestSpan.setAttribute(SemanticInternalAttributes.RETRY_COUNT, attempt);
+            requestSpan.setAttribute(
+              SemanticInternalAttributes.RETRY_DELAY,
+              `${nextRetry.value}ms`
+            );
+            requestSpan.end();
             await wait.until({ date: continueDate });
           } else {
             const now = Date.now();
             const nextRetryDate = new Date(nextRetry.value);
             const isInFuture = nextRetryDate.getTime() > now;
 
-            span.setAttribute(
+            requestSpan.setAttribute(
               SemanticInternalAttributes.RETRY_AT,
-              new Date(nextRetry.value).toISOString()
+              nextRetryDate.toISOString()
             );
-            span.setAttribute(SemanticInternalAttributes.RETRY_COUNT, attempt);
+            requestSpan.setAttribute(SemanticInternalAttributes.RETRY_COUNT, attempt);
 
             if (isInFuture) {
-              span.setAttribute(
+              requestSpan.setAttribute(
                 SemanticInternalAttributes.RETRY_DELAY,
                 `${nextRetry.value - now}ms`
               );
             }
 
-            span.end();
-
-            await wait.until({ date: new Date(nextRetry.value) });
+            requestSpan.end();
+            await wait.until({ date: nextRetryDate });
           }
         } catch (e) {
+          if (e instanceof Error && e.name === "AbortError" && callerSignal?.aborted) {
+            throw e;
+          }
+
           if (e instanceof FetchErrorWithSpan && e.originalError instanceof Error) {
             if (e.originalError.name === "AbortError") {
+              // Caller-initiated aborts must not be retried as timeouts.
+              if (callerSignal?.aborted) {
+                e.span.end();
+                throw e.originalError;
+              }
+
               const nextRetryDelay = calculateNextRetryDelay(
                 resolveDefaults(init?.retry, "timeout", defaultFetchRetryOptions.timeout),
                 attempt
               );
 
-              if (!nextRetryDelay) {
-                e.span.end();
-                throw e;
-              }
-
-              if (attempt >= MAX_ATTEMPTS) {
+              if (!nextRetryDelay || attempt >= MAX_ATTEMPTS) {
                 e.span.end();
                 throw e;
               }
@@ -268,12 +314,9 @@ async function retryFetch(
               e.span.setAttribute(SemanticInternalAttributes.RETRY_AT, continueDate.toISOString());
               e.span.setAttribute(SemanticInternalAttributes.RETRY_COUNT, attempt);
               e.span.setAttribute(SemanticInternalAttributes.RETRY_DELAY, `${nextRetryDelay}ms`);
-
               e.span.end();
-
               await wait.until({ date: continueDate });
-
-              continue; // Move to the next attempt
+              continue;
             } else if (
               e.originalError.name === "TypeError" &&
               "cause" in e.originalError &&
@@ -288,12 +331,7 @@ async function retryFetch(
                 attempt
               );
 
-              if (!nextRetryDelay) {
-                e.span.end();
-                throw e;
-              }
-
-              if (attempt >= MAX_ATTEMPTS) {
+              if (!nextRetryDelay || attempt >= MAX_ATTEMPTS) {
                 e.span.end();
                 throw e;
               }
@@ -304,12 +342,9 @@ async function retryFetch(
               );
               e.span.setAttribute(SemanticInternalAttributes.RETRY_COUNT, attempt);
               e.span.setAttribute(SemanticInternalAttributes.RETRY_DELAY, `${nextRetryDelay}ms`);
-
               e.span.end();
-
               await wait.until({ date: new Date(Date.now() + nextRetryDelay) });
-
-              continue; // Move to the next attempt
+              continue;
             }
           }
 

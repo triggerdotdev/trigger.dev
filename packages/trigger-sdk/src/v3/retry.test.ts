@@ -1,10 +1,17 @@
 import { SEMATTRS_HTTP_URL } from "@opentelemetry/semantic-conventions";
-import { describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   createAttributesFromHeaders,
   createFetchAttributes,
   createFetchResponseAttributes,
+  retry,
 } from "./retry.js";
+
+vi.mock("./wait.js", () => ({
+  wait: {
+    until: vi.fn(async () => undefined),
+  },
+}));
 
 describe("retry fetch telemetry", () => {
   it("omits URL credentials, query parameters, and fragments", () => {
@@ -52,5 +59,79 @@ describe("retry fetch telemetry", () => {
       "http.response.header.content-length": "123",
     });
     expect(attributes).not.toHaveProperty("http.response.header.set-cookie");
+  });
+});
+
+describe("retry.fetch abort signal", () => {
+  const originalFetch = globalThis.fetch;
+  let fetchCount = 0;
+
+  beforeEach(() => {
+    fetchCount = 0;
+  });
+
+  afterEach(() => {
+    globalThis.fetch = originalFetch;
+  });
+
+  it("rejects immediately when init.signal is already aborted", async () => {
+    globalThis.fetch = (async () => {
+      fetchCount += 1;
+      return new Response("ok");
+    }) as typeof fetch;
+
+    await expect(retry.fetch("https://example.com", { signal: AbortSignal.abort() })).rejects.toMatchObject({
+      name: "AbortError",
+    });
+    expect(fetchCount).toBe(0);
+  });
+
+  it("rejects when a Request input carries an already-aborted signal", async () => {
+    globalThis.fetch = (async () => {
+      fetchCount += 1;
+      return new Response("ok");
+    }) as typeof fetch;
+
+    await expect(
+      retry.fetch(new Request("https://example.com", { signal: AbortSignal.abort() }))
+    ).rejects.toMatchObject({ name: "AbortError" });
+    expect(fetchCount).toBe(0);
+  });
+
+  it("does not retry when the caller aborts mid-request", async () => {
+    globalThis.fetch = (async (_input, init) => {
+      fetchCount += 1;
+      return await new Promise<Response>((_resolve, reject) => {
+        const signal = init?.signal;
+        if (!signal) {
+          reject(new Error("missing signal"));
+          return;
+        }
+
+        if (signal.aborted) {
+          const error = new Error("This operation was aborted.");
+          error.name = "AbortError";
+          reject(error);
+          return;
+        }
+
+        signal.addEventListener(
+          "abort",
+          () => {
+            const error = new Error("This operation was aborted.");
+            error.name = "AbortError";
+            reject(error);
+          },
+          { once: true }
+        );
+      });
+    }) as typeof fetch;
+
+    const controller = new AbortController();
+    const pending = retry.fetch("https://example.com/slow", { signal: controller.signal });
+    controller.abort();
+
+    await expect(pending).rejects.toMatchObject({ name: "AbortError" });
+    expect(fetchCount).toBe(1);
   });
 });
