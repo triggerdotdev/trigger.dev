@@ -19,7 +19,6 @@ import {
 } from "@remix-run/react";
 import { json } from "@remix-run/server-runtime";
 import { useVirtualizer } from "@tanstack/react-virtual";
-import { ClipboardCheckIcon, ClipboardIcon } from "lucide-react";
 import { matchSorter } from "match-sorter";
 import { fromPromise } from "neverthrow";
 import {
@@ -72,10 +71,10 @@ import {
   TableRow,
 } from "~/components/primitives/Table";
 import { SimpleTooltip } from "~/components/primitives/Tooltip";
+import { CopyKeyButton } from "./CopyKeyButton";
 import { prisma } from "~/db.server";
 import { useEnvironment } from "~/hooks/useEnvironment";
 import { useOrganization } from "~/hooks/useOrganizations";
-import { useCopy } from "~/hooks/useCopy";
 import { useProject } from "~/hooks/useProject";
 import { useSearchParams } from "~/hooks/useSearchParam";
 import { redirectWithSuccessMessage } from "~/models/message.server";
@@ -1502,37 +1501,6 @@ const quietCellClassName = "opacity-60 transition-opacity group-hover/table-row:
  */
 function RowLink({ to }: { to: string }) {
   return <Link to={to} tabIndex={-1} aria-hidden className="absolute inset-0" />;
-}
-
-/** Copies the key. Shown while the row is hovered or the button has focus. */
-function CopyKeyButton({ value }: { value: string }) {
-  const { copy, copied } = useCopy(value);
-  return (
-    <SimpleTooltip
-      asChild
-      disableHoverableContent
-      button={
-        <button
-          type="button"
-          aria-label={copied ? "Copied" : "Copy"}
-          onClick={copy}
-          className={cn(
-            "flex size-6 items-center justify-center rounded border border-border-bright bg-background-hover opacity-0 transition-opacity focus-visible:opacity-100 group-hover/table-row:opacity-100",
-            copied
-              ? "text-green-500 opacity-100"
-              : "text-text-dimmed hover:bg-background-raised hover:text-text-bright"
-          )}
-        >
-          {copied ? (
-            <ClipboardCheckIcon className="size-3.5" />
-          ) : (
-            <ClipboardIcon className="size-3.5" />
-          )}
-        </button>
-      }
-      content={copied ? "Copied" : "Copy"}
-    />
-  );
 }
 
 function EnvironmentVariablesVirtualTableBody({

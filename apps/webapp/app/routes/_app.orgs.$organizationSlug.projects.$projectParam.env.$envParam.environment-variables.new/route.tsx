@@ -30,7 +30,6 @@ import {
 import { json } from "@remix-run/server-runtime";
 import dotenv from "dotenv";
 import { useState } from "react";
-import { redirect } from "remix-typedjson";
 import invariant from "tiny-invariant";
 import { z } from "zod";
 import { EnvironmentLabel, environmentFullTitle } from "~/components/environments/EnvironmentLabel";
@@ -55,6 +54,7 @@ import {
   TooltipTrigger,
 } from "~/components/primitives/Tooltip";
 import { prisma } from "~/db.server";
+import { redirectWithSuccessMessage } from "~/models/message.server";
 import { useEnvironment } from "~/hooks/useEnvironment";
 import { useList } from "~/hooks/useList";
 import { useOrganization } from "~/hooks/useOrganizations";
@@ -80,7 +80,9 @@ import {
   EnvironmentVariableKey,
   EnvironmentVariableValue,
 } from "~/v3/environmentVariables/repository";
+import { isBlacklistedVariable } from "~/v3/environmentVariableRules.server";
 import { findTargetEnvironments } from "~/v3/environmentVariables/targetEnvironments.server";
+import { viewAfterCreate } from "~/v3/environmentVariables/viewAfterCreate.server";
 import { findUnauthorizedEnvironmentId } from "~/v3/writableEnvironments";
 import { pageMeta } from "~/utils/pageTitle";
 
@@ -246,12 +248,30 @@ export const action = dashboardAction(
       return json(submission.reply({ fieldErrors }));
     }
 
-    // Back to the view the dialog was opened from: the list, or the key panel on it.
+    // Back to the view the dialog was opened from (the list, or the key panel on it), switched
+    // to show the saved environments when it showed none of them, on the new key's page.
+    // `create` skips reserved keys and succeeds with the rest: land on and name the saved ones.
+    const variables = submission.value.variables.filter(
+      (variable) => !isBlacklistedVariable(variable.key)
+    );
+    const { environmentIds } = submission.value;
+    const landing = await viewAfterCreate(prisma, {
+      url: request.url,
+      userId,
+      projectId: project.id,
+      currentEnvironmentSlug: envParam,
+      savedEnvironmentIds: environmentIds,
+      key: variables[0].key,
+    });
     const slugs = [{ slug: organizationSlug }, { slug: projectParam }, { slug: envParam }] as const;
-    return redirect(
+    return redirectWithSuccessMessage(
       keyParam !== undefined
-        ? `${v3EnvironmentVariableKeyPath(...slugs, keyParam)}${keyPanelViewSearch(request.url)}`
-        : `${v3EnvironmentVariablesPath(...slugs)}${listViewSearch(request.url)}`
+        ? `${v3EnvironmentVariableKeyPath(...slugs, keyParam)}${keyPanelViewSearch(landing.url)}`
+        : `${v3EnvironmentVariablesPath(...slugs)}${listViewSearch(landing.url)}`,
+      request,
+      `Added ${variables.length === 1 ? variables[0].key : `${variables.length} variables`} to ${new Intl.ListFormat(
+        "en"
+      ).format(landing.savedEnvironments.map((environment) => environmentFullTitle(environment)))}`
     );
   }
 );

@@ -32,6 +32,7 @@ import {
   useTickedBeforeHydration,
 } from "~/components/primitives/SelectedItemsProvider";
 import { SelectionBar } from "~/routes/_app.orgs.$organizationSlug.projects.$projectParam.env.$envParam.environment-variables/SelectionBar";
+import { CopyKeyButton } from "~/routes/_app.orgs.$organizationSlug.projects.$projectParam.env.$envParam.environment-variables/CopyKeyButton";
 import { CopyValuesDialog } from "./CopyValues";
 import { type CompareKindOption, CompareToolbar } from "./CompareToolbar";
 import { AppliedFilter } from "~/components/primitives/AppliedFilter";
@@ -977,7 +978,13 @@ function CompareTableRow({
           />
         </TableCell>
       )}
-      <TableCell to={path} isTabbableCell isSelected={isSelected} actionClassName="font-mono">
+      <TableCell
+        to={path}
+        isTabbableCell
+        isSelected={isSelected}
+        actionClassName="font-mono"
+        trailingContent={<CopyKeyButton value={row.key} />}
+      >
         {row.key}
       </TableCell>
       {(["left", "right"] as const).map((side) => {

@@ -18,7 +18,7 @@ import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import { z } from "zod";
 import { ExitIcon } from "~/assets/icons/ExitIcon";
-import { EnvironmentCombo } from "~/components/environments/EnvironmentLabel";
+import { EnvironmentCombo, environmentFullTitle } from "~/components/environments/EnvironmentLabel";
 import { Badge } from "~/components/primitives/Badge";
 import { Button, LinkButton } from "~/components/primitives/Buttons";
 import { CopyableText } from "~/components/primitives/CopyableText";
@@ -702,7 +702,12 @@ function BranchesCountBadge({ counts }: { counts: EnvironmentVariableKeyCounts }
           <span aria-hidden>
             {counts.branchesSet} / {counts.branches}
           </span>
-          <span className="sr-only">{description}</span>
+          {/* The badge's own text is uppercase; the name reads in normal case, the tooltip says the rest. */}
+          <span className="sr-only normal-case">
+            {`${counts.branchesSet} of ${counts.branches} ${
+              counts.branches === 1 ? "branch sets its" : "branches set their"
+            } own value`}
+          </span>
         </Badge>
       }
       content={description}
@@ -769,7 +774,7 @@ function PanelValue({
               type="button"
               variant="small-menu-item"
               LeadingIcon={PencilSquareIcon}
-              aria-label="Edit"
+              aria-label={`Edit ${variable.key} in ${environmentFullTitle(variable.environment)}`}
               onClick={() => editing.setEditingEnvironmentId(variable.environment.id)}
             />
             <DeleteEnvironmentVariableButton

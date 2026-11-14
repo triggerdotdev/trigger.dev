@@ -6,6 +6,7 @@ import {
   listViewSearch,
   parseEnvironmentVariablesFilter,
   selectEnvironmentVariablesFilter,
+  viewAfterSave,
 } from "~/v3/environmentVariables/environmentFilter";
 
 const base = { parentEnvironmentId: null, branchName: null };
@@ -342,6 +343,23 @@ describe("parseEnvironmentVariablesFilter", () => {
     expect(parseEnvironmentVariablesFilter("nonsense")).toBeUndefined();
     expect(parseEnvironmentVariablesFilter(undefined)).toBeUndefined();
   });
+
+  // Catches: a shared link with a full environment name falling back to the default view.
+  it("accepts full environment names in any case", () => {
+    expect(parseEnvironmentVariablesFilter("staging")).toBe("stg");
+    expect(parseEnvironmentVariablesFilter("Production")).toBe("prod");
+    expect(parseEnvironmentVariablesFilter("DEVELOPMENT")).toBe("dev");
+    expect(parseEnvironmentVariablesFilter("PROD")).toBe("prod");
+    expect(parseEnvironmentVariablesFilter("Preview")).toBe("preview");
+    expect(parseEnvironmentVariablesFilter("staged")).toBeUndefined();
+  });
+
+  // Catches: `?env=constructor` resolving to a property inherited from Object and crashing the list.
+  it("ignores names inherited from Object", () => {
+    for (const name of ["constructor", "__proto__", "toString", "hasOwnProperty"]) {
+      expect(parseEnvironmentVariablesFilter(name)).toBeUndefined();
+    }
+  });
 });
 
 describe("availableEnvironmentVariablesFilters", () => {
@@ -370,5 +388,55 @@ describe("listViewSearch", () => {
   it("is empty without list params", () => {
     expect(listViewSearch("https://x.test/p?junk=1&env=")).toBe("");
     expect(listViewSearch(new URL("https://x.test/p"))).toBe("");
+  });
+});
+
+describe("viewAfterSave", () => {
+  const after = (search: string, savedEnvironmentIds: string[], currentEnvironmentId = "prod") => {
+    const result = viewAfterSave({
+      searchParams: new URLSearchParams(search),
+      environments,
+      currentEnvironmentId,
+      savedEnvironmentIds,
+    });
+    return { search: result.searchParams.toString(), switched: result.switched };
+  };
+
+  // Catches: a value saved into an environment the list isn't showing, so it seems lost.
+  it("switches to the one environment saved into when the view shows none", () => {
+    expect(after("env=prod&search=DB&sort=updated", ["stg"])).toEqual({
+      search: "env=stg&search=DB&sort=updated",
+      switched: true,
+    });
+  });
+
+  it("keeps the view when one saved environment is in it", () => {
+    expect(after("env=prod&sort=updated", ["stg", "prod"])).toEqual({
+      search: "env=prod&sort=updated",
+      switched: false,
+    });
+  });
+
+  it("switches to all for several environments, dropping a sort all can't apply", () => {
+    expect(after("env=dev&sort=updated", ["stg", "prod"])).toEqual({
+      search: "env=all",
+      switched: true,
+    });
+  });
+
+  it("narrows Preview to a branch saved into that the view doesn't show", () => {
+    expect(after("env=preview&branch=feature%2Fa", ["branch-b"])).toEqual({
+      search: "env=preview&branch=feature%2Fb",
+      switched: true,
+    });
+  });
+
+  it("switches from another filter to Preview narrowed to the saved branch", () => {
+    expect(after("env=prod", ["branch-a"]).search).toBe("env=preview&branch=feature%2Fa");
+  });
+
+  it("reads the default view from the current environment when there is no env param", () => {
+    expect(after("", ["prod"]).switched).toBe(false);
+    expect(after("", ["stg"]).search).toBe("env=stg");
   });
 });

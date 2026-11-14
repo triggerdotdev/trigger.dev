@@ -298,7 +298,7 @@ export function EditEnvironmentVariablePanel({
           LeadingIcon={PencilSquareIcon}
           fullWidth
           textAlignLeft
-          aria-label="Edit"
+          aria-label={`Edit ${variable.key} in ${environmentFullTitle(variable.environment)}`}
         />
       </DialogTrigger>
       <DialogContent
@@ -423,7 +423,7 @@ export function DeleteEnvironmentVariableButton({
           LeadingIcon={TrashIcon}
           leadingIconClassName="text-rose-500 group-hover/button:text-white dark:group-hover/button:text-text-bright transition-colors"
           className="ml-0.5 transition-colors group-hover/button:bg-error"
-          aria-label={isOverride ? "Remove override" : "Delete"}
+          aria-label={`${isOverride ? "Remove override of" : "Delete"} ${variable.key} in ${environmentFullTitle(variable.environment)}`}
           tooltip={isOverride ? "Remove override" : undefined}
         />
       </DialogTrigger>
