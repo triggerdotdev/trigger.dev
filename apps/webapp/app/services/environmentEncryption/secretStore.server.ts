@@ -52,6 +52,23 @@ export async function protectedSecretKeys(
   );
 }
 
+/**
+ * The stored rows for these keys, in no particular order; a missing key has no row. A raw query
+ * with the JSON value as text, parsed here. Through the pg driver adapter it costs about a third
+ * of Prisma's `findMany` for the same rows; without the adapter it costs more, so the store only
+ * uses it on a client that reads through the adapter.
+ */
+export async function readSecretStoreRows(
+  db: PrismaClientOrTransaction,
+  keys: string[]
+): Promise<Array<{ key: string; value: unknown; version: string }>> {
+  if (!keys.length) return [];
+  const rows = await db.$queryRaw<Array<{ key: string; value: string; version: string }>>`
+    SELECT key, value::text AS value, version FROM "SecretStore" WHERE key = ANY(${keys}::text[])
+  `;
+  return rows.map((row) => ({ key: row.key, value: JSON.parse(row.value), version: row.version }));
+}
+
 export class EnvironmentSecretStore {
   readonly #prefixes: Array<{ environmentId: string; prefix: string }>;
   constructor(
@@ -60,7 +77,9 @@ export class EnvironmentSecretStore {
     private readonly projectId: string,
     environmentIds: string[],
     private readonly prepared = new Map<string, PreparedEnvironmentWrite>(),
-    private readonly protectedKeys?: ReadonlySet<string>
+    private readonly protectedKeys?: ReadonlySet<string>,
+    /** Whether `db` reads through the pg driver adapter: bulk reads then use the raw query. */
+    private readonly rawReads = false
   ) {
     this.#prefixes = [...new Set(environmentIds)].map((environmentId) => ({
       environmentId,
@@ -127,7 +146,9 @@ export class EnvironmentSecretStore {
   async getSecretsByKeys<T>(schema: z.Schema<T>, keys: string[]) {
     if (!keys.length) return [];
     keys.forEach((key) => this.#context(key));
-    const rows = await this.db.secretStore.findMany({ where: { key: { in: boundedIn(keys) } } });
+    const rows = this.rawReads
+      ? await readSecretStoreRows(this.db, keys)
+      : await this.db.secretStore.findMany({ where: { key: { in: boundedIn(keys) } } });
     return this.#parse(schema, rows);
   }
 

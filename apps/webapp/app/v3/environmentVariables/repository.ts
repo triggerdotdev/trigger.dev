@@ -84,6 +84,31 @@ export type DeleteValuesResult =
     }
   | Failure;
 
+/** The most values one copy takes. */
+export const COPY_ENVIRONMENT_VARIABLE_VALUES_LIMIT = 100;
+
+export const CopyEnvironmentVariableValues = z.object({
+  sourceEnvironmentId: z.string(),
+  targetEnvironmentId: z.string(),
+  variableIds: z
+    .array(z.string())
+    .min(1, "Select at least one value to copy.")
+    .max(
+      COPY_ENVIRONMENT_VARIABLE_VALUES_LIMIT,
+      `At most ${COPY_ENVIRONMENT_VARIABLE_VALUES_LIMIT} values can be copied at once.`
+    ),
+  lastUpdatedBy: EnvironmentVariableUpdaterSchema.optional(),
+});
+export type CopyEnvironmentVariableValues = z.infer<typeof CopyEnvironmentVariableValues>;
+
+export type CopyValuesResult =
+  | {
+      success: true;
+      /** Each copied variable, and whether its value was new in the target. */
+      copied: Array<{ id: string; key: string; created: boolean }>;
+    }
+  | Failure;
+
 // Forms preserve explicit empty strings through their custom coercion.
 // A missing field is still invalid.
 export const EnvironmentVariableValue = z.string();
@@ -161,4 +186,5 @@ export interface Repository {
     projectId: string,
     values: DeleteEnvironmentVariableValue[]
   ): Promise<DeleteValuesResult>;
+  copyValues(projectId: string, options: CopyEnvironmentVariableValues): Promise<CopyValuesResult>;
 }

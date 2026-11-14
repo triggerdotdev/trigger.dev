@@ -25,6 +25,8 @@ type AppliedFilterProps = {
   value: ReactNode;
   removable?: boolean;
   onRemove?: () => void;
+  /** The remove button's accessible name. */
+  removeLabel?: string;
   variant?: Variant;
   className?: string;
   valueClassName?: string;
@@ -36,6 +38,7 @@ export function AppliedFilter({
   value,
   removable = true,
   onRemove,
+  removeLabel,
   variant = "secondary/small",
   className,
   valueClassName,
@@ -72,6 +75,7 @@ export function AppliedFilter({
             "group flex size-6 items-center justify-center focus-custom",
             variantClassName.clear
           )}
+          aria-label={removeLabel}
           onClick={onRemove}
         >
           <XMarkIcon className="size-3.5" />

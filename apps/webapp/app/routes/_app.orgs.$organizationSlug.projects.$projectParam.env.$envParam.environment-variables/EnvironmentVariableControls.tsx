@@ -165,7 +165,10 @@ export function EnvironmentVariableValue({
   variable,
   revealAll,
 }: {
-  variable: MaskedEnvironmentVariable;
+  variable: Pick<
+    MaskedEnvironmentVariable,
+    "value" | "isSecret" | "permissionDenied" | "valueUnavailable"
+  >;
   revealAll: boolean;
 }) {
   return variable.permissionDenied ? (

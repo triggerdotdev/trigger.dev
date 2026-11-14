@@ -1,7 +1,7 @@
 import { CheckIcon } from "@heroicons/react/20/solid";
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 import { useCallback, useEffect, useRef, type ReactNode } from "react";
-import { Button, type ButtonVariant } from "~/components/primitives/Buttons";
+import { Button, LinkButton, type ButtonVariant } from "~/components/primitives/Buttons";
 import { type RenderIcon } from "~/components/primitives/Icon";
 import { isTypingIn } from "~/utils/isTypingIn";
 
@@ -9,7 +9,9 @@ export type SelectionAction = {
   label: string;
   icon?: RenderIcon;
   variant: ButtonVariant;
-  onClick: () => void;
+  /** A link instead of a button: navigates rather than acting. */
+  to?: string;
+  onClick?: () => void;
   disabled?: boolean;
   /** Shown as the button's tooltip while it's disabled. */
   disabledReason?: string;
@@ -123,18 +125,29 @@ export function SelectionBar({
                 Clear
               </Button>
               <div className="ml-auto flex items-center gap-1.5 pl-6">
-                {actions.map((action) => (
-                  <Button
-                    key={action.label}
-                    variant={action.variant}
-                    LeadingIcon={action.icon}
-                    disabled={action.disabled}
-                    tooltip={action.disabled ? action.disabledReason : undefined}
-                    onClick={action.onClick}
-                  >
-                    {action.label}
-                  </Button>
-                ))}
+                {actions.map((action) =>
+                  action.to ? (
+                    <LinkButton
+                      key={action.label}
+                      to={action.to}
+                      variant={action.variant}
+                      LeadingIcon={action.icon}
+                    >
+                      {action.label}
+                    </LinkButton>
+                  ) : (
+                    <Button
+                      key={action.label}
+                      variant={action.variant}
+                      LeadingIcon={action.icon}
+                      disabled={action.disabled}
+                      tooltip={action.disabled ? action.disabledReason : undefined}
+                      onClick={action.onClick}
+                    >
+                      {action.label}
+                    </Button>
+                  )
+                )}
               </div>
             </div>
           </motion.div>

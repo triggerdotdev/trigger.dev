@@ -110,6 +110,46 @@ Each row on the Environment Variables page is one value: a key in one environmen
 
 The selection applies to the current view of the list, so it clears when you change the filter, search, sort or page. A row has no checkbox when you don't have permission to delete its value. Deleting a preview branch's override makes that branch use the Preview value again.
 
+### Comparing two environments
+
+The compare view lists the keys that differ between two environments, so you don't have to read both lists side by side. Press **Compare** on the Environment Variables page to open it with the current environment on the left. Each side can be your Dev environment, Staging, Prod, Preview or one preview branch: pick them in the column headers. The two sides are in the URL, so you can share a comparison.
+
+The filters narrow the list:
+
+| Filter | Lists the keys that |
+| --- | --- |
+| All | differ in any way (every key except the ones that are the same) |
+| Different | are set on both sides with different values |
+| Missing | are set on one side only (one filter for each side) |
+| Empty | are empty on one side only |
+| Same | have the same value on both sides |
+
+Secrets are compared on the server: the view says whether two secrets are the same or different, and never shows either value. A secret is never compared with a plain value, because the plain value on the page would reveal the secret; such keys are listed under All and say they weren't compared. A side you don't have permission to read shows "Permission denied" and is never compared.
+
+Comparing a preview branch with Preview lists the branch's own overrides. To compare only some keys, tick them on the Environment Variables page and press **Compare** in the bar. Up to 1,000 keys can be compared at once; above that, search to narrow them down or compare ticked keys.
+
+#### Copying values across
+
+You can copy values from one side of the comparison to the other, in either direction.
+
+<Steps>
+
+<Step title="Choose the values">
+  Hover a row and press **Copy to** with the target environment's name, or tick up to 100 rows and
+  press **Copy to** in the bar at the bottom of the list.
+</Step>
+
+<Step title="Confirm">
+  The dialog says which keys are added to the target and which existing values are replaced, and
+  which ticked keys are skipped (not set or not readable on the source side, already the same, or
+  empty when your organization doesn't allow empty values). Copying several values asks you to type
+  two words to confirm.
+</Step>
+
+</Steps>
+
+The values are copied together: if any of them can't be copied, none are. A copied secret stays a secret, and a value copied onto a secret stays a secret. You need permission to read the source environment and to change the target. Copying replaces values in the target environment, so runs that start afterwards use the new values.
+
 ## Local development
 
 When running `npx trigger.dev dev`, the CLI automatically loads environment variables from these files in order (later files override any duplicate keys from earlier ones):

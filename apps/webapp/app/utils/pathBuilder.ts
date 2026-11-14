@@ -342,6 +342,14 @@ export function v3EnvironmentVariableKeyPath(
   return `${v3EnvironmentVariablesPath(organization, project, environment)}/key/${encodeURIComponent(key)}`;
 }
 
+export function v3EnvironmentVariablesComparePath(
+  organization: OrgForPath,
+  project: ProjectForPath,
+  environment: EnvironmentForPath
+) {
+  return `${v3EnvironmentVariablesPath(organization, project, environment)}/compare`;
+}
+
 export function v3ProjectAlertsPath(
   organization: OrgForPath,
   project: ProjectForPath,

@@ -178,10 +178,14 @@ export default function Page() {
   const detail = useTypedLoaderData<MaskedKeyDetail>();
   const outletContext = useOutletContext<EnvironmentVariablesOutletContext>();
   const { revealAll } = outletContext;
+  // Opened from the compare view: nothing is edited there, and the panel closes back to it.
+  const isReadOnly = outletContext.compare !== undefined;
   const pageData = useTypedMatchesData<EnvironmentVariablesPageLoaderData>({
     id: environmentVariablesRouteId,
   });
-  const writableEnvironmentIds = new Set(pageData?.writableEnvironmentIds ?? []);
+  const writableEnvironmentIds = new Set(
+    isReadOnly ? [] : (pageData?.writableEnvironmentIds ?? [])
+  );
 
   const organization = useOrganization();
   const project = useProject();
@@ -191,7 +195,9 @@ export default function Page() {
 
   const searchParams = new URLSearchParams(location.search);
   // Closing keeps the list's view and drops the panel's own params.
-  const closePath = `${v3EnvironmentVariablesPath(organization, project, environment)}${listViewSearch(searchParams)}`;
+  const closePath =
+    outletContext.compare?.closePath ??
+    `${v3EnvironmentVariablesPath(organization, project, environment)}${listViewSearch(searchParams)}`;
   const keyPath = v3EnvironmentVariableKeyPath(organization, project, environment, detail.key);
 
   // The create dialog, over the panel. With an environment it starts on this key there; with
@@ -336,13 +342,15 @@ export default function Page() {
                 "There's no environment variable with that name in this project."
               )}
             </Paragraph>
-            <LinkButton
-              to={newVariablePath(displayKey ? { fillKey: true } : undefined)}
-              variant="secondary/small"
-              LeadingIcon={PlusIcon}
-            >
-              Add new
-            </LinkButton>
+            {!isReadOnly && (
+              <LinkButton
+                to={newVariablePath(displayKey ? { fillKey: true } : undefined)}
+                variant="secondary/small"
+                LeadingIcon={PlusIcon}
+              >
+                Add new
+              </LinkButton>
+            )}
           </div>
         ) : (
           <>
@@ -372,6 +380,7 @@ export default function Page() {
                               variable={variable}
                               revealAll={revealAll}
                               editing={editing}
+                              isReadOnly={isReadOnly}
                             />
                           </div>
                           {!variable.permissionDenied && (
@@ -449,7 +458,12 @@ export default function Page() {
                       </Property.Label>
                       <Property.Value>
                         <div className="flex min-h-8 items-center gap-2">
-                          <PanelValue variable={variable} revealAll={revealAll} editing={editing} />
+                          <PanelValue
+                            variable={variable}
+                            revealAll={revealAll}
+                            editing={editing}
+                            isReadOnly={isReadOnly}
+                          />
                         </div>
                         {!variable.permissionDenied && (
                           <EnvironmentVariableUpdated variable={variable} />
@@ -710,10 +724,13 @@ function PanelValue({
   variable,
   revealAll,
   editing,
+  isReadOnly,
 }: {
   variable: MaskedEnvironmentVariable;
   revealAll: boolean;
   editing: Editing;
+  /** No edit or delete: the panel was opened from the compare view. */
+  isReadOnly: boolean;
 }) {
   const { counts } = useTypedLoaderData<MaskedKeyDetail>();
   const isEditing = editing.editingEnvironmentId === variable.environment.id;
@@ -745,7 +762,7 @@ function PanelValue({
       </div>
       {/* As in the table: no edit or delete for a value the role can't read. */}
       <div className={"flex shrink-0 items-center"}>
-        {!variable.permissionDenied && (
+        {!variable.permissionDenied && !isReadOnly && (
           <>
             <Button
               ref={editButtonRef}

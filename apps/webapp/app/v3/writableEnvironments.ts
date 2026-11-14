@@ -62,3 +62,55 @@ export function findRefusedEnvironments<E extends WriteCheckEnvironment>(
     return [];
   });
 }
+
+/**
+ * Why copying values from one environment to another is refused, as a sentence, or null when
+ * the user may read the source and write the target. Both ids are user-supplied:
+ * `projectEnvironments` are this project's environments that aren't archived.
+ */
+export function findCopyRefusal<E extends WriteCheckEnvironment & { branchName?: string | null }>(
+  projectEnvironments: ReadonlyArray<E>,
+  {
+    sourceEnvironmentId,
+    targetEnvironmentId,
+    userId,
+    canReadType,
+    canWriteType,
+    title,
+  }: {
+    sourceEnvironmentId: string;
+    targetEnvironmentId: string;
+    userId: string;
+    canReadType: (type: E["type"]) => boolean;
+    canWriteType: (type: E["type"]) => boolean;
+    /** The environment's name in the sentence. */
+    title: (environment: E) => string;
+  }
+): string | null {
+  const source = projectEnvironments.find((e) => e.id === sourceEnvironmentId);
+  if (!source) {
+    return "Nothing was copied. The environment to copy from wasn't found in this project.";
+  }
+  if (sourceEnvironmentId === targetEnvironmentId) {
+    return "Nothing was copied. Pick two different environments.";
+  }
+  // A Development environment is read only by its owner, as it is written.
+  if (!canReadType(source.type) || findUnauthorizedEnvironmentId([source], [source.id], userId)) {
+    return `Nothing was copied. You don't have permission to view environment variables in ${title(source)}.`;
+  }
+  const [refused] = findRefusedEnvironments(
+    projectEnvironments,
+    [targetEnvironmentId],
+    userId,
+    canWriteType
+  );
+  switch (refused?.reason) {
+    case undefined:
+      return null;
+    case "notFound":
+      return "Nothing was copied. The environment to copy to wasn't found in this project. It may be an archived branch.";
+    case "noPermission":
+    case "notOwner":
+      return `Nothing was copied. You don't have permission to change environment variables in ${title(refused.environment)}.`;
+  }
+}

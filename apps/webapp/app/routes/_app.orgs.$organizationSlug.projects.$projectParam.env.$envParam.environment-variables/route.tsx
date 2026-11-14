@@ -1,6 +1,7 @@
 import * as Ariakit from "@ariakit/react";
 import { parseEnvironmentVariableForm } from "~/v3/environmentVariables/forms";
 import {
+  ArrowsRightLeftIcon,
   BookOpenIcon,
   InformationCircleIcon,
   PlusIcon,
@@ -90,9 +91,18 @@ import {
   EnvironmentParamSchema,
   docsPath,
   v3EnvironmentVariableKeyPath,
+  v3EnvironmentVariablesComparePath,
   v3EnvironmentVariablesPath,
   v3NewEnvironmentVariablesPath,
 } from "~/utils/pathBuilder";
+import {
+  COMPARE_LEFT_PARAM,
+  COMPARE_RIGHT_PARAM,
+  COMPARE_KEY_PARAM,
+  compareSelectedLink,
+  compareSideValue,
+  resolveCompareSides,
+} from "~/v3/environmentVariables/compare";
 import {
   ALL_BRANCHES,
   availableEnvironmentVariablesFilters,
@@ -148,6 +158,8 @@ export const meta = pageMeta("Environment variables");
 /** What the list hands the route under it: the key panel or the create dialog. */
 export type EnvironmentVariablesOutletContext = {
   revealAll: boolean;
+  /** Set by the compare view: the key panel is read-only there, and closes back to it. */
+  compare?: { closePath: string };
 };
 
 // The key panel keeps its own search params (its branches search and page) next to the
@@ -681,6 +693,69 @@ function EnvironmentVariablesListPage({
   allEnvironmentsSearchParams.delete("sort");
   const allEnvironmentsPath = `${location.pathname}?${allEnvironmentsSearchParams.toString()}`;
 
+  // The compare view, starting with the one environment the list is filtered to on the left
+  // (with All, or Preview without a single branch picked, the environment in the URL). Carries
+  // the list's filter, so the view's way back returns to it.
+  const compareSides = resolveCompareSides({
+    environments,
+    left:
+      selectedFilter === "preview"
+        ? selectedBranchIds.length === 1
+          ? environments.filter((env) => env.id === selectedBranchIds[0]).map(compareSideValue)[0]
+          : undefined
+        : selectedFilter,
+    currentEnvironmentId: environment.id,
+  });
+  const compareSearchParams = new URLSearchParams(
+    compareSides && {
+      [COMPARE_LEFT_PARAM]: compareSideValue(compareSides.left),
+      [COMPARE_RIGHT_PARAM]: compareSideValue(compareSides.right),
+    }
+  );
+  for (const name of ["env", "branch"]) {
+    for (const value of currentSearchParams.getAll(name)) {
+      compareSearchParams.append(name, value);
+    }
+  }
+  const comparePath = `${v3EnvironmentVariablesComparePath(organization, project, environment)}?${compareSearchParams.toString()}`;
+
+  // The bar's Compare: the ticked rows' keys, between their two environments when they are in
+  // exactly two, otherwise the sides the toolbar's Compare opens with.
+  const compareSelectedPath = (rows: Array<{ key: string; environment: { id: string } }>) => {
+    const environmentIds = new Set(rows.map((row) => row.environment.id));
+    const picked =
+      environmentIds.size === 2
+        ? environments.filter((env) => environmentIds.has(env.id))
+        : undefined;
+    // Keep the toolbar's left on the left when it is one of the two.
+    if (picked && compareSides && picked[1]?.id === compareSides.left.id) {
+      picked.reverse();
+    }
+    const sides =
+      (picked &&
+        resolveCompareSides({
+          environments,
+          left: compareSideValue(picked[0]!),
+          right: compareSideValue(picked[1]!),
+        })) ||
+      compareSides;
+    const params = new URLSearchParams(
+      sides && {
+        [COMPARE_LEFT_PARAM]: compareSideValue(sides.left),
+        [COMPARE_RIGHT_PARAM]: compareSideValue(sides.right),
+      }
+    );
+    for (const key of new Set(rows.map((row) => row.key))) {
+      params.append(COMPARE_KEY_PARAM, key);
+    }
+    for (const name of ["env", "branch"]) {
+      for (const value of currentSearchParams.getAll(name)) {
+        params.append(name, value);
+      }
+    }
+    return `${v3EnvironmentVariablesComparePath(organization, project, environment)}?${params.toString()}`;
+  };
+
   const tableScrollRef = useRef<HTMLDivElement>(null);
 
   // Add isFirst and isLast to each environment variable
@@ -945,6 +1020,15 @@ function EnvironmentVariablesListPage({
                     checked={revealAll}
                     onCheckedChange={(e) => setRevealAll(e.valueOf())}
                   />
+                  {compareSides && (
+                    <LinkButton
+                      to={comparePath}
+                      variant="secondary/small"
+                      LeadingIcon={ArrowsRightLeftIcon}
+                    >
+                      Compare
+                    </LinkButton>
+                  )}
                   <LinkButton
                     to={newVariablePath}
                     variant="primary/small"
@@ -1147,6 +1231,12 @@ function EnvironmentVariablesListPage({
                   onClear={deselectAll}
                   restoreFocus={focusListStart}
                   actions={[
+                    {
+                      label: "Compare",
+                      icon: ArrowsRightLeftIcon,
+                      variant: "secondary/small",
+                      ...compareSelectedLink(compareSelectedPath(selectedRows)),
+                    },
                     {
                       label: "Delete",
                       icon: TrashIcon,

@@ -36,7 +36,9 @@ export function environmentTypeForFilter(
   return TYPE_FILTERS.find((entry) => entry.filter === filter)!.type;
 }
 
-function filterForEnvironmentType(type: RuntimeEnvironmentType): EnvironmentVariablesTypeFilter {
+export function filterForEnvironmentType(
+  type: RuntimeEnvironmentType
+): EnvironmentVariablesTypeFilter {
   return TYPE_FILTERS.find((entry) => entry.type === type)!.filter;
 }
 

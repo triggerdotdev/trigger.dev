@@ -14,6 +14,7 @@ const NESTED_PORTABLE_PAGES = [
   "dashboards/llm",
   "dashboards/overview",
   "dashboards/queues",
+  "environment-variables/compare",
   "environment-variables/new",
   "models/compare",
   "schedules/new",

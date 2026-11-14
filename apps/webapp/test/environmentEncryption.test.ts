@@ -14,6 +14,7 @@ import { migrateEnvironmentEncryption } from "~/services/environmentEncryption/m
 import {
   ENVIRONMENT_SECRET_VERSION,
   environmentSecretPrefix,
+  readSecretStoreRows,
 } from "~/services/environmentEncryption/secretStore.server";
 import { EnvironmentVariablesRepository } from "~/v3/environmentVariables/environmentVariablesRepository.server";
 import {
@@ -69,6 +70,89 @@ async function seed(
 }
 
 describe("environment encryption", () => {
+  // Catches: the raw bulk read returning a stored value differently from Prisma's findMany (a
+  // JSON value parsed differently, a row missing or extra), which every env var read relies on.
+  postgresTest(
+    "reads the secret store the same through the raw query and findMany, for every stored form",
+    async ({ prisma }) => {
+      const { scope } = await seed(prisma);
+      const prefix = environmentSecretPrefix(scope.projectId, scope.environmentId);
+      const repository = new EnvironmentVariablesRepository(prisma, prisma, service(prisma));
+      expect(
+        await repository.create(scope.projectId, {
+          override: true,
+          environmentIds: [scope.environmentId],
+          variables: [
+            { key: "ENVELOPE", value: "per-environment" },
+            { key: "ENVELOPE_JSON", value: '{"nested":[1,2.5,null,true],"quote":"\\"x\\""}' },
+          ],
+        })
+      ).toEqual({ success: true });
+      await prisma.secretStore.createMany({
+        data: [
+          { key: `${prefix}PLAIN`, version: "1", value: { secret: "plain-v1" } },
+          { key: `${prefix}PLAIN_EMPTY`, version: "1", value: { secret: "" } },
+          { key: `${prefix}PLAIN_TEXT`, version: "1", value: { secret: 'é ✓ "q" \\n \t tab' } },
+          {
+            key: `${prefix}KEYRING`,
+            version: "2",
+            value: encryptValue(JSON.stringify({ secret: "keyring-v2" }), keyring),
+          },
+        ],
+      });
+      const names = ["ENVELOPE", "ENVELOPE_JSON", "PLAIN", "PLAIN_EMPTY", "PLAIN_TEXT", "KEYRING"];
+      const keys = [...names, "MISSING", "PLAIN"].map((name) => `${prefix}${name}`);
+
+      const byKey = (a: { key: string }, b: { key: string }) => a.key.localeCompare(b.key);
+      const before = await prisma.secretStore.findMany({
+        where: { key: { in: keys } },
+        select: { key: true, value: true, version: true },
+      });
+      const after = await readSecretStoreRows(prisma, keys);
+      expect(after.sort(byKey)).toEqual(before.sort(byKey));
+      expect(new Set(after.map((row) => row.version))).toEqual(
+        new Set(["1", "2", ENVIRONMENT_SECRET_VERSION])
+      );
+      expect(after).toHaveLength(names.length);
+
+      // Decoded through the store, as every env var read does: findMany without the driver
+      // adapter, the raw query with it.
+      const items = [...names, "MISSING"].map((key) => ({
+        environmentId: scope.environmentId,
+        key,
+      }));
+      const viaRaw = new EnvironmentVariablesRepository(prisma, prisma, service(prisma), {
+        writer: true,
+        replica: true,
+      });
+      const viaFindMany = new EnvironmentVariablesRepository(prisma, prisma, service(prisma), {
+        writer: false,
+        replica: false,
+      });
+      const values = await viaRaw.getVariableValuesForKeys(scope.projectId, items);
+      expect(values).toEqual(await viaFindMany.getVariableValuesForKeys(scope.projectId, items));
+      expect(Object.fromEntries(values)).toEqual(
+        Object.fromEntries(
+          [
+            ["ENVELOPE", "per-environment"],
+            ["ENVELOPE_JSON", '{"nested":[1,2.5,null,true],"quote":"\\"x\\""}'],
+            ["PLAIN", "plain-v1"],
+            ["PLAIN_EMPTY", ""],
+            ["PLAIN_TEXT", 'é ✓ "q" \\n \t tab'],
+            ["KEYRING", "keyring-v2"],
+          ].map(([key, value]) => [`${scope.environmentId}:${key}`, value])
+        )
+      );
+
+      expect(await readSecretStoreRows(prisma, [])).toEqual([]);
+      // One bound array, however many keys: more than a padded IN list would take.
+      const many = Array.from({ length: 40_000 }, (_, i) => `${prefix}NONE_${i}`);
+      expect(
+        (await readSecretStoreRows(prisma, [...many, `${prefix}PLAIN`])).map((r) => r.key)
+      ).toEqual([`${prefix}PLAIN`]);
+    }
+  );
+
   // Catches: orphaned prefix values being dropped, malformed JSON blocking valid variables, or authentication failures being hidden.
   postgresTest(
     "skips malformed JSON but never hides ciphertext authentication failures",

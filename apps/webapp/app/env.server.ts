@@ -1297,6 +1297,8 @@ const EnvironmentSchema = z
     BATCH_PAYLOAD_OFFLOAD_THRESHOLD: z.coerce.number().int().optional(), // Defaults to TASK_PAYLOAD_OFFLOAD_THRESHOLD if not set
     TASK_PAYLOAD_MAXIMUM_SIZE: z.coerce.number().int().default(3_145_728), // 3MB
     BATCH_TASK_PAYLOAD_MAXIMUM_SIZE: z.coerce.number().int().default(1_000_000), // 1MB
+    // The most keys one environment variables comparison reads and compares; above it the page asks to narrow down.
+    ENVIRONMENT_VARIABLES_COMPARE_MAX_KEYS: z.coerce.number().int().positive().default(1_000),
     TASK_RUN_METADATA_MAXIMUM_SIZE: z.coerce.number().int().default(262_144), // 256KB
 
     MAXIMUM_DEV_QUEUE_SIZE: z.coerce.number().int().optional(),

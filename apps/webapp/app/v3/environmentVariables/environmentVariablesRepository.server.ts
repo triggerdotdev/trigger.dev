@@ -1,3 +1,4 @@
+import { EnvironmentKeyUnavailableError } from "~/services/environmentEncryption/wrapping.server";
 import {
   EMPTY_ENV_VALUES_DISABLED,
   emptyEnvironmentVariableValuesEnabled,
@@ -48,6 +49,9 @@ import {
   type CreateResult,
   type DeleteEnvironmentVariableValue,
   type DeleteValuesResult,
+  type CopyEnvironmentVariableValues,
+  type CopyValuesResult,
+  type EnvironmentVariableUpdater,
   type EditEnvironmentVariable,
   type EditEnvironmentVariableValue,
   type EnvironmentVariable,
@@ -125,7 +129,12 @@ export class EnvironmentVariablesRepository implements Repository {
   constructor(
     private prismaClient: PrismaClient = prisma,
     private replicaClient: PrismaReplicaClient = $replica,
-    encryption?: EnvironmentEncryptionService
+    encryption?: EnvironmentEncryptionService,
+    /** Whether each client reads through the pg driver adapter, where the raw secret read is faster. */
+    private driverAdapter = {
+      writer: env.CONTROL_PLANE_DATABASE_WRITER_DRIVER_ADAPTER === "1",
+      replica: env.CONTROL_PLANE_DATABASE_REPLICA_DRIVER_ADAPTER === "1",
+    }
   ) {
     this.#encryption = encryption;
   }
@@ -141,13 +150,19 @@ export class EnvironmentVariablesRepository implements Repository {
     prepared?: Map<string, PreparedEnvironmentWrite>,
     protectedKeys?: ReadonlySet<string>
   ) {
+    // A transaction runs on the writer. When there is no separate replica, both are the writer.
+    const rawReads =
+      db !== this.prismaClient && db === this.replicaClient
+        ? this.driverAdapter.replica
+        : this.driverAdapter.writer;
     return new EnvironmentSecretStore(
       db,
       this.encryption,
       projectId,
       environmentIds,
       prepared,
-      protectedKeys
+      protectedKeys,
+      rawReads
     );
   }
 
@@ -172,6 +187,143 @@ export class EnvironmentVariablesRepository implements Repository {
         )
       )
     );
+  }
+
+  /**
+   * Writes one variable's value to each of the environments, inside the caller's transaction: the
+   * save path of `create` and `copyValues`. `isSecret` set changes the kind of an existing value;
+   * left out, an existing value keeps its kind and a new one takes its parent environment's.
+   * Returns, per environment, whether the value was new there.
+   */
+  async #writeVariable(
+    tx: PrismaClientOrTransaction,
+    projectId: string,
+    {
+      key: variableKey,
+      value,
+      environmentIds,
+      isSecret,
+      parentEnvironmentId,
+      lastUpdatedBy,
+      prepared,
+      unchanged,
+    }: {
+      key: string;
+      value: string;
+      environmentIds: string[];
+      isSecret?: boolean;
+      parentEnvironmentId?: string;
+      lastUpdatedBy?: EnvironmentVariableUpdater;
+      prepared: Map<string, PreparedEnvironmentWrite>;
+      /** Whether an existing value is left as it is, because it already holds this value. */
+      unchanged?: (
+        environmentId: string,
+        existing: { id: string; version: number; isSecret: boolean }
+      ) => boolean;
+    }
+  ): Promise<Map<string, { created: boolean }>> {
+    const written = new Map<string, { created: boolean }>();
+    const environmentVariable = await tx.environmentVariable.upsert({
+      where: {
+        projectId_key: {
+          key: variableKey,
+          projectId,
+        },
+      },
+      create: {
+        key: variableKey,
+        friendlyId: generateFriendlyId("envvar"),
+        project: {
+          connect: {
+            id: projectId,
+          },
+        },
+      },
+      update: {},
+    });
+
+    const secretStore = this.#secretStore(tx, projectId, environmentIds, prepared, new Set());
+
+    // If parentEnvironmentId is provided and isSecret is not explicitly set,
+    // look up if the parent has this variable marked as secret
+    let inheritedIsSecret: boolean | undefined = undefined;
+    if (isSecret === undefined && parentEnvironmentId) {
+      const parentVariableValue = await tx.environmentVariableValue.findFirst({
+        where: {
+          variableId: environmentVariable.id,
+          environmentId: parentEnvironmentId,
+        },
+        select: {
+          isSecret: true,
+        },
+      });
+      if (parentVariableValue?.isSecret) {
+        inheritedIsSecret = true;
+      }
+    }
+
+    const effectiveIsSecret = isSecret ?? inheritedIsSecret;
+
+    //set the secret values and references
+    for (const environmentId of environmentIds) {
+      const key = secretKey(projectId, environmentId, variableKey);
+
+      const existingValueRecord = await tx.environmentVariableValue.findFirst({
+        where: {
+          variableId: environmentVariable.id,
+          environmentId,
+        },
+      });
+
+      // Check if value already exists and is the same, and no metadata change (e.g. isSecret toggle)
+      if (existingValueRecord && unchanged?.(environmentId, existingValueRecord)) {
+        continue;
+      }
+
+      //create the secret reference
+      const secretReference = await tx.secretReference.upsert({
+        where: {
+          key,
+        },
+        create: {
+          key,
+          provider: "DATABASE",
+        },
+        update: {},
+      });
+
+      if (existingValueRecord) {
+        await tx.environmentVariableValue.update({
+          where: {
+            id: existingValueRecord.id,
+          },
+          data: {
+            version: {
+              increment: 1,
+            },
+            ...(lastUpdatedBy ? { lastUpdatedBy } : {}),
+            valueReferenceId: secretReference.id,
+            ...(isSecret !== undefined ? { isSecret } : {}),
+          },
+        });
+      } else {
+        await tx.environmentVariableValue.create({
+          data: {
+            variableId: environmentVariable.id,
+            environmentId: environmentId,
+            valueReferenceId: secretReference.id,
+            isSecret: effectiveIsSecret,
+            version: 1,
+            lastUpdatedBy: lastUpdatedBy ? lastUpdatedBy : Prisma.JsonNull,
+          },
+        });
+      }
+
+      await secretStore.setSecret<{ secret: string }>(key, { secret: value });
+      written.set(environmentId, { created: !existingValueRecord });
+    }
+
+    return written;
   }
 
   async create(projectId: string, options: CreateEnvironmentVariables): Promise<CreateResult> {
@@ -321,127 +473,32 @@ export class EnvironmentVariablesRepository implements Repository {
             ]);
           }
           await this.encryption.assertWrite(tx, [...prepared.values()]);
-          const environmentVariable = await tx.environmentVariable.upsert({
-            where: {
-              projectId_key: {
-                key: variable.key,
-                projectId,
-              },
-            },
-            create: {
-              key: variable.key,
-              friendlyId: generateFriendlyId("envvar"),
-              project: {
-                connect: {
-                  id: projectId,
-                },
-              },
-            },
-            update: {},
-          });
-
-          const secretStore = this.#secretStore(
-            tx,
-            projectId,
-            options.environmentIds,
+          await this.#writeVariable(tx, projectId, {
+            key: variable.key,
+            value: variable.value,
+            environmentIds: options.environmentIds,
+            isSecret: options.isSecret,
+            parentEnvironmentId: options.parentEnvironmentId,
+            lastUpdatedBy: options.lastUpdatedBy,
             prepared,
-            new Set()
-          );
-
-          // If parentEnvironmentId is provided and isSecret is not explicitly set,
-          // look up if the parent has this variable marked as secret
-          let inheritedIsSecret: boolean | undefined = undefined;
-          if (options.isSecret === undefined && options.parentEnvironmentId) {
-            const parentVariableValue = await tx.environmentVariableValue.findFirst({
-              where: {
-                variableId: environmentVariable.id,
-                environmentId: options.parentEnvironmentId,
-              },
-              select: {
-                isSecret: true,
-              },
-            });
-            if (parentVariableValue?.isSecret) {
-              inheritedIsSecret = true;
-            }
-          }
-
-          const effectiveIsSecret = options.isSecret ?? inheritedIsSecret;
-
-          //set the secret values and references
-          for (const environmentId of options.environmentIds) {
-            const key = secretKey(projectId, environmentId, variable.key);
-
-            const existingValueRecord = await tx.environmentVariableValue.findFirst({
-              where: {
-                variableId: environmentVariable.id,
-                environmentId,
-              },
-            });
-
-            // Check if value already exists and is the same, and no metadata change (e.g. isSecret toggle)
-            const existingSecret = existingSecrets.get(key);
-            const previousValue = project.environmentVariables
-              .find((v) => v.key === variable.key)
-              ?.values.find((v) => v.environment.id === environmentId);
-            const canSkip =
-              existingSecret &&
-              existingSecret.secret === variable.value &&
-              existingValueRecord &&
-              existingValueRecord.id === previousValue?.id &&
-              existingValueRecord.version === previousValue.version &&
-              (options.isSecret === undefined || existingValueRecord.isSecret === options.isSecret);
-            if (canSkip) {
-              continue;
-            }
-
-            //create the secret reference
-            const secretReference = await tx.secretReference.upsert({
-              where: {
-                key,
-              },
-              create: {
-                key,
-                provider: "DATABASE",
-              },
-              update: {},
-            });
-
-            if (existingValueRecord) {
-              await tx.environmentVariableValue.update({
-                where: {
-                  id: existingValueRecord.id,
-                },
-                data: {
-                  version: {
-                    increment: 1,
-                  },
-                  ...(options.lastUpdatedBy ? { lastUpdatedBy: options.lastUpdatedBy } : {}),
-                  valueReferenceId: secretReference.id,
-                  ...(options.isSecret !== undefined
-                    ? {
-                        isSecret: options.isSecret,
-                      }
-                    : {}),
-                },
-              });
-            } else {
-              await tx.environmentVariableValue.create({
-                data: {
-                  variableId: environmentVariable.id,
-                  environmentId: environmentId,
-                  valueReferenceId: secretReference.id,
-                  isSecret: effectiveIsSecret,
-                  version: 1,
-                  lastUpdatedBy: options.lastUpdatedBy ? options.lastUpdatedBy : Prisma.JsonNull,
-                },
-              });
-            }
-
-            await secretStore.setSecret<{ secret: string }>(key, {
-              secret: variable.value,
-            });
-          }
+            // Left as it is when it already holds this value, unchanged since it was read above.
+            unchanged: (environmentId, existingValueRecord) => {
+              const existingSecret = existingSecrets.get(
+                secretKey(projectId, environmentId, variable.key)
+              );
+              const previousValue = project.environmentVariables
+                .find((v) => v.key === variable.key)
+                ?.values.find((v) => v.environment.id === environmentId);
+              return Boolean(
+                existingSecret &&
+                existingSecret.secret === variable.value &&
+                existingValueRecord.id === previousValue?.id &&
+                existingValueRecord.version === previousValue.version &&
+                (options.isSecret === undefined ||
+                  existingValueRecord.isSecret === options.isSecret)
+              );
+            },
+          });
         });
       }
 
@@ -1105,7 +1162,172 @@ export class EnvironmentVariablesRepository implements Repository {
       return writeFailure(error, "deleteValues", projectId);
     }
   }
+
+  /**
+   * Copies the values of the given variables from one environment to another, in one
+   * transaction: all of them or none. The values are read here, never taken from the caller. A
+   * secret stays a secret: a value copied from a secret is a secret in the target, and a target
+   * that is a secret stays one. The caller authorizes both environments first.
+   */
+  async copyValues(
+    projectId: string,
+    options: CopyEnvironmentVariableValues
+  ): Promise<CopyValuesResult> {
+    const { sourceEnvironmentId, targetEnvironmentId, lastUpdatedBy } = options;
+    const variableIds = [...new Set(options.variableIds)];
+    const refuse = (reason: string) => new CopyRefusedError(`Nothing was copied. ${reason}`);
+
+    const project = await this.prismaClient.project.findFirst({
+      where: { id: projectId, deletedAt: null },
+      select: {
+        organization: { select: { featureFlags: true } },
+        environments: {
+          where: { id: { in: [sourceEnvironmentId, targetEnvironmentId] }, archivedAt: null },
+          select: {
+            id: true,
+            type: true,
+            branchName: true,
+            parentEnvironmentId: true,
+            encryptionPolicy: { select: { activeKeyId: true, revision: true } },
+          },
+        },
+      },
+    });
+    if (!project) {
+      return { success: false as const, error: "Project not found" };
+    }
+    const source = project.environments.find((e) => e.id === sourceEnvironmentId);
+    const target = project.environments.find((e) => e.id === targetEnvironmentId);
+    if (!source || !target || source.id === target.id) {
+      return { success: false as const, error: "Nothing was copied. Environment not found." };
+    }
+
+    const emptyAllowed = await emptyEnvironmentVariableValuesEnabled(
+      project.organization.featureFlags,
+      this.prismaClient
+    );
+
+    try {
+      const prepared = await this.#prepareWrites(projectId, [target]);
+      const copied = await $transaction(this.prismaClient, "copy env var values", async (tx) => {
+        // Locks the variables first, in the order every batch takes them, so what is read below
+        // is what a save or delete that held them left behind.
+        await tx.$queryRaw`SELECT id FROM "EnvironmentVariable" WHERE "projectId" = ${projectId} AND id = ANY(${variableIds}) ORDER BY id FOR UPDATE`;
+        // Then the source values: a save that doesn't lock the variable (create, with the secret
+        // proxy off) still holds the value row, so whether it's a secret and its plaintext are
+        // read from the same save.
+        await tx.$queryRaw`SELECT id FROM "EnvironmentVariableValue" WHERE "environmentId" = ${source.id} AND "variableId" = ANY(${variableIds}) ORDER BY id FOR UPDATE`;
+        const variables = await tx.environmentVariable.findMany({
+          where: { projectId, id: { in: boundedIn(variableIds) } },
+          select: {
+            id: true,
+            key: true,
+            values: {
+              where: { environmentId: { in: [source.id, target.id] } },
+              select: { environmentId: true, isSecret: true },
+            },
+          },
+          orderBy: { key: "asc" },
+        });
+        if (variables.length !== variableIds.length) {
+          throw refuse("A selected variable wasn't found in this project.");
+        }
+        const keys = variables.map((variable) => variable.key);
+        const named = (list: string[]) =>
+          `${list.slice(0, 5).join(", ")}${list.length > 5 ? ` and ${list.length - 5} more` : ""}`;
+
+        const notSet = variables.filter(
+          (variable) => !variable.values.some((v) => v.environmentId === source.id)
+        );
+        if (notSet.length > 0) {
+          throw refuse(
+            `${named(notSet.map((v) => v.key))} ${notSet.length === 1 ? "isn't" : "aren't"} set in ${environmentFullTitle(source)}.`
+          );
+        }
+        const reserved = keys.filter(isBlacklistedVariable);
+        if (reserved.length > 0) {
+          throw refuse(`${named(reserved)} can't be set.`);
+        }
+
+        // Refuses a proxy-only target value (its lock is the one already held).
+        await assertVariablesNotProxyOnly(tx, projectId, [target.id], keys).catch(
+          (error: unknown) => {
+            throw error instanceof Error && error.message.startsWith("Proxy-only")
+              ? refuse(`${error.message}.`)
+              : error;
+          }
+        );
+        await this.encryption.assertWrite(tx, [...prepared.values()]);
+
+        // Read after the lock, so what is copied is the value as it is now. A proxy-only value
+        // isn't readable, so it isn't returned.
+        const sourceValues = new Map(
+          (
+            await this.#secretStore(tx, projectId, [source.id]).getSecretsByKeys(
+              SecretValue,
+              keys.map((key) => secretKey(projectId, source.id, key))
+            )
+          ).map((secret) => [parseSecretKey(secret.key).key, secret.value.secret])
+        );
+        const unreadable = keys.filter((key) => !sourceValues.has(key));
+        if (unreadable.length > 0) {
+          throw refuse(
+            `${named(unreadable)} can't be read in ${environmentFullTitle(source)}. Proxy-only variables can only be changed by the secret proxy operator.`
+          );
+        }
+        const empty = keys.filter((key) => sourceValues.get(key)!.trim() === "");
+        if (empty.length > 0 && !emptyAllowed) {
+          throw refuse(
+            `${named(empty)} ${empty.length === 1 ? "is" : "are"} empty. ${EMPTY_ENV_VALUES_DISABLED}`
+          );
+        }
+
+        const result: Array<{ id: string; key: string; created: boolean }> = [];
+        for (const variable of variables) {
+          const sourceIsSecret = variable.values.find(
+            (v) => v.environmentId === source.id
+          )!.isSecret;
+          const written = await this.#writeVariable(tx, projectId, {
+            key: variable.key,
+            value: sourceValues.get(variable.key)!,
+            environmentIds: [target.id],
+            // Only ever made a secret: a plain value copied onto a secret leaves it a secret.
+            isSecret: sourceIsSecret ? true : undefined,
+            parentEnvironmentId: target.parentEnvironmentId ?? undefined,
+            lastUpdatedBy,
+            prepared,
+          });
+          result.push({
+            id: variable.id,
+            key: variable.key,
+            created: written.get(target.id)?.created ?? false,
+          });
+        }
+        return result;
+      });
+
+      if (!copied) {
+        return { success: false as const, error: "Something went wrong" };
+      }
+      return { success: true as const, copied };
+    } catch (error) {
+      if (error instanceof CopyRefusedError) {
+        return { success: false as const, error: error.message };
+      }
+      if (error instanceof EnvironmentKeyUnavailableError) {
+        return {
+          success: false as const,
+          error:
+            "Nothing was copied. An encryption key for one of these environments is unavailable right now. Try again later.",
+        };
+      }
+      return writeFailure(error, "copyValues", projectId);
+    }
+  }
 }
+
+/** A copy refused before anything was written, with the sentence for the user. */
+class CopyRefusedError extends Error {}
 
 // Derived from the slim AuthenticatedEnvironment so a full AE satisfies
 // this type — the legacy Prisma payload had `builtInEnvironmentVariableOverrides`

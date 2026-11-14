@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  findCopyRefusal,
   findRefusedEnvironments,
   findUnauthorizedEnvironmentId,
   type WriteCheckEnvironment,
@@ -79,5 +80,50 @@ describe("findRefusedEnvironments", () => {
     expect(
       findRefusedEnvironments(projectEnvs, ["env_staging", "env_dev_me"], "user_me", canWrite)
     ).toEqual([]);
+  });
+});
+
+// Catches: a copy that reads a source the role can't read, writes a target it can't write, or
+// takes an environment from outside the project.
+describe("findCopyRefusal", () => {
+  const check = (
+    sourceEnvironmentId: string,
+    targetEnvironmentId: string,
+    { canRead = true, canWriteProd = true }: { canRead?: boolean; canWriteProd?: boolean } = {}
+  ) =>
+    findCopyRefusal(projectEnvs, {
+      sourceEnvironmentId,
+      targetEnvironmentId,
+      userId: "user_me",
+      canReadType: () => canRead,
+      canWriteType: (type) => canWriteProd || type !== "PRODUCTION",
+      title: (environment) => environment.type,
+    });
+
+  it("allows reading one shared or own environment and writing another", () => {
+    expect(check("env_staging", "env_prod")).toBeNull();
+    expect(check("env_dev_me", "env_staging")).toBeNull();
+  });
+
+  it("refuses a source or target outside the project, or the same environment twice", () => {
+    expect(check("env_elsewhere", "env_prod")).toMatch(/copy from wasn't found/);
+    expect(check("env_staging", "env_elsewhere")).toMatch(/copy to wasn't found/);
+    expect(check("env_prod", "env_prod")).toMatch(/two different environments/);
+  });
+
+  it("refuses a source the role can't read, including another member's Development", () => {
+    expect(check("env_staging", "env_prod", { canRead: false })).toBe(
+      "Nothing was copied. You don't have permission to view environment variables in STAGING."
+    );
+    expect(check("env_dev_other", "env_prod")).toMatch(/view environment variables in DEVELOPMENT/);
+  });
+
+  it("refuses a target the role can't write, including another member's Development", () => {
+    expect(check("env_staging", "env_prod", { canWriteProd: false })).toBe(
+      "Nothing was copied. You don't have permission to change environment variables in PRODUCTION."
+    );
+    expect(check("env_staging", "env_dev_other")).toMatch(
+      /change environment variables in DEVELOPMENT/
+    );
   });
 });
