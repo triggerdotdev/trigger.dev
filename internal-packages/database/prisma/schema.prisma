@@ -2620,7 +2620,7 @@ model WorkerDeployment {
 
   runtime        String?
   runtimeVersion String?
-  /// CLI version that initiated the deploy, stamped at initialization
+  /// CLI version that initiated the deploy, stamped at initialization or worker upload
   cliVersion     String?
 
   imageReference String?
