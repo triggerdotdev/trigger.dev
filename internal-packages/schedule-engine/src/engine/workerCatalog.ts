@@ -17,8 +17,13 @@ export const scheduleWorkerCatalog = {
       lastScheduleTime: z.coerce.date().optional(),
     }),
     visibilityTimeoutMs: 60_000,
+    // Longer than a short Postgres outage (~30–60s). With the redis-worker
+    // defaults this budget covers roughly 9–10 minutes before DLQ, so a brief
+    // DB blip delays a tick instead of permanently stopping the schedule chain.
+    // See https://github.com/triggerdotdev/trigger.dev/issues/5120
     retry: {
-      maxAttempts: 5,
+      maxAttempts: 15,
+      maxTimeoutInMs: 60_000,
     },
   },
 };
