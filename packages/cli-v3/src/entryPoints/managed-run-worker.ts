@@ -145,32 +145,44 @@ clock.setGlobalClock(durableClock);
 const standardTraceContextManager = new StandardTraceContextManager();
 traceContext.setGlobalManager(standardTraceContextManager);
 
-const runMetadataManager = new StandardMetadataManager(apiClientManager.clientOrThrow());
-runMetadata.setGlobalManager(runMetadataManager);
+let runMetadataManager!: StandardMetadataManager;
+let standardRealtimeStreamsManager!: StandardRealtimeStreamsManager;
+let standardInputStreamManager!: StandardInputStreamManager;
+let standardSessionStreamManager!: StandardSessionStreamManager;
 
-const standardRealtimeStreamsManager = new StandardRealtimeStreamsManager(
-  apiClientManager.clientOrThrow(),
-  getEnvVar("TRIGGER_STREAM_URL", getEnvVar("TRIGGER_API_URL")) ?? "https://api.trigger.dev",
-  (getEnvVar("TRIGGER_STREAMS_DEBUG") === "1" || getEnvVar("TRIGGER_STREAMS_DEBUG") === "true") ??
-    false
-);
-realtimeStreams.setGlobalManager(standardRealtimeStreamsManager);
+// The API URL and secret key these capture arrive with the first EXECUTE_TASK_RUN, not the fork env.
+function initializeApiManagers() {
+  if (runMetadataManager) {
+    return;
+  }
 
-const standardInputStreamManager = new StandardInputStreamManager(
-  apiClientManager.clientOrThrow(),
-  getEnvVar("TRIGGER_STREAM_URL", getEnvVar("TRIGGER_API_URL")) ?? "https://api.trigger.dev",
-  (getEnvVar("TRIGGER_STREAMS_DEBUG") === "1" || getEnvVar("TRIGGER_STREAMS_DEBUG") === "true") ??
-    false
-);
-inputStreams.setGlobalManager(standardInputStreamManager);
+  runMetadataManager = new StandardMetadataManager(apiClientManager.clientOrThrow());
+  runMetadata.setGlobalManager(runMetadataManager);
 
-const standardSessionStreamManager = new StandardSessionStreamManager(
-  apiClientManager.clientOrThrow(),
-  getEnvVar("TRIGGER_STREAM_URL", getEnvVar("TRIGGER_API_URL")) ?? "https://api.trigger.dev",
-  (getEnvVar("TRIGGER_STREAMS_DEBUG") === "1" || getEnvVar("TRIGGER_STREAMS_DEBUG") === "true") ??
-    false
-);
-sessionStreams.setGlobalManager(standardSessionStreamManager);
+  standardRealtimeStreamsManager = new StandardRealtimeStreamsManager(
+    apiClientManager.clientOrThrow(),
+    getEnvVar("TRIGGER_STREAM_URL", getEnvVar("TRIGGER_API_URL")) ?? "https://api.trigger.dev",
+    (getEnvVar("TRIGGER_STREAMS_DEBUG") === "1" || getEnvVar("TRIGGER_STREAMS_DEBUG") === "true") ??
+      false
+  );
+  realtimeStreams.setGlobalManager(standardRealtimeStreamsManager);
+
+  standardInputStreamManager = new StandardInputStreamManager(
+    apiClientManager.clientOrThrow(),
+    getEnvVar("TRIGGER_STREAM_URL", getEnvVar("TRIGGER_API_URL")) ?? "https://api.trigger.dev",
+    (getEnvVar("TRIGGER_STREAMS_DEBUG") === "1" || getEnvVar("TRIGGER_STREAMS_DEBUG") === "true") ??
+      false
+  );
+  inputStreams.setGlobalManager(standardInputStreamManager);
+
+  standardSessionStreamManager = new StandardSessionStreamManager(
+    apiClientManager.clientOrThrow(),
+    getEnvVar("TRIGGER_STREAM_URL", getEnvVar("TRIGGER_API_URL")) ?? "https://api.trigger.dev",
+    (getEnvVar("TRIGGER_STREAMS_DEBUG") === "1" || getEnvVar("TRIGGER_STREAMS_DEBUG") === "true") ??
+      false
+  );
+  sessionStreams.setGlobalManager(standardSessionStreamManager);
+}
 
 const waitUntilTimeoutInMs = getNumberEnvVar("TRIGGER_WAIT_UNTIL_TIMEOUT_MS", 60_000);
 const waitUntilManager = new StandardWaitUntilManager(waitUntilTimeoutInMs);
@@ -385,6 +397,8 @@ const zodIpc = new ZodIpcConnection({
 
         _lastEnv = env;
       }
+
+      initializeApiManagers();
 
       console.log(
         `[${new Date().toISOString()}] Received EXECUTE_TASK_RUN isWarmStart ${String(isWarmStart)}`
@@ -765,7 +779,7 @@ async function flushTracingSDK(timeoutInMs: number = 10_000) {
 async function flushMetadata(timeoutInMs: number = 10_000) {
   const now = performance.now();
 
-  await Promise.race([runMetadataManager.flush(), setTimeout(timeoutInMs)]);
+  await Promise.race([runMetadataManager?.flush(), setTimeout(timeoutInMs)]);
 
   const duration = performance.now() - now;
 

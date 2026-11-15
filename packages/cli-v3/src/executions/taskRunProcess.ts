@@ -345,6 +345,9 @@ export class TaskRunProcess {
         env: params.env,
         isWarmStart: isWarmStart ?? this.options.isWarmStart,
       });
+
+      // Not needed once sent; dropping it lets the env's strings be collected during the attempt.
+      params.env = undefined;
     } else {
       // Child process is dead or disconnected — the IPC send was skipped so the attempt
       // promise would hang forever. Reject it immediately to let the caller handle it.
@@ -701,7 +704,7 @@ class OutOfMemoryKillError extends UnexpectedExitError {
   }
 }
 
-const TRUST_STORE_ENV_KEYS = [
+export const TRUST_STORE_ENV_KEYS = [
   "NODE_EXTRA_CA_CERTS",
   "SSL_CERT_FILE",
   "REQUESTS_CA_BUNDLE",

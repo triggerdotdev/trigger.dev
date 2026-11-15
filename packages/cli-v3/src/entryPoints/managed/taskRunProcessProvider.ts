@@ -1,9 +1,59 @@
 import type { WorkerManifest } from "@trigger.dev/core/v3";
 import { generateFriendlyId } from "@trigger.dev/core/v3";
-import { TaskRunProcess } from "../../executions/taskRunProcess.js";
+import { TaskRunProcess, TRUST_STORE_ENV_KEYS } from "../../executions/taskRunProcess.js";
 import { OWN_CGROUP_OOM_KILL_COUNTER } from "../../executions/oomKills.js";
 import type { RunnerEnv } from "./env.js";
 import type { RunLogger, SendDebugLogOptions } from "./logger.js";
+
+// Run env keys the task process needs in its fork env: it reads them before its first
+// EXECUTE_TASK_RUN message, or that message does not carry them. None of them are secrets.
+const FORK_ENV_KEYS = [
+  ...TRUST_STORE_ENV_KEYS,
+  // Node, libuv and the dynamic loader read these only at process start.
+  "NODE_PATH",
+  "UV_THREADPOOL_SIZE",
+  "LANG",
+  "LC_ALL",
+  "LD_LIBRARY_PATH",
+  "TRIGGER_PROJECT_REF",
+  "TRIGGER_LOG_LEVEL",
+  "TRIGGER_WAIT_UNTIL_TIMEOUT_MS",
+  "OTEL_IMPORT_HOOK_EXCLUDES",
+  "TRIGGER_OTEL_SPAN_ATTRIBUTE_COUNT_LIMIT",
+  "TRIGGER_OTEL_LOG_ATTRIBUTE_COUNT_LIMIT",
+  "TRIGGER_OTEL_SPAN_ATTRIBUTE_VALUE_LENGTH_LIMIT",
+  "TRIGGER_OTEL_LOG_ATTRIBUTE_VALUE_LENGTH_LIMIT",
+  "TRIGGER_OTEL_SPAN_EVENT_COUNT_LIMIT",
+  "TRIGGER_OTEL_LINK_COUNT_LIMIT",
+  "TRIGGER_OTEL_ATTRIBUTE_PER_LINK_COUNT_LIMIT",
+  "TRIGGER_OTEL_ATTRIBUTE_PER_EVENT_COUNT_LIMIT",
+] as const;
+
+// With NODE_USE_ENV_PROXY set, Node reads the proxy settings only at process start. Proxy URLs can
+// carry credentials, so these go in the fork env only when the run opts in.
+const ENV_PROXY_KEYS = [
+  "NODE_USE_ENV_PROXY",
+  "HTTP_PROXY",
+  "HTTPS_PROXY",
+  "NO_PROXY",
+  "http_proxy",
+  "https_proxy",
+  "no_proxy",
+] as const;
+
+/** The part of a run's env that goes in the task process's fork env. The rest goes only over IPC. */
+export function forkEnvFromRunEnv(runEnv: Record<string, string>): Record<string, string> {
+  const env: Record<string, string> = {};
+  const keys =
+    runEnv.NODE_USE_ENV_PROXY === "1" ? [...FORK_ENV_KEYS, ...ENV_PROXY_KEYS] : FORK_ENV_KEYS;
+  for (const key of keys) {
+    const value = runEnv[key];
+    if (value !== undefined) {
+      env[key] = value;
+    }
+  }
+  return env;
+}
 
 export interface TaskRunProcessProviderOptions {
   workerManifest: WorkerManifest;
@@ -275,7 +325,7 @@ export class TaskRunProcessProvider {
 
   private buildProcessEnvironment(taskRunEnv: Record<string, string>): Record<string, string> {
     return {
-      ...taskRunEnv,
+      ...forkEnvFromRunEnv(taskRunEnv),
       ...this.env.gatherProcessEnv(),
       TRIGGER_MACHINE_ID: this.machineId,
       HEARTBEAT_INTERVAL_MS: String(this.env.TRIGGER_HEARTBEAT_INTERVAL_SECONDS * 1000),
