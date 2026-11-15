@@ -1445,10 +1445,10 @@ describe("EnvironmentVariablesRepository.copyValues", () => {
   // secret target into a plain value.
   postgresTest("a secret stays a secret, and a secret target stays one", async ({ prisma }) => {
     const { project, staging, prod, repository, set, id, stored } = await setup(prisma);
-    await set(staging.id, "SECRET_NEW", "s1", true);
-    await set(staging.id, "SECRET_ONTO_PLAIN", "s2", true);
+    await set(staging.id, "SECRET_NEW", "SECRET_VALUE_1", true);
+    await set(staging.id, "SECRET_ONTO_PLAIN", "SECRET_VALUE_2", true);
     await set(prod.id, "SECRET_ONTO_PLAIN", "plain", false);
-    await set(staging.id, "PLAIN_ONTO_SECRET", "p3", false);
+    await set(staging.id, "PLAIN_ONTO_SECRET", "PLAIN_VALUE_3", false);
     await set(prod.id, "PLAIN_ONTO_SECRET", "secret", true);
 
     const result = await repository.copyValues(project.id, {
@@ -1462,14 +1462,17 @@ describe("EnvironmentVariablesRepository.copyValues", () => {
     });
 
     expect(result.success).toBe(true);
-    expect(JSON.stringify(result)).not.toMatch(/s1|s2|p3/);
-    expect(await stored(prod.id, "SECRET_NEW")).toMatchObject({ value: "s1", isSecret: true });
+    expect(JSON.stringify(result)).not.toMatch(/SECRET_VALUE_1|SECRET_VALUE_2|PLAIN_VALUE_3/);
+    expect(await stored(prod.id, "SECRET_NEW")).toMatchObject({
+      value: "SECRET_VALUE_1",
+      isSecret: true,
+    });
     expect(await stored(prod.id, "SECRET_ONTO_PLAIN")).toMatchObject({
-      value: "s2",
+      value: "SECRET_VALUE_2",
       isSecret: true,
     });
     expect(await stored(prod.id, "PLAIN_ONTO_SECRET")).toMatchObject({
-      value: "p3",
+      value: "PLAIN_VALUE_3",
       isSecret: true,
     });
   });
