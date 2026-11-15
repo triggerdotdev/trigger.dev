@@ -52,7 +52,19 @@
               },
               {
                 "group": "OIDC",
-                "pages": ["oidc", "oidc/aws", "oidc/anthropic", "oidc/infisical", "oidc/custom"]
+                "pages": [
+                  "oidc",
+                  "oidc/aws",
+                  "oidc/azure",
+                  "oidc/gcp",
+                  "oidc/anthropic",
+                  "oidc/vault",
+                  "oidc/infisical",
+                  "oidc/doppler",
+                  "oidc/snowflake",
+                  "oidc/databricks",
+                  "oidc/custom"
+                ]
               }
             ]
           },

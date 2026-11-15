@@ -350,6 +350,14 @@ export function v3EnvironmentVariablesComparePath(
   return `${v3EnvironmentVariablesPath(organization, project, environment)}/compare`;
 }
 
+export function v3EnvironmentVariablesAttentionPath(
+  organization: OrgForPath,
+  project: ProjectForPath,
+  environment: EnvironmentForPath
+) {
+  return `${v3EnvironmentVariablesPath(organization, project, environment)}/attention`;
+}
+
 export function v3ProjectAlertsPath(
   organization: OrgForPath,
   project: ProjectForPath,

@@ -33,7 +33,6 @@ import { useProject } from "~/hooks/useProject";
 import { useSearchParams } from "~/hooks/useSearchParam";
 import { useShortcutKeys } from "~/hooks/useShortcutKeys";
 import { isTypingIn } from "~/utils/isTypingIn";
-import { useTypedMatchesData } from "~/hooks/useTypedMatchData";
 import {
   EnvironmentVariableKeyPresenter,
   type EnvironmentVariableKeyDetail,
@@ -44,9 +43,8 @@ import {
   EnvironmentVariableUpdated,
   InlineValueEditor,
   EnvironmentVariableValue,
-  environmentVariablesRouteId,
   maskEnvironmentVariable,
-  type EnvironmentVariablesPageLoaderData,
+  useEnvironmentVariablesPageData,
   type MaskedEnvironmentVariable,
 } from "~/routes/_app.orgs.$organizationSlug.projects.$projectParam.env.$envParam.environment-variables/EnvironmentVariableControls";
 import type { EnvironmentVariablesOutletContext } from "~/routes/_app.orgs.$organizationSlug.projects.$projectParam.env.$envParam.environment-variables/route";
@@ -57,8 +55,12 @@ import {
   EnvironmentParamSchema,
   v3EnvironmentVariableKeyPath,
   v3EnvironmentVariablesPath,
+  v3OidcPath,
 } from "~/utils/pathBuilder";
+import { TextLink } from "~/components/primitives/TextLink";
+import { oidcServiceForKey } from "~/v3/environmentVariables/oidcReplaceable";
 import { listViewSearch } from "~/v3/environmentVariables/environmentFilter";
+import { attentionViewSearch } from "~/v3/environmentVariables/attention";
 import { EnvironmentVariableKey } from "~/v3/environmentVariables/repository";
 import {
   activeInlineValueEdit,
@@ -180,9 +182,7 @@ export default function Page() {
   const { revealAll } = outletContext;
   // Opened from the compare view: nothing is edited there, and the panel closes back to it.
   const isReadOnly = outletContext.compare !== undefined;
-  const pageData = useTypedMatchesData<EnvironmentVariablesPageLoaderData>({
-    id: environmentVariablesRouteId,
-  });
+  const pageData = useEnvironmentVariablesPageData();
   const writableEnvironmentIds = new Set(
     isReadOnly ? [] : (pageData?.writableEnvironmentIds ?? [])
   );
@@ -197,8 +197,11 @@ export default function Page() {
   // Closing keeps the list's view and drops the panel's own params.
   const closePath =
     outletContext.compare?.closePath ??
+    outletContext.attention?.closePath ??
     `${v3EnvironmentVariablesPath(organization, project, environment)}${listViewSearch(searchParams)}`;
-  const keyPath = v3EnvironmentVariableKeyPath(organization, project, environment, detail.key);
+  const keyPath = outletContext.attention
+    ? `${outletContext.attention.path}/key/${encodeURIComponent(detail.key)}`
+    : v3EnvironmentVariableKeyPath(organization, project, environment, detail.key);
 
   // The create dialog, over the panel. With an environment it starts on this key there; with
   // fillKey it starts on this key and leaves the environments as the list has them.
@@ -210,7 +213,14 @@ export default function Page() {
       | { fillKey: true }
       | { addOverride: { previewEnvironmentId: string; isSecret: boolean } }
   ) => {
-    const params = new URLSearchParams(keyPanelViewSearch(searchParams));
+    const params = new URLSearchParams(
+      outletContext.attention
+        ? attentionViewSearch(searchParams, [
+            KEY_PANEL_BRANCH_SEARCH_PARAM,
+            KEY_PANEL_BRANCH_PAGE_PARAM,
+          ])
+        : keyPanelViewSearch(searchParams)
+    );
     if (start && "environmentId" in start) {
       params.set(NEW_VARIABLE_ENVIRONMENT_PARAM, start.environmentId);
     } else if (start && "addOverride" in start) {
@@ -297,6 +307,26 @@ export default function Page() {
   });
 
   const displayKey = displayableKey(detail.key);
+  // Only for a key set in a deployed environment: OIDC tokens aren't available in Development.
+  const canUseOidc =
+    organization.featureFlags.oidcEnabled &&
+    oidcServiceForKey(detail.key) !== undefined &&
+    (detail.counts.branchesSet > 0 ||
+      detail.environments.some(
+        (row) => row.variable !== null && row.environment.type !== "DEVELOPMENT"
+      ));
+  // OIDC setup is per environment: open it on one the key is set in, the URL's when it is.
+  const oidcEnvironmentId =
+    environment.type !== "DEVELOPMENT" &&
+    detail.environments.some(
+      (row) => row.variable !== null && row.environment.id === environment.id
+    )
+      ? environment.id
+      : detail.environments.find(
+          (row) => row.variable !== null && row.environment.type !== "DEVELOPMENT"
+        )?.environment.id;
+  const oidcEnvironment =
+    project.environments.find((e) => e.id === oidcEnvironmentId) ?? environment;
   const { pagination } = detail.branches;
   const branchPagePath = (page: number) => {
     const params = new URLSearchParams(location.search);
@@ -354,6 +384,14 @@ export default function Page() {
           </div>
         ) : (
           <>
+            {canUseOidc && (
+              <Paragraph variant="small" className="border-b border-grid-dimmed px-3 py-2">
+                This key could be replaced with OIDC.{" "}
+                <TextLink to={v3OidcPath(organization, project, oidcEnvironment)}>
+                  Set up OIDC
+                </TextLink>
+              </Paragraph>
+            )}
             <Section title="Environments">
               <Property.Table className="px-3">
                 {detail.environments.map(({ environment: rowEnvironment, variable }) => (

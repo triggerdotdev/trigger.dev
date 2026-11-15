@@ -150,6 +150,23 @@ You can copy values from one side of the comparison to the other, in either dire
 
 The values are copied together: if any of them can't be copied, none are. A copied secret stays a secret, and a value copied onto a secret stays a secret. You need permission to read the source environment and to change the target. Copying replaces values in the target environment, so runs that start afterwards use the new values.
 
+### Values that need attention
+
+The Needs attention page lists the keys in one environment that are probably wrong or worth a second look. Press **Needs attention** on the Environment Variables page to open it; the button shows how many keys need attention in the current environment, leaving out empty values. Pick the environment (your Dev environment, Staging, Prod or Preview) in the value column's header.
+
+| Tab | Lists the keys that |
+| --- | --- |
+| All | need attention for any reason, grouped by the most pressing one |
+| Missing here | are set in another of Dev, Staging and Prod but not in this environment |
+| Empty | are set to an empty string, secrets included |
+| Replace with OIDC | hold credentials that [OIDC](/oidc) could replace, in deployed environments when your organization has OIDC |
+| Changed recently | were saved in the last 24 hours, newest first |
+| Ignored | have a reason your team ignored |
+
+A Missing here row offers **Copy from** to copy the value from an environment where it's set, through the same confirmation as [copying values across](#copying-values-across), or **Set** to enter a new one.
+
+Ignore a reason when it's expected, such as a key that is only meant to exist in Prod. An ignore applies to one key, in one environment, for one reason, and is shared with everyone on the project, who see who ignored it and when. Ignored reasons move to the Ignored tab until someone presses **Stop ignoring**. An ignored empty value stops being ignored the next time the value is saved. Changed recently can't be ignored: a key leaves that tab a day after it was saved.
+
 ## Local development
 
 When running `npx trigger.dev dev`, the CLI automatically loads environment variables from these files in order (later files override any duplicate keys from earlier ones):

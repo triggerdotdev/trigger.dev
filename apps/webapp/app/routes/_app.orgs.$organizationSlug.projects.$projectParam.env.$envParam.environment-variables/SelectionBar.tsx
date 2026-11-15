@@ -17,6 +17,33 @@ export type SelectionAction = {
   disabledReason?: string;
 };
 
+// Opaque, so the sticky actions cell hides what scrolls under it.
+const tickedCellClassName =
+  "bg-[color-mix(in_srgb,var(--color-indigo-500)_12%,var(--color-background-dimmed))] group-hover/table-row:bg-[color-mix(in_srgb,var(--color-indigo-500)_16%,var(--color-background-dimmed))]";
+const tickedOpenCellClassName =
+  "bg-[color-mix(in_srgb,var(--color-indigo-500)_16%,var(--color-background-hover))] group-hover/table-row:bg-[color-mix(in_srgb,var(--color-indigo-500)_20%,var(--color-background-hover))]";
+const quietCellClassName = "opacity-60 transition-opacity group-hover/table-row:opacity-100";
+
+/**
+ * A row cell's look while rows are ticked: ticked rows are tinted with the checkbox's colour (over
+ * the open key's grey when both apply); while any are ticked, the others are quieter, except the
+ * open key's, which is what the panel shows.
+ */
+export function tickCellClassName({
+  isTicked,
+  isAnyTicked,
+  isSelected,
+}: {
+  isTicked: boolean;
+  isAnyTicked: boolean;
+  isSelected: boolean;
+}): string | undefined {
+  if (isTicked) {
+    return isSelected ? tickedOpenCellClassName : tickedCellClassName;
+  }
+  return isAnyTicked && !isSelected ? quietCellClassName : undefined;
+}
+
 /** True when the focus is on a control the user reached with the keyboard. */
 export function hasKeyboardFocus(element: Element | null): element is HTMLElement {
   return element instanceof HTMLElement && element.matches(":focus-visible");

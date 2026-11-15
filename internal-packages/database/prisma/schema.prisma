@@ -84,6 +84,7 @@ model User {
   metricsDashboards                MetricsDashboard[]
   platformNotifications            PlatformNotification[]
   platformNotificationInteractions PlatformNotificationInteraction[]
+  environmentVariableIgnores       EnvironmentVariableIgnore[]
 }
 
 model MfaBackupCode {
@@ -491,6 +492,7 @@ model RuntimeEnvironment {
   taskRuns                   TaskRun[]
   taskQueues                 TaskQueue[]
   environmentVariableValues  EnvironmentVariableValue[]
+  environmentVariableIgnores EnvironmentVariableIgnore[]
   checkpoints                Checkpoint[]
   workerDeployments          WorkerDeployment[]
   workerDeploymentPromotions WorkerDeploymentPromotion[]
@@ -633,6 +635,7 @@ model Project {
   runTags                        TaskRunTag[]
   taskQueues                     TaskQueue[]
   environmentVariables           EnvironmentVariable[]
+  environmentVariableIgnores     EnvironmentVariableIgnore[]
   checkpoints                    Checkpoint[]
   WorkerDeployment               WorkerDeployment[]
   CheckpointRestoreEvent         CheckpointRestoreEvent[]
@@ -2489,6 +2492,7 @@ model EnvironmentVariable {
   createdAt  DateTime                   @default(now())
   updatedAt  DateTime                   @updatedAt
   values     EnvironmentVariableValue[]
+  ignores    EnvironmentVariableIgnore[]
 
   @@unique([projectId, key])
 }
@@ -2519,6 +2523,35 @@ model EnvironmentVariableValue {
   @@index([valueReferenceId])
   // One environment's values by last update: the environment variables page's sort by updated
   @@index([environmentId, updatedAt(sort: Desc), variableId])
+}
+
+/// A reason the environment variables "Needs attention" page shows a key in one environment, which
+/// the project's team chose to ignore. An ignored EMPTY goes when the value is next saved.
+model EnvironmentVariableIgnore {
+  id            String                          @id @default(cuid())
+  project       Project                         @relation(fields: [projectId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  projectId     String
+  environment   RuntimeEnvironment              @relation(fields: [environmentId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  environmentId String
+  /// For MISSING, a variable of the project with no value in this environment.
+  variable      EnvironmentVariable             @relation(fields: [variableId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  variableId    String
+  reason        EnvironmentVariableIgnoreReason
+  createdBy     User?                           @relation(fields: [createdById], references: [id], onDelete: SetNull, onUpdate: Cascade)
+  createdById   String?
+  createdAt     DateTime                        @default(now())
+
+  // Also the page's read: one environment's ignores, joined by variable
+  @@unique([environmentId, variableId, reason])
+  @@index([variableId])
+  @@index([projectId])
+  @@index([createdById])
+}
+
+enum EnvironmentVariableIgnoreReason {
+  EMPTY
+  MISSING
+  OIDC
 }
 
 model Checkpoint {

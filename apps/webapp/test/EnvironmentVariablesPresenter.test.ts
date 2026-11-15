@@ -1,4 +1,4 @@
-import { describe, expect, vi } from "vitest";
+import { describe, expect, test, vi } from "vitest";
 
 vi.mock("~/db.server", async () => ({
   prisma: {},
@@ -21,7 +21,11 @@ vi.mock("~/db.server", async () => ({
 import { postgresTest } from "@internal/testcontainers";
 import type { PrismaClient } from "@trigger.dev/database";
 import { EnvironmentVariablesPresenter } from "~/presenters/v3/EnvironmentVariablesPresenter.server";
+import { EnvironmentVariablesAttentionPresenter } from "~/presenters/v3/EnvironmentVariablesAttentionPresenter.server";
+import type { AttentionKind } from "~/v3/environmentVariables/attention";
 import { EnvironmentVariablesRepository } from "~/v3/environmentVariables/environmentVariablesRepository.server";
+import { findOidcReplaceableValues } from "~/presenters/v3/environmentVariablesAttention.server";
+import { groupOidcReplaceable, oidcServiceForKey } from "~/v3/environmentVariables/oidcReplaceable";
 import {
   createEnvironmentVariable,
   createRuntimeEnvironment,
@@ -582,6 +586,173 @@ describe("EnvironmentVariablesPresenter", () => {
       expect(await keys({ sort: "updated", branches: [] })).toEqual(alphabetical);
     }
   );
+
+  // Catches: a needs-attention filter listing or counting the wrong keys, or the badge's counts
+  // disagreeing with the list a filter gives.
+  postgresTest(
+    // Catches: a kind's count that disagrees with its rows, a key counted twice in All, or Empty
+    // missing a secret or a whitespace value.
+    "lists and counts the keys needing attention in one environment",
+    async ({ prisma }) => {
+      const { user, organization, project } = await createTestOrgProjectWithMember(prisma);
+      await prisma.organization.update({
+        where: { id: organization.id },
+        data: { featureFlags: { allowEmptyEnvironmentVariableValues: true } },
+      });
+      const env = (type: "PRODUCTION" | "STAGING" | "PREVIEW", slug: string) =>
+        createRuntimeEnvironment(prisma, {
+          projectId: project.id,
+          organizationId: organization.id,
+          type,
+          slug,
+        });
+      const prod = await env("PRODUCTION", "prod");
+      const staging = await env("STAGING", "stg");
+      // Preview isn't a source for "Missing here".
+      const preview = await env("PREVIEW", "preview");
+
+      const repository = new EnvironmentVariablesRepository(prisma, prisma);
+      const set = (environmentId: string, key: string, value: string, isSecret = false) =>
+        createEnvironmentVariable(repository, project.id, {
+          environmentId,
+          key,
+          value,
+          isSecret,
+          userId: user.id,
+        });
+      await set(prod.id, "EMPTY_PLAIN", "");
+      await set(prod.id, "EMPTY_SECRET", "", true);
+      await set(prod.id, "SPACES", "   ");
+      await set(prod.id, "FULL", "value");
+      await set(prod.id, "OLD", "value");
+      await set(staging.id, "FULL", "value");
+      await set(staging.id, "ONLY_STAGING", "value");
+      await set(staging.id, "ALSO_STAGING", "value");
+      await set(preview.id, "ONLY_PREVIEW", "value");
+
+      // Age every Prod value but FULL and EMPTY_PLAIN past the window; FULL is the newest.
+      await prisma.environmentVariableValue.updateMany({
+        where: {
+          environmentId: prod.id,
+          variable: { key: { notIn: ["FULL", "EMPTY_PLAIN"] } },
+        },
+        data: { updatedAt: new Date(Date.now() - 2 * 24 * 60 * 60 * 1000) },
+      });
+      await prisma.environmentVariableValue.updateMany({
+        where: { environmentId: prod.id, variable: { key: "FULL" } },
+        data: { updatedAt: new Date(Date.now() + 1000) },
+      });
+
+      const presenter = new EnvironmentVariablesAttentionPresenter(prisma, prisma);
+      const call = async (kind?: AttentionKind, search?: string) => {
+        const result = await presenter.call({
+          userId: user.id,
+          projectId: project.id,
+          env: "prod",
+          kind,
+          search,
+        });
+        if (!result.isReadable) {
+          throw new Error("Prod should be readable");
+        }
+        return result;
+      };
+
+      const all = await call();
+      expect(all.target?.id).toBe(prod.id);
+      expect(all.counts).toEqual({ empty: 3, missing: 2, recent: 2, oidc: 0, all: 6, ignored: 0 });
+      expect(all.pagination.totalCount).toBe(6);
+      // Most pressing kind first (missing, empty, OIDC, recent), then by key.
+      expect(all.rows.map((row) => [row.key, row.kinds])).toEqual([
+        ["ALSO_STAGING", ["missing"]],
+        ["ONLY_STAGING", ["missing"]],
+        ["EMPTY_PLAIN", ["empty", "recent"]],
+        ["EMPTY_SECRET", ["empty"]],
+        ["SPACES", ["empty"]],
+        ["FULL", ["recent"]],
+      ]);
+
+      // Catches: All sorted by key before paging, so page 2 restarts at Missing here.
+      const page = async (n: number) =>
+        presenter.call({
+          userId: user.id,
+          projectId: project.id,
+          env: "prod",
+          page: n,
+          pageSize: 3,
+        });
+      const pages = await Promise.all([page(1), page(2)]);
+      expect(pages.flatMap((p) => (p.isReadable ? p.rows.map((row) => row.key) : []))).toEqual([
+        "ALSO_STAGING",
+        "ONLY_STAGING",
+        "EMPTY_PLAIN",
+        "EMPTY_SECRET",
+        "SPACES",
+        "FULL",
+      ]);
+
+      // Each kind lists as many rows as its count says.
+      const missing = await call("missing");
+      expect(missing.rows.map((row) => row.key)).toEqual(["ALSO_STAGING", "ONLY_STAGING"]);
+      expect(missing.rows.every((row) => row.environment.id === prod.id)).toBe(true);
+      expect(missing.rows[0]!.notSetHere?.setIn.map((e) => e.id)).toEqual([staging.id]);
+
+      const recent = await call("recent");
+      expect(recent.rows.map((row) => row.key)).toEqual(["FULL", "EMPTY_PLAIN"]);
+      expect(recent.pagination.totalCount).toBe(all.counts.recent);
+
+      const empty = await call("empty");
+      expect(empty.rows.map((row) => [row.key, row.emptySecret ?? false])).toEqual([
+        ["EMPTY_PLAIN", false],
+        ["EMPTY_SECRET", true],
+        ["SPACES", false],
+      ]);
+      expect(empty.pagination.totalCount).toBe(all.counts.empty);
+
+      // Search narrows the counts and each kind.
+      const searched = await call("empty", "secret");
+      expect(searched.rows.map((row) => row.key)).toEqual(["EMPTY_SECRET"]);
+      expect(searched.counts.all).toBe(1);
+      expect((await call("missing", "also")).pagination.totalCount).toBe(1);
+
+      // A full environment name picks it.
+      const byName = await presenter.call({
+        userId: user.id,
+        projectId: project.id,
+        env: "staging",
+      });
+      expect(byName.target?.id).toBe(staging.id);
+
+      // Over the decrypt limit Empty says so instead of reading the values.
+      const capped = await presenter.call({
+        userId: user.id,
+        projectId: project.id,
+        env: "prod",
+        kind: "empty",
+        maxKeys: 2,
+      });
+      expect(capped.isReadable && capped.emptyProblem).toEqual({ kind: "tooManyKeys", max: 2 });
+      expect(capped.isReadable && capped.rows).toEqual([]);
+
+      // A role that can't read Prod gets nothing from it.
+      const denied = await presenter.call({
+        userId: user.id,
+        projectId: project.id,
+        env: "prod",
+        canRead: (type) => type !== "PRODUCTION",
+      });
+      expect(denied.isReadable).toBe(false);
+
+      // The list's button counts what needs no decrypting: missing or changed recently.
+      const list = await new EnvironmentVariablesPresenter(prisma, prisma).call({
+        userId: user.id,
+        projectId: project.id,
+        environmentFilter: "prod",
+        canRead: () => true,
+      });
+      expect(list.attentionCount).toBe(4);
+    }
+  );
 });
 
 /** The keys in the order of their variable ids, which is how the sort breaks ties. */
@@ -608,3 +779,175 @@ async function setUpdatedAt(
     data: { updatedAt: new Date(time) },
   });
 }
+
+describe("Replace with OIDC", () => {
+  // Catches: a key matched by prefix, case or value instead of its exact name.
+  test("matches exact key names only", () => {
+    expect(oidcServiceForKey("AWS_ACCESS_KEY_ID")?.id).toBe("aws");
+    expect(oidcServiceForKey("ANTHROPIC_API_KEY")?.id).toBe("anthropic");
+    expect(oidcServiceForKey("INFISICAL_TOKEN")?.id).toBe("infisical");
+    expect(oidcServiceForKey("aws_access_key_id")).toBeUndefined();
+    expect(oidcServiceForKey("MY_AWS_ACCESS_KEY_ID")).toBeUndefined();
+
+    const matched: Record<string, string> = {
+      AZURE_CLIENT_SECRET: "azure",
+      AZURE_CLIENT_CERTIFICATE_PATH: "azure",
+      AZURE_CLIENT_CERTIFICATE_PASSWORD: "azure",
+      GOOGLE_APPLICATION_CREDENTIALS: "gcp",
+      GOOGLE_CREDENTIALS: "gcp",
+      VAULT_TOKEN: "vault",
+      DOPPLER_TOKEN: "doppler",
+      SNOWFLAKE_PASSWORD: "snowflake",
+      SNOWFLAKE_PRIVATE_KEY: "snowflake",
+      SNOWFLAKE_PRIVATE_KEY_PATH: "snowflake",
+      SNOWFLAKE_PRIVATE_KEY_PASSPHRASE: "snowflake",
+      DATABRICKS_TOKEN: "databricks",
+      DATABRICKS_CLIENT_SECRET: "databricks",
+    };
+    for (const [key, service] of Object.entries(matched)) {
+      expect(oidcServiceForKey(key)?.id, key).toBe(service);
+    }
+    // IDs and names that stay when the secret goes, and keys OIDC doesn't replace.
+    for (const key of [
+      "AZURE_CLIENT_ID",
+      "AZURE_TENANT_ID",
+      "GOOGLE_API_KEY",
+      "VAULT_ROLE_ID",
+      "SNOWFLAKE_USER",
+    ]) {
+      expect(oidcServiceForKey(key), key).toBeUndefined();
+    }
+  });
+
+  // Catches: Development or archived branches counted as places OIDC could replace a key, the
+  // filter listing other keys, or the badge counting a recently changed key twice.
+  postgresTest(
+    "lists and counts keys OIDC could replace in deployed environments",
+    async ({ prisma }) => {
+      const { user, organization, project, orgMember } =
+        await createTestOrgProjectWithMember(prisma);
+      const env = (type: "PRODUCTION" | "STAGING" | "PREVIEW" | "DEVELOPMENT", slug: string) =>
+        createRuntimeEnvironment(prisma, {
+          projectId: project.id,
+          organizationId: organization.id,
+          type,
+          slug,
+        });
+      const prod = await env("PRODUCTION", "prod");
+      const staging = await env("STAGING", "stg");
+      // The user's own Dev: the only Dev the page looks at.
+      const dev = await createRuntimeEnvironment(prisma, {
+        projectId: project.id,
+        organizationId: organization.id,
+        type: "DEVELOPMENT",
+        slug: "dev",
+        orgMemberId: orgMember.id,
+      });
+      const preview = await env("PREVIEW", "preview");
+      await prisma.runtimeEnvironment.update({
+        where: { id: preview.id },
+        data: { isBranchableEnvironment: true },
+      });
+      const branch = async (branchName: string, archived: boolean) => {
+        const environment = await env("PREVIEW", branchName.replace("/", "-"));
+        return prisma.runtimeEnvironment.update({
+          where: { id: environment.id },
+          data: {
+            parentEnvironmentId: preview.id,
+            branchName,
+            archivedAt: archived ? new Date() : null,
+          },
+        });
+      };
+      const active = await branch("feature/active", false);
+      const archived = await branch("feature/archived", true);
+
+      const repository = new EnvironmentVariablesRepository(prisma, prisma);
+      const set = (environmentId: string, key: string) =>
+        createEnvironmentVariable(repository, project.id, {
+          environmentId,
+          key,
+          value: "value",
+          userId: user.id,
+        });
+      await set(prod.id, "AWS_ACCESS_KEY_ID");
+      await set(staging.id, "AWS_ACCESS_KEY_ID");
+      await set(active.id, "AWS_ACCESS_KEY_ID");
+      await set(prod.id, "ANTHROPIC_API_KEY");
+      await set(prod.id, "OTHER");
+      await set(dev.id, "AWS_SECRET_ACCESS_KEY");
+      await set(archived.id, "INFISICAL_TOKEN");
+      // Only AWS_ACCESS_KEY_ID changed recently in Prod.
+      await prisma.environmentVariableValue.updateMany({
+        where: { environmentId: prod.id, variable: { key: { not: "AWS_ACCESS_KEY_ID" } } },
+        data: { updatedAt: new Date(Date.now() - 2 * 24 * 60 * 60 * 1000) },
+      });
+
+      expect(
+        groupOidcReplaceable(await findOidcReplaceableValues(prisma, { projectId: project.id }))
+      ).toEqual([
+        {
+          service: expect.objectContaining({ id: "aws" }),
+          keys: [
+            {
+              key: "AWS_ACCESS_KEY_ID",
+              environmentTypes: ["STAGING", "PRODUCTION"],
+              previewBranches: 1,
+            },
+          ],
+        },
+        {
+          service: expect.objectContaining({ id: "anthropic" }),
+          keys: [
+            { key: "ANTHROPIC_API_KEY", environmentTypes: ["PRODUCTION"], previewBranches: 0 },
+          ],
+        },
+      ]);
+
+      const presenter = new EnvironmentVariablesAttentionPresenter(prisma, prisma);
+      const call = async (options: { env?: "prod" | "dev"; oidc?: boolean } = {}) => {
+        const result = await presenter.call({
+          userId: user.id,
+          projectId: project.id,
+          env: options.env ?? "prod",
+          kind: "oidc",
+          isOidcEnabled: async () => options.oidc ?? true,
+        });
+        if (!result.isReadable) {
+          throw new Error("should be readable");
+        }
+        return result;
+      };
+
+      const picked = await call();
+      expect(picked.hasOidc).toBe(true);
+      expect(picked.kind).toBe("oidc");
+      expect(picked.counts.oidc).toBe(2);
+      expect(picked.rows.map((row) => [row.key, row.kinds])).toEqual([
+        ["ANTHROPIC_API_KEY", ["oidc"]],
+        ["AWS_ACCESS_KEY_ID", ["recent", "oidc"]],
+      ]);
+
+      // The list's button counts a key that changed recently and could be replaced with OIDC once, plus
+      // AWS_SECRET_ACCESS_KEY, set in Dev and missing here.
+      const list = await new EnvironmentVariablesPresenter(prisma, prisma).call({
+        userId: user.id,
+        projectId: project.id,
+        environmentFilter: "prod",
+        canRead: () => true,
+        isOidcEnabled: async () => true,
+      });
+      expect(list.attentionCount).toBe(3);
+
+      // Without OIDC for the organization, or in Development, there's no such kind.
+      const disabled = await call({ oidc: false });
+      expect(disabled.hasOidc).toBe(false);
+      expect(disabled.kind).toBeUndefined();
+      expect(disabled.counts.oidc).toBe(0);
+      const development = await call({ env: "dev" });
+      expect(development.target?.id).toBe(dev.id);
+      expect(development.hasOidc).toBe(false);
+      expect(development.kind).toBeUndefined();
+    }
+  );
+});

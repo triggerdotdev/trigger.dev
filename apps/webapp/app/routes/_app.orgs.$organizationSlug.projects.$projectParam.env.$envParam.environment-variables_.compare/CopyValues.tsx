@@ -34,6 +34,12 @@ function valuesLabel(count: number) {
   return count === 1 ? "value" : "values";
 }
 
+/** What the dialog copies: the compare view's plan, or the needs attention page's. */
+export type CopyValuesDialogPlan = {
+  copied: Array<{ row: { id: string; key: string }; replaces: boolean }>;
+  skipped: CompareCopyPlan["skipped"];
+};
+
 /**
  * The confirm before copying: what is new and what is replaced in the target, and which ticked
  * rows are skipped. One row is a plain confirm; several are a typed one. Always mounted, so it
@@ -47,10 +53,10 @@ export function CopyValuesDialog({
   restoreFocus,
 }: {
   /** What to copy. Undefined while closed. */
-  plan: CompareCopyPlan | undefined;
-  source: EnvironmentVariablesCompareSide;
-  target: EnvironmentVariablesCompareSide;
-  setPlan: (plan: CompareCopyPlan | undefined) => void;
+  plan: CopyValuesDialogPlan | undefined;
+  source: Pick<EnvironmentVariablesCompareSide, "environment">;
+  target: Pick<EnvironmentVariablesCompareSide, "environment">;
+  setPlan: (plan: undefined) => void;
   /** Where the focus goes after a copy sent from the keyboard: the control it came from is gone. */
   restoreFocus: () => void;
 }) {

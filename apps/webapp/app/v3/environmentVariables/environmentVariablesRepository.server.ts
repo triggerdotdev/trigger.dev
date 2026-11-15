@@ -69,6 +69,25 @@ function secretKeyEnvironmentPrefix(projectId: string, environmentId: string) {
   return `${secretKeyProjectPrefix(projectId)}${environmentId}:`;
 }
 
+/**
+ * A saved value ends an ignore of its Empty reason on the needs attention page: the situation
+ * changed, so if the value is still empty the page shows it again. Every value write runs this in
+ * its transaction (`create`, `copyValues`, `edit`, `editValue`).
+ */
+function clearIgnoredEmpty(
+  tx: PrismaClientOrTransaction,
+  variableIds: string[],
+  environmentIds: string[]
+) {
+  return tx.environmentVariableIgnore.deleteMany({
+    where: {
+      variableId: { in: boundedIn(variableIds) },
+      environmentId: { in: boundedIn(environmentIds) },
+      reason: "EMPTY",
+    },
+  });
+}
+
 function secretKey(projectId: string, environmentId: string, key: string) {
   return `${secretKeyEnvironmentPrefix(projectId, environmentId)}${key}`;
 }
@@ -207,6 +226,7 @@ export class EnvironmentVariablesRepository implements Repository {
       lastUpdatedBy,
       prepared,
       unchanged,
+      clearsIgnoredEmpty = true,
     }: {
       key: string;
       value: string;
@@ -220,6 +240,8 @@ export class EnvironmentVariablesRepository implements Repository {
         environmentId: string,
         existing: { id: string; version: number; isSecret: boolean }
       ) => boolean;
+      /** False when the caller clears ignored Empty reasons itself, once for every key it writes. */
+      clearsIgnoredEmpty?: boolean;
     }
   ): Promise<Map<string, { created: boolean }>> {
     const written = new Map<string, { created: boolean }>();
@@ -321,6 +343,10 @@ export class EnvironmentVariablesRepository implements Repository {
 
       await secretStore.setSecret<{ secret: string }>(key, { secret: value });
       written.set(environmentId, { created: !existingValueRecord });
+    }
+
+    if (clearsIgnoredEmpty && written.size > 0) {
+      await clearIgnoredEmpty(tx, [environmentVariable.id], [...written.keys()]);
     }
 
     return written;
@@ -638,6 +664,12 @@ export class EnvironmentVariablesRepository implements Repository {
             secret: value.value,
           });
         }
+
+        await clearIgnoredEmpty(
+          tx,
+          [environmentVariable.id],
+          values.map((value) => value.environmentId)
+        );
       });
 
       return {
@@ -762,6 +794,8 @@ export class EnvironmentVariablesRepository implements Repository {
             lastUpdatedBy: options.lastUpdatedBy ? options.lastUpdatedBy : undefined,
           },
         });
+
+        await clearIgnoredEmpty(tx, [environmentVariable.id], [options.environmentId]);
       });
 
       return {
@@ -1296,6 +1330,7 @@ export class EnvironmentVariablesRepository implements Repository {
             parentEnvironmentId: target.parentEnvironmentId ?? undefined,
             lastUpdatedBy,
             prepared,
+            clearsIgnoredEmpty: false,
           });
           result.push({
             id: variable.id,
@@ -1303,6 +1338,12 @@ export class EnvironmentVariablesRepository implements Repository {
             created: written.get(target.id)?.created ?? false,
           });
         }
+        // Every copied value was written: one statement for all of them.
+        await clearIgnoredEmpty(
+          tx,
+          variables.map((variable) => variable.id),
+          [target.id]
+        );
         return result;
       });
 

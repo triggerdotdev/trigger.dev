@@ -170,7 +170,7 @@ mode: "wide"
 | `STREAMING_BATCH_MAX_ITEMS`                      | No       | 1000                  | Max items in streaming batch (v3 API, requires SDK 4.3.1+).                                                        |
 | `STREAMING_BATCH_ITEM_MAXIMUM_SIZE`              | No       | 3145728 (3MB)         | Max size per item in streaming batch.                                                                              |
 | `STREAMING_BATCH_INGEST_CONCURRENCY`             | No       | 10                    | Items ingested concurrently per streaming batch request. Peak memory ≈ this × item size. Set to 1 for sequential. |
-| `ENVIRONMENT_VARIABLES_COMPARE_MAX_KEYS`         | No       | 1000                  | Most keys one environment variables comparison compares. Above it the dashboard asks to search or pick fewer keys. |
+| `ENVIRONMENT_VARIABLES_COMPARE_MAX_KEYS`         | No       | 1000                  | Most keys one environment variables comparison compares, and most values the Needs attention page checks for empty ones. Above it the dashboard asks to search or pick fewer keys. |
 | **OTel limits**                                  |          |                       |                                                                                                                    |
 | `TRIGGER_OTEL_SPAN_ATTRIBUTE_COUNT_LIMIT`        | No       | 1024                  | OTel span attribute count limit.                                                                                   |
 | `TRIGGER_OTEL_LOG_ATTRIBUTE_COUNT_LIMIT`         | No       | 1024                  | OTel log attribute count limit.                                                                                    |

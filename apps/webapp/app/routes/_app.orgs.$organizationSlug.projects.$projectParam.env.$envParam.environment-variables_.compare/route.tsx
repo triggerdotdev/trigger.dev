@@ -31,7 +31,10 @@ import {
   useSelectedItems,
   useTickedBeforeHydration,
 } from "~/components/primitives/SelectedItemsProvider";
-import { SelectionBar } from "~/routes/_app.orgs.$organizationSlug.projects.$projectParam.env.$envParam.environment-variables/SelectionBar";
+import {
+  SelectionBar,
+  tickCellClassName,
+} from "~/routes/_app.orgs.$organizationSlug.projects.$projectParam.env.$envParam.environment-variables/SelectionBar";
 import { CopyKeyButton } from "~/routes/_app.orgs.$organizationSlug.projects.$projectParam.env.$envParam.environment-variables/CopyKeyButton";
 import { CopyValuesDialog } from "./CopyValues";
 import { type CompareKindOption, CompareToolbar } from "./CompareToolbar";
@@ -111,6 +114,7 @@ import {
   type CompareRow,
 } from "~/v3/environmentVariables/compare";
 import { keyPanelEnvironments } from "~/v3/environmentVariables/environmentVariableKey";
+import { attentionReturnPath } from "~/v3/environmentVariables/attention";
 
 export const meta = pageMeta(["Compare", "Environment variables"]);
 
@@ -273,7 +277,9 @@ export const action = dashboardAction(
     const target = environments.find((environment) => environment.id === targetEnvironmentId)!;
     const count = result.copied.length;
     return redirectWithSuccessMessage(
-      `${comparePath}${panelKey ? `/key/${encodeURIComponent(panelKey)}` : ""}${compareViewSearch(request.url)}`,
+      // Posted from the needs attention page: back to it.
+      attentionReturnPath(request.url, params, panelKey) ??
+        `${comparePath}${panelKey ? `/key/${encodeURIComponent(panelKey)}` : ""}${compareViewSearch(request.url)}`,
       request,
       `Copied ${count} ${count === 1 ? "value" : "values"} to ${sideLabel(target)}`
     );
@@ -720,6 +726,7 @@ function ComparePage() {
                             revealAll={revealAll}
                             canTick={canTick}
                             isTicked={has(row.id)}
+                            isAnyTicked={selectedRows.length > 0}
                             onToggle={(shiftKey) => toggleRow(row.id, shiftKey)}
                             copyTo={(from) =>
                               copyBlocked(from) === undefined &&
@@ -941,6 +948,7 @@ function CompareTableRow({
   revealAll,
   canTick,
   isTicked,
+  isAnyTicked,
   onToggle,
   copyTo,
 }: {
@@ -952,16 +960,21 @@ function CompareTableRow({
   /** Whether the row has a checkbox. */
   canTick: boolean;
   isTicked: boolean;
+  isAnyTicked: boolean;
   /** Ticks or unticks the row; with Shift held, a range. */
   onToggle: (shiftKey: boolean) => void;
   /** The copy button for a side's value, when that value can be copied to the other side. */
   copyTo: (from: CompareSideName) => { label: string; onClick: () => void } | undefined;
 }) {
+  const tickClassName = tickCellClassName({ isTicked, isAnyTicked, isSelected });
   return (
     <TableRow isSelected={isSelected} className="group/row">
       {/* No link in this cell, so ticking a row never opens the key panel. */}
       {canTick && (
-        <TableCell className="w-0 pl-3 pr-0" isSelected={isSelected}>
+        <TableCell
+          className={cn("w-0 pl-3 pr-0", isTicked && tickClassName)}
+          isSelected={isSelected}
+        >
           <Checkbox
             aria-label={`Select ${row.key}`}
             value={row.id}
@@ -982,7 +995,8 @@ function CompareTableRow({
         to={path}
         isTabbableCell
         isSelected={isSelected}
-        actionClassName="font-mono"
+        className={tickClassName}
+        actionClassName={cn("font-mono", isTicked && "text-text-bright")}
         trailingContent={<CopyKeyButton value={row.key} />}
       >
         {row.key}
@@ -990,7 +1004,12 @@ function CompareTableRow({
       {(["left", "right"] as const).map((side) => {
         const copy = copyTo(side);
         return (
-          <TableCell key={side} className="relative py-2" isSelected={isSelected} hasAction>
+          <TableCell
+            key={side}
+            className={cn("relative py-2", tickClassName)}
+            isSelected={isSelected}
+            hasAction
+          >
             {/* Fills the cell, so a click anywhere but the value's own controls opens the panel. */}
             <Link to={path} tabIndex={-1} aria-hidden className="absolute inset-0" />
             {/* No width of its own, so a value's field shrinks with its column beside the key panel. */}

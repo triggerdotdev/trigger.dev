@@ -45,6 +45,7 @@ import type { EnvironmentVariablesEnvironment } from "~/presenters/v3/environmen
 import { v3EnvironmentVariablesPath } from "~/utils/pathBuilder";
 import type { EnvironmentVariablesFilter } from "~/v3/environmentVariables/environmentFilter";
 import { parseEnvironmentVariableForm } from "~/v3/environmentVariables/forms";
+import { attentionPagePath } from "~/v3/environmentVariables/attention";
 import {
   deleteValueDialog,
   type PreviewBaseState,
@@ -77,6 +78,8 @@ export type EnvironmentVariablesPageLoaderData = {
   filterEnvironmentIds: string[];
   // The preview branches the list is narrowed to. Empty when it lists every branch.
   filterBranchEnvironmentIds: string[];
+  // Keys missing, changed recently or replaceable with OIDC where the needs attention page opens.
+  attentionCount?: number;
   // True when no listed environment has a variable, whatever the filter is.
   projectHasNoVariables: boolean;
   hasStaging: boolean;
@@ -95,6 +98,28 @@ export const environmentVariablesRouteId =
 export const environmentVariableKeyRouteId =
   "routes/_app.orgs.$organizationSlug.projects.$projectParam.env.$envParam.environment-variables.key.$keyParam";
 
+// The needs attention page, and its key panel. They offer the list's controls on its rows.
+export const environmentVariablesAttentionRouteId =
+  "routes/_app.orgs.$organizationSlug.projects.$projectParam.env.$envParam.environment-variables_.attention";
+
+export const environmentVariableAttentionKeyRouteId =
+  "routes/_app.orgs.$organizationSlug.projects.$projectParam.env.$envParam.environment-variables_.attention.key.$keyParam";
+
+/**
+ * What the value controls and the create dialog read from the page they're on: the list, or the
+ * needs attention page, which gives the same fields for its environment.
+ */
+export type EnvironmentVariablesControlsData = Pick<
+  EnvironmentVariablesPageLoaderData,
+  | "environments"
+  | "filter"
+  | "filterEnvironmentIds"
+  | "filterBranchEnvironmentIds"
+  | "hasStaging"
+  | "writableEnvironmentIds"
+  | "allowEmptyEnvironmentVariableValues"
+>;
+
 /**
  * Withholds a value (and its "who/when" metadata) the current role can't read, so it is never
  * serialized to the client.
@@ -112,16 +137,21 @@ export function maskEnvironmentVariable(
   };
 }
 
-/** The list page's loader data, from anywhere under the list route. */
-function useEnvironmentVariablesPageData() {
-  return useTypedMatchesData<EnvironmentVariablesPageLoaderData>({
+/** The list's (or the needs attention page's) loader data, from anywhere under either route. */
+export function useEnvironmentVariablesPageData(): EnvironmentVariablesControlsData | undefined {
+  const list = useTypedMatchesData<EnvironmentVariablesPageLoaderData>({
     id: environmentVariablesRouteId,
   });
+  const attention = useTypedMatchesData<EnvironmentVariablesControlsData>({
+    id: environmentVariablesAttentionRouteId,
+  });
+  return list ?? attention;
 }
 
 /**
- * Where the value forms post: the list route, which owns the action, with the current search
- * params so the action can send the user back to the same view.
+ * Where the value forms post: the list route, which owns the action (or the needs attention page,
+ * which hands it the same forms), with the current search params so the action can send the user
+ * back to the same view.
  */
 export function useEnvironmentVariablesActionPath() {
   const organization = useOrganization();
@@ -129,7 +159,10 @@ export function useEnvironmentVariablesActionPath() {
   const environment = useEnvironment();
   const location = useLocation();
 
-  return `${v3EnvironmentVariablesPath(organization, project, environment)}${location.search}`;
+  return `${
+    attentionPagePath(location.pathname) ??
+    v3EnvironmentVariablesPath(organization, project, environment)
+  }${location.search}`;
 }
 
 export const schema = z.discriminatedUnion("action", [
@@ -168,7 +201,10 @@ export function EnvironmentVariableValue({
   variable: Pick<
     MaskedEnvironmentVariable,
     "value" | "isSecret" | "permissionDenied" | "valueUnavailable"
-  >;
+  > & {
+    /** A secret known to be empty: said only where it was read. */
+    emptySecret?: true;
+  };
   revealAll: boolean;
 }) {
   return variable.permissionDenied ? (
@@ -183,6 +219,16 @@ export function EnvironmentVariableValue({
     />
   ) : variable.valueUnavailable ? (
     <span className="text-xs text-text-dimmed">Encryption key unavailable</span>
+  ) : variable.emptySecret ? (
+    <SimpleTooltip
+      button={
+        <div className="flex items-center gap-x-1">
+          <LockClosedIcon className="size-3 text-text-dimmed" />
+          <span className="text-xs text-text-dimmed">Empty</span>
+        </div>
+      }
+      content="This secret is set to an empty string."
+    />
   ) : variable.isSecret ? (
     <SimpleTooltip
       button={

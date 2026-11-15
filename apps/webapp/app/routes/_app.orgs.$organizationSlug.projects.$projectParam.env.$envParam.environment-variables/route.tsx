@@ -3,6 +3,7 @@ import { parseEnvironmentVariableForm } from "~/v3/environmentVariables/forms";
 import {
   ArrowsRightLeftIcon,
   BookOpenIcon,
+  ExclamationCircleIcon,
   InformationCircleIcon,
   PlusIcon,
   TrashIcon,
@@ -90,6 +91,7 @@ import {
   EnvironmentParamSchema,
   docsPath,
   v3EnvironmentVariableKeyPath,
+  v3EnvironmentVariablesAttentionPath,
   v3EnvironmentVariablesComparePath,
   v3EnvironmentVariablesPath,
   v3NewEnvironmentVariablesPath,
@@ -133,8 +135,10 @@ import {
 import { sectionAgentPageContext } from "~/components/dashboard-agent/suggested-prompts";
 import { WhenAgentUnavailable } from "~/components/dashboard-agent/WhenAgentUnavailable";
 import type { Handle } from "~/utils/handle";
+import { isExternalOidcEnabled } from "~/services/oidc/externalOidc.server";
+import { attentionReturnPath } from "~/v3/environmentVariables/attention";
 import { BatchDeleteDialog, selectionId } from "./BatchDelete";
-import { SelectionBar } from "./SelectionBar";
+import { SelectionBar, tickCellClassName } from "./SelectionBar";
 import {
   DeleteEnvironmentVariableButton,
   EditEnvironmentVariablePanel,
@@ -159,6 +163,8 @@ export type EnvironmentVariablesOutletContext = {
   revealAll: boolean;
   /** Set by the compare view: the key panel is read-only there, and closes back to it. */
   compare?: { closePath: string };
+  /** Set by the needs attention page: the panel is opened under it, and closes back to it. */
+  attention?: { path: string; closePath: string };
 };
 
 // The key panel keeps its own search params (its branches search and page) next to the
@@ -212,6 +218,7 @@ export const loader = dashboardLoader(
         filter,
         filterEnvironmentIds,
         filterBranchEnvironmentIds,
+        attentionCount,
         projectHasNoVariables,
         hasStaging,
         vercelIntegration,
@@ -228,6 +235,8 @@ export const loader = dashboardLoader(
         branches: new URL(request.url).searchParams.getAll("branch"),
         currentEnvironmentSlug: params.envParam,
         sort: parseEnvironmentVariablesSort(searchParams.sort),
+        canRead: (envType) => ability.can("read", { type: "envvars", envType }),
+        isOidcEnabled: isExternalOidcEnabled,
       });
 
       const accessibleEnvironmentIds = environments
@@ -254,6 +263,7 @@ export const loader = dashboardLoader(
         filter,
         filterEnvironmentIds,
         filterBranchEnvironmentIds,
+        attentionCount,
         projectHasNoVariables,
         hasStaging,
         vercelIntegration,
@@ -368,9 +378,11 @@ export const action = dashboardAction(
       const count = result.deleted.length;
 
       return redirectWithSuccessMessage(
-        keepPanelOpen
-          ? `${v3EnvironmentVariableKeyPath(...slugs, panelKey)}${keyPanelViewSearch(request.url)}`
-          : `${v3EnvironmentVariablesPath(...slugs)}${listViewSearch(request.url)}`,
+        // Posted from the needs attention page: back to it.
+        attentionReturnPath(request.url, params, keepPanelOpen ? panelKey : undefined) ??
+          (keepPanelOpen
+            ? `${v3EnvironmentVariableKeyPath(...slugs, panelKey)}${keyPanelViewSearch(request.url)}`
+            : `${v3EnvironmentVariablesPath(...slugs)}${listViewSearch(request.url)}`),
         request,
         count === 0
           ? "Those values were already deleted"
@@ -483,9 +495,11 @@ export const action = dashboardAction(
           (await new EnvironmentVariableKeyPresenter().isSet({ userId, projectId, key: panelKey }));
 
         return redirectWithSuccessMessage(
-          keepPanelOpen
-            ? `${v3EnvironmentVariableKeyPath(...slugs, panelKey)}${keyPanelViewSearch(request.url)}`
-            : `${v3EnvironmentVariablesPath(...slugs)}${listViewSearch(request.url)}`,
+          // Posted from the needs attention page: back to it.
+          attentionReturnPath(request.url, params, keepPanelOpen ? panelKey : undefined) ??
+            (keepPanelOpen
+              ? `${v3EnvironmentVariableKeyPath(...slugs, panelKey)}${keyPanelViewSearch(request.url)}`
+              : `${v3EnvironmentVariablesPath(...slugs)}${listViewSearch(request.url)}`),
           request,
           submittedBranchName
             ? `Removed the ${submission.value.key} override on ${submittedBranchName}`
@@ -562,6 +576,7 @@ function EnvironmentVariablesListPage({
     pagination,
     search,
     writableEnvironmentIds,
+    attentionCount,
   } = loaderData;
   const location = useLocation();
   const hasSearch = Boolean(search);
@@ -717,6 +732,17 @@ function EnvironmentVariablesListPage({
     }
   }
   const comparePath = `${v3EnvironmentVariablesComparePath(organization, project, environment)}?${compareSearchParams.toString()}`;
+  // The needs attention page, on the environment the list is filtered to (with All or a branch,
+  // the environment in the URL). Carries the list's filter for the way back.
+  const attentionSearch = new URLSearchParams();
+  for (const name of ["env", "branch"]) {
+    for (const value of currentSearchParams.getAll(name)) {
+      attentionSearch.append(name, value);
+    }
+  }
+  const attentionPath = `${v3EnvironmentVariablesAttentionPath(organization, project, environment)}${
+    attentionSearch.size > 0 ? `?${attentionSearch.toString()}` : ""
+  }`;
 
   // The bar's Compare: the ticked rows' keys, between their two environments when they are in
   // exactly two, otherwise the sides the toolbar's Compare opens with.
@@ -1026,6 +1052,23 @@ function EnvironmentVariablesListPage({
                       LeadingIcon={ArrowsRightLeftIcon}
                     >
                       Compare
+                    </LinkButton>
+                  )}
+                  {attentionCount !== undefined && (
+                    <LinkButton
+                      to={attentionPath}
+                      variant="secondary/small"
+                      LeadingIcon={ExclamationCircleIcon}
+                      tooltip={
+                        attentionCount > 0
+                          ? `${attentionCount} ${attentionCount === 1 ? "key is" : "keys are"} missing, changed in the last 24 hours, or could be replaced with OIDC. Empty values are checked on the page.`
+                          : undefined
+                      }
+                    >
+                      Needs attention
+                      {attentionCount > 0 && (
+                        <span className="ml-1 tabular-nums text-text-dimmed">{attentionCount}</span>
+                      )}
                     </LinkButton>
                   )}
                   <LinkButton
@@ -1362,16 +1405,7 @@ function EnvironmentVariableTableRow({
   // A selection id starts with the variable's id, which every row of the key shares.
   const isKeyTicked =
     isAnyTicked && [...selectedItems].some((item) => item.startsWith(`${variable.id}:`));
-  // Ticked rows are tinted with the checkbox's colour (over the open key's grey when both apply)
-  // and use full-strength text; while any are ticked, the others are quieter.
-  const tickClassName = isTicked
-    ? isSelected
-      ? tickedOpenCellClassName
-      : tickedCellClassName
-    : // The open key's rows stay as they are: they're what the panel shows.
-      isAnyTicked && !isSelected
-      ? quietCellClassName
-      : undefined;
+  const tickClassName = tickCellClassName({ isTicked, isAnyTicked, isSelected });
   const tickActionClassName = isTicked ? "text-text-bright" : undefined;
 
   return (
@@ -1487,13 +1521,6 @@ function EnvironmentVariableTableRow({
     </TableRow>
   );
 }
-
-// Opaque, so the sticky actions cell hides what scrolls under it.
-const tickedCellClassName =
-  "bg-[color-mix(in_srgb,var(--color-indigo-500)_12%,var(--color-background-dimmed))] group-hover/table-row:bg-[color-mix(in_srgb,var(--color-indigo-500)_16%,var(--color-background-dimmed))]";
-const tickedOpenCellClassName =
-  "bg-[color-mix(in_srgb,var(--color-indigo-500)_16%,var(--color-background-hover))] group-hover/table-row:bg-[color-mix(in_srgb,var(--color-indigo-500)_20%,var(--color-background-hover))]";
-const quietCellClassName = "opacity-60 transition-opacity group-hover/table-row:opacity-100";
 
 /**
  * The row's link under a cell that holds its own controls: it fills the cell, so a click
