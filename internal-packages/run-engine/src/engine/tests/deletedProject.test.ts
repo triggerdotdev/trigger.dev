@@ -33,6 +33,7 @@ function staleEnvCacheResolver(prisma: PrismaClient): ControlPlaneResolver {
     resolveAuthenticatedEnv: passthrough.resolveAuthenticatedEnv.bind(passthrough),
     resolveDeploymentStatus: passthrough.resolveDeploymentStatus.bind(passthrough),
     resolveWorkerVersion: passthrough.resolveWorkerVersion.bind(passthrough),
+    resolveWorkerVersionFromPrimary: passthrough.resolveWorkerVersionFromPrimary.bind(passthrough),
     assertEnvExists: passthrough.assertEnvExists.bind(passthrough),
   };
 }
@@ -51,6 +52,7 @@ function missingEnvironmentResolver(prisma: PrismaClient): ControlPlaneResolver 
     resolveAuthenticatedEnv: passthrough.resolveAuthenticatedEnv.bind(passthrough),
     resolveDeploymentStatus: passthrough.resolveDeploymentStatus.bind(passthrough),
     resolveWorkerVersion: passthrough.resolveWorkerVersion.bind(passthrough),
+    resolveWorkerVersionFromPrimary: passthrough.resolveWorkerVersionFromPrimary.bind(passthrough),
     assertEnvExists: passthrough.assertEnvExists.bind(passthrough),
   };
 }

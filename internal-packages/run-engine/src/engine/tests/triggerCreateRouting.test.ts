@@ -509,6 +509,9 @@ describe("RunEngine trigger/create routing", () => {
         async resolveWorkerVersion(): Promise<any> {
           return null;
         }
+        async resolveWorkerVersionFromPrimary(): Promise<any> {
+          return null;
+        }
       }
 
       const throwingResolver = new ThrowingResolver(true);

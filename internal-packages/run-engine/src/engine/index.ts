@@ -827,6 +827,7 @@ export class RunEngine {
       deploymentWaitRetryMs: this.options.queue.deploymentWaitRetryMs,
       deploymentWaitMaxMs: this.options.queue.deploymentWaitMaxMs,
       deploymentStatusMode: this.options.queue.deploymentStatusMode,
+      pendingVersionSystem: this.pendingVersionSystem,
     });
 
     this.#startWorkerQueueObserver();

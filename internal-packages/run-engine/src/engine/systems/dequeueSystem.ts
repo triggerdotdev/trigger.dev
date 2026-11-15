@@ -36,6 +36,7 @@ import {
   type PreviousSnapshot,
 } from "./executionSnapshotSystem.js";
 import type { RunAttemptSystem } from "./runAttemptSystem.js";
+import type { PendingVersionSystem } from "./pendingVersionSystem.js";
 import type { SystemResources } from "./systems.js";
 import {
   parseSnapshotRoute,
@@ -61,6 +62,7 @@ export type DequeueSystemOptions = {
   deploymentWaitRetryMs?: number;
   deploymentWaitMaxMs?: number;
   deploymentStatusMode?: () => DeploymentStatusMode;
+  pendingVersionSystem: PendingVersionSystem;
 };
 
 // Run-ops scalars the dequeue path reads off the run row. The environment half (type,
@@ -125,6 +127,14 @@ type RunWithBackgroundWorkerTasksResult =
       deployment: ResolvedWorkerDeployment | null;
     };
 
+/** Results that park a run as PENDING_VERSION. */
+const PENDING_VERSION_CODES: ReadonlySet<string> = new Set([
+  "NO_WORKER",
+  "TASK_NEVER_REGISTERED",
+  "QUEUE_NOT_FOUND",
+  "TASK_NOT_IN_LATEST",
+]);
+
 const UNDEPLOYABLE_DEPLOYMENT_STATUSES: ReadonlySet<WorkerDeploymentStatus> = new Set([
   "FAILED",
   "TIMED_OUT",
@@ -142,6 +152,7 @@ export class DequeueSystem {
   private readonly $: SystemResources;
   private readonly executionSnapshotSystem: ExecutionSnapshotSystem;
   private readonly runAttemptSystem: RunAttemptSystem;
+  private readonly pendingVersionSystem: PendingVersionSystem;
   private readonly deploymentWaitRetryMs: number;
   private readonly deploymentWaitMaxMs: number;
   private readonly deploymentStatusMode: () => DeploymentStatusMode;
@@ -151,6 +162,7 @@ export class DequeueSystem {
     this.$ = options.resources;
     this.executionSnapshotSystem = options.executionSnapshotSystem;
     this.runAttemptSystem = options.runAttemptSystem;
+    this.pendingVersionSystem = options.pendingVersionSystem;
     this.deploymentWaitRetryMs = options.deploymentWaitRetryMs ?? DEPLOYMENT_WAIT_RETRY_MS;
     this.deploymentWaitMaxMs = options.deploymentWaitMaxMs ?? DEPLOYMENT_WAIT_MAX_MS;
     this.deploymentStatusMode = options.deploymentStatusMode ?? (() => "shadow");
@@ -419,11 +431,22 @@ export class DequeueSystem {
                 return;
               }
 
-              const result = await this.#getRunWithBackgroundWorkerTasks(
+              let result = await this.#getRunWithBackgroundWorkerTasks(
                 prisma,
                 runId,
                 backgroundWorkerId
               );
+
+              // The worker version may come from a replica that lags a just-promoted deployment.
+              // Parking is only undone by a later deploy, so confirm the miss on the primary first.
+              if (!result.success && PENDING_VERSION_CODES.has(result.code)) {
+                result = await this.#getRunWithBackgroundWorkerTasks(
+                  prisma,
+                  runId,
+                  backgroundWorkerId,
+                  { fromPrimary: true }
+                );
+              }
 
               if (!result.success) {
                 switch (result.code) {
@@ -1180,7 +1203,7 @@ export class DequeueSystem {
       statusReason,
     });
 
-    return this.$.runLock.lock("pendingVersion", [runId], async () => {
+    await this.$.runLock.lock("pendingVersion", [runId], async () => {
       this.$.logger.debug("RunEngine.dequeueFromWorkerQueue(): Pending version lock acquired", {
         runId,
         reason,
@@ -1262,12 +1285,65 @@ export class DequeueSystem {
         },
       });
     });
+
+    await this.#requeueIfWorkerNowCovers(prisma, runId);
+  }
+
+  /**
+   * A deployment's pending-version sweep runs once, right after it is promoted. A run parked
+   * after that sweep has finished would wait for the next deploy, so check the primary again
+   * after parking and promote the run if a worker now covers it.
+   */
+  async #requeueIfWorkerNowCovers(prisma: PrismaClientOrTransaction, runId: string) {
+    const [error, result] = await tryCatch(
+      this.#getRunWithBackgroundWorkerTasks(prisma, runId, undefined, { fromPrimary: true })
+    );
+
+    if (error) {
+      this.$.logger.error("RunEngine.#pendingVersion(): re-check after parking failed", {
+        runId,
+        error,
+      });
+      return;
+    }
+
+    if (!result.success) {
+      return;
+    }
+
+    // Matches the dequeue check that parks a deployed run with NO_DEPLOYMENT, so a requeue can't
+    // land straight back here.
+    if (
+      result.environmentType !== "DEVELOPMENT" &&
+      (!result.deployment || !result.deployment.imageReference)
+    ) {
+      return;
+    }
+
+    this.$.logger.info("RunEngine.#pendingVersion(): a worker now covers the parked run", {
+      runId,
+      backgroundWorkerId: result.worker.id,
+    });
+
+    // Promoted here rather than through a job: a worker still on an older release would run that
+    // job as an ordinary candidate lookup, which may not see this run yet.
+    const [promoteError] = await tryCatch(
+      this.pendingVersionSystem.enqueueRunsForBackgroundWorker(result.worker.id, 0, [runId])
+    );
+
+    if (promoteError) {
+      this.$.logger.error("RunEngine.#pendingVersion(): requeue after parking failed", {
+        runId,
+        error: promoteError,
+      });
+    }
   }
 
   async #getRunWithBackgroundWorkerTasks(
     prisma: PrismaClientOrTransaction,
     runId: string,
-    backgroundWorkerId?: string
+    backgroundWorkerId?: string,
+    options?: { fromPrimary?: boolean }
   ): Promise<RunWithBackgroundWorkerTasksResult> {
     return startSpan(this.$.tracer, "getRunWithBackgroundWorkerTasks", async (span) => {
       span.setAttribute("run_id", runId);
@@ -1333,14 +1409,16 @@ export class DequeueSystem {
       const workerId = run.lockedToVersionId ?? backgroundWorkerId;
 
       //get the relevant BackgroundWorker with tasks and deployment (if not DEV)
-      const workerWithTasks: WorkerDeploymentWithWorkerTasks | null =
-        await this.$.controlPlaneResolver.resolveWorkerVersion({
-          environmentId: run.runtimeEnvironmentId,
-          type: env.type,
-          workerId: workerId ?? undefined,
-          taskIdentifier: run.taskIdentifier,
-          queue: { lockedQueueId: run.lockedQueueId, name: run.queue },
-        });
+      const resolveArgs = {
+        environmentId: run.runtimeEnvironmentId,
+        type: env.type,
+        workerId: workerId ?? undefined,
+        taskIdentifier: run.taskIdentifier,
+        queue: { lockedQueueId: run.lockedQueueId, name: run.queue },
+      };
+      const workerWithTasks: WorkerDeploymentWithWorkerTasks | null = options?.fromPrimary
+        ? await this.$.controlPlaneResolver.resolveWorkerVersionFromPrimary(resolveArgs)
+        : await this.$.controlPlaneResolver.resolveWorkerVersion(resolveArgs);
 
       if (!workerWithTasks) {
         span.setAttribute("result", "NO_WORKER");

@@ -331,6 +331,8 @@ describe("runAttemptSystem.resolveTaskRunContext controlPlaneResolver (single-DB
         resolveEnvDeletionState: passthrough.resolveEnvDeletionState.bind(passthrough),
         resolveDeploymentStatus: passthrough.resolveDeploymentStatus.bind(passthrough),
         resolveWorkerVersion: passthrough.resolveWorkerVersion.bind(passthrough),
+        resolveWorkerVersionFromPrimary:
+          passthrough.resolveWorkerVersionFromPrimary.bind(passthrough),
         assertEnvExists: passthrough.assertEnvExists.bind(passthrough),
         async resolveAuthenticatedEnv() {
           return null;

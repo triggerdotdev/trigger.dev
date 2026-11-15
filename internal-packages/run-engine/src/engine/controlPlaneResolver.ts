@@ -205,6 +205,18 @@ export interface ControlPlaneResolver {
       workerId?: string;
     } & WorkerVersionDispatchFilter
   ): Promise<ResolvedWorkerVersion | null>;
+  /**
+   * `resolveWorkerVersion` read straight from the authoritative control-plane source, never from
+   * a cache or replica. A replica can lag a just-promoted deployment, so a decision that parks a
+   * run because no worker covers it confirms the miss here.
+   */
+  resolveWorkerVersionFromPrimary(
+    args: {
+      environmentId: string;
+      type: RuntimeEnvironmentType;
+      workerId?: string;
+    } & WorkerVersionDispatchFilter
+  ): Promise<ResolvedWorkerVersion | null>;
   assertEnvExists(environmentId: string): Promise<void>;
 }
 
@@ -375,6 +387,17 @@ export class PassthroughControlPlaneResolver implements ControlPlaneResolver {
   async assertEnvExists(_environmentId: string): Promise<void> {
     // No-op: passthrough is single-DB, so run and env share one database and there is
     // no cross-seam FK to replace (matches main, which dropped the TaskRun env FK).
+  }
+
+  // Passthrough already reads the primary.
+  async resolveWorkerVersionFromPrimary(
+    args: {
+      environmentId: string;
+      type: RuntimeEnvironmentType;
+      workerId?: string;
+    } & WorkerVersionDispatchFilter
+  ): Promise<ResolvedWorkerVersion | null> {
+    return this.resolveWorkerVersion(args);
   }
 
   async resolveWorkerVersion(

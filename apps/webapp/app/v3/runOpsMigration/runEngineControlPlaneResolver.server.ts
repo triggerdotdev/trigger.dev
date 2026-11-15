@@ -73,6 +73,22 @@ export class RunEngineControlPlaneResolver implements EngineControlPlaneResolver
     });
   }
 
+  async resolveWorkerVersionFromPrimary(args: {
+    environmentId: string;
+    type: RuntimeEnvironmentType;
+    workerId?: string;
+    taskIdentifier?: string;
+    queue?: { lockedQueueId?: string | null; name: string };
+  }): Promise<ResolvedWorkerVersion | null> {
+    return this.#resolver.resolveWorkerVersionFromPrimary({
+      environmentId: args.environmentId,
+      backgroundWorkerId: args.workerId,
+      type: args.type,
+      taskIdentifier: args.taskIdentifier,
+      queue: args.queue,
+    });
+  }
+
   async resolveAuthenticatedEnv(environmentId: string): Promise<ResolvedAuthenticatedEnv | null> {
     // Delegate to the cache-first, split-aware app resolver (like resolveEnv/resolveWorkerVersion):
     // its authenticated-env slot now carries `git`. Keep the deleted-project guard the engine relies
