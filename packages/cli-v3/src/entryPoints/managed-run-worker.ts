@@ -208,6 +208,20 @@ async function importConfig(
   };
 }
 
+// The compiled worker is built with --root=/app, so it embeds /app/<path> at /$bunfs/root/<path>.
+// Importing the file from disk instead would load a second copy of the SDK.
+function workerImportPath(workerManifest: WorkerManifest, path: string) {
+  if (!workerManifest.compiledWorkerPath) {
+    return normalizeImportPath(path);
+  }
+
+  if (!path.startsWith("/app/")) {
+    throw new Error(`Cannot import ${path} in the compiled worker: it is outside /app`);
+  }
+
+  return `/$bunfs/root/${path.slice("/app/".length)}`;
+}
+
 async function loadWorkerManifest() {
   const manifestContents = await readFile("./index.json", "utf-8");
   const raw = JSON.parse(manifestContents);
@@ -222,7 +236,7 @@ async function doBootstrap() {
     resourceCatalog.registerWorkerManifest(workerManifest);
 
     const { config, handleError } = await importConfig(
-      normalizeImportPath(workerManifest.configPath)
+      workerImportPath(workerManifest, workerManifest.configPath)
     );
 
     const tracingSDK = new TracingSDK({
@@ -517,7 +531,7 @@ const zodIpc = new ZodIpcConnection({
                 // Load init file if it exists
                 if (workerManifest.initEntryPoint) {
                   try {
-                    await import(normalizeImportPath(workerManifest.initEntryPoint));
+                    await import(workerImportPath(workerManifest, workerManifest.initEntryPoint));
                     console.log(`Loaded init file from ${workerManifest.initEntryPoint}`);
                   } catch (err) {
                     console.error(`Failed to load init file`, err);
@@ -525,7 +539,7 @@ const zodIpc = new ZodIpcConnection({
                   }
                 }
 
-                await import(normalizeImportPath(taskManifest.entryPoint));
+                await import(workerImportPath(workerManifest, taskManifest.entryPoint));
                 resourceCatalog.clearCurrentFileContext();
                 const durationMs = performance.now() - beforeImport;
 

@@ -18,7 +18,7 @@ import {
   ZodIpcConnection,
 } from "@trigger.dev/core/v3/zodIpc";
 import { Evt } from "evt";
-import { type ChildProcess, fork } from "node:child_process";
+import { type ChildProcess, fork, spawn } from "node:child_process";
 import { chalkError, chalkGrey, chalkRun, prettyPrintDate } from "../utilities/cliOutput.js";
 
 import {
@@ -180,14 +180,22 @@ export class TaskRunProcess {
       ? "--no-warnings"
       : "--no-warnings=ExperimentalWarning";
 
-    this._child = fork(workerManifest.workerEntryPoint, executorArgs(workerManifest), {
-      stdio: [/*stdin*/ "ignore", /*stdout*/ "pipe", /*stderr*/ "pipe", "ipc"],
-      cwd,
-      env: fullEnv,
-      execArgv: ["--trace-uncaught", noWarningsFlag],
-      execPath: execPathForRuntime(workerManifest.runtime),
-      serialization: "json",
-    });
+    // The compiled worker has its entry point and runtime flags built in
+    this._child = workerManifest.compiledWorkerPath
+      ? spawn(workerManifest.compiledWorkerPath, executorArgs(workerManifest), {
+          stdio: [/*stdin*/ "ignore", /*stdout*/ "pipe", /*stderr*/ "pipe", "ipc"],
+          cwd,
+          env: fullEnv,
+          serialization: "json",
+        })
+      : fork(workerManifest.workerEntryPoint, executorArgs(workerManifest), {
+          stdio: [/*stdin*/ "ignore", /*stdout*/ "pipe", /*stderr*/ "pipe", "ipc"],
+          cwd,
+          env: fullEnv,
+          execArgv: ["--trace-uncaught", noWarningsFlag],
+          execPath: execPathForRuntime(workerManifest.runtime),
+          serialization: "json",
+        });
 
     this._childPid = this._child?.pid;
 
