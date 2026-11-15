@@ -235,23 +235,29 @@ export const webhookSources = {
     };
   },
 
+  /**
+   * Brex signs with the Standard Webhooks headers. `webhooks.brex()` is generated from the core
+   * provider table; this keeps the same source reachable through `webhookSources`.
+   */
   brex<T = unknown>(): WebhookSource<T> {
     return {
       provider: "brex",
-      verifier: { kind: "preset", preset: "svix", config: svixVerifierConfig() },
-      secretProvisioning: "provider",
+      verifier: { kind: "config", config: webhookProviderConfigs.brex.config() },
+      secretProvisioning: webhookProviderConfigs.brex.secretProvisioning,
+      setupPrompt: webhookSetupPrompts.brex,
     };
   },
 
+  /**
+   * Composio keys its Standard Webhooks signature with the secret's raw text. `webhooks.composio()`
+   * is generated from the core provider table; this keeps the same source reachable here.
+   */
   composio<T = unknown>(): WebhookSource<T> {
     return {
       provider: "composio",
-      verifier: {
-        kind: "preset",
-        preset: "standard-webhooks",
-        config: standardWebhooksVerifierConfig(),
-      },
-      secretProvisioning: "provider",
+      verifier: { kind: "config", config: webhookProviderConfigs.composio.config() },
+      secretProvisioning: webhookProviderConfigs.composio.secretProvisioning,
+      setupPrompt: webhookSetupPrompts.composio,
     };
   },
 
@@ -618,8 +624,6 @@ interface Webhooks {
   openai: typeof webhookSources.openai;
   replicate: typeof webhookSources.replicate;
   recallai: typeof webhookSources.recallai;
-  brex: typeof webhookSources.brex;
-  composio: typeof webhookSources.composio;
   gitlab: typeof webhookSources.gitlab;
   whatsapp: typeof webhookSources.whatsapp;
   hookdeck: typeof webhookSources.hookdeck;
@@ -652,8 +656,6 @@ export const webhooks: Webhooks & Omit<ProviderProducers, "slack" | "hookdeck"> 
   openai: webhookSources.openai,
   replicate: webhookSources.replicate,
   recallai: webhookSources.recallai,
-  brex: webhookSources.brex,
-  composio: webhookSources.composio,
   gitlab: webhookSources.gitlab,
   whatsapp: webhookSources.whatsapp,
   hookdeck: webhookSources.hookdeck,

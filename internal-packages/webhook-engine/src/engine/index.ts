@@ -686,8 +686,27 @@ export class WebhookEngine {
       return {
         outcome: "method_not_allowed",
         // Remix serves HEAD through the GET loader, stripping the response body.
-        allowedMethods: supportsGet ? ["GET", "HEAD", "POST"] : ["POST"],
+        allowedMethods: supportsGet ? ["GET", "HEAD", "POST"] : ["HEAD", "POST"],
       };
+    });
+  }
+
+  /**
+   * Answer a HEAD request: some providers check the URL is reachable before they save it (Intercom
+   * requires a HEAD to succeed). An active endpoint answers 200 with no body and records nothing,
+   * whatever its source; no credential is checked because nothing is accepted.
+   */
+  async answerHead(opaqueId: string): Promise<IngestResult> {
+    this.#assertEnabled();
+    return startSpan(this.tracer, "webhook.head", async (span) => {
+      span.setAttribute("opaqueId", opaqueId);
+      const endpoint = await this.replica.webhookEndpoint.findFirst({
+        where: { opaqueId },
+        select: { status: true },
+      });
+      if (!endpoint) return { outcome: "endpoint_not_found" };
+      if (endpoint.status !== "ACTIVE") return { outcome: "endpoint_inactive" };
+      return { outcome: "handshake", status: 200, body: "" };
     });
   }
 

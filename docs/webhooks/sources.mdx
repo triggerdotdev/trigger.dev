@@ -57,14 +57,14 @@ export const svixEvents = webhook({
 });
 ```
 
-```ts /trigger/composio.ts
+```ts /trigger/standard-webhooks.ts
 import { webhook, webhooks } from "@trigger.dev/sdk";
 
-export const composio = webhooks.endpoint.define({ id: "composio", source: webhooks.standardWebhooks() });
+export const orders = webhooks.endpoint.define({ id: "orders", source: webhooks.standardWebhooks() });
 
-export const composioEvents = webhook({
-  id: "composio-events",
-  endpoint: composio,
+export const orderEvents = webhook({
+  id: "order-events",
+  endpoint: orders,
   onEvent: async ({ event }) => {
     console.log(event);
   },
@@ -92,8 +92,9 @@ Each function below returns a source with its provider's verification configurat
 
 | Verification | Source functions |
 | --- | --- |
-| Svix | `clerk()`, `resend()`, `brex()`, `autumn()` |
-| Standard Webhooks | `openai()`, `replicate()`, `recallai()`, `composio()`, `loops()`, `granola()` |
+| Svix | `clerk()`, `resend()`, `autumn()` |
+| Standard Webhooks | `openai()`, `replicate()`, `recallai()`, `loops()`, `granola()`, `brex()` |
+| Standard Webhooks headers, keyed with the secret's raw text | `composio()` |
 | HMAC-SHA256 with `X-Hub-Signature-256` | `whatsapp()` |
 | Shared secret in `X-Gitlab-Token` | `gitlab()` |
 | Shared secret as `Authorization: Bearer` | `supabase()` |

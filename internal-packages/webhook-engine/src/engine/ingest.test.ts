@@ -672,11 +672,20 @@ containerTestWithIsolatedRedis(
       });
       expect(await engine.rejectUnsupportedMethod(plain.opaqueId)).toEqual({
         outcome: "method_not_allowed",
-        allowedMethods: ["POST"],
+        allowedMethods: ["HEAD", "POST"],
       });
       expect(await engine.rejectUnsupportedMethod("op_nope")).toEqual({
         outcome: "endpoint_not_found",
       });
+
+      // Catches: a provider that checks the URL with HEAD before saving it (Intercom) getting a 405
+      // from an endpoint whose source declares no GET handshake.
+      expect(await engine.answerHead(plain.opaqueId)).toEqual({
+        outcome: "handshake",
+        status: 200,
+        body: "",
+      });
+      expect(await engine.answerHead("op_nope")).toEqual({ outcome: "endpoint_not_found" });
 
       const ok = await engine.verifyGetHandshake({ opaqueId: endpoint.opaqueId, query: query() });
       expect(ok).toMatchObject({ outcome: "handshake", status: 200, body: "1158201444" });
@@ -778,7 +787,7 @@ containerTestWithIsolatedRedis(
       });
       expect(await engine.rejectUnsupportedMethod(plain.opaqueId)).toEqual({
         outcome: "method_not_allowed",
-        allowedMethods: ["POST"],
+        allowedMethods: ["HEAD", "POST"],
       });
       expect(await engine.verifyGetHandshake({ opaqueId: plain.opaqueId, query: query() })).toEqual(
         {

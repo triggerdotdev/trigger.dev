@@ -12,7 +12,7 @@ export const entry: ProviderRegistryEntry = {
   label: "Intercom",
   category: "support",
   docsUrl: "https://developers.intercom.com/docs/references/webhooks/webhook-models",
-  secretProvisioning: "integrator",
+  secretProvisioning: "provider",
   eventTypeSource: { from: "body", path: "topic" },
   sampleSource: "handauthored",
 };

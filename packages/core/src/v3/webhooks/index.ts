@@ -238,7 +238,7 @@ export const webhookProviderConfigs = {
       }),
   },
   calendly: {
-    secretProvisioning: "provider",
+    secretProvisioning: "either",
     config: () =>
       hmacVerifierConfig({
         header: "calendly-webhook-signature",
@@ -254,11 +254,11 @@ export const webhookProviderConfigs = {
     config: () => hmacVerifierConfig({ header: "x-cal-signature-256" }),
   },
   sentry: {
-    secretProvisioning: "integrator",
+    secretProvisioning: "provider",
     config: () => hmacVerifierConfig({ header: "sentry-hook-signature" }),
   },
   pagerduty: {
-    secretProvisioning: "integrator",
+    secretProvisioning: "provider",
     config: () =>
       hmacVerifierConfig({
         header: "x-pagerduty-signature",
@@ -267,7 +267,7 @@ export const webhookProviderConfigs = {
       }),
   },
   vercel: {
-    secretProvisioning: "integrator",
+    secretProvisioning: "provider",
     config: () =>
       hmacVerifierConfig({
         header: "x-vercel-signature",
@@ -276,7 +276,7 @@ export const webhookProviderConfigs = {
       }),
   },
   linear: {
-    secretProvisioning: "integrator",
+    secretProvisioning: "either",
     config: () =>
       hmacVerifierConfig({
         header: "linear-signature",
@@ -308,7 +308,7 @@ export const webhookProviderConfigs = {
       }),
   },
   docusign: {
-    secretProvisioning: "integrator",
+    secretProvisioning: "provider",
     config: () => hmacVerifierConfig({ header: "x-docusign-signature-1", encoding: "base64" }),
   },
   jira: {
@@ -321,7 +321,7 @@ export const webhookProviderConfigs = {
       }),
   },
   intercom: {
-    secretProvisioning: "integrator",
+    secretProvisioning: "provider",
     config: () =>
       hmacVerifierConfig({
         header: "x-hub-signature",
@@ -331,7 +331,7 @@ export const webhookProviderConfigs = {
       }),
   },
   zendesk: {
-    secretProvisioning: "integrator",
+    secretProvisioning: "provider",
     config: () =>
       hmacVerifierConfig({
         header: "x-zendesk-webhook-signature",
@@ -342,7 +342,7 @@ export const webhookProviderConfigs = {
       }),
   },
   attio: {
-    secretProvisioning: "integrator",
+    secretProvisioning: "provider",
     config: () =>
       hmacVerifierConfig({
         header: "attio-signature",
@@ -404,6 +404,20 @@ export const webhookProviderConfigs = {
     config: standardWebhooksVerifierConfig,
   },
   granola: {
+    secretProvisioning: "provider",
+    config: standardWebhooksVerifierConfig,
+  },
+  // Composio sends the Standard Webhooks headers but keys the HMAC with the secret's raw text, with
+  // no base64 decoding and no `whsec_` prefix strip.
+  composio: {
+    secretProvisioning: "provider",
+    config: (): WebhookHmacConfig => {
+      const { secret: _secret, ...config } = standardWebhooksVerifierConfig();
+      return config;
+    },
+  },
+  // Brex's docs list only the `Webhook-*` headers, so the Svix config (`svix-*` headers) can't verify it.
+  brex: {
     secretProvisioning: "provider",
     config: standardWebhooksVerifierConfig,
   },
@@ -578,6 +592,16 @@ export const webhookSetupPrompts: Partial<Record<WebhookPresetId | WebhookProvid
     "Autumn's webhooks are in beta, and Autumn support turns them on per account.",
     "Once they are on, add the webhook URL as an endpoint in the Autumn dashboard's webhook settings and select the event types the subscribers need. Autumn delivers through Svix, which shows the endpoint's signing secret (it starts with whsec_); store it on Trigger.dev.",
     "Subscribers' filters compare `event.type`, for example `billing.updated`.",
+  ].join("\n"),
+  brex: [
+    "Brex issues the signing secret. Register the webhook URL with Brex's Webhooks API, subscribed to the event types the subscribers need, then read the signing secret from GET /v1/webhooks/secrets and store it on Trigger.dev. While Brex rotates it, that endpoint returns two secrets. If the Trigger.dev endpoint has no secret stored yet, store the older one first; then store the newer one with previousSecretTtlSeconds so deliveries signed with the older one keep verifying.",
+    "Brex signs with the Standard Webhooks headers (webhook-id, webhook-timestamp, webhook-signature).",
+    "Subscribers' filters compare `event.event_type`, for example `TRANSFER_PROCESSED`.",
+  ].join("\n"),
+  composio: [
+    "Composio issues the signing secret. It is in the response when the webhook subscription is created or its secret is rotated, and GET on an existing subscription returns it too; read it from there and store it on Trigger.dev. Don't rotate an existing subscription's secret just to read it.",
+    "Create the subscription in the Composio dashboard or with its API, with the webhook URL as the destination and the trigger events the subscribers need.",
+    "Subscribers' filters compare `event.type`.",
   ].join("\n"),
   notion: [
     "These settings are in the Notion connection's settings (https://app.notion.com/developers/connections); tell the user each step.",
