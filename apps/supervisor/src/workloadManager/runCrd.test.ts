@@ -2142,6 +2142,8 @@ describe("classifyRestoreFailure", () => {
     ["SnapshotNotFound", { outcome: "fail" }],
     // The node runtime will not restore this snapshot for this Runner on any attempt.
     ["SnapshotRefused", { outcome: "fail" }],
+    // An encrypted snapshot that failed its integrity check fails the same way on any node.
+    ["SnapshotIntegrity", { outcome: "fail" }],
     // The template may be on another node, so a resume is requeued rather than failed.
     ["TemplateNotFound", { outcome: "requeue", deleteRunner: true }],
     ["PodStartTimeout", { outcome: "requeue", deleteRunner: true }],
