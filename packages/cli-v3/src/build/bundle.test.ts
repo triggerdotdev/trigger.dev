@@ -7,7 +7,12 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { BUILD_IMAGE, bunCompileArgs } from "../deploy/buildImage.js";
-import { type BundleResult, createBuildManifestFromBundle, createBuildOptions } from "./bundle.js";
+import {
+  type BundleResult,
+  createBuildManifestFromBundle,
+  createBuildOptions,
+  getBundleResultFromBuild,
+} from "./bundle.js";
 
 const bundle = {
   contentHash: "hash",
@@ -81,6 +86,61 @@ describe("createBuildOptions", () => {
       expect(options.banner?.js?.includes("import.meta.url=") ?? false).toBe(expected);
     }
   );
+});
+
+describe("bundle layout", () => {
+  // Catches: project files landing under the path of a CLI installed outside the project (npx
+  // cache, global install), away from where additionalFiles copies the assets next to them
+  it.each([
+    ["outside the project", ["cli"]],
+    ["in the project's node_modules", ["home", "dev", "project"]],
+  ])("keeps the project layout with the CLI %s", async (_, cliRoot) => {
+    const dir = await mkdtemp(join(tmpdir(), "trigger-bundle-layout-"));
+    const project = join(dir, "home", "dev", "project");
+    const destination = join(dir, "out");
+    const runWorker = join(
+      dir,
+      ...cliRoot,
+      "node_modules",
+      "trigger.dev",
+      "dist",
+      "esm",
+      "entryPoints",
+      "managed-run-worker.js"
+    );
+
+    try {
+      await mkdir(join(project, "src", "trigger"), { recursive: true });
+      await mkdir(dirname(runWorker), { recursive: true });
+      await writeFile(join(project, "trigger.config.ts"), "export default {};");
+      await writeFile(join(project, "src", "trigger", "tasks.ts"), "export const task = 1;");
+      await writeFile(runWorker, "console.log(1);");
+
+      const resolvedConfig = { ...configFor("node-24"), workingDir: project };
+      const options = await createBuildOptions({
+        target: "deploy",
+        destination,
+        cwd: project,
+        resolvedConfig,
+        entryPoints: [
+          join(project, "trigger.config.ts"),
+          join(project, "src", "trigger", "tasks.ts"),
+          runWorker,
+        ],
+      });
+      // The shim is the CLI's built output, absent when running from source
+      const result = await esbuild.build({ ...options, inject: [] });
+      const bundle = await getBundleResultFromBuild("deploy", project, resolvedConfig, result);
+
+      expect(bundle?.configPath).toBe(join(destination, "trigger.config.mjs"));
+      expect(bundle?.files.map((file) => file.out)).toEqual([
+        join(destination, "src", "trigger", "tasks.mjs"),
+      ]);
+      expect(bundle?.runWorkerEntryPoint?.startsWith(destination)).toBe(true);
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
 });
 
 function dockerAvailable() {

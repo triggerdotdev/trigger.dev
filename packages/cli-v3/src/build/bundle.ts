@@ -217,6 +217,9 @@ export async function createBuildOptions(
   return {
     entryPoints: options.entryPoints,
     outdir: options.destination,
+    // Without this the root is the common ancestor of the project and the CLI's own entry points,
+    // which climbs out of the project when the CLI isn't installed in it
+    outbase: options.cwd,
     absWorkingDir: options.cwd,
     bundle: true,
     metafile: true,
