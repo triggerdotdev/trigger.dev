@@ -25,6 +25,7 @@ import {
   execOptionsForRuntime,
   execPathForRuntime,
   isBunRuntime,
+  nodeCompileCacheEnv,
 } from "@trigger.dev/core/v3/build";
 import { nodeOptionsWithMaxOldSpaceSize } from "@trigger.dev/core/v3/machines";
 import type { InferSocketMessageSchema } from "@trigger.dev/core/v3/zodSocket";
@@ -163,6 +164,9 @@ export class TaskRunProcess {
       OTEL_IMPORT_HOOK_INCLUDES: workerManifest.otelImportHook?.include?.join(","),
       // TODO: this will probably need to use something different for bun (maybe --preload?)
       NODE_OPTIONS: execOptionsForRuntime(workerManifest.runtime, workerManifest, maxOldSpaceSize),
+      ...(workerManifest.compileCacheDir
+        ? nodeCompileCacheEnv(workerManifest.runtime, workerManifest.compileCacheDir, "read")
+        : {}),
       PATH: process.env.PATH,
       TRIGGER_PROCESS_FORK_START_TIME: String(Date.now()),
       TRIGGER_WARM_START: this.options.isWarmStart ? "true" : "false",

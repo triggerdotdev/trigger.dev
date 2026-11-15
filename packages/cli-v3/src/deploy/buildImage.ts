@@ -711,6 +711,7 @@ export type GenerateContainerfileOptions = {
     outfile: string;
     entryPoints: string[];
   };
+  compileCacheDir?: string;
 };
 
 // "bun" and "bun-legacy" are the same node + bun image
@@ -1137,7 +1138,14 @@ COPY --from=code --chown=node:node /app ./
 
 # Copy the index.json file from the indexer stage
 COPY --from=indexer --chown=node:node /app/index.json ./
-
+${
+  options.compileCacheDir
+    ? `
+# The indexer filled Node's compile cache, so runs skip compiling most of the bundle
+COPY --from=indexer --chown=node:node ${options.compileCacheDir} ${options.compileCacheDir}
+`
+    : ""
+}
 ENTRYPOINT [ "dumb-init", "node", "${options.entrypoint}" ]
 CMD []
   `;

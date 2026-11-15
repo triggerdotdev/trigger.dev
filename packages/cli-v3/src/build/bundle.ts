@@ -1,5 +1,10 @@
 import { CORE_VERSION } from "@trigger.dev/core/v3";
-import { DEFAULT_RUNTIME, isNodelessBunRuntime, ResolvedConfig } from "@trigger.dev/core/v3/build";
+import {
+  DEFAULT_RUNTIME,
+  isNodelessBunRuntime,
+  ResolvedConfig,
+  supportsNodeCompileCache,
+} from "@trigger.dev/core/v3/build";
 import { BuildManifest, BuildTarget, TaskFile } from "@trigger.dev/core/v3/schemas";
 import chalk from "chalk";
 import * as esbuild from "esbuild";
@@ -434,6 +439,10 @@ export async function createBuildManifestFromBundle({
     compiledRunWorkerPath: compilesBunWorker(target, resolvedConfig)
       ? join(destination, ".trigger", "worker", "run-worker")
       : undefined,
+    compileCacheDir:
+      target === "deploy" && supportsNodeCompileCache(resolvedConfig.runtime ?? DEFAULT_RUNTIME)
+        ? join(destination, ".trigger", "compile-cache")
+        : undefined,
     configPath: bundle.configPath,
     customConditions: resolvedConfig.build.conditions ?? [],
     deploy: {

@@ -69,6 +69,7 @@ import {
 } from "@trigger.dev/core/v3/workers";
 import { ZodIpcConnection } from "@trigger.dev/core/v3/zodIpc";
 import { readFile } from "node:fs/promises";
+import nodeModule from "node:module";
 import { setTimeout } from "node:timers/promises";
 import sourceMapSupport from "source-map-support";
 import { env } from "std-env";
@@ -862,3 +863,32 @@ standardHeartbeatsManager.registerListener(async (id) => {
 });
 
 console.log(`[${new Date().toISOString()}] Executor started`);
+
+// The image build starts the worker once in this mode, so Node writes its compile cache for the
+// modules a run imports (the config and the task files, which indexing already imports), then exits
+if (getEnvVar("TRIGGER_FILL_COMPILE_CACHE") === "1") {
+  await fillCompileCache();
+}
+
+async function fillCompileCache() {
+  try {
+    const workerManifest = await loadWorkerManifest();
+
+    resourceCatalog.registerWorkerManifest(workerManifest);
+
+    await importConfig(normalizeImportPath(workerManifest.configPath));
+
+    // The init file is left out: it runs user setup that belongs to a run, not to the build
+    for (const task of workerManifest.tasks) {
+      resourceCatalog.setCurrentFileContext(task.filePath, task.entryPoint);
+      await import(normalizeImportPath(task.entryPoint));
+      resourceCatalog.clearCurrentFileContext();
+    }
+
+    nodeModule.flushCompileCache?.();
+    process.exit(0);
+  } catch (error) {
+    console.error("Failed to fill the compile cache", error);
+    process.exit(1);
+  }
+}

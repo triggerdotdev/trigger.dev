@@ -5,6 +5,7 @@ import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { env } from "std-env";
 import { CliApiClient } from "../apiClient.js";
+import { fillCompileCache } from "../indexing/fillCompileCache.js";
 import { indexWorkerManifest } from "../indexing/indexWorkerManifest.js";
 import { writeJSONFile } from "../utilities/fileSystem.js";
 import { resolveSourceFiles } from "../utilities/sourceFiles.js";
@@ -89,6 +90,24 @@ async function indexDeployment({
 
     const { timings, ...manifestWithoutTimings } = workerManifest;
     await writeJSONFile(join(process.cwd(), "index.json"), manifestWithoutTimings, true);
+
+    if (buildManifest.compileCacheDir) {
+      const fill = await fillCompileCache({
+        runtime: buildManifest.runtime,
+        runWorkerPath: buildManifest.runWorkerEntryPoint,
+        compileCacheDir: buildManifest.compileCacheDir,
+        nodeOptions: execOptionsForRuntime(buildManifest.runtime, buildManifest),
+        otelHookInclude: buildManifest.otelImportHook?.include,
+        env: { ...process.env, ...$env.data.variables },
+      });
+
+      // A missing cache only costs start time, so it doesn't fail the deploy
+      if (fill.exitCode !== 0) {
+        console.warn(
+          `The compile cache may be incomplete: the run worker exited with ${fill.exitCode}\n${fill.stderr}`
+        );
+      }
+    }
 
     const sourceFiles = resolveSourceFiles(buildManifest.sources, workerManifest.tasks);
 

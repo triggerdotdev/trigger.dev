@@ -211,6 +211,7 @@ await sendMessageInCatalog(
       loaderEntryPoint: buildManifest.loaderEntryPoint,
       customConditions: buildManifest.customConditions,
       initEntryPoint: buildManifest.initEntryPoint,
+      compileCacheDir: buildManifest.compileCacheDir,
       processKeepAlive:
         typeof processKeepAlive === "object"
           ? processKeepAlive

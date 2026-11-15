@@ -208,6 +208,9 @@ export function rewriteBuildManifestPaths(
     compiledRunWorkerPath: buildManifest.compiledRunWorkerPath
       ? rewriteOutputPath(destinationDir, buildManifest.compiledRunWorkerPath)
       : undefined,
+    compileCacheDir: buildManifest.compileCacheDir
+      ? rewriteOutputPath(destinationDir, buildManifest.compileCacheDir)
+      : undefined,
   };
 }
 // Remove any query parameters from the entry path
@@ -301,6 +304,7 @@ export async function writeContainerfile(outputPath: string, buildManifest: Buil
           ],
         }
       : undefined,
+    compileCacheDir: buildManifest.compileCacheDir,
   });
 
   const containerfilePath = join(outputPath, "Containerfile");
