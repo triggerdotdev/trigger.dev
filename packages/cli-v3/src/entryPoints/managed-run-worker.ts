@@ -1,4 +1,4 @@
-import type { Tracer } from "@opentelemetry/api";
+import { context, type Tracer } from "@opentelemetry/api";
 import type { Logger } from "@opentelemetry/api-logs";
 import { promiseWithResolvers } from "@trigger.dev/core/utils";
 import {
@@ -74,6 +74,11 @@ import sourceMapSupport from "source-map-support";
 import { env } from "std-env";
 import { normalizeImportPath } from "../utilities/normalizeImportPath.js";
 import { dropInheritedRunToken, installRunToken } from "./runTokenEnv.js";
+import {
+  pickStartupOnlyEnv,
+  startupOnlyEnvNotApplied,
+  startupOnlyEnvWarning,
+} from "./startupEnv.js";
 import { VERSION } from "../version.js";
 
 sourceMapSupport.install({
@@ -392,6 +397,7 @@ function resetExecutionEnvironment() {
 
 let _lastEnv: Record<string, string> | undefined;
 let _executionCount = 0;
+const _startupEnv = pickStartupOnlyEnv(process.env);
 
 const zodIpc = new ZodIpcConnection({
   listenSchema: WorkerToExecutorMessageCatalog,
@@ -402,6 +408,8 @@ const zodIpc = new ZodIpcConnection({
       { execution, traceContext, metadata, metrics, env, isWarmStart },
       sender
     ) => {
+      const startupEnvNotApplied = env ? startupOnlyEnvNotApplied(_startupEnv, env) : [];
+
       if (env) {
         dropInheritedRunToken(env);
         populateEnv(env, {
@@ -634,6 +642,12 @@ const zodIpc = new ZodIpcConnection({
           // definition) register normally instead of being silently dropped.
           // Cleared in the surrounding finally below.
           resourceCatalog.setCurrentFileContext(NO_FILE_CONTEXT, NO_FILE_CONTEXT);
+
+          if (startupEnvNotApplied.length > 0) {
+            context.with(standardTraceContextManager.extractContext(), () =>
+              logger.warn(startupOnlyEnvWarning(startupEnvNotApplied))
+            );
+          }
 
           const { result } = await executor.execute(execution, ctx, signal);
 

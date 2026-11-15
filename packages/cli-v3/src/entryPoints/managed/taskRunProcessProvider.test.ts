@@ -32,6 +32,22 @@ describe("forkEnvFromRunEnv", () => {
     expect(forkEnvFromRunEnv({ TRIGGER_LOG_LEVEL: "" })).toEqual({ TRIGGER_LOG_LEVEL: "" });
   });
 
+  // Catches: Node, OpenSSL, libuv or loader settings from the run not applying because they arrive after startup.
+  it("keeps the startup-only settings and every libuv variable", () => {
+    const startupEnv = {
+      TZ: "Europe/London",
+      LD_PRELOAD: "/app/lib/libjemalloc.so",
+      OPENSSL_CONF: "/app/openssl.cnf",
+      OPENSSL_MODULES: "/app/ossl-modules",
+      SSL_CERT_DIR: "/etc/ssl/certs",
+      NODE_ICU_DATA: "/app/icu",
+      UV_THREADPOOL_SIZE: "16",
+      UV_USE_IO_URING: "0",
+    };
+
+    expect(forkEnvFromRunEnv({ ...startupEnv, TRIGGER_SECRET_KEY: "secret" })).toEqual(startupEnv);
+  });
+
   // Catches: Node's startup proxy (NODE_USE_ENV_PROXY) not applying because the proxy settings arrive over IPC.
   it("keeps the proxy settings only when the run turns on Node's env proxy", () => {
     const proxyEnv = {

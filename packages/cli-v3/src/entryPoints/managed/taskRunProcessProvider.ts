@@ -9,12 +9,18 @@ import type { RunLogger, SendDebugLogOptions } from "./logger.js";
 // EXECUTE_TASK_RUN message, or that message does not carry them. None of them are secrets.
 const FORK_ENV_KEYS = [
   ...TRUST_STORE_ENV_KEYS,
-  // Node, libuv and the dynamic loader read these only at process start.
+  // Node, OpenSSL and the dynamic loader read these only at process start.
   "NODE_PATH",
-  "UV_THREADPOOL_SIZE",
+  "NODE_ICU_DATA",
+  "OPENSSL_CONF",
+  "OPENSSL_MODULES",
+  "SSL_CERT_DIR",
   "LANG",
   "LC_ALL",
   "LD_LIBRARY_PATH",
+  "LD_PRELOAD",
+  // Node also applies a later change to TZ, but code that runs before the run's env arrives needs it.
+  "TZ",
   "TRIGGER_PROJECT_REF",
   "TRIGGER_LOG_LEVEL",
   "TRIGGER_WAIT_UNTIL_TIMEOUT_MS",
@@ -28,6 +34,9 @@ const FORK_ENV_KEYS = [
   "TRIGGER_OTEL_ATTRIBUTE_PER_LINK_COUNT_LIMIT",
   "TRIGGER_OTEL_ATTRIBUTE_PER_EVENT_COUNT_LIMIT",
 ] as const;
+
+// libuv reads its settings (UV_THREADPOOL_SIZE, UV_USE_IO_URING and others) when it starts.
+const FORK_ENV_PREFIXES = ["UV_"] as const;
 
 // With NODE_USE_ENV_PROXY set, Node reads the proxy settings only at process start. Proxy URLs can
 // carry credentials, so these go in the fork env only when the run opts in.
@@ -49,6 +58,11 @@ export function forkEnvFromRunEnv(runEnv: Record<string, string>): Record<string
   for (const key of keys) {
     const value = runEnv[key];
     if (value !== undefined) {
+      env[key] = value;
+    }
+  }
+  for (const [key, value] of Object.entries(runEnv)) {
+    if (FORK_ENV_PREFIXES.some((prefix) => key.startsWith(prefix))) {
       env[key] = value;
     }
   }
