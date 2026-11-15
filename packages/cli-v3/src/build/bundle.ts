@@ -191,9 +191,10 @@ function compilesBunWorker(target: BuildTarget, resolvedConfig: ResolvedConfig) 
 }
 
 // Inside the compiled worker, import.meta points into the executable (file:///$bunfs/root/, 20
-// chars); point it back at the file under /app, the compile step's --root
-const BUN_COMPILED_IMPORT_META_BANNER =
-  'if(import.meta.url.startsWith("file:///$bunfs/root/")){const u="file:///app/"+import.meta.url.slice(20),f=Bun.fileURLToPath(u),d=f.slice(0,f.lastIndexOf("/"));import.meta.url=u;import.meta.filename=import.meta.path=f;import.meta.dirname=import.meta.dir=d;}';
+// chars); point it back at the file under /app, the compile step's --root. process.execPath is
+// the executable too, so fork() and spawn(process.execPath) would start the run worker, not bun
+const BUN_COMPILED_BANNER =
+  'if(import.meta.url.startsWith("file:///$bunfs/root/")){const u="file:///app/"+import.meta.url.slice(20),f=Bun.fileURLToPath(u),d=f.slice(0,f.lastIndexOf("/"));import.meta.url=u;import.meta.filename=import.meta.path=f;import.meta.dirname=import.meta.dir=d;process.execPath=Bun.which("bun")??process.execPath;}';
 
 // Helper function to create build options
 export async function createBuildOptions(
@@ -248,7 +249,7 @@ export async function createBuildOptions(
     ...(options.jsxFactory && { jsxFactory: options.jsxFactory }),
     ...(options.jsxFragment && { jsxFragment: options.jsxFragment }),
     ...(compilesBunWorker(options.target, options.resolvedConfig) && {
-      banner: { js: BUN_COMPILED_IMPORT_META_BANNER },
+      banner: { js: BUN_COMPILED_BANNER },
     }),
     logLevel: "silent",
     logOverride: {

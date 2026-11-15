@@ -59,7 +59,7 @@ describe("createBuildManifestFromBundle", () => {
 });
 
 describe("createBuildOptions", () => {
-  // Catches: the import.meta banner left off a compiled deploy, or added to bundles that run from disk
+  // Catches: the compiled worker banner left off a compiled deploy, or added to bundles that run from disk
   it.each([
     ["bun-1.4", "deploy", undefined, true],
     ["bun-1.4", "deploy", false, false],
@@ -68,7 +68,7 @@ describe("createBuildOptions", () => {
     ["bun", "deploy", undefined, false],
     ["node-24", "deploy", undefined, false],
   ] as const)(
-    "%s %s with bunBytecode %s adds the import.meta banner: %s",
+    "%s %s with bunBytecode %s adds the compiled worker banner: %s",
     async (runtime, target, bunBytecode, expected) => {
       const options = await createBuildOptions({
         target,
@@ -89,22 +89,35 @@ function dockerAvailable() {
 
 describe.skipIf(process.platform !== "linux" || !dockerAvailable())("compiled bun worker", () => {
   // Catches: a Bun upgrade that makes import.meta read-only or changes the embedded paths, so
-  // compiled tasks see file:///$bunfs/root/ URLs and can't read files next to them in /app
-  it("points import.meta at the files under /app", async () => {
+  // compiled tasks see file:///$bunfs/root/ URLs and can't read files next to them in /app, or
+  // fork() and spawn(process.execPath) start the run worker again instead of bun
+  it("points import.meta at the files under /app and relaunches run bun", async () => {
     const dir = await mkdtemp(join(tmpdir(), "trigger-bun-compile-"));
     const out = join(dir, "out");
 
     try {
       const files: Record<string, string> = {
         // Imports the task from inside the executable, as the run worker does
-        "worker.ts": `const task = await import(["", "$bunfs", "root", "src/trigger/task.mjs"].join("/"));
-console.log(JSON.stringify(task.probe()));`,
-        "src/trigger/task.ts": `import { readFileSync } from "node:fs";
-export function probe() {
+        "worker.ts": `if (process.env.RELAUNCHED) {
+  console.log("run worker");
+  process.exit(0);
+}
+const task = await import(["", "$bunfs", "root", "src/trigger/task.mjs"].join("/"));
+console.log(JSON.stringify(await task.probe()));`,
+        "src/trigger/task.ts": `import { fork, spawnSync } from "node:child_process";
+import { readFileSync } from "node:fs";
+const env = { ...process.env, RELAUNCHED: "1" };
+export async function probe() {
+  const child = fork(import.meta.dirname + "/child.mjs", { env, stdio: "pipe" });
+  let forked = "";
+  child.stdout!.on("data", (chunk) => (forked += chunk));
+  await new Promise((resolve) => child.on("exit", resolve));
   return {
     url: import.meta.url,
     dirname: import.meta.dirname,
     data: readFileSync(new URL("./data.json", import.meta.url), "utf8"),
+    forked: forked.trim(),
+    spawned: spawnSync(process.execPath, ["-e", "console.log(typeof Bun)"], { env, encoding: "utf8" }).stdout.trim(),
   };
 }`,
       };
@@ -124,6 +137,7 @@ export function probe() {
       await esbuild.build({ ...options, write: true });
       // A file shipped next to the task, as additionalFiles would
       await writeFile(join(out, "src/trigger/data.json"), '"next to the task"');
+      await writeFile(join(out, "src/trigger/child.mjs"), 'console.log("child")');
 
       const outfile = "/app/.trigger/worker/run-worker";
       const args = bunCompileArgs({
@@ -159,6 +173,8 @@ export function probe() {
         url: "file:///app/src/trigger/task.mjs",
         dirname: "/app/src/trigger",
         data: '"next to the task"',
+        forked: "child",
+        spawned: "object",
       });
     } finally {
       await rm(dir, { recursive: true, force: true });
