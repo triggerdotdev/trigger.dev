@@ -41,6 +41,7 @@ export class FinalizeDeploymentV2Service extends BaseService {
         worker: {
           select: {
             project: true,
+            metadata: true,
           },
         },
       },
@@ -177,7 +178,7 @@ export class FinalizeDeploymentV2Service extends BaseService {
     deployment: {
       id: string;
       imageReference: string | null;
-      worker: { project: { id: string } } | null;
+      worker: { project: { id: string }; metadata: unknown } | null;
     },
     deploymentFriendlyId: string,
     body: FinalizeDeploymentRequestBody,
@@ -193,6 +194,7 @@ export class FinalizeDeploymentV2Service extends BaseService {
       deploymentFriendlyId,
       imageReference: deployment.imageReference,
       imageDigest: body.imageDigest,
+      workerMetadata: deployment.worker.metadata,
       writer,
     });
   }

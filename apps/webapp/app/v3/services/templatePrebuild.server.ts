@@ -1,4 +1,5 @@
 import { setTimeout as sleep } from "node:timers/promises";
+import { z } from "zod";
 import { getMeter, type Meter } from "@internal/tracing";
 import type { MachinePresetName } from "@trigger.dev/core/v3";
 import type { Prisma, RuntimeEnvironmentType } from "@trigger.dev/database";
@@ -100,6 +101,7 @@ export type TemplateCreateRequest = {
   machine_configs: { cpus: number; memory_mb: number }[];
   no_snap: true;
   deployment_id: string;
+  warmup?: string[][];
 };
 
 type TemplateCreateResponse = {
@@ -146,11 +148,26 @@ export function pinnedImageReference(
   return `${imageReference}@${digest}`;
 }
 
+const WarmupCommand = z.array(z.string().min(1).max(4096)).min(1).max(64);
+
+/**
+ * The warmup command a deployed worker's CLI reported, or undefined when it reported none (an older
+ * CLI) or one that is not a plain argv.
+ */
+export function warmupCommandFromMetadata(metadata: unknown): string[] | undefined {
+  if (typeof metadata !== "object" || metadata === null || !("warmupCommand" in metadata)) {
+    return undefined;
+  }
+  const parsed = WarmupCommand.safeParse(metadata.warmupCommand);
+  return parsed.success ? parsed.data : undefined;
+}
+
 /** One request per deploy, carrying each distinct preset shape. */
 export function templateCreateRequest(
   image: string,
   presets: MachinePresetName[],
-  deploymentFriendlyId: string
+  deploymentFriendlyId: string,
+  warmupCommand?: string[]
 ): TemplateCreateRequest {
   const shapes = new Map<string, { cpus: number; memory_mb: number }>();
   for (const name of presets) {
@@ -163,6 +180,7 @@ export function templateCreateRequest(
     machine_configs: [...shapes.values()],
     no_snap: true,
     deployment_id: deploymentFriendlyId,
+    ...(warmupCommand ? { warmup: [warmupCommand] } : {}),
   };
 }
 
@@ -201,6 +219,8 @@ export class TemplatePrebuildService {
     deploymentFriendlyId: string;
     imageReference: string;
     imageDigest: string | undefined;
+    /** The deployed worker's metadata, which carries its warmup command. */
+    workerMetadata?: unknown;
     writer?: WritableStreamDefaultWriter;
   }): Promise<{
     mode: TemplatePrebuildMode;
@@ -234,6 +254,7 @@ export class TemplatePrebuildService {
       const build = this.build(image, mode, {
         id: options.deploymentId,
         friendlyId: options.deploymentFriendlyId,
+        warmupCommand: warmupCommandFromMetadata(options.workerMetadata),
       });
       if (mode === "shadow") {
         return { mode, reason };
@@ -414,6 +435,7 @@ export class TemplatePrebuildService {
       shortCode: true,
       imageReference: true,
       templateKey: true,
+      worker: { select: { metadata: true } },
       project: { select: { externalRef: true } },
       environment: { select: { type: true } },
     } satisfies Prisma.WorkerDeploymentSelect;
@@ -461,7 +483,11 @@ export class TemplatePrebuildService {
     const result = await this.build(
       image,
       "shadow",
-      { id: deployment.id, friendlyId: deployment.friendlyId },
+      {
+        id: deployment.id,
+        friendlyId: deployment.friendlyId,
+        warmupCommand: warmupCommandFromMetadata(deployment.worker?.metadata),
+      },
       timeoutMs
     );
     return { ...base, ...result };
@@ -474,11 +500,16 @@ export class TemplatePrebuildService {
   async build(
     image: string,
     mode: Exclude<TemplatePrebuildMode, "skip">,
-    deployment: { id: string; friendlyId: string },
+    deployment: { id: string; friendlyId: string; warmupCommand?: string[] },
     timeoutMs: number = this.config.timeoutMs
   ): Promise<TemplateBuildResult> {
     const startedAt = performance.now();
-    const body = templateCreateRequest(image, this.config.presets, deployment.friendlyId);
+    const body = templateCreateRequest(
+      image,
+      this.config.presets,
+      deployment.friendlyId,
+      deployment.warmupCommand
+    );
     const log = { deploymentId: deployment.friendlyId, image, mode };
 
     let outcome: TemplateBuildOutcome;

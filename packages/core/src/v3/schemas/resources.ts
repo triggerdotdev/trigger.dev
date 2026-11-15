@@ -99,6 +99,11 @@ export const BackgroundWorkerMetadata = z.object({
   sourceFiles: z.array(BackgroundWorkerSourceFileMetadata).optional(),
   runtime: z.string().optional(),
   runtimeVersion: z.string().optional(),
+  /**
+   * A command that starts the deployed worker offline and imports the config and task files without
+   * running any task, for a host to prime a snapshot of the image with.
+   */
+  warmupCommand: z.array(z.string()).optional(),
 });
 
 export type BackgroundWorkerMetadata = z.infer<typeof BackgroundWorkerMetadata>;

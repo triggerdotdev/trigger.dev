@@ -10,7 +10,8 @@ import type { Prisma } from "@trigger.dev/database";
  * tasks[].schedule into syncDeclarativeSchedules and webhookEndpoints +
  * webhookSubscribers into syncDeclarativeWebhooks. packageVersion, contentHash,
  * and tasks[].filePath are kept solely to satisfy BackgroundWorkerMetadata's
- * required fields when the column is parsed back.
+ * required fields when the column is parsed back. warmupCommand is read by the
+ * template prebuild (templatePrebuild.server.ts).
  */
 export function stripBackgroundWorkerMetadataForStorage(
   metadata: BackgroundWorkerMetadata
@@ -29,5 +30,6 @@ export function stripBackgroundWorkerMetadataForStorage(
     webhookSubscribers: metadata.webhookSubscribers as unknown as
       | Prisma.InputJsonValue[]
       | undefined,
+    warmupCommand: metadata.warmupCommand,
   };
 }

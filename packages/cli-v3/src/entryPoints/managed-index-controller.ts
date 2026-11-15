@@ -9,6 +9,7 @@ import { fillCompileCache } from "../indexing/fillCompileCache.js";
 import { indexWorkerManifest } from "../indexing/indexWorkerManifest.js";
 import { writeJSONFile } from "../utilities/fileSystem.js";
 import { resolveSourceFiles } from "../utilities/sourceFiles.js";
+import { warmupCommand } from "./warmupCommand.js";
 import { formatScheduleWarnings } from "../utilities/scheduleWarnings.js";
 
 async function loadBuildManifest() {
@@ -129,6 +130,8 @@ async function indexDeployment({
         sourceFiles,
         runtime: workerManifest.runtime,
         runtimeVersion: workerManifest.runtimeVersion,
+        // The run worker reads index.json from the directory it was written to
+        warmupCommand: warmupCommand(workerManifest, process.cwd()),
       },
       engine: "V2",
       supportsLazyAttempts: true,

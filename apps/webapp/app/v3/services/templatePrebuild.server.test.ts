@@ -12,6 +12,7 @@ import {
   templateCreateRequest,
   templatePrebuildTelemetry,
   validTemplateKey,
+  warmupCommandFromMetadata,
 } from "./templatePrebuild.server";
 import { createInMemoryMetrics } from "../../../test/utils/tracing";
 
@@ -191,6 +192,19 @@ describe("templateCreateRequest", () => {
   });
 });
 
+describe("warmupCommandFromMetadata", () => {
+  // Catches: a stored value that is not an argv reaching the builder, which refuses the request
+  it("returns only a non-empty argv of strings", () => {
+    const command = ["node", "/app/worker.mjs", "--trigger-warmup", "/app"];
+    expect(warmupCommandFromMetadata({ warmupCommand: command })).toEqual(command);
+    expect(warmupCommandFromMetadata({ packageVersion: "4.0.0" })).toBeUndefined();
+    expect(warmupCommandFromMetadata({ warmupCommand: "node /app/worker.mjs" })).toBeUndefined();
+    expect(warmupCommandFromMetadata({ warmupCommand: [] })).toBeUndefined();
+    expect(warmupCommandFromMetadata({ warmupCommand: ["node", 1] })).toBeUndefined();
+    expect(warmupCommandFromMetadata(null)).toBeUndefined();
+  });
+});
+
 describe("validTemplateKey", () => {
   it("accepts 64 lowercase hex characters", () => {
     expect(validTemplateKey(TEMPLATE_KEY)).toBe(TEMPLATE_KEY);
@@ -312,6 +326,35 @@ describe("prebuild", () => {
         no_snap: true,
         deployment_id: row.friendlyId,
       });
+    } finally {
+      await server.close();
+    }
+  });
+
+  // Catches: the worker's warmup command not reaching the builder, so the template is primed with
+  // a generic command instead of the deploy's own imports
+  postgresTest("sends the worker's warmup command", async ({ prisma }) => {
+    const server = await builder(
+      reply(201, { template_id: "a".repeat(64), template_source: "built" })
+    );
+    try {
+      const project = await createProject(prisma, {
+        workloadType: "MICROVM",
+        orgFlags: { [FEATURE_FLAG.computeTemplatePrebuildWait]: true },
+      });
+      const row = await createDeployment(prisma, project);
+      const command = ["node", "/app/worker.mjs", "--trigger-warmup", "/app"];
+      await new TemplatePrebuildService(prisma, config({ url: server.url })).prebuild({
+        projectId: project.id,
+        deploymentId: row.id,
+        deploymentFriendlyId: row.friendlyId,
+        imageReference: IMAGE,
+        imageDigest: DIGEST,
+        workerMetadata: { packageVersion: "4.0.0", warmupCommand: command },
+      });
+
+      expect(server.requests).toHaveLength(1);
+      expect(JSON.parse(server.requests[0].body).warmup).toEqual([command]);
     } finally {
       await server.close();
     }

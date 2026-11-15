@@ -21,6 +21,7 @@ import {
   localsAPI,
   logger,
   OTEL_LOG_ATTRIBUTE_COUNT_LIMIT,
+  parsePacket,
   realtimeStreams,
   resetIdempotencyKeyCatalog,
   resourceCatalog,
@@ -28,6 +29,7 @@ import {
   runtime,
   runTimelineMetrics,
   sessionStreams,
+  stringifyIO,
   taskContext,
   TaskRunContext,
   TaskRunErrorCodes,
@@ -75,6 +77,7 @@ import sourceMapSupport from "source-map-support";
 import { env } from "std-env";
 import { normalizeImportPath } from "../utilities/normalizeImportPath.js";
 import { dropInheritedRunToken, installRunToken } from "./runTokenEnv.js";
+import { WARMUP_FLAG } from "./warmupCommand.js";
 import {
   pickStartupOnlyEnv,
   startupOnlyEnvNotApplied,
@@ -200,6 +203,8 @@ const standardHeartbeatsManager = new StandardHeartbeatsManager(
 heartbeats.setGlobalManager(standardHeartbeatsManager);
 
 const triggerLogLevel = getEnvVar("TRIGGER_LOG_LEVEL");
+
+const WARMUP_TIMEOUT_MS = 20_000;
 
 async function importConfig(
   configPath: string
@@ -890,5 +895,52 @@ async function fillCompileCache() {
   } catch (error) {
     console.error("Failed to fill the compile cache", error);
     process.exit(1);
+  }
+}
+
+// A host can start the worker this way, with no env and no network, to prime a snapshot of the
+// image with what a run's cold start loads. It never runs a task or the init file.
+const warmupFlagIndex = process.argv.indexOf(WARMUP_FLAG);
+if (warmupFlagIndex !== -1) {
+  await warmup(process.argv[warmupFlagIndex + 1]);
+}
+
+async function warmup(cwd: string | undefined) {
+  const fail = (error: unknown) => {
+    console.error("Warmup failed", error);
+    process.exit(1);
+  };
+
+  // Fails closed: a hang, or an error a task file throws later, is a failed warmup
+  globalThis.setTimeout(() => fail(new Error("Timed out")), WARMUP_TIMEOUT_MS);
+  process.on("uncaughtException", fail);
+  process.on("unhandledRejection", fail);
+
+  try {
+    if (!cwd) {
+      throw new Error(`${WARMUP_FLAG} needs the directory that holds index.json`);
+    }
+
+    process.chdir(cwd);
+
+    const { tracer, workerManifest } = await bootstrap();
+
+    for (const task of workerManifest.tasks) {
+      resourceCatalog.setCurrentFileContext(task.filePath, task.entryPoint);
+      await import(workerImportPath(workerManifest, task.entryPoint));
+      resourceCatalog.clearCurrentFileContext();
+    }
+
+    // A small run without user code: a span, and a payload and output through the IO helpers
+    await tracer.startActiveSpan("warmup", async () => {
+      await parsePacket(await stringifyIO({ warmup: true, at: new Date() }));
+    });
+
+    // A rejection a task file left queued only reaches the handler on a later turn
+    await new Promise((resolve) => setImmediate(resolve));
+
+    process.exit(0);
+  } catch (error) {
+    fail(error);
   }
 }
