@@ -3,6 +3,7 @@ import { pathToFileURL } from "url";
 import { BuildRuntime, ConfigRuntime } from "../schemas/build.js";
 import { dedupFlags } from "./flags.js";
 import { homedir } from "node:os";
+import { existsSync } from "node:fs";
 
 export const CURRENT_NODE_LTS_RUNTIME = "node-24" satisfies BuildRuntime;
 export const DEFAULT_RUNTIME = CURRENT_NODE_LTS_RUNTIME;
@@ -108,7 +109,7 @@ export function execPathForRuntime(runtime: BuildRuntime): string {
       return process.execPath;
     case "bun":
     case "bun-legacy":
-    case "bun-1.4":
+    case "bun-1.4": {
       if (typeof process.env.BUN_INSTALL === "string") {
         return join(process.env.BUN_INSTALL, "bin", "bun");
       }
@@ -117,7 +118,10 @@ export function execPathForRuntime(runtime: BuildRuntime): string {
         return join(process.env.BUN_INSTALL_BIN, "bun");
       }
 
-      return join(homedir(), ".bun", "bin", "bun");
+      const defaultPath = join(homedir(), ".bun", "bin", "bun");
+      // Bun installed some other way (Homebrew, mise, a distro package) is found on PATH
+      return existsSync(defaultPath) ? defaultPath : "bun";
+    }
     default:
       throw new Error(`Unsupported runtime ${runtime}`);
   }

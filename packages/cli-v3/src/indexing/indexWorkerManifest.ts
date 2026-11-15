@@ -1,4 +1,4 @@
-import { execPathForRuntime } from "@trigger.dev/core/v3/build";
+import { execPathForRuntime, isBunRuntime } from "@trigger.dev/core/v3/build";
 import {
   DuplicateTaskIdsError,
   WebhookIndexingError,
@@ -112,6 +112,23 @@ export async function indexWorkerManifest({
           break;
         }
       }
+    });
+
+    // A missing binary emits "error" and never "exit", so without this the CLI crashes
+    child.on("error", (error: NodeJS.ErrnoException) => {
+      if (resolved) {
+        return;
+      }
+
+      clearTimeout(timeout);
+      resolved = true;
+      reject(
+        error.code === "ENOENT" && isBunRuntime(runtime)
+          ? new Error(
+              `bun runtimes need Bun installed locally: install it or set BUN_INSTALL (${error.message})`
+            )
+          : error
+      );
     });
 
     child.on("exit", (code) => {
