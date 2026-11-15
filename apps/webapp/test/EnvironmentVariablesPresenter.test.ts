@@ -803,6 +803,10 @@ describe("Replace with OIDC", () => {
       SNOWFLAKE_PRIVATE_KEY_PASSPHRASE: "snowflake",
       DATABRICKS_TOKEN: "databricks",
       DATABRICKS_CLIENT_SECRET: "databricks",
+      HF_TOKEN: "huggingface",
+      HUGGING_FACE_HUB_TOKEN: "huggingface",
+      HUGGINGFACEHUB_API_TOKEN: "huggingface",
+      OPENROUTER_API_KEY: "openrouter",
     };
     for (const [key, service] of Object.entries(matched)) {
       expect(oidcServiceForKey(key)?.id, key).toBe(service);
@@ -814,6 +818,9 @@ describe("Replace with OIDC", () => {
       "GOOGLE_API_KEY",
       "VAULT_ROLE_ID",
       "SNOWFLAKE_USER",
+      "HF_HOME",
+      "HF_ENDPOINT",
+      "OPENROUTER_BASE_URL",
     ]) {
       expect(oidcServiceForKey(key), key).toBeUndefined();
     }

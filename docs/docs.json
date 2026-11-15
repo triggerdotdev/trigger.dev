@@ -63,6 +63,8 @@
                   "oidc/doppler",
                   "oidc/snowflake",
                   "oidc/databricks",
+                  "oidc/hugging-face",
+                  "oidc/openrouter",
                   "oidc/custom"
                 ]
               }

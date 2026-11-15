@@ -73,6 +73,20 @@ const OIDC_REPLACEABLE_SERVICES = [
     guide: "oidc/databricks",
     guideLabel: "Databricks setup guide",
   },
+  {
+    id: "huggingface",
+    name: "Hugging Face",
+    keys: ["HF_TOKEN", "HUGGING_FACE_HUB_TOKEN", "HUGGINGFACEHUB_API_TOKEN"],
+    guide: "oidc/hugging-face",
+    guideLabel: "Hugging Face setup guide",
+  },
+  {
+    id: "openrouter",
+    name: "OpenRouter",
+    keys: ["OPENROUTER_API_KEY"],
+    guide: "oidc/openrouter",
+    guideLabel: "OpenRouter setup guide",
+  },
 ] as const;
 
 export type OidcReplaceableService = (typeof OIDC_REPLACEABLE_SERVICES)[number];

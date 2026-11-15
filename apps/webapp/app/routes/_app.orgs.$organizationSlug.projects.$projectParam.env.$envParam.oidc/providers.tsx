@@ -6,7 +6,13 @@ import { AzureIcon } from "~/assets/icons/AiProviderIcons";
 import { AWS } from "~/assets/icons/CloudProviderIcon";
 import { BranchEnvironmentIconSmall } from "~/assets/icons/EnvironmentIcons";
 import { IDIcon } from "~/assets/icons/IDIcon";
-import { DopplerIcon, InfisicalIcon, VaultIcon } from "~/assets/icons/OidcProviderIcons";
+import {
+  DopplerIcon,
+  HuggingFaceIcon,
+  InfisicalIcon,
+  OpenRouterIcon,
+  VaultIcon,
+} from "~/assets/icons/OidcProviderIcons";
 import { GoogleLogo } from "~/assets/logos/GoogleLogo";
 import { EnvironmentCombo } from "~/components/environments/EnvironmentLabel";
 import { LinkButton } from "~/components/primitives/Buttons";
@@ -49,6 +55,8 @@ export type Provider = {
   guide: string;
   guideLabel: string;
   audience: Audience;
+  /** A condition on the provider's side, shown in the setup. */
+  note?: string;
 };
 
 // In the page's order. Ids match the replaceable table.
@@ -124,6 +132,24 @@ export const PROVIDERS: Provider[] = [
     guide: "oidc/databricks",
     guideLabel: "Databricks setup guide",
     audience: { hint: "Your Databricks account ID, or any value both sides share." },
+  },
+  {
+    id: "huggingface",
+    name: "Hugging Face",
+    description:
+      "Run inference and read gated models or one repo without a token. Not a full user token.",
+    guide: "oidc/hugging-face",
+    guideLabel: "Hugging Face setup guide",
+    audience: { fixed: "https://huggingface.co" },
+  },
+  {
+    id: "openrouter",
+    name: "OpenRouter",
+    description: "Call models without storing an OpenRouter API key. Business or Enterprise plan.",
+    guide: "oidc/openrouter",
+    guideLabel: "OpenRouter setup guide",
+    audience: { hint: "Any value, as long as your federation policy lists the same one." },
+    note: "Workload identity needs OpenRouter's Business or Enterprise plan.",
   },
   {
     id: "custom",
@@ -212,6 +238,10 @@ function markFor(id: string): ReactNode {
       return <VaultIcon className="size-5 text-[#FFCF25]" />;
     case "doppler":
       return <DopplerIcon className="size-5" />;
+    case "huggingface":
+      return <HuggingFaceIcon className="size-6" />;
+    case "openrouter":
+      return <OpenRouterIcon className="size-5 text-text-bright" />;
     default:
       return <IDIcon className="size-5 text-text-dimmed" />;
   }
@@ -364,6 +394,7 @@ export function ProviderSetup({
         </Header3>
         {showTokenValues && <TokenValues setup={setup} />}
         <AudienceValue audience={provider.audience} />
+        {provider.note && <Callout variant="info">{provider.note}</Callout>}
       </div>
 
       {keys.length > 0 && (
