@@ -122,6 +122,9 @@ export type RbacCreateOptions = {
   // follows the host's writer/replica topology. The fallback ignores this —
   // it queries through the Prisma clients passed as `RbacPrismaInput`.
   database?: RbacDatabaseConfig;
+  // Host policy applied to every user-bound credential (PATs and user-actor tokens), whichever
+  // controller authenticated it. Returns why the user is refused, or undefined to let them in.
+  userAccessDenial?: (userId: string) => Promise<string | undefined>;
 };
 
 // Route actions that historically authorised via the legacy checkAuthorization's
@@ -197,9 +200,11 @@ class LazyController implements RoleBaseAccessController {
   private readonly _hostCredentialResolver: BearerCredentialResolver;
   private readonly _replica: PrismaClient;
   private _recordScopeUse: ApiKeyScopeRecorder | undefined;
+  private readonly _userAccessDenial: RbacCreateOptions["userAccessDenial"];
 
   constructor(prisma: RbacPrismaInput, options?: RbacCreateOptions) {
     this._replica = "replica" in prisma ? prisma.replica : prisma;
+    this._userAccessDenial = options?.userAccessDenial;
     this._hostCredentialResolver = new BearerCredentialResolver(
       "primary" in prisma ? prisma : { primary: prisma, replica: prisma },
       {
@@ -398,14 +403,25 @@ class LazyController implements RoleBaseAccessController {
       await (await this.c()).authenticatePat(...args),
       this._replica
     );
-    return result.ok ? { ...result, ability: withActionAliases(result.ability) } : result;
+    if (!result.ok) return result;
+    const denial = await this.userDenial(result.userId);
+    if (denial) return denial;
+    return { ...result, ability: withActionAliases(result.ability) };
   }
 
   async authenticateUserActor(
     ...args: Parameters<RoleBaseAccessController["authenticateUserActor"]>
   ) {
     const result = await (await this.c()).authenticateUserActor(...args);
-    return result.ok ? { ...result, ability: withActionAliases(result.ability) } : result;
+    if (!result.ok) return result;
+    const denial = await this.userDenial(result.userId);
+    if (denial) return denial;
+    return { ...result, ability: withActionAliases(result.ability) };
+  }
+
+  private async userDenial(userId: string) {
+    const error = await this._userAccessDenial?.(userId);
+    return error ? { ok: false as const, status: 403 as const, error } : undefined;
   }
 
   async systemRoles(...args: Parameters<RoleBaseAccessController["systemRoles"]>) {

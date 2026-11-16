@@ -367,6 +367,12 @@ model Organization {
   supportAccessModeUpdatedById String?
 
   supportAccessRequests SupportAccessRequest[]
+
+  /// When true, members without MFA are locked out of the dashboard and CLI until they set it up.
+  mfaRequired            Boolean  @default(false)
+  /// Dashboard actions that need an MFA check within the step-up window (see MfaStepUpAction in the webapp).
+  mfaStepUpActions       String[] @default([])
+  mfaStepUpWindowMinutes Int      @default(5)
 }
 
 model OrgMember {

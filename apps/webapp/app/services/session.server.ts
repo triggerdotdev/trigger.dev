@@ -14,6 +14,7 @@ import { type SupportAccessDecision } from "~/utils/impersonationState";
 import { checkSession } from "./accessPolicy.server";
 import { noteSessionAuthentication } from "./auditLogs/auditContext.server";
 import { logger } from "./logger.server";
+import { enforceMfaSetup } from "./mfa/mfaPolicy.server";
 import { SESSION_ISSUED_AT_KEY } from "./sessionDuration.server";
 import { getUserSession } from "./sessionStorage.server";
 import { revalidateSsoSession } from "./ssoSessionRevalidation.server";
@@ -125,12 +126,13 @@ export async function getUserId(request: Request): Promise<string | undefined> {
     // The real user's session is checked whether or not they are still an admin.
     await enforceSessionPolicy(request, authUser.userId);
     const realUser = await getUserById(authUser.userId);
-    if (!realUser) return sessionUserId(request, authUser.userId);
-    if (realUser.admin) {
+    if (realUser?.admin) {
       await maybeAutoLogout(request, realUser, impersonatedUserId);
       return sessionUserId(request, impersonatedUserId, authUser.userId);
     }
-    await maybeAutoLogout(request, realUser);
+    if (realUser) await maybeAutoLogout(request, realUser);
+    // No longer an admin: they act as themselves, so their orgs' MFA requirement applies.
+    await enforceMfaSetup(request, authUser.userId);
     return sessionUserId(request, authUser.userId);
   }
 
@@ -148,6 +150,7 @@ export async function getUserId(request: Request): Promise<string | undefined> {
         ? { nextSessionEnd: decision.nextSessionEnd }
         : await getSessionAuthState(prisma, authUser.userId);
     if (user) await maybeAutoLogout(request, { id: authUser.userId, ...user });
+    await enforceMfaSetup(request, authUser.userId);
     return sessionUserId(request, authUser.userId);
   }
   return authUser?.userId;

@@ -1,3 +1,4 @@
+import { json } from "@remix-run/server-runtime";
 import {
   type PersonalAccessToken,
   type PrismaClientOrTransaction,
@@ -20,6 +21,7 @@ import {
   userActor,
 } from "./credentialFingerprints.server";
 import { logger } from "./logger.server";
+import { isMfaSetupRequired, mfaSetupRequiredMessage } from "./mfa/mfaRequirement.server";
 import { rbac } from "./rbac.server";
 import { decryptToken, encryptToken, hashToken } from "~/utils/tokens.server";
 import { EncryptedValueSchema as EncryptedSecretValueSchema } from "~/utils/encryptionKeyring.server";
@@ -501,6 +503,10 @@ export async function authenticatePersonalAccessToken(
       `PersonalAccessToken with id: ${personalAccessToken.id} was found in the database with hash ${hashedToken}, but the decrypted token did not match the provided token.`
     );
     return;
+  }
+
+  if (await isMfaSetupRequired(personalAccessToken.userId)) {
+    throw json({ error: mfaSetupRequiredMessage() }, { status: 403 });
   }
 
   return {

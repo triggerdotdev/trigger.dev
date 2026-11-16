@@ -2,6 +2,7 @@ import { $replica, prisma } from "~/db.server";
 import type { PrismaClient } from "@trigger.dev/database";
 import plugin from "@trigger.dev/rbac";
 import { env } from "~/env.server";
+import { isMfaSetupRequired, mfaSetupRequiredMessage } from "~/services/mfa/mfaRequirement.server";
 import {
   publicTokenSubjects,
   sourcePersonalAccessTokens,
@@ -36,6 +37,8 @@ export const rbac = plugin.create(
     userActorSecret: env.SESSION_SECRET,
     publicTokenSubjects,
     sourcePersonalAccessTokens,
+    userAccessDenial: async (userId) =>
+      (await isMfaSetupRequired(userId)) ? mfaSetupRequiredMessage() : undefined,
     // A plugin that owns its own database client gets the same
     // writer/replica topology the webapp's Prisma clients use (see
     // getClient/getReplicaClient in db.server.ts): control-plane URLs win,

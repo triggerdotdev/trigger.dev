@@ -55,6 +55,7 @@ import {
   personalAccessTokenExpiryOptions,
   revokePersonalAccessToken,
 } from "~/services/personalAccessToken.server";
+import { requireRecentMfa } from "~/services/mfa/mfaPolicy.server";
 import { requireUserId } from "~/services/session.server";
 import { apiKeyExpiryDay, apiKeyExpiryTimestamp } from "~/utils/apiKeyExpiry";
 import { docsPath, personalAccessTokensPath } from "~/utils/pathBuilder";
@@ -115,6 +116,7 @@ async function loadSystemRolesForUser(userId: string) {
 
 export const loader = async ({ request }: LoaderFunctionArgs) => {
   const userId = await requireUserId(request);
+  await requireRecentMfa(request, { userId, action: "accessTokens" });
 
   try {
     const [personalAccessTokens, { roles, userRoleId, orgId: _orgId }] = await Promise.all([
@@ -204,6 +206,7 @@ export const action: ActionFunction = async ({ request }) => {
 
   switch (submission.value.action) {
     case "create": {
+      await requireRecentMfa(request, { userId, action: "accessTokens" });
       try {
         // Revalidate the submitted roleId against the plan-allowed set
         // — the loader filters the picker, but a hand-crafted POST can

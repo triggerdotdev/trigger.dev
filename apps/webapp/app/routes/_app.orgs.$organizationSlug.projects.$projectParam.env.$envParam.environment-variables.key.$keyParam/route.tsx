@@ -49,6 +49,7 @@ import {
 } from "~/routes/_app.orgs.$organizationSlug.projects.$projectParam.env.$envParam.environment-variables/EnvironmentVariableControls";
 import type { EnvironmentVariablesOutletContext } from "~/routes/_app.orgs.$organizationSlug.projects.$projectParam.env.$envParam.environment-variables/route";
 import { resolveProjectAuthScope } from "~/services/projectAuthScope.server";
+import { requireRecentMfa } from "~/services/mfa/mfaPolicy.server";
 import { dashboardLoader } from "~/services/routeBuilders/dashboardBuilder";
 import { pageMeta } from "~/utils/pageTitle";
 import {
@@ -134,11 +135,16 @@ export const loader = dashboardLoader(
     // No hard authorization, as on the list: values in environments the role can't read are
     // masked per-tier below.
   },
-  async ({ params, searchParams, user, ability, context }) => {
+  async ({ params, searchParams, user, ability, context, request }) => {
     const { projectId } = context;
     if (!projectId) {
       throw new Response("Not Found", { status: 404 });
     }
+    await requireRecentMfa(request, {
+      userId: user.id,
+      action: "environmentVariables",
+      organizationId: context.organizationId,
+    });
 
     try {
       const detail = await new EnvironmentVariableKeyPresenter().call({

@@ -27,6 +27,7 @@ import {
 } from "~/models/message.server";
 import { authenticator } from "~/services/auth.server";
 import { checkMfaRateLimit, MfaRateLimitError } from "~/services/mfa/mfaRateLimiterGlobal.server";
+import { MFA_VERIFIED_AT_SESSION_KEY } from "~/services/mfa/mfaPolicy.server";
 import { MultiFactorAuthenticationService } from "~/services/mfa/multiFactorAuthentication.server";
 import { trackAndClearReferralSource } from "~/services/referralSource.server";
 import { commitAuthenticatedSession } from "~/services/sessionDuration.server";
@@ -164,6 +165,8 @@ async function completeLogin(request: Request, session: Session, userId: string)
     | undefined;
   session.set(authenticator.sessionKey, pendingSso ? { userId, sso: pendingSso } : { userId });
   session.unset("pending-sso");
+  // Passing MFA at login also counts as a fresh check for pages that ask for one.
+  session.set(MFA_VERIFIED_AT_SESSION_KEY, Date.now());
 
   // Get the redirect URL and clean up pending MFA data
   const redirectTo = session.get("pending-mfa-redirect-to") ?? "/";

@@ -21,6 +21,7 @@ import {
   organizationRolesPath,
   organizationSettingsPath,
   organizationSlackIntegrationPath,
+  organizationSecurityPath,
   organizationSsoPath,
   organizationSupportAccessPath,
   organizationTeamPath,
@@ -146,6 +147,14 @@ export function OrganizationSettingsSideMenu({
             inactiveIconColor="text-text-dimmed"
             to={organizationTeamPath(organization)}
             data-action="team"
+          />
+          <SideMenuItem
+            name="Security"
+            icon={PadlockIcon}
+            activeIconColor="text-text-bright"
+            inactiveIconColor="text-text-dimmed"
+            to={organizationSecurityPath(organization)}
+            data-action="security"
           />
           {featureFlags.hasPrivateConnections && (
             <SideMenuItem

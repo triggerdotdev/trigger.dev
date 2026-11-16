@@ -37,6 +37,7 @@ import {
 } from "~/services/personalAccessToken.server";
 import { getIpLocation } from "~/services/platform.v3.server";
 import { scheduleEmail } from "~/services/scheduleEmail.server";
+import { requireRecentMfa } from "~/services/mfa/mfaPolicy.server";
 import { cn } from "~/utils/cn";
 import { requireUser } from "~/services/session.server";
 import { extractClientIp } from "~/utils/extractClientIp.server";
@@ -80,6 +81,7 @@ export const headers: HeadersFunction = ({ loaderHeaders }) =>
 // the `action`, behind an explicit "Authorize" POST.
 export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   const user = await requireUser(request);
+  await requireRecentMfa(request, { userId: user.id, action: "accessTokens" });
 
   const { authorizationCode } = parseParams(params);
   const { source, clientName } = parseSearch(request);
@@ -153,6 +155,7 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
 
 export const action = async ({ request, params }: ActionFunctionArgs) => {
   const user = await requireUser(request);
+  await requireRecentMfa(request, { userId: user.id, action: "accessTokens" });
   const userId = user.id;
 
   const { authorizationCode } = parseParams(params);

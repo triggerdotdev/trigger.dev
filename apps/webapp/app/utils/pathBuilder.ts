@@ -91,6 +91,10 @@ export function organizationSupportAccessPath(organization: OrgForPath) {
   return `${organizationSettingsPath(organization)}/support-access`;
 }
 
+export function organizationSecurityPath(organization: OrgForPath) {
+  return `${organizationSettingsPath(organization)}/security`;
+}
+
 /**
  * Where the impersonation consent page's form must POST back to.
  *

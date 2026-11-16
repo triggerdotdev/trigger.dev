@@ -84,6 +84,7 @@ import { EnvironmentVariablesPresenter } from "~/presenters/v3/EnvironmentVariab
 import { type EnvironmentVariablesEnvironment } from "~/presenters/v3/environmentVariablesEnvironments.server";
 import { logger } from "~/services/logger.server";
 import { resolveProjectAuthScope } from "~/services/projectAuthScope.server";
+import { requireRecentMfa } from "~/services/mfa/mfaPolicy.server";
 import { dashboardAction, dashboardLoader } from "~/services/routeBuilders/dashboardBuilder";
 import { VercelIntegrationService } from "~/services/vercelIntegration.server";
 import { cn } from "~/utils/cn";
@@ -209,6 +210,11 @@ export const loader = dashboardLoader(
     if (!projectId) {
       throw new Response("Not Found", { status: 404 });
     }
+    await requireRecentMfa(request, {
+      userId: user.id,
+      action: "environmentVariables",
+      organizationId: context.organizationId,
+    });
 
     try {
       const presenter = new EnvironmentVariablesPresenter();
@@ -297,6 +303,11 @@ export const action = dashboardAction(
     if (!projectId) {
       throw new Response("Not Found", { status: 404 });
     }
+    await requireRecentMfa(request, {
+      userId: user.id,
+      action: "environmentVariables",
+      organizationId: context.organizationId,
+    });
 
     const project = await prisma.project.findFirst({
       where: { id: projectId, organization: { members: { some: { userId } } } },

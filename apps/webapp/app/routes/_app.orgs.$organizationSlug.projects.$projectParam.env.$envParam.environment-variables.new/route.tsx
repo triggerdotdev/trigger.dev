@@ -74,6 +74,7 @@ import {
   useEnvironmentVariablesPageData,
 } from "~/routes/_app.orgs.$organizationSlug.projects.$projectParam.env.$envParam.environment-variables/EnvironmentVariableControls";
 import { type loader as environmentVariableKeyLoader } from "~/routes/_app.orgs.$organizationSlug.projects.$projectParam.env.$envParam.environment-variables.key.$keyParam/route";
+import { requireRecentMfa } from "~/services/mfa/mfaPolicy.server";
 import { dashboardAction } from "~/services/routeBuilders/dashboardBuilder";
 import { cn } from "~/utils/cn";
 import {
@@ -157,6 +158,11 @@ export const action = dashboardAction(
     if (!projectId) {
       throw new Response("Not Found", { status: 404 });
     }
+    await requireRecentMfa(request, {
+      userId: user.id,
+      action: "environmentVariables",
+      organizationId: context.organizationId,
+    });
 
     if (request.method.toUpperCase() !== "POST") {
       throw new Response("Method Not Allowed", { status: 405 });

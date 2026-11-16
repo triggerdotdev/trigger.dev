@@ -73,6 +73,7 @@ import type { EnvironmentVariablesEnvironment } from "~/presenters/v3/environmen
 import { EnvironmentVariableValue } from "~/routes/_app.orgs.$organizationSlug.projects.$projectParam.env.$envParam.environment-variables/EnvironmentVariableControls";
 import type { EnvironmentVariablesOutletContext } from "~/routes/_app.orgs.$organizationSlug.projects.$projectParam.env.$envParam.environment-variables/route";
 import { resolveProjectAuthScope } from "~/services/projectAuthScope.server";
+import { requireRecentMfa } from "~/services/mfa/mfaPolicy.server";
 import { dashboardAction, dashboardLoader } from "~/services/routeBuilders/dashboardBuilder";
 import { prisma } from "~/db.server";
 import { redirectWithSuccessMessage } from "~/models/message.server";
@@ -165,6 +166,11 @@ export const loader = dashboardLoader(
     if (!projectId) {
       throw new Response("Not Found", { status: 404 });
     }
+    await requireRecentMfa(request, {
+      userId: user.id,
+      action: "environmentVariables",
+      organizationId: context.organizationId,
+    });
 
     try {
       const comparison = await new EnvironmentVariablesComparePresenter().call({
@@ -232,6 +238,11 @@ export const action = dashboardAction(
     if (!projectId) {
       throw new Response("Not Found", { status: 404 });
     }
+    await requireRecentMfa(request, {
+      userId: user.id,
+      action: "environmentVariables",
+      organizationId: context.organizationId,
+    });
     if (request.method.toUpperCase() !== "POST") {
       throw new Response("Method Not Allowed", { status: 405 });
     }

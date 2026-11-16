@@ -92,6 +92,7 @@ import {
 } from "~/routes/_app.orgs.$organizationSlug.projects.$projectParam.env.$envParam.environment-variables_.compare/CopyValues";
 import { isExternalOidcEnabled } from "~/services/oidc/externalOidc.server";
 import { resolveProjectAuthScope } from "~/services/projectAuthScope.server";
+import { requireRecentMfa } from "~/services/mfa/mfaPolicy.server";
 import { redirectWithErrorMessage, redirectWithSuccessMessage } from "~/models/message.server";
 import { dashboardAction, dashboardLoader } from "~/services/routeBuilders/dashboardBuilder";
 import { cn } from "~/utils/cn";
@@ -172,6 +173,11 @@ export const loader = dashboardLoader(
     if (!projectId) {
       throw new Response("Not Found", { status: 404 });
     }
+    await requireRecentMfa(request, {
+      userId: user.id,
+      action: "environmentVariables",
+      organizationId: context.organizationId,
+    });
 
     try {
       const attention = await new EnvironmentVariablesAttentionPresenter().call({
@@ -224,6 +230,11 @@ const ignoreAction = dashboardAction(
     if (!projectId) {
       throw new Response("Not Found", { status: 404 });
     }
+    await requireRecentMfa(request, {
+      userId: user.id,
+      action: "environmentVariables",
+      organizationId: context.organizationId,
+    });
     const submission = parseEnvironmentVariableForm(await request.formData(), AttentionIgnoreForm);
     if (submission.status !== "success") {
       return json(submission.reply(), { status: 400 });
