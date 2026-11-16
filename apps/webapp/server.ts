@@ -188,13 +188,14 @@ async function startServer() {
     ? `node webapp-worker-${cluster.isWorker ? cluster.worker?.id : "solo"}`
     : "node webapp-server";
 
-  const loadBuild = () => {
-    if (viteDevServer) {
-      return viteDevServer.ssrLoadModule("virtual:remix/server-build");
-    }
-    return dynamicImport(
-      pathToFileURL(path.join(process.cwd(), "build", "server", "index.mjs")).href
-    );
+  const loadBuild = async () => {
+    const build = viteDevServer
+      ? await viteDevServer.ssrLoadModule("virtual:remix/server-build")
+      : await dynamicImport(
+          pathToFileURL(path.join(process.cwd(), "build", "server", "index.mjs")).href
+        );
+    build.entry.module.configureSdkDefaultAttribution(build.routes);
+    return build;
   };
 
   // Boots the entry.server singletons (socket.io, wss, rate limiters).

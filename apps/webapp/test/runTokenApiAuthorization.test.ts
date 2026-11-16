@@ -1008,6 +1008,56 @@ describe("run-token API authorization", () => {
     );
   });
 
+  // Catches: legacy auth losing default attribution or nested auth wrappers double-counting it.
+  it("attributes default selections from bearer and legacy authentication once per request", async () => {
+    const { environment } = await seedDeployedEnvironment();
+    const { authenticateBearerWithTelemetry, observeLegacyBearerAuthentication } =
+      await import("~/services/authTelemetry.server");
+    const { authenticateApiRequestWithFailure } = await import("~/services/apiAuth.server");
+    const { configureSdkDefaultAttribution } =
+      await import("~/services/sdkDefaultAttribution.server");
+    configureSdkDefaultAttribution({
+      test: { id: "routes/test.$id", path: "test/:id", module: {} },
+    });
+    const request = () =>
+      new Request("https://api.example.com/test/private-id?secret=private", {
+        headers: {
+          Authorization: `Bearer ${environment.apiKey}`,
+          "x-trigger-sdk-operation": "default",
+          "x-trigger-sdk-credential-reason": "unsupported_operation",
+          "trigger-version": "4.8.5",
+        },
+      });
+    try {
+      const bearerRequest = request();
+      await observeLegacyBearerAuthentication(bearerRequest, () =>
+        authenticateBearerWithTelemetry(bearerRequest, {})
+      );
+      await authenticateApiRequestWithFailure(request());
+      const points = (await telemetryMetrics.getMetrics())
+        .slice(-1)
+        .flatMap((resource) => resource.scopeMetrics)
+        .flatMap((scope) => scope.metrics)
+        .filter((metric) => metric.descriptor.name === "api_auth.sdk_default_destinations")
+        .flatMap((metric) => metric.dataPoints);
+      expect(points.map((point) => ({ attributes: point.attributes, value: point.value }))).toEqual(
+        [
+          {
+            attributes: {
+              http_method: "GET",
+              route: "routes/test.$id",
+              reason: "unsupported_operation",
+              credential_kind: "root_api_key",
+            },
+            value: 2,
+          },
+        ]
+      );
+    } finally {
+      configureSdkDefaultAttribution({});
+    }
+  });
+
   it("round-trips an offloaded packet with an admin run token", async () => {
     const { environment } = await seedDeployedEnvironment();
     const token = await tokenFor(environment);
