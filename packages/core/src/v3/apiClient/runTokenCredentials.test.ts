@@ -15,9 +15,9 @@ const envNames = [
 const original = Object.fromEntries(envNames.map((name) => [name, process.env[name]]));
 const key = "tr_dev_compatibility";
 
-function token(exp = Math.floor(Date.now() / 1_000) + 3600, run = "run_first") {
+function token(exp = Math.floor(Date.now() / 1_000) + 3600, run = "run_first", scopes = ["admin"]) {
   const encode = (value: unknown) => Buffer.from(JSON.stringify(value)).toString("base64url");
-  return `${encode({ alg: "RS256", typ: "run+jwt" })}.${encode({ token_use: "run", aud: "trigger:api", exp, scopes: ["admin"], run_id: run })}.signature`;
+  return `${encode({ alg: "RS256", typ: "run+jwt" })}.${encode({ token_use: "run", aud: "trigger:api", exp, scopes, run_id: run })}.signature`;
 }
 
 afterEach(() => {
@@ -134,14 +134,19 @@ describe("in-run client credentials", () => {
     const server = await serverFor();
     try {
       delete process.env.TRIGGER_SECRET_KEY;
-      process.env.TRIGGER_RUN_TOKEN = token();
+      process.env.TRIGGER_RUN_TOKEN = token(undefined, undefined, ["read:runs"]);
       await runInMockTaskContext(async () => {
         const client = apiClientManager.clientOrThrow();
         await client.createPublicToken({ scopes: ["read:runs"] });
         expect(server.requests[0]?.authorization).toBe(`Bearer ${process.env.TRIGGER_RUN_TOKEN}`);
         expect(() => client.getAccessToken("listDashboards")).toThrow(
-          "No API credential available"
+          'This run has no credential for "listDashboards" (run token: unsupported_operation)'
         );
+        // Catches: losing the reason a retained client's only credential became unusable.
+        process.env.TRIGGER_RUN_TOKEN = token(1);
+        expect(() => client.getAccessToken("retrieveRun")).toThrow("expired_token");
+        process.env.TRIGGER_RUN_TOKEN = "malformed";
+        expect(() => client.getAccessToken("retrieveRun")).toThrow("malformed_token");
       });
     } finally {
       await server.close();

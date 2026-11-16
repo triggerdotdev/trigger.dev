@@ -14,6 +14,7 @@ import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { createRedisContainer } from "../../../internal-packages/testcontainers/src/utils";
 import { seedTestEnvironment } from "./helpers/seedTestEnvironment";
 import { seedTestRun } from "./helpers/seedTestRun";
+import { seedTestApiSession } from "./helpers/seedTestApiSession";
 import { seedTestPAT, seedTestUser } from "./helpers/seedTestPAT";
 import { assertRunTokenSchedules } from "./helpers/assertRunTokenSchedules";
 import { assertRunTokenWaitpoints } from "./helpers/assertRunTokenWaitpoints";
@@ -179,6 +180,120 @@ async function seedDeployedEnvironment() {
 describe("run-token API authorization", () => {
   it("creates usable preview and production waitpoint callbacks and public JWTs", async () => {
     await assertRunTokenWaitpoints(database.prisma, tokenFor);
+  });
+
+  // Catches: own-run waits requiring broad waitpoint grants or allowing foreign waitpoint access.
+  it("creates and blocks scoped waits without granting access to existing waitpoints", async () => {
+    const { environment, project, organization } = await seedDeployedEnvironment();
+    const { run } = await seedTestRun(database.prisma, {
+      environmentId: environment.id,
+      projectId: project.id,
+    });
+    await database.prisma.taskRun.update({
+      where: { id: run.id },
+      data: { status: "EXECUTING", organizationId: organization.id },
+    });
+    await database.prisma.taskRunExecutionSnapshot.create({
+      data: {
+        engine: "V2",
+        executionStatus: "EXECUTING",
+        description: "Test run executing",
+        runId: run.id,
+        runStatus: "EXECUTING",
+        environmentId: environment.id,
+        environmentType: "PRODUCTION",
+        projectId: project.id,
+        organizationId: organization.id,
+      },
+    });
+    // The scopes a sandbox run token carries for its own run and session.
+    const scopes = [
+      `read:runs:${run.friendlyId}`,
+      `write:runs:${run.friendlyId}`,
+      "read:sessions:scoped-session:in",
+    ];
+    const bearer = await tokenFor(environment, scopes);
+    const post = (body: unknown) => {
+      const json = JSON.stringify(body);
+      return new Request("https://api.example.com/test", {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${bearer}`,
+          "Content-Type": "application/json",
+          "Content-Length": String(Buffer.byteLength(json)),
+        },
+        body: json,
+      });
+    };
+    const duration = await import("~/routes/engine.v1.runs.$runFriendlyId.wait.duration");
+    const input = await import("~/routes/api.v1.runs.$runFriendlyId.input-streams.wait");
+    const session = await import("~/routes/api.v1.runs.$runFriendlyId.session-streams.wait");
+    const params = { runFriendlyId: run.friendlyId };
+    const createToken = await import("~/routes/api.v1.waitpoints.tokens");
+    const createBody = JSON.stringify({ idempotencyKey: "shared-key" });
+    const standalone = await createToken.action({
+      request: new Request("https://api.example.com/test", {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${environment.apiKey}`,
+          "Content-Type": "application/json",
+          "Content-Length": String(Buffer.byteLength(createBody)),
+        },
+        body: createBody,
+      }),
+      params: {},
+      context: {},
+    });
+    expect(standalone.status).toBe(200);
+    const standaloneId = (await standalone.json()).id;
+    const durationResult = await duration.action({
+      request: post({ date: new Date(Date.now() + 60_000).toISOString() }),
+      params,
+      context: {},
+    });
+    expect(durationResult.status).toBe(200);
+    const waitpointId = (await durationResult.json()).waitpoint.id;
+    for (const [action, body] of [
+      [input.action, { streamId: "approval", timeout: "1h", idempotencyKey: "shared-key" }],
+      [session.action, { session: "scoped-session", io: "in", timeout: "1h" }],
+    ] as const) {
+      const response = await action({ request: post(body), params, context: {} });
+      expect(response.status).toBe(200);
+      const created = await response.json();
+      expect(created).toMatchObject({ isBlocked: true });
+      expect(created.waitpointId).not.toBe(standaloneId);
+    }
+    const complete =
+      await import("~/routes/api.v1.waitpoints.tokens.$waitpointFriendlyId.complete");
+    const denied = await complete.action({
+      request: post({}),
+      params: { waitpointFriendlyId: waitpointId },
+      context: {},
+    });
+    expect(denied.status).toBe(403);
+    expect(await denied.json()).toMatchObject({
+      error: expect.stringContaining(`write:waitpoints:${waitpointId}`),
+      code: "unauthorized",
+      param: "access_token",
+      type: "authorization",
+    });
+    const existing =
+      await import("~/routes/engine.v1.runs.$runFriendlyId.waitpoints.tokens.$waitpointFriendlyId.wait");
+    const readDenied = await existing.action({
+      request: post({}),
+      params: { ...params, waitpointFriendlyId: waitpointId },
+      context: {},
+    });
+    expect(readDenied.status).toBe(403);
+    const foreign = await duration.action({
+      request: post({ date: new Date(Date.now() + 60_000).toISOString() }),
+      params: { runFriendlyId: "run_other" },
+      context: {},
+    });
+    expect(foreign.status).toBe(403);
+    expect((await foreign.json()).error).toBe(
+      "Unauthorized. Missing permission: write:runs:run_other"
+    );
   });
 
   it("rejects run tokens on non-builder envvar and deployment routes and API-key-only auth", async () => {
@@ -992,6 +1107,82 @@ describe("run-token API authorization", () => {
     expect(unscopedInitialization).not.toHaveBeenCalled();
     scopedInitialization.mockRestore();
     unscopedInitialization.mockRestore();
+  });
+
+  // Catches: offloaded wait results needing environment-wide packet access, or leaking other waitpoints.
+  it("serves offloaded output only for waitpoints the run resumed from", async () => {
+    const { environment, project, organization } = await seedDeployedEnvironment();
+    const { run } = await seedTestRun(database.prisma, {
+      environmentId: environment.id,
+      projectId: project.id,
+    });
+    const waitpointFor = (key: string) =>
+      database.prisma.waitpoint.create({
+        data: {
+          friendlyId: `waitpoint_${key}`,
+          type: "MANUAL",
+          status: "COMPLETED",
+          completedAt: new Date(),
+          idempotencyKey: key,
+          userProvidedIdempotencyKey: false,
+          output: `waitpoint_${key}/stream/record.json`,
+          outputType: "application/store",
+          environmentId: environment.id,
+          projectId: project.id,
+        },
+      });
+    const resumed = await waitpointFor("resumed");
+    const other = await waitpointFor("other");
+    await database.prisma.taskRunExecutionSnapshot.create({
+      data: {
+        engine: "V2",
+        executionStatus: "EXECUTING",
+        description: "Resumed",
+        runId: run.id,
+        runStatus: "EXECUTING",
+        environmentId: environment.id,
+        environmentType: "PRODUCTION",
+        projectId: project.id,
+        organizationId: organization.id,
+        completedWaitpoints: { connect: { id: resumed.id } },
+      },
+    });
+    const token = await tokenFor(environment, [`read:runs:${run.friendlyId}`]);
+    const { loader } = await import("~/routes/api.v1.runs.$runId.waitpoints.$waitpointId.output");
+    const load = (waitpointId: string) =>
+      loader({
+        request: new Request("https://api.example.com/test", {
+          headers: { Authorization: `Bearer ${token}` },
+        }),
+        params: { runId: run.friendlyId, waitpointId },
+        context: {},
+      });
+
+    const response = await load(resumed.friendlyId);
+    expect(response.status).toBe(200);
+    expect((await response.json()).presignedUrl).toContain("waitpoint_resumed/stream/record.json");
+    expect((await load(other.friendlyId)).status).toBe(404);
+  });
+
+  // Catches: session output setup ignoring direction-scoped session grants, or a `.out` grant opening `.in`.
+  it("lets a direction-scoped run token initialize only that session direction", async () => {
+    const { environment } = await seedDeployedEnvironment();
+    const session = await seedTestApiSession(database.prisma, environment);
+    const token = await tokenFor(environment, [`write:sessions:${session.friendlyId}:out`]);
+    const { action } = await import("~/routes/realtime.v1.sessions.$session.$io");
+    const initialize = (io: "in" | "out") =>
+      action({
+        request: new Request(`https://api.example.com/realtime/v1/sessions/x/${io}`, {
+          method: "PUT",
+          headers: { Authorization: `Bearer ${token}` },
+        }),
+        params: { session: session.friendlyId, io },
+        context: {},
+      });
+
+    // Past authorization: the test environment has no S2 backend, so it reports 501.
+    expect((await initialize("out")).status).not.toBe(403);
+    expect((await initialize("in")).status).toBe(403);
   });
 
   it("mints a valid delegated public JWT through real run-token verification", async () => {

@@ -31,26 +31,32 @@ const { action } = createActionApiRoute(
     method: "PUT",
     allowJWT: true,
     corsStrategy: "all",
+    findResource: async (params, auth) => {
+      const row = await resolveSessionWithWriterFallback(auth.environment.id, params.session);
+      if (!row && isSessionFriendlyIdForm(params.session)) return undefined;
+      return { row };
+    },
     authorization: {
       action: "write",
-      resource: (params) => anyResource(sessionChannelResources(params.channel, [params.session])),
+      resource: (params, _search, _headers, _body, resource) => {
+        const ids = new Set<string>([params.session]);
+        const row = resource?.row;
+        if (row) {
+          ids.add(row.friendlyId);
+          if (row.externalId) ids.add(row.externalId);
+        }
+        return anyResource(sessionChannelResources(params.channel, ids, params.io));
+      },
     },
   },
-  async ({ params, authentication }) => {
+  async ({ params, authentication, resource }) => {
     if (params.io === "out" && authentication.type !== "PRIVATE") {
       return new Response("Initializing the out channel requires secret key authentication", {
         status: 403,
       });
     }
 
-    const maybeSession = await resolveSessionWithWriterFallback(
-      authentication.environment.id,
-      params.session
-    );
-
-    if (!maybeSession && isSessionFriendlyIdForm(params.session)) {
-      return new Response("Session not found", { status: 404 });
-    }
+    const maybeSession = resource!.row;
 
     if (maybeSession?.closedAt) {
       return new Response("Cannot initialize a channel on a closed session", { status: 400 });

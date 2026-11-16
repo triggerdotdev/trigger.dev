@@ -237,6 +237,7 @@ export type RbacScopeResourceType =
   | "sessions"
   | "waitpoints"
   | "packets"
+  | "oidc"
   | "inputStreams"
   | "prompts"
   | "tags"

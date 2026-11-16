@@ -263,6 +263,26 @@ function isEveryResource(value: unknown): value is EveryResourceAuth {
 
 type AuthResource = RbacResource | AnyResourceAuth | EveryResourceAuth;
 
+export function scopeAuthorizationError(action: string, resource: AuthResource): string {
+  const describe = (target: RbacResource) =>
+    `${action}:${target.type}${target.id === undefined ? "" : `:${target.id}`}`;
+  const list = (targets: readonly RbacResource[], separator: string) =>
+    [...new Set(targets.map(describe))].join(separator);
+  let required: string;
+  if (isEveryResource(resource)) {
+    required = list(resource.resources, " and ");
+    if (resource.orResources.length > 0) {
+      required = `(${required}) or ${list(resource.orResources, " or ")}`;
+    }
+  } else if (isAnyResource(resource)) {
+    required = list(resource.resources, " or ");
+  } else {
+    required = describe(resource);
+  }
+
+  return `Unauthorized. Missing permission: ${required || action}`;
+}
+
 export function checkAuth(ability: RbacAbility, action: string, resource: AuthResource): boolean {
   if (isEveryResource(resource)) {
     // A broad collection grant may be supplied as an alternative to all
@@ -481,7 +501,7 @@ export function createLoaderApiRoute<
             request,
             json(
               {
-                error: "Unauthorized",
+                error: scopeAuthorizationError(action, $authResource),
                 code: "unauthorized",
                 param: "access_token",
                 type: "authorization",
@@ -803,7 +823,7 @@ export function createLoaderPATApiRoute<
             request,
             json(
               {
-                error: "Unauthorized",
+                error: scopeAuthorizationError(authorization.action, $resource),
                 code: "unauthorized",
                 param: "access_token",
                 type: "authorization",
@@ -1062,7 +1082,7 @@ export function createActionPATApiRoute<
             request,
             json(
               {
-                error: "Unauthorized",
+                error: scopeAuthorizationError(authorization.action, $resource),
                 code: "unauthorized",
                 param: "access_token",
                 type: "authorization",
@@ -1461,7 +1481,7 @@ export function createActionApiRoute<
             request,
             json(
               {
-                error: "Unauthorized",
+                error: scopeAuthorizationError(action, $resource),
                 code: "unauthorized",
                 param: "access_token",
                 type: "authorization",
@@ -1725,7 +1745,7 @@ export function createMultiMethodApiRoute<
             request,
             json(
               {
-                error: "Unauthorized",
+                error: scopeAuthorizationError(action, $resource),
                 code: "unauthorized",
                 param: "access_token",
                 type: "authorization",

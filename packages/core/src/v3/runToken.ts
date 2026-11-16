@@ -25,7 +25,8 @@ export function isRunToken(token: string): boolean {
 
 export function runTokenSelectionReason(
   token: string,
-  expiryBufferSeconds = RUN_TOKEN_EXPIRY_BUFFER_SECONDS
+  expiryBufferSeconds = RUN_TOKEN_EXPIRY_BUFFER_SECONDS,
+  requireAdminScope = false
 ): RunTokenSelectionReason {
   if (!isRunToken(token)) return "malformed_token";
 
@@ -43,7 +44,7 @@ export function runTokenSelectionReason(
     }
 
     if (claims.exp <= Date.now() / 1_000 + expiryBufferSeconds) return "expired_token";
-    if (!claims.scopes.includes("admin")) return "old_scope";
+    if (requireAdminScope && !claims.scopes.includes("admin")) return "old_scope";
     return "selected";
   } catch {
     return "malformed_token";
@@ -80,7 +81,10 @@ export function resolveRunTokenCredentialSelection(
     reason = "unsupported_operation";
   } else {
     token = getEnvVar("TRIGGER_RUN_TOKEN");
-    reason = token ? runTokenSelectionReason(token) : "missing_token";
+    // Preserve compatibility for early narrow tokens when a fallback key is available.
+    reason = token
+      ? runTokenSelectionReason(token, RUN_TOKEN_EXPIRY_BUFFER_SECONDS, Boolean(fallback))
+      : "missing_token";
   }
 
   const credential = reason === "selected" ? token : fallback;

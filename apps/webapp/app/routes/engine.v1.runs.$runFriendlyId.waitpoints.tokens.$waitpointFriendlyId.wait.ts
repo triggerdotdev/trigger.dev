@@ -5,7 +5,10 @@ import { z } from "zod";
 import { prisma, type PrismaReplicaClient } from "~/db.server";
 import { resolveWaitpointThroughReadThrough } from "~/runEngine/concerns/resolveWaitpointThroughReadThrough.server";
 import { logger } from "~/services/logger.server";
-import { createActionApiRoute } from "~/services/routeBuilders/apiBuilder.server";
+import {
+  createActionApiRoute,
+  scopeAuthorizationError,
+} from "~/services/routeBuilders/apiBuilder.server";
 import { engine } from "~/v3/runEngine.server";
 import { runStore } from "~/v3/runStore.server";
 import { globalFlagsRegistry } from "~/v3/globalFlagsRegistry.server";
@@ -30,8 +33,9 @@ const { action } = createActionApiRoute(
     },
   },
   async ({ authentication, params, ability }) => {
-    if (!ability.can("read", { type: "waitpoints", id: params.waitpointFriendlyId })) {
-      return json({ error: "Unauthorized" }, { status: 403 });
+    const waitpointResource = { type: "waitpoints", id: params.waitpointFriendlyId };
+    if (!ability.can("read", waitpointResource)) {
+      return json({ error: scopeAuthorizationError("read", waitpointResource) }, { status: 403 });
     }
 
     // Resume tokens are actually just waitpoints

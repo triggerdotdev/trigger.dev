@@ -30,12 +30,27 @@ const { action } = createActionApiRoute(
     method: "PUT",
     allowJWT: true,
     corsStrategy: "all",
+    // Row-optional, as in the loader below. Resolved here so a token narrowed to one direction
+    // (`write:sessions:{key}:out`) can initialize that direction under any addressing form.
+    findResource: async (params, auth) => {
+      const row = await resolveSessionWithWriterFallback(auth.environment.id, params.session);
+      if (!row && isSessionFriendlyIdForm(params.session)) return undefined;
+      return { row };
+    },
     authorization: {
       action: "write",
-      resource: (params) => ({ type: "sessions", id: params.session }),
+      resource: (params, _search, _headers, _body, resource) => {
+        const ids = new Set<string>([params.session]);
+        const row = resource?.row;
+        if (row) {
+          ids.add(row.friendlyId);
+          if (row.externalId) ids.add(row.externalId);
+        }
+        return anyResource(sessionStreamResources(params.io, ids));
+      },
     },
   },
-  async ({ params, authentication }) => {
+  async ({ params, authentication, resource }) => {
     // Only PRIVATE (secret key) auth may initialize a channel: the S2 credentials
     // this returns write raw records. Session-scoped JWTs carry
     // `write:sessions:<key>`; with them they could forge assistant chunks on
@@ -55,14 +70,7 @@ const { action } = createActionApiRoute(
     // when a row exists. The S2 stream key is built from the row's
     // canonical key (externalId if set, else friendlyId) so writers
     // and readers converge regardless of URL form.
-    const maybeSession = await resolveSessionWithWriterFallback(
-      authentication.environment.id,
-      params.session
-    );
-
-    if (!maybeSession && isSessionFriendlyIdForm(params.session)) {
-      return new Response("Session not found", { status: 404 });
-    }
+    const maybeSession = resource!.row;
 
     if (maybeSession?.closedAt) {
       return new Response("Cannot initialize a channel on a closed session", {

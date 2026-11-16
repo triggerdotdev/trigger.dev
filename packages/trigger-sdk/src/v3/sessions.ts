@@ -889,13 +889,16 @@ export class SessionInputChannel<TIn = unknown> {
       lastSeqNum: lastConsumedSeqNum,
     });
 
-    const waitResponse = await apiClient.waitForWaitpointToken({
-      runFriendlyId: ctx.run.id,
-      waitpointFriendlyId: response.waitpointId,
-    });
+    // Older servers and credentials with waitpoint access block separately.
+    if (!response.isBlocked) {
+      const waitResponse = await apiClient.waitForWaitpointToken({
+        runFriendlyId: ctx.run.id,
+        waitpointFriendlyId: response.waitpointId,
+      });
 
-    if (!waitResponse.success) {
-      throw new Error("Failed to block on session stream waitpoint");
+      if (!waitResponse.success) {
+        throw new Error("Failed to block on session stream waitpoint");
+      }
     }
 
     sessionStreams.disconnectStream(this.sessionId, "in");
@@ -914,7 +917,8 @@ export class SessionInputChannel<TIn = unknown> {
                   data: waitResult.output,
                   dataType: waitResult.outputType ?? "application/json",
                 },
-                apiClient
+                apiClient,
+                { runId: ctx.run.id, waitpointId: response.waitpointId }
               )
             : undefined;
         const error = new WaitpointTimeoutError(parsed?.message ?? "Timed out");

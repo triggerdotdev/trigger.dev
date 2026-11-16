@@ -60,10 +60,7 @@ function currentRunToken(): string {
     );
   }
   if (reason !== "selected") {
-    throw new OIDCTokenError(
-      "OIDC_RUN_TOKEN_INVALID",
-      "OIDC requires a valid internal run token with admin scope."
-    );
+    throw new OIDCTokenError("OIDC_RUN_TOKEN_INVALID", "OIDC requires a valid internal run token.");
   }
 
   return token;

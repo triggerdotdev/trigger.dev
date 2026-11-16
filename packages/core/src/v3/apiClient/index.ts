@@ -309,7 +309,13 @@ export class ApiClient {
       ? this.resolveAccessToken(operation, recordSelection)
       : this.accessToken;
     const token = typeof selection === "object" ? selection.accessToken : selection;
-    if (!token) throw new Error(`No API credential available for ${operation}`);
+    if (!token) {
+      const reason =
+        taskContext.isInsideTask && typeof selection === "object"
+          ? ` (run token: ${selection.reason})`
+          : "";
+      throw new Error(`This run has no credential for "${operation}"${reason}`);
+    }
     const headers: Record<string, string> & { Authorization: string } = {
       Authorization: `Bearer ${token}`,
     };
@@ -816,6 +822,35 @@ export class ApiClient {
           headers: this.#getHeaders(false, undefined, "getRunPacketUrl"),
         },
         this.#requestOptions("getRunPacketUrl", requestOptions)
+      );
+    } catch (error) {
+      if (error instanceof ApiError && error.status === 404) {
+        return await this.getPayloadUrl(path, requestOptions);
+      }
+
+      throw error;
+    }
+  }
+
+  /**
+   * Presigned GET URL for the offloaded output of a waitpoint the run resumed from, authorized
+   * against the run. Falls back to the legacy packet route on servers that predate this endpoint.
+   */
+  async getRunWaitpointOutputUrl(
+    runId: string,
+    waitpointId: string,
+    path: string,
+    requestOptions?: ZodFetchOptions
+  ) {
+    try {
+      return await zodfetch(
+        CreateUploadPayloadUrlResponseBody,
+        `${this.baseUrl}/api/v1/runs/${encodeURIComponent(runId)}/waitpoints/${encodeURIComponent(waitpointId)}/output`,
+        {
+          method: "GET",
+          headers: this.#getHeaders(false, undefined, "getRunWaitpointOutputUrl"),
+        },
+        this.#requestOptions("getRunWaitpointOutputUrl", requestOptions)
       );
     } catch (error) {
       if (error instanceof ApiError && error.status === 404) {
