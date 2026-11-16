@@ -90,6 +90,8 @@ export type TemplateBuilderConfig = {
   mixedRuntimeWorkerGroups: readonly string[];
   /** Mean wait before retrying a 429 (no free build slot) or 504 (build outlasted the proxy). */
   busyRetryMs?: number;
+  /** Ask for the deployment's warmed snapshot (no `no_snap`), which the builder builds before it replies. */
+  deploySnapshots?: boolean;
 };
 
 // About one build: a builder with every slot taken refuses at once, so a slot frees up as a
@@ -99,7 +101,7 @@ const BUSY_RETRY_MS = 30_000;
 export type TemplateCreateRequest = {
   image: string;
   machine_configs: { cpus: number; memory_mb: number }[];
-  no_snap: true;
+  no_snap?: true;
   deployment_id: string;
   warmup?: string[][];
 };
@@ -167,7 +169,8 @@ export function templateCreateRequest(
   image: string,
   presets: MachinePresetName[],
   deploymentFriendlyId: string,
-  warmupCommand?: string[]
+  warmupCommand?: string[],
+  deploySnapshots = false
 ): TemplateCreateRequest {
   const shapes = new Map<string, { cpus: number; memory_mb: number }>();
   for (const name of presets) {
@@ -178,7 +181,7 @@ export function templateCreateRequest(
   return {
     image,
     machine_configs: [...shapes.values()],
-    no_snap: true,
+    ...(deploySnapshots ? {} : { no_snap: true as const }),
     deployment_id: deploymentFriendlyId,
     ...(warmupCommand ? { warmup: [warmupCommand] } : {}),
   };
@@ -200,6 +203,7 @@ export class TemplatePrebuildService {
       timeoutMs: env.TEMPLATE_BUILDER_TIMEOUT_MS,
       presets: env.TEMPLATE_BUILDER_MACHINE_PRESETS,
       shadowRolloutPct: env.TEMPLATE_BUILDER_SHADOW_ROLLOUT_PCT,
+      deploySnapshots: env.TEMPLATE_BUILDER_DEPLOY_SNAPSHOTS,
       mixedRuntimeWorkerGroups: selfBackingWorkerGroups(
         env.RUN_ENGINE_MIXED_RUNTIME_WORKER_GROUPS,
         env.TRIGGER_WORKER_QUEUE_V2_ENABLED === "1"
@@ -508,7 +512,8 @@ export class TemplatePrebuildService {
       image,
       this.config.presets,
       deployment.friendlyId,
-      deployment.warmupCommand
+      deployment.warmupCommand,
+      this.config.deploySnapshots
     );
     const log = { deploymentId: deployment.friendlyId, image, mode };
 

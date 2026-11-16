@@ -1004,6 +1004,10 @@ const EnvironmentSchema = z
       .transform(parseMachinePresetCsv),
     // Percentage of deploys from orgs without compute that still prebuild in shadow mode.
     TEMPLATE_BUILDER_SHADOW_ROLLOUT_PCT: z.coerce.number().min(0).max(100).default(0),
+    // Leave `no_snap` off the request, so a builder with deploy snapshots builds the deployment's
+    // warmed snapshot before it answers. Only once every builder runs an fcrun that has them: an
+    // older one would build a whole template's snapshot with the deployment's warmup.
+    TEMPLATE_BUILDER_DEPLOY_SNAPSHOTS: BoolEnvWithDefault(false),
 
     DEPLOY_IMAGE_PLATFORM: z.string().default("linux/amd64"),
     DEPLOY_BASE_IMAGES: z
