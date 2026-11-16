@@ -113,6 +113,12 @@ export type AuditLogInput = AuditLogCategoryAndAction & {
   environmentType?: AuditLogEnvironmentType | null;
   target: AuditLogTarget;
   changes?: AuditLogChanges | null;
+  /**
+   * The last 4 characters of every key the change touched, e.g. a rotated key's old and new, so a
+   * customer can find the change by a key's last 4. Never more of the key. The credential the
+   * request used is added from the context.
+   */
+  keyLast4s?: string[];
   /** Overrides the context's actor, e.g. `system` for changes made by directory sync. */
   actor?: AuditLogActor;
 };
