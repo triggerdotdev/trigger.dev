@@ -8,6 +8,7 @@ import {
   ConcurrencyLimitManifest,
 } from "./schemas.js";
 import { MachineConfig } from "./common.js";
+import { SandboxTaskConfig } from "./executionPolicy.js";
 import {
   WebhookVerifierArtifact,
   WebhookRoutingTarget,
@@ -32,6 +33,7 @@ export const TaskResource = z.object({
   machine: MachineConfig.optional(),
   triggerSource: z.string().optional(),
   agentConfig: AgentConfig.optional(),
+  sandbox: SandboxTaskConfig.optional(),
   schedule: ScheduleMetadata.optional(),
   maxDuration: z.number().optional(),
   ttl: z.string().or(z.number().nonnegative().int()).optional(),

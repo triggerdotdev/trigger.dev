@@ -1,4 +1,5 @@
 import { json } from "@remix-run/server-runtime";
+import type { EnvVarGrant } from "@trigger.dev/core/v3";
 import { env } from "~/env.server";
 import { recordSecretProxyDelivery } from "../secretProxy/telemetry.server";
 import {
@@ -12,7 +13,7 @@ import { environmentEncryptionTelemetry } from "./telemetry.server";
 export async function resolveAttemptVariables(
   environment: RuntimeEnvironmentForEnvRepo,
   parentEnvironment?: RuntimeEnvironmentForEnvRepo,
-  options?: { proxyEnabled?: boolean }
+  options?: { proxyEnabled?: boolean; grant?: EnvVarGrant }
 ) {
   try {
     const prepared = await prepareVariablesForEnvironment(environment, parentEnvironment, options);

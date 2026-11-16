@@ -153,6 +153,31 @@ describe("environment encryption", () => {
     }
   );
 
+  // Catches: a policy grant leaking ungranted variables, or an empty grant still reading values.
+  postgresTest("returns only variables a grant names", async ({ prisma }) => {
+    const { scope } = await seed(prisma);
+    const prefix = environmentSecretPrefix(scope.projectId, scope.environmentId);
+    await prisma.secretStore.createMany({
+      data: ["GRANTED", "OTHER"].map((key) => ({
+        key: `${prefix}${key}`,
+        version: "2",
+        value: encryptValue(JSON.stringify({ secret: key.toLowerCase() }), keyring),
+      })),
+    });
+    const repository = new EnvironmentVariablesRepository(prisma, prisma, service(prisma));
+    const resolve = (grant?: "all" | string[]) =>
+      repository.resolveEnvironmentVariables(scope.projectId, scope.environmentId, undefined, {
+        grant,
+      });
+
+    expect((await resolve(["GRANTED"])).variables).toEqual([{ key: "GRANTED", value: "granted" }]);
+    expect((await resolve([])).variables).toEqual([]);
+    expect((await resolve("all")).variables.map(({ key }) => key).sort()).toEqual([
+      "GRANTED",
+      "OTHER",
+    ]);
+  });
+
   // Catches: orphaned prefix values being dropped, malformed JSON blocking valid variables, or authentication failures being hidden.
   postgresTest(
     "skips malformed JSON but never hides ciphertext authentication failures",

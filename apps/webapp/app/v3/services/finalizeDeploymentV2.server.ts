@@ -40,6 +40,7 @@ export class FinalizeDeploymentV2Service extends BaseService {
         type: true,
         worker: {
           select: {
+            id: true,
             project: true,
             metadata: true,
           },
@@ -173,12 +174,13 @@ export class FinalizeDeploymentV2Service extends BaseService {
     return finalizeService.call(authenticatedEnv, id, body);
   }
 
-  // Never throws, so a template problem cannot fail the deploy.
+  // Waits for the build when the deployment contains sandbox tasks; the finalizer rejects it
+  // if no template was stored.
   async #prebuildTemplate(
     deployment: {
       id: string;
       imageReference: string | null;
-      worker: { project: { id: string }; metadata: unknown } | null;
+      worker: { id: string; project: { id: string }; metadata: unknown } | null;
     },
     deploymentFriendlyId: string,
     body: FinalizeDeploymentRequestBody,
@@ -188,6 +190,11 @@ export class FinalizeDeploymentV2Service extends BaseService {
       return;
     }
 
+    const sandboxTask = await this._prisma.backgroundWorkerTask.findFirst({
+      where: { workerId: deployment.worker.id, executionMode: "SANDBOX" },
+      select: { slug: true },
+    });
+
     await new TemplatePrebuildService(this._prisma).prebuild({
       projectId: deployment.worker.project.id,
       deploymentId: deployment.id,
@@ -196,6 +203,7 @@ export class FinalizeDeploymentV2Service extends BaseService {
       imageDigest: body.imageDigest,
       workerMetadata: deployment.worker.metadata,
       writer,
+      requireTemplate: sandboxTask !== null,
     });
   }
 

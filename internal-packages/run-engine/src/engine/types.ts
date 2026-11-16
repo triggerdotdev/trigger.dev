@@ -6,6 +6,7 @@ import type {
   MachinePreset,
   MachinePresetName,
   RetryOptions,
+  RunExecutionPolicy,
   StartRunAttemptResult,
   TriggerTraceContext,
 } from "@trigger.dev/core/v3";
@@ -504,6 +505,9 @@ export type TriggerParams = {
     rootTriggerSource: string;
     rootScheduleId?: string;
     externalDeploymentId?: string;
+    executionMode?: "STANDARD" | "SANDBOX";
+    executionPolicy?: RunExecutionPolicy;
+    sessionId?: string;
   };
   parkedOnExternalDeploymentId?: string;
   /**

@@ -12,6 +12,7 @@ import {
   syncDeclarativeSchedules,
   syncDeclarativeWebhooks,
   type BackgroundWorkerWithWarnings,
+  validateSandboxTask,
   validateWorkerConcurrencyDeclarations,
 } from "./createBackgroundWorker.server";
 import { findOrCreateBackgroundWorker } from "./createDeploymentBackgroundWorkerV4/findOrCreateBackgroundWorker.server";
@@ -89,6 +90,7 @@ export class CreateDeploymentBackgroundWorkerServiceV4 extends BaseService {
        */
       try {
         validateWorkerConcurrencyDeclarations(body.metadata);
+        body.metadata.tasks.forEach((task) => validateSandboxTask(task, environment));
       } catch (concurrencyError) {
         if (concurrencyError instanceof ServiceValidationError) {
           logger.warn("Invalid worker concurrency declarations", {

@@ -11,7 +11,7 @@ export async function failAttemptForSecretProxySigning(options: {
   workerId?: string;
   runnerId?: string;
 }): Promise<never> {
-  const message = "Secret proxy run token signing failed";
+  const message = "Run token signing failed";
   recordSecretProxyFailure("signing", "signing");
   try {
     const run = await options.engine.runStore.findRunOnPrimary(

@@ -1,7 +1,7 @@
 import { type Counter, startSpan } from "@internal/tracing";
 import { assertExhaustive, tryCatch } from "@trigger.dev/core";
 import type { DequeuedMessage, TaskRunInternalError } from "@trigger.dev/core/v3";
-import { RetryOptions, RunAnnotations } from "@trigger.dev/core/v3";
+import { isSandboxRun, RetryOptions, RunAnnotations } from "@trigger.dev/core/v3";
 import { getMaxDuration, SnapshotId } from "@trigger.dev/core/v3/isomorphic";
 import { placementTag } from "@trigger.dev/core/v3/serverOnly";
 import type {
@@ -82,6 +82,7 @@ const dequeueRunSelect = {
   lockedRetryConfig: true,
   attemptNumber: true,
   machinePreset: true,
+  annotations: true,
 } satisfies Prisma.TaskRunSelect;
 
 type RunWithDequeueScalars = Prisma.TaskRunGetPayload<{ select: typeof dequeueRunSelect }>;
@@ -536,6 +537,27 @@ export class DequeueSystem {
                 }
               }
 
+              // The policy is resolved at trigger from task metadata that can belong to another
+              // version (unresolved external deployments, delayed or debounced runs). A sandbox
+              // task must never start without its policy, so the mismatch fails the run.
+              if (
+                result.task.executionMode === "SANDBOX" &&
+                !isSandboxRun(result.run.annotations)
+              ) {
+                span.setAttribute("result", "EXECUTION_POLICY_MISMATCH");
+                await this.runAttemptSystem.systemFailure({
+                  runId,
+                  organizationId: orgId,
+                  error: {
+                    type: "INTERNAL_ERROR",
+                    code: "CONFIGURED_INCORRECTLY",
+                    message: `Task ${result.task.slug} is a sandbox in version ${result.worker.version}, but this run was triggered without its sandbox policy. Trigger it again.`,
+                  },
+                  tx: prisma,
+                });
+                return;
+              }
+
               //check for a valid deployment if it's not a development environment
               if (result.environmentType !== "DEVELOPMENT") {
                 // Only a deployment that finished deploying may start runs. A worker registers
@@ -704,7 +726,10 @@ export class DequeueSystem {
                   orgId,
                   runId,
                   workerQueue,
-                  fallbackWorkerQueue: templateFallbackWorkerQueue(workerQueue),
+                  // A sandbox must not leave compute, so it waits for a template instead.
+                  fallbackWorkerQueue: isSandboxRun(result.run.annotations)
+                    ? undefined
+                    : templateFallbackWorkerQueue(workerQueue),
                   tx: prisma,
                 });
                 span.setAttribute("result", outcome);

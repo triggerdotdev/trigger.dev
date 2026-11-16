@@ -28,6 +28,7 @@ import {
   type WorkerInstanceGroupType,
 } from "@trigger.dev/database";
 import { acceptsWorkerStamp } from "./workerGroupAccess";
+import { ServiceValidationError } from "~/v3/services/common.server";
 import { matchesAnyManagedWorkerSecret } from "./managedWorkerSecret.server";
 import { sanitizeWorkerHeaders } from "./sanitizeWorkerHeaders";
 import { json } from "@remix-run/server-runtime";
@@ -55,6 +56,12 @@ import { resolveAttemptVariables } from "~/services/environmentEncryption/attemp
 import { secretProxy } from "~/services/secretProxy/instance.server";
 import type { SecretProxyExecutionMetadata } from "~/services/secretProxy/service.server";
 import { failAttemptForSecretProxySigning } from "~/services/secretProxy/attemptFailure.server";
+import {
+  pinnedRunPolicy,
+  runTokenScopes,
+  withoutRootKey,
+  type PinnedRunPolicy,
+} from "./runExecutionPolicy.server";
 import type { EnvironmentVariable } from "~/v3/environmentVariables/repository";
 import { machinePresetFromName } from "~/v3/machinePresets.server";
 import { meteringClaims } from "~/v3/utils/meteringClaims.server";
@@ -616,7 +623,14 @@ export class AuthenticatedWorkerInstance extends WithRunEngine {
       findRun: (runId) =>
         this._engine.runStore.findRun(
           { id: runId },
-          { select: { taskIdentifier: true, runtimeEnvironmentId: true, lockedById: true } }
+          {
+            select: {
+              taskIdentifier: true,
+              runtimeEnvironmentId: true,
+              lockedById: true,
+              annotations: true,
+            },
+          }
         ),
       replica: this._replica,
     });
@@ -655,20 +669,36 @@ export class AuthenticatedWorkerInstance extends WithRunEngine {
     await this.assertCreatedAtGate({ runId, environmentId, action: "start" });
 
     // Resolved before the attempt exists, so an unavailable key leaves the run startable.
-    const environment = await this.findAttemptEnvironment(runId, environmentId);
-    const prepared = await resolveAttemptVariables(
+    const { environment, pinned } = await this.findAttemptEnvironment(runId, environmentId);
+    const resolved = await resolveAttemptVariables(
       environment,
       environment.parentEnvironment ?? undefined,
-      // Without the org row loaded, keep full protection rather than assume the flag is off.
-      environment.organization
-        ? { proxyEnabled: secretProxyEnabled(environment.organization.featureFlags) }
-        : undefined
+      {
+        // Without the org row loaded, keep full protection rather than assume the flag is off.
+        // Policy runs always keep it: proxy-only values must never reach them as plaintext.
+        ...(environment.organization && !pinned
+          ? { proxyEnabled: secretProxyEnabled(environment.organization.featureFlags) }
+          : {}),
+        grant: pinned?.policy.envVars,
+      }
     );
+    const prepared = { ...resolved, variables: withoutRootKey(pinned, resolved.variables) };
 
+    const runTokenSupported = supportsRunTokenRefresh === true && environmentId === environment.id;
+    if (pinned && (!runTokenSupported || isWarmStart === true)) {
+      throw json(
+        {
+          error: isWarmStart
+            ? "Runs with an execution policy cannot warm start"
+            : "This run's execution policy needs a worker that supports run tokens",
+        },
+        { status: 409, headers: { "x-should-retry": "false" } }
+      );
+    }
+    // Policy runs have no root key to fall back to, so they always get a run token.
     const runTokenAvailable =
-      supportsRunTokenRefresh === true &&
-      environmentId === environment.id &&
-      runTokenInjectionEnabled(environment.organization?.featureFlags);
+      runTokenSupported &&
+      (pinned !== undefined || runTokenInjectionEnabled(environment.organization?.featureFlags));
     const proxy = prepared.proxyValues.length
       ? secretProxy(
           env.CONTROL_PLANE_DEQUEUE_READS_FROM_REPLICA === "1" ? this._replica : this._prisma
@@ -698,12 +728,12 @@ export class AuthenticatedWorkerInstance extends WithRunEngine {
     const defaultMachinePreset = machinePresetFromName(defaultMachine);
 
     const runToken = runTokenAvailable
-      ? await this.mintRunTokenOrSkip(environment, engineResult)
+      ? await this.mintRunTokenOrSkip(environment, engineResult, pinned)
       : undefined;
 
     let secretProxyMetadata: SecretProxyExecutionMetadata | undefined;
     let variables = prepared.variables;
-    if (proxy) {
+    if (proxy || pinned) {
       if (!runToken) {
         return failAttemptForSecretProxySigning({
           engine: this._engine,
@@ -714,6 +744,8 @@ export class AuthenticatedWorkerInstance extends WithRunEngine {
           runnerId,
         });
       }
+    }
+    if (proxy && runToken) {
       const delivery = proxy.finalizeRuntime(prepared.proxyValues, proxyHosts!, {
         runId: engineResult.execution.run.id,
         attempt: engineResult.execution.attempt.number,
@@ -749,21 +781,20 @@ export class AuthenticatedWorkerInstance extends WithRunEngine {
 
   // The engine validates the header's scope before any resolved variables are returned.
   private async findAttemptEnvironment(runId: string, environmentId?: string) {
-    if (!environmentId) {
-      const run = await this._engine.runStore.findRun(
-        { id: runId },
-        { select: { runtimeEnvironmentId: true } }
-      );
-      if (!run) throw json({ error: "Run environment unavailable" }, { status: 503 });
-      environmentId = run.runtimeEnvironmentId;
-    }
-
+    const where = { id: runId };
+    const select = { select: { runtimeEnvironmentId: true, annotations: true } };
+    // With a verified environment, a replica miss is lag on a just-triggered run. Legacy callers
+    // without one keep the retryable 503 below.
+    const run =
+      (await this._engine.runStore.findRun(where, select)) ??
+      (environmentId ? await this._engine.runStore.findRunOnPrimary(where, select) : null);
+    if (!run) throw json({ error: "Run environment unavailable" }, { status: 503 });
     const environmentReader =
       env.CONTROL_PLANE_DEQUEUE_READS_FROM_REPLICA === "1" ? this._replica : this._prisma;
 
     const environment = await environmentReader.runtimeEnvironment.findFirst({
       where: {
-        id: environmentId,
+        id: run.runtimeEnvironmentId,
         ...(this.type === "UNMANAGED" ? { projectId: this.projectId! } : {}),
       },
       include: {
@@ -775,13 +806,18 @@ export class AuthenticatedWorkerInstance extends WithRunEngine {
       },
     });
     if (!environment) throw json({ error: "Runtime environment unavailable" }, { status: 503 });
-    return environment;
+    // Check project scope first so foreign workers cannot probe run ownership via header mismatches.
+    if (environmentId && run.runtimeEnvironmentId !== environmentId) {
+      throw new ServiceValidationError("Task run environment not found", 404);
+    }
+    return { environment, pinned: pinnedRunPolicy(run.annotations) };
   }
 
-  // Normal runs retain TRIGGER_SECRET_KEY; proxy-only delivery fails closed below if signing fails.
+  // Normal runs retain TRIGGER_SECRET_KEY; proxy and policy runs fail closed if signing fails.
   private async mintRunTokenOrSkip(
     environment: RuntimeEnvironment,
-    engineResult: StartRunAttemptResult
+    engineResult: StartRunAttemptResult,
+    pinned: PinnedRunPolicy | undefined
   ): Promise<string | undefined> {
     const { execution } = engineResult;
     try {
@@ -794,6 +830,7 @@ export class AuthenticatedWorkerInstance extends WithRunEngine {
         attemptNumber: execution.attempt.number,
         taskIdentifier: execution.task.id,
         deploymentFriendlyId: execution.deployment?.id,
+        scopes: runTokenScopes(pinned, execution.run.id),
       });
     } catch (error) {
       logger.warn("Failed to mint run token, continuing without it", {

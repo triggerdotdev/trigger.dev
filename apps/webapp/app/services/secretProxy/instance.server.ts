@@ -43,6 +43,7 @@ function createService(db: PrismaClientOrTransaction) {
             organizationId: true,
             attemptNumber: true,
             status: true,
+            annotations: true,
           },
         }
       ),

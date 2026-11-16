@@ -14,6 +14,7 @@ import {
   V3TaskRunExecution,
 } from "./common.js";
 import { ScheduleWindow } from "./scheduleWindow.js";
+import { SandboxTaskConfig } from "./executionPolicy.js";
 
 export * from "./scheduleWindow.js";
 
@@ -248,6 +249,7 @@ const taskMetadata = {
   machine: MachineConfig.optional(),
   triggerSource: z.string().optional(),
   agentConfig: AgentConfig.optional(),
+  sandbox: SandboxTaskConfig.optional(),
   schedule: ScheduleMetadata.optional(),
   maxDuration: z.number().optional(),
   ttl: z.string().or(z.number().nonnegative().int()).optional(),

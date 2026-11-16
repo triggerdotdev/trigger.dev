@@ -1,3 +1,4 @@
+import type { EnvVarGrant } from "@trigger.dev/core/v3";
 import { RunId } from "@trigger.dev/core/v3/isomorphic";
 import { Prisma, type PrismaClientOrTransaction } from "@trigger.dev/database";
 import { z } from "zod";
@@ -5,6 +6,7 @@ import { recordSecretProxyDelivery, recordSecretProxyFailure } from "./telemetry
 import type { PublicJwks } from "../oidc/crypto";
 import { verifyRunTokenWithExpiry, type RunTokenClaims } from "../oidc/runTokenVerify";
 import type { EnvironmentEncryptionService } from "../environmentEncryption/service.server";
+import { pinnedRunPolicy } from "~/v3/services/worker/runExecutionPolicy.server";
 import {
   secretProxyExecutionHosts,
   isCanonicalProxyHostname,
@@ -56,6 +58,7 @@ type RunState = {
   organizationId: string | null;
   attemptNumber: number | null;
   status: string;
+  annotations: unknown;
 };
 
 type StoredProxyVariable = {
@@ -111,12 +114,11 @@ export class SecretProxyService {
     });
     if (!claims || claims.attempt < 1 || claims.exp * 1000 <= Date.now())
       throw new SecretProxyDeniedError("Invalid run token", "token");
-    if (!claims.scopes.includes("admin"))
-      throw new SecretProxyDeniedError("Secret proxy requires an admin run token", "token");
     return claims;
   }
 
-  async #assertExecuting(claims: RunTokenClaims) {
+  /** Returns the variables the run may resolve: its pinned grant, or all for a standard run. */
+  async #assertExecuting(claims: RunTokenClaims): Promise<EnvVarGrant> {
     let id: string;
     try {
       id = RunId.fromFriendlyId(claims.run_id);
@@ -135,6 +137,11 @@ export class SecretProxyService {
       run.status !== "EXECUTING"
     ) {
       throw new SecretProxyDeniedError("Run attempt is not executing", "run_state");
+    }
+    try {
+      return pinnedRunPolicy(run.annotations)?.policy.envVars ?? "all";
+    } catch {
+      throw new SecretProxyDeniedError("Invalid run execution policy", "policy");
     }
   }
 
@@ -205,7 +212,7 @@ export class SecretProxyService {
       startedAt + SECRET_PROXY_PLAINTEXT_CACHE_TTL_MS,
       claims.exp * 1000
     );
-    await this.#assertExecuting(claims);
+    const grant = await this.#assertExecuting(claims);
     const from = Prisma.sql`
       FROM "RuntimeEnvironment" e
       JOIN "Project" p ON p.id = e."projectId" AND p."deletedAt" IS NULL
@@ -224,6 +231,7 @@ export class SecretProxyService {
     const identities = await this.options.db.$queryRaw<Array<{ variableId: string }>>(Prisma.sql`
       SELECT DISTINCT value."variableId"
       ${from} ${scope} AND value."isProxyOnly" = true
+      ${grant === "all" ? Prisma.empty : Prisma.sql`AND variable.key = ANY(${grant}::text[])`}
       LIMIT ${MAX_PROXY_VARIABLES + 1}
     `);
     if (identities.length > MAX_PROXY_VARIABLES)

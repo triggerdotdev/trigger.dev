@@ -6,6 +6,7 @@ import {
 import type { Tracer } from "@opentelemetry/api";
 import { tryCatch } from "@trigger.dev/core/utils";
 import {
+  type RunExecutionPolicy,
   type TriggerTaskRequestBody,
   formatDurationMilliseconds,
   RunAnnotations,
@@ -52,6 +53,7 @@ import {
   selfBackingWorkerGroups,
 } from "~/v3/workerRegions.server";
 import { globalFlagsRegistry } from "~/v3/globalFlagsRegistry.server";
+import { sandboxTasksEnabled } from "~/v3/sandboxTasksFlag.server";
 import {
   publishClaim as publishMollifierClaim,
   releaseClaim as releaseMollifierClaim,
@@ -450,11 +452,18 @@ export class RunEngineTriggerTaskService {
           const parkedOnExternalDeploymentId =
             externalDeploymentResolution?.outcome === "park" ? externalDeploymentId : undefined;
 
-          const { queueName, lockedQueueId, taskTtl, taskKind, gates, templateKey } =
-            await this.queueConcern.resolveQueueProperties(
-              triggerRequest,
-              lockedToBackgroundWorker ?? undefined
-            );
+          const {
+            queueName,
+            lockedQueueId,
+            taskTtl,
+            taskKind,
+            gates,
+            templateKey,
+            executionPolicy,
+          } = await this.queueConcern.resolveQueueProperties(
+            triggerRequest,
+            lockedToBackgroundWorker ?? undefined
+          );
 
           // Resolve TTL with precedence: per-trigger > task-level > dev default
           let ttl: string | undefined;
@@ -545,9 +554,33 @@ export class RunEngineTriggerTaskService {
             orgFeatureFlags,
             flags: globalFlagsRegistry.current(),
             envType: environment.type,
-            environmentCompat: environmentOverride.compat,
+            // Sandboxes only run on microVMs, whatever the org's migration state.
+            environmentCompat: executionPolicy ? "compute" : environmentOverride.compat,
             templateKey,
           });
+
+          if (executionPolicy && !sandboxTasksEnabled(orgFeatureFlags)) {
+            throw new ServiceValidationError(
+              `Task "${taskId}" is a sandbox, but sandbox tasks are not enabled for this organization.`
+            );
+          }
+
+          const onMicrovmGroup =
+            baseWorkerQueue !== undefined &&
+            workerGroups.find((group) => group.masterQueue === baseWorkerQueue)?.workloadType ===
+              "MICROVM";
+          if (
+            executionPolicy &&
+            environment.type !== "DEVELOPMENT" &&
+            !migrated.compute &&
+            !(onMicrovmGroup && templateKey)
+          ) {
+            throw new ServiceValidationError(
+              `Task "${taskId}" is a sandbox and needs microVM compute, which is not available ${
+                templateKey ? "in this region" : "for this deployment (no compute template)"
+              }.`
+            );
+          }
 
           const triggerSource = options.triggerSource ?? "api";
           const triggerAction = options.triggerAction ?? "trigger";
@@ -561,6 +594,9 @@ export class RunEngineTriggerTaskService {
             externalDeploymentId,
             webhookDeliveryId: options.webhookDeliveryId,
             webhookEndpointId: options.webhookEndpointId,
+            ...(executionPolicy
+              ? { executionMode: "SANDBOX" as const, executionPolicy, sessionId: options.sessionId }
+              : {}),
           };
 
           const workerQueue =
@@ -570,9 +606,11 @@ export class RunEngineTriggerTaskService {
                   region: migrated.region,
                   envType: environment.type,
                   orgFeatureFlags,
-                  environmentOverride,
                   v2Enabled: env.TRIGGER_WORKER_QUEUE_V2_ENABLED === "1",
                   splitEnabled: env.TRIGGER_WORKER_QUEUE_SCHEDULED_SPLIT_ENABLED === "1",
+                  environmentOverride: executionPolicy
+                    ? { ...environmentOverride, compat: "compute" }
+                    : environmentOverride,
                   workerGroups,
                   rootTriggerSource: annotations.rootTriggerSource,
                   templateFallback: migrated.templateFallback,
@@ -957,6 +995,9 @@ export class RunEngineTriggerTaskService {
       rootTriggerSource: string;
       rootScheduleId?: string | undefined;
       externalDeploymentId?: string | undefined;
+      executionMode?: "SANDBOX";
+      executionPolicy?: RunExecutionPolicy;
+      sessionId?: string;
     };
     parkedOnExternalDeploymentId?: string;
     planType?: string;

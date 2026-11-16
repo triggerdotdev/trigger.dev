@@ -3,6 +3,7 @@ import {
   EMPTY_ENV_VALUES_DISABLED,
   emptyEnvironmentVariableValuesEnabled,
 } from "./emptyValuesFlag.server";
+import { envVarGranted, type EnvVarGrant } from "@trigger.dev/core/v3";
 import type { AuthenticatedEnvironment } from "@trigger.dev/core/v3/auth/environment";
 import {
   boundedIn,
@@ -992,8 +993,11 @@ export class EnvironmentVariablesRepository implements Repository {
     environmentId: string,
     parentEnvironmentId?: string,
     // Unset means enabled: callers that do not know the org flag keep full protection.
-    options?: { readFromReplica?: boolean; proxyEnabled?: boolean }
+    // Unset `grant` means every variable.
+    options?: { readFromReplica?: boolean; proxyEnabled?: boolean; grant?: EnvVarGrant }
   ) {
+    const grant = options?.grant ?? "all";
+    if (grant !== "all" && grant.length === 0) return { variables: [], proxyValues: [] };
     const db = options?.readFromReplica ? this.replicaClient : this.prismaClient;
     const environmentIds = parentEnvironmentId
       ? [parentEnvironmentId, environmentId]
@@ -1005,7 +1009,7 @@ export class EnvironmentVariablesRepository implements Repository {
     const proxyValues = protectedKeys.size
       ? (
           await effectiveEnvironmentVariables(db, projectId, environmentId, parentEnvironmentId)
-        ).filter((value) => value.isProxyOnly)
+        ).filter((value) => value.isProxyOnly && envVarGranted(grant, value.key))
       : [];
     // A protected child value must not fall back to an ordinary parent value.
     for (const value of proxyValues) {
@@ -1019,16 +1023,15 @@ export class EnvironmentVariablesRepository implements Repository {
       undefined,
       protectedKeys
     );
-    const parentSecrets = parentEnvironmentId
-      ? await secretStore.getSecrets(
-          SecretValue,
-          secretKeyEnvironmentPrefix(projectId, parentEnvironmentId)
-        )
-      : [];
-    const childSecrets = await secretStore.getSecrets(
-      SecretValue,
-      secretKeyEnvironmentPrefix(projectId, environmentId)
-    );
+    const secretsFor = (id: string) =>
+      grant === "all"
+        ? secretStore.getSecrets(SecretValue, secretKeyEnvironmentPrefix(projectId, id))
+        : secretStore.getSecretsByKeys(
+            SecretValue,
+            grant.map((key) => secretKey(projectId, id, key))
+          );
+    const parentSecrets = parentEnvironmentId ? await secretsFor(parentEnvironmentId) : [];
+    const childSecrets = await secretsFor(environmentId);
     const merged = new Map<string, string>();
     for (const secret of [...parentSecrets, ...childSecrets]) {
       merged.set(parseSecretKey(secret.key).key, secret.value.secret);
@@ -1399,7 +1402,7 @@ export async function resolveVariablesForEnvironment(
 export async function prepareVariablesForEnvironment(
   runtimeEnvironment: RuntimeEnvironmentForEnvRepo,
   parentEnvironment?: RuntimeEnvironmentForEnvRepo,
-  options?: { proxyEnabled?: boolean }
+  options?: { proxyEnabled?: boolean; grant?: EnvVarGrant }
 ) {
   const resolved = await environmentVariablesRepository.resolveEnvironmentVariables(
     runtimeEnvironment.projectId,
@@ -1408,6 +1411,7 @@ export async function prepareVariablesForEnvironment(
     {
       readFromReplica: env.CONTROL_PLANE_DEQUEUE_READS_FROM_REPLICA === "1",
       proxyEnabled: options?.proxyEnabled,
+      grant: options?.grant,
     }
   );
 

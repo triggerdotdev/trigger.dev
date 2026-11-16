@@ -401,7 +401,7 @@ function isPendingVersionStatus(status: TaskRunStatus): boolean {
  * degrades to v1 where v2 streams are not configured.
  */
 async function triggerSessionRun(params: {
-  session: Pick<Session, "id" | "taskIdentifier">;
+  session: Pick<Session, "id" | "friendlyId" | "taskIdentifier">;
   config: SessionTriggerConfig;
   environment: AuthenticatedEnvironment;
   payloadOverrides?: Record<string, unknown>;
@@ -430,6 +430,7 @@ async function triggerSessionRun(params: {
   const result = await service.call(session.taskIdentifier, environment, body, {
     triggerSource: "session",
     triggerAction: "trigger",
+    sessionId: session.friendlyId,
     realtimeStreamsVersion: determineRealtimeStreamsVersion(
       "v2",
       environment.organization.streamBasinName

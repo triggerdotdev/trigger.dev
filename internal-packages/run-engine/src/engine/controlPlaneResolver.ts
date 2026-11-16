@@ -3,6 +3,7 @@ import type {
   Prisma,
   PrismaClient,
   RuntimeEnvironmentType,
+  TaskExecutionMode,
   WorkerDeploymentStatus,
 } from "@trigger.dev/database";
 import { CURRENT_DEPLOYMENT_LABEL } from "@trigger.dev/core/v3/isomorphic";
@@ -111,6 +112,7 @@ export type ResolvedWorkerTask = {
   machineConfig: Prisma.JsonValue | null;
   retryConfig: Prisma.JsonValue | null;
   maxDurationInSeconds: number | null;
+  executionMode: TaskExecutionMode;
 };
 
 /** The `select` that yields a `ResolvedWorkerTask`. */
@@ -120,6 +122,7 @@ const resolvedWorkerTaskSelect = {
   machineConfig: true,
   retryConfig: true,
   maxDurationInSeconds: true,
+  executionMode: true,
 } satisfies Prisma.BackgroundWorkerTaskSelect;
 
 /**

@@ -4,6 +4,7 @@ import type { BackgroundWorkerMetadata } from "@trigger.dev/core/v3";
 import type { PrismaClient } from "@trigger.dev/database";
 import { describe, expect, vi } from "vitest";
 import type { AuthenticatedEnvironment } from "~/services/apiAuth.server";
+import { FEATURE_FLAG } from "~/v3/featureFlags";
 import {
   CreateBackgroundWorkerService,
   createWorkerResources,
@@ -103,10 +104,13 @@ function countingPrisma(prisma: PrismaClient) {
   return { client: client as unknown as PrismaClient, counts };
 }
 
-const asEnv = (env: { id: string; projectId: string; type: string; organizationId?: string }) =>
+const asEnv = (
+  env: { id: string; projectId: string; type: string; organizationId?: string },
+  featureFlags: unknown = {}
+) =>
   ({
     ...env,
-    organization: { id: env.organizationId, featureFlags: {} },
+    organization: { id: env.organizationId, featureFlags },
   }) as unknown as AuthenticatedEnvironment;
 
 function declarativeTasks(schedule: { cron: string; timezone: string; window?: string }): TasksArg {
@@ -200,6 +204,7 @@ describe("worker task creation", () => {
             slug: "duplicate-task",
             ttl: null,
             triggerSource: "STANDARD",
+            executionPolicy: null,
             queueId: queue.id,
             queueName: queue.name,
             gates: null,
@@ -210,6 +215,7 @@ describe("worker task creation", () => {
             slug: "duplicate-task",
             ttl: null,
             triggerSource: "STANDARD",
+            executionPolicy: null,
             queueId: queue.id,
             queueName: queue.name,
             gates: null,
@@ -350,6 +356,48 @@ describe("archived queues on deploy", () => {
         where: { id: undeclared.id },
       });
       expect(undeclaredAfter.archivedAt).toEqual(archivedAt);
+    }
+  );
+});
+
+describe("sandbox task registration", () => {
+  // Catches: a sandbox registering as a standard task (full access) when its config is lost or not
+  // allowed, and a rejected registration leaving a worker that a same-content retry would accept.
+  containerTest(
+    "rejects sandboxes before persisting a worker and registers them once allowed",
+    async ({ prisma }) => {
+      const { project, devEnv } = await seedProjectWithEnvs(prisma);
+      const body = (task: Record<string, unknown>) =>
+        ({
+          engine: "V2",
+          metadata: {
+            contentHash: "sandbox-hash",
+            tasks: [
+              { id: "coder", filePath: "src/trigger/coder.ts", exportName: "coder", ...task },
+            ],
+          },
+        }) as Parameters<CreateBackgroundWorkerService["call"]>[2];
+      const register = (task: Record<string, unknown>, flags: unknown) =>
+        new CreateBackgroundWorkerService(prisma, prisma).call(
+          project.externalRef,
+          { ...asEnv(devEnv, flags), project } as AuthenticatedEnvironment,
+          body(task)
+        );
+      const sandbox = { triggerSource: "sandbox", sandbox: { envVars: ["API_KEY"] } };
+      const enabled = { [FEATURE_FLAG.sandboxTasks]: true };
+
+      await expect(register({ triggerSource: "sandbox" }, enabled)).rejects.toThrow(
+        /dropped its sandbox configuration/
+      );
+      await expect(register(sandbox, {})).rejects.toThrow(/not enabled for this organization/);
+      expect(await prisma.backgroundWorker.count({ where: { projectId: project.id } })).toBe(0);
+
+      const worker = await register(sandbox, enabled);
+      const task = await prisma.backgroundWorkerTask.findUniqueOrThrow({
+        where: { workerId_slug: { workerId: worker.id, slug: "coder" } },
+      });
+      expect(task.executionMode).toBe("SANDBOX");
+      expect(task.executionPolicy).toMatchObject({ rootKey: false, envVars: ["API_KEY"] });
     }
   );
 });

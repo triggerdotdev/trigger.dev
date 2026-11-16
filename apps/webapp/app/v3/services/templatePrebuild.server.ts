@@ -226,13 +226,18 @@ export class TemplatePrebuildService {
     /** The deployed worker's metadata, which carries its warmup command. */
     workerMetadata?: unknown;
     writer?: WritableStreamDefaultWriter;
+    /** Wait for the build whatever the wait flag says, for deployments that cannot run without it. */
+    requireTemplate?: boolean;
   }): Promise<{
     mode: TemplatePrebuildMode;
     reason?: TemplatePrebuildReason;
     outcome?: TemplateBuildOutcome;
   }> {
     try {
-      const { mode, reason, diagnostics } = await this.resolve(options.projectId);
+      const { mode, reason, diagnostics } = await this.resolve(
+        options.projectId,
+        options.requireTemplate
+      );
       if (mode === "skip") {
         logger.info("Template prebuild skipped", {
           deploymentId: options.deploymentFriendlyId,
@@ -288,7 +293,10 @@ export class TemplatePrebuildService {
   }
 
   // Resolves eligibility even without a builder, so a skip shows whether the deploy would build.
-  private async resolve(projectId: string): Promise<{
+  private async resolve(
+    projectId: string,
+    requireTemplate = false
+  ): Promise<{
     mode: TemplatePrebuildMode;
     reason: TemplatePrebuildReason;
     diagnostics: EligibilityDiagnostics;
@@ -319,6 +327,11 @@ export class TemplatePrebuildService {
     diagnostics.eligible = reason !== "none";
     if (!this.config.url) {
       return { mode: "skip", reason: "no-builder", diagnostics };
+    }
+    // Sandbox tasks only run on microVMs, so they need a template whatever the org's rollout state.
+    // Trigger still fails clearly if the region has no microVM backing.
+    if (requireTemplate) {
+      return { mode: "wait", reason, diagnostics };
     }
     if (reason === "none") {
       return { mode: "skip", reason, diagnostics };

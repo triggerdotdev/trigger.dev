@@ -3,6 +3,7 @@ import { discriminatedUnion } from "../utils/zod.js";
 import type { Enum, RuntimeEnvironmentType } from "./common.js";
 import { MachinePreset, TaskRunExecution } from "./common.js";
 import { EnvironmentType } from "./schemas.js";
+import { RunExecutionPolicy } from "./executionPolicy.js";
 import type * as DB_TYPES from "@trigger.dev/database";
 
 const anyString = z.custom<string & {}>((v) => typeof v === "string");
@@ -34,6 +35,11 @@ export const RunAnnotations = z.object({
   /** Where the most recently stamped attempt executed. Set by the supervisor at attempt start. */
   workerCell: z.string().optional().catch(undefined),
   workerLane: z.string().optional().catch(undefined),
+  executionMode: z.enum(["STANDARD", "SANDBOX"]).optional(),
+  /** Set only for runs whose task declares a non-standard policy. Pinned for the run's lifetime. */
+  executionPolicy: RunExecutionPolicy.optional(),
+  /** The Session that triggered this run. Fills `$session` in policy scopes. */
+  sessionId: z.string().optional(),
 });
 
 export type RunAnnotations = z.infer<typeof RunAnnotations>;

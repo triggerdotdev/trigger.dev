@@ -11,7 +11,12 @@ import type {
   WebhookRoutingTarget,
   WebhookSubscriberResource,
 } from "@trigger.dev/core/v3";
-import { FILTER_AST_VERSION, tryCatch } from "@trigger.dev/core/v3";
+import {
+  FILTER_AST_VERSION,
+  SANDBOX_TRIGGER_SOURCE,
+  sandboxExecutionPolicy,
+  tryCatch,
+} from "@trigger.dev/core/v3";
 import { FilterParseError, parseFilter } from "@internal/webhook-engine";
 import {
   BackgroundWorkerId,
@@ -34,6 +39,7 @@ import { sanitizeQueueName } from "~/models/taskQueue.server";
 import type { AuthenticatedEnvironment } from "~/services/apiAuth.server";
 import { logger } from "~/services/logger.server";
 import { organizationHasWebhooksAccess } from "~/v3/webhooksAccess.server";
+import { sandboxTasksEnabled } from "~/v3/sandboxTasksFlag.server";
 import { safeEnvironmentLogFields } from "~/services/safeEnvironmentLog";
 import { syncTaskIdentifiers } from "~/services/taskIdentifierRegistry.server";
 import {
@@ -121,6 +127,9 @@ export class CreateBackgroundWorkerService extends BaseService {
       });
 
       validateWorkerConcurrencyDeclarations(body.metadata);
+      // Before the worker row and the content-hash shortcut, so a rejected registration leaves
+      // nothing a same-content retry would accept.
+      body.metadata.tasks.forEach((task) => validateSandboxTask(task, environment));
 
       const latestBackgroundWorker = project.backgroundWorkers[0];
 
@@ -662,6 +671,9 @@ async function createWorkerTask(
     resolvedTtl =
       typeof task.ttl === "number" ? (stringifyDuration(task.ttl) ?? null) : (task.ttl ?? null);
 
+    validateSandboxTask(task, environment);
+    const executionPolicy = task.sandbox ? sandboxExecutionPolicy(task.sandbox) : undefined;
+
     let taskPersisted = false;
     for (let attempt = 0; attempt < 3; attempt++) {
       const result = await prisma.backgroundWorkerTask.createMany({
@@ -680,6 +692,7 @@ async function createWorkerTask(
           machineConfig: task.machine,
           triggerSource: resolvedTriggerSource,
           config: task.agentConfig ? (task.agentConfig as any) : undefined,
+          ...(executionPolicy ? { executionMode: "SANDBOX" as const, executionPolicy } : {}),
           fileId: tasksToBackgroundFiles?.get(task.id) ?? null,
           maxDurationInSeconds: task.maxDuration ? clampMaxDuration(task.maxDuration) : null,
           ttl: resolvedTtl,
@@ -713,6 +726,7 @@ async function createWorkerTask(
       slug: task.id,
       ttl: resolvedTtl,
       triggerSource: resolvedTriggerSource,
+      executionPolicy: executionPolicy ?? null,
       queueId: queue.id,
       queueName: queue.name,
       gates: compiledGates.length > 0 ? compiledGates : (task.gates ?? null),
@@ -774,6 +788,23 @@ async function createWorkerQueues(
   }
 
   return allQueues;
+}
+
+/** Rejects a sandbox whose config an older CLI dropped, or whose organization lacks the flag. */
+export function validateSandboxTask(
+  task: Pick<TaskResource, "id" | "triggerSource" | "sandbox">,
+  environment: AuthenticatedEnvironment
+): void {
+  if (task.triggerSource === SANDBOX_TRIGGER_SOURCE && !task.sandbox) {
+    throw new ServiceValidationError(
+      `Task "${task.id}" is a sandbox, but this CLI version dropped its sandbox configuration. Update the trigger.dev CLI and deploy again.`
+    );
+  }
+  if (task.sandbox && !sandboxTasksEnabled(environment.organization.featureFlags)) {
+    throw new ServiceValidationError(
+      `Task "${task.id}" is a sandbox, but sandbox tasks are not enabled for this organization.`
+    );
+  }
 }
 
 /**

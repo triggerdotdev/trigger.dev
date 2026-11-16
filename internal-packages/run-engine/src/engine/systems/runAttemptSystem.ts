@@ -9,7 +9,7 @@ import {
 import type { RedisOptions } from "@internal/redis";
 import { startSpan, type Counter } from "@internal/tracing";
 import { tryCatch } from "@trigger.dev/core/utils";
-import { sanitizeError } from "@trigger.dev/core/v3";
+import { isSandboxRun, sanitizeError } from "@trigger.dev/core/v3";
 import { assertNever } from "assert-never";
 import type {
   CompleteRunAttemptResult,
@@ -1924,7 +1924,7 @@ export class RunAttemptSystem {
       // read-your-writes: the attempt's lock-time retry config may not be on a replica yet
       const run = await this.$.runStore.findRunOnPrimary(
         { id: runId },
-        { select: { workerQueue: true, lockedRetryConfig: true } }
+        { select: { workerQueue: true, lockedRetryConfig: true, annotations: true } }
       );
 
       // A cold start has no checkpoint to lose, so it cannot fail; a restore cannot change lanes.
@@ -1971,7 +1971,11 @@ export class RunAttemptSystem {
         case "fallback": {
           let moveToWorkerQueue: string | undefined;
           if (outcome === "fallback") {
-            const target = run ? fallbackWorkerQueue?.(run.workerQueue) : undefined;
+            // A sandbox must not leave compute, so it is requeued in place.
+            const target =
+              run && !isSandboxRun(run.annotations)
+                ? fallbackWorkerQueue?.(run.workerQueue)
+                : undefined;
             // Without a worker queue to move to, it is requeued where it is.
             moveToWorkerQueue = target !== run?.workerQueue ? target : undefined;
             this.$.logger.info("reportRestoreOutcome: moving a cold start", {

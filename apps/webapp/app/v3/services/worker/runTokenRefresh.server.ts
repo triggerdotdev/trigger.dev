@@ -12,6 +12,7 @@ import { env } from "~/env.server";
 import { logger } from "~/services/logger.server";
 import { mintRunToken, runTokenInjectionEnabled } from "~/services/oidc/runToken.server";
 import { singleton } from "~/utils/singleton";
+import { pinnedRunPolicy, runTokenScopes } from "./runExecutionPolicy.server";
 
 // Statuses in which the heartbeating runner still owns a live attempt, including the restore
 // window before it continues.
@@ -68,6 +69,7 @@ export type FindRunForRefresh = (runId: string) => Promise<{
   taskIdentifier: string;
   runtimeEnvironmentId: string;
   lockedById: string | null;
+  annotations: unknown;
 } | null>;
 
 export type RunTokenRefreshRequest = {
@@ -146,8 +148,9 @@ async function issue(
     return { result: "skipped", reason: "identity_mismatch" };
   }
 
-  const { environment, taskIdentifier, deploymentFriendlyId } = identity;
-  if (!runTokenInjectionEnabled(environment.organization.featureFlags)) {
+  const { environment, taskIdentifier, deploymentFriendlyId, pinned } = identity;
+  // A policy run has no root key, so its token is refreshed whatever the injection flag says.
+  if (!pinned && !runTokenInjectionEnabled(environment.organization.featureFlags)) {
     return { result: "skipped", reason: "injection_disabled" };
   }
 
@@ -161,6 +164,7 @@ async function issue(
       attemptNumber: run.attemptNumber,
       taskIdentifier,
       deploymentFriendlyId,
+      scopes: runTokenScopes(pinned, run.friendlyId),
     });
     return { result: "success", reason: "none", token };
   } catch (error) {
@@ -206,5 +210,6 @@ async function loadIdentity(
     environment,
     taskIdentifier: run.taskIdentifier,
     deploymentFriendlyId: lockedTask?.worker.deployment?.friendlyId,
+    pinned: pinnedRunPolicy(run.annotations),
   };
 }

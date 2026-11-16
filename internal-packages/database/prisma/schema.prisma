@@ -968,6 +968,10 @@ model BackgroundWorkerTask {
   /// AGENT: { type: "ai-sdk-chat" }
   config Json?
 
+  executionMode   TaskExecutionMode @default(STANDARD)
+  /// RunExecutionPolicy from @trigger.dev/core. Null means the standard policy.
+  executionPolicy Json?
+
   payloadSchema Json?
 
   @@unique([workerId, slug])
@@ -983,6 +987,12 @@ enum TaskTriggerSource {
   SCHEDULED
   AGENT
   WEBHOOK
+}
+
+enum TaskExecutionMode {
+  STANDARD
+  /// Locked-down policy; only runs on microVM compute.
+  SANDBOX
 }
 
 model WebhookEndpoint {

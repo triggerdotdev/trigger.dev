@@ -600,6 +600,7 @@ function TaskRow({
           {item.kind === "AGENT" && item.agentType && (
             <Badge variant="extra-small">{formatAgentType(item.agentType)}</Badge>
           )}
+          {item.isSandbox && <Badge variant="extra-small">Sandbox</Badge>}
         </div>
       </TableCell>
       <TableCell to={rowPath}>

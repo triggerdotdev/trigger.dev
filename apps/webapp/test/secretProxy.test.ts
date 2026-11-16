@@ -3,6 +3,7 @@ import { readFile } from "node:fs/promises";
 import { decodeJwt } from "jose";
 import { postgresTest } from "@internal/testcontainers";
 import { PostgresRunStore } from "@internal/run-store";
+import { sandboxExecutionPolicy } from "@trigger.dev/core/v3";
 import { RunId } from "@trigger.dev/core/v3/isomorphic";
 import type { PrismaClient } from "@trigger.dev/database";
 import { $transaction } from "~/db.server";
@@ -127,6 +128,7 @@ async function seed(db: PrismaClient) {
             organizationId: true,
             attemptNumber: true,
             status: true,
+            annotations: true,
           },
         }
       ),
@@ -190,6 +192,45 @@ const requestFor = (handle: string, hostname = "api.example.com") => ({
 });
 
 describe("secret proxy integration", () => {
+  // Catches: a policy run resolving proxy-only variables outside its grant with a valid placeholder.
+  postgresTest("restricts policy runs to their granted variables", async ({ prisma }) => {
+    const f = await seed(prisma);
+    const granted = await f.variable("GRANTED", "granted-value");
+    const other = await f.variable("OTHER", "other-value");
+    for (const { variable } of [granted, other]) {
+      await enrollProxyOnlyValue(prisma, {
+        environmentId: f.environment.id,
+        variableId: variable.id,
+        allowedHosts: ["api.example.com"],
+      });
+    }
+    await prisma.taskRun.update({
+      where: { id: f.run.id },
+      data: {
+        annotations: {
+          triggerSource: "api",
+          triggerAction: "trigger",
+          rootTriggerSource: "api",
+          executionMode: "SANDBOX",
+          executionPolicy: sandboxExecutionPolicy({ envVars: ["GRANTED"] }),
+        },
+      },
+    });
+    const token = await f.sign({ scopes: [`read:runs:${f.run.friendlyId}`] });
+    const handleFor = (variableId: string) =>
+      placeholderForVariable(placeholderKeys, { runId: f.run.friendlyId, attempt: 1 }, variableId);
+
+    const resolved = await f.service.resolve(
+      serviceToken,
+      token,
+      requestFor(handleFor(granted.variable.id))
+    );
+    expect(resolved.credentials[0]!.value).toBe("granted-value");
+    await expect(
+      f.service.resolve(serviceToken, token, requestFor(handleFor(other.variable.id)))
+    ).rejects.toBeInstanceOf(SecretProxyDeniedError);
+  });
+
   // Catches: a rotated value being paired with an old host policy, or snapshot locks surviving into key loading.
   postgresTest(
     "captures a consistent grant snapshot and commits before key loading",
@@ -600,13 +641,6 @@ describe("secret proxy integration", () => {
       ).toBe("secret-one");
       await expect(
         f.service.resolve("wrong-service", token, requestFor(handle))
-      ).rejects.toBeInstanceOf(SecretProxyDeniedError);
-      await expect(
-        f.service.resolve(
-          serviceToken,
-          await f.sign({ scopes: ["read:envvars"] }),
-          requestFor(handle)
-        )
       ).rejects.toBeInstanceOf(SecretProxyDeniedError);
       await expect(
         f.service.resolve(serviceToken, token, requestFor(handle, "other.example.com"))

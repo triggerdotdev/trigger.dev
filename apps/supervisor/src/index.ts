@@ -1150,7 +1150,8 @@ class ManagedSupervisor {
     dequeuedMessage: DequeuedMessage,
     traceparent: string | undefined
   ): Promise<boolean> {
-    if (!this.warmStartUrl) {
+    // A sandbox never reuses a process or VM another run has used.
+    if (!this.warmStartUrl || dequeuedMessage.run.annotations?.executionMode === "SANDBOX") {
       return false;
     }
 

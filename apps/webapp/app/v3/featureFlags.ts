@@ -66,6 +66,7 @@ export const FEATURE_FLAG = {
   externalOidc: "externalOidc",
   trustedDeploysEnabled: "trustedDeploysEnabled",
   sessionTraceEnabled: "sessionTraceEnabled",
+  sandboxTasks: "sandboxTasks",
 } as const;
 
 // Mirrors the core worker-queue enums; defined here because this module is imported client-side.
@@ -248,6 +249,7 @@ export const FeatureFlagCatalog = {
   [FEATURE_FLAG.secretProxy]: z.boolean(),
   // Org override wins over the global value; off by default.
   [FEATURE_FLAG.externalOidc]: z.boolean(),
+  [FEATURE_FLAG.sandboxTasks]: z.boolean(),
   [FEATURE_FLAG.trustedDeploysEnabled]: z.boolean(),
   // Shows the session page's Trace tab and serves its routes. Org override wins over the global
   // value; off by default. Admins always have it.
