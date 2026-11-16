@@ -232,6 +232,8 @@ export async function deliverAlertEvent(
     }
 
     const { claimId } = claim;
+    let channelType: ChannelInfo["type"] | undefined;
+    let channelId: string | undefined;
 
     try {
       if (delivery.notifier.type === "chat") {
@@ -259,6 +261,9 @@ export async function deliverAlertEvent(
         continue;
       }
 
+      channelType = channel.type;
+      channelId = channel.id;
+
       if (!channel.enabled) {
         await markDeliveryFailed(db, {
           id: delivery.id,
@@ -272,6 +277,14 @@ export async function deliverAlertEvent(
       const rateLimitResult = await checkRateLimit(channel.id);
       if (rateLimitResult && !rateLimitResult.allowed) {
         await releaseDelivery(db, { id: delivery.id, eventAt, claimId, refundAttempt: true });
+        logger.warn("[deliverAlertEvent] Delivery rate limited", {
+          deliveryId: delivery.id,
+          eventId,
+          alertId: alert.id,
+          channelType,
+          channelId,
+          attempts: claim.delivery.attempts,
+        });
         retryableErrors.push(new Error("rate_limited"));
         continue;
       }
@@ -326,6 +339,15 @@ export async function deliverAlertEvent(
       }
 
       await releaseDelivery(db, { id: delivery.id, eventAt, claimId });
+      logger.warn("[deliverAlertEvent] Delivery failed, will retry", {
+        deliveryId: delivery.id,
+        eventId,
+        alertId: alert.id,
+        channelType,
+        channelId,
+        attempts: claim.delivery.attempts,
+        error,
+      });
       retryableErrors.push(error);
     }
   }
