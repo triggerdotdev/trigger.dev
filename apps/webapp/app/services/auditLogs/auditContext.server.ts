@@ -8,6 +8,8 @@ import type {
 import type { HostBearerAuthResult } from "@trigger.dev/rbac";
 import { isAdditionalApiKey } from "@trigger.dev/core/v3/apiKeys";
 import { getHttpContext, type RequestAuditIdentity } from "~/services/httpAsyncStorage.server";
+import { bearerPublicJwtActor, type PublicJwtActor } from "~/services/publicJwtActor.server";
+import { publicTokenSecret } from "~/services/publicTokenSubject.server";
 import { hashApiKey } from "~/utils/apiKeys";
 import { extractClientIp } from "~/utils/extractClientIp.server";
 import { auditLogs } from "./auditLogs.server";
@@ -100,7 +102,9 @@ export function noteBearerAuthentication(request: Request, result: HostBearerAut
           resolution.jwtSigningKey?.environmentId ?? rootKeyEnvironmentId(environment),
         signingKeyLast4: resolution.jwtSigningKey?.last4 ?? null,
         hashSigningKey: resolution.jwtSigningKey?.hash,
-        actingUserId: result.jwt?.act?.sub,
+        actingUserId: verifiedActingUserId(
+          bearerPublicJwtActor(publicTokenSecret(), environment.id, result.jwt)
+        ),
       });
     }
 
@@ -135,7 +139,7 @@ export function noteLegacyApiKeyAuthentication(
         apiKey: string;
         type: "PUBLIC" | "PRIVATE" | "PUBLIC_JWT";
         environment: { id: string; parentEnvironmentId: string | null };
-        actor?: { sub: string };
+        actor?: VerifiedActor;
         jwtSigningKeyLast4?: string;
         jwtSigningKeyHash?: () => string;
       }
@@ -152,7 +156,7 @@ export function noteLegacyApiKeyAuthentication(
         signingEnvironmentId,
         signingKeyLast4: result.jwtSigningKeyLast4 ?? null,
         hashSigningKey: result.jwtSigningKeyHash,
-        actingUserId: result.actor?.sub,
+        actingUserId: verifiedActingUserId(result.actor),
       });
     }
 
@@ -302,9 +306,20 @@ function apiKeyIdentity(
   };
 }
 
+/** The parts of a public JWT's actor that audit reads. */
+type VerifiedActor = Pick<PublicJwtActor, "sub" | "verified">;
+
 /**
- * Public JWTs are attributed to the root key that signed them. Only verified claims are used: the
- * acting user comes from the signed `act` claim, set when the token was minted for a user.
+ * The acting user of a public JWT, only when the server signed it onto the token. Anyone holding
+ * the root key can sign a JWT naming any user; such a token is attributed to the key.
+ */
+function verifiedActingUserId(actor: VerifiedActor | undefined) {
+  return actor?.verified ? actor.sub : undefined;
+}
+
+/**
+ * Public JWTs are attributed to the root key that signed them. The acting user comes from the
+ * `act` claim only when the server's signature on it checks out.
  */
 function publicJwtIdentity(
   request: Request,

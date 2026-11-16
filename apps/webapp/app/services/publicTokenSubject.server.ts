@@ -6,10 +6,18 @@ import {
 } from "@trigger.dev/rbac";
 import { env } from "~/env.server";
 
+/**
+ * The secret public token claims are sealed and signed with: the subject, the source PAT and the
+ * acting user's signature each derive their own key from it.
+ */
+export function publicTokenSecret(): string {
+  return env.PUBLIC_TOKEN_SUBJECT_SECRET ?? env.ENCRYPTION_KEY;
+}
+
 let codec: PublicTokenSubjectCodec | undefined;
 
 function getCodec(): PublicTokenSubjectCodec {
-  codec ??= createPublicTokenSubjectCodec(env.PUBLIC_TOKEN_SUBJECT_SECRET ?? env.ENCRYPTION_KEY);
+  codec ??= createPublicTokenSubjectCodec(publicTokenSecret());
   return codec;
 }
 
@@ -21,9 +29,7 @@ export const publicTokenSubjects: PublicTokenSubjectCodec = {
 let sourcePersonalAccessTokenCodec: SealedIdCodec | undefined;
 
 function getSourcePersonalAccessTokenCodec(): SealedIdCodec {
-  sourcePersonalAccessTokenCodec ??= createSourcePersonalAccessTokenCodec(
-    env.PUBLIC_TOKEN_SUBJECT_SECRET ?? env.ENCRYPTION_KEY
-  );
+  sourcePersonalAccessTokenCodec ??= createSourcePersonalAccessTokenCodec(publicTokenSecret());
   return sourcePersonalAccessTokenCodec;
 }
 

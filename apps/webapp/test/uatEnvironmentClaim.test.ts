@@ -32,7 +32,12 @@ vi.mock("@internal/tracing", () => ({
   }),
 }));
 vi.mock("~/env.server", () => ({
-  env: { SESSION_SECRET, APP_ORIGIN: "https://example.com" },
+  // ENCRYPTION_KEY signs the acting user on minted env JWTs.
+  env: {
+    SESSION_SECRET,
+    ENCRYPTION_KEY: "test-public-token-secret",
+    APP_ORIGIN: "https://example.com",
+  },
 }));
 vi.mock("~/services/logger.server", () => ({
   logger: { debug: vi.fn(), error: vi.fn(), warn: vi.fn(), info: vi.fn() },

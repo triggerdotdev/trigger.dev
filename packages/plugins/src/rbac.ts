@@ -560,11 +560,17 @@ export type BearerAuthResult =
       // `act` carries the acting user (`act.sub`) when the public JWT was
       // minted from a PAT/UAT exchange that stamped a delegation claim. Hosts
       // surface it for attribution (e.g. who resolved an error). `act.pat` is
-      // the source PAT, which tokens minted for the request inherit.
+      // the source PAT, which tokens minted for the request inherit. `act.sig`
+      // signs the user together with the token's claims; it is passed through
+      // unchecked, with `act.client`, `scopes` and `expiresAt` (the token's
+      // `exp`) as minted, so the host, which holds the signing secret, can tell
+      // whether it minted this token for this user.
       jwt?: {
         realtime?: { skipColumns?: string[] };
         oneTimeUse?: boolean;
-        act?: { sub: string; pat?: string };
+        act?: { sub: string; client?: string; sig?: string; pat?: string };
+        expiresAt?: number;
+        scopes?: string[];
       };
     };
 

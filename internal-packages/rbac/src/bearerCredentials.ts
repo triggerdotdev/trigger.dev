@@ -217,9 +217,16 @@ export class BearerCredentialResolver {
       const realtime = result.payload.realtime as { skipColumns?: string[] } | undefined;
       const oneTimeUse = result.payload.otu === true;
       // A JWT minted from a PAT/UAT exchange stamps `act: { sub: userId }` for
-      // attribution. Surface it so write handlers can record the acting user.
-      const act = result.payload.act as { sub?: unknown } | undefined;
+      // attribution. Surface it so write handlers can record the acting user,
+      // with the host's signature on it for the host to check. The signature
+      // covers the token's claims too, so they're passed through as minted.
+      const act = result.payload.act as
+        | { sub?: unknown; client?: unknown; sig?: unknown }
+        | undefined;
       const actSub = typeof act?.sub === "string" ? act.sub : undefined;
+      const actClient = typeof act?.client === "string" ? act.client : undefined;
+      const actSig = typeof act?.sig === "string" ? act.sig : undefined;
+      const expiresAt = typeof result.payload.exp === "number" ? result.payload.exp : undefined;
 
       // A JWT from the PAT/UAT exchange also names its source PAT, and dies with it.
       const sourcePat = sourcePersonalAccessTokenClaim(
@@ -254,8 +261,17 @@ export class BearerCredentialResolver {
         jwt: {
           realtime,
           oneTimeUse,
+          expiresAt,
+          scopes,
           ...(actSub
-            ? { act: { sub: actSub, ...(sourcePat ? { pat: sourcePat.sealed } : {}) } }
+            ? {
+                act: {
+                  sub: actSub,
+                  ...(actClient ? { client: actClient } : {}),
+                  ...(actSig ? { sig: actSig } : {}),
+                  ...(sourcePat ? { pat: sourcePat.sealed } : {}),
+                },
+              }
             : {}),
         },
         resolution: {

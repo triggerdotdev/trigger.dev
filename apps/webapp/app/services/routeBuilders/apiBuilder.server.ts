@@ -29,6 +29,8 @@ import { getApiVersion } from "~/api/versions";
 import { WORKER_HEADERS } from "@trigger.dev/core/v3/runEngineWorker";
 import { ServiceValidationError } from "~/v3/services/common.server";
 import { EngineServiceValidationError } from "@internal/run-engine";
+import { bearerPublicJwtActor } from "~/services/publicJwtActor.server";
+import { publicTokenSecret } from "~/services/publicTokenSubject.server";
 import { unroutableIdResponse } from "./unroutableId.server";
 import { keyedWaitpointBudgetResponse } from "./keyedWaitpointBudget.server";
 import { tenantContext, tenantContextFromAuthEnvironment } from "~/services/tenantContext.server";
@@ -148,7 +150,7 @@ async function authenticateRequestForApiBuilder(
     oneTimeUse: result.jwt?.oneTimeUse,
     // Surface the delegation actor (PAT/UAT-exchanged JWT) so handlers can
     // attribute writes to the acting user.
-    actor: result.jwt?.act,
+    actor: bearerPublicJwtActor(publicTokenSecret(), result.environment.id, result.jwt),
   };
 
   return {

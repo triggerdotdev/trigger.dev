@@ -321,6 +321,119 @@ describe("run-token API authorization", () => {
     expect((await list(token)).status).toBe(403);
   });
 
+  // Catches: a root key holder naming any user on a public JWT and being treated as that user.
+  it("verifies the user on a PAT-exchanged JWT but not on a self-signed one", async () => {
+    const { environment, organization, project } = await seedDeployedEnvironment();
+    const user = await seedTestUser(database.prisma);
+    await database.prisma.orgMember.create({
+      data: { organizationId: organization.id, userId: user.id, role: "MEMBER" },
+    });
+    const pat = await seedTestPAT(database.prisma, user.id);
+    const exchange = await import("~/routes/api.v1.projects.$projectRef.$env.jwt");
+    const { createLoaderApiRoute } = await import("~/services/routeBuilders/apiBuilder.server");
+    const route = createLoaderApiRoute(
+      {
+        allowJWT: true,
+        findResource: async () => ({ type: "runs", id: "run_actor" }),
+        authorization: { action: "read", resource: (resource) => resource },
+      },
+      async ({ authentication }) => new Response(JSON.stringify({ actor: authentication.actor }))
+    );
+    const actorFor = async (bearer: string) =>
+      (
+        await (
+          await route({
+            request: new Request("https://api.example.com/actor", {
+              headers: { Authorization: `Bearer ${bearer}` },
+            }),
+            params: {},
+            context: {},
+          })
+        ).json()
+      ).actor;
+
+    const exchanged = await exchange.action({
+      request: new Request("https://api.example.com/jwt", {
+        method: "POST",
+        headers: { Authorization: `Bearer ${pat.token}`, "Content-Type": "application/json" },
+        body: JSON.stringify({ claims: { scopes: ["read:runs"] } }),
+      }),
+      params: { projectRef: project.externalRef, env: "prod" },
+      context: {},
+    });
+    expect(exchanged.status).toBe(200);
+    const selfSigned = await generateJWT({
+      secretKey: environment.apiKey,
+      payload: { pub: true, sub: environment.id, scopes: ["read:runs"], act: { sub: user.id } },
+      expirationTime: "1h",
+    });
+
+    expect(await actorFor((await exchanged.json()).token)).toEqual({
+      sub: user.id,
+      client: "personal-access-token",
+      // The sealed source PAT, which revoking the PAT checks against.
+      pat: expect.any(String),
+      verified: true,
+    });
+    // Existing readers still get the user; only `verified` tells the two apart.
+    expect(await actorFor(selfSigned)).toEqual({ sub: user.id, verified: false });
+  });
+
+  // Catches: the legacy PUBLIC_JWT path (the API rate limiter's) checking the signature against
+  // anything other than the token's own environment, expiry and scopes.
+  it("verifies a PAT-exchanged JWT's user on the legacy path only with the claims it was minted with", async () => {
+    const { environment, organization, project } = await seedDeployedEnvironment();
+    const { environment: otherEnvironment } = await seedDeployedEnvironment();
+    const user = await seedTestUser(database.prisma);
+    await database.prisma.orgMember.create({
+      data: { organizationId: organization.id, userId: user.id, role: "MEMBER" },
+    });
+    const pat = await seedTestPAT(database.prisma, user.id);
+    const exchange = await import("~/routes/api.v1.projects.$projectRef.$env.jwt");
+    const { authenticateApiKey } = await import("~/services/apiAuth.server");
+
+    const exchanged = await exchange.action({
+      request: new Request("https://api.example.com/jwt", {
+        method: "POST",
+        headers: { Authorization: `Bearer ${pat.token}`, "Content-Type": "application/json" },
+        body: JSON.stringify({ claims: { scopes: ["read:runs"] } }),
+      }),
+      params: { projectRef: project.externalRef, env: "prod" },
+      context: {},
+    });
+    expect(exchanged.status).toBe(200);
+    const { token } = (await exchanged.json()) as { token: string };
+    const { act, exp } = decodeJwt(token) as { act: Record<string, unknown>; exp: number };
+    // The minted `act`, signature included, on a token with other claims. Only a root key holder
+    // can sign one of these, as here.
+    const resigned = (
+      target: { id: string; apiKey: string },
+      claims: { scopes: string[]; exp: number }
+    ) =>
+      generateJWT({
+        secretKey: target.apiKey,
+        payload: { pub: true, sub: target.id, scopes: claims.scopes, act },
+        expirationTime: claims.exp,
+      });
+    const actorFor = async (bearer: string) =>
+      (await authenticateApiKey(bearer, { allowJWT: true, clientIp: null }))?.actor;
+
+    expect(await actorFor(token)).toMatchObject({ sub: user.id, verified: true });
+    // Control: the minted claims, re-signed unchanged, still verify.
+    expect(
+      await actorFor(await resigned(environment, { scopes: ["read:runs"], exp }))
+    ).toMatchObject({ sub: user.id, verified: true });
+    expect(
+      await actorFor(await resigned(environment, { scopes: ["read:runs", "write:all"], exp }))
+    ).toMatchObject({ sub: user.id, verified: false });
+    expect(
+      await actorFor(await resigned(otherEnvironment, { scopes: ["read:runs"], exp }))
+    ).toMatchObject({ sub: user.id, verified: false });
+    expect(
+      await actorFor(await resigned(environment, { scopes: ["read:runs"], exp: exp + 60 }))
+    ).toMatchObject({ sub: user.id, verified: false });
+  });
+
   it("retains restricted additional-key query and dashboard behavior without widening run tokens", async () => {
     const { environment } = await seedDeployedEnvironment();
     const user = await seedTestUser(database.prisma);

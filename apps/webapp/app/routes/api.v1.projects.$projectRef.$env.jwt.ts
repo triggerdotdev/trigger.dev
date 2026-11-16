@@ -23,12 +23,14 @@ import {
 import { validateJwtExpiration } from "~/services/jwtExpiration.server";
 import { logger } from "~/services/logger.server";
 import { authorizePatEnvironmentAccess } from "~/services/environmentVariableApiAccess.server";
+import { signPublicJwtActor } from "~/services/publicJwtActor.server";
 import {
   isDashboardAgentUserActor,
   readScopeType,
   userActorReadableScopes,
 } from "~/services/userActorEnvironment.server";
 import {
+  publicTokenSecret,
   publicTokenSubject,
   sourcePersonalAccessTokens,
 } from "~/services/publicTokenSubject.server";
@@ -206,22 +208,6 @@ export async function action({ request, params }: ActionFunctionArgs) {
         ? authenticationResult.result.tokenId
         : undefined;
 
-    const claims = {
-      sub: publicTokenSubject(runtimeEnv.id),
-      pub: true,
-      ...(scopes ? { scopes } : {}),
-      ...(actorUserId
-        ? {
-            act: {
-              sub: actorUserId,
-              client: userActor?.client ?? "personal-access-token",
-              // Sealed, so the PAT's id never appears in the token.
-              ...(sourcePatId ? { pat: sourcePersonalAccessTokens.encode(sourcePatId) } : {}),
-            },
-          }
-        : {}),
-    };
-
     const nowSec = Math.floor(Date.now() / 1000);
     const expiry = validateJwtExpiration(parsedBody.data.expirationTime, nowSec);
     if (expiry.error !== undefined) {
@@ -239,6 +225,35 @@ export async function action({ request, params }: ActionFunctionArgs) {
       sourceExpiresAt !== undefined
         ? Math.min(expiry.expirationTime, sourceExpiresAt)
         : expiry.expirationTime;
+
+    const act = actorUserId
+      ? {
+          sub: actorUserId,
+          client: userActor?.client ?? "personal-access-token",
+          // Sealed, so the PAT's id never appears in the token.
+          ...(sourcePatId ? { pat: sourcePersonalAccessTokens.encode(sourcePatId) } : {}),
+        }
+      : undefined;
+
+    const claims = {
+      sub: publicTokenSubject(runtimeEnv.id),
+      pub: true,
+      ...(scopes ? { scopes } : {}),
+      ...(act
+        ? {
+            act: {
+              ...act,
+              // Proves the server minted this token for this user: it covers the user and every
+              // claim the server reads, and the root key can't make it.
+              sig: signPublicJwtActor(publicTokenSecret(), act, {
+                environmentId: runtimeEnv.id,
+                expiresAt: expirationTime,
+                scopes,
+              }),
+            },
+          }
+        : {}),
+    };
 
     const jwt = await internal_generateJWT({
       secretKey: runtimeEnv.apiKey,

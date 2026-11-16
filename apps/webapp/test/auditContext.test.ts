@@ -15,6 +15,8 @@ import {
 } from "~/services/auditLogs/auditContext.server";
 import { authenticateBearerWithTelemetry } from "~/services/authTelemetry.server";
 import { runWithHttpContext } from "~/services/httpAsyncStorage.server";
+import { signPublicJwtActor } from "~/services/publicJwtActor.server";
+import { publicTokenSecret } from "~/services/publicTokenSubject.server";
 import { generateAdditionalApiKey } from "~/utils/apiKeys";
 import {
   createRuntimeEnvironment,
@@ -214,9 +216,29 @@ describe("request audit context from bearer authentication", () => {
         secretKey: apiKey,
         payload: { pub: true, sub: environment.id, scopes: ["read:runs"] },
       });
+      // As the exchange route mints it: the server signs the user onto the token.
+      const expiresAt = Math.floor(Date.now() / 1000) + 60 * 60;
+      // The same secret the verifier reads, so the two can't diverge.
+      const sig = signPublicJwtActor(
+        publicTokenSecret(),
+        { sub: user.id },
+        { environmentId: environment.id, expiresAt, scopes: ["read:runs"] }
+      );
       const delegatedToken = await generateJWT({
         secretKey: apiKey,
+        payload: {
+          pub: true,
+          sub: environment.id,
+          scopes: ["read:runs"],
+          act: { sub: user.id, sig },
+        },
+        expirationTime: expiresAt,
+      });
+      // Catches: a user written into a JWT signed with the root key alone becoming the actor.
+      const forgedToken = await generateJWT({
+        secretKey: apiKey,
         payload: { pub: true, sub: environment.id, scopes: ["read:runs"], act: { sub: user.id } },
+        expirationTime: expiresAt,
       });
 
       const plain = await inRequest(() =>
@@ -234,6 +256,14 @@ describe("request audit context from bearer authentication", () => {
         )
       );
 
+      const forged = await inRequest(() =>
+        authenticateBearerWithTelemetry(
+          apiRequest(forgedToken),
+          { allowJWT: true },
+          controllerFor(prisma)
+        )
+      );
+
       const signedByRootKey = {
         kind: "public_jwt",
         id: environment.id,
@@ -244,6 +274,8 @@ describe("request audit context from bearer authentication", () => {
       expect(plain.credential).toEqual(signedByRootKey);
       expect(delegated.actor).toEqual({ type: "user", id: user.id });
       expect(delegated.credential).toEqual(signedByRootKey);
+      expect(forged.actor).toEqual({ type: "api_key", id: environment.id });
+      expect(forged.credential).toEqual(signedByRootKey);
     }
   );
 
@@ -429,6 +461,24 @@ describe("request audit context from other auth functions", () => {
       last4: "wxyz",
       fingerprintId: null,
     });
+  });
+
+  // Catches: the legacy path trusting a user that only the root key's holder wrote into the JWT.
+  it("takes a legacy public JWT's acting user only when the server signed it", async () => {
+    const environment = { id: "env_1", parentEnvironmentId: null };
+    const noteJwt = (verified: boolean) =>
+      inRequest(async () =>
+        noteLegacyApiKeyAuthentication(apiRequest("eyJ.jwt.value"), {
+          ok: true,
+          apiKey: "eyJ.jwt.value",
+          type: "PUBLIC_JWT",
+          environment,
+          actor: { sub: "user_1", verified },
+        })
+      );
+
+    expect((await noteJwt(true)).actor).toEqual({ type: "user", id: "user_1" });
+    expect((await noteJwt(false)).actor).toEqual({ type: "api_key", id: "env_1" });
   });
 
   /** Catches: the run id repeated outside the actor, as the credential id or as our infra acting. */

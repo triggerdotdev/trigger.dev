@@ -18,6 +18,8 @@ vi.mock("~/db.server", () => webappRouteMocks.dbServerProxyMock(ctx));
 vi.mock("~/env.server", () => ({
   env: {
     SESSION_SECRET: "test-session-secret-for-org-scoped-dev-binding",
+    // Signs the acting user on minted env JWTs.
+    ENCRYPTION_KEY: "test-public-token-secret",
     APP_ORIGIN: "https://example.com",
   },
 }));

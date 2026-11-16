@@ -38,6 +38,8 @@ import {
 import { isPublicJWT, validatePublicJwtKey } from "./realtime/jwtAuth.server";
 import { clientIpFromHeaders } from "@trigger.dev/rbac";
 import { isApiKeyInGraceWindow } from "./apiKeyGraceWindow.server";
+import { publicJwtActor, type PublicJwtActor } from "./publicJwtActor.server";
+import { publicTokenSecret } from "./publicTokenSubject.server";
 import { isAdditionalApiKey } from "@trigger.dev/core/v3/apiKeys";
 import { isDefaultDevBranch, sanitizeBranchName } from "@trigger.dev/core/v3/utils/gitBranch";
 import {
@@ -66,8 +68,10 @@ const ClaimsSchema = z.object({
       sub: z.string(),
       client: z.string().optional(),
       pat: z.string().optional(),
+      sig: z.string().optional(),
     })
     .optional(),
+  exp: z.number().optional(),
 });
 
 // Re-export the slim shape defined in @trigger.dev/core. Single source of
@@ -98,13 +102,11 @@ export type ApiAuthenticationResultSuccess = {
   // Present when the request used a public JWT minted from a PAT/UAT exchange
   // that stamped an `act` delegation claim. `actor.sub` is the acting user id,
   // used for attribution (e.g. who resolved an error). Absent for plain env
-  // API keys (no user) and JWTs minted without delegation. `actor.pat` is the
-  // source PAT, which tokens minted for the request inherit.
-  actor?: {
-    sub: string;
-    client?: string;
-    pat?: string;
-  };
+  // API keys (no user) and JWTs minted without delegation. `actor.verified` is
+  // true only when the server signed the user onto the token; a JWT signed with
+  // the root key alone can name any user. `actor.pat` is the source PAT, which
+  // tokens minted for the request inherit.
+  actor?: PublicJwtActor;
   // The root key that verified a public JWT, for audit attribution: its last 4 characters and its
   // SHA-256 hex, computed on demand. Never the key itself.
   jwtSigningKeyLast4?: string;
@@ -251,7 +253,15 @@ export async function authenticateApiKey(
         environment: validationResults.environment,
         oneTimeUse: parsedClaims.success ? parsedClaims.data.otu : false,
         realtime: parsedClaims.success ? parsedClaims.data.realtime : undefined,
-        actor: parsedClaims.success ? parsedClaims.data.act : undefined,
+        actor: parsedClaims.success
+          ? publicJwtActor(publicTokenSecret(), parsedClaims.data.act, {
+              environmentId: validationResults.environment.id,
+              expiresAt: parsedClaims.data.exp,
+              scopes: parsedClaims.data.scopes,
+              oneTimeUse: parsedClaims.data.otu,
+              realtime: parsedClaims.data.realtime,
+            })
+          : undefined,
         jwtSigningKeyLast4: validationResults.signingKeyLast4,
         jwtSigningKeyHash: validationResults.signingKeyHash,
       };
@@ -347,7 +357,15 @@ async function authenticateApiKeyWithFailure(
         environment: validationResults.environment,
         oneTimeUse: parsedClaims.success ? parsedClaims.data.otu : false,
         realtime: parsedClaims.success ? parsedClaims.data.realtime : undefined,
-        actor: parsedClaims.success ? parsedClaims.data.act : undefined,
+        actor: parsedClaims.success
+          ? publicJwtActor(publicTokenSecret(), parsedClaims.data.act, {
+              environmentId: validationResults.environment.id,
+              expiresAt: parsedClaims.data.exp,
+              scopes: parsedClaims.data.scopes,
+              oneTimeUse: parsedClaims.data.otu,
+              realtime: parsedClaims.data.realtime,
+            })
+          : undefined,
         jwtSigningKeyLast4: validationResults.signingKeyLast4,
         jwtSigningKeyHash: validationResults.signingKeyHash,
       };
