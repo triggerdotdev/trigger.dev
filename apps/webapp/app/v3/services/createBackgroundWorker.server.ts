@@ -60,8 +60,7 @@ import { normalizeScheduleWindow } from "../scheduleWindow.server";
 import { resolveNewScheduleDefaultWindowSeconds } from "../scheduleDefaultWindow.server";
 import {
   assertCronMeetsFreeMinimum,
-  minimumWindowForNewSchedule,
-  resolveFreeSchedulePolicyContext,
+  resolvePlanState,
   resolveMinimumWindowOnUpdate,
 } from "../freeSchedulePolicy.server";
 import { calculateNextBuildVersion } from "../utils/calculateNextBuildVersion";
@@ -69,7 +68,6 @@ import { clampMaxDuration } from "../utils/maxDuration";
 import { BaseService, ServiceValidationError } from "./baseService.server";
 import { CheckScheduleService } from "./checkSchedule.server";
 import { CronPattern } from "../schedules";
-import { explicitWindowBelowMinimum } from "../explicitWindowBelowMinimum";
 import { projectPubSub } from "./projectPubSub.server";
 
 import { assertNoDuplicateTaskIds } from "./duplicateTaskIds.server";
@@ -1380,63 +1378,21 @@ function scheduleWindowsEqual(
 function newDeclarativeSchedulePolicyWarning({
   taskId,
   explicitWindow,
-  cron,
-  timezone,
   defaultWindowDurationSeconds,
-  minimumWindowDurationSeconds,
 }: {
   taskId: string;
   explicitWindow: string | undefined;
-  cron: string;
-  timezone?: string | null;
   defaultWindowDurationSeconds: number | null;
-  minimumWindowDurationSeconds: number | null;
 }): BackgroundWorkerWarning | undefined {
   const defaultMinutes =
     defaultWindowDurationSeconds !== null
       ? Math.round(defaultWindowDurationSeconds / 60)
       : undefined;
-  const minimumMinutes =
-    minimumWindowDurationSeconds !== null
-      ? Math.round(minimumWindowDurationSeconds / 60)
-      : undefined;
-  const prefix = `Task \`${taskId}\``;
 
-  if (!explicitWindow) {
-    if (defaultMinutes && minimumMinutes) {
-      return {
-        code: "schedule_default_window",
-        message: `${prefix} got the ${defaultMinutes}-minute default cron window.`,
-      };
-    }
-    if (defaultMinutes) {
-      return {
-        code: "schedule_default_window",
-        message: `${prefix} got the ${defaultMinutes}-minute default cron window.`,
-      };
-    }
-    if (minimumMinutes) {
-      return {
-        code: "schedule_minimum_window",
-        message: `${prefix} got the minimum Free plan cron window of ${minimumMinutes} minutes.`,
-      };
-    }
-    return undefined;
-  }
-
-  if (
-    minimumMinutes &&
-    minimumWindowDurationSeconds !== null &&
-    explicitWindowBelowMinimum({
-      explicitWindow,
-      cron,
-      timezone,
-      minimumWindowDurationSeconds,
-    })
-  ) {
+  if (!explicitWindow && defaultMinutes) {
     return {
-      code: "schedule_minimum_window",
-      message: `${prefix} uses the Free plan ${minimumMinutes}-minute minimum window.`,
+      code: "schedule_default_window",
+      message: `Task \`${taskId}\` got the ${defaultMinutes}-minute default cron window.`,
     };
   }
 
@@ -1498,17 +1454,12 @@ async function prepareDeclarativeSchedules(
     return existing && existing.minimumWindowDurationSeconds !== null;
   });
 
-  // Restricted rows still check paid status with rollout off.
   const defaultWindowDurationSeconds = hasNewSchedules
     ? await resolveNewScheduleDefaultWindowSeconds(prisma, environment.organizationId)
     : null;
-  const policy =
-    hasNewSchedules || hasRestrictedSchedules
-      ? await resolveFreeSchedulePolicyContext(prisma, {
-          id: environment.organizationId,
-          featureFlags: environment.organization.featureFlags,
-        })
-      : undefined;
+  const planState = hasRestrictedSchedules
+    ? await resolvePlanState(environment.organizationId)
+    : "unknown";
 
   const preparedTasks = [];
   const warnings: BackgroundWorkerWarning[] = [];
@@ -1518,9 +1469,9 @@ async function prepareDeclarativeSchedules(
     const minimumWindowDurationSeconds = existingSchedule
       ? existingSchedule.minimumWindowDurationSeconds === null
         ? null
-        : resolveMinimumWindowOnUpdate(policy!, existingSchedule.minimumWindowDurationSeconds)
+        : resolveMinimumWindowOnUpdate(planState, existingSchedule.minimumWindowDurationSeconds)
             .minimumWindowDurationSeconds
-      : minimumWindowForNewSchedule(policy!, "DECLARATIVE");
+      : null;
 
     if (minimumWindowDurationSeconds !== null) {
       const cron = CronPattern.safeParse(task.schedule.cron);
@@ -1542,10 +1493,7 @@ async function prepareDeclarativeSchedules(
       const warning = newDeclarativeSchedulePolicyWarning({
         taskId: task.id,
         explicitWindow: task.schedule.window,
-        cron: task.schedule.cron,
-        timezone: task.schedule.timezone,
         defaultWindowDurationSeconds,
-        minimumWindowDurationSeconds,
       });
       if (warning) {
         warnings.push(warning);

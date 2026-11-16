@@ -4,7 +4,6 @@ import type { BackgroundWorkerMetadata } from "@trigger.dev/core/v3";
 import type { PrismaClient } from "@trigger.dev/database";
 import { describe, expect, vi } from "vitest";
 import type { AuthenticatedEnvironment } from "~/services/apiAuth.server";
-import { FEATURE_FLAG } from "~/v3/featureFlags";
 import {
   CreateBackgroundWorkerService,
   createWorkerResources,
@@ -104,20 +103,10 @@ function countingPrisma(prisma: PrismaClient) {
   return { client: client as unknown as PrismaClient, counts };
 }
 
-// syncDeclarativeSchedules reads environment.organizationId AND
-// environment.organization.featureFlags (the free-plan policy resolves the rollout flag from
-// the pre-loaded org). Attach a minimal organization so the fake env matches the real shape,
-// and explicitly disable the unrelated policy unless a test opts into it. A valid org override
-// also keeps these testcontainer calls from falling through to the app singleton's database.
-const asEnv = (
-  env: { id: string; projectId: string; type: string; organizationId?: string },
-  organizationFeatureFlags: unknown = {
-    [FEATURE_FLAG.freeScheduleMinimumWindowEnabled]: false,
-  }
-) =>
+const asEnv = (env: { id: string; projectId: string; type: string; organizationId?: string }) =>
   ({
     ...env,
-    organization: { id: env.organizationId, featureFlags: organizationFeatureFlags },
+    organization: { id: env.organizationId, featureFlags: {} },
   }) as unknown as AuthenticatedEnvironment;
 
 function declarativeTasks(schedule: { cron: string; timezone: string; window?: string }): TasksArg {
