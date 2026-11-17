@@ -1,4 +1,5 @@
 import {
+  hasPinnedExecutionPolicy,
   resolvePolicyScopes,
   RunExecutionPolicy,
   type RunExecutionPolicy as Policy,
@@ -18,9 +19,7 @@ export type PinnedRunPolicy = { policy: Policy; sessionId?: string };
  * sandbox with an unreadable policy throws, so it can never start with standard access.
  */
 export function pinnedRunPolicy(annotations: unknown): PinnedRunPolicy | undefined {
-  if (typeof annotations !== "object" || annotations === null) return undefined;
-  const record = annotations as Record<string, unknown>;
-  if (record.executionPolicy === undefined && record.executionMode !== "SANDBOX") return undefined;
+  if (!hasPinnedExecutionPolicy(annotations)) return undefined;
   const parsed = PinnedPolicy.parse(annotations);
   if (!parsed.executionPolicy) throw new Error("Sandbox run has no execution policy");
   return { policy: parsed.executionPolicy, sessionId: parsed.sessionId };

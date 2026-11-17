@@ -70,6 +70,16 @@ export function envVarGranted(grant: EnvVarGrant, key: string): boolean {
   return grant === "all" || grant.includes(key);
 }
 
+/**
+ * True when stored run annotations pin an execution policy (or mark a sandbox run, which must have
+ * one). Such a run never reuses a process or VM, including for its own retries.
+ */
+export function hasPinnedExecutionPolicy(annotations: unknown): boolean {
+  if (typeof annotations !== "object" || annotations === null) return false;
+  const record = annotations as Record<string, unknown>;
+  return record.executionPolicy !== undefined || record.executionMode === "SANDBOX";
+}
+
 /** True when stored run annotations mark a run that must never leave microVM compute. */
 export function isSandboxRun(annotations: unknown): boolean {
   return (

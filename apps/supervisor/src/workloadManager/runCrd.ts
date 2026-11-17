@@ -16,6 +16,7 @@ import type {
 } from "@trigger.dev/core/v3";
 import {
   formatComputeCheckpointLocation,
+  isSandboxRun,
   parseComputeCheckpointLocation,
 } from "@trigger.dev/core/v3";
 import { type K8sApi, createK8sApi, withTimeout } from "../clients/kubernetes.js";
@@ -1774,6 +1775,7 @@ export function runnerBodyFor(
       // later serves.
       ...(isScheduledRun(opts) ? { isScheduledRun: true } : {}),
       ...(opts.hasPrivateLink ? { hasPrivateLink: true } : {}),
+      ...(isSandboxRun(opts.annotations) ? { singleUse: true } : {}),
       ...(meta.restore ? { restore: meta.restore } : {}),
     },
   };

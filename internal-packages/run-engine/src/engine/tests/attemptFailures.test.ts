@@ -1,5 +1,6 @@
 import { assertNonNullable, containerTest } from "@internal/testcontainers";
 import { trace } from "@internal/tracing";
+import { sandboxExecutionPolicy } from "@trigger.dev/core/v3";
 import { setTimeout } from "node:timers/promises";
 import { expect } from "vitest";
 import { RunEngine } from "../index.js";
@@ -157,6 +158,121 @@ describe("RunEngine attempt failures", () => {
       await engine.quit();
     }
   });
+
+  // Catches: short policy-run retries warm starting into a rejected attempt instead of requeuing.
+  containerTest.for(["SANDBOX", "STANDARD"] as const)(
+    "Pinned-policy retries cold start with execution mode %s",
+    async (executionMode, { prisma, redisOptions }) => {
+      const authenticatedEnvironment = await setupAuthenticatedEnvironment(prisma, "PRODUCTION");
+      const retryDelayMs = 100;
+      const engine = new RunEngine({
+        prisma,
+        worker: {
+          redis: redisOptions,
+          workers: 1,
+          tasksPerWorker: 10,
+          pollIntervalMs: 100,
+        },
+        queue: {
+          redis: redisOptions,
+          masterQueueConsumersDisabled: true,
+          processWorkerQueueDebounceMs: 50,
+        },
+        runLock: { redis: redisOptions },
+        machines: {
+          defaultMachine: "small-1x",
+          machines: {
+            "small-1x": {
+              name: "small-1x" as const,
+              cpu: 0.5,
+              memory: 0.5,
+              centsPerMs: 0.0001,
+            },
+          },
+          baseCostInCents: 0.0001,
+        },
+        retryWarmStartThresholdMs: 30_000,
+        tracer: trace.getTracer("test", "0.0.0"),
+      });
+
+      try {
+        const taskIdentifier = "test-task";
+        await setupBackgroundWorker(engine, authenticatedEnvironment, taskIdentifier);
+        const run = await engine.trigger(
+          {
+            number: 1,
+            friendlyId: "run_1234",
+            environment: authenticatedEnvironment,
+            taskIdentifier,
+            payload: "{}",
+            payloadType: "application/json",
+            context: {},
+            traceContext: {},
+            traceId: "t12345",
+            spanId: "s12345",
+            workerQueue: "main",
+            queue: "task/test-task",
+            isTest: false,
+            tags: [],
+            annotations: {
+              triggerSource: "sdk",
+              triggerAction: "trigger",
+              rootTriggerSource: "sdk",
+              executionMode,
+              executionPolicy: sandboxExecutionPolicy({}),
+            },
+          },
+          prisma
+        );
+
+        await setTimeout(500);
+        const dequeued = await engine.dequeueFromWorkerQueue({
+          consumerId: "test_12345",
+          workerQueue: "main",
+        });
+        expect(dequeued).toHaveLength(1);
+        const attempt = await engine.startRunAttempt({
+          runId: run.id,
+          snapshotId: dequeued[0].snapshot.id,
+        });
+        const result = await engine.completeRunAttempt({
+          runId: run.id,
+          snapshotId: attempt.snapshot.id,
+          completion: {
+            ok: false,
+            id: run.id,
+            error: {
+              type: "BUILT_IN_ERROR",
+              name: "Error",
+              message: "Retry me",
+              stackTrace: "Error: Retry me",
+            },
+            retry: { timestamp: Date.now() + retryDelayMs, delay: retryDelayMs },
+          },
+        });
+        expect(result.attemptStatus).toBe("RETRY_QUEUED");
+        expect(result.snapshot.executionStatus).toBe("QUEUED");
+        expect(result.run.status).toBe("PENDING");
+
+        await setTimeout(500);
+        await engine.runQueue.processMasterQueueForEnvironment(authenticatedEnvironment.id);
+        const retried = await engine.dequeueFromWorkerQueue({
+          consumerId: "test_12345",
+          workerQueue: "main",
+        });
+        expect(retried).toHaveLength(1);
+        expect(retried[0].run.id).toBe(run.id);
+        const nextAttempt = await engine.startRunAttempt({
+          runId: run.id,
+          snapshotId: retried[0].snapshot.id,
+          isWarmStart: false,
+        });
+        expect(nextAttempt.run.attemptNumber).toBe(2);
+      } finally {
+        await engine.quit();
+      }
+    }
+  );
 
   containerTest("Fail (no more retries)", async ({ prisma, redisOptions }) => {
     //create environment
