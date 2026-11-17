@@ -29,3 +29,48 @@ button ~ .absolute.peer-hover\:opacity-100 {
   --shiki-token-punctuation: #878c99;
   --shiki-token-link: #826dff;
 }
+
+/* Setup prompt on the quick start and introduction pages */
+.setup-prompt {
+  border: 1.5px solid #a8ff53;
+  border-radius: 16px;
+  padding: 14px 16px;
+  margin: 1.25rem 0;
+}
+
+.setup-prompt .setup-prompt-label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0;
+  font-size: 0.8rem;
+  font-weight: 500;
+  color: #a8ff53;
+}
+
+.setup-prompt .code-block {
+  margin-top: 10px;
+  margin-bottom: 0;
+}
+
+/* Wrap the prompt on narrow screens. The floated spacer keeps the first line
+   clear of the copy and Ask Assistant buttons; later lines use the full width. */
+.setup-prompt .code-block .whitespace-pre,
+.setup-prompt pre,
+.setup-prompt code {
+  white-space: pre-wrap !important;
+}
+
+.setup-prompt code {
+  --code-padding-right: 0px !important;
+  width: auto !important;
+  min-width: 0 !important;
+  overflow-wrap: anywhere;
+}
+
+.setup-prompt code::before {
+  content: "";
+  float: right;
+  width: 64px;
+  height: 20px;
+}
