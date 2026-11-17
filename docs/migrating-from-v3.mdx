@@ -30,7 +30,7 @@ Trigger.dev v3 is end of life. v4 is stable, fully supported, and recommended fo
 | [onComplete](/tasks/overview#oncomplete-function)                    | Run code when a run completes, regardless of whether it succeeded or failed.                                                                                                                               |
 | [onCancel](/tasks/overview#oncancel-function)                        | Run code when a run is cancelled.                                                                                                                                                                          |
 | [Hidden tasks](/hidden-tasks)                                        | Create tasks that are not exported from your trigger files but can still be executed.                                                                                                                      |
-| [Middleware & locals](#middleware-and-locals)                        | The middleware system runs at the top level, executing before and after all lifecycle hooks. The locals API allows sharing data between middleware and hooks.                                              |
+| [Middleware & locals](/tasks/overview#middleware-and-locals-functions) | The middleware system runs at the top level, executing before and after all lifecycle hooks. The locals API allows sharing data between middleware and hooks.                                              |
 | [useWaitToken](/realtime/react-hooks/use-wait-token)                 | Use the useWaitToken hook to complete a wait token from a React component.                                                                                                                                 |
 | [Task-backed AI tools](/tasks/schemaTask#task-backed-ai-tools)       | Use `schemaTask` with AI SDK `tool()` and `ai.toolExecute()` (legacy `ai.tool` is deprecated).                                                                                                              |
 
@@ -260,7 +260,7 @@ import { task } from "@trigger.dev/sdk";
 
 export const myTask = task({
   id: "my-task",
-  onStart: ({ payload, ctx }) => {},
+  onStartAttempt: ({ payload, ctx }) => {},
   // The run function still uses separate parameters
   run: async (payload, { ctx }) => {},
 });
@@ -273,7 +273,7 @@ import { task } from "@trigger.dev/sdk";
 
 export const myTask = task({
   id: "my-task",
-  onStart: ({ payload, ctx, task }) => {},
+  onStartAttempt: ({ payload, ctx, task }) => {},
   onSuccess: ({ payload, ctx, task, output }) => {},
   onFailure: ({ payload, ctx, task, error }) => {},
   onWait: ({ payload, ctx, task, wait }) => {},
@@ -326,7 +326,7 @@ We are now using newer versions of the OpenTelemetry packages. This means that i
 
 | Package                                   | Previous Version | New Version | Change Type  |
 | ----------------------------------------- | ---------------- | ----------- | ------------ |
-| `@opentelemetry/api-logs`                 | 0.52.1           | 0.203.0     | Major update |
-| `@opentelemetry/exporter-logs-otlp-http`  | 0.52.1           | 0.203.0     | Major update |
-| `@opentelemetry/exporter-trace-otlp-http` | 0.52.1           | 0.203.0     | Major update |
-| `@opentelemetry/instrumentation`          | 0.52.1           | 0.203.0     | Major update |
+| `@opentelemetry/api-logs`                 | 0.52.1           | 0.219.0     | Major update |
+| `@opentelemetry/exporter-logs-otlp-http`  | 0.52.1           | 0.219.0     | Major update |
+| `@opentelemetry/exporter-trace-otlp-http` | 0.52.1           | 0.219.0     | Major update |
+| `@opentelemetry/instrumentation`          | 0.52.1           | 0.219.0     | Major update |

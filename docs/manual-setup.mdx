@@ -146,7 +146,7 @@ export default defineConfig({
 
   // Retry configuration
   retries: {
-    enabledInDev: false, // Enable retries in development
+    enabledInDev: true, // Enable retries in development
     default: {
       maxAttempts: 3,
       minTimeoutInMs: 1000,
@@ -175,7 +175,8 @@ import { defineConfig } from "@trigger.dev/sdk";
 
 export default defineConfig({
   project: "<your-project-ref>",
-  runtime: "bun",
+  maxDuration: 3600,
+  runtime: "bun-1.4",
   dirs: ["./src/trigger"],
 });
 ```
@@ -261,7 +262,7 @@ import { auth } from "@trigger.dev/sdk";
 // In your backend API
 export async function getPublicAccessToken() {
   const publicAccessToken = await auth.createPublicToken({
-    scopes: ["read:runs"], // Customize based on needs
+    scopes: { read: { runs: true } }, // Customize based on needs
   });
 
   return publicAccessToken;
@@ -290,7 +291,7 @@ export function TaskStatus({
   return (
     <div>
       <p>Status: {run.status}</p>
-      <p>Progress: {run.completedAt ? "Complete" : "Running..."}</p>
+      <p>Progress: {run.isCompleted ? "Complete" : "Running..."}</p>
     </div>
   );
 }
@@ -310,6 +311,7 @@ import { prismaExtension } from "@trigger.dev/build/extensions/prisma";
 
 export default defineConfig({
   project: "<project-ref>",
+  maxDuration: 3600,
   build: {
     extensions: [
       prismaExtension({

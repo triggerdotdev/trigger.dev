@@ -428,7 +428,7 @@ You can also define a global `onComplete` function using `tasks.onComplete()`.
 ```ts init.ts
 import { tasks } from "@trigger.dev/sdk";
 
-tasks.onComplete(({ ctx, payload, output }) => {
+tasks.onComplete(({ ctx, payload, result }) => {
   console.log("Task completed", ctx.task.id);
 });
 ```
