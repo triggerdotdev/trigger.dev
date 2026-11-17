@@ -74,7 +74,7 @@ export const action = dashboardAction(routeOptions, async ({ params, request }) 
         ? freeCardDonePath(organization, returnTo)
         : newProjectPath(
             organization,
-            "You're on the Free plan. Verify your card any time to deploy to the cloud."
+            "You're on the Free plan. Verify your card any time to unlock free credits."
           )
     );
   }
