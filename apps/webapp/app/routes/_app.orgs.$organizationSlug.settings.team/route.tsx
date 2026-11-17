@@ -41,13 +41,13 @@ import { $replica, prisma } from "~/db.server";
 import { useShowSelfServe } from "~/hooks/useShowSelfServe";
 import { useOrganization } from "~/hooks/useOrganizations";
 import { useUser } from "~/hooks/useUser";
+import { setOrgMemberRole } from "~/models/orgMember.server";
 import { removeTeamMember } from "~/models/removeTeamMember.server";
 import { redirectWithSuccessMessage } from "~/models/message.server";
 import { resolveOrgIdFromSlugForUser } from "~/models/organization.server";
 import { getUserId } from "~/services/session.server";
 import { TeamPresenter } from "~/presenters/TeamPresenter.server";
 import { getCurrentPlan, getSelfServePurchaseBlockReason } from "~/services/platform.v3.server";
-import { rbac } from "~/services/rbac.server";
 import { ssoController } from "~/services/sso.server";
 import { dashboardAction, dashboardLoader } from "~/services/routeBuilders/dashboardBuilder";
 import { cn } from "~/utils/cn";
@@ -172,7 +172,17 @@ export const action = dashboardAction(
       if (submission.status !== "success") {
         return json(submission.reply());
       }
-      const result = await rbac.setUserRole({
+      // The RBAC plugin would assign a role to any user id, member or not.
+      const targetMember = await prisma.orgMember.findFirst({
+        where: { userId: submission.value.userId, organizationId: orgId },
+        select: { id: true },
+      });
+      if (!targetMember) {
+        return json({ ok: false, error: "Not a member of this organization" } as const, {
+          status: 400,
+        });
+      }
+      const result = await setOrgMemberRole({
         userId: submission.value.userId,
         organizationId: orgId,
         roleId: submission.value.roleId,

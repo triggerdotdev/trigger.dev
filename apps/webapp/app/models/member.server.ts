@@ -4,6 +4,7 @@ import type {
   PrismaClientOrTransaction,
   Project,
 } from "@trigger.dev/database";
+import { tryCatch } from "@trigger.dev/core/utils";
 import { z } from "zod";
 import { Prisma as PrismaNamespace, type Prisma, prisma } from "~/db.server";
 import {
@@ -12,11 +13,18 @@ import {
 } from "./organization.server";
 import { customAlphabet } from "nanoid";
 import { isOrganizationJoinAllowed } from "~/services/accessPolicy.server";
+import { auditLogs } from "~/services/auditLogs/auditLogs.server";
 import { userActor } from "~/services/credentialFingerprints.server";
 import { logger } from "~/services/logger.server";
 import { getDefaultEnvironmentConcurrencyLimit } from "~/services/platform.v3.server";
 import { rbac } from "~/services/rbac.server";
 import { ssoController } from "~/services/sso.server";
+import {
+  auditRoleName,
+  inviteAuditTarget,
+  memberAuditTarget,
+  recordMemberAuditEventInBackground,
+} from "./memberAudit.server";
 
 import { boundedIn } from "@trigger.dev/database";
 export const INVITE_NOT_FOUND = "Invite not found";
@@ -177,6 +185,8 @@ export async function inviteMembers({
   // (unique org+email) — skip it so one duplicate can't fail the batch, and
   // don't return it: callers email exactly what they created, and re-sending an
   // already-pending invite is the dedicated resend flow's job (its own cooldown).
+  // Looked up once, by the first event that needs it, after the invites are returned.
+  let invitedRoleName: Promise<string | null> | undefined;
   const created: Prisma.OrgMemberInviteGetPayload<{
     include: { organization: true; inviter: true };
   }>[] = [];
@@ -216,6 +226,29 @@ export async function inviteMembers({
         },
       });
       created.push(invite);
+      const invitedRoleId = invite.rbacRoleId;
+      if (invitedRoleId) {
+        recordMemberAuditEventInBackground(
+          async () => ({
+            category: "members",
+            action: "member.invited",
+            organizationId: org.id,
+            target: inviteAuditTarget(invite),
+            changes: {
+              role: await (invitedRoleName ??= auditRoleName(org.id, invitedRoleId)),
+            },
+          }),
+          { action: "member.invited", organizationId: org.id }
+        );
+      } else {
+        auditLogs.record({
+          category: "members",
+          action: "member.invited",
+          organizationId: org.id,
+          target: inviteAuditTarget(invite),
+          changes: null,
+        });
+      }
     } catch (error) {
       if (
         error instanceof PrismaNamespace.PrismaClientKnownRequestError &&
@@ -405,23 +438,46 @@ async function provisionInviteDevelopmentEnvironments(args: {
   }
 }
 
+/**
+ * Whether this call assigned the invite's role. The role is recorded by the request that assigned
+ * it: in `invite.accepted` when that request consumed the invite, otherwise here as
+ * `member.role_changed` (`recordRoleChange`). Concurrent accepts of one invite can consume it in one
+ * request and assign the role in another, in either order.
+ */
 async function assignInviteRbacRole({
   userId,
   organizationId,
   rbacRoleId,
   onlyWhenUnassigned,
+  recordRoleChange,
 }: {
   userId: string;
   organizationId: string;
   rbacRoleId: string;
   onlyWhenUnassigned: boolean;
-}) {
+  /** The member the role change event names, when this request didn't consume the invite. */
+  recordRoleChange?: { memberId: string; email: string };
+}): Promise<boolean> {
   try {
+    let roleBefore: { id: string; name: string } | null = null;
     if (onlyWhenUnassigned) {
       const currentRole = await rbac.getUserRole({ userId, organizationId });
       if (currentRole !== null) {
-        return;
+        return false;
       }
+    } else if (recordRoleChange && auditLogs.isRecordingEnabled()) {
+      // Best-effort, like setOrgMemberRole: a failed read records an unknown "before".
+      const [roleBeforeError, currentRole] = await tryCatch(
+        rbac.getUserRole({ userId, organizationId })
+      );
+      if (roleBeforeError) {
+        logger.warn("acceptInvite: failed to read the role before assigning the invite's role", {
+          organizationId,
+          userId,
+          error: roleBeforeError,
+        });
+      }
+      roleBefore = currentRole ?? null;
     }
 
     const roleResult = await rbac.setUserRole({
@@ -429,6 +485,26 @@ async function assignInviteRbacRole({
       organizationId,
       roleId: rbacRoleId,
     });
+    if (roleResult.ok && recordRoleChange && roleBefore?.id !== rbacRoleId) {
+      recordMemberAuditEventInBackground(
+        async () => ({
+          category: "members",
+          action: "member.role_changed",
+          organizationId,
+          target: memberAuditTarget({
+            id: recordRoleChange.memberId,
+            user: { email: recordRoleChange.email },
+          }),
+          changes: {
+            role: {
+              before: roleBefore?.name ?? null,
+              after: await auditRoleName(organizationId, rbacRoleId),
+            },
+          },
+        }),
+        { action: "member.role_changed", organizationId }
+      );
+    }
     if (!roleResult.ok) {
       if (roleResult.code === "last_owner") {
         logger.info("acceptInvite: kept last Owner, skipped RBAC role assignment", {
@@ -445,6 +521,7 @@ async function assignInviteRbacRole({
         });
       }
     }
+    return roleResult.ok;
   } catch (error) {
     logger.error("acceptInvite: RBAC role assignment threw", {
       organizationId,
@@ -455,6 +532,7 @@ async function assignInviteRbacRole({
           ? { name: error.name, message: error.message, stack: error.stack }
           : String(error),
     });
+    return false;
   }
 }
 
@@ -622,6 +700,7 @@ export async function acceptInvite({
 
   // Consume the invite only after development environments are provisioned so
   // a failed setup can be retried from /invites.
+  let inviteConsumed = false;
   try {
     await prisma.orgMemberInvite.delete({
       where: {
@@ -629,6 +708,7 @@ export async function acceptInvite({
         email: invite.email,
       },
     });
+    inviteConsumed = true;
   } catch (error) {
     if (
       !(error instanceof PrismaNamespace.PrismaClientKnownRequestError && error.code === "P2025")
@@ -637,16 +717,41 @@ export async function acceptInvite({
     }
   }
 
-  const remainingInvites = await getUsersInvites({ email: user.email });
-
-  if (invite.rbacRoleId) {
-    await assignInviteRbacRole({
+  const assignedRoleId =
+    invite.rbacRoleId &&
+    (await assignInviteRbacRole({
       userId: user.id,
       organizationId: invite.organization.id,
       rbacRoleId: invite.rbacRoleId,
       onlyWhenUnassigned: !membershipCreated,
-    });
+      recordRoleChange: inviteConsumed ? undefined : { memberId: member.id, email: user.email },
+    }))
+      ? invite.rbacRoleId
+      : null;
+
+  // Only the request that consumed the invite records it, with the invite's role when this request
+  // assigned it. A concurrent accept that assigns it instead records member.role_changed.
+  if (inviteConsumed) {
+    const accepted = {
+      category: "members",
+      action: "invite.accepted",
+      organizationId: invite.organizationId,
+      target: inviteAuditTarget(invite),
+    } as const;
+    if (assignedRoleId) {
+      recordMemberAuditEventInBackground(
+        async () => ({
+          ...accepted,
+          changes: { role: await auditRoleName(invite.organizationId, assignedRoleId) },
+        }),
+        { action: "invite.accepted", organizationId: invite.organizationId }
+      );
+    } else {
+      auditLogs.record(accepted);
+    }
   }
+
+  const remainingInvites = await getUsersInvites({ email: user.email });
 
   // Deliberate re-admission clears any sticky-removal tombstone so this
   // membership isn't shadowed by a prior removal (best-effort; no-op in OSS).
@@ -744,6 +849,13 @@ export async function revokeInvite({
     where: {
       id: invite.id,
     },
+  });
+
+  auditLogs.record({
+    category: "members",
+    action: "invite.revoked",
+    organizationId: invite.organization.id,
+    target: inviteAuditTarget(invite),
   });
 
   return { email: invite.email, organization: invite.organization };

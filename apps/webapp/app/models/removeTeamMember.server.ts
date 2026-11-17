@@ -1,5 +1,6 @@
 import type { PrismaClient } from "@trigger.dev/database";
 import { $transaction } from "~/db.server";
+import { auditLogs } from "~/services/auditLogs/auditLogs.server";
 import { rbac } from "~/services/rbac.server";
 import {
   recordMemberRemovalCredentials,
@@ -7,6 +8,7 @@ import {
 } from "~/services/credentialFingerprints.server";
 import { ServiceValidationError } from "~/v3/services/common.server";
 import { deleteOrgMember, prepareMemberRemovalKeys } from "./deleteOrgMember.server";
+import { memberAuditTarget } from "./memberAudit.server";
 import { isOwnerRole } from "./orgMember.server";
 export async function removeTeamMember(
   {
@@ -93,6 +95,12 @@ export async function removeTeamMember(
     throw new Error("Failed to remove organization member");
   }
   recordMemberRemovalCredentials(result.credentials, actor);
+  auditLogs.record({
+    category: "members",
+    action: "member.removed",
+    organizationId: org.id,
+    target: memberAuditTarget(result.target),
+  });
   return result.target;
 }
 
