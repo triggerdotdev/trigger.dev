@@ -24,10 +24,10 @@ export type ParsePacketOptions = {
   filteredKeys?: string[];
 };
 
-export type RunPacketContext = {
-  runId: string;
-  field: "payload" | "output";
-};
+/** Loads an offloaded packet through a route authorized against the run that owns it. */
+export type RunPacketContext =
+  | { runId: string; field: "payload" | "output" }
+  | { runId: string; waitpointId: string };
 
 export async function parsePacket(value: IOPacket, options?: ParsePacketOptions): Promise<any> {
   if (!value.data) {
@@ -293,9 +293,11 @@ async function importPacket(
     return packet;
   }
 
-  const presignedResponse = runPacket
-    ? await $client.getRunPacketUrl(runPacket.runId, runPacket.field, packet.data)
-    : await $client.getPayloadUrl(packet.data);
+  const presignedResponse = !runPacket
+    ? await $client.getPayloadUrl(packet.data)
+    : "waitpointId" in runPacket
+      ? await $client.getRunWaitpointOutputUrl(runPacket.runId, runPacket.waitpointId, packet.data)
+      : await $client.getRunPacketUrl(runPacket.runId, runPacket.field, packet.data);
 
   const response = await zodfetch(z.any(), presignedResponse.presignedUrl, undefined, {
     retry: ioRetryOptions,

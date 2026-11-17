@@ -91,6 +91,10 @@ export function organizationSupportAccessPath(organization: OrgForPath) {
   return `${organizationSettingsPath(organization)}/support-access`;
 }
 
+export function organizationSecurityPath(organization: OrgForPath) {
+  return `${organizationSettingsPath(organization)}/security`;
+}
+
 /**
  * Where the impersonation consent page's form must POST back to.
  *
@@ -340,6 +344,22 @@ export function v3EnvironmentVariableKeyPath(
   key: string
 ) {
   return `${v3EnvironmentVariablesPath(organization, project, environment)}/key/${encodeURIComponent(key)}`;
+}
+
+export function v3EnvironmentVariablesComparePath(
+  organization: OrgForPath,
+  project: ProjectForPath,
+  environment: EnvironmentForPath
+) {
+  return `${v3EnvironmentVariablesPath(organization, project, environment)}/compare`;
+}
+
+export function v3EnvironmentVariablesAttentionPath(
+  organization: OrgForPath,
+  project: ProjectForPath,
+  environment: EnvironmentForPath
+) {
+  return `${v3EnvironmentVariablesPath(organization, project, environment)}/attention`;
 }
 
 export function v3ProjectAlertsPath(
@@ -612,7 +632,7 @@ export function v3RunPath(
   searchParams?: URLSearchParams
 ) {
   const query = searchParams ? `?${searchParams.toString()}` : "";
-  return `${v3RunsPath(organization, project, environment)}/${run.friendlyId}${query}`;
+  return `${v3RunsPath(organization, project, environment)}/${encodeURIComponent(run.friendlyId)}${query}`;
 }
 
 export function v3RunRedirectPath(
@@ -921,7 +941,7 @@ export function v3ErrorPath(
   environment: EnvironmentForPath,
   error: { fingerprint: string }
 ) {
-  return `${v3ErrorsPath(organization, project, environment)}/${error.fingerprint}`;
+  return `${v3ErrorsPath(organization, project, environment)}/${encodeURIComponent(error.fingerprint)}`;
 }
 
 export function v3DeploymentsPath(
@@ -949,7 +969,7 @@ export function v3DeploymentVersionPath(
   environment: EnvironmentForPath,
   version: string
 ) {
-  return `${v3DeploymentsPath(organization, project, environment)}?version=${version}`;
+  return `${v3DeploymentsPath(organization, project, environment)}?version=${encodeURIComponent(version)}`;
 }
 
 export function branchesPath(

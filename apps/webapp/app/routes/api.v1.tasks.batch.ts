@@ -141,6 +141,7 @@ const { action, loader } = createActionApiRoute(
         environment: authentication.environment,
         scopes: [`read:batch:${batch.id}`],
         expirationTime: "1h",
+        actor: authentication.actor,
       });
 
       return json(batch, { status: 202, headers: $responseHeaders });

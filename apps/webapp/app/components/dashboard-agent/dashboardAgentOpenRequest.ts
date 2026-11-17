@@ -71,12 +71,15 @@ export function consumeDeepLinkQuestion(
 export function useDashboardAgentOpenRequests({
   enabled,
   openWith,
+  prefillWith,
   setOpen,
   /** `agentDeepLinkParams`: the agent always reads `aiHelp`. */
   deepLinkParams,
 }: {
   enabled: boolean;
   openWith: (text: string) => void;
+  /** Deep links only fill the composer: a link must never send on the user's behalf. */
+  prefillWith: (text: string) => void;
   setOpen: (open: boolean) => void;
   deepLinkParams: readonly string[];
 }) {
@@ -99,6 +102,6 @@ export function useDashboardAgentOpenRequests({
     const next = new URLSearchParams(searchParams);
     for (const name of deepLinkParams) next.delete(name);
     setSearchParams(next, { replace: true, preventScrollReset: true });
-    openWith(question);
-  }, [enabled, searchParams, setSearchParams, openWith, deepLinkParams]);
+    prefillWith(question);
+  }, [enabled, searchParams, setSearchParams, prefillWith, deepLinkParams]);
 }

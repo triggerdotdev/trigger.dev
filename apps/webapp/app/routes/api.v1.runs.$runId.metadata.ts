@@ -5,6 +5,7 @@ import { z } from "zod";
 import { $replica } from "~/db.server";
 // Aliased to avoid shadowing the local `env` parameter in the handler.
 import { env as appEnv } from "~/env.server";
+import { RUN_METADATA_MAX_BODY_BYTES } from "~/services/ingressBodyCap.server";
 import { updateMetadataService } from "~/services/metadata/updateMetadataInstance.server";
 import { publishChangeRecord } from "~/services/realtime/runChangeNotifierInstance.server";
 import {
@@ -79,7 +80,7 @@ const { action } = createActionApiRoute(
     params: ParamsSchema,
     headers: z.object({ "x-trigger-request-idempotency-key": z.string().nullish() }),
     body: UpdateMetadataRequestBody,
-    maxContentLength: 1024 * 1024 * 2, // 2MB
+    maxContentLength: RUN_METADATA_MAX_BODY_BYTES,
     method: "PUT",
     authorization: {
       action: "write",

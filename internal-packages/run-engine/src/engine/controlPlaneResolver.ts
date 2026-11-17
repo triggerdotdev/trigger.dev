@@ -3,6 +3,7 @@ import type {
   Prisma,
   PrismaClient,
   RuntimeEnvironmentType,
+  TaskExecutionMode,
   WorkerDeploymentStatus,
 } from "@trigger.dev/database";
 import { CURRENT_DEPLOYMENT_LABEL } from "@trigger.dev/core/v3/isomorphic";
@@ -111,6 +112,7 @@ export type ResolvedWorkerTask = {
   machineConfig: Prisma.JsonValue | null;
   retryConfig: Prisma.JsonValue | null;
   maxDurationInSeconds: number | null;
+  executionMode: TaskExecutionMode;
 };
 
 /** The `select` that yields a `ResolvedWorkerTask`. */
@@ -120,6 +122,7 @@ const resolvedWorkerTaskSelect = {
   machineConfig: true,
   retryConfig: true,
   maxDurationInSeconds: true,
+  executionMode: true,
 } satisfies Prisma.BackgroundWorkerTaskSelect;
 
 /**
@@ -199,6 +202,18 @@ export interface ControlPlaneResolver {
   resolveDeploymentStatus(deploymentId: string): Promise<ResolvedDeploymentStatus | null>;
   resolveAuthenticatedEnv(environmentId: string): Promise<ResolvedAuthenticatedEnv | null>;
   resolveWorkerVersion(
+    args: {
+      environmentId: string;
+      type: RuntimeEnvironmentType;
+      workerId?: string;
+    } & WorkerVersionDispatchFilter
+  ): Promise<ResolvedWorkerVersion | null>;
+  /**
+   * `resolveWorkerVersion` read straight from the authoritative control-plane source, never from
+   * a cache or replica. A replica can lag a just-promoted deployment, so a decision that parks a
+   * run because no worker covers it confirms the miss here.
+   */
+  resolveWorkerVersionFromPrimary(
     args: {
       environmentId: string;
       type: RuntimeEnvironmentType;
@@ -375,6 +390,17 @@ export class PassthroughControlPlaneResolver implements ControlPlaneResolver {
   async assertEnvExists(_environmentId: string): Promise<void> {
     // No-op: passthrough is single-DB, so run and env share one database and there is
     // no cross-seam FK to replace (matches main, which dropped the TaskRun env FK).
+  }
+
+  // Passthrough already reads the primary.
+  async resolveWorkerVersionFromPrimary(
+    args: {
+      environmentId: string;
+      type: RuntimeEnvironmentType;
+      workerId?: string;
+    } & WorkerVersionDispatchFilter
+  ): Promise<ResolvedWorkerVersion | null> {
+    return this.resolveWorkerVersion(args);
   }
 
   async resolveWorkerVersion(

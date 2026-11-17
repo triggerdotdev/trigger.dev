@@ -1,13 +1,21 @@
 import { describe, expect, it } from "vitest";
 import {
+  curateCommit,
   curateDeploy,
+  curateEnvironments,
   curateError,
   curateErrors,
   curateProjects,
   curateRun,
+  curateRuns,
+  curateTasks,
   curateTrace,
   derivePhases,
+  fencePageFields,
   fenceUntrusted,
+  getReportModelOutput,
+  MAX_RESULT_CHARS,
+  runTraceModelOutput,
 } from "./tool-curation";
 
 const OPEN = (label: string) => `«untrusted:${label}»`;
@@ -65,6 +73,21 @@ describe("curation fences untrusted free-text", () => {
     expect(out.status).toBe("FAILED");
   });
 
+  it("fences task identifiers and tags on runs and run lists", () => {
+    const run = curateRun({ id: "run_1", taskIdentifier: injection, tags: [injection] });
+    const [listed] = curateRuns({
+      data: [{ id: "run_1", taskIdentifier: injection, tags: [injection] }],
+    }).runs;
+
+    // Catches: handing the model a task id or tag unfenced.
+    for (const out of [run, listed]) {
+      expect(out.taskIdentifier).toBe(
+        `${OPEN("taskIdentifier")} ${injection} ${CLOSE("taskIdentifier")}`
+      );
+      expect(out.tags).toEqual([`${OPEN("tag")} ${injection} ${CLOSE("tag")}`]);
+    }
+  });
+
   it("fences an error name and type carrying an injection or a delimiter collision", () => {
     const run = curateRun({ id: "run_1", error: { name: injection } });
     expect(run.error?.name).toBe(`«untrusted:errorName» ${injection} «/untrusted:errorName»`);
@@ -77,7 +100,8 @@ describe("curation fences untrusted free-text", () => {
     expect(detail.errorType!.endsWith(CLOSE("errorType"))).toBe(true);
   });
 
-  it("fences a span message but not task/level", () => {
+  // Catches: a span's task slug reaching the model unfenced.
+  it("fences a span message and task but not level", () => {
     const out = curateTrace({
       trace: {
         traceId: "trace_1",
@@ -89,7 +113,7 @@ describe("curation fences untrusted free-text", () => {
     });
     const span = out.spans[0]!;
     expect(span.message).toBe(`«untrusted:spanMessage» ${injection} «/untrusted:spanMessage»`);
-    expect(span.task).toBe("send-receipt");
+    expect(span.task).toBe("«untrusted:taskSlug» send-receipt «/untrusted:taskSlug»");
     expect(span.level).toBe("ERROR");
   });
 
@@ -363,6 +387,60 @@ describe("curation fences untrusted free-text", () => {
     expect(out.ignoredReason).toBe(
       `«untrusted:ignoredReason» ${injection} «/untrusted:ignoredReason»`
     );
+  });
+
+  // Catches: a customer-named identifier reaching the model unfenced.
+  it.each<[string, () => unknown]>([
+    ["task slug", () => curateTasks({ worker: { tasks: [{ slug: injection }] } }).tasks[0].slug],
+    [
+      "task file path",
+      () => curateTasks({ worker: { tasks: [{ filePath: injection }] } }).tasks[0].filePath,
+    ],
+    [
+      "branch name",
+      () => curateEnvironments([{ branchName: injection }]).environments[0].branchName,
+    ],
+    ["report scope", () => (getReportModelOutput({ scope: injection }) as any).scope],
+    [
+      "report attribution key",
+      () =>
+        (getReportModelOutput({ findings: [{ attribution: { key: injection } }] }) as any)
+          .findings[0].attribution.key,
+    ],
+    [
+      "report worst queue",
+      () =>
+        (
+          getReportModelOutput({
+            facts: { flowEvidence: { worstQueue: { name: injection, share: 0.5 } } },
+          }) as any
+        ).facts.flowEvidence.worstQueue.name,
+    ],
+    [
+      "page filter",
+      () =>
+        (fencePageFields({ kind: "runs", filters: { tags: [injection] } }) as any).filters.tags[0],
+    ],
+    ["non-hex commit sha", () => curateCommit({ sha: injection }).sha],
+    ["queue page name", () => (fencePageFields({ kind: "queue", name: injection }) as any).name],
+  ])("fences a %s", (_, read) => {
+    expect(read()).toMatch(new RegExp(`^«untrusted:(\\w+)» ${injection} «/untrusted:\\1»$`));
+  });
+
+  // Catches: the trace timeline riding outside the result budget.
+  it("keeps the whole trace model copy within the result budget", () => {
+    const spans = Array.from({ length: 60 }, (_, i) => ({
+      id: `span_${i}`,
+      message: "x".repeat(4000),
+    }));
+    const phases = Array.from({ length: 20 }, () => ({
+      label: "y".repeat(4000),
+      detail: "z".repeat(4000),
+      startOffsetMs: 0,
+      status: "done",
+    }));
+    const value = runTraceModelOutput({ traceId: "trace_1", spans, timeline: { phases } });
+    expect(JSON.stringify(value).length).toBeLessThanOrEqual(MAX_RESULT_CHARS);
   });
 
   it("truncates an over-long commit message", () => {

@@ -50,7 +50,7 @@ describe("authenticateOrganizationAccessToken — lastAccessedAt throttle", () =
 
     const result = await authenticateOrganizationAccessToken("tr_oat_validtoken");
 
-    expect(result).toEqual({ organizationId: "org_1" });
+    expect(result).toEqual({ organizationId: "org_1", tokenId: "oat_123" });
     expect(updateManyMock).toHaveBeenCalledTimes(1);
 
     const call = updateManyMock.mock.calls[0][0];

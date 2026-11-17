@@ -24,7 +24,9 @@ vi.mock("~/services/apiAuth.server", () => ({
 vi.mock("~/services/logger.server", () => ({
   logger: { debug: vi.fn(), error: vi.fn(), warn: vi.fn(), info: vi.fn() },
 }));
-vi.mock("~/env.server", () => ({ env: { SESSION_SECRET: "test-session-secret" } }));
+vi.mock("~/env.server", () => ({
+  env: { SESSION_SECRET: "test-session-secret", ENCRYPTION_KEY: "test-public-token-secret" },
+}));
 // The 401 path looks up why the token failed; an unknown token has no row.
 vi.mock("~/db.server", () => ({
   prisma: {},
@@ -78,7 +80,11 @@ describe("env JWT exchange — act claim", () => {
 
     const claims = await mintedClaims();
 
-    expect(claims.act).toEqual({ sub: "usr_42", client: "personal-access-token" });
+    expect(claims.act).toEqual({
+      sub: "usr_42",
+      client: "personal-access-token",
+      sig: expect.any(String),
+    });
     expect(claims.sub).toBe(environment.id);
   });
 
@@ -94,7 +100,11 @@ describe("env JWT exchange — act claim", () => {
 
     const claims = await mintedClaims({ claims: { scopes: ["read:runs"] } });
 
-    expect(claims.act).toEqual({ sub: "usr_7", client: "dashboard-agent" });
+    expect(claims.act).toEqual({
+      sub: "usr_7",
+      client: "dashboard-agent",
+      sig: expect.any(String),
+    });
     expect(claims.scopes).toEqual(["read:runs"]);
   });
 

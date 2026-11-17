@@ -1,0 +1,34 @@
+{
+  "request": {
+    "jsonrpc": "2.0",
+    "id": 5,
+    "method": "tools/call",
+    "params": {
+      "name": "get_run_details",
+      "arguments": {
+        "projectRef": "<PROJECT_REF>",
+        "environment": "prod",
+        "runId": "<RUN_ID>",
+        "maxTraceLines": 3
+      }
+    }
+  },
+  "response": {
+    "status": 200,
+    "headers": {
+      "content-type": "application/json"
+    },
+    "body": {
+      "result": {
+        "content": [
+          {
+            "type": "text",
+            "text": "## Run Details\nRun <RUN_ID>\nTask: my-task\nStatus: executing\nTiming: created 2025-01-01 00:00:00 UTC\nPayload: <untrusted-data source=\"run-payload\" boundary=\"<BOUNDARY>\">{\n  \"hello\": \"world\"\n}</untrusted-data boundary=\"<BOUNDARY>\">\n\n## Run Trace (lines 1-3 of 26)\n<untrusted-data source=\"run-trace\" boundary=\"<BOUNDARY>\">Trace ID: <TRACE_ID>\n\n└─ [<SPAN_ID>] my-task [COMPLETED]</untrusted-data boundary=\"<BOUNDARY>\">\n\n**More trace available.** Call `get_run_details` again with `cursor: \"<CURSOR>\"` and `runId: \"<RUN_ID>\"` to see the next page.\n\n[View in dashboard](http://localhost:3030/projects/v3/<PROJECT_REF>/runs/<RUN_ID>)"
+          }
+        ]
+      },
+      "jsonrpc": "2.0",
+      "id": 5
+    }
+  }
+}

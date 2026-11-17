@@ -104,9 +104,10 @@ describe("deployment checks", () => {
     // Catches: a background check changing a live deployment.
     const results: DeploymentCheckResult[] = [
       { outcome: "pass", id: "check_1", retryable: false },
-      { outcome: "fail", id: "check_2", retryable: false },
-      { outcome: "unavailable", id: "check_3", retryable: false },
-      { outcome: "unavailable", id: "check_4", retryable: true },
+      { outcome: "flagged", id: "check_2", retryable: false },
+      { outcome: "fail", id: "check_3", retryable: false },
+      { outcome: "unavailable", id: "check_4", retryable: false },
+      { outcome: "unavailable", id: "check_5", retryable: true },
     ];
     for (const result of results) {
       const { deployment } = await createDeployment(prisma);
@@ -127,12 +128,17 @@ describe("deployment checks", () => {
 
   postgresTest("checks what the plugin chose, labelled with its mode", async ({ prisma }) => {
     // Catches: a gate or shadow deploy not checked, a skipped one checked, an image reference
-    // the checker can't use sent, the plugin asked about the wrong org or deployment, or an org
-    // id in the metric attributes.
+    // the checker can't use sent, the plugin asked about the wrong org or deployment, an org id
+    // in the metric attributes, or a flagged answer missing from the counter the deploy scan
+    // alert reads.
     const metrics = createInMemoryMetrics();
     const telemetry = deploymentCheckTelemetry(metrics.meter);
-    const run = async (decision: DeploymentCheckDecision, imageReference?: string | null) => {
-      const plugin = testPlugin({ decision });
+    const run = async (
+      decision: DeploymentCheckDecision,
+      imageReference?: string | null,
+      result?: DeploymentCheckResult
+    ) => {
+      const plugin = testPlugin({ decision, result });
       const { deployment, organization, project } = await createDeployment(prisma, {
         imageReference,
       });
@@ -175,6 +181,13 @@ describe("deployment checks", () => {
       ]);
     }
 
+    const flagged = await run(SHADOW, undefined, {
+      outcome: "flagged",
+      id: "check_flagged",
+      retryable: false,
+    });
+    expect(flagged.outcome).toBe("flagged");
+
     // The reader also exports every 100 ms, and an earlier export holds partial totals. With
     // cumulative temporality the latest export holds every point.
     const points = ((await latestMetrics(metrics))?.scopeMetrics ?? [])
@@ -184,6 +197,7 @@ describe("deployment checks", () => {
       expect.arrayContaining([
         { mode: "shadow", selected_by: "sampled", outcome: "pass" },
         { mode: "gate", selected_by: "always", outcome: "pass" },
+        { mode: "shadow", selected_by: "sampled", outcome: "flagged" },
       ])
     );
     for (const point of points ?? []) {

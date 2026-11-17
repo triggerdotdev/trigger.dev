@@ -34,6 +34,8 @@ Choose an official integration, or connect a service that supports external OIDC
 
 For other services, follow [Custom integrations](/oidc/custom) to request a token and implement the service's authentication flow.
 
+The OIDC page in the dashboard lists the environment variables in your project that hold credentials OIDC could replace, such as `AWS_ACCESS_KEY_ID` or `ANTHROPIC_API_KEY`, grouped by service with a link to each service's guide. The same keys are listed under **Replace with OIDC** on the environment variables [Needs attention page](/deploy-environment-variables#values-that-need-attention).
+
 ## Prerequisites
 
 - Use `@trigger.dev/sdk` and the Trigger.dev CLI (`trigger.dev`) **4.8.3 or later**, including the CLI used in CI.

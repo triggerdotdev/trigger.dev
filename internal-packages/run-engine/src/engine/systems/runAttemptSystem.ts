@@ -9,7 +9,7 @@ import {
 import type { RedisOptions } from "@internal/redis";
 import { startSpan, type Counter } from "@internal/tracing";
 import { tryCatch } from "@trigger.dev/core/utils";
-import { sanitizeError } from "@trigger.dev/core/v3";
+import { isSandboxRun, sanitizeError } from "@trigger.dev/core/v3";
 import { assertNever } from "assert-never";
 import type {
   CompleteRunAttemptResult,
@@ -38,11 +38,20 @@ import type {
   PrismaClientOrTransaction,
   RuntimeEnvironmentType,
 } from "@trigger.dev/database";
-import { MAX_TASK_RUN_ATTEMPTS, RETRY_IMMEDIATELY_SNAPSHOT_DESCRIPTION } from "../consts.js";
+import {
+  CONTINUED_WHILST_EXECUTING_DESCRIPTION,
+  MAX_TASK_RUN_ATTEMPTS,
+  RETRY_IMMEDIATELY_SNAPSHOT_DESCRIPTION,
+} from "../consts.js";
 import { runStatusFromError, ServiceValidationError } from "../errors.js";
 import { sendNotificationToWorker } from "../eventBus.js";
 import { getMachinePreset, machinePresetFromName } from "../machinePresets.js";
 import { retryOutcomeFromCompletion, retrySettingsFromLockedConfig } from "../retrying.js";
+import {
+  RETURNED_WHILE_RESUMING_ERROR,
+  type StaleCompletionNotes,
+  type StaleCompletionRule,
+} from "../staleCompletions.js";
 import { workerQueueForPublish } from "../workerQueueRouting.js";
 import {
   isExecuting,
@@ -59,6 +68,7 @@ import type {
   RunEngineOptions,
 } from "../types.js";
 import type { BatchSystem } from "./batchSystem.js";
+import { CONTINUED_AFTER_SUSPENDED_DESCRIPTION } from "./checkpointSystem.js";
 import type { DelayedRunSystem } from "./delayedRunSystem.js";
 import type {
   EnhancedExecutionSnapshot,
@@ -92,6 +102,8 @@ export type RunAttemptSystemOptions = {
   duplicateAttemptStartCheck?: RunEngineOptions["duplicateAttemptStartCheck"];
   machines: RunEngineOptions["machines"];
   redisOptions: RedisOptions;
+  staleCompletionNotes: StaleCompletionNotes;
+  staleCompletionMode?: RunEngineOptions["staleCompletionMode"];
 };
 
 type BackwardsCompatibleTaskRunExecution = Omit<TaskRunExecution, "task" | "attempt" | "run"> & {
@@ -145,6 +157,7 @@ export class RunAttemptSystem {
   private readonly releasesCounter: Counter;
   private readonly restoreOutcomesCounter: Counter;
   private readonly duplicateAttemptStartsCounter: Counter;
+  private readonly staleCompletionsCounter: Counter;
   private readonly cache: UnkeyCache<{
     tasks: BackwardsCompatibleTaskRunExecution["task"];
     machinePresets: MachinePreset;
@@ -185,6 +198,11 @@ export class RunAttemptSystem {
         unit: "requests",
       }
     );
+    this.staleCompletionsCounter = this.$.meter.createCounter("run_engine.stale_completions", {
+      description:
+        "Attempt completions naming a snapshot that is no longer the latest, by mode, rule, whether the completion was ok, and result (settled, refused, or would_settle when the mode refuses what enforce would settle)",
+      unit: "requests",
+    });
 
     const ctx = new DefaultStatefulContext();
     const memory = createLRUMemoryStore(5000);
@@ -811,9 +829,15 @@ export class RunAttemptSystem {
           );
 
           if (latestSnapshot.id !== snapshotId) {
-            throw new ServiceValidationError("Snapshot ID doesn't match the latest snapshot", 400, {
-              code: "SNAPSHOT_CONFLICT",
-              latestSnapshotId: latestSnapshot.id,
+            return this.#settleOrRefuseStaleCompletion({
+              runId,
+              snapshotId,
+              latestSnapshot,
+              completion,
+              workerId,
+              runnerId,
+              environmentId,
+              tx: prisma,
             });
           }
 
@@ -1081,9 +1105,17 @@ export class RunAttemptSystem {
           );
 
           if (latestSnapshot.id !== snapshotId) {
-            throw new ServiceValidationError("Snapshot ID doesn't match the latest snapshot", 400, {
-              code: "SNAPSHOT_CONFLICT",
-              latestSnapshotId: latestSnapshot.id,
+            return this.#settleOrRefuseStaleCompletion({
+              runId,
+              snapshotId,
+              latestSnapshot,
+              completion,
+              forceRequeue,
+              resetQueueAttempts,
+              workerId,
+              runnerId,
+              environmentId,
+              tx,
             });
           }
 
@@ -1437,6 +1469,233 @@ export class RunAttemptSystem {
     );
   }
 
+  /**
+   * A completion that names a snapshot that is no longer the latest. Called with the run lock held.
+   *
+   * When the latest snapshot is the engine's own continue of the named one, no checkpoint sits
+   * between them, so the sender is the process that owns the latest snapshot and it has just said
+   * its task is over: nothing else will ever complete that snapshot. The attempt is settled now. A
+   * failure is applied as if it had named the latest snapshot. A success is not: the run was
+   * resuming from a wait the task did not await, so the attempt fails with an error that says so.
+   *
+   * Anything else is refused as before. A refusal sent by the runner that owns the latest snapshot
+   * is noted, so a later stall of that snapshot can say why.
+   *
+   * All of that is the "enforce" mode. In "count" and "classify" every stale completion is refused
+   * as before and nothing is noted: the counter and the logs say what "enforce" would have done.
+   */
+  async #settleOrRefuseStaleCompletion({
+    runId,
+    snapshotId,
+    latestSnapshot,
+    completion,
+    forceRequeue,
+    resetQueueAttempts,
+    workerId,
+    runnerId,
+    environmentId,
+    tx,
+  }: {
+    runId: string;
+    snapshotId: string;
+    latestSnapshot: EnhancedExecutionSnapshot;
+    completion: TaskRunExecutionResult;
+    forceRequeue?: boolean;
+    resetQueueAttempts?: boolean;
+    workerId?: string;
+    runnerId?: string;
+    environmentId?: string;
+    tx: PrismaClientOrTransaction;
+  }): Promise<CompleteRunAttemptResult> {
+    const conflict = new ServiceValidationError(
+      "Snapshot ID doesn't match the latest snapshot",
+      400,
+      {
+        code: "SNAPSHOT_CONFLICT",
+        latestSnapshotId: latestSnapshot.id,
+      }
+    );
+
+    const mode = this.options.staleCompletionMode ?? "count";
+
+    const fields = {
+      mode,
+      runId,
+      postedSnapshotId: snapshotId,
+      latestSnapshotId: latestSnapshot.id,
+      latestExecutionStatus: latestSnapshot.executionStatus,
+      attemptNumber: latestSnapshot.attemptNumber,
+      completionOk: completion.ok,
+      runnerId,
+    };
+    const count = (
+      rule: StaleCompletionRule,
+      result: "settled" | "would_settle" | "refused" | "settle_failed"
+    ) =>
+      this.staleCompletionsCounter.add(1, {
+        mode,
+        rule,
+        result,
+        completion: completion.ok ? "ok" : "failed",
+        environment_type: latestSnapshot.environmentType,
+      });
+
+    // Any error while classifying or settling falls back to the refusal.
+    const [ruleError, classified] = await tryCatch(
+      this.#staleCompletionRule({
+        runId,
+        snapshotId,
+        latestSnapshot,
+        runnerId,
+        // "count" adds nothing to the request, so it does not read the named snapshot.
+        readNamedSnapshot: mode !== "count",
+      })
+    );
+    const rule = classified ?? "other";
+    if (ruleError) {
+      this.$.logger.error("Stale completion: failed to classify, refusing", {
+        ...fields,
+        error: ruleError,
+      });
+    }
+
+    const settles =
+      rule === "waitpoint_continue" ||
+      rule === "waitpoint_continue_unverified" ||
+      rule === "restore_continue";
+
+    if (settles && mode !== "enforce") {
+      count(rule, "would_settle");
+      this.$.logger.info("Stale completion refused, enforce mode would settle it", {
+        ...fields,
+        rule,
+      });
+      throw conflict;
+    }
+
+    if (settles) {
+      const [settleError, settled] = await tryCatch(
+        this.attemptFailed({
+          runId,
+          snapshotId: latestSnapshot.id,
+          workerId,
+          runnerId,
+          environmentId,
+          forceRequeue,
+          resetQueueAttempts,
+          completion: completion.ok
+            ? {
+                ok: false,
+                id: completion.id,
+                error: RETURNED_WHILE_RESUMING_ERROR,
+                usage: completion.usage,
+                taskIdentifier: completion.taskIdentifier,
+                metadata: completion.metadata,
+                flushedMetadata: completion.flushedMetadata,
+              }
+            : completion,
+          tx,
+        })
+      );
+
+      if (!settleError) {
+        count(rule, "settled");
+        this.$.logger.info("Stale completion settled on the latest snapshot", {
+          ...fields,
+          rule,
+          attemptStatus: settled.attemptStatus,
+        });
+        return settled;
+      }
+
+      count(rule, "settle_failed");
+      this.$.logger.error("Stale completion: failed to settle, refusing", {
+        ...fields,
+        rule,
+        error: settleError,
+      });
+      throw conflict;
+    }
+
+    count(rule, "refused");
+
+    if (rule === "finished") {
+      // A replay after the run finished: routine, and there is no stall to explain.
+      this.$.logger.debug("Stale completion refused", { ...fields, rule });
+      throw conflict;
+    }
+
+    // Only the runner that owns the latest snapshot can explain a later stall of it. The process
+    // a checkpoint was taken of says nothing about its restored copy.
+    const ownsLatestSnapshot = !!runnerId && latestSnapshot.runnerId === runnerId;
+
+    this.$.logger.info("Stale completion refused", { ...fields, rule, ownsLatestSnapshot });
+
+    if (mode === "enforce" && ownsLatestSnapshot) {
+      await this.options.staleCompletionNotes.write(runId, {
+        postedSnapshotId: snapshotId,
+        latestSnapshotId: latestSnapshot.id,
+        attemptNumber: latestSnapshot.attemptNumber,
+        ok: completion.ok,
+        at: Date.now(),
+      });
+    }
+    throw conflict;
+  }
+
+  /** A whitelist: a snapshot made by a retry, a cancel, a requeue or a suspend never matches. */
+  async #staleCompletionRule({
+    runId,
+    snapshotId,
+    latestSnapshot,
+    runnerId,
+    readNamedSnapshot,
+  }: {
+    runId: string;
+    snapshotId: string;
+    latestSnapshot: EnhancedExecutionSnapshot;
+    runnerId?: string;
+    readNamedSnapshot: boolean;
+  }): Promise<StaleCompletionRule> {
+    if (latestSnapshot.executionStatus === "FINISHED") {
+      return "finished";
+    }
+
+    if (
+      latestSnapshot.executionStatus !== "EXECUTING" ||
+      latestSnapshot.previousSnapshotId !== snapshotId
+    ) {
+      return "other";
+    }
+
+    // The same test continueRunExecution uses to answer a retried continue.
+    if (latestSnapshot.description === CONTINUED_AFTER_SUSPENDED_DESCRIPTION) {
+      return (latestSnapshot.runnerId ?? undefined) === runnerId ? "restore_continue" : "other";
+    }
+
+    if (latestSnapshot.description === CONTINUED_WHILST_EXECUTING_DESCRIPTION) {
+      if (!readNamedSnapshot) {
+        return "waitpoint_continue_unverified";
+      }
+
+      // This continue carries no runner id, so compare with the snapshot the sender named.
+      const posted = await this.$.runStore.findExecutionSnapshot(
+        { where: { id: snapshotId, runId }, select: { runnerId: true } },
+        this.$.prisma,
+        latestSnapshot.organizationId
+      );
+      if (!posted) {
+        return "other";
+      }
+
+      return !posted.runnerId || !runnerId || posted.runnerId === runnerId
+        ? "waitpoint_continue"
+        : "other";
+    }
+
+    return "other";
+  }
+
   public async systemFailure({
     runId,
     organizationId,
@@ -1665,7 +1924,7 @@ export class RunAttemptSystem {
       // read-your-writes: the attempt's lock-time retry config may not be on a replica yet
       const run = await this.$.runStore.findRunOnPrimary(
         { id: runId },
-        { select: { workerQueue: true, lockedRetryConfig: true } }
+        { select: { workerQueue: true, lockedRetryConfig: true, annotations: true } }
       );
 
       // A cold start has no checkpoint to lose, so it cannot fail; a restore cannot change lanes.
@@ -1712,7 +1971,11 @@ export class RunAttemptSystem {
         case "fallback": {
           let moveToWorkerQueue: string | undefined;
           if (outcome === "fallback") {
-            const target = run ? fallbackWorkerQueue?.(run.workerQueue) : undefined;
+            // A sandbox must not leave compute, so it is requeued in place.
+            const target =
+              run && !isSandboxRun(run.annotations)
+                ? fallbackWorkerQueue?.(run.workerQueue)
+                : undefined;
             // Without a worker queue to move to, it is requeued where it is.
             moveToWorkerQueue = target !== run?.workerQueue ? target : undefined;
             this.$.logger.info("reportRestoreOutcome: moving a cold start", {

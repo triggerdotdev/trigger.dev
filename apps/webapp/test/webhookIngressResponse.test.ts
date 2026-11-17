@@ -21,6 +21,16 @@ describe("webhook ingress HTTP contract", () => {
     expect(await res.text()).toBe("chal_xyz");
   });
 
+  // Catches: an adopted provider secret answered with the endpoint's declared rejection status,
+  // which the provider reads as a failed verification.
+  it("answers an adopted provider secret with an empty 200, whatever rejection status is declared", async () => {
+    const res = toWebhookHttpResponse(
+      webhookHttpResponseFor({ outcome: "secret_adopted", response: { rejectedStatus: 401 } })
+    );
+    expect(res.status).toBe(200);
+    expect(await res.text()).toBe("");
+  });
+
   it("acknowledges an accepted delivery with the declared status and no body", async () => {
     const res = toWebhookHttpResponse(
       webhookHttpResponseFor({

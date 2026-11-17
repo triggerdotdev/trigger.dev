@@ -45,7 +45,7 @@ export function resolveTriggerUri(
 ): ResolvedTriggerUri | null {
   const parsed = safeParseTriggerUri(uri);
   if (!parsed.success) return null;
-  if (!isInScope(scope, parsed.data)) return null;
+  if (!isInScope(scope, parsed.data) || !hasSafeIds(parsed.data)) return null;
   return resolveInScope(scope, parsed.data);
 }
 
@@ -85,6 +85,29 @@ function githubRepoBaseUrl(repository: TriggerUriScope["repository"]): string | 
 /** True when the URI names this exact project and environment. */
 function isInScope(scope: TriggerUriScope, parsed: ParsedTriggerUri): boolean {
   return parsed.projectRef === scope.project.externalRef && parsed.environmentId === scope.id;
+}
+
+const SHA = /^[0-9a-f]{7,40}$/i;
+
+function isSafeSegment(value: string): boolean {
+  return value !== "" && value !== "." && value !== ".." && !value.includes("/");
+}
+
+function hasSafeIds(parsed: ParsedTriggerUri): boolean {
+  switch (parsed.kind) {
+    case "run":
+      return isSafeSegment(parsed.runId);
+    case "span":
+      return isSafeSegment(parsed.runId) && isSafeSegment(parsed.spanId);
+    case "error":
+      return isSafeSegment(parsed.fingerprint);
+    case "deployment":
+      return isSafeSegment(parsed.version);
+    case "source":
+      return SHA.test(parsed.sha) && parsed.path.split("/").every(isSafeSegment);
+    default:
+      return true;
+  }
 }
 
 function resolveInScope(

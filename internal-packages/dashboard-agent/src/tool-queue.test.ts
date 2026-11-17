@@ -215,7 +215,11 @@ describe("get_queue asks for a custom queue under its stored name", () => {
     );
     expect(urls.some((url) => url.includes("/api/v1/queues/worker-1?type=custom"))).toBe(true);
     expect(urls.some((url) => url.includes("task%2Fworker-1"))).toBe(false);
-    expect(answer).toMatchObject({ exists: true, consumerTasks: ["process-order"] });
+    // Catches: consumer task slugs reaching the model unfenced.
+    expect(answer).toMatchObject({
+      exists: true,
+      consumerTasks: ["«untrusted:taskSlug» process-order «/untrusted:taskSlug»"],
+    });
   });
 
   it("leaves a task queue's own name alone", async () => {

@@ -8,6 +8,8 @@ import type { EnvironmentEncryptionService } from "~/services/environmentEncrypt
 import { environmentEncryptionTelemetry } from "~/services/environmentEncryption/telemetry.server";
 import { EnvironmentKeyUnavailableError } from "~/services/environmentEncryption/wrapping.server";
 import { FINAL_DEPLOYMENT_STATUSES } from "~/v3/services/failDeployment.server";
+import { effectiveEnvironmentVariables } from "./secretProxy/variables.server";
+import { recordSecretProxyFailure } from "./secretProxy/telemetry.server";
 
 export async function deploymentBuildEnvVarsResponse(options: {
   db: PrismaClientOrTransaction;
@@ -35,6 +37,14 @@ export async function deploymentBuildEnvVarsResponse(options: {
       return json({ variables: {} } satisfies GetDeploymentBuildEnvVarsResponseBody);
     }
 
+    const metadata = await effectiveEnvironmentVariables(db, environment.projectId, environment.id);
+    if (metadata.some((value) => value.isProxyOnly)) {
+      recordSecretProxyFailure("guard", "policy");
+      return json(
+        { error: "Stored build environment exports are disabled for proxy-only environments" },
+        { status: 403 }
+      );
+    }
     const envelope = StoredEnvironmentValueSchema.safeParse(deployment.buildEnvVars);
     if (!envelope.success) {
       logger.error("Stored build env vars are not a valid encrypted envelope", {

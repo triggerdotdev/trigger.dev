@@ -12,11 +12,13 @@ import {
   syncDeclarativeSchedules,
   syncDeclarativeWebhooks,
   type BackgroundWorkerWithWarnings,
+  validateSandboxTask,
   validateWorkerConcurrencyDeclarations,
 } from "./createBackgroundWorker.server";
 import { findOrCreateBackgroundWorker } from "./createDeploymentBackgroundWorkerV4/findOrCreateBackgroundWorker.server";
 import { TimeoutDeploymentService } from "./timeoutDeployment.server";
 import { checkDeployAccess, deniedMessage } from "../deploymentAccess.server";
+import { acceptedCliVersion } from "../cliVersion";
 import { recordDeploymentFinished } from "./recordDeploymentFinished.server";
 import { env } from "~/env.server";
 import { webhookPrisma } from "~/db.server";
@@ -79,6 +81,8 @@ export class CreateDeploymentBackgroundWorkerServiceV4 extends BaseService {
         return;
       }
 
+      deployment.cliVersion ??= acceptedCliVersion(body.metadata.cliPackageVersion) ?? null;
+
       /**
        * Reject invalid concurrency declarations before any worker rows exist. Queue
        * rows and their engine limit keys are per-environment, so a mid-creation
@@ -86,6 +90,7 @@ export class CreateDeploymentBackgroundWorkerServiceV4 extends BaseService {
        */
       try {
         validateWorkerConcurrencyDeclarations(body.metadata);
+        body.metadata.tasks.forEach((task) => validateSandboxTask(task, environment));
       } catch (concurrencyError) {
         if (concurrencyError instanceof ServiceValidationError) {
           logger.warn("Invalid worker concurrency declarations", {
@@ -344,6 +349,7 @@ export class CreateDeploymentBackgroundWorkerServiceV4 extends BaseService {
           type: backgroundWorker.engine === "V2" ? "MANAGED" : "V1",
           // runtime is already set when the deployment is created, we only need to set the version
           runtimeVersion: body.metadata.runtimeVersion,
+          cliVersion: deployment.cliVersion,
           ...indexReference,
         },
       });
@@ -417,6 +423,7 @@ export class CreateDeploymentBackgroundWorkerServiceV4 extends BaseService {
         status: "FAILED",
         failedAt,
         errorData,
+        cliVersion: deployment.cliVersion,
       },
     });
 

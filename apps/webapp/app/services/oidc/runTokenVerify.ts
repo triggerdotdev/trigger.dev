@@ -12,10 +12,11 @@ const RunTokenPayload = z.object({
   environment_id: z.string(),
   run_id: z.string(),
   attempt: z.number().int(),
+  exp: z.number().int().positive(),
   scopes: z.array(z.string()),
 });
 
-export type RunTokenClaims = Omit<z.infer<typeof RunTokenPayload>, "aud">;
+export type RunTokenClaims = Omit<z.infer<typeof RunTokenPayload>, "aud" | "exp">;
 
 /** Routing hint from the unverified header. Never use it for authorization. */
 export function isRunTokenFormat(token: string): boolean {
@@ -30,7 +31,7 @@ export function isRunTokenFormat(token: string): boolean {
  * Returns the claims of a valid run token, or undefined for anything else. `jwks` must be the
  * internal run key set: external OIDC keys must never be trusted here.
  */
-export async function verifyRunToken({
+export async function verifyRunTokenWithExpiry({
   token,
   jwks,
   issuer,
@@ -40,7 +41,7 @@ export async function verifyRunToken({
   jwks: PublicJwks;
   issuer: string;
   now?: Date;
-}): Promise<RunTokenClaims | undefined> {
+}): Promise<(RunTokenClaims & { exp: number }) | undefined> {
   try {
     const { payload } = await verifyRs256Jwt({
       token,
@@ -58,4 +59,13 @@ export async function verifyRunToken({
   } catch {
     return undefined;
   }
+}
+
+export async function verifyRunToken(
+  options: Parameters<typeof verifyRunTokenWithExpiry>[0]
+): Promise<RunTokenClaims | undefined> {
+  const verified = await verifyRunTokenWithExpiry(options);
+  if (!verified) return undefined;
+  const { exp: _exp, ...claims } = verified;
+  return claims;
 }

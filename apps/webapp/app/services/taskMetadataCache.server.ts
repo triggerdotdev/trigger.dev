@@ -1,5 +1,6 @@
 import type { Redis, Result, Callback } from "ioredis";
 import { parseGates } from "@internal/run-engine";
+import { RunExecutionPolicy } from "@trigger.dev/core/v3";
 import type { TaskTriggerSource } from "@trigger.dev/database";
 import { logger } from "./logger.server";
 
@@ -9,6 +10,8 @@ export type TaskMetadataEntry = {
   slug: string;
   ttl: string | null;
   triggerSource: TaskTriggerSource;
+  /** Null for standard tasks. */
+  executionPolicy: RunExecutionPolicy | null;
   queueId: string | null;
   queueName: string;
   /** Task-declared gates, applied to every trigger that does not override them. */
@@ -86,12 +89,20 @@ export function parseTaskGates(gates: unknown): TaskMetadataGate[] | null {
   return parsed.length > 0 ? parsed : null;
 }
 
+/** A malformed stored policy must fail closed rather than run with standard access. */
+export function parseExecutionPolicy(policy: unknown): RunExecutionPolicy | null {
+  if (policy === null || policy === undefined) return null;
+  return RunExecutionPolicy.parse(policy);
+}
+
 type EncodedEntry = {
   t: string | null;
   k: TaskTriggerSource;
   q: string | null;
   n: string;
   g?: TaskMetadataGate[] | null;
+  /** Null for standard tasks. Absent means the entry predates policies and must be re-read. */
+  p?: RunExecutionPolicy | null;
 };
 
 function encode(entry: TaskMetadataEntry): string {
@@ -101,6 +112,7 @@ function encode(entry: TaskMetadataEntry): string {
     q: entry.queueId,
     n: entry.queueName,
     g: entry.gates,
+    p: entry.executionPolicy,
   };
   return JSON.stringify(payload);
 }
@@ -108,6 +120,8 @@ function encode(entry: TaskMetadataEntry): string {
 function decode(slug: string, raw: string): TaskMetadataEntry | null {
   try {
     const parsed = JSON.parse(raw) as EncodedEntry;
+    // An entry without a policy field may belong to a sandbox task, so it is treated as a miss.
+    if (parsed.p === undefined) return null;
     return {
       slug,
       ttl: parsed.t,
@@ -115,6 +129,7 @@ function decode(slug: string, raw: string): TaskMetadataEntry | null {
       queueId: parsed.q,
       queueName: parsed.n,
       gates: parseTaskGates(parsed.g ?? null),
+      executionPolicy: parseExecutionPolicy(parsed.p),
     };
   } catch (error) {
     logger.error("Failed to decode task metadata cache entry", { slug, error });

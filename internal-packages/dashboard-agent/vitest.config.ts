@@ -6,6 +6,7 @@ export default defineConfig({
     sequence: { sequencer: DurationShardingSequencer },
     include: ["src/**/*.test.ts"],
     environment: "node",
+    env: { DASHBOARD_AGENT_API_ORIGIN: "http://localhost:3030" },
     isolate: true,
     fileParallelism: false,
     testTimeout: 120_000,

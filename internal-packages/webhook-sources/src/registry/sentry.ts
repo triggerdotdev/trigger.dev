@@ -11,7 +11,7 @@ export const entry: ProviderRegistryEntry = {
   label: "Sentry",
   category: "observability",
   docsUrl: "https://docs.sentry.io/product/integrations/integration-platform/webhooks/",
-  secretProvisioning: "integrator",
+  secretProvisioning: "provider",
   eventTypeSource: { from: "header", name: "sentry-hook-resource" },
   sampleSource: "handauthored",
 };

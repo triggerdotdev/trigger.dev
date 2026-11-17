@@ -5,7 +5,7 @@ import type { PrismaClient, PrismaReplicaClient } from "~/db.server";
 import { EnvironmentVariablesRepository } from "~/v3/environmentVariables/environmentVariablesRepository.server";
 import { EnvironmentEncryptionService } from "~/services/environmentEncryption/service.server";
 import { resolveEncryptionKeyring } from "~/utils/encryptionKeyring.server";
-import { $transaction } from "@trigger.dev/database";
+import { $transaction } from "~/db.server";
 import { FEATURE_FLAG } from "~/v3/featureFlags";
 
 type OpLog = Array<{ label: string; model?: string; operation: string }>;
@@ -50,22 +50,16 @@ describe("EnvironmentVariablesRepository control-plane read routing", () => {
           },
         });
       const writerEncryption = encryption();
-      const prepared = await writerEncryption.prepareWrite({
-        projectId: environment.projectId,
-        environmentId: environment.id,
-      });
-      const key = `environmentvariable:${environment.projectId}:${environment.id}:ENCRYPTED`;
-      await prisma.secretStore.create({
-        data: {
-          key,
-          version: "environment-v1",
-          value: writerEncryption.encrypt(
-            prepared,
-            { environmentId: environment.id, purpose: "environment-variable", objectId: key },
-            JSON.stringify({ secret: "protected" })
-          ),
-        },
-      });
+      expect(
+        await new EnvironmentVariablesRepository(writer, replica, writerEncryption).create(
+          environment.projectId,
+          {
+            environmentIds: [environment.id],
+            variables: [{ key: "ENCRYPTED", value: "protected" }],
+            override: false,
+          }
+        )
+      ).toEqual({ success: true });
       const repository = new EnvironmentVariablesRepository(writer, replica, encryption());
       log.length = 0;
       expect(
@@ -85,12 +79,14 @@ describe("EnvironmentVariablesRepository control-plane read routing", () => {
       const projectId = environment.projectId;
       const environmentId = environment.id;
 
-      await prisma.secretStore.create({
-        data: {
-          key: `environmentvariable:${projectId}:${environmentId}:MY_VAR`,
-          value: { secret: "hello-from-db" },
-        },
-      });
+      const setupRepository = new EnvironmentVariablesRepository(prisma, prisma);
+      expect(
+        await setupRepository.create(projectId, {
+          environmentIds: [environmentId],
+          variables: [{ key: "MY_VAR", value: "hello-from-db" }],
+          override: false,
+        })
+      ).toEqual({ success: true });
 
       const log: OpLog = [];
       const writer = instrument(prisma, "writer", log) as unknown as PrismaClient;

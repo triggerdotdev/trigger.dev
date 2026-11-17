@@ -16,3 +16,10 @@ export const QUEUED_SNAPSHOT_DESCRIPTION = "Run was QUEUED";
  */
 export const RETRY_IMMEDIATELY_SNAPSHOT_DESCRIPTION =
   "Attempt failed with a short delay, starting a new attempt";
+
+/**
+ * Written when a run blocked on waitpoints is moved back to EXECUTING while its process is still
+ * running. `attemptSucceeded` and `attemptFailed` match on it to recognise a completion that names
+ * the snapshot before this move.
+ */
+export const CONTINUED_WHILST_EXECUTING_DESCRIPTION = "Run was continued, whilst still executing.";

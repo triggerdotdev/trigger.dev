@@ -105,7 +105,12 @@ function request(
     findRun: (runId) =>
       database.prisma.taskRun.findFirst({
         where: { id: runId },
-        select: { taskIdentifier: true, runtimeEnvironmentId: true, lockedById: true },
+        select: {
+          taskIdentifier: true,
+          runtimeEnvironmentId: true,
+          lockedById: true,
+          annotations: true,
+        },
       }),
     replica: database.$replica,
     ...overrides,

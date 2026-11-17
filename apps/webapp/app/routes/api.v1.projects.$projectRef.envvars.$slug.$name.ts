@@ -79,7 +79,7 @@ export async function action({ params, request }: ActionFunctionArgs) {
         if (result.success) {
           return json({ success: true });
         } else {
-          return json({ error: result.error }, { status: 400 });
+          return json({ error: result.error }, { status: result.conflict ? 409 : 400 });
         }
       }
       case "PUT":
@@ -108,7 +108,7 @@ export async function action({ params, request }: ActionFunctionArgs) {
         if (result.success) {
           return json({ success: true });
         } else {
-          return json({ error: result.error }, { status: 400 });
+          return json({ error: result.error }, { status: result.conflict ? 409 : 400 });
         }
       }
     }

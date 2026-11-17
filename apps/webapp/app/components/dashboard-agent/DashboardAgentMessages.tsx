@@ -6,6 +6,7 @@ import { memo, useMemo, useRef } from "react";
 import { Button, LinkButton } from "~/components/primitives/Buttons";
 import { Callout } from "~/components/primitives/Callout";
 import { renderPart, toSafeUrl } from "~/components/runs/v3/agent/AgentMessageView";
+import { AlertActionBlock, AlertActionsProvider } from "./AlertActionBlock";
 import type { ToolResultPayload } from "./alert-creation/draftPatch";
 import { draftResultLines } from "./alert-creation/useCreationAgentSend";
 import { sameOriginPath } from "./navigate-target";
@@ -201,6 +202,13 @@ function renderDashboardPart(
     );
   }
 
+  if (type === "tool-resolve_monitoring_alert" && p.state === "output-available") {
+    const call = part as { toolCallId?: string; output?: unknown };
+    return (
+      <AlertActionBlock key={i} toolCallId={call.toolCallId ?? String(i)} output={call.output} />
+    );
+  }
+
   if (type.startsWith("tool-")) {
     // In-flight calls render nothing here; `liveProgress` owns the turn's progress line.
     if (IN_FLIGHT_TOOL_STATES.has(p.state ?? "")) return null;
@@ -362,62 +370,64 @@ export function DashboardAgentTurns({
 
   return (
     <PlanMessagesProvider messages={stripped}>
-      {stripped.map((message) => (
-        <DashboardAgentTurn
-          key={message.id}
-          message={message}
-          onIntent={onIntent}
-          resolveUri={resolveUri}
-          pagePaths={pagePaths}
-          investigationWinners={investigationWinners}
-        />
-      ))}
-      {progress && (
-        <ChatTurn>
-          <ChatProgress>{progress.label}</ChatProgress>
-        </ChatTurn>
-      )}
-      {/* Suppressed once the transcript ends in the stored record of this same
+      <AlertActionsProvider messages={stripped}>
+        {stripped.map((message) => (
+          <DashboardAgentTurn
+            key={message.id}
+            message={message}
+            onIntent={onIntent}
+            resolveUri={resolveUri}
+            pagePaths={pagePaths}
+            investigationWinners={investigationWinners}
+          />
+        ))}
+        {progress && (
+          <ChatTurn>
+            <ChatProgress>{progress.label}</ChatProgress>
+          </ChatTurn>
+        )}
+        {/* Suppressed once the transcript ends in the stored record of this same
           failure, so a reload doesn't show the callout and the record together. */}
-      {liveError && (
-        <ChatTurn>
-          <ChatCardSlot>
-            <Callout
-              variant="error"
-              cta={
-                (onRetry || onDismissError) && (
-                  <ChatActionsRow>
-                    {onRetry && (
-                      <Button
-                        variant="primary/small"
-                        LeadingIcon={ArrowPathIcon}
-                        onClick={onRetry}
-                        disabled={!!retryDisabledReason}
-                        tooltip={retryDisabledReason}
-                        aria-label={
-                          retryDisabledReason ? `Try again — ${retryDisabledReason}` : undefined
-                        }
-                      >
-                        Try again
-                      </Button>
-                    )}
-                    {onDismissError && (
-                      <Button
-                        variant="minimal/small"
-                        LeadingIcon={XMarkIcon}
-                        onClick={onDismissError}
-                        aria-label="Dismiss error"
-                      />
-                    )}
-                  </ChatActionsRow>
-                )
-              }
-            >
-              {liveError.message}
-            </Callout>
-          </ChatCardSlot>
-        </ChatTurn>
-      )}
+        {liveError && (
+          <ChatTurn>
+            <ChatCardSlot>
+              <Callout
+                variant="error"
+                cta={
+                  (onRetry || onDismissError) && (
+                    <ChatActionsRow>
+                      {onRetry && (
+                        <Button
+                          variant="primary/small"
+                          LeadingIcon={ArrowPathIcon}
+                          onClick={onRetry}
+                          disabled={!!retryDisabledReason}
+                          tooltip={retryDisabledReason}
+                          aria-label={
+                            retryDisabledReason ? `Try again — ${retryDisabledReason}` : undefined
+                          }
+                        >
+                          Try again
+                        </Button>
+                      )}
+                      {onDismissError && (
+                        <Button
+                          variant="minimal/small"
+                          LeadingIcon={XMarkIcon}
+                          onClick={onDismissError}
+                          aria-label="Dismiss error"
+                        />
+                      )}
+                    </ChatActionsRow>
+                  )
+                }
+              >
+                {liveError.message}
+              </Callout>
+            </ChatCardSlot>
+          </ChatTurn>
+        )}
+      </AlertActionsProvider>
     </PlanMessagesProvider>
   );
 }

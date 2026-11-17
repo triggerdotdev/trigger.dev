@@ -211,6 +211,7 @@ function createRunEngine() {
     },
     retryWarmStartThresholdMs: env.RUN_ENGINE_RETRY_WARM_START_THRESHOLD_MS,
     duplicateAttemptStartCheck: env.RUN_ENGINE_DUPLICATE_ATTEMPT_START_CHECK,
+    staleCompletionMode: env.RUN_ENGINE_STALE_COMPLETION_MODE,
     pendingVersionRunIdLookup: runEnginePendingVersionLookup,
     externalDeploymentParkDeadlineMs: env.EXTERNAL_DEPLOYMENT_PARK_DEADLINE_MS,
     billing: {

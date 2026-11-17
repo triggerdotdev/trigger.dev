@@ -6,6 +6,7 @@ import {
   listAlertEvents,
   type Alert,
   type AlertEvent,
+  type AlertEventTimes,
 } from "~/v3/services/alerts/storage/alertStore.server";
 import {
   alertParamsSchema,
@@ -348,6 +349,90 @@ function windowSecFor(condition: Condition, alertParams: AlertParams): number | 
   return alertParams.windowSec;
 }
 
+function detailEvent(
+  event: AlertEvent,
+  condition: Condition,
+  alertParams: AlertParams,
+  unit: string | undefined
+): AlertDetailEvent {
+  const errorScope =
+    event.type === "raised" && alertParams.scope.type === "errorGroup"
+      ? alertParams.scope
+      : undefined;
+  return {
+    id: event.id,
+    type: event.type,
+    at: event.at,
+    actorId: event.actorId,
+    factsSummary: factsSummary(
+      event.facts,
+      unit,
+      condition.kind,
+      windowSecFor(condition, alertParams),
+      condition.kind === "threshold" ? condition.value : undefined
+    ),
+    fingerprint: eventFingerprint(event.facts) ?? errorScope?.fingerprint,
+    taskIdentifier: eventTaskIdentifier(event.facts) ?? errorScope?.taskIdentifier,
+  };
+}
+
+export function alertDetailName(alert: Pick<Alert, "name" | "capabilityKey">): string {
+  return alert.name ?? getCapability(alert.capabilityKey)?.title ?? alert.capabilityKey;
+}
+
+export type ChartAlert = Pick<
+  AlertDetail,
+  | "id"
+  | "name"
+  | "kind"
+  | "capabilityKey"
+  | "capabilityTitle"
+  | "capabilityDescription"
+  | "conditionSummary"
+  | "operator"
+  | "thresholdValue"
+  | "unitSuffix"
+  | "windowSec"
+  | "scope"
+  | "status"
+  | "evaluated"
+  | "episode"
+  | "events"
+> & { currentReading?: CurrentReading };
+
+export function chartAlert(
+  alert: Alert,
+  windowEvents: AlertEvent[],
+  eventTimes: AlertEventTimes | undefined
+): ChartAlert {
+  const capability = getCapability(alert.capabilityKey);
+  const condition = conditionSchema.parse(alert.condition);
+  const alertParams = alertParamsSchema.parse(alert.params);
+  return {
+    id: alert.id,
+    name: alertDetailName(alert),
+    kind: condition.kind,
+    capabilityKey: alert.capabilityKey,
+    capabilityTitle: capability?.title ?? alert.capabilityKey,
+    capabilityDescription: capability?.description,
+    conditionSummary: conditionSummary(condition, capability?.unit, capability?.title),
+    operator: condition.kind === "threshold" ? condition.operator : undefined,
+    thresholdValue: condition.kind === "threshold" ? condition.value : undefined,
+    unitSuffix: unitSuffix(capability?.unit),
+    windowSec: windowSecFor(condition, alertParams),
+    scope: alertParams.scope,
+    status: displayStatus(alert.lifecycle, alert.attention),
+    evaluated: alert.lastEvaluatedAt != null,
+    episode: episodeFromTimes(
+      { raisedAt: eventTimes?.raised ?? null, recoveredAt: eventTimes?.recovered ?? null },
+      { attention: alert.attention, observedCondition: alert.observedCondition }
+    ),
+    events: windowEvents.map((event) =>
+      detailEvent(event, condition, alertParams, capability?.unit)
+    ),
+  };
+}
+
 function extractFactsComponents(
   currentReading: CurrentReading,
   events: AlertEvent[],
@@ -453,40 +538,45 @@ export class AlertDetailPresenter extends BasePresenter {
       const condition = conditionSchema.parse(alert.condition);
       const alertParams = alertParamsSchema.parse(alert.params);
 
-      const events = await listAlertEvents(this._alertDb, alert.id, { limit: 50 });
       const eventsWindow = params.eventsWindow;
-      const windowEvents = eventsWindow
-        ? (
-            await listAlertEvents(this._alertDb, alert.id, {
-              limit: 50,
-              before: new Date(eventsWindow.until.getTime() + 1),
-            })
-          ).filter((event) => event.at >= eventsWindow.since)
-        : events;
-      const firstEventAt = await firstAlertEventAt(this._alertDb, alert.id);
-      const eventTimes = (await getLatestAlertEventTimes(this._alertDb, [alert.id])).get(alert.id);
-      const occurrenceCount =
-        condition.kind === "occurrence"
-          ? alert.occurrencesTotal
-          : await countAlertEventsByType(this._alertDb, {
-              alertId: alert.id,
-              type: "raised",
-            });
       const notifierRefs = alert.notifiers as NotifierRef[];
       const channelIds = notifierChannelIds(notifierRefs);
-      const { environmentType, channels } =
+      const [
+        events,
+        windowEvents,
+        firstEventAt,
+        eventTimesById,
+        occurrenceCount,
+        { environmentType, channels },
+        reading,
+      ] = await Promise.all([
+        listAlertEvents(this._alertDb, alert.id, { limit: 50 }),
+        eventsWindow
+          ? listAlertEvents(this._alertDb, alert.id, {
+              limit: 50,
+              before: new Date(eventsWindow.until.getTime() + 1),
+            }).then((list) => list.filter((event) => event.at >= eventsWindow.since))
+          : undefined,
+        firstAlertEventAt(this._alertDb, alert.id),
+        getLatestAlertEventTimes(this._alertDb, [alert.id]),
+        condition.kind === "occurrence"
+          ? alert.occurrencesTotal
+          : countAlertEventsByType(this._alertDb, { alertId: alert.id, type: "raised" }),
         channelIds.length > 0
-          ? await this._resolveChannels({
+          ? this._resolveChannels({
               projectId: alert.projectId,
               environmentId: alert.environmentId,
               channelIds,
             })
-          : { environmentType: null, channels: new Map<string, NotifierChannel>() };
+          : { environmentType: null, channels: new Map<string, NotifierChannel>() },
+        getCurrentReading(alert, this._getCurrentReadingDeps),
+      ]);
+      const eventTimes = eventTimesById.get(alert.id);
       const notifiers = notifiersFor(notifierRefs, channels);
       const channelIssues = alertChannelIssues(notifierRefs, channels, environmentType);
       const status = displayStatus(alert.lifecycle, alert.attention);
 
-      let currentReading = await getCurrentReading(alert, this._getCurrentReadingDeps);
+      let currentReading = reading;
 
       const latestRaisedEvent = events.find((event) => event.type === "raised");
       const episode = episodeFromTimes(
@@ -544,7 +634,7 @@ export class AlertDetailPresenter extends BasePresenter {
 
       return {
         id: alert.id,
-        name: alert.name ?? capability?.title ?? alert.capabilityKey,
+        name: alertDetailName(alert),
         capabilityKey: alert.capabilityKey,
         lifecycle: alert.lifecycle,
         capabilityTitle: capability?.title ?? alert.capabilityKey,
@@ -587,29 +677,9 @@ export class AlertDetailPresenter extends BasePresenter {
         resolvedByLabel,
         stoppedByLabel,
         notifiers,
-        events: windowEvents.map((event) => ({
-          id: event.id,
-          type: event.type,
-          at: event.at,
-          actorId: event.actorId,
-          factsSummary: factsSummary(
-            event.facts,
-            capability?.unit,
-            condition.kind,
-            windowSecFor(condition, alertParams),
-            condition.kind === "threshold" ? condition.value : undefined
-          ),
-          fingerprint:
-            eventFingerprint(event.facts) ??
-            (event.type === "raised" && alertParams.scope.type === "errorGroup"
-              ? alertParams.scope.fingerprint
-              : undefined),
-          taskIdentifier:
-            eventTaskIdentifier(event.facts) ??
-            (event.type === "raised" && alertParams.scope.type === "errorGroup"
-              ? alertParams.scope.taskIdentifier
-              : undefined),
-        })),
+        events: (windowEvents ?? events).map((event) =>
+          detailEvent(event, condition, alertParams, capability?.unit)
+        ),
         latestRaisedEventFacts:
           errorEvidence && errorEvidence.length > 0
             ? { occurrences: errorEvidence }

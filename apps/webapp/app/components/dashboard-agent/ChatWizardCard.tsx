@@ -677,8 +677,11 @@ export function ChatWizardCard({
       : (step?.options ?? []);
   const [revealed, setRevealed] = useState<string>();
   const [resets, setResets] = useState(0);
-  const [active, setActive] = useState({ stepId: step?.id, index: 0 });
-  const activeIndex = active.stepId === step?.id ? active.index : 0;
+  const [active, setActive] = useState<{ stepId?: string; index: number }>({ index: -1 });
+  const activeIndex =
+    active.stepId === step?.id
+      ? active.index
+      : rows.findIndex((row) => step?.selected?.includes(row.id));
   const setActiveIndex = (index: number) => setActive({ stepId: step?.id, index });
   const hasPrev = stepIndex > 0;
   const rootRef = useRef<HTMLDivElement>(null);

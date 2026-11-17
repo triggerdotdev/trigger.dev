@@ -102,7 +102,7 @@ export async function action({ params, request }: ActionFunctionArgs) {
           error: childFailure?.error || parentFailure?.error || "Unknown error",
           variableErrors: childFailure?.variableErrors || parentFailure?.variableErrors,
         },
-        { status: 400 }
+        { status: (childFailure ?? parentFailure)?.conflict ? 409 : 400 }
       );
     }
   }
@@ -110,7 +110,10 @@ export async function action({ params, request }: ActionFunctionArgs) {
   if (result.success) {
     return json({ success: true });
   } else {
-    return json({ error: result.error, variableErrors: result.variableErrors }, { status: 400 });
+    return json(
+      { error: result.error, variableErrors: result.variableErrors },
+      { status: result.conflict ? 409 : 400 }
+    );
   }
 }
 

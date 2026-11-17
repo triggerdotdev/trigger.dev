@@ -21,6 +21,7 @@ import { ServiceValidationError } from "./services/common.server";
 import { TriggerTaskService } from "./services/triggerTask.server";
 import { resolveWebhookSession } from "./webhookSessionTarget.server";
 import { activeSigningSecrets, StoredSigningSecret } from "./webhookSigningSecret";
+import { adoptCapturedWebhookSigningSecret } from "./webhookSigningSecret.server";
 import { webhookLimitsForEnvironment } from "./webhookLimits.server";
 import { webhookPortErrorMessage } from "./webhookPortErrors.server";
 import { webhookWaitpoints } from "./webhookWaitpoints.server";
@@ -147,6 +148,7 @@ function createWebhookEngine() {
       );
       return value?.token || undefined;
     },
+    adoptSigningSecret: adoptCapturedWebhookSigningSecret,
     triggerTask: async ({
       environmentId,
       taskId,

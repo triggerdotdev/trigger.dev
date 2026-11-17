@@ -1,0 +1,44 @@
+{
+  "request": {
+    "jsonrpc": "2.0",
+    "id": 3,
+    "method": "tools/call",
+    "params": {
+      "name": "list_projects",
+      "arguments": {},
+      "_meta": {
+        "io.modelcontextprotocol/protocolVersion": "2026-07-28",
+        "io.modelcontextprotocol/clientCapabilities": {},
+        "io.modelcontextprotocol/clientInfo": {
+          "name": "golden",
+          "version": "1.0.0"
+        }
+      }
+    }
+  },
+  "response": {
+    "status": 200,
+    "headers": {
+      "content-type": "application/json"
+    },
+    "body": {
+      "result": {
+        "content": [
+          {
+            "type": "text",
+            "text": "## Organization <untrusted-data source=\"org-title\" boundary=\"<BOUNDARY>\">Test Org</untrusted-data boundary=\"<BOUNDARY>\"> (id=<ORG_ID>) (slug=<ORG_SLUG>) projects:\n- <untrusted-data source=\"project-name\" boundary=\"<BOUNDARY>\">Test Project</untrusted-data boundary=\"<BOUNDARY>\"> (projectRef=<PROJECT_REF>) (slug=<PROJECT_SLUG>) (createdAt=<TIMESTAMP>)"
+          }
+        ],
+        "resultType": "complete",
+        "_meta": {
+          "io.modelcontextprotocol/serverInfo": {
+            "name": "trigger.dev",
+            "version": "1.0.0"
+          }
+        }
+      },
+      "jsonrpc": "2.0",
+      "id": 3
+    }
+  }
+}

@@ -163,6 +163,8 @@ describe("audit logs host", () => {
     const controller = inMemoryController();
     const audit = host({ controller: async () => controller, enabled: false });
 
+    expect(audit.isRecordingEnabled()).toBe(false);
+    expect(host({ controller: async () => controller }).isRecordingEnabled()).toBe(true);
     audit.record(input);
     await audit.flush();
     const saved = await audit.saveCredentialFingerprint(fingerprint);
@@ -194,6 +196,53 @@ describe("audit logs host", () => {
     await audit.flush();
 
     expect(controller.recorded[0]?.[1].credential?.fingerprintId).toBe("fp_9");
+  });
+
+  // Catches: recordLater reading the context after the request has moved on, running its reads
+  // while recording is off, recording a null, throwing, or flush (and so shutdown) not waiting.
+  it("records later with the context of the call, and only while recording is on", async () => {
+    const controller = inMemoryController();
+    const contextTimes: Date[] = [];
+    let enabled = false;
+    const audit = createAuditLogs({
+      controller: async () => controller,
+      isRecordingEnabled: () => enabled,
+      getContext: (occurredAt) => {
+        contextTimes.push(occurredAt);
+        return contextAt(occurredAt);
+      },
+    });
+    let builds = 0;
+    let release!: () => void;
+    const released = new Promise<void>((resolve) => (release = resolve));
+    const build = async () => {
+      builds++;
+      await released;
+      return input;
+    };
+
+    audit.recordLater(build);
+    expect(builds).toBe(0);
+
+    enabled = true;
+    audit.recordLater(build);
+    expect(contextTimes).toHaveLength(1);
+    audit.recordLater(async () => null);
+    expect(() =>
+      audit.recordLater(async () => {
+        throw new Error("lookup failed");
+      })
+    ).not.toThrow();
+
+    const flushed = audit.flush();
+    await new Promise((resolve) => setTimeout(resolve, 10));
+    expect(controller.recorded).toHaveLength(0);
+    release();
+    await flushed;
+
+    expect(builds).toBe(1);
+    expect(controller.recorded).toEqual([[input, expect.anything()]]);
+    expect(controller.recorded[0]![1].occurredAt).toEqual(contextTimes[0]);
   });
 
   // Catches: the plugin missing the call's context.
@@ -428,7 +477,7 @@ describe("audit logs host", () => {
       actor: { type: "user", id: "user_1" },
       credential: { kind: "pat", id: "pat_1", last4: "k9Qz", fingerprintId: "fp_1" },
       onBehalfOf: { userId: "staff_1" },
-      source: "staff",
+      source: "dashboard",
       endpoint: { ip: "203.0.113.7", userAgent: "test" },
       origin: { deploymentId: "deployment_1" },
       requestId: "req_1",
@@ -459,6 +508,54 @@ describe("audit logs host", () => {
       events: [{ ...visible, credential: { kind: "pat", id: "pat_1", last4: "k9Qz" } }],
       nextCursor: "next",
     });
+  });
+
+  // Catches: a staff member's IP and user agent reaching the customer, whether staff act as
+  // Trigger.dev support or while impersonating a user.
+  it("hides the endpoint of events Trigger.dev staff made", async () => {
+    const base: AuditLogEvent = {
+      ...input,
+      id: "evt_1",
+      occurredAt: new Date("2026-11-09T12:00:00Z"),
+      changes: null,
+      actor: { type: "user", id: "user_1" },
+      credential: null,
+      onBehalfOf: null,
+      source: "dashboard",
+      endpoint: { ip: "203.0.113.7", userAgent: "test" },
+      origin: null,
+      requestId: null,
+    };
+    const support = {
+      ...base,
+      id: "evt_support",
+      actor: { type: "support", id: null },
+      source: "staff",
+      onBehalfOf: { userId: "staff_1" },
+    } satisfies AuditLogEvent;
+    const impersonated = {
+      ...base,
+      id: "evt_impersonated",
+      source: "staff",
+      onBehalfOf: { userId: "staff_1" },
+    } satisfies AuditLogEvent;
+    const controller = inMemoryController({
+      listEvents: async () => ({ events: [base, support, impersonated], nextCursor: null }),
+    });
+    const audit = host({ controller: async () => controller });
+
+    const page = await audit.listEvents({
+      organizationId: "org_1",
+      from: new Date(0),
+      to: new Date(),
+      limit: 50,
+    });
+
+    expect(page.events.map((event) => [event.id, event.endpoint])).toEqual([
+      ["evt_1", { ip: "203.0.113.7", userAgent: "test" }],
+      ["evt_support", null],
+      ["evt_impersonated", null],
+    ]);
   });
 
   // Catches: flush resolving before in-flight records finish, or before the plugin flushes its

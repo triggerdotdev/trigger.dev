@@ -5,26 +5,23 @@ import {
   type CreatePublicTokenRequestBody,
   type GetOIDCTokenOptions,
   apiClientManager,
-  generateJWT as internal_generateJWT,
-  isAdditionalApiKey,
-  isRunToken,
 } from "@trigger.dev/core/v3";
 import "@trigger.dev/core/v3/sdk-scope-storage";
 
 /**
- * Register the global API client configuration. Alternatively, you can set the `TRIGGER_SECRET_KEY` and `TRIGGER_API_URL` environment variables.
+ * Register the global API client configuration with an explicit `accessToken`.
  * @param options The API client configuration.
  * @param options.baseURL The base URL of the Trigger API. (default: `https://api.trigger.dev`)
- * @param options.accessToken The accessToken to authenticate with the Trigger API. (default: `process.env.TRIGGER_SECRET_KEY`) This can be found in your Trigger.dev project "API Keys" settings.
+ * @param options.accessToken A named environment API key or personal access token to authenticate with the Trigger API. Create environment keys in your project's "API Keys" settings.
  *
  * @example
  *
  * ```typescript
- * import { configure } from "@trigger.dev/sdk/v3";
+ * import { configure } from "@trigger.dev/sdk";
  *
  * configure({
  *  baseURL: "https://api.trigger.dev",
- *  accessToken: "tr_dev_1234567890"
+ *  accessToken: process.env.TRIGGER_API_KEY
  * });
  * ```
  */
@@ -170,9 +167,7 @@ type CreatePublicTokenOptions = {
   };
 };
 
-// A `Date` becomes Unix seconds; duration strings and numbers pass through. A
-// bare number is already Unix seconds, matching how the local signing path
-// reads it, so all credential types treat the option the same.
+// Numbers are already Unix seconds; only Dates need conversion.
 function serverExpirationTime(
   expirationTime: number | Date | string | undefined
 ): number | string | undefined {
@@ -185,21 +180,8 @@ async function createServerPublicToken(
   apiClient: ApiClient,
   body: CreatePublicTokenRequestBody
 ): Promise<string> {
-  try {
-    const result = await apiClient.createPublicToken(body);
-    return result.token;
-  } catch (error) {
-    if (error !== null && typeof error === "object" && "status" in error && error.status === 404) {
-      const credentialType = isRunToken(apiClient.getAccessToken("createPublicToken"))
-        ? "run token"
-        : "additional API key";
-      throw new Error(
-        `This ${credentialType} cannot self-sign public tokens, and the server does not support public-token minting. Upgrade the server or use the root API key.`
-      );
-    }
-
-    throw error;
-  }
+  const result = await apiClient.createPublicToken(body);
+  return result.token;
 }
 
 /**
@@ -228,26 +210,11 @@ async function createServerPublicToken(
 async function createPublicToken(options?: CreatePublicTokenOptions): Promise<string> {
   const scopes = options?.scopes ? flattenScopes(options.scopes) : [];
   const apiClient = apiClientManager.clientOrThrow();
-  const accessToken = apiClient.getAccessToken("createPublicToken");
 
-  if (isAdditionalApiKey(accessToken) || isRunToken(accessToken)) {
-    return createServerPublicToken(apiClient, {
-      scopes,
-      expirationTime: serverExpirationTime(options?.expirationTime),
-      realtime: options?.realtime,
-    });
-  }
-
-  const claims = await apiClient.generateJWTClaims();
-
-  return await internal_generateJWT({
-    secretKey: accessToken,
-    payload: {
-      ...claims,
-      scopes: options?.scopes ? scopes : undefined,
-      realtime: options?.realtime,
-    },
-    expirationTime: options?.expirationTime,
+  return createServerPublicToken(apiClient, {
+    scopes,
+    expirationTime: serverExpirationTime(options?.expirationTime),
+    realtime: options?.realtime,
   });
 }
 
@@ -338,7 +305,6 @@ async function createTriggerPublicToken(
   options?: CreateTriggerTokenOptions
 ): Promise<string> {
   const apiClient = apiClientManager.clientOrThrow();
-  const accessToken = apiClient.getAccessToken("createPublicToken");
   const scopes = flattenScopes({
     trigger: {
       tasks: task,
@@ -346,26 +312,11 @@ async function createTriggerPublicToken(
   });
   const oneTimeUse = typeof options?.multipleUse === "boolean" ? !options.multipleUse : true;
 
-  if (isAdditionalApiKey(accessToken) || isRunToken(accessToken)) {
-    return createServerPublicToken(apiClient, {
-      scopes,
-      expirationTime: serverExpirationTime(options?.expirationTime),
-      oneTimeUse,
-      realtime: options?.realtime,
-    });
-  }
-
-  const claims = await apiClient.generateJWTClaims();
-
-  return await internal_generateJWT({
-    secretKey: accessToken,
-    payload: {
-      ...claims,
-      otu: oneTimeUse,
-      realtime: options?.realtime,
-      scopes,
-    },
-    expirationTime: options?.expirationTime,
+  return createServerPublicToken(apiClient, {
+    scopes,
+    expirationTime: serverExpirationTime(options?.expirationTime),
+    oneTimeUse,
+    realtime: options?.realtime,
   });
 }
 
@@ -422,7 +373,6 @@ async function createBatchTriggerPublicToken(
   options?: CreateTriggerTokenOptions
 ): Promise<string> {
   const apiClient = apiClientManager.clientOrThrow();
-  const accessToken = apiClient.getAccessToken("createPublicToken");
   const scopes = flattenScopes({
     batchTrigger: {
       tasks: task,
@@ -430,26 +380,11 @@ async function createBatchTriggerPublicToken(
   });
   const oneTimeUse = typeof options?.multipleUse === "boolean" ? !options.multipleUse : true;
 
-  if (isAdditionalApiKey(accessToken) || isRunToken(accessToken)) {
-    return createServerPublicToken(apiClient, {
-      scopes,
-      expirationTime: serverExpirationTime(options?.expirationTime),
-      oneTimeUse,
-      realtime: options?.realtime,
-    });
-  }
-
-  const claims = await apiClient.generateJWTClaims();
-
-  return await internal_generateJWT({
-    secretKey: accessToken,
-    payload: {
-      ...claims,
-      otu: oneTimeUse,
-      realtime: options?.realtime,
-      scopes,
-    },
-    expirationTime: options?.expirationTime,
+  return createServerPublicToken(apiClient, {
+    scopes,
+    expirationTime: serverExpirationTime(options?.expirationTime),
+    oneTimeUse,
+    realtime: options?.realtime,
   });
 }
 

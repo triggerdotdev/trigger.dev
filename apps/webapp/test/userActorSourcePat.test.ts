@@ -117,6 +117,19 @@ describe("resolveAndRecheckUserActorClaims (apiBuilder verify site)", () => {
     expect(result).toMatchObject({ userId: "usr_1", environmentId: "env_1234", pat: "pat_1234" });
   });
 
+  it("rejects a token without the requested audience; no fallback to plugin claims", async () => {
+    mocks.patFindFirst.mockResolvedValue(LIVE_PAT);
+    const bearer = await tokenWithPat("pat_1234");
+
+    const result = await resolveAndRecheckUserActorClaims(
+      { userId: "usr_1", pat: "pat_1234" },
+      bearer,
+      "https://mcp.example.test/mcp"
+    );
+
+    expect(result).toBeUndefined();
+  });
+
   it("denies when the source PAT was revoked", async () => {
     mocks.patFindFirst.mockResolvedValue(null);
     const bearer = await tokenWithPat("pat_1234");

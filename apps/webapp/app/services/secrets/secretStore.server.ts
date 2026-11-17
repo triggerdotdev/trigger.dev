@@ -31,6 +31,8 @@ export interface SecretStoreProvider {
   getSecrets<T>(schema: z.Schema<T>, keyPrefix: string): Promise<{ key: string; value: T }[]>;
   getSecretsByKeys<T>(schema: z.Schema<T>, keys: string[]): Promise<{ key: string; value: T }[]>;
   setSecret<T extends object>(key: string, value: T): Promise<void>;
+  /** Stores the value only when no secret exists under `key`. Resolves false when one already does. */
+  createSecret<T extends object>(key: string, value: T): Promise<boolean>;
   deleteSecret(key: string): Promise<void>;
 }
 
@@ -54,6 +56,10 @@ export class SecretStore {
 
   setSecret<T extends object>(key: string, value: T): Promise<void> {
     return this.provider.setSecret(key, value);
+  }
+
+  createSecret<T extends object>(key: string, value: T): Promise<boolean> {
+    return this.provider.createSecret(key, value);
   }
 
   getSecrets<T>(schema: z.Schema<T>, keyPrefix: string): Promise<{ key: string; value: T }[]> {
@@ -191,13 +197,28 @@ export class PrismaSecretStore implements SecretStoreProvider {
     return schema.parse(parsedDecrypted);
   }
 
-  async setSecret<T extends object>(key: string, value: T): Promise<void> {
+  async #encrypt<T extends object>(key: string, value: T) {
     const plaintext = JSON.stringify(value);
     const awsKmsKeyId = this.options?.awsKmsKeyId;
     const encrypted = awsKmsKeyId
       ? await encryptWithAwsKms(awsKmsKeyId, key, plaintext)
       : await encryptSecret(this.encryptionKey, plaintext);
-    const version = awsKmsKeyId ? AWS_KMS_SECRET_VERSION : "2";
+    return { encrypted, version: awsKmsKeyId ? AWS_KMS_SECRET_VERSION : "2" };
+  }
+
+  async createSecret<T extends object>(key: string, value: T): Promise<boolean> {
+    const { encrypted, version } = await this.#encrypt(key, value);
+    // ON CONFLICT DO NOTHING rather than catching a unique violation, which would abort a caller's
+    // surrounding transaction.
+    const { count } = await this.#prismaClient.secretStore.createMany({
+      data: [{ key, value: encrypted, version }],
+      skipDuplicates: true,
+    });
+    return count === 1;
+  }
+
+  async setSecret<T extends object>(key: string, value: T): Promise<void> {
+    const { encrypted, version } = await this.#encrypt(key, value);
 
     await this.#prismaClient.secretStore.upsert({
       create: {

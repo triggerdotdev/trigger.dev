@@ -15,12 +15,20 @@ import type { SyncEnvVarsMapping, EnvSlug } from "~/v3/vercel/vercelProjectInteg
 import { VercelIntegrationService } from "~/services/vercelIntegration.server";
 import { loadEnvironmentVariablesEnvironments } from "./environmentVariablesEnvironments.server";
 import { getReadableVariableValues } from "./readableVariableValues.server";
+import { countAttentionKeys } from "./environmentVariablesAttention.server";
+import {
+  attentionTargetEnvironment,
+  missingAttentionSources,
+  RECENT_ATTENTION_WINDOW_MS,
+} from "~/v3/environmentVariables/attention";
+import { OIDC_REPLACEABLE_KEYS } from "~/v3/environmentVariables/oidcReplaceable";
+import type { RuntimeEnvironmentType } from "@trigger.dev/database";
 
 import { boundedIn, Prisma } from "@trigger.dev/database";
 type Result = Awaited<ReturnType<EnvironmentVariablesPresenter["call"]>>;
 export type EnvironmentVariableWithSetValues = Result["environmentVariables"][number];
 
-const DEFAULT_ENV_VARS_PAGE_SIZE = 50;
+export const DEFAULT_ENV_VARS_PAGE_SIZE = 50;
 
 export class EnvironmentVariablesPresenter {
   #prismaClient: PrismaClient;
@@ -41,6 +49,8 @@ export class EnvironmentVariablesPresenter {
     branches,
     currentEnvironmentSlug,
     sort,
+    canRead,
+    isOidcEnabled = async () => false,
   }: {
     userId: User["id"];
     projectId: Project["id"];
@@ -58,6 +68,13 @@ export class EnvironmentVariablesPresenter {
      * `canSortEnvironmentVariablesView` allows; any other view is listed alphabetically.
      */
     sort?: EnvironmentVariablesSort;
+    /**
+     * Whether the role can read an environment's values. With it, the result has the needs
+     * attention button's count for the environment that page opens on.
+     */
+    canRead?: (type: RuntimeEnvironmentType) => boolean;
+    /** Whether the organization has OIDC, for the count's "Replace with OIDC" keys. */
+    isOidcEnabled?: (orgFeatureFlags: unknown) => Promise<boolean>;
   }) {
     const project = await this.#replicaClient.project.findFirst({
       select: {
@@ -109,6 +126,37 @@ export class EnvironmentVariablesPresenter {
       currentEnvironmentType: missingCurrentEnvironment?.type,
     });
     const { filter, environmentIds, branchEnvironmentIds } = view;
+
+    // The needs attention button's count: keys missing here, changed recently or replaceable
+    // with OIDC in the environment the page opens on. Empty needs decrypting, so the page alone
+    // counts it.
+    const attentionTarget = canRead
+      ? attentionTargetEnvironment({
+          environments: sortedEnvironments,
+          env: environmentFilter,
+          branches: branches ?? [],
+          currentEnvironmentId: currentEnvironment?.id,
+          currentEnvironmentType: missingCurrentEnvironment?.type,
+        })
+      : undefined;
+    const attentionCount =
+      attentionTarget && canRead?.(attentionTarget.type)
+        ? (
+            await countAttentionKeys(this.#replicaClient, {
+              projectId: project.id,
+              targetId: attentionTarget.id,
+              missingSourceIds: missingAttentionSources(attentionTarget, sortedEnvironments).map(
+                (source) => source.id
+              ),
+              recentSince: new Date(Date.now() - RECENT_ATTENTION_WINDOW_MS),
+              oidcKeys:
+                attentionTarget.type !== "DEVELOPMENT" &&
+                (await isOidcEnabled(project.organization.featureFlags))
+                  ? OIDC_REPLACEABLE_KEYS
+                  : undefined,
+            })
+          ).all
+        : undefined;
     const appliedSort = sort && canSortEnvironmentVariablesView(view) ? sort : undefined;
     const filteredEnvironmentIds = new Set(environmentIds);
     const listedEnvironments = sortedEnvironments.filter((env) =>
@@ -323,6 +371,7 @@ export class EnvironmentVariablesPresenter {
       filter,
       filterEnvironmentIds: environmentIds,
       filterBranchEnvironmentIds: branchEnvironmentIds ?? [],
+      attentionCount,
       projectHasNoVariables,
       hasStaging,
       pagination: {

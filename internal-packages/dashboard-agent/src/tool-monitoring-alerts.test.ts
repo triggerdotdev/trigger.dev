@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
+  buildAlertChannelsTool,
   buildAnalyzeQueryAlertTool,
   buildMonitoringAlertTools,
   buildPlanMonitoringTool,
@@ -109,7 +110,8 @@ const CTX = {
 
 function tools() {
   const ctx = { ...CTX, toolScope: "alert_creation" };
-  return buildMonitoringAlertTools({ ctx: ctx as any, client: createApiClient(ctx as any) });
+  const args = { ctx: ctx as any, client: createApiClient(ctx as any) };
+  return { ...buildMonitoringAlertTools(args), ...buildAlertChannelsTool(args) };
 }
 
 const run = (name: string, input: any = {}) =>
@@ -208,6 +210,186 @@ describe("update_alert_draft", () => {
     expect(result.ok).toBe(true);
     expect(result.patch.area).toBe("queues");
     expect(result.reason).toBe("Watching queue depth");
+  });
+});
+
+describe("alert listing tools", () => {
+  const listCall = async (name: string, input: any, body: unknown) => {
+    const urls: string[] = [];
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: string) => {
+        urls.push(url);
+        return new Response(JSON.stringify(body), { status: 200 });
+      })
+    );
+    const result = await run(name, input);
+    return { url: new URL(urls[0]!), result };
+  };
+
+  // Catches: dropping scope from the request, so org-wide listing silently stays one environment.
+  it("sends the requested scope", async () => {
+    const { url } = await listCall("list_monitoring_alerts", { scope: "organization" }, {});
+    expect(url.searchParams.get("scope")).toBe("organization");
+  });
+
+  // Catches: defaulting to a wider scope than the current environment.
+  it("sends no wider scope by default", async () => {
+    const { url } = await listCall("list_monitoring_alerts", {}, {});
+    expect([null, "environment"]).toContain(url.searchParams.get("scope"));
+  });
+
+  // Catches: passing the channel response through unfiltered.
+  it("returns channels without properties or unlisted project keys", async () => {
+    const { result } = await listCall(
+      "list_alert_channels",
+      {},
+      {
+        scope: "project",
+        truncated: true,
+        channels: [
+          {
+            id: "c1",
+            type: "WEBHOOK",
+            name: "Hook",
+            enabled: true,
+            alertTypes: ["TASK_RUN"],
+            environmentTypes: ["PRODUCTION"],
+            projectId: "p1",
+            createdAt: "2026-01-01T00:00:00.000Z",
+            properties: { url: "https://x" },
+            project: { slug: "app", name: "App", extra: "x" },
+            legacyAlerts: [
+              {
+                type: "TASK_RUN",
+                label: "Task run failure",
+                migration: "replace",
+                replaceWith: "runs.failed",
+                extra: "x",
+              },
+            ],
+          },
+        ],
+      }
+    );
+    expect(result.truncated).toBe(true);
+    expect(result.channels).toHaveLength(1);
+    expect(result.channels[0]).not.toHaveProperty("properties");
+    expect(result.channels[0].project).toEqual({ slug: "app", name: "App" });
+    expect(result.channels[0]).toMatchObject({ id: "c1", type: "WEBHOOK" });
+  });
+
+  // Catches: passing legacyAlerts through whole, or dropping its fields.
+  it("keeps only the four keys of each legacy alert", async () => {
+    const { result } = await listCall(
+      "list_alert_channels",
+      {},
+      {
+        channels: [
+          {
+            id: "c1",
+            legacyAlerts: [
+              {
+                type: "DEPLOYMENT_FAILURE",
+                label: "Deployment failure",
+                migration: "coming-soon",
+                extra: "x",
+              },
+            ],
+          },
+        ],
+      }
+    );
+    expect(result.channels[0].legacyAlerts).toEqual([
+      {
+        type: "DEPLOYMENT_FAILURE",
+        label: "Deployment failure",
+        migration: "coming-soon",
+        replaceWith: undefined,
+      },
+    ]);
+  });
+
+  // Catches: filtering type or legacy on the client instead of sending them, or dropping them.
+  it("sends legacy and type to the server", async () => {
+    const { url } = await listCall("list_alert_channels", { legacy: true, type: "WEBHOOK" }, {});
+    expect(url.searchParams.get("legacy")).toBe("true");
+    expect(url.searchParams.get("type")).toBe("WEBHOOK");
+  });
+
+  // Catches: trimming the alerts response and losing project, environment, channelIds or truncated.
+  it("keeps per-alert project, environment and channelIds and the truncated flag", async () => {
+    const alert = {
+      id: "a1",
+      project: { slug: "app", name: "App" },
+      environment: { slug: "prod", type: "PRODUCTION" },
+      channelIds: ["c1"],
+    };
+    const { result } = await listCall(
+      "list_monitoring_alerts",
+      { scope: "organization" },
+      { scope: "organization", truncated: true, alerts: [alert] }
+    );
+    expect(result).toEqual({ alerts: [alert], truncated: true });
+  });
+});
+
+describe("resolve_monitoring_alert", () => {
+  const resolve = async (attention: string) => {
+    const calls: { url: string; method: string }[] = [];
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: string, init?: RequestInit) => {
+        calls.push({ url, method: init?.method ?? "GET" });
+        const alertId = new URL(url).searchParams.get("alertId");
+        const alert = {
+          id: "alert_1",
+          name: "Queue depth",
+          attention,
+          projectId: "proj_1",
+          environmentId: "env_1",
+        };
+        return new Response(JSON.stringify(alertId === "alert_1" ? { alert } : { alerts: [] }), {
+          status: 200,
+        });
+      })
+    );
+    const result = await (
+      buildMonitoringAlertTools({ ctx: CTX as any, client: createApiClient(CTX as any) })
+        .resolve_monitoring_alert as any
+    ).execute({ alertId: "alert_1" }, {} as any);
+    return { calls, result };
+  };
+
+  // Catches: writing the resolve itself, scanning the capped list, or dropping the environment.
+  it("proposes the resolve of the alert looked up by id and writes nothing", async () => {
+    const { calls, result } = await resolve("needs_attention");
+    expect(calls.filter((c) => c.method !== "GET")).toEqual([]);
+    expect(result).toEqual({
+      ok: true,
+      pending: true,
+      alertId: "alert_1",
+      name: "Queue depth",
+      projectId: "proj_1",
+      environmentId: "env_1",
+      action: "resolve",
+    });
+  });
+
+  // Catches: a 404 for an alert outside the current environment surfacing as a bare "Alert not found".
+  it("explains an alert outside the current environment", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => new Response(JSON.stringify({ error: "Alert not found" }), { status: 404 }))
+    );
+    const result = await run("resolve_monitoring_alert", { alertId: "alert_other" });
+    expect(result.error).toContain("not in the current environment");
+  });
+
+  // Catches: proposing a resolve for an alert that no longer needs attention.
+  it("refuses an alert that does not need attention", async () => {
+    const { result } = await resolve("clear");
+    expect(result).toEqual({ error: "No alert with that id needs attention." });
   });
 });
 
@@ -867,10 +1049,11 @@ describe("plan_monitoring", () => {
     expect(result.plan.items[0].draft.notifiers).toBeUndefined();
   });
 
-  it("is the last tool and an alert tool", () => {
-    expect(Object.keys(dashboardAgentToolSchemas).slice(-2)).toEqual([
+  it("sits before the appended tools and is an alert tool", () => {
+    expect(Object.keys(dashboardAgentToolSchemas).slice(-3)).toEqual([
       "plan_monitoring",
       "plan_decision",
+      "list_alert_channels",
     ]);
     expect(DASHBOARD_AGENT_MONITORING_ALERT_TOOL_NAMES).toContain("plan_monitoring");
   });

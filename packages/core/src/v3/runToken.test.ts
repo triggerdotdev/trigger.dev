@@ -1,7 +1,7 @@
 import { metrics } from "@opentelemetry/api";
 import { MeterProvider, MetricReader } from "@opentelemetry/sdk-metrics";
 import { afterEach, describe, expect, it } from "vitest";
-import { isRunToken, resolveRunTokenCredential } from "./runToken.js";
+import { isRunToken, resolveRunTokenCredential, runTokenSelectionReason } from "./runToken.js";
 import { runTokenOperationPolicy } from "./runTokenOperations.js";
 import { sdkCredentialTelemetryOperations } from "./sdkCredentialTelemetry.js";
 import { sdkScope } from "./sdkScope/index.js";
@@ -136,7 +136,20 @@ describe("resolveRunTokenCredential", () => {
     });
   });
 
-  it("falls back on missing, expired, malformed and old narrow tokens", async () => {
+  // Catches: valid scoped tokens being discarded when no compatibility credential exists.
+  it("selects scoped tokens without a fallback and preserves early-token compatibility with one", async () => {
+    await runInMockTaskContext(() => {
+      for (const scopes of [[], ["read:runs:run_self", "write:runs:run_self", "write:oidc"]]) {
+        const token = runToken({ scopes });
+        process.env.TRIGGER_RUN_TOKEN = token;
+        expect(runTokenSelectionReason(token)).toBe("selected");
+        expect(resolveRunTokenCredential("retrieveRun", undefined)).toBe(token);
+        expect(resolveRunTokenCredential("retrieveRun", FALLBACK)).toBe(FALLBACK);
+      }
+    });
+  });
+
+  it("falls back on missing, expired and malformed tokens", async () => {
     await runInMockTaskContext(() => {
       const now = Math.floor(Date.now() / 1_000);
       for (const token of [
@@ -156,8 +169,6 @@ describe("resolveRunTokenCredential", () => {
         runToken({ scopes: "admin" }),
         runToken({ scopes: ["admin", 1] }),
         runToken({ scopes: undefined }),
-        runToken({ scopes: [] }),
-        runToken({ scopes: ["trigger:tasks", "read:runs", "write:runs:run_self"] }),
         runToken().replace(/\.[^.]+\./, ".bnVsbA."),
       ]) {
         if (token === undefined) delete process.env.TRIGGER_RUN_TOKEN;

@@ -8,6 +8,7 @@ import { buildLocateTool } from "./tool-locate";
 import { buildNavigationTools } from "./tool-navigation";
 import { createSourceReadLedger } from "./tool-source-ledger";
 import {
+  buildAlertChannelsTool,
   buildAnalyzeQueryAlertTool,
   buildMonitoringAlertTools,
   buildPlanMonitoringTool,
@@ -54,6 +55,7 @@ export function buildDashboardAgentTools(ctx: DashboardAgentToolContext): ToolSe
     ...buildFeedbackTool({ ctx, client }),
     ...(alertTools ? buildAnalyzeQueryAlertTool({ ctx, client }) : {}),
     ...(alertTools ? buildPlanMonitoringTool({ ctx, client }) : {}),
+    ...(alertTools ? buildAlertChannelsTool({ ctx, client }) : {}),
   };
 
   // Code mode: when the project has a connected repo, add the source tools.

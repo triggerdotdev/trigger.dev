@@ -76,7 +76,10 @@ export async function action({ params, request }: ActionFunctionArgs) {
   if (result.success) {
     return json({ success: true });
   } else {
-    return json({ error: result.error, variableErrors: result.variableErrors }, { status: 400 });
+    return json(
+      { error: result.error, variableErrors: result.variableErrors },
+      { status: result.conflict ? 409 : 400 }
+    );
   }
 }
 

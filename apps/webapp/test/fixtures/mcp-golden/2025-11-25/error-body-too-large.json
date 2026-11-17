@@ -1,0 +1,19 @@
+{
+  "request": {
+    "rawBody": "1 MiB + 1 byte of padding"
+  },
+  "response": {
+    "status": 413,
+    "headers": {
+      "content-type": "application/json; charset=utf-8"
+    },
+    "body": {
+      "jsonrpc": "2.0",
+      "id": null,
+      "error": {
+        "code": -32600,
+        "message": "Request body too large"
+      }
+    }
+  }
+}

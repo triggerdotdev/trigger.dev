@@ -188,6 +188,23 @@ describe("generateContainerfile", () => {
     }
   );
 
+  // Catches: the indexer filling the compile cache in a stage the final image never copies from
+  it("ships the compile cache the indexer fills in the final image", async () => {
+    const containerfile = await generateContainerfile({
+      runtime: "node-24",
+      build: {},
+      image: undefined,
+      indexScript: "index.js",
+      entrypoint: "entrypoint.js",
+      compileCacheDir: "/app/.trigger/compile-cache",
+    });
+
+    const finalStage = containerfile.slice(containerfile.indexOf("AS final"));
+    expect(finalStage).toContain(
+      "COPY --from=indexer --chown=node:node /app/.trigger/compile-cache /app/.trigger/compile-cache"
+    );
+  });
+
   it("keeps --use-openssl-ca when the indexer overrides NODE_OPTIONS", async () => {
     const containerfile = await generateContainerfile({
       runtime: "node",

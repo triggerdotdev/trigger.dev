@@ -38,6 +38,8 @@ export type TriggerTaskServiceOptions = {
   /** Friendly ids of the webhook delivery that triggered the run and its endpoint. */
   webhookDeliveryId?: string;
   webhookEndpointId?: string;
+  /** Friendly id of the Session this run serves. */
+  sessionId?: string;
 };
 
 export { OutOfEntitlementError } from "../outOfEntitlementError.server";

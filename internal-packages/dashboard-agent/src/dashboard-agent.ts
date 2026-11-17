@@ -18,6 +18,7 @@ import {
 } from "./eval-policy";
 import type { EvalTurnPayload, evalTurn } from "./eval-turn";
 import {
+  agentApiOrigin,
   buildTurnTools,
   clientDataSchema,
   dashboardAgentModelKey,
@@ -509,6 +510,7 @@ export const dashboardAgent = chat.agent({
   onAction: async ({ action, uiMessages }) => handleAction({ action, uiMessages }),
 
   onTurnStart: async ({ chatId, uiMessages, clientData }) => {
+    agentApiOrigin();
     locals.set(turnErroredKey, false);
     locals.set(turnErrorTextKey, TURN_FAILED_MESSAGE);
     locals.set(toolInputErrorsKey, new Set());
@@ -599,7 +601,7 @@ export const dashboardAgent = chat.agent({
         } else if (
           // Fails closed: an org that opted out, or a setting we couldn't read, is not judged.
           !(await getEvalPolicyCheck()({
-            apiOrigin: clientData.apiOrigin,
+            apiOrigin: agentApiOrigin(),
             userActorToken: clientData.userActorToken,
             organizationId: clientData.organizationId,
           }))

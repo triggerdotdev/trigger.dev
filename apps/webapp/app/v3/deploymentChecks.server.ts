@@ -1,6 +1,7 @@
 import { getMeter, type Meter } from "@internal/tracing";
 import { Logger, type LogLevel } from "@trigger.dev/core/logger";
 import type {
+  DeploymentCheckOutcome,
   DeploymentChecksController,
   DeploymentChecksPlugin,
   DeploymentChecksPluginConfig,
@@ -216,9 +217,7 @@ export type DeploymentCheckJobOutcome =
   | "no_plugin"
   | "not_found"
   | "skipped"
-  | "pass"
-  | "fail"
-  | "unavailable";
+  | DeploymentCheckOutcome;
 
 export type DeploymentCheckJobDependencies = {
   prisma?: PrismaClientOrTransaction;

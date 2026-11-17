@@ -77,11 +77,9 @@ vi.mock("~/components/alerts/hasLegacyAlerts.server", () => ({
 }));
 
 vi.mock("~/presenters/v3/AlertsListPresenter.server", () => ({
-  AlertsListPresenter: class {
-    async call() {
-      return { rows: [], page: 1, totalPages: 1, truncated: false };
-    }
-  },
+  listAlertRows: async () => ({ rows: [], alerts: [], page: 1, totalPages: 1, truncated: false }),
+  listAlertStateBuckets: async () => ({}),
+  listChannelIssueAlertIds: async () => [],
 }));
 
 vi.mock("~/presenters/v3/AlertChannelListPresenter.server", async (importOriginal) => ({

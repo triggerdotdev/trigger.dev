@@ -52,7 +52,21 @@
               },
               {
                 "group": "OIDC",
-                "pages": ["oidc", "oidc/aws", "oidc/anthropic", "oidc/infisical", "oidc/custom"]
+                "pages": [
+                  "oidc",
+                  "oidc/aws",
+                  "oidc/azure",
+                  "oidc/gcp",
+                  "oidc/anthropic",
+                  "oidc/vault",
+                  "oidc/infisical",
+                  "oidc/doppler",
+                  "oidc/snowflake",
+                  "oidc/databricks",
+                  "oidc/hugging-face",
+                  "oidc/openrouter",
+                  "oidc/custom"
+                ]
               }
             ]
           },
@@ -62,7 +76,7 @@
               "building-with-ai",
               {
                 "group": "MCP Server",
-                "pages": ["mcp-introduction", "mcp-tools"]
+                "pages": ["mcp-introduction", "mcp-remote", "mcp-tools"]
               },
               "skills",
               "mcp-agent-rules"

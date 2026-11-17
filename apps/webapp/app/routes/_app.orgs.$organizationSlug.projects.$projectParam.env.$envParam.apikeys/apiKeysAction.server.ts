@@ -276,6 +276,7 @@ export const apiKeysAction = dashboardAction(
           await revokeEnvironmentApiKey({
             environmentId: keyEnvironmentId,
             apiKeyId: submission.data.apiKeyId,
+            userId: user.id,
           });
 
           return redirectWithSuccessMessage(returnPath, request, "API key revoked");

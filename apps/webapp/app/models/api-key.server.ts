@@ -4,12 +4,20 @@ import type {
   RuntimeEnvironment,
 } from "@trigger.dev/database";
 import { parseIpRanges, type HostRbacController } from "@trigger.dev/rbac";
+import cuid from "cuid";
 import { customAlphabet } from "nanoid";
 import { MAX_API_KEY_TASK_IDENTIFIERS } from "~/consts";
 import { $transaction, boundedIn, prisma } from "~/db.server";
 import { RuntimeEnvironmentType } from "~/database-types";
 import { env } from "~/env.server";
 import { apiKeyTelemetry, type ApiKeyTelemetry } from "~/services/apiKeyTelemetry.server";
+import {
+  markCredentialHashRevoked,
+  markRootApiKeyRevoked,
+  saveCredentialFingerprint,
+  saveRootApiKeyFingerprint,
+  userActor,
+} from "~/services/credentialFingerprints.server";
 import { logger } from "~/services/logger.server";
 import { rbac } from "~/services/rbac.server";
 import { generateAdditionalApiKey, generateRootApiKey } from "~/utils/apiKeys";
@@ -98,6 +106,7 @@ async function findRootApiKeyEnvironment(
       pkApiKey: true,
       rootApiKeyHiddenAt: true,
       type: true,
+      organizationId: true,
       projectId: true,
       branchName: true,
     },
@@ -143,8 +152,9 @@ export async function regenerateApiKey(
   const newApiKey = createApiKeyForEnv(environment.type);
   const newPkApiKey = createPkApiKeyForEnv(environment.type);
   const revokedApiKeyExpiresAt = new Date(Date.now() + REVOKED_API_KEY_GRACE_PERIOD_MS);
+  await saveRootApiKeyFingerprint(newApiKey, environment, userActor(input.userId));
 
-  const updatedEnvironment = await $transaction(
+  const rotatedEnvironment = await $transaction(
     prismaClient,
     "regenerate root API key",
     async (tx) => {
@@ -160,12 +170,15 @@ export async function regenerateApiKey(
         },
       });
 
+      let graceEndedApiKeys: string[] = [];
       if (revokeImmediately) {
         const now = new Date();
-        await tx.revokedApiKey.updateMany({
+        const graceEnded = await tx.revokedApiKey.updateManyAndReturn({
           where: { runtimeEnvironmentId: environment.id, expiresAt: { gt: now } },
           data: { expiresAt: now },
+          select: { apiKey: true },
         });
+        graceEndedApiKeys = graceEnded.map((revoked) => revoked.apiKey);
       } else {
         await tx.revokedApiKey.create({
           data: {
@@ -177,21 +190,43 @@ export async function regenerateApiKey(
       }
 
       return {
-        ...environment,
-        apiKey: newApiKey,
-        pkApiKey: newPkApiKey,
-        rootApiKeyHiddenAt: currentEnvironment.rootApiKeyHiddenAt,
+        updatedEnvironment: {
+          ...environment,
+          apiKey: newApiKey,
+          pkApiKey: newPkApiKey,
+          rootApiKeyHiddenAt: currentEnvironment.rootApiKeyHiddenAt,
+        },
+        previousApiKey: currentEnvironment.apiKey,
+        graceEndedApiKeys,
       };
     }
   );
 
-  if (!updatedEnvironment) {
+  if (!rotatedEnvironment) {
     throw new Error("The root API key could not be regenerated");
   }
 
   controlPlaneResolver.invalidateEnvironment(environment.id);
 
-  return updatedEnvironment;
+  // Each old key gets a fingerprint first if it has none (made before fingerprints), so its
+  // revocation is recorded rather than lost.
+  const revokedBy = userActor(input.userId);
+  markRootApiKeyRevoked(rotatedEnvironment.previousApiKey, environment, {
+    revokedBy,
+    reason: revokeImmediately ? "rotated_immediately" : "rotated",
+    graceUntil: revokeImmediately ? null : revokedApiKeyExpiresAt,
+    replacedBy: newApiKey,
+  });
+  const graceEndedAt = new Date();
+  for (const apiKey of rotatedEnvironment.graceEndedApiKeys) {
+    markRootApiKeyRevoked(apiKey, environment, {
+      revokedBy,
+      reason: "rotated_immediately",
+      graceUntil: graceEndedAt,
+    });
+  }
+
+  return rotatedEnvironment.updatedEnvironment;
 }
 
 export async function disableRootApiKeyVisibility(
@@ -202,8 +237,10 @@ export async function disableRootApiKeyVisibility(
   const newApiKey = createApiKeyForEnv(environment.type);
   const newPkApiKey = createPkApiKeyForEnv(environment.type);
   const rootApiKeyHiddenAt = new Date();
+  const revokedApiKeyExpiresAt = new Date(Date.now() + REVOKED_API_KEY_GRACE_PERIOD_MS);
+  await saveRootApiKeyFingerprint(newApiKey, environment, userActor(input.userId));
 
-  const updatedEnvironment = await $transaction(
+  const hiddenEnvironment = await $transaction(
     prismaClient,
     "disable root API key visibility",
     async (tx) => {
@@ -222,26 +259,36 @@ export async function disableRootApiKeyVisibility(
         data: {
           apiKey: currentEnvironment.apiKey,
           runtimeEnvironmentId: environment.id,
-          expiresAt: new Date(Date.now() + REVOKED_API_KEY_GRACE_PERIOD_MS),
+          expiresAt: revokedApiKeyExpiresAt,
         },
       });
 
       return {
-        ...environment,
-        apiKey: newApiKey,
-        pkApiKey: newPkApiKey,
-        rootApiKeyHiddenAt,
+        updatedEnvironment: {
+          ...environment,
+          apiKey: newApiKey,
+          pkApiKey: newPkApiKey,
+          rootApiKeyHiddenAt,
+        },
+        previousApiKey: currentEnvironment.apiKey,
       };
     }
   );
 
-  if (!updatedEnvironment) {
+  if (!hiddenEnvironment) {
     throw new Error("Root API key visibility could not be disabled");
   }
 
   controlPlaneResolver.invalidateEnvironment(environment.id);
 
-  return updatedEnvironment;
+  markRootApiKeyRevoked(hiddenEnvironment.previousApiKey, environment, {
+    revokedBy: userActor(input.userId),
+    reason: "hidden",
+    graceUntil: revokedApiKeyExpiresAt,
+    replacedBy: newApiKey,
+  });
+
+  return hiddenEnvironment.updatedEnvironment;
 }
 
 export async function createEnvironmentApiKey(
@@ -287,7 +334,7 @@ export async function createEnvironmentApiKey(
       id: environmentId,
       organization: { members: { some: { userId } } },
     },
-    select: { id: true, type: true, organizationId: true },
+    select: { id: true, type: true, organizationId: true, projectId: true },
   });
 
   if (!environment) {
@@ -323,11 +370,25 @@ export async function createEnvironmentApiKey(
   );
 
   const generated = generateAdditionalApiKey(environment.type);
+  // The id is chosen here so the key's fingerprint can name its row.
+  const newApiKeyId = cuid();
+  await saveCredentialFingerprint({
+    kind: "additional_api_key",
+    value: generated.apiKey,
+    organizationId: environment.organizationId,
+    projectId: environment.projectId,
+    environmentId: environment.id,
+    credentialId: newApiKeyId,
+    name,
+    createdBy: userActor(userId),
+    expiresAt,
+  });
   const apiKey = await (async () => {
     try {
       const create = (client: Pick<PrismaClient, "apiKey">) =>
         client.apiKey.create({
           data: {
+            id: newApiKeyId,
             name,
             description: note,
             keyHash: generated.keyHash,
@@ -572,9 +633,12 @@ export async function revokeEnvironmentApiKey(
   {
     environmentId,
     apiKeyId,
+    userId,
   }: {
     environmentId: string;
     apiKeyId: string;
+    /** Who revoked the key, for its audit fingerprint. */
+    userId?: string;
   },
   {
     prismaClient = prisma,
@@ -584,9 +648,9 @@ export async function revokeEnvironmentApiKey(
     telemetryRecorder?: ApiKeyTelemetry;
   } = {}
 ) {
-  const result = await (async () => {
+  const revoked = await (async () => {
     try {
-      return await prismaClient.apiKey.updateMany({
+      return await prismaClient.apiKey.updateManyAndReturn({
         where: {
           id: apiKeyId,
           runtimeEnvironmentId: environmentId,
@@ -594,6 +658,7 @@ export async function revokeEnvironmentApiKey(
           revokedAt: null,
         },
         data: { revokedAt: new Date() },
+        select: { keyHash: true, revokedAt: true },
       });
     } catch (error) {
       telemetryRecorder.recordOperation("revoke", "error", "database_error");
@@ -601,12 +666,17 @@ export async function revokeEnvironmentApiKey(
     }
   })();
 
-  if (result.count !== 1) {
+  if (revoked.length !== 1) {
     telemetryRecorder.recordOperation("revoke", "rejected", "not_found_or_revoked");
     throw new Error("API key not found or already revoked");
   }
 
   telemetryRecorder.recordOperation("revoke", "success");
+  markCredentialHashRevoked(revoked[0].keyHash, {
+    revokedBy: userId ? userActor(userId) : null,
+    reason: "revoked",
+    revokedAt: revoked[0].revokedAt ?? undefined,
+  });
 }
 
 /** Replace the IP ranges an API key may be used from. An empty list allows any IP. */

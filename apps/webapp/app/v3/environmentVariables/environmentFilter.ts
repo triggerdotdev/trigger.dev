@@ -24,10 +24,26 @@ type FilterEnvironment = {
   branchName: string | null;
 };
 
+// Full names accepted in `env` (and the compare view's sides). Links keep writing the short values.
+const FILTER_ALIASES: Record<string, EnvironmentVariablesFilter> = {
+  development: "dev",
+  staging: "stg",
+  production: "prod",
+};
+
+/** Reads an `env` value: a short value or a full environment name, in any case. */
 export function parseEnvironmentVariablesFilter(
   value: unknown
 ): EnvironmentVariablesFilter | undefined {
-  return ENVIRONMENT_VARIABLES_FILTERS.find((filter) => filter === value);
+  if (typeof value !== "string") {
+    return undefined;
+  }
+  const lower = value.toLowerCase();
+  // Own properties only: `constructor` or `__proto__` must not resolve to Object's.
+  return (
+    (Object.hasOwn(FILTER_ALIASES, lower) ? FILTER_ALIASES[lower] : undefined) ??
+    ENVIRONMENT_VARIABLES_FILTERS.find((filter) => filter === lower)
+  );
 }
 
 export function environmentTypeForFilter(
@@ -36,7 +52,9 @@ export function environmentTypeForFilter(
   return TYPE_FILTERS.find((entry) => entry.filter === filter)!.type;
 }
 
-function filterForEnvironmentType(type: RuntimeEnvironmentType): EnvironmentVariablesTypeFilter {
+export function filterForEnvironmentType(
+  type: RuntimeEnvironmentType
+): EnvironmentVariablesTypeFilter {
   return TYPE_FILTERS.find((entry) => entry.type === type)!.filter;
 }
 
@@ -238,4 +256,63 @@ export function listViewSearch(
   }
   const search = kept.toString();
   return search ? `?${search}` : "";
+}
+
+/**
+ * The list view to open after values were saved into `savedEnvironmentIds`, from the view
+ * they were saved from (its `env` and `branch` params). When one of the saved environments is in
+ * view, the view stays. Otherwise it switches to show them: the one environment's filter (for a
+ * Preview branch, Preview narrowed to that branch alone), or "all" for several. A switch drops a
+ * sort the new view can't apply. Search and other params are kept; `page` is left to the caller.
+ */
+export function viewAfterSave({
+  searchParams,
+  environments,
+  currentEnvironmentId,
+  currentEnvironmentType,
+  savedEnvironmentIds,
+}: {
+  searchParams: URLSearchParams;
+  environments: FilterEnvironment[];
+  currentEnvironmentId?: string;
+  /** The current environment's type when it isn't in `environments` (an archived branch). */
+  currentEnvironmentType?: RuntimeEnvironmentType;
+  savedEnvironmentIds: string[];
+}): {
+  searchParams: URLSearchParams;
+  view: ReturnType<typeof selectEnvironmentVariablesFilter>;
+  switched: boolean;
+} {
+  const select = (params: URLSearchParams) =>
+    selectEnvironmentVariablesFilter({
+      environments,
+      requested: parseEnvironmentVariablesFilter(params.get("env")),
+      requestedBranches: params.getAll("branch"),
+      currentEnvironmentId,
+      currentEnvironmentType,
+    });
+
+  const view = select(searchParams);
+  if (savedEnvironmentIds.some((id) => view.environmentIds.includes(id))) {
+    return { searchParams, view, switched: false };
+  }
+
+  const saved = environments.filter((environment) => savedEnvironmentIds.includes(environment.id));
+  const next = new URLSearchParams(searchParams);
+  next.delete("branch");
+  const only = saved.length === 1 ? saved[0] : undefined;
+  if (only?.type === "PREVIEW" && only.parentEnvironmentId !== null && only.branchName) {
+    next.set("env", "preview");
+    next.set("branch", only.branchName);
+  } else if (only && only.parentEnvironmentId === null) {
+    next.set("env", filterForEnvironmentType(only.type));
+  } else {
+    next.set("env", "all");
+  }
+
+  const nextView = select(next);
+  if (!canSortEnvironmentVariablesView(nextView)) {
+    next.delete("sort");
+  }
+  return { searchParams: next, view: nextView, switched: true };
 }

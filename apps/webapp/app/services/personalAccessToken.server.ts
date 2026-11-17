@@ -1,3 +1,4 @@
+import { json } from "@remix-run/server-runtime";
 import {
   type PersonalAccessToken,
   type PrismaClientOrTransaction,
@@ -5,18 +6,28 @@ import {
 } from "@trigger.dev/database";
 import { compareCliLoginNetworks, needsNetworkConfirmation } from "./cliLoginNetwork.server";
 import type { CreateAuthorizationCodeRequest } from "@trigger.dev/core/v3";
+import cuid from "cuid";
 import { customAlphabet, nanoid } from "nanoid";
 import { createHash, timingSafeEqual } from "node:crypto";
 import { isIP } from "node:net";
 import { z } from "zod";
 import { $replica, prisma } from "~/db.server";
 import { noteAdminRequest, recordAdminPatCreated } from "./adminAudit/adminAuditContext.server";
+import {
+  type CredentialRevocation,
+  markCredentialHashRevoked,
+  saveCredentialFingerprint,
+  SYSTEM_ACTOR,
+  userActor,
+} from "./credentialFingerprints.server";
 import { logger } from "./logger.server";
+import { isMfaSetupRequired, mfaSetupRequiredMessage } from "./mfa/mfaRequirement.server";
 import { rbac } from "./rbac.server";
 import { decryptToken, encryptToken, hashToken } from "~/utils/tokens.server";
 import { EncryptedValueSchema as EncryptedSecretValueSchema } from "~/utils/encryptionKeyring.server";
 import { env } from "~/env.server";
 import {
+  isPersonalAccessTokenActive,
   isUserActorToken,
   personalAccessTokenExpiry,
   personalAccessTokenExpiryMessage,
@@ -60,6 +71,10 @@ type CreatePersonalAccessTokenOptions = {
   expiresAt?: Date;
   /** Seconds without use after which the token stops working. Omitted for no idle limit. */
   idleTimeoutSeconds?: number;
+  /** The OAuth client this token is the grant for. */
+  oauthClientId?: string;
+  /** For callers inside a transaction, which record the audit entry once it commits. */
+  skipAudit?: boolean;
 };
 
 /** The columns `personalAccessTokenExpiry` reads, for every lookup that checks expiry. */
@@ -256,8 +271,15 @@ export async function getPersonalAccessTokenFromAuthorizationCode(
   };
 }
 
-export async function revokePersonalAccessToken(tokenId: string, userId: string) {
-  const result = await prisma.personalAccessToken.updateMany({
+export async function revokePersonalAccessToken(
+  tokenId: string,
+  userId: string,
+  revocation: Pick<CredentialRevocation, "reason" | "revokedBy"> = {
+    reason: "revoked",
+    revokedBy: userActor(userId),
+  }
+) {
+  const revoked = await prisma.personalAccessToken.updateManyAndReturn({
     where: {
       id: tokenId,
       userId,
@@ -265,11 +287,17 @@ export async function revokePersonalAccessToken(tokenId: string, userId: string)
     data: {
       revokedAt: new Date(),
     },
+    select: { hashedToken: true, revokedAt: true },
   });
 
-  if (result.count === 0) {
+  if (revoked.length === 0) {
     throw new Error("PAT not found or already revoked");
   }
+
+  markCredentialHashRevoked(revoked[0].hashedToken, {
+    ...revocation,
+    revokedAt: revoked[0].revokedAt ?? undefined,
+  });
 }
 
 export type PersonalAccessTokenAuthenticationResult = {
@@ -303,8 +331,15 @@ export type PersonalAccessTokenAuthenticationResult = {
  */
 export async function updateLastAccessedAtIfStale(
   tokenId: string,
-  lastAccessedAt: Date | null
+  lastAccessedAt: Date | null | undefined
 ): Promise<Date> {
+  if (lastAccessedAt === undefined) {
+    const row = await prisma.personalAccessToken.findFirst({
+      where: { id: tokenId },
+      select: { lastAccessedAt: true },
+    });
+    lastAccessedAt = row?.lastAccessedAt ?? null;
+  }
   if (lastAccessedAt && Date.now() - lastAccessedAt.getTime() <= PAT_LAST_ACCESSED_THROTTLE_MS) {
     return lastAccessedAt; // fresh — no roundtrip
   }
@@ -470,6 +505,10 @@ export async function authenticatePersonalAccessToken(
     return;
   }
 
+  if (await isMfaSetupRequired(personalAccessToken.userId)) {
+    throw json({ error: mfaSetupRequiredMessage() }, { status: 403 });
+  }
+
   return {
     userId: personalAccessToken.userId,
     tokenId: personalAccessToken.id,
@@ -527,12 +566,7 @@ export async function personalAccessTokenUnauthorizedResponse(
  */
 export async function assertSourcePatActive(claims: UserActorClaims): Promise<boolean> {
   if (!claims.pat) return true;
-
-  const found = await prisma.personalAccessToken.findFirst({
-    where: { id: claims.pat, revokedAt: null },
-    select: expiryColumns,
-  });
-  return found !== null && !personalAccessTokenExpiry(found);
+  return isPersonalAccessTokenActive(prisma, claims.pat);
 }
 
 /**
@@ -546,10 +580,11 @@ export async function assertSourcePatActive(claims: UserActorClaims): Promise<bo
  */
 export async function resolveAndRecheckUserActorClaims(
   claims: UserActorClaims | undefined,
-  bearer: string
+  bearer: string,
+  audience?: string
 ): Promise<UserActorClaims | undefined> {
-  const verified = await verifyUserActorToken(env.SESSION_SECRET, bearer);
-  const resolved = verified ?? claims;
+  const verified = await verifyUserActorToken(env.SESSION_SECRET, bearer, { audience });
+  const resolved = audience ? verified : (verified ?? claims);
   if (!resolved) return undefined;
   return (await assertSourcePatActive(resolved)) ? resolved : undefined;
 }
@@ -575,11 +610,11 @@ function normalizeApprovalCode(approvalCode: string) {
   return approvalCode.toUpperCase().replace(/[^0-9A-Z]/g, "");
 }
 
-function codeChallengeFor(codeVerifier: string) {
+export function codeChallengeFor(codeVerifier: string) {
   return createHash("sha256").update(codeVerifier).digest("base64url");
 }
 
-function safeEqual(a: string, b: string) {
+export function safeEqual(a: string, b: string) {
   const left = Buffer.from(a);
   const right = Buffer.from(b);
   return left.length === right.length && timingSafeEqual(left, right);
@@ -600,6 +635,7 @@ export async function getMintableAuthorizationCode(
     where: {
       code: authorizationCode,
       personalAccessTokenId: null,
+      oauthClientId: null,
       createdAt: { gte: validAfter },
     },
     select: { codeChallenge: true, createdAt: true, requesterIp: true },
@@ -670,6 +706,7 @@ export async function createPersonalAccessTokenFromAuthorizationCode(
     where: {
       code: authorizationCode,
       personalAccessTokenId: null,
+      oauthClientId: null,
       createdAt: {
         gte: validAfter,
       },
@@ -787,24 +824,44 @@ export async function sweepExpiredAuthorizationCodes(
 }
 
 /** Created a new PersonalAccessToken, and return the token. We only ever return the unencrypted token once. */
-export async function createPersonalAccessToken({
-  name,
-  userId,
-  roleId,
-  auditSource,
-  expiresAt,
-  idleTimeoutSeconds,
-}: CreatePersonalAccessTokenOptions) {
+export async function createPersonalAccessToken(
+  {
+    name,
+    userId,
+    roleId,
+    auditSource,
+    expiresAt,
+    idleTimeoutSeconds,
+    oauthClientId,
+    skipAudit,
+  }: CreatePersonalAccessTokenOptions,
+  prismaClient: PrismaClientOrTransaction = prisma
+) {
   const token = createToken();
   const encryptedToken = encryptToken(token, env.ENCRYPTION_KEYRING);
+  // The id is chosen here so the token's fingerprint can name it.
+  const tokenId = cuid();
+  await saveCredentialFingerprint({
+    kind: "pat",
+    value: token,
+    organizationId: null,
+    projectId: null,
+    environmentId: null,
+    credentialId: tokenId,
+    name,
+    createdBy: userActor(userId),
+    expiresAt,
+  });
 
-  const personalAccessToken = await prisma.personalAccessToken.create({
+  const personalAccessToken = await prismaClient.personalAccessToken.create({
     data: {
+      id: tokenId,
       name,
       userId,
       encryptedToken,
       obfuscatedToken: obfuscateToken(token),
       hashedToken: hashToken(token),
+      oauthClientId,
       expiresAt,
       idleTimeoutSeconds,
     },
@@ -840,6 +897,10 @@ export async function createPersonalAccessToken({
             deleteError: err instanceof Error ? err.message : String(err),
           });
         });
+      markCredentialHashRevoked(personalAccessToken.hashedToken, {
+        revokedBy: SYSTEM_ACTOR,
+        reason: "revoked",
+      });
       throw new Error(`Failed to assign role to access token: ${roleResult.error}`);
     }
   } else if (roleId) {
@@ -849,12 +910,14 @@ export async function createPersonalAccessToken({
     });
   }
 
-  void recordAdminPatCreated({
-    userId,
-    tokenId: personalAccessToken.id,
-    name,
-    source: auditSource,
-  });
+  if (!skipAudit) {
+    void recordAdminPatCreated({
+      userId,
+      tokenId: personalAccessToken.id,
+      name,
+      source: auditSource,
+    });
+  }
 
   return {
     id: personalAccessToken.id,

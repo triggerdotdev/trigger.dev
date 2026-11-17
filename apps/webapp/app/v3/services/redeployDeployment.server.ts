@@ -3,7 +3,11 @@ import {
   InitializeDeploymentRequestBody,
   normalizeExternalDeploymentId,
 } from "@trigger.dev/core/v3";
-import { type Prisma, type WorkerDeploymentStatus } from "@trigger.dev/database";
+import {
+  type DeploymentInitiatedByCredential,
+  type Prisma,
+  type WorkerDeploymentStatus,
+} from "@trigger.dev/database";
 import { errAsync, fromPromise, okAsync, type ResultAsync } from "neverthrow";
 import { type PrismaClient, prisma } from "~/db.server";
 import { env } from "~/env.server";
@@ -45,6 +49,7 @@ const sourceSelect = {
   git: true,
   buildServerMetadata: true,
   buildEnvVars: true,
+  initiatedByCredential: true,
   project: { select: { buildSettings: true } },
   environment: { select: { archivedAt: true } },
 } satisfies Prisma.WorkerDeploymentSelect;
@@ -71,6 +76,7 @@ type RedeployDeploymentDeps = {
     environment: AuthenticatedEnvironment,
     payload: InitializeDeploymentRequestBody,
     options: {
+      initiatedByCredential: DeploymentInitiatedByCredential | null;
       redeployOf: string;
       buildEnvVars?: StoredEnvironmentValue;
       buildEnvVarsSourceId?: string;
@@ -288,6 +294,7 @@ export class RedeployDeploymentService {
       const initializeOnce = (force?: boolean) =>
         fromPromise(
           initialize(environment, payload(force), {
+            initiatedByCredential: source.initiatedByCredential,
             redeployOf: opts.deploymentShortCode,
             ...(buildEnvVars ? { buildEnvVars, buildEnvVarsSourceId: source.id } : {}),
           }),

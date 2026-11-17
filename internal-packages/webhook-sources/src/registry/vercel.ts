@@ -12,7 +12,7 @@ export const entry: ProviderRegistryEntry = {
   label: "Vercel",
   category: "hosting-infra",
   docsUrl: "https://vercel.com/docs/webhooks",
-  secretProvisioning: "integrator",
+  secretProvisioning: "provider",
   eventTypeSource: { from: "body", path: "type" },
   sampleSource: "handauthored",
 };

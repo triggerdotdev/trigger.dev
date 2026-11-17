@@ -1,6 +1,7 @@
 import { isUserActorToken, verifyUserActorToken, type UserActorClaims } from "@trigger.dev/rbac";
 import { env } from "~/env.server";
 import { authenticateRequest, type AuthenticationResult } from "~/services/apiAuth.server";
+import { notePersonalAccessTokenAuthentication } from "~/services/auditLogs/auditContext.server";
 import { assertSourcePatActive } from "~/services/personalAccessToken.server";
 
 /**
@@ -26,6 +27,7 @@ export async function authenticateUatOrApiRequest(
     if (!claims) return undefined;
     // A token minted from a PAT dies with it — the PAT must still be live.
     if (!(await assertSourcePatActive(claims))) return undefined;
+    notePersonalAccessTokenAuthentication(request, { userId: claims.userId, userActor: claims });
     return {
       // The claims ride on the authentication result too: resolving an environment from it
       // enforces the token's environment scope, so no route has to remember to.

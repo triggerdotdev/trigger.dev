@@ -20,6 +20,10 @@ import { $transaction, prisma } from "~/db.server";
 import { env } from "~/env.server";
 import { logger } from "~/services/logger.server";
 import { getSecretStore } from "~/services/secrets/secretStore.server";
+import {
+  environmentSecretPrefix,
+  protectedSecretKeys,
+} from "~/services/environmentEncryption/secretStore.server";
 import { generateFriendlyId } from "~/v3/friendlyIdentifiers";
 import type {
   SyncEnvVarsMapping,
@@ -1398,7 +1402,15 @@ export class VercelIntegrationRepository {
                   return;
                 }
 
+                const protectedKeys = await protectedSecretKeys(prisma, params.projectId, [
+                  mapping.runtimeEnvironmentId,
+                ]);
+                const secretPrefix = environmentSecretPrefix(
+                  params.projectId,
+                  mapping.runtimeEnvironmentId
+                );
                 const varsToSync = mergedEnvVars.filter((envVar) => {
+                  if (protectedKeys.has(`${secretPrefix}${envVar.key}`)) return false;
                   // Keep the flag-off path unchanged. When enabled, discard blanks
                   // after merging so a blank project override cannot select a shared fallback.
                   if (allowEmptyValues && envVar.value.trim() === "") {

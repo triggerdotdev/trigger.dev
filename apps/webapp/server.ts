@@ -3,7 +3,7 @@ import "./sentry.server";
 import { createRequestHandler } from "@remix-run/express";
 import compression from "compression";
 import type { Server as EngineServer } from "engine.io";
-import express, { type RequestHandler } from "express";
+import express, { type ErrorRequestHandler, type RequestHandler } from "express";
 import morgan from "morgan";
 import { nanoid } from "nanoid";
 import path from "path";
@@ -188,13 +188,14 @@ async function startServer() {
     ? `node webapp-worker-${cluster.isWorker ? cluster.worker?.id : "solo"}`
     : "node webapp-server";
 
-  const loadBuild = () => {
-    if (viteDevServer) {
-      return viteDevServer.ssrLoadModule("virtual:remix/server-build");
-    }
-    return dynamicImport(
-      pathToFileURL(path.join(process.cwd(), "build", "server", "index.mjs")).href
-    );
+  const loadBuild = async () => {
+    const build = viteDevServer
+      ? await viteDevServer.ssrLoadModule("virtual:remix/server-build")
+      : await dynamicImport(
+          pathToFileURL(path.join(process.cwd(), "build", "server", "index.mjs")).href
+        );
+    build.entry.module.configureSdkDefaultAttribution(build.routes);
+    return build;
   };
 
   // Boots the entry.server singletons (socket.io, wss, rate limiters).
@@ -220,8 +221,14 @@ async function startServer() {
     const otlpRateLimiter: RequestHandler = build.entry.module.otlpRateLimiter;
     const runWithHttpContext: RunWithHttpContextFunction = build.entry.module.runWithHttpContext;
     const tenantContextMiddleware: RequestHandler = build.entry.module.tenantContextMiddleware;
-    const ingressBodyCap: RequestHandler = build.entry.module.ingressBodyCap;
+    const ingressBodyCap: RequestHandler = build.entry.module.createIngressBodyCapMiddleware(
+      build.routes
+    );
+    const ignoreRefusedBodyErrors: ErrorRequestHandler = build.entry.module.ignoreRefusedBodyErrors;
     const flushAuditLogs: () => Promise<void> = build.entry.module.flushAuditLogs;
+    const mcpRouter: RequestHandler | undefined = build.entry.module.mcpRouter;
+    const mcpProtectedResource: RequestHandler | undefined =
+      build.entry.module.mcpProtectedResource;
 
     app.use((req, res, next) => {
       // helpful headers:
@@ -278,6 +285,15 @@ async function startServer() {
         app.use(blockOtlpIngestRoutes);
       }
 
+      // MCP authenticates before its own rate limit so a bare 401 keeps WWW-Authenticate.
+      if (mcpRouter && mcpProtectedResource) {
+        app.get(
+          ["/.well-known/oauth-protected-resource", "/.well-known/oauth-protected-resource/mcp"],
+          mcpProtectedResource
+        );
+        app.use("/mcp", mcpRouter);
+      }
+
       app.use(apiRateLimiter);
       app.use(deploymentRateLimiter);
       app.use(engineRateLimiter);
@@ -285,8 +301,7 @@ async function startServer() {
 
       app.use(tenantContextMiddleware);
 
-      // Before the Remix handler: capped bodies are refused while they stream, so a
-      // route never buffers one that was already too large.
+      // Before the Remix handler: a body is measured against its limit while it streams.
       app.use(ingressBodyCap);
 
       app.all(
@@ -297,6 +312,8 @@ async function startServer() {
           mode: MODE,
         })
       );
+
+      app.use(ignoreRefusedBodyErrors);
     } else {
       // we need to do the health check here at /healthcheck — forward
       // to the Remix handler so the loader's readiness checks (DB ping,

@@ -1,4 +1,7 @@
 import { describe, expect, test } from "vitest";
+import { createTestHttpServer } from "@epic-web/test-server/http";
+import { apiClientManager } from "../src/v3/apiClientManager-api.js";
+import type { IOPacket } from "../src/v3/utils/ioSerialization.js";
 import { ApiError } from "../src/v3/apiClient/errors.js";
 import { ConsoleInterceptor } from "../src/v3/consoleInterceptor.js";
 import type {
@@ -21,6 +24,42 @@ describe("TaskExecutor", () => {
 
   afterEach(() => {
     lifecycleHooks.disable();
+  });
+
+  // Catches: task input downloads requiring environment-wide packet scopes.
+  test("loads offloaded input through the run-scoped packet route", async () => {
+    let origin = "";
+    const server = await createTestHttpServer({
+      defineRoutes(router) {
+        router.get("/api/v1/runs/test-run-id/packets/payload", () =>
+          Response.json({ presignedUrl: `${origin}/stored-input` })
+        );
+        router.get("/api/v1/packets/:path", () =>
+          Response.json({ error: "Forbidden" }, { status: 403 })
+        );
+        router.get("/stored-input", () => Response.json({ value: "offloaded" }));
+      },
+    });
+    origin = server.http.url().origin;
+    try {
+      const result = await apiClientManager.runWithConfig(
+        { baseURL: origin, accessToken: "test-credential" },
+        () =>
+          executeTask(
+            { id: "test-task", fns: { run: async (payload) => payload } },
+            undefined,
+            undefined,
+            undefined,
+            { data: "stored/input.json", dataType: "application/store" }
+          )
+      );
+      expect(result.result).toMatchObject({
+        ok: true,
+        output: '{"json":{"value":"offloaded"}}',
+      });
+    } finally {
+      await server.close();
+    }
   });
 
   test("should call onComplete with success result", async () => {
@@ -1889,7 +1928,8 @@ function executeTask(
   task: TaskMetadataWithFunctions,
   payload: any,
   signal?: AbortSignal,
-  retrySettings?: RetryOptions
+  retrySettings?: RetryOptions,
+  packet?: IOPacket
 ) {
   const tracingSDK = new TracingSDK({
     url: "http://localhost:4318",
@@ -1935,8 +1975,8 @@ function executeTask(
     },
     run: {
       id: "test-run-id",
-      payload: JSON.stringify(payload),
-      payloadType: "application/json",
+      payload: packet?.data ?? JSON.stringify(payload),
+      payloadType: packet?.dataType ?? "application/json",
       metadata: {},
       startedAt: new Date(),
       tags: [],

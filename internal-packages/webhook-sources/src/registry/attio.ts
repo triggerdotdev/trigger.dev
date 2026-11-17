@@ -11,7 +11,7 @@ export const entry: ProviderRegistryEntry = {
   label: "Attio",
   category: "crm",
   docsUrl: "https://docs.attio.com/rest-api/guides/webhooks",
-  secretProvisioning: "integrator",
+  secretProvisioning: "provider",
   eventTypeSource: { from: "body", path: "events.0.event_type" },
   sampleSource: "handauthored",
 };

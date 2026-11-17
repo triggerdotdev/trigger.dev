@@ -162,6 +162,46 @@ export function AlertCreatedCard({
   );
 }
 
+export function AlertActionCard({
+  name,
+  action,
+  done,
+  submitting,
+  error,
+  onConfirm,
+  onCancel,
+}: {
+  name: string;
+  action: "resolve" | "stop";
+  done?: string;
+  submitting?: boolean;
+  error?: string;
+  onConfirm: () => void;
+  onCancel: () => void;
+}) {
+  const label = action === "resolve" ? "Resolve" : "Stop";
+  return (
+    <div data-testid="alert-action" className="min-w-0">
+      <AlertStatusBlock
+        headline={done ?? `${label} ${name}?`}
+        lines={error ? [error] : []}
+        actions={
+          done ? undefined : (
+            <>
+              <Button variant="primary/small" disabled={submitting} onClick={onConfirm}>
+                {label}
+              </Button>
+              <Button variant="minimal/small" disabled={submitting} onClick={onCancel}>
+                Cancel
+              </Button>
+            </>
+          )
+        }
+      />
+    </div>
+  );
+}
+
 export type UpdatedCardFields = {
   name: string;
   conditionSummary: string;

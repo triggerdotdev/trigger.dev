@@ -1,10 +1,7 @@
 import { describe, expect, it } from "vitest";
-import {
-  FREE_SCHEDULE_MINIMUM_WINDOW_SECONDS,
-  validateMinimumCronInterval,
-} from "~/v3/validateMinimumCronInterval";
+import { validateMinimumCronInterval } from "~/v3/validateMinimumCronInterval";
 
-const HOUR_MS = FREE_SCHEDULE_MINIMUM_WINDOW_SECONDS * 1_000;
+const HOUR_MS = 60 * 60 * 1_000;
 
 describe("validateMinimumCronInterval", () => {
   it.each([

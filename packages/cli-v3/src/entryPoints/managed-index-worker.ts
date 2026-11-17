@@ -206,10 +206,12 @@ await sendMessageInCatalog(
       runtime: buildManifest.runtime,
       runtimeVersion: detectRuntimeVersion(),
       workerEntryPoint: buildManifest.runWorkerEntryPoint,
+      compiledWorkerPath: buildManifest.compiledRunWorkerPath,
       controllerEntryPoint: buildManifest.runControllerEntryPoint,
       loaderEntryPoint: buildManifest.loaderEntryPoint,
       customConditions: buildManifest.customConditions,
       initEntryPoint: buildManifest.initEntryPoint,
+      compileCacheDir: buildManifest.compileCacheDir,
       processKeepAlive:
         typeof processKeepAlive === "object"
           ? processKeepAlive

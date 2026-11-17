@@ -2,6 +2,7 @@ import type { Prisma, PrismaClientOrTransaction, Project } from "@trigger.dev/da
 import { customAlphabet, nanoid } from "nanoid";
 import slug from "slug";
 import { $replica, prisma } from "~/db.server";
+import { userActor } from "~/services/credentialFingerprints.server";
 import { projectCreated } from "~/services/projectCreated.server";
 import { telemetry } from "~/services/telemetry.server";
 import { ServiceValidationError } from "~/v3/services/common.server";
@@ -127,11 +128,13 @@ export async function createProject(
   });
 
   // Create the dev and prod environments
+  const createdBy = userActor(userId);
   await createEnvironment({
     organization,
     project,
     type: "PRODUCTION",
     isBranchableEnvironment: false,
+    createdBy,
   });
 
   for (const member of project.organization.members) {
@@ -139,10 +142,11 @@ export async function createProject(
       organization,
       project,
       member,
+      createdBy,
     });
   }
 
-  await projectCreated(organization, project);
+  await projectCreated(organization, project, createdBy);
 
   telemetry.project.new({ userId, organizationId: organization.id, project });
 

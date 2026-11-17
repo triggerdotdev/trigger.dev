@@ -26,9 +26,13 @@ const originalEnv = Object.fromEntries(envNames.map((name) => [name, process.env
 const originalContext = taskContext.ctx;
 const originalWorker = taskContext.worker;
 
-function runToken(exp = Math.floor(Date.now() / 1000) + 3600, runId = "run_first") {
+function runToken(
+  exp = Math.floor(Date.now() / 1000) + 3600,
+  runId = "run_first",
+  scopes = ["admin"]
+) {
   const encode = (value: unknown) => Buffer.from(JSON.stringify(value)).toString("base64url");
-  return `${encode({ alg: "RS256", typ: "run+jwt" })}.${encode({ token_use: "run", aud: "trigger:api", exp, scopes: ["admin"], run_id: runId })}.signature`;
+  return `${encode({ alg: "RS256", typ: "run+jwt" })}.${encode({ token_use: "run", aud: "trigger:api", exp, scopes, run_id: runId })}.signature`;
 }
 
 function enterRun(type: TaskRunContext["environment"]["type"] = "PRODUCTION", runId = "run_first") {
@@ -151,32 +155,37 @@ describe("run-only OIDC and AWS credentials over HTTP", () => {
     );
   });
 
-  it("mints directly with the current process token on every invocation", async () => {
-    const first = process.env.TRIGGER_RUN_TOKEN;
-    expect(await auth.getOIDCToken({ audience: "service-one" })).toEqual({
-      token: "external-1",
-      expiresAt: mintExpiresAt,
-    });
-    process.env.TRIGGER_RUN_TOKEN = runToken(undefined, "run_next");
-    expect(await auth.getOIDCToken({ audience: "service-two" })).toEqual({
-      token: "external-2",
-      expiresAt: mintExpiresAt,
-    });
-    expect(mintRequests).toEqual([
-      {
-        method: "POST",
-        path: "/api/v1/auth/oidc/token",
-        authorization: `Bearer ${first}`,
-        body: { audience: "service-one" },
-      },
-      {
-        method: "POST",
-        path: "/api/v1/auth/oidc/token",
-        authorization: `Bearer ${process.env.TRIGGER_RUN_TOKEN}`,
-        body: { audience: "service-two" },
-      },
-    ]);
-  });
+  // Catches: rejecting scoped OIDC credentials locally before the server can authorize them.
+  it.each(["admin", "write:oidc"])(
+    "mints with the current %s token on every invocation",
+    async (scope) => {
+      process.env.TRIGGER_RUN_TOKEN = runToken(undefined, undefined, [scope]);
+      const first = process.env.TRIGGER_RUN_TOKEN;
+      expect(await auth.getOIDCToken({ audience: "service-one" })).toEqual({
+        token: "external-1",
+        expiresAt: mintExpiresAt,
+      });
+      process.env.TRIGGER_RUN_TOKEN = runToken(undefined, "run_next");
+      expect(await auth.getOIDCToken({ audience: "service-two" })).toEqual({
+        token: "external-2",
+        expiresAt: mintExpiresAt,
+      });
+      expect(mintRequests).toEqual([
+        {
+          method: "POST",
+          path: "/api/v1/auth/oidc/token",
+          authorization: `Bearer ${first}`,
+          body: { audience: "service-one" },
+        },
+        {
+          method: "POST",
+          path: "/api/v1/auth/oidc/token",
+          authorization: `Bearer ${process.env.TRIGGER_RUN_TOKEN}`,
+          body: { audience: "service-two" },
+        },
+      ]);
+    }
+  );
 
   it.each([
     [undefined, "OIDC_RUN_TOKEN_MISSING"],

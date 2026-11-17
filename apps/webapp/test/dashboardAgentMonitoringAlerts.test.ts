@@ -1,7 +1,7 @@
 import { createDashboardAgentDb, type DashboardAgentDb } from "@internal/dashboard-agent-db";
 import { alertParamsSchema } from "@internal/alert-contracts";
 import { applyDashboardAgentMigrations } from "@internal/dashboard-agent-db/testing";
-import { getAlert, listAlerts } from "~/v3/services/alerts/storage/alertStore.server";
+import { createAlert, getAlert, listAlerts } from "~/v3/services/alerts/storage/alertStore.server";
 import { alertEvaluationJobId } from "~/v3/services/alerts/engine/evaluateAlertJob.server";
 import { alertEngineTest as postgresTest } from "./helpers/alertEngineRedis";
 import { applyAlertsMigration } from "./helpers/alertTables";
@@ -33,7 +33,8 @@ vi.hoisted(() => {
   process.env.ALERTS_ENABLED = "1";
 });
 
-vi.mock("~/db.server", () => {
+vi.mock("~/db.server", async () => {
+  const { boundedIn } = await import("@trigger.dev/database");
   const proxy = new Proxy(
     {},
     { get: (_target, prop) => (ctx.prisma as unknown as Record<string, unknown>)[prop as string] }
@@ -43,6 +44,7 @@ vi.mock("~/db.server", () => {
     $replica: proxy,
     $transaction: (db: PrismaClient, fn: Parameters<PrismaClient["$transaction"]>[0]) =>
       db.$transaction(fn),
+    boundedIn,
     sqlDatabaseSchema: undefined,
   };
 });
@@ -148,6 +150,7 @@ vi.mock("~/v3/alertsRateLimiter.server", () => ({
 }));
 
 const { loader, action } = await import("~/routes/api.v1.dashboard-agent.monitoring-alerts");
+const { loader: channelsLoader } = await import("~/routes/api.v1.dashboard-agent.alert-channels");
 const { action: analyzeAction } =
   await import("~/routes/api.v1.dashboard-agent.monitoring-alerts.analyze-query");
 const { DASHBOARD_AGENT_UAT_CAP, mintDashboardAgentUserActorToken } =
@@ -681,6 +684,97 @@ describe("dashboard-agent monitoring alerts route", () => {
     );
   });
 
+  // Catches: the agent create path accepting unbounded names or alerts past the project cap.
+  postgresTest(
+    "create rejects an oversized name and a project at the active alert cap",
+    async ({ prisma, postgresContainer }) => {
+      await boot(prisma, postgresContainer.getConnectionUri());
+      const env = makeEnv("org_1", "proj_1", "env_prod", "slugcap", "proj_refcap");
+      ctx.uatClaims = { userId: "user_1", environmentId: "env_prod", client: "dashboard-agent" };
+      ctx.alertContext = { ok: true, environment: env };
+      const create = (name: string) =>
+        action({
+          request: jsonRequest("https://test/api/v1/dashboard-agent/monitoring-alerts", {
+            chatId: "chat_1",
+            capabilityKey: "queue.depth",
+            name,
+            condition: { kind: "threshold", operator: ">", value: 100, windowSec: 300 },
+            notifiers: CHANNEL,
+          }),
+          params: {},
+          context: {},
+        } as any);
+
+      expect((await create("x".repeat(121))).status).toBe(400);
+
+      for (let i = 0; i < 200; i++) {
+        await createAlert(prisma, {
+          organizationId: "org_1",
+          projectId: "proj_1",
+          environmentId: "env_prod",
+          capabilityKey: "queue.depth",
+          name: `a${i}`,
+          params: { scope: { type: "all" } },
+          condition: { kind: "threshold", operator: ">", value: 1, windowSec: 300 },
+          createdBy: "user_1",
+          notifiers: [{ type: "channel", channelId: "chan_1" }],
+        });
+      }
+      expect((await create("one too many")).status).toBe(409);
+    }
+  );
+
+  // Catches: a count-then-create cap that a burst of concurrent creates slips past.
+  postgresTest(
+    "concurrent creates at the cap admit only one",
+    async ({ prisma, postgresContainer }) => {
+      await boot(prisma, postgresContainer.getConnectionUri());
+      const env = makeEnv("org_1", "proj_1", "env_prod", "slugrace", "proj_refrace");
+      ctx.uatClaims = { userId: "user_1", environmentId: "env_prod", client: "dashboard-agent" };
+      ctx.alertContext = { ok: true, environment: env };
+      for (let i = 0; i < 199; i++) {
+        await createAlert(prisma, {
+          organizationId: "org_1",
+          projectId: "proj_1",
+          environmentId: "env_prod",
+          capabilityKey: "queue.depth",
+          name: `a${i}`,
+          params: { scope: { type: "all" } },
+          condition: { kind: "threshold", operator: ">", value: 1, windowSec: 300 },
+          createdBy: "user_1",
+          notifiers: [{ type: "channel", channelId: "chan_1" }],
+        });
+      }
+      const create = () =>
+        action({
+          request: jsonRequest("https://test/api/v1/dashboard-agent/monitoring-alerts", {
+            chatId: "chat_1",
+            capabilityKey: "queue.depth",
+            condition: { kind: "threshold", operator: ">", value: 100, windowSec: 300 },
+            notifiers: CHANNEL,
+          }),
+          params: {},
+          context: {},
+        } as any);
+
+      const statuses = (await Promise.all(Array.from({ length: 5 }, create))).map((r) => r.status);
+      expect(statuses.sort()).toEqual([200, 409, 409, 409, 409]);
+
+      // A create waits on the project's lock, so admission can't interleave.
+      let settled = false;
+      let pending: Promise<Response> | undefined;
+      await prisma.$transaction(async (tx) => {
+        await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${"proj_1"}))`;
+        pending = create().finally(() => {
+          settled = true;
+        });
+        await new Promise((resolve) => setTimeout(resolve, 1500));
+        expect(settled).toBe(false);
+      });
+      expect((await pending!).status).toBe(409);
+    }
+  );
+
   postgresTest(
     "create stores params that satisfy alertParamsSchema",
     async ({ prisma, postgresContainer, engine }) => {
@@ -763,6 +857,45 @@ describe("dashboard-agent monitoring alerts route", () => {
       } as any);
 
       expect(response.status).toBe(403);
+    }
+  );
+
+  // Catches: the by-id lookup not scoped to the chat's environment.
+  postgresTest(
+    "lookup by id returns 404 for another environment's alert",
+    async ({ prisma, postgresContainer }) => {
+      await boot(prisma, postgresContainer.getConnectionUri());
+      const seeded = await seedProjectWithEnvironments(prisma, "agentbyid", ["prod", "staging"]);
+      const other = await createAlert(prisma, {
+        organizationId: seeded.organization.id,
+        projectId: seeded.project.id,
+        environmentId: seeded.environments.staging.id,
+        capabilityKey: "queue.depth",
+        params: { scope: { type: "all" } },
+        condition: { kind: "threshold", operator: ">", value: 1, windowSec: 300 },
+        createdBy: seeded.user.id,
+        attention: "needs_attention",
+      });
+
+      const env = makeEnv(
+        seeded.organization.id,
+        seeded.project.id,
+        seeded.environments.prod.id,
+        seeded.organization.slug,
+        seeded.project.externalRef
+      );
+      ctx.uatClaims = { userId: seeded.user.id, environmentId: env.id, client: "dashboard-agent" };
+      ctx.alertContext = { ok: true, environment: env };
+
+      const response = await loader({
+        request: jsonRequest(
+          `https://test/api/v1/dashboard-agent/monitoring-alerts?chatId=chat_1&alertId=${other.id}`
+        ),
+        params: {},
+        context: {},
+      } as any);
+
+      expect(response.status).toBe(404);
     }
   );
 
@@ -964,7 +1097,7 @@ describe("dashboard-agent monitoring alerts authorization", () => {
   }
 
   postgresTest(
-    "the base token reads alerts but cannot create or resolve them",
+    "the base token reads alerts but cannot create them",
     async ({ prisma, postgresContainer }) => {
       await boot(prisma, postgresContainer.getConnectionUri());
       const seeded = await seedAuthorized(prisma, "basecap");
@@ -977,13 +1110,6 @@ describe("dashboard-agent monitoring alerts authorization", () => {
       } as any);
       expect(created.status).toBe(403);
       expect(await listAlerts(ctx.prisma, { projectId: seeded.project.id })).toHaveLength(0);
-
-      const resolved = await action({
-        request: jsonRequest(ALERTS_URL, { chatId: "chat_1", alertId: "alert_1" }),
-        params: {},
-        context: {},
-      } as any);
-      expect(resolved.status).toBe(403);
 
       const listed = await loader({
         request: jsonRequest(`${ALERTS_URL}?chatId=chat_1`),
@@ -1084,13 +1210,6 @@ describe("dashboard-agent monitoring alerts authorization", () => {
       } as any);
       expect(prod.status).toBe(403);
 
-      const prodResolve = await action({
-        request: jsonRequest(ALERTS_URL, { chatId: "chat_1", alertId: "alert_1" }),
-        params: {},
-        context: {},
-      } as any);
-      expect(prodResolve.status).toBe(403);
-
       const prodEnv = ctx.alertContext as { ok: true; environment: AuthenticatedEnvironment };
       ctx.alertContext = {
         ok: true,
@@ -1168,6 +1287,116 @@ describe("dashboard-agent monitoring alerts authorization", () => {
       expect(await mintedCap(seeded.user.id, seeded.environments.prod.id, true)).not.toContain(
         "write:alerts"
       );
+    }
+  );
+});
+
+describe("dashboard-agent scoped listing contract", () => {
+  const BASE = "https://test/api/v1/dashboard-agent";
+
+  async function seedScoped(prisma: PrismaClient) {
+    const seeded = await seedProjectWithEnvironments(prisma, "scoped", ["prod", "staging"]);
+    const env = makeEnv(
+      seeded.organization.id,
+      seeded.project.id,
+      seeded.environments.prod.id,
+      seeded.organization.slug,
+      seeded.project.externalRef
+    );
+    ctx.uatClaims = { userId: seeded.user.id, environmentId: env.id, client: "dashboard-agent" };
+    ctx.alertContext = { ok: true, environment: env };
+    return seeded;
+  }
+
+  const get = (fn: typeof loader, url: string) =>
+    fn({ request: jsonRequest(url), params: {}, context: {} } as any) as Promise<Response>;
+
+  // Catches: the alerts route dropping scope validation or renaming a response key.
+  postgresTest(
+    "monitoring-alerts accepts project and organization scope",
+    async ({ prisma, postgresContainer }) => {
+      await boot(prisma, postgresContainer.getConnectionUri());
+      const seeded = await seedScoped(prisma);
+      for (const envSlug of ["prod", "staging"]) {
+        await createAlert(prisma, {
+          organizationId: seeded.organization.id,
+          projectId: seeded.project.id,
+          environmentId: seeded.environments[envSlug]!.id,
+          capabilityKey: "queue.depth",
+          params: { queue: "worker-1" },
+          condition: { operator: ">", value: 100 },
+          createdBy: seeded.user.id,
+          notifiers: [{ type: "channel", channelId: "chan_seeded" }],
+        });
+      }
+
+      for (const scope of ["project", "organization"]) {
+        const response = await get(
+          loader,
+          `${BASE}/monitoring-alerts?chatId=chat_1&scope=${scope}`
+        );
+        expect(response.status).toBe(200);
+        const body = await response.json();
+        expect(Object.keys(body).sort()).toEqual(["alerts", "scope", "truncated"]);
+        expect(body).toMatchObject({ scope, truncated: false });
+        expect(body.alerts).toHaveLength(2);
+        for (const alert of body.alerts) {
+          expect(alert).toMatchObject({
+            projectId: seeded.project.id,
+            environmentId: expect.any(String),
+            project: { slug: seeded.project.slug, name: seeded.project.name },
+            environment: { slug: expect.any(String), type: expect.any(String) },
+            channelIds: ["chan_seeded"],
+          });
+        }
+      }
+
+      const invalid = await get(loader, `${BASE}/monitoring-alerts?chatId=chat_1&scope=everything`);
+      expect(invalid.status).toBe(400);
+    }
+  );
+
+  // Catches: the channels route renaming or reparsing scope, legacy or type.
+  postgresTest(
+    "alert-channels parses scope, legacy and type",
+    async ({ prisma, postgresContainer }) => {
+      await boot(prisma, postgresContainer.getConnectionUri());
+      const seeded = await seedScoped(prisma);
+      const webhook = (id: string, alertTypes: ("TASK_RUN" | "ERROR_GROUP")[]) =>
+        prisma.projectAlertChannel.create({
+          data: {
+            id,
+            friendlyId: `f_${id}`,
+            name: id,
+            type: "WEBHOOK",
+            properties: { url: "https://hooks.example.com/x", secret: "s" },
+            alertTypes,
+            projectId: seeded.project.id,
+          },
+        });
+      await webhook("chan_legacy_hook", ["TASK_RUN"]);
+      await webhook("chan_modern_hook", ["ERROR_GROUP"]);
+
+      const response = await get(
+        channelsLoader,
+        `${BASE}/alert-channels?chatId=chat_1&scope=organization&legacy=true&type=WEBHOOK`
+      );
+      expect(response.status).toBe(200);
+      const body = await response.json();
+      expect(Object.keys(body).sort()).toEqual(["channels", "scope", "truncated"]);
+      expect(body.scope).toBe("organization");
+      expect(body.channels.map((c: { id: string }) => c.id)).toEqual(["chan_legacy_hook"]);
+      expect(Object.keys(body.channels[0].legacyAlerts[0]).sort()).toEqual([
+        "label",
+        "migration",
+        "replaceWith",
+        "type",
+      ]);
+
+      for (const query of ["legacy=yes", "type=webhook"]) {
+        const rejected = await get(channelsLoader, `${BASE}/alert-channels?chatId=chat_1&${query}`);
+        expect(rejected.status).toBe(400);
+      }
     }
   );
 });

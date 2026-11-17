@@ -117,6 +117,14 @@ export const Env = z
     TRIGGER_WORKLOAD_API_HOST_INTERNAL: z.string().default("0.0.0.0"),
     TRIGGER_WORKLOAD_API_PORT_INTERNAL: z.coerce.number().default(8020), // This is the port the workload API listens on
     TRIGGER_WORKLOAD_API_PORT_EXTERNAL: z.coerce.number().default(8020), // This is the exposed port passed to the run controller
+    // Largest attempt completion body the workload API accepts (at most 32 MiB). Other workload routes use the 1 MiB default.
+    TRIGGER_WORKLOAD_API_COMPLETE_MAX_BODY_SIZE: z.coerce
+      .number()
+      .int()
+      .positive()
+      .default(10 * 1024 * 1024),
+    // `shadow` serves over-limit bodies (up to a fixed ceiling) and logs them; `enforce` answers 413.
+    TRIGGER_WORKLOAD_API_BODY_SIZE_LIMIT_MODE: z.enum(["shadow", "enforce"]).default("shadow"),
     // How long to keep retrying temporary failures of `continue` for a run restored from a
     // checkpoint; unset keeps the default retries.
     TRIGGER_CONTINUE_RETRY_BUDGET_MS: z.coerce
@@ -213,6 +221,13 @@ export const Env = z
       .int()
       .positive()
       .default(10_000),
+
+    // Pod-IP bindings have no fcrun allocation teardown/source-reuse fence yet.
+    // Opt-in also asserts this supervisor exclusively owns the control socket and is its only registrar.
+    // This dedicated lane disables warm dispatch, checkpoints and restores. Its operator must have an empty
+    // runner.warm_start_url and an isolated node pool: native guest warm registration is operator-owned.
+    SECRET_PROXY_UNSAFE_LAB_ENABLED: BoolEnv.default(false),
+    SECRET_PROXY_INTERCEPTOR_SOCKET: z.string().startsWith("/").optional(),
 
     // Optional services
     TRIGGER_WARM_START_URL: z.string().optional(),
@@ -471,6 +486,28 @@ export const Env = z
     TRIGGER_WIDE_EVENTS_NOISY_ROUTES: BoolEnv.default(false),
   })
   .superRefine((data, ctx) => {
+    if (data.SECRET_PROXY_INTERCEPTOR_SOCKET && !data.SECRET_PROXY_UNSAFE_LAB_ENABLED) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message:
+          "Automatic secret proxy binding requires SECRET_PROXY_UNSAFE_LAB_ENABLED=true: source-IP reuse is not fenced by fcrun allocation lifecycle",
+        path: ["SECRET_PROXY_UNSAFE_LAB_ENABLED"],
+      });
+    }
+    if (
+      data.SECRET_PROXY_INTERCEPTOR_SOCKET &&
+      (!data.KUBERNETES_RUN_CRD_ENABLED ||
+        !data.KUBERNETES_FORCE_ENABLED ||
+        data.KUBERNETES_RUNNER_RUNTIME !== "microvm" ||
+        data.WORKLOAD_TOKEN_ENFORCEMENT !== "enforce")
+    ) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message:
+          "Secret proxy requires forced Kubernetes, run-crd microvm and workload token enforcement",
+        path: ["SECRET_PROXY_INTERCEPTOR_SOCKET"],
+      });
+    }
     if (data.TRIGGER_WORKER_QUEUE_SUBSCRIPTIONS) {
       if (data.TRIGGER_WORKER_QUEUE_CLASS !== undefined) {
         ctx.addIssue({
@@ -658,6 +695,17 @@ export const Env = z
   })
   .transform((data) => ({
     ...data,
+    TRIGGER_WARM_START_URL: data.SECRET_PROXY_INTERCEPTOR_SOCKET
+      ? undefined
+      : data.TRIGGER_WARM_START_URL,
+    TRIGGER_WARM_START_DISPATCH_URL: data.SECRET_PROXY_INTERCEPTOR_SOCKET
+      ? undefined
+      : data.TRIGGER_WARM_START_DISPATCH_URL,
+    TRIGGER_CHECKPOINT_URL: data.SECRET_PROXY_INTERCEPTOR_SOCKET
+      ? undefined
+      : data.TRIGGER_CHECKPOINT_URL,
+    COMPUTE_SNAPSHOTS_ENABLED:
+      data.COMPUTE_SNAPSHOTS_ENABLED && !data.SECRET_PROXY_INTERCEPTOR_SOCKET,
     TRIGGER_WORKER_QUEUE_CLASS:
       data.TRIGGER_WORKER_QUEUE_CLASS ??
       (data.TRIGGER_WORKER_QUEUE_SUBSCRIPTIONS === undefined ? "default" : undefined),

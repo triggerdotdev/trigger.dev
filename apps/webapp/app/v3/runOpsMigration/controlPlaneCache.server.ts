@@ -2,6 +2,7 @@ import type {
   BackgroundWorker,
   Prisma,
   RuntimeEnvironmentType,
+  TaskExecutionMode,
   WorkerDeploymentStatus,
 } from "@trigger.dev/database";
 import { BoundedTtlCache } from "~/services/realtime/boundedTtlCache";
@@ -72,6 +73,7 @@ type ResolvedWorkerTask = {
   machineConfig: Prisma.JsonValue | null;
   retryConfig: Prisma.JsonValue | null;
   maxDurationInSeconds: number | null;
+  executionMode: TaskExecutionMode;
 };
 
 /** The `select` that yields a `ResolvedWorkerTask`. */
@@ -81,6 +83,7 @@ export const resolvedWorkerTaskSelect = {
   machineConfig: true,
   retryConfig: true,
   maxDurationInSeconds: true,
+  executionMode: true,
 } satisfies Prisma.BackgroundWorkerTaskSelect;
 
 /** Mirrors run-engine's `ResolvedTaskQueue` exactly. `id` + `name` (the matcher keys on both). */

@@ -16,10 +16,10 @@ type AuditLogActionsByCategory = {
     | "envvar.updated"
     | "envvar.value_updated"
     | "envvar.deleted"
-    | "envvar.imported"
     | "envvar.listed"
     | "envvar.read";
   members:
+    | "member.added"
     | "member.invited"
     | "invite.revoked"
     | "invite.accepted"
@@ -68,7 +68,8 @@ export type AuditLogCredential = {
   fingerprintId: string | null;
 };
 
-export type AuditLogSource = "dashboard" | "api" | "cli" | "run" | "staff";
+/** `system`: Trigger.dev acted with no request behind it, e.g. directory sync. */
+export type AuditLogSource = "dashboard" | "api" | "cli" | "run" | "staff" | "system";
 
 export type AuditLogEnvironmentType = "PRODUCTION" | "STAGING" | "DEVELOPMENT" | "PREVIEW";
 
@@ -113,8 +114,24 @@ export type AuditLogInput = AuditLogCategoryAndAction & {
   environmentType?: AuditLogEnvironmentType | null;
   target: AuditLogTarget;
   changes?: AuditLogChanges | null;
+  /**
+   * The last 4 characters of every key the change touched, e.g. a rotated key's old and new, so a
+   * customer can find the change by a key's last 4. Never more of the key. The credential the
+   * request used is added from the context.
+   */
+  keyLast4s?: string[];
   /** Overrides the context's actor, e.g. `system` for changes made by directory sync. */
   actor?: AuditLogActor;
+  /**
+   * Overrides the context's source, when the request says nothing true about how the change was
+   * made: `system` for directory sync, `staff` for a support session started from the admin panel.
+   */
+  source?: AuditLogSource;
+  /**
+   * The user acting on behalf of the actor, when the context doesn't know it: e.g. the staff member
+   * behind a `support` actor. Never returned by `listEvents`.
+   */
+  onBehalfOf?: { userId: string };
 };
 
 /** What the host knows about the call that made the change. Unknown fields are null. */

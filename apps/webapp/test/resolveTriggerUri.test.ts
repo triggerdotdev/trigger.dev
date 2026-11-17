@@ -126,6 +126,17 @@ describe("resolveTriggerUri", () => {
     expect(resolveTriggerUri(scope, "trigger://proj_a/env_1234/teapot/x")).toBeNull();
     expect(resolveTriggerUri(scope, "trigger://proj_abcdefghijklmnop/env_1234/run")).toBeNull();
   });
+
+  // Catches: a decoded id with dot segments or a slash walking out of the run/source path.
+  it.each([
+    formatTriggerUri({ kind: "run", ...uriScope, runId: "../../../../logout" }),
+    `trigger://${project.externalRef}/${scope.id}/source/${"a".repeat(40)}/..%2Fattacker`,
+    `trigger://${project.externalRef}/${scope.id}/source/x%2F..%2F..%2Fattacker/a.ts`,
+  ])("refuses a path-escaping id: %s", (uri) => {
+    expect(
+      resolveTriggerUri({ ...scope, repository: { fullName: "acme/orders" } }, uri)
+    ).toBeNull();
+  });
 });
 
 describe("resolveTriggerUri: source URIs", () => {

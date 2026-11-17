@@ -105,3 +105,24 @@ export async function createEnvironmentVariable(
     throw new Error(result.error);
   }
 }
+
+/** Marks a value proxy-only the way an operator does by hand: one row update, no checks. */
+export async function enrollProxyOnlyValue(
+  db: Pick<PrismaClient, "environmentVariableValue">,
+  options: { environmentId: string; variableId: string; allowedHosts: string[] }
+) {
+  await db.environmentVariableValue.update({
+    where: {
+      variableId_environmentId: {
+        variableId: options.variableId,
+        environmentId: options.environmentId,
+      },
+    },
+    data: {
+      isProxyOnly: true,
+      isSecret: true,
+      proxyConfig: { allowedHosts: options.allowedHosts },
+      version: { increment: 1 },
+    },
+  });
+}

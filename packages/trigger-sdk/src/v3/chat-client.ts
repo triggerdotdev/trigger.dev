@@ -122,7 +122,7 @@ export type AgentChatOptions<TAgent = unknown> = {
    * env var).
    *
    * Session creation (`POST /api/v1/sessions`) and token mint
-   * (`POST /api/v1/auth/jwt/claims`) still flow through
+   * (`POST /api/v1/auth/public-tokens`) still flow through
    * `apiClientManager` — pass equivalent options to
    * `chat.createStartSessionAction` if you need those routed too.
    */

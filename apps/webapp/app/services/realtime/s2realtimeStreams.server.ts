@@ -296,9 +296,14 @@ export class S2RealtimeStreams implements StreamResponder, StreamIngestor {
     friendlyId: string,
     io: "out" | "in",
     afterSeqNum?: number,
-    channel?: string
+    channel?: string,
+    limit?: number
   ): Promise<StreamRecord[]> {
-    return this.#readRecordsByName(this.toSessionStreamName(friendlyId, io, channel), afterSeqNum);
+    return this.#readRecordsByName(
+      this.toSessionStreamName(friendlyId, io, channel),
+      afterSeqNum,
+      limit
+    );
   }
 
   async listSessionChannels(friendlyId: string): Promise<string[]> {
@@ -359,13 +364,17 @@ export class S2RealtimeStreams implements StreamResponder, StreamIngestor {
    * because the `.wait()` race check depends on this read to find a record
    * sent before the waitpoint registered.
    */
-  async #readRecordsByName(s2Stream: string, afterSeqNum?: number): Promise<StreamRecord[]> {
+  async #readRecordsByName(
+    s2Stream: string,
+    afterSeqNum?: number,
+    limit?: number
+  ): Promise<StreamRecord[]> {
     const backoffsMs = [100, 300];
     const maxAttempts = backoffsMs.length + 1;
 
     for (let attempt = 0; ; attempt++) {
       try {
-        return await this.#readRecordsOnce(s2Stream, afterSeqNum);
+        return await this.#readRecordsOnce(s2Stream, afterSeqNum, limit);
       } catch (error) {
         const { status, streamNotFound } = error as {
           status?: number;
@@ -399,12 +408,17 @@ export class S2RealtimeStreams implements StreamResponder, StreamIngestor {
     }
   }
 
-  async #readRecordsOnce(s2Stream: string, afterSeqNum?: number): Promise<StreamRecord[]> {
+  async #readRecordsOnce(
+    s2Stream: string,
+    afterSeqNum?: number,
+    limit?: number
+  ): Promise<StreamRecord[]> {
     const startSeq = afterSeqNum != null ? afterSeqNum + 1 : 0;
 
     const qs = new URLSearchParams();
     qs.set("seq_num", String(startSeq));
     qs.set("clamp", "true");
+    if (limit !== undefined) qs.set("count", String(limit));
     qs.set("wait", "0"); // Non-blocking: return immediately with existing records
 
     const res = await fetch(
@@ -419,6 +433,11 @@ export class S2RealtimeStreams implements StreamResponder, StreamIngestor {
         },
       }
     );
+
+    if (res.status === 416) {
+      await cancelResponseBody(res);
+      return [];
+    }
 
     if (!res.ok) {
       const streamNotFound = await isS2StreamNotFound(res);
@@ -582,8 +601,15 @@ export class S2RealtimeStreams implements StreamResponder, StreamIngestor {
   }
 
   async readSessionInTailSeq(addressingKey: string): Promise<number | undefined> {
-    const s2Stream = this.toSessionStreamName(addressingKey, "in");
+    return this.#readTailSeq(this.toSessionStreamName(addressingKey, "in"));
+  }
 
+  /** The next seq of `.out` (0 when empty); undefined when the tail can't be read. */
+  async readSessionOutTailSeq(addressingKey: string): Promise<number | undefined> {
+    return this.#readTailSeq(this.toSessionStreamName(addressingKey, "out"));
+  }
+
+  async #readTailSeq(s2Stream: string): Promise<number | undefined> {
     const res = await this.#getTail(s2Stream, "records/tail", "S2 read tail", [404]);
     if (res === "missing") return 0;
     if (!res) return undefined;

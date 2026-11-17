@@ -1,12 +1,5 @@
 import { parseExpression } from "cron-parser";
 
-/**
- * The free-plan minimum window, in seconds. Held as a code constant (not a schema default or a
- * DB default) so it can become e.g. 15 minutes before merge without rewriting the schema or any
- * historical rows. Persisted onto `TaskSchedule.minimumWindowDurationSeconds` at creation time.
- */
-export const FREE_SCHEDULE_MINIMUM_WINDOW_SECONDS = 3600;
-
 export type MinimumCronIntervalResult =
   | { valid: true }
   | { valid: false; message: string; smallestGapMs: number };

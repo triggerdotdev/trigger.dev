@@ -14,7 +14,9 @@ vi.mock("@internal/tracing", () => ({
 }));
 vi.mock("~/services/rbac.server", () => ({ rbac: { authenticateBearer: vi.fn() } }));
 vi.mock("~/db.server", () => ({ prisma: {}, $replica: {} }));
-vi.mock("~/env.server", () => ({ env: { SESSION_SECRET: "test-session-secret" } }));
+vi.mock("~/env.server", () => ({
+  env: { SESSION_SECRET: "test-session-secret", ENCRYPTION_KEY: "test-public-token-secret" },
+}));
 vi.mock("~/models/project.server", () => ({ findProjectByRef: vi.fn() }));
 vi.mock("~/models/runtimeEnvironment.server", () => ({
   authIncludeBase: {},
@@ -69,13 +71,13 @@ describe("PUBLIC_JWT authentication — actor claim", () => {
       claims({ act: { sub: "usr_42", client: "dashboard-agent" } })
     );
 
-    expect(result.actor).toEqual({ sub: "usr_42", client: "dashboard-agent" });
+    expect(result.actor).toEqual({ sub: "usr_42", client: "dashboard-agent", verified: false });
   });
 
   it("accepts act without a client", async () => {
     const result = await authenticate(claims({ act: { sub: "usr_42" } }));
 
-    expect(result.actor).toEqual({ sub: "usr_42" });
+    expect(result.actor).toEqual({ sub: "usr_42", verified: false });
   });
 
   it("leaves actor undefined when the JWT has no act", async () => {
@@ -99,7 +101,7 @@ describe("PUBLIC_JWT authentication — actor claim", () => {
     const result = await authenticate(forged);
 
     expect(result.environment.id).toBe(environment.id);
-    expect(result.actor).toEqual({ sub: "usr_42", client: "dashboard-agent" });
+    expect(result.actor).toEqual({ sub: "usr_42", client: "dashboard-agent", verified: false });
 
     const ability = buildJwtAbility(forged.scopes);
     expect(ability.rules).toEqual(buildJwtAbility(["read:runs"]).rules);

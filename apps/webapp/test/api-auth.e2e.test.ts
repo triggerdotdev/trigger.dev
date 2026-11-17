@@ -400,6 +400,83 @@ describe("system-issued API key", () => {
   });
 });
 
+describe("deployment initialization records how it was started", () => {
+  async function productionEnvironment() {
+    const seeded = await seedTestEnvironment(server.prisma);
+    await server.prisma.runtimeEnvironment.update({
+      where: { id: seeded.environment.id },
+      data: { type: "PRODUCTION" },
+    });
+    const additionalKey = generateAdditionalApiKey("PRODUCTION").apiKey;
+    await server.prisma.apiKey.create({
+      data: {
+        name: "Deploy key",
+        keyHash: createHash("sha256").update(additionalKey).digest("hex"),
+        lastFour: additionalKey.slice(-4),
+        runtimeEnvironmentId: seeded.environment.id,
+        presetId: "DEPLOY_ONLY",
+        scopes: ["read:deployments", "write:deployments"],
+      },
+    });
+    return { ...seeded, additionalKey };
+  }
+
+  async function initialize(token: string, body: Record<string, unknown> = {}) {
+    const res = await server.webapp.fetch("/api/v1/deployments", {
+      method: "POST",
+      headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+      body: JSON.stringify({
+        contentHash: "hash",
+        type: "MANAGED",
+        initialStatus: "PENDING",
+        isNativeBuild: false,
+        ...body,
+      }),
+    });
+    expect(res.status).toBe(200);
+    const { id } = (await res.json()) as { id: string };
+    return id;
+  }
+
+  async function initiatedBy(friendlyId: string) {
+    const deployment = await server.prisma.workerDeployment.findUniqueOrThrow({
+      where: { friendlyId },
+      select: { initiatedByCredential: true },
+    });
+    return deployment.initiatedByCredential;
+  }
+
+  // Catches: a deployment started with the environment's secret key left unrecorded.
+  it("records the environment's own key", async () => {
+    const { apiKey } = await productionEnvironment();
+    expect(await initiatedBy(await initialize(apiKey))).toBe("ROOT_API_KEY");
+  });
+
+  // Catches: an additional key recorded as another kind, or the value taken from the request body.
+  it("takes the recorded value from the authenticating key, not the request body", async () => {
+    const { additionalKey } = await productionEnvironment();
+    const id = await initialize(additionalKey, { initiatedByCredential: "TRUSTED_PUBLISHING" });
+    expect(await initiatedBy(id)).toBe("SCOPED_API_KEY");
+  });
+
+  // Catches: a progress update or a caller on an older CLI re-attaching overwrites the recorded value.
+  it("leaves the recorded value unchanged on progress updates and re-attaching", async () => {
+    const { apiKey, additionalKey } = await productionEnvironment();
+    const id = await initialize(additionalKey);
+
+    const progress = await server.webapp.fetch(`/api/v1/deployments/${id}/progress`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${additionalKey}`, "Content-Type": "application/json" },
+      body: JSON.stringify({ contentHash: "hash-2", initiatedByCredential: "TRUSTED_PUBLISHING" }),
+    });
+    expect(progress.status).toBe(204);
+    expect(await initiatedBy(id)).toBe("SCOPED_API_KEY");
+
+    expect(await initialize(apiKey, { gitMeta: { commitSha: id } })).toBe(id);
+    expect(await initiatedBy(id)).toBe("SCOPED_API_KEY");
+  });
+});
+
 describe("JWT bearer auth — baseline behavior", () => {
   it("valid JWT on JWT-enabled route: auth passes", async () => {
     const { environment } = await seedTestEnvironment(server.prisma);

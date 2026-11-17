@@ -9,7 +9,7 @@ import { GitHubBranchTracking } from "~/components/deployments/GitHubBranchTrack
 import { IgnoredPatternsEditor } from "~/components/deployments/IgnoredPatternsEditor";
 import { GitHubOnboardingConnection } from "~/components/deployments/GitHubOnboardingConnection";
 import { getFormProps, getInputProps, useForm } from "@conform-to/react";
-import { parseWithZod } from "@conform-to/zod/v4";
+import { parseWithZod } from "~/utils/conform";
 import {
   ArrowUpCircleIcon,
   ArrowUpRightIcon,

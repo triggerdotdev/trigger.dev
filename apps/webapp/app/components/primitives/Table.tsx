@@ -598,8 +598,11 @@ export const TableCellMenu = forwardRef<
               <div
                 data-hidden-buttons
                 className={cn(
-                  "hidden group-hover/table-row:block",
-                  popoverContent && "pr-0.5 group-hover/table-row:border-r",
+                  // On row hover, and also for the keyboard (focus inside the row) and on touch
+                  // screens, which have no hover.
+                  "hidden group-focus-within/table-row:block group-hover/table-row:block pointer-coarse:block",
+                  popoverContent &&
+                    "pr-0.5 group-focus-within/table-row:border-r group-hover/table-row:border-r pointer-coarse:border-r",
                   variants[variant].menuButtonDivider
                 )}
               >

@@ -1283,6 +1283,7 @@ const PERMANENT_RESTORE_REASONS = new Set([
   "RestoreNotSupported",
   "SnapshotNotFound",
   "SnapshotRefused",
+  "SnapshotIntegrity",
 ]);
 
 export type RestoreFailureAction =

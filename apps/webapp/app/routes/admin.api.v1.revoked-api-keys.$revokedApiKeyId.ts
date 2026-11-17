@@ -3,6 +3,7 @@ import type { ActionFunctionArgs } from "@remix-run/server-runtime";
 import { json } from "@remix-run/server-runtime";
 import { z } from "zod";
 import { prisma } from "~/db.server";
+import { updateCredentialGrace } from "~/services/credentialFingerprints.server";
 import { requireAdminApiRequest } from "~/services/personalAccessToken.server";
 
 const ParamsSchema = z.object({
@@ -41,6 +42,9 @@ async function handleAction({ request, params }: ActionFunctionArgs) {
     where: { id: revokedApiKeyId },
     data: { expiresAt: parsedBody.data.expiresAt },
   });
+
+  // Only moves the grace period: who revoked the key, when and why stay as first recorded.
+  updateCredentialGrace(updated.apiKey, updated.expiresAt);
 
   return json({
     success: true,

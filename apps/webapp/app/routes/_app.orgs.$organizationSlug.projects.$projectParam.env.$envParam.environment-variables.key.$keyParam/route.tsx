@@ -18,7 +18,7 @@ import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import { z } from "zod";
 import { ExitIcon } from "~/assets/icons/ExitIcon";
-import { EnvironmentCombo } from "~/components/environments/EnvironmentLabel";
+import { EnvironmentCombo, environmentFullTitle } from "~/components/environments/EnvironmentLabel";
 import { Badge } from "~/components/primitives/Badge";
 import { Button, LinkButton } from "~/components/primitives/Buttons";
 import { CopyableText } from "~/components/primitives/CopyableText";
@@ -32,7 +32,7 @@ import { useOrganization } from "~/hooks/useOrganizations";
 import { useProject } from "~/hooks/useProject";
 import { useSearchParams } from "~/hooks/useSearchParam";
 import { useShortcutKeys } from "~/hooks/useShortcutKeys";
-import { useTypedMatchesData } from "~/hooks/useTypedMatchData";
+import { isTypingIn } from "~/utils/isTypingIn";
 import {
   EnvironmentVariableKeyPresenter,
   type EnvironmentVariableKeyDetail,
@@ -43,21 +43,25 @@ import {
   EnvironmentVariableUpdated,
   InlineValueEditor,
   EnvironmentVariableValue,
-  environmentVariablesRouteId,
   maskEnvironmentVariable,
-  type EnvironmentVariablesPageLoaderData,
+  useEnvironmentVariablesPageData,
   type MaskedEnvironmentVariable,
 } from "~/routes/_app.orgs.$organizationSlug.projects.$projectParam.env.$envParam.environment-variables/EnvironmentVariableControls";
 import type { EnvironmentVariablesOutletContext } from "~/routes/_app.orgs.$organizationSlug.projects.$projectParam.env.$envParam.environment-variables/route";
 import { resolveProjectAuthScope } from "~/services/projectAuthScope.server";
+import { requireRecentMfa } from "~/services/mfa/mfaPolicy.server";
 import { dashboardLoader } from "~/services/routeBuilders/dashboardBuilder";
 import { pageMeta } from "~/utils/pageTitle";
 import {
   EnvironmentParamSchema,
   v3EnvironmentVariableKeyPath,
   v3EnvironmentVariablesPath,
+  v3OidcPath,
 } from "~/utils/pathBuilder";
+import { TextLink } from "~/components/primitives/TextLink";
+import { oidcServiceForKey } from "~/v3/environmentVariables/oidcReplaceable";
 import { listViewSearch } from "~/v3/environmentVariables/environmentFilter";
+import { attentionViewSearch } from "~/v3/environmentVariables/attention";
 import { EnvironmentVariableKey } from "~/v3/environmentVariables/repository";
 import {
   activeInlineValueEdit,
@@ -131,11 +135,16 @@ export const loader = dashboardLoader(
     // No hard authorization, as on the list: values in environments the role can't read are
     // masked per-tier below.
   },
-  async ({ params, searchParams, user, ability, context }) => {
+  async ({ params, searchParams, user, ability, context, request }) => {
     const { projectId } = context;
     if (!projectId) {
       throw new Response("Not Found", { status: 404 });
     }
+    await requireRecentMfa(request, {
+      userId: user.id,
+      action: "environmentVariables",
+      organizationId: context.organizationId,
+    });
 
     try {
       const detail = await new EnvironmentVariableKeyPresenter().call({
@@ -177,10 +186,12 @@ export default function Page() {
   const detail = useTypedLoaderData<MaskedKeyDetail>();
   const outletContext = useOutletContext<EnvironmentVariablesOutletContext>();
   const { revealAll } = outletContext;
-  const pageData = useTypedMatchesData<EnvironmentVariablesPageLoaderData>({
-    id: environmentVariablesRouteId,
-  });
-  const writableEnvironmentIds = new Set(pageData?.writableEnvironmentIds ?? []);
+  // Opened from the compare view: nothing is edited there, and the panel closes back to it.
+  const isReadOnly = outletContext.compare !== undefined;
+  const pageData = useEnvironmentVariablesPageData();
+  const writableEnvironmentIds = new Set(
+    isReadOnly ? [] : (pageData?.writableEnvironmentIds ?? [])
+  );
 
   const organization = useOrganization();
   const project = useProject();
@@ -190,8 +201,13 @@ export default function Page() {
 
   const searchParams = new URLSearchParams(location.search);
   // Closing keeps the list's view and drops the panel's own params.
-  const closePath = `${v3EnvironmentVariablesPath(organization, project, environment)}${listViewSearch(searchParams)}`;
-  const keyPath = v3EnvironmentVariableKeyPath(organization, project, environment, detail.key);
+  const closePath =
+    outletContext.compare?.closePath ??
+    outletContext.attention?.closePath ??
+    `${v3EnvironmentVariablesPath(organization, project, environment)}${listViewSearch(searchParams)}`;
+  const keyPath = outletContext.attention
+    ? `${outletContext.attention.path}/key/${encodeURIComponent(detail.key)}`
+    : v3EnvironmentVariableKeyPath(organization, project, environment, detail.key);
 
   // The create dialog, over the panel. With an environment it starts on this key there; with
   // fillKey it starts on this key and leaves the environments as the list has them.
@@ -203,7 +219,14 @@ export default function Page() {
       | { fillKey: true }
       | { addOverride: { previewEnvironmentId: string; isSecret: boolean } }
   ) => {
-    const params = new URLSearchParams(keyPanelViewSearch(searchParams));
+    const params = new URLSearchParams(
+      outletContext.attention
+        ? attentionViewSearch(searchParams, [
+            KEY_PANEL_BRANCH_SEARCH_PARAM,
+            KEY_PANEL_BRANCH_PAGE_PARAM,
+          ])
+        : keyPanelViewSearch(searchParams)
+    );
     if (start && "environmentId" in start) {
       params.set(NEW_VARIABLE_ENVIRONMENT_PARAM, start.environmentId);
     } else if (start && "addOverride" in start) {
@@ -268,10 +291,13 @@ export default function Page() {
 
   // Dialogs opened from the panel close on Esc themselves; the same press mustn't also close
   // the panel. Radix traps focus inside an open dialog, so focus tells us one is open. While a
-  // value is edited in place, Esc ends the edit instead.
+  // value is edited in place, Esc ends the edit instead. Runs with an input focused, so a ticked
+  // row's checkbox doesn't swallow it, and leaves fields the user types in alone.
   useShortcutKeys({
     shortcut: { key: "esc" },
+    enabledOnInputElements: true,
     action: () => {
+      if (isTypingIn(document.activeElement)) return;
       if (document.activeElement?.closest("[role='dialog'], [role='alertdialog']")) return;
       if (activeEdit !== null) {
         stopEditing();
@@ -287,6 +313,26 @@ export default function Page() {
   });
 
   const displayKey = displayableKey(detail.key);
+  // Only for a key set in a deployed environment: OIDC tokens aren't available in Development.
+  const canUseOidc =
+    organization.featureFlags.oidcEnabled &&
+    oidcServiceForKey(detail.key) !== undefined &&
+    (detail.counts.branchesSet > 0 ||
+      detail.environments.some(
+        (row) => row.variable !== null && row.environment.type !== "DEVELOPMENT"
+      ));
+  // OIDC setup is per environment: open it on one the key is set in, the URL's when it is.
+  const oidcEnvironmentId =
+    environment.type !== "DEVELOPMENT" &&
+    detail.environments.some(
+      (row) => row.variable !== null && row.environment.id === environment.id
+    )
+      ? environment.id
+      : detail.environments.find(
+          (row) => row.variable !== null && row.environment.type !== "DEVELOPMENT"
+        )?.environment.id;
+  const oidcEnvironment =
+    project.environments.find((e) => e.id === oidcEnvironmentId) ?? environment;
   const { pagination } = detail.branches;
   const branchPagePath = (page: number) => {
     const params = new URLSearchParams(location.search);
@@ -332,16 +378,26 @@ export default function Page() {
                 "There's no environment variable with that name in this project."
               )}
             </Paragraph>
-            <LinkButton
-              to={newVariablePath(displayKey ? { fillKey: true } : undefined)}
-              variant="secondary/small"
-              LeadingIcon={PlusIcon}
-            >
-              Add new
-            </LinkButton>
+            {!isReadOnly && (
+              <LinkButton
+                to={newVariablePath(displayKey ? { fillKey: true } : undefined)}
+                variant="secondary/small"
+                LeadingIcon={PlusIcon}
+              >
+                Add new
+              </LinkButton>
+            )}
           </div>
         ) : (
           <>
+            {canUseOidc && (
+              <Paragraph variant="small" className="border-b border-grid-dimmed px-3 py-2">
+                This key could be replaced with OIDC.{" "}
+                <TextLink to={v3OidcPath(organization, project, oidcEnvironment)}>
+                  Set up OIDC
+                </TextLink>
+              </Paragraph>
+            )}
             <Section title="Environments">
               <Property.Table className="px-3">
                 {detail.environments.map(({ environment: rowEnvironment, variable }) => (
@@ -368,6 +424,7 @@ export default function Page() {
                               variable={variable}
                               revealAll={revealAll}
                               editing={editing}
+                              isReadOnly={isReadOnly}
                             />
                           </div>
                           {!variable.permissionDenied && (
@@ -445,7 +502,12 @@ export default function Page() {
                       </Property.Label>
                       <Property.Value>
                         <div className="flex min-h-8 items-center gap-2">
-                          <PanelValue variable={variable} revealAll={revealAll} editing={editing} />
+                          <PanelValue
+                            variable={variable}
+                            revealAll={revealAll}
+                            editing={editing}
+                            isReadOnly={isReadOnly}
+                          />
                         </div>
                         {!variable.permissionDenied && (
                           <EnvironmentVariableUpdated variable={variable} />
@@ -684,7 +746,12 @@ function BranchesCountBadge({ counts }: { counts: EnvironmentVariableKeyCounts }
           <span aria-hidden>
             {counts.branchesSet} / {counts.branches}
           </span>
-          <span className="sr-only">{description}</span>
+          {/* The badge's own text is uppercase; the name reads in normal case, the tooltip says the rest. */}
+          <span className="sr-only normal-case">
+            {`${counts.branchesSet} of ${counts.branches} ${
+              counts.branches === 1 ? "branch sets its" : "branches set their"
+            } own value`}
+          </span>
         </Badge>
       }
       content={description}
@@ -706,10 +773,13 @@ function PanelValue({
   variable,
   revealAll,
   editing,
+  isReadOnly,
 }: {
   variable: MaskedEnvironmentVariable;
   revealAll: boolean;
   editing: Editing;
+  /** No edit or delete: the panel was opened from the compare view. */
+  isReadOnly: boolean;
 }) {
   const { counts } = useTypedLoaderData<MaskedKeyDetail>();
   const isEditing = editing.editingEnvironmentId === variable.environment.id;
@@ -741,14 +811,14 @@ function PanelValue({
       </div>
       {/* As in the table: no edit or delete for a value the role can't read. */}
       <div className={"flex shrink-0 items-center"}>
-        {!variable.permissionDenied && (
+        {!variable.permissionDenied && !isReadOnly && (
           <>
             <Button
               ref={editButtonRef}
               type="button"
               variant="small-menu-item"
               LeadingIcon={PencilSquareIcon}
-              aria-label="Edit"
+              aria-label={`Edit ${variable.key} in ${environmentFullTitle(variable.environment)}`}
               onClick={() => editing.setEditingEnvironmentId(variable.environment.id)}
             />
             <DeleteEnvironmentVariableButton

@@ -11,7 +11,15 @@ import {
 import { createHash } from "node:crypto";
 import { buildJwtAbility, permissiveAbility } from "./ability.js";
 import { clientIpFromHeaders, isIpAllowed } from "./ipAllowlist.js";
-import { resolvePublicTokenSubject, type PublicTokenSubjectCodec } from "./publicTokenSubject.js";
+import {
+  sourcePersonalAccessTokenCheck,
+  sourcePersonalAccessTokenClaim,
+} from "./personalAccessTokenExpiry.js";
+import {
+  resolvePublicTokenSubject,
+  type PublicTokenSubjectCodec,
+  type SealedIdCodec,
+} from "./publicTokenSubject.js";
 import { recordingApiKeyAbility, type ApiKeyScopeRecorder } from "./scopeUsage.js";
 
 export type BearerCredentialClients = {
@@ -41,10 +49,15 @@ export type BearerLookupPath =
   | "ip_not_allowed"
   | "not_found";
 
-// Telemetry-only
 export type BearerResolution = {
+  // Telemetry: bounded values only.
   credentialKind: BearerCredentialKind;
   lookupPath: BearerLookupPath;
+  // Attribution for a verified public JWT: the environment whose root key signed it (a branch's
+  // parent) and the last 4 characters of the key that verified it, which may be a rotated key
+  // still in its grace window. Never the key itself: `hash()` returns its SHA-256 hex on demand,
+  // so callers that don't need it pay nothing.
+  jwtSigningKey?: { environmentId: string; last4: string; hash(): string };
 };
 
 export type BearerCredentialResult = BearerAuthResult & {
@@ -75,17 +88,20 @@ export function resolveJwtSigningKey(env: {
  */
 export type BearerCredentialResolverOptions = {
   publicTokenSubjects?: PublicTokenSubjectCodec;
+  sourcePersonalAccessTokens?: SealedIdCodec;
 };
 
 export class BearerCredentialResolver {
   private readonly prisma: PrismaClient;
   private readonly replica: PrismaClient;
   private readonly publicTokenSubjects?: PublicTokenSubjectCodec;
+  private readonly sourcePersonalAccessTokens?: SealedIdCodec;
 
   constructor(clients: BearerCredentialClients, options?: BearerCredentialResolverOptions) {
     this.prisma = clients.primary;
     this.replica = clients.replica;
     this.publicTokenSubjects = options?.publicTokenSubjects;
+    this.sourcePersonalAccessTokens = options?.sourcePersonalAccessTokens;
   }
 
   async authenticate(
@@ -150,7 +166,8 @@ export class BearerCredentialResolver {
       }
 
       let lookupPath: BearerLookupPath = subject.legacy ? "jwt_legacy_subject" : "jwt_current";
-      let result = await validateJWT(rawToken, resolveJwtSigningKey(env));
+      let signingKey = resolveJwtSigningKey(env);
+      let result = await validateJWT(rawToken, signingKey);
 
       // Root-key rotation grace window, mirroring the bearer path below: a
       // rotated key keeps authenticating until its `RevokedApiKey` row expires,
@@ -179,6 +196,7 @@ export class BearerCredentialResolver {
           const retried = await validateJWT(rawToken, candidate.apiKey);
           if (retried.ok) {
             result = retried;
+            signingKey = candidate.apiKey;
             break;
           }
         }
@@ -199,9 +217,36 @@ export class BearerCredentialResolver {
       const realtime = result.payload.realtime as { skipColumns?: string[] } | undefined;
       const oneTimeUse = result.payload.otu === true;
       // A JWT minted from a PAT/UAT exchange stamps `act: { sub: userId }` for
-      // attribution. Surface it so write handlers can record the acting user.
-      const act = result.payload.act as { sub?: unknown } | undefined;
+      // attribution. Surface it so write handlers can record the acting user,
+      // with the host's signature on it for the host to check. The signature
+      // covers the token's claims too, so they're passed through as minted.
+      const act = result.payload.act as
+        | { sub?: unknown; client?: unknown; sig?: unknown }
+        | undefined;
       const actSub = typeof act?.sub === "string" ? act.sub : undefined;
+      const actClient = typeof act?.client === "string" ? act.client : undefined;
+      const actSig = typeof act?.sig === "string" ? act.sig : undefined;
+      const expiresAt = typeof result.payload.exp === "number" ? result.payload.exp : undefined;
+
+      // A JWT from the PAT/UAT exchange also names its source PAT, and dies with it.
+      const sourcePat = sourcePersonalAccessTokenClaim(
+        result.payload,
+        this.sourcePersonalAccessTokens
+      );
+      if (
+        sourcePat &&
+        !(
+          sourcePat.id &&
+          (await sourcePersonalAccessTokenCheck.isActive(this.replica, sourcePat.id))
+        )
+      ) {
+        return {
+          ok: false,
+          status: 401,
+          error: "Public Access Token is invalid",
+          resolution: { credentialKind: "public_jwt", lookupPath },
+        };
+      }
 
       return {
         ok: true,
@@ -213,8 +258,31 @@ export class BearerCredentialResolver {
           projectId: env.projectId,
         },
         ability: buildJwtAbility(scopes),
-        jwt: { realtime, oneTimeUse, ...(actSub ? { act: { sub: actSub } } : {}) },
-        resolution: { credentialKind: "public_jwt", lookupPath },
+        jwt: {
+          realtime,
+          oneTimeUse,
+          expiresAt,
+          scopes,
+          ...(actSub
+            ? {
+                act: {
+                  sub: actSub,
+                  ...(actClient ? { client: actClient } : {}),
+                  ...(actSig ? { sig: actSig } : {}),
+                  ...(sourcePat ? { pat: sourcePat.sealed } : {}),
+                },
+              }
+            : {}),
+        },
+        resolution: {
+          credentialKind: "public_jwt",
+          lookupPath,
+          jwtSigningKey: {
+            environmentId: env.parentEnvironment?.id ?? env.id,
+            last4: signingKey.slice(-4),
+            hash: () => createHash("sha256").update(signingKey, "utf8").digest("hex"),
+          },
+        },
       };
     }
 

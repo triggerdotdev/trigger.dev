@@ -143,6 +143,8 @@ export type WorkerApiRunHeartbeatResponseBody = z.infer<typeof WorkerApiRunHeart
 
 export const WorkerApiRunAttemptStartRequestBody = z.object({
   isWarmStart: z.boolean().optional(),
+  /** Set by the supervisor only when this runner can receive a secret proxy binding. */
+  supportsSecretProxy: z.boolean().optional(),
   // Set by the supervisor, not the runner. A value this webapp cannot accept drops the stamp, never the attempt.
   workerCell: z.string().max(64).optional().catch(undefined),
   workerLane: z.string().max(32).optional().catch(undefined),
@@ -153,9 +155,18 @@ export type WorkerApiRunAttemptStartRequestBody = z.infer<
   typeof WorkerApiRunAttemptStartRequestBody
 >;
 
+export const SecretProxyExecution = z.object({
+  runId: z.string().min(1),
+  attempt: z.number().int().positive(),
+  expiresAtMs: z.number().int().positive(),
+  allowedHosts: z.array(z.string().min(1).max(253)).min(1).max(256),
+});
+export type SecretProxyExecution = z.infer<typeof SecretProxyExecution>;
+
 export const WorkerApiRunAttemptStartResponseBody = StartRunAttemptResult.and(
   z.object({
     envVars: z.record(z.string(), z.string()),
+    secretProxy: SecretProxyExecution.optional(),
   })
 );
 export type WorkerApiRunAttemptStartResponseBody = z.infer<
