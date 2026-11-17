@@ -21,13 +21,7 @@
         "groups": [
           {
             "group": "Getting started",
-            "pages": [
-              "introduction",
-              "quick-start",
-              "manual-setup",
-              "how-it-works",
-              "limits"
-            ]
+            "pages": ["introduction", "quick-start", "manual-setup", "how-it-works", "limits"]
           },
           {
             "group": "Agents",
