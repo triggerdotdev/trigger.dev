@@ -10,12 +10,15 @@ export function PaginationControls({
   totalPages,
   hasNextPage,
   showPageNumbers = true,
+  shortcuts = true,
 }: {
   currentPage: number;
   totalPages: number;
   /** When set, navigation uses this instead of `totalPages`. */
   hasNextPage?: boolean;
   showPageNumbers?: boolean;
+  /** Disable on duplicate controls so keyboard navigation only fires once. */
+  shortcuts?: boolean;
 }) {
   const location = useLocation();
   const hasNextMode = hasNextPage !== undefined;
@@ -34,7 +37,7 @@ export function PaginationControls({
             to={pageUrl(location, currentPage - 1)}
             variant="secondary/small"
             LeadingIcon={ChevronLeftIcon}
-            shortcut={{ key: "j" }}
+            shortcut={shortcuts ? { key: "j" } : undefined}
             tooltip="Previous"
             disabled={currentPage === 1}
             className={cn("px-2", currentPage > 1 ? "group" : "")}
@@ -48,7 +51,7 @@ export function PaginationControls({
             to={pageUrl(location, currentPage + 1)}
             variant="secondary/small"
             TrailingIcon={ChevronRightIcon}
-            shortcut={{ key: "k" }}
+            shortcut={shortcuts ? { key: "k" } : undefined}
             tooltip="Next"
             disabled={nextDisabled}
             className={cn("px-2", !nextDisabled ? "group" : "")}
@@ -61,7 +64,7 @@ export function PaginationControls({
               to={pageUrl(location, currentPage - 1)}
               variant="secondary/small"
               LeadingIcon={ChevronLeftIcon}
-              shortcut={{ key: "j" }}
+              shortcut={shortcuts ? { key: "j" } : undefined}
               tooltip="Previous"
               disabled={currentPage === 1}
               className={cn(
@@ -83,7 +86,7 @@ export function PaginationControls({
               to={pageUrl(location, currentPage + 1)}
               variant="secondary/small"
               TrailingIcon={ChevronRightIcon}
-              shortcut={{ key: "k" }}
+              shortcut={shortcuts ? { key: "k" } : undefined}
               tooltip="Next"
               disabled={nextDisabled}
               className={cn(

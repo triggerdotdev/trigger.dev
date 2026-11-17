@@ -427,6 +427,14 @@ export default function Page() {
                             New task…
                           </Button>
                         )}
+                        {totalPages > 1 && (
+                          <Paragraph
+                            variant="extra-small"
+                            className="whitespace-nowrap pl-1.5 tabular-nums"
+                          >
+                            Page {currentPage} of {totalPages}
+                          </Paragraph>
+                        )}
                         <PaginationControls
                           currentPage={currentPage}
                           totalPages={totalPages}
@@ -434,7 +442,7 @@ export default function Page() {
                         />
                       </div>
                     </div>
-                    <Table containerClassName="min-h-0 flex-1">
+                    <Table containerClassName="min-h-0">
                       <TableHeader>
                         <TableRow>
                           <TableHeaderCell>ID</TableHeaderCell>
@@ -477,6 +485,18 @@ export default function Page() {
                         )}
                       </TableBody>
                     </Table>
+                    {totalPages > 1 && (
+                      <div className="flex shrink-0 flex-wrap items-center justify-center gap-x-3 gap-y-1.5 border-t border-grid-dimmed px-2 py-2.5">
+                        <PaginationControls
+                          currentPage={currentPage}
+                          totalPages={totalPages}
+                          shortcuts={false}
+                        />
+                        <Paragraph variant="extra-small" className="tabular-nums">
+                          Page {currentPage} of {totalPages} · {visibleItems.length} tasks
+                        </Paragraph>
+                      </div>
+                    )}
                   </div>
                 </div>
               ) : latchedOnboarding?.showGitHubOnboarding ? (
