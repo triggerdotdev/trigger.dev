@@ -148,7 +148,7 @@ export function DashboardAgent({
   }, [pathname, revertFullscreen]);
   const [newChatSeq, setNewChatSeq] = useState(0);
   const [requestedMessage, setRequestedMessage] = useState<
-    { text: string; seq: number } | undefined
+    { text: string; seq: number; newChat?: boolean } | undefined
   >(undefined);
   const [prefillRequest, setPrefillRequest] = useState<{ text: string; seq: number } | undefined>(
     undefined
@@ -199,14 +199,18 @@ export function DashboardAgent({
   );
 
   const openWith = useCallback(
-    (text: string, options?: { source?: AgentOpenSource }) => {
+    (text: string, options?: { source?: AgentOpenSource; newChat?: boolean }) => {
       const trimmed = text.trim();
       if (!trimmed) return;
       openPanel();
       setEditAlertRequest(undefined);
       setGroupAlertsRequest(undefined);
       setOpenSource(options?.source);
-      setRequestedMessage((current) => ({ text: trimmed, seq: (current?.seq ?? 0) + 1 }));
+      setRequestedMessage((current) => ({
+        text: trimmed,
+        seq: (current?.seq ?? 0) + 1,
+        newChat: options?.newChat,
+      }));
     },
     [openPanel]
   );
