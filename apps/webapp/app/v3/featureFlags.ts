@@ -278,6 +278,7 @@ export const GLOBAL_LOCKED_FLAGS: FeatureFlagKey[] = [
   FEATURE_FLAG.runOpsMintShardSetPrev,
   FEATURE_FLAG.runOpsMintShardSetFlippedAt,
   FEATURE_FLAG.secretProxy,
+  FEATURE_FLAG.sandboxTasks,
 ];
 
 // Flags that are read-only on the org-level dialog.

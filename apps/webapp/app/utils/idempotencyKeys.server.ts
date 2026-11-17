@@ -6,7 +6,12 @@ export function resolveRunWaitpointIdempotencyKey(
   runId: string,
   ability: RbacAbility
 ): string | undefined {
-  if (!key || ability.can("write", { type: "waitpoints" })) return key;
+  if (
+    !key ||
+    (ability.can("write", { type: "waitpoints" }) && ability.can("read", { type: "waitpoints" }))
+  ) {
+    return key;
+  }
   // Environment-wide keys could otherwise attach a scoped run to another run's waitpoint.
   return `run:${createHash("sha256")
     .update(JSON.stringify([runId, key]))

@@ -1,6 +1,8 @@
 import { json } from "@remix-run/server-runtime";
+import type { RbacResource } from "@trigger.dev/plugins";
 import { z } from "zod";
 import { $replica } from "~/db.server";
+import { assertPacketNamespaceAccess } from "~/services/packetApi.server";
 import { anyResource, createLoaderApiRoute } from "~/services/routeBuilders/apiBuilder.server";
 import { generatePresignedUrl, jsonPacketPresignFailure } from "~/v3/objectStore.server";
 import { engine } from "~/v3/runEngine.server";
@@ -40,18 +42,24 @@ export const loader = createLoaderApiRoute(
       );
       if (!waitpoint?.output || waitpoint.outputType !== "application/store") return null;
 
-      return { ...run, packetPath: waitpoint.output };
+      return {
+        ...run,
+        packetPath: waitpoint.output,
+        readResources: [
+          { type: "runs", id: run.friendlyId },
+          { type: "tasks", id: run.taskIdentifier },
+        ] satisfies RbacResource[],
+      };
     },
     authorization: {
       action: "read",
-      resource: (run) =>
-        anyResource([
-          { type: "runs", id: run.friendlyId },
-          { type: "tasks", id: run.taskIdentifier },
-        ]),
+      resource: (run) => anyResource([...run.readResources, { type: "packets" }]),
     },
   },
-  async ({ authentication, resource }) => {
+  async ({ authentication, resource, ability }) => {
+    if (!ability.can("read", resource.readResources)) {
+      assertPacketNamespaceAccess(authentication);
+    }
     const signed = await generatePresignedUrl(
       authentication.environment.project.externalRef,
       authentication.environment.slug,

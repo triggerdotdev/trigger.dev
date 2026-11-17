@@ -177,6 +177,22 @@ async function seedDeployedEnvironment() {
   return { ...seed, environment };
 }
 
+async function packetReaderFor(environmentId: string) {
+  const user = await seedTestUser(database.prisma);
+  const key = `tr_prod_sk_${randomBytes(12).toString("hex")}`;
+  await database.prisma.apiKey.create({
+    data: {
+      name: "Restricted packet reader",
+      keyHash: createHash("sha256").update(key).digest("hex"),
+      lastFour: key.slice(-4),
+      runtimeEnvironmentId: environmentId,
+      createdByUserId: user.id,
+      scopes: ["read:packets"],
+    },
+  });
+  return key;
+}
+
 describe("run-token API authorization", () => {
   it("creates usable preview and production waitpoint callbacks and public JWTs", async () => {
     await assertRunTokenWaitpoints(database.prisma, tokenFor);
@@ -1159,7 +1175,7 @@ describe("run-token API authorization", () => {
     unscopedInitialization.mockRestore();
   });
 
-  // Catches: offloaded wait results needing environment-wide packet access, or leaking other waitpoints.
+  // Catches: packet-only keys losing offloaded wait results, or run grants leaking other waitpoints.
   it("serves offloaded output only for waitpoints the run resumed from", async () => {
     const { environment, project, organization } = await seedDeployedEnvironment();
     const { run } = await seedTestRun(database.prisma, {
@@ -1199,20 +1215,71 @@ describe("run-token API authorization", () => {
     });
     const token = await tokenFor(environment, [`read:runs:${run.friendlyId}`]);
     const { loader } = await import("~/routes/api.v1.runs.$runId.waitpoints.$waitpointId.output");
-    const load = (waitpointId: string) =>
-      loader({
-        request: new Request("https://api.example.com/test", {
-          headers: { Authorization: `Bearer ${token}` },
-        }),
-        params: { runId: run.friendlyId, waitpointId },
-        context: {},
-      });
+    for (const bearer of [token, await packetReaderFor(environment.id)]) {
+      const load = (waitpointId: string) =>
+        loader({
+          request: new Request("https://api.example.com/test", {
+            headers: { Authorization: `Bearer ${bearer}` },
+          }),
+          params: { runId: run.friendlyId, waitpointId },
+          context: {},
+        });
 
-    const response = await load(resumed.friendlyId);
-    expect(response.status).toBe(200);
-    expect((await response.json()).presignedUrl).toContain("waitpoint_resumed/stream/record.json");
-    expect((await load(other.friendlyId)).status).toBe(404);
+      const response = await load(resumed.friendlyId);
+      expect(response.status).toBe(200);
+      expect((await response.json()).presignedUrl).toContain(
+        "waitpoint_resumed/stream/record.json"
+      );
+      expect((await load(other.friendlyId)).status).toBe(404);
+    }
   });
+
+  // Catches: packet-only keys losing run packets, or bypassing shared development namespace isolation.
+  it.each(["PRODUCTION", "DEVELOPMENT"] as const)(
+    "preserves run packet access and namespace isolation in %s",
+    async (environmentType) => {
+      const { environment, project } =
+        environmentType === "PRODUCTION"
+          ? await seedDeployedEnvironment()
+          : await seedTestEnvironment(database.prisma);
+      const { run } = await seedTestRun(database.prisma, {
+        environmentId: environment.id,
+        projectId: project.id,
+      });
+      await database.prisma.taskRun.update({
+        where: { id: run.id },
+        data: {
+          payload: "stored/payload.json",
+          payloadType: "application/store",
+          output: "stored/output.json",
+          outputType: "application/store",
+        },
+      });
+      const key = await packetReaderFor(environment.id);
+      const runToken = await tokenFor(environment, [`read:runs:${run.friendlyId}`, "read:packets"]);
+      const foreign = await seedDeployedEnvironment();
+      const foreignKey = await packetReaderFor(foreign.environment.id);
+      const { loader } = await import("~/routes/api.v1.runs.$runId.packets.$field");
+      const load = (field: "payload" | "output", bearer: string) =>
+        loader({
+          request: new Request("https://api.example.com/test", {
+            headers: { Authorization: `Bearer ${bearer}` },
+          }),
+          params: { runId: run.friendlyId, field },
+          context: {},
+        });
+
+      for (const field of ["payload", "output"] as const) {
+        const response = await load(field, key);
+        expect(response.status).toBe(environmentType === "PRODUCTION" ? 200 : 403);
+        if (response.status === 200) {
+          expect((await response.json()).presignedUrl).toContain(`stored/${field}.json`);
+        }
+        expect((await load(field, runToken)).status).toBe(200);
+        expect((await load(field, foreignKey)).status).toBe(404);
+      }
+    }
+  );
 
   // Catches: session output setup ignoring direction-scoped session grants, or a `.out` grant opening `.in`.
   it("lets a direction-scoped run token initialize only that session direction", async () => {
