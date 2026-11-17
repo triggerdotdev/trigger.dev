@@ -2128,6 +2128,10 @@ const EnvironmentSchema = z
     DEPLOYMENT_CHECKS_WORKER_LOG_LEVEL: z
       .enum(["log", "error", "warn", "info", "debug"])
       .default("info"),
+    // A read-only role the checks assume, tagged with the project ref, to read the image they hand
+    // the checker. Unset, checks run without supplying the image.
+    DEPLOYMENT_CHECKS_ECR_ROLE_ARN: z.string().optional(),
+    DEPLOYMENT_CHECKS_ECR_ROLE_EXTERNAL_ID: z.string().optional(),
 
     ALERT_ENGINE_WORKER_ENABLED: z.string().default(process.env.WORKER_ENABLED ?? "true"),
     ALERT_ENGINE_WORKER_CONCURRENCY_WORKERS: z.coerce.number().int().default(1),

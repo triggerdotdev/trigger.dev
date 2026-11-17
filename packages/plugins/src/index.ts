@@ -248,6 +248,7 @@ export type {
 export type {
   DeploymentCheckDecision,
   DeploymentCheckDecisionInput,
+  DeploymentCheckImage,
   DeploymentCheckInput,
   DeploymentCheckOutcome,
   DeploymentCheckPlan,

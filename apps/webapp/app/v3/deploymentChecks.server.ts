@@ -1,6 +1,7 @@
 import { getMeter, type Meter } from "@internal/tracing";
 import { Logger, type LogLevel } from "@trigger.dev/core/logger";
 import type {
+  DeploymentCheckImage,
   DeploymentCheckOutcome,
   DeploymentChecksController,
   DeploymentChecksPlugin,
@@ -15,6 +16,8 @@ import { logger } from "~/services/logger.server";
 import { isCloud } from "~/services/platform.v3.server";
 import { singleton } from "~/utils/singleton";
 import { resolvePlanState } from "~/v3/freeSchedulePolicy.server";
+import { getRegistryConfig } from "~/v3/registryConfig.server";
+import { readDeploymentCheckImage } from "~/v3/services/deploymentCheckImage.server";
 
 const MODULE_NAME = "@triggerdotdev/plugins/deployment-checks";
 const JOB = "deployments.check";
@@ -224,7 +227,41 @@ export type DeploymentCheckJobDependencies = {
   /** Null means no plugin. Loaded when left out. */
   controller?: DeploymentChecksController | null;
   telemetry?: DeploymentCheckTelemetry;
+  /** Reads the image for the check; the registry by default. See `readDeploymentCheckImage`. */
+  readImage?: (input: DeploymentCheckImageInput) => Promise<DeploymentCheckImage | null>;
 };
+
+type DeploymentCheckImageInput = {
+  imageReference: string;
+  imageDigest: string;
+  projectRef: string;
+  isV4Deployment: boolean;
+};
+
+let warnedHalfReadRole = false;
+
+function readImageFromRegistry({
+  imageReference,
+  imageDigest,
+  projectRef,
+  isV4Deployment,
+}: DeploymentCheckImageInput): Promise<DeploymentCheckImage | null> {
+  const roleArn = env.DEPLOYMENT_CHECKS_ECR_ROLE_ARN;
+  const externalId = env.DEPLOYMENT_CHECKS_ECR_ROLE_EXTERNAL_ID;
+  if (!roleArn !== !externalId && !warnedHalfReadRole) {
+    warnedHalfReadRole = true;
+    logger.warn(
+      "Deployment checks read role half configured: set both DEPLOYMENT_CHECKS_ECR_ROLE_ARN and DEPLOYMENT_CHECKS_ECR_ROLE_EXTERNAL_ID, or neither"
+    );
+  }
+  return readDeploymentCheckImage({
+    imageReference,
+    imageDigest,
+    projectRef,
+    registryConfig: getRegistryConfig(isV4Deployment),
+    readRole: roleArn && externalId ? { roleArn, externalId } : undefined,
+  });
+}
 
 /**
  * Runs the check for one deployment. It reads the deployment and never writes it: the outcome goes
@@ -237,6 +274,7 @@ export async function runDeploymentCheck(
     prisma = defaultPrisma,
     controller: injectedController,
     telemetry = defaultTelemetry,
+    readImage = readImageFromRegistry,
   }: DeploymentCheckJobDependencies = {}
 ): Promise<DeploymentCheckJobOutcome> {
   const controller =
@@ -249,6 +287,7 @@ export async function runDeploymentCheck(
       id: true,
       friendlyId: true,
       imageReference: true,
+      type: true,
       project: { select: { externalRef: true, organizationId: true } },
     },
   });
@@ -286,14 +325,24 @@ export async function runDeploymentCheck(
   if (decision.plan === "skip") return finish("skipped");
 
   const imageDigest = deployment.imageReference?.match(/@(sha256:[a-f0-9]{64})$/)?.[1];
-  if (!imageDigest) return finish("skipped");
+  if (!deployment.imageReference || !imageDigest) return finish("skipped");
 
+  // Read fresh on every attempt: the download URLs are short-lived. Without it the check has to
+  // get the image another way, as it did before the host supplied it.
+  const image = await readImage({
+    imageReference: deployment.imageReference,
+    imageDigest,
+    projectRef: deployment.project.externalRef,
+    isV4Deployment: deployment.type === "MANAGED",
+  });
+  // Timed from here, so the duration stays the check's own and not the image read's.
   const startedAt = performance.now();
   const result = await controller.check({
     organizationId,
     projectRef: deployment.project.externalRef,
     deploymentId: deployment.id,
     imageDigest,
+    ...(image ? { image } : {}),
     decision: { plan: decision.plan, selectedBy: decision.selectedBy },
   });
   const durationMs = Math.round(performance.now() - startedAt);
