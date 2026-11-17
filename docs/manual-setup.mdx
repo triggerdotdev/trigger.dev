@@ -259,10 +259,10 @@ bun add @trigger.dev/react-hooks@latest
 ```typescript
 import { auth } from "@trigger.dev/sdk";
 
-// In your backend API
-export async function getPublicAccessToken() {
+// In your backend API, after checking the user can access this run
+export async function getPublicAccessToken(runId: string) {
   const publicAccessToken = await auth.createPublicToken({
-    scopes: { read: { runs: true } }, // Customize based on needs
+    scopes: { read: { runs: [runId] } }, // Only this run
   });
 
   return publicAccessToken;

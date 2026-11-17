@@ -266,6 +266,10 @@ export const myTask = task({
 });
 ```
 
+<Note>
+  `onStart` is deprecated in favor of `onStartAttempt`. `onStart` ran once per run, but `onStartAttempt` runs before every attempt, including retries. If your hook has side effects that should only happen once, check `ctx.attempt.number === 1` inside it.
+</Note>
+
 This is true for all the lifecycle hooks:
 
 ```ts
