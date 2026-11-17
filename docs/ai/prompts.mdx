@@ -135,6 +135,10 @@ By default, `resolve()` returns the **override** version if one is active, other
 
 The resolved prompt integrates with the [Vercel AI SDK](https://ai-sdk.dev) via `toAISDKTelemetry()`. This links AI generation spans to the prompt in the dashboard.
 
+<Note>
+  Prompt linking currently works on AI SDK 5 and 6. On AI SDK 7, the metadata from `toAISDKTelemetry()` doesn't reach the span yet, so generations are traced but not linked to the prompt.
+</Note>
+
 ### generateText
 
 ```ts
