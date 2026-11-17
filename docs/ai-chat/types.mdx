@@ -97,6 +97,8 @@ export const myChat = chat
         messages,
         tools,
         abortSignal: signal,
+        // Claude 5.5 models omit thinking text unless you ask for a summary
+        providerOptions: { anthropic: { thinking: { type: "adaptive", display: "summarized" } } },
         stopWhen: stepCountIs(15),
       });
     },
@@ -194,7 +196,12 @@ export const myChat = chat
   .agent({
     id: "my-chat",
     run: async ({ messages, signal, streamText }) => {
-      return streamText({ model: anthropic("claude-sonnet-5-5"), messages, abortSignal: signal });
+      return streamText({
+        model: anthropic("claude-sonnet-5-5"),
+        messages,
+        abortSignal: signal,
+        providerOptions: { anthropic: { thinking: { type: "adaptive", display: "summarized" } } },
+      });
     },
   });
 ```

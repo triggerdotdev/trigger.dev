@@ -128,7 +128,7 @@ export const myChat = chat.agent({
 The system breakpoint and the conversation breakpoint compose: the system block is cached once for the life of the chat, and each turn extends the cached message prefix.
 
 <Note>
-  Anthropic allows **at most 4** cache breakpoints per request, and a prefix must be at least ~1024 tokens (model-dependent) to cache at all — shorter prefixes silently don't cache. One system breakpoint plus one rolling message breakpoint is the typical setup and leaves headroom.
+  Anthropic allows **at most 4** cache breakpoints per request, and a prefix must reach a model-dependent minimum to cache at all (512 tokens on Claude Sonnet 5.5 and Opus 5.5) — shorter prefixes silently don't cache. One system breakpoint plus one rolling message breakpoint is the typical setup and leaves headroom.
 </Note>
 
 <Note>

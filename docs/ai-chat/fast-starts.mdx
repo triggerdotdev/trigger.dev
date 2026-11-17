@@ -242,6 +242,7 @@ This is an **import-chain** problem, not a runtime one. A "we'll strip the execu
       run: async ({ messages, signal, streamText }) =>
         streamText({
           model: anthropic("claude-sonnet-5-5"),
+          system: "You are a helpful assistant.",
           messages,
           tools: chatTools,
           stopWhen: stepCountIs(10),

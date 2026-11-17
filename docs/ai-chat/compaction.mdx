@@ -317,7 +317,10 @@ const session = chat.createSession(payload, {
   compaction: {
     shouldCompact: ({ totalTokens }) => (totalTokens ?? 0) > 80_000,
     summarize: async ({ messages }) =>
-      generateText({ model: anthropic("claude-haiku-5-5"), messages }).then((r) => r.text),
+      generateText({
+        model: anthropic("claude-haiku-5-5"),
+        messages: [...messages, { role: "user", content: "Summarize this conversation concisely." }],
+      }).then((r) => r.text),
     compactUIMessages: ({ uiMessages, summary }) => [
       { id: generateId(), role: "assistant",
         parts: [{ type: "text", text: `[Summary]\n\n${summary}` }] },
@@ -353,7 +356,10 @@ const conversation = new chat.MessageAccumulator({
   compaction: {
     shouldCompact: ({ totalTokens }) => (totalTokens ?? 0) > 80_000,
     summarize: async ({ messages }) =>
-      generateText({ model: anthropic("claude-haiku-5-5"), messages }).then((r) => r.text),
+      generateText({
+        model: anthropic("claude-haiku-5-5"),
+        messages: [...messages, { role: "user", content: "Summarize this conversation concisely." }],
+      }).then((r) => r.text),
     compactUIMessages: ({ summary }) => [
       { id: generateId(), role: "assistant",
         parts: [{ type: "text", text: `[Summary]\n\n${summary}` }] },
@@ -392,7 +398,10 @@ prepareStep: async ({ messages: stepMessages, steps }) => {
   const result = await chat.compact(stepMessages, steps, {
     threshold: 80_000,
     summarize: async (msgs) =>
-      generateText({ model: anthropic("claude-haiku-5-5"), messages: msgs }).then((r) => r.text),
+      generateText({
+        model: anthropic("claude-haiku-5-5"),
+        messages: [...msgs, { role: "user", content: "Summarize this conversation concisely." }],
+      }).then((r) => r.text),
   });
   return result.type === "skipped" ? undefined : result;
 },
@@ -404,7 +413,10 @@ Or use the `chat.compactionStep()` factory:
 prepareStep: chat.compactionStep({
   threshold: 80_000,
   summarize: async (msgs) =>
-    generateText({ model: anthropic("claude-haiku-5-5"), messages: msgs }).then((r) => r.text),
+    generateText({
+      model: anthropic("claude-haiku-5-5"),
+      messages: [...msgs, { role: "user", content: "Summarize this conversation concisely." }],
+    }).then((r) => r.text),
 }),
 ```
 

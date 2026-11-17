@@ -120,6 +120,10 @@ export const myChat = chat
   });
 ```
 
+<Note>
+  Claude 5.5 models bind each thinking block to the tool set it was produced with. Adding or removing a tool partway through a chat can make Anthropic reject the earlier thinking blocks with a 400, so keep a chat's tool set stable once it starts (for example, decide `plan`-based tools on the first turn).
+</Note>
+
 The function receives a `ResolveToolsEvent` and runs once per turn (after `clientData` is parsed):
 
 | Field | Type | Description |

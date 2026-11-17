@@ -126,6 +126,10 @@ Turn 1 sends the user message and accumulates six tool results. Anthropic clears
   `onTurnComplete` is where persistence happens. Action turns fire `onAction` only, and a `chat.history.set()` inside `run()` is overwritten by the accumulator at turn end. See [Persistence and replay](/ai-chat/patterns/persistence-and-replay#action-turns-no-snapshot-write).
 </Note>
 
+<Warning>
+  Thinking is on by default on Claude 5.5 models, and each thinking block is bound to the conversation that came before it. Removing tool parts from earlier turns in your own code changes that history, so Anthropic can reject the next request with a 400 (`Invalid signature in thinking block`). Server-side context editing, as configured above, doesn't count as an edit. If you prune history yourself, also remove the reasoning parts from the turns you change and every turn after them.
+</Warning>
+
 ## Persist OpenAI stored responses
 
 OpenAI's `store: true` keeps the thread server-side and returns a `responseId`. Pass that back as `previousResponseId` on the next turn and send only the messages since the last assistant reply; everything before it lives on OpenAI's side.
@@ -291,6 +295,10 @@ export const resilientChat = chat.agent({
 ```
 
 When Anthropic is down, the loop falls through to OpenAI. Because `compaction` has already reduced `messages` to a summary plus the last couple of exchanges, the switch sends the portable baseline, not megabytes of raw transcript.
+
+<Note>
+  The messages that `compactModelMessages` keeps after the summary now follow a different history from the one their thinking blocks were produced in. Claude 5.5 models can reject those blocks with a 400 (`Invalid signature in thinking block`), so strip reasoning parts from the retained messages when you build the compacted baseline.
+</Note>
 
 <Warning>
   Fallback here retries a turn that hasn't started streaming yet. Once a response is streaming to the client, a mid-stream provider failure can't be swapped transparently. Surface the error and let the frontend regenerate the turn. See [Error handling](/ai-chat/error-handling).

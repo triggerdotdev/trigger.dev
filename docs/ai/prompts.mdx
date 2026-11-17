@@ -51,7 +51,7 @@ Respond to the customer's issue. Be concise and helpful.`,
 | `id` | `string` | Yes | Unique identifier (becomes the prompt slug) |
 | `description` | `string` | No | Shown in the dashboard |
 | `model` | `string` | No | Default model (e.g. `"gpt-6-luna"`, `"claude-sonnet-5-5"`) |
-| `config` | `object` | No | Default config (temperature, maxTokens, etc.) |
+| `config` | `object` | No | Default AI SDK call settings (e.g. `maxOutputTokens`) |
 | `variables` | Zod/ArkType schema | No | Schema for template variables (enables validation and dashboard UI) |
 | `content` | `string` | Yes | The prompt template with `{{variable}}` placeholders |
 
@@ -155,6 +155,7 @@ export const supportTask = task({
       model: openai(resolved.model ?? "gpt-6-luna"),
       system: resolved.text,
       prompt: payload.issue,
+      ...resolved.config,
       ...resolved.toAISDKTelemetry(),
     });
 
@@ -181,6 +182,7 @@ export const streamTask = task({
       model: openai(resolved.model ?? "gpt-6-luna"),
       system: resolved.text,
       prompt: payload.issue,
+      ...resolved.config,
       ...resolved.toAISDKTelemetry(),
       stopWhen: stepCountIs(15),
     });
@@ -259,7 +261,7 @@ Inside a `chat.agent` you don't need this: the `streamText` passed to `run()` ap
 
 - `system` — the compiled prompt text
 - `model` — resolved via the `registry` when provided
-- `temperature`, `maxTokens`, etc. — from the prompt's `config`
+- `maxOutputTokens` and other call settings — from the prompt's `config`
 - `experimental_telemetry` — links generations to the prompt in the dashboard
 
 ```ts
