@@ -182,7 +182,7 @@ export const chartTool = tool({
 ```
 
 <Note>
-  This sample uses AI SDK 7. On AI SDK 6, return `{ type: "image-data", data: output.chart, mediaType: "image/png" }` from `toModelOutput`. On AI SDK 5, use `experimental_output: Output.object(...)` instead of `output`, and `toModelOutput: (output) => ({ type: "content", value: [{ type: "media", data: output.chart, mediaType: "image/png" }] })`.
+  This sample uses AI SDK 7. On AI SDK 6, use `{ type: "image-data", data: output.chart, mediaType: "image/png" }` as the item in `value` instead of the `file` part. On AI SDK 5, use `experimental_output: Output.object(...)` instead of `output`, and `toModelOutput: (output) => ({ type: "content", value: [{ type: "media", data: output.chart, mediaType: "image/png" }] })`.
 </Note>
 
 Inside the task run, you can read tool execution context with **`ai.currentToolOptions()`** (and helpers like `ai.toolCallId()`, `ai.chatContext()` when running inside a [`chat.agent`](/ai-chat/overview)):
