@@ -96,10 +96,9 @@ export const generateImageAndUploadToR2 = task({
 
 ## Environment variables
 
-Create a named **Trigger only** API key in the Trigger.dev environment your app uses, then set the following environment variables:
+Set the following environment variables in your Trigger.dev environment. The task authenticates its `wait` calls automatically, so it doesn't need a Trigger.dev API key:
 
 ```
-TRIGGER_SECRET_KEY=<your-trigger-secret-key>
 REPLICATE_API_TOKEN=<your-replicate-api-token>
 R2_ENDPOINT=<your-r2-endpoint>
 R2_ACCESS_KEY_ID=<your-r2-access-key-id>
