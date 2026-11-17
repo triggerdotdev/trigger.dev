@@ -83,7 +83,11 @@ export type ProgressiveTraceState = {
   loadFailed: boolean;
   /** The `retryKey` this state was loaded for. */
   loadAttempt: number;
+  /** Spans first seen in a live tail read, not a stored one. */
+  liveSpanIds: ReadonlySet<string>;
 };
+
+const NO_LIVE_SPANS: ReadonlySet<string> = new Set();
 
 export type ProgressiveTraceOptions = {
   /** Asked before each later page with the spans held so far; false stops there, as truncated. */
@@ -112,6 +116,7 @@ function initialState(trace: ProgressiveTraceInput, loadAttempt = 0): Progressiv
     isTruncated: false,
     loadFailed: false,
     loadAttempt,
+    liveSpanIds: NO_LIVE_SPANS,
   };
 }
 
@@ -259,6 +264,7 @@ export function useProgressiveTrace(
       isTruncated: prev.isTruncated,
       loadFailed: prev.loadFailed,
       loadAttempt: prev.loadAttempt,
+      liveSpanIds: assembler.liveSpanIds,
     }));
   }, []);
 

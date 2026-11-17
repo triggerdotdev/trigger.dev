@@ -1,9 +1,12 @@
 import {
+  ArrowTopRightOnSquareIcon,
   ChevronDownIcon,
+  InformationCircleIcon,
   ChevronRightIcon,
   MagnifyingGlassMinusIcon,
   MagnifyingGlassPlusIcon,
 } from "@heroicons/react/20/solid";
+import { Link } from "@remix-run/react";
 import { formatDurationMilliseconds } from "@trigger.dev/core/v3";
 import {
   createContext,
@@ -16,7 +19,7 @@ import {
   useRef,
   useState,
 } from "react";
-import { Button, LinkButton } from "~/components/primitives/Buttons";
+import { Button } from "~/components/primitives/Buttons";
 import { DateTime } from "~/components/primitives/DateTime";
 import { Paragraph } from "~/components/primitives/Paragraph";
 import {
@@ -49,9 +52,22 @@ import { isFinalRunStatus } from "~/v3/taskStatus";
 import {
   buildSessionTree,
   isSelectableRow,
+  LOAD_EARLIER_NODE_ID,
   runNodeId,
+  SESSION_NODE_ID,
+  spanNodeId,
   type SessionTreeRow,
 } from "./buildSessionTree";
+import { notShownText, runFactsOf, runLoadNote, type RunLoadNote } from "./sessionRunNote";
+import {
+  findIndexNear,
+  NO_NEW_BELOW,
+  pillLabel,
+  pillUpdateDelayMs,
+  TraceScrollModel,
+  type NewBelow,
+  type RowsView,
+} from "./sessionTraceScroll";
 import { RunTraceSource, type RunTraceSnapshot } from "./RunTraceSource";
 import {
   EMERGENCY_CAP_NOTICE,
@@ -92,20 +108,25 @@ import {
   type SessionTraceSelection,
 } from "./sessionTraceSelection";
 import {
-  countMatches,
   isFiltering,
+  matchesByRun,
+  matchesText,
   NO_FILTER,
+  runSearchMark,
   runShowsResults,
   runsToCollapseOnClear,
+  searchBarSummary,
   searchCoverage,
   sessionRowPassesFilter,
+  type RunSearchMark,
+  type SearchBarSummary,
   type SearchCoverage,
   type SessionTraceFilter,
 } from "./sessionTraceSearch";
 import { newBudgetOutcomes, searchStarted, type BudgetOutcome } from "./sessionViewAnalytics";
 import { useSessionViewAnalytics } from "./useSessionViewAnalytics";
 import type { SessionTraceRun } from "./sessionTraceTypes";
-import { SESSION_TREE_AUTOSAVE_ID, runReasonLabel } from "./sessionTraceView";
+import { SESSION_TREE_AUTOSAVE_ID, runReasonBadge, type RunReasonBadge } from "./sessionTraceView";
 import {
   RUNS_FILL_MAX,
   RUNS_PAGE_SIZE,
@@ -117,9 +138,6 @@ import { useSessionTraceSelection } from "./useSessionTraceSelection";
 
 const ROW_HEIGHT_PX = 32;
 
-function isScrolledToBottom(element: HTMLElement) {
-  return element.scrollTop + element.clientHeight >= element.scrollHeight - ROW_HEIGHT_PX;
-}
 // Like the run page: arrowing through rows doesn't write the URL on every step.
 const SELECTION_URL_DEBOUNCE_MS = 250;
 
@@ -386,11 +404,19 @@ function SessionTraceTree({
     [dispatchLoads]
   );
 
-  // The side panel is a sibling: it reads run span ids and live panel data from the store.
+  // The side panel is a sibling: it reads what the runs route says about each run (with its span
+  // id) and live panel data from the store, and works out its note from those facts.
   const panelStore = useSessionPanelStore();
   useEffect(() => {
-    panelStore?.setRunSpanIds(view);
-  }, [panelStore, view]);
+    panelStore?.setRuns(
+      Object.fromEntries(
+        runs.map((run) => {
+          const entry = view[run.friendlyId];
+          return [run.friendlyId, { facts: runFactsOf(run, entry), spanId: entry?.spanId }];
+        })
+      )
+    );
+  }, [panelStore, runs, view]);
   const onPanelData = useCallback(
     (runFriendlyId: string, data: RunPanelData | undefined) =>
       panelStore?.setRunData(runFriendlyId, data),
@@ -428,6 +454,20 @@ function SessionTraceTree({
   // Runs that can't load here have no chevron, and Expand all and search leave them alone.
   const loadBlock = (run: SessionTraceRun) =>
     runLoadBlock(run, view[run.friendlyId], runLoad(loads, run.friendlyId));
+
+  // What reading each run found, for its panel note. These go with the tab.
+  const loadNotes = useMemo(() => {
+    const notes: Record<string, RunLoadNote> = {};
+    for (const run of runs) {
+      const note = runLoadNote(runLoad(loads, run.friendlyId));
+      if (note) notes[run.friendlyId] = note;
+    }
+    return notes;
+  }, [runs, loads]);
+  useEffect(() => {
+    panelStore?.setRunLoadNotes(loadNotes);
+  }, [panelStore, loadNotes]);
+  useEffect(() => () => panelStore?.setRunLoadNotes({}), [panelStore]);
   const rowCanExpand = (node: { data: Row; hasChildren: boolean }) =>
     node.data.kind === "run" ? !loadBlock(node.data.run) : node.hasChildren;
   // The cap applies to every run, so it's said once instead of on each row.
@@ -520,15 +560,7 @@ function SessionTraceTree({
     },
   });
 
-  // Visible rows: the tree takes a new list in an effect, so scroll fixes wait for this to change.
-  const visibleRowCount = virtualizer.options.count;
-
-  // Deep link: reveal the linked row (open its parents, centre it) the first time it's in the
-  // tree. It never selects, so it can't override a row picked while the linked run loads.
-  const pendingScroll = useRef<string | undefined>(
-    deepLink ? runNodeId(deepLink.runFriendlyId) : undefined
-  );
-  // Built once per tree, and only while a deep link needs it.
+  // Built once per tree, and only while a deep link or a clear-search scroll needs it.
   const parentByIdCache = useRef<{
     tree: typeof tree;
     parentById: Map<string, string | undefined>;
@@ -549,12 +581,85 @@ function SessionTraceTree({
     },
     [tree]
   );
+
+  // Every scroll decision lives in one model: the opening hold, reveals, anchoring, the pill.
+  // The tab tells it what happened and applies the scrollTop it returns.
+  const [scrollModel] = useState(
+    () =>
+      new TraceScrollModel({
+        rowHeightPx: ROW_HEIGHT_PX,
+        holdAtLatest: deepLink === undefined,
+        // A deep link opens on its run row while the run loads.
+        reveal: deepLink
+          ? {
+              id: runNodeId(deepLink.runFriendlyId),
+              align: "center",
+              cancelOnInteraction: true,
+              waitForFilter: false,
+            }
+          : undefined,
+        // Earlier runs land above the oldest run: never anchor on the rows above it.
+        skipAnchor: (id) => id === SESSION_NODE_ID || id === LOAD_EARLIER_NODE_ID,
+      })
+  );
+  const keyAt = (index: number) => {
+    const key = virtualizer.options.getItemKey(index);
+    return key === undefined ? undefined : String(key);
+  };
+  const rowsView = (scrollElement: HTMLElement): RowsView => {
+    const count = virtualizer.options.count;
+    return {
+      count,
+      keyAt,
+      visibleIndexOf: (id) =>
+        nodes[id]?.visible ? findIndexNear(id, count - 1, count, keyAt) : -1,
+      inTree: (id) => id in nodes,
+      scrollTop: scrollElement.scrollTop,
+      viewportPx: scrollElement.clientHeight,
+    };
+  };
+
+  // The pill's count changes at most about once a second.
+  const [pill, setPill] = useState<NewBelow>(NO_NEW_BELOW);
+  const pendingPill = useRef<NewBelow>(NO_NEW_BELOW);
+  const pillShownAt = useRef<number>();
+  const pillTimer = useRef<ReturnType<typeof setTimeout>>();
+  const showPillSoon = () => {
+    if (pillTimer.current) return;
+    pillTimer.current = setTimeout(
+      () => {
+        pillTimer.current = undefined;
+        pillShownAt.current = Date.now();
+        setPill(pendingPill.current);
+      },
+      pillUpdateDelayMs(pillShownAt.current, Date.now())
+    );
+  };
+  const clearPill = () => {
+    clearTimeout(pillTimer.current);
+    pillTimer.current = undefined;
+    pillShownAt.current = undefined;
+    pendingPill.current = NO_NEW_BELOW;
+    setPill(NO_NEW_BELOW);
+  };
+  useEffect(() => () => clearTimeout(pillTimer.current), []);
+
+  // Shows what the model says about the pill, at most about once a second.
+  const syncPill = () => {
+    const next = scrollModel.pill;
+    if (next === pendingPill.current) return;
+    if (next === NO_NEW_BELOW) return clearPill();
+    pendingPill.current = next;
+    showPillSoon();
+  };
+  const applyScroll = (scrollElement: HTMLElement, scrollTop: number | undefined) => {
+    if (scrollTop !== undefined) scrollElement.scrollTop = scrollTop;
+    syncPill();
+  };
+
+  // Deep link: open the linked row's parents the first time it's in the tree, then the model
+  // centres it once it's visible. It never selects, so it can't override a row picked meanwhile.
   const revealedDeepLink = useRef(deepLink === undefined);
-  // After a deep link, following new spans waits for the user's own scroll, click or key: the
-  // reveal can leave a short live trace at the bottom, and following from there would push the
-  // linked row away. Until armed, scrolls don't update `atBottom`.
-  const followArmed = useRef(deepLink === undefined);
-  const atBottom = useRef(deepLink === undefined);
   const deepLinkStillIntended = deepLink !== undefined && isSameSelection(intended, deepLink);
   useLayoutEffect(() => {
     if (!deepLink || revealedDeepLink.current) return;
@@ -566,35 +671,30 @@ function SessionTraceTree({
     if (!(target in nodes)) return;
     revealedDeepLink.current = true;
     expandNodes(ancestorsOf(target).filter((ancestor) => !nodes[ancestor]?.expanded));
-    pendingScroll.current = target;
-  }, [deepLink, deepLinkStillIntended, nodes, ancestorsOf, expandNodes]);
-  // Scrolling, a click or a key in the tab means the user has moved on: stop revealing.
+    scrollModel.reveal({
+      id: target,
+      align: "center",
+      cancelOnInteraction: true,
+      waitForFilter: false,
+    });
+  }, [deepLink, deepLinkStillIntended, nodes, ancestorsOf, expandNodes, scrollModel]);
+  // Scrolling, a click or a key in the tab means the user has moved on: stop holding the view at
+  // the latest run and stop revealing a deep link.
   useEffect(() => {
     const container = containerRef.current;
-    // Until following is armed: a run link's reveal is already done by the time this runs.
-    if (!container || followArmed.current) return;
-    const stopRevealing = () => {
+    if (!container) return;
+    const userMoved = () => {
       revealedDeepLink.current = true;
-      pendingScroll.current = undefined;
-      followArmed.current = true;
-      const scrollElement = parentRef.current;
-      atBottom.current = scrollElement ? isScrolledToBottom(scrollElement) : false;
+      scrollModel.interacted();
     };
     const events = ["wheel", "touchstart", "pointerdown", "keydown"] as const;
     for (const event of events) {
-      container.addEventListener(event, stopRevealing, { passive: true, once: true });
+      container.addEventListener(event, userMoved, { passive: true, once: true });
     }
     return () => {
-      for (const event of events) container.removeEventListener(event, stopRevealing);
+      for (const event of events) container.removeEventListener(event, userMoved);
     };
-  }, []);
-  useLayoutEffect(() => {
-    const id = pendingScroll.current;
-    if (!id || !(id in nodes)) return;
-    if (ancestorsOf(id).some((ancestor) => !nodes[ancestor]?.expanded)) return;
-    pendingScroll.current = undefined;
-    scrollToNode(id, "center");
-  }, [nodes, visibleRowCount, ancestorsOf, scrollToNode]);
+  }, [scrollModel]);
 
   // The side panel opens a span once the tree has it, so a span route miss can't leave the page.
   // Read from the intended selection, so a clicked span is confirmed before its URL write.
@@ -604,60 +704,81 @@ function SessionTraceTree({
     panelStore?.confirmSpan(intended.runFriendlyId, intended.spanId);
   }, [intended, intendedNodeId, rowsById, panelStore]);
 
-  // Open at the latest run, like the conversation.
-  const openedAtLatest = useRef(deepLink !== undefined);
-  useLayoutEffect(() => {
-    if (openedAtLatest.current || visibleRowCount === 0) return;
-    openedAtLatest.current = true;
-    virtualizer.scrollToIndex(visibleRowCount - 1, { align: "end" });
-  }, [virtualizer, visibleRowCount]);
+  // The opening hold ends once the opened run's first span rows are in the tree, or once it's
+  // clear it has none. A live run with only its root span keeps the hold.
+  const openRunLoad = openRunId ? runLoad(loads, openRunId) : undefined;
+  const openRun = openRunId ? runsById.get(openRunId) : undefined;
+  const openRunWaiting =
+    openRunId !== undefined &&
+    openRunLoad !== undefined &&
+    openRun !== undefined &&
+    (openRunLoad.state === "queued" ||
+      openRunLoad.state === "loading" ||
+      (openRunLoad.state === "idle" && !loadBlock(openRun) && loads.expanded.has(openRunId)));
+  const openRunEvents = openRunId ? snapshots[openRunId]?.events : undefined;
+  const openRunFinished = openRun?.status ? isFinalRunStatus(openRun.status) : false;
+  const openRunHasNoRows =
+    openRunLoad === undefined ||
+    (openRun !== undefined && loadBlock(openRun) !== undefined) ||
+    ["unavailable", "logsDeleted", "error"].includes(openRunLoad.state) ||
+    (openRunLoad.state === "cutOff" && !openRunLoad.started) ||
+    ((openRunLoad.state === "progressive" || openRunLoad.state === "empty") &&
+      openRunFinished &&
+      (openRunEvents?.length ?? 0) <= 1);
+  // The run's own root span has no row, so look at the first few spans.
+  const openRunRowsInTree =
+    openRunId !== undefined &&
+    (openRunEvents ?? []).slice(0, 3).some((event) => spanNodeId(openRunId, event.id) in nodes);
+  const openRunDone = !openRunWaiting && (openRunHasNoRows || openRunRowsInTree);
 
-  // Earlier runs are added above; move down by the added rows so the view stays put.
-  const earlierLoad = useRef<{ visibleRows: number; treeRows: number } | null>(null);
-  const oldestRunNodeId = tree.find((node) => node.data.kind === "run")?.id;
+  // Every change to the tree's rows (added, expanded, collapsed, filtered) goes through the model.
+  // The newest run's spans are only walked when they changed, or when some weren't in the tree.
+  const visibleRowsKey = virtualizer.options.getItemKey;
+  const newestSnapshot = newestRunId ? snapshots[newestRunId] : undefined;
+  const newestEvents = newestSnapshot?.events;
+  const walkedEvents = useRef<typeof newestEvents>();
   useLayoutEffect(() => {
-    const pending = earlierLoad.current;
-    if (!pending || loadingEarlier) return;
-    // Failed, or one run took the load-earlier row's place: nothing above the view moved.
-    if (tree.length === pending.treeRows) {
-      earlierLoad.current = null;
-      return;
-    }
-    // Wait until the tree has taken the new list: the new oldest run then has a node.
-    if (!oldestRunNodeId || !(oldestRunNodeId in nodes)) return;
-    earlierLoad.current = null;
-    const added = visibleRowCount - pending.visibleRows;
-    if (added > 0 && parentRef.current) parentRef.current.scrollTop += added * ROW_HEIGHT_PX;
-  }, [loadingEarlier, tree.length, oldestRunNodeId, nodes, visibleRowCount]);
-
-  const loadEarlier = () => {
-    earlierLoad.current = { visibleRows: visibleRowCount, treeRows: tree.length };
-    onLoadEarlier();
-  };
-
-  // Follow a new run and the newest run's new spans, but only if the view was at the bottom when
-  // they arrived. `atBottom` is tracked on scroll, so rows added without a scroll keep it true.
-  // The tree takes the new rows a render later, so scroll once its node state has changed.
-  const newestSpanCount = newestRunId ? (snapshots[newestRunId]?.events.length ?? 0) : 0;
-  const followKey = `${newestRunId}:${newestSpanCount}`;
-  const pendingFollow = useRef<{ nodes: typeof nodes } | null>(null);
-  const latestNodes = useRef(nodes);
-  useLayoutEffect(() => {
-    const pending = pendingFollow.current;
-    latestNodes.current = nodes;
-    if (!pending || pending.nodes === nodes) return;
-    pendingFollow.current = null;
-    // A span that didn't change the tree leaves this pending; don't jump if the user scrolled up.
     const scrollElement = parentRef.current;
-    if (scrollElement && atBottom.current) scrollElement.scrollTop = scrollElement.scrollHeight;
-  }, [nodes]);
-  const followedKey = useRef(followKey);
-  useLayoutEffect(() => {
-    if (followedKey.current === followKey) return;
-    followedKey.current = followKey;
-    pendingFollow.current =
-      atBottom.current && !earlierLoad.current ? { nodes: latestNodes.current } : null;
-  }, [followKey]);
+    if (!scrollElement) return;
+    const walk = newestEvents !== walkedEvents.current || scrollModel.waitingForSpans;
+    walkedEvents.current = newestEvents;
+    // Its root span has no row (the run row stands in for it), so it's left out.
+    const liveSpanIds = newestSnapshot?.liveSpanIds;
+    const newestSpanIds: string[] = [];
+    const liveNodeIds = new Set<string>();
+    if (walk && newestRunId && newestEvents) {
+      for (const event of newestEvents) {
+        if (event.level === 0) continue;
+        const nodeId = spanNodeId(newestRunId, event.id);
+        newestSpanIds.push(nodeId);
+        if (liveSpanIds?.has(event.id)) liveNodeIds.add(nodeId);
+      }
+    }
+    const scrollTop = scrollModel.rowsChanged({
+      view: rowsView(scrollElement),
+      active,
+      newestRunId,
+      newestSpanIds,
+      isLiveSpan: (id) => liveNodeIds.has(id),
+      openRunDone,
+      filterSettled: () =>
+        tree.filter((node) => nodes[node.id]?.visible).length === virtualizer.options.count,
+      visibleTargetOf: (id) => [id, ...ancestorsOf(id)].find((other) => nodes[other]?.visible),
+    });
+    applyScroll(scrollElement, scrollTop);
+    // Runs on every row change; the helpers read the latest render.
+    // oxlint-disable-next-line react-hooks/exhaustive-deps
+  }, [nodes, visibleRowsKey, active, openRunDone]);
+
+  const loadEarlier = onLoadEarlier;
+
+  // The pill: a new run puts its row at the top, new spans scroll to the bottom.
+  const pillText = pillLabel(pill);
+  const onPillClick = () => {
+    const scrollElement = parentRef.current;
+    if (!scrollElement) return;
+    applyScroll(scrollElement, scrollModel.pillClicked(rowsView(scrollElement)));
+  };
 
   // Several run rows change in one tree pass; the load reducer still hears about each. Expand
   // all tells it first, newest first, so the newest runs load first; the per-row events that
@@ -729,10 +850,16 @@ function SessionTraceTree({
   const nothingToExpand = !filtering && expandableRunNodes.length === 0;
 
   // Load all: Expand all's newest-first queue for the runs the search hasn't covered yet.
-  const coverage = searchCoverage({ runs, view, loads });
-  const matchCount = useMemo(
-    () => (filtering ? countMatches(tree, filter) : 0),
+  const coverage = useMemo(() => searchCoverage({ runs, view, loads }), [runs, view, loads]);
+  const matches = useMemo(
+    () => (filtering ? matchesByRun(tree, filter) : undefined),
     [filtering, tree, filter]
+  );
+  // Scans the tree for gaps: only when a search's inputs change, not on every scroll render.
+  const searchSummary = useMemo(
+    () =>
+      matches ? searchBarSummary({ runs, coverage, matches: matches.total, tree }) : undefined,
+    [matches, runs, coverage, tree]
   );
   const loadAllForSearch = () => {
     if (coverage.toLoad.length === 0) return;
@@ -746,7 +873,6 @@ function SessionTraceTree({
 
   // Clearing the search undoes Load all and keeps what the user was looking at in view: the
   // selected row, else the row at the top.
-  const pendingClearScroll = useRef<{ id: string; align: "start" | "center" }>();
   const topVisibleNodeId = () => {
     const top = parentRef.current?.scrollTop ?? 0;
     const item = virtualizer.getVirtualItems().find((virtualItem) => virtualItem.end > top);
@@ -777,8 +903,16 @@ function SessionTraceTree({
       expandNodes(ancestorsOf(selectedRow).filter((ancestor) => !nodes[ancestor]?.expanded));
     }
     searchMovingRows.current = false;
-    if (target)
-      pendingClearScroll.current = { id: target, align: selectedRow ? "center" : "start" };
+    // The tree drops the filter a render later: the model waits for that, then keeps the selected
+    // row (or the old top row, or its run if that collapsed) in view.
+    if (target) {
+      scrollModel.reveal({
+        id: target,
+        align: selectedRow ? "center" : "start",
+        cancelOnInteraction: false,
+        waitForFilter: true,
+      });
+    }
   };
   // The debounced search box calls back later: always reach this render's handler.
   const updateFilterRef = useRef(updateFilter);
@@ -790,18 +924,6 @@ function SessionTraceTree({
     (errorsOnly: boolean) => updateFilterRef.current({ errorsOnly }),
     []
   );
-  useLayoutEffect(() => {
-    const pending = pendingClearScroll.current;
-    if (!pending) return;
-    // The tree drops the filter a render later: wait until its rows are the unfiltered ones.
-    const shown = tree.filter((node) => nodes[node.id]?.visible);
-    if (shown.length !== visibleRowCount) return;
-    pendingClearScroll.current = undefined;
-    // A top row inside a run that just collapsed: keep its run in place instead.
-    const target = [pending.id, ...ancestorsOf(pending.id)].find((id) => nodes[id]?.visible);
-    const index = shown.findIndex((node) => node.id === target);
-    if (index !== -1) virtualizer.scrollToIndex(index, { align: pending.align });
-  }, [nodes, visibleRowCount, tree, ancestorsOf, virtualizer]);
 
   // Level keys never start a load: a run only has children once its spans are in, so the
   // tree's level actions only reach loaded runs. Those are opened first through expandNodes.
@@ -887,7 +1009,7 @@ function SessionTraceTree({
   return (
     <div
       ref={containerRef}
-      className="grid h-full grid-rows-[2.25rem_1fr_2.5rem] overflow-hidden bg-background-bright"
+      className="grid h-full grid-cols-[minmax(0,1fr)] grid-rows-[2.25rem_1fr_2.5rem] overflow-hidden bg-background-bright"
     >
       {runs.map((run) => {
         const load = runLoad(loads, run.friendlyId);
@@ -916,25 +1038,37 @@ function SessionTraceTree({
           />
         );
       })}
-      <div className="flex items-center gap-2 border-b border-grid-bright pl-1.5 pr-3">
+      <div className="flex min-w-0 items-center gap-2 border-b border-grid-bright pl-1.5 pr-3">
         <div className="flex min-w-0 flex-1 items-center gap-1.5 overflow-x-auto scrollbar-none">
           <TraceFilters
             onFilterTextChange={onFilterTextChange}
             errorsOnly={filter.errorsOnly}
             onErrorsOnlyChange={onErrorsOnlyChange}
+            compactSearch
           />
-          {filtering ? (
+          {filtering && searchSummary ? (
             <SearchCoverageNote
               coverage={coverage}
-              matches={matchCount}
+              summary={searchSummary}
               errorsOnly={filter.errorsOnly}
               onLoadAll={loadAllForSearch}
+              canLoadEarlier={canLoadEarlier}
+              onLoadEarlier={loadEarlier}
+              onShowGap={() => {
+                const gap = tree.find((node) => node.data.kind === "notLoaded");
+                if (gap) scrollToNode(gap.id, "center");
+              }}
             />
           ) : (
             barNotice && <span className="truncate text-xs text-text-dimmed">{barNotice}</span>
           )}
         </div>
-        <Button variant="tertiary/small" onClick={toggleAll} disabled={nothingToExpand}>
+        <Button
+          variant="tertiary/small"
+          className="shrink-0"
+          onClick={toggleAll}
+          disabled={nothingToExpand}
+        >
           {/* Both labels share one cell so the button keeps the wider one's width. */}
           <span className="inline-grid">
             <span className="invisible col-start-1 row-start-1">Collapse all</span>
@@ -946,7 +1080,16 @@ function SessionTraceTree({
       </div>
       <ResizablePanelGroup autosaveId={SESSION_TREE_AUTOSAVE_ID} snapshot={treeSnapshot}>
         <ResizablePanel id="session-tree" default="50%" min="50px">
-          <div className="grid h-full grid-rows-[2rem_1fr] overflow-hidden">
+          <div className="relative grid h-full grid-rows-[2rem_1fr] overflow-hidden">
+            {pillText && (
+              <button
+                type="button"
+                onClick={onPillClick}
+                className="absolute bottom-3 left-1/2 z-10 -translate-x-1/2 rounded-full border border-grid-bright bg-background-bright px-3 py-1 text-xs text-text-bright shadow-md hover:bg-surface-control"
+              >
+                {pillText}
+              </button>
+            )}
             <div />
             <TreeView
               parentRef={parentRef}
@@ -993,6 +1136,14 @@ function SessionTraceTree({
                       node.data.kind === "run" ? runSpanCount(loads, node.data.run.friendlyId) : 0
                     }
                     loadBlock={node.data.kind === "run" ? loadBlock(node.data.run) : undefined}
+                    searchMark={
+                      node.data.kind === "run" && matches && !loadBlock(node.data.run)
+                        ? runSearchMark(
+                            runLoad(loads, node.data.run.friendlyId),
+                            matches.byRun.get(node.data.run.friendlyId) ?? 0
+                          )
+                        : undefined
+                    }
                     checkedAtMs={checkedAtMs}
                     onRetry={retryRun}
                     canLoadEarlier={canLoadEarlier}
@@ -1008,7 +1159,10 @@ function SessionTraceTree({
               }
               onScroll={(scrollTop) => {
                 const element = treeScrollRef.current;
-                if (element && followArmed.current) atBottom.current = isScrolledToBottom(element);
+                if (element) {
+                  scrollModel.scrolled(rowsView(element));
+                  syncPill();
+                }
                 const timeline = timelineScrollRef.current;
                 if (timeline && Math.abs(timeline.scrollTop - scrollTop) >= 0.5) {
                   timeline.scrollTop = scrollTop;
@@ -1075,23 +1229,31 @@ function SessionTraceTree({
 
 function SearchCoverageNote({
   coverage,
-  matches,
+  summary,
   errorsOnly,
   onLoadAll,
+  canLoadEarlier,
+  onLoadEarlier,
+  onShowGap,
 }: {
   coverage: SearchCoverage;
-  matches: number;
+  summary: SearchBarSummary;
   errorsOnly: boolean;
   onLoadAll: () => void;
+  canLoadEarlier: boolean;
+  onLoadEarlier: () => void;
+  onShowGap: () => void;
 }) {
-  const { partly } = coverage;
-  const plural = (n: number, word: string) => `${formatNumber(n)} ${word}${n === 1 ? "" : "es"}`;
+  const { partly, toLoad } = coverage;
   return (
     <span className="flex shrink-0 items-center gap-1.5 whitespace-nowrap text-xs text-text-dimmed">
-      <span>
-        Searching {coverage.searched} of {coverage.searchable} shown runs ·{" "}
-        {plural(matches, "match")}
-      </span>
+      {/* The action first: on a narrow tab the end of the sentence is what scrolls out of view. */}
+      {toLoad.length > 0 && (
+        <Button variant="tertiary/small" onClick={onLoadAll}>
+          Load all {formatNumber(toLoad.length)}
+        </Button>
+      )}
+      <span>{summary.text}</span>
       {partly > 0 && (
         <SimpleTooltip
           button={<span className="text-text-faint">· {partly} partly</span>}
@@ -1113,12 +1275,97 @@ function SearchCoverageNote({
         />
       )}
       {coverage.failed > 0 && <span className="text-error">· {coverage.failed} failed</span>}
-      {coverage.toLoad.length > 0 && (
-        <Button variant="tertiary/small" onClick={onLoadAll}>
-          Load all
-        </Button>
-      )}
+
+      <RunsNotShownNote
+        summary={summary}
+        canLoadEarlier={canLoadEarlier}
+        onLoadEarlier={onLoadEarlier}
+        onShowGap={onShowGap}
+      />
     </span>
+  );
+}
+
+/** Shown runs the search can't reach: earlier runs and gaps, in one note with the details on hover. */
+function RunsNotShownNote({
+  summary,
+  canLoadEarlier,
+  onLoadEarlier,
+  onShowGap,
+}: {
+  summary: SearchBarSummary;
+  canLoadEarlier: boolean;
+  onLoadEarlier: () => void;
+  /** Scrolls to the first gap row, where its Load button is. */
+  onShowGap: () => void;
+}) {
+  const { earlier, gaps } = summary;
+  const count = (earlier?.count ?? 0) + (gaps?.count ?? 0);
+  if (count === 0) return null;
+  // Always a button, so the keyboard reaches it and the run numbers in its tooltip. Its name says
+  // what a click does: load the earlier runs, or (gaps only) show the first gap, whose row has
+  // its own Load button. While a page loads it's disabled rather than switching action.
+  const runsNotShown = `${formatNumber(count)} ${count === 1 ? "run" : "runs"} not shown`;
+  // One click loads one page: the runs just before the oldest shown.
+  const page = earlier ? Math.min(earlier.count, RUNS_PAGE_SIZE) : 0;
+  const pageRuns = earlier
+    ? page === 1
+      ? `run ${earlier.count}`
+      : `runs ${earlier.count - page + 1}–${earlier.count}`
+    : "";
+  const action = earlier
+    ? {
+        label: `Load ${page} earlier ${page === 1 ? "run" : "runs"}`,
+        hint: canLoadEarlier ? `Click to load ${pageRuns}.` : "Loading earlier runs…",
+        run: onLoadEarlier,
+        disabled: !canLoadEarlier,
+      }
+    : {
+        label: "Show the first gap",
+        hint: "Click to show the first gap.",
+        run: onShowGap,
+        disabled: false,
+      };
+  const label = (
+    <>
+      · {formatNumber(count)} not shown
+      <InformationCircleIcon className="size-3.5" />
+    </>
+  );
+  return (
+    <SimpleTooltip
+      asChild
+      tabbable
+      button={
+        <button
+          type="button"
+          aria-label={`${action.label} (${runsNotShown})`}
+          className="flex items-center gap-0.5 text-text-faint underline decoration-dotted underline-offset-2 hover:text-text-bright focus-custom"
+          // aria-disabled, not disabled: it keeps its tooltip and its tab stop while loading.
+          aria-disabled={action.disabled}
+          onClick={action.disabled ? undefined : action.run}
+        >
+          {label}
+        </button>
+      }
+      content={
+        <div className="flex flex-col items-start gap-1 text-xs">
+          {earlier && (
+            <span>
+              {earlier.count === 1 ? "Run" : "Runs"} {earlier.range}: earlier runs, not loaded.
+            </span>
+          )}
+          {gaps && (
+            <span>
+              {gaps.ranges.map((range) => `Runs ${range}`).join(", ")}: in gaps, use the Load rows
+              in the tree.
+            </span>
+          )}
+          <span className="text-text-dimmed">{action.hint}</span>
+        </div>
+      }
+      disableHoverableContent
+    />
   );
 }
 
@@ -1170,6 +1417,7 @@ function SessionTreeRowView({
   load,
   spanCount,
   loadBlock,
+  searchMark,
   checkedAtMs,
   onRetry,
   canLoadEarlier,
@@ -1191,6 +1439,7 @@ function SessionTreeRowView({
   load: SessionRunLoad | undefined;
   spanCount: number;
   loadBlock: RunLoadBlock | undefined;
+  searchMark: RunSearchMark | undefined;
   checkedAtMs: number;
   onRetry: (runFriendlyId: string) => void;
   canLoadEarlier: boolean;
@@ -1290,13 +1539,16 @@ function SessionTreeRowView({
           canExpand={canExpand}
           isExpanded={isExpanded}
           onToggle={onToggle}
+          dimmed={searchMark?.kind === "noMatches"}
         >
           <RunRowContent
             run={row.run}
             isLive={isLive}
+            isSelected={isSelected}
             load={load}
             spanCount={spanCount}
             loadBlock={loadBlock}
+            searchMark={searchMark}
             checkedAtMs={checkedAtMs}
             onRetry={onRetry}
           />
@@ -1310,20 +1562,25 @@ function SessionTreeRowView({
 function RunRowContent({
   run,
   isLive,
+  isSelected,
   load,
   spanCount,
   loadBlock,
+  searchMark,
   checkedAtMs,
   onRetry,
 }: {
   run: SessionTraceRun;
   isLive: boolean;
+  isSelected: boolean;
   load: SessionRunLoad | undefined;
   spanCount: number;
   loadBlock: RunLoadBlock | undefined;
+  searchMark: RunSearchMark | undefined;
   checkedAtMs: number;
   onRetry: (runFriendlyId: string) => void;
 }) {
+  const badge = runReasonBadge(run);
   return (
     <>
       <RunIcon name="task" spanName="run" className="size-5 min-w-5" />
@@ -1343,12 +1600,20 @@ function RunRowContent({
           {isRunStarting(run, checkedAtMs) ? "Starting…" : "Unavailable"}
         </span>
       )}
-      <span className="min-w-0 truncate text-xs text-text-dimmed">{runReasonLabel(run)}</span>
+      {badge && <RunReasonBadgeView badge={badge} />}
       <span className="ml-auto flex shrink-0 items-center gap-1.5 pr-2 text-xs tabular-nums text-text-dimmed">
         {loadBlock ? (
-          <RunFallback run={run} block={loadBlock} />
+          <RunFallback run={run} block={loadBlock} isSelected={isSelected} />
+        ) : searchMark?.kind === "noMatches" ? null : searchMark && load ? (
+          <RunSearchMarkView mark={searchMark} load={load} run={run} isSelected={isSelected} />
         ) : load && hasLoadStatus(load) ? (
-          <RunLoadStatus run={run} load={load} spanCount={spanCount} onRetry={onRetry} />
+          <RunLoadStatus
+            run={run}
+            load={load}
+            spanCount={spanCount}
+            isSelected={isSelected}
+            onRetry={onRetry}
+          />
         ) : (
           <RunDurationLabel run={run} isLive={isLive} />
         )}
@@ -1357,13 +1622,74 @@ function RunRowContent({
   );
 }
 
-// A run whose trace can't load here links to its run page instead of expanding.
-function RunFallback({ run, block }: { run: SessionTraceRun; block: RunLoadBlock }) {
-  const track = useSessionViewAnalytics();
-  const organization = useOrganization();
-  const project = useProject();
-  const environment = useEnvironment();
+function RunReasonBadgeView({ badge }: { badge: RunReasonBadge }) {
+  const label = (
+    <span
+      className={cn(
+        "min-w-0 max-w-[12rem] truncate rounded-sm border px-1 text-xxs leading-4",
+        badge.tone === "warning"
+          ? "border-warning/60 text-warning"
+          : "border-grid-bright text-text-dimmed"
+      )}
+    >
+      {badge.label}
+    </span>
+  );
+  if (!badge.tooltip) return label;
+  return <SimpleTooltip button={label} content={badge.tooltip} disableHoverableContent asChild />;
+}
 
+/** During a search: the run's matches, or that it wasn't searched yet. */
+function RunSearchMarkView({
+  mark,
+  load,
+  run,
+  isSelected,
+}: {
+  mark: RunSearchMark;
+  load: SessionRunLoad;
+  run: SessionTraceRun;
+  isSelected: boolean;
+}) {
+  if (mark.kind === "notSearched") return <span className="text-text-faint">Not searched</span>;
+  if (mark.kind !== "matches") return null;
+  return (
+    <>
+      {mark.soFar && <Spinner className="size-3" />}
+      <span className={mark.count > 0 ? "text-text-bright" : undefined}>
+        {matchesText(mark.count)}
+        {mark.soFar ? " so far" : ""}
+      </span>
+      {mark.partly && load.state === "cutOff" && (
+        <>
+          <SimpleTooltip
+            button={<span className="text-text-faint">· partly</span>}
+            content={notShownText({
+              kind: "cutOff",
+              started: load.started,
+              limit: load.limit,
+              spanLimit: load.spanLimit,
+            })}
+            disableHoverableContent
+          />
+          {/* Its other spans are only on the run page. */}
+          <RunPageIconLink run={run} reason="cutOff" isSelected={isSelected} />
+        </>
+      )}
+    </>
+  );
+}
+
+// A run whose trace can't load here says why; its run page is a hover away.
+function RunFallback({
+  run,
+  block,
+  isSelected,
+}: {
+  run: SessionTraceRun;
+  block: RunLoadBlock;
+  isSelected: boolean;
+}) {
   // Not in the run store: the status slot says so, and a run page may not exist yet.
   if (block.kind === "notInRunStore") return null;
 
@@ -1376,17 +1702,49 @@ function RunFallback({ run, block }: { run: SessionTraceRun; block: RunLoadBlock
       ) : (
         <span>{label}</span>
       )}
-      <LinkButton
-        variant="secondary/small"
-        to={v3RunPath(organization, project, environment, run)}
-        onClick={(event) => {
-          event.stopPropagation();
-          track("open_run_page", { from: "row", reason: block.kind });
-        }}
-      >
-        Open run page
-      </LinkButton>
+      <RunPageIconLink run={run} reason={block.kind} isSelected={isSelected} />
     </>
+  );
+}
+
+/** "Open run page" as an icon that shows on hover, on keyboard focus and on the selected row. */
+function RunPageIconLink({
+  run,
+  reason,
+  isSelected,
+}: {
+  run: SessionTraceRun;
+  reason: string;
+  isSelected: boolean;
+}) {
+  const track = useSessionViewAnalytics();
+  const organization = useOrganization();
+  const project = useProject();
+  const environment = useEnvironment();
+  return (
+    <SimpleTooltip
+      asChild
+      tabbable
+      button={
+        <Link
+          to={v3RunPath(organization, project, environment, run)}
+          aria-label="Open run page"
+          // Hidden with opacity, not visibility, so it stays in the Tab order and shows on focus.
+          className={cn(
+            "flex size-5 items-center justify-center rounded-sm text-text-dimmed hover:bg-surface-control hover:text-text-bright focus-custom focus-visible:opacity-100 group-hover/sessionrow:pointer-events-auto group-hover/sessionrow:opacity-100",
+            isSelected ? "opacity-100" : "pointer-events-none opacity-0"
+          )}
+          onClick={(event) => {
+            event.stopPropagation();
+            track("open_run_page", { from: "row", reason });
+          }}
+        >
+          <ArrowTopRightOnSquareIcon className="size-3.5" />
+        </Link>
+      }
+      content="Open run page"
+      disableHoverableContent
+    />
   );
 }
 
@@ -1399,18 +1757,15 @@ function RunLoadStatus({
   run,
   load,
   spanCount,
+  isSelected,
   onRetry,
 }: {
   run: SessionTraceRun;
   load: SessionRunLoad;
   spanCount: number;
+  isSelected: boolean;
   onRetry: (runFriendlyId: string) => void;
 }) {
-  const track = useSessionViewAnalytics();
-  const organization = useOrganization();
-  const project = useProject();
-  const environment = useEnvironment();
-
   switch (load.state) {
     case "queued":
       return <>Waiting to load…</>;
@@ -1462,16 +1817,7 @@ function RunLoadStatus({
             content={reason}
             disableHoverableContent
           />
-          <LinkButton
-            variant="secondary/small"
-            to={v3RunPath(organization, project, environment, run)}
-            onClick={(event) => {
-              event.stopPropagation();
-              track("open_run_page", { from: "row", reason: "cutOff" });
-            }}
-          >
-            Open run page
-          </LinkButton>
+          <RunPageIconLink run={run} reason="cutOff" isSelected={isSelected} />
         </>
       );
     }
@@ -1507,6 +1853,7 @@ function RowFrame({
   canExpand = false,
   isExpanded = false,
   onToggle,
+  dimmed = false,
   children,
 }: {
   level: number;
@@ -1514,13 +1861,16 @@ function RowFrame({
   canExpand?: boolean;
   isExpanded?: boolean;
   onToggle?: () => void;
+  /** A searched run with no matches: still readable, but out of the way. */
+  dimmed?: boolean;
   children: React.ReactNode;
 }) {
   return (
     <div
       className={cn(
-        "flex h-8 items-center gap-1.5 overflow-hidden rounded-l-sm",
-        isSelected ? "bg-grid-dimmed hover:bg-grid-bright" : "hover:bg-grid-dimmed"
+        "group/sessionrow flex h-8 items-center gap-1.5 overflow-hidden rounded-l-sm",
+        isSelected ? "bg-grid-dimmed hover:bg-grid-bright" : "hover:bg-grid-dimmed",
+        dimmed && "opacity-60"
       )}
     >
       {Array.from({ length: level }).map((_, index) => (

@@ -38,6 +38,8 @@ export type SearchInputProps = {
    * on focus. For a search that sits in a row whose layout decides its width.
    */
   fullWidth?: boolean;
+  /** How wide the input grows while focused with text. */
+  focusedWidth?: string;
 };
 
 export function SearchInput({
@@ -51,6 +53,7 @@ export function SearchInput({
   onValueChange,
   shortcut,
   fullWidth = false,
+  focusedWidth = "24rem",
 }: SearchInputProps) {
   const inputRef = useRef<HTMLInputElement>(null);
 
@@ -145,7 +148,7 @@ export function SearchInput({
       <motion.div
         initial={{ width: fullWidth ? "100%" : "auto" }}
         animate={{
-          width: fullWidth ? "100%" : isFocused && text.length > 0 ? "24rem" : "auto",
+          width: fullWidth ? "100%" : isFocused && text.length > 0 ? focusedWidth : "auto",
         }}
         transition={{
           type: "spring",

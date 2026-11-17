@@ -13,7 +13,7 @@ export type RunLoadBlock =
   | { kind: "unavailable"; reason: UnavailableReason };
 
 /** A run missing from the run store this long after it was triggered isn't coming. */
-const RUN_STARTING_WINDOW_MS = 5 * 60 * 1000;
+export const RUN_STARTING_WINDOW_MS = 5 * 60 * 1000;
 
 export function runLoadBlock(
   run: Pick<SessionTraceRun, "status">,

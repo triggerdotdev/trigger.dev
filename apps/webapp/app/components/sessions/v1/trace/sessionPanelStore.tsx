@@ -1,5 +1,6 @@
 import { createContext, useContext, useState, useSyncExternalStore } from "react";
 import type { SpanOverride } from "~/v3/eventRepository/eventRepository.types";
+import type { RunFacts, RunLoadNote } from "./sessionRunNote";
 
 /** What the side panel needs from a run's loaded trace. */
 export type RunPanelData = {
@@ -16,6 +17,8 @@ class SessionPanelStore {
   #spanIds = new Map<string, string>();
   #runData = new Map<string, RunPanelData>();
   #confirmedSpans = new Set<string>();
+  #facts = new Map<string, RunFacts>();
+  #loadNotes = new Map<string, RunLoadNote>();
   #listeners = new Set<() => void>();
 
   subscribe = (listener: () => void) => {
@@ -23,13 +26,22 @@ class SessionPanelStore {
     return () => this.#listeners.delete(listener);
   };
 
-  /** A run's own span id, which opens its run panel. Ids are never removed. */
-  setRunSpanIds(spanIds: Record<string, { spanId: string }>) {
+  /**
+   * What the runs route says about runs, and each run's own span id (which opens its run panel and
+   * means it's in the run store). Written together, so the panel never sees one without the other.
+   * Entries are never removed.
+   */
+  setRuns(runs: Record<string, { facts: RunFacts; spanId: string | undefined }>) {
     let changed = false;
-    for (const [runFriendlyId, { spanId }] of Object.entries(spanIds)) {
-      if (this.#spanIds.get(runFriendlyId) === spanId) continue;
-      this.#spanIds.set(runFriendlyId, spanId);
-      changed = true;
+    for (const [runFriendlyId, { facts, spanId }] of Object.entries(runs)) {
+      if (spanId && this.#spanIds.get(runFriendlyId) !== spanId) {
+        this.#spanIds.set(runFriendlyId, spanId);
+        changed = true;
+      }
+      if (!sameFacts(this.#facts.get(runFriendlyId), facts)) {
+        this.#facts.set(runFriendlyId, facts);
+        changed = true;
+      }
     }
     if (changed) this.#notify();
   }
@@ -38,6 +50,33 @@ class SessionPanelStore {
     if (data) this.#runData.set(runFriendlyId, data);
     else if (!this.#runData.delete(runFriendlyId)) return;
     this.#notify();
+  }
+
+  /**
+   * What reading each run's trace found (deleted logs, can't show here, span limits, failures).
+   * Replaces the last set: these belong to the Trace tab's loads.
+   */
+  setRunLoadNotes(notes: Record<string, RunLoadNote>) {
+    let changed = false;
+    for (const runFriendlyId of [...this.#loadNotes.keys()]) {
+      if (runFriendlyId in notes) continue;
+      this.#loadNotes.delete(runFriendlyId);
+      changed = true;
+    }
+    for (const [runFriendlyId, next] of Object.entries(notes)) {
+      if (sameLoadNote(this.#loadNotes.get(runFriendlyId), next)) continue;
+      this.#loadNotes.set(runFriendlyId, next);
+      changed = true;
+    }
+    if (changed) this.#notify();
+  }
+
+  getRunFacts(runFriendlyId: string) {
+    return this.#facts.get(runFriendlyId);
+  }
+
+  getRunLoadNote(runFriendlyId: string) {
+    return this.#loadNotes.get(runFriendlyId);
   }
 
   /**
@@ -100,4 +139,45 @@ export function useSpanConfirmed(runFriendlyId: string, spanId: string | undefin
   const store = useSessionPanelStore();
   const read = () => (store && spanId ? store.isSpanConfirmed(runFriendlyId, spanId) : false);
   return useSyncExternalStore(store?.subscribe ?? noSubscribe, read, read);
+}
+
+export function useRunNote(runFriendlyId: string) {
+  const store = useSessionPanelStore();
+  const subscribe = store?.subscribe ?? noSubscribe;
+  const readFacts = () => store?.getRunFacts(runFriendlyId);
+  const readLoadNote = () => store?.getRunLoadNote(runFriendlyId);
+  const facts = useSyncExternalStore(subscribe, readFacts, readFacts);
+  const loadNote = useSyncExternalStore(subscribe, readLoadNote, readLoadNote);
+  return { facts, loadNote };
+}
+
+function sameFacts(a: RunFacts | undefined, b: RunFacts) {
+  return (
+    a !== undefined &&
+    a.number === b.number &&
+    a.reason === b.reason &&
+    a.afterCrash === b.afterCrash &&
+    a.triggeredAt === b.triggeredAt &&
+    a.unavailable === b.unavailable
+  );
+}
+
+// Field by field: the tab sends these on every chunk.
+function sameLoadNote(a: RunLoadNote | undefined, b: RunLoadNote) {
+  if (a?.kind !== b.kind) return false;
+  switch (b.kind) {
+    case "logsDeleted":
+      return true;
+    case "unavailable":
+      return a.kind === "unavailable" && a.reason === b.reason;
+    case "cutOff":
+      return (
+        a.kind === "cutOff" &&
+        a.started === b.started &&
+        a.limit === b.limit &&
+        a.spanLimit === b.spanLimit
+      );
+    case "error":
+      return a.kind === "error" && a.message === b.message;
+  }
 }
