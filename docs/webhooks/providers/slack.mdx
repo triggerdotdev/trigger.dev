@@ -1,0 +1,48 @@
+---
+title: "Slack webhooks"
+sidebarTitle: "Slack"
+description: "Receive and verify Slack webhooks with Trigger.dev. Check the HMAC-SHA256 signature in x-slack-signature and run a task for each Slack event, filtered on event.event.type."
+---
+
+**`webhookSource()` from `@trigger.dev/slack` verifies the HMAC-SHA256 signature Slack sends in `x-slack-signature` on every request.**
+
+```ts /trigger/slack.ts
+import { webhook, webhooks } from "@trigger.dev/sdk";
+import { webhookSource } from "@trigger.dev/slack";
+
+export const slack = webhooks.endpoint.define({
+  id: "slack",
+  source: webhookSource(),
+});
+
+export const slackEvents = webhook({
+  id: "slack-events",
+  endpoint: slack,
+  onEvent: async ({ event }) => {
+    console.log(event);
+  },
+});
+```
+
+To run a subscriber only for some events, add a [filter](/webhooks/filters) on `event.event.type`.
+
+| Setting | Value |
+| --- | --- |
+| Source | `webhookSource()` from `@trigger.dev/slack` |
+| Verification | HMAC-SHA256 in `x-slack-signature`, with a timestamp tolerance |
+| Credential | Signing secret issued by Slack |
+| Event type | `event.event.type` |
+| Slack docs | [Slack webhook docs](https://docs.slack.dev/authentication/verifying-requests-from-slack/) |
+
+## Set up Slack
+
+1. Start `trigger dev` or deploy, then copy the endpoint's **Webhook URL** from the **Webhooks** page.
+2. In your Slack app's settings, set the **Event Subscriptions** request URL to the webhook URL and subscribe to the bot events your subscribers need.
+3. Copy the app's **Signing Secret** from **Basic Information > App Credentials**, then choose **Set signing secret** on the Trigger.dev endpoint.
+4. Back on the Event Subscriptions page, choose **Retry**. Slack's `url_verification` challenge is answered by the endpoint once the secret is set.
+5. Install the app to your workspace, or reinstall it if the bot events need new scopes. Slack only delivers events the workspace has authorized.
+6. Send a test event from Slack, or use the endpoint's **Test** tab, and check the endpoint's **Deliveries** tab. See [Verify the connection](/webhooks/connect#verify-the-connection) if nothing arrives.
+
+## Build a Slack agent
+
+To answer messages in Slack with a `chat.agent`, use the `slack()` connector on the same endpoint. It handles streaming replies, status updates and approvals. See [Slack agents](/webhooks/slack).

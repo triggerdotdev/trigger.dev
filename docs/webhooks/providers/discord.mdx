@@ -1,0 +1,45 @@
+---
+title: "Discord webhooks"
+sidebarTitle: "Discord"
+description: "Receive and verify Discord webhooks with Trigger.dev. Check the Ed25519 signature in x-signature-ed25519 and run a task for each Discord event, filtered on event.event.type."
+---
+
+**`webhooks.discord()` verifies the Ed25519 signature Discord sends in `x-signature-ed25519` on every request.**
+
+```ts /trigger/discord.ts
+import { webhook, webhooks } from "@trigger.dev/sdk";
+
+export const discord = webhooks.endpoint.define({
+  id: "discord",
+  source: webhooks.discord(),
+});
+
+export const discordEvents = webhook({
+  id: "discord-events",
+  endpoint: discord,
+  onEvent: async ({ event }) => {
+    console.log(event);
+  },
+});
+```
+
+To run a subscriber only for some events, add a [filter](/webhooks/filters) on `event.event.type`.
+
+| Setting | Value |
+| --- | --- |
+| Source | `webhooks.discord()` |
+| Verification | Ed25519 signature in `x-signature-ed25519` |
+| Credential | Discord's public key |
+| Event type | `event.event.type` |
+| Discord docs | [Discord webhook docs](https://docs.discord.com/developers/events/webhook-events) |
+
+## Set up Discord
+
+1. Start `trigger dev` or deploy, then copy the endpoint's **Webhook URL** from the **Webhooks** page.
+2. In the [Discord Developer Portal](https://discord.com/developers/applications), open the application and copy the **Public Key** from its **General Information** page. Choose **Set public key** on the Trigger.dev endpoint and paste it.
+3. Open the application's **Webhooks** page. Set the **Endpoint URL** to the webhook URL, turn **Events** on, and select the event types your subscribers need. Discord sends a PING when you save, and the endpoint can only answer it once the public key is set.
+4. Send a test event from Discord, or use the endpoint's **Test** tab, and check the endpoint's **Deliveries** tab. See [Verify the connection](/webhooks/connect#verify-the-connection) if nothing arrives.
+
+## Endpoint validation
+
+The endpoint answers Discord's verified PING with an empty `204`, so the PING creates no delivery or run.
