@@ -76,8 +76,7 @@ Replace the placeholder code in your `edge-function-trigger/index.ts` file with 
 ```ts functions/edge-function-trigger/index.ts
 // Setup type definitions for built-in Supabase Runtime APIs
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
-// Import the Trigger.dev SDK (v4). To pin an exact version, use the version of @trigger.dev/sdk from your package.json, e.g. "npm:@trigger.dev/sdk@4.x.x".
-import { tasks } from "npm:@trigger.dev/sdk@4";
+import { tasks } from "npm:@trigger.dev/sdk@latest";
 // Import your task type from your /trigger folder
 import type { helloWorldTask } from "../../../src/trigger/example.ts";
 //     👆 **type-only** import
