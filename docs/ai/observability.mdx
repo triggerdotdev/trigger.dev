@@ -26,7 +26,9 @@ Set `experimental_telemetry: { isEnabled: true }` on the AI SDK call. There is n
   registerTelemetry(new OpenTelemetry());
   ```
 
-  A [`chat.agent()`](/ai-chat/overview) run registers the adapter for you at run start, so chat agents need only the install. Once the adapter is registered, AI SDK 7 traces calls by default, and `telemetry` is the non-deprecated name for `experimental_telemetry`. On AI SDK 5 and 6, `ai` core emits spans directly and no adapter is needed.
+  Register it the same way in projects with [`chat.agent()`](/ai-chat/overview) runs too: the static import is what includes `@ai-sdk/otel` in your deployed bundle. `chat.agent()` detects the existing registration and won't add a second one.
+
+  Once the adapter is registered, AI SDK 7 traces every call by default, so the per-call flag is optional. To leave a call out, pass `telemetry: { isEnabled: false }` (`telemetry` is the non-deprecated name for `experimental_telemetry`). On AI SDK 5 and 6, `ai` core emits spans directly and no adapter is needed.
 </Note>
 
 ```ts /trigger/summarize.ts
