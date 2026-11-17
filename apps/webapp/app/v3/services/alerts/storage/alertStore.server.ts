@@ -251,7 +251,9 @@ const LIST_ALERTS_MAX_LIMIT = 1000;
 export async function listAlerts(
   db: PrismaClientOrTransaction,
   params: {
+    organizationId?: string;
     environmentId?: string;
+    environmentIds?: string[];
     projectId?: string;
     lifecycle?: AlertLifecycle;
     attention?: AlertAttention;
@@ -261,6 +263,8 @@ export async function listAlerts(
   }
 ): Promise<Alert[]> {
   const where: Prisma.AlertWhereInput = {};
+  if (params.organizationId) where.organizationId = params.organizationId;
+  if (params.environmentIds) where.environmentId = { in: boundedIn(params.environmentIds) };
   if (params.environmentId) where.environmentId = params.environmentId;
   if (params.projectId) where.projectId = params.projectId;
   if (params.lifecycle) where.lifecycle = params.lifecycle;

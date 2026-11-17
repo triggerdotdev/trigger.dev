@@ -892,13 +892,91 @@ const PLAN_FIXTURES: Record<string, unknown> = {
       { key: "runs.duration_p95", area: "runs", allowedKinds: ["threshold"] },
       { key: "queue.depth", area: "queues", allowedKinds: ["threshold"] },
       { key: "errors.new", area: "errors", allowedKinds: ["occurrence"] },
+      { key: "health.all", area: "health", allowedKinds: ["state"] },
+      { key: "health.flow", area: "health", allowedKinds: ["state"] },
+      { key: "health.execution", area: "health", allowedKinds: ["state"] },
+      { key: "health.liveness", area: "health", allowedKinds: ["state"] },
+    ],
+  },
+};
+
+type EvalDraft = { area?: string; what?: string; query?: string };
+
+function alertDrafts(calls: RecordedCall[]): EvalDraft[] {
+  return calls.flatMap((c) => {
+    const input = c.input as { items?: Array<{ draft?: EvalDraft }>; patch?: EvalDraft };
+    if (c.tool === "plan_monitoring") return (input.items ?? []).flatMap((i) => i.draft ?? []);
+    if (c.tool === "update_alert_draft") return input.patch ?? [];
+    return [];
+  });
+}
+
+const ALERT_LISTING_FIXTURES: Record<string, unknown> = {
+  list_monitoring_alerts: {
+    scope: "organization",
+    truncated: false,
+    alerts: [
+      {
+        id: "alert_1",
+        name: "Queue depth",
+        capabilityKey: "queue.depth",
+        lifecycle: "active",
+        attention: "clear",
+        observedCondition: null,
+        projectId: "proj_1",
+        environmentId: "env_1",
+        createdAt: "2026-01-01T00:00:00.000Z",
+        project: { slug: "web", name: "Web" },
+        environment: { slug: "prod", type: "PRODUCTION" },
+        channelIds: ["chan_1"],
+      },
+      {
+        id: "alert_2",
+        name: "Failure rate",
+        capabilityKey: "runs.failure_rate",
+        lifecycle: "active",
+        attention: "needs_attention",
+        observedCondition: null,
+        projectId: "proj_2",
+        environmentId: "env_2",
+        createdAt: "2026-01-02T00:00:00.000Z",
+        project: { slug: "api", name: "API" },
+        environment: { slug: "staging", type: "STAGING" },
+        channelIds: [],
+      },
+    ],
+  },
+  list_alert_channels: {
+    scope: "organization",
+    truncated: false,
+    channels: [
+      {
+        id: "chan_1",
+        type: "SLACK",
+        name: "Ops",
+        enabled: true,
+        alertTypes: ["TASK_RUN", "DEPLOYMENT_FAILURE"],
+        legacyAlerts: [
+          {
+            type: "TASK_RUN",
+            label: "Task run failure",
+            migration: "replace",
+            replaceWith: "runs.failed",
+          },
+          { type: "DEPLOYMENT_FAILURE", label: "Deployment failure", migration: "coming-soon" },
+        ],
+        environmentTypes: ["PRODUCTION"],
+        projectId: "proj_1",
+        project: { slug: "web", name: "Web" },
+        createdAt: "2026-01-01T00:00:00.000Z",
+      },
     ],
   },
 };
 
 describe.skipIf(!HAS_KEY)("dashboardAgent monitoring plan evals (real model)", () => {
   it(
-    "a monitoring goal becomes a plan with a failure alert and a no-runs alert",
+    "a stability goal plans one health.all baseline and at most three items",
     () =>
       goldenCase(async () => {
         const question = "Watch production after this deploy for 2 hours";
@@ -906,17 +984,70 @@ describe.skipIf(!HAS_KEY)("dashboardAgent monitoring plan evals (real model)", (
         report("monitoring plan", calls, answer);
 
         const plan = calls.find((c) => c.tool === "plan_monitoring")?.input as
-          | { items?: Array<{ draft?: { what?: string; condition?: { kind?: string } } }> }
+          | {
+              items?: Array<{
+                draft?: { what?: string; scope?: string; scopeValue?: string };
+              }>;
+            }
           | undefined;
+        expect(plan).toBeDefined();
         const items = plan?.items ?? [];
-        expect(items.length).toBeGreaterThanOrEqual(3);
+        expect(items.length).toBeGreaterThanOrEqual(1);
+        expect(items.length).toBeLessThanOrEqual(3);
+        expect(items.filter((i) => i.draft?.what === "health.all")).toHaveLength(1);
+        const signals = items.map((i) =>
+          [i.draft?.what, i.draft?.scope, i.draft?.scopeValue].join("|")
+        );
+        expect(new Set(signals).size).toBe(signals.length);
+      }),
+    420_000
+  );
+
+  it(
+    "a success-rate goal becomes a query alert, not runs.failure_rate",
+    () =>
+      goldenCase(async () => {
+        const question = "Alert when success % drops below 95%";
+        const { calls, answer } = await runCase(question, { fixtures: PLAN_FIXTURES });
+        report("success rate plan", calls, answer);
+
+        const drafts = alertDrafts(calls);
+        expect(drafts.some((d) => d.area === "query")).toBe(true);
+        expect(drafts.some((d) => d.what === "runs.failure_rate")).toBe(false);
+      }),
+    420_000
+  );
+
+  it(
+    "a task success-rate goal filters the query by task, not scope",
+    () =>
+      goldenCase(async () => {
+        const question = "Alert when success % of task send-receipt drops below 95%";
+        const { calls, answer } = await runCase(question, { fixtures: PLAN_FIXTURES });
+        report("task success rate plan", calls, answer);
+
+        const drafts = alertDrafts(calls);
         expect(
-          items.some((i) => /^runs\.failed|^runs\.failure_rate/.test(i.draft?.what ?? ""))
+          drafts.some((d) => d.area === "query" && (d.query ?? "").includes("task_identifier"))
         ).toBe(true);
+        expect(drafts.some((d) => d.what === "runs.failure_rate")).toBe(false);
+      }),
+    420_000
+  );
+
+  it(
+    "listing all alerts covers every project and the legacy channels",
+    () =>
+      goldenCase(async () => {
+        const question = "Show me all alerts in our org, legacy and new, in every environment";
+        const { calls, answer } = await runCase(question, { fixtures: ALERT_LISTING_FIXTURES });
+        report("all alerts", calls, answer);
+
+        const input = (tool: string) =>
+          calls.filter((c) => c.tool === tool).map((c) => c.input as Record<string, unknown>);
+        expect(input("list_monitoring_alerts").some((i) => i.scope === "organization")).toBe(true);
         expect(
-          items.some(
-            (i) => i.draft?.what === "runs.created" || i.draft?.condition?.kind === "absence"
-          )
+          input("list_alert_channels").some((i) => i.legacy === true && i.scope === "organization")
         ).toBe(true);
       }),
     420_000

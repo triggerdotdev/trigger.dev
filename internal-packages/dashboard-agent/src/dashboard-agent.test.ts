@@ -1254,6 +1254,7 @@ describe("buildDashboardAgentTools", () => {
         "get_report",
         "get_run",
         "get_run_trace",
+        "list_alert_channels",
         "list_deploys",
         "list_environments",
         "list_errors",

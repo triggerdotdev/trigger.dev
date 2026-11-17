@@ -1,11 +1,6 @@
 import { json, type ActionFunctionArgs, type LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { z } from "zod";
-import {
-  createAlert,
-  getAlert,
-  listAlerts,
-  type Alert,
-} from "~/v3/services/alerts/storage/alertStore.server";
+import { createAlert, getAlert, type Alert } from "~/v3/services/alerts/storage/alertStore.server";
 import {
   alertParamsSchema,
   behaviorSchema,
@@ -24,9 +19,15 @@ import { $transaction, prisma } from "~/db.server";
 import { logger } from "~/services/logger.server";
 import {
   authenticateDashboardAgent,
+  alertReadAbility,
   authorizeAlerts,
   gateMonitoringAlerts,
 } from "~/services/dashboardAgentMonitoringAlerts.server";
+import {
+  AGENT_ALERT_SCOPES,
+  listScopedAlerts,
+  type ScopedAlert,
+} from "~/v3/services/alerts/agentAlertScope.server";
 import { scheduleCreatedAlert } from "~/v3/services/alerts/alertLifecycle.server";
 import {
   buildAlertFromDraft,
@@ -54,6 +55,10 @@ function alertView(a: Alert) {
   };
 }
 
+function scopedAlertView({ alert, project, environment, channelIds }: ScopedAlert) {
+  return { ...alertView(alert), project, environment, channelIds };
+}
+
 function contextStatus(code: AgentAlertContextError) {
   return code === "environment_mismatch" ? 400 : 404;
 }
@@ -61,6 +66,7 @@ function contextStatus(code: AgentAlertContextError) {
 const ListQuerySchema = z.object({
   chatId: z.string().min(1),
   alertId: z.string().min(1).optional(),
+  scope: z.enum(AGENT_ALERT_SCOPES).default("environment"),
   attention: z.enum(["clear", "needs_attention"]).optional(),
   lifecycle: z.enum(["active", "completed", "expired", "stopped"]).optional(),
 });
@@ -217,14 +223,23 @@ export async function loader({ request }: LoaderFunctionArgs) {
     return json({ alert: alertView(alert) });
   }
 
-  const alerts = await listAlerts(prisma, {
-    projectId: context.environment.project.id,
-    environmentId: context.environment.id,
-    attention: query.data.attention,
-    lifecycle: query.data.lifecycle,
-  });
+  const { alerts, truncated } = await listScopedAlerts(
+    prisma,
+    {
+      origin: {
+        userId: auth.userId,
+        organizationId: context.environment.organizationId,
+        projectId: context.environment.project.id,
+        environmentId: context.environment.id,
+      },
+      scope: query.data.scope,
+      attention: query.data.attention,
+      lifecycle: query.data.lifecycle,
+    },
+    alertReadAbility(request, context.environment.organizationId)
+  );
 
-  return json({ alerts: alerts.map(alertView) });
+  return json({ scope: query.data.scope, alerts: alerts.map(scopedAlertView), truncated });
 }
 
 export async function action({ request }: ActionFunctionArgs) {

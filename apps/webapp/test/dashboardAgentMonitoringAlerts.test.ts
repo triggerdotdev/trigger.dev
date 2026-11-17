@@ -33,7 +33,8 @@ vi.hoisted(() => {
   process.env.ALERTS_ENABLED = "1";
 });
 
-vi.mock("~/db.server", () => {
+vi.mock("~/db.server", async () => {
+  const { boundedIn } = await import("@trigger.dev/database");
   const proxy = new Proxy(
     {},
     { get: (_target, prop) => (ctx.prisma as unknown as Record<string, unknown>)[prop as string] }
@@ -43,6 +44,7 @@ vi.mock("~/db.server", () => {
     $replica: proxy,
     $transaction: (db: PrismaClient, fn: Parameters<PrismaClient["$transaction"]>[0]) =>
       db.$transaction(fn),
+    boundedIn,
     sqlDatabaseSchema: undefined,
   };
 });
@@ -148,6 +150,7 @@ vi.mock("~/v3/alertsRateLimiter.server", () => ({
 }));
 
 const { loader, action } = await import("~/routes/api.v1.dashboard-agent.monitoring-alerts");
+const { loader: channelsLoader } = await import("~/routes/api.v1.dashboard-agent.alert-channels");
 const { action: analyzeAction } =
   await import("~/routes/api.v1.dashboard-agent.monitoring-alerts.analyze-query");
 const { DASHBOARD_AGENT_UAT_CAP, mintDashboardAgentUserActorToken } =
@@ -1284,6 +1287,116 @@ describe("dashboard-agent monitoring alerts authorization", () => {
       expect(await mintedCap(seeded.user.id, seeded.environments.prod.id, true)).not.toContain(
         "write:alerts"
       );
+    }
+  );
+});
+
+describe("dashboard-agent scoped listing contract", () => {
+  const BASE = "https://test/api/v1/dashboard-agent";
+
+  async function seedScoped(prisma: PrismaClient) {
+    const seeded = await seedProjectWithEnvironments(prisma, "scoped", ["prod", "staging"]);
+    const env = makeEnv(
+      seeded.organization.id,
+      seeded.project.id,
+      seeded.environments.prod.id,
+      seeded.organization.slug,
+      seeded.project.externalRef
+    );
+    ctx.uatClaims = { userId: seeded.user.id, environmentId: env.id, client: "dashboard-agent" };
+    ctx.alertContext = { ok: true, environment: env };
+    return seeded;
+  }
+
+  const get = (fn: typeof loader, url: string) =>
+    fn({ request: jsonRequest(url), params: {}, context: {} } as any) as Promise<Response>;
+
+  // Catches: the alerts route dropping scope validation or renaming a response key.
+  postgresTest(
+    "monitoring-alerts accepts project and organization scope",
+    async ({ prisma, postgresContainer }) => {
+      await boot(prisma, postgresContainer.getConnectionUri());
+      const seeded = await seedScoped(prisma);
+      for (const envSlug of ["prod", "staging"]) {
+        await createAlert(prisma, {
+          organizationId: seeded.organization.id,
+          projectId: seeded.project.id,
+          environmentId: seeded.environments[envSlug]!.id,
+          capabilityKey: "queue.depth",
+          params: { queue: "worker-1" },
+          condition: { operator: ">", value: 100 },
+          createdBy: seeded.user.id,
+          notifiers: [{ type: "channel", channelId: "chan_seeded" }],
+        });
+      }
+
+      for (const scope of ["project", "organization"]) {
+        const response = await get(
+          loader,
+          `${BASE}/monitoring-alerts?chatId=chat_1&scope=${scope}`
+        );
+        expect(response.status).toBe(200);
+        const body = await response.json();
+        expect(Object.keys(body).sort()).toEqual(["alerts", "scope", "truncated"]);
+        expect(body).toMatchObject({ scope, truncated: false });
+        expect(body.alerts).toHaveLength(2);
+        for (const alert of body.alerts) {
+          expect(alert).toMatchObject({
+            projectId: seeded.project.id,
+            environmentId: expect.any(String),
+            project: { slug: seeded.project.slug, name: seeded.project.name },
+            environment: { slug: expect.any(String), type: expect.any(String) },
+            channelIds: ["chan_seeded"],
+          });
+        }
+      }
+
+      const invalid = await get(loader, `${BASE}/monitoring-alerts?chatId=chat_1&scope=everything`);
+      expect(invalid.status).toBe(400);
+    }
+  );
+
+  // Catches: the channels route renaming or reparsing scope, legacy or type.
+  postgresTest(
+    "alert-channels parses scope, legacy and type",
+    async ({ prisma, postgresContainer }) => {
+      await boot(prisma, postgresContainer.getConnectionUri());
+      const seeded = await seedScoped(prisma);
+      const webhook = (id: string, alertTypes: ("TASK_RUN" | "ERROR_GROUP")[]) =>
+        prisma.projectAlertChannel.create({
+          data: {
+            id,
+            friendlyId: `f_${id}`,
+            name: id,
+            type: "WEBHOOK",
+            properties: { url: "https://hooks.example.com/x", secret: "s" },
+            alertTypes,
+            projectId: seeded.project.id,
+          },
+        });
+      await webhook("chan_legacy_hook", ["TASK_RUN"]);
+      await webhook("chan_modern_hook", ["ERROR_GROUP"]);
+
+      const response = await get(
+        channelsLoader,
+        `${BASE}/alert-channels?chatId=chat_1&scope=organization&legacy=true&type=WEBHOOK`
+      );
+      expect(response.status).toBe(200);
+      const body = await response.json();
+      expect(Object.keys(body).sort()).toEqual(["channels", "scope", "truncated"]);
+      expect(body.scope).toBe("organization");
+      expect(body.channels.map((c: { id: string }) => c.id)).toEqual(["chan_legacy_hook"]);
+      expect(Object.keys(body.channels[0].legacyAlerts[0]).sort()).toEqual([
+        "label",
+        "migration",
+        "replaceWith",
+        "type",
+      ]);
+
+      for (const query of ["legacy=yes", "type=webhook"]) {
+        const rejected = await get(channelsLoader, `${BASE}/alert-channels?chatId=chat_1&${query}`);
+        expect(rejected.status).toBe(400);
+      }
     }
   );
 });
