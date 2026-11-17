@@ -1,34 +1,22 @@
 ---
-title: "Generate an image with OpenAI"
-sidebarTitle: "OpenAI image generation"
-description: "This example will show you how to generate an image and text using OpenAI with Trigger.dev, and upload the image to Cloudflare R2."
+title: "Generate an image using DALL·E 3"
+sidebarTitle: "DALL·E image generation"
+description: "This example will show you how to generate an image using DALL·E 3 and text using GPT-4o with Trigger.dev."
 hidden: true
 ---
 
 ## Overview
 
-This example demonstrates how to use Trigger.dev to make reliable calls to AI APIs, specifically OpenAI's `gpt-6-luna` for text and `gpt-image-2.6-flare` for images. It showcases automatic retrying with a maximum of 3 attempts, built-in error handling to avoid timeouts, and the ability to trace and monitor API calls.
-
-GPT image models return the image as base64 rather than a URL. The task decodes it and uploads it to [Cloudflare R2](https://developers.cloudflare.com/r2/), so the run output is a short URL instead of several megabytes of base64.
+This example demonstrates how to use Trigger.dev to make reliable calls to AI APIs, specifically OpenAI's GPT-4o and DALL-E 3. It showcases automatic retrying with a maximum of 3 attempts, built-in error handling to avoid timeouts, and the ability to trace and monitor API calls.
 
 ## Task code
 
 ```ts trigger/generateContent.ts
-import { PutObjectCommand, S3Client } from "@aws-sdk/client-s3";
 import { task } from "@trigger.dev/sdk";
 import OpenAI from "openai";
 
 const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY,
-});
-
-const s3Client = new S3Client({
-  region: "auto",
-  endpoint: process.env.R2_ENDPOINT,
-  credentials: {
-    accessKeyId: process.env.R2_ACCESS_KEY_ID ?? "",
-    secretAccessKey: process.env.R2_SECRET_ACCESS_KEY ?? "",
-  },
 });
 
 type Payload = {
@@ -44,72 +32,38 @@ export const generateContent = task({
   run: async ({ theme, description }: Payload) => {
     // Generate text
     const textResult = await openai.chat.completions.create({
-      model: "gpt-6-luna",
-      messages: [{ role: "user", content: generateTextPrompt(theme, description) }],
+      model: "gpt-4o",
+      messages: generateTextPrompt(theme, description),
     });
 
-    const text = textResult.choices[0]?.message.content;
-
-    if (!text) {
+    if (!textResult.choices[0]) {
       throw new Error("No content, retrying…");
     }
 
     // Generate image
     const imageResult = await openai.images.generate({
-      model: "gpt-image-2.6-flare",
+      model: "dall-e-3",
       prompt: generateImagePrompt(theme, description),
-      size: "1024x1024", // or "1536x1024" / "1024x1536"
-      quality: "low", // "low", "medium" or "high"
-      output_format: "png",
     });
 
-    // GPT image models return the image as base64, not a URL
-    const base64Image = imageResult.data?.[0]?.b64_json;
-
-    if (!base64Image) {
+    if (!imageResult.data[0]) {
       throw new Error("No image, retrying…");
     }
 
-    // Upload the image to R2 so the run output stays small
-    const imageBuffer = Buffer.from(base64Image, "base64");
-    const r2Key = `generated-images/${Date.now()}.png`;
-
-    await s3Client.send(
-      new PutObjectCommand({
-        Bucket: process.env.R2_BUCKET,
-        Key: r2Key,
-        Body: imageBuffer,
-        ContentType: "image/png",
-      })
-    );
-
     return {
-      text,
-      imageUrl: `${process.env.R2_PUBLIC_URL}/${r2Key}`,
+      text: textResult.choices[0],
+      image: imageResult.data[0].url,
     };
   },
 });
 
-function generateTextPrompt(theme: string, description: string) {
+function generateTextPrompt(theme: string, description: string): any {
   return `Theme: ${theme}\n\nDescription: ${description}`;
 }
 
-function generateImagePrompt(theme: string, description: string) {
+function generateImagePrompt(theme: string, description: string): any {
   return `Theme: ${theme}\n\nDescription: ${description}`;
 }
-```
-
-## Environment variables
-
-Set the following environment variables in your Trigger.dev environment:
-
-```
-OPENAI_API_KEY=<your-openai-api-key>
-R2_ENDPOINT=<your-r2-endpoint>
-R2_ACCESS_KEY_ID=<your-r2-access-key-id>
-R2_SECRET_ACCESS_KEY=<your-r2-secret-access-key>
-R2_BUCKET=<your-r2-bucket>
-R2_PUBLIC_URL=<your-r2-public-url>
 ```
 
 ## Testing your task
