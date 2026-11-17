@@ -2,6 +2,7 @@ import { EngineServiceValidationError } from "@internal/run-engine";
 import { TriggerTaskRequestBody } from "@trigger.dev/core/v3";
 import type { AuthenticatedEnvironment } from "~/services/apiAuth.server";
 import { OutOfEntitlementError } from "~/v3/outOfEntitlementError.server";
+import { MCP_REMOTE_TRIGGER_SOURCE } from "~/utils/triggerSource";
 import { ServiceValidationError } from "~/v3/services/common.server";
 import type { McpToolDefinition } from "../registry.server";
 import { defineWriteTool, fencedError } from "./defineWrite.server";
@@ -12,7 +13,8 @@ export type TasksWriteOptions = {
   triggerTask?: (
     taskId: string,
     environment: AuthenticatedEnvironment,
-    body: TriggerTaskRequestBody
+    body: TriggerTaskRequestBody,
+    triggerSource: string
   ) => Promise<{ id: string } | undefined>;
   isDevConnected?: (environmentId: string) => Promise<boolean>;
 };
@@ -20,7 +22,8 @@ export type TasksWriteOptions = {
 const defaultTriggerTask: NonNullable<TasksWriteOptions["triggerTask"]> = async (
   taskId,
   environment,
-  body
+  body,
+  triggerSource
 ) => {
   const { TriggerTaskService } = await import("~/v3/services/triggerTask.server");
   const { determineRealtimeStreamsVersion } =
@@ -32,7 +35,7 @@ const defaultTriggerTask: NonNullable<TasksWriteOptions["triggerTask"]> = async 
       undefined,
       environment.organization.streamBasinName
     ),
-    triggerSource: "mcp",
+    triggerSource,
     triggerAction: "trigger",
   });
   return result ? { id: result.run.friendlyId } : undefined;
@@ -92,7 +95,7 @@ export function createTasksWriteTools(options: TasksWriteOptions = {}): McpToolD
 
         let run: { id: string } | undefined;
         try {
-          run = await triggerTask(input.taskId, environment, body.data);
+          run = await triggerTask(input.taskId, environment, body.data, MCP_REMOTE_TRIGGER_SOURCE);
         } catch (error) {
           if (
             error instanceof ServiceValidationError ||

@@ -2,7 +2,7 @@ import { postgresTest } from "@internal/testcontainers";
 import plugin, { signUserActorToken } from "@trigger.dev/rbac";
 import type { PrismaClient } from "@trigger.dev/database";
 import { createHash } from "node:crypto";
-import { describe, expect, vi } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import {
   createRuntimeEnvironment,
   createTestOrgProjectWithMember,
@@ -60,6 +60,7 @@ import { mcpResource } from "~/services/oauth/metadata.server";
 import { orgsWriteTools } from "~/mcp/tools/orgsWrite.server";
 import { createRunsWriteTools } from "~/mcp/tools/runsWrite.server";
 import { createTasksWriteTools } from "~/mcp/tools/tasksWrite.server";
+import { sanitizeTriggerSource } from "~/utils/triggerSource";
 
 function tool(tools: McpToolDefinition[], name: string) {
   return tools.find((t) => t.name === name)!.handler;
@@ -130,6 +131,14 @@ async function seed(prisma: PrismaClient) {
 }
 
 describe("mcp write tools", () => {
+  // Catches: a client claiming the hosted server's source through the header.
+  it.each([
+    ["mcp", "mcp"],
+    ["mcp-remote", undefined],
+  ])("trigger source header %s is read as %s", (header, expected) => {
+    expect(sanitizeTriggerSource(header)).toBe(expected);
+  });
+
   postgresTest("cancel_run cancels through the service and reports the run", async ({ prisma }) => {
     const { environment, run, identity, request, scope } = await seed(prisma);
     const cancelRun = vi.fn(async (_env: unknown, runId: string) => {
@@ -170,7 +179,8 @@ describe("mcp write tools", () => {
 
       expect(replayRun).toHaveBeenCalledWith(
         expect.objectContaining({ id: run.id }),
-        expect.objectContaining({ tags: ["a"] })
+        expect.objectContaining({ tags: ["a"] }),
+        "mcp-remote"
       );
       expect(text).toContain(`Run ${run.friendlyId} replayed as run_replayed.`);
     }
@@ -331,7 +341,8 @@ describe("mcp write tools", () => {
       expect(triggerTask).toHaveBeenCalledWith(
         "my-task",
         expect.objectContaining({ id: environment.id }),
-        expect.objectContaining({ payload: { email: "a@b.c" } })
+        expect.objectContaining({ payload: { email: "a@b.c" } }),
+        "mcp-remote"
       );
       expect(text).toContain("Task my-task triggered and run with ID created: run_new.");
     }

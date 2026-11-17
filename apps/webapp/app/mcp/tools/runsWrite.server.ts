@@ -4,6 +4,7 @@ import { CURRENT_API_VERSION } from "~/api/versions";
 import { prisma } from "~/db.server";
 import { ApiRetrieveRunPresenter } from "~/presenters/v3/ApiRetrieveRunPresenter.server";
 import type { AuthenticatedEnvironment } from "~/services/apiAuth.server";
+import { MCP_REMOTE_TRIGGER_SOURCE } from "~/utils/triggerSource";
 import { runStore } from "~/v3/runStore.server";
 import { ServiceValidationError } from "~/v3/services/common.server";
 import type { McpToolDefinition } from "../registry.server";
@@ -21,7 +22,8 @@ export type RunsWriteOptions = {
     overrides: Omit<
       ReplayRunInput,
       "runId" | "projectRef" | "configPath" | "environment" | "branch"
-    >
+    >,
+    triggerSource: string
   ) => Promise<{ id: string } | null>;
 };
 
@@ -53,11 +55,15 @@ const defaultCancelRun: NonNullable<RunsWriteOptions["cancelRun"]> = async (envi
   return outcome.kind === "not_found" || outcome.kind === "timed_out" ? outcome.kind : "canceled";
 };
 
-const defaultReplayRun: NonNullable<RunsWriteOptions["replayRun"]> = async (taskRun, overrides) => {
+const defaultReplayRun: NonNullable<RunsWriteOptions["replayRun"]> = async (
+  taskRun,
+  overrides,
+  triggerSource
+) => {
   const { ReplayTaskRunService } = await import("~/v3/services/replayTaskRun.server");
 
   const newRun = await new ReplayTaskRunService().call(taskRun, {
-    triggerSource: "mcp",
+    triggerSource,
     payload: overrides.payload === undefined ? undefined : JSON.stringify(overrides.payload),
     payloadType: "application/json",
     metadata: overrides.metadata,
@@ -146,7 +152,7 @@ export function createRunsWriteTools(options: RunsWriteOptions = {}): McpToolDef
 
         let replayed: { id: string } | null;
         try {
-          replayed = await replayRun(taskRun, overrides);
+          replayed = await replayRun(taskRun, overrides, MCP_REMOTE_TRIGGER_SOURCE);
         } catch (error) {
           if (
             error instanceof ServiceValidationError ||

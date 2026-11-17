@@ -61,6 +61,8 @@ type Outcome =
 
 type Denial = "denied" | "insufficient_scope" | "forbidden";
 
+const DENY_REASONS = { insufficient_scope: "scope", forbidden: "role", denied: "other" } as const;
+
 const NO_EXTRA: McpRequestExtra = { signal: new AbortController().signal, requestId: "" };
 
 const errorText = (text: string): McpToolResult => ({
@@ -314,6 +316,8 @@ export function withMcpToolAuth<TArgs>(
         organizationId: subject?.organizationId,
         projectId: subject?.projectId,
         environmentId: subject?.environmentId,
+        environmentType: subject?.environmentType,
+        denyReason: outcome in DENY_REASONS ? DENY_REASONS[outcome as Denial] : undefined,
         confirmationId,
         outcome,
         durationMs: Math.round(performance.now() - startedAt),

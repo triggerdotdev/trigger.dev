@@ -15,6 +15,7 @@ const mocks = vi.hoisted(() => ({
   store: undefined as unknown,
   userId: "",
   impersonating: false,
+  info: vi.fn(),
 }));
 
 vi.mock("~/db.server", () => ({
@@ -25,7 +26,7 @@ vi.mock("~/services/rbac.server", () => ({
   rbac: new Proxy({}, { get: (_, prop: string) => mocks.rbac[prop] }),
 }));
 vi.mock("~/services/logger.server", () => ({
-  logger: { debug: vi.fn(), error: vi.fn(), warn: vi.fn(), info: vi.fn() },
+  logger: { debug: vi.fn(), error: vi.fn(), warn: vi.fn(), info: mocks.info },
 }));
 vi.mock("~/services/session.server", () => ({
   requireUser: async () => ({ id: mocks.userId, isImpersonating: mocks.impersonating }),
@@ -493,6 +494,34 @@ describe("MCP confirm route", () => {
     expect(await post(t.identity.userId, body.csrf, "deny")).toBe(404);
     expect(await post(t.identity.userId, body.csrf, "approve")).toBe(404);
   });
+
+  // Catches: the decision line missing, duplicated, or carrying the wrong decision.
+  containerTest(
+    "each decision logs one mcp.confirmation line",
+    async ({ prisma, redisOptions }) => {
+      const t = await setup(prisma, redisOptions);
+      for (const decision of ["approve", "deny"]) {
+        const { elicitationId } = await t.pending(t.call(decision === "deny" ? t.argsB : t.argsA));
+        const { body, post } = await openPage(t.identity.userId, elicitationId);
+        mocks.info.mockClear();
+
+        expect(await post(t.identity.userId, body.csrf, decision)).toBe(200);
+        expect(await post(t.identity.userId, body.csrf, decision)).toBe(
+          decision === "deny" ? 404 : 200
+        );
+
+        const lines = mocks.info.mock.calls.filter(([name]) => name === "mcp.confirmation");
+        expect(lines).toHaveLength(1);
+        expect(lines[0]![1]).toEqual({
+          confirmationId: elicitationId,
+          tool: "trigger_task",
+          decision,
+          userId: t.identity.userId,
+          organizationId: t.a.organization.id,
+        });
+      }
+    }
+  );
 
   // Catches: a deny after approval blocking the approved call.
   containerTest("deny after approve is rejected by the route", async ({ prisma, redisOptions }) => {

@@ -152,6 +152,7 @@ function scopeChallengeFor(
       clientId: identity.clientId,
       tool,
       outcome: "insufficient_scope",
+      denyReason: "scope",
     });
     const held = (identity.cap ?? []).filter((s) => MCP_SCOPES.includes(s));
     return { scopes: [...new Set([...held, first, ...rest])] as [string, ...string[]] };

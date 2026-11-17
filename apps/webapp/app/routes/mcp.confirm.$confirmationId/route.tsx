@@ -20,6 +20,7 @@ import { Header1 } from "~/components/primitives/Headers";
 import { Paragraph } from "~/components/primitives/Paragraph";
 import { describeMcpSubject } from "~/mcp/confirm/confirmation.server";
 import { getMcpConfirmationStore } from "~/mcp/confirm/storeInstance.server";
+import { logger } from "~/services/logger.server";
 import { assertNotImpersonating } from "~/services/oauth/authorize.server";
 import { describeOAuthClientName } from "~/services/oauth/consent.server";
 import { requireUser } from "~/services/session.server";
@@ -97,8 +98,18 @@ export async function action({ request, params }: ActionFunctionArgs) {
   if (decision !== "approve" && decision !== "deny") {
     throw new Response("Bad Request", { status: 400, headers: noStore });
   }
+  const logDecision = (record: { tool: string; subject?: { organizationId: string } | null }) =>
+    logger.info("mcp.confirmation", {
+      confirmationId: id,
+      tool: record.tool,
+      decision,
+      userId: user.id,
+      organizationId: record.subject?.organizationId,
+    });
   if (decision === "deny") {
+    const pending = await store.get(id, user.id);
     if (!(await store.deny(id, user.id))) notFound();
+    if (pending) logDecision(pending);
     return json({ approved: false, denied: true, error: undefined }, { headers: noStore });
   }
   const record = await store.get(id, user.id);
@@ -110,6 +121,7 @@ export async function action({ request, params }: ActionFunctionArgs) {
     );
   }
   if (!(await store.approve(id, user.id))) notFound();
+  if (!record.approvedAt) logDecision(record);
   return json({ approved: true, denied: false, error: undefined }, { headers: noStore });
 }
 

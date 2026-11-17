@@ -149,6 +149,7 @@ describe("withMcpToolAuth", () => {
       expect.objectContaining({
         tool: "list_runs",
         outcome: "denied",
+        denyReason: "other",
         userId: identity.userId,
       })
     );
@@ -273,7 +274,7 @@ describe("withMcpToolAuth", () => {
       });
       expect(mocks.info).toHaveBeenCalledWith(
         "mcp.tool",
-        expect.objectContaining({ outcome: "insufficient_scope" })
+        expect.objectContaining({ outcome: "insufficient_scope", denyReason: "scope" })
       );
     }
   });
@@ -305,8 +306,36 @@ describe("withMcpToolAuth", () => {
     expect(calls).toHaveLength(0);
     expect(mocks.info).toHaveBeenCalledWith(
       "mcp.tool",
-      expect.objectContaining({ outcome: "forbidden" })
+      expect.objectContaining({ outcome: "forbidden", denyReason: "role" })
     );
+  });
+
+  // Catches: environmentType dropped from the log line, or logged on calls without an environment.
+  postgresTest("logs environmentType only for environment-scoped calls", async ({ prisma }) => {
+    const { a, identity, request } = await seed(prisma);
+    const { handler } = spyHandler();
+    const auth = { action: "read", subject: "runs" } as const;
+    const scoped = withMcpToolAuth(
+      {
+        ...auth,
+        resolveSubject: async () => ({
+          organizationId: a.organization.id,
+          projectId: a.project.id,
+          environmentType: "STAGING",
+        }),
+      },
+      handler,
+      "t"
+    );
+    const unscoped = withMcpToolAuth({ ...auth }, handler, "t");
+
+    await scoped({}, identity, request);
+    await unscoped({ projectRef: a.project.externalRef }, identity, request);
+
+    const [first, second] = mocks.info.mock.calls.map(([, payload]) => payload);
+    expect(first).toMatchObject({ outcome: "ok", environmentType: "STAGING" });
+    expect(first.denyReason).toBeUndefined();
+    expect(second.environmentType).toBeUndefined();
   });
 
   postgresTest("authorizes a uat when the plugin omits claims", async ({ prisma }) => {
