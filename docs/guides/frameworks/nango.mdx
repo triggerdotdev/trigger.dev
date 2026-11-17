@@ -203,8 +203,8 @@ export const analyzePRs = task({
       .join("\n\n");
 
     const message = await anthropic.messages.create({
-      model: "claude-opus-4-6",
-      max_tokens: 1024,
+      model: "claude-opus-5-5",
+      max_tokens: 16000,
       messages: [
         {
           role: "user",
@@ -213,7 +213,15 @@ export const analyzePRs = task({
       ],
     });
 
-    const summary = message.content[0].type === "text" ? message.content[0].text : "";
+    if (message.stop_reason === "max_tokens") {
+      throw new Error("Summary was cut off by max_tokens");
+    }
+
+    // Claude may return a thinking block before the text, so read text blocks by type
+    const summary = message.content
+      .filter((block): block is Anthropic.TextBlock => block.type === "text")
+      .map((block) => block.text)
+      .join("\n");
 
     return { summary, prCount: prs.length };
   },

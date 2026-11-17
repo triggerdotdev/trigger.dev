@@ -36,7 +36,7 @@ import { anthropic } from "@ai-sdk/anthropic";
 export const myChat = chat.agent({
   id: "my-chat",
   run: async ({ messages, signal, streamText }) =>
-    streamText({ model: anthropic("claude-sonnet-4-5"), messages, abortSignal: signal }),
+    streamText({ model: anthropic("claude-sonnet-5-5"), messages, abortSignal: signal }),
 });
 ```
 
@@ -55,7 +55,7 @@ export const myChat = chat.agent({
   id: "my-chat",
   storage: myTranscriptStorage,
   run: async ({ messages, signal, streamText }) =>
-    streamText({ model: anthropic("claude-sonnet-4-5"), messages, abortSignal: signal }),
+    streamText({ model: anthropic("claude-sonnet-5-5"), messages, abortSignal: signal }),
 });
 ```
 

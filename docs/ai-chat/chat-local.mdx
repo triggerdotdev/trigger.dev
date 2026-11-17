@@ -48,7 +48,7 @@ export const myChat = chat.agent({
     userContext.messageCount++;
 
     return streamText({
-      model: anthropic("claude-sonnet-4-5"),
+      model: anthropic("claude-sonnet-5-5"),
       system: `Helping ${userContext.name} (${userContext.plan} plan).`,
       messages,
       abortSignal: signal,
@@ -117,7 +117,7 @@ export const myChat = chat.agent({
   },
   run: async ({ messages, signal, streamText }) => {
     return streamText({
-      model: anthropic("claude-sonnet-4-5"),
+      model: anthropic("claude-sonnet-5-5"),
       messages,
       tools: { analyzeData },
       abortSignal: signal,

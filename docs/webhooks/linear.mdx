@@ -21,7 +21,7 @@ export const triage = chat.agent({
   channels: [linear({ id: "linear", endpoint: linearEvents, token: process.env.LINEAR_ACCESS_TOKEN! })],
   tools: { searchDocs, createSubIssues },
   run: async ({ messages, tools, signal, streamText }) =>
-    streamText({ model: anthropic("claude-sonnet-4-5"), messages, tools, abortSignal: signal }),
+    streamText({ model: anthropic("claude-sonnet-5-5"), messages, tools, abortSignal: signal }),
 });
 ```
 

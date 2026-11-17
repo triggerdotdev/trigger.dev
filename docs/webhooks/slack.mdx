@@ -13,6 +13,7 @@ import { webhooks } from "@trigger.dev/sdk";
 import { chat } from "@trigger.dev/sdk/ai";
 import { appMentions, slack, webhookSource } from "@trigger.dev/slack";
 import { anthropic } from "@ai-sdk/anthropic";
+import { stepCountIs } from "ai";
 
 const slackEvents = webhooks.endpoint.define({ id: "slack", source: webhookSource() });
 
@@ -28,7 +29,13 @@ export const support = chat.agent({
   ],
   tools: { searchDocs, refundOrder },
   run: async ({ messages, tools, signal, streamText }) =>
-    streamText({ model: anthropic("claude-sonnet-4-5"), messages, tools, abortSignal: signal }),
+    streamText({
+      model: anthropic("claude-sonnet-5-5"),
+      messages,
+      tools,
+      abortSignal: signal,
+      stopWhen: stepCountIs(10),
+    }),
 });
 ```
 

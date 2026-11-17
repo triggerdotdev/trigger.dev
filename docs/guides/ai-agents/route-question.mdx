@@ -18,8 +18,8 @@ In this example, we'll create a workflow that routes a question to a different A
 
 - Uses `generateObject` from the [AI SDK](https://ai-sdk.dev/) to classify the question into a typed routing decision
 - Uses `experimental_telemetry` to surface each LLM call on the Run page in the dashboard
-- Classifies complexity with a fast, cheap model (`claude-haiku-4-5`)
-- Directs simple questions to `claude-haiku-4-5` and complex ones to `claude-sonnet-4-5`
+- Classifies complexity with a fast, cheap model (`claude-haiku-5-5`)
+- Directs simple questions to `claude-haiku-5-5` and complex ones to `claude-sonnet-5-5`
 - Returns both the answer and metadata about the routing decision
 
 ```typescript
@@ -31,7 +31,7 @@ import { z } from "zod";
 // The router's structured decision. generateObject validates the model
 // output against this schema, so there's no manual JSON parsing.
 const routingSchema = z.object({
-  model: z.enum(["claude-haiku-4-5", "claude-sonnet-4-5"]),
+  model: z.enum(["claude-haiku-5-5", "claude-sonnet-5-5"]),
   reason: z.string(),
 });
 
@@ -40,12 +40,12 @@ export const routeAndAnswerQuestion = task({
   run: async (payload: { question: string }) => {
     // Step 1: Classify the question and pick a model
     const { object: routing } = await generateObject({
-      model: anthropic("claude-haiku-4-5"),
+      model: anthropic("claude-haiku-5-5"),
       schema: routingSchema,
       system:
         "You are a routing assistant. Pick the model best suited to answer the question:\n" +
-        "- claude-haiku-4-5 for simple, common, or straightforward questions\n" +
-        "- claude-sonnet-4-5 for complex, unusual, or questions needing deep reasoning",
+        "- claude-haiku-5-5 for simple, common, or straightforward questions\n" +
+        "- claude-sonnet-5-5 for complex, unusual, or questions needing deep reasoning",
       prompt: payload.question,
       experimental_telemetry: {
         isEnabled: true,
@@ -76,7 +76,7 @@ export const routeAndAnswerQuestion = task({
 
 ## Run a test
 
-Triggering our task with a simple question shows it routing to the `claude-haiku-4-5` model and returning the answer with reasoning:
+Triggering our task with a simple question shows it routing to the `claude-haiku-5-5` model and returning the answer with reasoning:
 
 ```json
 {
