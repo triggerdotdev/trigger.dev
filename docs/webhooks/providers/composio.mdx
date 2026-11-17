@@ -1,0 +1,45 @@
+---
+title: "Composio webhooks"
+sidebarTitle: "Composio"
+description: "Receive and verify Composio webhooks with Trigger.dev. Check the signature in the webhook-signature header and run a task for each Composio event, filtered on event.type."
+---
+
+**`webhooks.composio()` verifies the signature Composio sends in the `webhook-*` headers on every request, keyed with the secret's raw text as Composio signs it.**
+
+<Note>
+  Composio verification needs `@trigger.dev/sdk` 4.8.6 or later. Redeploy existing endpoints after upgrading.
+</Note>
+
+```ts /trigger/composio.ts
+import { webhook, webhooks } from "@trigger.dev/sdk";
+
+export const composio = webhooks.endpoint.define({
+  id: "composio",
+  source: webhooks.composio(),
+});
+
+export const composioEvents = webhook({
+  id: "composio-events",
+  endpoint: composio,
+  onEvent: async ({ event }) => {
+    console.log(event);
+  },
+});
+```
+
+To run a subscriber only for some events, add a [filter](/webhooks/filters) on `event.type`.
+
+| Setting | Value |
+| --- | --- |
+| Source | `webhooks.composio()` |
+| Verification | Standard Webhooks headers (`webhook-id`, `webhook-timestamp`, `webhook-signature`), keyed with the secret's raw text |
+| Credential | Signing secret issued by Composio |
+| Event type | `event.type`, which is `composio.trigger.message` for trigger events |
+| Composio docs | [Composio webhook docs](https://docs.composio.dev/docs/setting-up-triggers/subscribing-to-events) |
+
+## Set up Composio
+
+1. Start `trigger dev` or deploy, then copy the endpoint's **Webhook URL** from the **Webhooks** page.
+2. Register the webhook URL for your Composio project with `composio.triggers.setWebhookSubscription({ webhookUrl })` in the Composio SDK (`set_webhook_subscription` in Python). Composio then sends every trigger event in the project to it.
+3. The subscription's response includes its `secret`. Copy it, then choose **Set signing secret** on the Trigger.dev endpoint. You can read or rotate it later through the SDK's webhook subscriptions methods.
+4. Send a test event from Composio, or use the endpoint's **Test** tab, and check the endpoint's **Deliveries** tab. See [Verify the connection](/webhooks/connect#verify-the-connection) if nothing arrives.
