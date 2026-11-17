@@ -5,6 +5,7 @@ import { singleton } from "~/utils/singleton";
 import { getRequestAuditContext } from "./auditContext.server";
 import { createAuditLogs } from "./auditLogHost.server";
 import { loadAuditLogPlugin } from "./auditLogPlugin.server";
+import { isAuditRecordingEnabledFor } from "./auditRecordingFlag.server";
 
 function pluginConfig(): AuditLogPluginConfig {
   return {
@@ -26,6 +27,7 @@ export const auditLogs = singleton("auditLogs", () => {
   const audit = createAuditLogs({
     controller: getAuditLogController,
     isRecordingEnabled: () => env.AUDIT_LOGS_RECORDING_ENABLED,
+    isRecordingEnabledFor: isAuditRecordingEnabledFor,
     // Resolved at call time: the context module imports this one.
     getContext: (occurredAt) => getRequestAuditContext(occurredAt),
   });

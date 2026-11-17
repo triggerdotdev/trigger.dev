@@ -117,10 +117,12 @@ function inMemoryController(overrides: Partial<AuditLogController> = {}): InMemo
 function host(options: {
   controller: () => Promise<AuditLogController | null>;
   enabled?: boolean;
+  isRecordingEnabledFor?: (organizationId: string | null) => Promise<boolean>;
 }) {
   return createAuditLogs({
     controller: options.controller,
     isRecordingEnabled: () => options.enabled ?? true,
+    isRecordingEnabledFor: options.isRecordingEnabledFor ?? (async () => true),
     getContext: contextAt,
   });
 }
@@ -186,6 +188,7 @@ describe("audit logs host", () => {
     const audit = createAuditLogs({
       controller: async () => controller,
       isRecordingEnabled: () => true,
+      isRecordingEnabledFor: async () => true,
       getContext: async (occurredAt) => ({
         ...contextAt(occurredAt),
         credential: { kind: "root_api_key", id: "env_1", last4: "k9Qz", fingerprintId: "fp_9" },
@@ -207,6 +210,7 @@ describe("audit logs host", () => {
     const audit = createAuditLogs({
       controller: async () => controller,
       isRecordingEnabled: () => enabled,
+      isRecordingEnabledFor: async () => true,
       getContext: (occurredAt) => {
         contextTimes.push(occurredAt);
         return contextAt(occurredAt);
@@ -310,6 +314,7 @@ describe("audit logs host", () => {
           createAuditLogs({
             controller: plugin,
             isRecordingEnabled: () => true,
+            isRecordingEnabledFor: async () => true,
             getContext,
           })
         )
@@ -579,5 +584,153 @@ describe("audit logs host", () => {
     await flushed;
     expect(controller.recorded).toHaveLength(1);
     expect(controller.flushes).toBe(1);
+  });
+});
+
+describe("audit logs host, per-org recording gate", () => {
+  /** Answers the per-org gate from a set of org ids, and keeps the orgs it was asked about. */
+  function orgGate(enabledOrgs: Array<string | null>) {
+    const asked: Array<string | null> = [];
+    return {
+      asked,
+      isRecordingEnabledFor: async (organizationId: string | null) => {
+        asked.push(organizationId);
+        return enabledOrgs.includes(organizationId);
+      },
+    };
+  }
+
+  // Catches: the per-org lookup running (a database read per event) while the env switch is off.
+  it("asks nothing and records nothing while the env switch is off", async () => {
+    const controller = inMemoryController();
+    const gate = orgGate(["org_1"]);
+    const audit = host({ controller: async () => controller, enabled: false, ...gate });
+
+    audit.record(input);
+    audit.recordLater(async () => input);
+    await audit.flush();
+
+    expect(gate.asked).toEqual([]);
+    expect(controller.recorded).toHaveLength(0);
+  });
+
+  // Catches: an org without the flag having its events recorded, or the flag also stopping
+  // fingerprints, which must be kept for every org so keys created meanwhile stay attributable.
+  it("records nothing for an org without the flag but keeps its fingerprints", async () => {
+    const controller = inMemoryController();
+    const gate = orgGate([]);
+    const audit = host({ controller: async () => controller, ...gate });
+
+    audit.record(input);
+    await audit.flush();
+    const saved = await audit.saveCredentialFingerprint(fingerprint);
+    audit.markCredentialRevoked(revoked);
+    audit.updateCredentialGrace(revoked.hash, null);
+    await audit.flush();
+
+    expect(audit.isRecordingEnabled()).toBe(true);
+    expect(gate.asked).toEqual(["org_1"]);
+    expect(controller.recorded).toHaveLength(0);
+    expect(saved).toEqual({ fingerprintId: "fp_1" });
+    expect(controller.fingerprints).toEqual([fingerprint]);
+    expect(controller.revocations).toEqual([revoked]);
+    expect(controller.graceUpdates).toEqual([[revoked.hash, null]]);
+  });
+
+  // Catches: the gate checking the wrong org, so a flagged org records nothing or an unflagged
+  // org's events leak into storage.
+  it("records only the events of orgs with the flag", async () => {
+    const controller = inMemoryController();
+    const gate = orgGate(["org_1"]);
+    const audit = host({ controller: async () => controller, ...gate });
+
+    audit.record(input);
+    audit.record({ ...input, organizationId: "org_2" });
+    await audit.flush();
+
+    expect(gate.asked).toEqual(["org_1", "org_2"]);
+    expect(controller.recorded.map(([recorded]) => recorded.organizationId)).toEqual(["org_1"]);
+  });
+
+  // Catches: recordLater skipping the gate, or checking it before the event (and so its org) is
+  // built.
+  it("gates recordLater on the org of the built event", async () => {
+    const controller = inMemoryController();
+    const gate = orgGate(["org_1"]);
+    const audit = host({ controller: async () => controller, ...gate });
+
+    audit.recordLater(async () => ({ ...input, organizationId: "org_2" }));
+    audit.recordLater(async () => input);
+    await audit.flush();
+
+    expect(gate.asked).toEqual(["org_2", "org_1"]);
+    expect(controller.recorded.map(([recorded]) => recorded.organizationId)).toEqual(["org_1"]);
+  });
+
+  // Catches: an event without an org, e.g. a personal access token's, being looked up under an
+  // org id (or skipped) instead of following the global flag.
+  it("asks about an event without an org with null", async () => {
+    const controller = inMemoryController();
+    const gate = orgGate([null]);
+    const audit = host({ controller: async () => controller, ...gate });
+    // The input type requires an org today; events about personal access tokens have none.
+    const withoutOrg = { ...input, organizationId: null } as unknown as AuditLogInput;
+
+    audit.record(withoutOrg);
+    await audit.flush();
+
+    expect(gate.asked).toEqual([null]);
+    expect(controller.recorded).toEqual([[withoutOrg, expect.anything()]]);
+  });
+
+  // Catches: flush (and so shutdown) resolving while the per-org lookup is still in flight, so the
+  // event is dropped.
+  it("flush waits for the per-org lookup", async () => {
+    const controller = inMemoryController();
+    let release!: () => void;
+    const lookupDone = new Promise<void>((resolve) => (release = resolve));
+    const audit = host({
+      controller: async () => controller,
+      isRecordingEnabledFor: async () => {
+        await lookupDone;
+        return true;
+      },
+    });
+
+    audit.record(input);
+    let flushDone = false;
+    const flushed = audit.flush().then(() => (flushDone = true));
+    await setImmediate();
+    await setImmediate();
+    expect(flushDone).toBe(false);
+
+    release();
+    await flushed;
+    expect(controller.recorded).toHaveLength(1);
+  });
+
+  // Catches: a failing lookup recording the event anyway (fail open), throwing into the request,
+  // or leaving a rejection unhandled.
+  it("records nothing and never throws when the lookup fails", async () => {
+    const unhandled: unknown[] = [];
+    const onUnhandled = (reason: unknown) => unhandled.push(reason);
+    process.on("unhandledRejection", onUnhandled);
+    try {
+      const controller = inMemoryController();
+      const audit = host({
+        controller: async () => controller,
+        isRecordingEnabledFor: () => Promise.reject(new Error("replica unavailable")),
+      });
+
+      expect(() => audit.record(input)).not.toThrow();
+      expect(() => audit.recordLater(async () => input)).not.toThrow();
+      await audit.flush();
+      await setImmediate();
+
+      expect(unhandled).toEqual([]);
+      expect(controller.recorded).toHaveLength(0);
+    } finally {
+      process.off("unhandledRejection", onUnhandled);
+    }
   });
 });

@@ -19,14 +19,15 @@ export type AuditLogs = {
   /**
    * `record` for an event that needs reads to describe it, e.g. role names, so the change doesn't
    * wait for them. The request context and time are taken now; `build` runs in the background,
-   * only while recording is on, and returning null records nothing. Never throws: a failing
-   * `build` is logged. `flush` waits for it.
+   * only while recording is on, and returning null records nothing. The built event's org decides
+   * whether it is recorded. Never throws: a failing `build` is logged. `flush` waits for it.
    */
   recordLater(build: () => Promise<AuditLogInput | null>): void;
   /**
-   * Whether `record` stores events now. Check it before work done only to build an event, e.g.
-   * reading the previous value, so it costs nothing while recording is off. True without the
-   * plugin when the flag is on: `record` is then a no-op anyway.
+   * Whether `record` may store events now, for some org: the env switch only. Check it before work
+   * done only to build an event, e.g. reading the previous value, so it costs nothing while
+   * recording is off. The org's flag is checked later, so the work can still record nothing. True
+   * without the plugin when the switch is on: `record` is then a no-op anyway.
    */
   isRecordingEnabled(): boolean;
   /**
@@ -114,12 +115,14 @@ function toListedEvent(event: AuditLogListedEvent): AuditLogListedEvent {
 }
 
 /**
- * No-op when the plugin is missing. Recording stops when the recording flag is off; fingerprint
- * calls reach the plugin whenever it is installed.
+ * No-op when the plugin is missing. Recording stops when the recording switch is off, and skips
+ * orgs without the recording flag; fingerprint calls reach the plugin whenever it is installed.
  */
 export function createAuditLogs(options: {
   controller: () => Promise<AuditLogController | null>;
   isRecordingEnabled: () => boolean;
+  /** The per-org gate, checked in the background after `isRecordingEnabled`. Never throws. */
+  isRecordingEnabledFor: (organizationId: string | null) => Promise<boolean>;
   /**
    * Called synchronously inside the request, so read request state before any await. May resolve
    * later, e.g. to wait for a credential lookup started during authentication.
@@ -143,6 +146,8 @@ export function createAuditLogs(options: {
     input: AuditLogInput,
     context: Promise<AuditLogContext>
   ): Promise<void> {
+    if (!(await options.isRecordingEnabledFor(input.organizationId ?? null))) return;
+
     const controller = await options.controller();
     if (!controller) return;
 

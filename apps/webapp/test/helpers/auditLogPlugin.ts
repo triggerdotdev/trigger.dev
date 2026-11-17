@@ -5,6 +5,8 @@ import type {
   AuditLogCredentialRevokedInput,
   AuditLogInput,
 } from "@trigger.dev/plugins";
+import { Prisma } from "@trigger.dev/database";
+import { FEATURE_FLAG } from "~/v3/featureFlags";
 
 /**
  * An in-memory audit log plugin that keeps what the host sends it. `calls` keeps the order of
@@ -61,7 +63,7 @@ export function installAuditLogPlugin({
 const auditRecording = { enabled: false };
 
 /**
- * The webapp `env` with the audit recording flag answered here, so a test never changes the real
+ * The webapp `env` with the audit recording switch answered here, so a test never changes the real
  * one. A test file that records events mocks `env` with it:
  * `vi.mock("~/env.server", async (original) => (await import("./helpers/auditLogPlugin")).auditRecordingEnv(await original()))`.
  */
@@ -77,19 +79,47 @@ export function auditRecordingEnv<T extends { env: object }>(module: T): T {
   };
 }
 
+/** Drops the per-org recording flag's cache, so no answer leaks from one test into the next. */
+function resetAuditRecordingFlagCache() {
+  delete (globalThis as any).__trigger_singletons?.auditRecordingFlag;
+}
+
 /**
- * Turns event recording on, as `AUDIT_LOGS_RECORDING_ENABLED` does, in a test file whose `env` is
- * mocked with `auditRecordingEnv`; returns the function that turns it back off. The host reads the
- * flag on every call, so this works after the modules have loaded.
+ * Turns event recording on for every org, through the real gate: `AUDIT_LOGS_RECORDING_ENABLED`
+ * in a test file whose `env` is mocked with `auditRecordingEnv`, and the global
+ * `auditLogsRecording` flag row in the database `~/db.server` connects to. An org's own override
+ * still wins. Returns the function that puts both back. The host reads them on every call (the
+ * flag through a cache this resets), so this works after the modules have loaded.
  */
-export async function enableAuditRecording(): Promise<() => void> {
+export async function enableAuditRecording(): Promise<() => Promise<void>> {
+  const { prisma } = await import("~/db.server");
+  const key = FEATURE_FLAG.auditLogsRecording;
+  const previousRow = await prisma.featureFlag.findFirst({ where: { key } });
+  await prisma.featureFlag.upsert({
+    where: { key },
+    create: { key, value: true },
+    update: { value: true },
+  });
   const previous = auditRecording.enabled;
   auditRecording.enabled = true;
-  return () => {
+  resetAuditRecordingFlagCache();
+
+  return async () => {
     auditRecording.enabled = previous;
+    if (previousRow) {
+      const value = previousRow.value ?? Prisma.JsonNull;
+      await prisma.featureFlag.update({
+        where: { key },
+        data: { value: value as Prisma.InputJsonValue | typeof Prisma.JsonNull },
+      });
+    } else {
+      await prisma.featureFlag.deleteMany({ where: { key } });
+    }
+    resetAuditRecordingFlagCache();
   };
 }
 
 export function uninstallAuditLogPlugin() {
   delete (globalThis as any).__trigger_singletons?.auditLogController;
+  resetAuditRecordingFlagCache();
 }
