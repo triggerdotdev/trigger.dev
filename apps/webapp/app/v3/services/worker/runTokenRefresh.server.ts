@@ -79,6 +79,8 @@ export type RunTokenRefreshRequest = {
   snapshotFriendlyId: string;
   /** Verified workload environment, when the supervisor forwarded one. */
   environmentId?: string;
+  /** Run claim of a verified sandbox token, when the supervisor forwarded one. */
+  sandboxRunId?: string;
   findRun: FindRunForRefresh;
   replica: PrismaClientOrTransaction;
   now?: Date;
@@ -116,7 +118,14 @@ export async function refreshRunTokenOnHeartbeat(
 }
 
 async function issue(
-  { heartbeat, snapshotFriendlyId, environmentId, findRun, replica }: RunTokenRefreshRequest,
+  {
+    heartbeat,
+    snapshotFriendlyId,
+    environmentId,
+    sandboxRunId,
+    findRun,
+    replica,
+  }: RunTokenRefreshRequest,
   trigger: RunTokenRefreshTrigger
 ): Promise<IssueOutcome> {
   if (!env.RUN_TOKEN_ISSUER_URL) return { result: "skipped", reason: "injection_disabled" };
@@ -149,6 +158,10 @@ async function issue(
   }
 
   const { environment, taskIdentifier, deploymentFriendlyId, pinned } = identity;
+  // A policy run's token is only refreshed for the sandbox runner created for that run.
+  if (pinned && sandboxRunId !== run.friendlyId) {
+    return { result: "skipped", reason: "identity_mismatch" };
+  }
   // A policy run has no root key, so its token is refreshed whatever the injection flag says.
   if (!pinned && !runTokenInjectionEnabled(environment.organization.featureFlags)) {
     return { result: "skipped", reason: "injection_disabled" };

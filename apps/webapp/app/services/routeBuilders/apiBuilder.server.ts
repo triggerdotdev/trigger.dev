@@ -2015,6 +2015,7 @@ type WorkerActionHandlerFunction<
     : undefined;
   runnerId?: string;
   environmentId?: string;
+  sandboxRunId?: string;
 }) => Promise<Response>;
 
 export function createActionWorkerApiRoute<
@@ -2120,6 +2121,7 @@ export function createActionWorkerApiRoute<
       const runnerId = request.headers.get(WORKER_HEADERS.RUNNER_ID) ?? undefined;
       // `|| undefined` so a blank header can't become a zero-match snapshot filter (→ false reject).
       const environmentId = request.headers.get(WORKER_HEADERS.ENVIRONMENT_ID) || undefined;
+      const sandboxRunId = request.headers.get(WORKER_HEADERS.SANDBOX_RUN_ID) || undefined;
 
       const result = await handler({
         params: parsedParams,
@@ -2130,6 +2132,7 @@ export function createActionWorkerApiRoute<
         headers: parsedHeaders,
         runnerId,
         environmentId,
+        sandboxRunId,
       });
       return result;
     } catch (error) {

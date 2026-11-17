@@ -45,7 +45,7 @@ describe("WorkloadServer run heartbeat", () => {
     };
 
     const res = await fetch(
-      `${BASE}/api/v1/workload-actions/runs/run_1/snapshots/snap_1/heartbeat`,
+      `${BASE}/api/v1/workload-actions/runs/run_1/snapshots/snapshot_1/heartbeat`,
       {
         method: "POST",
         headers: { "content-type": "application/json", [WORKLOAD_HEADERS.RUNNER_ID]: "runner_1" },
@@ -57,9 +57,10 @@ describe("WorkloadServer run heartbeat", () => {
     expect(await res.json()).toEqual({ ok: true, runToken: "replacement-token" });
     expect(heartbeatRun).toHaveBeenLastCalledWith(
       "run_1",
-      "snap_1",
+      "snapshot_1",
       { runToken },
       "runner_1",
+      undefined,
       undefined
     );
   });

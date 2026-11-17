@@ -92,10 +92,12 @@ const checkpointCancelRequests = new Counter({
   registers: [register],
 });
 
+// Alphanumeric bodies cover nanoid, cuid, run-ops, and legacy base62 IDs.
+const WorkloadRunFriendlyId = z.string().regex(/^run_[a-zA-Z0-9]+$/);
 const WorkloadActionParams = z.compile(
   z.object({
-    runFriendlyId: z.string(),
-    snapshotFriendlyId: z.string(),
+    runFriendlyId: WorkloadRunFriendlyId,
+    snapshotFriendlyId: z.string().regex(/^snapshot_[a-zA-Z0-9]+$/),
   })
 );
 const WorkloadDebugParams = z.compile(WorkloadActionParams.pick({ runFriendlyId: true }));
@@ -132,12 +134,17 @@ type PreviousKeyCaller = {
   runCutoffMs?: number;
 };
 
+// A verified sandbox token is run-scoped even in log mode.
+function sandboxRunAllowed(
+  runFriendlyId: string,
+  claims: WorkloadDeploymentTokenClaims | undefined
+): boolean {
+  return claims?.execution_mode !== "SANDBOX" || claims.run === runFriendlyId;
+}
+
 function runFriendlyIdFromMessage(message: unknown): string {
   const friendlyId = (message as { run?: { friendlyId?: unknown } } | undefined)?.run?.friendlyId;
-  if (typeof friendlyId !== "string") {
-    throw new Error("Run event without a string run friendlyId");
-  }
-  return friendlyId;
+  return WorkloadRunFriendlyId.parse(friendlyId);
 }
 
 type WorkloadServerEvents = {
@@ -272,7 +279,8 @@ export class WorkloadServer extends EventEmitter<WorkloadServerEvents> {
    * Verify the deployment token from the workload deployment-id header and return the verified
    * environment_id to forward upstream. The env id is only forwarded in enforce mode: in log mode
    * we still verify + record metrics but attach no header (so the platform never scopes). Only
-   * enforce fails a request, and only for a present-but-invalid token; absent and legacy ids pass.
+   * enforce rejects invalid tokens; absent and legacy ids pass. Verified sandbox tokens are
+   * always restricted to their own run, including in log mode.
    *
    * `claims` are returned on any valid token, for local use only - never to scope the platform,
    * which is why environmentId stays gated on enforce.
@@ -282,7 +290,13 @@ export class WorkloadServer extends EventEmitter<WorkloadServerEvents> {
     runFriendlyId: string,
     completionSnapshotId?: string
   ): Promise<
-    { ok: true; environmentId?: string; claims?: WorkloadDeploymentTokenClaims } | { ok: false }
+    | {
+        ok: true;
+        environmentId?: string;
+        sandboxRunId?: string;
+        claims?: WorkloadDeploymentTokenClaims;
+      }
+    | { ok: false }
   > {
     if (!workloadTokensEnabled) {
       return this.secretProxy ? { ok: false } : { ok: true };
@@ -291,6 +305,10 @@ export class WorkloadServer extends EventEmitter<WorkloadServerEvents> {
     const result = await verifyDeploymentIdHeader(this.deploymentIdFromRequest(req), "http");
 
     if (result.outcome === "jwt_invalid" && workloadTokenEnforced) {
+      return { ok: false };
+    }
+
+    if (!sandboxRunAllowed(runFriendlyId, result.claims)) {
       return { ok: false };
     }
 
@@ -327,12 +345,12 @@ export class WorkloadServer extends EventEmitter<WorkloadServerEvents> {
       }
     }
 
+    const verified =
+      workloadTokenEnforced && result.outcome === "jwt_valid" ? result.claims : undefined;
     return {
       ok: true,
-      environmentId:
-        workloadTokenEnforced && result.outcome === "jwt_valid"
-          ? result.claims.environment_id
-          : undefined,
+      environmentId: verified?.environment_id,
+      sandboxRunId: verified?.execution_mode === "SANDBOX" ? verified.run : undefined,
       claims: result.outcome === "jwt_valid" ? result.claims : undefined,
     };
   }
@@ -649,7 +667,8 @@ export class WorkloadServer extends EventEmitter<WorkloadServerEvents> {
                           workerLane: this.workerStamp.workerLane,
                         },
                         this.runnerIdFromRequest(req),
-                        auth.environmentId
+                        auth.environmentId,
+                        auth.sandboxRunId
                       );
                       if (response.success && response.data.secretProxy) {
                         try {
@@ -829,7 +848,8 @@ export class WorkloadServer extends EventEmitter<WorkloadServerEvents> {
                       params.snapshotFriendlyId,
                       body,
                       this.runnerIdFromRequest(req),
-                      auth.environmentId
+                      auth.environmentId,
+                      auth.sandboxRunId
                     );
                     if (response.success) {
                       await this.secretProxy?.refresh(params.runFriendlyId, response.data.runToken);
@@ -1086,6 +1106,11 @@ export class WorkloadServer extends EventEmitter<WorkloadServerEvents> {
             "POST",
             async () => {
               const { req, reply, params, body } = ctx;
+              const auth = await this.authorizeWorkloadRequest(req, params.runFriendlyId);
+              if (!auth.ok) {
+                reply.empty(401);
+                return;
+              }
               reply.empty(204);
 
               // Redact TRIGGER_DEPLOYMENT_ID before relaying to the platform.
@@ -1113,6 +1138,7 @@ export class WorkloadServer extends EventEmitter<WorkloadServerEvents> {
       // per request) but sheds the request at minimal cost. Request metrics still
       // count it. 204 is non-retryable on the runner client, so no retry storm.
       httpServer.route("/api/v1/workload-actions/runs/:runFriendlyId/logs/debug", "POST", {
+        paramsSchema: WorkloadDebugParams,
         skipBodyParsing: true,
         handler: async (ctx) => {
           ctx.reply.empty(204);
@@ -1242,6 +1268,7 @@ export class WorkloadServer extends EventEmitter<WorkloadServerEvents> {
       };
 
       const runConnected = (friendlyId: string) => {
+        if (!sandboxRunAllowed(friendlyId, socket.data.workloadTokenClaims)) return;
         socketLogger.debug("runConnected", { ...getSocketMetadata() });
 
         // Only the owning runner may (re)bind a run. A live socket from a *different*
@@ -1288,6 +1315,7 @@ export class WorkloadServer extends EventEmitter<WorkloadServerEvents> {
       };
 
       const runDisconnected = (friendlyId: string, reason: string) => {
+        if (!sandboxRunAllowed(friendlyId, socket.data.workloadTokenClaims)) return;
         socketLogger.debug("runDisconnected", { ...getSocketMetadata() });
 
         // A newer socket may have taken over this run (same-runner reconnect race). If the

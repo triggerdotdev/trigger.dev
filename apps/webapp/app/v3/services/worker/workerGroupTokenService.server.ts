@@ -600,12 +600,14 @@ export class AuthenticatedWorkerInstance extends WithRunEngine {
     snapshotFriendlyId,
     runnerId,
     environmentId,
+    sandboxRunId,
     runTokenReport,
   }: {
     runFriendlyId: string;
     snapshotFriendlyId: string;
     runnerId?: string;
     environmentId?: string;
+    sandboxRunId?: string;
     runTokenReport?: RunTokenHeartbeatReport;
   }): Promise<{ runToken?: string }> {
     const heartbeat = await this._engine.heartbeatRun({
@@ -620,6 +622,7 @@ export class AuthenticatedWorkerInstance extends WithRunEngine {
       heartbeat,
       snapshotFriendlyId,
       environmentId,
+      sandboxRunId,
       findRun: (runId) =>
         this._engine.runStore.findRun(
           { id: runId },
@@ -646,6 +649,7 @@ export class AuthenticatedWorkerInstance extends WithRunEngine {
     workerLane,
     runnerId,
     environmentId,
+    sandboxRunId,
     supportsRunTokenRefresh,
     supportsSecretProxy,
   }: {
@@ -656,6 +660,7 @@ export class AuthenticatedWorkerInstance extends WithRunEngine {
     workerLane?: string;
     runnerId?: string;
     environmentId?: string;
+    sandboxRunId?: string;
     supportsRunTokenRefresh?: boolean;
     supportsSecretProxy?: boolean;
   }): Promise<
@@ -685,13 +690,17 @@ export class AuthenticatedWorkerInstance extends WithRunEngine {
     const prepared = { ...resolved, variables: withoutRootKey(pinned, resolved.variables) };
 
     const runTokenSupported = supportsRunTokenRefresh === true && environmentId === environment.id;
-    if (pinned && (!runTokenSupported || isWarmStart === true)) {
+    if (pinned && !runTokenSupported) {
       throw json(
-        {
-          error: isWarmStart
-            ? "Runs with an execution policy cannot warm start"
-            : "This run's execution policy needs a worker that supports run tokens",
-        },
+        { error: "This run's execution policy needs a worker that supports run tokens" },
+        { status: 409, headers: { "x-should-retry": "false" } }
+      );
+    }
+    // The supervisor forwards the run claim only from a verified sandbox token, so a policy run
+    // starts only in the runner created for it, never in a warm or standard one.
+    if (pinned && sandboxRunId !== runFriendlyId) {
+      throw json(
+        { error: "Runs with an execution policy start only in their own sandbox runner" },
         { status: 409, headers: { "x-should-retry": "false" } }
       );
     }

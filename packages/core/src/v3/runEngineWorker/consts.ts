@@ -6,6 +6,9 @@ export const WORKER_HEADERS = {
   // Verified environment id recovered from the deployment token. Set by the supervisor only when
   // enforcing; the platform scopes the worker-action's snapshot read by it.
   ENVIRONMENT_ID: "x-trigger-worker-environment-id",
+  // Run claim of a verified sandbox deployment token. Set by the supervisor only when enforcing;
+  // the platform starts a pinned run, or refreshes its token, only for its own sandbox token.
+  SANDBOX_RUN_ID: "x-trigger-worker-sandbox-run-id",
 };
 
 export const WORKLOAD_HEADERS = {

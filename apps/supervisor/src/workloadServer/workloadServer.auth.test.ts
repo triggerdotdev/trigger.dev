@@ -93,7 +93,7 @@ function snapshotsSince(deploymentIdHeader?: string, runId = "run_1") {
   if (deploymentIdHeader !== undefined) {
     headers[WORKLOAD_HEADERS.DEPLOYMENT_ID] = deploymentIdHeader;
   }
-  return fetch(`${BASE}/api/v1/workload-actions/runs/${runId}/snapshots/since/snap_1`, {
+  return fetch(`${BASE}/api/v1/workload-actions/runs/${runId}/snapshots/since/snapshot_1`, {
     headers,
   });
 }
@@ -263,7 +263,7 @@ describe("WorkloadServer auth with a previous key (enforce cutoff)", () => {
       const message = (friendlyId: string) => ({
         version: "1" as const,
         run: { friendlyId },
-        snapshot: { friendlyId: "snap_1" },
+        snapshot: { friendlyId: "snapshot_1" },
       });
 
       const beforeBound = new Promise<void>((resolve) =>
@@ -316,8 +316,8 @@ describe("WorkloadServer auth with a previous key (enforce cutoff)", () => {
       try {
         await new Promise<void>((resolve) => client.once("connect", () => resolve()));
         const malformed: unknown[] = [
-          { version: "1", snapshot: { friendlyId: "snap_1" } },
-          { version: "1", run: { friendlyId: 123 }, snapshot: { friendlyId: "snap_1" } },
+          { version: "1", snapshot: { friendlyId: "snapshot_1" } },
+          { version: "1", run: { friendlyId: 123 }, snapshot: { friendlyId: "snapshot_1" } },
         ];
         const emitRaw = client.emit.bind(client) as (event: string, payload: unknown) => void;
         for (const payload of malformed) {
@@ -330,7 +330,7 @@ describe("WorkloadServer auth with a previous key (enforce cutoff)", () => {
         client.emit("run:start", {
           version: "1",
           run: { friendlyId: validRun },
-          snapshot: { friendlyId: "snap_1" },
+          snapshot: { friendlyId: "snapshot_1" },
         });
         await bound;
 

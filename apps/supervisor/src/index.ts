@@ -11,7 +11,7 @@ import type {
 } from "./workloadManager/types.js";
 import Docker from "dockerode";
 import { z } from "zod";
-import { type DequeuedMessage } from "@trigger.dev/core/v3";
+import { type DequeuedMessage, isSandboxRun } from "@trigger.dev/core/v3";
 import {
   DockerResourceMonitor,
   KubernetesResourceMonitor,
@@ -808,6 +808,9 @@ class ManagedSupervisor {
       environment_type: message.environment.type,
       org_id: message.organization.id,
       project_id: message.project.id,
+      ...(isSandboxRun(message.run.annotations)
+        ? { execution_mode: "SANDBOX" as const, run: message.run.friendlyId }
+        : {}),
     });
 
     return {

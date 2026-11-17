@@ -161,6 +161,21 @@ describe("supervisor worker actions", () => {
     }
   );
 
+  // Catches: fetch normalizing caller-controlled IDs into a different run's action URL.
+  it("keeps run and snapshot IDs within their path segments", async () => {
+    answer = { status: 200, body: { ok: true, requeued: true } };
+    const client = new SupervisorHttpClient({ apiUrl, workerToken: "token", instanceName: "test" });
+
+    await client.releaseRun("run_own/../run_other", "..\\..\\run_other?snapshot#x", {
+      reason: "PodFailed",
+    });
+
+    expect(received).toHaveLength(1);
+    expect(received[0]?.url).toBe(
+      "/engine/v1/worker-actions/runs/run_own%2F..%2Frun_other/snapshots/..%5C..%5Crun_other%3Fsnapshot%23x/release"
+    );
+  });
+
   function release() {
     const client = new SupervisorHttpClient({ apiUrl, workerToken: "token", instanceName: "test" });
     return client.releaseRun("run_1", "snapshot_1", { reason: "PodFailed" }, "runner_1", "env_1");

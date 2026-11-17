@@ -2,9 +2,9 @@ import { z } from "zod/v4";
 import { generateJWT, validateJWT } from "./jwt.js";
 
 /**
- * Signed, deployment-scoped token carried in the TRIGGER_DEPLOYMENT_ID env var to identify a run
- * controller. Long-lived identity token, not a rotating credential; the `ver` claim allows a future
- * format revision.
+ * Signed token carried in TRIGGER_DEPLOYMENT_ID to identify a run controller. Deployment-scoped
+ * by default and run-scoped for sandboxes. Long-lived identity token, not a rotating credential;
+ * the `ver` claim allows a future format revision.
  */
 export const WORKLOAD_DEPLOYMENT_TOKEN_VERSION = 1 as const;
 
@@ -17,6 +17,8 @@ export const WorkloadDeploymentTokenClaims = z.object({
   environment_type: z.string(),
   org_id: z.string(),
   project_id: z.string(),
+  execution_mode: z.literal("SANDBOX").optional(),
+  run: z.string().optional(),
   exp: z.number(),
 });
 
@@ -26,9 +28,10 @@ export type WorkloadDeploymentTokenClaims = z.infer<typeof WorkloadDeploymentTok
 export type WorkloadDeploymentTokenInput = Omit<WorkloadDeploymentTokenClaims, "ver" | "exp">;
 
 /**
- * `expiresAtSeconds` is an absolute epoch (caller-supplied — the supervisor drives it). Combined with
- * the omitted `iat`, the token is byte-deterministic per deployment: identical claims mint identical
- * bytes, so the OTel `worker.id` the runner derives from it stays one value per deployment.
+ * `expiresAtSeconds` is an absolute epoch supplied by the supervisor. Combined with the omitted
+ * `iat`, minting is byte-deterministic: identical claims mint identical
+ * bytes, so standard runners keep one OTel `worker.id` per deployment. Sandbox tokens also include
+ * the run identity.
  */
 export async function mintWorkloadDeploymentToken(
   claims: WorkloadDeploymentTokenInput,
