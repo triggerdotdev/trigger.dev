@@ -12,7 +12,11 @@ type ReceivedRequest = {
   body: unknown;
 };
 
-describe("public token API key routing", () => {
+// Catches: root credentials bypassing server authorization by signing public tokens locally.
+describe.each([
+  ["root", "tr_prod_0123456789abcdefghijklmn"],
+  ["additional", "tr_prod_sk_0123456789abcdefghijklmn"],
+])("public token minting with %s keys", (_label, key) => {
   let server: Server;
   let baseUrl: string;
   let requests: ReceivedRequest[];
@@ -37,8 +41,7 @@ describe("public token API key routing", () => {
     await new Promise<void>((resolve) => server.close(() => resolve()));
   });
 
-  it("uses server minting for additional keys", async () => {
-    const key = "tr_prod_sk_0123456789abcdefghijklmn";
+  it("uses server minting with Date expiration and realtime options", async () => {
     const expiresAt = Math.floor(Date.now() / 1000) + 3600;
     const token = await apiClientManager.runWithConfig({ baseURL: baseUrl, accessToken: key }, () =>
       auth.createPublicToken({
@@ -64,7 +67,6 @@ describe("public token API key routing", () => {
   });
 
   it("server-mints trigger tokens with one-time-use semantics", async () => {
-    const key = "tr_dev_sk_0123456789abcdefghijklmn";
     await apiClientManager.runWithConfig({ baseURL: baseUrl, accessToken: key }, () =>
       auth.createTriggerPublicToken(["task-one", "task-two"], { multipleUse: true })
     );
@@ -75,8 +77,7 @@ describe("public token API key routing", () => {
     });
   });
 
-  it("server-mints batch trigger tokens for additional keys", async () => {
-    const key = "tr_stg_sk_0123456789abcdefghijklmn";
+  it("server-mints batch trigger tokens", async () => {
     await apiClientManager.runWithConfig({ baseURL: baseUrl, accessToken: key }, () =>
       auth.createBatchTriggerPublicToken("batch-task", {
         expirationTime: "2h",
@@ -101,7 +102,6 @@ describe("public token API key routing", () => {
   });
 
   it.each(["", "   "])("rejects an explicitly empty resource ID", async (runId) => {
-    const key = "tr_prod_0123456789abcdefghijklmn";
     const promise = apiClientManager.runWithConfig({ baseURL: baseUrl, accessToken: key }, () =>
       auth.createPublicToken({ scopes: { read: { runs: [runId] } } })
     );
@@ -111,7 +111,6 @@ describe("public token API key routing", () => {
   });
 
   it("preserves nonempty resource IDs exactly", async () => {
-    const key = "tr_prod_sk_0123456789abcdefghijklmn";
     await apiClientManager.runWithConfig({ baseURL: baseUrl, accessToken: key }, () =>
       auth.createPublicToken({ scopes: { read: { tags: [" env:staging "] } } })
     );
@@ -119,44 +118,11 @@ describe("public token API key routing", () => {
     expect(requests[0]?.body).toEqual({ scopes: ["read:tags: env:staging "] });
   });
 
-  it("keeps root key self-minting unchanged", async () => {
-    const key = "tr_prod_0123456789abcdefghijklmn";
-    const token = await apiClientManager.runWithConfig({ baseURL: baseUrl, accessToken: key }, () =>
-      auth.createPublicToken({ scopes: { read: { runs: true } } })
-    );
-
-    expect(requests.map((request) => request.url)).toEqual(["/api/v1/auth/jwt/claims"]);
-    const validation = await validateJWT(token, key);
-    expect(validation.ok).toBe(true);
-    if (!validation.ok) return;
-    expect(validation.payload).toMatchObject({
-      sub: "env_test",
-      pub: true,
-      scopes: ["read:runs"],
-    });
-  });
-
   it.each([
     ["no options at all", undefined],
     ["an empty scopes object", {}],
     ["a scope group with nothing selected", { read: {} }],
-  ])("keeps root-key behavior unchanged for %s", async (_label, scopes) => {
-    const key = "tr_prod_0123456789abcdefghijklmn";
-    const token = await apiClientManager.runWithConfig({ baseURL: baseUrl, accessToken: key }, () =>
-      auth.createPublicToken(scopes === undefined ? undefined : { scopes })
-    );
-
-    expect(requests.map((request) => request.url)).toEqual(["/api/v1/auth/jwt/claims"]);
-    const validation = await validateJWT(token, key);
-    expect(validation.ok).toBe(true);
-  });
-
-  it.each([
-    ["no options at all", undefined],
-    ["an empty scopes object", {}],
-    ["a scope group with nothing selected", { read: {} }],
-  ])("server-mints zero-permission tokens for additional keys with %s", async (_label, scopes) => {
-    const key = "tr_prod_sk_0123456789abcdefghijklmn";
+  ])("server-mints zero-permission tokens with %s", async (_label, scopes) => {
     const token = await apiClientManager.runWithConfig({ baseURL: baseUrl, accessToken: key }, () =>
       auth.createPublicToken(scopes === undefined ? undefined : { scopes })
     );
@@ -172,17 +138,74 @@ describe("public token API key routing", () => {
     ]);
   });
 
-  it("explains how to recover when the server lacks the mint endpoint", async () => {
+  // Catches: wrappers minting with or retaining the secret credential instead of the public token.
+  it("scopes all three wrappers to the server-minted token and restores the caller", async () => {
+    await auth.withAuth({ baseURL: baseUrl, accessToken: key }, async () => {
+      const checkToken = async () => {
+        expect(apiClientManager.clientOrThrow().getAccessToken("retrieveRun")).toBe(
+          "server-minted-token"
+        );
+      };
+      await auth.withPublicToken({ scopes: { read: { runs: true } } }, checkToken);
+      await auth.withTriggerPublicToken("task-one", {}, checkToken);
+      await auth.withBatchTriggerPublicToken("task-one", {}, checkToken);
+      expect(apiClientManager.clientOrThrow().getAccessToken("retrieveRun")).toBe(key);
+    });
+    expect(requests.map(({ url, authorization }) => ({ url, authorization }))).toEqual(
+      Array(3).fill({
+        url: "/api/v1/auth/public-tokens",
+        authorization: `Bearer ${key}`,
+      })
+    );
+  });
+
+  // Catches: authorization or server failures bypassed by retrying a local-signing path.
+  it.each([401, 403, 500])(
+    "propagates mint failures without local signing (%s)",
+    async (status) => {
+      publicTokenStatus = status;
+      await auth.withAuth(
+        {
+          baseURL: baseUrl,
+          accessToken: key,
+          requestOptions: { retry: { maxAttempts: 1 } },
+        },
+        async () => {
+          await expect(auth.createPublicToken()).rejects.toMatchObject({ status });
+          await expect(auth.createTriggerPublicToken("task-one")).rejects.toMatchObject({ status });
+          await expect(auth.createBatchTriggerPublicToken("task-one")).rejects.toMatchObject({
+            status,
+          });
+        }
+      );
+      expect(requests.map(({ url }) => url)).toEqual(Array(3).fill("/api/v1/auth/public-tokens"));
+    }
+  );
+
+  it("falls back only for root keys when the server lacks the mint endpoint", async () => {
     publicTokenStatus = 404;
     const promise = apiClientManager.runWithConfig(
       {
         baseURL: baseUrl,
-        accessToken: "tr_prod_sk_0123456789abcdefghijklmn",
+        accessToken: key,
       },
       () => auth.createPublicToken({ scopes: { read: { runs: true } } })
     );
 
-    await expect(promise).rejects.toThrow("Upgrade the server or use the root API key");
+    if (_label === "root") {
+      const validation = await validateJWT(await promise, key);
+      expect(validation).toMatchObject({
+        ok: true,
+        payload: { sub: "env_test", pub: true, scopes: ["read:runs"] },
+      });
+      expect(requests.map(({ url }) => url)).toEqual([
+        "/api/v1/auth/public-tokens",
+        "/api/v1/auth/jwt/claims",
+      ]);
+    } else {
+      await expect(promise).rejects.toThrow("Upgrade your self-hosted server");
+      expect(requests.map(({ url }) => url)).toEqual(["/api/v1/auth/public-tokens"]);
+    }
   });
 });
 
@@ -204,9 +227,6 @@ async function handleRequest(
     body: rawBody ? JSON.parse(rawBody) : undefined,
   });
 
-  if (request.url === "/api/v1/auth/jwt/claims") {
-    return json(response, { sub: "env_test", pub: true });
-  }
   if (request.url === "/api/v1/auth/public-tokens") {
     const status = publicTokenStatus();
     return json(
@@ -214,6 +234,10 @@ async function handleRequest(
       status === 200 ? { token: "server-minted-token" } : { error: "Not found" },
       status
     );
+  }
+
+  if (request.url === "/api/v1/auth/jwt/claims") {
+    return json(response, { sub: "env_test", pub: true });
   }
 
   return json(response, { error: "Not found" }, 404);

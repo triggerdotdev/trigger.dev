@@ -248,11 +248,11 @@ export class APIClientManagerAPI {
     const hasBaseUrl = !!this.baseURL;
     const hasAccessToken = !!this.accessToken;
     if (!hasBaseUrl && !hasAccessToken) {
-      return `You need to set the TRIGGER_API_URL and TRIGGER_SECRET_KEY environment variables. See https://trigger.dev/docs/management/overview#authentication`;
+      return `Configure the SDK with configure({ baseURL, accessToken }) before making API calls. See https://trigger.dev/docs/management/overview#authentication`;
     } else if (!hasBaseUrl) {
       return `You need to set the TRIGGER_API_URL environment variable. See https://trigger.dev/docs/management/overview#authentication`;
     } else if (!hasAccessToken) {
-      return `You need to set the TRIGGER_SECRET_KEY environment variable. See https://trigger.dev/docs/management/overview#authentication`;
+      return `Configure the SDK with configure({ accessToken }) before making API calls. See https://trigger.dev/docs/management/overview#authentication`;
     }
 
     return `Unknown error`;

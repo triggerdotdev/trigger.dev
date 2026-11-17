@@ -1,4 +1,5 @@
 import { buildJwtAbility } from "@trigger.dev/rbac";
+import { generateJWT } from "@trigger.dev/core/v3/jwt";
 import { decodeJwt } from "jose";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -128,11 +129,19 @@ describe("dashboard agent `in` proxy — who may append to the session", () => {
       mintDashboardAgentAppendToken: (chatId: string) => Promise<string>;
     }>("~/services/dashboardAgent.server");
     mocks.fetch.mockReset();
-    mocks.fetch.mockImplementation(async (url: string) =>
-      String(url).endsWith("/api/v1/auth/jwt/claims")
-        ? Response.json({ sub: "env_agent", pub: true })
-        : Response.json({ ok: true })
-    );
+    mocks.fetch.mockImplementation(async (url: string, init?: RequestInit) => {
+      if (String(url).endsWith("/api/v1/auth/public-tokens")) {
+        const body = JSON.parse(String(init?.body));
+        return Response.json({
+          token: await generateJWT({
+            secretKey: "tr_dev_agent_secret",
+            payload: { sub: "env_agent", pub: true, scopes: body.scopes },
+            expirationTime: body.expirationTime,
+          }),
+        });
+      }
+      return Response.json({ ok: true });
+    });
     vi.stubGlobal("fetch", mocks.fetch);
     mocks.mint.mockReset();
     mocks.mint.mockResolvedValue("tr_uat_real");

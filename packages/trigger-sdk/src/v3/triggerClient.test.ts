@@ -54,7 +54,7 @@ describe("TriggerClient", () => {
 
   it("throws on first API call when no accessToken is configured anywhere", () => {
     const client = new TriggerClient();
-    expect(() => client.runs.list({ limit: 1 })).toThrow(/TRIGGER_SECRET_KEY/);
+    expect(() => client.runs.list({ limit: 1 })).toThrow(/configure\(\{ accessToken \}\)/);
   });
 
   it("falls back to env vars when constructor config is empty", async () => {

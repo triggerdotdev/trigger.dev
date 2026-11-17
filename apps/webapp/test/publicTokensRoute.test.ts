@@ -82,17 +82,14 @@ function telemetryRecorder(): ApiKeyTelemetry {
 
 describe("POST /api/v1/auth/public-tokens", () => {
   it("lets root and unrestricted additional keys mint arbitrary scopes", async () => {
-    const graceWindowLookup = vi.fn().mockResolvedValue(false);
-
     for (const controller of [
       controllerWithAbility(permissiveAbility, "root"),
       controllerWithAbility(permissiveAbility, "additional"),
     ]) {
       const response = await handlePublicTokenRequest(
-        request({ scopes: ["read:runs", "custom:resources:value"] }),
+        request({ scopes: ["read:runs", "custom:resources:value"] }, environment.apiKey),
         controller,
-        telemetryRecorder(),
-        graceWindowLookup
+        telemetryRecorder()
       );
       expect(response.status).toBe(200);
 
@@ -106,20 +103,12 @@ describe("POST /api/v1/auth/public-tokens", () => {
         scopes: ["read:runs", "custom:resources:value"],
       });
     }
-
-    expect(graceWindowLookup).toHaveBeenCalledTimes(1);
-    expect(graceWindowLookup).toHaveBeenCalledWith("tr_prod_test");
   });
 
   it("delegates run-token abilities with the existing public-token lifetime", async () => {
-    const graceWindowLookup = async () => {
-      throw new Error("Run tokens must not use the root-key grace lookup");
-    };
     const response = await handlePublicTokenRequest(
       request({ scopes: ["read:runs:run_other"], oneTimeUse: true }, undefined, "25d"),
-      controllerWithAbility(buildJwtAbility(runTokenScopes()), "run"),
-      undefined,
-      graceWindowLookup
+      controllerWithAbility(buildJwtAbility(runTokenScopes()), "run")
     );
 
     expect(response.status).toBe(200);
@@ -142,37 +131,6 @@ describe("POST /api/v1/auth/public-tokens", () => {
       controllerWithAbility(buildJwtAbility(["write:runs:run_test"]), "run")
     );
     expect(denied.status).toBe(403);
-  });
-
-  it("rejects root keys in their rotation grace window", async () => {
-    const telemetry = telemetryRecorder();
-    const graceWindowLookup = vi.fn().mockResolvedValue(true);
-    const response = await handlePublicTokenRequest(
-      request({ scopes: ["read:runs"] }),
-      controllerWithAbility(permissiveAbility, "root"),
-      telemetry,
-      graceWindowLookup
-    );
-
-    expect(response.status).toBe(401);
-    await expect(responseJson(response)).resolves.toEqual({ error: "Invalid API key" });
-    expect(graceWindowLookup).toHaveBeenCalledTimes(1);
-    expect(graceWindowLookup).toHaveBeenCalledWith("tr_prod_test");
-    expect(telemetry.recordPublicTokenMint).toHaveBeenCalledTimes(1);
-    expect(telemetry.recordPublicTokenMint).toHaveBeenCalledWith("rejected", "revoked_key");
-  });
-
-  it("does not apply the root rotation check to additional keys", async () => {
-    const graceWindowLookup = vi.fn().mockResolvedValue(true);
-    const response = await handlePublicTokenRequest(
-      request({ scopes: ["read:runs"] }),
-      controllerWithAbility(permissiveAbility, "additional"),
-      telemetryRecorder(),
-      graceWindowLookup
-    );
-
-    expect(response.status).toBe(200);
-    expect(graceWindowLookup).not.toHaveBeenCalled();
   });
 
   it("records successful and rejected mint outcomes", async () => {

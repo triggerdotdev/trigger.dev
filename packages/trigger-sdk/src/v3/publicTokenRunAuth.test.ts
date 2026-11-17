@@ -1,7 +1,6 @@
 import { createServer, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
 import { apiClientManager } from "@trigger.dev/core/v3";
-import { validateJWT } from "@trigger.dev/core/v3/jwt";
 import { runInMockTaskContext } from "@trigger.dev/core/v3/test";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { chat } from "./ai.js";
@@ -72,9 +71,6 @@ describe("public token minting with run credentials", () => {
         case "/api/v1/auth/public-tokens":
           status = publicTokenStatus;
           body = status === 200 ? { token: "server-minted-token" } : { error: "Not found" };
-          break;
-        case "/api/v1/auth/jwt/claims":
-          body = { sub: "env_test", pub: true };
           break;
         case "/api/v1/sessions":
           body = {
@@ -210,7 +206,8 @@ describe("public token minting with run credentials", () => {
       );
     }));
 
-  it("keeps explicit root-key signing for all three helpers despite a default run token", async () =>
+  // Catches: explicit root credentials bypassing server minting despite ambient run credentials.
+  it("server-mints all three helpers with an explicit root key despite a default run token", async () =>
     runInMockTaskContext(async () => {
       const tokens = await auth.withAuth({ accessToken: ROOT_KEY }, async () => [
         await auth.createPublicToken({ scopes: { read: { runs: true } } }),
@@ -218,18 +215,18 @@ describe("public token minting with run credentials", () => {
         await auth.createBatchTriggerPublicToken("task-one", { multipleUse: true }),
       ]);
 
-      expect(requests.map(({ url, authorization }) => ({ url, authorization }))).toEqual(
-        tokens.map(() => ({
-          url: "/api/v1/auth/jwt/claims",
+      expect(tokens).toEqual(Array(3).fill("server-minted-token"));
+      expect(requests).toEqual(
+        [
+          { scopes: ["read:runs"] },
+          { scopes: ["trigger:tasks:task-one"], oneTimeUse: true },
+          { scopes: ["batchTrigger:tasks:task-one"], oneTimeUse: false },
+        ].map((body) => ({
+          url: "/api/v1/auth/public-tokens",
           authorization: `Bearer ${ROOT_KEY}`,
+          body,
         }))
       );
-      for (const token of tokens) {
-        expect(await validateJWT(token, ROOT_KEY)).toMatchObject({
-          ok: true,
-          payload: { sub: "env_test", pub: true },
-        });
-      }
     }));
 
   it("preserves explicit additional-key server minting despite a default run token", async () =>
@@ -266,14 +263,18 @@ describe("public token minting with run credentials", () => {
     })
   );
 
-  it("lets an explicit root key sign public tokens longer than 30 days locally", async () =>
+  it("forwards explicit root-key expiration to the server without changing its units", async () =>
     runInMockTaskContext(async () => {
-      const token = await auth.withAuth({ accessToken: ROOT_KEY }, () =>
+      await auth.withAuth({ accessToken: ROOT_KEY }, () =>
         auth.createPublicToken({ scopes: { read: { runs: "run_child" } }, expirationTime: "90d" })
       );
-      const { exp } = JSON.parse(Buffer.from(token.split(".")[1]!, "base64url").toString());
-      expect(exp - Math.floor(Date.now() / 1000)).toBeGreaterThan(89 * 24 * 60 * 60);
-      expect(requests.map((request) => request.url)).toEqual(["/api/v1/auth/jwt/claims"]);
+      expect(requests).toEqual([
+        {
+          url: "/api/v1/auth/public-tokens",
+          authorization: `Bearer ${ROOT_KEY}`,
+          body: { scopes: ["read:runs:run_child"], expirationTime: "90d" },
+        },
+      ]);
     }));
 
   it("server-mints scope-less tokens with explicit run and additional credentials", async () =>
@@ -292,14 +293,24 @@ describe("public token minting with run credentials", () => {
       );
     }));
 
-  it("does not fall back to local signing when server minting is unavailable", async () =>
-    runInMockTaskContext(async () => {
-      publicTokenStatus = 404;
-      await expect(
-        auth.createPublicToken({ scopes: { read: { runs: "run_child" } } })
-      ).rejects.toThrow("This run token cannot self-sign public tokens");
-      expect(requests.map(({ url }) => url)).toEqual(["/api/v1/auth/public-tokens"]);
-    }));
+  it.each([401, 403, 404, 500])(
+    "does not fall back from run credentials when minting fails (%s)",
+    async (status) =>
+      runInMockTaskContext(async () => {
+        publicTokenStatus = status;
+        const result = auth.withAuth({ requestOptions: { retry: { maxAttempts: 1 } } }, () =>
+          auth.createPublicToken({ scopes: { read: { runs: "run_child" } } })
+        );
+        if (status === 404) {
+          await expect(result).rejects.toThrow("Upgrade your self-hosted server");
+        } else {
+          await expect(result).rejects.toMatchObject({ status });
+        }
+        expect(requests.map(({ url, authorization }) => ({ url, authorization }))).toEqual([
+          { url: "/api/v1/auth/public-tokens", authorization: `Bearer ${RUN_TOKEN}` },
+        ]);
+      })
+  );
 
   it.each([
     ["default run token", undefined, RUN_TOKEN],
@@ -374,7 +385,7 @@ describe("public token minting with run credentials", () => {
 
   it.each([
     ["default run token", undefined, RUN_TOKEN, "/api/v1/auth/public-tokens"],
-    ["explicit root key", ROOT_KEY, ROOT_KEY, "/api/v1/auth/jwt/claims"],
+    ["explicit root key", ROOT_KEY, ROOT_KEY, "/api/v1/auth/public-tokens"],
     ["explicit additional key", ADDITIONAL_KEY, ADDITIONAL_KEY, "/api/v1/auth/public-tokens"],
   ])("routes direct chat-start minting with %s", async (_label, explicitKey, key, endpoint) =>
     runInMockTaskContext(async () => {
@@ -387,20 +398,11 @@ describe("public token minting with run credentials", () => {
 
       expect(requests.map(({ url }) => url)).toEqual(["/api/v1/sessions", endpoint]);
       expect(requests[1]?.authorization).toBe(`Bearer ${key}`);
-      if (explicitKey === ROOT_KEY) {
-        expect(await validateJWT(result.publicAccessToken, ROOT_KEY)).toMatchObject({
-          ok: true,
-          payload: {
-            scopes: ["read:sessions:chat-test", "write:sessions:chat-test"],
-          },
-        });
-      } else {
-        expect(result.publicAccessToken).toBe("server-minted-token");
-        expect(requests[1]?.body).toEqual({
-          scopes: ["read:sessions:chat-test", "write:sessions:chat-test"],
-          expirationTime: "2h",
-        });
-      }
+      expect(result.publicAccessToken).toBe("server-minted-token");
+      expect(requests[1]?.body).toEqual({
+        scopes: ["read:sessions:chat-test", "write:sessions:chat-test"],
+        expirationTime: "2h",
+      });
     })
   );
 });

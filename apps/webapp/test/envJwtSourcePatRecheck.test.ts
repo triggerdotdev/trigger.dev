@@ -4,7 +4,7 @@
 // in a real Postgres, minted through the real exchange route; only the database client (pointed
 // at the test database) and a few env values are substituted.
 import type { PrismaClient } from "@trigger.dev/database";
-import { generateJWT } from "@trigger.dev/core/v3/jwt";
+import { generateJWT, validateJWT } from "@trigger.dev/core/v3/jwt";
 import { createSourcePersonalAccessTokenCodec, SOURCE_PAT_CHECK_TTL_MS } from "@trigger.dev/rbac";
 import { postgresTest } from "@internal/testcontainers";
 import { describe, expect, vi } from "vitest";
@@ -49,6 +49,8 @@ import { action as envJwtAction } from "~/routes/api.v1.projects.$projectRef.$en
 import { action as userActorTokenAction } from "~/routes/api.v1.auth.user-actor-token";
 import { validatePublicJwtKey } from "~/services/realtime/jwtAuth.server";
 import { rbac } from "~/services/rbac.server";
+import { handlePublicTokenRequest } from "~/services/publicTokens.server";
+import { generateRootApiKey } from "~/utils/apiKeys";
 import { createPersonalAccessToken } from "~/services/personalAccessToken.server";
 import {
   inheritedSourcePatClaim,
@@ -344,6 +346,102 @@ describe("a public JWT whose source PAT claim doesn't open", () => {
 
       expect(await accepted(jwt)).toEqual({ routeBuilder: false, realtime: false });
     });
+  }
+});
+
+describe("public tokens minted during root-key rotation", () => {
+  for (const branchName of [undefined, "root-rotation-branch"]) {
+    // Catches: an old root minting replacement-key tokens that survive grace or immediate revocation.
+    postgresTest(
+      `preserves revocation for ${branchName ? "a branch" : "the root environment"}`,
+      async ({ prisma }) => {
+        db.client = prisma;
+        const { environment: parent } = await seedTestUserProject(prisma);
+        let targetEnvironmentId = parent.id;
+        if (branchName) {
+          const branchKey = generateRootApiKey("DEVELOPMENT").apiKey;
+          const branch = await prisma.runtimeEnvironment.create({
+            data: {
+              slug: branchName,
+              type: "DEVELOPMENT",
+              branchName,
+              parentEnvironmentId: parent.id,
+              projectId: parent.projectId,
+              organizationId: parent.organizationId,
+              orgMemberId: parent.orgMemberId,
+              apiKey: branchKey,
+              pkApiKey: branchKey.replace(/^tr_/, "pk_"),
+              shortcode: branchKey.slice(-8),
+            },
+          });
+          targetEnvironmentId = branch.id;
+        }
+
+        const mint = (key: string) =>
+          handlePublicTokenRequest(
+            new Request("https://api.example.test/api/v1/auth/public-tokens", {
+              method: "POST",
+              headers: {
+                Authorization: `Bearer ${key}`,
+                "Content-Type": "application/json",
+                ...(branchName ? { "x-trigger-branch": branchName } : {}),
+              },
+              body: JSON.stringify({ scopes: ["read:runs"], expirationTime: "1h" }),
+            })
+          );
+        const mintToken = async (key: string) => {
+          const response = await mint(key);
+          expect(response.status).toBe(200);
+          return ((await response.json()) as { token: string }).token;
+        };
+
+        const oldKey = parent.apiKey;
+        const newKey = generateRootApiKey("DEVELOPMENT").apiKey;
+        await prisma.revokedApiKey.create({
+          data: {
+            apiKey: oldKey,
+            runtimeEnvironmentId: parent.id,
+            expiresAt: new Date(Date.now() + DAY_MS),
+          },
+        });
+        await prisma.runtimeEnvironment.update({
+          where: { id: parent.id },
+          data: { apiKey: newKey },
+        });
+
+        const oldToken = await mintToken(oldKey);
+        const newToken = await mintToken(newKey);
+        expect(await validateJWT(oldToken, oldKey)).toMatchObject({
+          ok: true,
+          payload: { sub: targetEnvironmentId },
+        });
+        expect((await validateJWT(oldToken, newKey)).ok).toBe(false);
+        expect(await accepted(oldToken)).toEqual({ routeBuilder: true, realtime: true });
+        expect(await accepted(newToken)).toEqual({ routeBuilder: true, realtime: true });
+
+        await prisma.revokedApiKey.updateMany({
+          where: { apiKey: oldKey, runtimeEnvironmentId: parent.id },
+          data: { expiresAt: new Date(Date.now() - 1) },
+        });
+        expect((await mint(oldKey)).status).toBe(401);
+        expect((await validateJWT(oldToken, oldKey)).ok).toBe(true);
+        expect(await accepted(oldToken)).toEqual({ routeBuilder: false, realtime: false });
+        expect(await accepted(newToken)).toEqual({ routeBuilder: true, realtime: true });
+
+        // Immediate rotation retains no grace entry for the key being replaced.
+        const immediateKey = generateRootApiKey("DEVELOPMENT").apiKey;
+        await prisma.runtimeEnvironment.update({
+          where: { id: parent.id },
+          data: { apiKey: immediateKey },
+        });
+        expect((await mint(newKey)).status).toBe(401);
+        expect(await accepted(newToken)).toEqual({ routeBuilder: false, realtime: false });
+        expect(await accepted(await mintToken(immediateKey))).toEqual({
+          routeBuilder: true,
+          realtime: true,
+        });
+      }
+    );
   }
 });
 
