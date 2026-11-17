@@ -1,6 +1,7 @@
 import { getMeter } from "@internal/tracing";
 import { ROOT_CONTEXT } from "@opentelemetry/api";
 import { isAdditionalApiKey } from "@trigger.dev/core/v3/apiKeys";
+import type { AuthenticatedEnvironment } from "@trigger.dev/core/v3/auth/environment";
 import {
   isSdkCredentialTelemetryOperation,
   isSdkCredentialTelemetryReason,
@@ -20,6 +21,7 @@ import type {
 } from "@trigger.dev/rbac";
 import { clientIpFromHeaders, isSealedPublicTokenSubject } from "@trigger.dev/rbac";
 import { noteBearerAuthentication } from "~/services/auditLogs/auditContext.server";
+import { recordRootKeyUsage } from "~/services/rootKeyUsage.server";
 import { authenticateRunToken } from "~/services/oidc/runTokenAuth.server";
 import { isRunTokenFormat } from "~/services/oidc/runTokenVerify";
 import { logger } from "~/services/logger.server";
@@ -87,6 +89,9 @@ export async function authenticateBearerWithTelemetry(
     }
     const authenticated: HostBearerAuthResult = { ...result, resolution };
     noteBearerAuthentication(request, authenticated);
+    if (authenticated.ok) {
+      recordRootKeyUsage(request, resolution.credentialKind, authenticated.environment);
+    }
     return authenticated;
   } catch (error) {
     recordAuthAttempt("rbac", final.credentialKind, final.lookupPath, final.result);
@@ -170,10 +175,9 @@ export async function authenticateAuthorizeBearerWithTelemetry(
   return result;
 }
 
-export async function observeLegacyBearerAuthentication<T extends { ok: boolean } | undefined>(
-  request: Request,
-  operation: () => Promise<T>
-): Promise<T> {
+export async function observeLegacyBearerAuthentication<
+  T extends { ok: boolean; environment?: AuthenticatedEnvironment } | undefined,
+>(request: Request, operation: () => Promise<T>): Promise<T> {
   const startedAt = performance.now();
   const classified = classifyCredential(request, true);
   let result: ApiAuthResult = "error";
@@ -182,6 +186,9 @@ export async function observeLegacyBearerAuthentication<T extends { ok: boolean 
     const value = await operation();
     result = value?.ok ? "success" : "invalid";
     recordAuthAttempt("legacy", classified.credentialKind, classified.lookupPath, result);
+    if (value?.ok && value.environment) {
+      recordRootKeyUsage(request, classified.credentialKind, value.environment);
+    }
     return value;
   } catch (error) {
     recordAuthAttempt("legacy", classified.credentialKind, classified.lookupPath, result);
