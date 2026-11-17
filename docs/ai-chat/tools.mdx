@@ -26,7 +26,7 @@ export const myChat = chat.agent({
   run: async ({ messages, tools, signal, streamText }) =>
     streamText({
       tools,
-      model: anthropic("claude-sonnet-4-5"),
+      model: anthropic("claude-sonnet-5-5"),
       messages,
       abortSignal: signal,
       stopWhen: stepCountIs(15),
@@ -88,7 +88,7 @@ export const chartChat = chat.agent({
   run: async ({ messages, tools, signal, streamText }) =>
     streamText({
       tools,
-      model: anthropic("claude-sonnet-4-5"),
+      model: anthropic("claude-sonnet-5-5"),
       messages,
       abortSignal: signal,
       stopWhen: stepCountIs(15),
@@ -112,7 +112,7 @@ export const myChat = chat
     run: async ({ messages, tools, signal, streamText }) =>
       streamText({
         tools,
-        model: anthropic("claude-sonnet-4-5"),
+        model: anthropic("claude-sonnet-5-5"),
         messages,
         abortSignal: signal,
         stopWhen: stepCountIs(15),
@@ -140,7 +140,7 @@ run: async ({ messages, tools, signal, streamText }) => {
   // `tools` is typed as your tool set, not a broad `ToolSet`
   return streamText({
     tools,
-    model: anthropic("claude-sonnet-4-5"),
+    model: anthropic("claude-sonnet-5-5"),
     messages,
     abortSignal: signal,
   });
@@ -181,7 +181,7 @@ const messages = await convertToModelMessages(uiMessages, {
   ignoreIncompleteToolCalls: true,
 });
 
-return streamText({ model: anthropic("claude-sonnet-4-5"), messages, tools });
+return streamText({ model: anthropic("claude-sonnet-5-5"), messages, tools });
 ```
 
 ## Learn more

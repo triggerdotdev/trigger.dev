@@ -107,7 +107,7 @@ export const orderAgent = chat.agent({
     }
   },
   run: async ({ messages, streamText }) =>
-    streamText({ model: anthropic("claude-sonnet-4-5"), messages }),
+    streamText({ model: anthropic("claude-sonnet-5-5"), messages }),
 });
 ```
 

@@ -190,7 +190,7 @@ export const scrapeAndSummarizeArticle = task({
 
     // Summarize the content using ChatGPT
     const response = await openai.chat.completions.create({
-      model: "gpt-4o",
+      model: "gpt-6-luna",
       messages: [
         {
           role: "user",

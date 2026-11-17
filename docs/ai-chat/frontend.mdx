@@ -267,7 +267,7 @@ Browser-supplied `clientData` is input, including after schema validation. Use i
 Pass metadata with individual messages via `sendMessage`. Per-message values are merged with transport-level client data (per-message wins on conflicts):
 
 ```ts
-sendMessage({ text: "Hello" }, { metadata: { model: "gpt-4o", priority: "high" } });
+sendMessage({ text: "Hello" }, { metadata: { model: "gpt-6-luna", priority: "high" } });
 ```
 
 ### Typed client data with clientDataSchema
@@ -287,7 +287,7 @@ export const myChat = chat.agent({
   }),
   run: async ({ messages, clientData, signal, streamText }) => {
     return streamText({
-      model: anthropic("claude-sonnet-4-5"),
+      model: anthropic("claude-sonnet-5-5"),
       system: clientData?.locale === "fr" ? "Reply in French." : "Reply in English.",
       messages,
       abortSignal: signal,

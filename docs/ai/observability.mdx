@@ -25,7 +25,7 @@ export const summarize = task({
   id: "summarize",
   run: async (payload: { text: string }) => {
     const result = await generateText({
-      model: openai("gpt-4o"),
+      model: openai("gpt-6-luna"),
       prompt: `Summarize the following text:\n\n${payload.text}`,
       experimental_telemetry: { isEnabled: true },
     });
@@ -80,7 +80,7 @@ export const handleSupport = task({
     });
 
     const result = await generateText({
-      model: openai(resolved.model ?? "gpt-4o"),
+      model: openai(resolved.model ?? "gpt-6-luna"),
       system: resolved.text,
       prompt: payload.issue,
       ...resolved.toAISDKTelemetry(),
@@ -97,7 +97,7 @@ Pass custom attributes to `toAISDKTelemetry()` to tag the span with your own met
 
 ```ts
 const result = await generateText({
-  model: openai(resolved.model ?? "gpt-4o"),
+  model: openai(resolved.model ?? "gpt-6-luna"),
   system: resolved.text,
   prompt: payload.issue,
   ...resolved.toAISDKTelemetry({

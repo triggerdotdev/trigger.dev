@@ -39,7 +39,7 @@ export const generateAndTranslateTask = task({
   run: async (payload: TranslatePayload) => {
     // Step 1: Generate marketing copy
     const generatedCopy = await generateText({
-      model: anthropic("claude-sonnet-4-5"),
+      model: anthropic("claude-sonnet-5-5"),
       messages: [
         {
           role: "system",
@@ -72,7 +72,7 @@ export const generateAndTranslateTask = task({
 
     // Step 2: Translate to target language
     const translatedCopy = await generateText({
-      model: anthropic("claude-sonnet-4-5"),
+      model: anthropic("claude-sonnet-5-5"),
       messages: [
         {
           role: "system",

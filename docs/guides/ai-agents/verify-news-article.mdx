@@ -19,7 +19,7 @@ Our example task uses multiple LLM calls to extract claims from a news article a
 - Uses `generateText` from the [AI SDK](https://ai-sdk.dev/) to call Anthropic's Claude models
 - Uses `experimental_telemetry` to surface each LLM call on the Run page in the dashboard
 - Uses [`batch.triggerByTaskAndWait`](/triggering#batch-triggerbytaskandwait) to orchestrate parallel processing of claims
-- Extracts factual claims from news articles using `claude-sonnet-4-5`
+- Extracts factual claims from news articles using `claude-sonnet-5-5`
 - Evaluates claims against recent sources and analyzes historical context in parallel
 - Combines results into a structured analysis report
 
@@ -66,7 +66,7 @@ export const extractClaims = task({
       ];
 
       const response = await generateText({
-        model: anthropic("claude-sonnet-4-5"),
+        model: anthropic("claude-sonnet-5-5"),
         messages,
         experimental_telemetry: {
           isEnabled: true,
@@ -98,7 +98,7 @@ export const verifySource = task({
   id: "verify-source",
   run: async (claim: Claim) => {
     const response = await generateText({
-      model: anthropic("claude-sonnet-4-5"),
+      model: anthropic("claude-sonnet-5-5"),
       messages: [
         {
           role: "system",
@@ -130,7 +130,7 @@ export const analyzeHistory = task({
   id: "analyze-history",
   run: async (claim: Claim) => {
     const response = await generateText({
-      model: anthropic("claude-sonnet-4-5"),
+      model: anthropic("claude-sonnet-5-5"),
       messages: [
         {
           role: "system",

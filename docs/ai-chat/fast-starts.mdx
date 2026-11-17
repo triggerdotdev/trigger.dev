@@ -81,7 +81,7 @@ export const myChat = chat.agent({
     // ... fallback initialization for non-preloaded runs
   },
   run: async ({ messages, signal, streamText }) => {
-    return streamText({ model: anthropic("claude-sonnet-4-5"), messages, abortSignal: signal });
+    return streamText({ model: anthropic("claude-sonnet-5-5"), messages, abortSignal: signal });
   },
 });
 ```
@@ -241,7 +241,7 @@ This is an **import-chain** problem, not a runtime one. A "we'll strip the execu
       id: "my-chat",
       run: async ({ messages, signal, streamText }) =>
         streamText({
-          model: anthropic("claude-sonnet-4-6"),
+          model: anthropic("claude-sonnet-5-5"),
           messages,
           tools: chatTools,
           stopWhen: stepCountIs(10),
@@ -263,7 +263,7 @@ This is an **import-chain** problem, not a runtime one. A "we'll strip the execu
       agentId: "my-chat",
       run: async ({ streamText }) =>
         streamText({
-          model: anthropic("claude-sonnet-4-6"),
+          model: anthropic("claude-sonnet-5-5"),
           system: "You are a helpful assistant.",
           tools: headStartTools,
         }),
@@ -569,7 +569,7 @@ for await (const turn of session) {
   const result = turn.handover?.isFinal
     ? undefined
     : streamText({
-        model: anthropic("claude-sonnet-4-6"),
+        model: anthropic("claude-sonnet-5-5"),
         messages: turn.messages,
         abortSignal: turn.signal,
         stopWhen: stepCountIs(10),
@@ -593,7 +593,7 @@ if (turn === 0 && payload.trigger === "handover-prepare") {
     // passing originalMessages so the tool output merges into the
     // handed-over assistant instead of starting a new message.
     const result = streamText({
-      model: anthropic("claude-sonnet-4-6"),
+      model: anthropic("claude-sonnet-5-5"),
       messages: conversation.modelMessages,
       stopWhen: stepCountIs(10),
     });
@@ -691,7 +691,7 @@ export async function POST(req: Request) {
     messages, // first-turn user history
     run: async ({ streamText }) =>
       streamText({
-        model: anthropic("claude-sonnet-4-6"),
+        model: anthropic("claude-sonnet-5-5"),
         system: "You are a helpful assistant.",
         tools: headStartTools,
       }),

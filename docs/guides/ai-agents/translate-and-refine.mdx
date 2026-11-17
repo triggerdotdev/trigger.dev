@@ -63,7 +63,7 @@ export const translateAndRefine = task({
       : `Translate this text into ${payload.targetLanguage}, preserving style and meaning: "${payload.text}"`;
 
     const translation = await generateText({
-      model: anthropic("claude-sonnet-4-5"),
+      model: anthropic("claude-sonnet-5-5"),
       messages: [
         {
           role: "system",
@@ -83,7 +83,7 @@ export const translateAndRefine = task({
 
     // Evaluate the translation
     const evaluation = await generateText({
-      model: anthropic("claude-sonnet-4-5"),
+      model: anthropic("claude-sonnet-5-5"),
       messages: [
         {
           role: "system",

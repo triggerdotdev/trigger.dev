@@ -77,7 +77,7 @@ export const nativePersist = chat.agent({
   tools: { fetchRecord },
   run: async ({ messages, chatId, tools, signal, streamText }) => {
     return streamText({
-      model: anthropic("claude-sonnet-4-5"),
+      model: anthropic("claude-sonnet-5-5"),
       messages,
       tools,
       abortSignal: signal,
@@ -156,7 +156,7 @@ export const openaiStore = chat.agent({
     const outbound = native ? messagesSinceLastAssistant(messages) : messages;
 
     const result = streamText({
-      model: openai("gpt-4o"),
+      model: openai("gpt-6-luna"),
       messages: outbound,
       abortSignal: signal,
       stopWhen: stepCountIs(5),
@@ -200,7 +200,7 @@ const nativeStore = new Map<string, NativeState>();
 // Provider-agnostic summary: a plain string, portable across any provider.
 async function summarizeConversation(messages: ModelMessage[]): Promise<string> {
   const { text } = await generateText({
-    model: openai("gpt-4o-mini"),
+    model: openai("gpt-6-luna"),
     messages: [
       ...messages,
       {
@@ -251,7 +251,7 @@ export const resilientChat = chat.agent({
           // compacted baseline (summary + recent), so raw history is not re-sent.
           const useHandle = native?.provider === "openai";
           const result = streamText({
-            model: openai("gpt-4o"),
+            model: openai("gpt-6-luna"),
             messages,
             abortSignal: signal,
             stopWhen: stepCountIs(5),
@@ -269,7 +269,7 @@ export const resilientChat = chat.agent({
         }
 
         return streamText({
-          model: anthropic("claude-sonnet-4-5"),
+          model: anthropic("claude-sonnet-5-5"),
           messages,
           abortSignal: signal,
           stopWhen: stepCountIs(5),

@@ -115,7 +115,7 @@ export const myAiTask = schemaTask({
   run: async ({ text }) => {
     const { text: reply } = await generateText({
       prompt: text,
-      model: openai("gpt-4o"),
+      model: openai("gpt-6-luna"),
       tools: {
         myTool,
       },
@@ -143,7 +143,7 @@ const chartTask = schemaTask({
   }),
   run: async ({ input }) => {
     const code = await generateObject({
-      model: openai("gpt-4o"),
+      model: openai("gpt-6-luna"),
       schema: z.object({
         code: z.string().describe("The Python code to execute"),
       }),

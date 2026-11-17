@@ -247,7 +247,7 @@ export const myAgent = chat
       // Score-based routing. The values arrive from the edge proxy.
       if (clientData.__cf.botScore < 30) {
         return streamText({
-          model: anthropic("claude-haiku-4-5"),
+          model: anthropic("claude-haiku-5-5"),
           messages: [{ role: "system", content: "Reject politely; do not engage." }],
           abortSignal: signal,
           stopWhen: stepCountIs(15),
@@ -255,7 +255,7 @@ export const myAgent = chat
       }
 
       return streamText({
-        model: anthropic("claude-sonnet-4-5"),
+        model: anthropic("claude-sonnet-5-5"),
         messages,
         abortSignal: signal,
         // ...

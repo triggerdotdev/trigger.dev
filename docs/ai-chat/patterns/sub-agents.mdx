@@ -301,7 +301,7 @@ export const myAgent = chat.agent({
   tools, // declare here so toModelOutput survives across turns
   run: async ({ messages, tools, stopSignal, streamText }) => {
     return streamText({
-      model: anthropic("claude-sonnet-4-6"),
+      model: anthropic("claude-sonnet-5-5"),
       messages,
       tools,
       abortSignal: stopSignal,

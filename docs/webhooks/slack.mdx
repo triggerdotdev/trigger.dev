@@ -28,7 +28,7 @@ export const support = chat.agent({
   ],
   tools: { searchDocs, refundOrder },
   run: async ({ messages, tools, signal, streamText }) =>
-    streamText({ model: anthropic("claude-sonnet-4-5"), messages, tools, abortSignal: signal }),
+    streamText({ model: anthropic("claude-sonnet-5-5"), messages, tools, abortSignal: signal }),
 });
 ```
 

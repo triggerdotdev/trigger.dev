@@ -75,7 +75,7 @@ export const myAiTask = schemaTask({
   run: async (payload, { ctx }) => {
     const { text } = await generateText({
       prompt: payload.text,
-      model: openai("gpt-4o"),
+      model: openai("gpt-6-luna"),
       tools: {
         myToolTask,
       },
@@ -115,7 +115,7 @@ export const myAiTask = schemaTask({
   run: async (payload, { ctx }) => {
     const { text } = await generateText({
       prompt: payload.text,
-      model: openai("gpt-4o"),
+      model: openai("gpt-6-luna"),
       tools: {
         myTool,
       },

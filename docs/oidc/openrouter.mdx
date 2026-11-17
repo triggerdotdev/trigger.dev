@@ -73,7 +73,7 @@ export const openrouterChat = task({
       apiKey: access_token,
     });
     const completion = await openrouter.chat.completions.create({
-      model: "openai/gpt-4o-mini",
+      model: "openai/gpt-6-luna",
       messages: [{ role: "user", content: payload.prompt }],
     });
 
