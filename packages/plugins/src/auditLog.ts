@@ -108,7 +108,11 @@ type AuditLogCategoryAndAction = {
 
 /** What the caller knows about the change. Who made it and from where comes from the context. */
 export type AuditLogInput = AuditLogCategoryAndAction & {
-  organizationId: string;
+  /**
+   * Null only for a change to a user's own credential that belongs to no organization, e.g. a
+   * personal access token. No organization's log shows such an event.
+   */
+  organizationId: string | null;
   projectId?: string | null;
   environmentId?: string | null;
   environmentType?: AuditLogEnvironmentType | null;

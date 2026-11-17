@@ -38,7 +38,8 @@ import {
 } from "@trigger.dev/rbac";
 import { personalAccessTokensPath } from "~/utils/pathBuilder";
 import { PERSONAL_ACCESS_TOKEN_EXPIRING_SOON_DAYS } from "./personalAccessTokenExpiryEmails.server";
-import type { AdminAuditSourceEndpoint } from "@trigger.dev/plugins";
+import type { AdminAuditSourceEndpoint, AuditLogActor, AuditLogSource } from "@trigger.dev/plugins";
+import { auditLogs } from "./auditLogs/auditLogs.server";
 
 const tokenValueLength = 40;
 //lowercase only, removed 0 and l to avoid confusion
@@ -75,6 +76,8 @@ type CreatePersonalAccessTokenOptions = {
   oauthClientId?: string;
   /** For callers inside a transaction, which record the audit entry once it commits. */
   skipAudit?: boolean;
+  /** How the token was asked for, when the request doesn't say: the CLI login has no session. */
+  auditLogSource?: AuditLogSource;
 };
 
 /** The columns `personalAccessTokenExpiry` reads, for every lookup that checks expiry. */
@@ -287,7 +290,7 @@ export async function revokePersonalAccessToken(
     data: {
       revokedAt: new Date(),
     },
-    select: { hashedToken: true, revokedAt: true },
+    select: { id: true, name: true, obfuscatedToken: true, hashedToken: true, revokedAt: true },
   });
 
   if (revoked.length === 0) {
@@ -298,6 +301,31 @@ export async function revokePersonalAccessToken(
     ...revocation,
     revokedAt: revoked[0].revokedAt ?? undefined,
   });
+  auditLogs.record({
+    category: "credentials",
+    action: "pat.revoked",
+    ...patAuditFields(revoked[0], revocation.revokedBy ?? userActor(userId)),
+    // Directory sync revokes with no request behind it.
+    ...(revocation.revokedBy?.type === "system" ? { source: "system" as const } : {}),
+    changes: { reason: revocation.reason },
+  });
+}
+
+/**
+ * A PAT belongs to its user, not an organization, so its events have none and no organization's
+ * log shows them. The actor is named because some callers run with no session (CLI login, directory
+ * sync).
+ */
+function patAuditFields(
+  token: { id: string; name: string; obfuscatedToken: string },
+  actor: AuditLogActor
+) {
+  return {
+    organizationId: null,
+    target: { type: "pat", id: token.id, name: token.name },
+    keyLast4s: [token.obfuscatedToken.slice(-4)],
+    actor,
+  };
 }
 
 export type PersonalAccessTokenAuthenticationResult = {
@@ -744,6 +772,7 @@ export async function createPersonalAccessTokenFromAuthorizationCode(
   const token = await createPersonalAccessToken({
     name: "cli",
     userId,
+    auditLogSource: "cli",
     auditSource: { ip: approval.approverIp ?? null, userAgent: null },
     idleTimeoutSeconds:
       env.CLI_LOGIN_IDLE_TIMEOUT_DAYS > 0
@@ -834,6 +863,7 @@ export async function createPersonalAccessToken(
     idleTimeoutSeconds,
     oauthClientId,
     skipAudit,
+    auditLogSource,
   }: CreatePersonalAccessTokenOptions,
   prismaClient: PrismaClientOrTransaction = prisma
 ) {
@@ -916,6 +946,13 @@ export async function createPersonalAccessToken(
       tokenId: personalAccessToken.id,
       name,
       source: auditSource,
+    });
+    auditLogs.record({
+      category: "credentials",
+      action: "pat.created",
+      ...patAuditFields(personalAccessToken, userActor(userId)),
+      ...(auditLogSource ? { source: auditLogSource } : {}),
+      changes: { expiresAt: personalAccessToken.expiresAt?.toISOString() ?? null },
     });
   }
 

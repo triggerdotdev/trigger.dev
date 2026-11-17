@@ -184,7 +184,14 @@ export type MemberRemovalCredentials = {
     /** False for a key made inside the removal, whose fingerprint is saved after commit. */
     fingerprintSaved: boolean;
   }[];
-  revokedApiKeyHashes: string[];
+  revokedApiKeys: {
+    id: string;
+    name: string;
+    lastFour: string;
+    keyHash: string;
+    environmentId: string;
+    projectId: string;
+  }[];
 };
 
 /**
@@ -222,7 +229,51 @@ export function recordMemberRemovalCredentials(
       }),
     ]);
   }
-  for (const hash of credentials.revokedApiKeyHashes) {
-    markCredentialHashRevoked(hash, revocation);
+  for (const revoked of credentials.revokedApiKeys) {
+    markCredentialHashRevoked(revoked.keyHash, revocation);
+  }
+  recordMemberRemovalEvents(credentials, actor);
+}
+
+/**
+ * The audit events for a member removal's keys: only development environments, which belong to
+ * the member. Directory sync removals have no request behind them, so they're attributed to the
+ * system.
+ */
+function recordMemberRemovalEvents(
+  credentials: MemberRemovalCredentials,
+  actor: AuditLogActor | null
+): void {
+  const attribution =
+    actor?.type === "system" ? { actor: SYSTEM_ACTOR, source: "system" as const } : {};
+  const where = (environment: { environmentId: string; projectId: string }) => ({
+    organizationId: credentials.organizationId,
+    projectId: environment.projectId,
+    environmentId: environment.environmentId,
+    environmentType: "DEVELOPMENT" as const,
+  });
+  for (const rotated of credentials.rotatedRootApiKeys) {
+    const previousKeyLast4 = rotated.previousApiKey.slice(-4);
+    const newKeyLast4 = rotated.apiKey.slice(-4);
+    auditLogs.record({
+      category: "credentials",
+      action: "api_key.rotated",
+      ...where(rotated),
+      target: { type: "root_api_key", id: rotated.environmentId, name: null },
+      keyLast4s: [previousKeyLast4, newKeyLast4],
+      changes: { previousKeyLast4, newKeyLast4, graceUntil: null, reason: "member_removed" },
+      ...attribution,
+    });
+  }
+  for (const revoked of credentials.revokedApiKeys) {
+    auditLogs.record({
+      category: "credentials",
+      action: "api_key.revoked",
+      ...where(revoked),
+      target: { type: "additional_api_key", id: revoked.id, name: revoked.name },
+      keyLast4s: [revoked.lastFour],
+      changes: { reason: "member_removed" },
+      ...attribution,
+    });
   }
 }

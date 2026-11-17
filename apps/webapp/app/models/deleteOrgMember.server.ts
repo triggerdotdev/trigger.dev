@@ -74,13 +74,16 @@ export async function deleteOrgMember(
       id: true,
       projectId: true,
       apiKey: true,
-      apiKeys: { where: { revokedAt: null }, select: { keyHash: true } },
+      apiKeys: {
+        where: { revokedAt: null },
+        select: { id: true, name: true, lastFour: true, keyHash: true },
+      },
     },
   });
   const credentials: MemberRemovalCredentials = {
     organizationId: member.organizationId,
     rotatedRootApiKeys: [],
-    revokedApiKeyHashes: [],
+    revokedApiKeys: [],
   };
   for (const environment of environments) {
     const preparedKey = newKeys.get(environment.id);
@@ -101,7 +104,13 @@ export async function deleteOrgMember(
       apiKey,
       fingerprintSaved: preparedKey !== undefined,
     });
-    credentials.revokedApiKeyHashes.push(...environment.apiKeys.map((key) => key.keyHash));
+    credentials.revokedApiKeys.push(
+      ...environment.apiKeys.map((key) => ({
+        ...key,
+        environmentId: environment.id,
+        projectId: environment.projectId,
+      }))
+    );
   }
   const deleted = await tx.orgMember.delete({
     where: { id: member.id, organizationId: member.organizationId },
