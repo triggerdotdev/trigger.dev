@@ -48,6 +48,7 @@ import {
   type MaskedEnvironmentVariable,
 } from "~/routes/_app.orgs.$organizationSlug.projects.$projectParam.env.$envParam.environment-variables/EnvironmentVariableControls";
 import type { EnvironmentVariablesOutletContext } from "~/routes/_app.orgs.$organizationSlug.projects.$projectParam.env.$envParam.environment-variables/route";
+import { recordDashboardEnvironmentVariableKeyRead } from "~/services/auditLogs/envVarReadAudit.server";
 import { resolveProjectAuthScope } from "~/services/projectAuthScope.server";
 import { requireRecentMfa } from "~/services/mfa/mfaPolicy.server";
 import { dashboardLoader } from "~/services/routeBuilders/dashboardBuilder";
@@ -170,6 +171,20 @@ export const loader = dashboardLoader(
         })),
         branches: { ...detail.branches, variables: detail.branches.variables.map(mask) },
       };
+
+      // Values are sent to the browser on load, so each environment the panel shows is a read, as
+      // on the list: a secret or unavailable value still records one, since the key was shown. Only
+      // an environment the role can't read, whose row is withheld, records nothing.
+      if (context.organizationId) {
+        recordDashboardEnvironmentVariableKeyRead({
+          organizationId: context.organizationId,
+          projectId,
+          variables: [
+            ...masked.environments.flatMap((row) => (row.variable ? [row.variable] : [])),
+            ...masked.branches.variables,
+          ].filter((variable) => !variable.permissionDenied),
+        });
+      }
 
       return typedjson(masked);
     } catch (error) {

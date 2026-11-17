@@ -73,6 +73,7 @@ import type { EnvironmentVariablesEnvironment } from "~/presenters/v3/environmen
 import { EnvironmentVariableValue } from "~/routes/_app.orgs.$organizationSlug.projects.$projectParam.env.$envParam.environment-variables/EnvironmentVariableControls";
 import type { EnvironmentVariablesOutletContext } from "~/routes/_app.orgs.$organizationSlug.projects.$projectParam.env.$envParam.environment-variables/route";
 import { resolveProjectAuthScope } from "~/services/projectAuthScope.server";
+import { recordDashboardEnvironmentVariablesListed } from "~/services/auditLogs/envVarReadAudit.server";
 import { requireRecentMfa } from "~/services/mfa/mfaPolicy.server";
 import { dashboardAction, dashboardLoader } from "~/services/routeBuilders/dashboardBuilder";
 import { prisma } from "~/db.server";
@@ -200,6 +201,22 @@ export const loader = dashboardLoader(
             { slug: params.envParam }
           )
         );
+      }
+
+      // The page sends both sides' values on load, as the list does, so a load is a listing of each
+      // side whose values it sent. A side the role can't read only has Permission denied cells.
+      if (context.organizationId) {
+        const sent = (side: "left" | "right") =>
+          comparison.rows.some((row) => row[side].isSet && !row[side].permissionDenied);
+        recordDashboardEnvironmentVariablesListed({
+          organizationId: context.organizationId,
+          projectId,
+          environments: [comparison.left.environment, comparison.right.environment],
+          readEnvironmentIds: [
+            ...(sent("left") ? [comparison.left.environment.id] : []),
+            ...(sent("right") ? [comparison.right.environment.id] : []),
+          ],
+        });
       }
 
       return typedjson(comparison);

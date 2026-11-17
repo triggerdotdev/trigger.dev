@@ -7,6 +7,10 @@ import {
   authenticatedEnvironmentForAuthentication,
   branchNameFromRequest,
 } from "~/services/apiAuth.server";
+import {
+  environmentVariableReadTarget,
+  recordRolledUpEnvironmentVariableRead,
+} from "~/services/auditLogs/envVarReadAudit.server";
 import { logger } from "~/services/logger.server";
 import {
   authenticateEnvVarApiRequest,
@@ -179,6 +183,15 @@ export async function loader({ params, request }: LoaderFunctionArgs) {
     if (!environmentVariable) {
       return json({ error: "Environment variable not found" }, { status: 404 });
     }
+
+    recordRolledUpEnvironmentVariableRead({
+      action: "envvar.read",
+      organizationId: environment.organizationId,
+      projectId: environment.project.id,
+      environmentId: environment.id,
+      environmentType: environment.type,
+      target: environmentVariableReadTarget(variable),
+    });
 
     return json({
       name: environmentVariable.key,

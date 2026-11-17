@@ -92,6 +92,7 @@ import {
 } from "~/routes/_app.orgs.$organizationSlug.projects.$projectParam.env.$envParam.environment-variables_.compare/CopyValues";
 import { isExternalOidcEnabled } from "~/services/oidc/externalOidc.server";
 import { resolveProjectAuthScope } from "~/services/projectAuthScope.server";
+import { recordDashboardEnvironmentVariablesListed } from "~/services/auditLogs/envVarReadAudit.server";
 import { requireRecentMfa } from "~/services/mfa/mfaPolicy.server";
 import { redirectWithErrorMessage, redirectWithSuccessMessage } from "~/models/message.server";
 import { dashboardAction, dashboardLoader } from "~/services/routeBuilders/dashboardBuilder";
@@ -203,6 +204,18 @@ export const loader = dashboardLoader(
             { slug: params.envParam }
           )
         );
+      }
+      // The page sends the target environment's values on load, as the list does, so a load is a
+      // listing of the target when a row set there was sent. Missing-here rows carry no value.
+      if (context.organizationId && attention.isReadable) {
+        recordDashboardEnvironmentVariablesListed({
+          organizationId: context.organizationId,
+          projectId,
+          environments: [attention.target],
+          readEnvironmentIds: attention.rows.some((row) => !row.notSetHere)
+            ? [attention.target.id]
+            : [],
+        });
       }
       return typedjson({ ...attention, search: searchParams.search });
     } catch (error) {

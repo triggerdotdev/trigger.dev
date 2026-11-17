@@ -82,6 +82,7 @@ import { redirectWithSuccessMessage } from "~/models/message.server";
 import { EnvironmentVariableKeyPresenter } from "~/presenters/v3/EnvironmentVariableKeyPresenter.server";
 import { EnvironmentVariablesPresenter } from "~/presenters/v3/EnvironmentVariablesPresenter.server";
 import { type EnvironmentVariablesEnvironment } from "~/presenters/v3/environmentVariablesEnvironments.server";
+import { recordDashboardEnvironmentVariablesListed } from "~/services/auditLogs/envVarReadAudit.server";
 import { logger } from "~/services/logger.server";
 import { resolveProjectAuthScope } from "~/services/projectAuthScope.server";
 import { requireRecentMfa } from "~/services/mfa/mfaPolicy.server";
@@ -261,6 +262,18 @@ export const loader = dashboardLoader(
       const masked: MaskedEnvironmentVariable[] = environmentVariables.map((variable) =>
         accessible.has(variable.environment.id) ? variable : maskEnvironmentVariable(variable)
       );
+
+      // The page sends values to the browser on load ("Reveal" is client-side), so a load is a read.
+      if (context.organizationId) {
+        recordDashboardEnvironmentVariablesListed({
+          organizationId: context.organizationId,
+          projectId,
+          environments,
+          readEnvironmentIds: masked
+            .filter((variable) => !variable.permissionDenied)
+            .map((variable) => variable.environment.id),
+        });
+      }
 
       return typedjson({
         environmentVariables: masked,

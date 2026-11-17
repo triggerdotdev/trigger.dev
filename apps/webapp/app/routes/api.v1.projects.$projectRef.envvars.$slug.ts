@@ -7,6 +7,10 @@ import {
   branchNameFromRequest,
 } from "~/services/apiAuth.server";
 import {
+  environmentReadTarget,
+  recordRolledUpEnvironmentVariableRead,
+} from "~/services/auditLogs/envVarReadAudit.server";
+import {
   authenticateEnvVarApiRequest,
   authorizeEnvVarApiRequest,
 } from "~/services/environmentVariableApiAccess.server";
@@ -124,6 +128,15 @@ export async function loader({ params, request }: LoaderFunctionArgs) {
     environment.id,
     environment.parentEnvironmentId ?? undefined
   );
+
+  recordRolledUpEnvironmentVariableRead({
+    action: "envvar.listed",
+    organizationId: environment.organizationId,
+    projectId: environment.project.id,
+    environmentId: environment.id,
+    environmentType: environment.type,
+    target: environmentReadTarget(environment),
+  });
 
   return json(
     variables.map((variable) => ({
