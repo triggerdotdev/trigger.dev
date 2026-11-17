@@ -21,7 +21,8 @@
     "clean": "rimraf dist .turbo",
     "build": "tsdown",
     "dev": "tsdown --watch",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "test": "vitest"
   },
   "devDependencies": {
     "@types/node": "^24.13.3",

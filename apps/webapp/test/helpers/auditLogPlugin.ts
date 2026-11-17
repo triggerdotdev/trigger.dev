@@ -5,14 +5,17 @@ import type {
   AuditLogCredentialRevokedInput,
   AuditLogInput,
 } from "@trigger.dev/plugins";
+import { resolveAuditEventAttribution } from "@trigger.dev/plugins";
 import { Prisma } from "@trigger.dev/database";
 import { FEATURE_FLAG } from "~/v3/featureFlags";
+import { runWithHttpContext } from "~/services/httpAsyncStorage.server";
 
 /**
  * An in-memory audit log plugin that keeps what the host sends it. `calls` keeps the order of
  * saves and marks. `onSave` runs before each save is kept, e.g. to look at the database then.
  * `recorded` keeps each event with its context; the host only records while recording is on (see
  * `enableAuditRecording`), and hands events over in the background (`auditLogs.flush()` waits).
+ * An event the real plugin would drop lands in `dropped` instead, with the reason.
  */
 export function installAuditLogPlugin({
   failSaves = false,
@@ -23,11 +26,23 @@ export function installAuditLogPlugin({
 } = {}) {
   const saved: AuditLogCredentialFingerprintInput[] = [];
   const recorded: Array<{ input: AuditLogInput; context: AuditLogContext }> = [];
+  const dropped: Array<{
+    input: AuditLogInput;
+    context: AuditLogContext;
+    reason: "missing_actor" | "missing_source";
+  }> = [];
   const revoked: AuditLogCredentialRevokedInput[] = [];
   const graceUpdates: Array<{ hash: string; graceUntil: Date | null }> = [];
   const calls: Array<{ call: "save" | "markRevoked"; hash: string }> = [];
   const controller: AuditLogController = {
     async record(input, context) {
+      // The rule the real plugin applies before it stores an event, shared with it, so a call-site
+      // test sees a lost actor or source the way production would lose the event.
+      const attribution = resolveAuditEventAttribution(input, context);
+      if ("dropped" in attribution) {
+        dropped.push({ input, context, reason: attribution.dropped });
+        return;
+      }
       recorded.push({ input, context });
     },
     async flush() {},
@@ -56,7 +71,7 @@ export function installAuditLogPlugin({
   const global = globalThis as any;
   global.__trigger_singletons ??= {};
   global.__trigger_singletons.auditLogController = Promise.resolve(controller);
-  return { saved, revoked, graceUpdates, calls, recorded };
+  return { saved, revoked, graceUpdates, calls, recorded, dropped };
 }
 
 /** Whether the host records events; `enableAuditRecording` turns it on. Off, as in production. */
@@ -117,6 +132,32 @@ export async function enableAuditRecording(): Promise<() => Promise<void>> {
     }
     resetAuditRecordingFlagCache();
   };
+}
+
+/**
+ * Runs `body` as a dashboard request by a test user, the way a call site runs in production, so the
+ * events it records have an actor and a source. Without one, the helper drops them, as the real
+ * plugin does. Tests that check what attribution an event gets set it themselves.
+ */
+export function inAuditedRequest<R>(body: () => Promise<R>): Promise<R> {
+  return runWithHttpContext(
+    {
+      requestId: "req_test",
+      path: "/test",
+      host: "localhost",
+      method: "POST",
+      abortController: new AbortController(),
+      auditIdentity: {
+        actor: { type: "user", id: "user_test" },
+        credential: null,
+        onBehalfOf: null,
+        source: "dashboard",
+        endpoint: null,
+        origin: null,
+      },
+    },
+    body
+  );
 }
 
 export function uninstallAuditLogPlugin() {

@@ -151,6 +151,26 @@ export type AuditLogContext = {
   requestId: string | null;
 };
 
+/**
+ * Who acted and through which channel, as the audit log plugin stores them, or why it drops the
+ * event. The plugin applies this rule before it stores an event: an event without an actor or a
+ * source is dropped, never stored unattributed. The input's actor and source override the
+ * context's, except that a request made while staff impersonate stays a `staff` event whatever the
+ * call site says.
+ */
+export function resolveAuditEventAttribution(
+  input: AuditLogInput,
+  context: AuditLogContext
+):
+  | { actor: AuditLogActor; source: AuditLogSource }
+  | { dropped: "missing_actor" | "missing_source" } {
+  const actor = input.actor ?? context.actor;
+  const source = context.source === "staff" ? "staff" : (input.source ?? context.source);
+  if (!actor) return { dropped: "missing_actor" };
+  if (!source) return { dropped: "missing_source" };
+  return { actor, source };
+}
+
 type AuditLogEventFields = {
   /** Unique per event. */
   id: string;

@@ -194,6 +194,7 @@ import { runWithHttpContext } from "~/services/httpAsyncStorage.server";
 import { commitSession, getUserSession } from "~/services/sessionStorage.server";
 import {
   enableAuditRecording,
+  inAuditedRequest,
   installAuditLogPlugin,
   uninstallAuditLogPlugin,
 } from "./helpers/auditLogPlugin";
@@ -357,70 +358,113 @@ async function createUser(prisma: PrismaClient, name: string) {
 describe("invite audit events", () => {
   // Catches: an invite created without an event, an event for an email that was already invited
   // (nothing was created), or the invited role recorded as an id instead of its name.
-  postgresTest("records member.invited for each invite created", async ({ prisma }) => {
-    prismaHolder.client = prisma;
-    useRoleStandIn();
-    const { inviteMembers } = await import("~/models/member.server");
-    const { organization, admin } = await seedOrg(prisma);
-    await inviteMembers({
-      slug: organization.slug,
-      emails: ["first@test.local"],
-      userId: admin.id,
-    });
+  postgresTest("records member.invited for each invite created", async ({ prisma }) =>
+    inAuditedRequest(async () => {
+      prismaHolder.client = prisma;
+      useRoleStandIn();
+      const { inviteMembers } = await import("~/models/member.server");
+      const { organization, admin } = await seedOrg(prisma);
+      await inviteMembers({
+        slug: organization.slug,
+        emails: ["first@test.local"],
+        userId: admin.id,
+      });
 
-    const recorded = await startRecording();
-    const { created } = await inviteMembers({
-      slug: organization.slug,
-      emails: ["first@test.local", "second@test.local"],
-      userId: admin.id,
-      rbacRoleId: rbacHolder.roles.admin.id,
-    });
+      const recorded = await startRecording();
+      const { created } = await inviteMembers({
+        slug: organization.slug,
+        emails: ["first@test.local", "second@test.local"],
+        userId: admin.id,
+        rbacRoleId: rbacHolder.roles.admin.id,
+      });
 
-    expect(created).toHaveLength(1);
-    expect(await recordedEvents(recorded)).toEqual([
-      {
-        category: "members",
-        action: "member.invited",
-        organizationId: organization.id,
-        target: { type: "invite", id: created[0]!.id, name: "second@test.local" },
-        changes: { role: "Admin" },
-      },
-    ]);
-  });
+      expect(created).toHaveLength(1);
+      expect(await recordedEvents(recorded)).toEqual([
+        {
+          category: "members",
+          action: "member.invited",
+          organizationId: organization.id,
+          target: { type: "invite", id: created[0]!.id, name: "second@test.local" },
+          changes: { role: "Admin" },
+        },
+      ]);
+    })
+  );
 
   // Catches: a revoke recording nothing, or a revoke of a missing invite recording one.
-  postgresTest("records invite.revoked once the invite is deleted", async ({ prisma }) => {
-    prismaHolder.client = prisma;
-    const { inviteMembers, revokeInvite } = await import("~/models/member.server");
-    const { organization, admin } = await seedOrg(prisma);
-    const {
-      created: [invite],
-    } = await inviteMembers({
-      slug: organization.slug,
-      emails: ["gone@test.local"],
-      userId: admin.id,
-    });
+  postgresTest("records invite.revoked once the invite is deleted", async ({ prisma }) =>
+    inAuditedRequest(async () => {
+      prismaHolder.client = prisma;
+      const { inviteMembers, revokeInvite } = await import("~/models/member.server");
+      const { organization, admin } = await seedOrg(prisma);
+      const {
+        created: [invite],
+      } = await inviteMembers({
+        slug: organization.slug,
+        emails: ["gone@test.local"],
+        userId: admin.id,
+      });
 
-    const recorded = await startRecording();
-    await revokeInvite({ userId: admin.id, orgSlug: organization.slug, inviteId: invite!.id });
-    await expect(
-      revokeInvite({ userId: admin.id, orgSlug: organization.slug, inviteId: invite!.id })
-    ).rejects.toThrow("Invite not found");
+      const recorded = await startRecording();
+      await revokeInvite({ userId: admin.id, orgSlug: organization.slug, inviteId: invite!.id });
+      await expect(
+        revokeInvite({ userId: admin.id, orgSlug: organization.slug, inviteId: invite!.id })
+      ).rejects.toThrow("Invite not found");
 
-    expect(await recordedEvents(recorded)).toEqual([
-      {
-        category: "members",
-        action: "invite.revoked",
-        organizationId: organization.id,
-        target: { type: "invite", id: invite!.id, name: "gone@test.local" },
-      },
-    ]);
-  });
+      expect(await recordedEvents(recorded)).toEqual([
+        {
+          category: "members",
+          action: "invite.revoked",
+          organizationId: organization.id,
+          target: { type: "invite", id: invite!.id, name: "gone@test.local" },
+        },
+      ]);
+    })
+  );
 
   // Catches: an accept recording nothing, or a later accept of the consumed invite recording again.
   postgresTest(
     "records invite.accepted once when an accepted invite is accepted again",
-    async ({ prisma }) => {
+    async ({ prisma }) =>
+      inAuditedRequest(async () => {
+        prismaHolder.client = prisma;
+        const { acceptInvite, inviteMembers } = await import("~/models/member.server");
+        const { organization, admin } = await seedOrg(prisma);
+        const joiner = await createUser(prisma, "joiner");
+        const {
+          created: [invite],
+        } = await inviteMembers({
+          slug: organization.slug,
+          emails: [joiner.email],
+          userId: admin.id,
+        });
+
+        const recorded = await startRecording();
+        await acceptInvite({ user: joiner, inviteId: invite!.id, organizationId: organization.id });
+        await expect(
+          acceptInvite({ user: joiner, inviteId: invite!.id, organizationId: organization.id })
+        ).rejects.toThrow("Invite not found");
+
+        expect(
+          await prisma.orgMember.count({
+            where: { userId: joiner.id, organizationId: organization.id },
+          })
+        ).toBe(1);
+        expect(await recordedEvents(recorded)).toEqual([
+          {
+            category: "members",
+            action: "invite.accepted",
+            organizationId: organization.id,
+            target: { type: "invite", id: invite!.id, name: joiner.email },
+          },
+        ]);
+      })
+  );
+
+  // Catches: two concurrent accepts of one invite both recording it. Both requests read the invite
+  // before either deletes it, so one delete misses (P2025) and must record nothing.
+  postgresTest("records invite.accepted once for two concurrent accepts", async ({ prisma }) =>
+    inAuditedRequest(async () => {
       prismaHolder.client = prisma;
       const { acceptInvite, inviteMembers } = await import("~/models/member.server");
       const { organization, admin } = await seedOrg(prisma);
@@ -433,12 +477,30 @@ describe("invite audit events", () => {
         userId: admin.id,
       });
 
-      const recorded = await startRecording();
-      await acceptInvite({ user: joiner, inviteId: invite!.id, organizationId: organization.id });
-      await expect(
-        acceptInvite({ user: joiner, inviteId: invite!.id, organizationId: organization.id })
-      ).rejects.toThrow("Invite not found");
+      // Holds each invite delete until both requests reach it.
+      let deletesStarted = 0;
+      let releaseDeletes!: () => void;
+      const bothAtDelete = new Promise<void>((resolve) => (releaseDeletes = resolve));
+      prismaHolder.client = prisma.$extends({
+        query: {
+          orgMemberInvite: {
+            async delete({ args, query }) {
+              if (++deletesStarted === 2) releaseDeletes();
+              await Promise.race([bothAtDelete, new Promise((r) => setTimeout(r, 10_000))]);
+              return query(args);
+            },
+          },
+        },
+      }) as unknown as PrismaClient;
 
+      const recorded = await startRecording();
+      const results = await Promise.allSettled([
+        acceptInvite({ user: joiner, inviteId: invite!.id, organizationId: organization.id }),
+        acceptInvite({ user: joiner, inviteId: invite!.id, organizationId: organization.id }),
+      ]);
+
+      expect(deletesStarted).toBe(2);
+      expect(results.map((result) => result.status)).toEqual(["fulfilled", "fulfilled"]);
       expect(
         await prisma.orgMember.count({
           where: { userId: joiner.id, organizationId: organization.id },
@@ -452,234 +514,15 @@ describe("invite audit events", () => {
           target: { type: "invite", id: invite!.id, name: joiner.email },
         },
       ]);
-    }
+    })
   );
-
-  // Catches: two concurrent accepts of one invite both recording it. Both requests read the invite
-  // before either deletes it, so one delete misses (P2025) and must record nothing.
-  postgresTest("records invite.accepted once for two concurrent accepts", async ({ prisma }) => {
-    prismaHolder.client = prisma;
-    const { acceptInvite, inviteMembers } = await import("~/models/member.server");
-    const { organization, admin } = await seedOrg(prisma);
-    const joiner = await createUser(prisma, "joiner");
-    const {
-      created: [invite],
-    } = await inviteMembers({ slug: organization.slug, emails: [joiner.email], userId: admin.id });
-
-    // Holds each invite delete until both requests reach it.
-    let deletesStarted = 0;
-    let releaseDeletes!: () => void;
-    const bothAtDelete = new Promise<void>((resolve) => (releaseDeletes = resolve));
-    prismaHolder.client = prisma.$extends({
-      query: {
-        orgMemberInvite: {
-          async delete({ args, query }) {
-            if (++deletesStarted === 2) releaseDeletes();
-            await Promise.race([bothAtDelete, new Promise((r) => setTimeout(r, 10_000))]);
-            return query(args);
-          },
-        },
-      },
-    }) as unknown as PrismaClient;
-
-    const recorded = await startRecording();
-    const results = await Promise.allSettled([
-      acceptInvite({ user: joiner, inviteId: invite!.id, organizationId: organization.id }),
-      acceptInvite({ user: joiner, inviteId: invite!.id, organizationId: organization.id }),
-    ]);
-
-    expect(deletesStarted).toBe(2);
-    expect(results.map((result) => result.status)).toEqual(["fulfilled", "fulfilled"]);
-    expect(
-      await prisma.orgMember.count({
-        where: { userId: joiner.id, organizationId: organization.id },
-      })
-    ).toBe(1);
-    expect(await recordedEvents(recorded)).toEqual([
-      {
-        category: "members",
-        action: "invite.accepted",
-        organizationId: organization.id,
-        target: { type: "invite", id: invite!.id, name: joiner.email },
-      },
-    ]);
-  });
 });
 
 describe("invite accepted with a role", () => {
   // Catches: an invite that assigned a role recording invite.accepted without it, so the role
   // change is in no event; or the role recorded as an id instead of its name.
-  postgresTest("records the role the invite assigned", async ({ prisma }) => {
-    prismaHolder.client = prisma;
-    useRoleStandIn();
-    const { acceptInvite, inviteMembers } = await import("~/models/member.server");
-    const { organization, admin } = await seedOrg(prisma);
-    const joiner = await createUser(prisma, "joiner");
-    const {
-      created: [invite],
-    } = await inviteMembers({
-      slug: organization.slug,
-      emails: [joiner.email],
-      userId: admin.id,
-      rbacRoleId: rbacHolder.roles.developer.id,
-    });
-
-    const recorded = await startRecording();
-    await acceptInvite({ user: joiner, inviteId: invite!.id, organizationId: organization.id });
-
-    expect(rbacHolder.assignments.get(`${organization.id}:${joiner.id}`)).toEqual(
-      rbacHolder.roles.developer
-    );
-    expect(await recordedEvents(recorded)).toEqual([
-      {
-        category: "members",
-        action: "invite.accepted",
-        organizationId: organization.id,
-        target: { type: "invite", id: invite!.id, name: joiner.email },
-        changes: { role: "Developer" },
-      },
-    ]);
-  });
-
-  // Catches: a role recorded for an existing member whose role the invite left alone. Per the RBAC
-  // plugin's contract, a member with only a legacy OrgMember.role still has a role (the legacy
-  // mapping), so the invite's role is not assigned.
-  postgresTest("records no role when an existing member keeps theirs", async ({ prisma }) => {
-    prismaHolder.client = prisma;
-    useRoleStandIn();
-    const { acceptInvite, inviteMembers } = await import("~/models/member.server");
-    const { organization, admin } = await seedOrg(prisma);
-    const joiner = await createUser(prisma, "legacy");
-    const {
-      created: [invite],
-    } = await inviteMembers({
-      slug: organization.slug,
-      emails: [joiner.email],
-      userId: admin.id,
-      rbacRoleId: rbacHolder.roles.developer.id,
-    });
-    // Joined another way (e.g. SSO) after the invite was sent, with a legacy role only.
-    await prisma.orgMember.create({
-      data: { userId: joiner.id, organizationId: organization.id, role: "MEMBER" },
-    });
-
-    const recorded = await startRecording();
-    await acceptInvite({ user: joiner, inviteId: invite!.id, organizationId: organization.id });
-
-    expect(rbacHolder.assignments.has(`${organization.id}:${joiner.id}`)).toBe(false);
-    expect(await recordedEvents(recorded)).toEqual([
-      {
-        category: "members",
-        action: "invite.accepted",
-        organizationId: organization.id,
-        target: { type: "invite", id: invite!.id, name: joiner.email },
-      },
-    ]);
-  });
-  // Catches: concurrent accepts where the request that consumes the invite isn't the one that
-  // created the membership. The creator assigns the invite's role first, so the consumer finds a
-  // role already there and assigns nothing. The role must be recorded once, by the creator that
-  // assigned it, and invite.accepted once, by the consumer.
-  postgresTest("records the role once when a concurrent accept assigned it", async ({ prisma }) => {
-    prismaHolder.client = prisma;
-    useRoleStandIn();
-    const { acceptInvite, inviteMembers } = await import("~/models/member.server");
-    const { organization, admin } = await seedOrg(prisma);
-    const joiner = await createUser(prisma, "joiner");
-    const {
-      created: [invite],
-    } = await inviteMembers({
-      slug: organization.slug,
-      emails: [joiner.email],
-      userId: admin.id,
-      rbacRoleId: rbacHolder.roles.developer.id,
-    });
-
-    // Each accept runs labelled, so the client below can tell them apart. Both reach the invite
-    // delete with the membership created by one of them. The other deletes the invite first and
-    // waits for the creator's accept to finish before it checks the role.
-    const acceptLabel = new AsyncLocalStorage<string>();
-    const accepts = new Map<string, Promise<unknown>>();
-    let creator: string | undefined;
-    let deletesStarted = 0;
-    let releaseDeletes!: () => void;
-    const bothAtDelete = new Promise<void>((resolve) => (releaseDeletes = resolve));
-    let consumerDeleted!: () => void;
-    const consumerDeletedInvite = new Promise<void>((resolve) => (consumerDeleted = resolve));
-    const timeout = () => new Promise((resolve) => setTimeout(resolve, 10_000));
-    prismaHolder.client = prisma.$extends({
-      query: {
-        orgMember: {
-          async create({ args, query }) {
-            const member = await query(args);
-            creator = acceptLabel.getStore();
-            return member;
-          },
-        },
-        orgMemberInvite: {
-          async delete({ args, query }) {
-            if (++deletesStarted === 2) releaseDeletes();
-            await Promise.race([bothAtDelete, timeout()]);
-            if (acceptLabel.getStore() === creator) {
-              await Promise.race([consumerDeletedInvite, timeout()]);
-              return query(args);
-            }
-            const deleted = await query(args);
-            consumerDeleted();
-            await Promise.race([accepts.get(creator!), timeout()]);
-            return deleted;
-          },
-        },
-      },
-    }) as unknown as PrismaClient;
-
-    const recorded = await startRecording();
-    for (const label of ["first", "second"]) {
-      accepts.set(
-        label,
-        acceptLabel
-          .run(label, () =>
-            acceptInvite({ user: joiner, inviteId: invite!.id, organizationId: organization.id })
-          )
-          .catch((error) => error)
-      );
-    }
-    const results = await Promise.all(accepts.values());
-
-    expect(creator).toBeDefined();
-    expect(results.filter((result) => result instanceof Error)).toEqual([]);
-    expect(rbacHolder.assignments.get(`${organization.id}:${joiner.id}`)).toEqual(
-      rbacHolder.roles.developer
-    );
-    const joinerMember = await prisma.orgMember.findFirstOrThrow({
-      where: { userId: joiner.id, organizationId: organization.id },
-    });
-    expect(byAction(await recordedEvents(recorded))).toEqual([
-      {
-        category: "members",
-        action: "invite.accepted",
-        organizationId: organization.id,
-        target: { type: "invite", id: invite!.id, name: joiner.email },
-      },
-      {
-        category: "members",
-        action: "member.role_changed",
-        organizationId: organization.id,
-        target: { type: "member", id: joinerMember.id, name: joiner.email },
-        changes: { role: { before: "Admin", after: "Developer" } },
-      },
-    ]);
-  });
-
-  // Catches: concurrent accepts where the creator of the membership assigns the invite's role after
-  // the other request consumed the invite and checked the role. The consumer sees the membership's
-  // legacy role, so its invite.accepted has no role; the creator's invite delete misses, so it must
-  // record the role it assigned as member.role_changed. The client below holds the creator between
-  // creating the membership and deleting the invite, and starts the consumer once the membership
-  // exists.
-  postgresTest(
-    "records the role when a concurrent accept assigns it after the invite was consumed",
-    async ({ prisma }) => {
+  postgresTest("records the role the invite assigned", async ({ prisma }) =>
+    inAuditedRequest(async () => {
       prismaHolder.client = prisma;
       useRoleStandIn();
       const { acceptInvite, inviteMembers } = await import("~/models/member.server");
@@ -694,47 +537,134 @@ describe("invite accepted with a role", () => {
         rbacRoleId: rbacHolder.roles.developer.id,
       });
 
-      const acceptLabel = new AsyncLocalStorage<string>();
-      const timeout = () => new Promise((resolve) => setTimeout(resolve, 10_000));
-      let membershipCreated!: () => void;
-      const creatorCreatedMembership = new Promise<void>(
-        (resolve) => (membershipCreated = resolve)
+      const recorded = await startRecording();
+      await acceptInvite({ user: joiner, inviteId: invite!.id, organizationId: organization.id });
+
+      expect(rbacHolder.assignments.get(`${organization.id}:${joiner.id}`)).toEqual(
+        rbacHolder.roles.developer
       );
-      let releaseCreator!: () => void;
-      const creatorReleased = new Promise<void>((resolve) => (releaseCreator = resolve));
+      expect(await recordedEvents(recorded)).toEqual([
+        {
+          category: "members",
+          action: "invite.accepted",
+          organizationId: organization.id,
+          target: { type: "invite", id: invite!.id, name: joiner.email },
+          changes: { role: "Developer" },
+        },
+      ]);
+    })
+  );
+
+  // Catches: a role recorded for an existing member whose role the invite left alone. Per the RBAC
+  // plugin's contract, a member with only a legacy OrgMember.role still has a role (the legacy
+  // mapping), so the invite's role is not assigned.
+  postgresTest("records no role when an existing member keeps theirs", async ({ prisma }) =>
+    inAuditedRequest(async () => {
+      prismaHolder.client = prisma;
+      useRoleStandIn();
+      const { acceptInvite, inviteMembers } = await import("~/models/member.server");
+      const { organization, admin } = await seedOrg(prisma);
+      const joiner = await createUser(prisma, "legacy");
+      const {
+        created: [invite],
+      } = await inviteMembers({
+        slug: organization.slug,
+        emails: [joiner.email],
+        userId: admin.id,
+        rbacRoleId: rbacHolder.roles.developer.id,
+      });
+      // Joined another way (e.g. SSO) after the invite was sent, with a legacy role only.
+      await prisma.orgMember.create({
+        data: { userId: joiner.id, organizationId: organization.id, role: "MEMBER" },
+      });
+
+      const recorded = await startRecording();
+      await acceptInvite({ user: joiner, inviteId: invite!.id, organizationId: organization.id });
+
+      expect(rbacHolder.assignments.has(`${organization.id}:${joiner.id}`)).toBe(false);
+      expect(await recordedEvents(recorded)).toEqual([
+        {
+          category: "members",
+          action: "invite.accepted",
+          organizationId: organization.id,
+          target: { type: "invite", id: invite!.id, name: joiner.email },
+        },
+      ]);
+    })
+  );
+  // Catches: concurrent accepts where the request that consumes the invite isn't the one that
+  // created the membership. The creator assigns the invite's role first, so the consumer finds a
+  // role already there and assigns nothing. The role must be recorded once, by the creator that
+  // assigned it, and invite.accepted once, by the consumer.
+  postgresTest("records the role once when a concurrent accept assigned it", async ({ prisma }) =>
+    inAuditedRequest(async () => {
+      prismaHolder.client = prisma;
+      useRoleStandIn();
+      const { acceptInvite, inviteMembers } = await import("~/models/member.server");
+      const { organization, admin } = await seedOrg(prisma);
+      const joiner = await createUser(prisma, "joiner");
+      const {
+        created: [invite],
+      } = await inviteMembers({
+        slug: organization.slug,
+        emails: [joiner.email],
+        userId: admin.id,
+        rbacRoleId: rbacHolder.roles.developer.id,
+      });
+
+      // Each accept runs labelled, so the client below can tell them apart. Both reach the invite
+      // delete with the membership created by one of them. The other deletes the invite first and
+      // waits for the creator's accept to finish before it checks the role.
+      const acceptLabel = new AsyncLocalStorage<string>();
+      const accepts = new Map<string, Promise<unknown>>();
+      let creator: string | undefined;
+      let deletesStarted = 0;
+      let releaseDeletes!: () => void;
+      const bothAtDelete = new Promise<void>((resolve) => (releaseDeletes = resolve));
+      let consumerDeleted!: () => void;
+      const consumerDeletedInvite = new Promise<void>((resolve) => (consumerDeleted = resolve));
+      const timeout = () => new Promise((resolve) => setTimeout(resolve, 10_000));
       prismaHolder.client = prisma.$extends({
         query: {
           orgMember: {
             async create({ args, query }) {
               const member = await query(args);
-              if (acceptLabel.getStore() === "creator") {
-                membershipCreated();
-                await Promise.race([creatorReleased, timeout()]);
-              }
+              creator = acceptLabel.getStore();
               return member;
+            },
+          },
+          orgMemberInvite: {
+            async delete({ args, query }) {
+              if (++deletesStarted === 2) releaseDeletes();
+              await Promise.race([bothAtDelete, timeout()]);
+              if (acceptLabel.getStore() === creator) {
+                await Promise.race([consumerDeletedInvite, timeout()]);
+                return query(args);
+              }
+              const deleted = await query(args);
+              consumerDeleted();
+              await Promise.race([accepts.get(creator!), timeout()]);
+              return deleted;
             },
           },
         },
       }) as unknown as PrismaClient;
-      const accept = (label: string) =>
-        acceptLabel
-          .run(label, () =>
-            acceptInvite({ user: joiner, inviteId: invite!.id, organizationId: organization.id })
-          )
-          .catch((error) => error);
 
       const recorded = await startRecording();
-      const creatorFinished = accept("creator");
-      await Promise.race([creatorCreatedMembership, timeout()]);
-      const consumerResult = await accept("consumer");
-      const roleAfterConsumer = rbacHolder.assignments.get(`${organization.id}:${joiner.id}`);
-      releaseCreator();
-      const creatorResult = await creatorFinished;
+      for (const label of ["first", "second"]) {
+        accepts.set(
+          label,
+          acceptLabel
+            .run(label, () =>
+              acceptInvite({ user: joiner, inviteId: invite!.id, organizationId: organization.id })
+            )
+            .catch((error) => error)
+        );
+      }
+      const results = await Promise.all(accepts.values());
 
-      expect(consumerResult).not.toBeInstanceOf(Error);
-      expect(creatorResult).not.toBeInstanceOf(Error);
-      expect(roleAfterConsumer).toBeUndefined();
-      expect(await prisma.orgMemberInvite.count({ where: { id: invite!.id } })).toBe(0);
+      expect(creator).toBeDefined();
+      expect(results.filter((result) => result instanceof Error)).toEqual([]);
       expect(rbacHolder.assignments.get(`${organization.id}:${joiner.id}`)).toEqual(
         rbacHolder.roles.developer
       );
@@ -756,140 +686,234 @@ describe("invite accepted with a role", () => {
           changes: { role: { before: "Admin", after: "Developer" } },
         },
       ]);
-    }
+    })
+  );
+
+  // Catches: concurrent accepts where the creator of the membership assigns the invite's role after
+  // the other request consumed the invite and checked the role. The consumer sees the membership's
+  // legacy role, so its invite.accepted has no role; the creator's invite delete misses, so it must
+  // record the role it assigned as member.role_changed. The client below holds the creator between
+  // creating the membership and deleting the invite, and starts the consumer once the membership
+  // exists.
+  postgresTest(
+    "records the role when a concurrent accept assigns it after the invite was consumed",
+    async ({ prisma }) =>
+      inAuditedRequest(async () => {
+        prismaHolder.client = prisma;
+        useRoleStandIn();
+        const { acceptInvite, inviteMembers } = await import("~/models/member.server");
+        const { organization, admin } = await seedOrg(prisma);
+        const joiner = await createUser(prisma, "joiner");
+        const {
+          created: [invite],
+        } = await inviteMembers({
+          slug: organization.slug,
+          emails: [joiner.email],
+          userId: admin.id,
+          rbacRoleId: rbacHolder.roles.developer.id,
+        });
+
+        const acceptLabel = new AsyncLocalStorage<string>();
+        const timeout = () => new Promise((resolve) => setTimeout(resolve, 10_000));
+        let membershipCreated!: () => void;
+        const creatorCreatedMembership = new Promise<void>(
+          (resolve) => (membershipCreated = resolve)
+        );
+        let releaseCreator!: () => void;
+        const creatorReleased = new Promise<void>((resolve) => (releaseCreator = resolve));
+        prismaHolder.client = prisma.$extends({
+          query: {
+            orgMember: {
+              async create({ args, query }) {
+                const member = await query(args);
+                if (acceptLabel.getStore() === "creator") {
+                  membershipCreated();
+                  await Promise.race([creatorReleased, timeout()]);
+                }
+                return member;
+              },
+            },
+          },
+        }) as unknown as PrismaClient;
+        const accept = (label: string) =>
+          acceptLabel
+            .run(label, () =>
+              acceptInvite({ user: joiner, inviteId: invite!.id, organizationId: organization.id })
+            )
+            .catch((error) => error);
+
+        const recorded = await startRecording();
+        const creatorFinished = accept("creator");
+        await Promise.race([creatorCreatedMembership, timeout()]);
+        const consumerResult = await accept("consumer");
+        const roleAfterConsumer = rbacHolder.assignments.get(`${organization.id}:${joiner.id}`);
+        releaseCreator();
+        const creatorResult = await creatorFinished;
+
+        expect(consumerResult).not.toBeInstanceOf(Error);
+        expect(creatorResult).not.toBeInstanceOf(Error);
+        expect(roleAfterConsumer).toBeUndefined();
+        expect(await prisma.orgMemberInvite.count({ where: { id: invite!.id } })).toBe(0);
+        expect(rbacHolder.assignments.get(`${organization.id}:${joiner.id}`)).toEqual(
+          rbacHolder.roles.developer
+        );
+        const joinerMember = await prisma.orgMember.findFirstOrThrow({
+          where: { userId: joiner.id, organizationId: organization.id },
+        });
+        expect(byAction(await recordedEvents(recorded))).toEqual([
+          {
+            category: "members",
+            action: "invite.accepted",
+            organizationId: organization.id,
+            target: { type: "invite", id: invite!.id, name: joiner.email },
+          },
+          {
+            category: "members",
+            action: "member.role_changed",
+            organizationId: organization.id,
+            target: { type: "member", id: joinerMember.id, name: joiner.email },
+            changes: { role: { before: "Admin", after: "Developer" } },
+          },
+        ]);
+      })
   );
 });
 
 describe("reads made only for audit events", () => {
   // Catches: a member change reading roles or members only to describe an event while recording
   // is off. The second half is the control: the same counters move once recording is on.
-  postgresTest("are skipped while recording is off", async ({ prisma }) => {
-    prismaHolder.client = prisma;
-    useRoleStandIn();
-    const { acceptInvite, inviteMembers } = await import("~/models/member.server");
-    const { ensureOrgMember, setOrgMemberRole } = await import("~/models/orgMember.server");
-    const { organization, admin, member } = await seedOrg(prisma);
-    const joiner = await createUser(prisma, "joiner");
-    const ssoJoiner = await createUser(prisma, "sso");
-    const { recorded } = installAuditLogPlugin();
-    expect(auditLogs.isRecordingEnabled()).toBe(false);
+  postgresTest("are skipped while recording is off", async ({ prisma }) =>
+    inAuditedRequest(async () => {
+      prismaHolder.client = prisma;
+      useRoleStandIn();
+      const { acceptInvite, inviteMembers } = await import("~/models/member.server");
+      const { ensureOrgMember, setOrgMemberRole } = await import("~/models/orgMember.server");
+      const { organization, admin, member } = await seedOrg(prisma);
+      const joiner = await createUser(prisma, "joiner");
+      const ssoJoiner = await createUser(prisma, "sso");
+      const { recorded } = installAuditLogPlugin();
+      expect(auditLogs.isRecordingEnabled()).toBe(false);
 
-    const roleChange = await setOrgMemberRole({
-      userId: member.id,
-      organizationId: organization.id,
-      roleId: rbacHolder.roles.admin.id,
-    });
-    const {
-      created: [invite],
-    } = await inviteMembers({
-      slug: organization.slug,
-      emails: [joiner.email],
-      userId: admin.id,
-      rbacRoleId: rbacHolder.roles.developer.id,
-    });
-    await acceptInvite({ user: joiner, inviteId: invite!.id, organizationId: organization.id });
-    const added = await ensureOrgMember({
-      userId: ssoJoiner.id,
-      organizationId: organization.id,
-      roleId: rbacHolder.roles.developer.id,
-      source: "sso_jit",
-    });
-    await flushAuditEvents();
-
-    expect(roleChange).toEqual({ ok: true });
-    expect(added.created).toBe(true);
-    expect(rbacHolder.assignments.get(`${organization.id}:${member.id}`)).toEqual(
-      rbacHolder.roles.admin
-    );
-    expect(rbacHolder.assignments.get(`${organization.id}:${joiner.id}`)).toEqual(
-      rbacHolder.roles.developer
-    );
-    expect(rbacHolder.reads).toEqual({ getUserRole: 0, allRoles: 0 });
-    expect(recorded).toEqual([]);
-
-    disableRecording = await enableAuditRecording();
-    await setOrgMemberRole({
-      userId: member.id,
-      organizationId: organization.id,
-      roleId: rbacHolder.roles.developer.id,
-    });
-    await flushAuditEvents();
-    expect(rbacHolder.reads).toEqual({ getUserRole: 1, allRoles: 1 });
-    expect(recorded).toHaveLength(1);
-  });
-
-  // Catches: a role change waiting for the role names that describe it before returning.
-  postgresTest("don't hold up the role change", async ({ prisma }) => {
-    prismaHolder.client = prisma;
-    useRoleStandIn();
-    const { setOrgMemberRole } = await import("~/models/orgMember.server");
-    const { organization, member, regularMember } = await seedOrg(prisma);
-    let releaseRoleNames!: () => void;
-    rbacHolder.allRolesGate = new Promise<void>((resolve) => (releaseRoleNames = resolve));
-
-    const recorded = await startRecording();
-    const outcome = await Promise.race([
-      setOrgMemberRole({
+      const roleChange = await setOrgMemberRole({
         userId: member.id,
         organizationId: organization.id,
         roleId: rbacHolder.roles.admin.id,
-      }),
-      new Promise((resolve) => setTimeout(() => resolve("still waiting"), 2_000)),
-    ]);
-    const recordedBeforeRelease = recorded.length;
-    releaseRoleNames();
-
-    expect(outcome).toEqual({ ok: true });
-    expect(recordedBeforeRelease).toBe(0);
-    expect(await recordedEvents(recorded)).toEqual([
-      {
-        category: "members",
-        action: "member.role_changed",
+      });
+      const {
+        created: [invite],
+      } = await inviteMembers({
+        slug: organization.slug,
+        emails: [joiner.email],
+        userId: admin.id,
+        rbacRoleId: rbacHolder.roles.developer.id,
+      });
+      await acceptInvite({ user: joiner, inviteId: invite!.id, organizationId: organization.id });
+      const added = await ensureOrgMember({
+        userId: ssoJoiner.id,
         organizationId: organization.id,
-        target: { type: "member", id: regularMember.id, name: member.email },
-        changes: { role: { before: "Developer", after: "Admin" } },
-      },
-    ]);
-  });
+        roleId: rbacHolder.roles.developer.id,
+        source: "sso_jit",
+      });
+      await flushAuditEvents();
+
+      expect(roleChange).toEqual({ ok: true });
+      expect(added.created).toBe(true);
+      expect(rbacHolder.assignments.get(`${organization.id}:${member.id}`)).toEqual(
+        rbacHolder.roles.admin
+      );
+      expect(rbacHolder.assignments.get(`${organization.id}:${joiner.id}`)).toEqual(
+        rbacHolder.roles.developer
+      );
+      expect(rbacHolder.reads).toEqual({ getUserRole: 0, allRoles: 0 });
+      expect(recorded).toEqual([]);
+
+      disableRecording = await enableAuditRecording();
+      await setOrgMemberRole({
+        userId: member.id,
+        organizationId: organization.id,
+        roleId: rbacHolder.roles.developer.id,
+      });
+      await flushAuditEvents();
+      expect(rbacHolder.reads).toEqual({ getUserRole: 1, allRoles: 1 });
+      expect(recorded).toHaveLength(1);
+    })
+  );
+
+  // Catches: a role change waiting for the role names that describe it before returning.
+  postgresTest("don't hold up the role change", async ({ prisma }) =>
+    inAuditedRequest(async () => {
+      prismaHolder.client = prisma;
+      useRoleStandIn();
+      const { setOrgMemberRole } = await import("~/models/orgMember.server");
+      const { organization, member, regularMember } = await seedOrg(prisma);
+      let releaseRoleNames!: () => void;
+      rbacHolder.allRolesGate = new Promise<void>((resolve) => (releaseRoleNames = resolve));
+
+      const recorded = await startRecording();
+      const outcome = await Promise.race([
+        setOrgMemberRole({
+          userId: member.id,
+          organizationId: organization.id,
+          roleId: rbacHolder.roles.admin.id,
+        }),
+        new Promise((resolve) => setTimeout(() => resolve("still waiting"), 2_000)),
+      ]);
+      const recordedBeforeRelease = recorded.length;
+      releaseRoleNames();
+
+      expect(outcome).toEqual({ ok: true });
+      expect(recordedBeforeRelease).toBe(0);
+      expect(await recordedEvents(recorded)).toEqual([
+        {
+          category: "members",
+          action: "member.role_changed",
+          organizationId: organization.id,
+          target: { type: "member", id: regularMember.id, name: member.email },
+          changes: { role: { before: "Developer", after: "Admin" } },
+        },
+      ]);
+    })
+  );
 });
 
 describe("member removal audit events", () => {
   // Catches: a dashboard/API removal recording nothing, or a rejected removal recording one.
-  postgresTest("records member.removed after the removal commits", async ({ prisma }) => {
-    prismaHolder.client = prisma;
-    const { removeTeamMember } = await import("~/models/removeTeamMember.server");
-    const { organization, admin, member, adminMember, regularMember } = await seedOrg(prisma);
+  postgresTest("records member.removed after the removal commits", async ({ prisma }) =>
+    inAuditedRequest(async () => {
+      prismaHolder.client = prisma;
+      const { removeTeamMember } = await import("~/models/removeTeamMember.server");
+      const { organization, admin, member, adminMember, regularMember } = await seedOrg(prisma);
 
-    const recorded = await startRecording();
-    await removeTeamMember(
-      { userId: admin.id, slug: organization.slug, memberId: regularMember.id },
-      prisma
-    );
-    // The last member can't be removed.
-    await expect(
-      removeTeamMember(
-        { userId: admin.id, slug: organization.slug, memberId: adminMember.id },
+      const recorded = await startRecording();
+      await removeTeamMember(
+        { userId: admin.id, slug: organization.slug, memberId: regularMember.id },
         prisma
-      )
-    ).rejects.toThrow(/last member/);
+      );
+      // The last member can't be removed.
+      await expect(
+        removeTeamMember(
+          { userId: admin.id, slug: organization.slug, memberId: adminMember.id },
+          prisma
+        )
+      ).rejects.toThrow(/last member/);
 
-    expect(await recordedEvents(recorded)).toEqual([
-      {
-        category: "members",
-        action: "member.removed",
-        organizationId: organization.id,
-        target: { type: "member", id: regularMember.id, name: member.email },
-      },
-    ]);
-  });
+      expect(await recordedEvents(recorded)).toEqual([
+        {
+          category: "members",
+          action: "member.removed",
+          organizationId: organization.id,
+          target: { type: "member", id: regularMember.id, name: member.email },
+        },
+      ]);
+    })
+  );
 });
 
 describe("role change audit events", () => {
   // Catches: a role change without an event, the before or after role missing or swapped, or an
   // actor override on a change whose actor should come from the request.
-  postgresTest(
-    "records member.role_changed with the before and after roles",
-    async ({ prisma }) => {
+  postgresTest("records member.role_changed with the before and after roles", async ({ prisma }) =>
+    inAuditedRequest(async () => {
       prismaHolder.client = prisma;
       useRoleStandIn();
       const { setOrgMemberRole } = await import("~/models/orgMember.server");
@@ -912,7 +936,7 @@ describe("role change audit events", () => {
           changes: { role: { before: "Developer", after: "Admin" } },
         },
       ]);
-    }
+    })
   );
 
   // Catches: a role change whose event is dropped because the member was removed before the event
@@ -920,65 +944,66 @@ describe("role change audit events", () => {
   // removal has committed.
   postgresTest(
     "records member.role_changed when the member is removed right after",
-    async ({ prisma }) => {
-      prismaHolder.client = prisma;
-      useRoleStandIn();
-      const { setOrgMemberRole } = await import("~/models/orgMember.server");
-      const { removeTeamMember } = await import("~/models/removeTeamMember.server");
-      const { organization, admin, member, regularMember } = await seedOrg(prisma);
+    async ({ prisma }) =>
+      inAuditedRequest(async () => {
+        prismaHolder.client = prisma;
+        useRoleStandIn();
+        const { setOrgMemberRole } = await import("~/models/orgMember.server");
+        const { removeTeamMember } = await import("~/models/removeTeamMember.server");
+        const { organization, admin, member, regularMember } = await seedOrg(prisma);
 
-      const removal = new AsyncLocalStorage<true>();
-      let holdMemberReads = false;
-      let releaseMemberReads!: () => void;
-      const removalCommitted = new Promise<void>((resolve) => (releaseMemberReads = resolve));
-      prismaHolder.client = prisma.$extends({
-        query: {
-          orgMember: {
-            async findFirst({ args, query }) {
-              if (holdMemberReads && !removal.getStore()) {
-                await Promise.race([
-                  removalCommitted,
-                  new Promise((resolve) => setTimeout(resolve, 10_000)),
-                ]);
-              }
-              return query(args);
+        const removal = new AsyncLocalStorage<true>();
+        let holdMemberReads = false;
+        let releaseMemberReads!: () => void;
+        const removalCommitted = new Promise<void>((resolve) => (releaseMemberReads = resolve));
+        prismaHolder.client = prisma.$extends({
+          query: {
+            orgMember: {
+              async findFirst({ args, query }) {
+                if (holdMemberReads && !removal.getStore()) {
+                  await Promise.race([
+                    removalCommitted,
+                    new Promise((resolve) => setTimeout(resolve, 10_000)),
+                  ]);
+                }
+                return query(args);
+              },
             },
           },
-        },
-      }) as unknown as PrismaClient;
+        }) as unknown as PrismaClient;
 
-      const recorded = await startRecording();
-      const result = await setOrgMemberRole({
-        userId: member.id,
-        organizationId: organization.id,
-        roleId: rbacHolder.roles.admin.id,
-      });
-      holdMemberReads = true;
-      await removal.run(true, () =>
-        removeTeamMember(
-          { userId: admin.id, slug: organization.slug, memberId: regularMember.id },
-          prisma
-        )
-      );
-      releaseMemberReads();
+        const recorded = await startRecording();
+        const result = await setOrgMemberRole({
+          userId: member.id,
+          organizationId: organization.id,
+          roleId: rbacHolder.roles.admin.id,
+        });
+        holdMemberReads = true;
+        await removal.run(true, () =>
+          removeTeamMember(
+            { userId: admin.id, slug: organization.slug, memberId: regularMember.id },
+            prisma
+          )
+        );
+        releaseMemberReads();
 
-      expect(result).toEqual({ ok: true });
-      expect(await recordedEvents(recorded)).toEqual([
-        {
-          category: "members",
-          action: "member.role_changed",
-          organizationId: organization.id,
-          target: { type: "member", id: regularMember.id, name: member.email },
-          changes: { role: { before: "Developer", after: "Admin" } },
-        },
-        {
-          category: "members",
-          action: "member.removed",
-          organizationId: organization.id,
-          target: { type: "member", id: regularMember.id, name: member.email },
-        },
-      ]);
-    }
+        expect(result).toEqual({ ok: true });
+        expect(await recordedEvents(recorded)).toEqual([
+          {
+            category: "members",
+            action: "member.role_changed",
+            organizationId: organization.id,
+            target: { type: "member", id: regularMember.id, name: member.email },
+            changes: { role: { before: "Developer", after: "Admin" } },
+          },
+          {
+            category: "members",
+            action: "member.removed",
+            organizationId: organization.id,
+            target: { type: "member", id: regularMember.id, name: member.email },
+          },
+        ]);
+      })
   );
 
   // Catches: an event for a change the plugin refused, for a role the member already had, or for a
@@ -1029,83 +1054,85 @@ describe("role change audit events", () => {
   // Catches: a failed "before" read blocking the role change, or dropping its event.
   postgresTest(
     "changes the role and records it without a before when the pre-read fails",
-    async ({ prisma }) => {
-      prismaHolder.client = prisma;
-      useRoleStandIn();
-      const { setOrgMemberRole } = await import("~/models/orgMember.server");
-      const { organization, member, regularMember } = await seedOrg(prisma);
-      rbacHolder.failNextGetUserRole = true;
+    async ({ prisma }) =>
+      inAuditedRequest(async () => {
+        prismaHolder.client = prisma;
+        useRoleStandIn();
+        const { setOrgMemberRole } = await import("~/models/orgMember.server");
+        const { organization, member, regularMember } = await seedOrg(prisma);
+        rbacHolder.failNextGetUserRole = true;
 
-      const recorded = await startRecording();
-      const result = await setOrgMemberRole({
-        userId: member.id,
-        organizationId: organization.id,
-        roleId: rbacHolder.roles.admin.id,
-      });
-
-      expect(result).toEqual({ ok: true });
-      expect(rbacHolder.assignments.get(`${organization.id}:${member.id}`)).toEqual(
-        rbacHolder.roles.admin
-      );
-      expect(await recordedEvents(recorded)).toEqual([
-        {
-          category: "members",
-          action: "member.role_changed",
+        const recorded = await startRecording();
+        const result = await setOrgMemberRole({
+          userId: member.id,
           organizationId: organization.id,
-          target: { type: "member", id: regularMember.id, name: member.email },
-          changes: { role: { before: null, after: "Admin" } },
-        },
-      ]);
-    }
+          roleId: rbacHolder.roles.admin.id,
+        });
+
+        expect(result).toEqual({ ok: true });
+        expect(rbacHolder.assignments.get(`${organization.id}:${member.id}`)).toEqual(
+          rbacHolder.roles.admin
+        );
+        expect(await recordedEvents(recorded)).toEqual([
+          {
+            category: "members",
+            action: "member.role_changed",
+            organizationId: organization.id,
+            target: { type: "member", id: regularMember.id, name: member.email },
+            changes: { role: { before: null, after: "Admin" } },
+          },
+        ]);
+      })
   );
 
   // Catches: a failed member read before the write blocking the role change, or dropping its event.
   // The client below fails that one read, so the event has to find the member after the write.
   postgresTest(
     "changes the role and records it when the member read before the write fails",
-    async ({ prisma }) => {
-      prismaHolder.client = prisma;
-      useRoleStandIn();
-      const { setOrgMemberRole } = await import("~/models/orgMember.server");
-      const { organization, member, regularMember } = await seedOrg(prisma);
-      let failNextMemberRead = false;
-      prismaHolder.client = prisma.$extends({
-        query: {
-          orgMember: {
-            async findFirst({ args, query }) {
-              if (failNextMemberRead) {
-                failNextMemberRead = false;
-                throw new Error("member read failed");
-              }
-              return query(args);
+    async ({ prisma }) =>
+      inAuditedRequest(async () => {
+        prismaHolder.client = prisma;
+        useRoleStandIn();
+        const { setOrgMemberRole } = await import("~/models/orgMember.server");
+        const { organization, member, regularMember } = await seedOrg(prisma);
+        let failNextMemberRead = false;
+        prismaHolder.client = prisma.$extends({
+          query: {
+            orgMember: {
+              async findFirst({ args, query }) {
+                if (failNextMemberRead) {
+                  failNextMemberRead = false;
+                  throw new Error("member read failed");
+                }
+                return query(args);
+              },
             },
           },
-        },
-      }) as unknown as PrismaClient;
+        }) as unknown as PrismaClient;
 
-      const recorded = await startRecording();
-      failNextMemberRead = true;
-      const result = await setOrgMemberRole({
-        userId: member.id,
-        organizationId: organization.id,
-        roleId: rbacHolder.roles.admin.id,
-      });
-
-      expect(failNextMemberRead).toBe(false);
-      expect(result).toEqual({ ok: true });
-      expect(rbacHolder.assignments.get(`${organization.id}:${member.id}`)).toEqual(
-        rbacHolder.roles.admin
-      );
-      expect(await recordedEvents(recorded)).toEqual([
-        {
-          category: "members",
-          action: "member.role_changed",
+        const recorded = await startRecording();
+        failNextMemberRead = true;
+        const result = await setOrgMemberRole({
+          userId: member.id,
           organizationId: organization.id,
-          target: { type: "member", id: regularMember.id, name: member.email },
-          changes: { role: { before: "Developer", after: "Admin" } },
-        },
-      ]);
-    }
+          roleId: rbacHolder.roles.admin.id,
+        });
+
+        expect(failNextMemberRead).toBe(false);
+        expect(result).toEqual({ ok: true });
+        expect(rbacHolder.assignments.get(`${organization.id}:${member.id}`)).toEqual(
+          rbacHolder.roles.admin
+        );
+        expect(await recordedEvents(recorded)).toEqual([
+          {
+            category: "members",
+            action: "member.role_changed",
+            organizationId: organization.id,
+            target: { type: "member", id: regularMember.id, name: member.email },
+            changes: { role: { before: "Developer", after: "Admin" } },
+          },
+        ]);
+      })
   );
 
   // Catches: a member.role_changed for a membership removed between the member read and the write.
@@ -1114,62 +1141,63 @@ describe("role change audit events", () => {
   // as the member read before the write returns.
   postgresTest(
     "records nothing for a member removed between the member read and the write",
-    async ({ prisma }) => {
-      prismaHolder.client = prisma;
-      useRoleStandIn();
-      const { setOrgMemberRole } = await import("~/models/orgMember.server");
-      const { removeTeamMember } = await import("~/models/removeTeamMember.server");
-      const { organization, admin, member, regularMember } = await seedOrg(prisma);
+    async ({ prisma }) =>
+      inAuditedRequest(async () => {
+        prismaHolder.client = prisma;
+        useRoleStandIn();
+        const { setOrgMemberRole } = await import("~/models/orgMember.server");
+        const { removeTeamMember } = await import("~/models/removeTeamMember.server");
+        const { organization, admin, member, regularMember } = await seedOrg(prisma);
 
-      const removal = new AsyncLocalStorage<true>();
-      let removeAfterNextMemberRead = false;
-      prismaHolder.client = prisma.$extends({
-        query: {
-          orgMember: {
-            async findFirst({ args, query }) {
-              const found = await query(args);
-              if (removeAfterNextMemberRead && !removal.getStore()) {
-                removeAfterNextMemberRead = false;
-                await removal.run(true, () =>
-                  removeTeamMember(
-                    { userId: admin.id, slug: organization.slug, memberId: regularMember.id },
-                    prisma
-                  )
-                );
-              }
-              return found;
+        const removal = new AsyncLocalStorage<true>();
+        let removeAfterNextMemberRead = false;
+        prismaHolder.client = prisma.$extends({
+          query: {
+            orgMember: {
+              async findFirst({ args, query }) {
+                const found = await query(args);
+                if (removeAfterNextMemberRead && !removal.getStore()) {
+                  removeAfterNextMemberRead = false;
+                  await removal.run(true, () =>
+                    removeTeamMember(
+                      { userId: admin.id, slug: organization.slug, memberId: regularMember.id },
+                      prisma
+                    )
+                  );
+                }
+                return found;
+              },
             },
           },
-        },
-      }) as unknown as PrismaClient;
+        }) as unknown as PrismaClient;
 
-      const recorded = await startRecording();
-      removeAfterNextMemberRead = true;
-      const result = await setOrgMemberRole({
-        userId: member.id,
-        organizationId: organization.id,
-        roleId: rbacHolder.roles.admin.id,
-      });
-
-      expect(removeAfterNextMemberRead).toBe(false);
-      expect(result).toEqual({ ok: true });
-      expect(
-        await prisma.orgMember.count({
-          where: { userId: member.id, organizationId: organization.id },
-        })
-      ).toBe(0);
-      expect(rbacHolder.assignments.get(`${organization.id}:${member.id}`)).toEqual(
-        rbacHolder.roles.admin
-      );
-      expect(await recordedEvents(recorded)).toEqual([
-        {
-          category: "members",
-          action: "member.removed",
+        const recorded = await startRecording();
+        removeAfterNextMemberRead = true;
+        const result = await setOrgMemberRole({
+          userId: member.id,
           organizationId: organization.id,
-          target: { type: "member", id: regularMember.id, name: member.email },
-        },
-      ]);
-    }
+          roleId: rbacHolder.roles.admin.id,
+        });
+
+        expect(removeAfterNextMemberRead).toBe(false);
+        expect(result).toEqual({ ok: true });
+        expect(
+          await prisma.orgMember.count({
+            where: { userId: member.id, organizationId: organization.id },
+          })
+        ).toBe(0);
+        expect(rbacHolder.assignments.get(`${organization.id}:${member.id}`)).toEqual(
+          rbacHolder.roles.admin
+        );
+        expect(await recordedEvents(recorded)).toEqual([
+          {
+            category: "members",
+            action: "member.removed",
+            organizationId: organization.id,
+            target: { type: "member", id: regularMember.id, name: member.email },
+          },
+        ]);
+      })
   );
 });
 

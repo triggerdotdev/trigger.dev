@@ -131,6 +131,7 @@ export type {
   AuditLogSource,
   AuditLogTarget,
 } from "./auditLog.js";
+export { resolveAuditEventAttribution } from "./auditLog.js";
 export type {
   ExternalOidcController,
   ExternalOidcEnvironment,

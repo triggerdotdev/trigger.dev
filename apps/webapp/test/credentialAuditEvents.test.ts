@@ -78,6 +78,7 @@ import {
 } from "./fixtures/environmentVariablesFixtures";
 import {
   enableAuditRecording,
+  inAuditedRequest,
   installAuditLogPlugin,
   uninstallAuditLogPlugin,
 } from "./helpers/auditLogPlugin";
@@ -148,11 +149,84 @@ describe("credential change audit events", () => {
   // Catches: a rotation recorded without its keys' last 4 or grace period, or with a key value.
   postgresTest(
     "rotating the root key records the old and new last 4 and the grace period",
-    async ({ prisma }) => {
-      const { organization, project, user, environment, recorded } = await setup(prisma);
+    async ({ prisma }) =>
+      inAuditedRequest(async () => {
+        const { organization, project, user, environment, recorded } = await setup(prisma);
+        const previousApiKey = environment.apiKey;
+
+        const updated = await regenerateApiKey(
+          { environmentId: environment.id, userId: user.id },
+          { prismaClient: prisma }
+        );
+
+        const revoked = await prisma.revokedApiKey.findFirstOrThrow({
+          where: { runtimeEnvironmentId: environment.id },
+        });
+        const inputs = await recordedInputs(recorded);
+        expect(inputs).toEqual([
+          {
+            category: "credentials",
+            action: "api_key.rotated",
+            organizationId: organization.id,
+            projectId: project.id,
+            environmentId: environment.id,
+            environmentType: "PRODUCTION",
+            target: { type: "root_api_key", id: environment.id, name: null },
+            keyLast4s: [previousApiKey.slice(-4), updated.apiKey.slice(-4)],
+            changes: {
+              previousKeyLast4: previousApiKey.slice(-4),
+              newKeyLast4: updated.apiKey.slice(-4),
+              graceUntil: revoked.expiresAt.toISOString(),
+            },
+          },
+        ]);
+        const serialized = JSON.stringify(inputs);
+        expect(serialized).not.toContain(previousApiKey);
+        expect(serialized).not.toContain(updated.apiKey);
+      })
+  );
+
+  // Catches: an immediate rotation recorded as if the old key still worked, or the earlier keys
+  // whose grace it ends left out.
+  postgresTest(
+    "an immediate rotation records no grace period and every key it ends",
+    async ({ prisma }) =>
+      inAuditedRequest(async () => {
+        const { user, environment, recorded } = await setup(prisma);
+        const firstApiKey = environment.apiKey;
+        const second = await regenerateApiKey(
+          { environmentId: environment.id, userId: user.id },
+          { prismaClient: prisma }
+        );
+
+        const third = await regenerateApiKey(
+          { environmentId: environment.id, userId: user.id, revokeImmediately: true },
+          { prismaClient: prisma }
+        );
+
+        const inputs = await recordedInputs(recorded);
+        expect(inputs).toHaveLength(2);
+        expect(inputs[1]).toEqual({
+          category: "credentials",
+          action: "api_key.rotated",
+          ...locatedIn(environment),
+          target: { type: "root_api_key", id: environment.id, name: null },
+          keyLast4s: [second.apiKey.slice(-4), third.apiKey.slice(-4), firstApiKey.slice(-4)],
+          changes: {
+            previousKeyLast4: second.apiKey.slice(-4),
+            newKeyLast4: third.apiKey.slice(-4),
+            graceUntil: null,
+          },
+        });
+      })
+  );
+
+  postgresTest("hiding the root key records the rotation it makes", async ({ prisma }) =>
+    inAuditedRequest(async () => {
+      const { organization, user, environment, recorded } = await setup(prisma);
       const previousApiKey = environment.apiKey;
 
-      const updated = await regenerateApiKey(
+      const updated = await disableRootApiKeyVisibility(
         { environmentId: environment.id, userId: user.id },
         { prismaClient: prisma }
       );
@@ -164,11 +238,9 @@ describe("credential change audit events", () => {
       expect(inputs).toEqual([
         {
           category: "credentials",
-          action: "api_key.rotated",
+          action: "api_key.root_visibility_disabled",
+          ...locatedIn(environment),
           organizationId: organization.id,
-          projectId: project.id,
-          environmentId: environment.id,
-          environmentType: "PRODUCTION",
           target: { type: "root_api_key", id: environment.id, name: null },
           keyLast4s: [previousApiKey.slice(-4), updated.apiKey.slice(-4)],
           changes: {
@@ -178,220 +250,158 @@ describe("credential change audit events", () => {
           },
         },
       ]);
-      const serialized = JSON.stringify(inputs);
-      expect(serialized).not.toContain(previousApiKey);
-      expect(serialized).not.toContain(updated.apiKey);
-    }
+    })
   );
-
-  // Catches: an immediate rotation recorded as if the old key still worked, or the earlier keys
-  // whose grace it ends left out.
-  postgresTest(
-    "an immediate rotation records no grace period and every key it ends",
-    async ({ prisma }) => {
-      const { user, environment, recorded } = await setup(prisma);
-      const firstApiKey = environment.apiKey;
-      const second = await regenerateApiKey(
-        { environmentId: environment.id, userId: user.id },
-        { prismaClient: prisma }
-      );
-
-      const third = await regenerateApiKey(
-        { environmentId: environment.id, userId: user.id, revokeImmediately: true },
-        { prismaClient: prisma }
-      );
-
-      const inputs = await recordedInputs(recorded);
-      expect(inputs).toHaveLength(2);
-      expect(inputs[1]).toEqual({
-        category: "credentials",
-        action: "api_key.rotated",
-        ...locatedIn(environment),
-        target: { type: "root_api_key", id: environment.id, name: null },
-        keyLast4s: [second.apiKey.slice(-4), third.apiKey.slice(-4), firstApiKey.slice(-4)],
-        changes: {
-          previousKeyLast4: second.apiKey.slice(-4),
-          newKeyLast4: third.apiKey.slice(-4),
-          graceUntil: null,
-        },
-      });
-    }
-  );
-
-  postgresTest("hiding the root key records the rotation it makes", async ({ prisma }) => {
-    const { organization, user, environment, recorded } = await setup(prisma);
-    const previousApiKey = environment.apiKey;
-
-    const updated = await disableRootApiKeyVisibility(
-      { environmentId: environment.id, userId: user.id },
-      { prismaClient: prisma }
-    );
-
-    const revoked = await prisma.revokedApiKey.findFirstOrThrow({
-      where: { runtimeEnvironmentId: environment.id },
-    });
-    const inputs = await recordedInputs(recorded);
-    expect(inputs).toEqual([
-      {
-        category: "credentials",
-        action: "api_key.root_visibility_disabled",
-        ...locatedIn(environment),
-        organizationId: organization.id,
-        target: { type: "root_api_key", id: environment.id, name: null },
-        keyLast4s: [previousApiKey.slice(-4), updated.apiKey.slice(-4)],
-        changes: {
-          previousKeyLast4: previousApiKey.slice(-4),
-          newKeyLast4: updated.apiKey.slice(-4),
-          graceUntil: revoked.expiresAt.toISOString(),
-        },
-      },
-    ]);
-  });
 
   // Catches: a new key's access recorded only as its preset, which is null for full access and
   // doesn't say what a CUSTOM or task-selecting key can do.
-  postgresTest("creating a key records its name, last 4 and access", async ({ prisma }) => {
-    const { organization, project, user, environment, recorded } = await setup(prisma);
-    const fallback = rbacPlugin.create(
-      { primary: prisma, replica: prisma },
-      { forceFallback: true }
-    );
+  postgresTest("creating a key records its name, last 4 and access", async ({ prisma }) =>
+    inAuditedRequest(async () => {
+      const { organization, project, user, environment, recorded } = await setup(prisma);
+      const fallback = rbacPlugin.create(
+        { primary: prisma, replica: prisma },
+        { forceFallback: true }
+      );
 
-    const { apiKey, plaintext } = await createEnvironmentApiKey(
-      {
-        environmentId: environment.id,
-        taskEnvironmentId: environment.id,
-        userId: user.id,
-        name: "Deploys",
-        presetId: "FULL_ACCESS",
-        allowedIpRanges: ["203.0.113.0/24", "198.51.100.0/24"],
-      },
-      { prismaClient: prisma, rbacController: fallback }
-    );
-
-    const inputs = await recordedInputs(recorded);
-    expect(inputs).toEqual([
-      {
-        category: "credentials",
-        action: "api_key.created",
-        organizationId: organization.id,
-        projectId: project.id,
-        environmentId: environment.id,
-        environmentType: "PRODUCTION",
-        target: { type: "additional_api_key", id: apiKey.id, name: "Deploys" },
-        keyLast4s: [plaintext.slice(-4)],
-        changes: {
-          presetId: null,
-          scopes: "admin",
-          expiresAt: null,
-          // Sorted, like api_key.ip_ranges_updated.
-          allowedIpRanges: "198.51.100.0/24, 203.0.113.0/24",
-        },
-      },
-    ]);
-    expect(JSON.stringify(inputs)).not.toContain(plaintext);
-  });
-
-  postgresTest(
-    "changing a key's access records the preset and scopes before and after",
-    async ({ prisma }) => {
-      const { user, environment, recorded } = await setup(prisma);
-      const apiKey = await createApiKeyRow(prisma, environment.id, user.id, "acc1");
-
-      await updateEnvironmentApiKeyAccess(
+      const { apiKey, plaintext } = await createEnvironmentApiKey(
         {
           environmentId: environment.id,
           taskEnvironmentId: environment.id,
           userId: user.id,
-          apiKeyId: apiKey.id,
-          presetId: "CUSTOM",
+          name: "Deploys",
+          presetId: "FULL_ACCESS",
+          allowedIpRanges: ["203.0.113.0/24", "198.51.100.0/24"],
         },
-        {
-          prismaClient: prisma,
-          rbacController: {
-            prepareApiKeyPolicy: async () => ({
-              ok: true,
-              policy: { presetId: "CUSTOM", scopes: ["read:tasks", "trigger:tasks"] },
-            }),
-          },
-        }
+        { prismaClient: prisma, rbacController: fallback }
       );
 
-      // The same access again changes nothing, so it records nothing.
-      await updateEnvironmentApiKeyAccess(
-        {
-          environmentId: environment.id,
-          taskEnvironmentId: environment.id,
-          userId: user.id,
-          apiKeyId: apiKey.id,
-          presetId: "CUSTOM",
-        },
-        {
-          prismaClient: prisma,
-          rbacController: {
-            prepareApiKeyPolicy: async () => ({
-              ok: true,
-              policy: { presetId: "CUSTOM", scopes: ["trigger:tasks", "read:tasks"] },
-            }),
-          },
-        }
-      );
-
-      expect(await recordedInputs(recorded)).toEqual([
+      const inputs = await recordedInputs(recorded);
+      expect(inputs).toEqual([
         {
           category: "credentials",
-          action: "api_key.access_changed",
-          ...locatedIn(environment),
-          target: { type: "additional_api_key", id: apiKey.id, name: "Key acc1" },
-          keyLast4s: ["acc1"],
+          action: "api_key.created",
+          organizationId: organization.id,
+          projectId: project.id,
+          environmentId: environment.id,
+          environmentType: "PRODUCTION",
+          target: { type: "additional_api_key", id: apiKey.id, name: "Deploys" },
+          keyLast4s: [plaintext.slice(-4)],
           changes: {
-            presetId: { before: "ENVIRONMENT_OPERATOR", after: "CUSTOM" },
-            scopes: { before: "read:tasks", after: "read:tasks, trigger:tasks" },
+            presetId: null,
+            scopes: "admin",
+            expiresAt: null,
+            // Sorted, like api_key.ip_ranges_updated.
+            allowedIpRanges: "198.51.100.0/24, 203.0.113.0/24",
           },
         },
       ]);
-    }
+      expect(JSON.stringify(inputs)).not.toContain(plaintext);
+    })
   );
 
-  postgresTest("revoking a key and changing its IP ranges are recorded", async ({ prisma }) => {
-    const { organization, user, environment, recorded } = await setup(prisma);
-    const apiKey = await createApiKeyRow(prisma, environment.id, user.id, "rev1");
+  postgresTest(
+    "changing a key's access records the preset and scopes before and after",
+    async ({ prisma }) =>
+      inAuditedRequest(async () => {
+        const { user, environment, recorded } = await setup(prisma);
+        const apiKey = await createApiKeyRow(prisma, environment.id, user.id, "acc1");
 
-    const ranges = await updateEnvironmentApiKeyIpRanges(
-      { environmentId: environment.id, apiKeyId: apiKey.id, allowedIpRanges: ["198.51.100.7"] },
-      { prismaClient: prisma }
-    );
-    // The same ranges again change nothing, so they record nothing.
-    await updateEnvironmentApiKeyIpRanges(
-      { environmentId: environment.id, apiKeyId: apiKey.id, allowedIpRanges: ["198.51.100.7"] },
-      { prismaClient: prisma }
-    );
-    await revokeEnvironmentApiKey(
-      { environmentId: environment.id, apiKeyId: apiKey.id, userId: user.id },
-      { prismaClient: prisma }
-    );
+        await updateEnvironmentApiKeyAccess(
+          {
+            environmentId: environment.id,
+            taskEnvironmentId: environment.id,
+            userId: user.id,
+            apiKeyId: apiKey.id,
+            presetId: "CUSTOM",
+          },
+          {
+            prismaClient: prisma,
+            rbacController: {
+              prepareApiKeyPolicy: async () => ({
+                ok: true,
+                policy: { presetId: "CUSTOM", scopes: ["read:tasks", "trigger:tasks"] },
+              }),
+            },
+          }
+        );
 
-    const target = { type: "additional_api_key", id: apiKey.id, name: "Key rev1" };
-    expect(ranges).toHaveLength(1);
-    expect(await recordedInputs(recorded)).toEqual([
-      {
-        category: "credentials",
-        action: "api_key.ip_ranges_updated",
-        ...locatedIn(environment),
-        organizationId: organization.id,
-        target,
-        keyLast4s: ["rev1"],
-        changes: { allowedIpRanges: { before: "", after: ranges[0] } },
-      },
-      {
-        category: "credentials",
-        action: "api_key.revoked",
-        ...locatedIn(environment),
-        target,
-        keyLast4s: ["rev1"],
-      },
-    ]);
-  });
+        // The same access again changes nothing, so it records nothing.
+        await updateEnvironmentApiKeyAccess(
+          {
+            environmentId: environment.id,
+            taskEnvironmentId: environment.id,
+            userId: user.id,
+            apiKeyId: apiKey.id,
+            presetId: "CUSTOM",
+          },
+          {
+            prismaClient: prisma,
+            rbacController: {
+              prepareApiKeyPolicy: async () => ({
+                ok: true,
+                policy: { presetId: "CUSTOM", scopes: ["trigger:tasks", "read:tasks"] },
+              }),
+            },
+          }
+        );
+
+        expect(await recordedInputs(recorded)).toEqual([
+          {
+            category: "credentials",
+            action: "api_key.access_changed",
+            ...locatedIn(environment),
+            target: { type: "additional_api_key", id: apiKey.id, name: "Key acc1" },
+            keyLast4s: ["acc1"],
+            changes: {
+              presetId: { before: "ENVIRONMENT_OPERATOR", after: "CUSTOM" },
+              scopes: { before: "read:tasks", after: "read:tasks, trigger:tasks" },
+            },
+          },
+        ]);
+      })
+  );
+
+  postgresTest("revoking a key and changing its IP ranges are recorded", async ({ prisma }) =>
+    inAuditedRequest(async () => {
+      const { organization, user, environment, recorded } = await setup(prisma);
+      const apiKey = await createApiKeyRow(prisma, environment.id, user.id, "rev1");
+
+      const ranges = await updateEnvironmentApiKeyIpRanges(
+        { environmentId: environment.id, apiKeyId: apiKey.id, allowedIpRanges: ["198.51.100.7"] },
+        { prismaClient: prisma }
+      );
+      // The same ranges again change nothing, so they record nothing.
+      await updateEnvironmentApiKeyIpRanges(
+        { environmentId: environment.id, apiKeyId: apiKey.id, allowedIpRanges: ["198.51.100.7"] },
+        { prismaClient: prisma }
+      );
+      await revokeEnvironmentApiKey(
+        { environmentId: environment.id, apiKeyId: apiKey.id, userId: user.id },
+        { prismaClient: prisma }
+      );
+
+      const target = { type: "additional_api_key", id: apiKey.id, name: "Key rev1" };
+      expect(ranges).toHaveLength(1);
+      expect(await recordedInputs(recorded)).toEqual([
+        {
+          category: "credentials",
+          action: "api_key.ip_ranges_updated",
+          ...locatedIn(environment),
+          organizationId: organization.id,
+          target,
+          keyLast4s: ["rev1"],
+          changes: { allowedIpRanges: { before: "", after: ranges[0] } },
+        },
+        {
+          category: "credentials",
+          action: "api_key.revoked",
+          ...locatedIn(environment),
+          target,
+          keyLast4s: ["rev1"],
+        },
+      ]);
+    })
+  );
 
   // Catches: the read of the previous ranges, which only feeds the audit event, running while
   // recording is off.
@@ -543,9 +553,8 @@ describe("credential change audit events", () => {
   );
 
   // Catches: a branch's rotation recorded on the branch, which has no key of its own.
-  postgresTest(
-    "rotating from a branch records it on the parent environment",
-    async ({ prisma }) => {
+  postgresTest("rotating from a branch records it on the parent environment", async ({ prisma }) =>
+    inAuditedRequest(async () => {
       const { user, environment, recorded } = await setup(prisma);
       const branch = await prisma.runtimeEnvironment.create({
         data: {
@@ -570,7 +579,7 @@ describe("credential change audit events", () => {
       expect(inputs.map((input) => [input.environmentId, input.target])).toEqual([
         [environment.id, { type: "root_api_key", id: environment.id, name: null }],
       ]);
-    }
+    })
   );
 
   // Catches: a dashboard change losing its actor and source, which the plugin drops as
@@ -613,63 +622,65 @@ describe("credential change audit events", () => {
 
   // Catches: a PAT event landing in an organization's log, a token value in the event, or a
   // directory sync revocation attributed to the user.
-  postgresTest("PAT events belong to no organization", async ({ prisma }) => {
-    const { user, recorded } = await setup(prisma);
+  postgresTest("PAT events belong to no organization", async ({ prisma }) =>
+    inAuditedRequest(async () => {
+      const { user, recorded } = await setup(prisma);
 
-    const dashboardToken = await createPersonalAccessToken({ name: "laptop", userId: user.id });
-    const cliToken = await createPersonalAccessToken({
-      name: "cli",
-      userId: user.id,
-      auditLogSource: "cli",
-    });
-    await revokePersonalAccessToken(dashboardToken.id, user.id);
-    await revokePersonalAccessToken(cliToken.id, user.id, {
-      reason: "member_removed",
-      revokedBy: SYSTEM_ACTOR,
-    });
+      const dashboardToken = await createPersonalAccessToken({ name: "laptop", userId: user.id });
+      const cliToken = await createPersonalAccessToken({
+        name: "cli",
+        userId: user.id,
+        auditLogSource: "cli",
+      });
+      await revokePersonalAccessToken(dashboardToken.id, user.id);
+      await revokePersonalAccessToken(cliToken.id, user.id, {
+        reason: "member_removed",
+        revokedBy: SYSTEM_ACTOR,
+      });
 
-    const pat = (token: { id: string; name: string; token: string }) => ({
-      organizationId: null,
-      target: { type: "pat", id: token.id, name: token.name },
-      keyLast4s: [token.token.slice(-4)],
-    });
-    const inputs = await recordedInputs(recorded);
-    expect(inputs).toEqual([
-      {
-        category: "credentials",
-        action: "pat.created",
-        ...pat(dashboardToken),
-        actor: { type: "user", id: user.id },
-        changes: { expiresAt: null },
-      },
-      {
-        category: "credentials",
-        action: "pat.created",
-        ...pat(cliToken),
-        actor: { type: "user", id: user.id },
-        source: "cli",
-        changes: { expiresAt: null },
-      },
-      {
-        category: "credentials",
-        action: "pat.revoked",
-        ...pat(dashboardToken),
-        actor: { type: "user", id: user.id },
-        changes: { reason: "revoked" },
-      },
-      {
-        category: "credentials",
-        action: "pat.revoked",
-        ...pat(cliToken),
-        actor: { type: "system", id: null },
-        source: "system",
-        changes: { reason: "member_removed" },
-      },
-    ]);
-    const serialized = JSON.stringify(inputs);
-    expect(serialized).not.toContain(dashboardToken.token);
-    expect(serialized).not.toContain(cliToken.token);
-  });
+      const pat = (token: { id: string; name: string; token: string }) => ({
+        organizationId: null,
+        target: { type: "pat", id: token.id, name: token.name },
+        keyLast4s: [token.token.slice(-4)],
+      });
+      const inputs = await recordedInputs(recorded);
+      expect(inputs).toEqual([
+        {
+          category: "credentials",
+          action: "pat.created",
+          ...pat(dashboardToken),
+          actor: { type: "user", id: user.id },
+          changes: { expiresAt: null },
+        },
+        {
+          category: "credentials",
+          action: "pat.created",
+          ...pat(cliToken),
+          actor: { type: "user", id: user.id },
+          source: "cli",
+          changes: { expiresAt: null },
+        },
+        {
+          category: "credentials",
+          action: "pat.revoked",
+          ...pat(dashboardToken),
+          actor: { type: "user", id: user.id },
+          changes: { reason: "revoked" },
+        },
+        {
+          category: "credentials",
+          action: "pat.revoked",
+          ...pat(cliToken),
+          actor: { type: "system", id: null },
+          source: "system",
+          changes: { reason: "member_removed" },
+        },
+      ]);
+      const serialized = JSON.stringify(inputs);
+      expect(serialized).not.toContain(dashboardToken.token);
+      expect(serialized).not.toContain(cliToken.token);
+    })
+  );
 
   // Catches: the keys a member removal rotates and revokes leaving no event, or a directory sync
   // removal attributed to whoever made the request.

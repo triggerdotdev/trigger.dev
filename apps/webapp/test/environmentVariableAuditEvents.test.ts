@@ -62,6 +62,7 @@ import { getSecretStore } from "~/services/secrets/secretStore.server";
 import { EnvironmentVariablesRepository } from "~/v3/environmentVariables/environmentVariablesRepository.server";
 import {
   enableAuditRecording,
+  inAuditedRequest,
   installAuditLogPlugin,
   uninstallAuditLogPlugin,
 } from "./helpers/auditLogPlugin";
@@ -180,290 +181,296 @@ describe("env var audit events", () => {
   // Catches: a create that records no event per environment, records the value, or records a write that changed nothing.
   postgresTest(
     "create records envvar.created per environment, and nothing for an unchanged value",
-    async ({ prisma }) => {
-      const { organization, project, production, staging, repository, events, variableId } =
-        await setup(prisma);
+    async ({ prisma }) =>
+      inAuditedRequest(async () => {
+        const { organization, project, production, staging, repository, events, variableId } =
+          await setup(prisma);
 
-      const create = () =>
-        repository.create(project.id, {
-          override: true,
-          isSecret: true,
-          environmentIds: [production.id, staging.id],
-          variables: [{ key: "API_TOKEN", value: `${VALUE_MARKER}-1` }],
-        });
-      expect(await create()).toEqual({ success: true });
+        const create = () =>
+          repository.create(project.id, {
+            override: true,
+            isSecret: true,
+            environmentIds: [production.id, staging.id],
+            variables: [{ key: "API_TOKEN", value: `${VALUE_MARKER}-1` }],
+          });
+        expect(await create()).toEqual({ success: true });
 
-      const id = await variableId("API_TOKEN");
-      const target = { type: "environment_variable", id, name: "API_TOKEN" };
-      expect(await events()).toEqual([
-        {
-          category: "envvars",
-          action: "envvar.created",
-          organizationId: organization.id,
-          projectId: project.id,
-          environmentId: production.id,
-          environmentType: "PRODUCTION",
-          target,
-          changes: { isSecret: true },
-        },
-        {
-          category: "envvars",
-          action: "envvar.created",
-          organizationId: organization.id,
-          projectId: project.id,
-          environmentId: staging.id,
-          environmentType: "STAGING",
-          target,
-          changes: { isSecret: true },
-        },
-      ]);
+        const id = await variableId("API_TOKEN");
+        const target = { type: "environment_variable", id, name: "API_TOKEN" };
+        expect(await events()).toEqual([
+          {
+            category: "envvars",
+            action: "envvar.created",
+            organizationId: organization.id,
+            projectId: project.id,
+            environmentId: production.id,
+            environmentType: "PRODUCTION",
+            target,
+            changes: { isSecret: true },
+          },
+          {
+            category: "envvars",
+            action: "envvar.created",
+            organizationId: organization.id,
+            projectId: project.id,
+            environmentId: staging.id,
+            environmentType: "STAGING",
+            target,
+            changes: { isSecret: true },
+          },
+        ]);
 
-      // The same value again changes nothing, so it records nothing.
-      expect(await create()).toEqual({ success: true });
-      expect(await events()).toHaveLength(2);
-    }
+        // The same value again changes nothing, so it records nothing.
+        expect(await create()).toEqual({ success: true });
+        expect(await events()).toHaveLength(2);
+      })
   );
 
   // Catches: an override recorded as created, or a secret-flag-only change recorded as a value change (or the reverse).
   postgresTest(
     "overriding a value records envvar.value_updated; toggling only the secret flag records envvar.updated",
-    async ({ prisma }) => {
-      const { project, production, repository, events, variableId } = await setup(prisma);
-      const set = (value: string, isSecret: boolean) =>
-        repository.create(project.id, {
-          override: true,
-          isSecret,
-          environmentIds: [production.id],
-          variables: [{ key: "DATABASE_URL", value }],
-        });
+    async ({ prisma }) =>
+      inAuditedRequest(async () => {
+        const { project, production, repository, events, variableId } = await setup(prisma);
+        const set = (value: string, isSecret: boolean) =>
+          repository.create(project.id, {
+            override: true,
+            isSecret,
+            environmentIds: [production.id],
+            variables: [{ key: "DATABASE_URL", value }],
+          });
 
-      await set(`${VALUE_MARKER}-old`, false);
-      await set(`${VALUE_MARKER}-new`, false);
-      await set(`${VALUE_MARKER}-new`, true);
-      await set(`${VALUE_MARKER}-newer`, false);
+        await set(`${VALUE_MARKER}-old`, false);
+        await set(`${VALUE_MARKER}-new`, false);
+        await set(`${VALUE_MARKER}-new`, true);
+        await set(`${VALUE_MARKER}-newer`, false);
 
-      const id = await variableId("DATABASE_URL");
-      expect(
-        (await events()).map(({ action, environmentId, target, changes }) => ({
-          action,
-          environmentId,
-          target,
-          changes,
-        }))
-      ).toEqual([
-        {
-          action: "envvar.created",
-          environmentId: production.id,
-          target: { type: "environment_variable", id, name: "DATABASE_URL" },
-          changes: { isSecret: false },
-        },
-        {
-          action: "envvar.value_updated",
-          environmentId: production.id,
-          target: { type: "environment_variable", id, name: "DATABASE_URL" },
-          changes: null,
-        },
-        {
-          action: "envvar.updated",
-          environmentId: production.id,
-          target: { type: "environment_variable", id, name: "DATABASE_URL" },
-          changes: { isSecret: { before: false, after: true } },
-        },
-        {
-          action: "envvar.value_updated",
-          environmentId: production.id,
-          target: { type: "environment_variable", id, name: "DATABASE_URL" },
-          changes: { isSecret: { before: true, after: false } },
-        },
-      ]);
-    }
+        const id = await variableId("DATABASE_URL");
+        expect(
+          (await events()).map(({ action, environmentId, target, changes }) => ({
+            action,
+            environmentId,
+            target,
+            changes,
+          }))
+        ).toEqual([
+          {
+            action: "envvar.created",
+            environmentId: production.id,
+            target: { type: "environment_variable", id, name: "DATABASE_URL" },
+            changes: { isSecret: false },
+          },
+          {
+            action: "envvar.value_updated",
+            environmentId: production.id,
+            target: { type: "environment_variable", id, name: "DATABASE_URL" },
+            changes: null,
+          },
+          {
+            action: "envvar.updated",
+            environmentId: production.id,
+            target: { type: "environment_variable", id, name: "DATABASE_URL" },
+            changes: { isSecret: { before: false, after: true } },
+          },
+          {
+            action: "envvar.value_updated",
+            environmentId: production.id,
+            target: { type: "environment_variable", id, name: "DATABASE_URL" },
+            changes: { isSecret: { before: true, after: false } },
+          },
+        ]);
+      })
   );
 
   // Catches: edit or editValue recording nothing, or the wrong action, after #writeVariable and clearIgnoredEmpty moved around them.
   postgresTest(
     "edit records value_updated for existing values and created for new ones; editValue records value_updated",
-    async ({ prisma }) => {
-      const { project, production, staging, repository, events, variableId } = await setup(prisma);
-      await repository.create(project.id, {
-        override: true,
-        environmentIds: [production.id],
-        variables: [{ key: "REGION", value: `${VALUE_MARKER}-eu` }],
-      });
-      const id = await variableId("REGION");
+    async ({ prisma }) =>
+      inAuditedRequest(async () => {
+        const { project, production, staging, repository, events, variableId } =
+          await setup(prisma);
+        await repository.create(project.id, {
+          override: true,
+          environmentIds: [production.id],
+          variables: [{ key: "REGION", value: `${VALUE_MARKER}-eu` }],
+        });
+        const id = await variableId("REGION");
 
-      expect(
-        await repository.edit(project.id, {
-          id,
-          values: [
-            { environmentId: production.id, value: `${VALUE_MARKER}-us` },
-            { environmentId: staging.id, value: `${VALUE_MARKER}-ap` },
-          ],
-        })
-      ).toEqual({ success: true });
-      expect(
-        await repository.editValue(project.id, {
-          id,
-          environmentId: staging.id,
-          value: `${VALUE_MARKER}-sa`,
-        })
-      ).toEqual({ success: true });
+        expect(
+          await repository.edit(project.id, {
+            id,
+            values: [
+              { environmentId: production.id, value: `${VALUE_MARKER}-us` },
+              { environmentId: staging.id, value: `${VALUE_MARKER}-ap` },
+            ],
+          })
+        ).toEqual({ success: true });
+        expect(
+          await repository.editValue(project.id, {
+            id,
+            environmentId: staging.id,
+            value: `${VALUE_MARKER}-sa`,
+          })
+        ).toEqual({ success: true });
 
-      expect(
-        (await events()).slice(1).map(({ action, environmentId, environmentType, changes }) => ({
-          action,
-          environmentId,
-          environmentType,
-          changes,
-        }))
-      ).toEqual([
-        {
-          action: "envvar.value_updated",
-          environmentId: production.id,
-          environmentType: "PRODUCTION",
-          changes: null,
-        },
-        {
-          action: "envvar.created",
-          environmentId: staging.id,
-          environmentType: "STAGING",
-          changes: { isSecret: false },
-        },
-        {
-          action: "envvar.value_updated",
-          environmentId: staging.id,
-          environmentType: "STAGING",
-          changes: null,
-        },
-      ]);
-    }
+        expect(
+          (await events()).slice(1).map(({ action, environmentId, environmentType, changes }) => ({
+            action,
+            environmentId,
+            environmentType,
+            changes,
+          }))
+        ).toEqual([
+          {
+            action: "envvar.value_updated",
+            environmentId: production.id,
+            environmentType: "PRODUCTION",
+            changes: null,
+          },
+          {
+            action: "envvar.created",
+            environmentId: staging.id,
+            environmentType: "STAGING",
+            changes: { isSecret: false },
+          },
+          {
+            action: "envvar.value_updated",
+            environmentId: staging.id,
+            environmentType: "STAGING",
+            changes: null,
+          },
+        ]);
+      })
   );
 
   // Catches: deleteValue (now through deleteValues) recording nothing, or nothing for the variable
   // removed with its last value.
   postgresTest(
     "deleting values and variables records envvar.deleted, though the rows are gone",
-    async ({ prisma }) => {
-      const { organization, project, production, staging, repository, events, variableId } =
-        await setup(prisma);
-      for (const key of ["ONE_BY_ONE", "ALL_AT_ONCE"]) {
-        await repository.create(project.id, {
-          override: true,
-          environmentIds: [production.id, staging.id],
-          variables: [{ key, value: `${VALUE_MARKER}-${key}` }],
-        });
-      }
-      const oneByOne = await variableId("ONE_BY_ONE");
-      const allAtOnce = await variableId("ALL_AT_ONCE");
-      const before = (await events()).length;
+    async ({ prisma }) =>
+      inAuditedRequest(async () => {
+        const { organization, project, production, staging, repository, events, variableId } =
+          await setup(prisma);
+        for (const key of ["ONE_BY_ONE", "ALL_AT_ONCE"]) {
+          await repository.create(project.id, {
+            override: true,
+            environmentIds: [production.id, staging.id],
+            variables: [{ key, value: `${VALUE_MARKER}-${key}` }],
+          });
+        }
+        const oneByOne = await variableId("ONE_BY_ONE");
+        const allAtOnce = await variableId("ALL_AT_ONCE");
+        const before = (await events()).length;
 
-      // The last value deletes the whole variable.
-      expect(
-        await repository.deleteValue(project.id, { id: oneByOne, environmentId: production.id })
-      ).toEqual({ success: true });
-      expect(
-        await repository.deleteValue(project.id, { id: oneByOne, environmentId: staging.id })
-      ).toEqual({ success: true });
-      expect(
-        await repository.deleteValues(project.id, [
-          { id: allAtOnce, environmentId: production.id },
-          { id: allAtOnce, environmentId: staging.id },
-        ])
-      ).toMatchObject({ success: true });
+        // The last value deletes the whole variable.
+        expect(
+          await repository.deleteValue(project.id, { id: oneByOne, environmentId: production.id })
+        ).toEqual({ success: true });
+        expect(
+          await repository.deleteValue(project.id, { id: oneByOne, environmentId: staging.id })
+        ).toEqual({ success: true });
+        expect(
+          await repository.deleteValues(project.id, [
+            { id: allAtOnce, environmentId: production.id },
+            { id: allAtOnce, environmentId: staging.id },
+          ])
+        ).toMatchObject({ success: true });
 
-      expect(
-        await prisma.environmentVariable.count({ where: { id: { in: [oneByOne, allAtOnce] } } })
-      ).toBe(0);
-      // Deletes are recorded in the background, so in any order; each keeps its own time.
-      const deleted = (await events()).slice(before);
-      expect(deleted).toHaveLength(4);
-      expect(deleted).toEqual(
-        expect.arrayContaining(
-          [
-            { id: oneByOne, name: "ONE_BY_ONE", environment: production },
-            { id: oneByOne, name: "ONE_BY_ONE", environment: staging },
-            { id: allAtOnce, name: "ALL_AT_ONCE", environment: production },
-            { id: allAtOnce, name: "ALL_AT_ONCE", environment: staging },
-          ].map(({ id, name, environment }) => ({
-            category: "envvars",
-            action: "envvar.deleted",
-            organizationId: organization.id,
-            projectId: project.id,
-            environmentId: environment.id,
-            environmentType: environment.type,
-            target: { type: "environment_variable", id, name },
-            changes: null,
-          }))
-        )
-      );
-    }
+        expect(
+          await prisma.environmentVariable.count({ where: { id: { in: [oneByOne, allAtOnce] } } })
+        ).toBe(0);
+        // Deletes are recorded in the background, so in any order; each keeps its own time.
+        const deleted = (await events()).slice(before);
+        expect(deleted).toHaveLength(4);
+        expect(deleted).toEqual(
+          expect.arrayContaining(
+            [
+              { id: oneByOne, name: "ONE_BY_ONE", environment: production },
+              { id: oneByOne, name: "ONE_BY_ONE", environment: staging },
+              { id: allAtOnce, name: "ALL_AT_ONCE", environment: production },
+              { id: allAtOnce, name: "ALL_AT_ONCE", environment: staging },
+            ].map(({ id, name, environment }) => ({
+              category: "envvars",
+              action: "envvar.deleted",
+              organizationId: organization.id,
+              projectId: project.id,
+              environmentId: environment.id,
+              environmentType: environment.type,
+              target: { type: "environment_variable", id, name },
+              changes: null,
+            }))
+          )
+        );
+      })
   );
 
   // Catches: an import that drops the imported marker or records keys it left unchanged.
   postgresTest(
     "an import records each changed key with imported: true, and nothing for unchanged keys",
-    async ({ prisma }) => {
-      const { organization, project, production, repository, events, variableId } =
-        await setup(prisma);
-      await repository.create(project.id, {
-        override: true,
-        isSecret: true,
-        environmentIds: [production.id],
-        variables: [
-          { key: "EXISTING", value: `${VALUE_MARKER}-a` },
-          { key: "UNCHANGED", value: `${VALUE_MARKER}-b` },
-        ],
-      });
-      const before = (await events()).length;
+    async ({ prisma }) =>
+      inAuditedRequest(async () => {
+        const { organization, project, production, repository, events, variableId } =
+          await setup(prisma);
+        await repository.create(project.id, {
+          override: true,
+          isSecret: true,
+          environmentIds: [production.id],
+          variables: [
+            { key: "EXISTING", value: `${VALUE_MARKER}-a` },
+            { key: "UNCHANGED", value: `${VALUE_MARKER}-b` },
+          ],
+        });
+        const before = (await events()).length;
 
-      expect(
-        await repository.create(
-          project.id,
-          {
-            override: true,
+        expect(
+          await repository.create(
+            project.id,
+            {
+              override: true,
+              isSecret: false,
+              environmentIds: [production.id],
+              variables: [
+                { key: "EXISTING", value: `${VALUE_MARKER}-c` },
+                { key: "NEW_ONE", value: `${VALUE_MARKER}-d` },
+              ],
+            },
+            { imported: true }
+          )
+        ).toEqual({ success: true });
+        // Same value, same flag: nothing changes.
+        expect(
+          await repository.create(
+            project.id,
+            {
+              override: true,
+              environmentIds: [production.id],
+              variables: [{ key: "UNCHANGED", value: `${VALUE_MARKER}-b` }],
+            },
+            { imported: true }
+          )
+        ).toEqual({ success: true });
+
+        const event = (key: string, id: string, action: string, changes: unknown) => ({
+          category: "envvars",
+          action,
+          organizationId: organization.id,
+          projectId: project.id,
+          environmentId: production.id,
+          environmentType: "PRODUCTION",
+          target: { type: "environment_variable", id, name: key },
+          changes,
+        });
+        expect((await events()).slice(before)).toEqual([
+          event("EXISTING", await variableId("EXISTING"), "envvar.value_updated", {
+            isSecret: { before: true, after: false },
+            imported: true,
+          }),
+          event("NEW_ONE", await variableId("NEW_ONE"), "envvar.created", {
             isSecret: false,
-            environmentIds: [production.id],
-            variables: [
-              { key: "EXISTING", value: `${VALUE_MARKER}-c` },
-              { key: "NEW_ONE", value: `${VALUE_MARKER}-d` },
-            ],
-          },
-          { imported: true }
-        )
-      ).toEqual({ success: true });
-      // Same value, same flag: nothing changes.
-      expect(
-        await repository.create(
-          project.id,
-          {
-            override: true,
-            environmentIds: [production.id],
-            variables: [{ key: "UNCHANGED", value: `${VALUE_MARKER}-b` }],
-          },
-          { imported: true }
-        )
-      ).toEqual({ success: true });
-
-      const event = (key: string, id: string, action: string, changes: unknown) => ({
-        category: "envvars",
-        action,
-        organizationId: organization.id,
-        projectId: project.id,
-        environmentId: production.id,
-        environmentType: "PRODUCTION",
-        target: { type: "environment_variable", id, name: key },
-        changes,
-      });
-      expect((await events()).slice(before)).toEqual([
-        event("EXISTING", await variableId("EXISTING"), "envvar.value_updated", {
-          isSecret: { before: true, after: false },
-          imported: true,
-        }),
-        event("NEW_ONE", await variableId("NEW_ONE"), "envvar.created", {
-          isSecret: false,
-          imported: true,
-        }),
-      ]);
-    }
+            imported: true,
+          }),
+        ]);
+      })
   );
 
   // Catches: the import route losing `imported: true` or the inherited secret flag for a branch.
@@ -575,95 +582,96 @@ describe("env var audit events", () => {
   // Catches: a Vercel pull that drops `via: "vercel"` or records keys it left unchanged.
   postgresTest(
     "a Vercel pull records each changed key with imported: true and via: vercel",
-    async ({ prisma }) => {
-      const { organization, project, production, repository, events, variableId } =
-        await setup(prisma);
-      await repository.create(project.id, {
-        override: true,
-        isSecret: true,
-        environmentIds: [production.id],
-        variables: [{ key: "VERCEL_SECRET", value: `${VALUE_MARKER}-old` }],
-      });
-      await repository.create(project.id, {
-        override: true,
-        environmentIds: [production.id],
-        variables: [{ key: "VERCEL_SAME", value: `${VALUE_MARKER}-same` }],
-      });
-      const before = (await events()).length;
+    async ({ prisma }) =>
+      inAuditedRequest(async () => {
+        const { organization, project, production, repository, events, variableId } =
+          await setup(prisma);
+        await repository.create(project.id, {
+          override: true,
+          isSecret: true,
+          environmentIds: [production.id],
+          variables: [{ key: "VERCEL_SECRET", value: `${VALUE_MARKER}-old` }],
+        });
+        await repository.create(project.id, {
+          override: true,
+          environmentIds: [production.id],
+          variables: [{ key: "VERCEL_SAME", value: `${VALUE_MARKER}-same` }],
+        });
+        const before = (await events()).length;
 
-      const vercelVariable = (key: string, value: string) => ({
-        id: key,
-        key,
-        value,
-        type: "plain",
-        target: ["production"],
-      });
-      vi.stubGlobal("fetch", async (input: RequestInfo | URL) => {
-        const url = new URL(input instanceof Request ? input.url : input.toString());
-        if (url.hostname !== "api.vercel.com") {
-          throw new Error(`Unexpected request: ${url.origin}`);
-        }
-        if (url.pathname === "/v1/env") {
-          return Response.json({ data: [], pagination: { next: null } });
-        }
-        if (/\/projects\/prj_fixture\/env$/.test(url.pathname)) {
-          return Response.json({
-            envs: [
-              vercelVariable("VERCEL_PLAIN", `${VALUE_MARKER}-plain`),
-              vercelVariable("VERCEL_SECRET", `${VALUE_MARKER}-new`),
-              vercelVariable("VERCEL_SAME", `${VALUE_MARKER}-same`),
-            ],
-          });
-        }
-        throw new Error(`Unexpected Vercel request: ${url.pathname}`);
-      });
-      const tokenKey = `vercel-fixture-${project.id}`;
-      await getSecretStore("DATABASE", { prismaClient: prisma }).setSecret(tokenKey, {
-        accessToken: "fixture-only-token",
-      });
-      const integration = await prisma.organizationIntegration.create({
-        data: {
-          friendlyId: `int_${project.id}`,
-          service: "VERCEL",
-          integrationData: {},
-          organization: { connect: { id: organization.id } },
-          tokenReference: { create: { key: tokenKey } },
-        },
-        include: { tokenReference: true },
-      });
+        const vercelVariable = (key: string, value: string) => ({
+          id: key,
+          key,
+          value,
+          type: "plain",
+          target: ["production"],
+        });
+        vi.stubGlobal("fetch", async (input: RequestInfo | URL) => {
+          const url = new URL(input instanceof Request ? input.url : input.toString());
+          if (url.hostname !== "api.vercel.com") {
+            throw new Error(`Unexpected request: ${url.origin}`);
+          }
+          if (url.pathname === "/v1/env") {
+            return Response.json({ data: [], pagination: { next: null } });
+          }
+          if (/\/projects\/prj_fixture\/env$/.test(url.pathname)) {
+            return Response.json({
+              envs: [
+                vercelVariable("VERCEL_PLAIN", `${VALUE_MARKER}-plain`),
+                vercelVariable("VERCEL_SECRET", `${VALUE_MARKER}-new`),
+                vercelVariable("VERCEL_SAME", `${VALUE_MARKER}-same`),
+              ],
+            });
+          }
+          throw new Error(`Unexpected Vercel request: ${url.pathname}`);
+        });
+        const tokenKey = `vercel-fixture-${project.id}`;
+        await getSecretStore("DATABASE", { prismaClient: prisma }).setSecret(tokenKey, {
+          accessToken: "fixture-only-token",
+        });
+        const integration = await prisma.organizationIntegration.create({
+          data: {
+            friendlyId: `int_${project.id}`,
+            service: "VERCEL",
+            integrationData: {},
+            organization: { connect: { id: organization.id } },
+            tokenReference: { create: { key: tokenKey } },
+          },
+          include: { tokenReference: true },
+        });
 
-      const pulled = await VercelIntegrationRepository.pullEnvVarsFromVercel({
-        projectId: project.id,
-        vercelProjectId: "prj_fixture",
-        teamId: "team_fixture",
-        syncEnvVarsMapping: {},
-        orgIntegration: integration,
-      });
-      expect(pulled.isOk() && pulled.value).toEqual({ syncedCount: 2, errors: [] });
+        const pulled = await VercelIntegrationRepository.pullEnvVarsFromVercel({
+          projectId: project.id,
+          vercelProjectId: "prj_fixture",
+          teamId: "team_fixture",
+          syncEnvVarsMapping: {},
+          orgIntegration: integration,
+        });
+        expect(pulled.isOk() && pulled.value).toEqual({ syncedCount: 2, errors: [] });
 
-      const event = (key: string, id: string, action: string, changes: unknown) => ({
-        category: "envvars",
-        action,
-        organizationId: organization.id,
-        projectId: project.id,
-        environmentId: production.id,
-        environmentType: "PRODUCTION",
-        target: { type: "environment_variable", id, name: key },
-        changes,
-      });
-      // Plain and secret keys are written by separate calls; VERCEL_SAME is unchanged.
-      expect((await events()).slice(before)).toEqual([
-        event("VERCEL_PLAIN", await variableId("VERCEL_PLAIN"), "envvar.created", {
-          isSecret: false,
-          imported: true,
-          via: "vercel",
-        }),
-        event("VERCEL_SECRET", await variableId("VERCEL_SECRET"), "envvar.value_updated", {
-          imported: true,
-          via: "vercel",
-        }),
-      ]);
-    }
+        const event = (key: string, id: string, action: string, changes: unknown) => ({
+          category: "envvars",
+          action,
+          organizationId: organization.id,
+          projectId: project.id,
+          environmentId: production.id,
+          environmentType: "PRODUCTION",
+          target: { type: "environment_variable", id, name: key },
+          changes,
+        });
+        // Plain and secret keys are written by separate calls; VERCEL_SAME is unchanged.
+        expect((await events()).slice(before)).toEqual([
+          event("VERCEL_PLAIN", await variableId("VERCEL_PLAIN"), "envvar.created", {
+            isSecret: false,
+            imported: true,
+            via: "vercel",
+          }),
+          event("VERCEL_SECRET", await variableId("VERCEL_SECRET"), "envvar.value_updated", {
+            imported: true,
+            via: "vercel",
+          }),
+        ]);
+      })
   );
 
   // Catches: edit or editValue recording a save that keeps the stored value.
@@ -746,197 +754,202 @@ describe("env var audit events", () => {
   // Catches: edit skipping an event when another write replaced the value between its read and its update.
   postgresTest(
     "edit records the stored value when another write lands between its read and its update",
-    async ({ prisma }) => {
-      const { project, production, repository, events, variableId } = await setup(prisma);
-      await repository.create(project.id, {
-        override: true,
-        environmentIds: [production.id],
-        variables: [{ key: "REGION", value: `${VALUE_MARKER}-a` }],
-      });
-      const id = await variableId("REGION");
-      const before = (await events()).length;
+    async ({ prisma }) =>
+      inAuditedRequest(async () => {
+        const { project, production, repository, events, variableId } = await setup(prisma);
+        await repository.create(project.id, {
+          override: true,
+          environmentIds: [production.id],
+          variables: [{ key: "REGION", value: `${VALUE_MARKER}-a` }],
+        });
+        const id = await variableId("REGION");
+        const before = (await events()).length;
 
-      // Commits a write of "b" right after the edit's transaction reads the value row, before it
-      // writes: the edit then saves "a" over "b", which changes the value.
-      const interleaved = interleaveAfter("environmentVariableValue", "findFirst", async () => {
+        // Commits a write of "b" right after the edit's transaction reads the value row, before it
+        // writes: the edit then saves "a" over "b", which changes the value.
+        const interleaved = interleaveAfter("environmentVariableValue", "findFirst", async () => {
+          expect(
+            await repository.editValue(project.id, {
+              id,
+              environmentId: production.id,
+              value: `${VALUE_MARKER}-b`,
+            })
+          ).toEqual({ success: true });
+        });
+
         expect(
-          await repository.editValue(project.id, {
+          await repository.edit(project.id, {
             id,
-            environmentId: production.id,
-            value: `${VALUE_MARKER}-b`,
+            values: [{ environmentId: production.id, value: `${VALUE_MARKER}-a` }],
           })
         ).toEqual({ success: true });
-      });
 
-      expect(
-        await repository.edit(project.id, {
-          id,
-          values: [{ environmentId: production.id, value: `${VALUE_MARKER}-a` }],
-        })
-      ).toEqual({ success: true });
-
-      expect(interleaved.ran).toBe(true);
-      const stored = await prisma.environmentVariableValue.findFirstOrThrow({
-        where: { variableId: id, environmentId: production.id },
-      });
-      expect(stored.version).toBe(3);
-      expect((await events()).slice(before).map(({ action }) => action)).toEqual([
-        "envvar.value_updated",
-        "envvar.value_updated",
-      ]);
-    }
+        expect(interleaved.ran).toBe(true);
+        const stored = await prisma.environmentVariableValue.findFirstOrThrow({
+          where: { variableId: id, environmentId: production.id },
+        });
+        expect(stored.version).toBe(3);
+        expect((await events()).slice(before).map(({ action }) => action)).toEqual([
+          "envvar.value_updated",
+          "envvar.value_updated",
+        ]);
+      })
   );
 
   // Catches: edit taking a value deleted and created again (its version restarting) between its
   // read and its update for the value it read, and recording nothing.
   postgresTest(
     "edit records a value deleted and created again between its read and its update",
-    async ({ prisma }) => {
-      const { project, production, staging, repository, events, variableId } = await setup(prisma);
-      // Also set in staging, so deleting the production value keeps the variable.
-      await repository.create(project.id, {
-        override: true,
-        environmentIds: [production.id, staging.id],
-        variables: [{ key: "REGION", value: `${VALUE_MARKER}-a` }],
-      });
-      const id = await variableId("REGION");
-      const original = await prisma.environmentVariableValue.findFirstOrThrow({
-        where: { variableId: id, environmentId: production.id },
-      });
-      const before = (await events()).length;
+    async ({ prisma }) =>
+      inAuditedRequest(async () => {
+        const { project, production, staging, repository, events, variableId } =
+          await setup(prisma);
+        // Also set in staging, so deleting the production value keeps the variable.
+        await repository.create(project.id, {
+          override: true,
+          environmentIds: [production.id, staging.id],
+          variables: [{ key: "REGION", value: `${VALUE_MARKER}-a` }],
+        });
+        const id = await variableId("REGION");
+        const original = await prisma.environmentVariableValue.findFirstOrThrow({
+          where: { variableId: id, environmentId: production.id },
+        });
+        const before = (await events()).length;
 
-      // Deletes the value and sets it again to "b" after the edit's transaction reads the value
-      // row: the new row is back at the version the edit read, and the edit saves "a" over "b".
-      const interleaved = interleaveAfter("environmentVariableValue", "findFirst", async () => {
+        // Deletes the value and sets it again to "b" after the edit's transaction reads the value
+        // row: the new row is back at the version the edit read, and the edit saves "a" over "b".
+        const interleaved = interleaveAfter("environmentVariableValue", "findFirst", async () => {
+          expect(
+            await repository.deleteValue(project.id, { id, environmentId: production.id })
+          ).toEqual({ success: true });
+          expect(
+            await repository.create(project.id, {
+              override: true,
+              environmentIds: [production.id],
+              variables: [{ key: "REGION", value: `${VALUE_MARKER}-b` }],
+            })
+          ).toEqual({ success: true });
+        });
+
         expect(
-          await repository.deleteValue(project.id, { id, environmentId: production.id })
-        ).toEqual({ success: true });
-        expect(
-          await repository.create(project.id, {
-            override: true,
-            environmentIds: [production.id],
-            variables: [{ key: "REGION", value: `${VALUE_MARKER}-b` }],
+          await repository.edit(project.id, {
+            id,
+            values: [{ environmentId: production.id, value: `${VALUE_MARKER}-a` }],
           })
         ).toEqual({ success: true });
-      });
 
-      expect(
-        await repository.edit(project.id, {
-          id,
-          values: [{ environmentId: production.id, value: `${VALUE_MARKER}-a` }],
-        })
-      ).toEqual({ success: true });
-
-      expect(interleaved.ran).toBe(true);
-      const stored = await prisma.environmentVariableValue.findFirstOrThrow({
-        where: { variableId: id, environmentId: production.id },
-      });
-      expect(stored.id).not.toBe(original.id);
-      expect(stored.version).toBe(original.version + 1);
-      // The delete is recorded in the background, so it can land in any position.
-      expect(
-        (await events())
-          .slice(before)
-          .map(({ action }) => action)
-          .sort()
-      ).toEqual(["envvar.created", "envvar.deleted", "envvar.value_updated"]);
-    }
+        expect(interleaved.ran).toBe(true);
+        const stored = await prisma.environmentVariableValue.findFirstOrThrow({
+          where: { variableId: id, environmentId: production.id },
+        });
+        expect(stored.id).not.toBe(original.id);
+        expect(stored.version).toBe(original.version + 1);
+        // The delete is recorded in the background, so it can land in any position.
+        expect(
+          (await events())
+            .slice(before)
+            .map(({ action }) => action)
+            .sort()
+        ).toEqual(["envvar.created", "envvar.deleted", "envvar.value_updated"]);
+      })
   );
 
   // Catches: a copy comparing the target's stored value with the version it read before its
   // update, and recording nothing when it overwrites a value another request just saved.
   postgresTest(
     "copyValues records a value another write saved between its read and its update",
-    async ({ prisma }) => {
-      const { project, production, staging, repository, events, variableId } = await setup(prisma);
-      for (const environmentId of [staging.id, production.id]) {
-        await repository.create(project.id, {
-          override: true,
-          environmentIds: [environmentId],
-          variables: [{ key: "REGION", value: `${VALUE_MARKER}-a` }],
+    async ({ prisma }) =>
+      inAuditedRequest(async () => {
+        const { project, production, staging, repository, events, variableId } =
+          await setup(prisma);
+        for (const environmentId of [staging.id, production.id]) {
+          await repository.create(project.id, {
+            override: true,
+            environmentIds: [environmentId],
+            variables: [{ key: "REGION", value: `${VALUE_MARKER}-a` }],
+          });
+        }
+        const id = await variableId("REGION");
+        const before = (await events()).length;
+
+        // Saves "b" in the target right after the copy reads its value row, before it updates it:
+        // the copy then saves "a" over "b", which changes the value.
+        const interleaved = interleaveAfter("environmentVariableValue", "findFirst", async () => {
+          expect(
+            await repository.editValue(project.id, {
+              id,
+              environmentId: production.id,
+              value: `${VALUE_MARKER}-b`,
+            })
+          ).toEqual({ success: true });
         });
-      }
-      const id = await variableId("REGION");
-      const before = (await events()).length;
 
-      // Saves "b" in the target right after the copy reads its value row, before it updates it:
-      // the copy then saves "a" over "b", which changes the value.
-      const interleaved = interleaveAfter("environmentVariableValue", "findFirst", async () => {
         expect(
-          await repository.editValue(project.id, {
-            id,
-            environmentId: production.id,
-            value: `${VALUE_MARKER}-b`,
+          await repository.copyValues(project.id, {
+            sourceEnvironmentId: staging.id,
+            targetEnvironmentId: production.id,
+            variableIds: [id],
           })
-        ).toEqual({ success: true });
-      });
+        ).toMatchObject({ success: true });
 
-      expect(
-        await repository.copyValues(project.id, {
-          sourceEnvironmentId: staging.id,
-          targetEnvironmentId: production.id,
-          variableIds: [id],
-        })
-      ).toMatchObject({ success: true });
-
-      expect(interleaved.ran).toBe(true);
-      const stored = await prisma.environmentVariableValue.findFirstOrThrow({
-        where: { variableId: id, environmentId: production.id },
-      });
-      expect(stored.version).toBe(3);
-      expect((await events()).slice(before).map(({ action }) => action)).toEqual([
-        "envvar.value_updated",
-        "envvar.value_updated",
-      ]);
-    }
+        expect(interleaved.ran).toBe(true);
+        const stored = await prisma.environmentVariableValue.findFirstOrThrow({
+          where: { variableId: id, environmentId: production.id },
+        });
+        expect(stored.version).toBe(3);
+        expect((await events()).slice(before).map(({ action }) => action)).toEqual([
+          "envvar.value_updated",
+          "envvar.value_updated",
+        ]);
+      })
   );
 
   // Catches: a save that makes a value a secret recorded as a flag-only change when another
   // request saved a different value between its read and its update.
   postgresTest(
     "create records a value change, not only the secret flag, when another write lands first",
-    async ({ prisma }) => {
-      const { project, production, repository, events, variableId } = await setup(prisma);
-      const set = (isSecret: boolean) =>
-        repository.create(project.id, {
-          override: true,
-          isSecret,
-          environmentIds: [production.id],
-          variables: [{ key: "REGION", value: `${VALUE_MARKER}-a` }],
+    async ({ prisma }) =>
+      inAuditedRequest(async () => {
+        const { project, production, repository, events, variableId } = await setup(prisma);
+        const set = (isSecret: boolean) =>
+          repository.create(project.id, {
+            override: true,
+            isSecret,
+            environmentIds: [production.id],
+            variables: [{ key: "REGION", value: `${VALUE_MARKER}-a` }],
+          });
+        await set(false);
+        const id = await variableId("REGION");
+        const before = (await events()).length;
+
+        // Saves "b" right after the create reads the value row, before it updates it: the create
+        // then saves "a" over "b" as a secret, which changes the value too.
+        const interleaved = interleaveAfter("environmentVariableValue", "findFirst", async () => {
+          expect(
+            await repository.editValue(project.id, {
+              id,
+              environmentId: production.id,
+              value: `${VALUE_MARKER}-b`,
+            })
+          ).toEqual({ success: true });
         });
-      await set(false);
-      const id = await variableId("REGION");
-      const before = (await events()).length;
 
-      // Saves "b" right after the create reads the value row, before it updates it: the create
-      // then saves "a" over "b" as a secret, which changes the value too.
-      const interleaved = interleaveAfter("environmentVariableValue", "findFirst", async () => {
+        expect(await set(true)).toEqual({ success: true });
+
+        expect(interleaved.ran).toBe(true);
         expect(
-          await repository.editValue(project.id, {
-            id,
-            environmentId: production.id,
-            value: `${VALUE_MARKER}-b`,
-          })
-        ).toEqual({ success: true });
-      });
-
-      expect(await set(true)).toEqual({ success: true });
-
-      expect(interleaved.ran).toBe(true);
-      expect(
-        (await events()).slice(before).map(({ action, changes }) => ({ action, changes }))
-      ).toEqual([
-        { action: "envvar.value_updated", changes: null },
-        { action: "envvar.value_updated", changes: { isSecret: { before: false, after: true } } },
-      ]);
-    }
+          (await events()).slice(before).map(({ action, changes }) => ({ action, changes }))
+        ).toEqual([
+          { action: "envvar.value_updated", changes: null },
+          { action: "envvar.value_updated", changes: { isSecret: { before: false, after: true } } },
+        ]);
+      })
   );
 
   // Catches: a bulk delete that records nothing, a summary instead of one event per value, an
   // event for a value that was already gone, or none for a variable removed with its last value.
-  postgresTest(
-    "deleteValues records one envvar.deleted per value it deleted",
-    async ({ prisma }) => {
+  postgresTest("deleteValues records one envvar.deleted per value it deleted", async ({ prisma }) =>
+    inAuditedRequest(async () => {
       const { organization, project, production, staging, repository, events, variableId } =
         await setup(prisma);
       for (const key of ["KEEPS_STAGING", "GOES_AWAY", "ALREADY_GONE"]) {
@@ -991,7 +1004,7 @@ describe("env var audit events", () => {
         await repository.deleteValues(project.id, [{ id: goesAway, environmentId: production.id }])
       ).toEqual({ success: true, deleted: [] });
       expect((await events()).slice(before)).toHaveLength(3);
-    }
+    })
   );
 
   // Catches: a copy that records nothing, the wrong action for a new or replaced value, a missing
@@ -999,139 +1012,142 @@ describe("env var audit events", () => {
   // value itself (checked by events()).
   postgresTest(
     "copyValues records created or value_updated per key, with where it was copied from",
-    async ({ prisma }) => {
-      const { organization, project, production, staging, repository, events, variableId } =
-        await setup(prisma);
-      const set = (environmentId: string, key: string, value: string, isSecret = false) =>
-        repository.create(project.id, {
-          override: true,
-          isSecret,
-          environmentIds: [environmentId],
-          variables: [{ key, value }],
-        });
-      await set(staging.id, "NEW_IN_PROD", `${VALUE_MARKER}-1`);
-      await set(staging.id, "SECRET_NEW", `${VALUE_MARKER}-2`, true);
-      await set(staging.id, "REPLACED", `${VALUE_MARKER}-3`);
-      await set(production.id, "REPLACED", `${VALUE_MARKER}-old`);
-      await set(staging.id, "BECOMES_SECRET", `${VALUE_MARKER}-4`, true);
-      await set(production.id, "BECOMES_SECRET", `${VALUE_MARKER}-plain`);
-      await set(staging.id, "SAME", `${VALUE_MARKER}-5`);
-      await set(production.id, "SAME", `${VALUE_MARKER}-5`);
-      await set(staging.id, "SAME_NOW_SECRET", `${VALUE_MARKER}-6`, true);
-      await set(production.id, "SAME_NOW_SECRET", `${VALUE_MARKER}-6`);
-      const before = (await events()).length;
+    async ({ prisma }) =>
+      inAuditedRequest(async () => {
+        const { organization, project, production, staging, repository, events, variableId } =
+          await setup(prisma);
+        const set = (environmentId: string, key: string, value: string, isSecret = false) =>
+          repository.create(project.id, {
+            override: true,
+            isSecret,
+            environmentIds: [environmentId],
+            variables: [{ key, value }],
+          });
+        await set(staging.id, "NEW_IN_PROD", `${VALUE_MARKER}-1`);
+        await set(staging.id, "SECRET_NEW", `${VALUE_MARKER}-2`, true);
+        await set(staging.id, "REPLACED", `${VALUE_MARKER}-3`);
+        await set(production.id, "REPLACED", `${VALUE_MARKER}-old`);
+        await set(staging.id, "BECOMES_SECRET", `${VALUE_MARKER}-4`, true);
+        await set(production.id, "BECOMES_SECRET", `${VALUE_MARKER}-plain`);
+        await set(staging.id, "SAME", `${VALUE_MARKER}-5`);
+        await set(production.id, "SAME", `${VALUE_MARKER}-5`);
+        await set(staging.id, "SAME_NOW_SECRET", `${VALUE_MARKER}-6`, true);
+        await set(production.id, "SAME_NOW_SECRET", `${VALUE_MARKER}-6`);
+        const before = (await events()).length;
 
-      const keys = [
-        "NEW_IN_PROD",
-        "SECRET_NEW",
-        "REPLACED",
-        "BECOMES_SECRET",
-        "SAME",
-        "SAME_NOW_SECRET",
-      ];
-      const ids = Object.fromEntries(
-        await Promise.all(keys.map(async (key) => [key, await variableId(key)] as const))
-      );
-      const result = await repository.copyValues(project.id, {
-        sourceEnvironmentId: staging.id,
-        targetEnvironmentId: production.id,
-        variableIds: keys.map((key) => ids[key]),
-      });
-      expect(result.success).toBe(true);
-
-      const copiedFrom = {
-        copiedFromEnvironmentId: staging.id,
-        copiedFromEnvironmentName: staging.slug,
-      };
-      const event = (key: string, action: string, changes: unknown) => ({
-        category: "envvars",
-        action,
-        organizationId: organization.id,
-        projectId: project.id,
-        environmentId: production.id,
-        environmentType: "PRODUCTION",
-        target: { type: "environment_variable", id: ids[key], name: key },
-        changes,
-      });
-      // In key order, as the copy writes them. SAME is unchanged, so it isn't recorded.
-      expect((await events()).slice(before)).toEqual([
-        event("BECOMES_SECRET", "envvar.value_updated", {
-          isSecret: { before: false, after: true },
-          ...copiedFrom,
-        }),
-        event("NEW_IN_PROD", "envvar.created", { isSecret: false, ...copiedFrom }),
-        event("REPLACED", "envvar.value_updated", { ...copiedFrom }),
-        event("SAME_NOW_SECRET", "envvar.updated", {
-          isSecret: { before: false, after: true },
-          ...copiedFrom,
-        }),
-        event("SECRET_NEW", "envvar.created", { isSecret: true, ...copiedFrom }),
-      ]);
-
-      // The same copy again changes nothing, so it records nothing.
-      expect(
-        await repository.copyValues(project.id, {
+        const keys = [
+          "NEW_IN_PROD",
+          "SECRET_NEW",
+          "REPLACED",
+          "BECOMES_SECRET",
+          "SAME",
+          "SAME_NOW_SECRET",
+        ];
+        const ids = Object.fromEntries(
+          await Promise.all(keys.map(async (key) => [key, await variableId(key)] as const))
+        );
+        const result = await repository.copyValues(project.id, {
           sourceEnvironmentId: staging.id,
           targetEnvironmentId: production.id,
           variableIds: keys.map((key) => ids[key]),
-        })
-      ).toMatchObject({ success: true });
-      expect((await events()).slice(before)).toHaveLength(5);
-    }
+        });
+        expect(result.success).toBe(true);
+
+        const copiedFrom = {
+          copiedFromEnvironmentId: staging.id,
+          copiedFromEnvironmentName: staging.slug,
+        };
+        const event = (key: string, action: string, changes: unknown) => ({
+          category: "envvars",
+          action,
+          organizationId: organization.id,
+          projectId: project.id,
+          environmentId: production.id,
+          environmentType: "PRODUCTION",
+          target: { type: "environment_variable", id: ids[key], name: key },
+          changes,
+        });
+        // In key order, as the copy writes them. SAME is unchanged, so it isn't recorded.
+        expect((await events()).slice(before)).toEqual([
+          event("BECOMES_SECRET", "envvar.value_updated", {
+            isSecret: { before: false, after: true },
+            ...copiedFrom,
+          }),
+          event("NEW_IN_PROD", "envvar.created", { isSecret: false, ...copiedFrom }),
+          event("REPLACED", "envvar.value_updated", { ...copiedFrom }),
+          event("SAME_NOW_SECRET", "envvar.updated", {
+            isSecret: { before: false, after: true },
+            ...copiedFrom,
+          }),
+          event("SECRET_NEW", "envvar.created", { isSecret: true, ...copiedFrom }),
+        ]);
+
+        // The same copy again changes nothing, so it records nothing.
+        expect(
+          await repository.copyValues(project.id, {
+            sourceEnvironmentId: staging.id,
+            targetEnvironmentId: production.id,
+            variableIds: keys.map((key) => ids[key]),
+          })
+        ).toMatchObject({ success: true });
+        expect((await events()).slice(before)).toHaveLength(5);
+      })
   );
 
   // Catches: a copy recording a preview branch by its environment slug instead of its branch name.
-  postgresTest("copyValues names a source branch by its branch name", async ({ prisma }) => {
-    const { organization, project, production, repository, events, variableId } =
-      await setup(prisma);
-    const preview = await prisma.runtimeEnvironment.create({
-      data: {
-        slug: "preview",
-        type: "PREVIEW",
-        isBranchableEnvironment: true,
-        projectId: project.id,
-        organizationId: organization.id,
-        apiKey: `tr_preview_${project.id}`,
-        pkApiKey: `pk_preview_${project.id}`,
-        shortcode: `sc_preview_${project.id}`,
-      },
-    });
-    const branch = await prisma.runtimeEnvironment.create({
-      data: {
-        slug: "preview-feat-copy",
-        type: "PREVIEW",
-        branchName: "feat-copy",
-        parentEnvironmentId: preview.id,
-        projectId: project.id,
-        organizationId: organization.id,
-        apiKey: `tr_branch_${project.id}`,
-        pkApiKey: `pk_branch_${project.id}`,
-        shortcode: `sc_branch_${project.id}`,
-      },
-    });
-    await repository.create(project.id, {
-      override: true,
-      environmentIds: [branch.id],
-      variables: [{ key: "FROM_BRANCH", value: `${VALUE_MARKER}-b` }],
-    });
-    const before = (await events()).length;
+  postgresTest("copyValues names a source branch by its branch name", async ({ prisma }) =>
+    inAuditedRequest(async () => {
+      const { organization, project, production, repository, events, variableId } =
+        await setup(prisma);
+      const preview = await prisma.runtimeEnvironment.create({
+        data: {
+          slug: "preview",
+          type: "PREVIEW",
+          isBranchableEnvironment: true,
+          projectId: project.id,
+          organizationId: organization.id,
+          apiKey: `tr_preview_${project.id}`,
+          pkApiKey: `pk_preview_${project.id}`,
+          shortcode: `sc_preview_${project.id}`,
+        },
+      });
+      const branch = await prisma.runtimeEnvironment.create({
+        data: {
+          slug: "preview-feat-copy",
+          type: "PREVIEW",
+          branchName: "feat-copy",
+          parentEnvironmentId: preview.id,
+          projectId: project.id,
+          organizationId: organization.id,
+          apiKey: `tr_branch_${project.id}`,
+          pkApiKey: `pk_branch_${project.id}`,
+          shortcode: `sc_branch_${project.id}`,
+        },
+      });
+      await repository.create(project.id, {
+        override: true,
+        environmentIds: [branch.id],
+        variables: [{ key: "FROM_BRANCH", value: `${VALUE_MARKER}-b` }],
+      });
+      const before = (await events()).length;
 
-    expect(
-      await repository.copyValues(project.id, {
-        sourceEnvironmentId: branch.id,
-        targetEnvironmentId: production.id,
-        variableIds: [await variableId("FROM_BRANCH")],
-      })
-    ).toMatchObject({ success: true });
+      expect(
+        await repository.copyValues(project.id, {
+          sourceEnvironmentId: branch.id,
+          targetEnvironmentId: production.id,
+          variableIds: [await variableId("FROM_BRANCH")],
+        })
+      ).toMatchObject({ success: true });
 
-    expect((await events()).slice(before).map(({ changes }) => changes)).toEqual([
-      {
-        isSecret: false,
-        copiedFromEnvironmentId: branch.id,
-        copiedFromEnvironmentName: "feat-copy",
-      },
-    ]);
-  });
+      expect((await events()).slice(before).map(({ changes }) => changes)).toEqual([
+        {
+          isSecret: false,
+          copiedFromEnvironmentId: branch.id,
+          copiedFromEnvironmentName: "feat-copy",
+        },
+      ]);
+    })
+  );
 
   // Catches: audit-only reads of the target's values running while recording is off.
   postgresTest(
@@ -1238,50 +1254,51 @@ describe("env var audit events", () => {
   // Catches: a failing key losing the events of keys already committed before it.
   postgresTest(
     "a failed import still records the keys committed before the failure",
-    async ({ prisma }) => {
-      const { organization, project, production, repository, events, variableId } = await setup(
-        prisma,
-        { secretProxy: true }
-      );
-      await repository.create(project.id, {
-        override: true,
-        environmentIds: [production.id],
-        variables: [{ key: "PROXIED", value: `${VALUE_MARKER}-p` }],
-      });
-      await enrollProxyOnlyValue(prisma, {
-        environmentId: production.id,
-        variableId: await variableId("PROXIED"),
-        allowedHosts: ["api.example.com"],
-      });
-      const before = (await events()).length;
-
-      const result = await repository.create(
-        project.id,
-        {
+    async ({ prisma }) =>
+      inAuditedRequest(async () => {
+        const { organization, project, production, repository, events, variableId } = await setup(
+          prisma,
+          { secretProxy: true }
+        );
+        await repository.create(project.id, {
           override: true,
           environmentIds: [production.id],
-          variables: [
-            { key: "FIRST", value: `${VALUE_MARKER}-1` },
-            { key: "PROXIED", value: `${VALUE_MARKER}-2` },
-          ],
-        },
-        { imported: true }
-      );
-
-      expect(result.success).toBe(false);
-      expect((await events()).slice(before)).toEqual([
-        {
-          category: "envvars",
-          action: "envvar.created",
-          organizationId: organization.id,
-          projectId: project.id,
+          variables: [{ key: "PROXIED", value: `${VALUE_MARKER}-p` }],
+        });
+        await enrollProxyOnlyValue(prisma, {
           environmentId: production.id,
-          environmentType: "PRODUCTION",
-          target: { type: "environment_variable", id: await variableId("FIRST"), name: "FIRST" },
-          changes: { isSecret: false, imported: true },
-        },
-      ]);
-    }
+          variableId: await variableId("PROXIED"),
+          allowedHosts: ["api.example.com"],
+        });
+        const before = (await events()).length;
+
+        const result = await repository.create(
+          project.id,
+          {
+            override: true,
+            environmentIds: [production.id],
+            variables: [
+              { key: "FIRST", value: `${VALUE_MARKER}-1` },
+              { key: "PROXIED", value: `${VALUE_MARKER}-2` },
+            ],
+          },
+          { imported: true }
+        );
+
+        expect(result.success).toBe(false);
+        expect((await events()).slice(before)).toEqual([
+          {
+            category: "envvars",
+            action: "envvar.created",
+            organizationId: organization.id,
+            projectId: project.id,
+            environmentId: production.id,
+            environmentType: "PRODUCTION",
+            target: { type: "environment_variable", id: await variableId("FIRST"), name: "FIRST" },
+            changes: { isSecret: false, imported: true },
+          },
+        ]);
+      })
   );
 
   // Catches: a delete event recorded in the background losing the request's actor and source.

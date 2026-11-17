@@ -39,12 +39,15 @@ afterAll(async () => {
   vi.unstubAllEnvs();
 });
 
+// With an actor and a source, as a call site gives one: the helper drops an event without them.
 function memberRemoved(organizationId: string): AuditLogInput {
   return {
     category: "members",
     action: "member.removed",
     organizationId,
     target: { type: "member", id: "user_1", name: null },
+    actor: { type: "user", id: "user_2" },
+    source: "dashboard",
   };
 }
 
@@ -90,6 +93,28 @@ describe("audit log recording in tests", () => {
     await auditLogs.flush();
 
     expect(recorded).toEqual([]);
+  });
+
+  // Catches: the helper keeping an event the real plugin drops, so a call site that loses the actor
+  // passes its test while production stores nothing. The helper applies the plugin's own rule
+  // (resolveAuditEventAttribution); its cases are tested in the plugins package.
+  it("drops an event with no actor, as the real plugin does", async () => {
+    const { recorded, dropped } = installAuditLogPlugin();
+    disableRecording = await enableAuditRecording();
+
+    auditLogs.record({
+      category: "members",
+      action: "member.removed",
+      organizationId: "org_1",
+      target: { type: "member", id: "user_1", name: null },
+      source: "dashboard",
+    });
+    await auditLogs.flush();
+
+    expect(recorded).toEqual([]);
+    expect(dropped).toHaveLength(1);
+    expect(dropped[0]!.reason).toBe("missing_actor");
+    expect(dropped[0]!.input.action).toBe("member.removed");
   });
 
   // Catches: the helper bypassing the per-org gate instead of setting the global flag, or the
