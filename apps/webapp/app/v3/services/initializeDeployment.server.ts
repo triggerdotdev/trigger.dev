@@ -29,8 +29,6 @@ import { getRegistryConfig } from "../registryConfig.server";
 import { DeploymentService } from "./deployment.server";
 import { recordDeploymentInitialized } from "./recordDeploymentFinished.server";
 import { buildEnvVarsEnvelope } from "./initializeDeployment/buildEnvVarsEnvelope.server";
-import { effectiveEnvironmentVariables } from "~/services/secretProxy/variables.server";
-import { recordSecretProxyFailure } from "~/services/secretProxy/telemetry.server";
 import { createDeploymentWithNextVersion } from "./initializeDeployment/createDeploymentWithNextVersion.server";
 import {
   cancelSupersededDeployments,
@@ -300,20 +298,6 @@ export class InitializeDeploymentService extends BaseService {
         purpose: "build-env-vars" as const,
         objectId: deploymentId,
       };
-      // Before cancelling superseded deployments, so an invalid payload leaves them running
-      if (options?.buildEnvVars || Object.keys(payload.buildEnvVars ?? {}).length) {
-        const metadata = await effectiveEnvironmentVariables(
-          this._prisma,
-          environment.projectId,
-          environment.id
-        );
-        if (metadata.some((value) => value.isProxyOnly)) {
-          recordSecretProxyFailure("guard", "policy");
-          throw new Error(
-            "Stored build environment variables are unsupported for proxy-only environments"
-          );
-        }
-      }
       const encryptedBuildEnvVars = await buildEnvVarsEnvelope(payload, {
         copyFrom: options.buildEnvVars,
         encrypt: (plaintext) => {

@@ -30,7 +30,6 @@ import {
   assertVariablesNotProxyOnly,
 } from "~/services/secretProxy/variables.server";
 import { environmentEncryption } from "~/services/environmentEncryption/instance.server";
-import { secretProxyEnabled } from "~/services/secretProxy/featureFlag.server";
 import {
   EnvironmentSecretStore,
   protectedSecretKeys,
@@ -293,8 +292,7 @@ export class EnvironmentVariablesRepository implements Repository {
   async #readStoredValues(
     projectId: string,
     variableIds: string[],
-    environmentIds: string[],
-    proxyEnabled: boolean
+    environmentIds: string[]
   ): Promise<Map<string, StoredValue>> {
     try {
       // Versions first: a write committed between the two reads then shows as a newer version.
@@ -314,9 +312,7 @@ export class EnvironmentVariablesRepository implements Repository {
       const secrets = await this.#secretStore(
         this.prismaClient,
         projectId,
-        environmentIds,
-        undefined,
-        proxyEnabled ? undefined : new Set()
+        environmentIds
       ).getSecretsByKeys(
         SecretValue,
         rows.map((row) => secretKey(projectId, row.environmentId, row.variable.key))
@@ -632,15 +628,12 @@ export class EnvironmentVariablesRepository implements Repository {
 
     try {
       const prepared = await this.#prepareWrites(projectId, project.environments);
-      const proxyEnabled = secretProxyEnabled(project.organization.featureFlags);
       const existingSecrets = new Map(
         (
           await this.#secretStore(
             this.prismaClient,
             projectId,
-            options.environmentIds,
-            undefined,
-            proxyEnabled ? undefined : new Set()
+            options.environmentIds
           ).getSecretsByKeys(
             SecretValue,
             values.flatMap((v) =>
@@ -669,11 +662,7 @@ export class EnvironmentVariablesRepository implements Repository {
           );
         };
         const committed = await $transaction(this.prismaClient, "create env var", async (tx) => {
-          if (proxyEnabled) {
-            await assertVariablesNotProxyOnly(tx, projectId, options.environmentIds, [
-              variable.key,
-            ]);
-          }
+          await assertVariablesNotProxyOnly(tx, projectId, options.environmentIds, [variable.key]);
           await this.encryption.assertWrite(tx, [...prepared.values()]);
           return this.#writeVariable(tx, projectId, {
             key: variable.key,
@@ -790,26 +779,22 @@ export class EnvironmentVariablesRepository implements Repository {
 
     try {
       const prepared = await this.#prepareWrites(projectId, project.environments);
-      const proxyEnabled = secretProxyEnabled(project.organization.featureFlags);
       // Read only to decide whether to record an event, so skipped when recording is off.
       const storedValues = auditLogs.isRecordingEnabled()
         ? await this.#readStoredValues(
             projectId,
             [environmentVariable.id],
-            values.map((value) => value.environmentId),
-            proxyEnabled
+            values.map((value) => value.environmentId)
           )
         : new Map<string, StoredValue>();
       const committed = await $transaction(this.prismaClient, "edit env var", async (tx) => {
         const changes: EnvironmentVariableChange[] = [];
-        if (proxyEnabled) {
-          await assertVariablesNotProxyOnly(
-            tx,
-            projectId,
-            values.map((value) => value.environmentId),
-            [environmentVariable.key]
-          );
-        }
+        await assertVariablesNotProxyOnly(
+          tx,
+          projectId,
+          values.map((value) => value.environmentId),
+          [environmentVariable.key]
+        );
         await this.encryption.assertWrite(tx, [...prepared.values()]);
         const secretStore = this.#secretStore(
           tx,
@@ -992,15 +977,13 @@ export class EnvironmentVariablesRepository implements Repository {
 
     try {
       const prepared = await this.#prepareWrites(projectId, project.environments);
-      const proxyEnabled = secretProxyEnabled(project.organization.featureFlags);
       // Read only to decide whether to record an event, so skipped when recording is off.
       const stored = auditLogs.isRecordingEnabled()
         ? (
             await this.#readStoredValues(
               projectId,
               [environmentVariable.id],
-              [options.environmentId],
-              proxyEnabled
+              [options.environmentId]
             )
           ).get(storedValueKey(environmentVariable.id, options.environmentId))
         : undefined;
@@ -1008,14 +991,12 @@ export class EnvironmentVariablesRepository implements Repository {
         this.prismaClient,
         "edit env var value",
         async (tx) => {
-          if (proxyEnabled) {
-            await assertVariablesNotProxyOnly(
-              tx,
-              projectId,
-              [options.environmentId],
-              [environmentVariable.key]
-            );
-          }
+          await assertVariablesNotProxyOnly(
+            tx,
+            projectId,
+            [options.environmentId],
+            [environmentVariable.key]
+          );
           await this.encryption.assertWrite(tx, [...prepared.values()]);
           const secretStore = this.#secretStore(
             tx,
@@ -1258,9 +1239,8 @@ export class EnvironmentVariablesRepository implements Repository {
     projectId: string,
     environmentId: string,
     parentEnvironmentId?: string,
-    // Unset means enabled: callers that do not know the org flag keep full protection.
     // Unset `grant` means every variable.
-    options?: { readFromReplica?: boolean; proxyEnabled?: boolean; grant?: EnvVarGrant }
+    options?: { readFromReplica?: boolean; grant?: EnvVarGrant }
   ) {
     const grant = options?.grant ?? "all";
     if (grant !== "all" && grant.length === 0) return { variables: [], proxyValues: [] };
@@ -1268,10 +1248,7 @@ export class EnvironmentVariablesRepository implements Repository {
     const environmentIds = parentEnvironmentId
       ? [parentEnvironmentId, environmentId]
       : [environmentId];
-    const protectedKeys =
-      options?.proxyEnabled === false
-        ? new Set<string>()
-        : await protectedSecretKeys(db, projectId, environmentIds);
+    const protectedKeys = await protectedSecretKeys(db, projectId, environmentIds);
     const proxyValues = protectedKeys.size
       ? (
           await effectiveEnvironmentVariables(db, projectId, environmentId, parentEnvironmentId)
@@ -1558,12 +1535,7 @@ export class EnvironmentVariablesRepository implements Repository {
       // The target's values, read only to tell a copy that changes nothing, so skipped when
       // recording is off.
       const storedTargetValues = auditLogs.isRecordingEnabled()
-        ? await this.#readStoredValues(
-            projectId,
-            variableIds,
-            [target.id],
-            secretProxyEnabled(project.organization.featureFlags)
-          )
+        ? await this.#readStoredValues(projectId, variableIds, [target.id])
         : new Map<string, StoredValue>();
       // Flat, so every field of `changes` stays a value or a before/after pair.
       const copiedFrom = {
@@ -1777,7 +1749,7 @@ export async function resolveVariablesForEnvironment(
 export async function prepareVariablesForEnvironment(
   runtimeEnvironment: RuntimeEnvironmentForEnvRepo,
   parentEnvironment?: RuntimeEnvironmentForEnvRepo,
-  options?: { proxyEnabled?: boolean; grant?: EnvVarGrant }
+  options?: { grant?: EnvVarGrant }
 ) {
   const resolved = await environmentVariablesRepository.resolveEnvironmentVariables(
     runtimeEnvironment.projectId,
@@ -1785,7 +1757,6 @@ export async function prepareVariablesForEnvironment(
     parentEnvironment?.id,
     {
       readFromReplica: env.CONTROL_PLANE_DEQUEUE_READS_FROM_REPLICA === "1",
-      proxyEnabled: options?.proxyEnabled,
       grant: options?.grant,
     }
   );

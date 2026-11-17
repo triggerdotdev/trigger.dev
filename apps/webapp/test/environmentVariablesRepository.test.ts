@@ -1081,10 +1081,10 @@ describe("EnvironmentVariablesRepository.deleteValues", () => {
   // for, which the database ends by failing one of them with a deadlock.
   postgresTest("racing saves of the same keys never deadlock with a batch", async ({ prisma }) => {
     const { organization, project } = await createTestOrgProjectWithMember(prisma);
-    // With the flag on, every save takes the proxy-only check's lock on its variable first.
+    // Every save takes the proxy-only check's lock on its variable first.
     await prisma.organization.update({
       where: { id: organization.id },
-      data: { featureFlags: { allowEmptyEnvironmentVariableValues: true, secretProxy: true } },
+      data: { featureFlags: { allowEmptyEnvironmentVariableValues: true } },
     });
     const [prod, staging] = await Promise.all(
       (["PRODUCTION", "STAGING"] as const).map((type) =>
@@ -1275,8 +1275,9 @@ describe("EnvironmentVariablesRepository.deleteValue", () => {
 });
 
 describe("EnvironmentVariablesRepository saves that lose a race", () => {
-  // Catches: a create or edit that loses to a delete of the same variable and hands the caller
-  // the database's own error text, with nothing to tell a conflict from a bad request.
+  // Catches: an edit that loses to a delete of the same variable and hands the caller the
+  // database's own error text, with nothing to tell a conflict from a bad request. A create waits
+  // on the delete under the variable lock, then sets the variable again.
   postgresTest(
     "a save that loses to a delete of its variable is a conflict in plain words",
     async ({ prisma }) => {
@@ -1323,14 +1324,17 @@ describe("EnvironmentVariablesRepository saves that lose a race", () => {
         return saving;
       };
 
-      const results = [
+      expect(
         await losesToDelete("CREATED", () =>
           repository.create(project.id, {
             override: true,
             environmentIds: [staging.id],
             variables: [{ key: "CREATED", value: "y" }],
           })
-        ),
+        )
+      ).toEqual({ success: true });
+
+      const results = [
         await losesToDelete("EDITED", (id) =>
           repository.edit(project.id, { id, values: [{ environmentId: staging.id, value: "y" }] })
         ),

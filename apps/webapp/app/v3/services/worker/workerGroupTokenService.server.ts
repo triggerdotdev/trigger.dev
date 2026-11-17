@@ -49,7 +49,6 @@ import {
 import { generateJWTTokenForEnvironment } from "~/services/apiAuth.server";
 import { logger } from "~/services/logger.server";
 import { mintRunToken, runTokenInjectionEnabled } from "~/services/oidc/runToken.server";
-import { secretProxyEnabled } from "~/services/secretProxy/featureFlag.server";
 import { defaultMachine } from "~/services/platform.v3.server";
 import { singleton } from "~/utils/singleton";
 import { resolveAttemptVariables } from "~/services/environmentEncryption/attemptVariables.server";
@@ -678,14 +677,7 @@ export class AuthenticatedWorkerInstance extends WithRunEngine {
     const resolved = await resolveAttemptVariables(
       environment,
       environment.parentEnvironment ?? undefined,
-      {
-        // Without the org row loaded, keep full protection rather than assume the flag is off.
-        // Policy runs always keep it: proxy-only values must never reach them as plaintext.
-        ...(environment.organization && !pinned
-          ? { proxyEnabled: secretProxyEnabled(environment.organization.featureFlags) }
-          : {}),
-        grant: pinned?.policy.envVars,
-      }
+      { grant: pinned?.policy.envVars }
     );
     const prepared = { ...resolved, variables: withoutRootKey(pinned, resolved.variables) };
 
@@ -761,10 +753,7 @@ export class AuthenticatedWorkerInstance extends WithRunEngine {
         expiresAtMs: decodeJwt(runToken).exp! * 1000,
       });
       secretProxyMetadata = delivery.secretProxy;
-      variables = [
-        ...variables.filter((variable) => variable.key !== "TRIGGER_SECRET_KEY"),
-        ...delivery.placeholders,
-      ];
+      variables = [...variables, ...delivery.placeholders];
     }
 
     const envVars = await this.getEnvVars(

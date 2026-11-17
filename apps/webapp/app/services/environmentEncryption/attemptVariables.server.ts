@@ -13,7 +13,7 @@ import { environmentEncryptionTelemetry } from "./telemetry.server";
 export async function resolveAttemptVariables(
   environment: RuntimeEnvironmentForEnvRepo,
   parentEnvironment?: RuntimeEnvironmentForEnvRepo,
-  options?: { proxyEnabled?: boolean; grant?: EnvVarGrant }
+  options?: { grant?: EnvVarGrant }
 ) {
   try {
     const prepared = await prepareVariablesForEnvironment(environment, parentEnvironment, options);

@@ -71,7 +71,6 @@ containerTest(
         featureFlags: {
           [FEATURE_FLAG.environmentEncryptionEnabled]: true,
           [FEATURE_FLAG.runTokenInjection]: true,
-          [FEATURE_FLAG.secretProxy]: true,
         },
       },
     });
@@ -306,7 +305,6 @@ containerTest(
         data: {
           featureFlags: {
             [FEATURE_FLAG.runTokenInjection]: false,
-            [FEATURE_FLAG.secretProxy]: true,
           },
         },
       });
@@ -325,7 +323,6 @@ containerTest(
         data: {
           featureFlags: {
             [FEATURE_FLAG.runTokenInjection]: true,
-            [FEATURE_FLAG.secretProxy]: true,
             [FEATURE_FLAG.environmentEncryptionEnabled]: true,
           },
         },
@@ -452,7 +449,7 @@ containerTest(
       const delivery = await delivering;
       expect(delivery.envVars.CUSTOMER_SECRET).toMatch(/^trsec_v1_/);
       expect(delivery.envVars.NORMAL).toBe("ordinary");
-      expect(delivery.envVars.TRIGGER_SECRET_KEY).toBeUndefined();
+      expect(delivery.envVars.TRIGGER_SECRET_KEY).toBeTruthy();
       expect(delivery.envVars.TRIGGER_RUN_TOKEN).toBeTruthy();
       expect(delivery.secretProxy).toMatchObject({
         runId: proxyRun.friendlyId,

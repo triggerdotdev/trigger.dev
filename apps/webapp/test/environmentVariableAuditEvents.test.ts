@@ -4,7 +4,7 @@ import { afterEach, describe, expect, vi } from "vitest";
 // Points the global client at the fixture's database, also for modules that keep a reference to
 // it from load time, such as the RBAC resolver. `$transaction` is the database package's own; only
 // the webapp wrapper's span and retry defaults are left out. `wrapTransaction`, when set, wraps the
-// transaction client the helper hands to a write (see `interleaveAfter`).
+// transaction client the helper hands to a write (see `interleaveBeforeLock`).
 const db = vi.hoisted(() => ({
   client: null as any,
   wrapTransaction: null as ((tx: object) => object) | null,
@@ -77,15 +77,9 @@ vi.setConfig({ testTimeout: 60_000 });
 // Every value a test writes contains this, so one check covers them all.
 const VALUE_MARKER = "s3cr3t-value";
 
-async function setup(prisma: PrismaClient, { secretProxy = false } = {}) {
+async function setup(prisma: PrismaClient) {
   db.client = prisma;
   const { user, organization, project } = await createTestOrgProjectWithMember(prisma);
-  if (secretProxy) {
-    await prisma.organization.update({
-      where: { id: organization.id },
-      data: { featureFlags: { secretProxy: true } },
-    });
-  }
   const production = await createRuntimeEnvironment(prisma, {
     projectId: project.id,
     organizationId: organization.id,
@@ -133,36 +127,27 @@ async function setup(prisma: PrismaClient, { secretProxy = false } = {}) {
 let disableRecording: (() => void) | undefined;
 
 /**
- * Commits `between` inside the next write's transaction, once, right after that transaction's
- * first `model.method` call returns: another request's write landing mid-transaction. Returns
- * whether it ran.
+ * Commits `between` once the next write's transaction has begun, before its first raw query: the
+ * lock on the variables every write takes first. Another request's write lands after the write's
+ * own pre-transaction read and before anything it does under the lock. Returns whether it ran.
  */
-function interleaveAfter(model: string, method: string, between: () => Promise<void>) {
+function interleaveBeforeLock(between: () => Promise<void>) {
   const state = { ran: false };
-  const bound = (target: object, property: string | symbol) => {
-    const value = Reflect.get(target, property);
-    return typeof value === "function" ? value.bind(target) : value;
-  };
   db.wrapTransaction = (tx) =>
     new Proxy(tx, {
       get(target, property) {
-        if (property !== model) return bound(target, property);
-        return new Proxy(Reflect.get(target, property), {
-          get(delegate, name) {
-            const fn = bound(delegate, name);
-            if (name !== method) return fn;
-            return async (...args: unknown[]) => {
-              const result = await fn(...args);
-              if (!state.ran) {
-                state.ran = true;
-                // The interleaved write runs its own transactions unwrapped.
-                db.wrapTransaction = null;
-                await between();
-              }
-              return result;
-            };
-          },
-        });
+        const value = Reflect.get(target, property);
+        const fn = typeof value === "function" ? value.bind(target) : value;
+        if (property !== "$queryRaw") return fn;
+        return async (...args: unknown[]) => {
+          if (!state.ran) {
+            state.ran = true;
+            // The interleaved write runs its own transactions unwrapped.
+            db.wrapTransaction = null;
+            await between();
+          }
+          return fn(...args);
+        };
       },
     });
   return state;
@@ -765,9 +750,9 @@ describe("env var audit events", () => {
         const id = await variableId("REGION");
         const before = (await events()).length;
 
-        // Commits a write of "b" right after the edit's transaction reads the value row, before it
-        // writes: the edit then saves "a" over "b", which changes the value.
-        const interleaved = interleaveAfter("environmentVariableValue", "findFirst", async () => {
+        // Commits a write of "b" after the edit reads the stored value, before it writes: the edit
+        // then saves "a" over "b", which changes the value.
+        const interleaved = interleaveBeforeLock(async () => {
           expect(
             await repository.editValue(project.id, {
               id,
@@ -816,9 +801,9 @@ describe("env var audit events", () => {
         });
         const before = (await events()).length;
 
-        // Deletes the value and sets it again to "b" after the edit's transaction reads the value
-        // row: the new row is back at the version the edit read, and the edit saves "a" over "b".
-        const interleaved = interleaveAfter("environmentVariableValue", "findFirst", async () => {
+        // Deletes the value and sets it again to "b" after the edit reads the stored value: the new
+        // row is back at the version the edit read, and the edit saves "a" over "b".
+        const interleaved = interleaveBeforeLock(async () => {
           expect(
             await repository.deleteValue(project.id, { id, environmentId: production.id })
           ).toEqual({ success: true });
@@ -872,9 +857,9 @@ describe("env var audit events", () => {
         const id = await variableId("REGION");
         const before = (await events()).length;
 
-        // Saves "b" in the target right after the copy reads its value row, before it updates it:
-        // the copy then saves "a" over "b", which changes the value.
-        const interleaved = interleaveAfter("environmentVariableValue", "findFirst", async () => {
+        // Saves "b" in the target after the copy reads its stored value, before it updates it: the
+        // copy then saves "a" over "b", which changes the value.
+        const interleaved = interleaveBeforeLock(async () => {
           expect(
             await repository.editValue(project.id, {
               id,
@@ -922,9 +907,9 @@ describe("env var audit events", () => {
         const id = await variableId("REGION");
         const before = (await events()).length;
 
-        // Saves "b" right after the create reads the value row, before it updates it: the create
-        // then saves "a" over "b" as a secret, which changes the value too.
-        const interleaved = interleaveAfter("environmentVariableValue", "findFirst", async () => {
+        // Saves "b" after the create reads the stored value, before it updates it: the create then
+        // saves "a" over "b" as a secret, which changes the value too.
+        const interleaved = interleaveBeforeLock(async () => {
           expect(
             await repository.editValue(project.id, {
               id,
@@ -1185,9 +1170,7 @@ describe("env var audit events", () => {
 
   // Catches: an event recorded for a write that was refused or rolled back.
   postgresTest("refused and rolled-back changes record nothing", async ({ prisma }) => {
-    const { project, production, staging, repository, events, variableId } = await setup(prisma, {
-      secretProxy: true,
-    });
+    const { project, production, staging, repository, events, variableId } = await setup(prisma);
     await repository.create(project.id, {
       override: true,
       environmentIds: [production.id, staging.id],
@@ -1256,10 +1239,8 @@ describe("env var audit events", () => {
     "a failed import still records the keys committed before the failure",
     async ({ prisma }) =>
       inAuditedRequest(async () => {
-        const { organization, project, production, repository, events, variableId } = await setup(
-          prisma,
-          { secretProxy: true }
-        );
+        const { organization, project, production, repository, events, variableId } =
+          await setup(prisma);
         await repository.create(project.id, {
           override: true,
           environmentIds: [production.id],

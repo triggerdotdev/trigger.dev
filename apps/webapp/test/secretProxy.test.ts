@@ -67,7 +67,6 @@ async function seed(db: PrismaClient) {
     data: {
       featureFlags: {
         [FEATURE_FLAG.runTokenInjection]: true,
-        [FEATURE_FLAG.secretProxy]: true,
         [FEATURE_FLAG.environmentEncryptionEnabled]: true,
       },
     },
@@ -991,26 +990,6 @@ describe("secret proxy integration", () => {
       ).not.toContainEqual({ key: "CHILD_TOKEN", value: "ordinary-parent" });
     }
   );
-
-  // Catches: orgs without the secretProxy flag paying for protection queries on attempt start.
-  postgresTest("skips protection queries for orgs without the flag", async ({ prisma }) => {
-    const f = await seed(prisma);
-    await f.variable("PLAIN", "plain-value");
-    const repository = new EnvironmentVariablesRepository(prisma, prisma, f.encryption);
-    const queryRaw = vi.spyOn(prisma, "$queryRaw");
-    const prepared = await repository.resolveEnvironmentVariables(
-      f.project.id,
-      f.environment.id,
-      undefined,
-      { proxyEnabled: false }
-    );
-    expect(prepared).toEqual({
-      variables: [{ key: "PLAIN", value: "plain-value" }],
-      proxyValues: [],
-    });
-    expect(queryRaw).not.toHaveBeenCalled();
-    queryRaw.mockRestore();
-  });
 
   // Catches: an unknown proxyConfig field (a restriction this version cannot enforce) being ignored.
   postgresTest("treats unrecognized proxy config as allowing no hosts", async ({ prisma }) => {
