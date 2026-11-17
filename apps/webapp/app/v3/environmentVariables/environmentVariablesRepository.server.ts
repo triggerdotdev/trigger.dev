@@ -5,6 +5,7 @@ import {
 } from "./emptyValuesFlag.server";
 import { envVarGranted, type EnvVarGrant } from "@trigger.dev/core/v3";
 import type { AuthenticatedEnvironment } from "@trigger.dev/core/v3/auth/environment";
+import type { AuditLogChanges } from "@trigger.dev/plugins";
 import {
   boundedIn,
   Prisma,
@@ -22,6 +23,7 @@ import {
   type PrismaClientOrTransaction,
 } from "~/db.server";
 import { env } from "~/env.server";
+import { auditLogs } from "~/services/auditLogs/auditLogs.server";
 import { logger } from "~/services/logger.server";
 import {
   effectiveEnvironmentVariables,
@@ -46,6 +48,7 @@ import { FEATURE_FLAG, resolveInternalApiOriginEnabled } from "../featureFlags";
 import { globalFlagsRegistry } from "../globalFlagsRegistry.server";
 import { generateFriendlyId } from "../friendlyIdentifiers";
 import {
+  type CreateAuditOptions,
   type CreateEnvironmentVariables,
   type CreateResult,
   type DeleteEnvironmentVariableValue,
@@ -103,6 +106,78 @@ function parseSecretKey(key: string) {
 }
 
 const SecretValue = z.object({ secret: z.string() });
+
+/** A committed change to one variable in one environment. Never carries the value. */
+type EnvironmentVariableChange = {
+  action: "envvar.created" | "envvar.updated" | "envvar.value_updated" | "envvar.deleted";
+  variable: { id: string; key: string };
+  environmentId: string;
+  changes?: AuditLogChanges;
+};
+
+type AuditedProject = {
+  organizationId: string;
+  environments: Array<{ id: string; type: RuntimeEnvironmentType }>;
+};
+
+function environmentTypeOf(project: AuditedProject, environmentId: string) {
+  return project.environments.find((e) => e.id === environmentId)?.type ?? null;
+}
+
+/** Call only after the transaction that made the changes has committed. */
+function recordEnvironmentVariableChanges(
+  projectId: string,
+  project: AuditedProject,
+  changes: EnvironmentVariableChange[]
+) {
+  for (const change of changes) {
+    auditLogs.record({
+      category: "envvars",
+      action: change.action,
+      organizationId: project.organizationId,
+      projectId,
+      environmentId: change.environmentId,
+      environmentType: environmentTypeOf(project, change.environmentId),
+      target: { type: "environment_variable", id: change.variable.id, name: change.variable.key },
+      changes: change.changes ?? null,
+    });
+  }
+}
+
+/** Key of a stored value read for the audit log: one variable in one environment. */
+function storedValueKey(variableId: string, environmentId: string) {
+  return `${variableId}:${environmentId}`;
+}
+
+/** A value read before a write's transaction, with the id and version of its row. */
+type StoredValue = { id: string; version: number; value: string };
+
+/**
+ * Whether a write of `value` kept the stored value: the row it replaced is the one read, at the
+ * version read, and that held `value`. A row deleted and created again restarts its version, so
+ * the id is compared too.
+ */
+function keepsStoredValue(
+  stored: StoredValue | undefined,
+  value: string,
+  replaced: { id: string; version: number }
+) {
+  return (
+    stored !== undefined &&
+    stored.value === value &&
+    stored.id === replaced.id &&
+    stored.version === replaced.version
+  );
+}
+
+/** What `#writeVariable` did to one environment's value. */
+type WrittenValue = {
+  created: boolean;
+  /** The value row as this write replaced it; null when the value was new. */
+  previous: { id: string; version: number; isSecret: boolean } | null;
+  /** Whether the value is a secret after this write. */
+  isSecret: boolean;
+};
 
 /**
  * What a caller is told when a write throws. An error from the database never reaches them as
@@ -210,10 +285,65 @@ export class EnvironmentVariablesRepository implements Repository {
   }
 
   /**
+   * The stored values of the given variables in the given environments, each with the value row's
+   * id and version read before it, keyed by `storedValueKey`. Read before a write's transaction
+   * only to tell whether the write changes anything: a value that can't be read is left out, so it
+   * counts as changed and never blocks the write.
+   */
+  async #readStoredValues(
+    projectId: string,
+    variableIds: string[],
+    environmentIds: string[],
+    proxyEnabled: boolean
+  ): Promise<Map<string, StoredValue>> {
+    try {
+      // Versions first: a write committed between the two reads then shows as a newer version.
+      const rows = await this.prismaClient.environmentVariableValue.findMany({
+        where: {
+          variableId: { in: boundedIn(variableIds) },
+          environmentId: { in: boundedIn(environmentIds) },
+        },
+        select: {
+          id: true,
+          variableId: true,
+          environmentId: true,
+          version: true,
+          variable: { select: { key: true } },
+        },
+      });
+      const secrets = await this.#secretStore(
+        this.prismaClient,
+        projectId,
+        environmentIds,
+        undefined,
+        proxyEnabled ? undefined : new Set()
+      ).getSecretsByKeys(
+        SecretValue,
+        rows.map((row) => secretKey(projectId, row.environmentId, row.variable.key))
+      );
+      const values = new Map(secrets.map((secret) => [secret.key, secret.value.secret]));
+      const stored = new Map<string, StoredValue>();
+      for (const row of rows) {
+        const value = values.get(secretKey(projectId, row.environmentId, row.variable.key));
+        if (value !== undefined) {
+          stored.set(storedValueKey(row.variableId, row.environmentId), {
+            id: row.id,
+            version: row.version,
+            value,
+          });
+        }
+      }
+      return stored;
+    } catch {
+      return new Map();
+    }
+  }
+
+  /**
    * Writes one variable's value to each of the environments, inside the caller's transaction: the
    * save path of `create` and `copyValues`. `isSecret` set changes the kind of an existing value;
    * left out, an existing value keeps its kind and a new one takes its parent environment's.
-   * Returns, per environment, whether the value was new there.
+   * Returns the variable and, per environment written, what the write did.
    */
   async #writeVariable(
     tx: PrismaClientOrTransaction,
@@ -244,8 +374,8 @@ export class EnvironmentVariablesRepository implements Repository {
       /** False when the caller clears ignored Empty reasons itself, once for every key it writes. */
       clearsIgnoredEmpty?: boolean;
     }
-  ): Promise<Map<string, { created: boolean }>> {
-    const written = new Map<string, { created: boolean }>();
+  ): Promise<{ id: string; written: Map<string, WrittenValue> }> {
+    const written = new Map<string, WrittenValue>();
     const environmentVariable = await tx.environmentVariable.upsert({
       where: {
         projectId_key: {
@@ -315,11 +445,15 @@ export class EnvironmentVariablesRepository implements Repository {
         update: {},
       });
 
+      // The row as this write replaced it. Its version comes from the update, which holds the
+      // row's lock, so a write committed since the read above shows as a newer version.
+      let previous: WrittenValue["previous"] = null;
       if (existingValueRecord) {
-        await tx.environmentVariableValue.update({
+        const updated = await tx.environmentVariableValue.update({
           where: {
             id: existingValueRecord.id,
           },
+          select: { version: true },
           data: {
             version: {
               increment: 1,
@@ -329,6 +463,11 @@ export class EnvironmentVariablesRepository implements Repository {
             ...(isSecret !== undefined ? { isSecret } : {}),
           },
         });
+        previous = {
+          id: existingValueRecord.id,
+          version: updated.version - 1,
+          isSecret: existingValueRecord.isSecret,
+        };
       } else {
         await tx.environmentVariableValue.create({
           data: {
@@ -343,17 +482,27 @@ export class EnvironmentVariablesRepository implements Repository {
       }
 
       await secretStore.setSecret<{ secret: string }>(key, { secret: value });
-      written.set(environmentId, { created: !existingValueRecord });
+      written.set(environmentId, {
+        created: !existingValueRecord,
+        previous,
+        isSecret: existingValueRecord
+          ? (isSecret ?? existingValueRecord.isSecret)
+          : (effectiveIsSecret ?? false),
+      });
     }
 
     if (clearsIgnoredEmpty && written.size > 0) {
       await clearIgnoredEmpty(tx, [environmentVariable.id], [...written.keys()]);
     }
 
-    return written;
+    return { id: environmentVariable.id, written };
   }
 
-  async create(projectId: string, options: CreateEnvironmentVariables): Promise<CreateResult> {
+  async create(
+    projectId: string,
+    options: CreateEnvironmentVariables,
+    { imported = false, via }: CreateAuditOptions = {}
+  ): Promise<CreateResult> {
     if (options.environmentIds.length === 0) {
       return { success: false as const, error: "At least one environment is required" };
     }
@@ -364,11 +513,13 @@ export class EnvironmentVariablesRepository implements Repository {
         deletedAt: null,
       },
       select: {
+        organizationId: true,
         organization: { select: { featureFlags: true } },
         environments: {
           where: { id: { in: boundedIn(options.environmentIds) } },
           select: {
             id: true,
+            type: true,
             encryptionPolicy: { select: { activeKeyId: true, revision: true } },
           },
         },
@@ -473,6 +624,12 @@ export class EnvironmentVariablesRepository implements Repository {
       }
     }
 
+    // Imported keys are recorded like any other, with a marker saying where they came from.
+    const importMarker: AuditLogChanges = {
+      ...(imported ? { imported: true } : {}),
+      ...(via ? { via } : {}),
+    };
+
     try {
       const prepared = await this.#prepareWrites(projectId, project.environments);
       const proxyEnabled = secretProxyEnabled(project.organization.featureFlags);
@@ -493,14 +650,32 @@ export class EnvironmentVariablesRepository implements Repository {
         ).map((secret) => [secret.key, secret.value])
       );
       for (const variable of values) {
-        const _result = await $transaction(this.prismaClient, "create env var", async (tx) => {
+        // Whether the stored value, read above and not replaced since, is the one sent.
+        const holdsSentValue = (
+          environmentId: string,
+          existingValueRecord: { id: string; version: number }
+        ) => {
+          const existingSecret = existingSecrets.get(
+            secretKey(projectId, environmentId, variable.key)
+          );
+          const previousValue = project.environmentVariables
+            .find((v) => v.key === variable.key)
+            ?.values.find((v) => v.environment.id === environmentId);
+          return Boolean(
+            existingSecret &&
+            existingSecret.secret === variable.value &&
+            existingValueRecord.id === previousValue?.id &&
+            existingValueRecord.version === previousValue.version
+          );
+        };
+        const committed = await $transaction(this.prismaClient, "create env var", async (tx) => {
           if (proxyEnabled) {
             await assertVariablesNotProxyOnly(tx, projectId, options.environmentIds, [
               variable.key,
             ]);
           }
           await this.encryption.assertWrite(tx, [...prepared.values()]);
-          await this.#writeVariable(tx, projectId, {
+          return this.#writeVariable(tx, projectId, {
             key: variable.key,
             value: variable.value,
             environmentIds: options.environmentIds,
@@ -509,24 +684,44 @@ export class EnvironmentVariablesRepository implements Repository {
             lastUpdatedBy: options.lastUpdatedBy,
             prepared,
             // Left as it is when it already holds this value, unchanged since it was read above.
-            unchanged: (environmentId, existingValueRecord) => {
-              const existingSecret = existingSecrets.get(
-                secretKey(projectId, environmentId, variable.key)
-              );
-              const previousValue = project.environmentVariables
-                .find((v) => v.key === variable.key)
-                ?.values.find((v) => v.environment.id === environmentId);
-              return Boolean(
-                existingSecret &&
-                existingSecret.secret === variable.value &&
-                existingValueRecord.id === previousValue?.id &&
-                existingValueRecord.version === previousValue.version &&
-                (options.isSecret === undefined ||
-                  existingValueRecord.isSecret === options.isSecret)
-              );
-            },
+            unchanged: (environmentId, existingValueRecord) =>
+              holdsSentValue(environmentId, existingValueRecord) &&
+              (options.isSecret === undefined || existingValueRecord.isSecret === options.isSecret),
           });
         });
+
+        // Each variable commits on its own, so a later failure keeps these.
+        if (committed) {
+          recordEnvironmentVariableChanges(
+            projectId,
+            project,
+            [...committed.written].map(([environmentId, written]): EnvironmentVariableChange => {
+              const variableRef = { id: committed.id, key: variable.key };
+              if (!written.previous) {
+                return {
+                  action: "envvar.created",
+                  variable: variableRef,
+                  environmentId,
+                  changes: { isSecret: written.isSecret, ...importMarker },
+                };
+              }
+              const isSecretChange =
+                written.previous.isSecret !== written.isSecret
+                  ? { isSecret: { before: written.previous.isSecret, after: written.isSecret } }
+                  : undefined;
+              // Only the secret flag changed when the value written is the one stored.
+              const onlySecretFlagChanged =
+                isSecretChange !== undefined && holdsSentValue(environmentId, written.previous);
+              const recordedChanges = { ...isSecretChange, ...importMarker };
+              return {
+                action: onlySecretFlagChanged ? "envvar.updated" : "envvar.value_updated",
+                variable: variableRef,
+                environmentId,
+                changes: Object.keys(recordedChanges).length > 0 ? recordedChanges : undefined,
+              };
+            })
+          );
+        }
       }
 
       return {
@@ -544,11 +739,13 @@ export class EnvironmentVariablesRepository implements Repository {
         deletedAt: null,
       },
       select: {
+        organizationId: true,
         organization: { select: { featureFlags: true } },
         environments: {
           where: { id: { in: boundedIn(options.values.map((value) => value.environmentId)) } },
           select: {
             id: true,
+            type: true,
             encryptionPolicy: { select: { activeKeyId: true, revision: true } },
           },
         },
@@ -594,7 +791,17 @@ export class EnvironmentVariablesRepository implements Repository {
     try {
       const prepared = await this.#prepareWrites(projectId, project.environments);
       const proxyEnabled = secretProxyEnabled(project.organization.featureFlags);
-      await $transaction(this.prismaClient, "edit env var", async (tx) => {
+      // Read only to decide whether to record an event, so skipped when recording is off.
+      const storedValues = auditLogs.isRecordingEnabled()
+        ? await this.#readStoredValues(
+            projectId,
+            [environmentVariable.id],
+            values.map((value) => value.environmentId),
+            proxyEnabled
+          )
+        : new Map<string, StoredValue>();
+      const committed = await $transaction(this.prismaClient, "edit env var", async (tx) => {
+        const changes: EnvironmentVariableChange[] = [];
         if (proxyEnabled) {
           await assertVariablesNotProxyOnly(
             tx,
@@ -626,7 +833,7 @@ export class EnvironmentVariablesRepository implements Repository {
             await secretStore.setSecret<{ secret: string }>(key, {
               secret: value.value,
             });
-            await tx.environmentVariableValue.update({
+            const updated = await tx.environmentVariableValue.update({
               where: {
                 variableId_environmentId: {
                   variableId: environmentVariable.id,
@@ -640,6 +847,23 @@ export class EnvironmentVariablesRepository implements Repository {
                 lastUpdatedBy: options.lastUpdatedBy ? options.lastUpdatedBy : undefined,
               },
             });
+            // Saving the stored value again is still written, but changes nothing to record.
+            // Unchanged only if no other write landed since the stored value was read.
+            const stored = storedValues.get(
+              storedValueKey(environmentVariable.id, value.environmentId)
+            );
+            if (
+              !keepsStoredValue(stored, value.value, {
+                id: updated.id,
+                version: updated.version - 1,
+              })
+            ) {
+              changes.push({
+                action: "envvar.value_updated",
+                variable: environmentVariable,
+                environmentId: value.environmentId,
+              });
+            }
             continue;
           }
 
@@ -664,6 +888,12 @@ export class EnvironmentVariablesRepository implements Repository {
           await secretStore.setSecret<{ secret: string }>(key, {
             secret: value.value,
           });
+          changes.push({
+            action: "envvar.created",
+            variable: environmentVariable,
+            environmentId: value.environmentId,
+            changes: { isSecret: false },
+          });
         }
 
         await clearIgnoredEmpty(
@@ -671,7 +901,10 @@ export class EnvironmentVariablesRepository implements Repository {
           [environmentVariable.id],
           values.map((value) => value.environmentId)
         );
+
+        return changes;
       });
+      recordEnvironmentVariableChanges(projectId, project, committed ?? []);
 
       return {
         success: true as const,
@@ -688,11 +921,13 @@ export class EnvironmentVariablesRepository implements Repository {
         deletedAt: null,
       },
       select: {
+        organizationId: true,
         organization: { select: { featureFlags: true } },
         environments: {
           where: { id: options.environmentId },
           select: {
             id: true,
+            type: true,
             encryptionPolicy: { select: { activeKeyId: true, revision: true } },
           },
         },
@@ -758,46 +993,77 @@ export class EnvironmentVariablesRepository implements Repository {
     try {
       const prepared = await this.#prepareWrites(projectId, project.environments);
       const proxyEnabled = secretProxyEnabled(project.organization.featureFlags);
-      await $transaction(this.prismaClient, "edit env var value", async (tx) => {
-        if (proxyEnabled) {
-          await assertVariablesNotProxyOnly(
+      // Read only to decide whether to record an event, so skipped when recording is off.
+      const stored = auditLogs.isRecordingEnabled()
+        ? (
+            await this.#readStoredValues(
+              projectId,
+              [environmentVariable.id],
+              [options.environmentId],
+              proxyEnabled
+            )
+          ).get(storedValueKey(environmentVariable.id, options.environmentId))
+        : undefined;
+      const valueChanged = await $transaction(
+        this.prismaClient,
+        "edit env var value",
+        async (tx) => {
+          if (proxyEnabled) {
+            await assertVariablesNotProxyOnly(
+              tx,
+              projectId,
+              [options.environmentId],
+              [environmentVariable.key]
+            );
+          }
+          await this.encryption.assertWrite(tx, [...prepared.values()]);
+          const secretStore = this.#secretStore(
             tx,
             projectId,
             [options.environmentId],
-            [environmentVariable.key]
+            prepared,
+            new Set()
           );
+
+          const key = secretKey(projectId, options.environmentId, environmentVariable.key);
+          await secretStore.setSecret<{ secret: string }>(key, {
+            secret: value,
+          });
+
+          const updated = await tx.environmentVariableValue.update({
+            where: {
+              variableId_environmentId: {
+                variableId: environmentVariable.id,
+                environmentId: options.environmentId,
+              },
+            },
+            data: {
+              version: {
+                increment: 1,
+              },
+              lastUpdatedBy: options.lastUpdatedBy ? options.lastUpdatedBy : undefined,
+            },
+          });
+
+          await clearIgnoredEmpty(tx, [environmentVariable.id], [options.environmentId]);
+
+          // Unchanged only if no other write landed since the stored value was read.
+          return !keepsStoredValue(stored, value, {
+            id: updated.id,
+            version: updated.version - 1,
+          });
         }
-        await this.encryption.assertWrite(tx, [...prepared.values()]);
-        const secretStore = this.#secretStore(
-          tx,
-          projectId,
-          [options.environmentId],
-          prepared,
-          new Set()
-        );
-
-        const key = secretKey(projectId, options.environmentId, environmentVariable.key);
-        await secretStore.setSecret<{ secret: string }>(key, {
-          secret: value,
-        });
-
-        await tx.environmentVariableValue.update({
-          where: {
-            variableId_environmentId: {
-              variableId: environmentVariable.id,
-              environmentId: options.environmentId,
-            },
+      );
+      // Saving the stored value again is still written, but changes nothing to record.
+      if (valueChanged) {
+        recordEnvironmentVariableChanges(projectId, project, [
+          {
+            action: "envvar.value_updated",
+            variable: { id: environmentVariable.id, key: environmentVariable.key },
+            environmentId: options.environmentId,
           },
-          data: {
-            version: {
-              increment: 1,
-            },
-            lastUpdatedBy: options.lastUpdatedBy ? options.lastUpdatedBy : undefined,
-          },
-        });
-
-        await clearIgnoredEmpty(tx, [environmentVariable.id], [options.environmentId]);
-      });
+        ]);
+      }
 
       return {
         success: true as const,
@@ -1103,6 +1369,11 @@ export class EnvironmentVariablesRepository implements Repository {
     const requested = new Set(values.map((value) => `${value.id}:${value.environmentId}`));
     const variableIds = [...new Set(values.map((value) => value.id))];
     const environmentIds = [...new Set(values.map((value) => value.environmentId))];
+    // The organization and environment types the events need, read before the delete and only
+    // while recording is on, so the events don't depend on the project still being there after.
+    const auditedProject = auditLogs.isRecordingEnabled()
+      ? await this.#readAuditedProject(projectId, environmentIds)
+      : null;
 
     try {
       const deleted = await $transaction(this.prismaClient, "delete env var values", async (tx) => {
@@ -1194,9 +1465,45 @@ export class EnvironmentVariablesRepository implements Repository {
         return { success: false as const, error: "Something went wrong" };
       }
 
+      if (auditedProject) {
+        recordEnvironmentVariableChanges(
+          projectId,
+          auditedProject,
+          deleted.map((value) => ({
+            action: "envvar.deleted" as const,
+            variable: { id: value.id, key: value.key },
+            environmentId: value.environmentId,
+          }))
+        );
+      }
       return { success: true as const, deleted };
     } catch (error) {
       return writeFailure(error, "deleteValues", projectId);
+    }
+  }
+
+  /** Null when the read fails: auditing never fails the write. */
+  async #readAuditedProject(
+    projectId: string,
+    environmentIds: string[]
+  ): Promise<AuditedProject | null> {
+    try {
+      return await this.prismaClient.project.findFirst({
+        where: { id: projectId },
+        select: {
+          organizationId: true,
+          environments: {
+            where: { id: { in: boundedIn(environmentIds) } },
+            select: { id: true, type: true },
+          },
+        },
+      });
+    } catch (error) {
+      logger.warn("Audit logs: failed to read the project for env var delete events", {
+        projectId,
+        error: error instanceof Error ? error.message : String(error),
+      });
+      return null;
     }
   }
 
@@ -1217,12 +1524,14 @@ export class EnvironmentVariablesRepository implements Repository {
     const project = await this.prismaClient.project.findFirst({
       where: { id: projectId, deletedAt: null },
       select: {
+        organizationId: true,
         organization: { select: { featureFlags: true } },
         environments: {
           where: { id: { in: [sourceEnvironmentId, targetEnvironmentId] }, archivedAt: null },
           select: {
             id: true,
             type: true,
+            slug: true,
             branchName: true,
             parentEnvironmentId: true,
             encryptionPolicy: { select: { activeKeyId: true, revision: true } },
@@ -1246,6 +1555,21 @@ export class EnvironmentVariablesRepository implements Repository {
 
     try {
       const prepared = await this.#prepareWrites(projectId, [target]);
+      // The target's values, read only to tell a copy that changes nothing, so skipped when
+      // recording is off.
+      const storedTargetValues = auditLogs.isRecordingEnabled()
+        ? await this.#readStoredValues(
+            projectId,
+            variableIds,
+            [target.id],
+            secretProxyEnabled(project.organization.featureFlags)
+          )
+        : new Map<string, StoredValue>();
+      // Flat, so every field of `changes` stays a value or a before/after pair.
+      const copiedFrom = {
+        copiedFromEnvironmentId: source.id,
+        copiedFromEnvironmentName: source.branchName ?? source.slug,
+      };
       const copied = await $transaction(this.prismaClient, "copy env var values", async (tx) => {
         // Locks the variables first, in the order every batch takes them, so what is read below
         // is what a save or delete that held them left behind.
@@ -1320,13 +1644,15 @@ export class EnvironmentVariablesRepository implements Repository {
         }
 
         const result: Array<{ id: string; key: string; created: boolean }> = [];
+        const changes: EnvironmentVariableChange[] = [];
         for (const variable of variables) {
           const sourceIsSecret = variable.values.find(
             (v) => v.environmentId === source.id
           )!.isSecret;
-          const written = await this.#writeVariable(tx, projectId, {
+          const value = sourceValues.get(variable.key)!;
+          const { written } = await this.#writeVariable(tx, projectId, {
             key: variable.key,
-            value: sourceValues.get(variable.key)!,
+            value,
             environmentIds: [target.id],
             // Only ever made a secret: a plain value copied onto a secret leaves it a secret.
             isSecret: sourceIsSecret ? true : undefined,
@@ -1340,6 +1666,19 @@ export class EnvironmentVariablesRepository implements Repository {
             key: variable.key,
             created: written.get(target.id)?.created ?? false,
           });
+
+          const write = written.get(target.id);
+          if (write) {
+            const change = copyChange(
+              { id: variable.id, key: variable.key },
+              target.id,
+              write,
+              value,
+              storedTargetValues.get(storedValueKey(variable.id, target.id)),
+              copiedFrom
+            );
+            if (change) changes.push(change);
+          }
         }
         // Every copied value was written: one statement for all of them.
         await clearIgnoredEmpty(
@@ -1347,13 +1686,14 @@ export class EnvironmentVariablesRepository implements Repository {
           variables.map((variable) => variable.id),
           [target.id]
         );
-        return result;
+        return { result, changes };
       });
 
       if (!copied) {
         return { success: false as const, error: "Something went wrong" };
       }
-      return { success: true as const, copied };
+      recordEnvironmentVariableChanges(projectId, project, copied.changes);
+      return { success: true as const, copied: copied.result };
     } catch (error) {
       if (error instanceof CopyRefusedError) {
         return { success: false as const, error: error.message };
@@ -1372,6 +1712,41 @@ export class EnvironmentVariablesRepository implements Repository {
 
 /** A copy refused before anything was written, with the sentence for the user. */
 class CopyRefusedError extends Error {}
+
+/**
+ * The change one copied value made to the target, or null when it changed nothing: the target
+ * already held the value, unchanged since it was read before the copy, and stays the same kind.
+ */
+function copyChange(
+  variable: { id: string; key: string },
+  environmentId: string,
+  write: WrittenValue,
+  value: string,
+  stored: StoredValue | undefined,
+  copiedFrom: { copiedFromEnvironmentId: string; copiedFromEnvironmentName: string }
+): EnvironmentVariableChange | null {
+  if (!write.previous) {
+    return {
+      action: "envvar.created",
+      variable,
+      environmentId,
+      changes: { isSecret: write.isSecret, ...copiedFrom },
+    };
+  }
+  const isSecretChange =
+    write.previous.isSecret !== write.isSecret
+      ? { isSecret: { before: write.previous.isSecret, after: write.isSecret } }
+      : undefined;
+  const sameValue = keepsStoredValue(stored, value, write.previous);
+  if (sameValue && !isSecretChange) return null;
+  return {
+    // The value already there, now a secret: only the secret flag changed.
+    action: sameValue ? "envvar.updated" : "envvar.value_updated",
+    variable,
+    environmentId,
+    changes: { ...isSecretChange, ...copiedFrom },
+  };
+}
 
 // Derived from the slim AuthenticatedEnvironment so a full AE satisfies
 // this type — the legacy Prisma payload had `builtInEnvironmentVariableOverrides`

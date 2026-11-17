@@ -1497,19 +1497,23 @@ export class VercelIntegrationRepository {
                 const nonSecretVars = changedVars.filter((v) => !existingSecretKeys.has(v.key));
 
                 if (nonSecretVars.length > 0) {
-                  const result = await envVarRepository.create(params.projectId, {
-                    override: true,
-                    environmentIds: [mapping.runtimeEnvironmentId],
-                    isSecret: false,
-                    variables: nonSecretVars.map((v) => ({
-                      key: v.key,
-                      value: v.value,
-                    })),
-                    lastUpdatedBy: {
-                      type: "integration",
-                      integration: "vercel",
+                  const result = await envVarRepository.create(
+                    params.projectId,
+                    {
+                      override: true,
+                      environmentIds: [mapping.runtimeEnvironmentId],
+                      isSecret: false,
+                      variables: nonSecretVars.map((v) => ({
+                        key: v.key,
+                        value: v.value,
+                      })),
+                      lastUpdatedBy: {
+                        type: "integration",
+                        integration: "vercel",
+                      },
                     },
-                  });
+                    { imported: true, via: "vercel" }
+                  );
 
                   if (result.success) {
                     syncedCount += nonSecretVars.length;
@@ -1528,19 +1532,23 @@ export class VercelIntegrationRepository {
                 }
 
                 if (secretVars.length > 0) {
-                  const result = await envVarRepository.create(params.projectId, {
-                    override: true,
-                    environmentIds: [mapping.runtimeEnvironmentId],
-                    isSecret: true,
-                    variables: secretVars.map((v) => ({
-                      key: v.key,
-                      value: v.value,
-                    })),
-                    lastUpdatedBy: {
-                      type: "integration",
-                      integration: "vercel",
+                  const result = await envVarRepository.create(
+                    params.projectId,
+                    {
+                      override: true,
+                      environmentIds: [mapping.runtimeEnvironmentId],
+                      isSecret: true,
+                      variables: secretVars.map((v) => ({
+                        key: v.key,
+                        value: v.value,
+                      })),
+                      lastUpdatedBy: {
+                        type: "integration",
+                        integration: "vercel",
+                      },
                     },
-                  });
+                    { imported: true, via: "vercel" }
+                  );
 
                   if (result.success) {
                     syncedCount += secretVars.length;

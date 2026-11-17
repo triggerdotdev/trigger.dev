@@ -29,6 +29,13 @@ export const CreateEnvironmentVariables = z.object({
 
 export type CreateEnvironmentVariables = z.infer<typeof CreateEnvironmentVariables>;
 
+export type CreateAuditOptions = {
+  /** Marks each recorded event with `changes.imported: true`, e.g. for a CLI import or a sync. */
+  imported?: boolean;
+  /** Where imported variables came from, recorded as `changes.via`. */
+  via?: "vercel";
+};
+
 /**
  * A write that didn't happen. `conflict` marks one that lost to another request changing the
  * same variable at the same time, so trying again can work.
@@ -149,7 +156,11 @@ export type EnvironmentVariableWithSecret = EnvironmentVariable & {
 };
 
 export interface Repository {
-  create(projectId: string, options: CreateEnvironmentVariables): Promise<CreateResult>;
+  create(
+    projectId: string,
+    options: CreateEnvironmentVariables,
+    audit?: CreateAuditOptions
+  ): Promise<CreateResult>;
   edit(projectId: string, options: EditEnvironmentVariable): Promise<Result>;
   editValue(projectId: string, options: EditEnvironmentVariableValue): Promise<Result>;
   getProject(projectId: string): Promise<ProjectEnvironmentVariable[]>;
