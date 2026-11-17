@@ -89,14 +89,14 @@
     "WaitpointTag.project"
   ],
   "totals": {
-    "violations": 16,
-    "detectorI": 15,
+    "violations": 29,
+    "detectorI": 19,
     "detectorII": 0,
     "detectorIII": 0,
-    "detectorIV": 1,
+    "detectorIV": 10,
     "write": 5,
-    "read": 11,
-    "files": 5,
+    "read": 24,
+    "files": 8,
     "legacyAnnotations": 0
   },
   "violations": [
@@ -243,6 +243,123 @@
       "callKind": "read",
       "detector": "iv",
       "snippet": "const rows = await primary(route).$queryRawUnsafe<unknown[]>("
+    },
+    {
+      "file": "internal-packages/run-engine/src/engine/systems/executionSnapshotSystem.ts",
+      "line": 148,
+      "model": "_completedWaitpoints",
+      "delegate": "$queryRaw",
+      "callKind": "read",
+      "detector": "iv",
+      "snippet": "const result = await prisma.$queryRaw<{ B: string }[]>`"
+    },
+    {
+      "file": "internal-packages/run-engine/src/engine/systems/executionSnapshotSystem.ts",
+      "line": 172,
+      "model": "TaskRunExecutionSnapshot",
+      "delegate": "$queryRaw",
+      "callKind": "read",
+      "detector": "iv",
+      "snippet": "const rows = await prisma.$queryRaw<{ id: string; B: string | null }[]>`"
+    },
+    {
+      "file": "internal-packages/run-engine/src/engine/systems/executionSnapshotSystem.ts",
+      "line": 172,
+      "model": "_completedWaitpoints",
+      "delegate": "$queryRaw",
+      "callKind": "read",
+      "detector": "iv",
+      "snippet": "const rows = await prisma.$queryRaw<{ id: string; B: string | null }[]>`"
+    },
+    {
+      "file": "internal-packages/run-engine/src/engine/systems/executionSnapshotSystem.ts",
+      "line": 202,
+      "model": "Waitpoint",
+      "delegate": "waitpoint",
+      "callKind": "read",
+      "detector": "i",
+      "snippet": ": await prisma.waitpoint.findMany({"
+    },
+    {
+      "file": "internal-packages/run-engine/src/engine/systems/executionSnapshotSystem.ts",
+      "line": 281,
+      "model": "TaskRunExecutionSnapshot",
+      "delegate": "taskRunExecutionSnapshot",
+      "callKind": "read",
+      "detector": "i",
+      "snippet": ": await prisma.taskRunExecutionSnapshot.findFirst({"
+    },
+    {
+      "file": "internal-packages/run-engine/src/engine/systems/executionSnapshotSystem.ts",
+      "line": 383,
+      "model": "TaskRunExecutionSnapshot",
+      "delegate": "taskRunExecutionSnapshot",
+      "callKind": "read",
+      "detector": "i",
+      "snippet": ": await prisma.taskRunExecutionSnapshot.findFirst({"
+    },
+    {
+      "file": "internal-packages/run-engine/src/engine/systems/executionSnapshotSystem.ts",
+      "line": 413,
+      "model": "TaskRunExecutionSnapshot",
+      "delegate": "taskRunExecutionSnapshot",
+      "callKind": "read",
+      "detector": "i",
+      "snippet": ": await prisma.taskRunExecutionSnapshot.findMany({"
+    },
+    {
+      "file": "scripts/compare-snapshot-stores.mts",
+      "line": 197,
+      "model": "TaskRun",
+      "delegate": "$queryRaw",
+      "callKind": "read",
+      "detector": "iv",
+      "snippet": "const rows = await prisma.$queryRaw<Array<{ id: string; createdAt: Date }>>`"
+    },
+    {
+      "file": "scripts/compare-snapshot-stores.mts",
+      "line": 218,
+      "model": "TaskRunExecutionSnapshot",
+      "delegate": "$queryRaw",
+      "callKind": "read",
+      "detector": "iv",
+      "snippet": "const rows = await prisma.$queryRaw<PostgresSnapshotRow[]>`"
+    },
+    {
+      "file": "scripts/compare-snapshot-stores.mts",
+      "line": 431,
+      "model": "TaskRun",
+      "delegate": "$queryRaw",
+      "callKind": "read",
+      "detector": "iv",
+      "snippet": "const [row] = await db.$queryRaw<Array<Record<string, unknown>>>`"
+    },
+    {
+      "file": "scripts/compare-snapshot-stores.mts",
+      "line": 431,
+      "model": "TaskRunExecutionSnapshot",
+      "delegate": "$queryRaw",
+      "callKind": "read",
+      "detector": "iv",
+      "snippet": "const [row] = await db.$queryRaw<Array<Record<string, unknown>>>`"
+    },
+    {
+      "file": "scripts/recover-stuck-runs.ts",
+      "line": 196,
+      "model": "TaskRun",
+      "delegate": "$queryRaw",
+      "callKind": "read",
+      "detector": "iv",
+      "snippet": "const runInfo = await prisma.$queryRaw<"
+    },
+    {
+      "file": "scripts/recover-stuck-runs.ts",
+      "line": 196,
+      "model": "TaskRunExecutionSnapshot",
+      "delegate": "$queryRaw",
+      "callKind": "read",
+      "detector": "iv",
+      "snippet": "const runInfo = await prisma.$queryRaw<"
     }
   ],
   "legacyAnnotations": []

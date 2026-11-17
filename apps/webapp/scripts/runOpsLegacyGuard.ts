@@ -1,7 +1,8 @@
 /**
  * Track-1 run-ops legacy guard (type-aware inventory) — SOURCE OF TRUTH for the three-DB-split
- * "Track 1" sweep. Builds a `ts.Program` over the webapp tsconfig and uses the TypeChecker to
- * resolve receiver types, catching aliased control-plane clients that grep/oxlint cannot.
+ * "Track 1" sweep. Builds one `ts.Program` over the webapp tsconfig, with the source files of the
+ * other COVERED_ROOTS added, and uses the TypeChecker to resolve receiver types, catching aliased
+ * control-plane clients that grep/oxlint cannot.
  *
  * The run-graph models are the models of every schema in RUN_GRAPH_SCHEMA_PATHS; the run-graph
  * tables are their tables plus the join tables of their many-to-many relations. Scope is
@@ -87,7 +88,17 @@ const FORCED_TYPE_RESOLUTIONS = new Map<string, string>([
 ]);
 
 // Scope (repository-relative paths): a file under a covered root, minus the exclusions below.
-const COVERED_ROOTS = ["apps/webapp/"];
+const COVERED_ROOTS = [
+  "apps/webapp/",
+  "internal-packages/run-engine/",
+  "internal-packages/schedule-engine/",
+  "internal-packages/webhook-engine/",
+  "internal-packages/rbac/",
+  "internal-packages/sso/",
+  "internal-packages/llm-model-catalog/",
+  "packages/core/",
+  "scripts/",
+];
 // The run store and the schema packages are not judged; testcontainers builds throwaway test DBs.
 const EXCLUDED_PACKAGE_DIRS = [
   "internal-packages/run-store/",
@@ -350,7 +361,20 @@ function buildProgram(): ts.Program {
         redirected
       );
     });
-  return ts.createProgram({ rootNames: parsed.fileNames, options, host: compilerHost });
+  const walked = COVERED_ROOTS.filter((r) => r !== "apps/webapp/")
+    .flatMap((r) =>
+      ts.sys.readDirectory(
+        path.join(REPO_ROOT, r),
+        [".ts", ".tsx", ".mts", ".cts"],
+        ["**/node_modules", "**/dist"]
+      )
+    )
+    .filter((f) => !/\.d\.[mc]?ts$/.test(f) && isInScope(repoRel(f)));
+  return ts.createProgram({
+    rootNames: [...parsed.fileNames, ...walked],
+    options,
+    host: compilerHost,
+  });
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -1216,7 +1240,13 @@ type Omit<T, K extends keyof any> = Pick<T, Exclude<keyof T, K>>;
 
 type SelfTestExpect = { violations: number; honored: number; errors: number; models?: string[] };
 // `path` is repository-relative; the default is apps/webapp/app/selftest/<name>.ts.
-type SelfTestFixture = { name: string; code: string; expect: SelfTestExpect; path?: string };
+type SelfTestFixture = {
+  name: string;
+  code: string;
+  expect: SelfTestExpect;
+  path?: string;
+  coveredRootsOnly?: boolean;
+};
 
 const SELF_TEST_FIXTURES: SelfTestFixture[] = [
   {
@@ -1370,6 +1400,26 @@ function f(id: string) {
   prisma.batchTaskRun.update({ where: { id }, data: {} });
 }`,
     expect: { violations: 1, honored: 0, errors: 0, models: ["BatchTaskRun"] },
+  },
+  {
+    name: "runEngineWaitpointRead",
+    path: "internal-packages/run-engine/src/engine/systems/selftestWaitpointRead.ts",
+    code: `import { PrismaClient } from "@trigger.dev/database";
+declare const prisma: PrismaClient;
+function f(id: string) {
+  prisma.waitpoint.findFirst({ where: { id } });
+}`,
+    expect: { violations: 1, honored: 0, errors: 0, models: ["Waitpoint"] },
+  },
+  {
+    name: "runEngineCrossSeamInclude",
+    path: "internal-packages/run-engine/src/engine/systems/selftestCrossSeamInclude.ts",
+    code: `import { PrismaClient } from "@trigger.dev/database";
+declare const prisma: PrismaClient;
+function f() {
+  prisma.project.findFirst({ where: {}, include: { taskRuns: true } });
+}`,
+    expect: { violations: 1, honored: 0, errors: 0, models: ["Project"] },
   },
   {
     name: "txHandleWaitpointRead",
@@ -1716,6 +1766,7 @@ function f(id: string) {
       "dashboardAgentFixtures",
       "apps/webapp/app/components/dashboard-agent/demo/fixtures/selftestRuns.ts",
     ],
+    ["coreBuildDirRunRead", "packages/core/src/v3/build/selftestRunRead.ts"],
   ].map(([name, file]) => ({
     name,
     path: file,
@@ -1725,6 +1776,32 @@ function f(id: string) {
   prisma.taskRun.findFirst({ where: { id } });
 }`,
     expect: { violations: 1, honored: 0, errors: 0, models: ["TaskRun"] },
+  })),
+  // Scoped by the real COVERED_ROOTS: a run read under each covered root is reported, outside none.
+  ...[
+    ["rootWebapp", "apps/webapp/app/selftestRootRunRead.ts", 1],
+    ["rootRunEngineSrc", "internal-packages/run-engine/src/engine/selftestRootRunRead.ts", 1],
+    ["rootRunEngineHarness", "internal-packages/run-engine/harness/selftestRootRunRead.ts", 1],
+    ["rootScheduleEngine", "internal-packages/schedule-engine/src/selftestRootRunRead.ts", 1],
+    ["rootWebhookEngine", "internal-packages/webhook-engine/src/selftestRootRunRead.ts", 1],
+    ["rootRbac", "internal-packages/rbac/src/selftestRootRunRead.ts", 1],
+    ["rootSso", "internal-packages/sso/src/selftestRootRunRead.ts", 1],
+    ["rootLlmModelCatalog", "internal-packages/llm-model-catalog/src/selftestRootRunRead.ts", 1],
+    ["rootCoreBuildDir", "packages/core/src/v3/build/selftestRootRunRead.ts", 1],
+    ["rootScripts", "scripts/selftest-root-run-read.mts", 1],
+    ["rootOutsideSupervisor", "apps/supervisor/src/selftestRootRunRead.ts", 0],
+  ].map(([name, file, n]) => ({
+    name: name as string,
+    path: file as string,
+    coveredRootsOnly: true,
+    code: `import { PrismaClient } from "@trigger.dev/database";
+declare const prisma: PrismaClient;
+function f(id: string) {
+  prisma.taskRun.findFirst({ where: { id } });
+}`,
+    expect: n
+      ? { violations: 1, honored: 0, errors: 0, models: ["TaskRun"] }
+      : { violations: 0, honored: 0, errors: 0 },
   })),
 ];
 
@@ -1777,11 +1854,16 @@ function runSelfTests(): void {
   const program = buildVirtualProgram(files);
   const checker = program.getTypeChecker();
   // The real scope rule, with one covered root holding every path: the exclusions decide.
+  // A coveredRootsOnly case is scoped by the real COVERED_ROOTS instead.
+  const rootScoped = new Set(
+    SELF_TEST_FIXTURES.filter((fx) => fx.coveredRootsOnly).map(fixturePath)
+  );
   const result = scanProgram(
     program,
     checker,
     (fileName) =>
-      fileName.startsWith("/virtual/") && isInScope(fileName.slice("/virtual/".length), [""])
+      fileName.startsWith("/virtual/") &&
+      isInScope(fileName.slice("/virtual/".length), rootScoped.has(fileName) ? COVERED_ROOTS : [""])
   );
 
   const failures: string[] = [];
@@ -1838,6 +1920,12 @@ function main(): void {
       console.error(
         `[runops-guard] generated Prisma client missing at ${repoRel(dir)} — run: pnpm run generate`
       );
+      process.exit(2);
+    }
+  }
+  for (const root of COVERED_ROOTS) {
+    if (!fs.statSync(path.join(REPO_ROOT, root), { throwIfNoEntry: false })?.isDirectory()) {
+      console.error(`[runops-guard] covered root missing: ${root}`);
       process.exit(2);
     }
   }
