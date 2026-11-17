@@ -18,6 +18,15 @@
  *   Detector (iv)  — a $queryRaw/$executeRaw(Unsafe) call on a database client whose SQL names a
  *                    run-graph table in double quotes.
  *
+ * Markers: an allowed exception carries a single-line comment
+ *   // runops-exception(<OWNER>): <reason>
+ * directly above the statement or arrow function body that holds the access (<OWNER> is a short
+ * lower-case name for the piece of work that will remove the access, for example
+ * `batches-migration` or `legacy-teardown`). It honours every finding in that unit and is recorded
+ * in the baseline's `markers`. Both modes fail on a malformed marker or one that covers no finding (off
+ * target); `--check` also fails on a recorded marker that is no longer found (stale) or a found
+ * marker that is not recorded (unrecorded).
+ *
  * Modes: default regenerates the baseline; `--check` fails (exit 1) on any violation not baselined.
  *   pnpm --filter webapp run guard:runops-legacy            # regenerate baseline
  *   pnpm --filter webapp run guard:runops-legacy -- --check # CI gate
@@ -272,8 +281,6 @@ crossSeamRelationList.sort();
 const delegateToModel = new Map<string, string>();
 for (const name of cpModelNames) delegateToModel.set(lowerFirst(name), name);
 
-const LEGACY_HANDLE_NAMES = new Set(["runOpsLegacyPrisma", "runOpsLegacyReplica"]);
-
 // Detector (iii): read-through config slots that MUST carry a run-ops client. Assigning a
 // control-plane client here (e.g. `legacyReplica: $replica`) is invisible to the type-aware
 // detectors — the field is typed RunOpsPrismaClient but the value is coerced in — yet it makes
@@ -288,26 +295,9 @@ const RUN_OPS_READTHROUGH_SLOTS = new Set([
 ]);
 const CONTROL_PLANE_CLIENT_IDENTIFIERS = new Set(["$replica", "prisma"]);
 
-// MECH-1/MECH-2 site-level annotations (track1-completion-plan.md, PLAN §T1.1). `runops-legacy-ok`
-// suppresses a detector-(i) write only on a legacy handle; `runops-routed-ok` suppresses a read only
-// inside a read-through router.
-const LEGACY_OK_TAG = "runops-legacy-ok";
-const ROUTED_OK_TAG = "runops-routed-ok";
-
-// Tx helpers whose FIRST argument is the client the callback's `tx` binds to: `$transaction(client,
-// name, cb)` and any `runInTransaction(handle, cb)`. The run-store's `runInTransaction(runId, cb)`
-// takes a runId first (never a handle), so a routed tx is correctly NOT treated as legacy.
-const TX_ORIGIN_FNS = new Set(["$transaction", "runInTransaction"]);
-// Read-through routers that fan out new→legacy by id-shape; a delegate call inside one is routed.
-const READ_THROUGH_FNS = new Set(["readThroughRun", "resolveWaitpointThroughReadThrough"]);
-
-/** Name of the function being called, whether `fn(...)` or `receiver.fn(...)`. */
-function calleeName(call: ts.CallExpression): string | undefined {
-  const e = call.expression;
-  if (ts.isIdentifier(e)) return e.text;
-  if (ts.isPropertyAccessExpression(e)) return e.name.text;
-  return undefined;
-}
+// The text of a marker comment; a comment that starts with the tag but does not match is malformed.
+const MARKER_TAG = "runops-exception";
+const MARKER_PATTERN = /^\/\/\s*runops-exception\(([a-z][a-z0-9-]*)\):\s*(\S.*?)\s*$/;
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Program construction
@@ -430,63 +420,6 @@ function collectKinds(t: ts.Type, seen: Set<ts.Type>): Set<ClientKind> {
   return out;
 }
 
-/** True if `node` resolves (through parens/as/satisfies/non-null and simple const aliases) to
- *  the runOpsLegacyPrisma / runOpsLegacyReplica handle. */
-function receiverIsLegacyHandle(
-  checker: ts.TypeChecker,
-  node: ts.Expression,
-  seen = new Set<ts.Node>()
-): boolean {
-  if (seen.has(node)) return false;
-  seen.add(node);
-  let e: ts.Expression = node;
-  while (
-    ts.isParenthesizedExpression(e) ||
-    ts.isAsExpression(e) ||
-    ts.isSatisfiesExpression(e) ||
-    ts.isNonNullExpression(e)
-  ) {
-    e = e.expression;
-  }
-  if (!ts.isIdentifier(e)) return false;
-  if (LEGACY_HANDLE_NAMES.has(e.text)) return true;
-  const sym = checker.getSymbolAtLocation(e);
-  const decl = sym?.valueDeclaration ?? sym?.declarations?.[0];
-  if (decl && ts.isVariableDeclaration(decl) && decl.initializer) {
-    return receiverIsLegacyHandle(checker, decl.initializer, seen);
-  }
-  // Tx-origin walk: a `tx` parameter bound to the callback of `$transaction(<handle>, …, cb)` /
-  // `runInTransaction(<handle>, cb)` inherits the residency of that call's FIRST argument, so it is
-  // legacy iff that first argument is a legacy handle.
-  if (decl && ts.isParameter(decl)) {
-    return txParamOriginIsLegacy(checker, decl, seen);
-  }
-  return false;
-}
-
-/** A `tx`-style parameter is legacy iff it is the callback param of a TX_ORIGIN_FNS call whose
- *  first argument resolves (via receiverIsLegacyHandle) to a legacy handle. */
-function txParamOriginIsLegacy(
-  checker: ts.TypeChecker,
-  param: ts.ParameterDeclaration,
-  seen: Set<ts.Node>
-): boolean {
-  const fn = param.parent;
-  if (!ts.isFunctionLike(fn)) return false;
-  // The callback may be wrapped in parens before it reaches the call's argument list.
-  let container: ts.Node = fn;
-  while (container.parent && ts.isParenthesizedExpression(container.parent)) {
-    container = container.parent;
-  }
-  const call = container.parent;
-  if (!call || !ts.isCallExpression(call)) return false;
-  if (!call.arguments.some((a) => a === container)) return false;
-  const name = calleeName(call);
-  if (!name || !TX_ORIGIN_FNS.has(name)) return false;
-  const firstArg = call.arguments[0];
-  return firstArg ? receiverIsLegacyHandle(checker, firstArg, seen) : false;
-}
-
 // ─────────────────────────────────────────────────────────────────────────────
 // AST helpers
 // ─────────────────────────────────────────────────────────────────────────────
@@ -521,20 +454,6 @@ function toObjectLiteral(
     }
   }
   return undefined;
-}
-
-/** Unwrap parens / `as` / `satisfies` / non-null to the inner expression. */
-function unwrapExpr(node: ts.Expression): ts.Expression {
-  let e = node;
-  while (
-    ts.isParenthesizedExpression(e) ||
-    ts.isAsExpression(e) ||
-    ts.isSatisfiesExpression(e) ||
-    ts.isNonNullExpression(e)
-  ) {
-    e = e.expression;
-  }
-  return e;
 }
 
 /** The run-graph model whose generated `<Model>Delegate` type a call's receiver has, whatever holds
@@ -625,77 +544,6 @@ function collectSqlText(node: ts.Node, out: string[]): void {
   }
 }
 
-/** Full (untrimmed) source text of a 1-based line, including any trailing newline. */
-function rawLineText(sf: ts.SourceFile, line1: number): string {
-  const starts = sf.getLineStarts();
-  const idx = line1 - 1;
-  const start = starts[idx];
-  const end = idx + 1 < starts.length ? starts[idx + 1] : sf.text.length;
-  return sf.text.slice(start, end);
-}
-
-/** The trimmed `<reason>` for a `// <tag>: <reason>` annotation attached to `node`'s enclosing
- *  statement — a leading comment above it, or any comment within the statement's line span. Node-
- *  relative (not a fixed line) so it survives formatter reflow, which moves lines but keeps a
- *  comment attached to its statement. */
-function annotationReasonForNode(
-  sf: ts.SourceFile,
-  node: ts.Node,
-  tag: string
-): string | undefined {
-  const re = new RegExp("//\\s*" + tag + ":\\s*(\\S.*?)\\s*$", "m");
-  let stmt: ts.Node = node;
-  while (
-    stmt.parent &&
-    !ts.isSourceFile(stmt.parent) &&
-    !ts.isBlock(stmt.parent) &&
-    !ts.isModuleBlock(stmt.parent)
-  ) {
-    stmt = stmt.parent;
-  }
-  const texts: string[] = [];
-  for (const r of ts.getLeadingCommentRanges(sf.text, stmt.getFullStart()) ?? []) {
-    texts.push(sf.text.slice(r.pos, r.end));
-  }
-  const startLine = sf.getLineAndCharacterOfPosition(stmt.getStart(sf)).line + 1;
-  const endLine = sf.getLineAndCharacterOfPosition(node.getEnd()).line + 1;
-  for (let l = startLine; l <= endLine; l++) texts.push(rawLineText(sf, l));
-  for (const t of texts) {
-    const m = re.exec(t);
-    if (m) return m[1].trim();
-  }
-  return undefined;
-}
-
-/** True if the delegate call is a residency-routed read: lexically inside a READ_THROUGH_FNS call,
- *  or its receiver is a parameter of a closure that is (transitively) inside such a call. */
-function isInsideReadThroughContext(
-  checker: ts.TypeChecker,
-  callNode: ts.Node,
-  receiverExpr: ts.Expression
-): boolean {
-  for (let n: ts.Node | undefined = callNode; n; n = n.parent) {
-    if (ts.isCallExpression(n)) {
-      const name = calleeName(n);
-      if (name && READ_THROUGH_FNS.has(name)) return true;
-    }
-  }
-  const e = unwrapExpr(receiverExpr);
-  if (ts.isIdentifier(e)) {
-    const sym = checker.getSymbolAtLocation(e);
-    const decl = sym?.valueDeclaration ?? sym?.declarations?.[0];
-    if (decl && ts.isParameter(decl)) {
-      for (let n: ts.Node | undefined = decl.parent; n; n = n.parent) {
-        if (ts.isCallExpression(n)) {
-          const name = calleeName(n);
-          if (name && READ_THROUGH_FNS.has(name)) return true;
-        }
-      }
-    }
-  }
-  return false;
-}
-
 // ─────────────────────────────────────────────────────────────────────────────
 // Violations
 // ─────────────────────────────────────────────────────────────────────────────
@@ -734,23 +582,94 @@ function violationKey(v: Violation): string {
   return [v.file, v.line, v.detector, v.model, v.delegate, v.callKind].join("::");
 }
 
-// A honored MECH-1 `runops-legacy-ok` site. Recorded to the baseline's companion block and
-// re-verified each run so a stale/moved annotation fails --check.
-type LegacyAnnotation = { file: string; line: number; reason: string; receiver: string };
-// A rejected annotation (e.g. `runops-legacy-ok` on a non-legacy receiver). Never baselined; always
-// fails --check.
-type AnnotationError = { file: string; line: number; receiver: string; message: string };
+// An honoured marker, recorded in the baseline; `line` is the marker comment's line.
+type Marker = { file: string; line: number; owner: string; reason: string; findings: string[] };
+// A malformed or off-target marker. Never baselined; fails both modes.
+type MarkerError = { file: string; line: number; kind: "malformed" | "off target"; text: string };
 
 type ScanResult = {
   violations: Violation[];
-  legacyAnnotations: LegacyAnnotation[];
-  annotationErrors: AnnotationError[];
+  markers: Marker[];
+  markerErrors: MarkerError[];
 };
 
-function annotationKey(a: LegacyAnnotation): string {
-  // Line-insensitive: formatter reflow moves lines but not the (file, receiver, reason) identity,
-  // so a pure re-format must not read as annotation drift. `line` stays on the record for humans.
-  return [a.file, a.receiver, a.reason].join("::");
+function markerKey(m: Marker): string {
+  // No line: a change that only moves lines above a marked access is not drift.
+  return [m.file, m.owner, m.reason, m.findings.join(",")].join("::");
+}
+
+/** The words `--check` prints for a finding, e.g. `iv/read TaskRun.$queryRaw`. */
+/** Recorded and found markers compared as multisets: two markers with one key (file, owner,
+ *  reason, findings) must both be found. */
+function compareMarkers(
+  recorded: Marker[],
+  found: Marker[]
+): { stale: Marker[]; unrecorded: Marker[] } {
+  const groupByKey = (ms: Marker[]) => {
+    const out = new Map<string, Marker[]>();
+    for (const m of ms) out.set(markerKey(m), [...(out.get(markerKey(m)) ?? []), m]);
+    return out;
+  };
+  const recordedByKey = groupByKey(recorded);
+  const foundByKey = groupByKey(found);
+  const stale = Array.from(recordedByKey).flatMap(([k, ms]) =>
+    ms.slice(foundByKey.get(k)?.length ?? 0)
+  );
+  const unrecorded = Array.from(foundByKey).flatMap(([k, ms]) =>
+    ms.slice(recordedByKey.get(k)?.length ?? 0)
+  );
+  return { stale, unrecorded };
+}
+
+function findingLabel(v: Violation): string {
+  return `${v.detector}/${v.callKind} ${v.model}.${v.delegate}`;
+}
+
+/** The unit a finding's node belongs to: the nearest arrow function expression body, or statement
+ *  of a source file, block, module block or case/default clause. A marker covers one unit. */
+function unitOf(node: ts.Node): ts.Node {
+  let n = node;
+  while (n.parent) {
+    const p = n.parent;
+    if (ts.isArrowFunction(p) && p.body === n && !ts.isBlock(n)) return n;
+    if (
+      (ts.isSourceFile(p) ||
+        ts.isBlock(p) ||
+        ts.isModuleBlock(p) ||
+        ts.isCaseClause(p) ||
+        ts.isDefaultClause(p)) &&
+      p.statements.some((s) => s === n)
+    ) {
+      return n;
+    }
+    n = p;
+  }
+  return n;
+}
+
+/** Every `//` comment in the file whose text starts with the marker tag, from the parsed tree's
+ *  tokens (so marker-shaped text in a string or template literal is not a comment). */
+function markerComments(sf: ts.SourceFile): ts.CommentRange[] {
+  const byPos = new Map<number, ts.CommentRange>();
+  const walk = (n: ts.Node): void => {
+    if (n.kind >= ts.SyntaxKind.FirstJSDocNode && n.kind <= ts.SyntaxKind.LastJSDocNode) return;
+    const kids = n.getChildren(sf);
+    if (kids.length) return kids.forEach(walk);
+    for (const r of [
+      ...(ts.getLeadingCommentRanges(sf.text, n.getFullStart()) ?? []),
+      ...(ts.getTrailingCommentRanges(sf.text, n.getEnd()) ?? []),
+    ]) {
+      byPos.set(r.pos, r);
+    }
+  };
+  walk(sf);
+  return Array.from(byPos.values())
+    .filter(
+      (r) =>
+        r.kind === ts.SyntaxKind.SingleLineCommentTrivia &&
+        new RegExp("^//\\s*" + MARKER_TAG).test(sf.text.slice(r.pos, r.end))
+    )
+    .sort((a, b) => a.pos - b.pos);
 }
 
 function repoRel(fileName: string): string {
@@ -758,7 +677,11 @@ function repoRel(fileName: string): string {
 }
 
 function lineOf(sf: ts.SourceFile, node: ts.Node): number {
-  return sf.getLineAndCharacterOfPosition(node.getStart(sf)).line + 1;
+  return lineOfPos(sf, node.getStart(sf));
+}
+
+function lineOfPos(sf: ts.SourceFile, pos: number): number {
+  return sf.getLineAndCharacterOfPosition(pos).line + 1;
 }
 
 function lineText(sf: ts.SourceFile, line1: number): string {
@@ -920,17 +843,23 @@ function scanProgram(
   inScope: (fileName: string) => boolean
 ): ScanResult {
   const found = new Map<string, Violation>();
-  const legacyAnnotations = new Map<string, LegacyAnnotation>();
-  const annotationErrors: AnnotationError[] = [];
-
-  const add = (v: Violation) => {
-    found.set(violationKey(v), v);
-  };
+  const markers: Marker[] = [];
+  const markerErrors: MarkerError[] = [];
 
   for (const sf of program.getSourceFiles()) {
     if (sf.isDeclarationFile) continue;
     if (!inScope(sf.fileName)) continue;
     const file = repoRel(sf.fileName);
+    // This file's findings, each with the unit its marker would sit above. Keyed by the positions
+    // of the finding's node and of the reported node, so two accesses on one line, or two queries
+    // that share a selection constant (detector ii reports the constant's key), are two findings.
+    const fileFound = new Map<string, { v: Violation; unit: ts.Node }>();
+    const add = (v: Violation, node: ts.Node, at: ts.Node) => {
+      fileFound.set(`${violationKey(v)}@${node.getStart(sf)}@${at.getStart(sf)}`, {
+        v,
+        unit: unitOf(node),
+      });
+    };
 
     const visit = (node: ts.Node): void => {
       if (ts.isCallExpression(node) && ts.isPropertyAccessExpression(node.expression)) {
@@ -944,41 +873,14 @@ function scanProgram(
         // Detector (i): a call on a run-graph model delegate of either client, however reached.
         if (kind && delegateType && model) {
           const delegateName = lowerFirst(model);
-          const receiverExpr = ts.isPropertyAccessExpression(delegateAccess)
-            ? delegateAccess.expression
-            : delegateAccess;
           const clientKind = classifyType(checker, delegateType);
           if (clientKind === "cp" || clientKind === "runops") {
-            const isLegacy = receiverIsLegacyHandle(checker, receiverExpr);
             const line = lineOf(
               sf,
               ts.isPropertyAccessExpression(delegateAccess) ? delegateAccess.name : delegateAccess
             );
-            const legacyReason = annotationReasonForNode(sf, node, LEGACY_OK_TAG);
-            const routedReason = annotationReasonForNode(sf, node, ROUTED_OK_TAG);
-            const receiver = receiverExpr.getText().replace(/\s+/g, " ").trim().slice(0, 120);
-
-            if (legacyReason !== undefined) {
-              // MECH-1: honor only on a legacy handle (or a tx originating from one); otherwise
-              // the annotation is REJECTED (never suppresses, always fails --check).
-              if (isLegacy) {
-                const ann = { file, line, reason: legacyReason, receiver };
-                legacyAnnotations.set(annotationKey(ann), ann);
-              } else {
-                annotationErrors.push({
-                  file,
-                  line,
-                  receiver,
-                  message: "runops-legacy-ok on a non-legacy receiver",
-                });
-              }
-            } else if (
-              routedReason !== undefined &&
-              isInsideReadThroughContext(checker, node, receiverExpr)
-            ) {
-              // MECH-2 fallback: residency-routed read inside a read-through router — allowed.
-            } else {
-              add({
+            add(
+              {
                 file,
                 line,
                 model: capFirst(delegateName),
@@ -986,8 +888,10 @@ function scanProgram(
                 callKind: kind,
                 detector: "i",
                 snippet: lineText(sf, line),
-              });
-            }
+              },
+              node,
+              ts.isPropertyAccessExpression(delegateAccess) ? delegateAccess.name : delegateAccess
+            );
           }
         }
 
@@ -1002,15 +906,19 @@ function scanProgram(
               if (clientKind === "cp") {
                 for (const hit of hits) {
                   const line = lineOf(sf, hit.keyNode);
-                  add({
-                    file,
-                    line,
-                    model: hit.ownerModel,
-                    delegate: hit.relation,
-                    callKind: kind,
-                    detector: "ii",
-                    snippet: lineText(sf, line),
-                  });
+                  add(
+                    {
+                      file,
+                      line,
+                      model: hit.ownerModel,
+                      delegate: hit.relation,
+                      callKind: kind,
+                      detector: "ii",
+                      snippet: lineText(sf, line),
+                    },
+                    node,
+                    hit.keyNode
+                  );
                 }
               }
             }
@@ -1027,15 +935,19 @@ function scanProgram(
           valueIsControlPlaneClient(node.initializer)
         ) {
           const line = lineOf(sf, node.name);
-          add({
-            file,
-            line,
-            model: capFirst(key),
-            delegate: key,
-            callKind: "read",
-            detector: "iii",
-            snippet: lineText(sf, line),
-          });
+          add(
+            {
+              file,
+              line,
+              model: capFirst(key),
+              delegate: key,
+              callKind: "read",
+              detector: "iii",
+              snippet: lineText(sf, line),
+            },
+            node,
+            node.name
+          );
         }
       }
 
@@ -1064,15 +976,19 @@ function scanProgram(
           const line = lineOf(sf, rawCallee.name);
           for (const table of RUN_GRAPH_TABLES) {
             if (!text.includes(`"${table}"`)) continue;
-            add({
-              file,
-              line,
-              model: table,
-              delegate: method,
-              callKind: method.startsWith("$query") ? "read" : "write",
-              detector: "iv",
-              snippet: lineText(sf, line),
-            });
+            add(
+              {
+                file,
+                line,
+                model: table,
+                delegate: method,
+                callKind: method.startsWith("$query") ? "read" : "write",
+                detector: "iv",
+                snippet: lineText(sf, line),
+              },
+              node,
+              rawCallee.name
+            );
           }
         }
       }
@@ -1081,14 +997,53 @@ function scanProgram(
     };
 
     visit(sf);
+
+    // Markers: the last well-formed marker among a unit's leading comments honours the unit's
+    // findings; any other well-formed marker is off target.
+    const comments = sf.text.includes(MARKER_TAG) ? markerComments(sf) : [];
+    const wellFormed = new Map<number, RegExpExecArray>();
+    for (const r of comments) {
+      const text = sf.text.slice(r.pos, r.end);
+      const m = MARKER_PATTERN.exec(text);
+      if (m) wellFormed.set(r.pos, m);
+      else markerErrors.push({ file, line: lineOfPos(sf, r.pos), kind: "malformed", text });
+    }
+    const byUnit = new Map<ts.Node, Violation[]>();
+    for (const { v, unit } of fileFound.values())
+      byUnit.set(unit, [...(byUnit.get(unit) ?? []), v]);
+    const used = new Set<number>();
+    for (const [unit, vs] of byUnit) {
+      const own = (ts.getLeadingCommentRanges(sf.text, unit.getFullStart()) ?? []).filter((r) =>
+        wellFormed.has(r.pos)
+      );
+      const marker = own[own.length - 1];
+      if (!marker) {
+        for (const v of vs) found.set(violationKey(v), v);
+        continue;
+      }
+      used.add(marker.pos);
+      const m = wellFormed.get(marker.pos)!;
+      markers.push({
+        file,
+        line: lineOfPos(sf, marker.pos),
+        owner: m[1],
+        reason: m[2],
+        findings: vs.map(findingLabel).sort(),
+      });
+    }
+    for (const r of comments) {
+      if (!wellFormed.has(r.pos) || used.has(r.pos)) continue;
+      const text = sf.text.slice(r.pos, r.end);
+      markerErrors.push({ file, line: lineOfPos(sf, r.pos), kind: "off target", text });
+    }
   }
 
+  const byFileLine = (a: { file: string; line: number }, b: { file: string; line: number }) =>
+    a.file !== b.file ? (a.file < b.file ? -1 : 1) : a.line - b.line;
   return {
     violations: sortViolations(Array.from(found.values())),
-    legacyAnnotations: sortAnnotations(Array.from(legacyAnnotations.values())),
-    annotationErrors: annotationErrors.sort((a, b) =>
-      a.file !== b.file ? (a.file < b.file ? -1 : 1) : a.line - b.line
-    ),
+    markers: markers.sort(byFileLine),
+    markerErrors: markerErrors.sort(byFileLine),
   };
 }
 
@@ -1104,15 +1059,6 @@ function sortViolations(vs: Violation[]): Violation[] {
     if (a.model !== b.model) return a.model < b.model ? -1 : 1;
     if (a.delegate !== b.delegate) return a.delegate < b.delegate ? -1 : 1;
     return a.callKind < b.callKind ? -1 : a.callKind > b.callKind ? 1 : 0;
-  });
-}
-
-function sortAnnotations(as: LegacyAnnotation[]): LegacyAnnotation[] {
-  return as.sort((a, b) => {
-    if (a.file !== b.file) return a.file < b.file ? -1 : 1;
-    if (a.line !== b.line) return a.line - b.line;
-    if (a.receiver !== b.receiver) return a.receiver < b.receiver ? -1 : 1;
-    return a.reason < b.reason ? -1 : a.reason > b.reason ? 1 : 0;
   });
 }
 
@@ -1136,24 +1082,23 @@ type Baseline = {
     write: number;
     read: number;
     files: number;
-    legacyAnnotations: number;
+    markers: number;
   };
   violations: Violation[];
-  // Companion allowlist: honored MECH-1 `runops-legacy-ok` sites. Re-verified each --check run;
-  // a stale/moved/re-worded annotation (or an unrecorded new one) fails the gate.
-  legacyAnnotations: LegacyAnnotation[];
+  // Honoured markers. `--check` compares them with the scan by count per key; any drift fails.
+  markers: Marker[];
 };
 
 function buildBaseline(result: ScanResult): Baseline {
-  const { violations, legacyAnnotations } = result;
+  const { violations, markers } = result;
   return {
     $comment:
       "Track-1 run-ops legacy guard baseline. Generated by apps/webapp/scripts/runOpsLegacyGuard.ts. " +
-      "Each entry is a code path that calls a run-graph model through the control-plane or run-ops " +
-      "Prisma client, a transaction handle or a model accessor variable (detector i), traverses a " +
-      "cross-seam relation (detector ii), puts a control-plane client in a run-ops slot (detector " +
-      "iii), or names a run-graph table in raw SQL (detector iv). This list IS the Track-1 work " +
-      "list; burn it down to zero. legacyAnnotations records honored `runops-legacy-ok` sites. " +
+      "`violations` lists unmarked findings: a code path that calls a run-graph model through the " +
+      "control-plane or run-ops Prisma client, a transaction handle or a model accessor variable " +
+      "(detector i), traverses a cross-seam relation (detector ii), puts a control-plane client in a " +
+      "run-ops slot (detector iii), or names a run-graph table in raw SQL (detector iv). `markers` " +
+      "lists each `runops-exception(<OWNER>): <reason>` marker and the findings it covers. " +
       "Do NOT edit by hand — regenerate instead.",
     regenerate: "pnpm --filter webapp run guard:runops-legacy",
     runGraphSchemas: RUN_GRAPH_SCHEMA_PATHS,
@@ -1169,10 +1114,10 @@ function buildBaseline(result: ScanResult): Baseline {
       write: violations.filter((v) => v.callKind === "write").length,
       read: violations.filter((v) => v.callKind === "read").length,
       files: new Set(violations.map((v) => v.file)).size,
-      legacyAnnotations: legacyAnnotations.length,
+      markers: markers.length,
     },
     violations,
-    legacyAnnotations,
+    markers,
   };
 }
 
@@ -1238,7 +1183,13 @@ type Exclude<T, U> = T extends U ? never : T;
 type Omit<T, K extends keyof any> = Pick<T, Exclude<keyof T, K>>;
 `;
 
-type SelfTestExpect = { violations: number; honored: number; errors: number; models?: string[] };
+type SelfTestExpect = {
+  violations: number;
+  honored: number;
+  errors: number;
+  models?: string[];
+  findings?: string[];
+};
 // `path` is repository-relative; the default is apps/webapp/app/selftest/<name>.ts.
 type SelfTestFixture = {
   name: string;
@@ -1250,24 +1201,24 @@ type SelfTestFixture = {
 
 const SELF_TEST_FIXTURES: SelfTestFixture[] = [
   {
-    // MECH-1 REJECTED: runops-legacy-ok on a bare control-plane receiver is an annotation error.
+    // A retired tag (runops-legacy-ok, runops-routed-ok) is a plain comment: the access is reported.
     name: "legacyOkBarePrisma",
     code: `import { PrismaClient } from "@trigger.dev/database";
 declare const prisma: PrismaClient;
 function f() {
   prisma.taskRun.update({ where: {}, data: {} }); // runops-legacy-ok: bogus on control-plane
 }`,
-    expect: { violations: 0, honored: 0, errors: 1 },
+    expect: { violations: 1, honored: 0, errors: 0 },
   },
   {
-    // MECH-1 honored: runops-legacy-ok on the legacy handle.
+    // A retired tag (runops-legacy-ok, runops-routed-ok) is a plain comment: the access is reported.
     name: "legacyOkLegacyHandle",
     code: `import { PrismaClient } from "@trigger.dev/database";
 declare const runOpsLegacyPrisma: PrismaClient;
 function f() {
   runOpsLegacyPrisma.taskRun.update({ where: {}, data: {} }); // runops-legacy-ok: legacy cuid write
 }`,
-    expect: { violations: 0, honored: 1, errors: 0 },
+    expect: { violations: 1, honored: 0, errors: 0 },
   },
   {
     // Tx-origin walk: a tx from $transaction(runOpsLegacyPrisma, …) is a legacy handle — the
@@ -1278,7 +1229,8 @@ declare const runOpsLegacyPrisma: PrismaClient;
 declare function $transaction<R>(client: PrismaClient, name: string, fn: (tx: PrismaClient) => R): R;
 function f() {
   $transaction(runOpsLegacyPrisma, "x", (tx: PrismaClient) => {
-    tx.taskRun.update({ where: {}, data: {} }); // runops-legacy-ok: run bump inside legacy tx
+    // runops-exception(legacy-teardown): run bump inside legacy tx
+    tx.taskRun.update({ where: {}, data: {} });
     tx.taskRunAttempt.create({ data: {} });
     return 0;
   });
@@ -1286,8 +1238,7 @@ function f() {
     expect: { violations: 1, honored: 1, errors: 0 },
   },
   {
-    // Tx-origin negative: a tx from runInTransaction(runId, …) is routed, not legacy — the
-    // annotation is rejected.
+    // A retired tag (runops-legacy-ok, runops-routed-ok) is a plain comment: the access is reported.
     name: "txFromRoutedRunInTransaction",
     code: `import { PrismaClient } from "@trigger.dev/database";
 declare function runInTransaction<R>(runId: string, fn: (tx: PrismaClient) => R): R;
@@ -1297,7 +1248,7 @@ function f() {
     return 0;
   });
 }`,
-    expect: { violations: 0, honored: 0, errors: 1 },
+    expect: { violations: 1, honored: 0, errors: 0 },
   },
   {
     // Bare control-plane write with no annotation is a plain violation.
@@ -1320,7 +1271,7 @@ function f() {
     expect: { violations: 1, honored: 0, errors: 0 },
   },
   {
-    // MECH-2 fallback: runops-routed-ok inside a read-through router is honored (suppressed).
+    // A retired tag (runops-legacy-ok, runops-routed-ok) is a plain comment: the access is reported.
     name: "routedOkInsideReadThrough",
     code: `import { PrismaReplicaClient } from "@trigger.dev/database";
 declare function readThroughRun(input: any): any;
@@ -1333,7 +1284,7 @@ function f() {
       replica.taskRun.findFirst({ where: {} }), // runops-routed-ok: routed read legacy
   });
 }`,
-    expect: { violations: 0, honored: 0, errors: 0 },
+    expect: { violations: 2, honored: 0, errors: 0 },
   },
   {
     // MECH-2 fallback negative: runops-routed-ok outside a read-through router is NOT honored.
@@ -1803,6 +1754,243 @@ function f(id: string) {
       ? { violations: 1, honored: 0, errors: 0, models: ["TaskRun"] }
       : { violations: 0, honored: 0, errors: 0 },
   })),
+  // Markers: each honours the findings of its own unit, for any detector, on either client.
+  {
+    name: "markerControlPlaneCall",
+    code: `import { PrismaClient } from "@trigger.dev/database";
+declare const prisma: PrismaClient;
+function f() {
+  // runops-exception(legacy-teardown): self-test marker on a control-plane call
+  prisma.taskRun.update({ where: {}, data: {} });
+}`,
+    expect: { violations: 0, honored: 1, errors: 0 },
+  },
+  {
+    name: "markerRunOpsClient",
+    code: `import { RunOpsPrismaClient } from "@internal/run-ops-database";
+declare const runOpsLegacyPrismaClient: RunOpsPrismaClient;
+function f() {
+  // runops-exception(legacy-teardown): self-test marker on a run-ops client call
+  runOpsLegacyPrismaClient.taskRun.update({ where: {}, data: {} });
+}`,
+    expect: { violations: 0, honored: 1, errors: 0 },
+  },
+  {
+    name: "markerTxHandleArrowBody",
+    code: `import { RunOpsPrismaClient } from "@internal/run-ops-database";
+declare const runOps: RunOpsPrismaClient;
+function f(id: string) {
+  runOps.$transaction((tx) =>
+    // runops-exception(legacy-teardown): self-test marker on an arrow function body
+    tx.waitpoint.findFirst({ where: { id } })
+  );
+}`,
+    expect: { violations: 0, honored: 1, errors: 0 },
+  },
+  {
+    name: "markerAccessorVariable",
+    code: `import { PrismaClient } from "@trigger.dev/database";
+declare const prisma: PrismaClient;
+function f() {
+  const runs = prisma.taskRun;
+  // runops-exception(legacy-teardown): self-test marker on an accessor variable
+  runs.findMany({ take: 1 });
+}`,
+    expect: { violations: 0, honored: 1, errors: 0 },
+  },
+  {
+    name: "markerDelegateParameter",
+    code: `import { PrismaClient } from "@trigger.dev/database";
+declare const prisma: PrismaClient;
+function listRuns(runs: PrismaClient["taskRun"]) {
+  // runops-exception(legacy-teardown): self-test marker on a delegate parameter
+  return runs.findMany({ take: 1 });
+}
+listRuns(prisma.taskRun);`,
+    expect: { violations: 0, honored: 1, errors: 0 },
+  },
+  {
+    name: "markerDelegateClassField",
+    code: `import { RunOpsPrismaClient } from "@internal/run-ops-database";
+class RunReader {
+  constructor(private readonly runs: RunOpsPrismaClient["taskRun"]) {}
+  read(id: string) {
+    // runops-exception(legacy-teardown): self-test marker on a delegate class field
+    return this.runs.findFirst({ where: { id } });
+  }
+}`,
+    expect: { violations: 0, honored: 1, errors: 0 },
+  },
+  {
+    name: "markerCrossSeamInclude",
+    code: `import { PrismaClient } from "@trigger.dev/database";
+declare const prisma: PrismaClient;
+function f() {
+  // runops-exception(legacy-teardown): self-test marker on a cross-seam include
+  prisma.project.findFirst({ where: {}, include: { taskRuns: true } });
+}`,
+    expect: { violations: 0, honored: 1, errors: 0 },
+  },
+  {
+    name: "markerControlPlaneSlot",
+    code: `declare const $replica: any;
+declare const runOpsNewReplica: any;
+// runops-exception(legacy-teardown): self-test marker on a control-plane client in a run-ops slot
+const cfg = { newClient: runOpsNewReplica, legacyReplica: $replica, controlPlaneReplica: $replica };`,
+    expect: { violations: 0, honored: 1, errors: 0 },
+  },
+  {
+    name: "markerRawTwoTables",
+    code: `import { PrismaClient, Prisma } from "@trigger.dev/database";
+declare const prisma: PrismaClient;
+function f() {
+  // runops-exception(legacy-teardown): self-test marker on a raw query naming two tables
+  prisma.$queryRaw(Prisma.sql\`SELECT s."id" FROM "TaskRunExecutionSnapshot" s LEFT JOIN "_completedWaitpoints" cw ON cw."A" = s."id"\`);
+}`,
+    expect: { violations: 0, honored: 1, errors: 0 },
+  },
+  {
+    name: "markerOneStatementOnly",
+    code: `import { PrismaClient } from "@trigger.dev/database";
+declare const prisma: PrismaClient;
+function f() {
+  // runops-exception(legacy-teardown): self-test marker on the first of two writes
+  prisma.taskRun.update({ where: {}, data: {} });
+  prisma.taskRun.update({ where: {}, data: {} });
+}`,
+    expect: { violations: 1, honored: 1, errors: 0, models: ["TaskRun"] },
+  },
+  {
+    name: "markerOffTarget",
+    code: `import { PrismaClient } from "@trigger.dev/database";
+import { RunOpsPrismaClient } from "@internal/run-ops-database";
+declare const prisma: PrismaClient;
+declare const runOps: RunOpsPrismaClient;
+declare class PostgresRunStore { constructor(o: { prisma: PrismaClient; runOps: RunOpsPrismaClient }); }
+// runops-exception(legacy-teardown): self-test marker above a statement with no finding
+const store = new PostgresRunStore({ prisma, runOps });`,
+    expect: { violations: 0, honored: 0, errors: 1 },
+  },
+  {
+    name: "markerInsideArguments",
+    code: `import { RunOpsPrismaClient } from "@internal/run-ops-database";
+declare const client: RunOpsPrismaClient;
+function f(id: string) {
+  client.taskRun.findFirst({
+    // runops-exception(legacy-teardown): self-test marker inside the call's arguments
+    where: { id },
+  });
+}`,
+    expect: { violations: 1, honored: 0, errors: 1, models: ["TaskRun"] },
+  },
+  {
+    name: "markerMalformed",
+    code: `import { PrismaClient } from "@trigger.dev/database";
+declare const prisma: PrismaClient;
+function f() {
+  // runops-exception: self-test marker with no owner
+  prisma.taskRun.update({ where: {}, data: {} });
+}`,
+    expect: { violations: 1, honored: 0, errors: 1, models: ["TaskRun"] },
+  },
+  {
+    name: "markerTextInTemplate",
+    code: `import { PrismaClient } from "@trigger.dev/database";
+declare const prisma: PrismaClient;
+const text = \`
+// runops-exception(legacy-teardown): text in a template literal, not a comment
+\`;
+function f() {
+  prisma.taskRun.update({ where: {}, data: {} });
+}`,
+    expect: { violations: 1, honored: 0, errors: 0, models: ["TaskRun"] },
+  },
+  {
+    name: "markerTwoCallsOneLine",
+    code: `import { PrismaClient } from "@trigger.dev/database";
+declare const prisma: PrismaClient;
+function f() {
+  // runops-exception(legacy-teardown): self-test marker on two calls on one line
+  [prisma.taskRun.update({ where: {}, data: {} }), prisma.taskRun.deleteMany({ where: {} })];
+}`,
+    expect: {
+      violations: 0,
+      honored: 1,
+      errors: 0,
+      findings: ["i/write TaskRun.taskRun", "i/write TaskRun.taskRun"],
+    },
+  },
+  {
+    name: "markerSharedSelectionFirstUnmarked",
+    code: `import { PrismaClient } from "@trigger.dev/database";
+declare const prisma: PrismaClient;
+const selection = { taskRuns: true };
+function f() {
+  prisma.project.findMany({ include: selection });
+  // runops-exception(legacy-teardown): self-test marker on the second of two queries sharing a selection
+  prisma.project.findMany({ include: selection });
+}`,
+    expect: { violations: 1, honored: 1, errors: 0, models: ["Project"] },
+  },
+  {
+    name: "markerSharedSelectionBothMarked",
+    code: `import { PrismaClient } from "@trigger.dev/database";
+declare const prisma: PrismaClient;
+const selection = { taskRuns: true };
+function f() {
+  // runops-exception(legacy-teardown): self-test marker on the first of two queries sharing a selection
+  prisma.project.findMany({ include: selection });
+  // runops-exception(legacy-teardown): self-test marker on the second of two queries sharing a selection
+  prisma.project.findMany({ include: selection });
+}`,
+    expect: { violations: 0, honored: 2, errors: 0 },
+  },
+];
+
+// The `--check` comparison of recorded and found markers, on made-up lists.
+const cmpMarker = (line: number, findings = ["i/write TaskRun.taskRun"]): Marker => ({
+  file: "apps/webapp/app/selftest/compareMarkers.ts",
+  line,
+  owner: "legacy-teardown",
+  reason: "self-test marker",
+  findings,
+});
+const MARKER_COMPARISON_CASES: Array<{
+  name: string;
+  recorded: Marker[];
+  found: Marker[];
+  expect: { stale: number; unrecorded: number };
+}> = [
+  {
+    name: "compareStale",
+    recorded: [cmpMarker(5)],
+    found: [],
+    expect: { stale: 1, unrecorded: 0 },
+  },
+  {
+    name: "compareUnrecorded",
+    recorded: [],
+    found: [cmpMarker(5)],
+    expect: { stale: 0, unrecorded: 1 },
+  },
+  {
+    name: "compareStaleByCount",
+    recorded: [cmpMarker(5), cmpMarker(9)],
+    found: [cmpMarker(5)],
+    expect: { stale: 1, unrecorded: 0 },
+  },
+  {
+    name: "compareLineMoved",
+    recorded: [cmpMarker(5)],
+    found: [cmpMarker(7)],
+    expect: { stale: 0, unrecorded: 0 },
+  },
+  {
+    name: "compareFindingsChanged",
+    recorded: [cmpMarker(5)],
+    found: [cmpMarker(5, ["i/write TaskRun.taskRun", "i/write TaskRun.taskRun"])],
+    expect: { stale: 1, unrecorded: 1 },
+  },
 ];
 
 function buildVirtualProgram(files: Record<string, string>): ts.Program {
@@ -1870,23 +2058,33 @@ function runSelfTests(): void {
   for (const fx of SELF_TEST_FIXTURES) {
     const file = repoRel(fixturePath(fx));
     const found = result.violations.filter((v) => v.file === file);
-    const honored = result.legacyAnnotations.filter((a) => a.file === file).length;
-    const errors = result.annotationErrors.filter((e) => e.file === file).length;
+    const honored = result.markers.filter((m) => m.file === file).length;
+    const errors = result.markerErrors.filter((e) => e.file === file).length;
     const got = {
       violations: found.length,
       honored,
       errors,
       models: found.map((v) => v.model).sort(),
+      findings: result.markers.filter((m) => m.file === file).flatMap((m) => m.findings),
     };
     if (
       got.violations !== fx.expect.violations ||
       got.honored !== fx.expect.honored ||
       got.errors !== fx.expect.errors ||
-      (fx.expect.models && got.models.join() !== fx.expect.models.join())
+      (fx.expect.models && got.models.join() !== fx.expect.models.join()) ||
+      (fx.expect.findings && got.findings.join() !== fx.expect.findings.join())
     ) {
       failures.push(
         `${fx.name}: got ${JSON.stringify(got)}, expected ${JSON.stringify(fx.expect)}`
       );
+    }
+  }
+
+  for (const c of MARKER_COMPARISON_CASES) {
+    const r = compareMarkers(c.recorded, c.found);
+    const got = { stale: r.stale.length, unrecorded: r.unrecorded.length };
+    if (got.stale !== c.expect.stale || got.unrecorded !== c.expect.unrecorded) {
+      failures.push(`${c.name}: got ${JSON.stringify(got)}, expected ${JSON.stringify(c.expect)}`);
     }
   }
 
@@ -1938,29 +2136,29 @@ function main(): void {
   console.error(`[runops-guard] building program from ${repoRel(TSCONFIG_PATH)} ...`);
 
   const result = scan();
-  const { violations, legacyAnnotations, annotationErrors } = result;
+  const { violations, markers, markerErrors } = result;
   const baseline = buildBaseline(result);
 
   console.error(
     `[runops-guard] found ${violations.length} violations ` +
       `(detector-i: ${baseline.totals.detectorI}, detector-ii: ${baseline.totals.detectorII}, detector-iii: ${baseline.totals.detectorIII}, detector-iv: ${baseline.totals.detectorIV}; ` +
       `write: ${baseline.totals.write}, read: ${baseline.totals.read}; files: ${baseline.totals.files}); ` +
-      `honored runops-legacy-ok: ${legacyAnnotations.length}`
+      `markers: ${markers.length}`
   );
 
-  // A rejected annotation is a hard misuse — it can never be baselined or suppressed, so it fails
-  // both modes. Report it before anything else.
-  const reportAnnotationErrors = () => {
-    if (!annotationErrors.length) return;
-    console.error(`\n[runops-guard] ${annotationErrors.length} invalid annotation(s):\n`);
-    for (const e of annotationErrors) {
-      console.error(`  ${e.file}:${e.line}  ${e.message}  (receiver: ${e.receiver})`);
+  const form =
+    "a marker is `// runops-exception(<OWNER>): <reason>`, directly above the statement or arrow " +
+    "function body that holds the access";
+  // A malformed or off-target marker can never be baselined, so it fails both modes.
+  const reportMarkerErrors = () => {
+    if (!markerErrors.length) return;
+    console.error(`\n[runops-guard] ${markerErrors.length} marker error(s):\n`);
+    for (const e of markerErrors) {
+      console.error(`  ${e.kind}: ${e.file}:${e.line}  ${e.text}\n    ${form}`);
     }
-    console.error(
-      `\n\`// ${LEGACY_OK_TAG}: …\` is honored only on a legacy handle (runOpsLegacyPrisma/Replica) ` +
-        `or a tx originating from one. Route through the RunStore, or land the write on the legacy handle.`
-    );
   };
+  const describe = (m: Marker) =>
+    `${m.file}:${m.line}  runops-exception(${m.owner}): ${m.reason}  [${m.findings.join(", ")}]`;
 
   if (!check) {
     writeBaseline(baseline);
@@ -1970,8 +2168,8 @@ function main(): void {
         `${v.file}:${v.line}  [${v.detector}/${v.callKind}]  ${v.model}.${v.delegate}  ${v.snippet}`
       );
     }
-    reportAnnotationErrors();
-    if (annotationErrors.length) process.exit(1);
+    reportMarkerErrors();
+    if (markerErrors.length) process.exit(1);
     return;
   }
 
@@ -1981,13 +2179,7 @@ function main(): void {
   const added = violations.filter((v) => !baselineKeys.has(violationKey(v)));
   const removed = Array.from(baselineKeys).filter((k) => !currentKeys.has(k));
 
-  // Re-verify the honored-annotation companion block: current set must match the baseline exactly.
-  const baselineAnnKeys = new Set((parsed.legacyAnnotations ?? []).map(annotationKey));
-  const currentAnnKeys = new Set(legacyAnnotations.map(annotationKey));
-  const staleAnn = (parsed.legacyAnnotations ?? []).filter(
-    (a) => !currentAnnKeys.has(annotationKey(a))
-  );
-  const newAnn = legacyAnnotations.filter((a) => !baselineAnnKeys.has(annotationKey(a)));
+  const { stale, unrecorded } = compareMarkers(parsed.markers ?? [], markers);
 
   if (removed.length) {
     console.error(
@@ -2006,32 +2198,35 @@ function main(): void {
       );
     }
     console.error(
-      `\nRun-graph tables must be reached via the RunStore (or a proven-legacy handle), not the ` +
-        `control-plane client. See PLAN §T1.1 patterns (A)/(B)/(C). If this is legitimately new ` +
-        `baseline work, regenerate with: pnpm --filter webapp run guard:runops-legacy`
+      `\nReach run-graph models through the run store, or mark an allowed exception with ` +
+        `\`// runops-exception(<OWNER>): <reason>\` directly above the statement that holds it, ` +
+        `and regenerate the baseline: pnpm --filter webapp run guard:runops-legacy`
     );
     failed = true;
   }
 
-  if (staleAnn.length || newAnn.length) {
+  if (stale.length) {
+    console.error(`\n[runops-guard] ${stale.length} stale marker(s):\n`);
+    for (const m of stale) console.error(`  stale: ${describe(m)}`);
     console.error(
-      `\n[runops-guard] honored runops-legacy-ok annotations drifted from the baseline companion block:`
+      `\nA stale marker's access has gone or is no longer scanned: remove the marker with its ` +
+        `access and regenerate the baseline.`
     );
-    for (const a of staleAnn) {
-      console.error(`  - stale/moved: ${a.file}:${a.line}  (receiver: ${a.receiver})  ${a.reason}`);
-    }
-    for (const a of newAnn) {
-      console.error(`  + unrecorded:  ${a.file}:${a.line}  (receiver: ${a.receiver})  ${a.reason}`);
-    }
+    failed = true;
+  }
+
+  if (unrecorded.length) {
+    console.error(`\n[runops-guard] ${unrecorded.length} unrecorded marker(s):\n`);
+    for (const m of unrecorded) console.error(`  unrecorded: ${describe(m)}`);
     console.error(
-      `\nEvery honored annotation must be recorded verbatim. Regenerate the baseline: ` +
+      `\nEvery marker must be recorded. Regenerate the baseline: ` +
         `pnpm --filter webapp run guard:runops-legacy`
     );
     failed = true;
   }
 
-  if (annotationErrors.length) {
-    reportAnnotationErrors();
+  if (markerErrors.length) {
+    reportMarkerErrors();
     failed = true;
   }
 

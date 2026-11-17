@@ -157,12 +157,14 @@ export class BatchListPresenter extends BasePresenter {
     const passthrough = this._replica as unknown as RunOpsPrismaClient;
 
     if (!this.readRoute?.splitEnabled) {
+      // runops-exception(batches-migration): dashboard batches page, until batches use the run store
       const onReplica = await passthrough.batchTaskRun.findFirst({
         where: { runtimeEnvironmentId: environmentId },
       });
       return Boolean(onReplica);
     }
 
+    // runops-exception(batches-migration): dashboard batches page, until batches use the run store
     const onNew = await (this.readRoute.runOpsNew ?? passthrough).batchTaskRun.findFirst({
       where: { runtimeEnvironmentId: environmentId },
     });
@@ -170,6 +172,7 @@ export class BatchListPresenter extends BasePresenter {
       return true;
     }
 
+    // runops-exception(batches-migration): dashboard batches page, until batches use the run store
     const onLegacy = await (
       this.readRoute.runOpsLegacyReplica ?? passthrough
     ).batchTaskRun.findFirst({
@@ -186,6 +189,7 @@ export class BatchListPresenter extends BasePresenter {
 
     const onShards = await Promise.all(
       shardReplicas.map((shard) =>
+        // runops-exception(batches-migration): dashboard batches page, until batches use the run store
         shard.replica.batchTaskRun.findFirst({
           where: { runtimeEnvironmentId: environmentId },
         })
@@ -267,6 +271,7 @@ export class BatchListPresenter extends BasePresenter {
     const keyCursor = decodeBatchCursor(cursor);
 
     const batches = await this.#scanBatchTaskRun(pageSize, direction, (client) =>
+      // runops-exception(batches-migration): dashboard batches page, until batches use the run store
       client.batchTaskRun.findMany({
         where: {
           runtimeEnvironmentId: environmentId,

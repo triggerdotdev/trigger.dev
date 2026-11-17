@@ -76,8 +76,8 @@ const { action } = createActionApiRoute(
           waitpointId,
           environmentId: authentication.environment.id,
           read: (client: PrismaReplicaClient) =>
+            // runops-exception(legacy-teardown): wait-for-token legacy read, removed with the legacy database
             client.waitpoint.findFirst({
-              // runops-routed-ok: resolveWaitpointThroughReadThrough legacy leg
               where: {
                 id: waitpointId,
                 environmentId: authentication.environment.id,
