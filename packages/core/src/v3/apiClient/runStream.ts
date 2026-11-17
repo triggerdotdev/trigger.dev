@@ -957,7 +957,7 @@ export class RunSubscription<TRunTypes extends AnyRunTypes> {
 const queuedStatuses = ["PENDING_VERSION", "QUEUED", "PENDING", "DELAYED"];
 const waitingStatuses = ["WAITING"];
 const executingStatuses = ["DEQUEUED", "EXECUTING"];
-const failedStatuses = ["FAILED", "CRASHED", "SYSTEM_FAILURE", "EXPIRED", "TIMED_OUT"];
+const failedStatuses = ["FAILED", "CRASHED", "SYSTEM_FAILURE", "EXPIRED", "TIMED_OUT", "CANCELED"];
 const successfulStatuses = ["COMPLETED"];
 
 function booleanHelpersFromRunStatus(status: RunStatus) {
