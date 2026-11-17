@@ -32,11 +32,8 @@ export const generateCustomerResponse = task({
   run: async (payload: { question: string }) => {
     const response = await generateText({
       model: anthropic("claude-sonnet-5-5"),
+      system: "You are a helpful customer service representative.",
       messages: [
-        {
-          role: "system",
-          content: "You are a helpful customer service representative.",
-        },
         { role: "user", content: payload.question },
       ],
       experimental_telemetry: {
@@ -55,12 +52,8 @@ export const checkInappropriateContent = task({
   run: async (payload: { text: string }) => {
     const response = await generateText({
       model: anthropic("claude-haiku-5-5"),
+      system: "You are a content moderator. Respond with 'true' if the content is inappropriate or contains harmful, threatening, offensive, or explicit content, 'false' otherwise.",
       messages: [
-        {
-          role: "system",
-          content:
-            "You are a content moderator. Respond with 'true' if the content is inappropriate or contains harmful, threatening, offensive, or explicit content, 'false' otherwise.",
-        },
         { role: "user", content: payload.text },
       ],
       experimental_telemetry: {

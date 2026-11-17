@@ -281,7 +281,7 @@ This is an **import-chain** problem, not a runtime one. A "we'll strip the execu
     </Note>
 
     <Tip>
-      Use the **same model** on both sides (route handler and `chat.agent`) to avoid a tone or style shift between step 1 and step 2+. Your LLM provider keys stay server-side in your warm process — Trigger.dev never holds them in this design.
+      Use the **same model and system prompt** on both sides (route handler and `chat.agent`), with the same tool names and schemas. On Claude 5.5 models, step 1's thinking is bound to that system prompt and tool set, so a mismatch makes step 2 fail with a 400. Your LLM provider keys stay server-side in your warm process — Trigger.dev never holds them in this design.
     </Tip>
 
     Mount the handler in whatever framework you use — see [Mounting in your framework](#mounting-in-your-framework) below.

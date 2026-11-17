@@ -201,6 +201,13 @@ const FALLBACK_ORDER: Provider[] = ["anthropic", "openai"];
 type NativeState = { provider: "openai"; previousResponseId: string };
 const nativeStore = new Map<string, NativeState>();
 
+// Retained messages follow a different history after compaction, so their thinking
+// blocks no longer verify on Claude 5.5 models. Drop reasoning parts before replaying them.
+function stripReasoning(message: ModelMessage): ModelMessage {
+  if (message.role !== "assistant" || typeof message.content === "string") return message;
+  return { ...message, content: message.content.filter((part) => part.type !== "reasoning") };
+}
+
 // Provider-agnostic summary: a plain string, portable across any provider.
 async function summarizeConversation(messages: ModelMessage[]): Promise<string> {
   const { text } = await generateText({
@@ -227,7 +234,7 @@ export const resilientChat = chat.agent({
     summarize: ({ messages }) => summarizeConversation(messages),
     compactModelMessages: ({ modelMessages, summary }) => [
       { role: "user", content: `Summary of the conversation so far:\n\n${summary}` },
-      ...modelMessages.slice(-2),
+      ...modelMessages.slice(-2).map(stripReasoning),
     ],
     compactUIMessages: ({ uiMessages, summary }) => [
       {
@@ -297,7 +304,7 @@ export const resilientChat = chat.agent({
 When Anthropic is down, the loop falls through to OpenAI. Because `compaction` has already reduced `messages` to a summary plus the last couple of exchanges, the switch sends the portable baseline, not megabytes of raw transcript.
 
 <Note>
-  The messages that `compactModelMessages` keeps after the summary now follow a different history from the one their thinking blocks were produced in. Claude 5.5 models can reject those blocks with a 400 (`Invalid signature in thinking block`), so strip reasoning parts from the retained messages when you build the compacted baseline.
+  The messages that `compactModelMessages` keeps after the summary now follow a different history from the one their thinking blocks were produced in. Claude 5.5 models reject those blocks with a 400 (`Invalid signature in thinking block`), which is why the example runs the retained messages through `stripReasoning`.
 </Note>
 
 <Warning>

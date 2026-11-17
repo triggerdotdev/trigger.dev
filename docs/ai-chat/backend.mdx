@@ -239,7 +239,7 @@ Use [AI Prompts](/ai/prompts) to manage your system prompt as versioned, overrid
 ```ts
 import { chat } from "@trigger.dev/sdk/ai";
 import { prompts } from "@trigger.dev/sdk";
-import { createProviderRegistry } from "ai";
+import { createProviderRegistry, stepCountIs } from "ai";
 import { anthropic } from "@ai-sdk/anthropic";
 import { z } from "zod";
 

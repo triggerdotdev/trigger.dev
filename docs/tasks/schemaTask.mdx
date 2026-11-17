@@ -87,7 +87,7 @@ Prefer building the tool with the AI SDK’s [`tool()`](https://sdk.vercel.ai/do
 ```ts
 import { ai } from "@trigger.dev/sdk/ai";
 import { schemaTask } from "@trigger.dev/sdk";
-import { tool, generateText } from "ai";
+import { tool, generateText, stepCountIs } from "ai";
 import { openai } from "@ai-sdk/openai";
 import { z } from "zod";
 
@@ -119,6 +119,7 @@ export const myAiTask = schemaTask({
       tools: {
         myTool,
       },
+      stopWhen: stepCountIs(5),
     });
     return reply;
   },

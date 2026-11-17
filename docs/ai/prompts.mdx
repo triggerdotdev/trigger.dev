@@ -140,7 +140,7 @@ The resolved prompt integrates with the [Vercel AI SDK](https://ai-sdk.dev) via 
 ```ts
 import { task } from "@trigger.dev/sdk";
 import { generateText, stepCountIs } from "ai";
-import { anthropic } from "@ai-sdk/anthropic";
+import { openai } from "@ai-sdk/openai";
 
 export const supportTask = task({
   id: "handle-support",

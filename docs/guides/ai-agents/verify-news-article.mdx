@@ -53,12 +53,8 @@ export const extractClaims = task({
   id: "extract-claims",
   run: async ({ article }: { article: string }) => {
     try {
+      const system = "Extract distinct factual claims from the news article. Format as numbered claims.";
       const messages: ModelMessage[] = [
-        {
-          role: "system",
-          content:
-            "Extract distinct factual claims from the news article. Format as numbered claims.",
-        },
         {
           role: "user",
           content: article,
@@ -67,6 +63,7 @@ export const extractClaims = task({
 
       const response = await generateText({
         model: anthropic("claude-sonnet-5-5"),
+        system,
         messages,
         experimental_telemetry: {
           isEnabled: true,
@@ -99,12 +96,8 @@ export const verifySource = task({
   run: async (claim: Claim) => {
     const response = await generateText({
       model: anthropic("claude-sonnet-5-5"),
+      system: "Verify this claim by considering recent news sources and official statements. Assess reliability.",
       messages: [
-        {
-          role: "system",
-          content:
-            "Verify this claim by considering recent news sources and official statements. Assess reliability.",
-        },
         {
           role: "user",
           content: claim.text,
@@ -131,12 +124,8 @@ export const analyzeHistory = task({
   run: async (claim: Claim) => {
     const response = await generateText({
       model: anthropic("claude-sonnet-5-5"),
+      system: "Analyze this claim in historical context, considering past announcements and technological feasibility.",
       messages: [
-        {
-          role: "system",
-          content:
-            "Analyze this claim in historical context, considering past announcements and technological feasibility.",
-        },
         {
           role: "user",
           content: claim.text,

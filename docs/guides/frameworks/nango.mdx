@@ -219,7 +219,7 @@ export const analyzePRs = task({
 
     // Claude may return a thinking block before the text, so read text blocks by type
     const summary = message.content
-      .filter((block) => block.type === "text")
+      .filter((block): block is Anthropic.TextBlock => block.type === "text")
       .map((block) => block.text)
       .join("\n");
 
