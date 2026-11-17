@@ -352,6 +352,14 @@ export class SecretProxyFixture {
       "basicConstraints=critical,CA:TRUE",
     ]);
     await chmod(keyPath, 0o600);
+    const caFile = join(this.directory, "interception-ca.pem");
+    await writeFile(
+      caFile,
+      (await readFile(certPath, "utf8")) + (await readFile(keyPath, "utf8")),
+      {
+        mode: 0o600,
+      }
+    );
     const tokenPath = join(this.directory, "node-token");
     await writeFile(tokenPath, "isolated-binding-test-node", { mode: 0o600 });
     this.socketPath = join(this.directory, "control.sock");
@@ -360,8 +368,7 @@ export class SecretProxyFixture {
       configPath,
       JSON.stringify({
         controlSocket: this.socketPath,
-        caCert: certPath,
-        caKey: keyPath,
+        caFile,
         // This suite exercises only registration. No relay or platform service is simulated.
         relayUrl: "https://localhost:1",
         relayRootCa: certPath,
