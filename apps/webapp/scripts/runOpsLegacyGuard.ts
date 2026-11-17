@@ -3,10 +3,19 @@
  * "Track 1" sweep. Builds a `ts.Program` over the webapp tsconfig and uses the TypeChecker to
  * resolve receiver types, catching aliased control-plane clients that grep/oxlint cannot.
  *
- *   Detector (i)  — a call to one of the 16 run-graph delegates whose receiver resolves BY TYPE to a
- *                   control-plane Prisma client (@trigger.dev/database), not the NEW run-ops client.
- *   Detector (ii) — an include/select of a relation crossing the run-graph <-> control-plane seam
- *                   (relation set derived by parsing both schema.prisma files).
+ * The run-graph models are the models of every schema in RUN_GRAPH_SCHEMA_PATHS; the run-graph
+ * tables are their tables plus the join tables of their many-to-many relations. Scope is
+ * COVERED_ROOTS minus the run store, schema and testcontainers packages, test code, local seed
+ * scripts and generated output (see isInScope).
+ *
+ *   Detector (i)   — a call to a run-graph model's read/write method whose receiver resolves BY TYPE
+ *                    to the control-plane or a run-ops Prisma client: directly, through a
+ *                    transaction handle, or through a variable holding the model accessor.
+ *   Detector (ii)  — an include/select of a relation crossing the run-graph <-> control-plane seam
+ *                    (relation set derived by parsing both schema.prisma files).
+ *   Detector (iii) — a control-plane client assigned to a run-ops read-through slot.
+ *   Detector (iv)  — a $queryRaw/$executeRaw(Unsafe) call on a database client whose SQL names a
+ *                    run-graph table in double quotes.
  *
  * Modes: default regenerates the baseline; `--check` fails (exit 1) on any violation not baselined.
  *   pnpm --filter webapp run guard:runops-legacy            # regenerate baseline
@@ -24,7 +33,6 @@ import { findRepoRoot } from "./lib/repoRoot";
 const REPO_ROOT = findRepoRoot(process.cwd());
 const WEBAPP_DIR = path.join(REPO_ROOT, "apps", "webapp");
 const TSCONFIG_PATH = path.join(WEBAPP_DIR, "tsconfig.check.json");
-const SCAN_ROOT = path.join(WEBAPP_DIR, "app");
 const CP_SCHEMA = path.join(REPO_ROOT, "internal-packages", "database", "prisma", "schema.prisma");
 const RUNOPS_SCHEMA = path.join(
   REPO_ROOT,
@@ -35,8 +43,14 @@ const RUNOPS_SCHEMA = path.join(
 );
 const BASELINE_PATH = path.join(WEBAPP_DIR, "app", "v3", "runOpsMigration", "track1-baseline.json");
 
+// The run-graph schemas (repository-relative). Every model of a listed schema is a run-graph model,
+// and its generated client counts as the run-ops client. A new run-graph store adds its schema here.
+const RUN_GRAPH_SCHEMA_PATHS = ["internal-packages/run-ops-database/prisma/schema.prisma"];
+const RUN_GRAPH_SCHEMAS = RUN_GRAPH_SCHEMA_PATHS.map((p) => path.join(REPO_ROOT, p));
+
 const CP_PACKAGE_DIR = path.dirname(path.dirname(CP_SCHEMA));
 const RUNOPS_PACKAGE_DIR = path.dirname(path.dirname(RUNOPS_SCHEMA));
+const RUN_GRAPH_PACKAGE_DIRS = RUN_GRAPH_SCHEMAS.map((s) => path.dirname(path.dirname(s)));
 
 /** Absolute path of the generated Prisma client for a schema, from its generator `output = "..."`. */
 function generatedClientDir(schemaFile: string): string {
@@ -49,7 +63,7 @@ function generatedClientDir(schemaFile: string): string {
 }
 
 const CP_GENERATED_DIR = generatedClientDir(CP_SCHEMA);
-const RUNOPS_GENERATED_DIR = generatedClientDir(RUNOPS_SCHEMA);
+const RUN_GRAPH_GENERATED_DIRS = RUN_GRAPH_SCHEMAS.map(generatedClientDir);
 
 function realpathIfExists(p: string): string {
   try {
@@ -60,7 +74,9 @@ function realpathIfExists(p: string): string {
 }
 
 // Classification roots, realpath'd to match the checker's realpath'd file names.
-const RUNOPS_DECL_DIRS = [RUNOPS_GENERATED_DIR, RUNOPS_PACKAGE_DIR].map(realpathIfExists);
+const RUNOPS_DECL_DIRS = [...RUN_GRAPH_GENERATED_DIRS, ...RUN_GRAPH_PACKAGE_DIRS].map(
+  realpathIfExists
+);
 const CP_DECL_DIRS = [CP_GENERATED_DIR, CP_PACKAGE_DIR].map(realpathIfExists);
 
 // Both client packages are force-resolved to SOURCE (src/ + generated client) when building the
@@ -70,25 +86,23 @@ const FORCED_TYPE_RESOLUTIONS = new Map<string, string>([
   ["@internal/run-ops-database", path.join(RUNOPS_PACKAGE_DIR, "src", "index.ts")],
 ]);
 
-// Files excluded from the sweep. V1-only files come from .claude/rules/legacy-v3-code.md.
-const V1_FILES = new Set(
-  [
-    "app/v3/legacyRunEngineWorker.server.ts",
-    "app/v3/services/triggerTaskV1.server.ts",
-    "app/v3/services/cancelTaskRunV1.server.ts",
-    "app/v3/authenticatedSocketConnection.server.ts",
-    "app/v3/sharedSocketConnection.ts",
-  ].map((p) => path.join(WEBAPP_DIR, p))
-);
-const V1_DIRS = [path.join(WEBAPP_DIR, "app", "v3", "marqs") + path.sep];
-// run-store lives outside the webapp, but exclude defensively in case it is ever program-visible.
-const EXCLUDED_DIR_FRAGMENTS = [
-  path.sep + "run-store" + path.sep,
-  path.sep + "generated" + path.sep,
-  path.sep + "dist" + path.sep,
-  path.sep + "build" + path.sep,
-  path.sep + "node_modules" + path.sep,
+// Scope (repository-relative paths): a file under a covered root, minus the exclusions below.
+const COVERED_ROOTS = ["apps/webapp/"];
+// The run store and the schema packages are not judged; testcontainers builds throwaway test DBs.
+const EXCLUDED_PACKAGE_DIRS = [
+  "internal-packages/run-store/",
+  "internal-packages/testcontainers/",
+  ...[CP_PACKAGE_DIR, ...RUN_GRAPH_PACKAGE_DIRS].map((d) => repoRel(d) + "/"),
 ];
+// Not `build`: packages/core/src/v3/build/ is source; build output is JS the program does not take.
+const EXCLUDED_DIR_NAMES = new Set([
+  "test",
+  "tests",
+  "generated",
+  "dist",
+  "node_modules",
+  "migrations",
+]);
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Prisma method classification
@@ -140,7 +154,8 @@ const PRISMA_SCALARS = new Set([
   "Bytes",
 ]);
 
-type SchemaModel = { name: string; fields: Array<{ name: string; baseType: string }> };
+type SchemaField = { name: string; baseType: string; list: boolean; relationName?: string };
+type SchemaModel = { name: string; table: string; fields: SchemaField[] };
 
 function parseSchemaModels(file: string): Map<string, SchemaModel> {
   const text = fs.readFileSync(file, "utf8");
@@ -152,7 +167,7 @@ function parseSchemaModels(file: string): Map<string, SchemaModel> {
     const line = raw.trim();
     const modelStart = /^model\s+([A-Za-z_][A-Za-z0-9_]*)\s*\{/.exec(line);
     if (modelStart) {
-      current = { name: modelStart[1], fields: [] };
+      current = { name: modelStart[1], table: modelStart[1], fields: [] };
       models.set(current.name, current);
       continue;
     }
@@ -161,6 +176,8 @@ function parseSchemaModels(file: string): Map<string, SchemaModel> {
       current = null;
       continue;
     }
+    const mapMatch = /^@@map\(\s*"([^"]+)"/.exec(line);
+    if (mapMatch) current.table = mapMatch[1];
     if (!line || line.startsWith("//") || line.startsWith("@@") || line.startsWith("/")) continue;
 
     const fieldMatch = /^([A-Za-z_][A-Za-z0-9_]*)\s+([A-Za-z_][A-Za-z0-9_]*(?:\[\])?\??)/.exec(
@@ -169,7 +186,13 @@ function parseSchemaModels(file: string): Map<string, SchemaModel> {
     if (!fieldMatch) continue;
     const fieldName = fieldMatch[1];
     const baseType = fieldMatch[2].replace(/[?[\]]/g, "");
-    current.fields.push({ name: fieldName, baseType });
+    const relationName = /@relation\(\s*(?:name\s*:\s*)?"([^"]+)"/.exec(line)?.[1];
+    current.fields.push({
+      name: fieldName,
+      baseType,
+      list: fieldMatch[2].endsWith("[]"),
+      relationName,
+    });
   }
   return models;
 }
@@ -178,11 +201,34 @@ function lowerFirst(s: string): string {
   return s.length ? s[0].toLowerCase() + s.slice(1) : s;
 }
 
-const runOpsModels = parseSchemaModels(RUNOPS_SCHEMA);
-const RUN_GRAPH_MODELS = new Set(runOpsModels.keys()); // the 16 run-graph models
+const runGraphSchemaModels = RUN_GRAPH_SCHEMAS.map(parseSchemaModels);
+const RUN_GRAPH_MODELS = new Set(runGraphSchemaModels.flatMap((m) => Array.from(m.keys())));
 const RUN_GRAPH_DELEGATES = new Set(Array.from(RUN_GRAPH_MODELS, lowerFirst));
 
 const cpModels = parseSchemaModels(CP_SCHEMA);
+
+// Run-graph tables, matched (double-quoted) in raw SQL: each run-graph model's table, plus the
+// implicit join table of every many-to-many relation that touches a run-graph model.
+const runGraphTableSet = new Set<string>();
+for (const models of runGraphSchemaModels) {
+  for (const m of models.values()) runGraphTableSet.add(m.table);
+}
+for (const models of [cpModels, ...runGraphSchemaModels]) {
+  for (const m of models.values()) {
+    for (const f of m.fields) {
+      if (!f.list) continue;
+      const back = models
+        .get(f.baseType)
+        ?.fields.find(
+          (b) => b !== f && b.list && b.baseType === m.name && b.relationName === f.relationName
+        );
+      if (!back) continue;
+      if (!RUN_GRAPH_MODELS.has(m.name) && !RUN_GRAPH_MODELS.has(f.baseType)) continue;
+      runGraphTableSet.add("_" + (f.relationName ?? [m.name, f.baseType].sort().join("To")));
+    }
+  }
+}
+const RUN_GRAPH_TABLES = Array.from(runGraphTableSet).sort();
 const cpModelNames = new Set(cpModels.keys());
 const enumAndScalar = (baseType: string) =>
   PRISMA_SCALARS.has(baseType) || !cpModelNames.has(baseType);
@@ -215,15 +261,6 @@ crossSeamRelationList.sort();
 const delegateToModel = new Map<string, string>();
 for (const name of cpModelNames) delegateToModel.set(lowerFirst(name), name);
 
-// Run-graph models Run Engine 2.0 never touches (zero refs in internal-packages/run-engine/src),
-// so NEW runs never have rows in them: provably legacy-resident, safe to reach via the legacy
-// handle. Every other run-graph model is dual-residency and must go through runStore.
-const LEGACY_ONLY_DELEGATES = new Set([
-  "taskRunAttempt",
-  "checkpoint",
-  "checkpointRestoreEvent",
-  "taskRunDependency",
-]);
 const LEGACY_HANDLE_NAMES = new Set(["runOpsLegacyPrisma", "runOpsLegacyReplica"]);
 
 // Detector (iii): read-through config slots that MUST carry a run-ops client. Assigning a
@@ -370,8 +407,7 @@ function collectKinds(t: ts.Type, seen: Set<ts.Type>): Set<ClientKind> {
 }
 
 /** True if `node` resolves (through parens/as/satisfies/non-null and simple const aliases) to
- *  the runOpsLegacyPrisma / runOpsLegacyReplica handle. Double-gated with LEGACY_ONLY_DELEGATES
- *  at the call site, so a loose name match only ever exempts the provably-legacy models. */
+ *  the runOpsLegacyPrisma / runOpsLegacyReplica handle. */
 function receiverIsLegacyHandle(
   checker: ts.TypeChecker,
   node: ts.Expression,
@@ -477,6 +513,94 @@ function unwrapExpr(node: ts.Expression): ts.Expression {
   return e;
 }
 
+/** The run-graph model whose generated `<Model>Delegate` type a call's receiver has, whatever holds
+ *  it (`client.taskRun`, a variable, a destructured name, a parameter, a field). The caller checks
+ *  with classifyType that the type is declared in a generated client. */
+function runGraphDelegateModel(t: ts.Type): string | undefined {
+  for (const sub of t.isUnion() ? t.types : [t]) {
+    const model = /^(\w+)Delegate$/.exec((sub.getSymbol() ?? sub.aliasSymbol)?.getName() ?? "");
+    if (model && RUN_GRAPH_MODELS.has(model[1])) return model[1];
+  }
+  return undefined;
+}
+
+const RAW_QUERY_METHODS = new Set([
+  "$queryRaw",
+  "$executeRaw",
+  "$queryRawUnsafe",
+  "$executeRawUnsafe",
+]);
+const PRISMA_SQL_HELPERS = new Set(["sql", "raw", "join"]);
+
+function isPrismaSqlHelper(e: ts.Expression): boolean {
+  return (
+    ts.isPropertyAccessExpression(e) &&
+    ts.isIdentifier(e.expression) &&
+    e.expression.text === "Prisma" &&
+    PRISMA_SQL_HELPERS.has(e.name.text)
+  );
+}
+
+/** Parentheses and type assertions around SQL do not change it. */
+function unwrapSqlExpression(node: ts.Node): ts.Node {
+  while (
+    ts.isParenthesizedExpression(node) ||
+    ts.isAsExpression(node) ||
+    ts.isSatisfiesExpression(node) ||
+    ts.isNonNullExpression(node) ||
+    ts.isTypeAssertionExpression(node)
+  ) {
+    node = node.expression;
+  }
+  return node;
+}
+
+/** A value bound into a tagged template or a `Prisma.join` list is data, not SQL, unless it is
+ *  itself a `Prisma.sql` / `Prisma.raw` / `Prisma.join` fragment (or a list of them). */
+function collectSqlFromBoundValue(node: ts.Node, out: string[]): void {
+  const e = unwrapSqlExpression(node);
+  if (ts.isArrayLiteralExpression(e)) {
+    for (const el of e.elements) collectSqlFromBoundValue(el, out);
+  } else if (
+    (ts.isCallExpression(e) && isPrismaSqlHelper(e.expression)) ||
+    (ts.isTaggedTemplateExpression(e) && isPrismaSqlHelper(e.tag))
+  ) {
+    collectSqlText(e, out);
+  }
+}
+
+/** The SQL text of a raw query argument: its string literals and template parts, and those of the
+ *  `Prisma.sql` / `Prisma.raw` / `Prisma.join` calls nested in it. Identifiers are not followed. */
+function collectSqlText(node: ts.Node, out: string[]): void {
+  node = unwrapSqlExpression(node);
+  if (ts.isStringLiteral(node) || ts.isNoSubstitutionTemplateLiteral(node)) {
+    out.push(node.text);
+  } else if (ts.isTemplateExpression(node)) {
+    out.push(node.head.text);
+    for (const span of node.templateSpans) {
+      out.push(span.literal.text);
+      if (ts.isTaggedTemplateExpression(node.parent))
+        collectSqlFromBoundValue(span.expression, out);
+      else collectSqlText(span.expression, out);
+    }
+  } else if (ts.isTaggedTemplateExpression(node) && isPrismaSqlHelper(node.tag)) {
+    collectSqlText(node.template, out);
+  } else if (ts.isCallExpression(node) && isPrismaSqlHelper(node.expression)) {
+    const helper = node.expression;
+    // Prisma.join's first argument is a list of bound values; its separator, prefix and suffix are SQL.
+    node.arguments.forEach((a, i) =>
+      ts.isPropertyAccessExpression(helper) && helper.name.text === "join" && i === 0
+        ? collectSqlFromBoundValue(a, out)
+        : collectSqlText(a, out)
+    );
+  } else if (ts.isArrayLiteralExpression(node)) {
+    for (const e of node.elements) collectSqlText(e, out);
+  } else if (ts.isBinaryExpression(node) && node.operatorToken.kind === ts.SyntaxKind.PlusToken) {
+    collectSqlText(node.left, out);
+    collectSqlText(node.right, out);
+  }
+}
+
 /** Full (untrimmed) source text of a 1-based line, including any trailing newline. */
 function rawLineText(sf: ts.SourceFile, line1: number): string {
   const starts = sf.getLineStarts();
@@ -558,7 +682,7 @@ type Violation = {
   model: string;
   delegate: string;
   callKind: CallKind;
-  detector: "i" | "ii" | "iii";
+  detector: "i" | "ii" | "iii" | "iv";
   snippet: string;
 };
 
@@ -621,13 +745,17 @@ function lineText(sf: ts.SourceFile, line1: number): string {
   return sf.text.slice(start, end).trim().slice(0, 200);
 }
 
-function isInScope(fileName: string): boolean {
-  const f = path.resolve(fileName);
-  if (!f.startsWith(SCAN_ROOT + path.sep)) return false;
-  if (/\.test\.tsx?$/.test(f) || /\.test\.mts$/.test(f)) return false;
-  if (V1_FILES.has(f)) return false;
-  if (V1_DIRS.some((d) => f.startsWith(d))) return false;
-  if (EXCLUDED_DIR_FRAGMENTS.some((frag) => f.includes(frag))) return false;
+/** The scope rule, over a repository-relative path with forward slashes. */
+function isInScope(rel: string, roots: string[] = COVERED_ROOTS): boolean {
+  if (!roots.some((r) => rel.startsWith(r))) return false;
+  if (EXCLUDED_PACKAGE_DIRS.some((d) => rel.startsWith(d))) return false;
+  const dirs = rel.split("/");
+  const name = dirs.pop()!;
+  if (/\.test\.(ts|tsx|mts|cts)$/.test(name)) return false;
+  if (dirs.some((d) => EXCLUDED_DIR_NAMES.has(d))) return false;
+  // Local seed scripts.
+  if (dirs.join("/") === "apps/webapp" && name.startsWith("seed")) return false;
+  if (rel === "apps/webapp/prisma/populate.ts") return false;
   return true;
 }
 
@@ -757,7 +885,7 @@ function scan(): ScanResult {
   const program = buildProgram();
   const checker = program.getTypeChecker();
   assertClassificationAnchors(program, checker);
-  return scanProgram(program, checker, isInScope);
+  return scanProgram(program, checker, (fileName) => isInScope(repoRel(fileName)));
 }
 
 // Core scan, parameterized on the program + an in-scope predicate so the in-memory self-test
@@ -786,59 +914,61 @@ function scanProgram(
         const method = methodAccess.name.text;
         const kind = methodKind(method);
         const delegateAccess = methodAccess.expression;
-        if (kind && ts.isPropertyAccessExpression(delegateAccess)) {
-          const delegateName = delegateAccess.name.text;
+        const delegateType = kind ? checker.getTypeAtLocation(delegateAccess) : undefined;
+        const model = delegateType ? runGraphDelegateModel(delegateType) : undefined;
 
-          // Detector (i): run-graph delegate on a control-plane client.
-          if (RUN_GRAPH_DELEGATES.has(delegateName)) {
-            const clientKind = classifyType(checker, checker.getTypeAtLocation(delegateAccess));
-            if (clientKind === "cp") {
-              const receiverExpr = delegateAccess.expression;
-              const isLegacy = receiverIsLegacyHandle(checker, receiverExpr);
-              const line = lineOf(sf, delegateAccess.name);
-              // (existing) A provably-legacy-only model reached via a legacy handle is allowed
-              // outright — no annotation needed.
-              const modelAllowedLegacy = LEGACY_ONLY_DELEGATES.has(delegateName) && isLegacy;
+        // Detector (i): a call on a run-graph model delegate of either client, however reached.
+        if (kind && delegateType && model) {
+          const delegateName = lowerFirst(model);
+          const receiverExpr = ts.isPropertyAccessExpression(delegateAccess)
+            ? delegateAccess.expression
+            : delegateAccess;
+          const clientKind = classifyType(checker, delegateType);
+          if (clientKind === "cp" || clientKind === "runops") {
+            const isLegacy = receiverIsLegacyHandle(checker, receiverExpr);
+            const line = lineOf(
+              sf,
+              ts.isPropertyAccessExpression(delegateAccess) ? delegateAccess.name : delegateAccess
+            );
+            const legacyReason = annotationReasonForNode(sf, node, LEGACY_OK_TAG);
+            const routedReason = annotationReasonForNode(sf, node, ROUTED_OK_TAG);
+            const receiver = receiverExpr.getText().replace(/\s+/g, " ").trim().slice(0, 120);
 
-              if (!modelAllowedLegacy) {
-                const legacyReason = annotationReasonForNode(sf, node, LEGACY_OK_TAG);
-                const routedReason = annotationReasonForNode(sf, node, ROUTED_OK_TAG);
-                const receiver = receiverExpr.getText(sf).replace(/\s+/g, " ").trim().slice(0, 120);
-
-                if (legacyReason !== undefined) {
-                  // MECH-1: honor only on a legacy handle (or a tx originating from one); otherwise
-                  // the annotation is REJECTED (never suppresses, always fails --check).
-                  if (isLegacy) {
-                    const ann = { file, line, reason: legacyReason, receiver };
-                    legacyAnnotations.set(annotationKey(ann), ann);
-                  } else {
-                    annotationErrors.push({
-                      file,
-                      line,
-                      receiver,
-                      message: "runops-legacy-ok on a non-legacy receiver",
-                    });
-                  }
-                } else if (
-                  routedReason !== undefined &&
-                  isInsideReadThroughContext(checker, node, receiverExpr)
-                ) {
-                  // MECH-2 fallback: residency-routed read inside a read-through router — allowed.
-                } else {
-                  add({
-                    file,
-                    line,
-                    model: capFirst(delegateName),
-                    delegate: delegateName,
-                    callKind: kind,
-                    detector: "i",
-                    snippet: lineText(sf, line),
-                  });
-                }
+            if (legacyReason !== undefined) {
+              // MECH-1: honor only on a legacy handle (or a tx originating from one); otherwise
+              // the annotation is REJECTED (never suppresses, always fails --check).
+              if (isLegacy) {
+                const ann = { file, line, reason: legacyReason, receiver };
+                legacyAnnotations.set(annotationKey(ann), ann);
+              } else {
+                annotationErrors.push({
+                  file,
+                  line,
+                  receiver,
+                  message: "runops-legacy-ok on a non-legacy receiver",
+                });
               }
+            } else if (
+              routedReason !== undefined &&
+              isInsideReadThroughContext(checker, node, receiverExpr)
+            ) {
+              // MECH-2 fallback: residency-routed read inside a read-through router — allowed.
+            } else {
+              add({
+                file,
+                line,
+                model: capFirst(delegateName),
+                delegate: delegateName,
+                callKind: kind,
+                detector: "i",
+                snippet: lineText(sf, line),
+              });
             }
           }
+        }
 
+        if (kind && ts.isPropertyAccessExpression(delegateAccess)) {
+          const delegateName = delegateAccess.name.text;
           // Detector (ii): cross-seam include/select traversal (any control-plane delegate).
           const rootModel = delegateToModel.get(delegateName);
           if (rootModel) {
@@ -882,6 +1012,44 @@ function scanProgram(
             detector: "iii",
             snippet: lineText(sf, line),
           });
+        }
+      }
+
+      // Detector (iv): raw SQL on a database client that names a run-graph table. The receiver
+      // (a tx handle or replica is an Omit<> of the client) is classified by where the method is
+      // declared, not by the receiver type's own symbol.
+      const rawCallee = ts.isCallExpression(node)
+        ? node.expression
+        : ts.isTaggedTemplateExpression(node)
+          ? node.tag
+          : undefined;
+      if (
+        rawCallee &&
+        ts.isPropertyAccessExpression(rawCallee) &&
+        RAW_QUERY_METHODS.has(rawCallee.name.text)
+      ) {
+        const decls = checker.getSymbolAtLocation(rawCallee.name)?.declarations ?? [];
+        if (decls.some((d) => declFileKind(d.getSourceFile().fileName))) {
+          const sql: string[] = [];
+          // The SQL is the first argument; later arguments are bound values.
+          if (ts.isCallExpression(node)) {
+            if (node.arguments[0]) collectSqlText(node.arguments[0], sql);
+          } else collectSqlText((node as ts.TaggedTemplateExpression).template, sql);
+          const text = sql.join(" ");
+          const method = rawCallee.name.text;
+          const line = lineOf(sf, rawCallee.name);
+          for (const table of RUN_GRAPH_TABLES) {
+            if (!text.includes(`"${table}"`)) continue;
+            add({
+              file,
+              line,
+              model: table,
+              delegate: method,
+              callKind: method.startsWith("$query") ? "read" : "write",
+              detector: "iv",
+              snippet: lineText(sf, line),
+            });
+          }
         }
       }
 
@@ -931,13 +1099,16 @@ function sortAnnotations(as: LegacyAnnotation[]): LegacyAnnotation[] {
 type Baseline = {
   $comment: string;
   regenerate: string;
+  runGraphSchemas: string[];
   runGraphModels: string[];
+  runGraphTables: string[];
   crossSeamRelations: string[];
   totals: {
     violations: number;
     detectorI: number;
     detectorII: number;
     detectorIII: number;
+    detectorIV: number;
     write: number;
     read: number;
     files: number;
@@ -954,18 +1125,23 @@ function buildBaseline(result: ScanResult): Baseline {
   return {
     $comment:
       "Track-1 run-ops legacy guard baseline. Generated by apps/webapp/scripts/runOpsLegacyGuard.ts. " +
-      "Each entry is a code path that reaches a run-graph table through the control-plane Prisma client " +
-      "(detector i) or traverses a cross-seam relation (detector ii). This list IS the Track-1 work " +
+      "Each entry is a code path that calls a run-graph model through the control-plane or run-ops " +
+      "Prisma client, a transaction handle or a model accessor variable (detector i), traverses a " +
+      "cross-seam relation (detector ii), puts a control-plane client in a run-ops slot (detector " +
+      "iii), or names a run-graph table in raw SQL (detector iv). This list IS the Track-1 work " +
       "list; burn it down to zero. legacyAnnotations records honored `runops-legacy-ok` sites. " +
       "Do NOT edit by hand — regenerate instead.",
     regenerate: "pnpm --filter webapp run guard:runops-legacy",
+    runGraphSchemas: RUN_GRAPH_SCHEMA_PATHS,
     runGraphModels: Array.from(RUN_GRAPH_MODELS).sort(),
+    runGraphTables: RUN_GRAPH_TABLES,
     crossSeamRelations: crossSeamRelationList,
     totals: {
       violations: violations.length,
       detectorI: violations.filter((v) => v.detector === "i").length,
       detectorII: violations.filter((v) => v.detector === "ii").length,
       detectorIII: violations.filter((v) => v.detector === "iii").length,
+      detectorIV: violations.filter((v) => v.detector === "iv").length,
       write: violations.filter((v) => v.callKind === "write").length,
       read: violations.filter((v) => v.callKind === "read").length,
       files: new Set(violations.map((v) => v.file)).size,
@@ -977,7 +1153,15 @@ function buildBaseline(result: ScanResult): Baseline {
 }
 
 function writeBaseline(baseline: Baseline): void {
-  fs.writeFileSync(BASELINE_PATH, JSON.stringify(baseline, null, 2) + "\n", "utf8");
+  // A string array that fits in 100 columns goes on one line, as CI's `oxfmt --check` prints it.
+  const text = JSON.stringify(baseline, null, 2).replace(
+    /^( *"\w+": )\[\n((?: *"[^"\n]*",?\n)+) *\](,?)$/gm,
+    (whole, head: string, items: string, comma: string) => {
+      const line = `${head}[${items.trim().split(/,\n */).join(", ")}]${comma}`;
+      return line.length <= 100 ? line : whole;
+    }
+  );
+  fs.writeFileSync(BASELINE_PATH, text + "\n", "utf8");
 }
 
 function readBaseline(): Baseline {
@@ -998,28 +1182,41 @@ function readBaseline(): Baseline {
 
 const VIRTUAL_CP_DTS = "/virtual/internal-packages/database/index.d.ts";
 const VIRTUAL_RUNOPS_DTS = "/virtual/internal-packages/run-ops-database/index.d.ts";
+// Outside both client paths, so an Omit<> type's own symbol classifies as neither client.
+const VIRTUAL_UTILITY_DTS = "/virtual/lib/utility-types.d.ts";
 const VIRTUAL_MODULE_MAP: Record<string, string> = {
   "@trigger.dev/database": VIRTUAL_CP_DTS,
   "@internal/run-ops-database": VIRTUAL_RUNOPS_DTS,
 };
+
+const VIRTUAL_RAW_METHODS = `$queryRaw(q?:any, ...v:any[]):any; $executeRaw(q?:any, ...v:any[]):any; $queryRawUnsafe(q?:any, ...v:any[]):any; $executeRawUnsafe(q?:any, ...v:any[]):any;`;
 
 const VIRTUAL_CP_SOURCE = `
 export interface TaskRunDelegate { create(a?:any):any; createMany(a?:any):any; update(a?:any):any; updateMany(a?:any):any; upsert(a?:any):any; delete(a?:any):any; deleteMany(a?:any):any; findFirst(a?:any):any; findMany(a?:any):any; count(a?:any):any; }
 export interface TaskRunAttemptDelegate { create(a?:any):any; update(a?:any):any; }
 export interface BatchTaskRunDelegate { findFirst(a?:any):any; update(a?:any):any; }
 export interface WaitpointDelegate { findFirst(a?:any):any; }
-export interface ProjectDelegate { findFirst(a?:any):any; findMany(a?:any):any; }
-export declare class PrismaClient { taskRun: TaskRunDelegate; taskRunAttempt: TaskRunAttemptDelegate; batchTaskRun: BatchTaskRunDelegate; waitpoint: WaitpointDelegate; project: ProjectDelegate; }
+export interface ProjectDelegate { findFirst(a?:any):any; findMany(a?:any):any; update(a?:any):any; }
+export declare class PrismaClient { taskRun: TaskRunDelegate; taskRunAttempt: TaskRunAttemptDelegate; batchTaskRun: BatchTaskRunDelegate; waitpoint: WaitpointDelegate; project: ProjectDelegate; ${VIRTUAL_RAW_METHODS} $transaction<R>(fn: (tx: Omit<PrismaClient, "$transaction">) => R): R; }
 export type PrismaReplicaClient = PrismaClient;
+export declare namespace Prisma { function sql(s?:any, ...v:any[]):any; function raw(s?:any):any; function join(v?:any):any; }
 `;
 
 const VIRTUAL_RUNOPS_SOURCE = `
-export interface RunOpsTaskRunDelegate { create(a?:any):any; update(a?:any):any; updateMany(a?:any):any; findFirst(a?:any):any; findMany(a?:any):any; }
-export declare class RunOpsPrismaClient { taskRun: RunOpsTaskRunDelegate; }
+export interface TaskRunDelegate { create(a?:any):any; update(a?:any):any; updateMany(a?:any):any; findFirst(a?:any):any; findMany(a?:any):any; }
+export interface WaitpointDelegate { findFirst(a?:any):any; }
+export declare class RunOpsPrismaClient { taskRun: TaskRunDelegate; waitpoint: WaitpointDelegate; ${VIRTUAL_RAW_METHODS} $transaction<R>(fn: (tx: Omit<RunOpsPrismaClient, "$transaction">) => R): R; }
 `;
 
-type SelfTestExpect = { violations: number; honored: number; errors: number };
-type SelfTestFixture = { name: string; code: string; expect: SelfTestExpect };
+const VIRTUAL_UTILITY_SOURCE = `
+type Pick<T, K extends keyof T> = { [P in K]: T[P] };
+type Exclude<T, U> = T extends U ? never : T;
+type Omit<T, K extends keyof any> = Pick<T, Exclude<keyof T, K>>;
+`;
+
+type SelfTestExpect = { violations: number; honored: number; errors: number; models?: string[] };
+// `path` is repository-relative; the default is apps/webapp/app/selftest/<name>.ts.
+type SelfTestFixture = { name: string; code: string; expect: SelfTestExpect; path?: string };
 
 const SELF_TEST_FIXTURES: SelfTestFixture[] = [
   {
@@ -1044,7 +1241,7 @@ function f() {
   },
   {
     // Tx-origin walk: a tx from $transaction(runOpsLegacyPrisma, …) is a legacy handle — the
-    // annotated taskRun write is honored and the legacy-only taskRunAttempt write is auto-exempt.
+    // annotated taskRun write is honored; the unmarked taskRunAttempt write is a violation.
     name: "txFromLegacyTransaction",
     code: `import { PrismaClient } from "@trigger.dev/database";
 declare const runOpsLegacyPrisma: PrismaClient;
@@ -1056,7 +1253,7 @@ function f() {
     return 0;
   });
 }`,
-    expect: { violations: 0, honored: 1, errors: 0 },
+    expect: { violations: 1, honored: 1, errors: 0 },
   },
   {
     // Tx-origin negative: a tx from runInTransaction(runId, …) is routed, not legacy — the
@@ -1083,14 +1280,14 @@ function f() {
     expect: { violations: 1, honored: 0, errors: 0 },
   },
   {
-    // MECH-2 primary: a receiver retyped to RunOpsPrismaClient classifies as runops — no violation.
+    // A run write through the run-ops client is a violation: it must go through the run store.
     name: "runopsRebrand",
     code: `import { RunOpsPrismaClient } from "@internal/run-ops-database";
 declare const runOpsLegacyPrismaClient: RunOpsPrismaClient;
 function f() {
   runOpsLegacyPrismaClient.taskRun.update({ where: {}, data: {} });
 }`,
-    expect: { violations: 0, honored: 0, errors: 0 },
+    expect: { violations: 1, honored: 0, errors: 0 },
   },
   {
     // MECH-2 fallback: runops-routed-ok inside a read-through router is honored (suppressed).
@@ -1129,14 +1326,14 @@ function f() {
     expect: { violations: 1, honored: 0, errors: 0 },
   },
   {
-    // Existing model-level exemption: a legacy-only delegate on the legacy handle needs no annotation.
+    // No model-level exemption: an unmarked legacy-only delegate write on the legacy handle fails.
     name: "legacyOnlyExempt",
     code: `import { PrismaClient } from "@trigger.dev/database";
 declare const runOpsLegacyPrisma: PrismaClient;
 function f() {
   runOpsLegacyPrisma.taskRunAttempt.create({ data: {} });
 }`,
-    expect: { violations: 0, honored: 0, errors: 0 },
+    expect: { violations: 1, honored: 0, errors: 0 },
   },
   {
     // Detector (iii): a control-plane client ($replica) in a run-ops read-through slot is flagged;
@@ -1155,6 +1352,380 @@ declare const runOpsLegacyReplica: any;
 const cfg = { newClient: runOpsNewReplica, legacyReplica: runOpsLegacyReplica };`,
     expect: { violations: 0, honored: 0, errors: 0 },
   },
+  // Detector (i) on the run-ops client, a transaction handle and accessor variables.
+  {
+    name: "runOpsClientRunRead",
+    code: `import { RunOpsPrismaClient } from "@internal/run-ops-database";
+declare const client: RunOpsPrismaClient;
+function f(id: string) {
+  client.taskRun.findFirst({ where: { id } });
+}`,
+    expect: { violations: 1, honored: 0, errors: 0, models: ["TaskRun"] },
+  },
+  {
+    name: "controlPlaneBatchWrite",
+    code: `import { PrismaClient } from "@trigger.dev/database";
+declare const prisma: PrismaClient;
+function f(id: string) {
+  prisma.batchTaskRun.update({ where: { id }, data: {} });
+}`,
+    expect: { violations: 1, honored: 0, errors: 0, models: ["BatchTaskRun"] },
+  },
+  {
+    name: "txHandleWaitpointRead",
+    code: `import { RunOpsPrismaClient } from "@internal/run-ops-database";
+declare const runOps: RunOpsPrismaClient;
+function f(id: string) {
+  runOps.$transaction((tx) => tx.waitpoint.findFirst({ where: { id } }));
+}`,
+    expect: { violations: 1, honored: 0, errors: 0, models: ["Waitpoint"] },
+  },
+  {
+    name: "accessorVariable",
+    code: `import { PrismaClient } from "@trigger.dev/database";
+declare const prisma: PrismaClient;
+function f() {
+  const runs = prisma.taskRun;
+  runs.findMany({ take: 1 });
+}`,
+    expect: { violations: 1, honored: 0, errors: 0, models: ["TaskRun"] },
+  },
+  {
+    name: "destructuredAccessor",
+    code: `import { PrismaClient } from "@trigger.dev/database";
+declare const prisma: PrismaClient;
+function f(id: string) {
+  const { taskRun } = prisma;
+  taskRun.findFirst({ where: { id } });
+}`,
+    expect: { violations: 1, honored: 0, errors: 0, models: ["TaskRun"] },
+  },
+  // Detector (iv): raw SQL naming a run-graph table.
+  {
+    name: "rawTaggedSchemaQualifiedSnapshot",
+    code: `import { PrismaClient } from "@trigger.dev/database";
+declare const prisma: PrismaClient;
+declare const schema: any;
+function f(id: string) {
+  prisma.$queryRaw\`SELECT 1 FROM \${schema}."TaskRunExecutionSnapshot" WHERE id = \${id}\`;
+}`,
+    expect: { violations: 1, honored: 0, errors: 0, models: ["TaskRunExecutionSnapshot"] },
+  },
+  {
+    name: "rawUnsafeSnapshot",
+    code: `import { RunOpsPrismaClient } from "@internal/run-ops-database";
+declare const client: RunOpsPrismaClient;
+function f(id: string) {
+  client.$queryRawUnsafe('SELECT 1 FROM "TaskRunExecutionSnapshot" WHERE id = $1', id);
+}`,
+    expect: { violations: 1, honored: 0, errors: 0, models: ["TaskRunExecutionSnapshot"] },
+  },
+  {
+    name: "rawJoinTablePrismaSql",
+    code: `import { PrismaClient, Prisma } from "@trigger.dev/database";
+declare const prisma: PrismaClient;
+function f(id: string) {
+  prisma.$executeRaw(Prisma.sql\`DELETE FROM "_completedWaitpoints" WHERE "A" = \${id}\`);
+}`,
+    expect: { violations: 1, honored: 0, errors: 0, models: ["_completedWaitpoints"] },
+  },
+  {
+    name: "rawNestedPrismaRaw",
+    code: `import { PrismaClient, Prisma } from "@trigger.dev/database";
+declare const prisma: PrismaClient;
+function f() {
+  prisma.$queryRaw\`SELECT 1 FROM \${Prisma.raw('"Waitpoint"')}\`;
+}`,
+    expect: { violations: 1, honored: 0, errors: 0, models: ["Waitpoint"] },
+  },
+  {
+    name: "rawThroughTxHandle",
+    code: `import { PrismaClient } from "@trigger.dev/database";
+declare const prisma: PrismaClient;
+function f() {
+  prisma.$transaction((tx) => tx.$queryRaw\`SELECT 1 FROM "TaskRun"\`);
+}`,
+    expect: { violations: 1, honored: 0, errors: 0, models: ["TaskRun"] },
+  },
+  {
+    name: "rawParenthesizedUnsafe",
+    code: `import { RunOpsPrismaClient } from "@internal/run-ops-database";
+declare const client: RunOpsPrismaClient;
+function f() {
+  client.$queryRawUnsafe(('SELECT 1 FROM "TaskRun"'));
+}`,
+    expect: { violations: 1, honored: 0, errors: 0, models: ["TaskRun"] },
+  },
+  {
+    name: "rawAssertedPrismaSql",
+    code: `import { PrismaClient, Prisma } from "@trigger.dev/database";
+declare const prisma: PrismaClient;
+function f(id: string) {
+  prisma.$executeRaw(Prisma.sql\`DELETE FROM "_completedWaitpoints" WHERE "A" = \${id}\` as any);
+}`,
+    expect: { violations: 1, honored: 0, errors: 0, models: ["_completedWaitpoints"] },
+  },
+  // Allowed uses: no finding.
+  {
+    name: "typeOnlyAccessorReference",
+    code: `import { PrismaClient } from "@trigger.dev/database";
+declare const prisma: PrismaClient;
+type D = typeof prisma.taskRun;
+declare const d: D;`,
+    expect: { violations: 0, honored: 0, errors: 0 },
+  },
+  {
+    name: "storeWiring",
+    code: `import { PrismaClient } from "@trigger.dev/database";
+import { RunOpsPrismaClient } from "@internal/run-ops-database";
+declare const prisma: PrismaClient;
+declare const runOps: RunOpsPrismaClient;
+declare class PostgresRunStore { constructor(o: { prisma: PrismaClient; runOps: RunOpsPrismaClient }); }
+declare function wrapClient(c: RunOpsPrismaClient): RunOpsPrismaClient;
+const store = new PostgresRunStore({ prisma, runOps });
+const wrapped = wrapClient(runOps);`,
+    expect: { violations: 0, honored: 0, errors: 0 },
+  },
+  ...[
+    ["testHelperRunWrite", "apps/webapp/test/helpers/selftestRuns.ts"],
+    ["testFixturesRunWrite", "apps/webapp/test/fixtures/selftestRuns.ts"],
+    [
+      "runEngineTestsHelperRunWrite",
+      "internal-packages/run-engine/src/engine/tests/helpers/selftestRuns.ts",
+    ],
+    ["testFileRunWrite", "apps/webapp/app/selftest/testFileRunWrite.test.ts"],
+    ["seedScriptRunWrite", "apps/webapp/seed-selftest.ts"],
+    ["populateScriptRunWrite", "apps/webapp/prisma/populate.ts"],
+  ].map(([name, file]) => ({
+    name,
+    path: file,
+    code: `import { PrismaClient } from "@trigger.dev/database";
+declare const prisma: PrismaClient;
+function f(id: string) {
+  prisma.taskRun.update({ where: { id }, data: {} });
+}`,
+    expect: { violations: 0, honored: 0, errors: 0 },
+  })),
+  {
+    name: "tableNameInComment",
+    code: `import { PrismaClient } from "@trigger.dev/database";
+declare const prisma: PrismaClient;
+function f() {
+  prisma.$queryRawUnsafe(
+    // was: SELECT 1 FROM "TaskRun"
+    "SELECT 1"
+  );
+}`,
+    expect: { violations: 0, honored: 0, errors: 0 },
+  },
+  {
+    name: "tableNameInLogMessage",
+    code: `import { PrismaClient } from "@trigger.dev/database";
+declare const prisma: PrismaClient;
+declare const logger: { info(m: string, o?: any): void };
+function f() {
+  logger.info('read from "TaskRun"', { model: "TaskRun" });
+  prisma.$queryRaw\`SELECT 1\`;
+}`,
+    expect: { violations: 0, honored: 0, errors: 0 },
+  },
+  {
+    name: "tableNameInLabel",
+    code: `import { PrismaClient } from "@trigger.dev/database";
+declare const prisma: PrismaClient;
+const columns = [{ label: '"TaskRun" id', key: "id" }];
+function f() {
+  prisma.$queryRaw\`SELECT 1\`;
+}`,
+    expect: { violations: 0, honored: 0, errors: 0 },
+  },
+  {
+    name: "replicationTableSetting",
+    code: `import { RunOpsPrismaClient } from "@internal/run-ops-database";
+declare const runOps: RunOpsPrismaClient;
+declare function startReplication(c: RunOpsPrismaClient, o: { table: string }): void;
+startReplication(runOps, { table: "TaskRun" });`,
+    expect: { violations: 0, honored: 0, errors: 0 },
+  },
+  {
+    name: "electricShapeTable",
+    code: `declare const url: { searchParams: { set(k: string, v: string): void } };
+url.searchParams.set("table", 'public."TaskRun"');`,
+    expect: { violations: 0, honored: 0, errors: 0 },
+  },
+  {
+    name: "rawAdvisoryLock",
+    code: `import { PrismaClient } from "@trigger.dev/database";
+declare const prisma: PrismaClient;
+function f(key: string) {
+  prisma.$transaction((tx) => tx.$executeRaw\`SELECT pg_advisory_xact_lock(hashtext(\${key}))\`);
+}`,
+    expect: { violations: 0, honored: 0, errors: 0 },
+  },
+  {
+    name: "rawXactStatus",
+    code: `import { RunOpsPrismaClient } from "@internal/run-ops-database";
+declare const runOps: RunOpsPrismaClient;
+function f(xid: string) {
+  runOps.$queryRawUnsafe("SELECT pg_xact_status($1::xid8) AS status", xid);
+}`,
+    expect: { violations: 0, honored: 0, errors: 0 },
+  },
+  {
+    name: "rawUnsafeBoundValue",
+    code: `import { RunOpsPrismaClient } from "@internal/run-ops-database";
+declare const client: RunOpsPrismaClient;
+function f() {
+  client.$queryRawUnsafe('SELECT $1::text AS label', '"TaskRun"');
+}`,
+    expect: { violations: 0, honored: 0, errors: 0 },
+  },
+  {
+    name: "rawTaggedBoundValue",
+    code: `import { PrismaClient } from "@trigger.dev/database";
+declare const prisma: PrismaClient;
+function f() {
+  prisma.$queryRaw\`SELECT \${'"TaskRun"'}::text AS label\`;
+}`,
+    expect: { violations: 0, honored: 0, errors: 0 },
+  },
+  {
+    name: "rawJoinBoundValues",
+    code: `import { PrismaClient, Prisma } from "@trigger.dev/database";
+declare const prisma: PrismaClient;
+function f() {
+  prisma.$queryRaw\`SELECT 1 WHERE 'x' IN (\${Prisma.join(['"TaskRun"'])})\`;
+}`,
+    expect: { violations: 0, honored: 0, errors: 0 },
+  },
+  {
+    name: "rawTableWithRunGraphPrefix",
+    code: `import { PrismaClient } from "@trigger.dev/database";
+declare const prisma: PrismaClient;
+function f() {
+  prisma.$queryRaw\`SELECT 1 FROM "TaskRunTemplate"\`;
+}`,
+    expect: { violations: 0, honored: 0, errors: 0 },
+  },
+  {
+    name: "taskRunVariableNotAccessor",
+    code: `import { PrismaClient } from "@trigger.dev/database";
+declare const prisma: PrismaClient;
+function f() {
+  const taskRun = prisma.project;
+  taskRun.update({});
+}`,
+    expect: { violations: 0, honored: 0, errors: 0 },
+  },
+  {
+    name: "runStoreRunOpsRead",
+    path: "internal-packages/run-store/src/selftestRead.ts",
+    code: `import { RunOpsPrismaClient } from "@internal/run-ops-database";
+declare const client: RunOpsPrismaClient;
+function f(id: string) {
+  client.taskRun.findFirst({ where: { id } });
+}`,
+    expect: { violations: 0, honored: 0, errors: 0 },
+  },
+  {
+    name: "runStoreRawSnapshot",
+    path: "internal-packages/run-store/src/selftestRaw.ts",
+    code: `import { RunOpsPrismaClient } from "@internal/run-ops-database";
+declare const client: RunOpsPrismaClient;
+function f(id: string) {
+  client.$queryRawUnsafe('SELECT 1 FROM "TaskRunExecutionSnapshot" WHERE id = $1', id);
+}`,
+    expect: { violations: 0, honored: 0, errors: 0 },
+  },
+  {
+    name: "delegateParameter",
+    code: `import { PrismaClient } from "@trigger.dev/database";
+declare const prisma: PrismaClient;
+function listRuns(runs: PrismaClient["taskRun"]) {
+  return runs.findMany({ take: 1 });
+}
+listRuns(prisma.taskRun);`,
+    expect: { violations: 1, honored: 0, errors: 0, models: ["TaskRun"] },
+  },
+  {
+    name: "delegateClassField",
+    code: `import { RunOpsPrismaClient } from "@internal/run-ops-database";
+class RunReader {
+  constructor(private readonly runs: RunOpsPrismaClient["taskRun"]) {}
+  read(id: string) {
+    return this.runs.findFirst({ where: { id } });
+  }
+}`,
+    expect: { violations: 1, honored: 0, errors: 0, models: ["TaskRun"] },
+  },
+  {
+    name: "unionReceiverRunRead",
+    code: `import { PrismaClient } from "@trigger.dev/database";
+import { RunOpsPrismaClient } from "@internal/run-ops-database";
+declare const legacy: PrismaClient;
+declare const runOps: RunOpsPrismaClient | undefined;
+function f(id: string) {
+  (runOps ?? legacy).taskRun.findFirst({ where: { id } });
+}`,
+    expect: { violations: 1, honored: 0, errors: 0, models: ["TaskRun"] },
+  },
+  {
+    name: "lookAlikeDelegateParameter",
+    code: `interface TaskRunDelegate { findMany(a?: any): any; }
+function listRuns(runs: TaskRunDelegate) {
+  return runs.findMany({ take: 1 });
+}`,
+    expect: { violations: 0, honored: 0, errors: 0 },
+  },
+  {
+    name: "rawExecuteUnsafe",
+    code: `import { PrismaClient } from "@trigger.dev/database";
+declare const prisma: PrismaClient;
+function f(id: string) {
+  prisma.$executeRawUnsafe('DELETE FROM "Waitpoint" WHERE id = $1', id);
+}`,
+    expect: { violations: 1, honored: 0, errors: 0, models: ["Waitpoint"] },
+  },
+  {
+    name: "rawConcatenatedLiterals",
+    code: `import { RunOpsPrismaClient } from "@internal/run-ops-database";
+declare const client: RunOpsPrismaClient;
+function f(id: string) {
+  client.$queryRawUnsafe('SELECT 1 FROM "TaskRun" ' + "WHERE id = $1", id);
+}`,
+    expect: { violations: 1, honored: 0, errors: 0, models: ["TaskRun"] },
+  },
+  {
+    name: "testcontainersRunWrite",
+    path: "internal-packages/testcontainers/src/selftestRuns.ts",
+    code: `import { PrismaClient } from "@trigger.dev/database";
+declare const prisma: PrismaClient;
+function f(id: string) {
+  prisma.taskRun.update({ where: { id }, data: {} });
+}`,
+    expect: { violations: 0, honored: 0, errors: 0 },
+  },
+  // In scope: `test` inside a route name, and a `fixtures` directory outside a test directory.
+  ...[
+    [
+      "testRouteDirectoryName",
+      "apps/webapp/app/routes/_app.env.$envParam.test.tasks.$taskParam/route.ts",
+    ],
+    ["testRouteFileName", "apps/webapp/app/routes/resources.env.$envParam.test.payload.ts"],
+    [
+      "dashboardAgentFixtures",
+      "apps/webapp/app/components/dashboard-agent/demo/fixtures/selftestRuns.ts",
+    ],
+  ].map(([name, file]) => ({
+    name,
+    path: file,
+    code: `import { PrismaClient } from "@trigger.dev/database";
+declare const prisma: PrismaClient;
+function f(id: string) {
+  prisma.taskRun.findFirst({ where: { id } });
+}`,
+    expect: { violations: 1, honored: 0, errors: 0, models: ["TaskRun"] },
+  })),
 ];
 
 function buildVirtualProgram(files: Record<string, string>): ts.Program {
@@ -1197,28 +1768,39 @@ function runSelfTests(): void {
   const files: Record<string, string> = {
     [VIRTUAL_CP_DTS]: VIRTUAL_CP_SOURCE,
     [VIRTUAL_RUNOPS_DTS]: VIRTUAL_RUNOPS_SOURCE,
+    [VIRTUAL_UTILITY_DTS]: VIRTUAL_UTILITY_SOURCE,
   };
-  const fixturePaths = new Set<string>();
-  for (const fx of SELF_TEST_FIXTURES) {
-    const p = `/virtual/fixtures/${fx.name}.ts`;
-    files[p] = fx.code;
-    fixturePaths.add(p);
-  }
+  const fixturePath = (fx: SelfTestFixture) =>
+    `/virtual/${fx.path ?? `apps/webapp/app/selftest/${fx.name}.ts`}`;
+  for (const fx of SELF_TEST_FIXTURES) files[fixturePath(fx)] = fx.code;
 
   const program = buildVirtualProgram(files);
   const checker = program.getTypeChecker();
-  const result = scanProgram(program, checker, (fileName) => fixturePaths.has(fileName));
+  // The real scope rule, with one covered root holding every path: the exclusions decide.
+  const result = scanProgram(
+    program,
+    checker,
+    (fileName) =>
+      fileName.startsWith("/virtual/") && isInScope(fileName.slice("/virtual/".length), [""])
+  );
 
   const failures: string[] = [];
   for (const fx of SELF_TEST_FIXTURES) {
-    const violations = result.violations.filter((v) => v.file.includes(fx.name)).length;
-    const honored = result.legacyAnnotations.filter((a) => a.file.includes(fx.name)).length;
-    const errors = result.annotationErrors.filter((e) => e.file.includes(fx.name)).length;
-    const got = { violations, honored, errors };
+    const file = repoRel(fixturePath(fx));
+    const found = result.violations.filter((v) => v.file === file);
+    const honored = result.legacyAnnotations.filter((a) => a.file === file).length;
+    const errors = result.annotationErrors.filter((e) => e.file === file).length;
+    const got = {
+      violations: found.length,
+      honored,
+      errors,
+      models: found.map((v) => v.model).sort(),
+    };
     if (
       got.violations !== fx.expect.violations ||
       got.honored !== fx.expect.honored ||
-      got.errors !== fx.expect.errors
+      got.errors !== fx.expect.errors ||
+      (fx.expect.models && got.models.join() !== fx.expect.models.join())
     ) {
       failures.push(
         `${fx.name}: got ${JSON.stringify(got)}, expected ${JSON.stringify(fx.expect)}`
@@ -1251,15 +1833,7 @@ function main(): void {
 
   const check = args.includes("--check");
 
-  if (RUN_GRAPH_MODELS.size !== 16) {
-    console.error(
-      `Expected 16 run-graph models from ${repoRel(RUNOPS_SCHEMA)}, found ${RUN_GRAPH_MODELS.size}. ` +
-        `Update the guard if the run-graph model set changed.`
-    );
-    process.exit(2);
-  }
-
-  for (const dir of [CP_GENERATED_DIR, RUNOPS_GENERATED_DIR]) {
+  for (const dir of [CP_GENERATED_DIR, ...RUN_GRAPH_GENERATED_DIRS]) {
     if (!fs.existsSync(path.join(dir, "index.d.ts"))) {
       console.error(
         `[runops-guard] generated Prisma client missing at ${repoRel(dir)} — run: pnpm run generate`
@@ -1281,7 +1855,7 @@ function main(): void {
 
   console.error(
     `[runops-guard] found ${violations.length} violations ` +
-      `(detector-i: ${baseline.totals.detectorI}, detector-ii: ${baseline.totals.detectorII}, detector-iii: ${baseline.totals.detectorIII}; ` +
+      `(detector-i: ${baseline.totals.detectorI}, detector-ii: ${baseline.totals.detectorII}, detector-iii: ${baseline.totals.detectorIII}, detector-iv: ${baseline.totals.detectorIV}; ` +
       `write: ${baseline.totals.write}, read: ${baseline.totals.read}; files: ${baseline.totals.files}); ` +
       `honored runops-legacy-ok: ${legacyAnnotations.length}`
   );
