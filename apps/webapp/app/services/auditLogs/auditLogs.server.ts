@@ -2,7 +2,7 @@ import type { AuditLogController, AuditLogPluginConfig } from "@trigger.dev/plug
 import { env } from "~/env.server";
 import { signalsEmitter } from "~/services/signals.server";
 import { singleton } from "~/utils/singleton";
-import { getRequestAuditContext } from "./auditContext.server";
+import { countMissingFingerprint, getRequestAuditContext } from "./auditContext.server";
 import { createAuditLogs } from "./auditLogHost.server";
 import { loadAuditLogPlugin } from "./auditLogPlugin.server";
 import { isAuditRecordingEnabledFor } from "./auditRecordingFlag.server";
@@ -30,6 +30,7 @@ export const auditLogs = singleton("auditLogs", () => {
     isRecordingEnabledFor: isAuditRecordingEnabledFor,
     // Resolved at call time: the context module imports this one.
     getContext: (occurredAt) => getRequestAuditContext(occurredAt),
+    onRecord: (context) => countMissingFingerprint(context),
   });
   // Hands events and revocations still in flight to the plugin before the process exits.
   const flushOnShutdown = () => void audit.flush();
