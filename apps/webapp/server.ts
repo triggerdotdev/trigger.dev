@@ -10,7 +10,6 @@ import path from "path";
 import { setSourceMapsSupport } from "node:module";
 import { pathToFileURL } from "node:url";
 import type { Server as IoServer } from "socket.io";
-import type { WebSocketServer } from "ws";
 import type { RateLimitMiddleware } from "~/services/apiRateLimit.server";
 import { type RunWithHttpContextFunction } from "~/services/httpAsyncStorage.server";
 import { createHostHeaderGuard } from "./app/utils/hostHeader";
@@ -198,7 +197,7 @@ async function startServer() {
     return build;
   };
 
-  // Boots the entry.server singletons (socket.io, wss, rate limiters).
+  // Boots the entry.server singletons (socket.io, rate limiters).
   const build = await loadBuild();
 
   const port = process.env.REMIX_APP_PORT || process.env.PORT || 3000;
@@ -214,7 +213,6 @@ async function startServer() {
     });
 
     const socketIo: { io: IoServer } | undefined = build.entry.module.socketIo;
-    const wss: WebSocketServer | undefined = build.entry.module.wss;
     const apiRateLimiter: RateLimitMiddleware = build.entry.module.apiRateLimiter;
     const deploymentRateLimiter: RateLimitMiddleware = build.entry.module.deploymentRateLimiter;
     const engineRateLimiter: RateLimitMiddleware = build.entry.module.engineRateLimiter;
@@ -386,19 +384,8 @@ async function startServer() {
           return;
         }
 
-        if (pathname !== "/ws") {
-          console.warn(
-            `Rejected upgrade request: path must be /ws, got ${pathname ?? "<invalid>"}`
-          );
-          socket.destroy();
-          return;
-        }
-
-        console.log(`Client connected, upgrading their connection...`);
-
-        wss?.handleUpgrade(req, socket, head, (ws) => {
-          wss?.emit("connection", ws, req);
-        });
+        console.warn(`Rejected upgrade request: unsupported path ${pathname ?? "<invalid>"}`);
+        socket.destroy();
       } catch (error) {
         console.error("Connection upgrade handler failed:", error);
         socket.destroy();
