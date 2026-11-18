@@ -36,7 +36,10 @@ import {
   workloadTokensEnabled,
 } from "../workloadToken.js";
 import type { WorkloadDeploymentTokenClaims } from "@trigger.dev/core/v3";
-import type { SecretProxyBindings } from "../services/secretProxyBindings.js";
+import {
+  SecretProxyAllocationBusyError,
+  type SecretProxyBindings,
+} from "../services/secretProxyBindings.js";
 import {
   ComputeSnapshotService,
   type RunnerSnapshotter,
@@ -181,6 +184,7 @@ type WorkloadServerOptions = {
   /** How long to keep retrying temporary failures of `continue`. Unset keeps the default retries. */
   continueRetryBudgetMs?: number;
   secretProxy?: SecretProxyBindings;
+  retireRunner?: (runnerId: string, uid: string) => Promise<void>;
 };
 
 export class WorkloadServer extends EventEmitter<WorkloadServerEvents> {
@@ -214,6 +218,7 @@ export class WorkloadServer extends EventEmitter<WorkloadServerEvents> {
   private readonly workerStamp: { workerCell?: string; workerLane?: string };
   private readonly continueRetryBudget?: { budgetMs: number };
   private readonly secretProxy?: SecretProxyBindings;
+  private readonly retireRunner?: WorkloadServerOptions["retireRunner"];
 
   constructor(opts: WorkloadServerOptions) {
     super();
@@ -223,6 +228,7 @@ export class WorkloadServer extends EventEmitter<WorkloadServerEvents> {
 
     this.workerClient = opts.workerClient;
     this.secretProxy = opts.secretProxy;
+    this.retireRunner = opts.retireRunner;
     this.workerStamp = opts.workerStamp ?? {};
     this.checkpointClient = opts.checkpointClient;
     this.snapshotDeleteClient = opts.snapshotDeleteClient;
@@ -288,7 +294,7 @@ export class WorkloadServer extends EventEmitter<WorkloadServerEvents> {
   private async authorizeWorkloadRequest(
     req: IncomingMessage,
     runFriendlyId: string,
-    completionSnapshotId?: string
+    completing = false
   ): Promise<
     | {
         ok: true;
@@ -328,7 +334,8 @@ export class WorkloadServer extends EventEmitter<WorkloadServerEvents> {
       return { ok: false };
     }
 
-    if (this.secretProxy?.tracks(runFriendlyId, this.runnerIdFromRequest(req))) {
+    const isStart = req.url?.split("?")[0]?.endsWith("/attempts/start") === true;
+    if (!isStart && this.secretProxy?.tracks(runFriendlyId)) {
       try {
         await this.secretProxy.authorize(
           {
@@ -337,8 +344,7 @@ export class WorkloadServer extends EventEmitter<WorkloadServerEvents> {
             sourceIp: req.socket.remoteAddress,
             claims: result.outcome === "jwt_valid" ? result.claims : undefined,
           },
-          req.url?.split("?")[0]?.endsWith("/attempts/start") === true,
-          completionSnapshotId
+          completing
         );
       } catch {
         return { ok: false };
@@ -635,111 +641,121 @@ export class WorkloadServer extends EventEmitter<WorkloadServerEvents> {
                   sourceIp: req.socket.remoteAddress,
                   claims: auth.claims,
                 };
-                const supportsSecretProxy =
-                  this.secretProxy &&
-                  env.SECRET_PROXY_INTERCEPTOR_SOCKET &&
-                  env.SECRET_PROXY_UNSAFE_LAB_ENABLED &&
-                  workloadTokenEnforced
-                    ? await this.secretProxy.prepareStart(caller, body.isWarmStart === true)
-                    : false;
-                if (this.secretProxy && !supportsSecretProxy) {
-                  unsupportedSecretProxyStarts.inc({
-                    reason: body.isWarmStart ? "warm" : "unavailable",
-                  });
-                }
-                const releaseStart = () =>
-                  this.secretProxy?.withoutProxy(params.runFriendlyId, caller.runnerId);
-                ctx.res.once("close", releaseStart);
-                let attachFailed = false;
-                const startResponse = await this.withSecretProxy(
-                  params.runFriendlyId,
-                  this.runnerIdFromRequest(req),
-                  async () => {
-                    if (supportsSecretProxy) this.secretProxy!.beginStart(params.runFriendlyId);
-                    try {
-                      const response = await this.workerClient.startRunAttempt(
-                        params.runFriendlyId,
-                        params.snapshotFriendlyId,
-                        {
-                          ...body,
-                          supportsSecretProxy,
-                          workerCell: this.workerStamp.workerCell,
-                          workerLane: this.workerStamp.workerLane,
-                        },
-                        this.runnerIdFromRequest(req),
-                        auth.environmentId,
-                        auth.sandboxRunId
-                      );
-                      if (response.success && response.data.secretProxy) {
-                        try {
-                          if (!supportsSecretProxy) throw new Error("Secret proxy unavailable");
-                          await this.secretProxy!.attach(
-                            params.runFriendlyId,
-                            response.data.secretProxy,
-                            response.data.envVars.TRIGGER_RUN_TOKEN ?? ""
-                          );
-                        } catch {
-                          attachFailed = true;
-                          const complete = () =>
-                            this.workerClient.completeRunAttempt(
-                              params.runFriendlyId,
-                              response.data.snapshot.friendlyId,
-                              {
-                                completion: {
-                                  ok: false,
-                                  id: params.runFriendlyId,
-                                  error: {
-                                    type: "INTERNAL_ERROR",
-                                    code: "TASK_EXECUTION_ABORTED",
-                                    message: "Secret proxy attachment failed",
-                                  },
-                                  retry: {
-                                    delay: SECRET_PROXY_ATTACH_RETRY_DELAY_MS,
-                                    timestamp: Date.now() + SECRET_PROXY_ATTACH_RETRY_DELAY_MS,
-                                  },
-                                },
-                                forceRequeue: true,
-                              },
-                              caller.runnerId,
-                              auth.environmentId
-                            );
-                          if (this.secretProxy) {
-                            await this.secretProxy.failStart(
-                              caller,
-                              response.data.snapshot.friendlyId,
-                              complete
-                            );
-                          } else {
-                            await complete();
-                          }
-                          return {
-                            success: false as const,
-                            error: "Secret proxy unavailable",
-                            statusCode: 503,
-                          };
-                        }
-                      }
-                      return response;
-                    } finally {
-                      releaseStart();
-                      ctx.res.off("close", releaseStart);
-                    }
+                try {
+                  const placement = await this.secretProxy?.prepareStart(caller);
+                  const supportsSecretProxy = !!placement;
+                  if (this.secretProxy && !supportsSecretProxy) {
+                    unsupportedSecretProxyStarts.inc({ reason: "unavailable" });
                   }
-                );
+                  let attachmentFailed = false;
+                  const start = async () => {
+                    let startResponse = await this.workerClient.startRunAttempt(
+                      params.runFriendlyId,
+                      params.snapshotFriendlyId,
+                      {
+                        ...body,
+                        isWarmStart: placement?.isWarmStart ?? body.isWarmStart,
+                        supportsSecretProxy,
+                        workerCell: this.workerStamp.workerCell,
+                        workerLane: this.workerStamp.workerLane,
+                      },
+                      caller.runnerId,
+                      auth.environmentId,
+                      auth.sandboxRunId
+                    );
+                    if (startResponse.success && (placement || startResponse.data.secretProxy)) {
+                      const response = startResponse;
+                      try {
+                        if (!placement || !this.secretProxy)
+                          throw new Error("Secret proxy unavailable");
+                        await this.secretProxy.activateStart(caller, placement, response.data);
+                      } catch {
+                        const complete = () =>
+                          this.workerClient.completeRunAttempt(
+                            params.runFriendlyId,
+                            response.data.snapshot.friendlyId,
+                            {
+                              attemptNumber: response.data.execution.attempt.number,
+                              completion: {
+                                ok: false,
+                                id: params.runFriendlyId,
+                                error: {
+                                  type: "INTERNAL_ERROR",
+                                  code: "TASK_EXECUTION_ABORTED",
+                                  message: "Secret proxy attachment failed",
+                                },
+                                retry: {
+                                  delay: SECRET_PROXY_ATTACH_RETRY_DELAY_MS,
+                                  timestamp: Date.now() + SECRET_PROXY_ATTACH_RETRY_DELAY_MS,
+                                },
+                              },
+                              forceRequeue: true,
+                            },
+                            caller.runnerId,
+                            auth.environmentId
+                          );
+                        if (this.secretProxy && placement) {
+                          await this.secretProxy.failStart(caller, placement.bindingId, complete);
+                        } else {
+                          await complete();
+                        }
 
-                if (attachFailed) await this.secretProxy?.retryFailedStart(params.runFriendlyId);
+                        attachmentFailed = true;
+                        startResponse = {
+                          success: false,
+                          error: "Secret proxy unavailable",
+                          statusCode: 503,
+                        };
+                      }
+                    }
 
-                if (!startResponse.success) {
-                  this.logger.error("Failed to start run", {
-                    params,
-                    error: startResponse.error,
-                  });
-                  reply.empty(500);
+                    return startResponse;
+                  };
+                  const startResponse =
+                    placement && this.secretProxy
+                      ? await this.secretProxy.withStart(placement, start)
+                      : await start();
+                  if (attachmentFailed && placement)
+                    await this.secretProxy?.retryFailedStart(placement.bindingId);
+
+                  if (!startResponse.success) {
+                    this.logger.error("Failed to start run", {
+                      params,
+                      error: startResponse.error,
+                    });
+                    reply.empty(500);
+                    return;
+                  }
+
+                  reply.json(startResponse.data satisfies WorkloadRunAttemptStartResponseBody);
                   return;
+                } catch (error) {
+                  if (error instanceof SecretProxyAllocationBusyError) {
+                    ctx.res.setHeader("x-should-retry", "false");
+                    const { runnerId, runnerUid } = error.runner;
+                    try {
+                      await this.revokeRunner(runnerId, runnerUid);
+                    } catch (revokeError) {
+                      this.logger.error("Failed to revoke retiring runner", {
+                        runnerId,
+                        revokeError,
+                      });
+                    }
+                    try {
+                      if (!this.retireRunner) throw new Error("Runner retirement unavailable");
+                      await this.retireRunner(runnerId, runnerUid);
+                    } catch (retireError) {
+                      this.logger.error("Failed to retire busy runner", { runnerId, retireError });
+                    }
+                    reply.json(
+                      { error: "Runner retired after busy allocation", code: "RUNNER_RETIRED" },
+                      false,
+                      410
+                    );
+                    return;
+                  }
+                  throw error;
                 }
-
-                reply.json(startResponse.data satisfies WorkloadRunAttemptStartResponseBody);
-                return;
               }
             ),
         }
@@ -759,11 +775,7 @@ export class WorkloadServer extends EventEmitter<WorkloadServerEvents> {
               "POST",
               async () => {
                 const { req, reply, params, body } = ctx;
-                const auth = await this.authorizeWorkloadRequest(
-                  req,
-                  params.runFriendlyId,
-                  params.snapshotFriendlyId
-                );
+                const auth = await this.authorizeWorkloadRequest(req, params.runFriendlyId, true);
                 if (!auth.ok) {
                   reply.empty(401);
                   return;
@@ -776,12 +788,12 @@ export class WorkloadServer extends EventEmitter<WorkloadServerEvents> {
                 // snapshot, and no new suspend can be scheduled before this route replies.
                 this.snapshotService?.cancel(params.runFriendlyId, runnerId);
 
+                const { attemptNumber, ...completion } = body;
                 const complete = () =>
                   this.workerClient.completeRunAttempt(
                     params.runFriendlyId,
                     params.snapshotFriendlyId,
-                    // This lane is cold-only even when the task image predates proxy support.
-                    this.secretProxy ? { ...body, forceRequeue: true } : body,
+                    this.secretProxy ? body : completion,
                     runnerId,
                     auth.environmentId
                   );
@@ -793,8 +805,8 @@ export class WorkloadServer extends EventEmitter<WorkloadServerEvents> {
                         sourceIp: req.socket.remoteAddress,
                         claims: auth.claims,
                       },
-                      params.snapshotFriendlyId,
-                      complete
+                      complete,
+                      attemptNumber
                     )
                   : await complete();
 
@@ -1436,6 +1448,10 @@ export class WorkloadServer extends EventEmitter<WorkloadServerEvents> {
     });
 
     return websocketServer;
+  }
+
+  private async revokeRunner(runnerId: string, uid: string): Promise<void> {
+    await this.secretProxy?.revokeRunner(runnerId, uid);
   }
 
   notifyRun({ run }: { run: { friendlyId: string } }) {

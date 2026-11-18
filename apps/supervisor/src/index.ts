@@ -756,6 +756,9 @@ class ManagedSupervisor {
       checkpointClient: this.checkpointClient,
       snapshotDeleteClient: this.snapshotDeleteClient,
       runnerSnapshotter: this.runCrdManager,
+      retireRunner: this.runCrdManager
+        ? (runnerId, uid) => this.runCrdManager!.deleteFailedRunner(runnerId, uid)
+        : undefined,
       wideEventOpts: this.wideEventOpts,
       wideEventsNoisyRoutes: this.wideEventsNoisyRoutes,
       continueRetryBudgetMs: env.TRIGGER_CONTINUE_RETRY_BUDGET_MS,

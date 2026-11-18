@@ -66,6 +66,7 @@ export class RunExecution {
 
   private _runFriendlyId?: string;
   private currentAttemptNumber?: number;
+  public requiresRunnerExit = false;
   // Only the non-secret part of the run env, used to fork the task process.
   private currentTaskRunEnv?: Record<string, string>;
   private attemptEnv?: SecretEnv;
@@ -427,6 +428,8 @@ export class RunExecution {
       { isWarmStart, supportsRunTokenRefresh: true }
     );
 
+    if (!start.success && start.shouldRetry === false) this.requiresRunnerExit = true;
+
     if (this.executionAbortController.signal.aborted) {
       throw new ExecutionAbortError("Execution aborted after start");
     }
@@ -575,7 +578,7 @@ export class RunExecution {
       })
     );
 
-    if (!executeError) {
+    if (!executeError || this.requiresRunnerExit) {
       return;
     }
 
@@ -717,7 +720,7 @@ export class RunExecution {
     const completionResult = await this.httpClient.completeRunAttempt(
       this.runFriendlyId,
       this.snapshotManager.snapshotId,
-      { completion }
+      { completion, attemptNumber: this.currentAttemptNumber }
     );
 
     if (!completionResult.success) {

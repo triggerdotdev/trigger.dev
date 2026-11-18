@@ -52,7 +52,6 @@ export const deploymentClaims = {
   exp: Math.floor(Date.now() / 1000) + 3600,
 };
 
-// These are binding-boundary inputs, not responses from a platform service.
 export function executionInput(
   caller: SecretProxyCaller,
   attempt = 1,
@@ -62,7 +61,8 @@ export function executionInput(
   const payload = {
     run_id: caller.runId,
     attempt,
-    environment_id: deploymentClaims.environment_id,
+    environment_id: caller.claims?.environment_id ?? deploymentClaims.environment_id,
+    deployment_id: caller.claims?.deployment ?? deploymentClaims.deployment,
     exp: expiresAt,
   };
   return {
@@ -108,7 +108,6 @@ export type FixtureAllocation = {
   attempt: number;
 };
 
-// The child owns real TCP listeners and SCM_RIGHTS owner streams, not an HTTP imitation.
 export class AllocationOwner {
   private readonly child: ChildProcess;
   private tail: Promise<unknown> = Promise.resolve();
@@ -284,10 +283,16 @@ export class SecretProxyFixture {
         )?.metadata?.name;
       }, "ready k3s node");
       const crds = this.config.makeApiClient(ApiextensionsV1Api);
-      // The generic client preserves CRD schema extension keys verbatim.
-      await KubernetesObjectApi.makeApiClient(this.config).create(
-        loadYaml<V1CustomResourceDefinition>(await readFile(runnerCrd, "utf8"))
+      const runnerDefinition = loadYaml<V1CustomResourceDefinition>(
+        await readFile(runnerCrd, "utf8")
       );
+      for (const version of runnerDefinition.spec.versions) {
+        const properties = version.schema?.openAPIV3Schema?.properties?.spec?.properties;
+        if (!properties) throw new Error("Runner fixture requires a spec schema");
+        properties.singleUse ??= { type: "boolean" };
+      }
+      // The generic client preserves CRD schema extension keys verbatim.
+      await KubernetesObjectApi.makeApiClient(this.config).create(runnerDefinition);
       await waitFor(async () => {
         const crd = await crds.readCustomResourceDefinition({
           name: "runners.compute.trigger.dev",
@@ -369,7 +374,6 @@ export class SecretProxyFixture {
       JSON.stringify({
         controlSocket: this.socketPath,
         caFile,
-        // This suite exercises only registration. No relay or platform service is simulated.
         relayUrl: "https://localhost:1",
         relayRootCa: certPath,
         nodeTokenFile: tokenPath,
@@ -395,11 +399,13 @@ export class SecretProxyFixture {
     );
   }
 
-  // Real containerd pods and API-assigned UIDs/IPs; no operator or microVM deployment is claimed.
-  async placements(requests: { runId: string; attempt?: number }[]): Promise<SecretProxyCaller[]> {
+  async placements(
+    requests: { runId: string; attempt?: number; singleUse?: boolean }[],
+    claims = deploymentClaims
+  ): Promise<SecretProxyCaller[]> {
     for (let offset = 0; offset < requests.length; offset += 8) {
       await Promise.all(
-        requests.slice(offset, offset + 8).map(async ({ runId, attempt }) => {
+        requests.slice(offset, offset + 8).map(async ({ runId, attempt, singleUse }) => {
           const name = getRunnerId(runId, attempt);
           const runner = (await this.custom.createNamespacedCustomObject({
             group: "compute.trigger.dev",
@@ -412,16 +418,17 @@ export class SecretProxyFixture {
               metadata: { name },
               spec: {
                 runtime: "microvm",
+                singleUse,
                 templateKey: "a".repeat(64),
                 image: PAUSE_IMAGE,
                 machine: { name: "test", cpu: "0.01", memory: "8Mi" },
                 owner: {
-                  envID: deploymentClaims.environment_id,
-                  envType: "PRODUCTION",
-                  orgID: deploymentClaims.org_id,
-                  projectID: deploymentClaims.project_id,
+                  envID: claims.environment_id,
+                  envType: claims.environment_type,
+                  orgID: claims.org_id,
+                  projectID: claims.project_id,
                 },
-                deployment: { friendlyID: deploymentClaims.deployment, version: "1" },
+                deployment: { friendlyID: claims.deployment, version: claims.deployment_version },
                 bootstrap: {
                   runFriendlyID: runId,
                   snapshotFriendlyID: "snap_test",
@@ -480,7 +487,7 @@ export class SecretProxyFixture {
         runId,
         attempt: attempt ?? 1,
       });
-      return { runId, runnerId, claims: deploymentClaims, sourceIp: pod.status!.podIP! };
+      return { runId, runnerId, claims, sourceIp: pod.status!.podIP! };
     });
   }
 

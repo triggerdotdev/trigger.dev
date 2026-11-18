@@ -222,10 +222,6 @@ export const Env = z
       .positive()
       .default(10_000),
 
-    // Pod-IP bindings have no fcrun allocation teardown/source-reuse fence yet.
-    // Opt-in also asserts this supervisor exclusively owns the control socket and is its only registrar.
-    // This dedicated lane disables warm dispatch, checkpoints and restores. Its operator must have an empty
-    // runner.warm_start_url and an isolated node pool: native guest warm registration is operator-owned.
     SECRET_PROXY_UNSAFE_LAB_ENABLED: BoolEnv.default(false),
     SECRET_PROXY_INTERCEPTOR_SOCKET: z.string().startsWith("/").optional(),
 
@@ -490,7 +486,7 @@ export const Env = z
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
         message:
-          "Automatic secret proxy binding requires SECRET_PROXY_UNSAFE_LAB_ENABLED=true: source-IP reuse is not fenced by fcrun allocation lifecycle",
+          "Automatic secret proxy binding requires SECRET_PROXY_UNSAFE_LAB_ENABLED=true: exclusive control-socket ownership and disruptive restart reset",
         path: ["SECRET_PROXY_UNSAFE_LAB_ENABLED"],
       });
     }
@@ -695,12 +691,6 @@ export const Env = z
   })
   .transform((data) => ({
     ...data,
-    TRIGGER_WARM_START_URL: data.SECRET_PROXY_INTERCEPTOR_SOCKET
-      ? undefined
-      : data.TRIGGER_WARM_START_URL,
-    TRIGGER_WARM_START_DISPATCH_URL: data.SECRET_PROXY_INTERCEPTOR_SOCKET
-      ? undefined
-      : data.TRIGGER_WARM_START_DISPATCH_URL,
     TRIGGER_CHECKPOINT_URL: data.SECRET_PROXY_INTERCEPTOR_SOCKET
       ? undefined
       : data.TRIGGER_CHECKPOINT_URL,

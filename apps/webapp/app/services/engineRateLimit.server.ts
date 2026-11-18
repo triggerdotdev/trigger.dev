@@ -24,7 +24,6 @@ export const engineRateLimiter = authorizationRateLimitMiddleware({
     maxItems: 1000,
   },
   pathMatchers: [/^\/engine(?:\/|$)/],
-  // The resolver's bearer is a run token; the relay bounds its own resolver concurrency.
   pathWhiteList: [/^\/engine\/v1\/(?:worker-actions|secret-proxy)(?:\/|$)/],
   log: {
     rejections: env.RUN_ENGINE_RATE_LIMIT_REJECTION_LOGS_ENABLED === "1",

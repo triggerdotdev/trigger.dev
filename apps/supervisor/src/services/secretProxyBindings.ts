@@ -4,6 +4,7 @@ import type {
   SecretProxyExecution,
   SupervisorHttpClient,
 } from "@trigger.dev/core/v3/runEngineWorker";
+import { randomUUID } from "node:crypto";
 import { lstat } from "node:fs/promises";
 import { request } from "node:http";
 import { isIP } from "node:net";
@@ -18,13 +19,15 @@ import type { RunReleaser } from "./runReleases.js";
 const CONTROL_TIMEOUT_MS = 2_000;
 const KUBERNETES_TIMEOUT_MS = 5_000;
 const MAX_BINDINGS = 128;
+const MAX_PLACEMENTS = 4096;
 const MAX_IN_FLIGHT = 16;
 const UNBOUND_CACHE_MS = 60_000;
 const CLEANUP_INTERVAL_MS = 10_000;
 const COMPLETION_RETRY_MS = 5 * 60_000;
-const MAX_COMPLETION_RETRIES = 1_024;
 const INITIAL_CONTROL_RETRY_MS = CLEANUP_INTERVAL_MS;
 const MAX_CONTROL_RETRY_MS = 60_000;
+const INITIAL_START_FAILURE_RETRY_MS = 1_000;
+const MAX_START_FAILURE_RETRY_MS = 60_000;
 
 const controlRequests = new Counter({
   name: "supervisor_secret_proxy_control_requests_total",
@@ -59,6 +62,7 @@ const Runner = z.object({
     deployment: z.object({ friendlyID: z.string() }),
     bootstrap: z.object({ runFriendlyID: z.string() }),
     restore: z.unknown().optional(),
+    singleUse: z.boolean().optional(),
   }),
 });
 
@@ -78,6 +82,9 @@ const Allocation = z.object({
   guestId: z.string().min(1),
   runId: z.string().min(1),
   attempt: z.number().int().positive().safe(),
+  bindingId: z.string().min(1),
+  empty: z.boolean(),
+  hasBeenBound: z.boolean(),
 });
 
 type Identity = {
@@ -88,34 +95,53 @@ type Identity = {
   runId: string;
   attempt: number;
   runnerId: string;
+  runnerUid: string;
+  podUid: string;
   environmentId: string;
   deploymentId: string;
+  singleUseAttempt?: number;
+};
+
+export type SecretProxyPlacement = Pick<
+  Identity,
+  | "allocationId"
+  | "bindingId"
+  | "guestId"
+  | "sourceIp"
+  | "runnerId"
+  | "runnerUid"
+  | "podUid"
+  | "environmentId"
+  | "deploymentId"
+  | "singleUseAttempt"
+> & { isWarmStart: boolean };
+
+export type SecretProxyStartResult = {
+  execution: {
+    run: { id: string };
+    attempt: { number: number };
+    environment: { id: string };
+    deployment?: { id: string };
+  };
+  snapshot: { friendlyId: string; createdAt: Date };
+  secretProxy?: SecretProxyExecution;
+  envVars: Record<string, string>;
 };
 
 type Binding = Identity & {
   expiresAtMs: number;
   busy: boolean;
-  started: boolean;
   completed: boolean;
-  completionSnapshotId?: string;
   proxy?: SecretProxyExecution;
-  failedStart?: {
-    caller: SecretProxyCaller;
-    snapshotId: string;
-    complete: () => Promise<CompletionResponse>;
-  };
 };
+
+export class SecretProxyAllocationBusyError extends Error {
+  constructor(readonly runner: Pick<Identity, "runnerId" | "runnerUid">) {
+    super("Secret proxy allocation is busy");
+  }
+}
 
 type CompletionResponse = Awaited<ReturnType<SupervisorHttpClient["completeRunAttempt"]>>;
-type Completed = Pick<
-  Identity,
-  "runId" | "runnerId" | "sourceIp" | "environmentId" | "deploymentId"
-> & {
-  snapshotId: string;
-  expiresAtMs: number;
-  response: Extract<CompletionResponse, { success: true }>;
-};
-
 function denied(): never {
   // Do not propagate API or token parsing errors into request logs.
   throw new Error("Secret proxy execution unavailable");
@@ -136,9 +162,11 @@ export function isSecretProxyHostname(host: string): boolean {
   );
 }
 
-function matchesCaller(identity: Completed | Identity, caller: SecretProxyCaller): boolean {
+function matchesPlacementCaller(
+  identity: Pick<Identity, "runnerId" | "sourceIp" | "environmentId" | "deploymentId">,
+  caller: SecretProxyCaller
+): boolean {
   return (
-    identity.runId === caller.runId &&
     identity.runnerId === caller.runnerId &&
     identity.sourceIp === sourceIp(caller.sourceIp) &&
     identity.environmentId === caller.claims?.environment_id &&
@@ -146,18 +174,32 @@ function matchesCaller(identity: Completed | Identity, caller: SecretProxyCaller
   );
 }
 
-function trustedSecretProxyIdentity(
+function matchesCaller(identity: Identity, caller: SecretProxyCaller): boolean {
+  return identity.runId === caller.runId && matchesPlacementCaller(identity, caller);
+}
+
+type CachedPlacement = ReturnType<typeof trustedSecretProxyIdentity> & {
+  allocationId: string;
+  hasBeenBound: boolean;
+  bindingId?: string;
+};
+
+export function trustedSecretProxyIdentity(
   runnerObject: unknown,
   pod: V1Pod,
   caller: SecretProxyCaller,
   nodeName: string,
   namespace: string
-): Omit<Identity, "allocationId" | "bindingId"> {
+): Omit<Identity, "allocationId" | "bindingId" | "runId" | "attempt"> & {
+  bootstrapRunId: string;
+  bootstrapAttempt: number;
+} {
   const parsed = Runner.safeParse(runnerObject);
   if (!parsed.success) return denied();
   const runner = parsed.data;
   const ip = sourceIp(caller.sourceIp);
-  const attempt = caller.runnerId && attemptOfRunnerId(caller.runnerId, caller.runId);
+  const attempt =
+    caller.runnerId && attemptOfRunnerId(caller.runnerId, runner.spec.bootstrap.runFriendlyID);
   const container = pod.spec?.containers[0]?.name;
   const status = pod.status?.containerStatuses?.find((s) => s.name === container);
   const guestId = status?.containerID?.match(/^containerd:\/\/([a-zA-Z0-9_-]+)$/)?.[1];
@@ -173,8 +215,8 @@ function trustedSecretProxyIdentity(
     pod.metadata.namespace !== namespace ||
     runner.metadata.name !== caller.runnerId ||
     pod.metadata.name !== caller.runnerId ||
-    runner.spec.bootstrap.runFriendlyID !== caller.runId ||
     runner.spec.restore ||
+    (runner.spec.singleUse && caller.runId !== runner.spec.bootstrap.runFriendlyID) ||
     runner.spec.owner.envID !== caller.claims.environment_id ||
     runner.spec.deployment.friendlyID !== caller.claims.deployment ||
     !pod.metadata.ownerReferences?.some(
@@ -194,19 +236,22 @@ function trustedSecretProxyIdentity(
     return denied();
   return {
     guestId,
+    podUid: pod.metadata.uid,
     sourceIp: ip,
-    runId: caller.runId,
-    attempt,
+    bootstrapRunId: runner.spec.bootstrap.runFriendlyID,
+    bootstrapAttempt: attempt,
+    singleUseAttempt: runner.spec.singleUse ? attempt : undefined,
     runnerId: runner.metadata.name,
-    environmentId: caller.claims.environment_id,
-    deploymentId: caller.claims.deployment,
+    runnerUid: runner.metadata.uid,
+    environmentId: runner.spec.owner.envID,
+    deploymentId: runner.spec.deployment.friendlyID,
   };
 }
 
 /** Only call with a token received over the authenticated supervisor/platform connection. */
 function platformTokenExpiry(
   token: string,
-  identity: Pick<Identity, "runId" | "attempt" | "environmentId">
+  identity: Pick<Identity, "runId" | "attempt" | "environmentId" | "deploymentId">
 ): number {
   try {
     if (token.length > 32_768 || token.split(".").length !== 3) return denied();
@@ -215,6 +260,7 @@ function platformTokenExpiry(
       claims.run_id !== identity.runId ||
       claims.attempt !== identity.attempt ||
       claims.environment_id !== identity.environmentId ||
+      claims.deployment_id !== identity.deploymentId ||
       !Number.isSafeInteger(claims.exp) ||
       !Number.isSafeInteger(claims.exp * 1000) ||
       claims.exp * 1000 <= Date.now()
@@ -336,7 +382,6 @@ export async function reportSecretProxyRestoreRefusal(
   | { result: "error"; error: string; releaseResult: Awaited<ReturnType<RunReleaser["release"]>> }
 > {
   if (!options.interceptorSocket || !options.checkpoint) return false;
-  // A checkpoint can predate enrollment and still contain plaintext.
   const reported = await deps.report({
     outcome: "fail",
     reason: "SecretProxyCheckpointUnsupported",
@@ -344,14 +389,31 @@ export async function reportSecretProxyRestoreRefusal(
   });
   if (reported.success) return { result: "ok" };
   if (reported.statusCode === 409) return { result: "conflict" };
-  // Release is snapshot-guarded and uses the existing bounded dequeue retry policy.
   return { result: "error", error: reported.error, releaseResult: await deps.release() };
 }
 
 export class SecretProxyBindings {
   private readonly bindings = new Map<string, Binding>();
-  private readonly completed = new Map<string, Completed>();
-  private reserved = 0;
+  private readonly failedStarts = new Map<
+    string,
+    {
+      runId: string;
+      complete: () => Promise<CompletionResponse>;
+      revoke: boolean;
+      busy: boolean;
+      expiresAtMs: number;
+      nextRetryAtMs: number;
+      retryMs: number;
+    }
+  >();
+  private readonly starting = new Map<string, SecretProxyPlacement | Binding>();
+  private readonly retiredStarts = new WeakSet<SecretProxyPlacement | Binding>();
+  private readonly placements = new Map<string, CachedPlacement>();
+  private readonly runnerPlacements = new Map<string, string>();
+  private readonly placementLookups = new Map<
+    string,
+    { promise: Promise<CachedPlacement | undefined> }
+  >();
   private verifying = 0;
   private controlling = 0;
   private readonly controls = new Set<Promise<void>>();
@@ -364,7 +426,10 @@ export class SecretProxyBindings {
 
   constructor(
     private readonly opts: {
-      k8s: Pick<K8sApi, "core" | "custom">;
+      k8s: {
+        core: Pick<K8sApi["core"], "readNamespacedPod">;
+        custom: Pick<K8sApi["custom"], "getNamespacedCustomObject">;
+      };
       namespace: string;
       nodeName: string;
       socketPath: string;
@@ -377,131 +442,312 @@ export class SecretProxyBindings {
   }
 
   async start(): Promise<void> {
-    // Lab-only: exactly one supervisor must exclusively own this socket and be its only registrar.
-    // Reset closes all existing contexts, including those awaiting their first binding.
+    this.ready = false;
+    this.placements.clear();
+    this.runnerPlacements.clear();
+    this.placementLookups.clear();
     try {
       await interceptorControl(this.opts.socketPath);
       this.ready = !this.stopped;
       this.readiness.set(this.ready ? 1 : 0);
     } catch {
       this.readiness.set(0);
-      // Ordinary runs must remain available while proxy startup is retried.
       this.nextControlRetryAt = Date.now() + this.controlRetryMs;
       this.controlRetryMs = Math.min(this.controlRetryMs * 2, MAX_CONTROL_RETRY_MS);
     }
   }
 
-  tracks(runId: string, runnerId?: string): boolean {
-    return this.bindings.has(runId) || (!!runnerId && this.completed.has(runnerId));
+  tracks(runId: string): boolean {
+    return this.bindings.has(runId);
   }
 
-  async prepareStart(caller: SecretProxyCaller, isWarmStart: boolean): Promise<boolean> {
-    if (!this.ready || isWarmStart) return false;
-    try {
-      await this.authorize(caller, true);
-      return true;
-    } catch {
-      // An unavailable proxy must not prevent ordinary attempts from starting.
-      return false;
-    }
+  private atCapacity(runId: string): boolean {
+    const now = Date.now();
+    const pending = [...this.failedStarts.values()].filter((failure) => failure.expiresAtMs > now);
+    if (pending.length >= MAX_BINDINGS) return true;
+    if (this.bindings.has(runId)) return false;
+    return (
+      [...this.bindings.values()].filter(
+        (binding) =>
+          (this.failedStarts.get(binding.bindingId)?.expiresAtMs ?? binding.expiresAtMs) > now
+      ).length >= MAX_BINDINGS
+    );
   }
 
-  async authorize(
-    caller: SecretProxyCaller,
-    fresh = false,
-    completionSnapshotId?: string
-  ): Promise<void> {
-    if (this.stopped || !caller.claims || !caller.runnerId || !sourceIp(caller.sourceIp))
-      return denied();
-    const completed = this.getCompleted(caller);
-    if (completed) {
-      if (completed.snapshotId !== completionSnapshotId) return denied();
-      return;
-    }
-    const cached = this.bindings.get(caller.runId);
-    if (cached) {
-      if (
-        cached.expiresAtMs <= Date.now() ||
-        !matchesCaller(cached, caller) ||
-        (cached.completed && !completionSnapshotId) ||
-        (cached.completionSnapshotId && cached.completionSnapshotId !== completionSnapshotId)
-      )
-        return denied();
-      if (!fresh) return;
-    }
+  private forgetPlacement(placement: CachedPlacement): void {
+    if (this.placements.get(placement.podUid) !== placement) return;
+    this.placements.delete(placement.podUid);
+    if (this.runnerPlacements.get(placement.runnerId) === placement.podUid)
+      this.runnerPlacements.delete(placement.runnerId);
+  }
+
+  private currentPlacement(placement: SecretProxyPlacement): CachedPlacement {
+    const cached = this.placements.get(placement.podUid);
     if (
-      (!cached && this.bindings.size + this.reserved >= MAX_BINDINGS) ||
-      this.verifying >= MAX_IN_FLIGHT
+      !cached ||
+      this.retiredStarts.has(placement) ||
+      cached.runnerUid !== placement.runnerUid ||
+      cached.allocationId !== placement.allocationId
     )
       return denied();
-    if (!cached) this.reserved++;
-    this.verifying++;
-    // The generated Kubernetes client cannot cancel. Keep admission occupied until the
-    // actual requests settle, even if the caller has already timed out.
-    const read = (async () => {
-      const runner = await this.opts.k8s.custom.getNamespacedCustomObject({
+    return cached;
+  }
+
+  private async readPlacement(caller: SecretProxyCaller): Promise<CachedPlacement> {
+    const [runner, pod] = await Promise.allSettled([
+      this.opts.k8s.custom.getNamespacedCustomObject({
         group: "compute.trigger.dev",
         version: "v1alpha1",
         plural: "runners",
         namespace: this.opts.namespace,
         name: caller.runnerId!,
-      });
-      const pod = await this.opts.k8s.core.readNamespacedPod({
+      }),
+      this.opts.k8s.core.readNamespacedPod({
         namespace: this.opts.namespace,
         name: caller.runnerId!,
-      });
-      const placement = trustedSecretProxyIdentity(
-        runner,
-        pod,
-        caller,
-        this.opts.nodeName,
-        this.opts.namespace
-      );
-      const allocation = await allocationForGuest(this.opts.socketPath, placement.guestId);
-      if (
-        allocation.guestId !== placement.guestId ||
-        allocation.runId !== placement.runId ||
-        allocation.attempt !== placement.attempt
-      )
-        return denied();
-      return {
-        ...placement,
-        bindingId: allocation.allocationId,
-        allocationId: allocation.allocationId,
-      };
-    })().finally(() => this.verifying--);
+      }),
+    ]);
+    if (runner.status === "rejected") throw runner.reason;
+    if (pod.status === "rejected") throw pod.reason;
+    const placement = trustedSecretProxyIdentity(
+      runner.value,
+      pod.value,
+      caller,
+      this.opts.nodeName,
+      this.opts.namespace
+    );
+    const allocation = await allocationForGuest(this.opts.socketPath, placement.guestId);
+    if (
+      allocation.runId !== placement.bootstrapRunId ||
+      allocation.attempt !== placement.bootstrapAttempt ||
+      allocation.guestId !== placement.guestId
+    )
+      return denied();
+    await this.requireEmpty(allocation, placement);
+    return {
+      ...placement,
+      allocationId: allocation.allocationId,
+      hasBeenBound: allocation.hasBeenBound,
+    };
+  }
+
+  async prepareStart(caller: SecretProxyCaller): Promise<SecretProxyPlacement | undefined> {
+    if (
+      !this.ready ||
+      this.stopped ||
+      !caller.claims ||
+      !caller.runnerId ||
+      !sourceIp(caller.sourceIp)
+    )
+      return;
+    let cached = this.placements.get(this.runnerPlacements.get(caller.runnerId) ?? "");
+    const allocation = cached && (await this.cachedAllocation(cached));
+    if (cached && !allocation) {
+      this.forgetPlacement(cached);
+      cached = undefined;
+    }
+    if (cached && allocation) {
+      if (!matchesPlacementCaller(cached, caller)) return;
+      if (!cached.bindingId) {
+        try {
+          await this.requireEmpty(allocation, cached);
+        } catch (error) {
+          if (error instanceof SecretProxyAllocationBusyError) throw error;
+          this.forgetPlacement(cached);
+          return;
+        }
+      }
+    }
+    if (!cached) {
+      let pending = this.placementLookups.get(caller.runnerId);
+      if (!pending) {
+        if (this.verifying >= MAX_IN_FLIGHT) return;
+        this.verifying++;
+        const read = this.readPlacement(caller).finally(() => this.verifying--);
+        pending = {
+          promise: withTimeout(read, KUBERNETES_TIMEOUT_MS, "Secret proxy identity")
+            .then((placement) => {
+              if (
+                this.stopped ||
+                !this.ready ||
+                this.placementLookups.get(placement.runnerId) !== pending
+              )
+                return;
+              const previous = this.placements.get(
+                this.runnerPlacements.get(placement.runnerId) ?? ""
+              );
+              if (previous) this.forgetPlacement(previous);
+              if (this.placements.size >= MAX_PLACEMENTS)
+                this.forgetPlacement(this.placements.values().next().value!);
+              this.placements.set(placement.podUid, placement);
+              this.runnerPlacements.set(placement.runnerId, placement.podUid);
+              return placement;
+            })
+            .catch((error) => {
+              if (error instanceof SecretProxyAllocationBusyError) throw error;
+              return undefined;
+            })
+            .finally(() => {
+              if (this.placementLookups.get(caller.runnerId!) === pending)
+                this.placementLookups.delete(caller.runnerId!);
+            }),
+        };
+        this.placementLookups.set(caller.runnerId, pending);
+      }
+      cached = await pending.promise;
+    }
+    if (
+      !cached ||
+      this.stopped ||
+      !this.ready ||
+      this.placements.get(cached.podUid) !== cached ||
+      !matchesPlacementCaller(cached, caller) ||
+      (cached.singleUseAttempt !== undefined && caller.runId !== cached.bootstrapRunId)
+    )
+      return;
+    if (cached.bindingId || (cached.singleUseAttempt !== undefined && cached.hasBeenBound))
+      throw new SecretProxyAllocationBusyError(cached);
+    this.placements.delete(cached.podUid);
+    this.placements.set(cached.podUid, cached);
+    return {
+      ...cached,
+      bindingId: randomUUID(),
+      isWarmStart: caller.runId !== cached.bootstrapRunId || cached.hasBeenBound,
+    };
+  }
+
+  private async cachedAllocation(
+    cached: CachedPlacement
+  ): Promise<z.infer<typeof Allocation> | undefined> {
     try {
-      const identity = await withTimeout(
-        read,
-        KUBERNETES_TIMEOUT_MS,
-        "Secret proxy identity"
-      ).catch(() => denied());
-      if (this.stopped || this.getCompleted(caller)) return denied();
-      const existing = this.bindings.get(caller.runId);
-      if (cached && existing !== cached) return denied();
-      if (existing) {
-        if (
-          existing.bindingId !== identity.bindingId ||
-          existing.allocationId !== identity.allocationId ||
-          !matchesCaller(existing, caller)
-        )
-          return denied();
+      const allocation = await allocationForGuest(this.opts.socketPath, cached.guestId);
+      if (
+        allocation.allocationId !== cached.allocationId ||
+        allocation.runId !== cached.bootstrapRunId ||
+        allocation.attempt !== cached.bootstrapAttempt
+      )
+        return;
+      cached.hasBeenBound ||= allocation.hasBeenBound;
+      return allocation;
+    } catch {
+      return;
+    }
+  }
+
+  private async requireEmpty(
+    allocation: z.infer<typeof Allocation>,
+    placement: Pick<Identity, "runnerId" | "runnerUid">
+  ): Promise<void> {
+    if (allocation.empty) return;
+    for (const binding of this.bindings.values()) {
+      if (
+        binding.allocationId === allocation.allocationId &&
+        binding.bindingId === allocation.bindingId
+      )
+        throw new SecretProxyAllocationBusyError(placement);
+    }
+    await this.control(allocation.bindingId);
+    const current = await allocationForGuest(this.opts.socketPath, allocation.guestId);
+    if (current.allocationId !== allocation.allocationId || !current.empty)
+      throw new SecretProxyAllocationBusyError(placement);
+  }
+
+  async withStart<T>(placement: SecretProxyPlacement, operation: () => Promise<T>): Promise<T> {
+    if (this.stopped || !this.ready) return denied();
+    if (this.starting.has(placement.allocationId))
+      throw new SecretProxyAllocationBusyError(placement);
+    this.starting.set(placement.allocationId, placement);
+    try {
+      const cached = this.currentPlacement(placement);
+      if (cached.bindingId || (cached.singleUseAttempt !== undefined && cached.hasBeenBound))
+        throw new SecretProxyAllocationBusyError(placement);
+      placement.isWarmStart ||= cached.hasBeenBound;
+      return await operation();
+    } finally {
+      this.starting.delete(placement.allocationId);
+    }
+  }
+
+  async authorize(caller: SecretProxyCaller, completing = false): Promise<void> {
+    if (this.stopped || !caller.claims || !caller.runnerId || !sourceIp(caller.sourceIp))
+      return denied();
+    const binding = this.bindings.get(caller.runId);
+    if (
+      !binding ||
+      !matchesCaller(binding, caller) ||
+      (!completing && (binding.completed || binding.expiresAtMs <= Date.now()))
+    )
+      return denied();
+  }
+
+  /** Only call with a successful response from the authenticated platform connection. */
+  async activateStart(
+    caller: SecretProxyCaller,
+    placement: SecretProxyPlacement,
+    response: SecretProxyStartResult
+  ): Promise<void> {
+    const { execution } = response;
+    const protectedStart = response.secretProxy !== undefined;
+    const cached = this.currentPlacement(placement);
+    if (
+      this.stopped ||
+      !this.ready ||
+      execution.run.id !== caller.runId ||
+      execution.environment.id !== placement.environmentId ||
+      execution.deployment?.id !== placement.deploymentId ||
+      placement.runnerId !== caller.runnerId ||
+      placement.sourceIp !== sourceIp(caller.sourceIp) ||
+      caller.claims?.environment_id !== placement.environmentId ||
+      caller.claims.deployment !== placement.deploymentId ||
+      !Number.isSafeInteger(execution.attempt.number) ||
+      execution.attempt.number <= 0 ||
+      (placement.singleUseAttempt !== undefined &&
+        execution.attempt.number !== placement.singleUseAttempt) ||
+      this.starting.get(placement.allocationId) !== placement ||
+      this.bindings.get(caller.runId)?.busy ||
+      (protectedStart && this.atCapacity(caller.runId))
+    )
+      return denied();
+    const binding: Binding = {
+      ...placement,
+      runId: execution.run.id,
+      attempt: execution.attempt.number,
+      expiresAtMs: Date.now() + UNBOUND_CACHE_MS,
+      busy: false,
+      completed: false,
+    };
+    this.bindings.set(execution.run.id, binding);
+    binding.busy = true;
+    cached.bindingId = binding.bindingId;
+    try {
+      await interceptorRequest(
+        this.opts.socketPath,
+        `/allocations/${encodeURIComponent(binding.allocationId)}/binding`,
+        "PUT",
+        { bindingId: binding.bindingId }
+      );
+      cached.hasBeenBound = true;
+      if (this.currentPlacement(placement) !== cached) return denied();
+      if (response.secretProxy) {
+        await this.attach(
+          binding.runId,
+          response.secretProxy,
+          response.envVars.TRIGGER_RUN_TOKEN ?? ""
+        );
+      } else {
+        await this.closeBinding(binding);
+        this.bindings.delete(binding.runId);
+      }
+      if (this.currentPlacement(placement) !== cached) return denied();
+    } catch (error) {
+      if (!protectedStart && !this.retiredStarts.has(placement)) {
+        if (this.bindings.get(binding.runId) === binding) this.bindings.delete(binding.runId);
         return;
       }
-      this.bindings.set(caller.runId, {
-        ...identity,
-        expiresAtMs: Date.now() + UNBOUND_CACHE_MS,
-        busy: false,
-        started: false,
-        completed: false,
-      });
+      this.forgetPlacement(cached);
+      throw error;
     } finally {
-      // A timed-out Kubernetes read still owns its admission reservation until it settles.
-      if (!cached)
-        void read.then(
-          () => this.reserved--,
-          () => this.reserved--
-        );
+      binding.busy = false;
     }
   }
 
@@ -512,53 +758,105 @@ export class SecretProxyBindings {
     completing = false
   ): Promise<T> {
     if (!this.bindings.has(runId)) return operation();
-    const binding = this.get(runId);
-    if (binding.busy || binding.runnerId !== runnerId || (binding.completed && !completing))
+    const binding = completing ? this.bindings.get(runId)! : this.get(runId);
+    if (
+      binding.busy ||
+      this.starting.has(binding.allocationId) ||
+      binding.runnerId !== runnerId ||
+      (binding.completed && !completing)
+    )
       return denied();
     binding.busy = true;
+    this.starting.set(binding.allocationId, binding);
     try {
       return await operation();
     } finally {
       binding.busy = false;
+      if (this.starting.get(binding.allocationId) === binding)
+        this.starting.delete(binding.allocationId);
     }
-  }
-
-  beginStart(runId: string): void {
-    const binding = this.get(runId);
-    if (binding.started || binding.completed) return denied();
-    binding.started = true;
-  }
-
-  withoutProxy(runId: string, runnerId: string | undefined): void {
-    const binding = this.bindings.get(runId);
-    if (binding && binding.runnerId === runnerId && !binding.proxy && !binding.failedStart)
-      this.bindings.delete(runId);
   }
 
   async failStart(
     caller: SecretProxyCaller,
-    snapshotId: string,
+    bindingId: string,
     operation: () => Promise<CompletionResponse>
   ): Promise<void> {
     const binding = this.bindings.get(caller.runId);
-    if (!binding || !matchesCaller(binding, caller)) {
-      await operation();
-      return;
-    }
-    binding.failedStart = { caller, snapshotId, complete: operation };
+    this.failedStarts.set(bindingId, {
+      runId: caller.runId,
+      complete: operation,
+      revoke: binding?.bindingId === bindingId,
+      busy: false,
+      expiresAtMs:
+        binding?.bindingId === bindingId ? binding.expiresAtMs : Date.now() + UNBOUND_CACHE_MS,
+      nextRetryAtMs: 0,
+      retryMs: INITIAL_START_FAILURE_RETRY_MS,
+    });
   }
 
-  async retryFailedStart(runId: string): Promise<void> {
-    const failure = this.bindings.get(runId)?.failedStart;
-    if (!failure) return;
+  async retryFailedStart(bindingId: string): Promise<void> {
+    const failure = this.failedStarts.get(bindingId);
+    if (!failure || failure.busy || this.stopped || Date.now() < failure.nextRetryAtMs) return;
+    failure.busy = true;
+    const binding = this.bindings.get(failure.runId);
+    const recover = async () => {
+      if (binding?.bindingId === bindingId) await this.revokeBinding(binding);
+      else if (failure.revoke) await this.control(bindingId);
+
+      let settled = Date.now() >= failure.expiresAtMs;
+      if (!settled) {
+        const response = await failure.complete();
+        settled =
+          response.success ||
+          (response.statusCode !== undefined &&
+            response.statusCode >= 400 &&
+            response.statusCode < 500 &&
+            response.statusCode !== 408 &&
+            response.statusCode !== 429);
+      }
+      if (settled) {
+        if (this.bindings.get(failure.runId)?.bindingId === bindingId)
+          this.bindings.delete(failure.runId);
+        this.failedStarts.delete(bindingId);
+      }
+    };
     try {
-      await this.complete(failure.caller, failure.snapshotId, failure.complete);
+      if (binding?.bindingId === bindingId) {
+        await this.exclusive(binding.runId, recover, binding.runnerId, true);
+      } else {
+        await recover();
+      }
     } catch {
-      // The cleanup sweep retries without exposing placeholders to the runner.
+    } finally {
+      failure.busy = false;
+      failure.nextRetryAtMs = Date.now() + failure.retryMs;
+      failure.retryMs = Math.min(failure.retryMs * 2, MAX_START_FAILURE_RETRY_MS);
     }
   }
 
-  async attach(runId: string, proxy: SecretProxyExecution, runToken: string): Promise<void> {
+  private async closeBinding(binding: Binding): Promise<void> {
+    await this.control(binding.bindingId);
+    const cached = this.placements.get(binding.podUid);
+    if (cached?.bindingId === binding.bindingId) cached.bindingId = undefined;
+  }
+
+  private async revokeBinding(binding: Binding): Promise<void> {
+    if (!binding.completed)
+      binding.expiresAtMs = Math.max(
+        binding.expiresAtMs,
+        Date.now() + (this.opts.completionGraceMs ?? COMPLETION_RETRY_MS)
+      );
+    binding.completed = true;
+    await this.closeBinding(binding);
+    binding.proxy = undefined;
+  }
+
+  private async attach(
+    runId: string,
+    proxy: SecretProxyExecution,
+    runToken: string
+  ): Promise<void> {
     const binding = this.get(runId);
     const expiry = platformTokenExpiry(runToken, binding);
     if (
@@ -570,7 +868,6 @@ export class SecretProxyBindings {
       proxy.allowedHosts.some((host) => !isSecretProxyHostname(host))
     )
       return denied();
-    // Remember uncertain registrations too, so expiry/shutdown will revoke them.
     binding.proxy = proxy;
     binding.expiresAtMs = proxy.expiresAtMs;
     await this.put(binding, runToken);
@@ -582,8 +879,6 @@ export class SecretProxyBindings {
     const binding = this.get(runId);
     if (binding.completed) return denied();
     if (!runToken) return;
-    // A restarted supervisor cannot rebuild a binding from anything the guest sends.
-    if (!binding.started) return denied();
     const expiresAtMs = platformTokenExpiry(runToken, binding);
     if (!binding.proxy) {
       binding.expiresAtMs = expiresAtMs;
@@ -593,74 +888,57 @@ export class SecretProxyBindings {
     binding.expiresAtMs = expiresAtMs;
   }
 
-  async detach(runId: string): Promise<void> {
-    const binding = this.get(runId);
-    if (!binding.completed)
-      binding.expiresAtMs = Math.max(
-        binding.expiresAtMs,
-        Date.now() + (this.opts.completionGraceMs ?? COMPLETION_RETRY_MS)
-      );
-    binding.completed = true;
-    // After restart, absence of local start state does not prove there is no node binding.
-    if (!binding.started) return denied();
-    if (!binding.proxy) return;
-    await this.control(binding.bindingId);
-    binding.proxy = undefined;
-  }
-
   async complete(
     caller: SecretProxyCaller,
-    snapshotId: string,
-    operation: () => Promise<CompletionResponse>
+    operation: () => Promise<CompletionResponse>,
+    attemptNumber?: number
   ): Promise<CompletionResponse> {
     if (this.stopped) return denied();
-    const completed = this.getCompleted(caller);
-    if (completed) {
-      if (completed.snapshotId !== snapshotId) return denied();
-      return completed.response;
-    }
-    if (!this.bindings.has(caller.runId)) return operation();
-    return this.exclusive(
-      caller.runId,
-      async () => {
-        const binding = this.get(caller.runId);
-        if (!matchesCaller(binding, caller)) return denied();
-        if (binding.completionSnapshotId && binding.completionSnapshotId !== snapshotId)
-          return denied();
-        binding.completionSnapshotId = snapshotId;
-        await this.detach(caller.runId);
-        const response = await operation();
-        if (response.success && !this.stopped) {
-          this.completed.set(binding.runnerId, {
-            runId: binding.runId,
-            runnerId: binding.runnerId,
-            sourceIp: binding.sourceIp,
-            environmentId: binding.environmentId,
-            deploymentId: binding.deploymentId,
-            snapshotId,
-            expiresAtMs: Date.now() + COMPLETION_RETRY_MS,
-            response,
-          });
-          if (this.completed.size > MAX_COMPLETION_RETRIES)
-            this.completed.delete(this.completed.keys().next().value!);
-          if (this.bindings.get(caller.runId) === binding) this.bindings.delete(caller.runId);
-        }
-        return response;
-      },
-      caller.runnerId,
-      true
-    );
+    const binding = this.bindings.get(caller.runId);
+    if (!binding) return operation();
+    if (!matchesCaller(binding, caller)) return denied();
+    if (attemptNumber !== undefined && attemptNumber < binding.attempt) return operation();
+    return this.completeBinding(binding, operation);
   }
 
-  private getCompleted(caller: SecretProxyCaller): Completed | undefined {
-    const completed = caller.runnerId ? this.completed.get(caller.runnerId) : undefined;
-    if (!completed) return;
-    if (completed.expiresAtMs <= Date.now()) {
-      this.completed.delete(completed.runnerId);
-      return;
+  async revokeRunner(runnerId: string, runnerUid: string): Promise<void> {
+    for (const start of this.starting.values()) {
+      if (start.runnerId === runnerId && start.runnerUid === runnerUid)
+        this.retiredStarts.add(start);
     }
-    if (!matchesCaller(completed, caller)) return denied();
-    return completed;
+    const cached = this.placements.get(this.runnerPlacements.get(runnerId) ?? "");
+    if (cached?.runnerUid === runnerUid) this.forgetPlacement(cached);
+    this.placementLookups.delete(runnerId);
+    for (const [runId, binding] of this.bindings) {
+      if (binding.runnerId !== runnerId || binding.runnerUid !== runnerUid) continue;
+      binding.completed = true;
+      binding.busy = true;
+      try {
+        await this.closeBinding(binding);
+        if (this.bindings.get(runId) === binding) this.bindings.delete(runId);
+      } finally {
+        binding.busy = false;
+      }
+    }
+  }
+
+  private async completeBinding(
+    binding: Binding,
+    operation: () => Promise<CompletionResponse>
+  ): Promise<CompletionResponse> {
+    return this.exclusive(
+      binding.runId,
+      async () => {
+        if (this.bindings.get(binding.runId) !== binding) return denied();
+        await this.revokeBinding(binding);
+        const response = await operation();
+        if (response.success && this.bindings.get(binding.runId) === binding)
+          this.bindings.delete(binding.runId);
+        return response;
+      },
+      binding.runnerId,
+      true
+    );
   }
 
   private get(runId: string): Binding {
@@ -700,26 +978,23 @@ export class SecretProxyBindings {
 
   private async expire(): Promise<void> {
     if (!this.ready && !this.stopped && Date.now() >= this.nextControlRetryAt) await this.start();
-    for (const [runnerId, completed] of this.completed) {
-      if (completed.expiresAtMs <= Date.now()) this.completed.delete(runnerId);
-    }
+    for (const bindingId of this.failedStarts.keys()) await this.retryFailedStart(bindingId);
     for (const [runId, binding] of this.bindings) {
-      if (!binding.proxy && !binding.failedStart && binding.expiresAtMs <= Date.now()) {
+      if (this.failedStarts.has(binding.bindingId)) continue;
+      if (!binding.proxy && binding.expiresAtMs <= Date.now()) {
         this.bindings.delete(runId);
         continue;
       }
       if (binding.busy) continue;
-      if (binding.expiresAtMs > Date.now()) {
-        if (binding.failedStart) await this.retryFailedStart(runId);
-        continue;
-      }
+      if (binding.expiresAtMs > Date.now()) continue;
       binding.busy = true;
       try {
-        if (binding.proxy) await this.control(binding.bindingId);
+        if (binding.proxy) await this.closeBinding(binding);
       } catch {
-        /* The interceptor also enforces the hard expiry. */
+        const cached = this.placements.get(binding.podUid);
+        if (cached?.bindingId === binding.bindingId) this.forgetPlacement(cached);
       } finally {
-        this.bindings.delete(runId);
+        if (this.bindings.get(runId) === binding) this.bindings.delete(runId);
       }
     }
   }
@@ -729,14 +1004,25 @@ export class SecretProxyBindings {
     this.readiness.set(0);
     clearInterval(this.cleanup);
     await Promise.allSettled([...this.controls]);
-    // Bound shutdown fanout. Failed deletes remain subject to the node's hard expiry.
-    const bindings = [...this.bindings.values()].filter((binding) => binding.proxy);
-    for (let i = 0; i < bindings.length; i += MAX_IN_FLIGHT) {
+    const bindingIds = [
+      ...new Set([
+        ...[...this.bindings.values()]
+          .filter((binding) => binding.proxy)
+          .map((binding) => binding.bindingId),
+        ...[...this.failedStarts]
+          .filter(([, failure]) => failure.revoke)
+          .map(([bindingId]) => bindingId),
+      ]),
+    ];
+    for (let i = 0; i < bindingIds.length; i += MAX_IN_FLIGHT) {
       await Promise.allSettled(
-        bindings.slice(i, i + MAX_IN_FLIGHT).map((binding) => this.control(binding.bindingId))
+        bindingIds.slice(i, i + MAX_IN_FLIGHT).map((bindingId) => this.control(bindingId))
       );
     }
     this.bindings.clear();
-    this.completed.clear();
+    this.failedStarts.clear();
+    this.placements.clear();
+    this.runnerPlacements.clear();
+    this.placementLookups.clear();
   }
 }

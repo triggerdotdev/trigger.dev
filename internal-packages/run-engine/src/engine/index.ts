@@ -2290,6 +2290,7 @@ export class RunEngine {
     workerCell,
     workerLane,
     environmentId,
+    enforceDuplicateAttemptStart,
     tx,
   }: {
     runId: string;
@@ -2300,6 +2301,8 @@ export class RunEngine {
     workerCell?: string;
     workerLane?: string;
     environmentId?: string;
+    /** Force refusal of active attempts even when the global guard is log-only or off. */
+    enforceDuplicateAttemptStart?: boolean;
     tx?: PrismaClientOrTransaction;
   }): Promise<EngineStartRunAttemptResult> {
     return this.runAttemptSystem.startRunAttempt({
@@ -2311,6 +2314,7 @@ export class RunEngine {
       workerCell,
       workerLane,
       environmentId,
+      enforceDuplicateAttemptStart,
       tx,
     });
   }
@@ -2319,6 +2323,7 @@ export class RunEngine {
     runId,
     snapshotId,
     completion,
+    attemptNumber,
     forceRequeue,
     workerId,
     runnerId,
@@ -2327,6 +2332,7 @@ export class RunEngine {
     runId: string;
     snapshotId: string;
     completion: TaskRunExecutionResult;
+    attemptNumber?: number;
     /** Queue any retry instead of retrying immediately on the same runner. */
     forceRequeue?: boolean;
     workerId?: string;
@@ -2337,6 +2343,7 @@ export class RunEngine {
       runId,
       snapshotId,
       completion,
+      attemptNumber,
       forceRequeue,
       workerId,
       runnerId,

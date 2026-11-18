@@ -191,7 +191,6 @@ const requestFor = (handle: string, hostname = "api.example.com") => ({
 });
 
 describe("secret proxy integration", () => {
-  // Catches: a policy run resolving proxy-only variables outside its grant with a valid placeholder.
   postgresTest("restricts policy runs to their granted variables", async ({ prisma }) => {
     const f = await seed(prisma);
     const granted = await f.variable("GRANTED", "granted-value");
@@ -230,7 +229,6 @@ describe("secret proxy integration", () => {
     ).rejects.toBeInstanceOf(SecretProxyDeniedError);
   });
 
-  // Catches: a rotated value being paired with an old host policy, or snapshot locks surviving into key loading.
   postgresTest(
     "captures a consistent grant snapshot and commits before key loading",
     async ({ prisma }) => {
@@ -350,7 +348,6 @@ describe("secret proxy integration", () => {
       ).toEqual([{ handle, hostname: "new.example.com", value: "rotated" }]);
     }
   );
-  // Catches: storage I/O renewing the plaintext TTL, or an expired plaintext entry preventing fresh authorized decryption.
   postgresTest(
     "starts the plaintext TTL before I/O and allows fresh decryption after expiry",
     { timeout: 60_000 },
@@ -399,7 +396,6 @@ describe("secret proxy integration", () => {
       expect(fresh.expiresAtMs).toBeLessThanOrEqual(Date.now() + 30_000);
     }
   );
-  // Catches: retained-key requests expanding into full snapshots, unrequested ciphertext reads, and lost effective-value/placement limits.
   postgresTest(
     "returns requested grants only and bounds effective variables and execution hosts",
     async ({ prisma }) => {
@@ -495,7 +491,6 @@ describe("secret proxy integration", () => {
     }
   );
 
-  // Catches: UTF-16 lengths accepting leases above the Rust byte limit or rejecting escaped JSON below it.
   postgresTest(
     "bounds aggregate credential UTF-8 bytes, not string or escaped JSON length",
     async ({ prisma }) => {
@@ -533,7 +528,6 @@ describe("secret proxy integration", () => {
     }
   );
 
-  // Catches: cross-run or stale tokens authorizing secrets and extra unrequested grants leaking into responses.
   postgresTest(
     "resolves only authorized handles against a live run-store attempt",
     async ({ prisma }) => {
@@ -596,7 +590,6 @@ describe("secret proxy integration", () => {
       );
       expect(response.status).toBe(200);
       expect(response.headers.get("cache-control")).toBe("no-store");
-      // Catches: resolver refusals disappearing from exported telemetry or leaking request credentials into labels.
       const exported = (await telemetry.getMetrics()).flatMap((resource) =>
         resource.scopeMetrics.flatMap((scope) =>
           scope.metrics.filter((metric) => metric.descriptor.name === "secret_proxy.failures")
@@ -708,7 +701,6 @@ describe("secret proxy integration", () => {
     }
   );
 
-  // Catches: deletion cascading away concurrently enrolled policy while orphaned ciphertext becomes ordinary plaintext.
   postgresTest(
     "value deletion captures concurrent enrollment after taking the identity lock",
     { timeout: 60_000 },
@@ -802,7 +794,6 @@ describe("secret proxy integration", () => {
     }
   );
 
-  // Catches: build/export decryption of proxy-only ciphertext, child overrides weakening inherited policy, and runtime plaintext fallback when rollout or run-token support is missing.
   postgresTest(
     "filters before decryption, inherits policy, and delivers only stateless runtime handles",
     async ({ prisma }) => {
@@ -877,7 +868,6 @@ describe("secret proxy integration", () => {
       await expect(
         disabled.preflightRuntime(f.project.id, f.environment.id, proxyValues, true, true)
       ).rejects.toBeInstanceOf(SecretProxyDeniedError);
-      // Catches: changing the enabled tag type silently disabling the rollout dashboard and monitor filters.
       const disabledDenials = (await telemetry.getMetrics())
         .flatMap((resource) =>
           resource.scopeMetrics.flatMap((scope) =>
@@ -976,7 +966,6 @@ describe("secret proxy integration", () => {
         writer.setSecret(protectedValue.secretKey, { secret: "replacement" })
       ).rejects.toThrow("operator");
       await expect(writer.deleteSecret(protectedValue.secretKey)).rejects.toThrow("operator");
-      // Catches: a missing protected child value falling back to the ordinary parent's plaintext.
       await f.variable("CHILD_TOKEN", "ordinary-parent");
       const childOnly = await f.variable("CHILD_TOKEN", "protected-child", child.id);
       await enrollProxyOnlyValue(prisma, {
@@ -991,7 +980,6 @@ describe("secret proxy integration", () => {
     }
   );
 
-  // Catches: an unknown proxyConfig field (a restriction this version cannot enforce) being ignored.
   postgresTest("treats unrecognized proxy config as allowing no hosts", async ({ prisma }) => {
     const f = await seed(prisma);
     const secret = await f.variable("API_TOKEN", "credential");
@@ -1014,7 +1002,6 @@ describe("secret proxy integration", () => {
     ).rejects.toThrow("not authorized");
   });
 
-  // Catches: token expiry being ignored by authorization and legacy values escaping the plaintext TTL.
   postgresTest(
     "caps authorization by verified JWT expiry and conservatively bounds legacy credentials",
     async ({ prisma }) => {

@@ -46,8 +46,7 @@ describe("secret proxy lane", () => {
     }
   });
 
-  // Catches: warm-pool churn or checkpoint creation on the proxy lab lane, and disabled snapshot cleanup.
-  it("disables warm and checkpoint services only on the lab lane without disabling deletes", () => {
+  it("preserves warm services and snapshot deletes but disables checkpoints with the proxy enabled", () => {
     const services = {
       TRIGGER_WARM_START_URL: "http://warm.example",
       TRIGGER_WARM_START_DISPATCH_URL: "http://dispatch.example",
@@ -56,8 +55,8 @@ describe("secret proxy lane", () => {
       COMPUTE_SNAPSHOTS_ENABLED: "true",
     };
     const lab = Env.parse({ ...enabled, ...services });
-    expect(lab.TRIGGER_WARM_START_URL).toBeUndefined();
-    expect(lab.TRIGGER_WARM_START_DISPATCH_URL).toBeUndefined();
+    expect(lab.TRIGGER_WARM_START_URL).toBe(services.TRIGGER_WARM_START_URL);
+    expect(lab.TRIGGER_WARM_START_DISPATCH_URL).toBe(services.TRIGGER_WARM_START_DISPATCH_URL);
     expect(lab.TRIGGER_CHECKPOINT_URL).toBeUndefined();
     expect(lab.COMPUTE_SNAPSHOTS_ENABLED).toBe(false);
     expect(lab.TRIGGER_SNAPSHOT_DELETE_URL).toBe(services.TRIGGER_SNAPSHOT_DELETE_URL);

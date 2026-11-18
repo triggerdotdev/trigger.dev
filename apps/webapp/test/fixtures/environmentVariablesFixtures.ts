@@ -106,7 +106,6 @@ export async function createEnvironmentVariable(
   }
 }
 
-/** Marks a value proxy-only the way an operator does by hand: one row update, no checks. */
 export async function enrollProxyOnlyValue(
   db: Pick<PrismaClient, "environmentVariableValue">,
   options: { environmentId: string; variableId: string; allowedHosts: string[] }

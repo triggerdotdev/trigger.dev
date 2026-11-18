@@ -383,6 +383,7 @@ export class RunAttemptSystem {
     workerCell,
     workerLane,
     environmentId,
+    enforceDuplicateAttemptStart,
     tx,
   }: {
     runId: string;
@@ -393,6 +394,7 @@ export class RunAttemptSystem {
     workerCell?: string;
     workerLane?: string;
     environmentId?: string;
+    enforceDuplicateAttemptStart?: boolean;
     tx?: PrismaClientOrTransaction;
   }): Promise<EngineStartRunAttemptResult> {
     const prisma = tx ?? this.$.prisma;
@@ -425,7 +427,7 @@ export class RunAttemptSystem {
             });
           }
 
-          this.#checkDuplicateAttemptStart(latestSnapshot, runnerId);
+          this.#checkDuplicateAttemptStart(latestSnapshot, runnerId, enforceDuplicateAttemptStart);
 
           const taskRun = await this.$.runStore.findRun(
             {
@@ -757,6 +759,7 @@ export class RunAttemptSystem {
     runId,
     snapshotId,
     completion,
+    attemptNumber,
     forceRequeue,
     workerId,
     runnerId,
@@ -765,6 +768,7 @@ export class RunAttemptSystem {
     runId: string;
     snapshotId: string;
     completion: TaskRunExecutionResult;
+    attemptNumber?: number;
     forceRequeue?: boolean;
     workerId?: string;
     runnerId?: string;
@@ -776,6 +780,7 @@ export class RunAttemptSystem {
           runId,
           snapshotId,
           completion,
+          attemptNumber,
           tx: this.$.prisma,
           workerId,
           runnerId,
@@ -787,6 +792,7 @@ export class RunAttemptSystem {
           runId,
           snapshotId,
           completion,
+          attemptNumber,
           forceRequeue,
           tx: this.$.prisma,
           workerId,
@@ -801,6 +807,7 @@ export class RunAttemptSystem {
     runId,
     snapshotId,
     completion,
+    attemptNumber,
     tx,
     workerId,
     runnerId,
@@ -809,6 +816,7 @@ export class RunAttemptSystem {
     runId: string;
     snapshotId: string;
     completion: TaskRunSuccessfulExecutionResult;
+    attemptNumber?: number;
     tx: PrismaClientOrTransaction;
     workerId?: string;
     runnerId?: string;
@@ -827,6 +835,10 @@ export class RunAttemptSystem {
             this.$.runStore,
             environmentId
           );
+
+          if (attemptNumber !== undefined && attemptNumber !== latestSnapshot.attemptNumber) {
+            throw new ServiceValidationError("Completion attempt does not match snapshot", 400);
+          }
 
           if (latestSnapshot.id !== snapshotId) {
             return this.#settleOrRefuseStaleCompletion({
@@ -1074,6 +1086,7 @@ export class RunAttemptSystem {
     workerId,
     runnerId,
     completion,
+    attemptNumber,
     forceRequeue,
     resetQueueAttempts,
     environmentId,
@@ -1084,6 +1097,7 @@ export class RunAttemptSystem {
     workerId?: string;
     runnerId?: string;
     completion: TaskRunFailedExecutionResult;
+    attemptNumber?: number;
     forceRequeue?: boolean;
     // Defaults to !forceRequeue, so a forced requeue keeps spending the queue's redelivery budget.
     resetQueueAttempts?: boolean;
@@ -1103,6 +1117,10 @@ export class RunAttemptSystem {
             this.$.runStore,
             environmentId
           );
+
+          if (attemptNumber !== undefined && attemptNumber !== latestSnapshot.attemptNumber) {
+            throw new ServiceValidationError("Completion attempt does not match snapshot", 400);
+          }
 
           if (latestSnapshot.id !== snapshotId) {
             return this.#settleOrRefuseStaleCompletion({
@@ -2519,9 +2537,10 @@ export class RunAttemptSystem {
       EnhancedExecutionSnapshot,
       "id" | "runId" | "executionStatus" | "description" | "attemptNumber" | "runnerId"
     >,
-    runnerId: string | undefined
+    runnerId: string | undefined,
+    enforce = false
   ) {
-    const mode = this.options.duplicateAttemptStartCheck ?? "log";
+    const mode = enforce ? "enforce" : (this.options.duplicateAttemptStartCheck ?? "log");
     if (
       mode === "off" ||
       !isExecuting(latestSnapshot.executionStatus) ||

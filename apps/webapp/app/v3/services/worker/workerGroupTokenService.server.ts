@@ -710,7 +710,7 @@ export class AuthenticatedWorkerInstance extends WithRunEngine {
       environment.id,
       prepared.proxyValues,
       runTokenAvailable,
-      supportsSecretProxy === true && isWarmStart !== true
+      supportsSecretProxy === true
     );
 
     const stamped = acceptsWorkerStamp(this.type);
@@ -721,6 +721,7 @@ export class AuthenticatedWorkerInstance extends WithRunEngine {
       isWarmStart,
       workerCell: stamped ? workerCell : undefined,
       workerLane: stamped ? workerLane : undefined,
+      enforceDuplicateAttemptStart: supportsSecretProxy === true || proxy !== undefined,
       workerId: this.workerInstanceId,
       runnerId,
       environmentId,
@@ -808,7 +809,10 @@ export class AuthenticatedWorkerInstance extends WithRunEngine {
     if (environmentId && run.runtimeEnvironmentId !== environmentId) {
       throw new ServiceValidationError("Task run environment not found", 404);
     }
-    return { environment, pinned: pinnedRunPolicy(run.annotations) };
+    return {
+      environment,
+      pinned: pinnedRunPolicy(run.annotations),
+    };
   }
 
   // Normal runs retain TRIGGER_SECRET_KEY; proxy and policy runs fail closed if signing fails.
@@ -843,6 +847,7 @@ export class AuthenticatedWorkerInstance extends WithRunEngine {
     runFriendlyId,
     snapshotFriendlyId,
     completion,
+    attemptNumber,
     forceRequeue,
     runnerId,
     environmentId,
@@ -850,6 +855,7 @@ export class AuthenticatedWorkerInstance extends WithRunEngine {
     runFriendlyId: string;
     snapshotFriendlyId: string;
     completion: TaskRunExecutionResult;
+    attemptNumber?: number;
     forceRequeue?: boolean;
     runnerId?: string;
     environmentId?: string;
@@ -864,6 +870,7 @@ export class AuthenticatedWorkerInstance extends WithRunEngine {
       runId: fromFriendlyId(runFriendlyId),
       snapshotId: fromFriendlyId(snapshotFriendlyId),
       completion,
+      attemptNumber,
       forceRequeue,
       workerId: this.workerInstanceId,
       runnerId,

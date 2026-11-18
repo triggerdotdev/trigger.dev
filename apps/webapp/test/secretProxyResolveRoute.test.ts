@@ -17,7 +17,6 @@ const request = (path = "/engine/v1/secret-proxy/resolve") =>
 describe("secret proxy resolve route", () => {
   beforeEach(() => resolve.mockClear());
 
-  // Catches: the resolver being served by a webapp service that was not configured to serve it.
   it("does not exist on services without the resolver enabled", async () => {
     env.SECRET_PROXY_RESOLVER_ENABLED = false;
     expect((await action({ request: request() } as never)).status).toBe(404);
@@ -25,7 +24,6 @@ describe("secret proxy resolve route", () => {
     expect(resolve).not.toHaveBeenCalled();
   });
 
-  // Catches: a percent-encoded or case-changed path slipping past the public load balancer's path block.
   it("answers only the exact path on the resolver service", async () => {
     env.SECRET_PROXY_RESOLVER_ENABLED = true;
     for (const path of [

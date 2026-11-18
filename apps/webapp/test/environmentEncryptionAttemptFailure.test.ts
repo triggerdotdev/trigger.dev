@@ -259,8 +259,18 @@ containerTest(
       await expectStartable();
 
       const worker = workerFor(engine);
-      const start = () => startWith(worker);
-      await expect(start()).rejects.toMatchObject({ status: 503 });
+      await expect(startWith(worker)).rejects.toMatchObject({ status: 503 });
+      await expectStartable();
+      await expect(
+        worker.startRunAttempt({
+          runFriendlyId: run.friendlyId,
+          snapshotFriendlyId: message.snapshot.friendlyId,
+          environmentId: environment.id,
+          supportsRunTokenRefresh: true,
+          supportsSecretProxy: true,
+          isWarmStart: true,
+        })
+      ).rejects.toMatchObject({ status: 503 });
       await expectStartable();
 
       await prisma.environmentEncryptionKey.update({
@@ -269,7 +279,6 @@ containerTest(
       });
       await new Promise((resolve) => setTimeout(resolve, FAILURE_CACHE_EXPIRY_MS));
 
-      // Catches: unsupported proxy runtimes consuming an attempt before configuration is checked.
       const variable = await prisma.environmentVariable.findFirstOrThrow({
         where: { projectId: environment.projectId, key: "CUSTOMER_SECRET" },
       });
@@ -289,17 +298,7 @@ containerTest(
         })
       ).rejects.toThrow("Worker does not support secret proxy");
       await expectStartable();
-      await expect(
-        workerFor(engine).startRunAttempt({
-          runFriendlyId: run.friendlyId,
-          snapshotFriendlyId: message.snapshot.friendlyId,
-          environmentId: environment.id,
-          supportsRunTokenRefresh: true,
-          supportsSecretProxy: true,
-          isWarmStart: true,
-        })
-      ).rejects.toThrow("Worker does not support secret proxy");
-      await expectStartable();
+
       await prisma.organization.update({
         where: { id: environment.organizationId },
         data: {
@@ -332,8 +331,14 @@ containerTest(
         data: { isProxyOnly: false, version: { increment: 1 } },
       });
 
-      // Catches: env-scoped starts unnecessarily depending on the replica having replayed the run.
-      const started = await startWith(workerFor(laggingEngine));
+      // Catches: restored keys still blocking warm starts or requiring the replica to replay the run.
+      const started = await workerFor(laggingEngine).startRunAttempt({
+        runFriendlyId: run.friendlyId,
+        snapshotFriendlyId: message.snapshot.friendlyId,
+        environmentId: environment.id,
+        supportsSecretProxy: true,
+        isWarmStart: true,
+      });
       expect(started.run.attemptNumber).toBe(1);
       expect(started.snapshot.executionStatus).toBe("EXECUTING");
       expect(started.envVars.CUSTOMER_SECRET).toBe("secret");

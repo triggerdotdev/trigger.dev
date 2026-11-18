@@ -6,6 +6,7 @@ export default defineConfig({
   test: {
     include: [
       "src/services/secretProxyBindings.test.ts",
+      "src/services/secretProxyPlacements.test.ts",
       "src/services/secretProxyValidation.test.ts",
       "src/env.test.ts",
       "src/workloadServer/workloadServer.attemptStart.test.ts",
