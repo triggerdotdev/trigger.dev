@@ -7,7 +7,8 @@ export const AUDIT_LOG_PERMISSION = "manage:audit-logs";
 
 /**
  * Whether the org itself can see its audit log: the org's `hasAuditLogsAccess` override, then the
- * global flag, then off. No admin bypass: for paths that act as the org, like the audit events API.
+ * global flag, then off. No admin bypass: for paths that act as the org, like the audit events API,
+ * and for what the Roles page lists.
  */
 export async function organizationHasAuditLogsAccess(
   organizationId: string,

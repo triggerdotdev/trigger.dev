@@ -25,7 +25,7 @@ import { useOrganization } from "~/hooks/useOrganizations";
 import { useShowSelfServe } from "~/hooks/useShowSelfServe";
 import { resolveOrgIdFromSlug } from "~/models/organization.server";
 import {
-  hasAuditLogsAccess,
+  organizationHasAuditLogsAccess,
   permissionsShownToOrg,
 } from "~/services/auditLogs/auditLogsAccess.server";
 import { rbac } from "~/services/rbac.server";
@@ -69,7 +69,8 @@ export const loader = dashboardLoader(
       // OSS self-host has no RBAC plugin.
       rbac.isUsingPlugin(),
       rbac.getUserRole({ userId: user.id, organizationId: orgId }),
-      hasAuditLogsAccess(user, orgId),
+      // The org's access, without the admin bypass: staff see the permissions the org sees.
+      organizationHasAuditLogsAccess(orgId),
     ]);
 
     return typedjson({
