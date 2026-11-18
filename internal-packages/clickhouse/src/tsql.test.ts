@@ -4,6 +4,7 @@ import { z } from "zod";
 import { ClickhouseClient } from "./client/client.js";
 import { executeTSQL, createTSQLExecutor, type TableSchema } from "./client/tsql.js";
 import { insertTaskRuns } from "./taskRuns.js";
+import { insertMetrics } from "./metrics.js";
 import { column } from "@internal/tsql";
 
 /**
@@ -1975,6 +1976,118 @@ describe("TSQL Error Log Levels", () => {
       expect(error).not.toBeNull();
       expect(logged(errorSpy)).toContain("Error querying clickhouse");
       expect(logged(warnSpy)).not.toContain("Query exceeded a ClickHouse limit");
+    }
+  );
+});
+
+describe("TSQL correlated subqueries", () => {
+  const tenant = {
+    organization_id: { op: "eq" as const, value: "org_tenant1" },
+    project_id: { op: "eq" as const, value: "proj_tenant1" },
+    environment_id: { op: "eq" as const, value: "env_tenant1" },
+  };
+
+  // Catches: a subquery reading a stored column of the outer row that the schema doesn't list
+  clickhouseTest(
+    "rejects a WHERE subquery that reads the outer row, even if the caller enables it",
+    async ({ clickhouseContainer }) => {
+      const client = new ClickhouseClient({
+        name: "test",
+        url: clickhouseContainer.getConnectionUrl(),
+      });
+      await insertTaskRuns(client, { async_insert: 0 })([
+        createTaskRun({ run_id: "run_correlated1" }),
+      ]);
+
+      for (const query of [
+        "SELECT count() AS n FROM task_runs WHERE (SELECT engine) = 'V2'",
+        "SELECT count() AS n FROM task_runs WHERE (SELECT any(engine) FROM (SELECT 1)) = 'V2'",
+      ]) {
+        const [error, result] = await executeTSQL(client, {
+          name: "test-correlated-subquery",
+          query,
+          schema: z.any(),
+          enforcedWhereClause: tenant,
+          tableSchema: [taskRunsSchema],
+          clickhouseSettings: { allow_experimental_correlated_subqueries: 1 },
+        });
+
+        expect(error, query).not.toBeNull();
+        expect(result, query).toBeNull();
+      }
+
+      const [error, result] = await executeTSQL(client, {
+        name: "test-uncorrelated-subquery",
+        query: "SELECT run_id FROM task_runs WHERE run_id IN (SELECT run_id FROM task_runs)",
+        schema: z.object({ run_id: z.string() }),
+        enforcedWhereClause: tenant,
+        tableSchema: [taskRunsSchema],
+      });
+
+      expect(error).toBeNull();
+      expect(result?.rows).toEqual([{ run_id: "run_correlated1" }]);
+    }
+  );
+});
+
+describe("TSQL table aliases", () => {
+  const metricsSchema: TableSchema = {
+    name: "metrics",
+    clickhouseName: "trigger_dev.metrics_v1",
+    columns: {
+      metric_name: { name: "metric_name", ...column("String") },
+      organization_id: { name: "organization_id", ...column("String") },
+      project_id: { name: "project_id", ...column("String") },
+      environment_id: { name: "environment_id", ...column("String") },
+    },
+    tenantColumns: {
+      organizationId: "organization_id",
+      projectId: "project_id",
+      environmentId: "environment_id",
+    },
+  };
+
+  // Catches: a table alias naming another table's physical name moving its tenant guard
+  clickhouseTest(
+    "rejects a table alias that names another table's physical table",
+    async ({ clickhouseContainer }) => {
+      const client = new ClickhouseClient({
+        name: "test",
+        url: clickhouseContainer.getConnectionUrl(),
+      });
+      await insertTaskRuns(client, { async_insert: 0 })([createTaskRun({ run_id: "run_alias1" })]);
+      const [metricInsertError] = await insertMetrics(client)(
+        [
+          {
+            organization_id: "org_tenant2",
+            project_id: "proj_tenant2",
+            environment_id: "env_tenant2",
+            metric_name: "other_tenant_metric",
+            metric_type: "gauge",
+            metric_subject: "",
+            bucket_start: new Date().toISOString().slice(0, 19).replace("T", " "),
+            value: 1,
+            attributes: {},
+          },
+        ],
+        { params: { clickhouse_settings: { async_insert: 0 } } }
+      );
+      expect(metricInsertError).toBeNull();
+
+      const [error, result] = await executeTSQL(client, {
+        name: "test-physical-name-alias",
+        query: "SELECT metric_name FROM task_runs AS r JOIN metrics AS task_runs_v2 ON 1 = 1",
+        schema: z.object({ metric_name: z.string() }),
+        enforcedWhereClause: {
+          organization_id: { op: "eq", value: "org_tenant1" },
+          project_id: { op: "eq", value: "proj_tenant1" },
+          environment_id: { op: "eq", value: "env_tenant1" },
+        },
+        tableSchema: [taskRunsSchema, metricsSchema],
+      });
+
+      expect(error).not.toBeNull();
+      expect(result).toBeNull();
     }
   );
 });

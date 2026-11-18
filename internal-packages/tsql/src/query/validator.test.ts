@@ -126,3 +126,51 @@ describe("validateQuery", () => {
     });
   });
 });
+
+describe("identifier resolution", () => {
+  const eventsSchema: TableSchema = {
+    name: "events",
+    clickhouseName: "trigger_dev.task_events_v2",
+    columns: {
+      run_id: { name: "run_id", ...column("String") },
+      output: { name: "output", ...column("JSON") },
+    },
+  };
+
+  // Catches: the editor shows a query as valid that fails to compile
+  it.each([
+    "SELECT tuple(*) FROM runs",
+    "SELECT [*] FROM runs",
+    "SELECT count(DISTINCT *) FROM runs",
+    "SELECT id FROM runs ORDER BY *",
+    "SELECT task_runs_v2.id FROM runs",
+    "SELECT trigger_dev.task_runs_v2.id FROM runs",
+    "SELECT x.* FROM runs AS r",
+    "SELECT R.id FROM runs AS r",
+    "SELECT count(R.*) FROM runs AS r",
+    "SELECT 1 AS task_runs_v2, task_runs_v2.id FROM runs",
+    "SELECT 1 AS trigger_dev, trigger_dev.task_runs_v2.id FROM runs",
+    "SELECT task_runs_v2.* FROM runs, (SELECT 1 AS x) AS task_runs_v2",
+    "SELECT run_id FROM runs AS r JOIN events AS task_runs_v2 ON 1 = 1",
+    "SELECT item FROM runs ARRAY JOIN [1] AS item",
+    "SELECT r.id FROM runs r JOIN (SELECT run_id FROM events) m ON m.run_id = r.id WHERE task_runs_v2.id = 'a'",
+  ])("reports an error for %s", (query) => {
+    expect(validateSQL(query, [runsSchema, eventsSchema]).valid).toBe(false);
+  });
+
+  // Catches: the editor flags a query that compiles
+  it.each([
+    "SELECT *, count(*) FROM runs GROUP BY id",
+    "SELECT r.*, COUNT(r.*) FROM runs AS r GROUP BY r.id",
+    "SELECT output.message FROM events",
+    "SELECT s.* FROM (SELECT id FROM runs) AS s",
+    "SELECT r.id, m.run_id FROM runs r JOIN (SELECT run_id FROM events) m ON m.run_id = r.id",
+    "SELECT output.message FROM (SELECT output FROM events) AS s",
+    "WITH output AS o SELECT o.message FROM events",
+    "WITH output AS o SELECT o FROM events",
+    "SELECT item.id FROM events ARRAY JOIN [JSONExtract('{\"id\":\"a\"}', 'Tuple(id String)')] AS item",
+  ])("reports no error for %s", (query) => {
+    const result = validateSQL(query, [runsSchema, eventsSchema]);
+    expect(result.issues.filter((i) => i.severity === "error")).toEqual([]);
+  });
+});
