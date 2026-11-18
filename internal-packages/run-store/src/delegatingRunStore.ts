@@ -7,7 +7,7 @@
 // argument, does not compile. That is the whole point of the shape. An untyped forwarder would let
 // both mistakes through, because a pass-through has no other behaviour to catch them.
 //
-// Seven members are overloaded. Their overloads are declared so callers keep the full contract, and
+// Six members are overloaded. Their overloads are declared so callers keep the full contract, and
 // their single implementation signature is the one place a cast appears: TypeScript cannot express
 // one body that satisfies an overload set without it.
 //
@@ -36,7 +36,6 @@ import type {
   CreateFailedRunInput,
   CreateRunInput,
   ExpireSnapshotInput,
-  FinalizeRunData,
   ForWaitpointCompletionContext,
   IdempotencyKeyRunMatch,
   LatestExecutionSnapshotRead,
@@ -178,27 +177,6 @@ export class DelegatingRunStore implements RunStore {
     tx?: PrismaClientOrTransaction
   ): Promise<Prisma.TaskRunGetPayload<{ select: S }>> {
     return this.delegate.failRunPermanently(runId, data, args, tx);
-  }
-
-  finalizeRun<S extends Prisma.TaskRunSelect>(
-    runId: string,
-    data: FinalizeRunData,
-    args: { select: S },
-    tx?: PrismaClientOrTransaction
-  ): Promise<Prisma.TaskRunGetPayload<{ select: S }>>;
-  finalizeRun<I extends Prisma.TaskRunInclude>(
-    runId: string,
-    data: FinalizeRunData,
-    args: { include: I },
-    tx?: PrismaClientOrTransaction
-  ): Promise<Prisma.TaskRunGetPayload<{ include: I }>>;
-  finalizeRun(
-    runId: string,
-    data: FinalizeRunData,
-    tx?: PrismaClientOrTransaction
-  ): Promise<TaskRun>;
-  finalizeRun(...args: unknown[]): unknown {
-    return (this.delegate.finalizeRun as (...a: unknown[]) => unknown).apply(this.delegate, args);
   }
 
   expireRun<S extends Prisma.TaskRunSelect>(
@@ -751,29 +729,6 @@ export class DelegatingRunStore implements RunStore {
     client?: ReadClient
   ): Promise<number> {
     return this.delegate.countBatchTaskRunItems(where, client);
-  }
-
-  updateManyBatchTaskRunItems(
-    args: Prisma.BatchTaskRunItemUpdateManyArgs,
-    tx?: PrismaClientOrTransaction
-  ): Promise<Prisma.BatchPayload> {
-    return this.delegate.updateManyBatchTaskRunItems(args, tx);
-  }
-
-  findManyBatchTaskRunItems<I extends Prisma.BatchTaskRunItemInclude = {}>(
-    where: { taskRunId?: string; batchTaskRunId?: string },
-    args?: { include?: I },
-    client?: ReadClient
-  ): Promise<Prisma.BatchTaskRunItemGetPayload<{ include: I }>[]> {
-    return this.delegate.findManyBatchTaskRunItems(where, args, client);
-  }
-
-  findBatchTaskRunItem<I extends Prisma.BatchTaskRunItemInclude = {}>(
-    where: { batchTaskRunId: string; taskRunId?: string },
-    args?: { include?: I },
-    client?: ReadClient
-  ): Promise<Prisma.BatchTaskRunItemGetPayload<{ include: I }> | null> {
-    return this.delegate.findBatchTaskRunItem(where, args, client);
   }
 
   upsertWaitpointTag(

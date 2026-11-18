@@ -27,7 +27,6 @@ export const ROUTES_BY_GIVEN_RUN_ID: readonly string[] = [
   "markRunWaitpointsOnStore",
   "cancelRun",
   "failRunPermanently",
-  "finalizeRun",
   "expireRun",
   "lockRunToWorker",
   "parkPendingVersion",
@@ -161,13 +160,6 @@ export const PLACEMENT_SITES: readonly PlacementSite[] = [
     why: "Routes by batch id when the filter names one, and otherwise sums across every store. An updateMany reports zero rows rather than failing, so the fan-out is what keeps a filtered update from silently skipping a shard.",
   },
   {
-    method: "updateManyBatchTaskRunItems",
-    basis: "fan-out",
-    missMode: "silent",
-    routes: ["#routeOrNew(id)", "#sumCounts((store) => store.updateManyBatchTaskRunItems(args))"],
-    why: "Same shape as updateManyBatchTaskRun: id when available, every store otherwise.",
-  },
-  {
     method: "createWaitpoint",
     basis: "own-id",
     missMode: "silent",
@@ -245,7 +237,5 @@ export const READ_ONLY_METHODS: readonly string[] = [
   "findBatchTaskRunByFriendlyId",
   "findBatchTaskRunByIdempotencyKey",
   "countBatchTaskRunItems",
-  "findManyBatchTaskRunItems",
-  "findBatchTaskRunItem",
   "findManyWaitpointTags",
 ];

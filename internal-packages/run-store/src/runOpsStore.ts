@@ -22,7 +22,6 @@ import type {
   CreateFailedRunInput,
   CreateRunInput,
   ExpireSnapshotInput,
-  FinalizeRunData,
   ForWaitpointCompletionContext,
   IdempotencyKeyRunMatch,
   LatestExecutionSnapshotRead,
@@ -1019,37 +1018,6 @@ export class RoutingRunStore implements RunStore {
     tx?: PrismaClientOrTransaction
   ): Promise<Prisma.TaskRunGetPayload<{ select: S }>> {
     return (await this.#routeForWrite(runId)).failRunPermanently(runId, data, args);
-  }
-
-  finalizeRun<S extends Prisma.TaskRunSelect>(
-    runId: string,
-    data: FinalizeRunData,
-    args: { select: S },
-    tx?: PrismaClientOrTransaction
-  ): Promise<Prisma.TaskRunGetPayload<{ select: S }>>;
-  finalizeRun<I extends Prisma.TaskRunInclude>(
-    runId: string,
-    data: FinalizeRunData,
-    args: { include: I },
-    tx?: PrismaClientOrTransaction
-  ): Promise<Prisma.TaskRunGetPayload<{ include: I }>>;
-  finalizeRun(
-    runId: string,
-    data: FinalizeRunData,
-    tx?: PrismaClientOrTransaction
-  ): Promise<TaskRun>;
-  async finalizeRun(
-    runId: string,
-    data: FinalizeRunData,
-    argsOrTx?: { select?: unknown; include?: unknown } | PrismaClientOrTransaction,
-    _tx?: PrismaClientOrTransaction
-  ): Promise<unknown> {
-    // A finalize targets an existing run — route by its id. NEVER forward the caller's control-plane
-    // tx into the routed write (§0.2); the finalize + its co-resident follow-ups need no cross-DB tx.
-    // Only the select/include projection is forwarded; any passed tx is dropped.
-    const args = selectOrIncludeArgs(argsOrTx);
-    const store = await this.#routeForWrite(runId);
-    return (store.finalizeRun as (...rest: unknown[]) => Promise<unknown>)(runId, data, args);
   }
 
   async expireRun<S extends Prisma.TaskRunSelect>(
@@ -2333,49 +2301,6 @@ export class RoutingRunStore implements RunStore {
     // resolves to the owning store's OWN primary.
     const store = this.#routeOrNew(where.batchTaskRunId);
     return store.countBatchTaskRunItems(where, RoutingRunStore.#ownPrimary(store, client));
-  }
-
-  // Route by item `id` or `batchTaskRunId` when scalar; else fan out to both and sum.
-  async updateManyBatchTaskRunItems(
-    args: Prisma.BatchTaskRunItemUpdateManyArgs,
-    tx?: PrismaClientOrTransaction
-  ): Promise<Prisma.BatchPayload> {
-    // Items co-reside with their batch; route by batchTaskRunId (residency-encoding) first. The item
-    // id is a cuid that always classifies LEGACY, so leading with it misroutes a NEW batch's items.
-    const id =
-      RoutingRunStore.#scalarField(args.where, "batchTaskRunId") ??
-      RoutingRunStore.#scalarId(args.where);
-    if (id !== undefined) {
-      const store = this.#routeOrNew(id);
-      return store.updateManyBatchTaskRunItems(args, undefined);
-    }
-    return this.#sumCounts((store) => store.updateManyBatchTaskRunItems(args));
-  }
-
-  // An item co-resides with its batch AND its child run on one DB (both FKs local), so route by
-  // batchTaskRunId (residency-encoding) first, else by taskRunId — both classify to the same store.
-  // Never forward the caller's client verbatim; its presence resolves to the owning store's OWN primary.
-  findManyBatchTaskRunItems<I extends Prisma.BatchTaskRunItemInclude = {}>(
-    where: { taskRunId?: string; batchTaskRunId?: string },
-    args?: { include?: I },
-    client?: ReadClient
-  ): Promise<Prisma.BatchTaskRunItemGetPayload<{ include: I }>[]> {
-    if (where.batchTaskRunId === undefined && where.taskRunId === undefined) {
-      throw new Error("findManyBatchTaskRunItems requires batchTaskRunId or taskRunId to route");
-    }
-    const store = this.#routeOrNew(where.batchTaskRunId ?? where.taskRunId);
-    return store.findManyBatchTaskRunItems(where, args, RoutingRunStore.#ownPrimary(store, client));
-  }
-
-  // Route by batchTaskRunId (the item co-resides with its batch). Never forward the caller's client
-  // verbatim; its presence resolves to the owning store's OWN primary.
-  findBatchTaskRunItem<I extends Prisma.BatchTaskRunItemInclude = {}>(
-    where: { batchTaskRunId: string; taskRunId?: string },
-    args?: { include?: I },
-    client?: ReadClient
-  ): Promise<Prisma.BatchTaskRunItemGetPayload<{ include: I }> | null> {
-    const store = this.#routeOrNew(where.batchTaskRunId);
-    return store.findBatchTaskRunItem(where, args, RoutingRunStore.#ownPrimary(store, client));
   }
 
   // ---------------------------------------------------------------------------

@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { RoutingRunStore } from "./runOpsStore.js";
 import type { RoutingStoreMetrics } from "./routingStoreMetrics.js";
-import type { FinalizeRunData, RunStore } from "./types.js";
+import type { RunStore } from "./types.js";
 
 // Pure routing unit tests for the five store methods added in Track 1. No DB: each slot is a fake
 // RunStore that records the calls it receives, so the assertions are purely about WHICH store the
@@ -58,9 +58,6 @@ function fakeStore(slot: Slot): FakeStore {
     slot,
     calls,
     primaryReadClient: { __primary: slot },
-    finalizeRun: record("finalizeRun", { slot, kind: "run" }),
-    findManyBatchTaskRunItems: record("findManyBatchTaskRunItems", [{ slot }]),
-    findBatchTaskRunItem: record("findBatchTaskRunItem", { slot }),
     upsertWaitpointTag: record("upsertWaitpointTag", { slot }),
     findManyWaitpointTags: record("findManyWaitpointTags", tagRows(slot)),
     // The gen-1 pair probes findWaitpoint on its home store before completing; a truthy row means
@@ -96,40 +93,7 @@ function buildRouter(topology: Topology, metrics?: RoutingStoreMetrics) {
   return { router, newStore, legacyStore, gen2Stores };
 }
 
-const DATA: FinalizeRunData = { status: "COMPLETED_SUCCESSFULLY", completedAt: new Date() };
-
 for (const topology of TOPOLOGIES) {
-  describe(`RoutingRunStore.finalizeRun (${topology.name})`, () => {
-    it("routes by runId and forwards the projection, never the tx", async () => {
-      const { router, newStore, legacyStore } = buildRouter(topology);
-      const projection = { select: { id: true } };
-      await router.finalizeRun("new_run", DATA, projection);
-      expect(newStore.calls).toHaveLength(1);
-      expect(newStore.calls[0]?.args).toEqual(["new_run", DATA, projection]);
-      expect(legacyStore.calls).toHaveLength(0);
-    });
-
-    it("routes a cuid/legacy runId to the legacy store", async () => {
-      const { router, newStore, legacyStore } = buildRouter(topology);
-      await router.finalizeRun("legacy_run", DATA, { include: { attempts: true } });
-      expect(legacyStore.calls[0]?.args).toEqual([
-        "legacy_run",
-        DATA,
-        { include: { attempts: true } },
-      ]);
-      expect(newStore.calls).toHaveLength(0);
-    });
-
-    it("drops a caller-passed control-plane tx (never threaded into the routed write)", async () => {
-      const { router, legacyStore } = buildRouter(topology);
-      const controlPlaneTx = { $fake: "cp-tx" };
-      await router.finalizeRun("legacy_run", DATA, controlPlaneTx as never);
-      // The tx is neither a select/include projection nor forwarded: the sub-store sees a 3-arg call
-      // whose projection slot is undefined.
-      expect(legacyStore.calls[0]?.args).toEqual(["legacy_run", DATA, undefined]);
-    });
-  });
-
   describe(`RoutingRunStore.markWaitpointCompleted (${topology.name})`, () => {
     const COMPLETION = { output: { value: "{}", type: "application/json", isError: false } };
 
@@ -152,43 +116,6 @@ for (const topology of TOPOLOGIES) {
       const legacyCalls = legacyStore.calls.filter((c) => c.method === "markWaitpointCompleted");
       expect(legacyCalls[0]?.args).toEqual(["legacy_wp", COMPLETION]);
       expect(newStore.calls.filter((c) => c.method === "markWaitpointCompleted")).toHaveLength(0);
-    });
-  });
-
-  describe(`RoutingRunStore.findManyBatchTaskRunItems (${topology.name})`, () => {
-    it("routes by batchTaskRunId first", async () => {
-      const { router, newStore, legacyStore } = buildRouter(topology);
-      await router.findManyBatchTaskRunItems({
-        batchTaskRunId: "new_batch",
-        taskRunId: "legacy_run",
-      });
-      expect(newStore.calls[0]?.method).toBe("findManyBatchTaskRunItems");
-      expect(legacyStore.calls).toHaveLength(0);
-    });
-
-    it("falls back to taskRunId when no batchTaskRunId is present", async () => {
-      const { router, newStore, legacyStore } = buildRouter(topology);
-      await router.findManyBatchTaskRunItems({ taskRunId: "legacy_run" });
-      expect(legacyStore.calls[0]?.method).toBe("findManyBatchTaskRunItems");
-      expect(newStore.calls).toHaveLength(0);
-    });
-
-    it("escalates a caller client to the owning store's own primary (read-your-writes)", async () => {
-      const { router, newStore } = buildRouter(topology);
-      // A non-replica client object signals read-your-writes; it must NOT be forwarded verbatim.
-      await router.findManyBatchTaskRunItems({ batchTaskRunId: "new_batch" }, undefined, {
-        writer: true,
-      } as never);
-      expect(newStore.calls[0]?.args[2]).toEqual({ __primary: "new" });
-    });
-  });
-
-  describe(`RoutingRunStore.findBatchTaskRunItem (${topology.name})`, () => {
-    it("routes by batchTaskRunId", async () => {
-      const { router, newStore, legacyStore } = buildRouter(topology);
-      await router.findBatchTaskRunItem({ batchTaskRunId: "legacy_batch", taskRunId: "new_run" });
-      expect(legacyStore.calls[0]?.method).toBe("findBatchTaskRunItem");
-      expect(newStore.calls).toHaveLength(0);
     });
   });
 

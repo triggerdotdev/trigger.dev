@@ -24,7 +24,6 @@ export const RUN_STORE_METHOD_NAMES = [
   "markRunWaitpointsOnStore",
   "cancelRun",
   "failRunPermanently",
-  "finalizeRun",
   "expireRun",
   "expireRunsBatch",
   "lockRunToWorker",
@@ -83,9 +82,6 @@ export const RUN_STORE_METHOD_NAMES = [
   "findBatchTaskRunByIdempotencyKey",
   "updateManyBatchTaskRun",
   "countBatchTaskRunItems",
-  "updateManyBatchTaskRunItems",
-  "findManyBatchTaskRunItems",
-  "findBatchTaskRunItem",
   "upsertWaitpointTag",
   "findManyWaitpointTags",
 ] as const;
