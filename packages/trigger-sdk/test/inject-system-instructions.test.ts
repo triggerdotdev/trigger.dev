@@ -71,7 +71,6 @@ describe("chat.inject with a system role", () => {
 
     try {
       await harness.sendMessage({ id: "u1", role: "user", parts: [{ type: "text", text: "one" }] });
-      await new Promise((r) => setTimeout(r, 40));
 
       const turn = await harness.sendMessage({
         id: "u2",
@@ -209,10 +208,8 @@ describe("chat.inject with a system role", () => {
 
     try {
       await harness.sendMessage({ id: "u1", role: "user", parts: [{ type: "text", text: "one" }] });
-      await new Promise((r) => setTimeout(r, 40));
 
       await harness.sendMessage({ id: "u2", role: "user", parts: [{ type: "text", text: "two" }] });
-      await new Promise((r) => setTimeout(r, 40));
 
       await harness.sendMessage({
         id: "u3",
@@ -267,10 +264,8 @@ describe("chat.inject with a system role", () => {
 
     try {
       await harness.sendMessage({ id: "u1", role: "user", parts: [{ type: "text", text: "one" }] });
-      await new Promise((r) => setTimeout(r, 40));
 
       await harness.sendMessage({ id: "u2", role: "user", parts: [{ type: "text", text: "two" }] });
-      await new Promise((r) => setTimeout(r, 40));
 
       await harness.sendMessage({
         id: "u3",
@@ -323,7 +318,6 @@ describe("chat.inject with a system role", () => {
     try {
       for (const id of ["u1", "u2", "u3", "u4"]) {
         await harness.sendMessage({ id, role: "user", parts: [{ type: "text", text: id }] });
-        await new Promise((r) => setTimeout(r, 40));
       }
 
       const injectionsSeenOn = (turn: number) => {

@@ -72,7 +72,6 @@ describe("one-shot instructions around an action", () => {
       await harness.sendMessage(userMessage("m1", "u-1"));
       await waitFor(() => seen.length >= 1, "turn 0");
       await harness.sendAction({ type: "note" });
-      await new Promise((r) => setTimeout(r, 60));
       // No model call for the action.
       expect(seen).toHaveLength(1);
       await harness.sendMessage(userMessage("m2", "u-2"));
