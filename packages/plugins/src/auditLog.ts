@@ -221,6 +221,13 @@ export type AuditLogEventQuery = {
   environmentId?: string;
   /** Matches events involving a credential whose last 4 characters are these. */
   keyLast4?: string;
+  /** Matches events whose target has exactly this name, e.g. an env var key. */
+  targetName?: string;
+  /**
+   * Matches events made with this credential, by its fingerprint id. The host resolves the
+   * credential the user picked; events made before the credential had a fingerprint don't match.
+   */
+  credentialFingerprintId?: string;
   /** From the previous page's `nextCursor`. */
   cursor?: string;
   limit: number;
