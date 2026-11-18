@@ -669,12 +669,12 @@ describe("RoutingRunStore — mixed-residency matrix (cuid #legacy + run-ops id 
   );
 
   // ── Case 7: findManyTaskRunWaitpoints with edges whose relations STRADDLE DBs ──
-  // An edge co-locates with its RUN, but its `waitpoint`/`taskRun` relations can live on the OTHER DB
+  // An edge co-locates with its RUN, but its `waitpoint` relation can live on the OTHER DB
   // (a cuid token blocking a run-ops run, and vice versa). The per-leg scalar query is stripped of the
-  // relation keys; the router re-hydrates `waitpoint`/`taskRun` across BOTH DBs. Exercises BOTH
+  // relation key; the router re-hydrates `waitpoint` across BOTH DBs. Exercises BOTH
   // straddle directions in one read by querying both edges via { taskRunId: { in } }.
   heteroRunOpsPostgresTest(
-    "case 7: findManyTaskRunWaitpoints rehydrates waitpoint/taskRun relations across both DBs (both straddle directions)",
+    "case 7: findManyTaskRunWaitpoints rehydrates the waitpoint relation across both DBs (both straddle directions)",
     async ({ prisma14, prisma17 }) => {
       const { router } = makeSplitRouter(prisma14, prisma17);
       const env = await seedSharedEnv(prisma14, "m7");
@@ -731,7 +731,7 @@ describe("RoutingRunStore — mixed-residency matrix (cuid #legacy + run-ops id 
       expect(await prisma17.taskRunWaitpoint.count({ where: { taskRunId: legacyRun } })).toBe(0);
 
       // One read spanning both runs: both edges returned (deduped by id), and each edge's `waitpoint`
-      // + `taskRun` re-hydrated from whichever DB holds them.
+      // re-hydrated from whichever DB holds it.
       const edges = (await router.findManyTaskRunWaitpoints({
         where: { taskRunId: { in: [newRun, legacyRun] } },
         select: {
@@ -739,25 +739,22 @@ describe("RoutingRunStore — mixed-residency matrix (cuid #legacy + run-ops id 
           taskRunId: true,
           waitpointId: true,
           waitpoint: { select: { id: true, status: true } },
-          taskRun: { select: { id: true } },
         },
       })) as Array<Record<string, any>>;
 
       expect(edges).toHaveLength(2);
       const byRun = new Map(edges.map((e) => [e.taskRunId as string, e]));
 
-      // Direction A edge: waitpoint hydrated from #legacy (cuid token), taskRun is the #new run.
+      // Direction A edge: waitpoint hydrated from #legacy (cuid token).
       const aEdge = byRun.get(newRun)!;
       expect(aEdge.waitpoint?.id).toBe(legacyToken);
       expect(aEdge.waitpoint?.status).toBe("PENDING");
-      expect(aEdge.taskRun?.id).toBe(newRun);
 
       // Direction B edge: waitpoint hydrated from the AUTHORITATIVE #new copy (COMPLETED), proving the
       // relation was re-resolved cross-DB and NEW won the dedup over the stale local #legacy mirror.
       const bEdge = byRun.get(legacyRun)!;
       expect(bEdge.waitpoint?.id).toBe(newToken);
       expect(bEdge.waitpoint?.status).toBe("COMPLETED");
-      expect(bEdge.taskRun?.id).toBe(legacyRun);
     }
   );
 

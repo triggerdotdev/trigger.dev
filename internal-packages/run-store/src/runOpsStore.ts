@@ -1652,14 +1652,6 @@ export class RoutingRunStore implements RunStore {
     client?: ReadClient,
     opts?: WaitpointColocationOptions
   ): Promise<Prisma.WaitpointGetPayload<T> | null> {
-    // A waitpoint's blockingTaskRuns co-locate with
-    // the RUN, not the waitpoint (the edge rows are written on the run's DB). So the
-    // store that holds the waitpoint hydrates them from its own client only and MISSES a cross-DB
-    // target. Strip those keys from the per-leg query and re-resolve them across BOTH DBs here,
-    // mirroring findManyTaskRunWaitpoints.
-    const { scalarArgs, relations } = splitWaitpointRelationProjection(
-      args as Record<string, unknown>
-    );
     const id = RoutingRunStore.#waitpointId((args as { where?: unknown }).where);
     // A colocated lookup (no id, resolved via `coLocateWithRunId`) is the (env,idempotencyKey) dedup
     // probe of createDateTimeWaitpoint/createManualWaitpoint: read-your-writes within the owning
@@ -1675,24 +1667,18 @@ export class RoutingRunStore implements RunStore {
     const row =
       store !== undefined
         ? ((await store.findWaitpoint(
-            scalarArgs as typeof args,
+            args,
             coLocatedDedup ? store.primaryReadClient : RoutingRunStore.#ownPrimary(store, client)
           )) as Record<string, unknown> | null)
         : ((await this.#probeFirst((probed) =>
-            probed.findWaitpoint(
-              scalarArgs as typeof args,
-              RoutingRunStore.#ownPrimary(probed, client)
-            )
+            probed.findWaitpoint(args, RoutingRunStore.#ownPrimary(probed, client))
           )) as Record<string, unknown> | null);
-    if (row) {
-      await this.#reresolveWaitpointRelationsCrossDb(row, relations, client);
-    }
     return row as Prisma.WaitpointGetPayload<T> | null;
   }
 
   // Read-after-write on the owning store's primary. Only the unblock re-read uses this — a bare
   // `{ where: { id } }` with no relation projection — so it routes to the owning store by id and
-  // delegates, skipping the cross-DB relation re-resolution findWaitpoint does.
+  // delegates.
   async findWaitpointOnPrimary<T extends Prisma.WaitpointFindFirstArgs>(
     args: Prisma.SelectSubset<T, Prisma.WaitpointFindFirstArgs>
   ): Promise<Prisma.WaitpointGetPayload<T> | null> {
@@ -1711,25 +1697,15 @@ export class RoutingRunStore implements RunStore {
     client?: ReadClient,
     runId?: string
   ): Promise<Prisma.WaitpointGetPayload<T>[]> {
-    const { scalarArgs, relations } = splitWaitpointRelationProjection(
-      args as Record<string, unknown>
-    );
     const rows = (await this.#collectManyWaitpoints(
-      scalarArgs,
+      args as Record<string, unknown>,
       client,
       runId
     )) as Prisma.WaitpointGetPayload<T>[];
-    for (const row of rows) {
-      await this.#reresolveWaitpointRelationsCrossDb(
-        row as Record<string, unknown>,
-        relations,
-        client
-      );
-    }
     return rows;
   }
 
-  // Collect the scalar waitpoint rows (relation re-resolution happens in the caller). With a run id
+  // Collect the waitpoint rows. With a run id
   // in scope and a bounded id set, route to the run's store and fall back for ONLY the ids missing
   // there. The fallback targets come from #partitionAbsentIds: a gen-2 id to its own shard, a cuid
   // to BOTH gen-1 stores. The cuid legs are not disjoint, so the fallback rows are merged by id.
@@ -1790,46 +1766,6 @@ export class RoutingRunStore implements RunStore {
       )) as Record<string, unknown>[],
     }));
     return this.#mergeById(legs);
-  }
-
-  // Re-resolve a waitpoint's group-A relations across BOTH DBs and attach them to `row`. Each target
-  // co-locates with the RUN/snapshot (the edge + join rows live on the run's DB), so the join is read
-  // from EACH store and the targets resolved via the router's existing both-DB fan-out. A no-op when no
-  // group-A relation was requested (the byte-identical scalar path).
-  async #reresolveWaitpointRelationsCrossDb(
-    row: Record<string, unknown>,
-    relations: Partial<Record<WaitpointRelationKey, SubProjection>>,
-    client?: ReadClient
-  ): Promise<void> {
-    const waitpointId = row.id;
-    if (typeof waitpointId !== "string") {
-      return;
-    }
-    if ("blockingTaskRuns" in relations) {
-      row.blockingTaskRuns = await this.#reresolveBlockingTaskRunsCrossDb(
-        waitpointId,
-        relations.blockingTaskRuns,
-        client
-      );
-    }
-  }
-
-  // blockingTaskRuns are the TaskRunWaitpoint edges keyed by waitpointId — already a both-DB read with
-  // an optional nested `taskRun` re-resolved cross-DB (findManyTaskRunWaitpoints). The edge co-locates
-  // with the run, so a single store misses a cross-DB run's edge; the both-DB read recovers it.
-  async #reresolveBlockingTaskRunsCrossDb(
-    waitpointId: string,
-    projection: SubProjection,
-    client?: ReadClient
-  ): Promise<unknown[]> {
-    const edgeArgs = projectionAsArgs(projection) ?? {};
-    return this.findManyTaskRunWaitpoints(
-      {
-        ...(edgeArgs as Prisma.TaskRunWaitpointFindManyArgs),
-        where: { waitpointId },
-      },
-      client
-    );
   }
 
   async updateWaitpoint<T extends Prisma.WaitpointUpdateArgs>(
@@ -1911,18 +1847,16 @@ export class RoutingRunStore implements RunStore {
   // edge `id` — routing to where the waitpoint lives would miss an edge on the run's DB and
   // strand that run forever. Dedup is a no-op in steady state; it guards the copy→fence window.
   //
-  // The edge's `waitpoint`/`taskRun` relations can also straddle DBs (a cuid MANUAL/DATETIME token
-  // blocking a run-ops run; a drain-relocated token). A single store hydrates them from its own
+  // The edge's `waitpoint` relation can also straddle DBs (a cuid MANUAL/DATETIME token
+  // blocking a run-ops run; a drain-relocated token). A single store hydrates it from its own
   // client only → a cross-DB target resolves to null → the run hangs or its resume
-  // output is silently dropped. So the router strips those relation keys from the per-leg
-  // query (scalar edges only) and re-resolves them across BOTH stores here.
+  // output is silently dropped. So the router strips that relation key from the per-leg
+  // query (scalar edges only) and re-resolves it across BOTH stores here.
   async findManyTaskRunWaitpoints<T extends Prisma.TaskRunWaitpointFindManyArgs>(
     args: Prisma.SelectSubset<T, Prisma.TaskRunWaitpointFindManyArgs>,
     client?: ReadClient
   ): Promise<Prisma.TaskRunWaitpointGetPayload<T>[]> {
-    const { scalarArgs, waitpoint, taskRun } = splitEdgeRelationProjection(
-      args as Record<string, unknown>
-    );
+    const { scalarArgs, waitpoint } = splitEdgeRelationProjection(args as Record<string, unknown>);
 
     // An edge always co-locates with its RUN (blockRunWithWaitpointEdges routes the write by runId),
     // so a read keyed by a classifiable `taskRunId` routes to that run's store — no fan-out, no dedup.
@@ -1950,9 +1884,6 @@ export class RoutingRunStore implements RunStore {
 
     if (waitpoint) {
       await this.#hydrateEdgeWaitpointsCrossDb(edges, waitpoint, client);
-    }
-    if (taskRun) {
-      await this.#hydrateEdgeTaskRunsCrossDb(edges, taskRun, client);
     }
     return edges as Prisma.TaskRunWaitpointGetPayload<T>[];
   }
@@ -1985,29 +1916,6 @@ export class RoutingRunStore implements RunStore {
         );
       }
       edge.waitpoint = applyEdgeProjection(wp ?? null, projection);
-    }
-  }
-
-  // Resolve every edge's `taskRun` from its scalar `taskRunId` in ONE grouped, residency-partitioned
-  // read (`findRunsByIds`) rather than one `findRun` per edge. A missing run is left null
-  // (display-only callers tolerate it; the blocked-run resume path keys off `waitpoint`).
-  async #hydrateEdgeTaskRunsCrossDb(
-    edges: Record<string, unknown>[],
-    projection: SubProjection,
-    client?: ReadClient
-  ): Promise<void> {
-    const ids = uniqueStrings(edges.map((e) => e.taskRunId));
-    const args = projectionAsArgs(projection);
-    // Bind to `this`: findRunsByIds reaches private members, so an unbound reference throws.
-    const findRunsByIds = (
-      this.findRunsByIds as (...rest: unknown[]) => Promise<Map<string, unknown>>
-    ).bind(this);
-    const byId =
-      ids.length > 0 ? await findRunsByIds(ids, args, client) : new Map<string, unknown>();
-    for (const edge of edges) {
-      const id = edge.taskRunId as string | undefined;
-      const run = id ? byId.get(id) : undefined;
-      edge.taskRun = applyEdgeProjection((run as Record<string, unknown>) ?? null, projection);
     }
   }
 
@@ -2431,85 +2339,39 @@ function narrowArgsToIds(args: Record<string, unknown>, ids: string[]): Record<s
 // or undefined when not requested.
 type SubProjection = { select?: any; include?: any } | true | undefined;
 
-// Split a TaskRunWaitpoint `findMany` args into the scalar args sent to each leg (the `waitpoint`/
-// `taskRun` relation keys removed, the keying scalars + `id` ensured present) and the requested
-// relation sub-projections the router resolves cross-DB.
+// Split a TaskRunWaitpoint `findMany` args into the scalar args sent to each leg (the `waitpoint`
+// relation key removed, the keying scalars + `id` ensured present) and the requested
+// relation sub-projection the router resolves cross-DB.
 function splitEdgeRelationProjection(args: Record<string, unknown>): {
   scalarArgs: Record<string, unknown>;
   waitpoint: SubProjection;
-  taskRun: SubProjection;
 } {
   const select = args.select as Record<string, unknown> | undefined;
   const include = args.include as Record<string, unknown> | undefined;
 
-  if (select && ("waitpoint" in select || "taskRun" in select)) {
-    const { waitpoint, taskRun, ...rest } = select;
+  if (select && "waitpoint" in select) {
+    const { waitpoint, ...rest } = select;
     return {
-      // Keep `id` (dedupe) and the keying scalars (cross-DB hydration) through a narrowed select.
+      // Keep `id` (dedupe), `waitpointId` (cross-DB hydration) and `taskRunId` through a narrowed select;
+      // dropping `taskRunId` would change an edge read's statement on the control-plane database.
       scalarArgs: {
         ...args,
         select: { ...rest, id: true, waitpointId: true, taskRunId: true },
       },
       waitpoint: waitpoint as SubProjection,
-      taskRun: taskRun as SubProjection,
     };
   }
-  if (include && ("waitpoint" in include || "taskRun" in include)) {
-    const { waitpoint, taskRun, ...rest } = include;
+  if (include && "waitpoint" in include) {
+    const { waitpoint, ...rest } = include;
     const restInclude = Object.keys(rest).length > 0 ? { include: rest } : {};
     const { include: _drop, ...base } = args;
     return {
       scalarArgs: { ...base, ...restInclude },
       waitpoint: waitpoint as SubProjection,
-      taskRun: taskRun as SubProjection,
     };
   }
   // No edge relation requested: pass the args through unchanged (byte-identical scalar path).
-  return { scalarArgs: args, waitpoint: undefined, taskRun: undefined };
-}
-
-// The Waitpoint group-A relation keys whose TARGETS co-locate with the RUN/snapshot, not the
-// waitpoint, so a single store hydrates them from its own client and MISSES a cross-DB target
-// The router strips these from the per-leg query and re-resolves them across BOTH DBs.
-const WAITPOINT_RELATION_KEYS = ["blockingTaskRuns"] as const;
-type WaitpointRelationKey = (typeof WAITPOINT_RELATION_KEYS)[number];
-
-// Split a Waitpoint `findFirst`/`findMany` args into the scalar args sent to each leg (the group-A
-// relation keys removed, `id` kept so the router can re-attach) and the requested relation
-// sub-projections the router resolves cross-DB. Mirrors splitEdgeRelationProjection.
-function splitWaitpointRelationProjection(args: Record<string, unknown>): {
-  scalarArgs: Record<string, unknown>;
-  relations: Partial<Record<WaitpointRelationKey, SubProjection>>;
-} {
-  const select = args.select as Record<string, unknown> | undefined;
-  const include = args.include as Record<string, unknown> | undefined;
-  const relations: Partial<Record<WaitpointRelationKey, SubProjection>> = {};
-
-  if (select && WAITPOINT_RELATION_KEYS.some((k) => k in select)) {
-    const rest: Record<string, unknown> = { ...select };
-    for (const key of WAITPOINT_RELATION_KEYS) {
-      if (key in rest) {
-        relations[key] = rest[key] as SubProjection;
-        delete rest[key];
-      }
-    }
-    // Keep `id` so the router can re-attach the re-resolved relations to the row.
-    return { scalarArgs: { ...args, select: { ...rest, id: true } }, relations };
-  }
-  if (include && WAITPOINT_RELATION_KEYS.some((k) => k in include)) {
-    const rest: Record<string, unknown> = { ...include };
-    for (const key of WAITPOINT_RELATION_KEYS) {
-      if (key in rest) {
-        relations[key] = rest[key] as SubProjection;
-        delete rest[key];
-      }
-    }
-    const restInclude = Object.keys(rest).length > 0 ? { include: rest } : {};
-    const { include: _drop, ...base } = args;
-    return { scalarArgs: { ...base, ...restInclude }, relations };
-  }
-  // No group-A relation requested: pass through unchanged (byte-identical scalar path).
-  return { scalarArgs: args, relations };
+  return { scalarArgs: args, waitpoint: undefined };
 }
 
 // Apply an edge relation sub-projection to a hydrated row so only requested fields remain (mirrors
@@ -2528,14 +2390,6 @@ function applyEdgeProjection(
     }
   }
   return out;
-}
-
-// Convert an edge relation sub-projection into `findRun`/`findRuns`-shaped args ({select}/{include}).
-function projectionAsArgs(projection: SubProjection): { select?: any; include?: any } | undefined {
-  if (projection === true || projection === undefined) {
-    return undefined;
-  }
-  return projection;
 }
 
 function uniqueStrings(values: unknown[]): string[] {

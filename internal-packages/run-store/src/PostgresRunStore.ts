@@ -328,54 +328,10 @@ const hydrateCompletedWaitpoints: DedicatedRelationHydrator = async (client, par
     projection
   );
 
-// Runs a waitpoint is blocking: TaskRunWaitpoint rows keyed by waitpointId. A nested `taskRun`
-// select is resolved from the scalar TaskRunWaitpoint.taskRunId.
-const hydrateBlockingTaskRuns: DedicatedRelationHydrator = async (client, parents, projection) => {
-  const parentIds = parents.map((p) => p.id as string);
-  const byParent = new Map<string, unknown[]>(parentIds.map((id) => [id, []]));
-  if (parentIds.length === 0) {
-    return byParent;
-  }
-  const edges = (await client.taskRunWaitpoint.findMany({
-    where: { waitpointId: { in: boundedIn(parentIds) } },
-  })) as Record<string, unknown>[];
-  const nestedTaskRun = projection?.select?.taskRun;
-  const runProjection = nestedTaskRun ? projectionOf(nestedTaskRun as SubProjection) : undefined;
-  let byRunId = new Map<string, Record<string, unknown>>();
-  if (nestedTaskRun) {
-    const runIds = [...new Set(edges.map((e) => e.taskRunId as string))];
-    const runs = (
-      runIds.length > 0
-        ? await client.taskRun.findMany(
-            targetFindManyArgs({ id: { in: boundedIn(runIds) } }, runProjection, ["id"])
-          )
-        : []
-    ) as Record<string, unknown>[];
-    byRunId = new Map(runs.map((r) => [r.id as string, r]));
-  }
-  for (const edge of edges) {
-    const bucket = byParent.get(edge.waitpointId as string);
-    if (!bucket) continue;
-    bucket.push(
-      nestedTaskRun
-        ? {
-            ...edge,
-            taskRun: applyProjection(byRunId.get(edge.taskRunId as string) ?? null, runProjection),
-          }
-        : edge
-    );
-  }
-  return byParent;
-};
-
 // The waitpoint each block edge points at, resolved from its scalar `waitpointId`. The edge's own
 // client only finds a co-resident token; the router re-resolves cross-DB.
 const hydrateEdgeWaitpoint: DedicatedRelationHydrator = async (client, parents, projection) =>
   batchHydrateEdgeTarget(client.waitpoint, parents, "waitpointId", projection);
-
-// The run each block edge belongs to, resolved from its scalar `taskRunId`.
-const hydrateEdgeTaskRun: DedicatedRelationHydrator = async (client, parents, projection) =>
-  batchHydrateEdgeTarget(client.taskRun, parents, "taskRunId", projection);
 
 // Generic to-one relation reached via a scalar FK ON the parent itself (not a join model): one
 // grouped target query for every distinct FK value across the batch.
@@ -417,16 +373,14 @@ const TASK_RUN_DEDICATED: DedicatedRelationSpec = {
 // stripped and hydrated.
 const TASK_RUN_WAITPOINT_DEDICATED: DedicatedRelationSpec = {
   waitpoint: hydrateEdgeWaitpoint,
-  taskRun: hydrateEdgeTaskRun,
 };
 
 const SNAPSHOT_DEDICATED: DedicatedRelationSpec = {
   completedWaitpoints: hydrateCompletedWaitpoints,
 };
 
-const WAITPOINT_DEDICATED: DedicatedRelationSpec = {
-  blockingTaskRuns: hydrateBlockingTaskRuns,
-};
+// Nothing is hydrated; kept so stripDedicatedRelations still adds id to a narrowed select.
+const WAITPOINT_DEDICATED: DedicatedRelationSpec = {};
 
 // Cross-generation Prisma error normalization.
 //
@@ -2530,7 +2484,7 @@ export class PostgresRunStore implements RunStore {
         >;
       }
 
-      // Dedicated subset: strip the `waitpoint`/`taskRun` relation keys (no relation on the subset →
+      // Dedicated subset: strip the `waitpoint` relation key (no relation on the subset →
       // straight-through would throw a Prisma validation error), run the scalar findMany, then hydrate
       // from the edge's own client. A cross-DB token is missed here and re-resolved by the router.
       const { where, orderBy, take, skip, cursor, ...projection } = args as Record<string, any>;
@@ -2538,7 +2492,7 @@ export class PostgresRunStore implements RunStore {
         projection,
         TASK_RUN_WAITPOINT_DEDICATED
       );
-      // Keep the scalar ids the hydrators key off through a narrowed select.
+      // Keep the scalar ids `waitpointId` and `taskRunId` through a narrowed select.
       if (stripped.select) {
         stripped.select.waitpointId = true;
         stripped.select.taskRunId = true;

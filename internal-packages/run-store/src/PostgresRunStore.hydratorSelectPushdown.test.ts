@@ -71,14 +71,14 @@ function makeStore(prisma: RunOpsPrismaClient) {
   });
 }
 
-// Wraps `taskRun.findMany` with a REAL Prisma Client Extension query hook: every call's `args` is
+// Wraps `waitpoint.findMany` with a REAL Prisma Client Extension query hook: every call's `args` is
 // captured, then delegated unchanged to `query(args)` so the DB still executes it. This is
 // observation, not a mock — the extension can't fabricate a result, only see what's sent.
-function withCapturedTaskRunFindManyArgs(real: RunOpsPrismaClient) {
+function withCapturedWaitpointFindManyArgs(real: RunOpsPrismaClient) {
   const capturedArgs: Record<string, unknown>[] = [];
   const extended = (real as unknown as { $extends: (config: unknown) => unknown }).$extends({
     query: {
-      taskRun: {
+      waitpoint: {
         findMany({
           args,
           query,
@@ -97,7 +97,7 @@ function withCapturedTaskRunFindManyArgs(real: RunOpsPrismaClient) {
 
 describe("PostgresRunStore dedicated relation hydrators — target findMany select pushdown", () => {
   heteroRunOpsPostgresTest(
-    "hydrateEdgeTaskRun (batchHydrateEdgeTarget) narrows the target taskRun.findMany to the caller's select instead of fetching the full row",
+    "hydrateEdgeWaitpoint (batchHydrateEdgeTarget) narrows the target waitpoint.findMany to the caller's select instead of fetching the full row",
     async ({ prisma17 }) => {
       const seedStore = makeStore(prisma17);
       const env = seedEnvironmentDedicated("edge_pushdown");
@@ -134,27 +134,27 @@ describe("PostgresRunStore dedicated relation hydrators — target findMany sele
         projectId: env.project.id,
       });
 
-      const { client: capturingClient, capturedArgs } = withCapturedTaskRunFindManyArgs(prisma17);
+      const { client: capturingClient, capturedArgs } = withCapturedWaitpointFindManyArgs(prisma17);
       const readStore = makeStore(capturingClient);
 
-      // TaskRunWaitpoint's `taskRun` relation is the dedicated `hydrateEdgeTaskRun` ->
+      // TaskRunWaitpoint's `waitpoint` relation is the dedicated `hydrateEdgeWaitpoint` ->
       // `batchHydrateEdgeTarget` path (the scalar-FK-on-the-parent variant).
       const edges = (await readStore.findManyTaskRunWaitpoints({
         where: { waitpointId },
-        select: { taskRun: { select: { friendlyId: true } } },
-      })) as { taskRun: { friendlyId: string } | null }[];
+        select: { waitpoint: { select: { friendlyId: true } } },
+      })) as { waitpoint: { friendlyId: string } | null }[];
 
       expect(capturedArgs).toHaveLength(1);
       const targetArgs = capturedArgs[0] as { where: unknown; select?: Record<string, unknown> };
 
       expect(targetArgs.select).toBeDefined();
       expect(targetArgs.select).toMatchObject({ friendlyId: true, id: true });
-      expect(targetArgs.select?.payload).toBeUndefined();
+      expect(targetArgs.select?.tags).toBeUndefined();
       expect(targetArgs.select?.output).toBeUndefined();
-      expect(targetArgs.select?.context).toBeUndefined();
+      expect(targetArgs.select?.outputType).toBeUndefined();
 
       expect(edges).toHaveLength(1);
-      expect(edges[0].taskRun).toEqual({ friendlyId: `${runId}_friendly` });
+      expect(edges[0].waitpoint).toEqual({ friendlyId: `${waitpointId}_friendly` });
     }
   );
 });
