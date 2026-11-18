@@ -19,6 +19,8 @@ export type HttpLocalStorage = {
   host: string;
   method: string;
   abortController: AbortController;
+  /** Destroys the response's connection, for a route that must stop a client that won't read. */
+  closeConnection?: () => void;
   /** Set by the auth functions once the caller is authenticated. */
   auditIdentity?: RequestAuditIdentity;
 };

@@ -19,6 +19,7 @@ import { findOrCreateBackgroundWorker } from "./createDeploymentBackgroundWorker
 import { TimeoutDeploymentService } from "./timeoutDeployment.server";
 import { checkDeployAccess, deniedMessage } from "../deploymentAccess.server";
 import { acceptedCliVersion } from "../cliVersion";
+import { assertSourceFilesWithinLimits } from "../workerSourceFiles.server";
 import { recordDeploymentFinished } from "./recordDeploymentFinished.server";
 import { env } from "~/env.server";
 import { webhookPrisma } from "~/db.server";
@@ -91,14 +92,15 @@ export class CreateDeploymentBackgroundWorkerServiceV4 extends BaseService {
       try {
         validateWorkerConcurrencyDeclarations(body.metadata);
         body.metadata.tasks.forEach((task) => validateSandboxTask(task, environment));
-      } catch (concurrencyError) {
-        if (concurrencyError instanceof ServiceValidationError) {
-          logger.warn("Invalid worker concurrency declarations", {
-            error: concurrencyError.message,
+        await assertSourceFilesWithinLimits(body.metadata.sourceFiles);
+      } catch (validationError) {
+        if (validationError instanceof ServiceValidationError) {
+          logger.warn("Invalid worker declarations", {
+            error: validationError.message,
           });
-          await this.#failBackgroundWorkerDeployment(deployment, concurrencyError, environment);
+          await this.#failBackgroundWorkerDeployment(deployment, validationError, environment);
         }
-        throw concurrencyError;
+        throw validationError;
       }
 
       // Handle multi-platform builds

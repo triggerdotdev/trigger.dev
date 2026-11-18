@@ -261,6 +261,7 @@ async function startServer() {
           host: req.hostname,
           method: req.method,
           abortController,
+          closeConnection: () => res.destroy(),
         },
         next
       );
