@@ -486,7 +486,7 @@ export const Env = z
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
         message:
-          "Automatic secret proxy binding requires SECRET_PROXY_UNSAFE_LAB_ENABLED=true: exclusive control-socket ownership and disruptive restart reset",
+          "Automatic secret proxy binding requires SECRET_PROXY_UNSAFE_LAB_ENABLED=true: exclusive control-socket ownership",
         path: ["SECRET_PROXY_UNSAFE_LAB_ENABLED"],
       });
     }

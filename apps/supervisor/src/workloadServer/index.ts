@@ -734,7 +734,7 @@ export class WorkloadServer extends EventEmitter<WorkloadServerEvents> {
                     ctx.res.setHeader("x-should-retry", "false");
                     const { runnerId, runnerUid } = error.runner;
                     try {
-                      await this.revokeRunner(runnerId, runnerUid);
+                      await this.revokeRunner(runnerId, runnerUid, error.discovered);
                     } catch (revokeError) {
                       this.logger.error("Failed to revoke retiring runner", {
                         runnerId,
@@ -1450,8 +1450,12 @@ export class WorkloadServer extends EventEmitter<WorkloadServerEvents> {
     return websocketServer;
   }
 
-  private async revokeRunner(runnerId: string, uid: string): Promise<void> {
-    await this.secretProxy?.revokeRunner(runnerId, uid);
+  private async revokeRunner(
+    runnerId: string,
+    uid: string,
+    discovered?: SecretProxyAllocationBusyError["discovered"]
+  ): Promise<void> {
+    await this.secretProxy?.revokeRunner(runnerId, uid, discovered);
   }
 
   notifyRun({ run }: { run: { friendlyId: string } }) {
