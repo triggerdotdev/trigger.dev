@@ -46,7 +46,10 @@ function installBatchCapture() {
 
     if (url.endsWith("/api/v3/batches")) {
       const body = JSON.parse(String(init?.body));
-      return Response.json({ id: "batch_test", runCount: body.runCount, isCached: false });
+      return Response.json(
+        { id: "batch_test", runCount: body.runCount, isCached: false },
+        { headers: { "x-trigger-jwt": "server-public-token" } }
+      );
     }
 
     if (url.includes("/api/v3/batches/") && url.endsWith("/items")) {

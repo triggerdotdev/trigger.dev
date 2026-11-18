@@ -8,6 +8,7 @@ import { resolveTarget, type TargetInput } from "./tool-api";
 import type { EnvTarget } from "./tool-api-client";
 import { getCurrentPageSchema, navigateToSchema } from "./tool-schemas";
 import type { DashboardAgentToolContext } from "./tool-context";
+import { fencePageFields, fenceUntrusted } from "./tool-curation";
 
 /** Where the user is, and where the agent can send them. */
 export function buildNavigationTools(args: {
@@ -53,14 +54,17 @@ export function buildNavigationTools(args: {
       execute: async () => {
         if (ctx.pageContext) {
           return {
-            page: ctx.pageContext.page,
-            signals: ctx.pageContext.signals,
-            path: ctx.currentPage,
+            page: fencePageFields(ctx.pageContext.page),
+            signals: ctx.pageContext.signals.map(fencePageFields),
+            path: fenceUntrusted("path", ctx.currentPage),
           };
         }
         // Older turns (and unclassified routes) carry only the raw path.
         if (ctx.currentPage) {
-          return { page: { kind: "other", path: ctx.currentPage }, signals: [] };
+          return {
+            page: { kind: "other", path: fenceUntrusted("path", ctx.currentPage) },
+            signals: [],
+          };
         }
         return {
           page: null,

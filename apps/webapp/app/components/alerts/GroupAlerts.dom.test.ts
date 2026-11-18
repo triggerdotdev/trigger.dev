@@ -42,7 +42,6 @@ function row(partial: Partial<AlertListRow>): AlertListRow {
     environmentId: "env1",
     scope: undefined,
     status: "active",
-    hasChannelIssue: false,
     groupId: null,
     lastEventAt: null,
     notifierCount: 1,
@@ -89,6 +88,7 @@ function renderList() {
               { value: { open: false, openGroupAlerts } as never },
               createElement(AlertsList, {
                 alerts: ROWS,
+                deferred: { stateBuckets: {}, channelIssueIds: [] },
                 hasLegacyAlerts: false,
                 channelsTo: "/channels",
                 legacyTo: "/legacy",

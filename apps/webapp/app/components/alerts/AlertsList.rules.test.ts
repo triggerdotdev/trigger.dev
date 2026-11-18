@@ -57,6 +57,7 @@ describe("AlertsList empty states", () => {
               null,
               createElement(AlertsList, {
                 alerts: [],
+                deferred: { stateBuckets: {}, channelIssueIds: [] },
                 newAlertPath: "/new",
                 newAlertPrompt: "p",
                 alertPath: (id: string) => `/${id}`,
@@ -105,6 +106,7 @@ describe("AlertsList header", () => {
             null,
             createElement(AlertsList, {
               alerts: [],
+              deferred: { stateBuckets: {}, channelIssueIds: [] },
               newAlertPath: "/new",
               newAlertPrompt: "p",
               alertPath: (id: string) => `/${id}`,
@@ -128,7 +130,7 @@ describe("AlertsList header", () => {
     expect(render(false)).not.toContain("most recent alerts");
   });
 
-  function renderRow(overrides: Partial<AlertListRow> = {}, url = "/") {
+  function renderRow(channelIssueIds: string[] = [], url = "/") {
     const row = {
       id: "a1",
       name: "Depth",
@@ -139,7 +141,6 @@ describe("AlertsList header", () => {
       notifierCount: 0,
       expiresAt: null,
       lastActivityAt: new Date(),
-      ...overrides,
     } as AlertListRow;
     const router = createMemoryRouter(
       [
@@ -156,6 +157,7 @@ describe("AlertsList header", () => {
                 { locales: ["en-US"] },
                 createElement(AlertsList, {
                   alerts: [row],
+                  deferred: { stateBuckets: {}, channelIssueIds },
                   newAlertPath: "/new",
                   newAlertPrompt: "p",
                   alertPath: (id: string) => `/${id}`,
@@ -177,11 +179,11 @@ describe("AlertsList header", () => {
     return renderToStaticMarkup(createElement(RouterProvider, { router }));
   }
 
-  it("shows the channel issue triangle only when hasChannelIssue", () => {
+  it("shows the channel issue triangle only for a channel issue id", () => {
     const cellOf = (html: string) => html.match(/<td[\s\S]*?<\/td>/)![0];
-    const flagged = cellOf(renderRow({ hasChannelIssue: true }));
+    const flagged = cellOf(renderRow(["a1"]));
     expect(flagged.match(/data-state=/g)).toHaveLength(2);
-    const clean = cellOf(renderRow({ hasChannelIssue: false }));
+    const clean = cellOf(renderRow([]));
     expect(clean.match(/data-state=/g)).toHaveLength(1);
   });
 });

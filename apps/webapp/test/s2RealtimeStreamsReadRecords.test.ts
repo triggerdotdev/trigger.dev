@@ -16,12 +16,13 @@ describe("S2RealtimeStreams.readRecords", () => {
   let endpoint: string;
   let bodies: string[];
   let reads: number;
+  let status: number;
 
   beforeAll(async () => {
     server = createServer((_request, response) => {
       const body = bodies[Math.min(reads, bodies.length - 1)]!;
       reads++;
-      response.writeHead(200, { "Content-Type": "text/event-stream" });
+      response.writeHead(status, { "Content-Type": "text/event-stream" });
       response.end(body);
     });
     await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
@@ -36,6 +37,7 @@ describe("S2RealtimeStreams.readRecords", () => {
 
   beforeEach(() => {
     reads = 0;
+    status = 200;
   });
 
   function createReader() {
@@ -74,5 +76,13 @@ describe("S2RealtimeStreams.readRecords", () => {
       "Reconnection required"
     );
     expect(reads).toBe(3);
+  });
+
+  it("returns no records when the position is past the tail", async () => {
+    status = 416;
+    bodies = [""];
+
+    await expect(createReader().readRecords("run_1", "chat", 5)).resolves.toEqual([]);
+    expect(reads).toBe(1);
   });
 });

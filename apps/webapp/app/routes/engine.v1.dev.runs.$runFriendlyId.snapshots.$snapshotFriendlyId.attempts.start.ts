@@ -19,6 +19,7 @@ import { machinePresetFromName } from "~/v3/machinePresets.server";
 import { meteringClaims } from "~/v3/utils/meteringClaims.server";
 import { engine } from "~/v3/runEngine.server";
 import { runStore } from "~/v3/runStore.server";
+import { pinnedRunPolicy } from "~/v3/services/worker/runExecutionPolicy.server";
 
 const { action } = createActionApiRoute(
   {
@@ -51,7 +52,10 @@ const { action } = createActionApiRoute(
       }
 
       // Resolved before the attempt exists, so an unavailable key leaves the run startable.
-      const variables = await resolveAttemptVariables(authentication.environment);
+      // Dev runs keep the dev key (no run tokens in dev) but only receive granted variables.
+      const { variables } = await resolveAttemptVariables(authentication.environment, undefined, {
+        grant: pinnedRunPolicy(run.annotations)?.policy.envVars,
+      });
 
       const engineResult = await engine.startRunAttempt({
         runId: RunId.toId(runFriendlyId),

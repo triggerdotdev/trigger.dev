@@ -113,6 +113,7 @@ export function useRunTrace({
     isTruncated: progressiveIsTruncated,
     loadFailed,
     loadAttempt,
+    liveSpanIds,
     tailLive,
     liveTailEnabled,
     retryLoad,
@@ -267,5 +268,7 @@ export function useRunTrace({
     loadFailed,
     /** The `retryKey` the loaded state belongs to. */
     loadAttempt,
+    /** Spans first seen in a live tail read, not a stored one. */
+    liveSpanIds,
   };
 }

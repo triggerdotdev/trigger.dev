@@ -29,7 +29,7 @@ export type LegacyAlertType =
   | "DEPLOYMENT_FAILURE"
   | "DEPLOYMENT_SUCCESS";
 
-const LEGACY_ALERT_TYPE_LABEL: Record<LegacyAlertType, string> = {
+export const LEGACY_ALERT_TYPE_LABEL: Record<LegacyAlertType, string> = {
   TASK_RUN: "Task run failure",
   TASK_RUN_ATTEMPT: "Task attempt failure",
   DEPLOYMENT_FAILURE: "Deployment failure",

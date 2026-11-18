@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 import {
   activeInlineValueEdit,
+  batchDeleteItems,
+  batchDeleteSummary,
   deleteValueDialog,
   keyPanelEnvironments,
   listedPreviewBase,
@@ -206,5 +208,58 @@ describe("activeInlineValueEdit", () => {
     const edit = { key: "API_URL", environmentId: "env_staging", kind: "edit" as const };
     expect(activeInlineValueEdit(edit, "DATABASE_URL", hasValue)).toBeNull();
     expect(activeInlineValueEdit(null, "API_URL", hasValue)).toBeNull();
+  });
+});
+
+describe("batchDeleteItems", () => {
+  const row = (
+    key: string,
+    type: "STAGING" | "PREVIEW" | "PRODUCTION",
+    branchName: string | null = null
+  ) => ({ key, environment: { type, branchName }, previewBase: "set" as const });
+
+  // Catches: a branch override said to fall back to a Preview value that the same delete
+  // removes, or overrides counted as values of the Preview environment.
+  it("leaves a branch with no value when its Preview value goes in the same delete", () => {
+    const items = batchDeleteItems([
+      row("A", "PRODUCTION"),
+      row("A", "PREVIEW"),
+      row("A", "PREVIEW", "feat/x"),
+      row("B", "PREVIEW", "feat/x"),
+      row("B", "STAGING"),
+    ]);
+
+    expect(items.map((item) => item.previewDeletedToo)).toEqual([false, false, true, false, false]);
+    expect(items.map((item) => item.dialog)).toEqual([
+      { kind: "delete" },
+      { kind: "delete" },
+      { kind: "removeOverride", afterRemoval: "noValue" },
+      { kind: "removeOverride", afterRemoval: "previewValue" },
+      { kind: "delete" },
+    ]);
+    expect(batchDeleteSummary(items)).toEqual({
+      environments: [
+        { type: "STAGING", count: 1 },
+        { type: "PREVIEW", count: 1 },
+        { type: "PRODUCTION", count: 1 },
+      ],
+      overrides: { previewValue: 1, noValue: 0, previewDeleted: 1, unknown: 0 },
+    });
+  });
+
+  // Catches: an override whose key has no Preview value worded as if the delete removed it.
+  it("keeps overrides of a key with no Preview value apart from those losing it now", () => {
+    const items = batchDeleteItems([
+      { key: "A", environment: { type: "PREVIEW", branchName: "feat/x" }, previewBase: "unset" },
+      { key: "B", environment: { type: "PREVIEW", branchName: null }, previewBase: "set" },
+      { key: "B", environment: { type: "PREVIEW", branchName: "feat/x" }, previewBase: "set" },
+    ]);
+
+    expect(batchDeleteSummary(items).overrides).toEqual({
+      previewValue: 0,
+      noValue: 1,
+      previewDeleted: 1,
+      unknown: 0,
+    });
   });
 });

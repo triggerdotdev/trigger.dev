@@ -186,7 +186,7 @@ export const myChat = chat.agent({
     const user = await prisma.user.findUnique({ where: { id: clientData.userId } });
     // The connection is back in the pool before the model stream starts.
     return streamText({
-      model: openai("gpt-4o"),
+      model: openai("gpt-6-luna"),
       system: `Helping ${user?.name ?? "the user"}.`,
       messages,
       abortSignal: signal,

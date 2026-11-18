@@ -1,14 +1,19 @@
 import { execFile } from "node:child_process";
 import { createHash } from "node:crypto";
-import { mkdir, mkdtemp, readFile, realpath, rm, stat, writeFile } from "node:fs/promises";
+import { createReadStream } from "node:fs";
+import { pipeline } from "node:stream/promises";
+import { mkdir, mkdtemp, open, readFile, realpath, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { isAbsolute, join, relative, resolve, sep } from "node:path";
 import { promisify } from "node:util";
+import { createGunzip } from "node:zlib";
+import type { JSONValue } from "@ai-sdk/provider";
 import { sliceWellFormed } from "@internal/dashboard-agent-contracts";
 import { tool, type ToolSet } from "ai";
 import { resolveTarget, type TargetInput } from "./tool-api";
 import type { EnvTarget } from "./tool-api-client";
 import type { DashboardAgentToolContext } from "./tool-context";
+import { fenceUntrusted } from "./tool-curation";
 import {
   getRepoInfoSchema,
   listFilesSchema,
@@ -42,6 +47,7 @@ export type RepoSnapshot = {
 };
 
 const MAX_ARCHIVE_BYTES = 100 * 1024 * 1024; // 100MB ceiling on the download
+const MAX_EXTRACTED_BYTES = 1024 * 1024 * 1024;
 
 // The snapshot fetch is a network primitive on an internal worker, so the URL must be one
 // the webapp would have minted: https to GitHub's own archive hosts (the signed redirect
@@ -49,15 +55,23 @@ const MAX_ARCHIVE_BYTES = 100 * 1024 * 1024; // 100MB ceiling on the download
 // request leaves the worker.
 const ALLOWED_TARBALL_HOSTS = new Set(["codeload.github.com"]);
 
-function assertAllowedTarballUrl(tarballUrl: string): void {
+function assertAllowedTarballUrl(snapshot: RepoSnapshot): void {
   let url: URL;
   try {
-    url = new URL(tarballUrl);
+    url = new URL(snapshot.tarballUrl);
   } catch {
     throw new Error("repo snapshot URL is not a valid URL");
   }
   if (url.protocol !== "https:" || !ALLOWED_TARBALL_HOSTS.has(url.hostname)) {
     throw new Error(`repo snapshot URL host is not allowed (${url.hostname || "unparseable"})`);
+  }
+  // The archive must be the one the labels name, so a workspace keyed on them holds that repo.
+  const { owner, repo, sha } = snapshot;
+  if (
+    !/^[0-9a-f]{40}$/i.test(sha) ||
+    url.pathname.toLowerCase() !== `/${owner}/${repo}/legacy.tar.gz/${sha}`.toLowerCase()
+  ) {
+    throw new Error("repo snapshot URL doesn't match its owner, repo and commit");
   }
 }
 // A tool result the model has to pay for on every later turn of the conversation:
@@ -107,10 +121,45 @@ async function exists(path: string): Promise<boolean> {
   }
 }
 
+async function downloadWithin(res: Response, path: string, maxBytes: number): Promise<void> {
+  const file = await open(path, "w");
+  let total = 0;
+  try {
+    for await (const chunk of res.body ?? []) {
+      total += chunk.byteLength;
+      if (total > maxBytes) throw new Error(`archive too large (over ${maxBytes} bytes)`);
+      await file.write(chunk);
+    }
+  } finally {
+    await file.close();
+  }
+}
+
+export async function assertGunzipsWithin(path: string, maxBytes: number): Promise<void> {
+  let total = 0;
+  try {
+    await pipeline(
+      createReadStream(path),
+      createGunzip(),
+      async (source: AsyncIterable<Buffer>) => {
+        for await (const chunk of source) {
+          total += chunk.length;
+          if (total > maxBytes) throw new Error("over cap");
+        }
+      }
+    );
+  } catch (error) {
+    // Node 20 surfaces a sink error as an AbortError.
+    if (total > maxBytes) throw new Error(`archive expands past ${maxBytes} bytes`);
+    throw error;
+  }
+}
+
 // Download the signed tarball and extract it (strip the GitHub top-level dir).
 // Memoized per workdir; a present `.ready` marker means a prior extraction
 // finished, so a warm run reuses it.
 async function ensureWorkspace(snapshot: RepoSnapshot): Promise<string> {
+  assertAllowedTarballUrl(snapshot);
   const workdir = workdirFor(snapshot);
   const existing = workspaces.get(workdir);
   if (existing) return existing;
@@ -120,9 +169,8 @@ async function ensureWorkspace(snapshot: RepoSnapshot): Promise<string> {
 
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
-    let tarPath: string | undefined;
+    let scratch: string | undefined;
     try {
-      assertAllowedTarballUrl(snapshot.tarballUrl);
       // No redirects: the server resolves the one hop to a signed codeload URL itself, so
       // following one here would just reopen the host check to a redirect target.
       const res = await fetch(snapshot.tarballUrl, {
@@ -132,13 +180,11 @@ async function ensureWorkspace(snapshot: RepoSnapshot): Promise<string> {
       if (!res.ok) throw new Error(`archive download failed (status ${res.status})`);
       const length = Number(res.headers.get("content-length") ?? 0);
       if (length > MAX_ARCHIVE_BYTES) throw new Error(`archive too large (${length} bytes)`);
-      const bytes = new Uint8Array(await res.arrayBuffer());
-      if (bytes.length > MAX_ARCHIVE_BYTES)
-        throw new Error(`archive too large (${bytes.length} bytes)`);
 
-      const scratch = await mkdtemp(join(tmpdir(), "dashboard-agent-tar-"));
-      tarPath = join(scratch, "repo.tar.gz");
-      await writeFile(tarPath, bytes);
+      scratch = await mkdtemp(join(tmpdir(), "dashboard-agent-tar-"));
+      const tarPath = join(scratch, "repo.tar.gz");
+      await downloadWithin(res, tarPath, MAX_ARCHIVE_BYTES);
+      await assertGunzipsWithin(tarPath, MAX_EXTRACTED_BYTES);
 
       // List the archive's top-level entries before extracting: anything that resolves
       // outside the root after `--strip-components=1` (`..` segments, absolute paths)
@@ -166,11 +212,10 @@ async function ensureWorkspace(snapshot: RepoSnapshot): Promise<string> {
       await mkdir(workdir, { recursive: true });
       await execFileAsync("tar", ["-xzf", tarPath, "-C", workdir, "--strip-components=1"]);
       await writeFile(join(workdir, ".ready"), snapshot.sha);
-      await rm(scratch, { recursive: true, force: true });
       return workdir;
     } finally {
       clearTimeout(timer);
-      if (tarPath) await rm(tarPath, { force: true }).catch(() => {});
+      if (scratch) await rm(scratch, { recursive: true, force: true }).catch(() => {});
     }
   })();
 
@@ -224,6 +269,20 @@ export type SourceReadReporter = (read: {
   /** Whether the read named a project, environment or branch of its own. */
   targeted: boolean;
 }) => void | Promise<void>;
+
+// The UI keeps the structured copy; the model gets repo text fenced.
+function sourceModelOutput(output: any): JSONValue {
+  const fence = (text: string) => fenceUntrusted("source", text, MAX_READ_BYTES);
+  if (typeof output?.content === "string") return { ...output, content: fence(output.content) };
+  if (Array.isArray(output?.files)) return { ...output, files: fence(output.files.join("\n")) };
+  if (Array.isArray(output?.matches)) {
+    const lines = output.matches.map((m: { file?: string; line?: number; text: string }) =>
+      m.file === undefined ? m.text : `${m.file}:${m.line}:${m.text}`
+    );
+    return { ...output, matches: fence(lines.join("\n")) };
+  }
+  return output;
+}
 
 export function buildRepoTools(
   defaultSnapshot: RepoSnapshot,
@@ -333,6 +392,7 @@ export function buildRepoTools(
           return { error: `Couldn't list files: ${(error as Error).message}` };
         }
       },
+      toModelOutput: ({ output }) => ({ type: "json", value: sourceModelOutput(output) }),
     }),
 
     read_file: tool({
@@ -391,6 +451,7 @@ export function buildRepoTools(
           ...(truncated ? { notice: READ_TRUNCATION_NOTICE } : {}),
         };
       },
+      toModelOutput: ({ output }) => ({ type: "json", value: sourceModelOutput(output) }),
     }),
 
     search_code: tool({
@@ -427,6 +488,7 @@ export function buildRepoTools(
           return { error: `Couldn't search: ${(error as Error).message}` };
         }
       },
+      toModelOutput: ({ output }) => ({ type: "json", value: sourceModelOutput(output) }),
     }),
   };
 }

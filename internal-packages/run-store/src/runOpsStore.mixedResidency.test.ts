@@ -628,6 +628,46 @@ describe("RoutingRunStore — mixed-residency matrix (cuid #legacy + run-ops id 
     }
   );
 
+  // ── Case 9c: findRunOrThrow by spanId with no client when BOTH DBs match, and when NEITHER does ──
+  // NEW is probed first, so a NEW match wins; the LEGACY leg owns the not-found throw.
+  // Catches: a no-id read with no client that tries LEGACY before NEW, or returns null on a miss.
+  heteroRunOpsPostgresTest(
+    "case 9c: findRunOrThrow by spanId with no client prefers #new when both match, and throws P2025 when neither does",
+    async ({ prisma14, prisma17 }) => {
+      const { router } = makeSplitRouter(prisma14, prisma17);
+      const env = await seedSharedEnv(prisma14, "m9c");
+
+      const legacyRun = cuidLegacy("m9cl");
+      const newRun = runOpsNew("m9cn");
+      await router.createRun(
+        buildCreateRunInput({
+          runId: legacyRun,
+          friendlyId: "run_m9c_legacy",
+          spanId: "span_m9c_both",
+          ...env,
+        })
+      );
+      await router.createRun(
+        buildCreateRunInput({
+          runId: newRun,
+          friendlyId: "run_m9c_new",
+          spanId: "span_m9c_both",
+          ...env,
+        })
+      );
+
+      const onBoth = (await router.findRunOrThrow(
+        { spanId: "span_m9c_both" },
+        { select: { id: true } }
+      )) as Record<string, any>;
+      expect(onBoth.id).toBe(newRun);
+
+      await expect(
+        router.findRunOrThrow({ spanId: "span_m9c_none" }, { select: { id: true } })
+      ).rejects.toMatchObject({ code: "P2025", name: "PrismaClientKnownRequestError" });
+    }
+  );
+
   // ── Case 7: findManyTaskRunWaitpoints with edges whose relations STRADDLE DBs ──
   // An edge co-locates with its RUN, but its `waitpoint`/`taskRun` relations can live on the OTHER DB
   // (a cuid token blocking a run-ops run, and vice versa). The per-leg scalar query is stripped of the

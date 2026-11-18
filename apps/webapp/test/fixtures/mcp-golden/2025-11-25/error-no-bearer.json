@@ -1,0 +1,18 @@
+{
+  "request": {
+    "jsonrpc": "2.0",
+    "id": 9,
+    "method": "tools/list",
+    "params": {}
+  },
+  "response": {
+    "status": 401,
+    "headers": {
+      "content-type": "application/json; charset=utf-8",
+      "www-authenticate": "Bearer resource_metadata=\"https://mcp.test/.well-known/oauth-protected-resource\""
+    },
+    "body": {
+      "error": "Missing bearer token"
+    }
+  }
+}

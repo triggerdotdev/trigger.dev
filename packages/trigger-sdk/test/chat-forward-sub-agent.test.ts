@@ -4,7 +4,7 @@ import type { LanguageModelV3Prompt, LanguageModelV3StreamPart } from "@ai-sdk/p
 import type { UIMessage, UIMessageChunk } from "ai";
 import { simulateReadableStream, stepCountIs, tool } from "ai";
 import { MockLanguageModelV3 } from "ai/test";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { z } from "zod";
 import { chat } from "../src/v3/ai.js";
 import { createSubAgentMessages, SUB_AGENT_DATA_TYPE } from "../src/v3/subAgentStream.js";
@@ -146,8 +146,7 @@ describe("chat.forwardSubAgent", () => {
 
         const store = createSubAgentMessages({ throttleMs: 5 });
         for (const chunk of forwarded) store.onData(chunk as { type: string; data: unknown });
-        await new Promise((resolve) => setTimeout(resolve, 50));
-        expect(store.get("call_research")).toEqual(outputs[0]!.output);
+        await vi.waitFor(() => expect(store.get("call_research")).toEqual(outputs[0]!.output));
 
         const answeringPrompt = JSON.stringify(prompts[1]);
         expect(answeringPrompt).toContain(lastText(await finalOf(reply)));
@@ -232,6 +231,10 @@ async function finalOf(chunks: UIMessageChunk[]) {
     type: SUB_AGENT_DATA_TYPE,
     data: { toolCallId: "reference", seq: 0, chunks: structuredClone(chunks) },
   });
-  await new Promise((resolve) => setTimeout(resolve, 20));
-  return store.get("reference");
+  // The store rebuilds asynchronously; a fixed sleep is too short on a loaded CI runner.
+  return vi.waitFor(() => {
+    const message = store.get("reference");
+    expect(message).toBeDefined();
+    return message;
+  });
 }

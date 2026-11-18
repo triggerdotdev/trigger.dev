@@ -290,6 +290,7 @@ export class ManagedRunController {
 
     this.lockedRunExecution = null;
     this.unsubscribeFromRunNotifications(runFriendlyId, snapshotFriendlyId);
+    if (this.currentExecution?.requiresRunnerExit) this.exitProcess(this.failureExitCode);
     this.waitForNextRun();
   }
 

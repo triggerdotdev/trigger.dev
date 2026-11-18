@@ -1,10 +1,10 @@
-import { parseWithZod } from "@conform-to/zod/v4";
+import { parseWithZod } from "~/utils/conform";
 import { BookOpenIcon } from "@heroicons/react/20/solid";
 import { Outlet, useLoaderData, useNavigate, useSearchParams } from "@remix-run/react";
 import { type ActionFunctionArgs, defer, json, redirect } from "@remix-run/server-runtime";
 import { z } from "zod";
 import { useEffect, useRef } from "react";
-import { AlertsList } from "~/components/alerts/AlertsList";
+import { AlertsList, type AlertsListDeferred } from "~/components/alerts/AlertsList";
 import { hasLegacyAlerts } from "~/components/alerts/hasLegacyAlerts.server";
 import { LegacyAlertChannelsPage } from "~/components/alerts/LegacyAlertChannelsPage";
 import { LegacyAlertsBanner } from "~/components/alerts/LegacyAlertsBanner";
@@ -32,10 +32,12 @@ import {
   AlertChannelListPresenter,
   type AlertChannelListPresenterRecord,
 } from "~/presenters/v3/AlertChannelListPresenter.server";
-import type { AlertListRow } from "~/presenters/v3/alertListRow";
+import type { AlertListRow, AlertStateBucket } from "~/presenters/v3/alertListRow";
 import { parseAlertsListSearchParams } from "~/components/alerts/alertsListFilters";
 import {
-  AlertsListPresenter,
+  listAlertRows,
+  listAlertStateBuckets,
+  listChannelIssueAlertIds,
   type AlertsListFilters,
 } from "~/presenters/v3/AlertsListPresenter.server";
 import { resolveProjectAuthScope } from "~/services/projectAuthScope.server";
@@ -151,36 +153,36 @@ export const loader = dashboardLoader(
       return defer({ mode: "legacy" as const, canWrite, ...data }) as unknown as Response;
     }
 
-    const { isViewingAsUser } = await getImpersonationState(request, user.id);
-    const showAdminUi = hasAdminDisplayAccess({ ...user, isViewingAsUser });
-    const agentAvailable = await canAccessDashboardAgent({
-      userId: user.id,
-      isAdmin: showAdminUi && user.admin,
-      isImpersonating: showAdminUi && user.isImpersonating,
-      organizationSlug,
-      orgFeatureFlags: (project.organization.featureFlags as Record<string, unknown>) ?? {},
-    });
-
     const searchParams = new URL(request.url).searchParams;
-    const listPresenter = new AlertsListPresenter();
-    const {
-      rows: alerts,
-      page,
-      totalPages,
-      truncated,
-    } = await listPresenter.call({
-      environmentId: environment.id,
-      page: Number(searchParams.get("page")) || 1,
-      filters: {
-        search: searchParams.get("search") ?? "",
-        ...parseAlertsListSearchParams(searchParams),
-      } as AlertsListFilters,
-    });
+    const [agentAvailable, legacy, list] = await Promise.all([
+      getImpersonationState(request, user.id).then(({ isViewingAsUser }) => {
+        const showAdminUi = hasAdminDisplayAccess({ ...user, isViewingAsUser });
+        return canAccessDashboardAgent({
+          userId: user.id,
+          isAdmin: showAdminUi && user.admin,
+          isImpersonating: showAdminUi && user.isImpersonating,
+          organizationSlug,
+          orgFeatureFlags: (project.organization.featureFlags as Record<string, unknown>) ?? {},
+        });
+      }),
+      hasLegacyAlerts(project.id),
+      listAlertRows(prisma, {
+        environmentId: environment.id,
+        page: Number(searchParams.get("page")) || 1,
+        filters: {
+          search: searchParams.get("search") ?? "",
+          ...parseAlertsListSearchParams(searchParams),
+        } as AlertsListFilters,
+      }),
+    ]);
+    const { rows: alerts, alerts: visibleAlerts, page, totalPages, truncated } = list;
 
     return defer({
       mode: "new" as const,
       alerts,
-      ...(await hasLegacyAlerts(project.id)),
+      stateBuckets: listAlertStateBuckets(prisma, visibleAlerts),
+      channelIssueIds: listChannelIssueAlertIds(prisma, visibleAlerts, environment.id),
+      ...legacy,
       page,
       totalPages,
       truncated,
@@ -386,6 +388,8 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
 type NewLoaderData = {
   mode: "new";
   alerts: AlertListRow[];
+  stateBuckets: Promise<Record<string, AlertStateBucket[]>>;
+  channelIssueIds: Promise<string[]>;
   page: number;
   totalPages: number;
   truncated: boolean;
@@ -420,6 +424,7 @@ export default function Page() {
     return (
       <NewAlertsPage
         alerts={data.alerts}
+        deferred={{ stateBuckets: data.stateBuckets, channelIssueIds: data.channelIssueIds }}
         hasMigratableLegacyAlerts={data.hasMigratableLegacyAlerts}
         page={data.page}
         totalPages={data.totalPages}
@@ -437,6 +442,7 @@ export default function Page() {
 
 function NewAlertsPage({
   alerts,
+  deferred,
   hasMigratableLegacyAlerts,
   page,
   totalPages,
@@ -447,6 +453,7 @@ function NewAlertsPage({
   queryAlert,
 }: {
   alerts: NewLoaderData["alerts"];
+  deferred: AlertsListDeferred;
   hasMigratableLegacyAlerts: boolean;
   page: number;
   totalPages: number;
@@ -540,6 +547,7 @@ function NewAlertsPage({
           <PageBody scrollable={false}>
             <AlertsList
               alerts={alerts}
+              deferred={deferred}
               newAlertPath={v3AlertCreatePath(organization, project, environment)}
               newAlertPrompt={createAlertPrompt(environmentFullTitle(environment))}
               alertPath={alertPath}

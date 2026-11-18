@@ -46,7 +46,12 @@ if (process.env.SENTRY_DSN) {
     // regex matches the exception type exactly; subclasses
     // (QueueSizeLimitExceededError, MetadataTooLargeError) override `.name`
     // and stay visible.
-    ignoreErrors: ["queryRoute() call aborted", /^ServiceValidationError(?::|$)/],
+    ignoreErrors: [
+      "queryRoute() call aborted",
+      // The request was already answered with a 413.
+      "Request body exceeded its size limit",
+      /^ServiceValidationError(?::|$)/,
+    ],
     includeLocalVariables: false,
 
     beforeSend(event, hint) {

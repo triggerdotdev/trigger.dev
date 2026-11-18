@@ -170,6 +170,36 @@ const fixtures: Fixture[] = [
     nowMs: NOW_MS,
     toleranceSeconds: 300,
   },
+  // Catches: Composio verified with the Standard Webhooks secret handling, which base64-decodes the
+  // secret, while Composio keys the HMAC with the secret's raw text, so every delivery fails.
+  {
+    provider: "composio",
+    source: "https://docs.composio.dev/docs/webhook-verification",
+    body: '{"type":"composio.trigger.message","data":{"fixture":"composio"}}',
+    secret: "3f1c2a9e-7b4d-4e8a-9c6f-composio-fixture",
+    headers: {
+      "webhook-id": "msg_composio_fixture",
+      "webhook-timestamp": String(T),
+      "webhook-signature": "v1,RKM7MiWOooJzZYoE8Rr15R/NdO675hQ0j+186+kj5/0=",
+    },
+    nowMs: NOW_MS,
+    toleranceSeconds: 300,
+  },
+  // Catches: Brex verified with the Svix config, which reads `svix-*` headers Brex doesn't send, so
+  // every delivery fails with a missing signature header.
+  {
+    provider: "brex",
+    source: "https://developer.brex.com/guides/webhooks",
+    body: '{"event_type":"TRANSFER_PROCESSED","transfer_id":"dptx_fixture","company_id":"cuacc_fixture"}',
+    secret: "YnJleC1maXh0dXJlLXNpZ25pbmcta2V5",
+    headers: {
+      "webhook-id": "msg_brex_fixture",
+      "webhook-timestamp": String(T),
+      "webhook-signature": "v1,rCEwVY99pCSiMF7CgB96NEppnafebEiVe2l8l2Z2v5U=",
+    },
+    nowMs: NOW_MS,
+    toleranceSeconds: 300,
+  },
   {
     provider: "granola",
     source: "https://docs.granola.ai/webhooks",

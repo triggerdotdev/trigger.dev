@@ -15,7 +15,7 @@ import {
 import { buildHealthBands } from "~/components/alerts/alertSeriesTypes";
 import { type AlertSeriesBundle, type GroupMemberTile } from "~/components/alerts/groupMembers";
 import { env } from "~/env.server";
-import type { AlertDetail } from "~/presenters/v3/AlertDetailPresenter.server";
+import { chartAlert, type ChartAlert } from "~/presenters/v3/AlertDetailPresenter.server";
 import { logger } from "~/services/logger.server";
 import type { QueryConcurrencyLane } from "~/services/queryService.server";
 import {
@@ -35,8 +35,9 @@ import {
 } from "~/v3/services/alerts/queryAlerts/resolveAlertCapability.server";
 import {
   ALERT_EVENT_WINDOW_CAP,
-  getAlert,
+  getLatestAlertEventTimes,
   latestAlertEventBefore,
+  listAlertEventsForAlerts,
   listAlertEventsInWindow,
   type Alert,
 } from "~/v3/services/alerts/storage/alertStore.server";
@@ -179,46 +180,49 @@ export async function loadAlertSeries(
 export async function loadGroupMemberTiles(
   prisma: PrismaClient,
   input: {
-    memberIds: string[];
+    members: Alert[];
     concurrency: number;
     window: DetailWindow;
     project: SeriesProject;
-    environmentId: string;
   },
-  deps: {
-    getDetail: (id: string) => Promise<AlertDetail | null>;
-    loadSeries?: typeof loadAlertSeries;
-  }
+  deps: { loadSeries?: typeof loadAlertSeries } = {}
 ): Promise<GroupMemberTile[]> {
   const loadSeries = deps.loadSeries ?? loadAlertSeries;
+  const ids = input.members.map((member) => member.id);
+  const [eventsById, timesById] = await Promise.all([
+    listAlertEventsForAlerts(prisma, ids, {
+      limit: 50,
+      before: new Date(input.window.until.getTime() + 1),
+    }),
+    getLatestAlertEventTimes(prisma, ids),
+  ]);
   const limit = pLimit(input.concurrency);
   const tiles = await Promise.all(
-    input.memberIds.map((id) =>
+    input.members.map((raw) =>
       limit(async (): Promise<GroupMemberTile | null> => {
-        const raw = await getAlert(prisma, {
-          id,
-          projectId: input.project.id,
-          environmentId: input.environmentId,
-        });
-        const alert =
-          raw &&
-          (await deps.getDetail(id).catch((error) => {
-            logger.error("Failed to load group member detail", { alertId: id, error });
-            return null;
-          }));
-        if (!raw || !alert) return null;
+        let alert: ChartAlert;
+        try {
+          alert = chartAlert(
+            raw,
+            (eventsById.get(raw.id) ?? []).filter((event) => event.at >= input.window.since),
+            timesById.get(raw.id)
+          );
+        } catch (error) {
+          logger.error("Failed to load group member detail", { alertId: raw.id, error });
+          return null;
+        }
         const series = await loadSeries(prisma, {
-          alertId: id,
+          alertId: raw.id,
           kind: alert.kind,
           rawAlert: raw,
           window: input.window,
           project: input.project,
           lane: "alerts",
         }).catch((error) => {
-          logger.error("Failed to load group member chart series", { alertId: id, error });
+          logger.error("Failed to load group member chart series", { alertId: raw.id, error });
           return EMPTY_SERIES;
         });
-        return { ...series, id, name: alert.name, alert, createdAt: raw.createdAt };
+        return { ...series, id: raw.id, name: alert.name, alert, createdAt: raw.createdAt };
       })
     )
   );

@@ -101,6 +101,7 @@ export async function resolveBatchRunOpsWriter(
     return shard.writer;
   }
 
+  // runops-exception(batches-migration): batch completion callback, until batches use the run store
   const onNew = await deps.newWriter.batchTaskRun.findFirst({
     where: { id: batchId },
     select: { id: true },
@@ -159,6 +160,7 @@ export async function handleBatchCompletion(
     // skipDuplicates handles idempotency when callback is retried (relies on unique constraint)
     await runOpsWriter.$transaction(async (tx) => {
       // Update BatchTaskRun
+      // runops-exception(batches-migration): batch completion callback, until batches use the run store
       await tx.batchTaskRun.update({
         where: { id: batchId },
         data: {
@@ -185,6 +187,7 @@ export async function handleBatchCompletion(
 
         if (allQueueSizeLimit) {
           const sample = failures[0]!;
+          // runops-exception(batches-migration): batch completion callback, until batches use the run store
           await tx.batchTaskRunError.createMany({
             data: [
               {
@@ -203,6 +206,7 @@ export async function handleBatchCompletion(
             skipDuplicates: true,
           });
         } else {
+          // runops-exception(batches-migration): batch completion callback, until batches use the run store
           await tx.batchTaskRunError.createMany({
             data: failures.map((failure) => ({
               batchTaskRunId: batchId,

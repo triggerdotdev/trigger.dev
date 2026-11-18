@@ -1,6 +1,6 @@
 import { getFormProps, getInputProps, useForm } from "@conform-to/react";
 import { GlobeLinesIcon } from "~/assets/icons/GlobeLinesIcon";
-import { parseWithZod } from "@conform-to/zod/v4";
+import { parseWithZod } from "~/utils/conform";
 import { EnvelopeIcon, HashtagIcon, LockClosedIcon, XMarkIcon } from "@heroicons/react/20/solid";
 import { BellAlertIcon } from "@heroicons/react/24/solid";
 import { useFetcher, useNavigate } from "@remix-run/react";

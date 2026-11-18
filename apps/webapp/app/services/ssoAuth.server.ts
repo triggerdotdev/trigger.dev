@@ -4,6 +4,8 @@ import { Strategy } from "remix-auth";
 import { tryCatch } from "@trigger.dev/core/v3";
 import type { SsoFlow, SsoProfile } from "@trigger.dev/plugins";
 import { prisma } from "~/db.server";
+import { ssoSignInAttribution } from "~/models/memberAudit.server";
+import { noteSessionAuthentication } from "~/services/auditLogs/auditContext.server";
 import { ensureOrgMember } from "~/models/orgMember.server";
 import { findOrCreateSsoUser } from "~/models/user.server";
 import type { AuthUser } from "./authUser";
@@ -14,6 +16,7 @@ import { ssoController } from "./sso.server";
 type SsoVerifyParams = {
   profile: SsoProfile;
   flow: SsoFlow;
+  request: Request;
 };
 
 // Hybrid remix-auth strategy. The strategy is invoked by the callback
@@ -36,7 +39,7 @@ class SsoStrategy extends Strategy<AuthUser, SsoVerifyParams> {
     sessionStorage: SessionStorage,
     options: AuthenticateOptions
   ): Promise<AuthUser> {
-    const ctx = (options.context ?? undefined) as SsoVerifyParams | undefined;
+    const ctx = (options.context ?? undefined) as Omit<SsoVerifyParams, "request"> | undefined;
     if (!ctx?.profile || !ctx?.flow) {
       return this.failure(
         "SSO strategy invoked without profile context",
@@ -45,7 +48,9 @@ class SsoStrategy extends Strategy<AuthUser, SsoVerifyParams> {
         options
       );
     }
-    const [error, user] = await tryCatch(this.verify(ctx));
+    const [error, user] = await tryCatch(
+      this.verify({ profile: ctx.profile, flow: ctx.flow, request })
+    );
     if (error) {
       const cause = error instanceof Error ? error : new Error(String(error));
       return this.failure(cause.message, request, sessionStorage, options, cause);
@@ -115,12 +120,15 @@ async function provisionJitMembershipBestEffort(
   if (!jit.value.shouldProvision) return;
 
   const [provisionError, result] = await tryCatch(
-    ensureOrgMember({
-      userId,
-      organizationId: jit.value.organizationId,
-      roleId: jit.value.roleId,
-      source: "sso_jit",
-    })
+    ensureOrgMember(
+      {
+        userId,
+        organizationId: jit.value.organizationId,
+        roleId: jit.value.roleId,
+        source: "sso_jit",
+      },
+      ssoSignInAttribution(userId)
+    )
   );
   if (provisionError) {
     // e.g. the RBAC role couldn't be applied, so ensureOrgMember rolled back
@@ -156,8 +164,11 @@ async function runPostAuthentication(userId: string, isNewUser: boolean): Promis
 
 export function addSsoStrategy(authenticator: Authenticator<AuthUser>) {
   authenticator.use(
-    new SsoStrategy(async ({ profile, flow }) => {
+    new SsoStrategy(async ({ profile, flow, request }) => {
       const { userId, isNewUser } = await resolveSsoUserId(profile);
+      // The request has no session yet; this gives the events it records (a just-in-time
+      // membership) the signing-in user's IP and user agent.
+      noteSessionAuthentication(request, { userId });
 
       await attachSsoIdentityBestEffort(userId, profile, flow);
       await provisionJitMembershipBestEffort(userId, profile, flow);

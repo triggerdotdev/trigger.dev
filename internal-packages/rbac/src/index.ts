@@ -29,7 +29,7 @@ import { rejectExpiredPersonalAccessToken } from "./personalAccessTokenExpiry.js
 // exchange route imports it to project requested scopes against it.
 export { CAPLESS_USER_ACTOR_SCOPES } from "./fallback.js";
 import { BearerCredentialResolver, type BearerResolution } from "./bearerCredentials.js";
-import type { PublicTokenSubjectCodec } from "./publicTokenSubject.js";
+import type { PublicTokenSubjectCodec, SealedIdCodec } from "./publicTokenSubject.js";
 import type { ApiKeyScopeRecorder } from "./scopeUsage.js";
 export type {
   BearerAuthOptions,
@@ -71,10 +71,12 @@ export { clientIpFromHeaders, isIpAllowed } from "./ipAllowlist.js";
 export { MAX_API_KEY_IP_RANGES, parseIpRanges, type ParseIpRangesResult } from "./ipRanges.js";
 export {
   createPublicTokenSubjectCodec,
+  createSourcePersonalAccessTokenCodec,
   isSealedPublicTokenSubject,
   resolvePublicTokenSubject,
   type PublicTokenSubjectCodec,
   type ResolvedPublicTokenSubject,
+  type SealedIdCodec,
 } from "./publicTokenSubject.js";
 // Re-export the user-actor token grammar so the webapp mints/checks tokens
 // through @trigger.dev/rbac (it doesn't import @trigger.dev/plugins directly).
@@ -93,6 +95,12 @@ export {
   personalAccessTokenValidUntil,
   type PersonalAccessTokenExpiry,
 } from "@trigger.dev/plugins";
+export {
+  isPersonalAccessTokenActive,
+  SOURCE_PAT_CHECK_TTL_MS,
+  sourcePersonalAccessTokenCheck,
+  sourcePersonalAccessTokenClaim,
+} from "./personalAccessTokenExpiry.js";
 
 // Either a single PrismaClient (used for both writes and reads — fine
 // for callers that don't have a separate replica), or `{primary, replica}`
@@ -107,11 +115,16 @@ export type RbacCreateOptions = {
   // Threaded through to the plugin / fallback's authenticateUserActor.
   userActorSecret?: string;
   publicTokenSubjects?: PublicTokenSubjectCodec;
+  // Opens the sealed source PAT (`act.pat`) in public JWTs exchanged from a PAT.
+  sourcePersonalAccessTokens?: SealedIdCodec;
   // Writer/reader connection URLs + pool sizes for a plugin that owns its
   // own database client, resolved by the host from its env so the plugin
   // follows the host's writer/replica topology. The fallback ignores this —
   // it queries through the Prisma clients passed as `RbacPrismaInput`.
   database?: RbacDatabaseConfig;
+  // Host policy applied to every user-bound credential (PATs and user-actor tokens), whichever
+  // controller authenticated it. Returns why the user is refused, or undefined to let them in.
+  userAccessDenial?: (userId: string) => Promise<string | undefined>;
 };
 
 // Route actions that historically authorised via the legacy checkAuthorization's
@@ -187,12 +200,17 @@ class LazyController implements RoleBaseAccessController {
   private readonly _hostCredentialResolver: BearerCredentialResolver;
   private readonly _replica: PrismaClient;
   private _recordScopeUse: ApiKeyScopeRecorder | undefined;
+  private readonly _userAccessDenial: RbacCreateOptions["userAccessDenial"];
 
   constructor(prisma: RbacPrismaInput, options?: RbacCreateOptions) {
     this._replica = "replica" in prisma ? prisma.replica : prisma;
+    this._userAccessDenial = options?.userAccessDenial;
     this._hostCredentialResolver = new BearerCredentialResolver(
       "primary" in prisma ? prisma : { primary: prisma, replica: prisma },
-      { publicTokenSubjects: options?.publicTokenSubjects }
+      {
+        publicTokenSubjects: options?.publicTokenSubjects,
+        sourcePersonalAccessTokens: options?.sourcePersonalAccessTokens,
+      }
     );
     this._init = this.load(prisma, options);
     this._init.then(
@@ -385,14 +403,25 @@ class LazyController implements RoleBaseAccessController {
       await (await this.c()).authenticatePat(...args),
       this._replica
     );
-    return result.ok ? { ...result, ability: withActionAliases(result.ability) } : result;
+    if (!result.ok) return result;
+    const denial = await this.userDenial(result.userId);
+    if (denial) return denial;
+    return { ...result, ability: withActionAliases(result.ability) };
   }
 
   async authenticateUserActor(
     ...args: Parameters<RoleBaseAccessController["authenticateUserActor"]>
   ) {
     const result = await (await this.c()).authenticateUserActor(...args);
-    return result.ok ? { ...result, ability: withActionAliases(result.ability) } : result;
+    if (!result.ok) return result;
+    const denial = await this.userDenial(result.userId);
+    if (denial) return denial;
+    return { ...result, ability: withActionAliases(result.ability) };
+  }
+
+  private async userDenial(userId: string) {
+    const error = await this._userAccessDenial?.(userId);
+    return error ? { ok: false as const, status: 403 as const, error } : undefined;
   }
 
   async systemRoles(...args: Parameters<RoleBaseAccessController["systemRoles"]>) {

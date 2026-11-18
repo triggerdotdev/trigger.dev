@@ -1,13 +1,27 @@
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import { z } from "zod/v4";
 import { SimpleStructuredLogger } from "../utils/structuredLogger.js";
-import { HttpReply, getJsonBody } from "../apps/http.js";
+import {
+  DEFAULT_MAX_JSON_BODY_BYTES,
+  HttpReply,
+  RequestBodyTooLargeError,
+  getJsonBody,
+} from "../apps/http.js";
 import type { Registry } from "prom-client";
 import { Histogram, Counter } from "prom-client";
 import { tryCatch } from "../../utils.js";
 import type { AnyZodSchema, inferZodSchemaOutput } from "../types/schemas.js";
 
 const logger = new SimpleStructuredLogger("http-server");
+
+/**
+ * `enforce` answers 413 for bodies over the limit. `shadow` serves them and logs one line each,
+ * but still answers 413 above `MAX_BODY_SIZE_CEILING`.
+ */
+export type BodySizeLimitMode = "shadow" | "enforce";
+
+/** Bodies above this size are always refused, in both modes and whatever the configured limit. */
+export const MAX_BODY_SIZE_CEILING = 32 * 1024 * 1024;
 
 type RouteHandler<
   TParams extends AnyZodSchema = z.ZodUnknown,
@@ -34,6 +48,8 @@ interface RouteDefinition<
   /** Skip reading + parsing the request body. The handler receives `body: undefined`.
    * Node drains any unconsumed body before the next keep-alive request. */
   skipBodyParsing?: boolean;
+  /** Maximum request body size in bytes for this route. Overrides the server's `maxBodySize`. */
+  maxBodySize?: number;
   handler: RouteHandler<TParams, TQuery, TBody>;
 }
 
@@ -59,6 +75,10 @@ type RouteMap = Partial<{
 type HttpServerOptions = {
   port: number;
   host: string;
+  /** Maximum request body size in bytes. Larger bodies get a 413. Defaults to 1 MiB, capped at `MAX_BODY_SIZE_CEILING`. */
+  maxBodySize?: number;
+  /** What happens to bodies over the limit. Defaults to `enforce`. */
+  bodySizeLimitMode?: BodySizeLimitMode;
   metrics?: {
     register?: Registry;
     expose?: boolean;
@@ -74,12 +94,16 @@ export class HttpServer {
 
   private readonly port: number;
   private readonly host: string;
+  private readonly maxBodySize: number;
+  private readonly bodySizeLimitMode: BodySizeLimitMode;
   private routes: RouteMap = {};
   public readonly server: ReturnType<typeof createServer>;
 
   constructor(options: HttpServerOptions) {
     this.port = options.port;
     this.host = options.host;
+    this.maxBodySize = options.maxBodySize ?? DEFAULT_MAX_JSON_BODY_BYTES;
+    this.bodySizeLimitMode = options.bodySizeLimitMode ?? "enforce";
     this.metricsRegister = options.metrics?.register;
     const collectMetrics = options.metrics?.collect ?? true;
     const exposeMetrics = options.metrics?.expose ?? false;
@@ -169,6 +193,7 @@ export class HttpServer {
           bodySchema,
           keepConnectionAlive,
           skipBodyParsing,
+          maxBodySize,
         } = routeDefinition;
 
         const params = this.parseRouteParams(route, url);
@@ -187,7 +212,43 @@ export class HttpServer {
           return reply.text("Invalid query params", 400);
         }
 
-        const body = skipBodyParsing ? undefined : await getJsonBody(req);
+        let body: unknown = undefined;
+
+        if (bodySchema && !skipBodyParsing) {
+          const limit = maxBodySize ?? this.maxBodySize;
+          const shadow = this.bodySizeLimitMode === "shadow";
+
+          const [bodyError, parsedJson] = await tryCatch(
+            getJsonBody(req, {
+              maxBytes: shadow ? MAX_BODY_SIZE_CEILING : Math.min(limit, MAX_BODY_SIZE_CEILING),
+              onBodyRead: shadow
+                ? (bytes) => {
+                    if (bytes > limit) {
+                      logger.warn("Request body over limit, not refused in shadow mode", {
+                        route,
+                        method,
+                        maxBytes: limit,
+                        bytes,
+                      });
+                    }
+                  }
+                : undefined,
+            })
+          );
+
+          if (bodyError instanceof RequestBodyTooLargeError) {
+            logger.error("Request body too large", { url, method, maxBytes: bodyError.maxBytes });
+            res.setHeader("Connection", "close");
+            return reply.json({ ok: false, error: "Request body too large" }, false, 413);
+          }
+
+          if (bodyError) {
+            throw bodyError;
+          }
+
+          body = parsedJson;
+        }
+
         const parsedBody = this.optionalSchema(bodySchema, body);
 
         if (!parsedBody.success) {

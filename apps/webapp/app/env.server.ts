@@ -432,6 +432,16 @@ const EnvironmentSchema = z
       )
       .refine(isNotInsecureSecret, INSECURE_SECRET_MESSAGE),
     ENCRYPTION_KEYRING: z.string().transform(parseEncryptionKeyring).optional(),
+    SECRET_PROXY_ENABLED: BoolEnv.default(false),
+    SECRET_PROXY_RESOLVER_ENABLED: BoolEnv.default(false),
+    SECRET_PROXY_PLACEHOLDER_KEYS: z.preprocess(
+      (value) => (value === "" ? undefined : value),
+      z.string().optional()
+    ),
+    SECRET_PROXY_SERVICE_TOKEN: z.preprocess(
+      (value) => (value === "" ? undefined : value),
+      z.string().min(32).optional()
+    ),
     ENVIRONMENT_ENCRYPTION_ENABLED: BoolEnv.default(false),
     ENVIRONMENT_ENCRYPTION_KMS_KEY_ARN: z.preprocess(
       (value) => (value === "" ? undefined : value),
@@ -462,6 +472,16 @@ const EnvironmentSchema = z
     // Instance-level switch for the /admin/api routes. When off they answer 404 for every
     // credential, so an instance that serves public traffic can refuse the admin API outright.
     ADMIN_API_ENABLED: BoolEnv.default(true),
+    MCP_SERVER_ENABLED: BoolEnv.default(false),
+    MCP_CONFIRMATION_ERROR_MODE: z.enum(["rpc-error", "tool-error"]).default("rpc-error"),
+    // Origin the MCP server is reached on. Defaults to APP_ORIGIN.
+    MCP_ORIGIN: z
+      .string()
+      .url()
+      .transform((url) => url.replace(/\/+$/, ""))
+      .optional(),
+    OAUTH_GRANT_IDLE_DAYS: z.coerce.number().int().positive().default(30),
+    OAUTH_GRANT_ABSOLUTE_DAYS: z.coerce.number().int().positive().default(90),
     BILLING_SERVICE_SECRET: z.string().min(32).optional(),
     REMIX_APP_PORT: z.string().optional(),
     // Opt-in, dev-only: stream this process's logs over a local telnet/TCP socket on this port.
@@ -984,6 +1004,10 @@ const EnvironmentSchema = z
       .transform(parseMachinePresetCsv),
     // Percentage of deploys from orgs without compute that still prebuild in shadow mode.
     TEMPLATE_BUILDER_SHADOW_ROLLOUT_PCT: z.coerce.number().min(0).max(100).default(0),
+    // Leave `no_snap` off the request, so a builder with deploy snapshots builds the deployment's
+    // warmed snapshot before it answers. Only once every builder runs an fcrun that has them: an
+    // older one would build a whole template's snapshot with the deployment's warmup.
+    TEMPLATE_BUILDER_DEPLOY_SNAPSHOTS: BoolEnvWithDefault(false),
 
     DEPLOY_IMAGE_PLATFORM: z.string().default("linux/amd64"),
     DEPLOY_BASE_IMAGES: z
@@ -1095,6 +1119,12 @@ const EnvironmentSchema = z
     CARD_VERIFICATION_REQUIRED_FROM: z.string().datetime().optional(),
     // Whether an attempt start for a run that already has an attempt executing is logged or refused.
     RUN_ENGINE_DUPLICATE_ATTEMPT_START_CHECK: z.enum(["off", "log", "enforce"]).default("log"),
+    // What the engine does with an attempt completion that names a snapshot that is no longer the
+    // latest. "count" refuses it as before and only counts what "enforce" would do, with no extra
+    // database read or Redis call. "classify" adds the one read the count needs to be exact.
+    // "enforce" fails a run at once when its task returned while the run was resuming from a wait,
+    // and reports a stall that follows a refused completion as that, not as out of memory.
+    RUN_ENGINE_STALE_COMPLETION_MODE: z.enum(["count", "classify", "enforce"]).default("count"),
 
     // Lifetimes, in days, offered when creating a personal access token on the dashboard, and the
     // preselected one. A default that isn't in the list falls back to the first option.
@@ -1271,6 +1301,8 @@ const EnvironmentSchema = z
     BATCH_PAYLOAD_OFFLOAD_THRESHOLD: z.coerce.number().int().optional(), // Defaults to TASK_PAYLOAD_OFFLOAD_THRESHOLD if not set
     TASK_PAYLOAD_MAXIMUM_SIZE: z.coerce.number().int().default(3_145_728), // 3MB
     BATCH_TASK_PAYLOAD_MAXIMUM_SIZE: z.coerce.number().int().default(1_000_000), // 1MB
+    // The most keys one environment variables comparison reads and compares; above it the page asks to narrow down.
+    ENVIRONMENT_VARIABLES_COMPARE_MAX_KEYS: z.coerce.number().int().positive().default(1_000),
     TASK_RUN_METADATA_MAXIMUM_SIZE: z.coerce.number().int().default(262_144), // 256KB
 
     MAXIMUM_DEV_QUEUE_SIZE: z.coerce.number().int().optional(),
@@ -2096,6 +2128,10 @@ const EnvironmentSchema = z
     DEPLOYMENT_CHECKS_WORKER_LOG_LEVEL: z
       .enum(["log", "error", "warn", "info", "debug"])
       .default("info"),
+    // A read-only role the checks assume, tagged with the project ref, to read the image they hand
+    // the checker. Unset, checks run without supplying the image.
+    DEPLOYMENT_CHECKS_ECR_ROLE_ARN: z.string().optional(),
+    DEPLOYMENT_CHECKS_ECR_ROLE_EXTERNAL_ID: z.string().optional(),
 
     ALERT_ENGINE_WORKER_ENABLED: z.string().default(process.env.WORKER_ENABLED ?? "true"),
     ALERT_ENGINE_WORKER_CONCURRENCY_WORKERS: z.coerce.number().int().default(1),
@@ -2264,6 +2300,10 @@ const EnvironmentSchema = z
     WEBHOOK_INGRESS_ORIGIN: z.string().optional(),
     WEBHOOK_INGRESS_BODY_SIZE_LIMIT_MB: z.coerce.number().int().default(1),
     OTLP_INGRESS_BODY_SIZE_LIMIT_MB: z.coerce.number().int().positive().default(64),
+    // Body limit for every route without one of its own, and whether going over it is refused
+    // (`enforce`) or only logged (`shadow`).
+    INGRESS_BODY_SIZE_LIMIT_MB: z.coerce.number().int().positive().default(1),
+    INGRESS_BODY_SIZE_LIMIT_MODE: z.enum(["shadow", "enforce"]).default("shadow"),
     WEBHOOK_INGRESS_RATE_LIMIT_WINDOW: z.string().default("10s"),
     WEBHOOK_INGRESS_RATE_LIMIT_TOKENS: z.coerce.number().int().default(100),
     // Per-environment ingress limit across all of its endpoints. A request costs one token per 64 KiB
@@ -2902,8 +2942,16 @@ const EnvironmentSchema = z
 
     /** Records admin API calls, admin dashboard mutations and admin PAT minting through the admin audit plugin. */
     ADMIN_AUDIT_ENABLED: BoolEnv.default(false),
-    /** Records customer audit log events through the audit log plugin, when it is installed. */
+    /**
+     * Records customer audit log events through the audit log plugin, when it is installed, for
+     * orgs with the `auditLogsRecording` flag (set it globally to record for every org).
+     */
     AUDIT_LOGS_RECORDING_ENABLED: BoolEnv.default(false),
+    /** How long, and for how many orgs, each process caches the `auditLogsRecording` flag. */
+    AUDIT_LOGS_RECORDING_FLAG_CACHE_TTL_MS: z.coerce.number().int().default(30_000),
+    AUDIT_LOGS_RECORDING_FLAG_CACHE_MAX_ENTRIES: z.coerce.number().int().default(50_000),
+    /** How long a flag lookup may take before the org's events are dropped, as for a failure. */
+    AUDIT_LOGS_RECORDING_FLAG_LOOKUP_TIMEOUT_MS: z.coerce.number().int().default(5_000),
     // Emit a console.log when the SSO fallback is selected because no
     // plugin is installed. Default off so OSS deployments stay quiet.
     SSO_LOG_FALLBACK: BoolEnv.default(false),
@@ -2955,6 +3003,7 @@ const EnvironmentSchema = z
 const environment = EnvironmentSchema.parse(process.env);
 export const env = {
   ...environment,
+  MCP_ORIGIN: environment.MCP_ORIGIN ?? environment.APP_ORIGIN,
   ENCRYPTION_KEYRING: resolveEncryptionKeyring(
     environment.ENCRYPTION_KEYRING,
     environment.ENCRYPTION_KEY

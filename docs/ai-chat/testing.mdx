@@ -92,7 +92,7 @@ export const myChatAgent = chat
     id: "my-chat",
     run: async ({ messages, clientData, signal, streamText }) => {
       return streamText({
-        model: clientData?.model ?? "openai/gpt-4o-mini",
+        model: clientData?.model ?? "openai/gpt-6-luna",
         messages,
         abortSignal: signal,
         stopWhen: stepCountIs(15),
@@ -161,7 +161,7 @@ export const agent = chat
     id: "agent",
     run: async ({ messages, clientData, signal, streamText }) => {
       return streamText({
-        model: clientData?.model ?? anthropic("claude-haiku-4-5"),
+        model: clientData?.model ?? anthropic("claude-haiku-5-5"),
         messages,
         abortSignal: signal,
         stopWhen: stepCountIs(15),
@@ -534,7 +534,7 @@ export const agent = chat.agent({
     });
   },
   run: async ({ messages, signal }) => {
-    return streamText({ model: anthropic("claude-sonnet-4-5"), messages, abortSignal: signal });
+    return streamText({ model: anthropic("claude-sonnet-5-5"), messages, abortSignal: signal });
   },
 });
 ```

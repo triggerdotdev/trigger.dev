@@ -1,8 +1,8 @@
 import { json } from "@remix-run/server-runtime";
-import type { RbacSubject } from "@trigger.dev/plugins";
+import type { RbacResource, RbacSubject } from "@trigger.dev/plugins";
 import { z } from "zod";
 import type { ApiAuthenticationResultSuccess } from "~/services/apiAuth.server";
-import { createActionApiRoute } from "~/services/routeBuilders/apiBuilder.server";
+import { anyResource, createActionApiRoute } from "~/services/routeBuilders/apiBuilder.server";
 import {
   formatStorageUri,
   generatePresignedUrl,
@@ -55,6 +55,16 @@ export function assertPacketNamespaceAccess(authentication: ApiAuthenticationRes
   }
 }
 
+export function packetUploadResources(filename: string): RbacResource[] {
+  const resources: RbacResource[] = [{ type: "packets" }];
+  const { path } = parseStorageUri(filename);
+  const output = /^(run_[A-Za-z0-9_-]+)-[1-9]\d*\/output\.[a-z0-9]+$/.exec(path);
+  if (output && output[0] === path) {
+    resources.push({ type: "runs", id: output[1] });
+  }
+  return resources;
+}
+
 export function createPacketUploadRoute({ forceNoPrefix = false } = {}) {
   return createActionApiRoute(
     {
@@ -62,7 +72,7 @@ export function createPacketUploadRoute({ forceNoPrefix = false } = {}) {
       method: "PUT",
       authorization: {
         action: "write",
-        resource: () => ({ type: "packets" }),
+        resource: (params) => anyResource(packetUploadResources(params["*"])),
       },
     },
     async ({ params, authentication, subject }) => {

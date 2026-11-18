@@ -1,0 +1,109 @@
+---
+title: "Connect to Google Cloud"
+sidebarTitle: "Google Cloud"
+description: "Authenticate to Google Cloud from your tasks with workload identity federation instead of a service account key."
+---
+
+Use Google Cloud [workload identity federation](https://docs.cloud.google.com/iam/docs/workload-identity-federation-with-other-providers) to exchange a Trigger.dev OIDC token for a short-lived Google access token. Your tasks call Google Cloud APIs with no service account key in `GOOGLE_APPLICATION_CREDENTIALS` or `GOOGLE_CREDENTIALS`.
+
+Follow the [OIDC prerequisites](/oidc#prerequisites), then go to the [OIDC](https://cloud.trigger.dev/_/oidc) page for your environment and copy the issuer URL and subject.
+
+## Configure Google Cloud
+
+### Create a pool and provider
+
+Create a workload identity pool, then an OIDC provider in it. Replace the IDs, your organization slug, and your project number:
+
+```bash
+gcloud iam workload-identity-pools create trigger-dev \
+  --location="global" \
+  --display-name="Trigger.dev"
+
+gcloud iam workload-identity-pools providers create-oidc trigger-dev \
+  --location="global" \
+  --workload-identity-pool="trigger-dev" \
+  --issuer-uri="https://oidc.trigger.dev/YOUR_ORG_SLUG" \
+  --allowed-audiences="https://iam.googleapis.com/projects/YOUR_PROJECT_NUMBER/locations/global/workloadIdentityPools/trigger-dev/providers/trigger-dev" \
+  --attribute-mapping="google.subject=assertion.sub"
+```
+
+The allowed audience is the provider's own resource URL, which your task requests below. The mapping makes each Trigger.dev environment subject a distinct Google principal.
+
+<Warning>
+  Google limits `google.subject` to [127 characters](https://docs.cloud.google.com/iam/docs/workload-identity-federation).
+  Production and Staging subjects are well under that. A Preview subject ends with the branch's
+  slug, so a long branch name can push it over the limit and Google rejects the token. Check the
+  length of the subject you copy before using it for a Preview environment.
+</Warning>
+
+### Grant access to the subject
+
+Grant roles to the principal for the **complete subject copied from the dashboard**. For the example below, allow reading objects in a bucket:
+
+```bash
+gcloud storage buckets add-iam-policy-binding gs://YOUR_BUCKET \
+  --role="roles/storage.objectViewer" \
+  --member="principal://iam.googleapis.com/projects/YOUR_PROJECT_NUMBER/locations/global/workloadIdentityPools/trigger-dev/subject/YOUR_ENVIRONMENT_SUBJECT"
+```
+
+Some Google APIs don't accept federated principals directly. For those, grant the principal `roles/iam.workloadIdentityUser` on a service account and impersonate it (see `service_account_impersonation_url` below).
+
+## Use the identity in your task
+
+<CodeGroup>
+
+```bash npm
+npm i @trigger.dev/sdk@latest google-auth-library @google-cloud/storage
+```
+
+```bash pnpm
+pnpm add @trigger.dev/sdk@latest google-auth-library @google-cloud/storage
+```
+
+```bash bun
+bun add @trigger.dev/sdk@latest google-auth-library @google-cloud/storage
+```
+
+</CodeGroup>
+
+`IdentityPoolClient` from `google-auth-library` asks a [subject token supplier](https://github.com/googleapis/google-auth-library-nodejs#accessing-resources-from-an-oidc-or-saml20-identity-provider-using-a-custom-supplier) for a token whenever it needs a new Google access token. Return a fresh Trigger.dev OIDC token from it:
+
+```ts /trigger/read-from-gcs.ts
+import { auth, task } from "@trigger.dev/sdk";
+import { IdentityPoolClient } from "google-auth-library";
+import { Storage } from "@google-cloud/storage";
+
+const providerUrl =
+  "//iam.googleapis.com/projects/YOUR_PROJECT_NUMBER/locations/global/workloadIdentityPools/trigger-dev/providers/trigger-dev";
+
+export const readFromGcs = task({
+  id: "read-from-gcs",
+  run: async () => {
+    const authClient = new IdentityPoolClient({
+      audience: providerUrl,
+      subject_token_type: "urn:ietf:params:oauth:token-type:jwt",
+      subject_token_supplier: {
+        getSubjectToken: async () =>
+          (await auth.getOIDCToken({ audience: `https:${providerUrl}` })).token,
+      },
+      // To impersonate a service account instead of using the principal directly:
+      // service_account_impersonation_url: "https://iamcredentials.googleapis.com/v1/projects/-/serviceAccounts/YOUR_SA_EMAIL:generateAccessToken",
+    });
+
+    const storage = new Storage({ projectId: "YOUR_PROJECT_ID", authClient });
+    const [contents] = await storage.bucket("YOUR_BUCKET").file("example.txt").download();
+
+    return { contents: contents.toString() };
+  },
+});
+```
+
+The STS `audience` is the provider URL without a scheme; the OIDC token's audience is the same URL with `https:`, matching `--allowed-audiences`.
+
+Create the client inside `run` so one run's tokens are never reused by another. Redeploy and start a new run on that deployment.
+
+## Remove the old credential
+
+Once runs in every deployed environment authenticate this way, delete `GOOGLE_APPLICATION_CREDENTIALS` and `GOOGLE_CREDENTIALS` from those environments on the Environment Variables page, then [delete the service account key](https://docs.cloud.google.com/iam/docs/keys-create-delete#deleting) in Google Cloud.
+
+Local Development runs can't mint OIDC tokens. Use your own credentials there, such as `gcloud auth application-default login`, when `ctx.environment.type === "DEVELOPMENT"`.

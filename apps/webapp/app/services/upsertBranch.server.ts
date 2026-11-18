@@ -3,6 +3,7 @@ import {
   type PrismaClient,
   type PrismaClientOrTransaction,
 } from "@trigger.dev/database";
+import cuid from "cuid";
 import slug from "slug";
 import { prisma } from "~/db.server";
 import { createApiKeyForEnv, createPkApiKeyForEnv } from "~/models/api-key.server";
@@ -15,6 +16,12 @@ import {
 } from "~/utils/branchableEnvironment";
 import { devPresence } from "~/presenters/v3/DevPresence.server";
 import { ArchiveBranchService } from "./archiveBranch.server";
+import {
+  isCredentialFingerprintingEnabled,
+  saveRootApiKeyFingerprint,
+  userActor,
+} from "./credentialFingerprints.server";
+import { getRequestActor } from "./auditLogs/auditContext.server";
 import { logger } from "./logger.server";
 import { getCurrentPlan, getLimit } from "./platform.v3.server";
 import { type z } from "zod";
@@ -201,10 +208,34 @@ export class UpsertBranchService {
         parentEnvironment.type
       );
 
+      // Only a branch this call creates gets the new key, so only then does it need a fingerprint.
+      // The id is chosen here so the fingerprint can name the branch.
+      const branchId = cuid();
+      const isNewBranch =
+        (await isCredentialFingerprintingEnabled()) &&
+        !(await this.#prismaClient.runtimeEnvironment.findUnique({
+          where: branchWhere,
+          select: { id: true },
+        }));
+      if (isNewBranch) {
+        await saveRootApiKeyFingerprint(
+          apiKey,
+          {
+            id: branchId,
+            organizationId: parentEnvironment.organization.id,
+            projectId: parentEnvironment.project.id,
+          },
+          // Without a user (an organization access token or API key), whoever authenticated the
+          // request created it.
+          userId ? userActor(userId) : getRequestActor()
+        );
+      }
+
       const now = new Date();
       const branch = await this.#prismaClient.runtimeEnvironment.upsert({
         where: branchWhere,
         create: {
+          id: branchId,
           slug: branchSlug,
           apiKey,
           pkApiKey,

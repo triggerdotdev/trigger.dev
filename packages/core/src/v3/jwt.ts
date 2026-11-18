@@ -8,6 +8,7 @@ export type GenerateJWTOptions = {
   // pure function of its payload — the same claims mint byte-identical tokens. Off by default so
   // ordinary short-lived tokens keep their issued-at.
   omitIssuedAt?: boolean;
+  audience?: string;
 };
 
 export const JWT_ALGORITHM = "HS256";
@@ -55,7 +56,7 @@ export async function generateJWT(options: GenerateJWTOptions): Promise<string> 
 
   const jwt = new SignJWT(options.payload)
     .setIssuer(JWT_ISSUER)
-    .setAudience(JWT_AUDIENCE)
+    .setAudience(options.audience ?? JWT_AUDIENCE)
     .setProtectedHeader({ alg: JWT_ALGORITHM })
     .setExpirationTime(options.expirationTime ?? "15m");
 
@@ -77,7 +78,14 @@ export type ValidationResult =
       code: string;
     };
 
-export async function validateJWT(token: string, apiKey: string): Promise<ValidationResult> {
+export async function validateJWT(
+  token: string,
+  apiKey: string,
+  audience: string = JWT_AUDIENCE
+): Promise<ValidationResult> {
+  // jose skips the audience check for a falsy value.
+  if (!audience) throw new Error("validateJWT: audience must not be empty");
+
   const { jwtVerify, errors } = await import("jose");
 
   const secret = new TextEncoder().encode(apiKey);
@@ -85,7 +93,7 @@ export async function validateJWT(token: string, apiKey: string): Promise<Valida
   try {
     const { payload } = await jwtVerify(token, secret, {
       issuer: JWT_ISSUER,
-      audience: JWT_AUDIENCE,
+      audience,
     });
 
     return { ok: true, payload };

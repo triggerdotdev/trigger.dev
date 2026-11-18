@@ -11,11 +11,12 @@ import { EditPencilIcon } from "~/assets/icons/EditPencilIcon";
 import { TrashIcon } from "~/assets/icons/TrashIcon";
 import * as Ariakit from "@ariakit/react";
 import { formatDistanceToNow } from "date-fns";
-import { useFetcher, useNavigate } from "@remix-run/react";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { Await, useFetcher, useNavigate } from "@remix-run/react";
+import { Suspense, useEffect, useMemo, useRef, useState } from "react";
 import { CodeSquareIcon } from "~/assets/icons/CodeSquareIcon";
 import { StatusIcon } from "~/assets/icons/StatusIcon";
 import { AlertActivityCell } from "~/components/alerts/AlertActivityCell";
+import { ActivityBlankState } from "~/components/alerts/AlertListCells";
 import { formatExpiresAt } from "~/components/alerts/formatExpiresAt";
 import { AgentIcon } from "~/components/dashboard-agent/agent-identity";
 import { alertInvestigatePrompt } from "~/components/dashboard-agent/investigate-prompts";
@@ -72,6 +73,7 @@ import {
   type AlertEpisodeSummary,
   type AlertListRow,
   type AlertListRowStatus,
+  type AlertStateBucket,
 } from "~/presenters/v3/alertListRow";
 import { AlertStatusBadge, AlertStatusBreakdown } from "./AlertStatusBadge";
 import { GroupAlertsDialog } from "./GroupAlertsTranscript";
@@ -709,8 +711,14 @@ function InlineName({
   );
 }
 
+export type AlertsListDeferred = {
+  stateBuckets: Promise<Record<string, AlertStateBucket[]>> | Record<string, AlertStateBucket[]>;
+  channelIssueIds: Promise<string[]> | string[];
+};
+
 function AlertGroupRow({
   alert,
+  deferred,
   alertPath,
   canWrite,
   selectable,
@@ -718,6 +726,7 @@ function AlertGroupRow({
   onToggle,
 }: {
   alert: AlertListRow;
+  deferred: AlertsListDeferred;
   alertPath: string;
   canWrite: boolean;
   selectable: boolean;
@@ -742,14 +751,20 @@ function AlertGroupRow({
       <TableCell to={alertPath}>
         <span className="flex items-center gap-1.5">
           <AlertStatusBadge status={alert.status} extra={episode} />
-          {alert.hasChannelIssue ? (
-            <SimpleTooltip
-              button={<ExclamationTriangleIcon className="size-4 text-warning" />}
-              content="A notification channel needs attention. Edit the alert's channels."
-              className="max-w-[230px]"
-              disableHoverableContent
-            />
-          ) : null}
+          <Suspense fallback={null}>
+            <Await resolve={deferred.channelIssueIds} errorElement={null}>
+              {(ids) =>
+                ids.includes(alert.id) ? (
+                  <SimpleTooltip
+                    button={<ExclamationTriangleIcon className="size-4 text-warning" />}
+                    content="A notification channel needs attention. Edit the alert's channels."
+                    className="max-w-[230px]"
+                    disableHoverableContent
+                  />
+                ) : null
+              }
+            </Await>
+          </Suspense>
         </span>
       </TableCell>
       <TableCell to={alertPath} className="font-mono">
@@ -773,7 +788,11 @@ function AlertGroupRow({
         <LastActivityCell alert={alert} />
       </TableCell>
       <TableCell to={alertPath} actionClassName="py-1.5">
-        <AlertActivityCell stateBuckets={alert.stateBuckets} />
+        <Suspense fallback={<ActivityBlankState />}>
+          <Await resolve={deferred.stateBuckets} errorElement={<ActivityBlankState />}>
+            {(buckets) => <AlertActivityCell stateBuckets={buckets[alert.id]} />}
+          </Await>
+        </Suspense>
       </TableCell>
       <AlertActionsCell alert={alert} alertPath={alertPath} canWrite={canWrite} />
     </TableRow>
@@ -855,6 +874,7 @@ function GroupBulkBar({
 
 export function AlertsList({
   alerts,
+  deferred,
   newAlertPath,
   newAlertPrompt,
   alertPath,
@@ -867,6 +887,7 @@ export function AlertsList({
   truncated,
 }: {
   alerts: AlertListRow[];
+  deferred: AlertsListDeferred;
   hasLegacyAlerts: boolean;
   channelsTo: string;
   legacyTo: string;
@@ -1011,6 +1032,7 @@ export function AlertsList({
               <AlertGroupRow
                 key={alert.id}
                 alert={alert}
+                deferred={deferred}
                 alertPath={alertPath(alert.id)}
                 canWrite={canWrite}
                 selectable={selectable}

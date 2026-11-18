@@ -1,6 +1,7 @@
 import type { TaskRunError, TaskRunExecutionRetry } from "@trigger.dev/core/v3";
 import {
   calculateNextRetryDelay,
+  hasPinnedExecutionPolicy,
   isOOMRunError,
   RetryOptions,
   sanitizeError,
@@ -110,6 +111,7 @@ export async function retryOutcomeFromCompletion(
         usageDurationMs: true,
         costInCents: true,
         machinePreset: true,
+        annotations: true,
       },
     },
     prisma
@@ -155,7 +157,8 @@ export async function retryOutcomeFromCompletion(
 
   return {
     outcome: "retry",
-    method: retryUsingQueue ? "queue" : "immediate",
+    // A pinned run cannot warm start, so its retry needs a fresh worker even for a short delay.
+    method: retryUsingQueue || hasPinnedExecutionPolicy(run.annotations) ? "queue" : "immediate",
     settings: retrySettings,
     usageDurationMs: run.usageDurationMs,
     costInCents: run.costInCents,

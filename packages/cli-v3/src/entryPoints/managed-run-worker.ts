@@ -1,4 +1,4 @@
-import type { Tracer } from "@opentelemetry/api";
+import { context, type Tracer } from "@opentelemetry/api";
 import type { Logger } from "@opentelemetry/api-logs";
 import { promiseWithResolvers } from "@trigger.dev/core/utils";
 import {
@@ -21,6 +21,7 @@ import {
   localsAPI,
   logger,
   OTEL_LOG_ATTRIBUTE_COUNT_LIMIT,
+  parsePacket,
   realtimeStreams,
   resetIdempotencyKeyCatalog,
   resourceCatalog,
@@ -28,6 +29,7 @@ import {
   runtime,
   runTimelineMetrics,
   sessionStreams,
+  stringifyIO,
   taskContext,
   TaskRunContext,
   TaskRunErrorCodes,
@@ -69,11 +71,18 @@ import {
 } from "@trigger.dev/core/v3/workers";
 import { ZodIpcConnection } from "@trigger.dev/core/v3/zodIpc";
 import { readFile } from "node:fs/promises";
+import nodeModule from "node:module";
 import { setTimeout } from "node:timers/promises";
 import sourceMapSupport from "source-map-support";
 import { env } from "std-env";
 import { normalizeImportPath } from "../utilities/normalizeImportPath.js";
 import { dropInheritedRunToken, installRunToken } from "./runTokenEnv.js";
+import { WARMUP_FLAG } from "./warmupCommand.js";
+import {
+  pickStartupOnlyEnv,
+  startupOnlyEnvNotApplied,
+  startupOnlyEnvWarning,
+} from "./startupEnv.js";
 import { VERSION } from "../version.js";
 
 sourceMapSupport.install({
@@ -145,32 +154,44 @@ clock.setGlobalClock(durableClock);
 const standardTraceContextManager = new StandardTraceContextManager();
 traceContext.setGlobalManager(standardTraceContextManager);
 
-const runMetadataManager = new StandardMetadataManager(apiClientManager.clientOrThrow());
-runMetadata.setGlobalManager(runMetadataManager);
+let runMetadataManager!: StandardMetadataManager;
+let standardRealtimeStreamsManager!: StandardRealtimeStreamsManager;
+let standardInputStreamManager!: StandardInputStreamManager;
+let standardSessionStreamManager!: StandardSessionStreamManager;
 
-const standardRealtimeStreamsManager = new StandardRealtimeStreamsManager(
-  apiClientManager.clientOrThrow(),
-  getEnvVar("TRIGGER_STREAM_URL", getEnvVar("TRIGGER_API_URL")) ?? "https://api.trigger.dev",
-  (getEnvVar("TRIGGER_STREAMS_DEBUG") === "1" || getEnvVar("TRIGGER_STREAMS_DEBUG") === "true") ??
-    false
-);
-realtimeStreams.setGlobalManager(standardRealtimeStreamsManager);
+// The API URL and secret key these capture arrive with the first EXECUTE_TASK_RUN, not the fork env.
+function initializeApiManagers() {
+  if (runMetadataManager) {
+    return;
+  }
 
-const standardInputStreamManager = new StandardInputStreamManager(
-  apiClientManager.clientOrThrow(),
-  getEnvVar("TRIGGER_STREAM_URL", getEnvVar("TRIGGER_API_URL")) ?? "https://api.trigger.dev",
-  (getEnvVar("TRIGGER_STREAMS_DEBUG") === "1" || getEnvVar("TRIGGER_STREAMS_DEBUG") === "true") ??
-    false
-);
-inputStreams.setGlobalManager(standardInputStreamManager);
+  runMetadataManager = new StandardMetadataManager(apiClientManager.clientOrThrow());
+  runMetadata.setGlobalManager(runMetadataManager);
 
-const standardSessionStreamManager = new StandardSessionStreamManager(
-  apiClientManager.clientOrThrow(),
-  getEnvVar("TRIGGER_STREAM_URL", getEnvVar("TRIGGER_API_URL")) ?? "https://api.trigger.dev",
-  (getEnvVar("TRIGGER_STREAMS_DEBUG") === "1" || getEnvVar("TRIGGER_STREAMS_DEBUG") === "true") ??
-    false
-);
-sessionStreams.setGlobalManager(standardSessionStreamManager);
+  standardRealtimeStreamsManager = new StandardRealtimeStreamsManager(
+    apiClientManager.clientOrThrow(),
+    getEnvVar("TRIGGER_STREAM_URL", getEnvVar("TRIGGER_API_URL")) ?? "https://api.trigger.dev",
+    (getEnvVar("TRIGGER_STREAMS_DEBUG") === "1" || getEnvVar("TRIGGER_STREAMS_DEBUG") === "true") ??
+      false
+  );
+  realtimeStreams.setGlobalManager(standardRealtimeStreamsManager);
+
+  standardInputStreamManager = new StandardInputStreamManager(
+    apiClientManager.clientOrThrow(),
+    getEnvVar("TRIGGER_STREAM_URL", getEnvVar("TRIGGER_API_URL")) ?? "https://api.trigger.dev",
+    (getEnvVar("TRIGGER_STREAMS_DEBUG") === "1" || getEnvVar("TRIGGER_STREAMS_DEBUG") === "true") ??
+      false
+  );
+  inputStreams.setGlobalManager(standardInputStreamManager);
+
+  standardSessionStreamManager = new StandardSessionStreamManager(
+    apiClientManager.clientOrThrow(),
+    getEnvVar("TRIGGER_STREAM_URL", getEnvVar("TRIGGER_API_URL")) ?? "https://api.trigger.dev",
+    (getEnvVar("TRIGGER_STREAMS_DEBUG") === "1" || getEnvVar("TRIGGER_STREAMS_DEBUG") === "true") ??
+      false
+  );
+  sessionStreams.setGlobalManager(standardSessionStreamManager);
+}
 
 const waitUntilTimeoutInMs = getNumberEnvVar("TRIGGER_WAIT_UNTIL_TIMEOUT_MS", 60_000);
 const waitUntilManager = new StandardWaitUntilManager(waitUntilTimeoutInMs);
@@ -183,6 +204,8 @@ heartbeats.setGlobalManager(standardHeartbeatsManager);
 
 const triggerLogLevel = getEnvVar("TRIGGER_LOG_LEVEL");
 
+const WARMUP_TIMEOUT_MS = 20_000;
+
 async function importConfig(
   configPath: string
 ): Promise<{ config: TriggerConfig; handleError?: HandleErrorFunction }> {
@@ -194,6 +217,20 @@ async function importConfig(
     config,
     handleError: configModule?.handleError,
   };
+}
+
+// The compiled worker is built with --root=/app, so it embeds /app/<path> at /$bunfs/root/<path>.
+// Importing the file from disk instead would load a second copy of the SDK.
+function workerImportPath(workerManifest: WorkerManifest, path: string) {
+  if (!workerManifest.compiledWorkerPath) {
+    return normalizeImportPath(path);
+  }
+
+  if (!path.startsWith("/app/")) {
+    throw new Error(`Cannot import ${path} in the compiled worker: it is outside /app`);
+  }
+
+  return `/$bunfs/root/${path.slice("/app/".length)}`;
 }
 
 async function loadWorkerManifest() {
@@ -210,7 +247,7 @@ async function doBootstrap() {
     resourceCatalog.registerWorkerManifest(workerManifest);
 
     const { config, handleError } = await importConfig(
-      normalizeImportPath(workerManifest.configPath)
+      workerImportPath(workerManifest, workerManifest.configPath)
     );
 
     const tracingSDK = new TracingSDK({
@@ -366,6 +403,7 @@ function resetExecutionEnvironment() {
 
 let _lastEnv: Record<string, string> | undefined;
 let _executionCount = 0;
+const _startupEnv = pickStartupOnlyEnv(process.env);
 
 const zodIpc = new ZodIpcConnection({
   listenSchema: WorkerToExecutorMessageCatalog,
@@ -376,6 +414,8 @@ const zodIpc = new ZodIpcConnection({
       { execution, traceContext, metadata, metrics, env, isWarmStart },
       sender
     ) => {
+      const startupEnvNotApplied = env ? startupOnlyEnvNotApplied(_startupEnv, env) : [];
+
       if (env) {
         dropInheritedRunToken(env);
         populateEnv(env, {
@@ -385,6 +425,8 @@ const zodIpc = new ZodIpcConnection({
 
         _lastEnv = env;
       }
+
+      initializeApiManagers();
 
       console.log(
         `[${new Date().toISOString()}] Received EXECUTE_TASK_RUN isWarmStart ${String(isWarmStart)}`
@@ -503,7 +545,7 @@ const zodIpc = new ZodIpcConnection({
                 // Load init file if it exists
                 if (workerManifest.initEntryPoint) {
                   try {
-                    await import(normalizeImportPath(workerManifest.initEntryPoint));
+                    await import(workerImportPath(workerManifest, workerManifest.initEntryPoint));
                     console.log(`Loaded init file from ${workerManifest.initEntryPoint}`);
                   } catch (err) {
                     console.error(`Failed to load init file`, err);
@@ -511,7 +553,7 @@ const zodIpc = new ZodIpcConnection({
                   }
                 }
 
-                await import(normalizeImportPath(taskManifest.entryPoint));
+                await import(workerImportPath(workerManifest, taskManifest.entryPoint));
                 resourceCatalog.clearCurrentFileContext();
                 const durationMs = performance.now() - beforeImport;
 
@@ -606,6 +648,12 @@ const zodIpc = new ZodIpcConnection({
           // definition) register normally instead of being silently dropped.
           // Cleared in the surrounding finally below.
           resourceCatalog.setCurrentFileContext(NO_FILE_CONTEXT, NO_FILE_CONTEXT);
+
+          if (startupEnvNotApplied.length > 0) {
+            context.with(standardTraceContextManager.extractContext(), () =>
+              logger.warn(startupOnlyEnvWarning(startupEnvNotApplied))
+            );
+          }
 
           const { result } = await executor.execute(execution, ctx, signal);
 
@@ -765,7 +813,7 @@ async function flushTracingSDK(timeoutInMs: number = 10_000) {
 async function flushMetadata(timeoutInMs: number = 10_000) {
   const now = performance.now();
 
-  await Promise.race([runMetadataManager.flush(), setTimeout(timeoutInMs)]);
+  await Promise.race([runMetadataManager?.flush(), setTimeout(timeoutInMs)]);
 
   const duration = performance.now() - now;
 
@@ -820,3 +868,79 @@ standardHeartbeatsManager.registerListener(async (id) => {
 });
 
 console.log(`[${new Date().toISOString()}] Executor started`);
+
+// The image build starts the worker once in this mode, so Node writes its compile cache for the
+// modules a run imports (the config and the task files, which indexing already imports), then exits
+if (getEnvVar("TRIGGER_FILL_COMPILE_CACHE") === "1") {
+  await fillCompileCache();
+}
+
+async function fillCompileCache() {
+  try {
+    const workerManifest = await loadWorkerManifest();
+
+    resourceCatalog.registerWorkerManifest(workerManifest);
+
+    await importConfig(normalizeImportPath(workerManifest.configPath));
+
+    // The init file is left out: it runs user setup that belongs to a run, not to the build
+    for (const task of workerManifest.tasks) {
+      resourceCatalog.setCurrentFileContext(task.filePath, task.entryPoint);
+      await import(normalizeImportPath(task.entryPoint));
+      resourceCatalog.clearCurrentFileContext();
+    }
+
+    nodeModule.flushCompileCache?.();
+    process.exit(0);
+  } catch (error) {
+    console.error("Failed to fill the compile cache", error);
+    process.exit(1);
+  }
+}
+
+// A host can start the worker this way, with no env and no network, to prime a snapshot of the
+// image with what a run's cold start loads. It never runs a task or the init file.
+const warmupFlagIndex = process.argv.indexOf(WARMUP_FLAG);
+if (warmupFlagIndex !== -1) {
+  await warmup(process.argv[warmupFlagIndex + 1]);
+}
+
+async function warmup(cwd: string | undefined) {
+  const fail = (error: unknown) => {
+    console.error("Warmup failed", error);
+    process.exit(1);
+  };
+
+  // Fails closed: a hang, or an error a task file throws later, is a failed warmup
+  globalThis.setTimeout(() => fail(new Error("Timed out")), WARMUP_TIMEOUT_MS);
+  process.on("uncaughtException", fail);
+  process.on("unhandledRejection", fail);
+
+  try {
+    if (!cwd) {
+      throw new Error(`${WARMUP_FLAG} needs the directory that holds index.json`);
+    }
+
+    process.chdir(cwd);
+
+    const { tracer, workerManifest } = await bootstrap();
+
+    for (const task of workerManifest.tasks) {
+      resourceCatalog.setCurrentFileContext(task.filePath, task.entryPoint);
+      await import(workerImportPath(workerManifest, task.entryPoint));
+      resourceCatalog.clearCurrentFileContext();
+    }
+
+    // A small run without user code: a span, and a payload and output through the IO helpers
+    await tracer.startActiveSpan("warmup", async () => {
+      await parsePacket(await stringifyIO({ warmup: true, at: new Date() }));
+    });
+
+    // A rejection a task file left queued only reaches the handler on a later turn
+    await new Promise((resolve) => setImmediate(resolve));
+
+    process.exit(0);
+  } catch (error) {
+    fail(error);
+  }
+}

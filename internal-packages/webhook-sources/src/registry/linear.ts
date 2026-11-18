@@ -13,7 +13,7 @@ export const entry: ProviderRegistryEntry = {
   label: "Linear",
   category: "pm",
   docsUrl: "https://linear.app/developers/webhooks",
-  secretProvisioning: "integrator",
+  secretProvisioning: "either",
   eventTypeSource: { from: "body", path: "type" },
   sampleSource: "handauthored",
 };

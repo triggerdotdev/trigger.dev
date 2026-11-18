@@ -7,9 +7,12 @@ import { RunId } from "@trigger.dev/core/v3/isomorphic";
 import { z } from "zod";
 import { prisma } from "~/db.server";
 import { logger } from "~/services/logger.server";
-import { createActionApiRoute, everyResource } from "~/services/routeBuilders/apiBuilder.server";
+import { createActionApiRoute } from "~/services/routeBuilders/apiBuilder.server";
 import { keyedWaitpointBudgetResponse } from "~/services/routeBuilders/keyedWaitpointBudget.server";
-import { resolveIdempotencyKeyTTL } from "~/utils/idempotencyKeys.server";
+import {
+  resolveIdempotencyKeyTTL,
+  resolveRunWaitpointIdempotencyKey,
+} from "~/utils/idempotencyKeys.server";
 import { engine } from "~/v3/runEngine.server";
 import { runStore } from "~/v3/runStore.server";
 
@@ -22,11 +25,15 @@ const { action } = createActionApiRoute(
     method: "POST",
     authorization: {
       action: "write",
-      resource: (params) =>
-        everyResource([{ type: "runs", id: params.runFriendlyId }, { type: "waitpoints" }]),
+      resource: (params) => ({ type: "runs", id: params.runFriendlyId }),
     },
   },
-  async ({ authentication, body, params }): Promise<TypedResponse<WaitForDurationResponseBody>> => {
+  async ({
+    authentication,
+    body,
+    params,
+    ability,
+  }): Promise<TypedResponse<WaitForDurationResponseBody>> => {
     const { runFriendlyId } = params;
     const runId = RunId.toId(runFriendlyId);
 
@@ -57,7 +64,11 @@ const { action } = createActionApiRoute(
         // The blocking run's org, so a store DATETIME mint can be considered (dark until the org opts in).
         organizationId: authentication.environment.organization.id,
         completedAfter: body.date,
-        idempotencyKey: body.idempotencyKey,
+        idempotencyKey: resolveRunWaitpointIdempotencyKey(
+          body.idempotencyKey,
+          params.runFriendlyId,
+          ability
+        ),
         idempotencyKeyExpiresAt: idempotencyKeyExpiresAt,
       });
 

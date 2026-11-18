@@ -1,0 +1,81 @@
+---
+title: "Connect to Microsoft Azure"
+sidebarTitle: "Azure"
+description: "Authenticate to Azure from your tasks with a federated identity credential instead of a client secret or certificate."
+---
+
+Use Microsoft Entra [workload identity federation](https://learn.microsoft.com/en-us/entra/workload-id/workload-identity-federation) to exchange a Trigger.dev OIDC token for an Entra access token. Your tasks authenticate as an app registration with no `AZURE_CLIENT_SECRET` or client certificate stored anywhere.
+
+Follow the [OIDC prerequisites](/oidc#prerequisites), then go to the [OIDC](https://cloud.trigger.dev/_/oidc) page for your environment and copy the issuer URL and subject.
+
+## Configure Azure
+
+1. [Register an app](https://learn.microsoft.com/en-us/entra/identity-platform/quickstart-register-app) in Microsoft Entra ID, or reuse one, and grant it access to the Azure resources your task uses (for the example below, the **Storage Blob Data Reader** role on a storage account).
+2. In the app registration, open **Certificates & secrets**, select the **Federated credentials** tab, select **Add credential**, and choose the **Other issuer** scenario. Fill in the [federated identity credential](https://learn.microsoft.com/en-us/entra/workload-id/workload-identity-federation-create-trust):
+
+   | Azure field            | Value                                                                       |
+   | ---------------------- | --------------------------------------------------------------------------- |
+   | **Issuer**             | Your issuer URL, `https://oidc.trigger.dev/YOUR_ORG_SLUG`.                  |
+   | **Subject identifier** | The **complete subject copied from the dashboard**.                        |
+   | **Audience**           | `api://AzureADTokenExchange`, Microsoft's recommended value.               |
+   | **Name**               | A name for the credential, for example `trigger-production`.               |
+
+3. Copy the app's **Application (client) ID** and **Directory (tenant) ID** from its **Overview** page.
+
+Azure compares the issuer and subject exactly and doesn't support wildcards, so each environment needs its own federated credential. An app registration holds at most 20 federated credentials, so use one app per group of environments rather than one credential per Preview branch.
+
+## Use the credential in your task
+
+<CodeGroup>
+
+```bash npm
+npm i @trigger.dev/sdk@latest @azure/identity @azure/storage-blob
+```
+
+```bash pnpm
+pnpm add @trigger.dev/sdk@latest @azure/identity @azure/storage-blob
+```
+
+```bash bun
+bun add @trigger.dev/sdk@latest @azure/identity @azure/storage-blob
+```
+
+</CodeGroup>
+
+`ClientAssertionCredential` from `@azure/identity` calls your function whenever it needs a new Entra token. Return a fresh Trigger.dev OIDC token from it:
+
+```ts /trigger/read-from-azure.ts
+import { auth, task } from "@trigger.dev/sdk";
+import { ClientAssertionCredential } from "@azure/identity";
+import { BlobServiceClient } from "@azure/storage-blob";
+
+export const readFromAzure = task({
+  id: "read-from-azure",
+  run: async () => {
+    const credential = new ClientAssertionCredential(
+      "YOUR_TENANT_ID",
+      "YOUR_CLIENT_ID",
+      async () => (await auth.getOIDCToken({ audience: "api://AzureADTokenExchange" })).token
+    );
+
+    const blobs = new BlobServiceClient(
+      "https://YOUR_STORAGE_ACCOUNT.blob.core.windows.net",
+      credential
+    );
+    const blob = blobs.getContainerClient("YOUR_CONTAINER").getBlobClient("example.txt");
+    const contents = await blob.downloadToBuffer();
+
+    return { contents: contents.toString() };
+  },
+});
+```
+
+The tenant and client IDs aren't secrets. Keep them in `AZURE_TENANT_ID` and `AZURE_CLIENT_ID` if you prefer.
+
+Create the credential inside `run` so one run's tokens are never reused by another. Redeploy and start a new run on that deployment.
+
+## Remove the old credential
+
+Once runs in every deployed environment authenticate this way, delete `AZURE_CLIENT_SECRET`, `AZURE_CLIENT_CERTIFICATE_PATH`, and `AZURE_CLIENT_CERTIFICATE_PASSWORD` from those environments on the Environment Variables page, then delete the secret or certificate from the app registration.
+
+Local Development runs can't mint OIDC tokens. Use your own Azure sign-in there, such as `DefaultAzureCredential` with the Azure CLI, when `ctx.environment.type === "DEVELOPMENT"`.

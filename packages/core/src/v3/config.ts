@@ -327,6 +327,19 @@ export type TriggerConfig = {
      */
     minify?: boolean;
 
+    /**
+     * Compile the deployed worker to a Bun executable with bytecode, so runs start faster. Applies to
+     * deploys on the `bun-1.4` runtime only; `trigger dev` and other runtimes are unchanged.
+     *
+     * `import.meta.url`, `import.meta.dirname` and `__dirname` point at your bundled files under
+     * `/app`, as they do without compilation. Files you read next to your code (e.g. with
+     * `new URL("./file", import.meta.url)`) and worker files still load from disk, so they must be in
+     * the image, for example with `additionalFiles`. Set this to `false` to turn compilation off.
+     *
+     * @default true
+     */
+    bunBytecode?: boolean;
+
     jsx?: {
       /**
        * @default "React.createElement"

@@ -1,8 +1,9 @@
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 
-const { findFirstMock, updateManyMock } = vi.hoisted(() => ({
+const { findFirstMock, updateManyMock, userFindFirstMock } = vi.hoisted(() => ({
   findFirstMock: vi.fn(),
   updateManyMock: vi.fn(),
+  userFindFirstMock: vi.fn(),
 }));
 
 vi.mock("~/db.server", () => ({
@@ -11,6 +12,7 @@ vi.mock("~/db.server", () => ({
       findFirst: findFirstMock,
       updateMany: updateManyMock,
     },
+    user: { findFirst: userFindFirstMock },
   },
   $replica: {},
 }));
@@ -41,6 +43,8 @@ beforeEach(() => {
   findFirstMock.mockReset();
   updateManyMock.mockReset();
   updateManyMock.mockResolvedValue({ count: 1 });
+  userFindFirstMock.mockReset();
+  userFindFirstMock.mockResolvedValue({ mfaEnabledAt: null, admin: false, orgMemberships: [] });
 });
 
 afterEach(() => {
@@ -93,5 +97,28 @@ describe("authenticatePersonalAccessToken — lastAccessedAt throttle", () => {
     expect(result).toBeUndefined();
     expect(findFirstMock).not.toHaveBeenCalled();
     expect(updateManyMock).not.toHaveBeenCalled();
+  });
+});
+
+describe("authenticatePersonalAccessToken — org MFA requirement", () => {
+  // Catches: the legacy token path skipping the org MFA requirement.
+  test("refuses a member who hasn't set up MFA their org requires, saying where to do it", async () => {
+    findFirstMock.mockResolvedValueOnce({
+      id: "pat_456",
+      userId: "user_without_mfa",
+      hashedToken: "hashed:tr_pat_validtoken",
+      encryptedToken: { nonce: "n", ciphertext: "c", tag: "t" },
+    });
+    userFindFirstMock.mockResolvedValueOnce({
+      mfaEnabledAt: null,
+      admin: false,
+      orgMemberships: [{ id: "member_1" }],
+    });
+
+    const thrown = await authenticatePersonalAccessToken("tr_pat_validtoken").catch((e) => e);
+
+    expect(thrown).toBeInstanceOf(Response);
+    expect(thrown.status).toBe(403);
+    expect((await thrown.json()).error).toContain("/account/security");
   });
 });

@@ -24,8 +24,9 @@ type DashboardAgentContextValue = {
   setOpen: (open: boolean) => void;
   /** Sent as the first message of a new chat; with a chat open it only fills the composer.
    * `source` names a contextual entry point (e.g. the alerts page), read by the header's
-   * "Manual setup" action so it never shows for a chat opened any other way. */
-  openWith: (text: string, options?: { source?: AgentOpenSource }) => void;
+   * "Manual setup" action so it never shows for a chat opened any other way.
+   * `newChat` always starts a fresh chat instead of using the open or restored one. */
+  openWith: (text: string, options?: { source?: AgentOpenSource; newChat?: boolean }) => void;
   /** Opens the panel in alert-creation mode with a prefill, without navigating. */
   openCreateAlert: (prefill: DraftPrefillParams) => void;
   /** Opens the panel with a wizard card for the alert's editable fields. */

@@ -17,10 +17,8 @@ import { $transaction } from "~/db.server";
 import { env } from "~/env.server";
 import {
   assertCronMeetsFreeMinimum,
-  minimumWindowForNewSchedule,
-  resolveFreeSchedulePolicyContext,
+  resolvePlanState,
   resolveMinimumWindowOnUpdate,
-  type FreeSchedulePolicyContext,
 } from "../freeSchedulePolicy.server";
 
 export type UpsertTaskScheduleServiceOptions = UpsertSchedule;
@@ -61,7 +59,6 @@ export class UpsertTaskScheduleService extends BaseService {
       where: { id: projectId },
       select: {
         organizationId: true,
-        organization: { select: { featureFlags: true } },
       },
     });
 
@@ -69,12 +66,7 @@ export class UpsertTaskScheduleService extends BaseService {
       throw new ServiceValidationError("Project not found");
     }
 
-    const policy = await resolveFreeSchedulePolicyContext(this._prisma, {
-      id: project.organizationId,
-      featureFlags: project.organization.featureFlags,
-    });
-
-    const context = { organizationId: project.organizationId, policy };
+    const context = { organizationId: project.organizationId };
     if (!options) return this.#call(projectId, schedule, context);
 
     const defaultWindowDurationSeconds = await resolveNewScheduleDefaultWindowSeconds(
@@ -110,14 +102,12 @@ export class UpsertTaskScheduleService extends BaseService {
     schedule: UpsertTaskScheduleServiceOptions,
     context: {
       organizationId: string;
-      policy: FreeSchedulePolicyContext;
       defaultWindowDurationSeconds?: number | null;
     },
     runTokenEnvironmentId?: string,
     registerInstance: (instanceId: string) => Promise<unknown> = (instanceId) =>
       scheduleEngine.registerNextTaskScheduleInstance({ instanceId })
   ) {
-    const { policy } = context;
     const deduplicationKey =
       typeof schedule.deduplicationKey === "string" && schedule.deduplicationKey !== ""
         ? schedule.deduplicationKey
@@ -154,7 +144,7 @@ export class UpsertTaskScheduleService extends BaseService {
       result = await this.#updateExistingSchedule(
         existingSchedule,
         schedule,
-        policy,
+        context.organizationId,
         registerInstance
       );
     } else {
@@ -166,7 +156,6 @@ export class UpsertTaskScheduleService extends BaseService {
         schedule,
         projectId,
         deduplicationKey,
-        policy,
         defaultWindowDurationSeconds,
         registerInstance
       );
@@ -203,21 +192,9 @@ export class UpsertTaskScheduleService extends BaseService {
     options: UpsertTaskScheduleServiceOptions,
     projectId: string,
     deduplicationKey: string,
-    policy: FreeSchedulePolicyContext,
     defaultWindowDurationSeconds: number | null,
     registerInstance: (instanceId: string) => Promise<unknown>
   ) {
-    const minimumWindowDurationSeconds = minimumWindowForNewSchedule(policy, "IMPERATIVE");
-
-    if (minimumWindowDurationSeconds !== null) {
-      assertCronMeetsFreeMinimum({
-        cron: options.cron,
-        timezone: options.timezone,
-        minimumWindowDurationSeconds,
-        scheduleType: "IMPERATIVE",
-      });
-    }
-
     const scheduleRecord = await this._prisma.taskSchedule.create({
       data: {
         projectId,
@@ -230,7 +207,6 @@ export class UpsertTaskScheduleService extends BaseService {
         generatorDescription: cronstrue.toString(options.cron),
         timezone: options.timezone ?? "UTC",
         externalId: options.externalId ? options.externalId : undefined,
-        minimumWindowDurationSeconds,
         ...normalizeScheduleWindow(options.window),
         defaultWindowDurationSeconds,
       },
@@ -266,11 +242,13 @@ export class UpsertTaskScheduleService extends BaseService {
   async #updateExistingSchedule(
     existingSchedule: TaskSchedule,
     options: UpsertTaskScheduleServiceOptions,
-    policy: FreeSchedulePolicyContext,
+    organizationId: string,
     registerInstance: (instanceId: string) => Promise<unknown>
   ) {
     const minimumResolution = resolveMinimumWindowOnUpdate(
-      policy,
+      existingSchedule.minimumWindowDurationSeconds === null
+        ? "unknown"
+        : await resolvePlanState(organizationId),
       existingSchedule.minimumWindowDurationSeconds
     );
 

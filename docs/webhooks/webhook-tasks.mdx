@@ -1,0 +1,46 @@
+---
+title: "Webhook tasks"
+sidebarTitle: "Webhook tasks"
+description: "What a webhook() handler receives, the task options it takes, how to group deliveries per customer, and the options an endpoint takes."
+---
+
+**A webhook task is a [task](/tasks/overview) with an endpoint attached: `webhook()` starts a task run for each delivery that passes its [filter](/webhooks/filters).** If an attempt fails, the run retries and calls `onEvent` again, so keep its side effects safe to repeat.
+
+## Handler arguments
+
+`onEvent` receives:
+
+| Argument | Value |
+| --- | --- |
+| `event` | The verified request body, parsed as JSON. Its TypeScript type comes from the [source](/webhooks/verification#typing-the-event). |
+| `headers` | Request headers as a Web `Headers` object, with case-insensitive `get()` and `has()` methods. `authorization`, `proxy-authorization`, `cookie`, `set-cookie` and shared-secret headers are removed; other headers, including signature headers such as `stripe-signature`, share a 4 KB budget, so a large set of headers can drop some. Headers a live waiter matches on are always kept. |
+| `endpoint` | The endpoint the delivery arrived on: `id`, `declaredId`, `tenantId`, `externalRef`, and the `metadata` you declared. |
+| `ctx` | The same [run context](/context) that regular tasks receive. |
+
+## Task options
+
+`webhook()` also takes the options a [task](/tasks/overview) does, such as `queue`, `concurrency`, `machine`, `retry`, `maxDuration` and the lifecycle hooks. For example, to handle one delivery at a time:
+
+```ts /trigger/stripe-orders.ts
+import { webhook, webhooks } from "@trigger.dev/sdk";
+
+export const stripe = webhooks.endpoint.define({ id: "stripe", source: webhooks.stripe() });
+
+export const orders = webhook({
+  id: "stripe-orders",
+  endpoint: stripe,
+  queue: { concurrencyLimit: 1 },
+  retry: { maxAttempts: 5 },
+  onEvent: async ({ event }) => {
+    // ...
+  },
+});
+```
+
+## Group deliveries per customer
+
+The limit covers every delivery the task handles. To group each customer's events while different customers run in parallel, route them to an agent with [session routing](/webhooks/session-routing): deliveries with the same key land in one session and are handled one at a time. A retried delivery can reach the session after a later one, so don't rely on arrival order.
+
+## Endpoint options
+
+`webhooks.endpoint.define` also takes a `description` and `metadata`. The metadata is passed to every subscriber as `endpoint.metadata`. The endpoint `id` can't start with `wh_`, which is reserved for the ids Trigger.dev generates.

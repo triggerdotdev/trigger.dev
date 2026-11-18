@@ -18,13 +18,14 @@ import {
   ZodIpcConnection,
 } from "@trigger.dev/core/v3/zodIpc";
 import { Evt } from "evt";
-import { type ChildProcess, fork } from "node:child_process";
+import { type ChildProcess, fork, spawn } from "node:child_process";
 import { chalkError, chalkGrey, chalkRun, prettyPrintDate } from "../utilities/cliOutput.js";
 
 import {
   execOptionsForRuntime,
   execPathForRuntime,
   isBunRuntime,
+  nodeCompileCacheEnv,
 } from "@trigger.dev/core/v3/build";
 import { nodeOptionsWithMaxOldSpaceSize } from "@trigger.dev/core/v3/machines";
 import type { InferSocketMessageSchema } from "@trigger.dev/core/v3/zodSocket";
@@ -163,6 +164,9 @@ export class TaskRunProcess {
       OTEL_IMPORT_HOOK_INCLUDES: workerManifest.otelImportHook?.include?.join(","),
       // TODO: this will probably need to use something different for bun (maybe --preload?)
       NODE_OPTIONS: execOptionsForRuntime(workerManifest.runtime, workerManifest, maxOldSpaceSize),
+      ...(workerManifest.compileCacheDir
+        ? nodeCompileCacheEnv(workerManifest.runtime, workerManifest.compileCacheDir, "read")
+        : {}),
       PATH: process.env.PATH,
       TRIGGER_PROCESS_FORK_START_TIME: String(Date.now()),
       TRIGGER_WARM_START: this.options.isWarmStart ? "true" : "false",
@@ -180,14 +184,22 @@ export class TaskRunProcess {
       ? "--no-warnings"
       : "--no-warnings=ExperimentalWarning";
 
-    this._child = fork(workerManifest.workerEntryPoint, executorArgs(workerManifest), {
-      stdio: [/*stdin*/ "ignore", /*stdout*/ "pipe", /*stderr*/ "pipe", "ipc"],
-      cwd,
-      env: fullEnv,
-      execArgv: ["--trace-uncaught", noWarningsFlag],
-      execPath: execPathForRuntime(workerManifest.runtime),
-      serialization: "json",
-    });
+    // The compiled worker has its entry point and runtime flags built in
+    this._child = workerManifest.compiledWorkerPath
+      ? spawn(workerManifest.compiledWorkerPath, executorArgs(workerManifest), {
+          stdio: [/*stdin*/ "ignore", /*stdout*/ "pipe", /*stderr*/ "pipe", "ipc"],
+          cwd,
+          env: fullEnv,
+          serialization: "json",
+        })
+      : fork(workerManifest.workerEntryPoint, executorArgs(workerManifest), {
+          stdio: [/*stdin*/ "ignore", /*stdout*/ "pipe", /*stderr*/ "pipe", "ipc"],
+          cwd,
+          env: fullEnv,
+          execArgv: ["--trace-uncaught", noWarningsFlag],
+          execPath: execPathForRuntime(workerManifest.runtime),
+          serialization: "json",
+        });
 
     this._childPid = this._child?.pid;
 
@@ -345,6 +357,9 @@ export class TaskRunProcess {
         env: params.env,
         isWarmStart: isWarmStart ?? this.options.isWarmStart,
       });
+
+      // Not needed once sent; dropping it lets the env's strings be collected during the attempt.
+      params.env = undefined;
     } else {
       // Child process is dead or disconnected — the IPC send was skipped so the attempt
       // promise would hang forever. Reject it immediately to let the caller handle it.
@@ -701,7 +716,7 @@ class OutOfMemoryKillError extends UnexpectedExitError {
   }
 }
 
-const TRUST_STORE_ENV_KEYS = [
+export const TRUST_STORE_ENV_KEYS = [
   "NODE_EXTRA_CA_CERTS",
   "SSL_CERT_FILE",
   "REQUESTS_CA_BUNDLE",

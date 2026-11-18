@@ -1,28 +1,11 @@
-import type {
-  AuditLogContext,
-  AuditLogController,
-  AuditLogPluginConfig,
-} from "@trigger.dev/plugins";
+import type { AuditLogController, AuditLogPluginConfig } from "@trigger.dev/plugins";
 import { env } from "~/env.server";
-import { getHttpContext } from "~/services/httpAsyncStorage.server";
 import { signalsEmitter } from "~/services/signals.server";
 import { singleton } from "~/utils/singleton";
+import { getRequestAuditContext } from "./auditContext.server";
 import { createAuditLogs } from "./auditLogHost.server";
 import { loadAuditLogPlugin } from "./auditLogPlugin.server";
-
-/** Until the request audit context lands, only the time and request id are known. */
-function contextFromRequest(occurredAt: Date): AuditLogContext {
-  return {
-    occurredAt,
-    actor: null,
-    credential: null,
-    onBehalfOf: null,
-    source: null,
-    endpoint: null,
-    origin: null,
-    requestId: getHttpContext()?.requestId ?? null,
-  };
-}
+import { isAuditRecordingEnabledFor } from "./auditRecordingFlag.server";
 
 function pluginConfig(): AuditLogPluginConfig {
   return {
@@ -39,12 +22,14 @@ export function getAuditLogController(): Promise<AuditLogController | null> {
   );
 }
 
-/** @knipignore Entry point for audit events; call sites land with the event types. */
+/** Entry point for audit events and credential fingerprints. */
 export const auditLogs = singleton("auditLogs", () => {
   const audit = createAuditLogs({
     controller: getAuditLogController,
     isRecordingEnabled: () => env.AUDIT_LOGS_RECORDING_ENABLED,
-    getContext: contextFromRequest,
+    isRecordingEnabledFor: isAuditRecordingEnabledFor,
+    // Resolved at call time: the context module imports this one.
+    getContext: (occurredAt) => getRequestAuditContext(occurredAt),
   });
   // Hands events and revocations still in flight to the plugin before the process exits.
   const flushOnShutdown = () => void audit.flush();

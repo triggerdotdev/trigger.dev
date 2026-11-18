@@ -84,6 +84,7 @@ model User {
   metricsDashboards                MetricsDashboard[]
   platformNotifications            PlatformNotification[]
   platformNotificationInteractions PlatformNotificationInteraction[]
+  environmentVariableIgnores       EnvironmentVariableIgnore[]
 }
 
 model MfaBackupCode {
@@ -138,8 +139,19 @@ model AuthorizationCode {
   /// sha256 of the approval code, which only the approving browser ever sees.
   approvalCodeHash String?
 
+  oauthClient       OAuthClient? @relation(fields: [oauthClientId], references: [id], onDelete: Cascade)
+  oauthClientId     String?
+  redirectUri       String?
+  scope             String[]     @default([])
+  resource          String?
+  approvedByUserId  String?
+  /// The user who started the OAuth authorization. Only they can approve it.
+  requestedByUserId String?
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+
+  @@index([oauthClientId])
 }
 
 // Used by User's to perform API actions
@@ -180,7 +192,68 @@ model PersonalAccessToken {
 
   authorizationCodes AuthorizationCode[]
 
+  oauthClient        OAuthClient?        @relation(fields: [oauthClientId], references: [id], onDelete: Restrict)
+  oauthClientId      String?
+  oauthRefreshTokens OAuthRefreshToken[]
+
   @@index([userId])
+  @@index([oauthClientId, userId])
+}
+
+enum OAuthClientKind {
+  PREREGISTERED
+  CIMD
+  DCR
+}
+
+model OAuthClient {
+  id String @id @default(cuid())
+
+  kind     OAuthClientKind
+  clientId String          @unique
+
+  metadataUrl      String?
+  displayName      String?
+  selfReportedName String?
+  redirectUris     String[]
+  dedupeKey        String?  @unique
+
+  metadataExpiresAt DateTime?
+  lastUsedAt        DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  authorizationCodes   AuthorizationCode[]
+  personalAccessTokens PersonalAccessToken[]
+  refreshTokens        OAuthRefreshToken[]
+
+  @@index([kind, lastUsedAt])
+}
+
+model OAuthRefreshToken {
+  id String @id @default(cuid())
+
+  hashedToken String @unique
+
+  personalAccessToken   PersonalAccessToken @relation(fields: [personalAccessTokenId], references: [id], onDelete: Cascade)
+  personalAccessTokenId String
+
+  oauthClient   OAuthClient @relation(fields: [oauthClientId], references: [id], onDelete: Cascade)
+  oauthClientId String
+
+  scope    String[]
+  resource String
+
+  usedAt       DateTime?
+  replacedById String?
+
+  idleExpiresAt DateTime
+  createdAt     DateTime @default(now())
+
+  @@index([personalAccessTokenId])
+  @@index([oauthClientId])
+  @@index([idleExpiresAt])
 }
 
 enum OrganizationAccessTokenType {
@@ -294,6 +367,12 @@ model Organization {
   supportAccessModeUpdatedById String?
 
   supportAccessRequests SupportAccessRequest[]
+
+  /// When true, members without MFA are locked out of the dashboard and CLI until they set it up.
+  mfaRequired            Boolean  @default(false)
+  /// Dashboard actions that need an MFA check within the step-up window (see MfaStepUpAction in the webapp).
+  mfaStepUpActions       String[] @default([])
+  mfaStepUpWindowMinutes Int      @default(5)
 }
 
 model OrgMember {
@@ -419,6 +498,7 @@ model RuntimeEnvironment {
   taskRuns                   TaskRun[]
   taskQueues                 TaskQueue[]
   environmentVariableValues  EnvironmentVariableValue[]
+  environmentVariableIgnores EnvironmentVariableIgnore[]
   checkpoints                Checkpoint[]
   workerDeployments          WorkerDeployment[]
   workerDeploymentPromotions WorkerDeploymentPromotion[]
@@ -561,6 +641,7 @@ model Project {
   runTags                        TaskRunTag[]
   taskQueues                     TaskQueue[]
   environmentVariables           EnvironmentVariable[]
+  environmentVariableIgnores     EnvironmentVariableIgnore[]
   checkpoints                    Checkpoint[]
   WorkerDeployment               WorkerDeployment[]
   CheckpointRestoreEvent         CheckpointRestoreEvent[]
@@ -887,6 +968,10 @@ model BackgroundWorkerTask {
   /// AGENT: { type: "ai-sdk-chat" }
   config Json?
 
+  executionMode   TaskExecutionMode @default(STANDARD)
+  /// RunExecutionPolicy from @trigger.dev/core. Null means the standard policy.
+  executionPolicy Json?
+
   payloadSchema Json?
 
   @@unique([workerId, slug])
@@ -902,6 +987,12 @@ enum TaskTriggerSource {
   SCHEDULED
   AGENT
   WEBHOOK
+}
+
+enum TaskExecutionMode {
+  STANDARD
+  /// Locked-down policy; only runs on microVM compute.
+  SANDBOX
 }
 
 model WebhookEndpoint {
@@ -2417,6 +2508,7 @@ model EnvironmentVariable {
   createdAt  DateTime                   @default(now())
   updatedAt  DateTime                   @updatedAt
   values     EnvironmentVariableValue[]
+  ignores    EnvironmentVariableIgnore[]
 
   @@unique([projectId, key])
 }
@@ -2433,6 +2525,9 @@ model EnvironmentVariableValue {
   /// If true, the value is secret and cannot be revealed
   isSecret Boolean @default(false)
 
+  isProxyOnly       Boolean  @default(false)
+  proxyConfig       Json?
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -2444,6 +2539,35 @@ model EnvironmentVariableValue {
   @@index([valueReferenceId])
   // One environment's values by last update: the environment variables page's sort by updated
   @@index([environmentId, updatedAt(sort: Desc), variableId])
+}
+
+/// A reason the environment variables "Needs attention" page shows a key in one environment, which
+/// the project's team chose to ignore. An ignored EMPTY goes when the value is next saved.
+model EnvironmentVariableIgnore {
+  id            String                          @id @default(cuid())
+  project       Project                         @relation(fields: [projectId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  projectId     String
+  environment   RuntimeEnvironment              @relation(fields: [environmentId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  environmentId String
+  /// For MISSING, a variable of the project with no value in this environment.
+  variable      EnvironmentVariable             @relation(fields: [variableId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  variableId    String
+  reason        EnvironmentVariableIgnoreReason
+  createdBy     User?                           @relation(fields: [createdById], references: [id], onDelete: SetNull, onUpdate: Cascade)
+  createdById   String?
+  createdAt     DateTime                        @default(now())
+
+  // Also the page's read: one environment's ignores, joined by variable
+  @@unique([environmentId, variableId, reason])
+  @@index([variableId])
+  @@index([projectId])
+  @@index([createdById])
+}
+
+enum EnvironmentVariableIgnoreReason {
+  EMPTY
+  MISSING
+  OIDC
 }
 
 model Checkpoint {
@@ -2527,6 +2651,14 @@ enum WorkerDeploymentType {
   V1
 }
 
+enum DeploymentInitiatedByCredential {
+  ROOT_API_KEY
+  SCOPED_API_KEY
+  PERSONAL_ACCESS_TOKEN
+  ORGANIZATION_ACCESS_TOKEN
+  TRUSTED_PUBLISHING
+}
+
 model WorkerDeployment {
   id String @id @default(cuid())
 
@@ -2537,7 +2669,7 @@ model WorkerDeployment {
 
   runtime        String?
   runtimeVersion String?
-  /// CLI version that initiated the deploy, stamped at initialization
+  /// CLI version that initiated the deploy, stamped at initialization or worker upload
   cliVersion     String?
 
   imageReference String?
@@ -2574,6 +2706,9 @@ model WorkerDeployment {
   triggeredVia  String?
   commitSHA     String?
   externalId    String?
+
+  /// The kind of credential that started the deployment. Null when unknown.
+  initiatedByCredential DeploymentInitiatedByCredential?
 
   startedAt   DateTime?
   installedAt DateTime?

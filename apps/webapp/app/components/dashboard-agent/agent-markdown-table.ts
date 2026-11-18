@@ -1,3 +1,5 @@
+import { escapeCSVCell } from "~/utils/dataExport";
+
 // Pure hast -> grid extraction, no DOM access. Structurally compatible with
 // hast's `Element`/`Text` nodes (streamdown passes those as the `node` prop)
 // without depending on the `hast` types package.
@@ -61,13 +63,6 @@ export function gridToMarkdown(grid: MarkdownTableGrid): string {
   });
 
   return [header, divider, ...rows].join("\n");
-}
-
-function escapeCSVCell(value: string): string {
-  if (value.includes(",") || value.includes('"') || value.includes("\n")) {
-    return `"${value.replace(/"/g, '""')}"`;
-  }
-  return value;
 }
 
 export function gridToCSV(grid: MarkdownTableGrid): string {

@@ -109,10 +109,12 @@ async function initialize(
     accessController(access),
     cardRefusal
   );
-  const error: unknown = await service.call(environment, payload(triggeredVia)).then(
-    () => undefined,
-    (thrown) => thrown
-  );
+  const error: unknown = await service
+    .call(environment, payload(triggeredVia), { initiatedByCredential: null })
+    .then(
+      () => undefined,
+      (thrown) => thrown
+    );
   const deployments = await prisma.workerDeployment.count({
     where: { environmentId: environment.id },
   });

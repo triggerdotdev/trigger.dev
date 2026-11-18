@@ -58,6 +58,8 @@ describe("locate", () => {
     ["run", "not-a-run-id"],
     ["deployment", "deployment"],
     ["deployment", "20260101.1"],
+    // Catches: a dot-segment id collapsing the URL onto a parent route.
+    ["error", ".."],
   ])("rejects a bad %s id shape without a fetch", async (kind, id) => {
     const result = await locate({ kind, id }, {});
 
@@ -100,7 +102,7 @@ describe("locate", () => {
       "call the relevant tool with project=proj_a environment=staging"
     );
     expect(result.scopes[1].next).toBe(
-      "call the relevant tool with project=proj_a environment=preview branch=feature-x"
+      "call the relevant tool with project=proj_a environment=preview branch=«untrusted:branch» feature-x «/untrusted:branch»"
     );
   });
 
@@ -134,6 +136,7 @@ describe("locate", () => {
    */
   const QUEUE = { kind: "queue", id: "q-plain" };
 
+  // Catches: a located queue name reaching the model unfenced in the next hint.
   it("points a queue's next hint at get_queue with the name and kind it resolved", async () => {
     const result = await locate(QUEUE, {
       found: true,
@@ -153,7 +156,7 @@ describe("locate", () => {
     expect(result.found).toBe(true);
     expect(result.scopes).toHaveLength(1);
     expect(result.scopes[0].next).toBe(
-      "call get_queue queue=q-plain type=custom with project=proj_a environment=prod"
+      "call get_queue queue=«untrusted:queueName» q-plain «/untrusted:queueName» type=custom with project=proj_a environment=prod"
     );
   });
 
@@ -175,15 +178,22 @@ describe("locate", () => {
           environmentName: "preview",
           environmentId: "env_b",
           branch: "feature-x",
+          taskIdentifier: "send-receipt",
           queueName: "q-plain",
           queueType: "custom",
         },
       ],
     });
 
+    // Catches: a located scope's branch, task or queue name reaching the model unfenced.
+    expect(result.scopes[1]).toMatchObject({
+      branch: "«untrusted:branch» feature-x «/untrusted:branch»",
+      taskIdentifier: "«untrusted:taskIdentifier» send-receipt «/untrusted:taskIdentifier»",
+      queueName: "«untrusted:queueName» q-plain «/untrusted:queueName»",
+    });
     expect(result.scopes.map((scope: any) => scope.next)).toEqual([
-      "call get_queue queue=q-plain type=task with project=proj_a environment=prod",
-      "call get_queue queue=q-plain type=custom with project=proj_b environment=preview branch=feature-x",
+      "call get_queue queue=«untrusted:queueName» q-plain «/untrusted:queueName» type=task with project=proj_a environment=prod",
+      "call get_queue queue=«untrusted:queueName» q-plain «/untrusted:queueName» type=custom with project=proj_b environment=preview branch=«untrusted:branch» feature-x «/untrusted:branch»",
     ]);
   });
 

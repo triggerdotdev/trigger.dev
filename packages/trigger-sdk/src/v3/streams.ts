@@ -804,14 +804,16 @@ function input<TData>(opts: { id: string }): RealtimeDefinedInputStream<TData> {
           const result = await tracer.startActiveSpan(
             options?.spanName ?? `inputStream.wait()`,
             async (span) => {
-              // 1. Block the run on the waitpoint
-              const waitResponse = await apiClient.waitForWaitpointToken({
-                runFriendlyId: ctx.run.id,
-                waitpointFriendlyId: response.waitpointId,
-              });
+              // Older servers and credentials with waitpoint access block separately.
+              if (!response.isBlocked) {
+                const waitResponse = await apiClient.waitForWaitpointToken({
+                  runFriendlyId: ctx.run.id,
+                  waitpointFriendlyId: response.waitpointId,
+                });
 
-              if (!waitResponse.success) {
-                throw new Error("Failed to block on input stream waitpoint");
+                if (!waitResponse.success) {
+                  throw new Error("Failed to block on input stream waitpoint");
+                }
               }
 
               // 2. Disconnect the SSE tail and clear the buffer before suspending.
@@ -831,7 +833,8 @@ function input<TData>(opts: { id: string }): RealtimeDefinedInputStream<TData> {
                         data: waitResult.output,
                         dataType: waitResult.outputType ?? "application/json",
                       },
-                      apiClient
+                      apiClient,
+                      { runId: ctx.run.id, waitpointId: response.waitpointId }
                     )
                   : undefined;
 

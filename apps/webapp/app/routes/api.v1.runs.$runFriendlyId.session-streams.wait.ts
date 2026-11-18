@@ -21,11 +21,18 @@ import {
   addSessionStreamWaitpoint,
   removeSessionStreamWaitpoint,
 } from "~/services/sessionStreamWaitpointCache.server";
-import { createActionApiRoute, everyResource } from "~/services/routeBuilders/apiBuilder.server";
+import {
+  anyResource,
+  createActionApiRoute,
+  scopeAuthorizationError,
+} from "~/services/routeBuilders/apiBuilder.server";
 import { keyedWaitpointBudgetResponse } from "~/services/routeBuilders/keyedWaitpointBudget.server";
 import { logger } from "~/services/logger.server";
 import { parseDelay } from "~/utils/delays";
-import { resolveIdempotencyKeyTTL } from "~/utils/idempotencyKeys.server";
+import {
+  resolveIdempotencyKeyTTL,
+  resolveRunWaitpointIdempotencyKey,
+} from "~/utils/idempotencyKeys.server";
 import { engine } from "~/v3/runEngine.server";
 import { ServiceValidationError } from "~/v3/services/baseService.server";
 
@@ -41,8 +48,7 @@ const { action, loader } = createActionApiRoute(
     method: "POST",
     authorization: {
       action: "write",
-      resource: (params) =>
-        everyResource([{ type: "runs", id: params.runFriendlyId }, { type: "waitpoints" }]),
+      resource: (params) => ({ type: "runs", id: params.runFriendlyId }),
     },
   },
   async ({ authentication, body, params, ability }) => {
@@ -96,8 +102,12 @@ const { action, loader } = createActionApiRoute(
         sessionKeys.add(maybeSession.friendlyId);
         if (maybeSession.externalId) sessionKeys.add(maybeSession.externalId);
       }
-      if (!ability.can("read", sessionStreamResources(body.io, sessionKeys))) {
-        return json({ error: "Unauthorized" }, { status: 403 });
+      const resources = sessionStreamResources(body.io, sessionKeys);
+      if (!ability.can("read", resources)) {
+        return json(
+          { error: scopeAuthorizationError("read", anyResource(resources)) },
+          { status: 403 }
+        );
       }
 
       const idempotencyKeyExpiresAt = body.idempotencyKeyTTL
@@ -131,7 +141,11 @@ const { action, loader } = createActionApiRoute(
         environmentId: authentication.environment.id,
         projectId: authentication.environment.projectId,
         organizationId: authentication.environment.organization.id,
-        idempotencyKey: body.idempotencyKey,
+        idempotencyKey: resolveRunWaitpointIdempotencyKey(
+          body.idempotencyKey,
+          params.runFriendlyId,
+          ability
+        ),
         idempotencyKeyExpiresAt,
         timeout,
         tags: bodyTags,
@@ -223,9 +237,23 @@ const { action, loader } = createActionApiRoute(
         }
       }
 
+      const waitpointId = WaitpointId.toFriendlyId(result.waitpoint.id);
+      const isBlocked = !ability.can("read", { type: "waitpoints", id: waitpointId });
+      // Callers without waitpoint access must block through this run-authorized operation.
+      if (isBlocked) {
+        await engine.blockRunWithWaitpoint({
+          runId: run.id,
+          waitpoints: result.waitpoint.id,
+          projectId: authentication.environment.projectId,
+          organizationId: authentication.environment.organization.id,
+          expectedEnvironmentId: authentication.environment.id,
+        });
+      }
+
       return json<CreateSessionStreamWaitpointResponseBody>({
-        waitpointId: WaitpointId.toFriendlyId(result.waitpoint.id),
+        waitpointId,
         isCached: result.isCached,
+        ...(isBlocked ? { isBlocked: true } : {}),
       });
     } catch (error) {
       if (error instanceof ServiceValidationError) {

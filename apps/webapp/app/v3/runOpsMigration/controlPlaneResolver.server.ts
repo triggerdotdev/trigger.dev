@@ -76,6 +76,20 @@ type WorkerVersionWheres = {
   queueWhere: { id: string } | { name: string } | undefined;
 };
 
+function workerVersionWheres(filter: {
+  taskIdentifier?: string;
+  queue?: { lockedQueueId?: string | null; name: string };
+}): WorkerVersionWheres {
+  return {
+    taskWhere: filter.taskIdentifier ? { slug: filter.taskIdentifier } : undefined,
+    queueWhere: filter.queue
+      ? filter.queue.lockedQueueId
+        ? { id: filter.queue.lockedQueueId }
+        : { name: filter.queue.name }
+      : undefined,
+  };
+}
+
 const ALL_WORKER_VERSION_WHERES: WorkerVersionWheres = {
   taskWhere: undefined,
   queueWhere: undefined,
@@ -449,17 +463,31 @@ export class ControlPlaneResolver {
       return resolved;
     }
 
-    const wheres: WorkerVersionWheres = {
-      taskWhere: args.taskIdentifier ? { slug: args.taskIdentifier } : undefined,
-      queueWhere: args.queue
-        ? args.queue.lockedQueueId
-          ? { id: args.queue.lockedQueueId }
-          : { name: args.queue.name }
-        : undefined,
-    };
-
     const client = this.splitEnabled() ? this.controlPlaneReplica : this.controlPlanePrimary;
-    return this.#queryWorkerVersion(client, environmentId, backgroundWorkerId, type, wheres);
+    return this.#queryWorkerVersion(
+      client,
+      environmentId,
+      backgroundWorkerId,
+      type,
+      workerVersionWheres(args)
+    );
+  }
+
+  /** `resolveWorkerVersion` from the control-plane primary: no cache, no replica lag. */
+  async resolveWorkerVersionFromPrimary(args: {
+    environmentId: string;
+    backgroundWorkerId?: string;
+    type: RuntimeEnvironmentType;
+    taskIdentifier?: string;
+    queue?: { lockedQueueId?: string | null; name: string };
+  }): Promise<ResolvedWorkerVersion | null> {
+    return this.#queryWorkerVersion(
+      this.controlPlanePrimary,
+      args.environmentId,
+      args.backgroundWorkerId,
+      args.type,
+      workerVersionWheres(args)
+    );
   }
 
   async #queryWorkerVersion(

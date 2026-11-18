@@ -157,6 +157,7 @@ interface QueryEditorFormHandle {
   setQuery: (query: string) => void;
   setScope: (scope: QueryScope) => void;
   getQuery: () => string;
+  getPeriod: () => string;
   setTimeFilter: (filter: { period?: string; from?: string; to?: string }) => void;
 }
 
@@ -229,13 +230,14 @@ const QueryEditorForm = forwardRef<
       setQuery,
       setScope,
       getQuery: () => query,
+      getPeriod: () => period ?? defaultPeriod,
       setTimeFilter: (filter: { period?: string; from?: string; to?: string }) => {
         setPeriod(filter.period);
         setFrom(filter.from);
         setTo(filter.to);
       },
     }),
-    [query]
+    [query, period, defaultPeriod]
   );
 
   const handleHistorySelected = useCallback(
@@ -809,6 +811,8 @@ export function QueryEditor({
                             }
                             // oxlint-disable-next-line react/refs -- This ref intentionally coordinates an imperative integration outside React state.
                             query={editorRef.current?.getQuery() ?? defaultQuery}
+                            // oxlint-disable-next-line react/refs -- This ref intentionally coordinates an imperative integration outside React state.
+                            period={editorRef.current?.getPeriod() ?? defaultPeriod}
                             data={{
                               rows: results.rows,
                               columns: results.columns,
@@ -864,6 +868,8 @@ export function QueryEditor({
                           columns={results.columns}
                           // oxlint-disable-next-line react/refs -- This ref intentionally coordinates an imperative integration outside React state.
                           query={editorRef.current?.getQuery() ?? defaultQuery}
+                          // oxlint-disable-next-line react/refs -- This ref intentionally coordinates an imperative integration outside React state.
+                          period={editorRef.current?.getPeriod() ?? defaultPeriod}
                           chartConfig={chartConfig}
                           onChartConfigChange={handleChartConfigChange}
                           queryTitle={queryTitle}
@@ -914,6 +920,8 @@ export function QueryEditor({
                           columns={results.columns}
                           // oxlint-disable-next-line react/refs -- This ref intentionally coordinates an imperative integration outside React state.
                           query={editorRef.current?.getQuery() ?? defaultQuery}
+                          // oxlint-disable-next-line react/refs -- This ref intentionally coordinates an imperative integration outside React state.
+                          period={editorRef.current?.getPeriod() ?? defaultPeriod}
                           bigNumberConfig={bigNumberConfig}
                           onBigNumberConfigChange={setBigNumberConfig}
                           queryTitle={queryTitle}
@@ -1194,6 +1202,7 @@ function ResultsChart({
   rows,
   columns,
   query,
+  period,
   chartConfig,
   onChartConfigChange,
   queryTitle,
@@ -1204,6 +1213,7 @@ function ResultsChart({
   rows: Record<string, unknown>[];
   columns: OutputColumnMetadata[];
   query?: string;
+  period?: string;
   chartConfig: ChartConfiguration;
   onChartConfigChange: (config: ChartConfiguration) => void;
   queryTitle: string | null;
@@ -1225,6 +1235,7 @@ function ResultsChart({
               />
             }
             query={query}
+            period={period}
             data={{
               rows,
               columns,
@@ -1262,6 +1273,7 @@ function ResultsBigNumber({
   rows,
   columns,
   query,
+  period,
   bigNumberConfig,
   onBigNumberConfigChange,
   queryTitle,
@@ -1272,6 +1284,7 @@ function ResultsBigNumber({
   rows: Record<string, unknown>[];
   columns: OutputColumnMetadata[];
   query?: string;
+  period?: string;
   bigNumberConfig: BigNumberConfiguration;
   onBigNumberConfigChange: (config: BigNumberConfiguration) => void;
   queryTitle: string | null;
@@ -1302,6 +1315,7 @@ function ResultsBigNumber({
               />
             }
             query={query}
+            period={period}
             data={{
               rows,
               columns,

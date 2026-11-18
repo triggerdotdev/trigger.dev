@@ -31,7 +31,7 @@ const Env = z.object({
   // case we fall back to TRIGGER_DEPLOYMENT_ID.
   TRIGGER_DEPLOYMENT_FRIENDLY_ID: z.string().optional(),
   TRIGGER_DEPLOYMENT_VERSION: z.string(),
-  TRIGGER_WORKLOAD_CONTROLLER_ID: z.string().default(`controller_${randomUUID()}`),
+  TRIGGER_WORKLOAD_CONTROLLER_ID: z.string().default(() => `controller_${randomUUID()}`),
   TRIGGER_ENV_ID: z.string(),
   OTEL_EXPORTER_OTLP_ENDPOINT: z.string().url(),
   TRIGGER_WARM_START_URL: z.string().optional(),

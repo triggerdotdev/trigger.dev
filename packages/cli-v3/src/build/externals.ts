@@ -1,5 +1,4 @@
 import * as esbuild from "esbuild";
-import { makeRe } from "minimatch";
 import { access, mkdir, symlink } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { readPackageJSON, resolvePackageJSON } from "pkg-types";
@@ -424,15 +423,9 @@ function discoverMaybeExternals(
   const external: Array<MaybeExternal> = [];
 
   for (const externalName of forcedExternal) {
-    const externalRegex = makeRe(externalName);
-
-    if (!externalRegex) {
-      continue;
-    }
-
     external.push({
       raw: externalName,
-      filter: new RegExp(`^${externalName}$|${externalRegex.source}`),
+      filter: new RegExp(`^${escapeRegExp(externalName)}$`),
     });
   }
 

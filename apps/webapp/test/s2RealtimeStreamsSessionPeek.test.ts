@@ -137,6 +137,16 @@ describe("S2RealtimeStreams session peek", () => {
     await expect(createStreams().readSessionInTailSeq("chat_1")).resolves.toBeUndefined();
   });
 
+  it("reads the .out tail seq from the .out stream", async () => {
+    handler = (request, response) => {
+      expect(decodeURIComponent(request.url ?? "")).toContain("/sessions/chat_1/out/records/tail");
+      response.writeHead(200, { "Content-Type": "application/json" });
+      response.end(JSON.stringify({ tail: { seq_num: 7, timestamp: 1 } }));
+    };
+
+    await expect(createStreams().readSessionOutTailSeq("chat_1")).resolves.toBe(7);
+  });
+
   it("reads a hung .in tail as unknown after the timeout", async () => {
     handler = () => {};
 

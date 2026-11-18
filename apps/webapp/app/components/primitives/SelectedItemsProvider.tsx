@@ -1,6 +1,15 @@
 "use client";
 
-import { createContext, useCallback, useContext, useMemo, useReducer } from "react";
+import {
+  createContext,
+  useCallback,
+  useContext,
+  useLayoutEffect,
+  useMemo,
+  useReducer,
+  useRef,
+  type RefObject,
+} from "react";
 
 type SelectedItemsContext = {
   selectedItems: Set<string>;
@@ -21,6 +30,28 @@ export function useSelectedItems(enabled = true) {
   }
 
   return context;
+}
+
+/**
+ * Checkboxes are in the server's HTML before React hydrates, so a tick made in that window changes
+ * only the DOM, and the next render would reset it. On mount, this hands `onTicked` the `value` of
+ * every ticked checkbox inside `scopeRef`, so those ticks can be selected instead of lost.
+ */
+export function useTickedBeforeHydration(
+  scopeRef: RefObject<HTMLElement | null>,
+  onTicked: (values: string[]) => void
+) {
+  // Only the first render's callback is called: the effect below runs once, on mount.
+  const onTickedRef = useRef(onTicked);
+  // A layout effect reads the DOM before any re-render this mount causes.
+  useLayoutEffect(() => {
+    const ticked = scopeRef.current?.querySelectorAll<HTMLInputElement>(
+      "input[type=checkbox]:checked"
+    );
+    if (ticked?.length) {
+      onTickedRef.current([...ticked].map((input) => input.value));
+    }
+  }, [scopeRef]);
 }
 
 export function SelectedItemsProvider({

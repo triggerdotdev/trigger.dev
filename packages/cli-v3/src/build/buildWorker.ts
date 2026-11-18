@@ -205,6 +205,12 @@ export function rewriteBuildManifestPaths(
     initEntryPoint: buildManifest.initEntryPoint
       ? rewriteOutputPath(destinationDir, buildManifest.initEntryPoint)
       : undefined,
+    compiledRunWorkerPath: buildManifest.compiledRunWorkerPath
+      ? rewriteOutputPath(destinationDir, buildManifest.compiledRunWorkerPath)
+      : undefined,
+    compileCacheDir: buildManifest.compileCacheDir
+      ? rewriteOutputPath(destinationDir, buildManifest.compileCacheDir)
+      : undefined,
   };
 }
 // Remove any query parameters from the entry path
@@ -287,6 +293,18 @@ export async function writeContainerfile(outputPath: string, buildManifest: Buil
     build: buildManifest.build,
     image: buildManifest.image,
     indexScript: buildManifest.indexControllerEntryPoint,
+    compiledRunWorker: buildManifest.compiledRunWorkerPath
+      ? {
+          outfile: buildManifest.compiledRunWorkerPath,
+          entryPoints: [
+            buildManifest.runWorkerEntryPoint,
+            buildManifest.configPath,
+            ...(buildManifest.initEntryPoint ? [buildManifest.initEntryPoint] : []),
+            ...buildManifest.files.map((file) => file.out),
+          ],
+        }
+      : undefined,
+    compileCacheDir: buildManifest.compileCacheDir,
   });
 
   const containerfilePath = join(outputPath, "Containerfile");

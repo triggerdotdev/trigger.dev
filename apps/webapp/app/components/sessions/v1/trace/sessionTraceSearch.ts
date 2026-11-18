@@ -1,4 +1,5 @@
 import type { FlatTree } from "~/components/primitives/TreeView/TreeView";
+import { formatNumber } from "~/utils/numberFormatter";
 import type { SessionTreeRow } from "./buildSessionTree";
 import { runLoadBlock } from "./sessionRunFallback";
 import { runLoad, type SessionRunLoad, type SessionRunLoads } from "./sessionRunLoads";
@@ -67,16 +68,117 @@ export function sessionRowPassesFilter(
   return spanMatches(filter, row.span);
 }
 
-/** Spans that match, hidden runs included, for "N matches". */
-export function countMatches(
+export function matchesText(count: number) {
+  return `${formatNumber(count)} match${count === 1 ? "" : "es"}`;
+}
+
+/** Matching spans in total and per run, hidden runs included, in one pass. */
+export function matchesByRun(
   tree: FlatTree<SessionTreeRow<SpanFields>>,
   filter: SessionTraceFilter
-): number {
-  let count = 0;
+): { total: number; byRun: Map<string, number> } {
+  const byRun = new Map<string, number>();
+  let total = 0;
   for (const node of tree) {
-    if (node.data.kind === "span" && spanMatches(filter, node.data.span)) count++;
+    if (node.data.kind !== "span" || !spanMatches(filter, node.data.span)) continue;
+    total++;
+    byRun.set(node.data.runFriendlyId, (byRun.get(node.data.runFriendlyId) ?? 0) + 1);
   }
-  return count;
+  return { total, byRun };
+}
+
+/**
+ * What a run row says about the search. Undefined: the row keeps its own load label (can't load,
+ * failed, waiting, loading, or stopped before it started), which matters more.
+ */
+export type RunSearchMark =
+  | { kind: "matches"; count: number; soFar: boolean; partly: boolean }
+  | { kind: "noMatches" }
+  | { kind: "notSearched" };
+
+export function runSearchMark(load: SessionRunLoad, matches: number): RunSearchMark | undefined {
+  switch (load.state) {
+    case "idle":
+      return { kind: "notSearched" };
+    case "progressive":
+    case "empty":
+      return matches > 0
+        ? { kind: "matches", count: matches, soFar: false, partly: false }
+        : { kind: "noMatches" };
+    case "paging":
+      return matches > 0
+        ? { kind: "matches", count: matches, soFar: true, partly: false }
+        : undefined;
+    case "cutOff":
+      return load.started
+        ? { kind: "matches", count: matches, soFar: false, partly: true }
+        : undefined;
+    default:
+      return undefined;
+  }
+}
+
+export type SearchBarSummary = {
+  /** "Searched runs 8–27 · 6 matches", or "Searched 3 of 20 runs (8–27) · 6 matches". */
+  text: string;
+  /** Earlier runs that aren't shown: runs 1 to the oldest shown run. */
+  earlier: { count: number; range: string } | undefined;
+  /** Runs inside the shown range that sit behind "not loaded" rows. */
+  gaps: { count: number; ranges: string[] } | undefined;
+};
+
+function runRange(from: number, to: number) {
+  return from === to ? `${from}` : `${from}–${to}`;
+}
+
+export function searchBarSummary({
+  runs,
+  coverage,
+  matches,
+  tree,
+}: {
+  runs: Pick<SessionTraceRun, "number" | "friendlyId">[];
+  coverage: SearchCoverage;
+  matches: number;
+  tree: FlatTree<SessionTreeRow<unknown>>;
+}): SearchBarSummary {
+  const numbers = runs.map((run) => run.number);
+  const oldest = Math.min(...numbers);
+  const newest = Math.max(...numbers);
+  const range = runRange(oldest, newest);
+  const numberById = new Map(runs.map((run) => [run.friendlyId, run.number]));
+  let gapCount = 0;
+  const ranges: string[] = [];
+  for (const node of tree) {
+    if (node.data.kind !== "notLoaded") continue;
+    gapCount += node.data.count;
+    const older = numberById.get(node.data.olderRunFriendlyId);
+    const newer = numberById.get(node.data.newerRunFriendlyId);
+    if (older !== undefined && newer !== undefined) ranges.push(runRange(older + 1, newer - 1));
+  }
+
+  const matchText = matchesText(matches);
+  const cantLoad = runs.length - coverage.searchable;
+
+  // Runs in gaps weren't searched: then the range only bounds the shown runs ("shown"), so the
+  // bar never reads as if every run in it was searched.
+  const shown = gapCount > 0 ? "shown " : "";
+  let text: string;
+  if (coverage.searchable === 0) {
+    text = `None of the shown runs can be searched here (${range})`;
+  } else if (coverage.searched < coverage.searchable) {
+    text = `Searched ${coverage.searched} of ${coverage.searchable} ${shown}runs (${range}) · ${matchText}`;
+  } else if (cantLoad > 0) {
+    text = `Searched all ${coverage.searchable} ${shown}runs that can load (${range}) · ${matchText}`;
+  } else if (gapCount > 0) {
+    text = `Searched all ${runs.length} shown runs (${range}) · ${matchText}`;
+  } else {
+    text = `Searched ${runs.length === 1 ? "run" : "runs"} ${range} · ${matchText}`;
+  }
+
+  const earlier = oldest > 1 ? { count: oldest - 1, range: runRange(1, oldest - 1) } : undefined;
+
+  return { text, earlier, gaps: gapCount > 0 ? { count: gapCount, ranges } : undefined };
 }
 
 export type SearchCoverage = {

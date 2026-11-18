@@ -1,7 +1,7 @@
 ---
 title: "LLM observability"
 sidebarTitle: "LLM observability"
-description: "Capture Vercel AI SDK calls in a task as spans in the run trace, with model, token usage, cost, and latency. Opt in per call, link calls to prompt versions, and query usage across runs."
+description: "Capture Vercel AI SDK calls in a task as spans in the run trace, with model, token usage, cost, and latency. Link calls to prompt versions and query usage across runs."
 ---
 
 **LLM observability turns a Vercel AI SDK call inside a task into its own span in the run trace, next to your logs and other spans.** Each span carries the model, provider, input, output, and total token counts, cost, and latency, so you can see what each generation did and what it cost without leaving the run.
@@ -9,33 +9,12 @@ description: "Capture Vercel AI SDK calls in a task as spans in the run trace, w
 Everything shows up inline in the run trace you already use to debug runs. There is no separate product and no dashboard to set up.
 
 <Note>
-  Observability is opt-in per call and only covers [Vercel AI SDK](https://ai-sdk.dev) functions (`generateText`, `streamText`, `generateObject`). Calls you make with a raw `fetch`, a provider's own SDK, or any other HTTP client are not captured automatically.
+  Observability only covers [Vercel AI SDK](https://ai-sdk.dev) functions (`generateText`, `streamText`, `generateObject`). On AI SDK 5 and 6 it's opt-in per call. On AI SDK 7, once the `@ai-sdk/otel` adapter is registered, every call is traced, including its prompts and responses, unless you pass `telemetry: { isEnabled: false }`. Calls you make with a raw `fetch`, a provider's own SDK, or any other HTTP client are not captured automatically.
 </Note>
 
 ## Turn it on
 
-Set `experimental_telemetry: { isEnabled: true }` on the AI SDK call. There is nothing to install for AI SDK 6, and nothing to configure on the Trigger.dev side.
-
-```ts /trigger/summarize.ts
-import { task } from "@trigger.dev/sdk";
-import { generateText } from "ai";
-import { openai } from "@ai-sdk/openai";
-
-export const summarize = task({
-  id: "summarize",
-  run: async (payload: { text: string }) => {
-    const result = await generateText({
-      model: openai("gpt-4o"),
-      prompt: `Summarize the following text:\n\n${payload.text}`,
-      experimental_telemetry: { isEnabled: true },
-    });
-
-    return { summary: result.text };
-  },
-});
-```
-
-Trigger the task and open the run. The `generateText` call appears as a span in the trace. `streamText` and `generateObject` work the same way: add the same `experimental_telemetry` flag to each call you want captured.
+Set `experimental_telemetry: { isEnabled: true }` on the AI SDK call. There is nothing to configure on the Trigger.dev side.
 
 <Note>
   **AI SDK 7** moved span emission out of `ai` core into the `@ai-sdk/otel` adapter. In a task, install `@ai-sdk/otel` and register it once yourself, for example at the top of your task file:
@@ -47,8 +26,31 @@ Trigger the task and open the run. The `generateText` call appears as a span in 
   registerTelemetry(new OpenTelemetry());
   ```
 
-  A [`chat.agent()`](/ai-chat/overview) run registers the adapter for you at run start, so chat agents need only the install. On AI SDK 5 and 6, `ai` core emits spans directly and no adapter is needed.
+  Register it the same way in projects with [`chat.agent()`](/ai-chat/overview) runs too: the static import is what includes `@ai-sdk/otel` in your deployed bundle. `chat.agent()` detects the existing registration and won't add a second one.
+
+  Once the adapter is registered, AI SDK 7 traces every call by default, so the per-call flag is optional. To leave a call out, pass `telemetry: { isEnabled: false }` (`telemetry` is the non-deprecated name for `experimental_telemetry`). On AI SDK 5 and 6, `ai` core emits spans directly and no adapter is needed.
 </Note>
+
+```ts /trigger/summarize.ts
+import { task } from "@trigger.dev/sdk";
+import { generateText } from "ai";
+import { openai } from "@ai-sdk/openai";
+
+export const summarize = task({
+  id: "summarize",
+  run: async (payload: { text: string }) => {
+    const result = await generateText({
+      model: openai("gpt-6-luna"),
+      prompt: `Summarize the following text:\n\n${payload.text}`,
+      experimental_telemetry: { isEnabled: true },
+    });
+
+    return { summary: result.text };
+  },
+});
+```
+
+Trigger the task and open the run. The `generateText` call appears as a span in the trace. `streamText` and `generateObject` work the same way: add the same `experimental_telemetry` flag to each call you want captured.
 
 ## What each span shows
 
@@ -63,6 +65,10 @@ A fourth **Prompt** tab appears when the call is linked to an [AI Prompt](/ai/pr
 ## Link a call to its prompt
 
 If you manage prompts with [AI Prompts](/ai/prompts), resolve the prompt and spread `toAISDKTelemetry()` into the call. This sets `experimental_telemetry` for you and links the span back to the exact prompt version that produced it.
+
+<Note>
+  Prompt linking currently works on AI SDK 5 and 6. On AI SDK 7, the metadata from `toAISDKTelemetry()` doesn't reach the span yet, so the call is traced but isn't linked to its prompt version or given the custom attributes.
+</Note>
 
 ```ts /trigger/support.ts
 import { task, prompts } from "@trigger.dev/sdk";
@@ -80,7 +86,7 @@ export const handleSupport = task({
     });
 
     const result = await generateText({
-      model: openai(resolved.model ?? "gpt-4o"),
+      model: openai(resolved.model ?? "gpt-6-luna"),
       system: resolved.text,
       prompt: payload.issue,
       ...resolved.toAISDKTelemetry(),
@@ -97,7 +103,7 @@ Pass custom attributes to `toAISDKTelemetry()` to tag the span with your own met
 
 ```ts
 const result = await generateText({
-  model: openai(resolved.model ?? "gpt-4o"),
+  model: openai(resolved.model ?? "gpt-6-luna"),
   system: resolved.text,
   prompt: payload.issue,
   ...resolved.toAISDKTelemetry({

@@ -2,7 +2,7 @@ import { once } from "node:events";
 import { fileURLToPath } from "node:url";
 import { Worker } from "node:worker_threads";
 import { beforeAll, describe, expect, it } from "vitest";
-import { parseWithZod } from "@conform-to/zod/v4";
+import { parseWithZod } from "~/utils/conform";
 import {
   publishingPolicyFromForm,
   EnvironmentFormSchema,

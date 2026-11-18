@@ -26,7 +26,7 @@
     "@types/pg": "8.11.14",
     "std-env": "^3.9.0",
     "testcontainers": "^11.14.0",
-    "tinyexec": "^0.3.0"
+    "tinyexec": "^1.2.4"
   },
   "scripts": {
     "typecheck": "tsc --noEmit",

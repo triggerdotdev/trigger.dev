@@ -1,6 +1,17 @@
-import { containerTest, assertNonNullable } from "@internal/testcontainers";
+import {
+  assertNonNullable,
+  containerTest,
+  containerTestWithIsolatedRedis,
+  laggingReplica,
+} from "@internal/testcontainers";
+import type { PrismaClient } from "@trigger.dev/database";
+import type { MinimalAuthenticatedEnvironment } from "../../shared/index.js";
+import type { ControlPlaneResolver } from "../controlPlaneResolver.js";
+import { PassthroughControlPlaneResolver } from "../controlPlaneResolver.js";
 import { trace } from "@internal/tracing";
+import { generateFriendlyId } from "@trigger.dev/core/v3/isomorphic";
 import { RunEngine } from "../index.js";
+import type { LockRetryConfig } from "../locking.js";
 import { setTimeout } from "timers/promises";
 import { setupAuthenticatedEnvironment, setupBackgroundWorker } from "./setup.js";
 import type { DequeuedMessage } from "@trigger.dev/core/v3";
@@ -448,4 +459,302 @@ describe("RunEngine pending version", () => {
       }
     }
   );
+
+  containerTestWithIsolatedRedis(
+    "confirms a replica miss on the primary instead of parking the run",
+    async ({ prisma, redisOptions }) => {
+      const environment = await setupAuthenticatedEnvironment(prisma, "PRODUCTION");
+      // The replica sees the new promotion but not yet the deployment's worker: a state the
+      // primary never had, which a reader behind its peers can serve.
+      const frozenPromotions: Record<string, unknown>[] = [];
+      const replica = laggingReplica(prisma, [
+        { model: "workerDeploymentPromotion", mode: "frozen", rows: frozenPromotions },
+      ]);
+      const engine = createEngine(
+        prisma,
+        redisOptions,
+        replicaResolver(prisma, replica.client as PrismaClient)
+      );
+
+      try {
+        const { deployment, promotion } = await setupBackgroundWorker(
+          engine,
+          environment,
+          "test-task"
+        );
+        assertNonNullable(deployment);
+        assertNonNullable(promotion);
+        frozenPromotions.push({ ...promotion, deployment: { ...deployment, worker: null } });
+
+        const run = await triggerRun(engine, prisma, environment, "test-task");
+
+        const dequeued = await dequeueUntil(engine, environment);
+
+        expect(replica.wasHit("workerDeploymentPromotion")).toBe(true);
+        expect(dequeued.map((d) => d.run.id)).toEqual([run.id]);
+        const runRow = await prisma.taskRun.findUniqueOrThrow({ where: { id: run.id } });
+        expect(runRow.status).not.toBe("PENDING_VERSION");
+      } finally {
+        await engine.quit();
+      }
+    }
+  );
+
+  containerTestWithIsolatedRedis(
+    "requeues a run parked after its deployment's pending-version sweep",
+    async ({ prisma, redisOptions }) => {
+      const environment = await setupAuthenticatedEnvironment(prisma, "PRODUCTION");
+      const passthrough = new PassthroughControlPlaneResolver({ prisma });
+      // Both the replica read and the primary confirm miss the worker, as when the deploy is
+      // promoted between the confirm and the park. Later primary reads see it.
+      let primaryReads = 0;
+      let replicaCaughtUp = false;
+      const resolver: ControlPlaneResolver = {
+        ...bindPassthrough(passthrough),
+        resolveWorkerVersion: async (args) =>
+          replicaCaughtUp ? passthrough.resolveWorkerVersion(args) : null,
+        resolveWorkerVersionFromPrimary: async (args) =>
+          ++primaryReads === 1 ? null : passthrough.resolveWorkerVersionFromPrimary(args),
+      };
+      // The default lookup finds nothing, so only the re-check after parking can requeue the run.
+      const engine = createEngine(prisma, redisOptions, resolver);
+
+      try {
+        await setupBackgroundWorker(engine, environment, "test-task");
+        const run = await triggerRun(engine, prisma, environment, "test-task");
+
+        await engine.runQueue.processMasterQueueForEnvironment(environment.id, 10);
+        const firstDequeue = await engine.dequeueFromWorkerQueue({
+          consumerId: "test_12345",
+          workerQueue: "main",
+          blockingPopTimeoutSeconds: 1,
+        });
+        expect(firstDequeue).toHaveLength(0);
+        expect(primaryReads).toBeGreaterThanOrEqual(2);
+
+        // The parked run is promoted back to PENDING by the scheduled job, then dequeues.
+        replicaCaughtUp = true;
+        const dequeued = await dequeueUntil(engine, environment);
+
+        expect(dequeued.map((d) => d.run.id)).toEqual([run.id]);
+      } finally {
+        await engine.quit();
+      }
+    }
+  );
+
+  containerTestWithIsolatedRedis(
+    "a dequeue between the promotion's queue push and its commit does not strand the run",
+    async ({ prisma, redisOptions }) => {
+      const environment = await setupAuthenticatedEnvironment(prisma, "PRODUCTION");
+      const engine = createEngine(
+        prisma,
+        redisOptions,
+        new PassthroughControlPlaneResolver({ prisma }),
+        {
+          maxTotalWaitTime: 300,
+        }
+      );
+
+      try {
+        await setupBackgroundWorker(engine, environment, ["test-task-other"]);
+        const run = await triggerRun(engine, prisma, environment, "test-task");
+
+        await engine.runQueue.processMasterQueueForEnvironment(environment.id, 10);
+        const parkingDequeue = await engine.dequeueFromWorkerQueue({
+          consumerId: "test_12345",
+          workerQueue: "main",
+          blockingPopTimeoutSeconds: 1,
+        });
+        expect(parkingDequeue).toHaveLength(0);
+        const parked = await prisma.taskRun.findUniqueOrThrow({ where: { id: run.id } });
+        expect(parked.status).toBe("PENDING_VERSION");
+
+        const { worker } = await setupBackgroundWorker(engine, environment, "test-task");
+
+        // Hold the promotion's commit, after enqueueRun has pushed to Redis, behind an advisory lock
+        // this test owns: a deferred trigger on the promotion's QUEUED snapshot takes it at commit.
+        await prisma.$executeRawUnsafe(`
+          CREATE FUNCTION hold_promotion_commit() RETURNS trigger LANGUAGE plpgsql AS $$
+          BEGIN PERFORM pg_advisory_xact_lock(${PROMOTION_COMMIT_LOCK}); RETURN NULL; END $$`);
+        await prisma.$executeRawUnsafe(`
+          CREATE CONSTRAINT TRIGGER hold_promotion_commit AFTER INSERT ON "TaskRunExecutionSnapshot"
+          DEFERRABLE INITIALLY DEFERRED FOR EACH ROW
+          WHEN (NEW."runId" = '${run.id}' AND NEW."executionStatus" = 'QUEUED')
+          EXECUTE FUNCTION hold_promotion_commit()`);
+        let releaseCommit!: () => void;
+        const commitGate = new Promise<void>((resolve) => (releaseCommit = resolve));
+        let gateHeld!: () => void;
+        const gateHeldSignal = new Promise<void>((resolve) => (gateHeld = resolve));
+        const gateHolder = prisma.$transaction(
+          async (tx) => {
+            await tx.$executeRawUnsafe(`SELECT pg_advisory_xact_lock(${PROMOTION_COMMIT_LOCK})`);
+            gateHeld();
+            await commitGate;
+          },
+          { timeout: 30_000 }
+        );
+        await gateHeldSignal;
+
+        try {
+          // The post-deploy job path: no caller holds the run lock.
+          const promotion = engine.pendingVersionSystem.enqueueRunsForBackgroundWorker(
+            worker.id,
+            0,
+            [run.id]
+          );
+          await waitForLockWait(prisma, "advisory");
+
+          await engine.runQueue.processMasterQueueForEnvironment(environment.id, 10);
+          expect(await engine.runQueue.peekAllOnWorkerQueue("main")).toHaveLength(1);
+          // With the run lock held through the commit, this dequeue gives up on the lock, as this
+          // engine waits only 300ms for it. Without it, the dequeue reads the parked run and blocks
+          // behind the promotion's row lock. Either way the commit is released after it has acted.
+          let dequeueSettled = false;
+          const racingDequeue = engine
+            .dequeueFromWorkerQueue({
+              consumerId: "test_12345",
+              workerQueue: "main",
+              blockingPopTimeoutSeconds: 1,
+            })
+            .catch(() => [])
+            .finally(() => (dequeueSettled = true));
+          let blocked = false;
+          for (let i = 0; i < 1000 && !dequeueSettled && !blocked; i++) {
+            blocked = await isWaitingOnLock(prisma, "row");
+            if (!blocked) await setTimeout(10);
+          }
+          expect(dequeueSettled || blocked).toBe(true);
+          // The dequeue took the promotion's message before the commit.
+          expect(await engine.runQueue.peekAllOnWorkerQueue("main")).toHaveLength(0);
+
+          releaseCommit();
+          await gateHolder;
+          await promotion;
+          await racingDequeue;
+        } finally {
+          releaseCommit();
+        }
+
+        const promoted = await prisma.taskRun.findUniqueOrThrow({ where: { id: run.id } });
+        expect(promoted.status).toBe("PENDING");
+        const executionData = await engine.getRunExecutionData({ runId: run.id });
+        expect(executionData?.snapshot.executionStatus).toBe("QUEUED");
+        expect(await engine.runQueue.messageExists(environment.organization.id, run.id)).toBe(1);
+      } finally {
+        await engine.quit();
+      }
+    }
+  );
 });
+
+const PROMOTION_COMMIT_LOCK = 4242;
+
+// Whether a backend in this database is blocked on an advisory lock, or on a row lock.
+async function isWaitingOnLock(prisma: PrismaClient, kind: "advisory" | "row"): Promise<boolean> {
+  const condition = kind === "advisory" ? "wait_event = 'advisory'" : "wait_event <> 'advisory'";
+  const rows = await prisma.$queryRawUnsafe<Array<{ waiting: number }>>(
+    `SELECT count(*)::int AS waiting FROM pg_stat_activity
+     WHERE wait_event_type = 'Lock' AND ${condition} AND datname = current_database()`
+  );
+  return rows[0].waiting > 0;
+}
+
+async function waitForLockWait(prisma: PrismaClient, kind: "advisory" | "row"): Promise<void> {
+  for (let i = 0; i < 1000; i++) {
+    if (await isWaitingOnLock(prisma, kind)) return;
+    await setTimeout(10);
+  }
+  throw new Error(`no backend waited on a ${kind} lock`);
+}
+
+function bindPassthrough(passthrough: PassthroughControlPlaneResolver): ControlPlaneResolver {
+  return {
+    resolveEnv: passthrough.resolveEnv.bind(passthrough),
+    resolveEnvDeletionState: passthrough.resolveEnvDeletionState.bind(passthrough),
+    resolveDeploymentStatus: passthrough.resolveDeploymentStatus.bind(passthrough),
+    resolveAuthenticatedEnv: passthrough.resolveAuthenticatedEnv.bind(passthrough),
+    resolveWorkerVersion: passthrough.resolveWorkerVersion.bind(passthrough),
+    resolveWorkerVersionFromPrimary: passthrough.resolveWorkerVersionFromPrimary.bind(passthrough),
+    assertEnvExists: passthrough.assertEnvExists.bind(passthrough),
+  };
+}
+
+/** Primary reads go to `prisma`; the worker-version read goes to the lagging `replica`. */
+function replicaResolver(prisma: PrismaClient, replica: PrismaClient): ControlPlaneResolver {
+  const fromReplica = new PassthroughControlPlaneResolver({ prisma: replica });
+  return {
+    ...bindPassthrough(new PassthroughControlPlaneResolver({ prisma })),
+    resolveWorkerVersion: fromReplica.resolveWorkerVersion.bind(fromReplica),
+  };
+}
+
+function createEngine(
+  prisma: PrismaClient,
+  redisOptions: any,
+  controlPlaneResolver: ControlPlaneResolver,
+  runLockRetryConfig?: LockRetryConfig
+) {
+  return new RunEngine({
+    prisma,
+    controlPlaneResolver,
+    worker: { redis: redisOptions, workers: 1, tasksPerWorker: 10, pollIntervalMs: 100 },
+    queue: {
+      redis: redisOptions,
+      processWorkerQueueDebounceMs: 50,
+      masterQueueConsumersDisabled: true,
+    },
+    runLock: { redis: redisOptions, retryConfig: runLockRetryConfig },
+    machines: {
+      defaultMachine: "small-1x",
+      machines: {
+        "small-1x": { name: "small-1x" as const, cpu: 0.5, memory: 0.5, centsPerMs: 0.0001 },
+      },
+      baseCostInCents: 0.0001,
+    },
+    tracer: trace.getTracer("test", "0.0.0"),
+  });
+}
+
+async function triggerRun(
+  engine: RunEngine,
+  prisma: PrismaClient,
+  environment: MinimalAuthenticatedEnvironment,
+  taskIdentifier: string
+) {
+  return engine.trigger(
+    {
+      number: 1,
+      friendlyId: generateFriendlyId("run"),
+      environment,
+      taskIdentifier,
+      payload: "{}",
+      payloadType: "application/json",
+      context: {},
+      traceContext: {},
+      traceId: "t12345",
+      spanId: "s12345",
+      workerQueue: "main",
+      queue: `task/${taskIdentifier}`,
+      isTest: false,
+      tags: [],
+    },
+    prisma
+  );
+}
+
+async function dequeueUntil(engine: RunEngine, environment: MinimalAuthenticatedEnvironment) {
+  const deadline = performance.now() + 10_000;
+  while (performance.now() < deadline) {
+    await engine.runQueue.processMasterQueueForEnvironment(environment.id, 10);
+    const dequeued = await engine.dequeueFromWorkerQueue({
+      consumerId: "test_12345",
+      workerQueue: "main",
+      blockingPopTimeoutSeconds: 1,
+    });
+    if (dequeued.length > 0) {
+      return dequeued;
+    }
+  }
+  throw new Error("the run was never dequeued");
+}

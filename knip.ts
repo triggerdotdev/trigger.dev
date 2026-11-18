@@ -17,6 +17,9 @@ export default {
       ignoreDependencies: process.env.CI ? ["eslint"] : ["eslint", "lefthook"],
       ignoreBinaries: ["infisical", "prisma"],
     },
+    "apps/supervisor": {
+      entry: ["vitest.*.config.ts"],
+    },
     "apps/webapp": {
       entry: [
         "evalite.config.ts",

@@ -86,6 +86,16 @@ export function commitImpersonationSession(session: Session) {
   });
 }
 
+/**
+ * When a request-mode session ends: the approved end, capped at 24 hours from the start. Every
+ * commit keeps to it, so it can't move. Other sessions have no fixed end, because each commit
+ * (e.g. the view-as-user toggle) restarts the cookie's `maxAge`.
+ */
+export function getSupportAccessExpiresAt(session: Session): Date | undefined {
+  const expiresAt = session.get(SUPPORT_ACCESS_EXPIRES_AT_KEY);
+  return typeof expiresAt === "number" ? new Date(expiresAt) : undefined;
+}
+
 export async function getImpersonationId(request: Request) {
   if (!env.ADMIN_DASHBOARD_ENABLED) return undefined;
 

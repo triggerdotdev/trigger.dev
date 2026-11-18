@@ -242,7 +242,7 @@
     "ai-v7": "npm:ai@7.0.0-canary.159",
     "zod-v3-floor": "npm:zod@3.25.56",
     "defu": "^6.1.4",
-    "esbuild": "^0.23.0",
+    "esbuild": "^0.28.2",
     "rimraf": "^6.0.1",
     "superjson": "^2.2.1",
     "ts-essentials": "10.0.1",

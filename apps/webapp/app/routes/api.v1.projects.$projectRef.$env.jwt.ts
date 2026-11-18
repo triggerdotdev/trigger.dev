@@ -23,7 +23,17 @@ import {
 import { validateJwtExpiration } from "~/services/jwtExpiration.server";
 import { logger } from "~/services/logger.server";
 import { authorizePatEnvironmentAccess } from "~/services/environmentVariableApiAccess.server";
-import { publicTokenSubject } from "~/services/publicTokenSubject.server";
+import { signPublicJwtActor } from "~/services/publicJwtActor.server";
+import {
+  isDashboardAgentUserActor,
+  readScopeType,
+  userActorReadableScopes,
+} from "~/services/userActorEnvironment.server";
+import {
+  publicTokenSecret,
+  publicTokenSubject,
+  sourcePersonalAccessTokens,
+} from "~/services/publicTokenSubject.server";
 
 const ParamsSchema = z.object({
   projectRef: z.string(),
@@ -114,16 +124,21 @@ export async function action({ request, params }: ActionFunctionArgs) {
     // This mints a JWT signed with the environment's secret key. For a PAT
     // (a user), gate it on env-tier read:apiKeys so a restricted role can't
     // obtain deployed-environment credentials (and therefore can't deploy).
-    const denied = await authorizePatEnvironmentAccess({
-      request,
-      authType: authenticationResult.type,
-      organizationId: runtimeEnv.organizationId,
-      projectId: runtimeEnv.project.id,
-      envType: runtimeEnv.type,
-      resource: "apiKeys",
-      action: "read",
-    });
-    if (denied) return denied;
+    const authorizeApiKeyRead = () =>
+      authorizePatEnvironmentAccess({
+        request,
+        authType: authenticationResult.type,
+        organizationId: runtimeEnv.organizationId,
+        projectId: runtimeEnv.project.id,
+        envType: runtimeEnv.type,
+        resource: "apiKeys",
+        action: "read",
+      });
+    const dashboardAgent = isDashboardAgentUserActor(userActor);
+    if (!dashboardAgent) {
+      const denied = await authorizeApiKeyRead();
+      if (denied) return denied;
+    }
 
     const parsedBody = RequestBodySchema.safeParse(await request.json());
 
@@ -156,6 +171,24 @@ export async function action({ request, params }: ActionFunctionArgs) {
       scopes = requestedScopes;
     }
 
+    if (dashboardAgent) {
+      const readOnly =
+        !!requestedScopes?.length && requestedScopes.every((scope) => readScopeType(scope));
+      if (readOnly) {
+        const readable = await userActorReadableScopes(
+          request,
+          runtimeEnv,
+          scopes ?? [],
+          userActor!
+        );
+        if (readable instanceof Response) return readable;
+        scopes = readable;
+      } else {
+        const denied = await authorizeApiKeyRead();
+        if (denied) return denied;
+      }
+    }
+
     // Attribution: stamp the acting user on the minted env JWT. A UAT carries
     // its user as `userActorId`; a PAT exchange resolves the user from the
     // authentication result. Either way downstream handlers read `act.sub`
@@ -167,14 +200,13 @@ export async function action({ request, params }: ActionFunctionArgs) {
         ? authenticationResult.result.userId
         : undefined);
 
-    const claims = {
-      sub: publicTokenSubject(runtimeEnv.id),
-      pub: true,
-      ...(scopes ? { scopes } : {}),
-      ...(actorUserId
-        ? { act: { sub: actorUserId, client: userActor?.client ?? "personal-access-token" } }
-        : {}),
-    };
+    // The PAT this JWT derives from (a UAT's source PAT, or the PAT itself). Every use of the
+    // JWT rechecks it, so revoking or expiring the PAT ends the JWT too.
+    const sourcePatId = isUat
+      ? userActor?.pat
+      : authenticationResult.type === "personalAccessToken"
+        ? authenticationResult.result.tokenId
+        : undefined;
 
     const nowSec = Math.floor(Date.now() / 1000);
     const expiry = validateJwtExpiration(parsedBody.data.expirationTime, nowSec);
@@ -193,6 +225,35 @@ export async function action({ request, params }: ActionFunctionArgs) {
       sourceExpiresAt !== undefined
         ? Math.min(expiry.expirationTime, sourceExpiresAt)
         : expiry.expirationTime;
+
+    const act = actorUserId
+      ? {
+          sub: actorUserId,
+          client: userActor?.client ?? "personal-access-token",
+          // Sealed, so the PAT's id never appears in the token.
+          ...(sourcePatId ? { pat: sourcePersonalAccessTokens.encode(sourcePatId) } : {}),
+        }
+      : undefined;
+
+    const claims = {
+      sub: publicTokenSubject(runtimeEnv.id),
+      pub: true,
+      ...(scopes ? { scopes } : {}),
+      ...(act
+        ? {
+            act: {
+              ...act,
+              // Proves the server minted this token for this user: it covers the user and every
+              // claim the server reads, and the root key can't make it.
+              sig: signPublicJwtActor(publicTokenSecret(), act, {
+                environmentId: runtimeEnv.id,
+                expiresAt: expirationTime,
+                scopes,
+              }),
+            },
+          }
+        : {}),
+    };
 
     const jwt = await internal_generateJWT({
       secretKey: runtimeEnv.apiKey,

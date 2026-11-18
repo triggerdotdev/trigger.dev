@@ -554,6 +554,7 @@ describe("DequeueSystem controlPlaneResolver (worker-task read shape)", () => {
       expect("queueConfig" in task).toBe(false);
       expect("description" in task).toBe(false);
       expect(Object.keys(task).sort()).toEqual([
+        "executionMode",
         "id",
         "machineConfig",
         "maxDurationInSeconds",

@@ -15,10 +15,17 @@ import {
 } from "~/services/inputStreamWaitpointCache.server";
 import { logger } from "~/services/logger.server";
 import { getRealtimeStreamInstance } from "~/services/realtime/v1StreamsGlobal.server";
-import { createActionApiRoute, everyResource } from "~/services/routeBuilders/apiBuilder.server";
+import {
+  anyResource,
+  createActionApiRoute,
+  scopeAuthorizationError,
+} from "~/services/routeBuilders/apiBuilder.server";
 import { keyedWaitpointBudgetResponse } from "~/services/routeBuilders/keyedWaitpointBudget.server";
 import { parseDelay } from "~/utils/delays";
-import { resolveIdempotencyKeyTTL } from "~/utils/idempotencyKeys.server";
+import {
+  resolveIdempotencyKeyTTL,
+  resolveRunWaitpointIdempotencyKey,
+} from "~/utils/idempotencyKeys.server";
 import { engine } from "~/v3/runEngine.server";
 import { ServiceValidationError } from "~/v3/services/baseService.server";
 
@@ -34,13 +41,21 @@ const { action, loader } = createActionApiRoute(
     method: "POST",
     authorization: {
       action: "write",
-      resource: (params) =>
-        everyResource([{ type: "runs", id: params.runFriendlyId }, { type: "waitpoints" }]),
+      resource: (params) => ({ type: "runs", id: params.runFriendlyId }),
     },
   },
   async ({ authentication, body, params, ability }) => {
-    if (!ability.can("read", { type: "inputStreams", id: params.runFriendlyId })) {
-      return json({ error: "Unauthorized" }, { status: 403 });
+    // The waitpoint delivers the next input record, so the caller must be able to read input,
+    // under the same run grant the input stream reader accepts.
+    const inputReaders = [
+      { type: "inputStreams", id: params.runFriendlyId },
+      { type: "runs", id: params.runFriendlyId },
+    ];
+    if (!ability.can("read", inputReaders)) {
+      return json(
+        { error: scopeAuthorizationError("read", anyResource(inputReaders)) },
+        { status: 403 }
+      );
     }
 
     try {
@@ -98,7 +113,11 @@ const { action, loader } = createActionApiRoute(
         environmentId: authentication.environment.id,
         projectId: authentication.environment.projectId,
         organizationId: authentication.environment.organization.id,
-        idempotencyKey: body.idempotencyKey,
+        idempotencyKey: resolveRunWaitpointIdempotencyKey(
+          body.idempotencyKey,
+          params.runFriendlyId,
+          ability
+        ),
         idempotencyKeyExpiresAt,
         timeout,
         tags: bodyTags,
@@ -175,9 +194,23 @@ const { action, loader } = createActionApiRoute(
         }
       }
 
+      const waitpointId = WaitpointId.toFriendlyId(result.waitpoint.id);
+      const isBlocked = !ability.can("read", { type: "waitpoints", id: waitpointId });
+      // Callers without waitpoint access must block through this run-authorized operation.
+      if (isBlocked) {
+        await engine.blockRunWithWaitpoint({
+          runId: run.id,
+          waitpoints: result.waitpoint.id,
+          projectId: authentication.environment.projectId,
+          organizationId: authentication.environment.organization.id,
+          expectedEnvironmentId: authentication.environment.id,
+        });
+      }
+
       return json<CreateInputStreamWaitpointResponseBody>({
-        waitpointId: WaitpointId.toFriendlyId(result.waitpoint.id),
+        waitpointId,
         isCached: result.isCached,
+        ...(isBlocked ? { isBlocked: true } : {}),
       });
     } catch (error) {
       if (error instanceof ServiceValidationError) {

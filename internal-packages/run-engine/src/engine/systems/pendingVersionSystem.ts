@@ -92,7 +92,11 @@ export class PendingVersionSystem {
     this.executionSnapshotSystem = options.executionSnapshotSystem;
   }
 
-  async enqueueRunsForBackgroundWorker(backgroundWorkerId: string, attempt: number = 0) {
+  async enqueueRunsForBackgroundWorker(
+    backgroundWorkerId: string,
+    attempt: number = 0,
+    runIds?: string[]
+  ) {
     //It could be a lot of runs, so we will process them in a batch
     //if there are still more to process we will enqueue this function again
     const maxCount = this.options.queueRunsPendingVersionBatchSize ?? 200;
@@ -136,16 +140,17 @@ export class PendingVersionSystem {
 
     // Step 1: ask the injected lookup (typically ClickHouse-backed) for
     // candidate run ids. Best-effort — results may be stale or incomplete.
-    const { runIds: candidateIds } =
-      await this.$.pendingVersionRunIdLookup.lookupPendingVersionRunIds({
-        organizationId: backgroundWorker.runtimeEnvironment.organizationId,
-        projectId: backgroundWorker.projectId,
-        environmentId: backgroundWorker.runtimeEnvironmentId,
-        taskIdentifiers,
-        queues,
-        externalDeploymentId,
-        limit: maxCount + 1,
-      });
+    const { runIds: candidateIds } = runIds
+      ? { runIds }
+      : await this.$.pendingVersionRunIdLookup.lookupPendingVersionRunIds({
+          organizationId: backgroundWorker.runtimeEnvironment.organizationId,
+          projectId: backgroundWorker.projectId,
+          environmentId: backgroundWorker.runtimeEnvironmentId,
+          taskIdentifiers,
+          queues,
+          externalDeploymentId,
+          limit: maxCount + 1,
+        });
 
     if (!candidateIds.length) {
       await this.#maybeScheduleLagRetry(backgroundWorkerId, attempt, "lookup_empty");
@@ -236,73 +241,77 @@ export class PendingVersionSystem {
 
       const stillDelayed = run.delayUntil !== null && run.delayUntil > now;
 
-      const snapshotRoute = await this.#snapshotRouteBeforeTransaction(
-        run.id,
-        backgroundWorker.runtimeEnvironment.organization.id
-      );
-      await this.#settlePendingUnitBeforeTransaction(run.id, snapshotRoute);
-      const previousSnapshot = await this.#latestSnapshotBeforeTransaction(
-        run.id,
-        backgroundWorker.runtimeEnvironment.organization.id
-      );
-
-      // Atomic unit: the status promotion and the new QUEUED snapshot must commit together
-      // or a crash between them leaves the run promoted-to-PENDING with no snapshot. Under the run-ops
-      // split these route to the run's owning DB but, as two router calls, would each auto-commit.
-      // `runInTransaction` shares ONE owning-DB transaction; the inner writes use the tx-bound `store`
-      // (promotePendingVersionRuns directly, the snapshot via enqueueRun's `store` passthrough). The
-      // Redis enqueue inside enqueueRun is NOT in this transaction (Redis never was — unchanged).
-      const promoted = await this.$.runStore.runInTransaction(run.id, async (store, tx) => {
-        // Idempotency guard: only flips PENDING_VERSION → PENDING. If another
-        // worker already promoted this run between our findMany and the
-        // update, count is 0 and we skip the enqueue.
-        const updateResult = await store.promotePendingVersionRuns(
+      // Held through the commit: enqueueRun publishes to Redis inside the transaction, and a dequeue
+      // that read the still-parked run before the commit would ack the new message.
+      const promoted = await this.$.runLock.lock("promotePendingVersionRun", [run.id], async () => {
+        const snapshotRoute = await this.#snapshotRouteBeforeTransaction(
           run.id,
-          { ...pin, status: stillDelayed ? "DELAYED" : "PENDING" },
-          tx
+          backgroundWorker.runtimeEnvironment.organization.id
+        );
+        await this.#settlePendingUnitBeforeTransaction(run.id, snapshotRoute);
+        const previousSnapshot = await this.#latestSnapshotBeforeTransaction(
+          run.id,
+          backgroundWorker.runtimeEnvironment.organization.id
         );
 
-        if (updateResult.count === 0) {
-          return false;
-        }
-
-        if (stillDelayed) {
-          await this.executionSnapshotSystem.createExecutionSnapshot(
-            tx,
-            {
-              run: { id: run.id, status: "DELAYED" },
-              snapshot: { executionStatus: "DELAYED", description: "Run is delayed" },
-              snapshotRoute,
-              previousSnapshot,
-              batchId: run.batchId ?? undefined,
-              environmentId: backgroundWorker.runtimeEnvironment.id,
-              environmentType: backgroundWorker.runtimeEnvironment.type,
-              projectId: backgroundWorker.runtimeEnvironment.project.id,
-              organizationId: backgroundWorker.runtimeEnvironment.organization.id,
-            },
-            store
+        // Atomic unit: the status promotion and the new QUEUED snapshot must commit together
+        // or a crash between them leaves the run promoted-to-PENDING with no snapshot. Under the run-ops
+        // split these route to the run's owning DB but, as two router calls, would each auto-commit.
+        // `runInTransaction` shares ONE owning-DB transaction; the inner writes use the tx-bound `store`
+        // (promotePendingVersionRuns directly, the snapshot via enqueueRun's `store` passthrough). The
+        // Redis enqueue inside enqueueRun is NOT in this transaction (Redis never was — unchanged).
+        return this.$.runStore.runInTransaction(run.id, async (store, tx) => {
+          // Idempotency guard: only flips PENDING_VERSION → PENDING. If another
+          // worker already promoted this run between our findMany and the
+          // update, count is 0 and we skip the enqueue.
+          const updateResult = await store.promotePendingVersionRuns(
+            run.id,
+            { ...pin, status: stillDelayed ? "DELAYED" : "PENDING" },
+            tx
           );
 
+          if (updateResult.count === 0) {
+            return false;
+          }
+
+          if (stillDelayed) {
+            await this.executionSnapshotSystem.createExecutionSnapshot(
+              tx,
+              {
+                run: { id: run.id, status: "DELAYED" },
+                snapshot: { executionStatus: "DELAYED", description: "Run is delayed" },
+                snapshotRoute,
+                previousSnapshot,
+                batchId: run.batchId ?? undefined,
+                environmentId: backgroundWorker.runtimeEnvironment.id,
+                environmentType: backgroundWorker.runtimeEnvironment.type,
+                projectId: backgroundWorker.runtimeEnvironment.project.id,
+                organizationId: backgroundWorker.runtimeEnvironment.organization.id,
+              },
+              store
+            );
+
+            return true;
+          }
+
+          const updatedRun = await store.findRunOrThrow({ id: run.id }, tx);
+
+          await this.enqueueSystem.enqueueRun({
+            run: updatedRun,
+            env: backgroundWorker.runtimeEnvironment,
+            snapshotRoute,
+            previousSnapshot,
+            store,
+            tx,
+            // PENDING_VERSION re-enqueue is the first time this run is actually
+            // entering the run queue (the original enqueue was held back waiting
+            // for a worker version). Arm TTL here so the TTL system can expire it
+            // if it sits queued waiting on a concurrency slot.
+            includeTtl: true,
+          });
+
           return true;
-        }
-
-        const updatedRun = await store.findRunOrThrow({ id: run.id }, tx);
-
-        await this.enqueueSystem.enqueueRun({
-          run: updatedRun,
-          env: backgroundWorker.runtimeEnvironment,
-          snapshotRoute,
-          previousSnapshot,
-          store,
-          tx,
-          // PENDING_VERSION re-enqueue is the first time this run is actually
-          // entering the run queue (the original enqueue was held back waiting
-          // for a worker version). Arm TTL here so the TTL system can expire it
-          // if it sits queued waiting on a concurrency slot.
-          includeTtl: true,
         });
-
-        return true;
       });
 
       if (!promoted) continue;
@@ -666,63 +675,66 @@ export class PendingVersionSystem {
   }): Promise<boolean> {
     const stillDelayed = run.delayUntil !== null && run.delayUntil > new Date();
 
-    const snapshotRoute = await this.#snapshotRouteBeforeTransaction(run.id, env.organization.id);
-    await this.#settlePendingUnitBeforeTransaction(run.id, snapshotRoute);
-    const previousSnapshot = await this.#latestSnapshotBeforeTransaction(
-      run.id,
-      env.organization.id
-    );
-
-    const promoted = await this.$.runStore.runInTransaction(run.id, async (store, tx) => {
-      const updateResult = await store.promotePendingVersionRuns(
+    // Held through the commit, as in enqueueRunsForBackgroundWorker.
+    const promoted = await this.$.runLock.lock("promoteParkedRun", [run.id], async () => {
+      const snapshotRoute = await this.#snapshotRouteBeforeTransaction(run.id, env.organization.id);
+      await this.#settlePendingUnitBeforeTransaction(run.id, snapshotRoute);
+      const previousSnapshot = await this.#latestSnapshotBeforeTransaction(
         run.id,
-        {
-          status: stillDelayed ? "DELAYED" : "PENDING",
-          lockedToVersionId: pin.id,
-          taskVersion: pin.version,
-          sdkVersion: pin.sdkVersion ?? undefined,
-          cliVersion: pin.cliVersion ?? undefined,
-        },
-        tx
+        env.organization.id
       );
 
-      if (updateResult.count === 0) {
-        return false;
-      }
-
-      if (stillDelayed) {
-        await this.executionSnapshotSystem.createExecutionSnapshot(
-          tx,
+      return this.$.runStore.runInTransaction(run.id, async (store, tx) => {
+        const updateResult = await store.promotePendingVersionRuns(
+          run.id,
           {
-            run: { id: run.id, status: "DELAYED" },
-            snapshot: { executionStatus: "DELAYED", description: "Run is delayed" },
-            snapshotRoute,
-            previousSnapshot,
-            batchId: run.batchId ?? undefined,
-            environmentId: env.id,
-            environmentType: env.type,
-            projectId: env.project.id,
-            organizationId: env.organization.id,
+            status: stillDelayed ? "DELAYED" : "PENDING",
+            lockedToVersionId: pin.id,
+            taskVersion: pin.version,
+            sdkVersion: pin.sdkVersion ?? undefined,
+            cliVersion: pin.cliVersion ?? undefined,
           },
-          store
+          tx
         );
 
+        if (updateResult.count === 0) {
+          return false;
+        }
+
+        if (stillDelayed) {
+          await this.executionSnapshotSystem.createExecutionSnapshot(
+            tx,
+            {
+              run: { id: run.id, status: "DELAYED" },
+              snapshot: { executionStatus: "DELAYED", description: "Run is delayed" },
+              snapshotRoute,
+              previousSnapshot,
+              batchId: run.batchId ?? undefined,
+              environmentId: env.id,
+              environmentType: env.type,
+              projectId: env.project.id,
+              organizationId: env.organization.id,
+            },
+            store
+          );
+
+          return true;
+        }
+
+        const updatedRun = await store.findRunOrThrow({ id: run.id }, tx);
+
+        await this.enqueueSystem.enqueueRun({
+          run: updatedRun,
+          env,
+          snapshotRoute,
+          previousSnapshot,
+          store,
+          tx,
+          includeTtl: true,
+        });
+
         return true;
-      }
-
-      const updatedRun = await store.findRunOrThrow({ id: run.id }, tx);
-
-      await this.enqueueSystem.enqueueRun({
-        run: updatedRun,
-        env,
-        snapshotRoute,
-        previousSnapshot,
-        store,
-        tx,
-        includeTtl: true,
       });
-
-      return true;
     });
 
     if (!promoted) {

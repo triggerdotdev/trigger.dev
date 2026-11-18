@@ -707,6 +707,11 @@ export type GenerateContainerfileOptions = {
   image: BuildManifest["image"];
   indexScript: string;
   entrypoint: string;
+  compiledRunWorker?: {
+    outfile: string;
+    entryPoints: string[];
+  };
+  compileCacheDir?: string;
 };
 
 // "bun" and "bun-legacy" are the same node + bun image
@@ -877,6 +882,43 @@ ${trustStoreHardening(options.image?.buildBase)}`;
   };
 };
 
+// Packages stay external and load from node_modules, which needs package.json lookups turned
+// back on.
+export function bunCompileArgs(
+  compiledRunWorker: NonNullable<GenerateContainerfileOptions["compiledRunWorker"]>
+) {
+  return [
+    "bun",
+    "build",
+    "--compile",
+    "--bytecode",
+    "--format=esm",
+    "--splitting",
+    "--sourcemap",
+    "--packages=external",
+    "--compile-autoload-package-json",
+    // The flags the task run process passes to bun when it starts an uncompiled worker
+    "--compile-exec-argv=--trace-uncaught --no-warnings",
+    "--root=/app",
+    // Keeps each file's on-disk name inside the executable, so the import.meta banner maps to it
+    "--entry-naming=[dir]/[name].mjs",
+    `--outfile=${compiledRunWorker.outfile}`,
+    ...new Set(compiledRunWorker.entryPoints),
+  ];
+}
+
+// Runs after the build commands, so files they generate are in the executable
+function bunCompileStep(compiledRunWorker: GenerateContainerfileOptions["compiledRunWorker"]) {
+  if (!compiledRunWorker) {
+    return "";
+  }
+
+  return `
+# Compile the run worker and the task files to bytecode, so runs start faster
+RUN ${JSON.stringify(bunCompileArgs(compiledRunWorker))}
+`;
+}
+
 async function generateBunContainerfile(options: GenerateContainerfileOptions) {
   const { baseImage, buildStage, buildArgs, buildEnvVars, postInstallCommands, customization } =
     parseGenerateOptions(options);
@@ -915,7 +957,7 @@ ${postInstallCommands}
 
 # node_modules may not exist when there are no dependencies to install
 RUN mkdir -p node_modules
-
+${bunCompileStep(options.compiledRunWorker)}
 FROM scratch AS code
 
 COPY --from=build --exclude=node_modules /app /app
@@ -1096,7 +1138,14 @@ COPY --from=code --chown=node:node /app ./
 
 # Copy the index.json file from the indexer stage
 COPY --from=indexer --chown=node:node /app/index.json ./
-
+${
+  options.compileCacheDir
+    ? `
+# The indexer filled Node's compile cache, so runs skip compiling most of the bundle
+COPY --from=indexer --chown=node:node ${options.compileCacheDir} ${options.compileCacheDir}
+`
+    : ""
+}
 ENTRYPOINT [ "dumb-init", "node", "${options.entrypoint}" ]
 CMD []
   `;

@@ -1,7 +1,11 @@
-import { describe, expect, it } from "vitest";
+import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { describe, expect, it, vi } from "vitest";
 import { BuildManifest, BuildRuntime, ConfigRuntime, WorkerManifest } from "../schemas/build.js";
 import {
   binaryForRuntime,
+  execPathForRuntime,
   isBunRuntime,
   isDeprecatedConfigRuntime,
   isNodelessBunRuntime,
@@ -93,4 +97,25 @@ describe("runtime configuration", () => {
       expect(isDeprecatedConfigRuntime(runtime)).toBe(true);
     }
   );
+
+  // Catches: Bun installed outside ~/.bun (Homebrew, mise) being missed because only the default
+  // install path was tried
+  it("falls back to bun on PATH when the default install path is missing", async () => {
+    const home = await mkdtemp(join(tmpdir(), "trigger-home-"));
+    vi.stubEnv("HOME", home);
+    vi.stubEnv("BUN_INSTALL", undefined);
+    vi.stubEnv("BUN_INSTALL_BIN", undefined);
+
+    try {
+      expect(execPathForRuntime("bun-1.4")).toBe("bun");
+
+      const defaultPath = join(home, ".bun", "bin", "bun");
+      await mkdir(join(home, ".bun", "bin"), { recursive: true });
+      await writeFile(defaultPath, "");
+      expect(execPathForRuntime("bun-1.4")).toBe(defaultPath);
+    } finally {
+      vi.unstubAllEnvs();
+      await rm(home, { recursive: true, force: true });
+    }
+  });
 });

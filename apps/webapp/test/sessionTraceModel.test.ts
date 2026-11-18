@@ -51,7 +51,8 @@ import {
 import type { SessionRunsPage } from "~/presenters/v3/SessionRunsPresenter.server";
 import {
   resolveSessionPageView,
-  runReasonLabel,
+  runReasonBadge,
+  runStartedBecause,
 } from "~/components/sessions/v1/trace/sessionTraceView";
 
 const T0 = Date.parse("2026-10-20T10:00:00.000Z");
@@ -692,25 +693,45 @@ describe("resolveSessionPageView", () => {
   });
 });
 
-describe("runReasonLabel", () => {
-  it("names the known start reasons", () => {
-    expect(runReasonLabel({ reason: "initial", afterCrash: false })).toBe("First run");
-    expect(runReasonLabel({ reason: "continuation", afterCrash: false })).toBe(
-      "Continued after the previous run ended"
-    );
-    expect(runReasonLabel({ reason: "upgrade", afterCrash: false })).toBe("Moved to a new version");
-    expect(runReasonLabel({ reason: "manual", afterCrash: false })).toBe("Started manually");
-  });
-
+describe("runStartedBecause", () => {
+  // Catches: a restart after a crash reading as a plain continuation in the run panel.
   it("says the run restarted after a crash, whatever its stored reason", () => {
-    expect(runReasonLabel({ reason: "continuation", afterCrash: true })).toBe(
-      "Restarted after the previous run crashed"
-    );
+    expect(runStartedBecause({ reason: "continuation", afterCrash: true })).toMatch(/crashed/);
   });
 
+  // Catches: a custom end-and-continue reason being replaced or reworded.
   it("shows a custom reason as it was sent", () => {
-    expect(runReasonLabel({ reason: "handoff to billing agent", afterCrash: false })).toBe(
-      "handoff to billing agent"
+    expect(runStartedBecause({ reason: "Handoff to billing agent", afterCrash: false })).toBe(
+      "Handoff to billing agent"
+    );
+  });
+});
+
+describe("runReasonBadge", () => {
+  // Catches: every row carrying a reason badge again, so the reason truncates next to a status.
+  it("shows nothing for a first run or a plain continuation", () => {
+    expect(runReasonBadge({ reason: "initial", afterCrash: false })).toBeUndefined();
+    expect(runReasonBadge({ reason: "continuation", afterCrash: false })).toBeUndefined();
+  });
+
+  // Catches: a crash restart not standing out, or its stored reason winning over the crash.
+  it("marks a crash restart as a warning, whatever its stored reason", () => {
+    expect(runReasonBadge({ reason: "upgrade", afterCrash: true })?.tone).toBe("warning");
+  });
+
+  // Catches: a custom reason named like a built-in object property breaking the label lookup
+  // (review round 5, 2026-10-30).
+  it("treats reasons like toString or constructor as custom", () => {
+    expect(runReasonBadge({ reason: "toString", afterCrash: false })?.label).toBe("toString");
+    expect(runStartedBecause({ reason: "constructor", afterCrash: false })).toBe("constructor");
+  });
+
+  // Catches: notable reasons (new version, manual, custom) losing their badge.
+  it("badges a new version, a manual start and a custom reason", () => {
+    expect(runReasonBadge({ reason: "upgrade", afterCrash: false })).toBeDefined();
+    expect(runReasonBadge({ reason: "manual", afterCrash: false })).toBeDefined();
+    expect(runReasonBadge({ reason: "handoff to billing agent", afterCrash: false })).toMatchObject(
+      { label: "handoff to billing agent", tooltip: "handoff to billing agent" }
     );
   });
 });

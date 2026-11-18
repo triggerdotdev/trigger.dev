@@ -63,13 +63,10 @@ export const translateAndRefine = task({
       : `Translate this text into ${payload.targetLanguage}, preserving style and meaning: "${payload.text}"`;
 
     const translation = await generateText({
-      model: anthropic("claude-sonnet-4-5"),
-      messages: [
-        {
-          role: "system",
-          content: `You are an expert literary translator into ${payload.targetLanguage}.
+      model: anthropic("claude-sonnet-5-5"),
+      system: `You are an expert literary translator into ${payload.targetLanguage}.
                    Focus on accuracy first, then style and natural flow.`,
-        },
+      messages: [
         {
           role: "user",
           content: translationPrompt,
@@ -83,11 +80,8 @@ export const translateAndRefine = task({
 
     // Evaluate the translation
     const evaluation = await generateText({
-      model: anthropic("claude-sonnet-4-5"),
-      messages: [
-        {
-          role: "system",
-          content: `You are an expert literary critic and translator focused on practical, high-quality translations.
+      model: anthropic("claude-sonnet-5-5"),
+      system: `You are an expert literary critic and translator focused on practical, high-quality translations.
                  Your goal is to ensure translations are accurate and natural, but not necessarily perfect.
                  This is iteration ${
                    rejectionCount + 1
@@ -109,7 +103,7 @@ export const translateAndRefine = task({
                  - First iteration MUST receive feedback for improvement
                  - Be very strict on accuracy in early iterations
                  - After 3 iterations, lower quality threshold to 85%`,
-        },
+      messages: [
         {
           role: "user",
           content: `Original: "${payload.text}"

@@ -18,9 +18,13 @@ export function sanitizeUntrusted(text: unknown, maxChars = MAX_UNTRUSTED_FIELD_
     : raw;
 }
 
-export function fenceUntrusted(label: string, text: unknown): string | undefined {
+export function fenceUntrusted(
+  label: string,
+  text: unknown,
+  maxChars?: number
+): string | undefined {
   if (text === undefined || text === null) return undefined;
-  return `«untrusted:${label}» ${sanitizeUntrusted(text)} «/untrusted:${label}»`;
+  return `«untrusted:${label}» ${sanitizeUntrusted(text, maxChars)} «/untrusted:${label}»`;
 }
 
 // Fail closed: with no organization to scope to, nothing is trustworthy to return.
@@ -46,7 +50,7 @@ export function curateEnvironments(data: unknown) {
       slug: e.slug,
       type: e.type,
       paused: e.paused,
-      branchName: e.branchName ?? undefined,
+      branchName: fenceUntrusted("branchName", e.branchName),
     })),
   };
 }
@@ -74,11 +78,15 @@ function queueWait(run: any): { queueWaitMs: number | null; queueWaitReliable: b
   return { queueWaitMs, queueWaitReliable };
 }
 
+function fenceTags(tags: unknown) {
+  return Array.isArray(tags) ? tags.map((tag) => fenceUntrusted("tag", tag)) : tags;
+}
+
 export function curateRun(run: any) {
   return {
     id: run.id,
     status: run.status,
-    taskIdentifier: run.taskIdentifier,
+    taskIdentifier: fenceUntrusted("taskIdentifier", run.taskIdentifier),
     version: run.version,
     isQueued: run.isQueued,
     isExecuting: run.isExecuting,
@@ -91,7 +99,7 @@ export function curateRun(run: any) {
     durationMs: run.durationMs,
     costInCents: run.costInCents,
     attemptCount: run.attemptCount,
-    tags: run.tags,
+    tags: fenceTags(run.tags),
     ...queueWait(run),
     error: run.error
       ? {
@@ -106,8 +114,8 @@ export function curateTasks(data: unknown) {
   const tasks = (data as any)?.worker?.tasks ?? [];
   return {
     tasks: (Array.isArray(tasks) ? tasks : []).map((t: any) => ({
-      slug: t.slug,
-      filePath: t.filePath,
+      slug: fenceUntrusted("taskSlug", t.slug),
+      filePath: fenceUntrusted("filePath", t.filePath),
       triggerSource: t.triggerSource,
     })),
   };
@@ -119,14 +127,14 @@ export function curateRuns(data: unknown) {
     runs: (Array.isArray(runs) ? runs : []).map((r: any) => ({
       id: r.id,
       status: r.status,
-      taskIdentifier: r.taskIdentifier,
+      taskIdentifier: fenceUntrusted("taskIdentifier", r.taskIdentifier),
       version: r.version,
       isTest: r.isTest,
       createdAt: r.createdAt,
       startedAt: r.startedAt,
       finishedAt: r.finishedAt,
       durationMs: r.durationMs,
-      tags: r.tags,
+      tags: fenceTags(r.tags),
     })),
     nextCursor: (data as any)?.pagination?.next,
   };
@@ -192,7 +200,7 @@ export function curateTrace(data: unknown, source: TraceSource = "legacy") {
           ? { kind: "attempt", attemptNumber }
           : {}),
       message: fenceUntrusted("spanMessage", d.message),
-      task: d.taskSlug,
+      task: fenceUntrusted("taskSlug", d.taskSlug),
       // An unfinished span is written with duration 0, which isn't a duration.
       durationMs: spanDurationMs(d, source),
       level: d.level,
@@ -374,27 +382,55 @@ export function derivePhases(data: unknown, run?: any, source: TraceSource = "le
   };
 }
 
+export const MAX_RESULT_CHARS = 60_000;
+
+/** The leading rows that fit the character budget, so one result can't flood context. */
+export function capRows<T>(rows: T[], maxChars = MAX_RESULT_CHARS) {
+  let used = 0;
+  let kept = 0;
+  for (const row of rows) {
+    used += JSON.stringify(row)?.length ?? 0;
+    if (used > maxChars) break;
+    kept++;
+  }
+  const dropped = rows.length - kept;
+  return {
+    rows: rows.slice(0, kept),
+    ...(dropped > 0
+      ? { note: `${dropped} of ${rows.length} rows dropped to fit the result size. Narrow it.` }
+      : {}),
+  };
+}
+
 export function curateErrors(data: unknown) {
   const groups = (data as any)?.data ?? [];
-  return {
-    errors: (Array.isArray(groups) ? groups : []).map((g: any) => ({
-      id: g.id,
-      taskIdentifier: g.taskIdentifier,
-      errorType: fenceUntrusted("errorType", g.errorType),
-      errorMessage: fenceUntrusted("errorMessage", g.errorMessage),
-      status: g.status,
-      count: g.count,
-      firstSeen: g.firstSeen,
-      lastSeen: g.lastSeen,
-    })),
-    nextCursor: (data as any)?.pagination?.next,
-  };
+  const errors = (Array.isArray(groups) ? groups : []).map((g: any) => ({
+    id: g.id,
+    taskIdentifier: fenceUntrusted("taskIdentifier", g.taskIdentifier),
+    errorType: fenceUntrusted("errorType", g.errorType),
+    errorMessage: fenceUntrusted("errorMessage", g.errorMessage),
+    status: g.status,
+    count: g.count,
+    firstSeen: g.firstSeen,
+    lastSeen: g.lastSeen,
+  }));
+  return { errors, nextCursor: (data as any)?.pagination?.next };
+}
+
+// The model's copy of `list_errors`, held to the result budget.
+export function listErrorsModelOutput(output: any): JSONValue {
+  if (!Array.isArray(output?.errors)) return output;
+  const { rows, note } = capRows(output.errors);
+  if (!note) return output;
+  // A cursor past dropped rows would skip them for good.
+  const { nextCursor: _skipped, ...rest } = output;
+  return { ...rest, errors: rows, truncated: true, note };
 }
 
 export function curateError(group: any) {
   return {
     id: group.id,
-    taskIdentifier: group.taskIdentifier,
+    taskIdentifier: fenceUntrusted("taskIdentifier", group.taskIdentifier),
     errorType: fenceUntrusted("errorType", group.errorType),
     errorMessage: fenceUntrusted("errorMessage", group.errorMessage),
     status: group.status,
@@ -492,9 +528,11 @@ export function renderViewModelOutput(output: unknown): JSONValue {
 export function getReportModelOutput(output: unknown): JSONValue {
   const vm = (output ?? {}) as any;
   if (vm.error !== undefined) return { error: vm.error };
+  const flowEvidence = vm.facts?.flowEvidence;
+  const worstQueue = flowEvidence?.worstQueue;
   return {
     title: vm.title,
-    scope: vm.scope,
+    scope: fenceUntrusted("reportScope", vm.scope),
     period: vm.period,
     summary: vm.summary,
     findings: (vm.findings ?? []).map((f: any) => ({
@@ -506,7 +544,9 @@ export function getReportModelOutput(output: unknown): JSONValue {
       recommendation: f.recommendation,
       hedge: f.hedge,
       anomalyWindow: f.anomalyWindow,
-      attribution: f.attribution,
+      attribution: f.attribution
+        ? { ...f.attribution, key: fenceUntrusted("reportAttribution", f.attribution.key) }
+        : f.attribution,
     })),
     metrics: (vm.metrics ?? []).map((m: any) => ({
       id: m.id,
@@ -517,7 +557,15 @@ export function getReportModelOutput(output: unknown): JSONValue {
       severity: m.severity,
       ...(m.availability === "unknown" ? { availability: "unknown" } : {}),
     })),
-    facts: vm.facts,
+    facts: worstQueue
+      ? {
+          ...vm.facts,
+          flowEvidence: {
+            ...flowEvidence,
+            worstQueue: { ...worstQueue, name: fenceUntrusted("queueName", worstQueue.name) },
+          },
+        }
+      : vm.facts,
     ...(vm.uri ? { uri: vm.uri } : {}),
     detailOnCard: true,
   };
@@ -537,6 +585,90 @@ export function curateDeploy(deployment: any) {
     pullRequestNumber: git?.pullRequestNumber,
     error: deployment?.error ? { name: deployment.error.name } : undefined,
   };
+}
+
+export function curateCommit(data: any) {
+  const git = data?.git;
+  return {
+    runId: data?.runId,
+    version: data?.version,
+    sha:
+      typeof data?.sha === "string" && /^[0-9a-f]{7,40}$/i.test(data.sha)
+        ? data.sha
+        : fenceUntrusted("sha", data?.sha),
+    dirty: data?.dirty,
+    shortCode: data?.shortCode,
+    deployedAt: data?.deployedAt,
+    git: git
+      ? {
+          source: git.source,
+          commitMessage: fenceUntrusted("commitMessage", git.commitMessage),
+          commitAuthorName: fenceUntrusted("commitAuthorName", git.commitAuthorName),
+          commitRef: fenceUntrusted("commitRef", git.commitRef),
+          remoteUrl: fenceUntrusted("remoteUrl", git.remoteUrl),
+          ghUsername: fenceUntrusted("ghUsername", git.ghUsername),
+          pullRequestNumber: git.pullRequestNumber,
+          pullRequestTitle: fenceUntrusted("pullRequestTitle", git.pullRequestTitle),
+          pullRequestState: git.pullRequestState,
+        }
+      : undefined,
+  };
+}
+
+const MAX_PHASE_FIELD_CHARS = 200;
+const MAX_TIMELINE_CHARS = 10_000;
+// Room for the truncation note and the array punctuation `capRows` doesn't count.
+const RESULT_SLACK_CHARS = 500;
+
+// The card keeps the timeline's labels as-is; the model's copy gets them fenced, and the
+// timeline and spans share one result budget.
+export function runTraceModelOutput(output: any): JSONValue {
+  if (!Array.isArray(output?.spans)) return output;
+  const { spans, timeline, ...rest } = output;
+  const phases = capRows(
+    (timeline?.phases ?? []).map((phase: any) => ({
+      ...phase,
+      label: fenceUntrusted("phaseLabel", phase.label, MAX_PHASE_FIELD_CHARS),
+      ...(phase.detail !== undefined
+        ? { detail: fenceUntrusted("taskSlug", phase.detail, MAX_PHASE_FIELD_CHARS) }
+        : {}),
+    })),
+    MAX_TIMELINE_CHARS
+  );
+  const fencedTimeline = timeline
+    ? { ...timeline, phases: phases.rows, ...(phases.note ? { truncated: true } : {}) }
+    : undefined;
+  const used = JSON.stringify({ ...rest, timeline: fencedTimeline }).length + RESULT_SLACK_CHARS;
+  const { rows, note } = capRows(spans, MAX_RESULT_CHARS - used);
+  return {
+    ...rest,
+    spans: rows,
+    ...(note ? { truncated: true, note } : {}),
+    ...(fencedTimeline ? { timeline: fencedTimeline } : {}),
+  };
+}
+
+// Values our own system sets; every other page string can carry customer text.
+const PAGE_SAFE_KEYS = new Set(["kind", "runId", "status", "failedAt"]);
+
+function fenceStrings(value: unknown, label: string): unknown {
+  if (typeof value === "string") return fenceUntrusted(label, value);
+  if (Array.isArray(value)) return value.map((item) => fenceStrings(item, label));
+  if (value && typeof value === "object") {
+    return Object.fromEntries(
+      Object.entries(value).map(([key, item]) => [key, fenceStrings(item, label)])
+    );
+  }
+  return value;
+}
+
+export function fencePageFields<T extends object>(value: T): T {
+  return Object.fromEntries(
+    Object.entries(value).map(([key, item]) => [
+      key,
+      PAGE_SAFE_KEYS.has(key) ? item : fenceStrings(item, key),
+    ])
+  ) as T;
 }
 
 // Concurrency keys are set by whoever triggers the run, so they arrive as untrusted text.

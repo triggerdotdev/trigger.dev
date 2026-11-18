@@ -20,7 +20,7 @@ export const openaiTask = task({
     //if this fails, it will throw an error and retry
     const chatCompletion = await openai.chat.completions.create({
       messages: [{ role: "user", content: payload.prompt }],
-      model: "gpt-3.5-turbo",
+      model: "gpt-6-luna",
     });
 
     if (chatCompletion.choices[0]?.message.content === undefined) {

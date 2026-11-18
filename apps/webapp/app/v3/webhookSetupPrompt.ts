@@ -78,6 +78,8 @@ export function renderWebhookSetupPrompt(
   const verifier = WebhookVerifierArtifact.safeParse(endpoint.verifierArtifact);
   const asymmetric =
     verifier.success && "config" in verifier.data && verifier.data.config.scheme === "asymmetric";
+  const capturesSecret =
+    verifier.success && "secretCapture" in verifier.data && Boolean(verifier.data.secretCapture);
   const environmentArgs = `projectRef "${context.projectRef}", environment "${context.environment}"${
     context.branch ? `, branch "${context.branch}"` : ""
   }`;
@@ -124,8 +126,12 @@ export function renderWebhookSetupPrompt(
     "",
     "## Steps",
     "",
-    `1. Register the webhook URL with ${source}, following the ${source} instructions below.`,
-    `2. ${secretStep(endpoint, asymmetric)}`,
+    // A source that sends its own secret does so the moment the webhook is created, and a set secret
+    // refuses it, so clearing has to come before registering a new one.
+    capturesSecret && endpoint.hasSigningSecret
+      ? `1. This endpoint already has a signing secret, and ${source} sends a new verification token as soon as a webhook is created. If you're creating a new ${source} webhook (not just checking an existing one), first ask the user to select Clear signing secret in the Connect section of the endpoint page above. Then register the webhook URL with ${source}, following the ${source} instructions below.`
+      : `1. Register the webhook URL with ${source}, following the ${source} instructions below.`,
+    `2. ${secretStep(endpoint, asymmetric, capturesSecret)}`,
     `3. Call \`get_webhook_endpoint_details\` and check that \`secretSet\` is true. If ${source} can send a test event, send one and confirm it shows up on the dashboard page above.`,
     "",
     "Treat the signing secret as a credential: pass it straight to the tool or API, and never print it, log it, write it to a file or commit it.",
@@ -149,8 +155,20 @@ export function renderWebhookSetupPrompt(
   return lines.join("\n");
 }
 
-function secretStep(endpoint: WebhookSetupPromptEndpoint, asymmetric: boolean): string {
+function secretStep(
+  endpoint: WebhookSetupPromptEndpoint,
+  asymmetric: boolean,
+  capturesSecret: boolean
+): string {
   const source = endpoint.source;
+  // The provider sends the secret to the URL itself, and the endpoint shows it until it is replaced;
+  // storing it again would hide the token the user still has to paste back into the provider.
+  if (capturesSecret) {
+    return endpoint.hasSigningSecret
+      ? `Don't call \`set_webhook_secret\`. When ${source} sends its verification token, the endpoint stores it as the signing secret and shows it in the Connect section of the endpoint page above; ask the user to paste it into ${source} to verify the subscription. If no token is shown there, the existing subscription is already verified or its secret was set by hand.`
+      : `Don't store a secret. When the webhook is created, ${source} sends a verification token to the URL and the endpoint stores it as its signing secret. Then ask the user to copy the token from the Connect section of the endpoint page above and paste it into ${source} to verify the subscription. Don't call \`set_webhook_secret\` for it.`;
+  }
+
   const replacing = endpoint.hasSigningSecret
     ? ` ${asymmetric ? "A public key" : "A secret"} is already set; only replace it when you're creating or updating the webhook in ${source}, and pass \`previousSecretTtlSeconds\` (for example 3600) so deliveries signed with the old one keep verifying until ${source} uses the new one.`
     : "";

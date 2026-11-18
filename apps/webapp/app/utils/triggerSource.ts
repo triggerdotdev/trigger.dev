@@ -1,3 +1,5 @@
+export const MCP_REMOTE_TRIGGER_SOURCE = "mcp-remote";
+
 const ALLOWED_TRIGGER_SOURCES = new Set(["sdk", "cli", "mcp"]);
 
 /** Validates a client-provided trigger source header against the allowlist. */

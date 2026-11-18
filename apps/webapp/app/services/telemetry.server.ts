@@ -295,6 +295,29 @@ class Telemetry {
     },
   };
 
+  mcp = {
+    feedbackSubmitted: ({
+      userId,
+      message,
+      toolName,
+      projectRef,
+      projectId,
+    }: {
+      userId: string;
+      message: string;
+      toolName?: string;
+      projectRef?: string;
+      projectId?: string;
+    }) => {
+      this.#capture({
+        userId,
+        event: "mcp_feedback_submitted",
+        projectId,
+        eventProperties: { message, toolName, projectRef, source: "mcp" },
+      });
+    },
+  };
+
   #capture(event: CaptureEvent) {
     if (this.#posthogClient === undefined) return;
     let groups: Record<string, string> = {};

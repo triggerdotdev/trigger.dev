@@ -1,0 +1,45 @@
+---
+title: "Linear webhooks"
+sidebarTitle: "Linear"
+description: "Receive and verify Linear webhooks with Trigger.dev. Check the HMAC-SHA256 signature in linear-signature and run a task for each Linear event, filtered on event.type."
+---
+
+**`webhooks.linear()` verifies the HMAC-SHA256 signature Linear sends in `linear-signature` on every request.**
+
+```ts /trigger/linear.ts
+import { webhook, webhooks } from "@trigger.dev/sdk";
+
+export const linear = webhooks.endpoint.define({
+  id: "linear",
+  source: webhooks.linear(),
+});
+
+export const linearEvents = webhook({
+  id: "linear-events",
+  endpoint: linear,
+  onEvent: async ({ event }) => {
+    console.log(event);
+  },
+});
+```
+
+To run a subscriber only for some events, add a [filter](/webhooks/filters) on `event.type`.
+
+| Setting | Value |
+| --- | --- |
+| Source | `webhooks.linear()` |
+| Verification | HMAC-SHA256 in `linear-signature` |
+| Credential | Signing secret issued by Linear |
+| Event type | `event.type` |
+| Linear docs | [Linear webhook docs](https://linear.app/developers/webhooks) |
+
+## Set up Linear
+
+1. Start `trigger dev` or deploy, then copy the endpoint's **Webhook URL** from the **Webhooks** page.
+2. In Linear, open **Settings > API** and choose **New webhook**. Enter the webhook URL and select the resource types your subscribers need.
+3. Linear generates the signing secret and shows it on the webhook's page. Copy it, then choose **Set signing secret** on the Trigger.dev endpoint.
+4. Send a test event from Linear, or use the endpoint's **Test** tab, and check the endpoint's **Deliveries** tab. See [Verify the connection](/webhooks/connect#verify-the-connection) if nothing arrives.
+
+## Build a Linear agent
+
+To work issues inside Linear's agent session UI, use the `linear()` connector from `@trigger.dev/linear`. See [Linear agents](/webhooks/linear).

@@ -77,7 +77,7 @@ describe("WorkloadServer previous-key cutoff (log mode)", () => {
     const token = await mintWorkloadDeploymentToken(claims, PREVIOUS_SECRET, EXP);
 
     const res = await fetch(
-      `${BASE}/api/v1/workload-actions/runs/${runId}/snapshots/since/snap_1`,
+      `${BASE}/api/v1/workload-actions/runs/${runId}/snapshots/since/snapshot_1`,
       {
         headers: {
           [WORKLOAD_HEADERS.RUNNER_ID]: "runner_1",
@@ -99,7 +99,7 @@ describe("WorkloadServer previous-key cutoff (log mode)", () => {
     expect(logged).toContain("previous");
     expect(logged).toContain("fail");
     expect(logged).toContain(
-      `"route":"GET /api/v1/workload-actions/runs/${runId}/snapshots/since/snap_1"`
+      `"route":"GET /api/v1/workload-actions/runs/${runId}/snapshots/since/snapshot_1"`
     );
     expect(logged).toContain('"runnerId":"runner_1"');
     expect(logged).toContain('"deployment":"deployment_test"');
@@ -134,7 +134,7 @@ describe("WorkloadServer previous-key cutoff (log mode)", () => {
       client.emit("run:start", {
         version: "1",
         run: { friendlyId: runId },
-        snapshot: { friendlyId: "snap_1" },
+        snapshot: { friendlyId: "snapshot_1" },
       });
 
       expect(await bound).toBe(runId);

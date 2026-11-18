@@ -209,6 +209,29 @@ describe("runnerBodyFor", () => {
     expect(JSON.stringify(body)).not.toContain("tok_secret");
   });
 
+  // Catches: sandbox cold starts or restores being allowed to warm-start another run.
+  it.each(["SANDBOX", "STANDARD", undefined] as const)(
+    "sets single-use only for sandbox runs (executionMode=%s)",
+    (executionMode) => {
+      const opts = createOptions({
+        annotations: {
+          triggerSource: "api",
+          triggerAction: "trigger",
+          rootTriggerSource: "api",
+          executionMode,
+        },
+      });
+      for (const restore of [undefined, { snapshotID: "snap-abc", node: "node-a" }]) {
+        const spec = runnerBodyFor(opts, { ...meta, restore }).spec;
+        if (executionMode === "SANDBOX") {
+          expect(spec.singleUse).toBe(true);
+        } else {
+          expect(spec).not.toHaveProperty("singleUse");
+        }
+      }
+    }
+  );
+
   it("omits the token reference when no token was issued", () => {
     expect(runnerBodyFor(createOptions(), meta).spec.deployment).not.toHaveProperty("token");
   });
@@ -2142,6 +2165,8 @@ describe("classifyRestoreFailure", () => {
     ["SnapshotNotFound", { outcome: "fail" }],
     // The node runtime will not restore this snapshot for this Runner on any attempt.
     ["SnapshotRefused", { outcome: "fail" }],
+    // An encrypted snapshot that failed its integrity check fails the same way on any node.
+    ["SnapshotIntegrity", { outcome: "fail" }],
     // The template may be on another node, so a resume is requeued rather than failed.
     ["TemplateNotFound", { outcome: "requeue", deleteRunner: true }],
     ["PodStartTimeout", { outcome: "requeue", deleteRunner: true }],

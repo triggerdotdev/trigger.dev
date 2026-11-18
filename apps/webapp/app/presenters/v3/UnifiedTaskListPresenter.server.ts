@@ -24,6 +24,7 @@ export type UnifiedTaskListItem = {
   createdAt: Date;
   /** Agent-only: parsed `config.type` used for the Type badge. */
   agentType?: string;
+  isSandbox?: boolean;
 };
 
 export type UnifiedRunningState =
@@ -231,6 +232,7 @@ function toUnifiedItems(
       filePath: task.filePath,
       triggerSource: task.triggerSource,
       createdAt: task.createdAt,
+      isSandbox: task.executionMode === "SANDBOX",
     });
   }
 

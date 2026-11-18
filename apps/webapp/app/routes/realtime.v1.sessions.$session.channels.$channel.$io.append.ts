@@ -45,7 +45,7 @@ const { action, loader } = createActionApiRoute(
           ids.add(session.friendlyId);
           if (session.externalId) ids.add(session.externalId);
         }
-        return anyResource(sessionChannelResources(params.channel, ids));
+        return anyResource(sessionChannelResources(params.channel, ids, params.io));
       },
     },
   },

@@ -467,6 +467,7 @@ export class SpanPresenter extends BasePresenter {
       isAgentRun,
       isScheduled,
       isWebhook,
+      executionPolicy: RunAnnotations.safeParse(run.annotations).data?.executionPolicy,
       payload,
       payloadType: run.payloadType,
       output,

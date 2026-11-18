@@ -4,6 +4,7 @@ import { createHash } from "node:crypto";
 import { generateJWT } from "@trigger.dev/core/v3/jwt";
 import { type PrismaClient } from "@trigger.dev/database";
 import { describe, expect, it, vi } from "vitest";
+import { bearerPublicJwtActor, signPublicJwtActor } from "~/services/publicJwtActor.server";
 import { generateAdditionalApiKey } from "~/utils/apiKeys";
 import { createTestOrgProjectWithMember, uniqueId } from "./fixtures/environmentVariablesFixtures";
 
@@ -533,6 +534,57 @@ describe("RBAC fallback — public JWTs", () => {
     if (!result.ok) return;
     expect(result.jwt?.act).toEqual({ sub: user.id });
   });
+
+  // Catches: a signed claim (client, scopes, expiry) not reaching the host, so it can't verify the token it minted.
+  postgresTest(
+    "passes a public JWT actor's signature and signed claims to the host",
+    async ({ prisma }) => {
+      const { organization, project, orgMember, user } =
+        await createTestOrgProjectWithMember(prisma);
+      const rbac = makeController(prisma);
+      const environment = await createEnv(prisma, project.id, organization.id, {
+        type: "PRODUCTION",
+        orgMemberId: orgMember.id,
+      });
+      const secret = "test-public-token-secret";
+      const expiresAt = Math.floor(Date.now() / 1000) + 60 * 60;
+      const act = { sub: user.id, client: "cli" };
+      const sig = signPublicJwtActor(secret, act, {
+        environmentId: environment.id,
+        expiresAt,
+        scopes: ["read:runs"],
+      });
+      const mint = (scopes: string[]) =>
+        generateJWT({
+          secretKey: environment.apiKey,
+          payload: { pub: true, sub: environment.id, scopes, act: { ...act, sig } },
+          expirationTime: expiresAt,
+        });
+
+      const result = await rbac.authenticateBearer(bearerRequest(await mint(["read:runs"])), {
+        allowJWT: true,
+      });
+      // The same signature on a token the root key's holder gave wider scopes.
+      const widened = await rbac.authenticateBearer(
+        bearerRequest(await mint(["read:runs", "write:all"])),
+        { allowJWT: true }
+      );
+
+      expect(result.ok && widened.ok).toBe(true);
+      if (!result.ok || !widened.ok) return;
+      expect(result.jwt?.act).toEqual({ ...act, sig });
+      expect(result.jwt?.expiresAt).toBe(expiresAt);
+      expect(result.jwt?.scopes).toEqual(["read:runs"]);
+      expect(bearerPublicJwtActor(secret, result.environment.id, result.jwt)).toEqual({
+        ...act,
+        verified: true,
+      });
+      expect(bearerPublicJwtActor(secret, widened.environment.id, widened.jwt)).toMatchObject({
+        sub: user.id,
+        verified: false,
+      });
+    }
+  );
 
   postgresTest("rejects public JWTs for soft-deleted projects", async ({ prisma }) => {
     const { organization, project, orgMember } = await createTestOrgProjectWithMember(prisma);

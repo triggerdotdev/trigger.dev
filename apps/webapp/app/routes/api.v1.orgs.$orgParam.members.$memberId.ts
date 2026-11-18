@@ -46,7 +46,7 @@ export const action = createActionPATApiRoute(
 
     // Org-scoped, TOCTOU-safe delete shared with the dashboard Team page. The
     // model throws ServiceValidationError (member-not-found 404, last-member
-    // guard 400), which the builder maps to the response status.
+    // and last-Owner guards 400), which the builder maps to the response status.
     const removed = await removeTeamMember(
       {
         userId: authentication.userId,

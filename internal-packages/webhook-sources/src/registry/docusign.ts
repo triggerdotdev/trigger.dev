@@ -5,7 +5,7 @@ export const entry: ProviderRegistryEntry = {
   label: "DocuSign",
   category: "e-signature",
   docsUrl: "https://developers.docusign.com/platform/webhooks/connect/",
-  secretProvisioning: "integrator",
+  secretProvisioning: "provider",
   eventTypeSource: { from: "body", path: "event" },
   sampleSource: "handauthored",
 };

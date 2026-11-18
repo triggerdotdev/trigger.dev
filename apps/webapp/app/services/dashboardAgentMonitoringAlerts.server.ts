@@ -3,6 +3,7 @@ import type { AuthenticatedEnvironment } from "~/services/apiAuth.server";
 import { canUseMonitoringAlerts } from "~/services/monitoringAlertsApi.server";
 import { rbac } from "~/services/rbac.server";
 import { authenticateUatOrApiRequest } from "~/services/uatRoutePreamble.server";
+import type { AlertReadAbility } from "~/v3/services/alerts/agentAlertScope.server";
 
 export async function authenticateDashboardAgent(
   request: Request
@@ -55,4 +56,13 @@ export async function authorizeAlerts(
       { status: 403 }
     );
   }
+}
+
+export function alertReadAbility(request: Request, organizationId: string): AlertReadAbility {
+  return async (projectId) => {
+    const auth = await rbac.authenticateUserActor(request, { organizationId, projectId });
+    if (!auth.ok) return () => false;
+    return (envType) =>
+      auth.ability.can("read", envType ? { type: "alerts", envType } : { type: "alerts" });
+  };
 }

@@ -87,7 +87,7 @@ Prefer building the tool with the AI SDK’s [`tool()`](https://sdk.vercel.ai/do
 ```ts
 import { ai } from "@trigger.dev/sdk/ai";
 import { schemaTask } from "@trigger.dev/sdk";
-import { tool, generateText } from "ai";
+import { tool, generateText, stepCountIs } from "ai";
 import { openai } from "@ai-sdk/openai";
 import { z } from "zod";
 
@@ -115,24 +115,25 @@ export const myAiTask = schemaTask({
   run: async ({ text }) => {
     const { text: reply } = await generateText({
       prompt: text,
-      model: openai("gpt-4o"),
+      model: openai("gpt-6-luna"),
       tools: {
         myTool,
       },
+      stopWhen: stepCountIs(5),
     });
     return reply;
   },
 });
 ```
 
-`experimental_toToolResultContent` and other tool-level options belong on **`tool({ ... })`**, not on `ai.toolExecute`:
+`toModelOutput` and other tool-level options belong on **`tool({ ... })`**, not on `ai.toolExecute`:
 
 ```ts
 import { openai } from "@ai-sdk/openai";
 import { Sandbox } from "@e2b/code-interpreter";
 import { ai } from "@trigger.dev/sdk/ai";
 import { schemaTask } from "@trigger.dev/sdk";
-import { generateObject, tool } from "ai";
+import { generateText, Output, tool } from "ai";
 import { z } from "zod";
 
 const chartTask = schemaTask({
@@ -142,17 +143,19 @@ const chartTask = schemaTask({
     input: z.string().describe("The chart to generate"),
   }),
   run: async ({ input }) => {
-    const code = await generateObject({
-      model: openai("gpt-4o"),
-      schema: z.object({
-        code: z.string().describe("The Python code to execute"),
+    const { output } = await generateText({
+      model: openai("gpt-6-luna"),
+      output: Output.object({
+        schema: z.object({
+          code: z.string().describe("The Python code to execute"),
+        }),
       }),
       system: `You are a helpful assistant that generates matplotlib code. End with plt.show().`,
       prompt: input,
     });
 
     const sandbox = await Sandbox.create();
-    const execution = await sandbox.runCode(code.object.code);
+    const execution = await sandbox.runCode(output.code);
     const firstResult = execution.results[0];
 
     if (firstResult.png) {
@@ -162,15 +165,25 @@ const chartTask = schemaTask({
   },
 });
 
+// Keep the executor in its own const so `output` below is typed from the task
+const executeChart = ai.toolExecute(chartTask);
+
 export const chartTool = tool({
   description: chartTask.description ?? "",
   inputSchema: chartTask.schema!,
-  execute: ai.toolExecute(chartTask),
-  experimental_toToolResultContent: (result) => [
-    { type: "image", data: result.chart, mimeType: "image/png" },
-  ],
+  execute: executeChart,
+  toModelOutput: ({ output }) => ({
+    type: "content",
+    value: [
+      { type: "file", mediaType: "image/png", data: { type: "data", data: output.chart } },
+    ],
+  }),
 });
 ```
+
+<Note>
+  This sample uses AI SDK 7. On AI SDK 6, use `{ type: "image-data", data: output.chart, mediaType: "image/png" }` as the item in `value` instead of the `file` part. On AI SDK 5, pass `experimental_output: Output.object(...)` instead of `output` and read the result from `experimental_output`, and use `toModelOutput: (output) => ({ type: "content", value: [{ type: "media", data: output.chart, mediaType: "image/png" }] })`.
+</Note>
 
 Inside the task run, you can read tool execution context with **`ai.currentToolOptions()`** (and helpers like `ai.toolCallId()`, `ai.chatContext()` when running inside a [`chat.agent`](/ai-chat/overview)):
 

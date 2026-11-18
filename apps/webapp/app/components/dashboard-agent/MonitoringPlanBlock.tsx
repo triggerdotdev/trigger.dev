@@ -96,6 +96,7 @@ export type MonitoringPlanHost = MonitoringPlanState & {
 
 const HostContext = createContext<MonitoringPlanHost | undefined>(undefined);
 export const MonitoringPlanHostProvider = HostContext.Provider;
+export const useMonitoringPlanHost = () => useContext(HostContext);
 
 export function PlanWizardSlot() {
   const host = useContext(HostContext);

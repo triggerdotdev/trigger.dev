@@ -12,21 +12,22 @@ vi.mock("~/services/platform.v3.server", async (importOriginal) => {
   return { ...actual, getSsoEntitlement: (orgId: string) => getSsoEntitlement(orgId) };
 });
 
-const setUserRole = vi.fn();
-vi.mock("~/services/rbac.server", () => ({
-  rbac: { setUserRole: (a: unknown) => setUserRole(a) },
-}));
-
+// The mocks forward every argument, so the audit attribution a caller passes is checked too.
 const ensureOrgMember = vi.fn();
 const ensureUserForDirectory = vi.fn();
 const removeOrgMemberForDirectory = vi.fn();
+const setOrgMemberRole = vi.fn();
 vi.mock("~/models/orgMember.server", () => ({
-  ensureOrgMember: (a: unknown) => ensureOrgMember(a),
-  ensureUserForDirectory: (a: unknown) => ensureUserForDirectory(a),
-  removeOrgMemberForDirectory: (a: unknown) => removeOrgMemberForDirectory(a),
+  ensureOrgMember: (...args: unknown[]) => ensureOrgMember(...args),
+  ensureUserForDirectory: (...args: unknown[]) => ensureUserForDirectory(...args),
+  removeOrgMemberForDirectory: (...args: unknown[]) => removeOrgMemberForDirectory(...args),
+  setOrgMemberRole: (...args: unknown[]) => setOrgMemberRole(...args),
 }));
 
+import type { MemberAuditAttribution } from "~/models/memberAudit.server";
 import { applyDirectorySyncEffects } from "~/services/directorySyncEffects.server";
+
+const SYSTEM: MemberAuditAttribution = { actor: { type: "system", id: null }, source: "system" };
 
 const ENTITLED_ORG = "org_entitled";
 const UNENTITLED_ORG = "org_unentitled";
@@ -61,24 +62,25 @@ describe("applyDirectorySyncEffects — SSO entitlement gate", () => {
       devEnvironmentsQueued: true,
     });
     removeOrgMemberForDirectory.mockResolvedValue({ removed: true });
-    setUserRole.mockResolvedValue({ ok: true });
+    setOrgMemberRole.mockResolvedValue({ ok: true });
   });
 
   it("applies effects for an entitled org", async () => {
     getSsoEntitlement.mockResolvedValue("entitled");
 
-    await applyDirectorySyncEffects([provision(ENTITLED_ORG)]);
+    await applyDirectorySyncEffects([provision(ENTITLED_ORG)], SYSTEM);
 
     expect(ensureOrgMember).toHaveBeenCalledTimes(1);
     expect(ensureOrgMember).toHaveBeenCalledWith(
-      expect.objectContaining({ organizationId: ENTITLED_ORG, source: "directory_sync" })
+      expect.objectContaining({ organizationId: ENTITLED_ORG, source: "directory_sync" }),
+      SYSTEM
     );
   });
 
   it("skips provisioning for an org without the entitlement", async () => {
     getSsoEntitlement.mockResolvedValue("not_entitled");
 
-    await applyDirectorySyncEffects([provision(UNENTITLED_ORG)]);
+    await applyDirectorySyncEffects([provision(UNENTITLED_ORG)], SYSTEM);
 
     expect(ensureOrgMember).not.toHaveBeenCalled();
     expect(ensureUserForDirectory).not.toHaveBeenCalled();
@@ -87,7 +89,7 @@ describe("applyDirectorySyncEffects — SSO entitlement gate", () => {
   it("skips deprovisioning too, so revocation cannot remove members", async () => {
     getSsoEntitlement.mockResolvedValue("not_entitled");
 
-    await applyDirectorySyncEffects([deprovision(UNENTITLED_ORG)]);
+    await applyDirectorySyncEffects([deprovision(UNENTITLED_ORG)], SYSTEM);
 
     expect(removeOrgMemberForDirectory).not.toHaveBeenCalled();
   });
@@ -95,7 +97,7 @@ describe("applyDirectorySyncEffects — SSO entitlement gate", () => {
   it("throws on an unreadable entitlement so the worker retries", async () => {
     getSsoEntitlement.mockResolvedValue("unknown");
 
-    await expect(applyDirectorySyncEffects([provision(ENTITLED_ORG)])).rejects.toThrow(
+    await expect(applyDirectorySyncEffects([provision(ENTITLED_ORG)], SYSTEM)).rejects.toThrow(
       /could not read the SSO entitlement/
     );
 
@@ -105,7 +107,7 @@ describe("applyDirectorySyncEffects — SSO entitlement gate", () => {
   it("marks the retry as a warning rather than a pageable error", async () => {
     getSsoEntitlement.mockResolvedValue("unknown");
 
-    await applyDirectorySyncEffects([provision(ENTITLED_ORG)]).then(
+    await applyDirectorySyncEffects([provision(ENTITLED_ORG)], SYSTEM).then(
       () => expect.unreachable("should have thrown"),
       (error) => expect(error).toMatchObject({ logLevel: "warn" })
     );
@@ -114,11 +116,14 @@ describe("applyDirectorySyncEffects — SSO entitlement gate", () => {
   it("resolves the entitlement once per org across a batch", async () => {
     getSsoEntitlement.mockResolvedValue("entitled");
 
-    await applyDirectorySyncEffects([
-      provision(ENTITLED_ORG, "a@acme.com"),
-      provision(ENTITLED_ORG, "b@acme.com"),
-      provision(ENTITLED_ORG, "c@acme.com"),
-    ]);
+    await applyDirectorySyncEffects(
+      [
+        provision(ENTITLED_ORG, "a@acme.com"),
+        provision(ENTITLED_ORG, "b@acme.com"),
+        provision(ENTITLED_ORG, "c@acme.com"),
+      ],
+      SYSTEM
+    );
 
     expect(getSsoEntitlement).toHaveBeenCalledTimes(1);
     expect(ensureOrgMember).toHaveBeenCalledTimes(3);
@@ -129,11 +134,12 @@ describe("applyDirectorySyncEffects — SSO entitlement gate", () => {
       orgId === ENTITLED_ORG ? "entitled" : "not_entitled"
     );
 
-    await applyDirectorySyncEffects([provision(UNENTITLED_ORG), provision(ENTITLED_ORG)]);
+    await applyDirectorySyncEffects([provision(UNENTITLED_ORG), provision(ENTITLED_ORG)], SYSTEM);
 
     expect(ensureOrgMember).toHaveBeenCalledTimes(1);
     expect(ensureOrgMember).toHaveBeenCalledWith(
-      expect.objectContaining({ organizationId: ENTITLED_ORG })
+      expect.objectContaining({ organizationId: ENTITLED_ORG }),
+      SYSTEM
     );
   });
 
@@ -151,11 +157,14 @@ describe("applyDirectorySyncEffects — SSO entitlement gate", () => {
         devEnvironmentsQueued: true,
       });
 
-    const { unqueuedUserIds } = await applyDirectorySyncEffects([
-      provision(ENTITLED_ORG, "a@acme.com"),
-      provision(ENTITLED_ORG, "b@acme.com"),
-      deprovision(ENTITLED_ORG),
-    ]);
+    const { unqueuedUserIds } = await applyDirectorySyncEffects(
+      [
+        provision(ENTITLED_ORG, "a@acme.com"),
+        provision(ENTITLED_ORG, "b@acme.com"),
+        deprovision(ENTITLED_ORG),
+      ],
+      SYSTEM
+    );
 
     expect(unqueuedUserIds).toEqual(["user_1"]);
     expect(ensureOrgMember).toHaveBeenCalledTimes(2);
@@ -176,11 +185,12 @@ describe("applyDirectorySyncEffects — SSO entitlement gate", () => {
       roleAuthoritative: true,
     };
 
-    const { unqueuedUserIds } = await applyDirectorySyncEffects([effect]);
+    const { unqueuedUserIds } = await applyDirectorySyncEffects([effect], SYSTEM);
 
     expect(unqueuedUserIds).toEqual(["user_1"]);
-    expect(setUserRole).toHaveBeenCalledWith(
-      expect.objectContaining({ roleId: "role_restricted", organizationId: ENTITLED_ORG })
+    expect(setOrgMemberRole).toHaveBeenCalledWith(
+      expect.objectContaining({ roleId: "role_restricted", organizationId: ENTITLED_ORG }),
+      SYSTEM
     );
   });
 
@@ -193,19 +203,46 @@ describe("applyDirectorySyncEffects — SSO entitlement gate", () => {
       roleAuthoritative: false,
     };
 
-    await applyDirectorySyncEffects([effect]);
+    await applyDirectorySyncEffects([effect], SYSTEM);
 
     expect(ensureOrgMember).toHaveBeenCalledWith(
-      expect.objectContaining({ roleId: "role_restricted", organizationId: ENTITLED_ORG })
+      expect.objectContaining({ roleId: "role_restricted", organizationId: ENTITLED_ORG }),
+      SYSTEM
     );
-    expect(setUserRole).not.toHaveBeenCalled();
+    expect(setOrgMemberRole).not.toHaveBeenCalled();
   });
 
   it("reports nothing to retry when every provision was queued", async () => {
     getSsoEntitlement.mockResolvedValue("entitled");
 
-    const { unqueuedUserIds } = await applyDirectorySyncEffects([provision(ENTITLED_ORG)]);
+    const { unqueuedUserIds } = await applyDirectorySyncEffects([provision(ENTITLED_ORG)], SYSTEM);
 
     expect(unqueuedUserIds).toEqual([]);
+  });
+
+  // Catches: an attribution dropped on the way to the member changes, so the worker's changes lose
+  // their system actor, or the SSO page's changes are pinned to the system instead of the admin.
+  it("passes the caller's attribution to every member change", async () => {
+    getSsoEntitlement.mockResolvedValue("entitled");
+    const authoritativeProvision = {
+      ...provision(ENTITLED_ORG),
+      roleId: "role_restricted",
+      roleAuthoritative: true,
+    };
+    const effects: DirectorySyncEffect[] = [
+      authoritativeProvision,
+      { kind: "set_role", userId: "user_1", organizationId: ENTITLED_ORG, roleId: "role_admin" },
+      deprovision(ENTITLED_ORG),
+    ];
+
+    await applyDirectorySyncEffects(effects, SYSTEM);
+    await applyDirectorySyncEffects(effects, undefined);
+
+    const attributions = (fn: typeof ensureOrgMember) => fn.mock.calls.map((call) => call[1]);
+    expect(attributions(ensureOrgMember)).toEqual([SYSTEM, undefined]);
+    expect(attributions(setOrgMemberRole)).toEqual([SYSTEM, SYSTEM, undefined, undefined]);
+    expect(attributions(removeOrgMemberForDirectory)).toEqual([SYSTEM, undefined]);
+    // The argument is passed even when undefined, so a dropped one can't pass by accident.
+    expect(ensureOrgMember.mock.calls.map((call) => call.length)).toEqual([2, 2]);
   });
 });

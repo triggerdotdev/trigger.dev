@@ -1,0 +1,99 @@
+---
+title: "Connect to Databricks"
+sidebarTitle: "Databricks"
+description: "Authenticate to Databricks from your tasks with a federation policy instead of a personal access token or client secret."
+---
+
+Use Databricks [workload identity federation](https://docs.databricks.com/aws/dev-tools/auth/oauth-federation-policy) to exchange a Trigger.dev OIDC token for a Databricks OAuth token. Your tasks run queries as a service principal with no `DATABRICKS_TOKEN` or `DATABRICKS_CLIENT_SECRET` stored anywhere.
+
+Follow the [OIDC prerequisites](/oidc#prerequisites), then go to the [OIDC](https://cloud.trigger.dev/_/oidc) page for your environment and copy the issuer URL and subject.
+
+## Configure Databricks
+
+Create a service principal (or reuse one), grant it access to the warehouse and data your task uses, and add a federation policy with the Databricks CLI. Replace the numeric service principal ID, your organization slug, account ID, and the subject:
+
+```bash
+databricks account service-principal-federation-policy create YOUR_SERVICE_PRINCIPAL_NUMERIC_ID --json '{
+  "oidc_policy": {
+    "issuer": "https://oidc.trigger.dev/YOUR_ORG_SLUG",
+    "audiences": ["YOUR_DATABRICKS_ACCOUNT_ID"],
+    "subject": "YOUR_ENVIRONMENT_SUBJECT"
+  }
+}'
+```
+
+Use the **complete subject copied from the dashboard**. The audience shown is Databricks' default; any value works if the task requests the same one. A service principal holds at most 20 federation policies.
+
+## Query Databricks in your task
+
+<CodeGroup>
+
+```bash npm
+npm i @trigger.dev/sdk@latest @databricks/sql
+```
+
+```bash pnpm
+pnpm add @trigger.dev/sdk@latest @databricks/sql
+```
+
+```bash bun
+bun add @trigger.dev/sdk@latest @databricks/sql
+```
+
+</CodeGroup>
+
+Exchange the OIDC token at your workspace's [token endpoint](https://docs.databricks.com/aws/en/dev-tools/auth/oauth-federation-exchange), then pass the access token to the SQL driver:
+
+```ts /trigger/query-databricks.ts
+import { auth, task } from "@trigger.dev/sdk";
+import { DBSQLClient } from "@databricks/sql";
+
+const host = "YOUR_WORKSPACE.cloud.databricks.com";
+
+export const queryDatabricks = task({
+  id: "query-databricks",
+  run: async () => {
+    const { token: subjectToken } = await auth.getOIDCToken({
+      audience: "YOUR_DATABRICKS_ACCOUNT_ID",
+    });
+
+    const exchange = await fetch(`https://${host}/oidc/v1/token`, {
+      method: "POST",
+      body: new URLSearchParams({
+        client_id: "YOUR_SERVICE_PRINCIPAL_UUID",
+        subject_token: subjectToken,
+        subject_token_type: "urn:ietf:params:oauth:token-type:jwt",
+        grant_type: "urn:ietf:params:oauth:grant-type:token-exchange",
+        scope: "all-apis",
+      }),
+    });
+    if (!exchange.ok) throw new Error(`Databricks exchange failed: ${exchange.status}`);
+    const { access_token } = await exchange.json();
+
+    const client = new DBSQLClient();
+    await client.connect({ host, path: "/sql/1.0/warehouses/YOUR_WAREHOUSE_ID", token: access_token });
+    const session = await client.openSession();
+    const operation = await session.executeStatement("SELECT current_user()");
+    const rows = await operation.fetchAll();
+    await operation.close();
+    await session.close();
+    await client.close();
+
+    return { rows };
+  },
+});
+```
+
+`client_id` is the service principal's UUID (its application ID), not the numeric ID used in the CLI command.
+
+<Note>
+  The Databricks access token expires when the OIDC token it was exchanged for does, which is five
+  minutes for Trigger.dev tokens, and there's no refresh token. For longer work, request a new OIDC
+  token and exchange it again.
+</Note>
+
+## Remove the old credential
+
+Once runs in every deployed environment authenticate this way, delete `DATABRICKS_TOKEN` and `DATABRICKS_CLIENT_SECRET` from those environments on the Environment Variables page, then revoke the token or OAuth secret in Databricks.
+
+Local Development runs can't mint OIDC tokens. Use your own Databricks login there when `ctx.environment.type === "DEVELOPMENT"`.

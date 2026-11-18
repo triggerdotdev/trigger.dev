@@ -5,6 +5,7 @@ import { prisma } from "~/db.server";
 import { env } from "~/env.server";
 import { createEnvironment } from "~/models/organization.server";
 import { createRedisClient } from "~/redis.server";
+import { SYSTEM_ACTOR } from "~/services/credentialFingerprints.server";
 import { logger } from "~/services/logger.server";
 import { singleton } from "~/utils/singleton";
 import { controlPlaneResolver } from "~/v3/runOpsMigration/controlPlaneResolver.server";
@@ -51,7 +52,14 @@ async function createRootEnvironment(
   type: "STAGING" | "PREVIEW"
 ) {
   const [error, environment] = await tryCatch(
-    createEnvironment({ organization, project, type, isBranchableEnvironment: type === "PREVIEW" })
+    createEnvironment({
+      organization,
+      project,
+      type,
+      isBranchableEnvironment: type === "PREVIEW",
+      // No one asked for it: plan provisioning creates it.
+      createdBy: SYSTEM_ACTOR,
+    })
   );
 
   if (!error) {

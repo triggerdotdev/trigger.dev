@@ -1,6 +1,6 @@
 import { json, type ActionFunctionArgs, type LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { z } from "zod";
-import { getAlert, listAlerts, resolveAlert } from "~/v3/services/alerts/storage/alertStore.server";
+import { createAlert, getAlert, type Alert } from "~/v3/services/alerts/storage/alertStore.server";
 import {
   alertParamsSchema,
   behaviorSchema,
@@ -15,16 +15,22 @@ import {
   type AgentAlertContextError,
 } from "~/services/dashboardAgentAlertContext.server";
 import { authorizeAgentEnvironmentById } from "~/services/dashboardAgentChatContext.server";
-import { prisma } from "~/db.server";
+import { $transaction, prisma } from "~/db.server";
 import { logger } from "~/services/logger.server";
 import {
   authenticateDashboardAgent,
+  alertReadAbility,
   authorizeAlerts,
   gateMonitoringAlerts,
 } from "~/services/dashboardAgentMonitoringAlerts.server";
-import { createAlertAndSchedule } from "~/v3/services/alerts/alertLifecycle.server";
 import {
-  createAlertFromDraft,
+  AGENT_ALERT_SCOPES,
+  listScopedAlerts,
+  type ScopedAlert,
+} from "~/v3/services/alerts/agentAlertScope.server";
+import { scheduleCreatedAlert } from "~/v3/services/alerts/alertLifecycle.server";
+import {
+  buildAlertFromDraft,
   InvalidQueryAlertError,
   QUERY_DOMAIN_ERRORS,
   type AlertDraftScope,
@@ -35,12 +41,32 @@ import { validateAlertNotifiers } from "~/v3/services/alerts/validateAlertNotifi
 import { alertDisplayName } from "~/v3/services/alerts/alertDisplayName";
 import { resolveMonitoringAlertsEnvironment } from "~/services/monitoringAlertsApi.server";
 
+function alertView(a: Alert) {
+  return {
+    id: a.id,
+    name: alertDisplayName(a),
+    capabilityKey: a.capabilityKey,
+    lifecycle: a.lifecycle,
+    attention: a.attention,
+    observedCondition: a.observedCondition,
+    projectId: a.projectId,
+    environmentId: a.environmentId,
+    createdAt: a.createdAt.toISOString(),
+  };
+}
+
+function scopedAlertView({ alert, project, environment, channelIds }: ScopedAlert) {
+  return { ...alertView(alert), project, environment, channelIds };
+}
+
 function contextStatus(code: AgentAlertContextError) {
   return code === "environment_mismatch" ? 400 : 404;
 }
 
 const ListQuerySchema = z.object({
   chatId: z.string().min(1),
+  alertId: z.string().min(1).optional(),
+  scope: z.enum(AGENT_ALERT_SCOPES).default("environment"),
   attention: z.enum(["clear", "needs_attention"]).optional(),
   lifecycle: z.enum(["active", "completed", "expired", "stopped"]).optional(),
 });
@@ -58,17 +84,22 @@ const looseNotifierRef = z.discriminatedUnion("type", [
   z.object({ type: z.literal("chat") }),
 ]);
 
+const MAX_ACTIVE_ALERTS_PER_PROJECT = 200;
+const MAX_SCOPE_VALUE_LENGTH = 256;
+
 const CreateBodySchema = z
   .object({
     chatId: z.string().min(1),
     capabilityKey: z.string().min(1),
     environment: z.enum(["dev", "staging", "prod", "preview"]).optional(),
-    name: z.string().optional(),
-    scope: alertParamsSchema.shape.scope.optional(),
+    name: z.string().max(120).optional(),
+    scope: alertParamsSchema.shape.scope
+      .refine((s) => Object.values(s).every((v) => v.length <= MAX_SCOPE_VALUE_LENGTH))
+      .optional(),
     windowSec: alertParamsSchema.shape.windowSec,
     condition: conditionSchema,
     behavior: behaviorSchema.optional(),
-    notifiers: z.array(looseNotifierRef).optional(),
+    notifiers: z.array(looseNotifierRef).max(20).optional(),
     query: z.string().max(8192).optional(),
     signal: z
       .object({ mode: z.enum(["threshold", "absence", "match"]), measure: z.string().optional() })
@@ -79,10 +110,25 @@ const CreateBodySchema = z
     { message: "query and signal are only valid for the custom.query capability", path: ["query"] }
   );
 
-const ResolveBodySchema = z.object({
-  chatId: z.string().min(1),
-  alertId: z.string().min(1),
-});
+function capReached() {
+  return json(
+    { error: `This project already has ${MAX_ACTIVE_ALERTS_PER_PROJECT} active alerts.` },
+    { status: 409 }
+  );
+}
+
+async function createWithinCap(input: Parameters<typeof createAlert>[1]): Promise<Alert | null> {
+  const alert = await $transaction(prisma, async (tx) => {
+    await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${input.projectId}))`;
+    const active = await tx.alert.count({
+      where: { projectId: input.projectId, lifecycle: "active" },
+    });
+    return active >= MAX_ACTIVE_ALERTS_PER_PROJECT ? null : createAlert(tx, input);
+  });
+  if (!alert) return null;
+  await scheduleCreatedAlert(prisma, alert);
+  return alert;
+}
 
 export async function loader({ request }: LoaderFunctionArgs) {
   const auth = await authenticateDashboardAgent(request);
@@ -167,25 +213,33 @@ export async function loader({ request }: LoaderFunctionArgs) {
   const denied = await authorizeAlerts(request, context.environment, "read");
   if (denied) return denied;
 
-  const alerts = await listAlerts(prisma, {
-    projectId: context.environment.project.id,
-    environmentId: context.environment.id,
-    attention: query.data.attention,
-    lifecycle: query.data.lifecycle,
-  });
+  if (query.data.alertId) {
+    const alert = await getAlert(prisma, {
+      id: query.data.alertId,
+      projectId: context.environment.project.id,
+      environmentId: context.environment.id,
+    });
+    if (!alert) return json({ error: "Alert not found" }, { status: 404 });
+    return json({ alert: alertView(alert) });
+  }
 
-  return json({
-    alerts: alerts.map((a) => ({
-      id: a.id,
-      name: alertDisplayName(a),
-      capabilityKey: a.capabilityKey,
-      lifecycle: a.lifecycle,
-      attention: a.attention,
-      observedCondition: a.observedCondition,
-      environmentId: a.environmentId,
-      createdAt: a.createdAt.toISOString(),
-    })),
-  });
+  const { alerts, truncated } = await listScopedAlerts(
+    prisma,
+    {
+      origin: {
+        userId: auth.userId,
+        organizationId: context.environment.organizationId,
+        projectId: context.environment.project.id,
+        environmentId: context.environment.id,
+      },
+      scope: query.data.scope,
+      attention: query.data.attention,
+      lifecycle: query.data.lifecycle,
+    },
+    alertReadAbility(request, context.environment.organizationId)
+  );
+
+  return json({ scope: query.data.scope, alerts: alerts.map(scopedAlertView), truncated });
 }
 
 export async function action({ request }: ActionFunctionArgs) {
@@ -202,57 +256,6 @@ export async function action({ request }: ActionFunctionArgs) {
     rawBody = await request.json();
   } catch {
     return json({ error: "Invalid request" }, { status: 400 });
-  }
-
-  const actionType =
-    rawBody && typeof rawBody === "object" && "alertId" in rawBody ? "resolve" : "create";
-
-  if (actionType === "resolve") {
-    const parsed = ResolveBodySchema.safeParse(rawBody);
-    if (!parsed.success) {
-      return json({ error: "Invalid request" }, { status: 400 });
-    }
-
-    const context = await resolveAgentAlertContext({
-      userId: auth.userId,
-      environmentId: auth.environmentId,
-      chatId: parsed.data.chatId,
-    });
-    if (!context.ok) {
-      return json(
-        { error: context.error, code: context.code },
-        { status: contextStatus(context.code) }
-      );
-    }
-
-    if (!(await gateMonitoringAlerts(context.environment, auth.userId))) {
-      return json({ error: "Monitoring alerts are not enabled for this project" }, { status: 403 });
-    }
-
-    const denied = await authorizeAlerts(request, context.environment, "write");
-    if (denied) return denied;
-
-    const alert = await getAlert(prisma, {
-      id: parsed.data.alertId,
-      projectId: context.environment.project.id,
-      environmentId: context.environment.id,
-    });
-    if (!alert) {
-      return json({ error: "Alert not found" }, { status: 404 });
-    }
-
-    const result = await resolveAlert(prisma, {
-      id: parsed.data.alertId,
-      actorId: auth.userId,
-    });
-    if (!result) {
-      return json(
-        { error: "Alert does not need attention or is already resolved" },
-        { status: 409 }
-      );
-    }
-
-    return json({ resolved: true, alertId: parsed.data.alertId });
   }
 
   const parsed = CreateBodySchema.safeParse(rawBody);
@@ -345,20 +348,23 @@ export async function action({ request }: ActionFunctionArgs) {
 
   if (body.capabilityKey === "custom.query") {
     try {
-      const alert = await createAlertFromDraft(prisma, {
-        organizationId: environment.organizationId,
-        projectId: environment.project.id,
-        environmentId: environment.id,
-        capabilityKey: body.capabilityKey,
-        scope: scope as AlertDraftScope,
-        condition: body.condition,
-        expiresAt: body.behavior?.expiresAt ? new Date(body.behavior.expiresAt) : undefined,
-        notifiers,
-        name: body.name,
-        createdBy: auth.userId,
-        query: body.query,
-        querySignalChoice: body.signal,
-      });
+      const alert = await createWithinCap(
+        buildAlertFromDraft({
+          organizationId: environment.organizationId,
+          projectId: environment.project.id,
+          environmentId: environment.id,
+          capabilityKey: body.capabilityKey,
+          scope: scope as AlertDraftScope,
+          condition: body.condition,
+          expiresAt: body.behavior?.expiresAt ? new Date(body.behavior.expiresAt) : undefined,
+          notifiers,
+          name: body.name,
+          createdBy: auth.userId,
+          query: body.query,
+          querySignalChoice: body.signal,
+        })
+      );
+      if (!alert) return capReached();
       return json({
         created: true,
         alert: {
@@ -388,7 +394,7 @@ export async function action({ request }: ActionFunctionArgs) {
   }
 
   try {
-    const alert = await createAlertAndSchedule(prisma, {
+    const alert = await createWithinCap({
       organizationId: environment.organizationId,
       projectId: environment.project.id,
       environmentId: environment.id,
@@ -400,6 +406,7 @@ export async function action({ request }: ActionFunctionArgs) {
       name: body.name,
       createdBy: auth.userId,
     });
+    if (!alert) return capReached();
 
     return json({
       created: true,

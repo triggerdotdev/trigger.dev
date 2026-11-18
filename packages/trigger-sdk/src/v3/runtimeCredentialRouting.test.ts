@@ -72,7 +72,13 @@ describe("in-task request credential routing", () => {
       }
       res.writeHead(status, { "content-type": "application/json" });
       res.end(
-        JSON.stringify(status === 200 ? { format: "json", results: [] } : { error: "Denied" })
+        JSON.stringify(
+          status !== 200
+            ? { error: "Denied" }
+            : req.url === "/api/v1/auth/public-tokens"
+              ? { token: "server-minted-token" }
+              : { format: "json", results: [] }
+        )
       );
     });
     await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));

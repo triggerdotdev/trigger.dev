@@ -1,6 +1,6 @@
 import { BookOpenIcon, PlusIcon } from "@heroicons/react/20/solid";
-import { useFetcher, useRevalidator } from "@remix-run/react";
-import { type LoaderFunctionArgs } from "@remix-run/server-runtime";
+import { type ShouldRevalidateFunction, useFetcher, useRevalidator } from "@remix-run/react";
+import { type LoaderFunctionArgs, redirect } from "@remix-run/server-runtime";
 import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { TypedAwait, typeddefer, useTypedFetcher, useTypedLoaderData } from "remix-typedjson";
 import { z } from "zod";
@@ -28,7 +28,6 @@ import {
   DialogTrigger,
 } from "~/components/primitives/Dialog";
 import { Header2 } from "~/components/primitives/Headers";
-import { TitleBar } from "~/components/primitives/TitleBar";
 import { InfoPanel } from "~/components/primitives/InfoPanel";
 import { NavBar, PageTitle } from "~/components/primitives/PageHeader";
 import { PaginationControls } from "~/components/primitives/Pagination";
@@ -41,7 +40,7 @@ import {
 } from "~/components/primitives/Resizable";
 import { Sheet, SheetContent } from "~/components/primitives/SheetV3";
 import { Spinner } from "~/components/primitives/Spinner";
-import { TextLink } from "~/components/primitives/TextLink";
+import { TextLink, textLinkClassName } from "~/components/primitives/TextLink";
 import {
   QueueSidebarStats,
   type QueueLiveCounts,
@@ -55,9 +54,9 @@ import {
   TableHeader,
   TableHeaderCell,
   TableRow,
-  type TableVariant,
 } from "~/components/primitives/Table";
 import { TabButton, TabContainer } from "~/components/primitives/Tabs";
+import { TruncatedText } from "~/components/primitives/TruncatedText";
 import { useToast } from "~/components/primitives/Toast";
 import { EnabledStatus } from "~/components/runs/v3/EnabledStatus";
 import {
@@ -66,7 +65,7 @@ import {
 } from "~/components/runs/v3/RunsListErrorState";
 import { RunsListQueryError } from "~/services/runsRepository/runsRepository.server";
 import type { TaskRunListSearchFilters } from "~/components/runs/v3/RunFilters";
-import { ScheduleTypeIcon, scheduleTypeName } from "~/components/runs/v3/ScheduleType";
+import { ScheduleTypeCombo } from "~/components/runs/v3/ScheduleType";
 import { TimeFilter, timeFilterFromTo } from "~/components/runs/v3/SharedFilters";
 import { ScheduleInspector } from "~/components/schedules/ScheduleInspector";
 import { ScheduleLimitActions } from "~/components/schedules/ScheduleLimitActions";
@@ -104,6 +103,7 @@ import {
   v3SchedulesAddOnPath,
   v3TestTaskPath,
 } from "~/utils/pathBuilder";
+import { formatNumber } from "~/utils/numberFormatter";
 import { parseFiniteInt } from "~/utils/searchParams";
 import { canAccessQueueMetricsUi } from "~/v3/canAccessQueueMetricsUi.server";
 import { engine } from "~/v3/runEngine.server";
@@ -129,6 +129,28 @@ export const meta = pageMeta<typeof loader>(({ data, params }) => [
 const ParamsSchema = EnvironmentParamSchema.extend({
   taskParam: z.string(),
 });
+
+export const shouldRevalidate: ShouldRevalidateFunction = ({
+  currentUrl,
+  nextUrl,
+  formMethod,
+  defaultShouldRevalidate,
+}) => {
+  // Tab navigation does not change any loader data. Mutations and explicit refreshes still do.
+  if (
+    !formMethod &&
+    currentUrl.pathname === nextUrl.pathname &&
+    currentUrl.searchParams.get("tab") !== nextUrl.searchParams.get("tab")
+  ) {
+    const currentSearch = new URLSearchParams(currentUrl.search);
+    const nextSearch = new URLSearchParams(nextUrl.search);
+    currentSearch.delete("tab");
+    nextSearch.delete("tab");
+    if (currentSearch.toString() === nextSearch.toString()) return false;
+  }
+
+  return defaultShouldRevalidate;
+};
 
 export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   const user = await requireUser(request);
@@ -223,6 +245,12 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
     })
     .catch(() => null);
 
+  // Deleting the last schedule on a page must not leave an empty, unreachable page.
+  if (scheduleList && schedulesPage > Math.max(1, scheduleList.totalPages)) {
+    url.searchParams.set("page", String(Math.max(1, scheduleList.totalPages)));
+    throw redirect(`${url.pathname}${url.search}`);
+  }
+
   const runList = new NextRunListPresenter($replica, runsListClickhouse)
     .call(project.organizationId, environment.id, {
       userId,
@@ -284,6 +312,19 @@ export default function Page() {
   const isCreatingSchedule = search.has("createSchedule");
   const openCreateSchedule = useCallback(() => search.replace({ createSchedule: "1" }), [search]);
   const closeCreateSchedule = useCallback(() => search.del("createSchedule"), [search]);
+
+  const requestedTab = search.value("tab") ?? (search.has("page") ? "schedules" : "runs");
+  const mainTab = requestedTab === "schedules" ? "schedules" : "runs";
+  const setMainTab = (tab: "runs" | "schedules") => search.replace({ tab });
+
+  const sortedSchedules = useMemo(() => {
+    if (!scheduleList) return [];
+    // DECLARATIVE first; createdAt-desc within each type (stable sort).
+    return [...scheduleList.schedules].sort((a, b) => {
+      if (a.type === b.type) return 0;
+      return a.type === "DECLARATIVE" ? -1 : 1;
+    });
+  }, [scheduleList]);
 
   // Schedules add-on / quota state — drives the bottom usage bar and the
   // "Create schedule" button's limit-exceeded intercept.
@@ -383,41 +424,98 @@ export default function Page() {
 
                 <ResizableHandle id="scheduled-task-activity-handle" />
 
-                {/* Runs table */}
+                {/* Runs and schedules tables */}
                 <ResizablePanel id="scheduled-task-content" min="160px">
                   <div className="grid h-full grid-rows-[auto_1fr] overflow-hidden">
-                    {/* -mt-px absorbs the spare pixel below the handle's rule, centring the title. */}
-                    <TitleBar title="Runs" className="-mt-px">
-                      {newRunsCount > 0 ? (
-                        <NewRunsButton
-                          count={newRunsCount}
-                          onClick={() => showNewRunsRef.current()}
-                        />
-                      ) : null}
-                      <RunsDisplayOptions sampleFilters={{ tasks: task.slug, rootOnly: "false" }} />
-                      <Suspense fallback={null}>
-                        <TypedAwait resolve={runList} errorElement={<RunsListErrorStateNoop />}>
-                          {(list) => (list ? <ListPagination list={list} /> : null)}
-                        </TypedAwait>
-                      </Suspense>
-                    </TitleBar>
-                    <div className="min-h-0 overflow-hidden">
-                      <Suspense fallback={<TableLoading />}>
-                        <TypedAwait resolve={runList} errorElement={<RunsListErrorState />}>
-                          {(list) =>
-                            list ? (
-                              <TaskRunsList
-                                list={list}
-                                taskSlug={task.slug}
-                                onNewRunsCountChange={setNewRunsCount}
-                                showNewRunsRef={showNewRunsRef}
+                    {/* -mt-px absorbs the spare pixel below the handle's rule, centring the tabs. */}
+                    <TabContainer variant="title" className="-mt-px justify-between pl-2.5 pr-1.5">
+                      <div className="flex items-stretch gap-x-6">
+                        <TabButton
+                          isActive={mainTab === "runs"}
+                          aria-pressed={mainTab === "runs"}
+                          layoutId="scheduled-task-main-tabs"
+                          variant="title"
+                          size="small"
+                          onClick={() => setMainTab("runs")}
+                        >
+                          Runs
+                        </TabButton>
+                        <TabButton
+                          isActive={mainTab === "schedules"}
+                          aria-pressed={mainTab === "schedules"}
+                          layoutId="scheduled-task-main-tabs"
+                          variant="title"
+                          size="small"
+                          onClick={() => setMainTab("schedules")}
+                        >
+                          Schedules
+                          {scheduleList ? ` (${formatNumber(scheduleList.totalCount)})` : ""}
+                        </TabButton>
+                      </div>
+                      <div className="flex items-center gap-1.5">
+                        {mainTab === "runs" ? (
+                          <>
+                            {newRunsCount > 0 ? (
+                              <NewRunsButton
+                                count={newRunsCount}
+                                onClick={() => showNewRunsRef.current()}
                               />
-                            ) : (
-                              <TableLoading />
-                            )
-                          }
-                        </TypedAwait>
-                      </Suspense>
+                            ) : null}
+                            <RunsDisplayOptions
+                              sampleFilters={{ tasks: task.slug, rootOnly: "false" }}
+                            />
+                            <Suspense fallback={null}>
+                              <TypedAwait
+                                resolve={runList}
+                                errorElement={<RunsListErrorStateNoop />}
+                              >
+                                {(list) => (list ? <ListPagination list={list} /> : null)}
+                              </TypedAwait>
+                            </Suspense>
+                          </>
+                        ) : scheduleList ? (
+                          <PaginationControls
+                            currentPage={scheduleList.currentPage}
+                            totalPages={scheduleList.totalPages}
+                            showPageNumbers={false}
+                          />
+                        ) : null}
+                      </div>
+                    </TabContainer>
+                    <div className="min-h-0 overflow-hidden">
+                      {mainTab === "runs" ? (
+                        <Suspense fallback={<TableLoading />}>
+                          <TypedAwait resolve={runList} errorElement={<RunsListErrorState />}>
+                            {(list) =>
+                              list ? (
+                                <TaskRunsList
+                                  list={list}
+                                  taskSlug={task.slug}
+                                  onNewRunsCountChange={setNewRunsCount}
+                                  showNewRunsRef={showNewRunsRef}
+                                />
+                              ) : (
+                                <TableLoading />
+                              )
+                            }
+                          </TypedAwait>
+                        </Suspense>
+                      ) : !scheduleList ? (
+                        <TableLoading />
+                      ) : scheduleList.totalCount === 0 ? (
+                        <div className="h-full overflow-y-auto p-3 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-surface-control">
+                          <div className="max-w-xl">
+                            <NoSchedulesAttachedPanel />
+                          </div>
+                        </div>
+                      ) : (
+                        <div className="h-full overflow-y-auto scrollbar-thin scrollbar-track-transparent scrollbar-thumb-surface-control">
+                          <SchedulesTable
+                            schedules={sortedSchedules}
+                            onSelectSchedule={openSchedule}
+                          />
+                        </div>
+                      )}
                     </div>
                   </div>
                 </ResizablePanel>
@@ -453,7 +551,7 @@ export default function Page() {
               task={task}
               testPath={testPath}
               scheduleList={scheduleList}
-              onSelectSchedule={openSchedule}
+              onViewSchedules={() => setMainTab("schedules")}
               queuePath={queuePath}
               queueMetrics={queueMetrics}
             />
@@ -817,29 +915,23 @@ function ScheduledTaskDetailSidebar({
   task,
   testPath,
   scheduleList,
-  onSelectSchedule,
+  onViewSchedules,
   queuePath,
   queueMetrics,
 }: {
   task: TaskDetail;
   testPath: string;
-  onSelectSchedule: (friendlyId: string) => void;
+  onViewSchedules: () => void;
   queuePath: string | undefined;
   queueMetrics: { live: QueueLiveCounts; ids: QueueMetricIds } | null;
 } & Pick<LoaderData, "scheduleList">) {
-  const sortedSchedules = useMemo(() => {
-    if (!scheduleList) return [];
-    // DECLARATIVE first; createdAt-desc within each type (stable sort).
-    return [...scheduleList.schedules].sort((a, b) => {
-      if (a.type === b.type) return 0;
-      return a.type === "DECLARATIVE" ? -1 : 1;
-    });
-  }, [scheduleList]);
-  const firstSchedule = sortedSchedules[0];
-  const [activeTab, setActiveTab] = useState<"overview" | "schedules">("overview");
+  const scheduleCount = scheduleList?.totalCount ?? 0;
+  // Only describe a single schedule when it is the task's only one.
+  const onlySchedule = scheduleCount === 1 ? scheduleList?.schedules[0] : undefined;
+
   return (
-    <div className="grid h-full grid-rows-[auto_auto_minmax(0,1fr)] overflow-hidden bg-background-bright">
-      <div className="flex min-w-0 items-center gap-2 overflow-hidden py-2 pl-3 pr-1.5">
+    <div className="grid h-full grid-rows-[auto_minmax(0,1fr)] overflow-hidden bg-background-bright">
+      <div className="flex min-w-0 items-center gap-2 overflow-hidden border-b border-grid-bright py-2 pl-3 pr-1.5">
         <Header2 className="flex min-w-0 flex-1 items-center gap-1.5 overflow-hidden">
           <ClockIcon className="size-4.5 shrink-0 text-schedules" />
           <span className="truncate">{task.slug}</span>
@@ -855,189 +947,143 @@ function ScheduledTaskDetailSidebar({
           Test schedule
         </LinkButton>
       </div>
-      <div className="flex h-8 items-end justify-between gap-2 border-b border-grid-bright pl-3 pr-1.5">
-        <TabContainer className="border-b-0!">
-          <TabButton
-            isActive={activeTab === "overview"}
-            layoutId="scheduled-task-detail-tabs"
-            onClick={() => setActiveTab("overview")}
-            shortcut={{ key: "o" }}
-          >
-            Overview
-          </TabButton>
-          <TabButton
-            isActive={activeTab === "schedules"}
-            layoutId="scheduled-task-detail-tabs"
-            onClick={() => setActiveTab("schedules")}
-            shortcut={{ key: "s" }}
-          >
-            Schedules
-          </TabButton>
-        </TabContainer>
-        {activeTab === "schedules" && scheduleList && scheduleList.totalPages > 1 ? (
-          <div className="pb-1.5">
-            <PaginationControls
-              currentPage={scheduleList.currentPage}
-              totalPages={scheduleList.totalPages}
-              showPageNumbers={false}
-            />
-          </div>
-        ) : null}
-      </div>
-      {activeTab === "overview" ? (
-        <div className="overflow-y-auto px-3 py-3 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-surface-control">
-          <Property.Table>
-            <Property.Item>
-              <Property.Label>Identifier</Property.Label>
-              <Property.Value>
-                <CopyableText value={task.slug} />
-              </Property.Value>
-            </Property.Item>
-            <Property.Item>
-              <Property.Label>File path</Property.Label>
-              <Property.Value>
-                <CopyableText value={task.filePath} />
-              </Property.Value>
-            </Property.Item>
-            <Property.Item>
-              <Property.Label>Schedule ID</Property.Label>
-              <Property.Value>
-                {firstSchedule ? (
-                  <CopyableText value={firstSchedule.friendlyId} />
-                ) : (
-                  <span className="text-text-dimmed">–</span>
-                )}
-              </Property.Value>
-            </Property.Item>
-            <Property.Item>
-              <Property.Label>Cron</Property.Label>
-              <Property.Value>
-                {firstSchedule ? (
-                  <div className="space-y-2">
-                    <InlineCode variant="extra-small">{firstSchedule.cron}</InlineCode>
-                    <Paragraph variant="small">{firstSchedule.cronDescription}</Paragraph>
-                  </div>
-                ) : (
-                  <span className="text-text-dimmed">–</span>
-                )}
-              </Property.Value>
-            </Property.Item>
-            <Property.Item>
-              <Property.Label>Created</Property.Label>
-              <Property.Value>
-                <DateTime date={task.createdAt} />
-              </Property.Value>
-            </Property.Item>
-            <Property.Item>
-              <Property.Label>Next run</Property.Label>
-              <Property.Value>
-                {firstSchedule ? (
-                  <RelativeDateTime date={firstSchedule.nextRunEffectiveAt} />
-                ) : (
-                  <span className="text-text-dimmed">–</span>
-                )}
-              </Property.Value>
-            </Property.Item>
-            <Property.Item>
-              <Property.Label>Last run</Property.Label>
-              <Property.Value>
-                {firstSchedule?.lastRun ? (
-                  <RelativeDateTime date={firstSchedule.lastRun} />
-                ) : (
-                  <span className="text-text-dimmed">Never</span>
-                )}
-              </Property.Value>
-            </Property.Item>
-            <Property.Item>
-              <Property.Label>Status</Property.Label>
-              <Property.Value>
-                {firstSchedule ? (
-                  <EnabledStatus enabled={firstSchedule.active} />
-                ) : (
-                  <span className="text-text-dimmed">–</span>
-                )}
-              </Property.Value>
-            </Property.Item>
-            {queueMetrics && task.queue && queuePath ? (
+      <div className="overflow-y-auto px-3 py-3 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-surface-control">
+        <Property.Table>
+          <Property.Item>
+            <Property.Label>Identifier</Property.Label>
+            <Property.Value>
+              <CopyableText value={task.slug} />
+            </Property.Value>
+          </Property.Item>
+          <Property.Item>
+            <Property.Label>File path</Property.Label>
+            <Property.Value>
+              <CopyableText value={task.filePath} />
+            </Property.Value>
+          </Property.Item>
+          <Property.Item>
+            <Property.Label>Created</Property.Label>
+            <Property.Value>
+              <DateTime date={task.createdAt} />
+            </Property.Value>
+          </Property.Item>
+          {onlySchedule ? (
+            <>
               <Property.Item>
-                <Property.Label>Queue</Property.Label>
+                <Property.Label>Schedule ID</Property.Label>
                 <Property.Value>
-                  <div className="flex flex-col gap-0.5">
-                    <TextLink to={queuePath}>{task.queue.name}</TextLink>
-                    <Paragraph variant="extra-small" className="text-text-dimmed">
-                      Concurrency: {task.queue.concurrencyLimit ?? "Unlimited"}
-                      {task.queue.paused ? " · Paused" : ""}
-                    </Paragraph>
-                    <QueueSidebarStats
-                      live={queueMetrics.live}
-                      ids={queueMetrics.ids}
-                      queueName={task.queue.name}
-                      defaultPeriod="7d"
-                    />
+                  <CopyableText value={onlySchedule.friendlyId} />
+                </Property.Value>
+              </Property.Item>
+              <Property.Item>
+                <Property.Label>Cron</Property.Label>
+                <Property.Value>
+                  <div className="space-y-2">
+                    <InlineCode variant="extra-small">{onlySchedule.cron}</InlineCode>
+                    <Paragraph variant="small">{onlySchedule.cronDescription}</Paragraph>
                   </div>
                 </Property.Value>
               </Property.Item>
-            ) : null}
-          </Property.Table>
-          {scheduleList && sortedSchedules.length === 0 ? (
-            <div className="mt-4">
-              <NoSchedulesAttachedPanel />
-            </div>
+              <Property.Item>
+                <Property.Label>Timezone</Property.Label>
+                <Property.Value>{onlySchedule.timezone}</Property.Value>
+              </Property.Item>
+              <Property.Item>
+                <Property.Label>Next run</Property.Label>
+                <Property.Value>
+                  <NextRun schedule={onlySchedule} />
+                </Property.Value>
+              </Property.Item>
+              <Property.Item>
+                <Property.Label>Last run</Property.Label>
+                <Property.Value>
+                  {onlySchedule.lastRun ? (
+                    <RelativeDateTime date={onlySchedule.lastRun} />
+                  ) : (
+                    <span className="text-text-dimmed">Never</span>
+                  )}
+                </Property.Value>
+              </Property.Item>
+              <Property.Item>
+                <Property.Label>Status</Property.Label>
+                <Property.Value>
+                  <EnabledStatus enabled={onlySchedule.active} />
+                </Property.Value>
+              </Property.Item>
+            </>
+          ) : scheduleCount > 1 ? (
+            <Property.Item>
+              <Property.Label>Schedules</Property.Label>
+              <Property.Value>
+                <div className="flex flex-col items-start gap-0.5">
+                  <span>{formatNumber(scheduleCount)} schedules</span>
+                  <button type="button" className={textLinkClassName()} onClick={onViewSchedules}>
+                    View schedules
+                  </button>
+                </div>
+              </Property.Value>
+            </Property.Item>
           ) : null}
-        </div>
-      ) : (
-        <div className="overflow-y-auto scrollbar-thin scrollbar-track-transparent scrollbar-thumb-surface-control">
-          {scheduleList ? (
-            sortedSchedules.length === 0 ? (
-              <div className="p-3">
-                <NoSchedulesAttachedPanel />
-              </div>
-            ) : (
-              <SchedulesMiniTable
-                schedules={sortedSchedules}
-                variant="bright"
-                onSelectSchedule={onSelectSchedule}
-                showTopBorder={false}
-              />
-            )
-          ) : (
-            <TableLoading />
-          )}
-        </div>
-      )}
+          {queueMetrics && task.queue && queuePath ? (
+            <Property.Item>
+              <Property.Label>Queue</Property.Label>
+              <Property.Value>
+                <div className="flex flex-col gap-0.5">
+                  <TextLink to={queuePath}>{task.queue.name}</TextLink>
+                  <Paragraph variant="extra-small" className="text-text-dimmed">
+                    Concurrency: {task.queue.concurrencyLimit ?? "Unlimited"}
+                    {task.queue.paused ? " · Paused" : ""}
+                  </Paragraph>
+                  <QueueSidebarStats
+                    live={queueMetrics.live}
+                    ids={queueMetrics.ids}
+                    queueName={task.queue.name}
+                    defaultPeriod="7d"
+                  />
+                </div>
+              </Property.Value>
+            </Property.Item>
+          ) : null}
+        </Property.Table>
+        {scheduleList && scheduleCount === 0 ? (
+          <div className="mt-4">
+            <NoSchedulesAttachedPanel />
+          </div>
+        ) : null}
+      </div>
     </div>
   );
 }
 
-type ScheduleRow = {
-  id: string;
-  friendlyId: string;
-  type: "DECLARATIVE" | "IMPERATIVE";
-  cron: string;
-  cronDescription: string;
-  window?: string;
-  externalId: string | null;
-  nextRunEffectiveAt: Date;
-  lastRun: Date | undefined;
-  active: boolean;
-};
+type ScheduleRow = NonNullable<LoaderData["scheduleList"]>["schedules"][number];
 
-function SchedulesMiniTable({
+function NextRun({ schedule }: { schedule: Pick<ScheduleRow, "active" | "nextRunEffectiveAt"> }) {
+  if (!schedule.active) {
+    return <span className="text-text-dimmed">–</span>;
+  }
+
+  return (
+    <span className="inline-flex flex-col whitespace-nowrap">
+      <DateTime date={schedule.nextRunEffectiveAt} />
+      <span className="text-text-dimmed">
+        <RelativeDateTime date={schedule.nextRunEffectiveAt} capitalize={false} />
+      </span>
+    </span>
+  );
+}
+
+function SchedulesTable({
   schedules,
-  variant,
   onSelectSchedule,
-  showTopBorder = true,
 }: {
   schedules: ScheduleRow[];
-  variant?: TableVariant;
   onSelectSchedule: (friendlyId: string) => void;
-  showTopBorder?: boolean;
 }) {
   if (schedules.length === 0) {
     return (
-      <Table variant={variant} showTopBorder={showTopBorder}>
+      <Table variant="dimmed" showTopBorder={false}>
         <TableBody>
-          <TableBlankRow colSpan={8}>
+          <TableBlankRow colSpan={7}>
             <Paragraph variant="small" className="flex items-center justify-center">
               No schedules attached to this task yet.
             </Paragraph>
@@ -1048,11 +1094,10 @@ function SchedulesMiniTable({
   }
 
   return (
-    <Table variant={variant} showTopBorder={showTopBorder}>
+    <Table variant="dimmed" showTopBorder={false} stickyHeader>
       <TableHeader>
         <TableRow>
-          <TableHeaderCell>Schedule ID</TableHeaderCell>
-          <TableHeaderCell>Type</TableHeaderCell>
+          <TableHeaderCell>Schedule</TableHeaderCell>
           <TableHeaderCell>Cron</TableHeaderCell>
           <TableHeaderCell>Window</TableHeaderCell>
           <TableHeaderCell>External ID</TableHeaderCell>
@@ -1067,22 +1112,22 @@ function SchedulesMiniTable({
           return (
             <TableRow key={schedule.id} className="group">
               <TableCell onClick={open} isTabbableCell>
-                <span className="font-mono text-xs">{schedule.friendlyId}</span>
-              </TableCell>
-              <TableCell onClick={open}>
-                <span className="inline-flex items-center gap-1 text-xs text-text-dimmed">
-                  <ScheduleTypeIcon
-                    type={schedule.type}
-                    className={schedule.type === "DECLARATIVE" ? "text-sky-500" : "text-teal-500"}
+                <span className="inline-flex flex-col gap-0.5">
+                  <TruncatedText
+                    text={schedule.friendlyId}
+                    className="max-w-32 font-mono text-xs"
                   />
-                  {scheduleTypeName(schedule.type)}
+                  <ScheduleTypeCombo type={schedule.type} className="text-xs text-text-dimmed" />
                 </span>
               </TableCell>
               <TableCell onClick={open}>
-                <span className="font-mono text-xs">{schedule.cron}</span>
+                <span className="inline-flex flex-col">
+                  <span className="font-mono text-xs">{schedule.cron}</span>
+                  <span className="text-xs text-text-dimmed">{schedule.timezone}</span>
+                </span>
               </TableCell>
               <TableCell onClick={open}>
-                <span className="text-xs">{schedule.window}</span>
+                <span className="text-xs">{schedule.window ?? "–"}</span>
               </TableCell>
               <TableCell onClick={open}>
                 {schedule.externalId ? (
@@ -1092,7 +1137,7 @@ function SchedulesMiniTable({
                 )}
               </TableCell>
               <TableCell onClick={open}>
-                <RelativeDateTime date={schedule.nextRunEffectiveAt} />
+                <NextRun schedule={schedule} />
               </TableCell>
               <TableCell onClick={open}>
                 {schedule.lastRun ? (

@@ -37,6 +37,10 @@ import {
 } from "../workloadToken.js";
 import type { WorkloadDeploymentTokenClaims } from "@trigger.dev/core/v3";
 import {
+  SecretProxyAllocationBusyError,
+  type SecretProxyBindings,
+} from "../services/secretProxyBindings.js";
+import {
   ComputeSnapshotService,
   type RunnerSnapshotter,
 } from "../services/computeSnapshotService.js";
@@ -53,6 +57,15 @@ interface DefaultEventsMap {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   [event: string]: (...args: any[]) => void;
 }
+
+const SECRET_PROXY_ATTACH_RETRY_DELAY_MS = 1_000;
+
+const unsupportedSecretProxyStarts = new Counter({
+  name: "supervisor_secret_proxy_unsupported_starts_total",
+  help: "Starts without proxy capability on a proxy-configured supervisor",
+  labelNames: ["reason"],
+  registers: [register],
+});
 
 const checkpointDeleteRequests = new Counter({
   name: "checkpoint_delete_requests_total",
@@ -82,10 +95,12 @@ const checkpointCancelRequests = new Counter({
   registers: [register],
 });
 
+// Alphanumeric bodies cover nanoid, cuid, run-ops, and legacy base62 IDs.
+const WorkloadRunFriendlyId = z.string().regex(/^run_[a-zA-Z0-9]+$/);
 const WorkloadActionParams = z.compile(
   z.object({
-    runFriendlyId: z.string(),
-    snapshotFriendlyId: z.string(),
+    runFriendlyId: WorkloadRunFriendlyId,
+    snapshotFriendlyId: z.string().regex(/^snapshot_[a-zA-Z0-9]+$/),
   })
 );
 const WorkloadDebugParams = z.compile(WorkloadActionParams.pick({ runFriendlyId: true }));
@@ -122,12 +137,17 @@ type PreviousKeyCaller = {
   runCutoffMs?: number;
 };
 
+// A verified sandbox token is run-scoped even in log mode.
+function sandboxRunAllowed(
+  runFriendlyId: string,
+  claims: WorkloadDeploymentTokenClaims | undefined
+): boolean {
+  return claims?.execution_mode !== "SANDBOX" || claims.run === runFriendlyId;
+}
+
 function runFriendlyIdFromMessage(message: unknown): string {
   const friendlyId = (message as { run?: { friendlyId?: unknown } } | undefined)?.run?.friendlyId;
-  if (typeof friendlyId !== "string") {
-    throw new Error("Run event without a string run friendlyId");
-  }
-  return friendlyId;
+  return WorkloadRunFriendlyId.parse(friendlyId);
 }
 
 type WorkloadServerEvents = {
@@ -163,6 +183,8 @@ type WorkloadServerOptions = {
   workerStamp?: { workerCell?: string; workerLane?: string };
   /** How long to keep retrying temporary failures of `continue`. Unset keeps the default retries. */
   continueRetryBudgetMs?: number;
+  secretProxy?: SecretProxyBindings;
+  retireRunner?: (runnerId: string, uid: string) => Promise<void>;
 };
 
 export class WorkloadServer extends EventEmitter<WorkloadServerEvents> {
@@ -195,6 +217,8 @@ export class WorkloadServer extends EventEmitter<WorkloadServerEvents> {
   private readonly workerClient: SupervisorHttpClient;
   private readonly workerStamp: { workerCell?: string; workerLane?: string };
   private readonly continueRetryBudget?: { budgetMs: number };
+  private readonly secretProxy?: SecretProxyBindings;
+  private readonly retireRunner?: WorkloadServerOptions["retireRunner"];
 
   constructor(opts: WorkloadServerOptions) {
     super();
@@ -203,6 +227,8 @@ export class WorkloadServer extends EventEmitter<WorkloadServerEvents> {
     const port = opts.port;
 
     this.workerClient = opts.workerClient;
+    this.secretProxy = opts.secretProxy;
+    this.retireRunner = opts.retireRunner;
     this.workerStamp = opts.workerStamp ?? {};
     this.checkpointClient = opts.checkpointClient;
     this.snapshotDeleteClient = opts.snapshotDeleteClient;
@@ -259,24 +285,36 @@ export class WorkloadServer extends EventEmitter<WorkloadServerEvents> {
    * Verify the deployment token from the workload deployment-id header and return the verified
    * environment_id to forward upstream. The env id is only forwarded in enforce mode: in log mode
    * we still verify + record metrics but attach no header (so the platform never scopes). Only
-   * enforce fails a request, and only for a present-but-invalid token; absent and legacy ids pass.
+   * enforce rejects invalid tokens; absent and legacy ids pass. Verified sandbox tokens are
+   * always restricted to their own run, including in log mode.
    *
    * `claims` are returned on any valid token, for local use only - never to scope the platform,
    * which is why environmentId stays gated on enforce.
    */
   private async authorizeWorkloadRequest(
     req: IncomingMessage,
-    runFriendlyId: string
+    runFriendlyId: string,
+    completing = false
   ): Promise<
-    { ok: true; environmentId?: string; claims?: WorkloadDeploymentTokenClaims } | { ok: false }
+    | {
+        ok: true;
+        environmentId?: string;
+        sandboxRunId?: string;
+        claims?: WorkloadDeploymentTokenClaims;
+      }
+    | { ok: false }
   > {
     if (!workloadTokensEnabled) {
-      return { ok: true };
+      return this.secretProxy ? { ok: false } : { ok: true };
     }
 
     const result = await verifyDeploymentIdHeader(this.deploymentIdFromRequest(req), "http");
 
     if (result.outcome === "jwt_invalid" && workloadTokenEnforced) {
+      return { ok: false };
+    }
+
+    if (!sandboxRunAllowed(runFriendlyId, result.claims)) {
       return { ok: false };
     }
 
@@ -296,12 +334,29 @@ export class WorkloadServer extends EventEmitter<WorkloadServerEvents> {
       return { ok: false };
     }
 
+    const isStart = req.url?.split("?")[0]?.endsWith("/attempts/start") === true;
+    if (!isStart && this.secretProxy?.tracks(runFriendlyId)) {
+      try {
+        await this.secretProxy.authorize(
+          {
+            runId: runFriendlyId,
+            runnerId: this.runnerIdFromRequest(req),
+            sourceIp: req.socket.remoteAddress,
+            claims: result.outcome === "jwt_valid" ? result.claims : undefined,
+          },
+          completing
+        );
+      } catch {
+        return { ok: false };
+      }
+    }
+
+    const verified =
+      workloadTokenEnforced && result.outcome === "jwt_valid" ? result.claims : undefined;
     return {
       ok: true,
-      environmentId:
-        workloadTokenEnforced && result.outcome === "jwt_valid"
-          ? result.claims.environment_id
-          : undefined,
+      environmentId: verified?.environment_id,
+      sandboxRunId: verified?.execution_mode === "SANDBOX" ? verified.run : undefined,
       claims: result.outcome === "jwt_valid" ? result.claims : undefined,
     };
   }
@@ -538,10 +593,19 @@ export class WorkloadServer extends EventEmitter<WorkloadServerEvents> {
     );
   }
 
+  private withSecretProxy<T>(
+    runId: string,
+    runnerId: string | undefined,
+    operation: () => Promise<T>
+  ): Promise<T> {
+    return this.secretProxy ? this.secretProxy.exclusive(runId, operation, runnerId) : operation();
+  }
+
   private createHttpServer({ host, port }: { host: string; port: number }) {
     const httpServer = new HttpServer({
       port,
       host,
+      bodySizeLimitMode: env.TRIGGER_WORKLOAD_API_BODY_SIZE_LIMIT_MODE,
       metrics: {
         register,
         expose: false,
@@ -571,29 +635,127 @@ export class WorkloadServer extends EventEmitter<WorkloadServerEvents> {
                   reply.empty(401);
                   return;
                 }
-                const startResponse = await this.workerClient.startRunAttempt(
-                  params.runFriendlyId,
-                  params.snapshotFriendlyId,
-                  {
-                    ...body,
-                    workerCell: this.workerStamp.workerCell,
-                    workerLane: this.workerStamp.workerLane,
-                  },
-                  this.runnerIdFromRequest(req),
-                  auth.environmentId
-                );
+                const caller = {
+                  runId: params.runFriendlyId,
+                  runnerId: this.runnerIdFromRequest(req),
+                  sourceIp: req.socket.remoteAddress,
+                  claims: auth.claims,
+                };
+                try {
+                  const placement = await this.secretProxy?.prepareStart(caller);
+                  const supportsSecretProxy = !!placement;
+                  if (this.secretProxy && !supportsSecretProxy) {
+                    unsupportedSecretProxyStarts.inc({ reason: "unavailable" });
+                  }
+                  let attachmentFailed = false;
+                  const start = async () => {
+                    let startResponse = await this.workerClient.startRunAttempt(
+                      params.runFriendlyId,
+                      params.snapshotFriendlyId,
+                      {
+                        ...body,
+                        isWarmStart: placement?.isWarmStart ?? body.isWarmStart,
+                        supportsSecretProxy,
+                        workerCell: this.workerStamp.workerCell,
+                        workerLane: this.workerStamp.workerLane,
+                      },
+                      caller.runnerId,
+                      auth.environmentId,
+                      auth.sandboxRunId
+                    );
+                    if (startResponse.success && (placement || startResponse.data.secretProxy)) {
+                      const response = startResponse;
+                      try {
+                        if (!placement || !this.secretProxy)
+                          throw new Error("Secret proxy unavailable");
+                        await this.secretProxy.activateStart(caller, placement, response.data);
+                      } catch {
+                        const complete = () =>
+                          this.workerClient.completeRunAttempt(
+                            params.runFriendlyId,
+                            response.data.snapshot.friendlyId,
+                            {
+                              attemptNumber: response.data.execution.attempt.number,
+                              completion: {
+                                ok: false,
+                                id: params.runFriendlyId,
+                                error: {
+                                  type: "INTERNAL_ERROR",
+                                  code: "TASK_EXECUTION_ABORTED",
+                                  message: "Secret proxy attachment failed",
+                                },
+                                retry: {
+                                  delay: SECRET_PROXY_ATTACH_RETRY_DELAY_MS,
+                                  timestamp: Date.now() + SECRET_PROXY_ATTACH_RETRY_DELAY_MS,
+                                },
+                              },
+                              forceRequeue: true,
+                            },
+                            caller.runnerId,
+                            auth.environmentId
+                          );
+                        if (this.secretProxy && placement) {
+                          await this.secretProxy.failStart(caller, placement.bindingId, complete);
+                        } else {
+                          await complete();
+                        }
 
-                if (!startResponse.success) {
-                  this.logger.error("Failed to start run", {
-                    params,
-                    error: startResponse.error,
-                  });
-                  reply.empty(500);
+                        attachmentFailed = true;
+                        startResponse = {
+                          success: false,
+                          error: "Secret proxy unavailable",
+                          statusCode: 503,
+                        };
+                      }
+                    }
+
+                    return startResponse;
+                  };
+                  const startResponse =
+                    placement && this.secretProxy
+                      ? await this.secretProxy.withStart(placement, start)
+                      : await start();
+                  if (attachmentFailed && placement)
+                    await this.secretProxy?.retryFailedStart(placement.bindingId);
+
+                  if (!startResponse.success) {
+                    this.logger.error("Failed to start run", {
+                      params,
+                      error: startResponse.error,
+                    });
+                    reply.empty(500);
+                    return;
+                  }
+
+                  reply.json(startResponse.data satisfies WorkloadRunAttemptStartResponseBody);
                   return;
+                } catch (error) {
+                  if (error instanceof SecretProxyAllocationBusyError) {
+                    ctx.res.setHeader("x-should-retry", "false");
+                    const { runnerId, runnerUid } = error.runner;
+                    try {
+                      await this.revokeRunner(runnerId, runnerUid);
+                    } catch (revokeError) {
+                      this.logger.error("Failed to revoke retiring runner", {
+                        runnerId,
+                        revokeError,
+                      });
+                    }
+                    try {
+                      if (!this.retireRunner) throw new Error("Runner retirement unavailable");
+                      await this.retireRunner(runnerId, runnerUid);
+                    } catch (retireError) {
+                      this.logger.error("Failed to retire busy runner", { runnerId, retireError });
+                    }
+                    reply.json(
+                      { error: "Runner retired after busy allocation", code: "RUNNER_RETIRED" },
+                      false,
+                      410
+                    );
+                    return;
+                  }
+                  throw error;
                 }
-
-                reply.json(startResponse.data satisfies WorkloadRunAttemptStartResponseBody);
-                return;
               }
             ),
         }
@@ -604,6 +766,7 @@ export class WorkloadServer extends EventEmitter<WorkloadServerEvents> {
         {
           paramsSchema: WorkloadActionParams,
           bodySchema: WorkloadRunAttemptCompleteRequestBody,
+          maxBodySize: env.TRIGGER_WORKLOAD_API_COMPLETE_MAX_BODY_SIZE,
           handler: async (ctx) =>
             this.wideRoute(
               ctx,
@@ -612,7 +775,7 @@ export class WorkloadServer extends EventEmitter<WorkloadServerEvents> {
               "POST",
               async () => {
                 const { req, reply, params, body } = ctx;
-                const auth = await this.authorizeWorkloadRequest(req, params.runFriendlyId);
+                const auth = await this.authorizeWorkloadRequest(req, params.runFriendlyId, true);
                 if (!auth.ok) {
                   reply.empty(401);
                   return;
@@ -625,13 +788,27 @@ export class WorkloadServer extends EventEmitter<WorkloadServerEvents> {
                 // snapshot, and no new suspend can be scheduled before this route replies.
                 this.snapshotService?.cancel(params.runFriendlyId, runnerId);
 
-                const completeResponse = await this.workerClient.completeRunAttempt(
-                  params.runFriendlyId,
-                  params.snapshotFriendlyId,
-                  body,
-                  runnerId,
-                  auth.environmentId
-                );
+                const { attemptNumber, ...completion } = body;
+                const complete = () =>
+                  this.workerClient.completeRunAttempt(
+                    params.runFriendlyId,
+                    params.snapshotFriendlyId,
+                    this.secretProxy ? body : completion,
+                    runnerId,
+                    auth.environmentId
+                  );
+                const completeResponse = this.secretProxy
+                  ? await this.secretProxy.complete(
+                      {
+                        runId: params.runFriendlyId,
+                        runnerId,
+                        sourceIp: req.socket.remoteAddress,
+                        claims: auth.claims,
+                      },
+                      complete,
+                      attemptNumber
+                    )
+                  : await complete();
 
                 if (!completeResponse.success) {
                   this.logger.error("Failed to complete run", {
@@ -674,12 +851,23 @@ export class WorkloadServer extends EventEmitter<WorkloadServerEvents> {
                   reply.empty(401);
                   return;
                 }
-                const heartbeatResponse = await this.workerClient.heartbeatRun(
+                const heartbeatResponse = await this.withSecretProxy(
                   params.runFriendlyId,
-                  params.snapshotFriendlyId,
-                  body,
                   this.runnerIdFromRequest(req),
-                  auth.environmentId
+                  async () => {
+                    const response = await this.workerClient.heartbeatRun(
+                      params.runFriendlyId,
+                      params.snapshotFriendlyId,
+                      body,
+                      this.runnerIdFromRequest(req),
+                      auth.environmentId,
+                      auth.sandboxRunId
+                    );
+                    if (response.success) {
+                      await this.secretProxy?.refresh(params.runFriendlyId, response.data.runToken);
+                    }
+                    return response;
+                  }
                 );
 
                 if (!heartbeatResponse.success) {
@@ -717,6 +905,14 @@ export class WorkloadServer extends EventEmitter<WorkloadServerEvents> {
                   return;
                 }
                 const runnerId = this.runnerIdFromRequest(req);
+                if (this.secretProxy) {
+                  reply.json(
+                    { ok: false, error: "Secret proxy checkpoint CA continuity is not verified" },
+                    false,
+                    409
+                  );
+                  return;
+                }
                 const deploymentVersion = this.deploymentVersionFromRequest(req);
                 const projectRef = this.projectRefFromRequest(req);
 
@@ -922,6 +1118,11 @@ export class WorkloadServer extends EventEmitter<WorkloadServerEvents> {
             "POST",
             async () => {
               const { req, reply, params, body } = ctx;
+              const auth = await this.authorizeWorkloadRequest(req, params.runFriendlyId);
+              if (!auth.ok) {
+                reply.empty(401);
+                return;
+              }
               reply.empty(204);
 
               // Redact TRIGGER_DEPLOYMENT_ID before relaying to the platform.
@@ -949,6 +1150,7 @@ export class WorkloadServer extends EventEmitter<WorkloadServerEvents> {
       // per request) but sheds the request at minimal cost. Request metrics still
       // count it. 204 is non-retryable on the runner client, so no retry storm.
       httpServer.route("/api/v1/workload-actions/runs/:runFriendlyId/logs/debug", "POST", {
+        paramsSchema: WorkloadDebugParams,
         skipBodyParsing: true,
         handler: async (ctx) => {
           ctx.reply.empty(204);
@@ -1078,6 +1280,7 @@ export class WorkloadServer extends EventEmitter<WorkloadServerEvents> {
       };
 
       const runConnected = (friendlyId: string) => {
+        if (!sandboxRunAllowed(friendlyId, socket.data.workloadTokenClaims)) return;
         socketLogger.debug("runConnected", { ...getSocketMetadata() });
 
         // Only the owning runner may (re)bind a run. A live socket from a *different*
@@ -1124,6 +1327,7 @@ export class WorkloadServer extends EventEmitter<WorkloadServerEvents> {
       };
 
       const runDisconnected = (friendlyId: string, reason: string) => {
+        if (!sandboxRunAllowed(friendlyId, socket.data.workloadTokenClaims)) return;
         socketLogger.debug("runDisconnected", { ...getSocketMetadata() });
 
         // A newer socket may have taken over this run (same-runner reconnect race). If the
@@ -1246,6 +1450,10 @@ export class WorkloadServer extends EventEmitter<WorkloadServerEvents> {
     return websocketServer;
   }
 
+  private async revokeRunner(runnerId: string, uid: string): Promise<void> {
+    await this.secretProxy?.revokeRunner(runnerId, uid);
+  }
+
   notifyRun({ run }: { run: { friendlyId: string } }) {
     try {
       const runSocket = this.runSockets.get(run.friendlyId);
@@ -1279,11 +1487,13 @@ export class WorkloadServer extends EventEmitter<WorkloadServerEvents> {
   }
 
   async start() {
+    await this.secretProxy?.start();
     await this.httpServer.start();
   }
 
   async stop() {
     this.snapshotService?.stop();
+    await this.secretProxy?.stop();
     // An open socket would hold the close until the shutdown timeout. Drop the transports
     // rather than disconnect the sockets, which would stop runners reconnecting.
     this.websocketServer.server.engine.close();

@@ -67,6 +67,7 @@ vi.mock("~/services/routeBuilders/apiBuilder.server", () => ({
     H.handlers.push({ config, handler });
     return { action: vi.fn() };
   },
+  scopeAuthorizationError: () => "Missing permission",
 }));
 
 vi.mock("~/v3/runEngine.server", () => ({

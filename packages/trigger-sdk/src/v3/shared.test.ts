@@ -107,6 +107,9 @@ describe("offloaded trigger payload paths", () => {
 
       request.resume();
       request.on("end", () => {
+        if (request.method === "POST") {
+          response.setHeader("x-trigger-jwt", "server-public-token");
+        }
         response.writeHead(200, { "Content-Type": "application/json" });
         response.end(JSON.stringify({ id: "run_test" }));
       });

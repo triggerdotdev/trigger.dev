@@ -146,13 +146,15 @@ describe("the head-start and agent prefixes are the same prefix", () => {
  * drift. The snapshot below is the itemised diff a reviewer reads.
  */
 // plan_monitoring: +1 tool (~2.5k chars, mostly the draft schema), +~660 prompt chars.
-// Plan scope line: +~140 prompt chars. Plan silence lines: +~230.
+// Plan scope line: +~140 prompt chars; success-rate scope and failure-rate fixes: +~200 prompt chars. Plan silence lines: +~230.
 // plan_decision: +1 tool (~320 chars), +~390 prompt chars with the failure-rate rule.
 // Direct create tool dropped: -1 tool (~3k chars).
 // update_alert_draft only in creation scope: -1 chat tool (~2.3k chars), +~55 prompt chars.
+// list_alert_channels: +1 tool (~600 chars), +~140 prompt chars.
+// Resolve is current-environment only: +~220 prompt and tool chars.
 const PREFIX_BUDGET = {
-  assistant: { chars: 81_250, estimatedTokens: 20_320, tools: 28, promptChars: 34_720 },
-  code: { chars: 88_210, estimatedTokens: 22_060, tools: 32, promptChars: 37_480 },
+  assistant: { chars: 83_660, estimatedTokens: 20_920, tools: 29, promptChars: 36_300 },
+  code: { chars: 90_620, estimatedTokens: 22_660, tools: 33, promptChars: 39_050 },
 } as const;
 
 // Measured with alerts on: the biggest prefix a turn can hand the provider.

@@ -1759,7 +1759,9 @@ describe("monitoring alerts API environment-tier permissions", () => {
         context: {},
       } as any);
       expect(response.status).toBe(403);
-      expect((await response.json()).error).toBe("Unauthorized");
+      expect((await response.json()).error).toMatch(
+        /^Unauthorized\. Missing permission: write:alerts/
+      );
     }
   );
 

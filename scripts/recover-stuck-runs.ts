@@ -193,6 +193,7 @@ async function main() {
       // Query database for latest snapshots and queue info of these runs.
       // NOTE: raw join of TaskRunExecutionSnapshot to TaskRun, the one TaskRun read not behind
       // RunStore (a join, not a by-id read, in an ops script). Revisit at table cutover.
+      // runops-exception(legacy-teardown): operator script that reads Postgres directly
       const runInfo = await prisma.$queryRaw<
         Array<{
           runId: string;

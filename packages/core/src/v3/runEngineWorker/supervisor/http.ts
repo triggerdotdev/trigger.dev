@@ -177,18 +177,20 @@ export class SupervisorHttpClient {
     snapshotId: string,
     body: WorkerApiRunHeartbeatRequestBody,
     runnerId?: string,
-    environmentId?: string
+    environmentId?: string,
+    sandboxRunId?: string
   ) {
     return this.request(
       "heartbeat_run",
       WorkerApiRunHeartbeatResponseBody,
-      `${this.apiUrl}/engine/v1/worker-actions/runs/${runId}/snapshots/${snapshotId}/heartbeat`,
+      `${this.apiUrl}/engine/v1/worker-actions/runs/${encodeURIComponent(runId)}/snapshots/${encodeURIComponent(snapshotId)}/heartbeat`,
       {
         method: "POST",
         headers: {
           ...this.defaultHeaders,
           ...this.runnerIdHeader(runnerId),
           ...this.environmentIdHeader(environmentId),
+          ...createHeaders({ [WORKER_HEADERS.SANDBOX_RUN_ID]: sandboxRunId }),
           "Content-Type": "application/json",
         },
         body: JSON.stringify(body),
@@ -201,18 +203,20 @@ export class SupervisorHttpClient {
     snapshotId: string,
     body: WorkerApiRunAttemptStartRequestBody,
     runnerId?: string,
-    environmentId?: string
+    environmentId?: string,
+    sandboxRunId?: string
   ) {
     return this.request(
       "start_run_attempt",
       WorkerApiRunAttemptStartResponseBody,
-      `${this.apiUrl}/engine/v1/worker-actions/runs/${runId}/snapshots/${snapshotId}/attempts/start`,
+      `${this.apiUrl}/engine/v1/worker-actions/runs/${encodeURIComponent(runId)}/snapshots/${encodeURIComponent(snapshotId)}/attempts/start`,
       {
         method: "POST",
         headers: {
           ...this.defaultHeaders,
           ...this.runnerIdHeader(runnerId),
           ...this.environmentIdHeader(environmentId),
+          ...createHeaders({ [WORKER_HEADERS.SANDBOX_RUN_ID]: sandboxRunId }),
         },
         body: JSON.stringify(body),
       }
@@ -229,7 +233,7 @@ export class SupervisorHttpClient {
     return this.request(
       "complete_run_attempt",
       WorkerApiRunAttemptCompleteResponseBody,
-      `${this.apiUrl}/engine/v1/worker-actions/runs/${runId}/snapshots/${snapshotId}/attempts/complete`,
+      `${this.apiUrl}/engine/v1/worker-actions/runs/${encodeURIComponent(runId)}/snapshots/${encodeURIComponent(snapshotId)}/attempts/complete`,
       {
         method: "POST",
         headers: {
@@ -246,7 +250,7 @@ export class SupervisorHttpClient {
     return this.request(
       "get_latest_snapshot",
       WorkerApiRunLatestSnapshotResponseBody,
-      `${this.apiUrl}/engine/v1/worker-actions/runs/${runId}/snapshots/latest`,
+      `${this.apiUrl}/engine/v1/worker-actions/runs/${encodeURIComponent(runId)}/snapshots/latest`,
       {
         method: "GET",
         headers: {
@@ -267,7 +271,7 @@ export class SupervisorHttpClient {
     return this.request(
       "get_snapshots_since",
       WorkerApiRunSnapshotsSinceResponseBody,
-      `${this.apiUrl}/engine/v1/worker-actions/runs/${runId}/snapshots/since/${snapshotId}`,
+      `${this.apiUrl}/engine/v1/worker-actions/runs/${encodeURIComponent(runId)}/snapshots/since/${encodeURIComponent(snapshotId)}`,
       {
         method: "GET",
         headers: {
@@ -288,7 +292,7 @@ export class SupervisorHttpClient {
       const res = await this.request(
         "send_debug_log",
         z.unknown(),
-        `${this.apiUrl}/engine/v1/worker-actions/runs/${runId}/logs/debug`,
+        `${this.apiUrl}/engine/v1/worker-actions/runs/${encodeURIComponent(runId)}/logs/debug`,
         {
           method: "POST",
           headers: {
@@ -321,7 +325,7 @@ export class SupervisorHttpClient {
       this.request(
         "continue_run_execution",
         WorkerApiContinueRunExecutionRequestBody,
-        `${this.apiUrl}/engine/v1/worker-actions/runs/${runId}/snapshots/${snapshotId}/continue`,
+        `${this.apiUrl}/engine/v1/worker-actions/runs/${encodeURIComponent(runId)}/snapshots/${encodeURIComponent(snapshotId)}/continue`,
         {
           method: "GET",
           headers: {
@@ -367,7 +371,7 @@ export class SupervisorHttpClient {
     return this.request(
       "report_restore_outcome",
       WorkerApiRunRestoreOutcomeResponseBody,
-      `${this.apiUrl}/engine/v1/worker-actions/runs/${runId}/snapshots/${snapshotId}/restore-outcome`,
+      `${this.apiUrl}/engine/v1/worker-actions/runs/${encodeURIComponent(runId)}/snapshots/${encodeURIComponent(snapshotId)}/restore-outcome`,
       {
         method: "POST",
         headers: {
@@ -396,7 +400,7 @@ export class SupervisorHttpClient {
     return this.request(
       "release_run",
       WorkerApiRunReleaseResponseBody,
-      `${this.apiUrl}/engine/v1/worker-actions/runs/${runId}/snapshots/${snapshotId}/release`,
+      `${this.apiUrl}/engine/v1/worker-actions/runs/${encodeURIComponent(runId)}/snapshots/${encodeURIComponent(snapshotId)}/release`,
       {
         method: "POST",
         headers: {
@@ -419,7 +423,7 @@ export class SupervisorHttpClient {
     return this.request(
       "preflight_suspend",
       WorkerApiSuspendRunResponseBody,
-      `${this.apiUrl}/engine/v1/worker-actions/runs/${runId}/snapshots/${snapshotId}/suspend/preflight`,
+      `${this.apiUrl}/engine/v1/worker-actions/runs/${encodeURIComponent(runId)}/snapshots/${encodeURIComponent(snapshotId)}/suspend/preflight`,
       {
         method: "POST",
         headers: {
@@ -447,7 +451,7 @@ export class SupervisorHttpClient {
     return this.request(
       "submit_suspend_completion",
       WorkerApiSuspendRunResponseBody,
-      `${this.apiUrl}/engine/v1/worker-actions/runs/${runId}/snapshots/${snapshotId}/suspend`,
+      `${this.apiUrl}/engine/v1/worker-actions/runs/${encodeURIComponent(runId)}/snapshots/${encodeURIComponent(snapshotId)}/suspend`,
       {
         method: "POST",
         headers: {

@@ -29,7 +29,7 @@ export const openaiTask = task({
 
   run: async (payload: { prompt: string }) => {
     const chatCompletion = await generateText({
-      model: openai("gpt-4-turbo"),
+      model: openai("gpt-6-luna"),
       // Add a system message which will be included with the prompt
       system: "You are a friendly assistant!",
       // The prompt passed in from the payload

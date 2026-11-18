@@ -338,7 +338,8 @@ export const action = dashboardAction(
           // The save itself has already been persisted, so a provisioning
           // enqueue that failed must not turn it into an error page. There is no
           // retry on this path; the members are repaired on their next sync.
-          const { unqueuedUserIds } = await applyDirectorySyncEffects(effects);
+          // Attributed to the admin saving the page, from the request context.
+          const { unqueuedUserIds } = await applyDirectorySyncEffects(effects, undefined);
           if (unqueuedUserIds.length > 0) {
             logger.warn(
               "directorySync: could not queue development environments after settings save",

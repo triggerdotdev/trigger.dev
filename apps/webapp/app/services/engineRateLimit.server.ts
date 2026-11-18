@@ -24,7 +24,7 @@ export const engineRateLimiter = authorizationRateLimitMiddleware({
     maxItems: 1000,
   },
   pathMatchers: [/^\/engine(?:\/|$)/],
-  pathWhiteList: [/^\/engine\/v1\/worker-actions(?:\/|$)/],
+  pathWhiteList: [/^\/engine\/v1\/(?:worker-actions|secret-proxy)(?:\/|$)/],
   log: {
     rejections: env.RUN_ENGINE_RATE_LIMIT_REJECTION_LOGS_ENABLED === "1",
     requests: env.RUN_ENGINE_RATE_LIMIT_REQUEST_LOGS_ENABLED === "1",

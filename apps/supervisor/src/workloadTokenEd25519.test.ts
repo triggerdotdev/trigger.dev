@@ -54,6 +54,18 @@ describe("ed25519 signing", () => {
     });
   });
 
+  // Catches: Ed25519 verification stripping the sandbox scope minted by the supervisor.
+  it("round-trips sandbox scope", async () => {
+    const scoped = { ...claims, execution_mode: "SANDBOX" as const, run: "run_own" };
+    const token = mintWorkloadDeploymentTokenEd25519(scoped, first.privateKey, EXP);
+    expect(
+      await verifyWorkloadDeploymentTokenWithKeySet(token, {
+        publicKeys: [first.publicKey],
+        hmacSecrets: [],
+      })
+    ).toMatchObject({ ok: true, claims: scoped });
+  });
+
   it("mints byte-identical tokens for identical claims", () => {
     const a = mintWorkloadDeploymentTokenEd25519(claims, first.privateKey, EXP);
     const b = mintWorkloadDeploymentTokenEd25519(claims, first.privateKey, EXP);

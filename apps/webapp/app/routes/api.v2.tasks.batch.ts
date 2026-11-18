@@ -9,6 +9,10 @@ import type { AuthenticatedEnvironment } from "~/services/apiAuth.server";
 import { getOneTimeUseToken } from "~/services/apiAuth.server";
 import { logger } from "~/services/logger.server";
 import {
+  inheritedSourcePatClaim,
+  type RequestActor,
+} from "~/services/publicAccessTokenResponse.server";
+import {
   STORED_PAYLOAD_FORBIDDEN_ERROR,
   storedPayloadPointerPolicy,
 } from "~/services/packetApi.server";
@@ -132,7 +136,11 @@ const { action, loader } = createActionApiRoute(
         runCount: cachedBatch.runCount,
       }),
       buildResponseHeaders: async (responseBody, cachedEntity) => {
-        return await responseHeaders(responseBody, authentication.environment);
+        return await responseHeaders(
+          responseBody,
+          authentication.environment,
+          authentication.actor
+        );
       },
     });
 
@@ -166,7 +174,11 @@ const { action, loader } = createActionApiRoute(
         triggerAction: "trigger",
       });
 
-      const $responseHeaders = await responseHeaders(batch, authentication.environment);
+      const $responseHeaders = await responseHeaders(
+        batch,
+        authentication.environment,
+        authentication.actor
+      );
 
       return json(batch, {
         status: 202,
@@ -213,12 +225,14 @@ const { action, loader } = createActionApiRoute(
 
 async function responseHeaders(
   batch: BatchTriggerTaskV3Response,
-  environment: AuthenticatedEnvironment
+  environment: AuthenticatedEnvironment,
+  actor: RequestActor | undefined
 ): Promise<Record<string, string>> {
   const claims = {
     sub: publicTokenSubject(environment.id),
     pub: true,
     scopes: [`read:batch:${batch.id}`],
+    ...inheritedSourcePatClaim(actor),
   };
 
   const jwt = await generateJWT({

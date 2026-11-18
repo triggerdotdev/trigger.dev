@@ -14,7 +14,10 @@ import { authenticateUatOrApiRequest } from "~/services/uatRoutePreamble.server"
  */
 
 const FeedbackBodySchema = z.object({
-  chatId: z.string().min(1),
+  chatId: z
+    .string()
+    .max(64)
+    .regex(/^chat_/),
   message: z.string().trim().min(1).max(DASHBOARD_AGENT_FEEDBACK_LIMITS.message),
   toolName: z.string().min(1).max(DASHBOARD_AGENT_FEEDBACK_LIMITS.toolName).optional(),
 });

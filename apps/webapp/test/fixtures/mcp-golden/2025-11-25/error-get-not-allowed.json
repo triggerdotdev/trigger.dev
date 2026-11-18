@@ -1,0 +1,15 @@
+{
+  "request": {
+    "method": "GET"
+  },
+  "response": {
+    "status": 405,
+    "headers": {
+      "content-type": "application/json; charset=utf-8",
+      "allow": "POST"
+    },
+    "body": {
+      "error": "Method not allowed"
+    }
+  }
+}

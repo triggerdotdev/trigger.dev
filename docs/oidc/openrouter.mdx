@@ -1,0 +1,91 @@
+---
+title: "Connect to OpenRouter"
+sidebarTitle: "OpenRouter"
+description: "Exchange a Trigger.dev OIDC token for a short-lived OpenRouter access token, so your tasks call models without an OPENROUTER_API_KEY."
+---
+
+Use OpenRouter [workload identity federation](https://openrouter.ai/docs/guides/overview/auth/workload-identity-federation) to exchange a Trigger.dev OIDC token for an OpenRouter access token. Your tasks call models with no `OPENROUTER_API_KEY` stored anywhere, and usage is billed to the API key the federation policy acts as, as if that key made the request.
+
+<Note>
+  Workload identity federation is available on OpenRouter's Business and Enterprise plans, under
+  **Settings**, Workload identity.
+</Note>
+
+Follow the [OIDC prerequisites](/oidc#prerequisites), then go to the [OIDC](https://cloud.trigger.dev/_/oidc) page for your environment and copy the issuer URL and subject.
+
+## Configure OpenRouter
+
+An organization admin sets this up under **Settings**, Workload identity ([set up trust](https://openrouter.ai/docs/guides/overview/auth/workload-identity-federation#set-up-trust)):
+
+1. **Add an issuer.** Set **Issuer URL** to the issuer URL copied from the dashboard and leave **JWKS URL** empty: OpenRouter reads the keys from the issuer's discovery document.
+2. **Add a policy** for that issuer:
+   - **Subject**: the **complete subject copied from the dashboard**. It must match exactly.
+   - **Audience**: any value, for example `https://openrouter.ai`. It's required, and your task must request the same one.
+   - **Acts as API key**: the workspace API key your tasks use today. A workspace key grants the `inference` scope.
+
+Copy the policy's id, shown under its name. Your task sends it with every exchange.
+
+## Call OpenRouter in your task
+
+<CodeGroup>
+
+```bash npm
+npm i @trigger.dev/sdk@latest openai
+```
+
+```bash pnpm
+pnpm add @trigger.dev/sdk@latest openai
+```
+
+```bash bun
+bun add @trigger.dev/sdk@latest openai
+```
+
+</CodeGroup>
+
+Exchange the OIDC token at OpenRouter's [token endpoint](https://openrouter.ai/docs/api/api-reference/oauth/exchange-a-workload-identity-token), then pass the access token as the API key to the OpenAI SDK pointed at [OpenRouter's base URL](https://openrouter.ai/docs/quickstart):
+
+```ts /trigger/openrouter-chat.ts
+import { auth, task } from "@trigger.dev/sdk";
+import OpenAI from "openai";
+
+export const openrouterChat = task({
+  id: "openrouter-chat",
+  run: async (payload: { prompt: string }) => {
+    const { token: subjectToken } = await auth.getOIDCToken({
+      audience: "https://openrouter.ai",
+    });
+
+    const exchange = await fetch("https://openrouter.ai/api/v1/oauth/token", {
+      method: "POST",
+      body: new URLSearchParams({
+        grant_type: "urn:ietf:params:oauth:grant-type:token-exchange",
+        subject_token_type: "urn:ietf:params:oauth:token-type:jwt",
+        subject_token: subjectToken,
+        federation_policy_id: "YOUR_FEDERATION_POLICY_ID",
+      }),
+    });
+    if (!exchange.ok) throw new Error(`OpenRouter exchange failed: ${exchange.status}`);
+    const { access_token } = await exchange.json();
+
+    const openrouter = new OpenAI({
+      baseURL: "https://openrouter.ai/api/v1",
+      apiKey: access_token,
+    });
+    const completion = await openrouter.chat.completions.create({
+      model: "openai/gpt-6-luna",
+      messages: [{ role: "user", content: payload.prompt }],
+    });
+
+    return { reply: completion.choices[0].message.content };
+  },
+});
+```
+
+The access token never outlives the OIDC token it was exchanged for, which is five minutes for Trigger.dev tokens. For longer work, request a new OIDC token and exchange it again. A rejected exchange returns `400` with `invalid_grant` whichever claim failed, so compare the issuer, subject and audience with the policy when it does.
+
+## Remove the old credential
+
+Once runs in every deployed environment authenticate this way, delete `OPENROUTER_API_KEY` from those environments on the Environment Variables page. The key itself stays: the policy acts as it. To stop anyone using it directly, create a new workspace key for the policy and delete the old one in OpenRouter.
+
+Local Development runs can't mint OIDC tokens. Use your own OpenRouter API key there when `ctx.environment.type === "DEVELOPMENT"`.

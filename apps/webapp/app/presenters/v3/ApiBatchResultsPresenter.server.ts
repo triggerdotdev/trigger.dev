@@ -114,6 +114,7 @@ export class ApiBatchResultsPresenter extends BasePresenter {
     friendlyId: string,
     env: AuthenticatedEnvironment
   ) {
+    // runops-exception(batches-migration): batch results API, until batches use the run store
     return client.batchTaskRun.findFirst({
       where: {
         friendlyId,
@@ -233,6 +234,7 @@ export class ApiBatchResultsPresenter extends BasePresenter {
       }
     }
 
+    // runops-exception(batches-migration): batch results API, until batches use the run store
     const newRows = (
       genOneIds.length > 0
         ? ((await newClient.taskRun.findMany({
@@ -245,6 +247,7 @@ export class ApiBatchResultsPresenter extends BasePresenter {
         await Promise.all(
           [...idsByShard.entries()].map(
             async ([shardKey, ids]) =>
+              // runops-exception(batches-migration): batch results API, until batches use the run store
               (await shardReplicas.get(shardKey)!.taskRun.findMany({
                 where: this.#memberWhere(members.by, ids),
                 select: memberRunSelect,
@@ -262,6 +265,7 @@ export class ApiBatchResultsPresenter extends BasePresenter {
       (id) => !runsById.has(id) && resolveShard(id) === "legacy"
     );
     if (legacyCandidateIds.length > 0) {
+      // runops-exception(batches-migration): batch results API, until batches use the run store
       const legacyRows = (await legacyReplica.taskRun.findMany({
         where: this.#memberWhere(members.by, legacyCandidateIds),
         select: memberRunSelect,

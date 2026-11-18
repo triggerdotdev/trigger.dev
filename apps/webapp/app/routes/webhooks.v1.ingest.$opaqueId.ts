@@ -7,12 +7,17 @@ import { toWebhookHttpResponse, webhookHttpResponseFor } from "~/v3/webhookIngre
 /**
  * GET: a provider's verification of the endpoint URL (Meta's `hub.challenge` flow). The engine
  * answers it from the endpoint's declared GET handshake, or refuses with 405 when the source
- * declares none. Never records a delivery.
+ * declares none. HEAD (which Remix routes here): a provider checking the URL is reachable before
+ * saving it, answered 200 for any active endpoint. Neither records a delivery.
  */
 export async function loader({ request, params }: LoaderFunctionArgs) {
   const admitted = await admitWebhookIngress(params, request);
   if (admitted instanceof Response) return admitted;
   const { opaqueId } = admitted;
+
+  if (request.method === "HEAD") {
+    return toWebhookHttpResponse(webhookHttpResponseFor(await webhookEngine.answerHead(opaqueId)));
+  }
 
   const query: Record<string, string> = {};
   new URL(request.url).searchParams.forEach((v, k) => (query[k] = v));
@@ -54,6 +59,9 @@ export async function action({ request, params }: ActionFunctionArgs) {
       break;
     case "secret_missing":
       logger.warn("webhook ingress rejected: signing secret unset", { opaqueId });
+      break;
+    case "secret_adopted":
+      logger.info("webhook ingress adopted the provider's signing secret", { opaqueId });
       break;
     case "verification_failed":
       logger.info("webhook ingress verification failed", { opaqueId });

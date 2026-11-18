@@ -1,8 +1,23 @@
 diff --git a/dist/commonjs/index.js b/dist/commonjs/index.js
-index e3bdcf702702392e9a06c981545f659ee7c5970e..4e7bd5f4f12599dae0d2708dc64ab42c02256251 100644
+index e3bdcf702702392e9a06c981545f659ee7c5970e..a975a27623d20a383f2915e6c0a1b84dff34257c 100644
 --- a/dist/commonjs/index.js
 +++ b/dist/commonjs/index.js
-@@ -757,30 +757,14 @@ function updateLayout(context, dragEvent) {
+@@ -506,6 +506,14 @@ function buildTemplate(context) {
+                 // If a sibling has a fill, this item doesn't need to expand
+                 // So we can just use the default value
+                 if (siblingHasFill) {
++                    // A bare pixel track cannot shrink: a group narrower than the default overflowed,
++                    // and the overflow handler stored the panel as a share of the narrow group that
++                    // stuck when it widened. `minmax(min, default)` lets the grid shrink and regrow it.
++                    if (item.default.type === "pixel" &&
++                        item.min.type === "pixel" &&
++                        item.min.value.lt(item.default.value)) {
++                        return `minmax(${min}, ${formatUnit(item.default)})`;
++                    }
+                     return formatUnit(item.default);
+                 }
+                 // Use 1fr so that panel fills ths space if needed
+@@ -757,30 +765,14 @@ function updateLayout(context, dragEvent) {
              panelAfter.onCollapseChange.current(false);
          }
      }
@@ -41,7 +56,7 @@ index e3bdcf702702392e9a06c981545f659ee7c5970e..4e7bd5f4f12599dae0d2708dc64ab42c
      panelBefore.currentValue = { type: "pixel", value: panelBeforeNewValue };
      panelAfter.currentValue = { type: "pixel", value: panelAfterNewValue };
      const leftoverSpace = new big_js_1.default(getGroupSize(context)).minus(newItems.reduce((acc, b) => acc.add(isPanelData(b) ? b.currentValue.value : b.size.value), new big_js_1.default(0)));
-@@ -940,7 +924,18 @@ function setCookie(name, jsonData) {
+@@ -940,7 +932,18 @@ function setCookie(name, jsonData) {
  function getDeltaForEvent(context, event) {
      const panel = getPanelWithId(context, event.panelId);
      if (event.type === "expandPanel") {
@@ -61,7 +76,7 @@ index e3bdcf702702392e9a06c981545f659ee7c5970e..4e7bd5f4f12599dae0d2708dc64ab42c
      }
      const collapsedSize = getUnitPixelValue(context, panel.collapsedSize);
      return panel.currentValue.value.minus(collapsedSize);
-@@ -964,7 +959,9 @@ function animationActor(context, event, send, abortController) {
+@@ -964,7 +967,9 @@ function animationActor(context, event, send, abortController) {
              reject(new Error("Operation was canceled"));
          });
          if (event.type === "collapsePanel") {
@@ -72,7 +87,7 @@ index e3bdcf702702392e9a06c981545f659ee7c5970e..4e7bd5f4f12599dae0d2708dc64ab42c
              direction = direction.mul(new big_js_1.default(-1));
          }
          const fps = 60;
-@@ -1305,7 +1302,14 @@ function groupMachine(input, onUpdate) {
+@@ -1305,7 +1310,14 @@ function groupMachine(input, onUpdate) {
                  const withLastKnownSize = context.items.map((i) => {
                      if (!isPanelData(i))
                          return i;
@@ -88,7 +103,23 @@ index e3bdcf702702392e9a06c981545f659ee7c5970e..4e7bd5f4f12599dae0d2708dc64ab42c
                      return { ...i, lastKnownSize };
                  });
                  let totalSize = 0;
-@@ -1404,7 +1408,22 @@ function groupMachine(input, onUpdate) {
+@@ -1329,7 +1341,14 @@ function groupMachine(input, onUpdate) {
+                     context.items = withLastKnownSize;
+                 }
+                 else if (totalSize > getGroupSize(context) &&
+-                    state.current !== "dragging") {
++                    state.current !== "dragging" &&
++                    // When even the minimums do not fit there is nothing to redistribute, and handling
++                    // the overflow would store each panel as a share of the too-narrow group.
++                    withLastKnownSize
++                        .reduce((acc, i) => acc.add(isPanelHandle(i)
++                        ? i.size.value
++                        : getUnitPixelValue(context, i.collapsed ? i.collapsedSize : i.min)), new big_js_1.default(0))
++                        .lte(getGroupSize(context))) {
+                     context.items = handleOverflow({
+                         ...context,
+                         items: prepareItems({ ...context, items: withLastKnownSize }),
+@@ -1404,7 +1423,22 @@ function groupMachine(input, onUpdate) {
                      }
                      break;
                  case "expandPanel":
@@ -113,10 +144,25 @@ index e3bdcf702702392e9a06c981545f659ee7c5970e..4e7bd5f4f12599dae0d2708dc64ab42c
                      }
                      else if (guards.shouldNotifyCollapseToggle(event)) {
 diff --git a/dist/esm/index.js b/dist/esm/index.js
-index f8fddd70c0f1aaed29f2fb0ca0d8093d8ce66335..de8e7a3c111e5fbdabb9a30ae7f6067decc067ce 100644
+index f8fddd70c0f1aaed29f2fb0ca0d8093d8ce66335..1d8ab23eef354594cdb3b5fe09db3b8d316ce73b 100644
 --- a/dist/esm/index.js
 +++ b/dist/esm/index.js
-@@ -728,30 +728,14 @@ function updateLayout(context, dragEvent) {
+@@ -477,6 +477,14 @@ export function buildTemplate(context) {
+                 // If a sibling has a fill, this item doesn't need to expand
+                 // So we can just use the default value
+                 if (siblingHasFill) {
++                    // A bare pixel track cannot shrink: a group narrower than the default overflowed,
++                    // and the overflow handler stored the panel as a share of the narrow group that
++                    // stuck when it widened. `minmax(min, default)` lets the grid shrink and regrow it.
++                    if (item.default.type === "pixel" &&
++                        item.min.type === "pixel" &&
++                        item.min.value.lt(item.default.value)) {
++                        return `minmax(${min}, ${formatUnit(item.default)})`;
++                    }
+                     return formatUnit(item.default);
+                 }
+                 // Use 1fr so that panel fills ths space if needed
+@@ -728,30 +736,14 @@ function updateLayout(context, dragEvent) {
              panelAfter.onCollapseChange.current(false);
          }
      }
@@ -155,7 +201,7 @@ index f8fddd70c0f1aaed29f2fb0ca0d8093d8ce66335..de8e7a3c111e5fbdabb9a30ae7f6067d
      panelBefore.currentValue = { type: "pixel", value: panelBeforeNewValue };
      panelAfter.currentValue = { type: "pixel", value: panelAfterNewValue };
      const leftoverSpace = new Big(getGroupSize(context)).minus(newItems.reduce((acc, b) => acc.add(isPanelData(b) ? b.currentValue.value : b.size.value), new Big(0)));
-@@ -911,7 +895,18 @@ function setCookie(name, jsonData) {
+@@ -911,7 +903,18 @@ function setCookie(name, jsonData) {
  function getDeltaForEvent(context, event) {
      const panel = getPanelWithId(context, event.panelId);
      if (event.type === "expandPanel") {
@@ -175,7 +221,7 @@ index f8fddd70c0f1aaed29f2fb0ca0d8093d8ce66335..de8e7a3c111e5fbdabb9a30ae7f6067d
      }
      const collapsedSize = getUnitPixelValue(context, panel.collapsedSize);
      return panel.currentValue.value.minus(collapsedSize);
-@@ -935,7 +930,9 @@ function animationActor(context, event, send, abortController) {
+@@ -935,7 +938,9 @@ function animationActor(context, event, send, abortController) {
              reject(new Error("Operation was canceled"));
          });
          if (event.type === "collapsePanel") {
@@ -186,7 +232,7 @@ index f8fddd70c0f1aaed29f2fb0ca0d8093d8ce66335..de8e7a3c111e5fbdabb9a30ae7f6067d
              direction = direction.mul(new Big(-1));
          }
          const fps = 60;
-@@ -1276,7 +1273,14 @@ export function groupMachine(input, onUpdate) {
+@@ -1276,7 +1281,14 @@ export function groupMachine(input, onUpdate) {
                  const withLastKnownSize = context.items.map((i) => {
                      if (!isPanelData(i))
                          return i;
@@ -202,7 +248,23 @@ index f8fddd70c0f1aaed29f2fb0ca0d8093d8ce66335..de8e7a3c111e5fbdabb9a30ae7f6067d
                      return { ...i, lastKnownSize };
                  });
                  let totalSize = 0;
-@@ -1375,7 +1379,22 @@ export function groupMachine(input, onUpdate) {
+@@ -1300,7 +1312,14 @@ export function groupMachine(input, onUpdate) {
+                     context.items = withLastKnownSize;
+                 }
+                 else if (totalSize > getGroupSize(context) &&
+-                    state.current !== "dragging") {
++                    state.current !== "dragging" &&
++                    // When even the minimums do not fit there is nothing to redistribute, and handling
++                    // the overflow would store each panel as a share of the too-narrow group.
++                    withLastKnownSize
++                        .reduce((acc, i) => acc.add(isPanelHandle(i)
++                        ? i.size.value
++                        : getUnitPixelValue(context, i.collapsed ? i.collapsedSize : i.min)), new Big(0))
++                        .lte(getGroupSize(context))) {
+                     context.items = handleOverflow({
+                         ...context,
+                         items: prepareItems({ ...context, items: withLastKnownSize }),
+@@ -1375,7 +1394,22 @@ export function groupMachine(input, onUpdate) {
                      }
                      break;
                  case "expandPanel":

@@ -1,0 +1,90 @@
+---
+title: "Connect to Hugging Face"
+sidebarTitle: "Hugging Face"
+description: "Exchange a Trigger.dev OIDC token for a short-lived Hugging Face token to run inference, download gated models or read one repo, without storing an HF_TOKEN."
+---
+
+Use Hugging Face [Trusted Publishers](https://huggingface.co/docs/hub/trusted-publishers) to exchange a Trigger.dev OIDC token for a Hugging Face token that lasts one hour. Your tasks call Inference Providers, download gated models, or read and write one repo with no `HF_TOKEN` stored anywhere.
+
+The exchanged token covers less than a user access token. Pick the flavor that matches what your task does:
+
+| Configure | On | The token can |
+| --- | --- | --- |
+| CI/CD identity | Your account's [Authentication settings](https://huggingface.co/settings/authentication#ci-cd-access), CI/CD Access | Read gated repos you have access to, and call Inference Providers if you tick **Allow Inference Providers calls** (billed to your account) |
+| Repo trusted publisher | A repo's **Settings**, Trusted Publishers | Write to that one repo, or only read it if you tick **Read-only** |
+
+A CI/CD identity token can't read your private repos or write anything; use a repo publisher for those ([security model](https://huggingface.co/docs/hub/trusted-publishers#security-model)).
+
+Follow the [OIDC prerequisites](/oidc#prerequisites), then go to the [OIDC](https://cloud.trigger.dev/_/oidc) page for your environment and copy the issuer URL and subject.
+
+## Configure Hugging Face
+
+Add a CI/CD identity or a repo trusted publisher, as in the table above. The settings list presets for CI providers, but [any OIDC-compliant provider works](https://huggingface.co/docs/hub/trusted-publishers#supported-ci-providers):
+
+- **Issuer**: the issuer URL copied from the dashboard.
+- **Claims**: `sub` set to the **complete subject copied from the dashboard**. Hugging Face matches claims exactly, so each environment needs its own identity or publisher.
+
+The audience is fixed: Hugging Face only accepts tokens whose `aud` is `https://huggingface.co`.
+
+## Call Hugging Face in your task
+
+<CodeGroup>
+
+```bash npm
+npm i @trigger.dev/sdk@latest @huggingface/inference
+```
+
+```bash pnpm
+pnpm add @trigger.dev/sdk@latest @huggingface/inference
+```
+
+```bash bun
+bun add @trigger.dev/sdk@latest @huggingface/inference
+```
+
+</CodeGroup>
+
+Exchange the OIDC token at Hugging Face's [token endpoint](https://huggingface.co/docs/hub/trusted-publishers#api-reference), then use the access token wherever you used `HF_TOKEN`. `resource` is your Hugging Face username for a CI/CD identity, or the repo (`namespace/name`, `datasets/namespace/name`) for a repo publisher:
+
+```ts /trigger/hugging-face-inference.ts
+import { auth, task } from "@trigger.dev/sdk";
+import { InferenceClient } from "@huggingface/inference";
+
+export const huggingFaceInference = task({
+  id: "hugging-face-inference",
+  run: async (payload: { prompt: string }) => {
+    const { token: subjectToken } = await auth.getOIDCToken({
+      audience: "https://huggingface.co",
+    });
+
+    const exchange = await fetch("https://huggingface.co/oauth/token", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        grant_type: "urn:ietf:params:oauth:grant-type:token-exchange",
+        subject_token_type: "urn:ietf:params:oauth:token-type:id_token",
+        subject_token: subjectToken,
+        resource: "YOUR_HF_USERNAME",
+      }),
+    });
+    if (!exchange.ok) throw new Error(`Hugging Face exchange failed: ${exchange.status}`);
+    const { access_token } = await exchange.json();
+
+    const client = new InferenceClient(access_token);
+    const result = await client.chatCompletion({
+      model: "meta-llama/Llama-3.1-8B-Instruct",
+      messages: [{ role: "user", content: payload.prompt }],
+    });
+
+    return { reply: result.choices[0].message.content };
+  },
+});
+```
+
+A failed exchange returns `400` with `invalid_grant` when the issuer, subject or audience doesn't match the identity or publisher. The token lasts 60 minutes with no refresh token, so exchange again for longer work.
+
+## Remove the old credential
+
+Once runs in every deployed environment authenticate this way, delete `HF_TOKEN`, `HUGGING_FACE_HUB_TOKEN` and `HUGGINGFACEHUB_API_TOKEN` from those environments on the Environment Variables page, then revoke the access token in your Hugging Face [token settings](https://huggingface.co/settings/tokens).
+
+Local Development runs can't mint OIDC tokens. Use your own Hugging Face token there when `ctx.environment.type === "DEVELOPMENT"`.

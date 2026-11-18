@@ -40,6 +40,7 @@ vi.mock("~/models/runtimeEnvironment.server", () => ({
 vi.mock("~/services/dashboardAgent.server", () => ({
   dashboardAgentApiOrigin: () => "https://api.trigger.dev",
   dashboardAgentUserApiOrigin: () => "https://api.trigger.dev",
+  mintDashboardAgentAppendToken: async () => "pat_append",
   mintDashboardAgentUserActorToken: async () => "tr_uat_real",
   resolveDashboardAgentRepoSnapshot: async () => null,
 }));

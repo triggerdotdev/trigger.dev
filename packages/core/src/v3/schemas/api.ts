@@ -2009,6 +2009,7 @@ export type CreateInputStreamWaitpointRequestBody = z.infer<
 export const CreateInputStreamWaitpointResponseBody = z.object({
   waitpointId: z.string(),
   isCached: z.boolean(),
+  isBlocked: z.boolean().optional(),
 });
 export type CreateInputStreamWaitpointResponseBody = z.infer<
   typeof CreateInputStreamWaitpointResponseBody
@@ -2047,6 +2048,7 @@ export type CreateSessionStreamWaitpointRequestBody = z.infer<
 export const CreateSessionStreamWaitpointResponseBody = z.object({
   waitpointId: z.string(),
   isCached: z.boolean(),
+  isBlocked: z.boolean().optional(),
 });
 export type CreateSessionStreamWaitpointResponseBody = z.infer<
   typeof CreateSessionStreamWaitpointResponseBody

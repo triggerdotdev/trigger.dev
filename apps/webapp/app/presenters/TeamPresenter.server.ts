@@ -1,4 +1,5 @@
 import { getTeamMembersAndInvites } from "~/models/member.server";
+import { isOwnerRole } from "~/models/orgMember.server";
 import { rbac } from "~/services/rbac.server";
 import { getCurrentPlan, getLimit, getPlans } from "~/services/platform.v3.server";
 import { BasePresenter } from "./v3/basePresenter.server";
@@ -38,6 +39,9 @@ export class TeamPresenter extends BasePresenter {
       userId: m.user.id,
       role: memberRoleMap.get(m.user.id) ?? null,
     }));
+    // The org must keep an Owner, so the sole Owner can't step down or leave.
+    const ownerIds = memberRoles.filter((m) => isOwnerRole(m.role)).map((m) => m.userId);
+    const soleOwnerUserId = ownerIds.length === 1 ? ownerIds[0] : null;
 
     const canPurchaseSeats =
       currentPlan?.v3Subscription?.plan?.limits.teamMembers.canExceed === true;
@@ -61,6 +65,7 @@ export class TeamPresenter extends BasePresenter {
       roles,
       assignableRoleIds,
       memberRoles,
+      soleOwnerUserId,
     };
   }
 }

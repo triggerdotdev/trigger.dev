@@ -3,11 +3,25 @@
 
 import { json } from "@remix-run/server-runtime";
 import { type UserActorClaims } from "@trigger.dev/rbac";
+import type { RuntimeEnvironmentType } from "@trigger.dev/database";
 import { $replica } from "~/db.server";
+import { notePersonalAccessTokenAuthentication } from "~/services/auditLogs/auditContext.server";
+import { personalAccessTokenAuthFailureBody } from "~/services/personalAccessToken.server";
+import { rbac } from "~/services/rbac.server";
 
 const FORBIDDEN_ENVIRONMENT_CODE = "forbidden_environment";
 
 const DASHBOARD_AGENT_CLIENT = "dashboard-agent";
+
+/** Only the webapp's own mint yields this shape; a token minted from a PAT always names its `pat`. */
+export function isDashboardAgentUserActor(claims: UserActorClaims | undefined): boolean {
+  return (
+    claims?.client === DASHBOARD_AGENT_CLIENT &&
+    !claims.pat &&
+    !!claims.environmentId &&
+    !!claims.organizationId
+  );
+}
 
 export function assertUserActorEnvironment(
   userActor: UserActorClaims | undefined,
@@ -218,4 +232,36 @@ function assertClaimIsOptional(userActor: UserActorClaims): void {
 
 function forbiddenEnvironment(error: string) {
   return json({ error, code: FORBIDDEN_ENVIRONMENT_CODE }, { status: 403 });
+}
+
+export async function userActorReadableScopes(
+  request: Request,
+  runtimeEnv: { organizationId: string; project: { id: string }; type: RuntimeEnvironmentType },
+  scopes: string[],
+  userActor: UserActorClaims
+): Promise<Response | string[]> {
+  const userAuth = await rbac.authenticateUserActor(request, {
+    organizationId: runtimeEnv.organizationId,
+    projectId: runtimeEnv.project.id,
+  });
+  if (!userAuth.ok) {
+    return json(personalAccessTokenAuthFailureBody(userAuth), { status: userAuth.status });
+  }
+  notePersonalAccessTokenAuthentication(request, { userId: userAuth.userId, userActor });
+  const readable = [...new Set(scopes)].filter((scope) => {
+    const type = readScopeType(scope);
+    return !!type && userAuth.ability.can("read", { type, envType: runtimeEnv.type });
+  });
+  if (readable.length === 0) {
+    return json(
+      { error: "You don't have permission to read this environment's data." },
+      { status: 403 }
+    );
+  }
+  return readable;
+}
+
+export function readScopeType(scope: string): string | undefined {
+  const [action, type] = scope.split(":");
+  return action === "read" && type && type !== "all" ? type : undefined;
 }

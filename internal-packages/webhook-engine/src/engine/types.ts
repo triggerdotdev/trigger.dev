@@ -136,6 +136,14 @@ export interface WebhookEngineOptions {
    * or empty means no GET verification is possible yet and the handshake is refused.
    */
   resolveVerifyToken?: (endpointId: string) => Promise<string | undefined>;
+  /**
+   * Adopt a secret the provider sent in its unsigned first request (an artifact's `secretCapture`)
+   * as the endpoint's signing secret. Must never replace a stored secret, atomically, and must point
+   * the endpoint at whichever secret is stored. Resolves true when this secret is the endpoint's
+   * signing secret (so a retry of the same request succeeds), false otherwise. Unset: capture is
+   * off and such a request is answered `secret_missing`.
+   */
+  adoptSigningSecret?: (endpointId: string, secret: string) => Promise<boolean>;
   // Session routing: find-or-create the session on the resolved key and append the action envelope.
   deliverToSession?: DeliverWebhookToSessionCallback;
   /** Webhook waiters. Without `waitpoints`, waiter create/cancel are refused and deliveries skip the waiter step. */
@@ -351,6 +359,8 @@ export type IngestResult =
   | { outcome: "endpoint_not_found" }
   | { outcome: "endpoint_inactive" }
   | { outcome: "secret_missing"; response?: IngestResponseContract }
+  /** The provider sent the signing secret itself (`secretCapture`) and it was adopted. Answer 200. */
+  | { outcome: "secret_adopted"; response?: IngestResponseContract }
   | { outcome: "verification_failed"; error: string; response?: IngestResponseContract }
   | { outcome: "method_not_allowed"; allowedMethods?: ("GET" | "HEAD" | "POST")[] }
   /** The delivery couldn't be queued (Redis unreachable, say); the provider should retry soon. */

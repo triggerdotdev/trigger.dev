@@ -1,5 +1,6 @@
 import { CONCURRENCY_LIMIT_NAME_PATTERN, sanitizeQueueName } from "@trigger.dev/core/v3/isomorphic";
 import type { PrismaClientOrTransaction } from "@trigger.dev/database";
+import type { RunExecutionPolicy } from "@trigger.dev/core/v3";
 import type { AuthenticatedEnvironment } from "~/services/apiAuth.server";
 import { logger } from "~/services/logger.server";
 import {
@@ -27,6 +28,7 @@ import {
 } from "@internal/cache";
 import { singleton } from "~/utils/singleton";
 import {
+  parseExecutionPolicy,
   parseTaskGates,
   type TaskMetadataCache,
   type TaskMetadataEntry,
@@ -105,6 +107,7 @@ export class DefaultQueueManager implements QueueManager {
     let taskKind: string | undefined;
     let taskGates: TaskMetadataGate[] | null | undefined;
     let templateKey: string | null | undefined;
+    let executionPolicy: RunExecutionPolicy | null | undefined;
 
     // Determine queue name based on lockToVersion and provided options
     if (lockedBackgroundWorker) {
@@ -158,6 +161,7 @@ export class DefaultQueueManager implements QueueManager {
         taskKind = lockedMeta?.triggerSource;
         taskGates = lockedMeta?.gates;
         templateKey = lockedMeta?.templateKey;
+        executionPolicy = lockedMeta?.executionPolicy;
       } else {
         // No queue override - resolve default queue + TTL + triggerSource via cache,
         // falling back to a single BackgroundWorkerTask lookup on miss.
@@ -198,6 +202,7 @@ export class DefaultQueueManager implements QueueManager {
         taskKind = lockedMeta.triggerSource;
         taskGates = lockedMeta.gates;
         templateKey = lockedMeta.templateKey;
+        executionPolicy = lockedMeta.executionPolicy;
       }
     } else {
       // Task is not locked to a specific version, use regular logic
@@ -215,6 +220,7 @@ export class DefaultQueueManager implements QueueManager {
       taskKind = taskInfo.taskKind;
       taskGates = taskInfo.taskGates;
       templateKey = taskInfo.templateKey;
+      executionPolicy = taskInfo.executionPolicy;
     }
 
     // Sanitize the final determined queue name once
@@ -332,6 +338,7 @@ export class DefaultQueueManager implements QueueManager {
       taskKind,
       gates: gates.length > 0 ? gates : undefined,
       templateKey,
+      executionPolicy: executionPolicy ?? undefined,
     };
   }
 
@@ -341,6 +348,7 @@ export class DefaultQueueManager implements QueueManager {
     taskKind?: string | undefined;
     taskGates?: TaskMetadataGate[] | null;
     templateKey?: string | null;
+    executionPolicy?: RunExecutionPolicy | null;
   }> {
     const { taskId, environment, body } = request;
     const { queue } = body.options ?? {};
@@ -365,6 +373,7 @@ export class DefaultQueueManager implements QueueManager {
         taskKind: meta?.triggerSource,
         taskGates: meta?.gates,
         templateKey: meta?.templateKey,
+        executionPolicy: meta?.executionPolicy,
       };
     }
 
@@ -387,6 +396,7 @@ export class DefaultQueueManager implements QueueManager {
         taskKind: meta.triggerSource,
         taskGates: meta.gates,
         templateKey: meta.templateKey,
+        executionPolicy: meta.executionPolicy,
       };
     }
 
@@ -396,6 +406,7 @@ export class DefaultQueueManager implements QueueManager {
       taskKind: meta.triggerSource,
       taskGates: meta.gates,
       templateKey: meta.templateKey,
+      executionPolicy: meta.executionPolicy,
     };
   }
 
@@ -453,6 +464,7 @@ export class DefaultQueueManager implements QueueManager {
       slug,
       ttl: row.ttl,
       triggerSource: row.triggerSource,
+      executionPolicy: parseExecutionPolicy(row.executionPolicy),
       queueId: row.queue?.id ?? null,
       queueName: row.queue?.name ?? "",
       gates: parseTaskGates(row.gates),
@@ -476,6 +488,7 @@ export class DefaultQueueManager implements QueueManager {
       select: {
         ttl: true,
         triggerSource: true,
+        executionPolicy: true,
         gates: true,
         queue: { select: { id: true, name: true } },
         worker: { select: { deployment: { select: { templateKey: true } } } },
@@ -527,6 +540,7 @@ export class DefaultQueueManager implements QueueManager {
       select: {
         ttl: true,
         triggerSource: true,
+        executionPolicy: true,
         gates: true,
         queue: { select: { id: true, name: true } },
       },
@@ -543,6 +557,7 @@ export class DefaultQueueManager implements QueueManager {
       slug,
       ttl: row.ttl,
       triggerSource: row.triggerSource,
+      executionPolicy: parseExecutionPolicy(row.executionPolicy),
       queueId: row.queue?.id ?? null,
       queueName: row.queue?.name ?? "",
       gates: parseTaskGates(row.gates),

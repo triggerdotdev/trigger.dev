@@ -254,10 +254,10 @@ export function useMfaSetup(initialIsEnabled: boolean) {
       );
     },
 
-    saveRecoveryCodes: () => {
+    saveRecoveryCodes: (redirectTo?: string) => {
       dispatch({ type: "RECOVERY_CODES_SAVED" });
       fetcher.submit(
-        { action: "saved-recovery-codes" },
+        { action: "saved-recovery-codes", ...(redirectTo ? { redirectTo } : {}) },
         { method: "POST", action: "/resources/account/mfa/setup" }
       );
     },

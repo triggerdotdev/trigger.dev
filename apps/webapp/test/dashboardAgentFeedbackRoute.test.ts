@@ -95,6 +95,12 @@ describe("POST /api/v1/dashboard-agent/feedback", () => {
     expect(mocks.feedback).not.toHaveBeenCalled();
   });
 
+  // Catches: an unbounded or non-chat chatId reaching the telemetry event.
+  it.each(["not_a_chat", `chat_${"x".repeat(60)}`])("rejects chatId %s", async (chatId) => {
+    expect((await post({ chatId, message: "hi" })).status).toBe(400);
+    expect(mocks.feedback).not.toHaveBeenCalled();
+  });
+
   it("answers 501 when the instance doesn't collect feedback", async () => {
     mocks.feedback.mockReturnValue(false);
 

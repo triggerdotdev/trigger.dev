@@ -20,6 +20,8 @@ export type RunTokenIdentity = {
   attemptNumber: number;
   taskIdentifier: string;
   deploymentFriendlyId?: string;
+  /** Defaults to the standard admin scopes. */
+  scopes?: string[];
 };
 
 export function mintRunToken(identity: RunTokenIdentity): Promise<string> {
@@ -34,7 +36,7 @@ export function mintRunToken(identity: RunTokenIdentity): Promise<string> {
       attempt: identity.attemptNumber,
       task_id: identity.taskIdentifier,
       ...(identity.deploymentFriendlyId ? { deployment_id: identity.deploymentFriendlyId } : {}),
-      scopes: runTokenScopes(),
+      scopes: identity.scopes ?? runTokenScopes(),
     },
     {
       audience: RUN_TOKEN_AUDIENCE,

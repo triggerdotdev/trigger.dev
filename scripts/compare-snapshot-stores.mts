@@ -194,6 +194,7 @@ async function listRunIds(
   options: { environmentId: string; from: Date; to: Date; limit: number; after?: RunCursor }
 ): Promise<{ runIds: string[]; next?: RunCursor }> {
   const after = options.after ?? { createdAt: options.from, id: "" };
+  // runops-exception(legacy-teardown): operator script that reads Postgres directly
   const rows = await prisma.$queryRaw<Array<{ id: string; createdAt: Date }>>`
     SELECT id, "createdAt" FROM "TaskRun"
     WHERE "runtimeEnvironmentId" = ${options.environmentId}
@@ -215,6 +216,7 @@ async function readPostgresSnapshots(
   prisma: PrismaClient,
   runIds: string[]
 ): Promise<Map<string, PostgresSnapshotRow[]>> {
+  // runops-exception(legacy-teardown): operator script that reads Postgres directly
   const rows = await prisma.$queryRaw<PostgresSnapshotRow[]>`
     SELECT id, "runId", "createdAt", "executionStatus"::text AS "executionStatus", description,
       "runStatus"::text AS "runStatus", "attemptNumber", "previousSnapshotId", "batchId",
@@ -428,6 +430,7 @@ async function checkConnections(
   let ok = true;
   for (const { url, db } of dbs) {
     try {
+      // runops-exception(legacy-teardown): operator script that reads Postgres directly
       const [row] = await db.$queryRaw<Array<Record<string, unknown>>>`
         SELECT current_database() AS database, pg_is_in_recovery() AS "isReplica",
           to_regclass('"TaskRun"') IS NOT NULL AS "hasTaskRun",

@@ -124,6 +124,29 @@ describe("RunEngine startRunAttempt on a run already executing", () => {
     }
   });
 
+  containerTest(
+    "per-start enforcement overrides the global mode",
+    async ({ prisma, redisOptions }) => {
+      const engine = createEngine(prisma, redisOptions, { duplicateAttemptStartCheck: "off" });
+      try {
+        const { run, first } = await startFirst(engine, prisma);
+        await expect(
+          engine.startRunAttempt({
+            runId: run.id,
+            snapshotId: first.snapshot.id,
+            runnerId: "runner-b",
+            enforceDuplicateAttemptStart: true,
+          })
+        ).rejects.toMatchObject({ status: 409, metadata: { code: "ATTEMPT_ALREADY_EXECUTING" } });
+        const persisted = await engine.getRunExecutionData({ runId: run.id });
+        expect(persisted?.run.attemptNumber).toBe(1);
+        expect(persisted?.snapshot.id).toBe(first.snapshot.id);
+      } finally {
+        await engine.quit();
+      }
+    }
+  );
+
   containerTest("is logged and allowed by default", async ({ prisma, redisOptions }) => {
     const { meter, getCounterValue } = createTestMetricsMeter();
     const engine = createEngine(prisma, redisOptions, { meter });
@@ -216,8 +239,27 @@ describe("RunEngine startRunAttempt on a run already executing", () => {
           runId: run.id,
           snapshotId: result.snapshot.id,
           runnerId: "runner-a",
+          enforceDuplicateAttemptStart: true,
         });
         expect(retry.run.attemptNumber).toBe(2);
+
+        // A claimed old attempt must not settle the current snapshot, for success or failure.
+        for (const completion of [
+          { ok: true as const, id: run.id, outputType: "application/json" },
+          { ok: false as const, id: run.id, error: retryError },
+        ]) {
+          await expect(
+            engine.completeRunAttempt({
+              runId: run.id,
+              snapshotId: retry.snapshot.id,
+              attemptNumber: 1,
+              completion,
+            })
+          ).rejects.toMatchObject({ status: 400 });
+        }
+        expect((await engine.getRunExecutionData({ runId: run.id }))?.snapshot.id).toBe(
+          retry.snapshot.id
+        );
 
         // The retry's own attempt is now executing, so starting from its snapshot is refused.
         await expect(

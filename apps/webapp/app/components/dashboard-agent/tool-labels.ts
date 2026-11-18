@@ -28,6 +28,7 @@ const TOOL_LABELS: Record<string, string> = {
   analyze_query_alert: "Checking the query for an alert",
   update_alert_draft: "Updating the alert draft",
   list_monitoring_alerts: "Listing alerts",
+  list_alert_channels: "Listing alert channels",
   resolve_monitoring_alert: "Resolving an alert",
   locate: "Locating the id",
   submit_feedback: "Sending feedback",

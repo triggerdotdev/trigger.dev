@@ -271,6 +271,18 @@ export const WebhookGetHandshakeConfig = z
   });
 export type WebhookGetHandshakeConfig = z.infer<typeof WebhookGetHandshakeConfig>;
 
+/**
+ * A provider that sends the signing secret itself, in an unsigned one-time request, before it signs
+ * anything (Notion's `verification_token`). While the endpoint has no signing secret, a JSON POST
+ * whose `bodyPath` holds a string is answered 200, records nothing, and that string becomes the
+ * endpoint's signing secret. Once a secret is set the request is verified like any other delivery.
+ */
+export const WebhookSecretCaptureConfig = z.object({
+  /** Dotted path into the JSON body whose string value is the secret, e.g. "verification_token". */
+  bodyPath: z.string().min(1),
+});
+export type WebhookSecretCaptureConfig = z.infer<typeof WebhookSecretCaptureConfig>;
+
 // ── Verifier artifact: data-only tagged union stored on WebhookEndpoint.verifierArtifact ──
 export const WebhookVerifierArtifact = discriminatedUnion("kind", [
   z.object({
@@ -278,6 +290,7 @@ export const WebhookVerifierArtifact = discriminatedUnion("kind", [
     config: WebhookVerifierConfig,
     handshake: WebhookHandshakeConfig.optional(),
     getHandshake: WebhookGetHandshakeConfig.optional(),
+    secretCapture: WebhookSecretCaptureConfig.optional(),
     response: WebhookResponseConfig.optional(),
   }),
   z.object({
@@ -286,6 +299,7 @@ export const WebhookVerifierArtifact = discriminatedUnion("kind", [
     config: WebhookVerifierConfig,
     handshake: WebhookHandshakeConfig.optional(),
     getHandshake: WebhookGetHandshakeConfig.optional(),
+    secretCapture: WebhookSecretCaptureConfig.optional(),
     response: WebhookResponseConfig.optional(),
   }),
   z.object({ kind: z.literal("bundle"), bundleUrl: z.string(), hash: z.string() }), // P3 seam

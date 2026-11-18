@@ -23,6 +23,8 @@ export function webhookHttpResponseFor(result: IngestResult): WebhookHttpRespons
       return acceptedResponse(result.response, result.deliveryFriendlyId);
     case "duplicate":
       return acceptedResponse(result.response, result.deliveryId);
+    case "secret_adopted":
+      return { status: 200, body: "", contentType: "text/plain" };
     case "handshake":
       return {
         status: result.status,

@@ -477,6 +477,18 @@ export default function Page() {
                         )}
                       </TableBody>
                     </Table>
+                    {totalPages > 1 && (
+                      <div className="flex shrink-0 flex-wrap items-center justify-between gap-2 border-t border-grid-dimmed py-2.5 pl-3 pr-2">
+                        <Paragraph variant="extra-small" className="tabular-nums">
+                          {visibleItems.length} tasks
+                        </Paragraph>
+                        <PaginationControls
+                          currentPage={currentPage}
+                          totalPages={totalPages}
+                          shortcuts={false}
+                        />
+                      </div>
+                    )}
                   </div>
                 </div>
               ) : latchedOnboarding?.showGitHubOnboarding ? (
@@ -600,6 +612,7 @@ function TaskRow({
           {item.kind === "AGENT" && item.agentType && (
             <Badge variant="extra-small">{formatAgentType(item.agentType)}</Badge>
           )}
+          {item.isSandbox && <Badge variant="extra-small">Sandbox</Badge>}
         </div>
       </TableCell>
       <TableCell to={rowPath}>
