@@ -13,7 +13,7 @@ const WEBAPP_ROOT = resolve(__dirname, "../../../apps/webapp");
 // to the root node_modules. We need NODE_PATH so the webapp process can find them at runtime.
 const PNPM_HOISTED_MODULES = resolve(__dirname, "../../../node_modules/.pnpm/node_modules");
 
-async function findFreePort(): Promise<number> {
+export async function findFreePort(): Promise<number> {
   return new Promise((res, rej) => {
     const srv = createServer();
     srv.listen(0, () => {

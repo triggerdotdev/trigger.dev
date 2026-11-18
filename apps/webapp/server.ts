@@ -31,6 +31,28 @@ const WORKERS =
 // LB pipelining a request onto a connection Node has already closed (→ 502).
 const HTTP_KEEPALIVE_TIMEOUT_MS =
   Number.parseInt(process.env.HTTP_KEEPALIVE_TIMEOUT_MS || "", 10) || 65 * 1000;
+const HEALTHCHECK_PORT = parseHealthcheckPort(process.env.HEALTHCHECK_PORT);
+
+function parseHealthcheckPort(value: string | undefined) {
+  if (!value) return undefined;
+
+  const port = Number(value);
+  if (!Number.isInteger(port) || port < 1 || port > 65535) {
+    throw new Error(`Invalid HEALTHCHECK_PORT: ${value}`);
+  }
+  return port;
+}
+
+function createHealthApp(healthcheckHandler: RequestHandler) {
+  const app = express();
+  app.disable("x-powered-by");
+  app.use(createHostHeaderGuard());
+  app.get("/healthcheck", healthcheckHandler);
+  app.use((_req, res) => {
+    res.status(404).send("Not Found");
+  });
+  return app;
+}
 
 function forkWorkers() {
   for (let i = 0; i < WORKERS; i++) {
@@ -342,12 +364,25 @@ async function startServer() {
     // headers will instead be limited by the maxHeaderSize
     server.maxHeadersCount = 0;
 
+    const healthServer = HEALTHCHECK_PORT
+      ? createHealthApp(
+          // @ts-ignore
+          createRequestHandler({
+            build: viteDevServer ? loadBuild : build,
+            mode: MODE,
+          })
+        ).listen(HEALTHCHECK_PORT, () => {
+          console.log(`✅ healthcheck ready: http://localhost:${HEALTHCHECK_PORT}/healthcheck`);
+        })
+      : undefined;
+
     let didCloseServer = false;
 
     function closeServer(signal: NodeJS.Signals) {
       if (didCloseServer) return;
       didCloseServer = true;
 
+      healthServer?.close();
       server.close((err) => {
         if (err) {
           console.error("Error closing express server:", err);
