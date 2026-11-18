@@ -110,6 +110,9 @@ export class FinalizeDeploymentService extends BaseService {
       throw new ServiceValidationError("Worker deployment is not in DEPLOYING status");
     }
 
+    // Queue the check as soon as the deployment is marked DEPLOYED.
+    void this.queueCheck(deployment.id);
+
     const finalizedDeployment = {
       ...deployment,
       status: "DEPLOYED" as const,
@@ -148,7 +151,7 @@ export class FinalizeDeploymentService extends BaseService {
     await TimeoutDeploymentService.dequeue(deployment.id, this._prisma);
 
     if (typeof body.skipPromotion === "undefined" || !body.skipPromotion) {
-      const promotionService = new ChangeCurrentDeploymentService();
+      const promotionService = new ChangeCurrentDeploymentService(this._prisma);
 
       await promotionService.call(finalizedDeployment, "promote");
     }
@@ -200,7 +203,6 @@ export class FinalizeDeploymentService extends BaseService {
     }
 
     await PerformDeploymentAlertsService.enqueue(deployment.id);
-    void this.queueCheck(deployment.id);
 
     return finalizedDeployment;
   }
