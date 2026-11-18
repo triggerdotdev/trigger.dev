@@ -22,6 +22,7 @@ import type { PrismaClient } from "@trigger.dev/database";
 import type { RunOpsPrismaClient } from "@internal/run-ops-database";
 import { describe, expect } from "vitest";
 import { PostgresRunStore } from "./PostgresRunStore.js";
+import { markReadReplicaClient } from "./readReplicaClient.js";
 import { RoutingRunStore } from "./runOpsStore.js";
 
 type AnyClient = PrismaClient | RunOpsPrismaClient;
@@ -58,6 +59,29 @@ function laggingReplica<C extends AnyClient>(real: C): { client: C; wasHit: () =
         return laggingTaskRun;
       }
       return (target as any)[prop];
+    },
+  }) as C;
+  return { client, wasHit: () => hit };
+}
+
+// A writer that records whether a taskRun read reached it, and otherwise behaves as the real client.
+function recordingWriter<C extends AnyClient>(real: C): { client: C; wasHit: () => boolean } {
+  let hit = false;
+  const taskRun = new Proxy((real as any).taskRun, {
+    get(target, prop) {
+      const value = (target as any)[prop];
+      if (typeof prop === "string" && prop.startsWith("find") && typeof value === "function") {
+        return (...args: unknown[]) => {
+          hit = true;
+          return value.apply(target, args);
+        };
+      }
+      return value;
+    },
+  });
+  const client = new Proxy(real, {
+    get(target, prop) {
+      return prop === "taskRun" ? taskRun : (target as any)[prop];
     },
   }) as C;
   return { client, wasHit: () => hit };
@@ -312,6 +336,142 @@ describe("run-ops split — read-after-write reads the OWNING store's WRITER, no
       await router.findRun({ id: runId }, { select: { friendlyId: true } });
       // No writer passed → the read went to the replica, exactly as before the fix.
       expect(legacyReplica.wasHit()).toBe(true);
+    }
+  );
+
+  // Both stores get a lagging replica, so any replica-routed taskRun read misses or throws
+  // "lagging replica" and records the hit; both writers record whether a taskRun read reached them.
+  function makeLaggingRouter(prisma14: PrismaClient, prisma17: RunOpsPrismaClient) {
+    const legacyReplica = laggingReplica(prisma14);
+    const newReplica = laggingReplica(prisma17);
+    const legacyWriter = recordingWriter(prisma14);
+    const newWriter = recordingWriter(prisma17);
+    const router = new RoutingRunStore({
+      new: new PostgresRunStore({
+        prisma: newWriter.client as never,
+        readOnlyPrisma: newReplica.client as never,
+        schemaVariant: "dedicated",
+      }),
+      legacy: new PostgresRunStore({
+        prisma: legacyWriter.client,
+        readOnlyPrisma: legacyReplica.client,
+        schemaVariant: "legacy",
+      }),
+    });
+    const hits = () => ({
+      newWriter: newWriter.wasHit(),
+      legacyWriter: legacyWriter.wasHit(),
+      newReplica: newReplica.wasHit(),
+      legacyReplica: legacyReplica.wasHit(),
+    });
+    return { router, legacyReplica, newReplica, hits };
+  }
+  const notFound = { code: "P2025", name: "PrismaClientKnownRequestError" };
+  const none = { newWriter: false, legacyWriter: false, newReplica: false, legacyReplica: false };
+
+  // Catches: a run-id read reaching any client but the owning writer (or replica, for a replica caller).
+  heteroRunOpsPostgresTest(
+    "findRunOrThrow with a run id and a caller client reads only the owning store's writer",
+    async ({ prisma14, prisma17 }) => {
+      const seed = seedEnvironmentDedicated("ort_new");
+      const runId = `run_${NEW_ID_26}`;
+      await prisma17.taskRun.create({
+        data: taskRunData({
+          id: runId,
+          friendlyId: "run_ort_new",
+          organizationId: seed.organization.id,
+          projectId: seed.project.id,
+          runtimeEnvironmentId: seed.environment.id,
+        }),
+      });
+      const select = { select: { friendlyId: true } };
+
+      // 1. NEW run, control-plane writer as caller → NEW writer.
+      const found = makeLaggingRouter(prisma14, prisma17);
+      const run = await found.router.findRunOrThrow({ id: runId }, select, prisma14);
+      expect(run.friendlyId).toBe("run_ort_new");
+      expect(found.hits()).toEqual({ ...none, newWriter: true });
+
+      // 2. Missing NEW-shaped id → P2025 from the NEW writer.
+      const missingNew = makeLaggingRouter(prisma14, prisma17);
+      await expect(
+        missingNew.router.findRunOrThrow({ id: `run_${"j".repeat(24)}01` }, select, prisma14)
+      ).rejects.toMatchObject(notFound);
+      expect(missingNew.hits()).toEqual({ ...none, newWriter: true });
+
+      // 3. Missing cuid-shaped id → P2025 from the LEGACY writer.
+      const missingLegacy = makeLaggingRouter(prisma14, prisma17);
+      await expect(
+        missingLegacy.router.findRunOrThrow({ id: `run_${"d".repeat(25)}` }, select, prisma14)
+      ).rejects.toMatchObject(notFound);
+      expect(missingLegacy.hits()).toEqual({ ...none, legacyWriter: true });
+
+      // 4. A branded replica as caller keeps the owning store's replica.
+      const viaReplica = makeLaggingRouter(prisma14, prisma17);
+      await expect(
+        viaReplica.router.findRunOrThrow({ id: runId }, select, markReadReplicaClient({}) as never)
+      ).rejects.toThrow("lagging replica");
+      expect(viaReplica.hits()).toEqual({ ...none, newReplica: true });
+    }
+  );
+
+  // Catches: a no-id read with a caller writer that reads a replica or tries LEGACY before NEW.
+  heteroRunOpsPostgresTest(
+    "findRunOrThrow with a caller client and no run id tries the NEW writer, then the LEGACY writer, and throws P2025 when both miss",
+    async ({ prisma14, prisma17 }) => {
+      const { router, hits } = makeLaggingRouter(prisma14, prisma17);
+      const dedicated = seedEnvironmentDedicated("ort_fan_new");
+      const legacy = await seedEnvironmentLegacy(prisma14, "ort_fan_leg");
+      const legacyEnv = {
+        organizationId: legacy.organization.id,
+        projectId: legacy.project.id,
+        runtimeEnvironmentId: legacy.environment.id,
+      };
+      const newRunId = `run_${NEW_ID_26}`;
+      const legacyRunId = `run_${CUID_25}`;
+      const legacyOnlyRunId = `run_${"e".repeat(25)}`;
+      await prisma17.taskRun.create({
+        data: {
+          ...taskRunData({
+            id: newRunId,
+            friendlyId: "run_fan_new",
+            organizationId: dedicated.organization.id,
+            projectId: dedicated.project.id,
+            runtimeEnvironmentId: dedicated.environment.id,
+          }),
+          spanId: "span_both",
+        },
+      });
+      await prisma14.taskRun.create({
+        data: {
+          ...taskRunData({ id: legacyRunId, friendlyId: "run_fan_leg", ...legacyEnv }),
+          spanId: "span_both",
+        },
+      });
+      await prisma14.taskRun.create({
+        data: {
+          ...taskRunData({ id: legacyOnlyRunId, friendlyId: "run_fan_leg_only", ...legacyEnv }),
+          spanId: "span_legacy_only",
+        },
+      });
+      const select = { select: { id: true } };
+
+      const onBoth = await router.findRunOrThrow({ spanId: "span_both" }, select, prisma14);
+      expect(onBoth.id).toBe(newRunId);
+
+      const legacyOnly = await router.findRunOrThrow(
+        { spanId: "span_legacy_only" },
+        select,
+        prisma14
+      );
+      expect(legacyOnly.id).toBe(legacyOnlyRunId);
+
+      // A replica leg would return null or throw "lagging replica"; P2025 means the LEGACY writer threw.
+      await expect(
+        router.findRunOrThrow({ spanId: "span_nowhere" }, select, prisma14)
+      ).rejects.toMatchObject(notFound);
+
+      expect(hits()).toEqual({ ...none, newWriter: true, legacyWriter: true });
     }
   );
 });
