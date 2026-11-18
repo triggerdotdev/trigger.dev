@@ -304,3 +304,27 @@ describe("tool results from separate calls returning the same object", () => {
     });
   });
 });
+
+describe("a BigInt in an app that defines BigInt.prototype.toJSON", () => {
+  // Catches: every BigInt reported as unserializable, so a tool returning an
+  // ORM row with a BigInt id (an app that defines BigInt.prototype.toJSON, where
+  // JSON.stringify gives "1") got an error result instead of its value.
+  it("carries the value toJSON gives, in later model calls and in the next step", async () => {
+    const bigint = BigInt.prototype as { toJSON?: () => string };
+    bigint.toJSON = function (this: bigint) {
+      return String(this);
+    };
+    try {
+      for (const steps of [1, 3]) {
+        const prompts = await runTwoTurns(
+          () => ({ id: 1n }),
+          `tool-output-json-bigint-${steps}`,
+          steps
+        );
+        expect(toolOutput(prompts[1], "call_rows")).toEqual({ type: "json", value: { id: "1" } });
+      }
+    } finally {
+      delete bigint.toJSON;
+    }
+  });
+});

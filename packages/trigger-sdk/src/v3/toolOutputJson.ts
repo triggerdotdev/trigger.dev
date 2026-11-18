@@ -42,6 +42,12 @@ function inspect(root: unknown): Inspection {
         if (!Number.isFinite(value)) convert = true;
         return undefined;
       case "bigint":
+        // An app can give BigInt a `toJSON` (an ORM's BigInt ids), which
+        // `JSON.stringify`, and so the AI SDK, then honours.
+        if (typeof (BigInt.prototype as { toJSON?: unknown }).toJSON === "function") {
+          convert = true;
+          return undefined;
+        }
         return "BigInt";
       case "undefined":
       case "function":
@@ -208,8 +214,9 @@ const isJsonToolResult = (part: unknown): part is ToolResultPart => {
  * what `execute` returned. A `Date` from an ORM row then fails the next model
  * call (AI SDK 6), or the next step of the same call (AI SDK 7 before 7.0.101),
  * with a schema error naming only a message index. A value JSON can carry is
- * converted the way the newer SDK does it. One it cannot (a `BigInt`, a circular
- * reference) becomes an error result naming the tool and the field, logged once,
+ * converted the way the newer SDK does it, including a `BigInt` when the app
+ * defines `BigInt.prototype.toJSON`. One it cannot (a `BigInt` otherwise, a
+ * circular reference) becomes an error result naming the tool and the field, logged once,
  * so the rest of the history stays valid. On an AI SDK that converts tool outputs
  * itself this does nothing. Returns the same array when nothing changed.
  */
