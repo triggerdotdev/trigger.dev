@@ -46,7 +46,7 @@ export async function loader({ request, params }: LoaderFunctionArgs) {
     return json({ error: "Session not found" }, { status: 404 });
   }
 
-  const seed = await readSessionTranscriptSeed({
+  const read = await readSessionTranscriptSeed({
     session,
     projectRef: project.externalRef,
     envSlug: environment.slug,
@@ -54,6 +54,11 @@ export async function loader({ request, params }: LoaderFunctionArgs) {
     before,
   });
 
+  if (read.kind === "failed") {
+    return json({ error: "Couldn't read the transcript" }, { status: 502 });
+  }
+
+  const seed = read.kind === "seed" ? read.seed : undefined;
   // `lastOutEventId` lets a first page seed the conversation and resume its stream after it.
   return json({
     messages: seed?.messages ?? [],

@@ -1,6 +1,6 @@
 import { BoltIcon, BoltSlashIcon } from "@heroicons/react/20/solid";
 import { BookOpenIcon, CheckIcon } from "@heroicons/react/24/solid";
-
+import { useLocation } from "@remix-run/react";
 import { type LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { Clipboard, ClipboardCheck } from "lucide-react";
@@ -18,6 +18,7 @@ import { TextWrapIcon } from "~/assets/icons/TextWrapIcon";
 import { CodeBlock } from "~/components/code/CodeBlock";
 import { PageBody } from "~/components/layout/AppLayout";
 import { Button, LinkButton } from "~/components/primitives/Buttons";
+import { Callout } from "~/components/primitives/Callout";
 import { CopyableText } from "~/components/primitives/CopyableText";
 import { DateTime } from "~/components/primitives/DateTime";
 import { Dialog, DialogTrigger } from "~/components/primitives/Dialog";
@@ -73,6 +74,7 @@ import { useSessionTraceSelection } from "~/components/sessions/v1/trace/useSess
 import {
   SESSION_TREE_AUTOSAVE_ID,
   resolveSessionPageView,
+  type SessionPageView,
 } from "~/components/sessions/v1/trace/sessionTraceView";
 import { getResizableSnapshot } from "~/services/resizablePanel.server";
 import { tryCatch } from "@trigger.dev/core/utils";
@@ -251,12 +253,7 @@ export default function Page() {
                   traceTreeSnapshot={traceTreeSnapshot}
                 />
               ) : (
-                <ConversationPane
-                  session={session}
-                  channels={channels}
-                  transcript={{ ready: true, seed: session.agentView.transcriptSeed }}
-                  pinConversationView={false}
-                />
+                <StandaloneConversationPane session={session} channels={channels} />
               )}
             </ResizablePanel>
             <ResizableHandle id="session-handle" />
@@ -305,21 +302,12 @@ function SessionLeftPane({
     traceEnabled: true,
   });
   const track = useSessionViewAnalytics();
-  // Kept here so switching tabs doesn't fetch it again. Raw and channels don't use it.
-  const channelParam = value("channel");
-  const transcript = useConversationTranscript({
-    transcriptPath: v3SessionTranscriptPath(
-      organization,
-      project,
-      environment,
-      session.agentView.sessionId
-    ),
-    loaderSeed: session.agentView.transcriptSeed,
+  // Kept here so switching tabs doesn't fetch it again.
+  const transcript = useSessionTranscript({
+    session,
+    channels,
     transcriptRead,
-    wanted:
-      view === "conversation" &&
-      value("raw") !== "1" &&
-      !(channelParam && channels.includes(channelParam)),
+    shown: view === "conversation",
   });
 
   // Each tab mounts the first time it's shown and then stays mounted, so switching back keeps
@@ -330,32 +318,46 @@ function SessionLeftPane({
   }));
   if (!opened[view]) setOpened({ ...opened, [view]: true });
 
+  const showView = (next: SessionPageView) => {
+    if (next === view) return;
+    if (next === "conversation") track("conversation_opened");
+    replace({ view: next });
+  };
+
+  // Arrow keys, Home and End move between the tabs and show the one they land on.
+  const onTabKeyDown = (event: React.KeyboardEvent<HTMLButtonElement>) => {
+    const next = tabViewForKey(view, event.key);
+    if (!next) return;
+    event.preventDefault();
+    showView(next);
+    document.getElementById(sessionTabId(next))?.focus();
+  };
+
   return (
     <div className="grid h-full max-h-full grid-rows-[auto_1fr] overflow-hidden bg-background-bright">
-      <div className="border-b border-grid-bright px-3">
+      <div role="tablist" aria-label="Session view" className="border-b border-grid-bright px-3">
         <TabContainer className="-mb-px">
-          <TabButton
-            isActive={view === "trace"}
-            layoutId="session-left-view"
-            onClick={() => replace({ view: "trace" })}
-          >
-            Trace
-          </TabButton>
-          <TabButton
-            isActive={view === "conversation"}
-            layoutId="session-left-view"
-            onClick={() => {
-              if (view !== "conversation") track("conversation_opened");
-              replace({ view: "conversation" });
-            }}
-          >
-            Conversation
-          </TabButton>
+          {SESSION_PAGE_VIEWS.map((tab) => (
+            <TabButton
+              key={tab}
+              id={sessionTabId(tab)}
+              role="tab"
+              aria-selected={view === tab}
+              aria-controls={sessionTabPanelId(tab)}
+              tabIndex={view === tab ? 0 : -1}
+              isActive={view === tab}
+              layoutId="session-left-view"
+              onClick={() => showView(tab)}
+              onKeyDown={onTabKeyDown}
+            >
+              {tab === "trace" ? "Trace" : "Conversation"}
+            </TabButton>
+          ))}
         </TabContainer>
       </div>
       <div className="relative min-h-0 overflow-hidden">
         {opened.trace && (
-          <SessionTabPanel active={view === "trace"}>
+          <SessionTabPanel view="trace" active={view === "trace"}>
             <SessionTraceTab
               key={session.friendlyId}
               runsPath={v3SessionRunsPath(organization, project, environment, session)}
@@ -365,7 +367,7 @@ function SessionLeftPane({
           </SessionTabPanel>
         )}
         {opened.conversation && (
-          <SessionTabPanel active={view === "conversation"}>
+          <SessionTabPanel view="conversation" active={view === "conversation"}>
             <ConversationPane
               session={session}
               channels={channels}
@@ -382,15 +384,103 @@ function SessionLeftPane({
 
 // The hidden tab stays laid out (not display:none), so its scroll positions and panel sizes
 // survive, but it can't be focused or clicked.
-function SessionTabPanel({ active, children }: { active: boolean; children: React.ReactNode }) {
+function SessionTabPanel({
+  view,
+  active,
+  children,
+}: {
+  view: SessionPageView;
+  active: boolean;
+  children: React.ReactNode;
+}) {
   const ref = useRef<HTMLDivElement>(null);
   useEffect(() => {
     if (ref.current) ref.current.inert = !active;
   }, [active]);
   return (
-    <div ref={ref} aria-hidden={!active} className={cn("absolute inset-0", !active && "invisible")}>
+    <div
+      ref={ref}
+      id={sessionTabPanelId(view)}
+      role="tabpanel"
+      aria-labelledby={sessionTabId(view)}
+      aria-hidden={!active}
+      className={cn("absolute inset-0", !active && "invisible")}
+    >
       {children}
     </div>
+  );
+}
+
+const SESSION_PAGE_VIEWS: SessionPageView[] = ["trace", "conversation"];
+
+const sessionTabId = (view: SessionPageView) => `session-tab-${view}`;
+const sessionTabPanelId = (view: SessionPageView) => `session-tabpanel-${view}`;
+
+function tabViewForKey(view: SessionPageView, key: string): SessionPageView | undefined {
+  const index = SESSION_PAGE_VIEWS.indexOf(view);
+  const last = SESSION_PAGE_VIEWS.length - 1;
+  switch (key) {
+    case "ArrowRight":
+      return SESSION_PAGE_VIEWS[index === last ? 0 : index + 1];
+    case "ArrowLeft":
+      return SESSION_PAGE_VIEWS[index === 0 ? last : index - 1];
+    case "Home":
+      return SESSION_PAGE_VIEWS[0];
+    case "End":
+      return SESSION_PAGE_VIEWS[last];
+    default:
+      return undefined;
+  }
+}
+
+/** The saved transcript, wanted while the rendered conversation is shown (Raw and channels don't use it). */
+function useSessionTranscript({
+  session,
+  channels,
+  transcriptRead,
+  shown,
+}: {
+  session: LoadedSession;
+  channels: string[];
+  transcriptRead: boolean;
+  shown: boolean;
+}) {
+  const organization = useOrganization();
+  const project = useProject();
+  const environment = useEnvironment();
+  const { value } = useSearchParams();
+  const channelParam = value("channel");
+  return useConversationTranscript({
+    transcriptPath: v3SessionTranscriptPath(
+      organization,
+      project,
+      environment,
+      session.agentView.sessionId
+    ),
+    loaderSeed: session.agentView.transcriptSeed,
+    loaderFailed: session.agentView.transcriptFailed,
+    transcriptRead,
+    wanted: shown && value("raw") !== "1" && !(channelParam && channels.includes(channelParam)),
+  });
+}
+
+// The page without the Trace tab: the loader always reads the transcript.
+function StandaloneConversationPane({
+  session,
+  channels,
+}: {
+  session: LoadedSession;
+  channels: string[];
+}) {
+  const transcript = useSessionTranscript({ session, channels, transcriptRead: true, shown: true });
+
+  return (
+    <ConversationPane
+      session={session}
+      channels={channels}
+      transcript={transcript}
+      pinConversationView={false}
+    />
   );
 }
 
@@ -466,6 +556,19 @@ function ConversationPane({
       ) : (
         <>
           <ConversationUtilityBar isRaw={isRaw} onChangeView={setView} {...utilityBarProps} />
+          {transcript.ready && transcript.failed && (
+            <Callout
+              variant="warning"
+              className="mx-3 mt-2 w-auto"
+              cta={
+                <Button variant="secondary/small" onClick={transcript.retry}>
+                  Retry
+                </Button>
+              }
+            >
+              Couldn't load earlier messages. Only the latest ones are shown.
+            </Callout>
+          )}
           <div className="min-w-0 flex-1 overflow-y-auto overflow-x-hidden px-3 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-surface-control">
             {/* The view reads its seed when it subscribes, so it mounts once the seed is in. */}
             {transcript.ready ? (
@@ -1124,7 +1227,8 @@ function OverviewTab({
   const project = useProject();
   const environment = useEnvironment();
   const isAdmin = useHasAdminAccess();
-  const sessionsPath = v3SessionsPath(organization, project, environment);
+  // Closing reloads this page as it is: same tab, view and selection.
+  const { pathname, search } = useLocation();
 
   return (
     <div className="flex flex-col gap-4">
@@ -1144,7 +1248,7 @@ function OverviewTab({
               <CloseSessionDialog
                 sessionParam={session.friendlyId}
                 environmentId={environment.id}
-                redirectPath={`${sessionsPath}/${session.friendlyId}`}
+                redirectPath={`${pathname}${search}`}
               />
             </Dialog>
           )}
