@@ -9,7 +9,9 @@ import {
   resetIdempotencyKey,
   resetIdempotencyKeyCatalog,
 } from "./idempotencyKeys.js";
+import { taskContext } from "./task-context-api.js";
 import { digestSHA256 } from "./utils/crypto.js";
+import { unregisterGlobal } from "./utils/globals.js";
 
 describe("idempotencyKeys metadata retention", () => {
   it("retains key/scope options for every key created in a run, even beyond 1000", async () => {
@@ -44,6 +46,49 @@ describe("idempotencyKeys metadata retention", () => {
     resetIdempotencyKeyCatalog();
 
     expect(getIdempotencyKeyOptions(key)).toBeUndefined();
+  });
+});
+
+describe("makeIdempotencyKey", () => {
+  const digestShapedKey = "a".repeat(64);
+  const parentRunId = "run_parent_a";
+
+  beforeEach(() => {
+    resetIdempotencyKeyCatalog();
+    taskContext.setGlobalTaskContext({
+      ctx: { run: { id: parentRunId }, attempt: { number: 1 } },
+      worker: {},
+    } as never);
+  });
+
+  afterEach(() => {
+    unregisterGlobal("task-context");
+    resetIdempotencyKeyCatalog();
+  });
+
+  it("hashes a raw 64-character string with the parent run ID", async () => {
+    // Catches: a raw 64-char digest being treated as an already-hashed global key.
+    const key = await makeIdempotencyKey(digestShapedKey);
+
+    expect(key).toBe(await digestSHA256(`${digestShapedKey}-${parentRunId}`));
+    expect(key).not.toBe(digestShapedKey);
+    expect(getIdempotencyKeyOptions(key!)).toEqual({ key: digestShapedKey, scope: "run" });
+  });
+
+  it("keeps a global key created with idempotencyKeys.create() global", async () => {
+    // Catches: a created global key being re-scoped to the parent run.
+    const created = await createIdempotencyKey("my-key", { scope: "global" });
+
+    expect(await makeIdempotencyKey(created)).toBe(created);
+    expect(created).toBe(await digestSHA256("my-key"));
+  });
+
+  it("keeps a run-scoped key created with idempotencyKeys.create() run-scoped", async () => {
+    // Catches: a created run key being re-hashed with the parent run ID a second time.
+    const created = await createIdempotencyKey("my-key", { scope: "run" });
+
+    expect(await makeIdempotencyKey(created)).toBe(created);
+    expect(created).toBe(await digestSHA256(`my-key-${parentRunId}`));
   });
 });
 
@@ -174,9 +219,8 @@ describe("resetIdempotencyKey", () => {
     expect(await resetAndCaptureKey("my-task", digestShapedKey)).toBe(digestShapedKey);
   });
 
-  it("resets 64-character material that trigger stored verbatim when no scope is passed", async () => {
-    // trigger() forwards 64-character material as-is, so that is what the server stored
-    expect(await makeIdempotencyKey(digestShapedKey)).toBe(digestShapedKey);
+  it("resets 64-character material that was stored verbatim when no scope is passed", async () => {
+    // Older clients forwarded 64-character material as-is, so that is what the server stored
     existingKeys = new Set([digestShapedKey]);
 
     expect(await resetAndCaptureKey("my-task", digestShapedKey)).toBe(digestShapedKey);

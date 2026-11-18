@@ -55,8 +55,9 @@ export function isIdempotencyKey(
 ): value is IdempotencyKey {
   // Cannot check the brand at runtime because it doesn't exist (it's a TypeScript-only construct)
   // Check for primitive strings only (we no longer use String objects)
-  if (typeof value === "string") {
-    return value.length === 64;
+  // A 64-char key is only assumed pre-hashed if the catalog knows it
+  if (typeof value === "string" && value.length === 64) {
+    return getIdempotencyKeyOptions(value) !== undefined;
   }
   return false;
 }
