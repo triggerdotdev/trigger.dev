@@ -317,17 +317,6 @@ const hydrateAssociatedWaitpoint: DedicatedRelationHydrator = async (
   return byParent;
 };
 
-// Display connections for a run: WaitpointRunConnection → Waitpoint rows.
-const hydrateConnectedWaitpoints: DedicatedRelationHydrator = async (client, parents, projection) =>
-  batchHydrateJoinRelation(
-    client.waitpointRunConnection,
-    client.waitpoint,
-    parents.map((p) => p.id as string),
-    "taskRunId",
-    "waitpointId",
-    projection
-  );
-
 // Completed waitpoints for a snapshot: CompletedWaitpoint join → Waitpoint rows.
 const hydrateCompletedWaitpoints: DedicatedRelationHydrator = async (client, parents, projection) =>
   batchHydrateJoinRelation(
@@ -478,7 +467,6 @@ async function batchHydrateEdgeTarget(
 
 const TASK_RUN_DEDICATED: DedicatedRelationSpec = {
   associatedWaitpoint: hydrateAssociatedWaitpoint,
-  connectedWaitpoints: hydrateConnectedWaitpoints,
 };
 
 // Dedicated-schema relations on the TaskRunWaitpoint (block edge) model. The dedicated subset has only the
