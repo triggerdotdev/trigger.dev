@@ -63,11 +63,8 @@ import {
   createOAuthAuthorizationCode,
   validateAuthorizationRequest,
 } from "~/services/oauth/authorize.server";
-import {
-  isPublicAddress,
-  publicOnlyLookup,
-  type MetadataTransport,
-} from "~/services/oauth/cimdFetch.server";
+import { publicOnlyLookup, type MetadataTransport } from "~/services/oauth/cimdFetch.server";
+import { isPublicAddress } from "~/services/publicAddress.server";
 import { registerClient, resolveClient } from "~/services/oauth/clients.server";
 import { sweepOAuthClients } from "~/services/oauth/clientSweep.server";
 import { action as tokenAction } from "~/routes/oauth.token";
@@ -1040,6 +1037,11 @@ describe("OAuth authorization server", () => {
     ["169.254.169.254", false],
     ["fd00::1", false],
     ["fe80::1", false],
+    // Catches: the metadata fetch disagreeing with the shared address rule on NAT64 and 6to4.
+    ["64:ff9b::808:808", true],
+    ["64:ff9b::a9fe:a9fe", false],
+    ["2002:a9fe:a9fe::1", false],
+    ["::a9fe:a9fe", false],
   ] as const)("isPublicAddress(%s) is %s", ([address, expected]) => {
     expect(isPublicAddress(address)).toBe(expected);
   });

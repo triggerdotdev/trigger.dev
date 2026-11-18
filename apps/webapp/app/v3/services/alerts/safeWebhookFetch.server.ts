@@ -1,8 +1,9 @@
 import http from "node:http";
 import https from "node:https";
 import { promises as dnsPromises } from "node:dns";
-import type { LookupFunction } from "node:net";
+import { isIP, type LookupFunction } from "node:net";
 import { logger } from "~/services/logger.server";
+import { ipLiteralHost } from "~/services/publicAddress.server";
 import {
   assertAddressAllowed,
   assertSafeWebhookUrl,
@@ -68,6 +69,11 @@ const safeLookup: LookupFunction = (hostname, options, callback) => {
 // which also frees the socket.
 function requestOnce(urlStr: string, init: SafeWebhookFetchInit): Promise<Response> {
   const url = new URL(urlStr);
+  // Node skips the lookup hook for IP literals, so check them here.
+  const literal = ipLiteralHost(url.hostname);
+  if (literal !== null) {
+    assertAddressAllowed(literal, isIP(literal));
+  }
   const mod = url.protocol === "https:" ? https : http;
   // Set Content-Length explicitly (as fetch does for string/Buffer bodies)
   // rather than falling back to chunked transfer-encoding, which some
