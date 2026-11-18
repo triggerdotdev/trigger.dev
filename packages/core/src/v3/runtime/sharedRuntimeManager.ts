@@ -44,6 +44,7 @@ export class SharedRuntimeManager implements RuntimeManager {
   reset(): void {
     this.resolversById.clear();
     this.waitpointsByResolverId.clear();
+    this._preventMultipleWaits = preventMultipleWaits();
   }
 
   disable(): void {
