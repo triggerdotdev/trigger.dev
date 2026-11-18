@@ -184,6 +184,7 @@ import {
   type SessionTriggerConfigInput,
 } from "./sessions.js";
 import { createTask } from "./shared.js";
+import { withJsonToolResults } from "./toolOutputJson.js";
 import { triggerConcurrencyBody } from "./concurrency-shared.js";
 import { markChatAgentRunForStreamsWarning } from "./streams.js";
 import { tracer } from "./tracer.js";
@@ -208,10 +209,12 @@ function toModelMessages(messages: UIMessage[], context?: UIMessage[]): Promise<
   return convertSteeredMessages(
     messages,
     async (batch) =>
-      convertToModelMessages(batch, {
-        ignoreIncompleteToolCalls: true,
-        ...(tools ? { tools } : {}),
-      }),
+      withJsonToolResults(
+        await convertToModelMessages(batch, {
+          ignoreIncompleteToolCalls: true,
+          ...(tools ? { tools } : {}),
+        })
+      ),
     locals.get(chatSteeringInjectionsKey) ?? new Map(),
     context ?? locals.get(chatCurrentUIMessagesKey) ?? messages,
     context !== undefined || locals.get(chatCurrentUIMessagesKey) !== undefined
@@ -5496,8 +5499,10 @@ function toStreamTextOptions(
       // 4. Parallel tool results in call order, the order the next turn's history
       // will list them in. See `withToolResultsInCallOrder`.
       const base = resultMessages ?? messages;
-      const ordered = withToolResultsInCallOrder(base);
-      return resultMessages || ordered !== base ? { messages: ordered } : undefined;
+      // 5. Tool results as plain JSON, which AI SDK 7 before 7.0.101 checks on
+      // every step. See `withJsonToolResults`.
+      const prepared = await withJsonToolResults(withToolResultsInCallOrder(base));
+      return resultMessages || prepared !== base ? { messages: prepared } : undefined;
     };
   }
 
