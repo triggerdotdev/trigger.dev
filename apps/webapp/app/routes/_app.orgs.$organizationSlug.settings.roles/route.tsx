@@ -24,6 +24,10 @@ import { TextLink } from "~/components/primitives/TextLink";
 import { useOrganization } from "~/hooks/useOrganizations";
 import { useShowSelfServe } from "~/hooks/useShowSelfServe";
 import { resolveOrgIdFromSlug } from "~/models/organization.server";
+import {
+  hasAuditLogsAccess,
+  permissionsShownToOrg,
+} from "~/services/auditLogs/auditLogsAccess.server";
 import { rbac } from "~/services/rbac.server";
 import { dashboardLoader } from "~/services/routeBuilders/dashboardBuilder";
 import { pageMeta } from "~/utils/pageTitle";
@@ -49,21 +53,29 @@ export const loader = dashboardLoader(
       throw new Response("Not Found", { status: 404 });
     }
 
-    const [roles, assignableRoleIds, allPermissions, systemRoles, isUsingPlugin, currentRole] =
-      await Promise.all([
-        rbac.allRoles(orgId),
-        rbac.getAssignableRoleIds(orgId),
-        rbac.allPermissions(orgId),
-        rbac.systemRoles(orgId),
-        // OSS self-host has no RBAC plugin.
-        rbac.isUsingPlugin(),
-        rbac.getUserRole({ userId: user.id, organizationId: orgId }),
-      ]);
+    const [
+      roles,
+      assignableRoleIds,
+      allPermissions,
+      systemRoles,
+      isUsingPlugin,
+      currentRole,
+      auditLogsAccess,
+    ] = await Promise.all([
+      rbac.allRoles(orgId),
+      rbac.getAssignableRoleIds(orgId),
+      rbac.allPermissions(orgId),
+      rbac.systemRoles(orgId),
+      // OSS self-host has no RBAC plugin.
+      rbac.isUsingPlugin(),
+      rbac.getUserRole({ userId: user.id, organizationId: orgId }),
+      hasAuditLogsAccess(user, orgId),
+    ]);
 
     return typedjson({
       roles,
       assignableRoleIds,
-      allPermissions,
+      allPermissions: permissionsShownToOrg(allPermissions, auditLogsAccess),
       systemRoles,
       isUsingPlugin,
       currentRoleName: currentRole?.name ?? null,
