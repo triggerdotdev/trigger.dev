@@ -1,5 +1,5 @@
 import { createHash, randomBytes } from "node:crypto";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, onTestFinished, vi } from "vitest";
 
 const db = vi.hoisted(() => ({ client: null as any, rbac: null as any }));
 const mockEnv = vi.hoisted(() => ({
@@ -81,6 +81,8 @@ vi.setConfig({ testTimeout: 60_000 });
 const REDIRECT_URI = "https://claude.ai/api/mcp/auth_callback";
 const RESOURCE = "https://mcp.example.com/mcp";
 const audit = { ip: null, userAgent: null };
+// Keep each burst in one bucket: sliding windows discount requests across minute boundaries.
+const RATE_LIMIT_TEST_TIME = new Date("2026-01-01T00:00:30Z");
 
 let userCounter = 0;
 
@@ -724,6 +726,8 @@ describe("OAuth authorization server", () => {
       mockEnv.RATE_LIMIT_REDIS_HOST = redisOptions.host!;
       mockEnv.RATE_LIMIT_REDIS_PORT = redisOptions.port!;
       mockEnv.RATE_LIMIT_REDIS_PASSWORD = redisOptions.password;
+      onTestFinished(() => vi.useRealTimers());
+      vi.useFakeTimers({ toFake: ["Date"], now: RATE_LIMIT_TEST_TIME });
       const send = () =>
         action({
           request: new Request(`https://app.example.com${path}`, {
@@ -910,6 +914,8 @@ describe("OAuth authorization server", () => {
       mockEnv.RATE_LIMIT_REDIS_PORT = redisOptions.port!;
       mockEnv.RATE_LIMIT_REDIS_PASSWORD = redisOptions.password;
       session.user = { id: "u", isImpersonating: false };
+      onTestFinished(() => vi.useRealTimers());
+      vi.useFakeTimers({ toFake: ["Date"], now: RATE_LIMIT_TEST_TIME });
       const send = () =>
         authorizeLoader({
           request: new Request("https://app.example.com/oauth/authorize?client_id=plain", {
