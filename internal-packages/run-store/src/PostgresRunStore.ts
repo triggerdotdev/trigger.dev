@@ -1739,22 +1739,6 @@ export class PostgresRunStore implements RunStore {
     return this.#findTaskRunWithSelect(this.prisma, "findFirst", where, args ?? {});
   }
 
-  findRunOrThrowOnPrimary<S extends Prisma.TaskRunSelect>(
-    where: Prisma.TaskRunWhereInput,
-    args: { select: S }
-  ): Promise<Prisma.TaskRunGetPayload<{ select: S }>>;
-  findRunOrThrowOnPrimary<I extends Prisma.TaskRunInclude>(
-    where: Prisma.TaskRunWhereInput,
-    args: { include: I }
-  ): Promise<Prisma.TaskRunGetPayload<{ include: I }>>;
-  findRunOrThrowOnPrimary(where: Prisma.TaskRunWhereInput): Promise<TaskRun>;
-  async findRunOrThrowOnPrimary(
-    where: Prisma.TaskRunWhereInput,
-    args?: { select?: Prisma.TaskRunSelect; include?: Prisma.TaskRunInclude }
-  ): Promise<unknown> {
-    return this.#findTaskRunWithSelect(this.prisma, "findFirstOrThrow", where, args ?? {});
-  }
-
   findRuns<S extends Prisma.TaskRunSelect>(
     args: {
       where: Prisma.TaskRunWhereInput;

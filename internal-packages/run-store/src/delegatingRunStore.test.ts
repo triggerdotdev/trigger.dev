@@ -10,7 +10,7 @@
 //
 // Three things remain invisible to the compiler, and they are what is left here.
 //
-// First, the six overloaded members. TypeScript cannot express one body that satisfies an overload
+// First, the five overloaded members. TypeScript cannot express one body that satisfies an overload
 // set, so their single implementation forwards through a cast, and the cast is exactly where a
 // wrong-member forward would stop being a type error.
 //
@@ -35,7 +35,6 @@ const OVERLOADED_MEMBERS = [
   "findRun",
   "findRunOrThrow",
   "findRunOnPrimary",
-  "findRunOrThrowOnPrimary",
   "findRuns",
   "findRunsByIds",
 ] as const;

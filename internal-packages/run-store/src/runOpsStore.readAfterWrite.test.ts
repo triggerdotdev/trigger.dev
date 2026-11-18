@@ -474,4 +474,83 @@ describe("run-ops split — read-after-write reads the OWNING store's WRITER, no
       expect(hits()).toEqual({ ...none, newWriter: true, legacyWriter: true });
     }
   );
+
+  // Catches: a dropped field list, a client with no field list reading a replica, or a branded replica reaching a writer.
+  heteroRunOpsPostgresTest(
+    "findRunOrThrow with a caller client keeps the field list or reads the whole row, and a branded replica fans out over the replicas",
+    async ({ prisma14, prisma17 }) => {
+      const dedicated = seedEnvironmentDedicated("ort_rows_new");
+      const legacy = await seedEnvironmentLegacy(prisma14, "ort_rows_leg");
+      const newRunId = `run_${NEW_ID_26}`;
+      const legacyRunId = `run_${CUID_25}`;
+      await prisma17.taskRun.create({
+        data: taskRunData({
+          id: newRunId,
+          friendlyId: "run_rows_new",
+          organizationId: dedicated.organization.id,
+          projectId: dedicated.project.id,
+          runtimeEnvironmentId: dedicated.environment.id,
+        }),
+      });
+      await prisma14.taskRun.create({
+        data: {
+          ...taskRunData({
+            id: legacyRunId,
+            friendlyId: "run_rows_leg",
+            organizationId: legacy.organization.id,
+            projectId: legacy.project.id,
+            runtimeEnvironmentId: legacy.environment.id,
+          }),
+          spanId: "span_rows_legacy",
+        },
+      });
+
+      // 1. Run id with a field list → only the selected field (plus `id`, which the run-ops
+      // schema's select always keeps), from the NEW writer.
+      const selected = makeLaggingRouter(prisma14, prisma17);
+      expect(
+        await selected.router.findRunOrThrow(
+          { id: newRunId },
+          { select: { friendlyId: true } },
+          prisma14
+        )
+      ).toEqual({ friendlyId: "run_rows_new", id: newRunId });
+      expect(selected.hits()).toEqual({ ...none, newWriter: true });
+
+      // 2. Run id, client and no field list → the whole row, from the NEW writer.
+      const wholeRow = makeLaggingRouter(prisma14, prisma17);
+      const row = await wholeRow.router.findRunOrThrow({ id: newRunId }, prisma14);
+      expect(row).toMatchObject({ friendlyId: "run_rows_new", taskIdentifier: "my-task" });
+      expect(wholeRow.hits()).toEqual({ ...none, newWriter: true });
+
+      // 3. No run id with a field list → only the selected field, from the LEGACY writer.
+      const fanSelected = makeLaggingRouter(prisma14, prisma17);
+      expect(
+        await fanSelected.router.findRunOrThrow(
+          { spanId: "span_rows_legacy" },
+          { select: { id: true } },
+          prisma14
+        )
+      ).toEqual({ id: legacyRunId });
+      expect(fanSelected.hits()).toEqual({ ...none, newWriter: true, legacyWriter: true });
+
+      // 4. No run id, client and no field list, every database misses → P2025 from the LEGACY writer.
+      const fanMissing = makeLaggingRouter(prisma14, prisma17);
+      await expect(
+        fanMissing.router.findRunOrThrow({ spanId: "span_rows_nowhere" }, prisma14)
+      ).rejects.toMatchObject(notFound);
+      expect(fanMissing.hits()).toEqual({ ...none, newWriter: true, legacyWriter: true });
+
+      // 5. No run id and a branded replica → both replicas, no writer.
+      const fanReplica = makeLaggingRouter(prisma14, prisma17);
+      await expect(
+        fanReplica.router.findRunOrThrow(
+          { spanId: "span_rows_legacy" },
+          { select: { id: true } },
+          markReadReplicaClient({}) as never
+        )
+      ).rejects.toThrow("lagging replica");
+      expect(fanReplica.hits()).toEqual({ ...none, newReplica: true, legacyReplica: true });
+    }
+  );
 });

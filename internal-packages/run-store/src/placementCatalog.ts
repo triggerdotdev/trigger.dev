@@ -202,7 +202,6 @@ export const READ_ONLY_METHODS: readonly string[] = [
   "findRun",
   "findRunOrThrow",
   "findRunOnPrimary",
-  "findRunOrThrowOnPrimary",
   "findRuns",
   "findRunsByIds",
   "findRunsByIdempotencyKeys",

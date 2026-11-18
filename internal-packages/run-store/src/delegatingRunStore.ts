@@ -7,7 +7,7 @@
 // argument, does not compile. That is the whole point of the shape. An untyped forwarder would let
 // both mistakes through, because a pass-through has no other behaviour to catch them.
 //
-// Six members are overloaded. Their overloads are declared so callers keep the full contract, and
+// Five members are overloaded. Their overloads are declared so callers keep the full contract, and
 // their single implementation signature is the one place a cast appears: TypeScript cannot express
 // one body that satisfies an overload set without it.
 //
@@ -366,22 +366,6 @@ export class DelegatingRunStore implements RunStore {
   findRunOnPrimary(where: Prisma.TaskRunWhereInput): Promise<TaskRun | null>;
   findRunOnPrimary(...args: unknown[]): unknown {
     return (this.delegate.findRunOnPrimary as (...a: unknown[]) => unknown).apply(
-      this.delegate,
-      args
-    );
-  }
-
-  findRunOrThrowOnPrimary<S extends Prisma.TaskRunSelect>(
-    where: Prisma.TaskRunWhereInput,
-    args: { select: S }
-  ): Promise<Prisma.TaskRunGetPayload<{ select: S }>>;
-  findRunOrThrowOnPrimary<I extends Prisma.TaskRunInclude>(
-    where: Prisma.TaskRunWhereInput,
-    args: { include: I }
-  ): Promise<Prisma.TaskRunGetPayload<{ include: I }>>;
-  findRunOrThrowOnPrimary(where: Prisma.TaskRunWhereInput): Promise<TaskRun>;
-  findRunOrThrowOnPrimary(...args: unknown[]): unknown {
-    return (this.delegate.findRunOrThrowOnPrimary as (...a: unknown[]) => unknown).apply(
       this.delegate,
       args
     );

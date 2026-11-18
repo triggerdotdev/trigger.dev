@@ -42,7 +42,6 @@ export const RUN_STORE_METHOD_NAMES = [
   "findRun",
   "findRunOrThrow",
   "findRunOnPrimary",
-  "findRunOrThrowOnPrimary",
   "findRuns",
   "findRunsByIds",
   "findRunsByIdempotencyKeys",

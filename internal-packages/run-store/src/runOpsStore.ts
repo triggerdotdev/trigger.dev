@@ -1166,8 +1166,12 @@ export class RoutingRunStore implements RunStore {
     if (id !== undefined) {
       // Residency-classifiable (id/friendlyId): route to the owning store and let it throw on miss.
       const store = this.#routeOrNew(id);
-      const method = onPrimary ? "findRunOrThrowOnPrimary" : "findRunOrThrow";
-      return (store[method] as (...rest: unknown[]) => Promise<unknown>)(where, args);
+      // The client goes second when there is no field list: the Postgres store reads it from there.
+      return (store.findRunOrThrow as (...rest: unknown[]) => Promise<unknown>)(
+        where,
+        ...(args === undefined ? [] : [args]),
+        onPrimary ? store.primaryReadClient : undefined
+      );
     }
     // Unclassifiable where (e.g. spanId): the run may live on either DB, so fan out NEW-first then
     // LEGACY rather than defaulting to NEW — defaulting silently misses legacy-resident runs and
@@ -1182,9 +1186,15 @@ export class RoutingRunStore implements RunStore {
   ): Promise<unknown> {
     const probe = onPrimary ? "findRunOnPrimary" : "findRun";
     // The last probe leg owns the canonical not-found throw when every shard misses.
-    const throwMethod = onPrimary ? "findRunOrThrowOnPrimary" : "findRunOrThrow";
     return this.#probeFirst((store, _key, isLast) =>
-      (store[isLast ? throwMethod : probe] as (...rest: unknown[]) => Promise<unknown>)(where, args)
+      isLast
+        ? // The client goes second when there is no field list: the Postgres store reads it from there.
+          (store.findRunOrThrow as (...rest: unknown[]) => Promise<unknown>)(
+            where,
+            ...(args === undefined ? [] : [args]),
+            onPrimary ? store.primaryReadClient : undefined
+          )
+        : (store[probe] as (...rest: unknown[]) => Promise<unknown>)(where, args)
     );
   }
 
@@ -1211,30 +1221,6 @@ export class RoutingRunStore implements RunStore {
       return (store.findRunOnPrimary as (...rest: unknown[]) => Promise<unknown>)(where, args);
     }
     return this.#findRunUnrouted(where, args, true);
-  }
-
-  findRunOrThrowOnPrimary<S extends Prisma.TaskRunSelect>(
-    where: Prisma.TaskRunWhereInput,
-    args: { select: S }
-  ): Promise<Prisma.TaskRunGetPayload<{ select: S }>>;
-  findRunOrThrowOnPrimary<I extends Prisma.TaskRunInclude>(
-    where: Prisma.TaskRunWhereInput,
-    args: { include: I }
-  ): Promise<Prisma.TaskRunGetPayload<{ include: I }>>;
-  findRunOrThrowOnPrimary(where: Prisma.TaskRunWhereInput): Promise<TaskRun>;
-  findRunOrThrowOnPrimary(
-    where: Prisma.TaskRunWhereInput,
-    args?: { select?: unknown; include?: unknown }
-  ): Promise<unknown> {
-    const id = idFromWhere(where);
-    if (id !== undefined) {
-      const store = this.#routeOrNew(id);
-      return (store.findRunOrThrowOnPrimary as (...rest: unknown[]) => Promise<unknown>)(
-        where,
-        args
-      );
-    }
-    return this.#findRunOrThrowUnrouted(where, args, true);
   }
 
   // ---------------------------------------------------------------------------
