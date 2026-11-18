@@ -4,7 +4,7 @@ import { useState } from "react";
 import { useUserTimeZone } from "~/components/primitives/DateTime";
 import { DetailChartBlock } from "~/components/primitives/DetailChartBlock";
 import { TimeFilter } from "~/components/runs/v3/SharedFilters";
-import type { AlertDetail } from "~/presenters/v3/AlertDetailPresenter.server";
+import type { AlertDetail, ChartAlert } from "~/presenters/v3/AlertDetailPresenter.server";
 import { HealthViewToggle, type HealthView } from "./HealthViewToggle";
 import { GroupsDropdown } from "./GroupsDropdown";
 import { PreviewChartCard } from "./PreviewChartCard";
@@ -103,7 +103,7 @@ function alertChartTitle(
 }
 
 type AlertDetailChartProps = {
-  alert: AlertDetail;
+  alert: ChartAlert;
   metricSeriesMap: Map<string, MetricSeriesPoint[]>;
   healthBands: HealthBandRow[];
   componentSeries?: HealthQuerySeries[];
@@ -135,7 +135,7 @@ function limitsAsQueryProps(
       scope: { type: "all" },
       currentReading: { status: "unavailable" },
       capabilityTitle: single?.label ?? alert.capabilityTitle,
-    } as AlertDetail,
+    } as ChartAlert,
     metricSeriesMap: single
       ? new Map([["__agg__", single.points]])
       : new Map(tiles.map((t) => [t.label, t.points])),
@@ -345,7 +345,8 @@ function AlertDetailChartBody({
         }
       : { ...raw, series: sliceFrom(raw.series, start) };
     const facts =
-      alert.currentReading.status === "available" && alert.currentReading.result.kind === "stateful"
+      alert.currentReading?.status === "available" &&
+      alert.currentReading.result.kind === "stateful"
         ? alert.currentReading.result.facts
         : undefined;
     const threshold =
@@ -585,7 +586,7 @@ function OccurrenceBarsCard({
 }: {
   tile?: { peak: string | null };
   title: string;
-  alert: AlertDetail;
+  alert: ChartAlert;
   occurrences: { bucket: number; count: number }[];
   window: DetailWindow;
   createdAt?: Date;

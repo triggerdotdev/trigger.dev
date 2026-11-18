@@ -10,6 +10,7 @@ import {
   type QueryWidgetConfig,
   type QueryWidgetData,
 } from "~/components/metrics/QueryWidget";
+import { activeWatchFilters } from "~/components/metrics/widgetWatch";
 import { useElementVisibility } from "~/hooks/useElementVisibility";
 import { useInterval } from "~/hooks/useInterval";
 import { env } from "~/env.server";
@@ -298,6 +299,8 @@ export function MetricWidget({
         title={title}
         titleString={title}
         query={props.query}
+        period={props.period ?? undefined}
+        watchFilters={activeWatchFilters(props.scope, props)}
         config={config}
         isLoading={isLoading}
         data={data}

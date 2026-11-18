@@ -33,6 +33,7 @@ export function TraceFilters({
   errorsOnly,
   onErrorsOnlyChange,
   debug,
+  compactSearch = false,
 }: {
   onFilterTextChange: (text: string) => void;
   /** Omit to hide the Queue time switch. */
@@ -42,12 +43,17 @@ export function TraceFilters({
   onErrorsOnlyChange: (errorsOnly: boolean) => void;
   /** Admin-only Debug switch; omit to hide it. */
   debug?: { checked: boolean; onChange: (checked: boolean) => void };
+  /** Keep the search box narrow while typing, for bars with less room. */
+  compactSearch?: boolean;
 }) {
   const isAdmin = useHasAdminAccess();
 
   return (
     <>
-      <SearchField onChange={onFilterTextChange} />
+      <SearchField
+        onChange={onFilterTextChange}
+        focusedWidth={compactSearch ? "14rem" : undefined}
+      />
       {onShowQueueTimeChange && (
         <Switch
           variant="secondary/small"
@@ -76,7 +82,13 @@ export function TraceFilters({
   );
 }
 
-function SearchField({ onChange }: { onChange: (value: string) => void }) {
+function SearchField({
+  onChange,
+  focusedWidth,
+}: {
+  onChange: (value: string) => void;
+  focusedWidth?: string;
+}) {
   const [value, setValue] = useState("");
 
   const updateFilterText = useDebounce((text: string) => {
@@ -88,5 +100,12 @@ function SearchField({ onChange }: { onChange: (value: string) => void }) {
     updateFilterText(next);
   };
 
-  return <SearchInput placeholder="Search logs…" value={value} onValueChange={updateValue} />;
+  return (
+    <SearchInput
+      placeholder="Search logs…"
+      value={value}
+      onValueChange={updateValue}
+      focusedWidth={focusedWidth}
+    />
+  );
 }

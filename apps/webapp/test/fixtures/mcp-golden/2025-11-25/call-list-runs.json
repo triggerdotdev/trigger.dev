@@ -1,0 +1,32 @@
+{
+  "request": {
+    "jsonrpc": "2.0",
+    "id": 4,
+    "method": "tools/call",
+    "params": {
+      "name": "list_runs",
+      "arguments": {
+        "projectRef": "<PROJECT_REF>",
+        "environment": "prod"
+      }
+    }
+  },
+  "response": {
+    "status": 200,
+    "headers": {
+      "content-type": "application/json"
+    },
+    "body": {
+      "result": {
+        "content": [
+          {
+            "type": "text",
+            "text": "Found 1 run\n\n1. <RUN_ID> | <untrusted-data source=\"run-task\" boundary=\"<BOUNDARY>\">my-task</untrusted-data boundary=\"<BOUNDARY>\"> | executing | env:<untrusted-data source=\"run-env\" boundary=\"<BOUNDARY>\">prod</untrusted-data boundary=\"<BOUNDARY>\"> | created 2025-01-01 00:00:00 UTC\n"
+          }
+        ]
+      },
+      "jsonrpc": "2.0",
+      "id": 4
+    }
+  }
+}

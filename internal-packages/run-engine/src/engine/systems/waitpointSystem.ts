@@ -34,6 +34,7 @@ import { registrationEvidence } from "../waitpointCoordinator/keys.js";
 import { classifyWaitpointCoordinator } from "../waitpointCoordinator/routing.js";
 import { buildCompletedWaitpointRecords } from "./completedWaitpointResolver.js";
 import { resolveCompletedWaitpointRecords } from "./completedWaitpointRecordAdapter.js";
+import { CONTINUED_WHILST_EXECUTING_DESCRIPTION } from "../consts.js";
 import { sendNotificationToWorker } from "../eventBus.js";
 import { isExecuting, isFinalRunStatus, isPendingExecuting } from "../statuses.js";
 import { LegacyPostgresWaitpointCoordinator } from "../waitpointCoordinator/legacyPostgresCoordinator.js";
@@ -2246,7 +2247,7 @@ export class WaitpointSystem {
               },
               snapshot: {
                 executionStatus: "EXECUTING",
-                description: "Run was continued, whilst still executing.",
+                description: CONTINUED_WHILST_EXECUTING_DESCRIPTION,
               },
               previousSnapshotId: snapshot.id,
               previousSnapshot: snapshot,

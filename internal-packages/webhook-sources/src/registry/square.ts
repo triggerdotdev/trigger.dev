@@ -6,7 +6,7 @@ export const entry: ProviderRegistryEntry = {
   category: "payments",
   docsUrl: "https://developer.squareup.com/docs/webhooks/step3validate",
   preset: "square",
-  secretProvisioning: "integrator",
+  secretProvisioning: "provider",
   eventTypeSource: { from: "body", path: "type" },
   sampleSource: "handauthored",
 };

@@ -1,5 +1,5 @@
 import { MAX_INLINE_COMPLETION_OUTPUT_BYTES } from "@internal/run-engine";
-import { parseWithZod } from "@conform-to/zod/v4";
+import { parseWithZod } from "~/utils/conform";
 import { Form, useLocation, useNavigation, useSubmit } from "@remix-run/react";
 import { type ActionFunctionArgs, json } from "@remix-run/server-runtime";
 import type { WaitpointTokenStatus } from "@trigger.dev/core/v3";

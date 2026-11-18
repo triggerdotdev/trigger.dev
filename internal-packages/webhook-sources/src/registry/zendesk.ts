@@ -18,7 +18,7 @@ export const entry: ProviderRegistryEntry = {
   label: "Zendesk",
   category: "support",
   docsUrl: "https://developer.zendesk.com/documentation/webhooks/verifying/",
-  secretProvisioning: "integrator",
+  secretProvisioning: "provider",
   eventTypeSource: { from: "body", path: "status" },
   sampleSource: "handauthored",
 };

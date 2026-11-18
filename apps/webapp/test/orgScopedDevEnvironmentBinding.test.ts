@@ -18,6 +18,8 @@ vi.mock("~/db.server", () => webappRouteMocks.dbServerProxyMock(ctx));
 vi.mock("~/env.server", () => ({
   env: {
     SESSION_SECRET: "test-session-secret-for-org-scoped-dev-binding",
+    // Signs the acting user on minted env JWTs.
+    ENCRYPTION_KEY: "test-public-token-secret",
     APP_ORIGIN: "https://example.com",
   },
 }));
@@ -166,7 +168,7 @@ async function call(handler: any, url: string, params: Record<string, string>, i
   }
 }
 
-function exchangeDevJwt(projectRef: string, token: string) {
+function exchangeDevJwt(projectRef: string, token: string, scopes?: string[]) {
   return call(
     jwtAction,
     `https://api.trigger.dev/api/v1/projects/${projectRef}/dev/jwt`,
@@ -174,7 +176,7 @@ function exchangeDevJwt(projectRef: string, token: string) {
     {
       method: "POST",
       headers: { Authorization: `Bearer ${token}`, "content-type": "application/json" },
-      body: JSON.stringify({}),
+      body: JSON.stringify(scopes ? { claims: { scopes } } : {}),
     }
   );
 }
@@ -260,4 +262,26 @@ postgresTest("a member with no dev environment in the project is refused", async
   );
 
   expect(exchange.status).toBe(404);
+});
+
+// Catches: queue grounding authorized by read:query, letting a query-only JWT read queue state.
+postgresTest("a query-only JWT cannot read queue grounding", async ({ prisma }) => {
+  ctx.prisma = prisma;
+  const world = await seedWorld(prisma);
+
+  const exchange = await exchangeDevJwt(
+    world.project.externalRef,
+    await orgScopedToken(world.userA.id, world.organization.id),
+    ["read:query"]
+  );
+  expect(exchange.status).toBe(200);
+
+  const grounding = await call(
+    groundingLoader,
+    `https://api.trigger.dev/api/v1/dashboard-agent/queues/${QUEUE_NAME}/grounding?type=custom`,
+    { queueParam: QUEUE_NAME },
+    withJwt(exchange.body.token as string)
+  );
+
+  expect(grounding.status).toBe(403);
 });

@@ -14,6 +14,7 @@ import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { createRedisContainer } from "../../../internal-packages/testcontainers/src/utils";
 import { seedTestEnvironment } from "./helpers/seedTestEnvironment";
 import { seedTestRun } from "./helpers/seedTestRun";
+import { seedTestApiSession } from "./helpers/seedTestApiSession";
 import { seedTestPAT, seedTestUser } from "./helpers/seedTestPAT";
 import { assertRunTokenSchedules } from "./helpers/assertRunTokenSchedules";
 import { assertRunTokenWaitpoints } from "./helpers/assertRunTokenWaitpoints";
@@ -176,9 +177,139 @@ async function seedDeployedEnvironment() {
   return { ...seed, environment };
 }
 
+async function packetReaderFor(environmentId: string) {
+  const user = await seedTestUser(database.prisma);
+  const key = `tr_prod_sk_${randomBytes(12).toString("hex")}`;
+  await database.prisma.apiKey.create({
+    data: {
+      name: "Restricted packet reader",
+      keyHash: createHash("sha256").update(key).digest("hex"),
+      lastFour: key.slice(-4),
+      runtimeEnvironmentId: environmentId,
+      createdByUserId: user.id,
+      scopes: ["read:packets"],
+    },
+  });
+  return key;
+}
+
 describe("run-token API authorization", () => {
   it("creates usable preview and production waitpoint callbacks and public JWTs", async () => {
     await assertRunTokenWaitpoints(database.prisma, tokenFor);
+  });
+
+  // Catches: own-run waits requiring broad waitpoint grants or allowing foreign waitpoint access.
+  it("creates and blocks scoped waits without granting access to existing waitpoints", async () => {
+    const { environment, project, organization } = await seedDeployedEnvironment();
+    const { run } = await seedTestRun(database.prisma, {
+      environmentId: environment.id,
+      projectId: project.id,
+    });
+    await database.prisma.taskRun.update({
+      where: { id: run.id },
+      data: { status: "EXECUTING", organizationId: organization.id },
+    });
+    await database.prisma.taskRunExecutionSnapshot.create({
+      data: {
+        engine: "V2",
+        executionStatus: "EXECUTING",
+        description: "Test run executing",
+        runId: run.id,
+        runStatus: "EXECUTING",
+        environmentId: environment.id,
+        environmentType: "PRODUCTION",
+        projectId: project.id,
+        organizationId: organization.id,
+      },
+    });
+    // The scopes a sandbox run token carries for its own run and session.
+    const scopes = [
+      `read:runs:${run.friendlyId}`,
+      `write:runs:${run.friendlyId}`,
+      "read:sessions:scoped-session:in",
+    ];
+    const bearer = await tokenFor(environment, scopes);
+    const post = (body: unknown) => {
+      const json = JSON.stringify(body);
+      return new Request("https://api.example.com/test", {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${bearer}`,
+          "Content-Type": "application/json",
+          "Content-Length": String(Buffer.byteLength(json)),
+        },
+        body: json,
+      });
+    };
+    const duration = await import("~/routes/engine.v1.runs.$runFriendlyId.wait.duration");
+    const input = await import("~/routes/api.v1.runs.$runFriendlyId.input-streams.wait");
+    const session = await import("~/routes/api.v1.runs.$runFriendlyId.session-streams.wait");
+    const params = { runFriendlyId: run.friendlyId };
+    const createToken = await import("~/routes/api.v1.waitpoints.tokens");
+    const createBody = JSON.stringify({ idempotencyKey: "shared-key" });
+    const standalone = await createToken.action({
+      request: new Request("https://api.example.com/test", {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${environment.apiKey}`,
+          "Content-Type": "application/json",
+          "Content-Length": String(Buffer.byteLength(createBody)),
+        },
+        body: createBody,
+      }),
+      params: {},
+      context: {},
+    });
+    expect(standalone.status).toBe(200);
+    const standaloneId = (await standalone.json()).id;
+    const durationResult = await duration.action({
+      request: post({ date: new Date(Date.now() + 60_000).toISOString() }),
+      params,
+      context: {},
+    });
+    expect(durationResult.status).toBe(200);
+    const waitpointId = (await durationResult.json()).waitpoint.id;
+    for (const [action, body] of [
+      [input.action, { streamId: "approval", timeout: "1h", idempotencyKey: "shared-key" }],
+      [session.action, { session: "scoped-session", io: "in", timeout: "1h" }],
+    ] as const) {
+      const response = await action({ request: post(body), params, context: {} });
+      expect(response.status).toBe(200);
+      const created = await response.json();
+      expect(created).toMatchObject({ isBlocked: true });
+      expect(created.waitpointId).not.toBe(standaloneId);
+    }
+    const complete =
+      await import("~/routes/api.v1.waitpoints.tokens.$waitpointFriendlyId.complete");
+    const denied = await complete.action({
+      request: post({}),
+      params: { waitpointFriendlyId: waitpointId },
+      context: {},
+    });
+    expect(denied.status).toBe(403);
+    expect(await denied.json()).toMatchObject({
+      error: expect.stringContaining(`write:waitpoints:${waitpointId}`),
+      code: "unauthorized",
+      param: "access_token",
+      type: "authorization",
+    });
+    const existing =
+      await import("~/routes/engine.v1.runs.$runFriendlyId.waitpoints.tokens.$waitpointFriendlyId.wait");
+    const readDenied = await existing.action({
+      request: post({}),
+      params: { ...params, waitpointFriendlyId: waitpointId },
+      context: {},
+    });
+    expect(readDenied.status).toBe(403);
+    const foreign = await duration.action({
+      request: post({ date: new Date(Date.now() + 60_000).toISOString() }),
+      params: { runFriendlyId: "run_other" },
+      context: {},
+    });
+    expect(foreign.status).toBe(403);
+    expect((await foreign.json()).error).toBe(
+      "Unauthorized. Missing permission: write:runs:run_other"
+    );
   });
 
   it("rejects run tokens on non-builder envvar and deployment routes and API-key-only auth", async () => {
@@ -319,6 +450,119 @@ describe("run-token API authorization", () => {
     expect((await list(publicToken)).status).toBe(403);
     await database.prisma.orgMember.delete({ where: { id: membership.id } });
     expect((await list(token)).status).toBe(403);
+  });
+
+  // Catches: a root key holder naming any user on a public JWT and being treated as that user.
+  it("verifies the user on a PAT-exchanged JWT but not on a self-signed one", async () => {
+    const { environment, organization, project } = await seedDeployedEnvironment();
+    const user = await seedTestUser(database.prisma);
+    await database.prisma.orgMember.create({
+      data: { organizationId: organization.id, userId: user.id, role: "MEMBER" },
+    });
+    const pat = await seedTestPAT(database.prisma, user.id);
+    const exchange = await import("~/routes/api.v1.projects.$projectRef.$env.jwt");
+    const { createLoaderApiRoute } = await import("~/services/routeBuilders/apiBuilder.server");
+    const route = createLoaderApiRoute(
+      {
+        allowJWT: true,
+        findResource: async () => ({ type: "runs", id: "run_actor" }),
+        authorization: { action: "read", resource: (resource) => resource },
+      },
+      async ({ authentication }) => new Response(JSON.stringify({ actor: authentication.actor }))
+    );
+    const actorFor = async (bearer: string) =>
+      (
+        await (
+          await route({
+            request: new Request("https://api.example.com/actor", {
+              headers: { Authorization: `Bearer ${bearer}` },
+            }),
+            params: {},
+            context: {},
+          })
+        ).json()
+      ).actor;
+
+    const exchanged = await exchange.action({
+      request: new Request("https://api.example.com/jwt", {
+        method: "POST",
+        headers: { Authorization: `Bearer ${pat.token}`, "Content-Type": "application/json" },
+        body: JSON.stringify({ claims: { scopes: ["read:runs"] } }),
+      }),
+      params: { projectRef: project.externalRef, env: "prod" },
+      context: {},
+    });
+    expect(exchanged.status).toBe(200);
+    const selfSigned = await generateJWT({
+      secretKey: environment.apiKey,
+      payload: { pub: true, sub: environment.id, scopes: ["read:runs"], act: { sub: user.id } },
+      expirationTime: "1h",
+    });
+
+    expect(await actorFor((await exchanged.json()).token)).toEqual({
+      sub: user.id,
+      client: "personal-access-token",
+      // The sealed source PAT, which revoking the PAT checks against.
+      pat: expect.any(String),
+      verified: true,
+    });
+    // Existing readers still get the user; only `verified` tells the two apart.
+    expect(await actorFor(selfSigned)).toEqual({ sub: user.id, verified: false });
+  });
+
+  // Catches: the legacy PUBLIC_JWT path (the API rate limiter's) checking the signature against
+  // anything other than the token's own environment, expiry and scopes.
+  it("verifies a PAT-exchanged JWT's user on the legacy path only with the claims it was minted with", async () => {
+    const { environment, organization, project } = await seedDeployedEnvironment();
+    const { environment: otherEnvironment } = await seedDeployedEnvironment();
+    const user = await seedTestUser(database.prisma);
+    await database.prisma.orgMember.create({
+      data: { organizationId: organization.id, userId: user.id, role: "MEMBER" },
+    });
+    const pat = await seedTestPAT(database.prisma, user.id);
+    const exchange = await import("~/routes/api.v1.projects.$projectRef.$env.jwt");
+    const { authenticateApiKey } = await import("~/services/apiAuth.server");
+
+    const exchanged = await exchange.action({
+      request: new Request("https://api.example.com/jwt", {
+        method: "POST",
+        headers: { Authorization: `Bearer ${pat.token}`, "Content-Type": "application/json" },
+        body: JSON.stringify({ claims: { scopes: ["read:runs"] } }),
+      }),
+      params: { projectRef: project.externalRef, env: "prod" },
+      context: {},
+    });
+    expect(exchanged.status).toBe(200);
+    const { token } = (await exchanged.json()) as { token: string };
+    const { act, exp } = decodeJwt(token) as { act: Record<string, unknown>; exp: number };
+    // The minted `act`, signature included, on a token with other claims. Only a root key holder
+    // can sign one of these, as here.
+    const resigned = (
+      target: { id: string; apiKey: string },
+      claims: { scopes: string[]; exp: number }
+    ) =>
+      generateJWT({
+        secretKey: target.apiKey,
+        payload: { pub: true, sub: target.id, scopes: claims.scopes, act },
+        expirationTime: claims.exp,
+      });
+    const actorFor = async (bearer: string) =>
+      (await authenticateApiKey(bearer, { allowJWT: true, clientIp: null }))?.actor;
+
+    expect(await actorFor(token)).toMatchObject({ sub: user.id, verified: true });
+    // Control: the minted claims, re-signed unchanged, still verify.
+    expect(
+      await actorFor(await resigned(environment, { scopes: ["read:runs"], exp }))
+    ).toMatchObject({ sub: user.id, verified: true });
+    expect(
+      await actorFor(await resigned(environment, { scopes: ["read:runs", "write:all"], exp }))
+    ).toMatchObject({ sub: user.id, verified: false });
+    expect(
+      await actorFor(await resigned(otherEnvironment, { scopes: ["read:runs"], exp }))
+    ).toMatchObject({ sub: user.id, verified: false });
+    expect(
+      await actorFor(await resigned(environment, { scopes: ["read:runs"], exp: exp + 60 }))
+    ).toMatchObject({ sub: user.id, verified: false });
   });
 
   it("retains restricted additional-key query and dashboard behavior without widening run tokens", async () => {
@@ -780,6 +1024,56 @@ describe("run-token API authorization", () => {
     );
   });
 
+  // Catches: legacy auth losing default attribution or nested auth wrappers double-counting it.
+  it("attributes default selections from bearer and legacy authentication once per request", async () => {
+    const { environment } = await seedDeployedEnvironment();
+    const { authenticateBearerWithTelemetry, observeLegacyBearerAuthentication } =
+      await import("~/services/authTelemetry.server");
+    const { authenticateApiRequestWithFailure } = await import("~/services/apiAuth.server");
+    const { configureSdkDefaultAttribution } =
+      await import("~/services/sdkDefaultAttribution.server");
+    configureSdkDefaultAttribution({
+      test: { id: "routes/test.$id", path: "test/:id", module: {} },
+    });
+    const request = () =>
+      new Request("https://api.example.com/test/private-id?secret=private", {
+        headers: {
+          Authorization: `Bearer ${environment.apiKey}`,
+          "x-trigger-sdk-operation": "default",
+          "x-trigger-sdk-credential-reason": "unsupported_operation",
+          "trigger-version": "4.8.5",
+        },
+      });
+    try {
+      const bearerRequest = request();
+      await observeLegacyBearerAuthentication(bearerRequest, () =>
+        authenticateBearerWithTelemetry(bearerRequest, {})
+      );
+      await authenticateApiRequestWithFailure(request());
+      const points = (await telemetryMetrics.getMetrics())
+        .slice(-1)
+        .flatMap((resource) => resource.scopeMetrics)
+        .flatMap((scope) => scope.metrics)
+        .filter((metric) => metric.descriptor.name === "api_auth.sdk_default_destinations")
+        .flatMap((metric) => metric.dataPoints);
+      expect(points.map((point) => ({ attributes: point.attributes, value: point.value }))).toEqual(
+        [
+          {
+            attributes: {
+              http_method: "GET",
+              route: "routes/test.$id",
+              reason: "unsupported_operation",
+              credential_kind: "root_api_key",
+            },
+            value: 2,
+          },
+        ]
+      );
+    } finally {
+      configureSdkDefaultAttribution({});
+    }
+  });
+
   it("round-trips an offloaded packet with an admin run token", async () => {
     const { environment } = await seedDeployedEnvironment();
     const token = await tokenFor(environment);
@@ -879,6 +1173,133 @@ describe("run-token API authorization", () => {
     expect(unscopedInitialization).not.toHaveBeenCalled();
     scopedInitialization.mockRestore();
     unscopedInitialization.mockRestore();
+  });
+
+  // Catches: packet-only keys losing offloaded wait results, or run grants leaking other waitpoints.
+  it("serves offloaded output only for waitpoints the run resumed from", async () => {
+    const { environment, project, organization } = await seedDeployedEnvironment();
+    const { run } = await seedTestRun(database.prisma, {
+      environmentId: environment.id,
+      projectId: project.id,
+    });
+    const waitpointFor = (key: string) =>
+      database.prisma.waitpoint.create({
+        data: {
+          friendlyId: `waitpoint_${key}`,
+          type: "MANUAL",
+          status: "COMPLETED",
+          completedAt: new Date(),
+          idempotencyKey: key,
+          userProvidedIdempotencyKey: false,
+          output: `waitpoint_${key}/stream/record.json`,
+          outputType: "application/store",
+          environmentId: environment.id,
+          projectId: project.id,
+        },
+      });
+    const resumed = await waitpointFor("resumed");
+    const other = await waitpointFor("other");
+    await database.prisma.taskRunExecutionSnapshot.create({
+      data: {
+        engine: "V2",
+        executionStatus: "EXECUTING",
+        description: "Resumed",
+        runId: run.id,
+        runStatus: "EXECUTING",
+        environmentId: environment.id,
+        environmentType: "PRODUCTION",
+        projectId: project.id,
+        organizationId: organization.id,
+        completedWaitpoints: { connect: { id: resumed.id } },
+      },
+    });
+    const token = await tokenFor(environment, [`read:runs:${run.friendlyId}`]);
+    const { loader } = await import("~/routes/api.v1.runs.$runId.waitpoints.$waitpointId.output");
+    for (const bearer of [token, await packetReaderFor(environment.id)]) {
+      const load = (waitpointId: string) =>
+        loader({
+          request: new Request("https://api.example.com/test", {
+            headers: { Authorization: `Bearer ${bearer}` },
+          }),
+          params: { runId: run.friendlyId, waitpointId },
+          context: {},
+        });
+
+      const response = await load(resumed.friendlyId);
+      expect(response.status).toBe(200);
+      expect((await response.json()).presignedUrl).toContain(
+        "waitpoint_resumed/stream/record.json"
+      );
+      expect((await load(other.friendlyId)).status).toBe(404);
+    }
+  });
+
+  // Catches: packet-only keys losing run packets, or bypassing shared development namespace isolation.
+  it.each(["PRODUCTION", "DEVELOPMENT"] as const)(
+    "preserves run packet access and namespace isolation in %s",
+    async (environmentType) => {
+      const { environment, project } =
+        environmentType === "PRODUCTION"
+          ? await seedDeployedEnvironment()
+          : await seedTestEnvironment(database.prisma);
+      const { run } = await seedTestRun(database.prisma, {
+        environmentId: environment.id,
+        projectId: project.id,
+      });
+      await database.prisma.taskRun.update({
+        where: { id: run.id },
+        data: {
+          payload: "stored/payload.json",
+          payloadType: "application/store",
+          output: "stored/output.json",
+          outputType: "application/store",
+        },
+      });
+      const key = await packetReaderFor(environment.id);
+      const runToken = await tokenFor(environment, [`read:runs:${run.friendlyId}`, "read:packets"]);
+      const foreign = await seedDeployedEnvironment();
+      const foreignKey = await packetReaderFor(foreign.environment.id);
+      const { loader } = await import("~/routes/api.v1.runs.$runId.packets.$field");
+      const load = (field: "payload" | "output", bearer: string) =>
+        loader({
+          request: new Request("https://api.example.com/test", {
+            headers: { Authorization: `Bearer ${bearer}` },
+          }),
+          params: { runId: run.friendlyId, field },
+          context: {},
+        });
+
+      for (const field of ["payload", "output"] as const) {
+        const response = await load(field, key);
+        expect(response.status).toBe(environmentType === "PRODUCTION" ? 200 : 403);
+        if (response.status === 200) {
+          expect((await response.json()).presignedUrl).toContain(`stored/${field}.json`);
+        }
+        expect((await load(field, runToken)).status).toBe(200);
+        expect((await load(field, foreignKey)).status).toBe(404);
+      }
+    }
+  );
+
+  // Catches: session output setup ignoring direction-scoped session grants, or a `.out` grant opening `.in`.
+  it("lets a direction-scoped run token initialize only that session direction", async () => {
+    const { environment } = await seedDeployedEnvironment();
+    const session = await seedTestApiSession(database.prisma, environment);
+    const token = await tokenFor(environment, [`write:sessions:${session.friendlyId}:out`]);
+    const { action } = await import("~/routes/realtime.v1.sessions.$session.$io");
+    const initialize = (io: "in" | "out") =>
+      action({
+        request: new Request(`https://api.example.com/realtime/v1/sessions/x/${io}`, {
+          method: "PUT",
+          headers: { Authorization: `Bearer ${token}` },
+        }),
+        params: { session: session.friendlyId, io },
+        context: {},
+      });
+
+    // Past authorization: the test environment has no S2 backend, so it reports 501.
+    expect((await initialize("out")).status).not.toBe(403);
+    expect((await initialize("in")).status).toBe(403);
   });
 
   it("mints a valid delegated public JWT through real run-token verification", async () => {

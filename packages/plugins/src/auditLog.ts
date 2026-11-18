@@ -16,10 +16,10 @@ type AuditLogActionsByCategory = {
     | "envvar.updated"
     | "envvar.value_updated"
     | "envvar.deleted"
-    | "envvar.imported"
     | "envvar.listed"
     | "envvar.read";
   members:
+    | "member.added"
     | "member.invited"
     | "invite.revoked"
     | "invite.accepted"
@@ -68,7 +68,8 @@ export type AuditLogCredential = {
   fingerprintId: string | null;
 };
 
-export type AuditLogSource = "dashboard" | "api" | "cli" | "run" | "staff";
+/** `system`: Trigger.dev acted with no request behind it, e.g. directory sync. */
+export type AuditLogSource = "dashboard" | "api" | "cli" | "run" | "staff" | "system";
 
 export type AuditLogEnvironmentType = "PRODUCTION" | "STAGING" | "DEVELOPMENT" | "PREVIEW";
 
@@ -107,14 +108,34 @@ type AuditLogCategoryAndAction = {
 
 /** What the caller knows about the change. Who made it and from where comes from the context. */
 export type AuditLogInput = AuditLogCategoryAndAction & {
-  organizationId: string;
+  /**
+   * Null only for a change to a user's own credential that belongs to no organization, e.g. a
+   * personal access token. No organization's log shows such an event.
+   */
+  organizationId: string | null;
   projectId?: string | null;
   environmentId?: string | null;
   environmentType?: AuditLogEnvironmentType | null;
   target: AuditLogTarget;
   changes?: AuditLogChanges | null;
+  /**
+   * The last 4 characters of every key the change touched, e.g. a rotated key's old and new, so a
+   * customer can find the change by a key's last 4. Never more of the key. The credential the
+   * request used is added from the context.
+   */
+  keyLast4s?: string[];
   /** Overrides the context's actor, e.g. `system` for changes made by directory sync. */
   actor?: AuditLogActor;
+  /**
+   * Overrides the context's source, when the request says nothing true about how the change was
+   * made: `system` for directory sync, `staff` for a support session started from the admin panel.
+   */
+  source?: AuditLogSource;
+  /**
+   * The user acting on behalf of the actor, when the context doesn't know it: e.g. the staff member
+   * behind a `support` actor. Never returned by `listEvents`.
+   */
+  onBehalfOf?: { userId: string };
 };
 
 /** What the host knows about the call that made the change. Unknown fields are null. */
@@ -129,6 +150,26 @@ export type AuditLogContext = {
   origin: AuditLogOrigin | null;
   requestId: string | null;
 };
+
+/**
+ * Who acted and through which channel, as the audit log plugin stores them, or why it drops the
+ * event. The plugin applies this rule before it stores an event: an event without an actor or a
+ * source is dropped, never stored unattributed. The input's actor and source override the
+ * context's, except that a request made while staff impersonate stays a `staff` event whatever the
+ * call site says.
+ */
+export function resolveAuditEventAttribution(
+  input: AuditLogInput,
+  context: AuditLogContext
+):
+  | { actor: AuditLogActor; source: AuditLogSource }
+  | { dropped: "missing_actor" | "missing_source" } {
+  const actor = input.actor ?? context.actor;
+  const source = context.source === "staff" ? "staff" : (input.source ?? context.source);
+  if (!actor) return { dropped: "missing_actor" };
+  if (!source) return { dropped: "missing_source" };
+  return { actor, source };
+}
 
 type AuditLogEventFields = {
   /** Unique per event. */

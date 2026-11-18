@@ -1,0 +1,41 @@
+---
+title: "Calendly webhooks"
+sidebarTitle: "Calendly"
+description: "Receive and verify Calendly webhooks with Trigger.dev. Check the HMAC-SHA256 signature in calendly-webhook-signature and run a task for each Calendly event, filtered on event.event."
+---
+
+**`webhooks.calendly()` verifies the HMAC-SHA256 signature Calendly sends in `calendly-webhook-signature` on every request.**
+
+```ts /trigger/calendly.ts
+import { webhook, webhooks } from "@trigger.dev/sdk";
+
+export const calendly = webhooks.endpoint.define({
+  id: "calendly",
+  source: webhooks.calendly(),
+});
+
+export const calendlyEvents = webhook({
+  id: "calendly-events",
+  endpoint: calendly,
+  onEvent: async ({ event }) => {
+    console.log(event);
+  },
+});
+```
+
+To run a subscriber only for some events, add a [filter](/webhooks/filters) on `event.event`.
+
+| Setting | Value |
+| --- | --- |
+| Source | `webhooks.calendly()` |
+| Verification | HMAC-SHA256 in `calendly-webhook-signature` |
+| Credential | The `signing_key` you set on the subscription |
+| Event type | `event.event` |
+| Calendly docs | [Calendly webhook docs](https://developer.calendly.com/api-docs/overview/webhooks/webhook-signatures) |
+
+## Set up Calendly
+
+1. Start `trigger dev` or deploy, then copy the endpoint's **Webhook URL** from the **Webhooks** page.
+2. Calendly webhooks are created through the API, on a paid plan. Choose a signing key (for example, the output of `openssl rand -hex 32`), then create the subscription with `POST https://api.calendly.com/webhook_subscriptions`, passing `url` (the webhook URL), `events`, `organization`, `scope` and `signing_key`. If you create the subscription from an OAuth app, Calendly generates the signing key instead.
+3. Choose **Set signing secret** on the Trigger.dev endpoint and paste the signing key.
+4. Send a test event from Calendly, or use the endpoint's **Test** tab, and check the endpoint's **Deliveries** tab. See [Verify the connection](/webhooks/connect#verify-the-connection) if nothing arrives.

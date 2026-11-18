@@ -1,4 +1,4 @@
-import { parseWithZod } from "@conform-to/zod/v4";
+import { parseWithZod } from "~/utils/conform";
 import { type ActionFunctionArgs, json } from "@remix-run/server-runtime";
 import { $replica } from "~/db.server";
 import { redirectWithErrorMessage, redirectWithSuccessMessage } from "~/models/message.server";

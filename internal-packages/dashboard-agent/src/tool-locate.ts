@@ -2,8 +2,10 @@ import { locateResultSchema, type locatedScopeSchema } from "@internal/dashboard
 import { tool, type ToolSet } from "ai";
 import type { z } from "zod";
 import { locateSchema } from "./tool-schemas";
+import { invalidId, pathSegment } from "./tool-api";
 import { apiGet, fetchReason, NO_AUTH, type DashboardAgentApiClient } from "./tool-api-client";
 import type { DashboardAgentToolContext } from "./tool-context";
+import { fenceUntrusted } from "./tool-curation";
 import { recordRead } from "./tool-read-scope";
 import type { ReadScope, SourceReadLedger } from "./tool-source-ledger";
 
@@ -38,14 +40,25 @@ function notFoundResponse(kind: LocateKind, id: string, data: unknown) {
 
 function nextHint(kind: LocateKind, scope: z.infer<typeof locatedScopeSchema>): string {
   const parts = [`project=${scope.projectRef}`, `environment=${scope.environmentName}`];
-  if (scope.branch) parts.push(`branch=${scope.branch}`);
+  if (scope.branch) parts.push(`branch=${fenceUntrusted("branch", scope.branch)}`);
   let target = "the relevant tool";
   if (kind === "deployment" && scope.version) target = `get_deploy version=${scope.version}`;
   if (kind === "queue" && scope.queueName) {
     const type = scope.queueType ? ` type=${scope.queueType}` : "";
-    target = `get_queue queue=${scope.queueName}${type}`;
+    target = `get_queue queue=${fenceUntrusted("queueName", scope.queueName)}${type}`;
   }
   return `call ${target} with ${parts.join(" ")}`;
+}
+
+const SCOPE_TEXT_FIELDS = ["branch", "taskIdentifier", "queueName"] as const;
+
+function fenceScopeFields(scope: z.infer<typeof locatedScopeSchema>) {
+  return Object.fromEntries(
+    SCOPE_TEXT_FIELDS.filter((key) => scope[key] !== undefined).map((key) => [
+      key,
+      fenceUntrusted(key, scope[key]),
+    ])
+  );
 }
 
 // Records every scope `locate` found an object in, so a follow-up call canonicalizes
@@ -85,10 +98,12 @@ export function buildLocateTool(args: {
         if (!hasAuth) return NO_AUTH;
         const shapeError = validateLocateId(kind, id);
         if (shapeError) return { error: shapeError };
+        const segment = pathSegment(id);
+        if (!segment) return invalidId(id);
 
         const result = await apiGet(
           origin,
-          `/api/v1/locate/${encodeURIComponent(kind)}/${encodeURIComponent(id)}`,
+          `/api/v1/locate/${encodeURIComponent(kind)}/${segment}`,
           userActorToken!
         );
         if (!result.ok) {
@@ -112,7 +127,11 @@ export function buildLocateTool(args: {
           found: true,
           kind: foundKind,
           id: foundId,
-          scopes: scopes.map((scope) => ({ ...scope, next: nextHint(foundKind, scope) })),
+          scopes: scopes.map((scope) => ({
+            ...scope,
+            ...fenceScopeFields(scope),
+            next: nextHint(foundKind, scope),
+          })),
           ...(truncated ? { truncated: true } : {}),
         };
       },

@@ -40,7 +40,7 @@ afterAll(async () => {
 });
 
 function startAttempt(body: Record<string, unknown>) {
-  return fetch(`${BASE}/api/v1/workload-actions/runs/run_1/snapshots/snap_1/attempts/start`, {
+  return fetch(`${BASE}/api/v1/workload-actions/runs/run_1/snapshots/snapshot_1/attempts/start`, {
     method: "POST",
     headers: {
       "content-type": "application/json",
@@ -57,22 +57,33 @@ describe("WorkloadServer attempt start", () => {
     expect(res.status).toBe(200);
     expect(startRunAttempt).toHaveBeenLastCalledWith(
       "run_1",
-      "snap_1",
-      { isWarmStart: true, workerCell: "cell-a", workerLane: "microvm" },
+      "snapshot_1",
+      {
+        isWarmStart: true,
+        supportsSecretProxy: false,
+        workerCell: "cell-a",
+        workerLane: "microvm",
+      },
       "runner_1",
+      undefined,
       undefined
     );
   });
 
   it("does not let the runner choose its own cell or lane", async () => {
-    const res = await startAttempt({ workerCell: "spoofed", workerLane: "container" });
+    const res = await startAttempt({
+      workerCell: "spoofed",
+      workerLane: "container",
+      supportsSecretProxy: true,
+    });
 
     expect(res.status).toBe(200);
     expect(startRunAttempt).toHaveBeenLastCalledWith(
       "run_1",
-      "snap_1",
-      { workerCell: "cell-a", workerLane: "microvm" },
+      "snapshot_1",
+      { supportsSecretProxy: false, workerCell: "cell-a", workerLane: "microvm" },
       "runner_1",
+      undefined,
       undefined
     );
   });

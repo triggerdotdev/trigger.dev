@@ -201,7 +201,7 @@ const DEFAULT_STREAM_TIMEOUT_SECONDS = 120;
  *   stops, actions).
  * - `"out"` — `GET /realtime/v1/sessions/{chatId}/out` (SSE response stream).
  *
- * Other endpoints (`/api/v1/sessions`, `/api/v1/auth/jwt/claims`) are reached
+ * Other endpoints (`/api/v1/sessions`, `/api/v1/auth/public-tokens`) are reached
  * from the server-side `chat.createStartSessionAction` and `accessToken`
  * callback, not the transport — they accept the same callback shape on their
  * own option objects.

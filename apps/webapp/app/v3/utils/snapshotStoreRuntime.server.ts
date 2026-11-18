@@ -46,6 +46,7 @@ export function createSnapshotStoreRuntime(options: {
         return rows[0]?.status ?? null;
       },
       commitProbeExists: async (snapshotId, route) => {
+        // runops-exception(legacy-teardown): snapshot commit recovery probe for runs anchored in Postgres
         const rows = await primary(route).$queryRawUnsafe<unknown[]>(
           'SELECT 1 FROM "TaskRunExecutionSnapshot" WHERE id = $1',
           snapshotId

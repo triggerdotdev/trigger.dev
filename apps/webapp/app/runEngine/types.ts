@@ -1,5 +1,10 @@
 import type { BackgroundWorker, TaskRun } from "@trigger.dev/database";
-import type { IOPacket, TaskRunError, TriggerTaskRequestBody } from "@trigger.dev/core/v3";
+import type {
+  IOPacket,
+  RunExecutionPolicy,
+  TaskRunError,
+  TriggerTaskRequestBody,
+} from "@trigger.dev/core/v3";
 import type { AuthenticatedEnvironment } from "~/services/apiAuth.server";
 import type { ReportUsagePlan } from "@trigger.dev/platform";
 
@@ -50,6 +55,8 @@ export type QueueProperties = {
   gates?: Array<{ queue: string; concurrencyKey?: string }>;
   /** Template key of the deployment the task metadata came from, if it has one. */
   templateKey?: string | null;
+  /** Set for tasks with a non-standard execution policy (sandboxes). */
+  executionPolicy?: RunExecutionPolicy;
 };
 
 export type LockedBackgroundWorker = Pick<

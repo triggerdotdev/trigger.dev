@@ -24,6 +24,7 @@ export const action = createActionWorkerApiRoute(
     params,
     runnerId,
     environmentId,
+    sandboxRunId,
   }): Promise<TypedResponse<WorkerApiRunHeartbeatResponseBody>> => {
     const { runFriendlyId, snapshotFriendlyId } = params;
 
@@ -32,6 +33,7 @@ export const action = createActionWorkerApiRoute(
       snapshotFriendlyId,
       runnerId,
       environmentId,
+      sandboxRunId,
       runTokenReport: body.runToken,
     });
 

@@ -1,29 +1,18 @@
 import type { OutputColumnMetadata } from "@internal/clickhouse";
 
-/**
- * Escape a value for CSV format.
- * - Wraps in quotes if the value contains commas, quotes, or newlines
- * - Escapes quotes by doubling them
- */
+const FORMULA_START = /^[=+\-@\t\r]/;
+const PLAIN_NUMBER = /^-?\d+(\.\d+)?([eE][-+]?\d+)?$/;
+
+export function escapeCSVCell(value: string): string {
+  const safe = FORMULA_START.test(value) && !PLAIN_NUMBER.test(value) ? `'${value}` : value;
+  return /[",\n\r]/.test(safe) ? `"${safe.replace(/"/g, '""')}"` : safe;
+}
+
 function escapeCSVValue(value: unknown): string {
   if (value === null || value === undefined) {
     return "";
   }
-
-  const stringValue = typeof value === "object" ? JSON.stringify(value) : String(value);
-
-  // Check if we need to quote the value
-  if (
-    stringValue.includes(",") ||
-    stringValue.includes('"') ||
-    stringValue.includes("\n") ||
-    stringValue.includes("\r")
-  ) {
-    // Escape quotes by doubling them and wrap in quotes
-    return `"${stringValue.replace(/"/g, '""')}"`;
-  }
-
-  return stringValue;
+  return escapeCSVCell(typeof value === "object" ? JSON.stringify(value) : String(value));
 }
 
 /**

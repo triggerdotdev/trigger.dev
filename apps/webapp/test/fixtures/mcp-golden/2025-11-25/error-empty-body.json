@@ -1,0 +1,19 @@
+{
+  "request": {
+    "rawBody": ""
+  },
+  "response": {
+    "status": 400,
+    "headers": {
+      "content-type": "application/json"
+    },
+    "body": {
+      "jsonrpc": "2.0",
+      "error": {
+        "code": -32600,
+        "message": "Bad Request: the request body is not a valid JSON-RPC message"
+      },
+      "id": null
+    }
+  }
+}

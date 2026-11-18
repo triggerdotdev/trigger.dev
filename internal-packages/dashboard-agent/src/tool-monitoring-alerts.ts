@@ -2,6 +2,7 @@ import { tool, type ToolSet } from "ai";
 import {
   analyzeQueryAlertSchema,
   describeAlertCapabilitiesSchema,
+  listAlertChannelsSchema,
   listMonitoringAlertsSchema,
   planDecisionSchema,
   planMonitoringSchema,
@@ -28,6 +29,8 @@ import {
   type PlanDecisionOutput,
 } from "@internal/dashboard-agent-contracts";
 import type { DashboardAgentToolContext } from "./tool-context";
+
+type AlertLookup = { name: string; attention: string; projectId: string; environmentId: string };
 
 function toResult(result: FetchResult): { data: unknown } | { error: string } {
   if (result.ok) return { data: result.data };
@@ -240,6 +243,45 @@ function withPrefillActions(data: unknown, ctx: DashboardAgentToolContext): unkn
   };
 }
 
+const ALERT_CHANNEL_FIELDS = [
+  "id",
+  "type",
+  "name",
+  "enabled",
+  "alertTypes",
+  "environmentTypes",
+  "projectId",
+  "createdAt",
+] as const;
+
+const LEGACY_ALERT_FIELDS = ["type", "label", "migration", "replaceWith"] as const;
+
+const asRecord = (value: unknown): Record<string, unknown> =>
+  typeof value === "object" && value !== null ? (value as Record<string, unknown>) : {};
+
+const pick = (source: unknown, keys: readonly string[]) => {
+  const record = asRecord(source);
+  return Object.fromEntries(keys.map((k) => [k, record[k]]));
+};
+
+function parseAlertChannels(data: unknown) {
+  const body = asRecord(data);
+  const channels = Array.isArray(body.channels) ? body.channels : [];
+  return {
+    channels: channels.map((c) => {
+      const channel = asRecord(c);
+      return {
+        ...pick(channel, ALERT_CHANNEL_FIELDS),
+        project: pick(channel.project, ["slug", "name"]),
+        legacyAlerts: (Array.isArray(channel.legacyAlerts) ? channel.legacyAlerts : []).map((l) =>
+          pick(l, LEGACY_ALERT_FIELDS)
+        ),
+      };
+    }),
+    truncated: body.truncated === true,
+  };
+}
+
 export function buildMonitoringAlertTools(args: {
   ctx: DashboardAgentToolContext;
   client: DashboardAgentApiClient;
@@ -283,10 +325,11 @@ export function buildMonitoringAlertTools(args: {
 
     list_monitoring_alerts: tool({
       ...listMonitoringAlertsSchema,
-      execute: async ({ attention, lifecycle }) => {
+      execute: async ({ scope, attention, lifecycle }) => {
         if (!hasAuth) return NO_AUTH;
         if (!ctx.chatId) return { error: "No chat is available to list alerts from." };
         const params = new URLSearchParams({ chatId: ctx.chatId });
+        if (scope) params.set("scope", scope);
         if (attention) params.set("attention", attention);
         if (lifecycle) params.set("lifecycle", lifecycle);
         const result = toResult(
@@ -297,8 +340,11 @@ export function buildMonitoringAlertTools(args: {
           )
         );
         if ("error" in result) return result;
-        const alerts = (result.data as { alerts?: unknown } | undefined)?.alerts;
-        return { alerts: Array.isArray(alerts) ? alerts : [] };
+        const body = result.data as { alerts?: unknown; truncated?: unknown } | undefined;
+        return {
+          alerts: Array.isArray(body?.alerts) ? body.alerts : [],
+          truncated: body?.truncated === true,
+        };
       },
     }),
 
@@ -307,14 +353,35 @@ export function buildMonitoringAlertTools(args: {
       execute: async ({ alertId }) => {
         if (!hasAuth) return NO_AUTH;
         if (!ctx.chatId) return { error: "No chat is available to resolve an alert from." };
+        const params = new URLSearchParams({ chatId: ctx.chatId, alertId });
         const result = toResult(
-          await apiPost(origin, "/api/v1/dashboard-agent/monitoring-alerts", userActorToken!, {
-            chatId: ctx.chatId,
-            alertId,
-          })
+          await apiGet(
+            origin,
+            `/api/v1/dashboard-agent/monitoring-alerts?${params}`,
+            userActorToken!
+          )
         );
-        if ("error" in result) return result;
-        return result.data;
+        if ("error" in result) {
+          return result.error === "Alert not found"
+            ? {
+                error:
+                  "That alert is not in the current environment, so it can't be resolved here.",
+              }
+            : result;
+        }
+        const alert = (result.data as { alert?: AlertLookup } | undefined)?.alert;
+        if (alert?.attention !== "needs_attention") {
+          return { error: "No alert with that id needs attention." };
+        }
+        return {
+          ok: true,
+          pending: true,
+          alertId,
+          name: alert.name,
+          projectId: alert.projectId,
+          environmentId: alert.environmentId,
+          action: "resolve" as const,
+        };
       },
     }),
   };
@@ -462,6 +529,34 @@ export function buildPlanMonitoringTool(args: {
     plan_decision: tool({
       ...planDecisionSchema,
       execute: async ({ decision }): Promise<PlanDecisionOutput> => ({ ok: true, decision }),
+    }),
+  };
+}
+
+export function buildAlertChannelsTool(args: {
+  ctx: DashboardAgentToolContext;
+  client: DashboardAgentApiClient;
+}): ToolSet {
+  const { ctx, client } = args;
+  const { userActorToken } = ctx;
+  const { origin, hasAuth } = client;
+
+  return {
+    list_alert_channels: tool({
+      ...listAlertChannelsSchema,
+      execute: async ({ scope, type, legacy }) => {
+        if (!hasAuth) return NO_AUTH;
+        if (!ctx.chatId) return { error: "No chat is available to list alert channels from." };
+        const params = new URLSearchParams({ chatId: ctx.chatId });
+        if (scope) params.set("scope", scope);
+        if (type) params.set("type", type);
+        if (legacy) params.set("legacy", "true");
+        const result = toResult(
+          await apiGet(origin, `/api/v1/dashboard-agent/alert-channels?${params}`, userActorToken!)
+        );
+        if ("error" in result) return result;
+        return parseAlertChannels(result.data);
+      },
     }),
   };
 }

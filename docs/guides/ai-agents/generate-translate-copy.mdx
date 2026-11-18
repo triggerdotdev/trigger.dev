@@ -39,12 +39,9 @@ export const generateAndTranslateTask = task({
   run: async (payload: TranslatePayload) => {
     // Step 1: Generate marketing copy
     const generatedCopy = await generateText({
-      model: anthropic("claude-sonnet-4-5"),
+      model: anthropic("claude-sonnet-5-5"),
+      system: "You are an expert copywriter.",
       messages: [
-        {
-          role: "system",
-          content: "You are an expert copywriter.",
-        },
         {
           role: "user",
           content: `Generate as close as possible to ${payload.targetWordCount} words of compelling marketing copy for ${payload.marketingSubject}`,
@@ -72,12 +69,9 @@ export const generateAndTranslateTask = task({
 
     // Step 2: Translate to target language
     const translatedCopy = await generateText({
-      model: anthropic("claude-sonnet-4-5"),
+      model: anthropic("claude-sonnet-5-5"),
+      system: `You are an expert translator specializing in marketing content translation into ${payload.targetLanguage}.`,
       messages: [
-        {
-          role: "system",
-          content: `You are an expert translator specializing in marketing content translation into ${payload.targetLanguage}.`,
-        },
         {
           role: "user",
           content: `Translate the following marketing copy to ${payload.targetLanguage}, maintaining the same tone and marketing impact:\n\n${generatedCopy.text}`,

@@ -347,7 +347,7 @@ export const myTask = task({
   run: async (payload: { prompt: string }) => {
     const completion = await openai.chat.completions.create({
       messages: [{ role: "user", content: payload.prompt }],
-      model: "gpt-3.5-turbo",
+      model: "gpt-6-luna",
       stream: true,
     });
 

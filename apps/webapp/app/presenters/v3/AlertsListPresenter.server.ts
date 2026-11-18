@@ -1,9 +1,9 @@
 import {
+  getAlertStateEvents,
   getLatestAlertEventTimes,
-  getAlertHealthEvents,
   listAlerts,
   type Alert,
-  type AlertHealthEvent,
+  type AlertStateEvent,
 } from "~/v3/services/alerts/storage/alertStore.server";
 import {
   alertParamsSchema,
@@ -15,14 +15,14 @@ import {
 } from "@internal/alert-contracts";
 import type { PrismaClientOrTransaction } from "@trigger.dev/database";
 import { filterAlertRows, MAX_LIST_ALERTS } from "~/components/alerts/alertsListFilters";
+import { CLEARING_EVENTS } from "~/components/alerts/alertSeriesTypes";
 import { conditionSummary } from "~/components/alerts/alertSummaries";
-import { prisma } from "~/db.server";
 import {
   alertChannelIssues,
   loadNotifierChannels,
   notifierChannelIds,
 } from "~/v3/services/alerts/alertChannelIssues.server";
-import { BasePresenter } from "./basePresenter.server";
+import { startActiveSpan } from "~/v3/tracer.server";
 import {
   buildStateBuckets,
   compareAlertRows,
@@ -30,8 +30,6 @@ import {
   type AlertListRow,
   type AlertStateBucket,
 } from "./alertListRow";
-
-export type { AlertListRow } from "./alertListRow";
 
 export type AlertsListFilters = Parameters<typeof filterAlertRows>[1];
 
@@ -51,8 +49,7 @@ function toRow(
   alert: Alert,
   lastRaisedAt: Date | null,
   lastRecoveredAt: Date | null,
-  lastEventAt: Date | null,
-  hasChannelIssue: boolean
+  lastEventAt: Date | null
 ): AlertListRow {
   const capability = getCapability(alert.capabilityKey);
   const status = displayStatus(alert.lifecycle, alert.attention);
@@ -73,7 +70,6 @@ function toRow(
     environmentId: alert.environmentId,
     scope: params.success ? params.data.scope : undefined,
     status: status.status,
-    hasChannelIssue,
     groupId: alert.groupId,
     inactiveReason,
     lastEventAt: laterOf(lastEventAt, alert.lastOccurrenceAt),
@@ -100,130 +96,135 @@ function toRow(
   };
 }
 
-export class AlertsListPresenter extends BasePresenter {
-  constructor(
-    private readonly _alertDb: PrismaClientOrTransaction = prisma,
-    prismaClient: PrismaClientOrTransaction = prisma
-  ) {
-    super(prismaClient);
-  }
+export type AlertsListPage = {
+  rows: AlertListRow[];
+  alerts: Alert[];
+  page: number;
+  totalPages: number;
+  truncated: boolean;
+};
 
-  public async call({
+export function listAlertRows(
+  alertDb: PrismaClientOrTransaction,
+  {
     environmentId,
     page = 1,
     filters,
-  }: {
-    environmentId: string;
-    page?: number;
-    filters?: AlertsListFilters;
-  }): Promise<{ rows: AlertListRow[]; page: number; totalPages: number; truncated: boolean }> {
-    return this.trace("call", async () => {
-      const fetched = await listAlerts(this._alertDb, {
-        environmentId,
-        statuses: filters?.statuses,
-        ungroupedOnly: true,
-        limit: MAX_LIST_ALERTS + 1,
-      });
-      const truncated = fetched.length > MAX_LIST_ALERTS;
-      const alerts = fetched.slice(0, MAX_LIST_ALERTS);
-      const eventTimes = await getLatestAlertEventTimes(
-        this._alertDb,
-        alerts.map((a) => a.id)
-      );
-      const channelIssueIds = await this._channelIssueAlertIds(alerts, environmentId);
-
-      const items = alerts
-        .map((alert) => ({
-          alert,
-          row: toRow(
-            alert,
-            eventTimes.get(alert.id)?.raised ?? null,
-            eventTimes.get(alert.id)?.recovered ?? null,
-            eventTimes.get(alert.id)?.latest ?? null,
-            channelIssueIds.has(alert.id)
-          ),
-        }))
-        .sort((a, b) => compareAlertRows(a.row, b.row));
-      const kept =
-        filters &&
-        new Set(
-          filterAlertRows(
-            items.map((i) => i.row),
-            filters
-          ).map((r) => r.id)
-        );
-      const sorted = kept ? items.filter((i) => kept.has(i.row.id)) : items;
-
-      const totalPages = Math.max(1, Math.ceil(sorted.length / ALERTS_PAGE_SIZE));
-      const currentPage = Math.min(Math.max(1, Math.floor(page) || 1), totalPages);
-      const visible = sorted.slice(
-        (currentPage - 1) * ALERTS_PAGE_SIZE,
-        currentPage * ALERTS_PAGE_SIZE
-      );
-
-      const stateBuckets = await this._resolveStateBuckets(visible.map((v) => v.alert));
-
-      return {
-        rows: visible.map(({ alert, row }) => ({
-          ...row,
-          stateBuckets: stateBuckets.get(alert.id),
-        })),
-        page: currentPage,
-        totalPages,
-        truncated,
-      };
-    });
-  }
-
-  private async _channelIssueAlertIds(alerts: Alert[], environmentId: string) {
-    const ids = new Set<string>();
-    const channelIds = notifierChannelIds(alerts.flatMap((a) => a.notifiers as NotifierRef[]));
-    if (channelIds.length === 0) return ids;
-    const { environmentType, channels } = await loadNotifierChannels(this._prisma, {
-      projectId: alerts[0]!.projectId,
+  }: { environmentId: string; page?: number; filters?: AlertsListFilters }
+): Promise<AlertsListPage> {
+  return startActiveSpan("listAlertRows", async () => {
+    const fetched = await listAlerts(alertDb, {
       environmentId,
-      channelIds,
+      statuses: filters?.statuses,
+      ungroupedOnly: true,
+      limit: MAX_LIST_ALERTS + 1,
     });
-    for (const alert of alerts) {
-      if (alertChannelIssues(alert.notifiers as NotifierRef[], channels, environmentType).length) {
-        ids.add(alert.id);
-      }
-    }
-    return ids;
-  }
+    const truncated = fetched.length > MAX_LIST_ALERTS;
+    const alerts = fetched.slice(0, MAX_LIST_ALERTS);
+    const eventTimes = await getLatestAlertEventTimes(
+      alertDb,
+      alerts.map((a) => a.id)
+    );
 
-  private async _resolveStateBuckets(alerts: Alert[]): Promise<Map<string, AlertStateBucket[]>> {
-    const bucketMs = LIST_EVENT_BUCKET_SECONDS * 1000;
-    const alignedNowMs = Math.floor(Date.now() / bucketMs) * bucketMs;
-    const since = new Date(alignedNowMs - (LIST_SPARKLINE_BUCKETS - 1) * bucketMs);
-    const result = new Map<string, AlertStateBucket[]>();
-    if (alerts.length === 0) return result;
-    const events = await getAlertHealthEvents(
-      this._alertDb,
-      alerts.map((a) => a.id),
-      since
-    ).catch((error) => {
-      console.warn("alerts.list.state_buckets_failed", {
-        error: error instanceof Error ? error.message : String(error),
-      });
-      return new Map<string, AlertHealthEvent[]>();
-    });
-    for (const alert of alerts) {
-      result.set(
-        alert.id,
-        buildStateBuckets(
-          events.get(alert.id) ?? [],
-          since.getTime(),
-          bucketMs,
-          LIST_SPARKLINE_BUCKETS,
-          alert.lifecycle === "active" &&
-            alert.attention === "needs_attention" &&
-            alert.observedCondition === "met"
-            ? alert.observedConditionChangedAt?.getTime()
-            : undefined
-        )
+    const items = alerts
+      .map((alert) => ({
+        alert,
+        row: toRow(
+          alert,
+          eventTimes.get(alert.id)?.raised ?? null,
+          eventTimes.get(alert.id)?.recovered ?? null,
+          eventTimes.get(alert.id)?.latest ?? null
+        ),
+      }))
+      .sort((a, b) => compareAlertRows(a.row, b.row));
+    const kept =
+      filters &&
+      new Set(
+        filterAlertRows(
+          items.map((i) => i.row),
+          filters
+        ).map((r) => r.id)
       );
-    }
-    return result;
-  }
+    const sorted = kept ? items.filter((i) => kept.has(i.row.id)) : items;
+
+    const totalPages = Math.max(1, Math.ceil(sorted.length / ALERTS_PAGE_SIZE));
+    const currentPage = Math.min(Math.max(1, Math.floor(page) || 1), totalPages);
+    const visible = sorted.slice(
+      (currentPage - 1) * ALERTS_PAGE_SIZE,
+      currentPage * ALERTS_PAGE_SIZE
+    );
+
+    return {
+      rows: visible.map((v) => v.row),
+      alerts: visible.map((v) => v.alert),
+      page: currentPage,
+      totalPages,
+      truncated,
+    };
+  });
+}
+
+export async function listChannelIssueAlertIds(
+  prisma: PrismaClientOrTransaction,
+  alerts: Alert[],
+  environmentId: string
+): Promise<string[]> {
+  const channelIds = notifierChannelIds(alerts.flatMap((a) => a.notifiers as NotifierRef[]));
+  if (channelIds.length === 0) return [];
+  const { environmentType, channels } = await loadNotifierChannels(prisma, {
+    projectId: alerts[0]!.projectId,
+    environmentId,
+    channelIds,
+  });
+  return alerts
+    .filter(
+      (alert) =>
+        alertChannelIssues(alert.notifiers as NotifierRef[], channels, environmentType).length > 0
+    )
+    .map((alert) => alert.id);
+}
+
+export function stateBucketsSince(now: number): Date {
+  const bucketMs = LIST_EVENT_BUCKET_SECONDS * 1000;
+  return new Date(Math.floor(now / bucketMs) * bucketMs - (LIST_SPARKLINE_BUCKETS - 1) * bucketMs);
+}
+
+export function alertStateBuckets(
+  alert: Alert,
+  events: AlertStateEvent[],
+  since: Date
+): AlertStateBucket[] {
+  return buildStateBuckets(
+    events,
+    since.getTime(),
+    LIST_EVENT_BUCKET_SECONDS * 1000,
+    LIST_SPARKLINE_BUCKETS,
+    alert.lifecycle === "active" &&
+      alert.attention === "needs_attention" &&
+      alert.observedCondition === "met"
+      ? alert.observedConditionChangedAt?.getTime()
+      : undefined
+  );
+}
+
+export async function listAlertStateBuckets(
+  alertDb: PrismaClientOrTransaction,
+  alerts: Alert[],
+  now: number = Date.now()
+): Promise<Record<string, AlertStateBucket[]>> {
+  if (alerts.length === 0) return {};
+  const since = stateBucketsSince(now);
+  const events = await getAlertStateEvents(
+    alertDb,
+    alerts.map((a) => a.id),
+    { since, bucketSeconds: LIST_EVENT_BUCKET_SECONDS, types: ["raised", ...CLEARING_EVENTS] }
+  ).catch((error) => {
+    console.warn("alerts.list.state_buckets_failed", {
+      error: error instanceof Error ? error.message : String(error),
+    });
+    return new Map<string, AlertStateEvent[]>();
+  });
+  return Object.fromEntries(
+    alerts.map((alert) => [alert.id, alertStateBuckets(alert, events.get(alert.id) ?? [], since)])
+  );
 }

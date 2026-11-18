@@ -2,7 +2,11 @@ import { $replica, prisma } from "~/db.server";
 import type { PrismaClient } from "@trigger.dev/database";
 import plugin from "@trigger.dev/rbac";
 import { env } from "~/env.server";
-import { publicTokenSubjects } from "~/services/publicTokenSubject.server";
+import { isMfaSetupRequired, mfaSetupRequiredMessage } from "~/services/mfa/mfaRequirement.server";
+import {
+  publicTokenSubjects,
+  sourcePersonalAccessTokens,
+} from "~/services/publicTokenSubject.server";
 
 // plugin.create() is synchronous — returns a lazy controller that resolves
 // any installed RBAC plugin on first call. Top-level await is not used
@@ -32,6 +36,9 @@ export const rbac = plugin.create(
     forceFallback: env.RBAC_FORCE_FALLBACK,
     userActorSecret: env.SESSION_SECRET,
     publicTokenSubjects,
+    sourcePersonalAccessTokens,
+    userAccessDenial: async (userId) =>
+      (await isMfaSetupRequired(userId)) ? mfaSetupRequiredMessage() : undefined,
     // A plugin that owns its own database client gets the same
     // writer/replica topology the webapp's Prisma clients use (see
     // getClient/getReplicaClient in db.server.ts): control-plane URLs win,

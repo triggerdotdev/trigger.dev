@@ -7,6 +7,7 @@ export const runTokenOperationPolicy = {
   createUploadPayloadUrl: true,
   getPayloadUrl: true,
   getRunPacketUrl: true,
+  getRunWaitpointOutputUrl: true,
   retrieveRun: true,
   cancelRun: true,
   resetIdempotencyKey: true,

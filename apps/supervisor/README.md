@@ -45,6 +45,10 @@ pnpm exec trigger deploy --self-hosted
 pnpm exec trigger deploy --self-hosted --network host
 ```
 
+## Secret proxy
+
+`SECRET_PROXY_UNSAFE_LAB_ENABLED` and `SECRET_PROXY_INTERCEPTOR_SOCKET` are for an experimental internal deployment. Leave them unset.
+
 ## Worker group management
 
 ### Shared variables

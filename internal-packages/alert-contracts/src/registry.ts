@@ -435,7 +435,7 @@ export const V1_CAPABILITIES: AlertCapability[] = [
     minCadenceSec: 600,
     title: "Failure rate",
     description:
-      "Share of finished runs that failed, as a percentage. Failed means crashed, system failure, timed out or completed with errors.",
+      "Share of finished runs that failed, as a percentage. Failed means crashed, system failure, timed out or completed with errors. Canceled, expired and paused runs are not counted as failed, so this is not 100 minus success rate.",
     unit: "percent",
     surfaces: ALL_SURFACES,
     curated: false,

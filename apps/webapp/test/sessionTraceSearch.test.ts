@@ -7,13 +7,16 @@ import {
   type SessionRunLoads,
 } from "~/components/sessions/v1/trace/sessionRunLoads";
 import {
-  countMatches,
   isFiltering,
+  matchesByRun,
   NO_FILTER,
+  runSearchMark,
   runShowsResults,
   runsToCollapseOnClear,
+  searchBarSummary,
   searchCoverage,
   sessionRowPassesFilter,
+  type SearchCoverage,
 } from "~/components/sessions/v1/trace/sessionTraceSearch";
 import type { SessionTraceRun } from "~/components/sessions/v1/trace/sessionTraceTypes";
 
@@ -79,19 +82,6 @@ describe("sessionRowPassesFilter", () => {
     expect(isFiltering(NO_FILTER)).toBe(false);
     expect(isFiltering(filterOf("a"))).toBe(true);
     expect(isFiltering(filterOf("", true))).toBe(true);
-  });
-});
-
-describe("countMatches", () => {
-  it("counts matching spans, hidden runs included", () => {
-    const tree: FlatTree<Row> = [
-      { id: "session", level: 0, hasChildren: true, data: { kind: "session", runCount: 2 } as Row },
-      { id: "a", level: 1, hasChildren: false, data: spanRow("tool a", false, "run_1") },
-      { id: "b", level: 1, hasChildren: false, data: spanRow("llm b", false, "run_1") },
-      { id: "c", level: 1, hasChildren: false, data: spanRow("tool c", false, "run_2") },
-    ];
-    expect(countMatches(tree, filterOf("tool", false, ["run_2"]))).toBe(2);
-    expect(countMatches(tree, filterOf("zzz"))).toBe(0);
   });
 });
 
@@ -191,5 +181,130 @@ describe("runsToCollapseOnClear", () => {
     expect(
       runsToCollapseOnClear(new Set(["run_1", "run_2", "run_3"]), new Set(["run_2", "run_9"]))
     ).toEqual(["run_1", "run_3"]);
+  });
+});
+
+describe("matchesByRun", () => {
+  // Catches: per-run counts missing matches in runs hidden during the search.
+  it("counts matches per run in one pass, hidden runs included", () => {
+    const tree: FlatTree<Row> = [
+      { id: "a", level: 1, hasChildren: false, data: spanRow("tool a", false, "run_1") },
+      { id: "b", level: 1, hasChildren: false, data: spanRow("tool b", false, "run_1") },
+      { id: "c", level: 1, hasChildren: false, data: spanRow("llm c", false, "run_2") },
+      { id: "d", level: 1, hasChildren: false, data: spanRow("tool d", false, "run_3") },
+    ];
+    const { total, byRun } = matchesByRun(tree, filterOf("tool", false, ["run_3"]));
+    expect(total).toBe(3);
+    expect(byRun.get("run_1")).toBe(2);
+    expect(byRun.get("run_2")).toBeUndefined();
+    expect(byRun.get("run_3")).toBe(1);
+  });
+});
+
+describe("runSearchMark", () => {
+  // Catches: an unloaded run reading as "no matches" instead of "not searched".
+  it("marks a run that never loaded as not searched", () => {
+    expect(runSearchMark({ state: "idle" }, 0)).toEqual({ kind: "notSearched" });
+  });
+
+  // Catches: a loaded run with no matches not being dimmed, or one with matches being dimmed.
+  it("gives a loaded run its match count, or marks it as having none", () => {
+    expect(runSearchMark({ state: "progressive", loadId: 1 }, 4)).toMatchObject({
+      kind: "matches",
+      count: 4,
+    });
+    expect(runSearchMark({ state: "empty", loadId: 1 }, 0)).toEqual({ kind: "noMatches" });
+  });
+
+  // Catches: a still-paging run looking finished, or losing its spinner before any match.
+  it("says matches so far while later pages load", () => {
+    expect(runSearchMark({ state: "paging", loadId: 1, attempt: 0 }, 2)).toMatchObject({
+      soFar: true,
+    });
+    expect(runSearchMark({ state: "paging", loadId: 1, attempt: 0 }, 0)).toBeUndefined();
+  });
+
+  // Catches: a partly loaded run with no matches dimmed as if its search were complete.
+  it("marks a partly loaded run as partly searched, even with no matches", () => {
+    const partly = {
+      state: "cutOff",
+      limit: "session",
+      started: true,
+      spanLimit: 150_000,
+      loadId: 1,
+    } as const;
+    expect(runSearchMark(partly, 0)).toMatchObject({ kind: "matches", partly: true });
+  });
+
+  // Catches: search marks hiding Retry, "Waiting to load…" or the span-limit label.
+  it("leaves the row's own label for loads that matter more", () => {
+    expect(runSearchMark({ state: "queued" }, 0)).toBeUndefined();
+    expect(runSearchMark({ state: "loading", loadId: 1 }, 0)).toBeUndefined();
+    expect(runSearchMark({ state: "error", message: "x", loadId: 1 }, 0)).toBeUndefined();
+    expect(
+      runSearchMark(
+        { state: "cutOff", limit: "session", started: false, spanLimit: 1, loadId: 1 },
+        0
+      )
+    ).toBeUndefined();
+  });
+});
+
+describe("searchBarSummary", () => {
+  const coverageOf = (overrides: Partial<SearchCoverage>): SearchCoverage => ({
+    searched: 0,
+    searchable: 0,
+    partly: 0,
+    notLoaded: 0,
+    failed: 0,
+    toLoad: [],
+    ...overrides,
+  });
+  const gapTree: FlatTree<SessionTreeRow<unknown>> = [
+    {
+      id: "notLoaded:run_30",
+      level: 1,
+      hasChildren: false,
+      data: {
+        kind: "notLoaded",
+        count: 27,
+        olderRunFriendlyId: "run_2",
+        newerRunFriendlyId: "run_30",
+      },
+    },
+  ];
+  const aroundGap = [run(1), run(2), run(30), run(31)];
+
+  // Catches: earlier runs not counted, or counted when run 1 is shown.
+  it("counts the earlier runs that aren't loaded", () => {
+    const earlier = (runs: SessionTraceRun[]) =>
+      searchBarSummary({ runs, coverage: coverageOf({}), matches: 0, tree: [] }).earlier;
+    expect(earlier(Array.from({ length: 20 }, (_, i) => run(i + 8)))?.count).toBe(7);
+    expect(earlier([run(1), run(2)])).toBeUndefined();
+  });
+
+  // Catches: runs in gaps missing from the "not shown" count, or named with the wrong numbers.
+  it("counts runs in gaps between shown pages, with their numbers", () => {
+    const summary = searchBarSummary({
+      runs: aroundGap,
+      coverage: coverageOf({ searched: 4, searchable: 4 }),
+      matches: 2,
+      tree: gapTree,
+    });
+    expect(summary.gaps).toEqual({ count: 27, ranges: ["3–29"] });
+  });
+
+  // Catches: "Searched runs 1–31" (or "… that can load (1–31)") claiming runs in gaps that
+  // weren't searched (review rounds 1 and 2, 2026-10-30).
+  it("never reads as if the whole range was searched when runs sit in gaps", () => {
+    const text = (coverage: SearchCoverage) =>
+      searchBarSummary({ runs: aroundGap, coverage, matches: 0, tree: gapTree }).text;
+    for (const coverage of [
+      coverageOf({ searched: 4, searchable: 4 }),
+      coverageOf({ searched: 3, searchable: 3 }),
+      coverageOf({ searched: 1, searchable: 4 }),
+    ]) {
+      expect(text(coverage)).toMatch(/shown runs/);
+    }
   });
 });

@@ -1,0 +1,40 @@
+---
+title: "Loops webhooks"
+sidebarTitle: "Loops"
+description: "Receive and verify Loops webhooks with Trigger.dev. Check the Standard Webhooks signature and run a task for each Loops event, filtered on event.eventName."
+---
+
+**`webhooks.loops()` verifies the Standard Webhooks signature Loops sends in the `webhook-*` headers on every request.**
+
+```ts /trigger/loops.ts
+import { webhook, webhooks } from "@trigger.dev/sdk";
+
+export const loops = webhooks.endpoint.define({
+  id: "loops",
+  source: webhooks.loops(),
+});
+
+export const loopsEvents = webhook({
+  id: "loops-events",
+  endpoint: loops,
+  filter: "event.eventName == 'email.delivered'",
+  onEvent: async ({ event }) => {
+    console.log(event);
+  },
+});
+```
+
+| Setting | Value |
+| --- | --- |
+| Source | `webhooks.loops()` |
+| Verification | Standard Webhooks (`webhook-id`, `webhook-timestamp`, `webhook-signature`) |
+| Credential | Signing secret issued by Loops |
+| Event type | `event.eventName` |
+| Loops docs | [Loops webhook docs](https://loops.so/docs/webhooks) |
+
+## Set up Loops
+
+1. Start `trigger dev` or deploy, then copy the endpoint's **Webhook URL** from the **Webhooks** page.
+2. In Loops, go to **Settings > Webhooks**, add the webhook URL as the endpoint, and select the events your subscribers need.
+3. Copy the endpoint's signing secret (it starts with `whsec_`), then choose **Set signing secret** on the Trigger.dev endpoint.
+4. Send a `testing.testEvent` from the Loops settings page, or use the endpoint's **Test** tab, and check the endpoint's **Deliveries** tab. See [Verify the connection](/webhooks/connect#verify-the-connection) if nothing arrives.

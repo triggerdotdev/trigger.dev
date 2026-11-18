@@ -1,6 +1,7 @@
 import {
   type PrismaClientOrTransaction,
   type RuntimeEnvironmentType,
+  type TaskExecutionMode,
   type TaskTriggerSource,
 } from "@trigger.dev/database";
 import { $replica } from "~/db.server";
@@ -18,6 +19,7 @@ export type TaskListItem = {
   filePath: string;
   createdAt: Date;
   triggerSource: TaskTriggerSource;
+  executionMode: TaskExecutionMode;
 };
 
 class TaskListPresenter {
@@ -66,6 +68,7 @@ class TaskListPresenter {
         slug: true,
         filePath: true,
         triggerSource: true,
+        executionMode: true,
         createdAt: true,
       },
       orderBy: {

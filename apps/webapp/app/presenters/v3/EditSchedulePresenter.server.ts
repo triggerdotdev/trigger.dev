@@ -8,11 +8,7 @@ import { findCurrentWorkerFromEnvironment } from "~/v3/models/workerDeployment.s
 import { ServiceValidationError } from "~/v3/services/baseService.server";
 import { formatScheduleWindow } from "~/v3/scheduleWindow.server";
 import { resolveNewScheduleDefaultWindowSeconds } from "~/v3/scheduleDefaultWindow.server";
-import {
-  previewMinimumWindowForNewSchedule,
-  resolveFreeSchedulePolicyContext,
-  resolveMinimumWindowOnUpdate,
-} from "~/v3/freeSchedulePolicy.server";
+import { resolvePlanState, resolveMinimumWindowOnUpdate } from "~/v3/freeSchedulePolicy.server";
 
 type EditScheduleOptions = {
   userId: string;
@@ -42,7 +38,6 @@ export class EditSchedulePresenter {
       select: {
         id: true,
         organizationId: true,
-        organization: { select: { featureFlags: true } },
         environments: {
           select: {
             id: true,
@@ -119,7 +114,7 @@ export class EditSchedulePresenter {
 
     const newSchedulePolicy = friendlyId
       ? undefined
-      : await this.#getNewSchedulePolicy(project.organizationId, project.organization.featureFlags);
+      : await this.#getNewSchedulePolicy(project.organizationId);
 
     return {
       possibleTasks: possibleTasks.map((task) => task.slug).sort(),
@@ -129,22 +124,19 @@ export class EditSchedulePresenter {
         friendlyId,
         project.id,
         possibleEnvironments,
-        project.organizationId,
-        project.organization.featureFlags
+        project.organizationId
       ),
       newSchedulePolicy,
     };
   }
 
-  async #getNewSchedulePolicy(organizationId: string, featureFlags: unknown) {
-    const [defaultWindowDurationSeconds, freeSchedulePolicy] = await Promise.all([
-      resolveNewScheduleDefaultWindowSeconds(this.#prismaClient, organizationId),
-      resolveFreeSchedulePolicyContext(this.#prismaClient, { id: organizationId, featureFlags }),
-    ]);
-
+  async #getNewSchedulePolicy(organizationId: string) {
     return {
-      defaultWindowDurationSeconds,
-      minimumWindowDurationSeconds: previewMinimumWindowForNewSchedule(freeSchedulePolicy),
+      defaultWindowDurationSeconds: await resolveNewScheduleDefaultWindowSeconds(
+        this.#prismaClient,
+        organizationId
+      ),
+      minimumWindowDurationSeconds: null,
     };
   }
 
@@ -152,8 +144,7 @@ export class EditSchedulePresenter {
     scheduleId: string | undefined,
     projectId: string,
     possibleEnvironments: Environment[],
-    organizationId: string,
-    featureFlags: unknown
+    organizationId: string
   ) {
     if (!scheduleId) {
       return undefined;
@@ -195,10 +186,7 @@ export class EditSchedulePresenter {
       schedule.minimumWindowDurationSeconds === null
         ? null
         : resolveMinimumWindowOnUpdate(
-            await resolveFreeSchedulePolicyContext(this.#prismaClient, {
-              id: organizationId,
-              featureFlags,
-            }),
+            await resolvePlanState(organizationId),
             schedule.minimumWindowDurationSeconds
           ).minimumWindowDurationSeconds;
     const { instances, ...scheduleFields } = schedule;

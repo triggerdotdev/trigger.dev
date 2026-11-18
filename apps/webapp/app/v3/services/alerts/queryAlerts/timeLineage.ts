@@ -1,4 +1,4 @@
-import type { Alias, Field, SelectQuery } from "@internal/tsql";
+import type { Alias, Call, Field, SelectQuery } from "@internal/tsql";
 import {
   branchesOf,
   callsIn,
@@ -43,6 +43,18 @@ function fieldTouches(
     if (aliased && !seen.has(aliased)) {
       seen.add(aliased);
       if (touches(query, aliased.expr, rule, seen)) return true;
+    }
+    // An unaliased `timeBucket()` is addressable as `timeBucket`.
+    const bare =
+      rule.buckets && TIME_BUCKET_CALL.test(column)
+        ? query.select.find(
+            (item): item is Call =>
+              item.expression_type === "call" && (item as Call).name === column
+          )
+        : undefined;
+    if (bare && !seen.has(bare)) {
+      seen.add(bare);
+      if (touches(query, bare, rule, seen)) return true;
     }
   }
   const entries = fromEntries(query);

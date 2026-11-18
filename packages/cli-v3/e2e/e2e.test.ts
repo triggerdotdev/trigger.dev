@@ -60,6 +60,11 @@ if (testCases.length === 0) {
   }
 }
 
+// The CLI sits outside the fixture project, so its entry points land under `_.._` segments
+function cliEntryPoint(name: string) {
+  return new RegExp(`^/app/(_\\.\\._/)+src/entryPoints/${name}\\.mjs$`);
+}
+
 describe("buildWorker", async () => {
   beforeEach<E2EFixtureTest>(async ({ fixtureDir, skip, packageManager, workspaceDir }) => {
     await rimraf(path.join(workspaceDir, "**/node_modules"), {
@@ -234,13 +239,13 @@ describe("buildWorker", async () => {
         const rewrittenManifest = rewriteBuildManifestPaths(buildManifest!, destination.path);
 
         if ((resolvedConfig!.instrumentedPackageNames?.length ?? 0) > 0) {
-          expect(rewrittenManifest.loaderEntryPoint).toBe("/app/src/entryPoints/loader.mjs");
+          expect(rewrittenManifest.loaderEntryPoint).toMatch(cliEntryPoint("loader"));
         } else {
           expect(rewrittenManifest.loaderEntryPoint).toBeUndefined();
         }
 
-        expect(rewrittenManifest.indexWorkerEntryPoint).toBe(
-          "/app/src/entryPoints/managed-index-worker.mjs"
+        expect(rewrittenManifest.indexWorkerEntryPoint).toMatch(
+          cliEntryPoint("managed-index-worker")
         );
 
         const stdout: string[] = [];

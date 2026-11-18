@@ -1,13 +1,14 @@
 import type { DirectorySyncEffect } from "@trigger.dev/plugins";
 import { prisma } from "~/db.server";
 import { logger } from "~/services/logger.server";
-import { rbac } from "~/services/rbac.server";
+import type { MemberAuditAttribution } from "~/models/memberAudit.server";
 import {
   ensureOrgMember,
   type EnsureOrgMemberResult,
   ensureUserForDirectory,
   OrganizationNotAcceptingMembersError,
   removeOrgMemberForDirectory,
+  setOrgMemberRole,
 } from "~/models/orgMember.server";
 import { createPlatformNotification } from "~/services/platformNotifications.server";
 import { getSsoEntitlement, type SsoEntitlement } from "~/services/platform.v3.server";
@@ -70,7 +71,10 @@ async function notifyLastOwnerProtected(userId: string, organizationId: string):
 }
 
 /** Applies one effect, returning a user id that still needs provisioning queued. */
-async function applyEffect(effect: DirectorySyncEffect): Promise<string | null> {
+async function applyEffect(
+  effect: DirectorySyncEffect,
+  attribution: MemberAuditAttribution | undefined
+): Promise<string | null> {
   switch (effect.kind) {
     case "provision": {
       const userId =
@@ -85,12 +89,15 @@ async function applyEffect(effect: DirectorySyncEffect): Promise<string | null> 
 
       let membership: EnsureOrgMemberResult;
       try {
-        membership = await ensureOrgMember({
-          userId,
-          organizationId: effect.organizationId,
-          roleId: effect.roleId,
-          source: "directory_sync",
-        });
+        membership = await ensureOrgMember(
+          {
+            userId,
+            organizationId: effect.organizationId,
+            roleId: effect.roleId,
+            source: "directory_sync",
+          },
+          attribution
+        );
       } catch (error) {
         // Existing members are untouched by this; only a new membership is refused.
         if (error instanceof OrganizationNotAcceptingMembersError) {
@@ -103,11 +110,10 @@ async function applyEffect(effect: DirectorySyncEffect): Promise<string | null> 
       }
 
       if (effect.roleId && effect.roleAuthoritative) {
-        const result = await rbac.setUserRole({
-          userId,
-          organizationId: effect.organizationId,
-          roleId: effect.roleId,
-        });
+        const result = await setOrgMemberRole(
+          { userId, organizationId: effect.organizationId, roleId: effect.roleId },
+          attribution
+        );
         if (!result.ok) {
           // The org must keep one Owner: skip the role overwrite for the last
           // Owner (they keep Owner) instead of failing the whole batch. Applies
@@ -128,11 +134,10 @@ async function applyEffect(effect: DirectorySyncEffect): Promise<string | null> 
       return membership.devEnvironmentsQueued ? null : userId;
     }
     case "set_role": {
-      const result = await rbac.setUserRole({
-        userId: effect.userId,
-        organizationId: effect.organizationId,
-        roleId: effect.roleId,
-      });
+      const result = await setOrgMemberRole(
+        { userId: effect.userId, organizationId: effect.organizationId, roleId: effect.roleId },
+        attribution
+      );
       if (!result.ok) {
         // Keeping the org's last Owner is expected, not a failure — skip this
         // one member and let the rest of the remap apply (no server error).
@@ -148,10 +153,10 @@ async function applyEffect(effect: DirectorySyncEffect): Promise<string | null> 
       return null;
     }
     case "deprovision": {
-      const outcome = await removeOrgMemberForDirectory({
-        userId: effect.userId,
-        organizationId: effect.organizationId,
-      });
+      const outcome = await removeOrgMemberForDirectory(
+        { userId: effect.userId, organizationId: effect.organizationId },
+        attribution
+      );
       if (!outcome.removed && outcome.reason === "last_owner_protected") {
         await notifyLastOwnerProtected(effect.userId, effect.organizationId);
       }
@@ -176,9 +181,14 @@ export function unqueuedProvisioningError(userIds: string[]): Error {
  *
  * Reports memberships whose provisioning could not be queued rather than
  * throwing, so a caller with no retry can still finish successfully.
+ *
+ * `attribution` says who the recorded member events are attributed to: the
+ * background worker passes `DIRECTORY_SYNC_ATTRIBUTION`; a dashboard request
+ * passes undefined so the request context supplies the admin.
  */
 export async function applyDirectorySyncEffects(
-  effects: DirectorySyncEffect[]
+  effects: DirectorySyncEffect[],
+  attribution: MemberAuditAttribution | undefined
 ): Promise<{ unqueuedUserIds: string[] }> {
   const entitlements = new Map<string, SsoEntitlement>();
   const unqueuedUserIds: string[] = [];
@@ -204,7 +214,7 @@ export async function applyDirectorySyncEffects(
       continue;
     }
 
-    const unqueuedUserId = await applyEffect(effect);
+    const unqueuedUserId = await applyEffect(effect, attribution);
     if (unqueuedUserId) {
       unqueuedUserIds.push(unqueuedUserId);
     }

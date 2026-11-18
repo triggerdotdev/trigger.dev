@@ -1,0 +1,91 @@
+---
+title: "Connect to Snowflake"
+sidebarTitle: "Snowflake"
+description: "Connect to Snowflake from your tasks with workload identity federation instead of a password or private key."
+---
+
+Use Snowflake [workload identity federation](https://docs.snowflake.com/en/user-guide/workload-identity-federation) to connect as a service user that trusts your Trigger.dev environment. The Snowflake driver sends the OIDC token itself, so there's no exchange step and no `SNOWFLAKE_PASSWORD` or private key stored anywhere.
+
+Follow the [OIDC prerequisites](/oidc#prerequisites), then go to the [OIDC](https://cloud.trigger.dev/_/oidc) page for your environment and copy the issuer URL and subject.
+
+## Configure Snowflake
+
+Create a service user for each environment. Replace the issuer and subject with the values from the dashboard:
+
+```sql
+CREATE USER trigger_production
+  WORKLOAD_IDENTITY = (
+    TYPE = OIDC
+    ISSUER = 'https://oidc.trigger.dev/YOUR_ORG_SLUG'
+    SUBJECT = 'YOUR_ENVIRONMENT_SUBJECT'
+  )
+  TYPE = SERVICE
+  DEFAULT_ROLE = analytics_reader;
+
+GRANT ROLE analytics_reader TO USER trigger_production;
+```
+
+With no `OIDC_AUDIENCE_LIST`, Snowflake expects the audience `snowflakecomputing.com`, which the task requests below. `SUBJECT` can be up to 255 characters, which fits every Trigger.dev subject in practice.
+
+## Connect in your task
+
+Workload identity needs the Snowflake Node.js driver with `WORKLOAD_IDENTITY` support:
+
+<CodeGroup>
+
+```bash npm
+npm i @trigger.dev/sdk@latest snowflake-sdk@latest
+```
+
+```bash pnpm
+pnpm add @trigger.dev/sdk@latest snowflake-sdk@latest
+```
+
+```bash bun
+bun add @trigger.dev/sdk@latest snowflake-sdk@latest
+```
+
+</CodeGroup>
+
+Set the [authentication options](https://docs.snowflake.com/en/developer-guide/node-js/nodejs-driver-authenticate) `authenticator`, `workloadIdentityProvider`, and `token`:
+
+```ts /trigger/query-snowflake.ts
+import { auth, task } from "@trigger.dev/sdk";
+import snowflake from "snowflake-sdk";
+
+export const querySnowflake = task({
+  id: "query-snowflake",
+  run: async () => {
+    const { token } = await auth.getOIDCToken({ audience: "snowflakecomputing.com" });
+
+    const connection = snowflake.createConnection({
+      account: "YOUR_ACCOUNT_IDENTIFIER",
+      authenticator: "WORKLOAD_IDENTITY",
+      workloadIdentityProvider: "OIDC",
+      token,
+    });
+    // connect reports a failed login through its callback, so reject on it
+    await new Promise((resolve, reject) =>
+      connection.connect((err, conn) => (err ? reject(err) : resolve(conn)))
+    );
+
+    const rows = await new Promise((resolve, reject) =>
+      connection.execute({
+        sqlText: "SELECT CURRENT_USER()",
+        complete: (err, _stmt, rows) => (err ? reject(err) : resolve(rows)),
+      })
+    );
+
+    await new Promise((resolve) => connection.destroy(resolve));
+    return { rows };
+  },
+});
+```
+
+The token is only used to open the connection, so request it right before connecting. Open the connection inside `run` and close it before the run ends.
+
+## Remove the old credential
+
+Once runs in every deployed environment connect this way, delete `SNOWFLAKE_PASSWORD`, `SNOWFLAKE_PRIVATE_KEY`, `SNOWFLAKE_PRIVATE_KEY_PATH`, and `SNOWFLAKE_PRIVATE_KEY_PASSPHRASE` from those environments on the Environment Variables page, then remove the password or key from the old Snowflake user. `SNOWFLAKE_ACCOUNT` isn't a secret and can stay.
+
+Local Development runs can't mint OIDC tokens. Use your own Snowflake login there when `ctx.environment.type === "DEVELOPMENT"`.

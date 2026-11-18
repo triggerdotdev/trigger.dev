@@ -22,6 +22,8 @@ export type RunTraceSnapshot = {
   events: TraceEvent[];
   duration: number;
   rootStartedAt: Date | string | undefined;
+  /** Spans that arrived from the live tail; the rest came from stored reads. */
+  liveSpanIds: ReadonlySet<string>;
 };
 
 type StartedTrace = { kind: "progressive" | "empty"; trace: RunTraceInput };
@@ -135,8 +137,16 @@ function RunTraceLive({
       events: trace.events as unknown as TraceEvent[],
       duration: trace.duration,
       rootStartedAt: trace.rootStartedAt,
+      liveSpanIds: trace.liveSpanIds,
     });
-  }, [run.friendlyId, trace.events, trace.duration, trace.rootStartedAt, onSnapshot]);
+  }, [
+    run.friendlyId,
+    trace.events,
+    trace.duration,
+    trace.rootStartedAt,
+    trace.liveSpanIds,
+    onSnapshot,
+  ]);
 
   useEffect(() => () => onSnapshot(run.friendlyId, undefined), [run.friendlyId, onSnapshot]);
 

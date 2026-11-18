@@ -1,7 +1,11 @@
 import { json } from "@remix-run/server-runtime";
 import type { GetDeploymentBuildEnvVarsResponseBody } from "@trigger.dev/core/v3";
-import type { PrismaClientOrTransaction } from "@trigger.dev/database";
+import type { PrismaClientOrTransaction, RuntimeEnvironmentType } from "@trigger.dev/database";
 import { z } from "zod";
+import {
+  environmentReadTarget,
+  recordEnvironmentVariableRead,
+} from "~/services/auditLogs/envVarReadAudit.server";
 import { logger } from "~/services/logger.server";
 import { StoredEnvironmentValueSchema } from "~/services/environmentEncryption/crypto.server";
 import type { EnvironmentEncryptionService } from "~/services/environmentEncryption/service.server";
@@ -12,7 +16,14 @@ import { FINAL_DEPLOYMENT_STATUSES } from "~/v3/services/failDeployment.server";
 export async function deploymentBuildEnvVarsResponse(options: {
   db: PrismaClientOrTransaction;
   encryption: EnvironmentEncryptionService;
-  environment: { id: string; projectId: string };
+  environment: {
+    id: string;
+    projectId: string;
+    organizationId: string;
+    slug: string;
+    type: RuntimeEnvironmentType;
+    branchName?: string | null;
+  };
   deploymentId: string;
 }) {
   const { db, encryption, environment, deploymentId } = options;
@@ -60,6 +71,14 @@ export async function deploymentBuildEnvVarsResponse(options: {
       ])
     )[0]!;
     const variables = z.record(z.string(), z.string()).parse(JSON.parse(decrypted));
+    recordEnvironmentVariableRead({
+      action: "envvar.listed",
+      organizationId: environment.organizationId,
+      projectId: environment.projectId,
+      environmentId: environment.id,
+      environmentType: environment.type,
+      target: environmentReadTarget(environment),
+    });
     return json({ variables } satisfies GetDeploymentBuildEnvVarsResponseBody);
   } catch (error) {
     if (error instanceof Response) throw error;

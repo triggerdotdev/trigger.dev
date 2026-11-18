@@ -1,0 +1,19 @@
+{
+  "request": {
+    "rawBody": "{not json"
+  },
+  "response": {
+    "status": 400,
+    "headers": {
+      "content-type": "application/json; charset=utf-8"
+    },
+    "body": {
+      "jsonrpc": "2.0",
+      "id": null,
+      "error": {
+        "code": -32700,
+        "message": "Parse error"
+      }
+    }
+  }
+}

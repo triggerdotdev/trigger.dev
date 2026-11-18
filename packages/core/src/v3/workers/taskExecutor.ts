@@ -117,7 +117,12 @@ export class TaskExecutor {
 
           const [inputError, payloadResult] = await tryCatch(
             runTimelineMetrics.measureMetric("trigger.dev/execution", "payload", async () => {
-              const payloadPacket = await conditionallyImportPacket(originalPacket, this._tracer);
+              const payloadPacket = await conditionallyImportPacket(
+                originalPacket,
+                this._tracer,
+                undefined,
+                { runId: execution.run.id, field: "payload" }
+              );
               return await parsePacket(payloadPacket);
             })
           );

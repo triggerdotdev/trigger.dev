@@ -160,6 +160,7 @@ vi.mock("~/v3/runEngine.server", () => ({
   engine: {
     createManualWaitpoint: async () => ({ waitpoint: { id: "waitpoint_marker" }, isCached: false }),
     completeWaitpoint: async () => ({}),
+    blockRunWithWaitpoint: async () => ({}),
   },
 }));
 vi.mock("~/services/inputStreamWaitpointCache.server", () => ({
@@ -457,7 +458,7 @@ describe("stream route authorization", () => {
   );
 
   heteroPostgresTest(
-    "requires both run mutation and input read/waitpoint capabilities",
+    "requires run mutation and input read, but not environment-wide waitpoint access",
     async ({ prisma14 }) => {
       const { friendlyId } = await setupLiveRunWithFrozenReplica(
         prisma14 as unknown as PrismaClient
@@ -476,18 +477,15 @@ describe("stream route authorization", () => {
       for (const scopes of [
         [`write:runs:${friendlyId}`, "write:waitpoints"],
         ["read:inputStreams", "write:waitpoints"],
-        [`write:runs:${friendlyId}`, "read:inputStreams"],
         [`write:runs:${friendlyId}`, "write:waitpoints", "read:inputStreams:other"],
       ]) {
         ctx.scopes = scopes;
         expect((await call()).status).toBe(403);
       }
-      ctx.scopes = [
-        `write:runs:${friendlyId}`,
-        "write:waitpoints",
-        `read:inputStreams:${friendlyId}`,
-      ];
-      expect((await call()).status).toBe(200);
+      for (const read of [`read:inputStreams:${friendlyId}`, `read:runs:${friendlyId}`]) {
+        ctx.scopes = [`write:runs:${friendlyId}`, read];
+        expect((await call()).status).toBe(200);
+      }
     }
   );
 

@@ -606,3 +606,18 @@ describe("TraceChunkAssembler merge order", () => {
     expect(a.spans.find((n) => n.id === "c")?.data.style.icon).toBe("cache");
   });
 });
+
+describe("TraceChunkAssembler live spans", () => {
+  // Catches: a stored span re-read by a tail's overlap, or a stored read of any kind, counting as
+  // live (the session Trace tab's "new spans" pill counts only live spans).
+  it("marks only spans first seen in a tail read as live", () => {
+    const assembler = new TraceChunkAssembler();
+    assembler.mergeChunk([ev("root", "", 0), ev("stored", "root", 1)]);
+    assembler.mergeChunk([ev("errors", "root", 2)], { source: "errors" });
+    assembler.mergeChunk([ev("deeplink", "root", 3)], { source: "deeplink" });
+    assembler.mergeChunk([ev("revalidate", "root", 4)], { source: "revalidate" });
+    assembler.mergeChunk([ev("stored", "root", 1), ev("live", "root", 5)], { source: "tail" });
+    assembler.mergeChunk([ev("later", "root", 6)]);
+    expect([...assembler.liveSpanIds]).toEqual(["live"]);
+  });
+});

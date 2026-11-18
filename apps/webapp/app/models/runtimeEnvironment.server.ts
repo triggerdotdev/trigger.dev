@@ -631,7 +631,9 @@ export async function hasAccessToEnvironment({
       id: environmentId,
       projectId: projectId,
       organizationId: organizationId,
-      organization: { members: { some: { userId } } },
+      project: { deletedAt: null },
+      organization: { deletedAt: null, members: { some: { userId } } },
+      OR: [{ type: { not: "DEVELOPMENT" } }, { orgMember: { userId } }],
     },
   });
 

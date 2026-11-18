@@ -38,6 +38,16 @@ describe("workloadDeploymentToken", () => {
     expect(result.claims.project_id).toBe(claims.project_id);
   });
 
+  // Catches: schema parsing silently dropping sandbox scope from a verified token.
+  it("round-trips sandbox scope", async () => {
+    const scoped = { ...claims, execution_mode: "SANDBOX" as const, run: "run_own" };
+    const token = await mintWorkloadDeploymentToken(scoped, SECRET, EXP);
+    expect(await verifyWorkloadDeploymentToken(token, SECRET)).toMatchObject({
+      ok: true,
+      claims: scoped,
+    });
+  });
+
   it("sets the caller-supplied absolute exp", async () => {
     const token = await mintWorkloadDeploymentToken(claims, SECRET, EXP);
     const result = await verifyWorkloadDeploymentToken(token, SECRET);

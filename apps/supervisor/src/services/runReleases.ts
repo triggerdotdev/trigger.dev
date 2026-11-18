@@ -15,7 +15,7 @@ export type DequeuedRun = {
   deploymentFriendlyId?: string;
 };
 
-type ReleaseReason = "PodFailed" | "CreateFailed";
+type ReleaseReason = "PodFailed" | "CreateFailed" | "RestoreRefusalFailed";
 
 export function runOfPod(pod: V1Pod): DequeuedRun | undefined {
   const container = pod.spec?.containers?.find((c) => c.name === "run-controller");
@@ -51,7 +51,7 @@ type RunReleaseResult = "released" | "dropped" | "conflict" | "unavailable" | "e
 const MINUTE_MS = 60_000;
 
 /**
- * Releases a run whose workload could not be created, or whose pod failed before the run started,
+ * Releases an unstarted run after a workload creation, pod or checkpoint-refusal report failure,
  * so it is requeued at once instead of waiting out the stall timeout. Past `runsReleasedAMinute`
  * different runs released within a minute the rest are withheld. A run takes its place in the
  * window before the call and gives it back unless the platform released it.
@@ -72,7 +72,7 @@ export class RunReleaser {
   ) {
     this.releasesTotal = new Counter({
       name: "supervisor_run_releases_total",
-      help: "Runs given back to the platform before they started, by reason (PodFailed or CreateFailed) and result: released, dropped when the run could not be requeued and failed, conflict when the run had moved on, unavailable when the platform has no release, error, or withheld past the minute's limit of different runs",
+      help: "Runs given back to the platform before they started, by reason (PodFailed, CreateFailed or RestoreRefusalFailed) and result: released, dropped when the run could not be requeued and failed, conflict when the run had moved on, unavailable when the platform has no release, error, or withheld past the minute's limit of different runs",
       labelNames: ["reason", "result"],
       registers: [opts.register],
     });

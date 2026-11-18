@@ -8,6 +8,7 @@ import {
   ConcurrencyLimitManifest,
 } from "./schemas.js";
 import { MachineConfig } from "./common.js";
+import { SandboxTaskConfig } from "./executionPolicy.js";
 import {
   WebhookVerifierArtifact,
   WebhookRoutingTarget,
@@ -32,6 +33,7 @@ export const TaskResource = z.object({
   machine: MachineConfig.optional(),
   triggerSource: z.string().optional(),
   agentConfig: AgentConfig.optional(),
+  sandbox: SandboxTaskConfig.optional(),
   schedule: ScheduleMetadata.optional(),
   maxDuration: z.number().optional(),
   ttl: z.string().or(z.number().nonnegative().int()).optional(),
@@ -99,6 +101,11 @@ export const BackgroundWorkerMetadata = z.object({
   sourceFiles: z.array(BackgroundWorkerSourceFileMetadata).optional(),
   runtime: z.string().optional(),
   runtimeVersion: z.string().optional(),
+  /**
+   * A command that starts the deployed worker offline and imports the config and task files without
+   * running any task, for a host to prime a snapshot of the image with.
+   */
+  warmupCommand: z.array(z.string()).optional(),
 });
 
 export type BackgroundWorkerMetadata = z.infer<typeof BackgroundWorkerMetadata>;

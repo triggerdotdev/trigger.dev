@@ -55,7 +55,7 @@ import {
 } from "../taskContext/otelProcessors.js";
 import { traceContext } from "../trace-context-api.js";
 import { getEnvVar } from "../utils/getEnv.js";
-import { machineId } from "./machineId.js";
+import { getMachineId } from "./machineId.js";
 import { UserSpanProcessorWrapper } from "./userSpanProcessor.js";
 import { startDiskIoMetrics } from "./diskIoMetrics.js";
 import { startFilesystemMetrics } from "./filesystemMetrics.js";
@@ -130,7 +130,7 @@ export class TracingSDK {
           [SemanticInternalAttributes.CLI_VERSION]: VERSION,
           [SemanticInternalAttributes.SDK_VERSION]: VERSION,
           [SemanticInternalAttributes.SDK_LANGUAGE]: "typescript",
-          [SemanticInternalAttributes.MACHINE_ID]: machineId,
+          [SemanticInternalAttributes.MACHINE_ID]: getMachineId(),
         })
       )
       .merge(resourceFromAttributes(envResourceAttributes))

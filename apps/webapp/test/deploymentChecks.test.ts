@@ -100,13 +100,81 @@ async function createDeployment(
 }
 
 describe("deployment checks", () => {
+  postgresTest(
+    "hands the plugin the image the registry gave, read per attempt",
+    async ({ prisma }) => {
+      // Catches: the supplied image dropped on the way to the plugin (so the check keeps needing
+      // ECR credentials), a stale image reused across attempts (its URLs expire), or a failed read
+      // sending an empty image instead of none.
+      const image = {
+        manifest: '{"schemaVersion":2}',
+        mediaType: "application/vnd.oci.image.manifest.v1+json",
+        blobUrls: { [DIGEST]: "https://layers.s3.us-east-1.amazonaws.com/x" },
+      };
+      const reads: Array<{
+        imageReference: string;
+        imageDigest: string;
+        projectRef: string;
+        isV4Deployment: boolean;
+      }> = [];
+      const { deployment, project } = await createDeployment(prisma);
+      const stored = await prisma.workerDeployment.findFirstOrThrow({
+        where: { id: deployment.id },
+      });
+
+      const supplied = testPlugin();
+      await runDeploymentCheck(
+        { deploymentId: deployment.id, attempt: 0 },
+        {
+          prisma,
+          controller: supplied.controller,
+          readImage: async (input) => {
+            reads.push(input);
+            return image;
+          },
+        }
+      );
+      const unread = testPlugin();
+      await runDeploymentCheck(
+        { deploymentId: deployment.id, attempt: 1 },
+        {
+          prisma,
+          controller: unread.controller,
+          readImage: async (input) => {
+            reads.push(input);
+            return null;
+          },
+        }
+      );
+
+      expect(reads).toEqual([
+        {
+          imageReference: `${IMAGE}@${DIGEST}`,
+          imageDigest: DIGEST,
+          projectRef: project.externalRef,
+          isV4Deployment: stored.type === "MANAGED",
+        },
+        {
+          imageReference: `${IMAGE}@${DIGEST}`,
+          imageDigest: DIGEST,
+          projectRef: project.externalRef,
+          isV4Deployment: stored.type === "MANAGED",
+        },
+      ]);
+      expect(supplied.checks).toEqual([expect.objectContaining({ imageDigest: DIGEST, image })]);
+      expect(unread.checks).toHaveLength(1);
+      expect(unread.checks[0]).not.toHaveProperty("image");
+    }
+  );
+
   postgresTest("never writes the deployment, whatever the check answers", async ({ prisma }) => {
     // Catches: a background check changing a live deployment.
     const results: DeploymentCheckResult[] = [
       { outcome: "pass", id: "check_1", retryable: false },
-      { outcome: "fail", id: "check_2", retryable: false },
-      { outcome: "unavailable", id: "check_3", retryable: false },
-      { outcome: "unavailable", id: "check_4", retryable: true },
+      { outcome: "flagged", id: "check_2", retryable: false },
+      { outcome: "fail", id: "check_3", retryable: false },
+      { outcome: "unavailable", id: "check_4", retryable: false },
+      { outcome: "unavailable", id: "check_5", retryable: true },
     ];
     for (const result of results) {
       const { deployment } = await createDeployment(prisma);
@@ -127,12 +195,17 @@ describe("deployment checks", () => {
 
   postgresTest("checks what the plugin chose, labelled with its mode", async ({ prisma }) => {
     // Catches: a gate or shadow deploy not checked, a skipped one checked, an image reference
-    // the checker can't use sent, the plugin asked about the wrong org or deployment, or an org
-    // id in the metric attributes.
+    // the checker can't use sent, the plugin asked about the wrong org or deployment, an org id
+    // in the metric attributes, or a flagged answer missing from the counter the deploy scan
+    // alert reads.
     const metrics = createInMemoryMetrics();
     const telemetry = deploymentCheckTelemetry(metrics.meter);
-    const run = async (decision: DeploymentCheckDecision, imageReference?: string | null) => {
-      const plugin = testPlugin({ decision });
+    const run = async (
+      decision: DeploymentCheckDecision,
+      imageReference?: string | null,
+      result?: DeploymentCheckResult
+    ) => {
+      const plugin = testPlugin({ decision, result });
       const { deployment, organization, project } = await createDeployment(prisma, {
         imageReference,
       });
@@ -175,6 +248,13 @@ describe("deployment checks", () => {
       ]);
     }
 
+    const flagged = await run(SHADOW, undefined, {
+      outcome: "flagged",
+      id: "check_flagged",
+      retryable: false,
+    });
+    expect(flagged.outcome).toBe("flagged");
+
     // The reader also exports every 100 ms, and an earlier export holds partial totals. With
     // cumulative temporality the latest export holds every point.
     const points = ((await latestMetrics(metrics))?.scopeMetrics ?? [])
@@ -184,6 +264,7 @@ describe("deployment checks", () => {
       expect.arrayContaining([
         { mode: "shadow", selected_by: "sampled", outcome: "pass" },
         { mode: "gate", selected_by: "always", outcome: "pass" },
+        { mode: "shadow", selected_by: "sampled", outcome: "flagged" },
       ])
     );
     for (const point of points ?? []) {

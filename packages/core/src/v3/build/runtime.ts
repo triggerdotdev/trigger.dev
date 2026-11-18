@@ -3,6 +3,7 @@ import { pathToFileURL } from "url";
 import { BuildRuntime, ConfigRuntime } from "../schemas/build.js";
 import { dedupFlags } from "./flags.js";
 import { homedir } from "node:os";
+import { existsSync } from "node:fs";
 
 export const CURRENT_NODE_LTS_RUNTIME = "node-24" satisfies BuildRuntime;
 export const DEFAULT_RUNTIME = CURRENT_NODE_LTS_RUNTIME;
@@ -108,7 +109,7 @@ export function execPathForRuntime(runtime: BuildRuntime): string {
       return process.execPath;
     case "bun":
     case "bun-legacy":
-    case "bun-1.4":
+    case "bun-1.4": {
       if (typeof process.env.BUN_INSTALL === "string") {
         return join(process.env.BUN_INSTALL, "bin", "bun");
       }
@@ -117,10 +118,39 @@ export function execPathForRuntime(runtime: BuildRuntime): string {
         return join(process.env.BUN_INSTALL_BIN, "bun");
       }
 
-      return join(homedir(), ".bun", "bin", "bun");
+      const defaultPath = join(homedir(), ".bun", "bin", "bun");
+      // Bun installed some other way (Homebrew, mise, a distro package) is found on PATH
+      return existsSync(defaultPath) ? defaultPath : "bun";
+    }
     default:
       throw new Error(`Unsupported runtime ${runtime}`);
   }
+}
+
+/**
+ * Node 24 and 26 can share a compile cache between the image build and the runtime. Node 22 is
+ * left out: its cache key includes --max-old-space-size, which the run worker sets per machine, so
+ * a cache built in the image would never be read.
+ */
+export function supportsNodeCompileCache(runtime: BuildRuntime): boolean {
+  return runtime === "node" || runtime === "node-24" || runtime === "node-26";
+}
+
+/**
+ * The env that points Node at the compile cache. The image build writes it and the run worker reads
+ * it from the same /app path, so entries are keyed by absolute path (portable mode drops the query
+ * that instrumented module wrappers use, so a wrapper and its module would share one entry). Node 24
+ * has no read-only mode, so it also writes entries the build missed.
+ */
+export function nodeCompileCacheEnv(
+  runtime: BuildRuntime,
+  compileCacheDir: string,
+  mode: "write" | "read"
+): Record<string, string> {
+  return {
+    NODE_COMPILE_CACHE: compileCacheDir,
+    ...(mode === "read" && runtime === "node-26" ? { NODE_COMPILE_CACHE_READONLY: "1" } : {}),
+  };
 }
 
 export type ExecOptions = {

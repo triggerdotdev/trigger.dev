@@ -44,6 +44,7 @@ export class CancelTaskRunService extends BaseService {
     // DB row directly. Never throw here: the cancel route returns 500 on any throw.
     if (!isCancellableRunStatus(taskRun.status)) {
       if (options?.bulkActionId) {
+        // runops-exception(legacy-teardown): cancel of a historical engine V1 run, on the legacy database
         await runOpsLegacyPrismaClient.taskRun.update({
           where: { id: taskRun.id },
           data: { bulkActionGroupIds: { push: options.bulkActionId } },
@@ -52,6 +53,7 @@ export class CancelTaskRunService extends BaseService {
       return { id: taskRun.id, alreadyFinished: true };
     }
 
+    // runops-exception(legacy-teardown): cancel of a historical engine V1 run, on the legacy database
     await runOpsLegacyPrismaClient.taskRun.update({
       where: { id: taskRun.id },
       data: {

@@ -11,7 +11,7 @@ export function ScheduleTypeCombo({ type, className }: { type: ScheduleType; cla
   );
 }
 
-export function ScheduleTypeIcon({ type, className }: { type: ScheduleType; className?: string }) {
+function ScheduleTypeIcon({ type, className }: { type: ScheduleType; className?: string }) {
   switch (type) {
     case "IMPERATIVE":
       return <ArrowsRightLeftIcon className={cn("size-4", className)} />;
@@ -19,7 +19,7 @@ export function ScheduleTypeIcon({ type, className }: { type: ScheduleType; clas
       return <ArchiveBoxIcon className={cn("size-4", className)} />;
   }
 }
-export function scheduleTypeName(type: ScheduleType) {
+function scheduleTypeName(type: ScheduleType) {
   switch (type) {
     case "IMPERATIVE":
       return "Imperative";

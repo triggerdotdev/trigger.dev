@@ -60,12 +60,15 @@ afterAll(async () => {
 describe("WorkloadServer auth (log mode)", () => {
   it("allows a valid token but forwards no environment_id", async () => {
     const token = await mintWorkloadDeploymentToken(claims, SECRET, EXP);
-    const res = await fetch(`${BASE}/api/v1/workload-actions/runs/run_1/snapshots/since/snap_1`, {
-      headers: {
-        [WORKLOAD_HEADERS.RUNNER_ID]: "runner_1",
-        [WORKLOAD_HEADERS.DEPLOYMENT_ID]: token,
-      },
-    });
+    const res = await fetch(
+      `${BASE}/api/v1/workload-actions/runs/run_1/snapshots/since/snapshot_1`,
+      {
+        headers: {
+          [WORKLOAD_HEADERS.RUNNER_ID]: "runner_1",
+          [WORKLOAD_HEADERS.DEPLOYMENT_ID]: token,
+        },
+      }
+    );
 
     expect(res.status).toBe(200);
     expect(calls.getSnapshotsSince.at(-1)![3]).toBeUndefined();
@@ -73,12 +76,15 @@ describe("WorkloadServer auth (log mode)", () => {
 
   it("does not reject an invalid token in log mode", async () => {
     const badToken = await mintWorkloadDeploymentToken(claims, "wrong-secret", EXP);
-    const res = await fetch(`${BASE}/api/v1/workload-actions/runs/run_1/snapshots/since/snap_1`, {
-      headers: {
-        [WORKLOAD_HEADERS.RUNNER_ID]: "runner_1",
-        [WORKLOAD_HEADERS.DEPLOYMENT_ID]: badToken,
-      },
-    });
+    const res = await fetch(
+      `${BASE}/api/v1/workload-actions/runs/run_1/snapshots/since/snapshot_1`,
+      {
+        headers: {
+          [WORKLOAD_HEADERS.RUNNER_ID]: "runner_1",
+          [WORKLOAD_HEADERS.DEPLOYMENT_ID]: badToken,
+        },
+      }
+    );
 
     expect(res.status).toBe(200);
     expect(calls.getSnapshotsSince.at(-1)![3]).toBeUndefined();

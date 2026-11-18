@@ -18,7 +18,12 @@ vi.mock("~/services/authorizationRateLimitMiddleware.server", () => ({
   authorizationRateLimitMiddleware: () => (_req: any, _res: any, next: any) => next(),
 }));
 vi.mock("~/env.server", () => ({
-  env: { API_RATE_LIMIT_JWT_WINDOW: "1m", API_RATE_LIMIT_JWT_TOKENS: 100 },
+  env: {
+    API_RATE_LIMIT_JWT_WINDOW: "1m",
+    API_RATE_LIMIT_JWT_TOKENS: 100,
+    SESSION_SECRET: "test-secret",
+    MCP_ORIGIN: "https://mcp.test",
+  },
 }));
 vi.mock("~/models/runtimeEnvironment.server", () => ({
   resolvePrivateApiKeyRateLimitScope: mocks.resolvePrivateApiKeyRateLimitScope,
@@ -37,10 +42,12 @@ vi.mock("~/services/apiRateLimitMetrics.server", () => ({
   initApiRateLimitMetrics: vi.fn(),
 }));
 
+import { signUserActorToken } from "@trigger.dev/rbac";
 import {
   jwtActorRateLimitIdentifier,
   readApiRateLimitMetricsFlag,
   resolveApiRateLimitOverride,
+  userActorRateLimitIdentifier,
 } from "~/services/apiRateLimit.server";
 
 describe("jwtActorRateLimitIdentifier", () => {
@@ -232,4 +239,78 @@ describe("resolveApiRateLimitOverride — run tokens", () => {
 
     await expect(resolveApiRateLimitOverride(`Bearer ${runToken}`)).resolves.toBeUndefined();
   });
+});
+
+describe("resolveApiRateLimitOverride — user-actor tokens", () => {
+  // A distinct sessionId makes each mint a different token, like a fresh UAT from the same PAT.
+  const mint = (
+    opts: { userId: string; pat?: string; expirationTime?: number },
+    sessionId: string,
+    secret = "test-secret"
+  ) => signUserActorToken(secret, { client: "mcp", sessionId, ...opts });
+
+  beforeEach(() => {
+    mocks.authenticateAuthorizationHeader.mockReset();
+    mocks.resolvePrivateApiKeyRateLimitScope.mockReset();
+  });
+
+  it.each([
+    ["the source PAT", { userId: "usr_1", pat: "pat_1" }, "pat:pat_1"],
+    ["the user when there is no PAT", { userId: "usr_1" }, "user:usr_1"],
+  ])("keys a UAT on %s, not on the token", async (_name, opts, expected) => {
+    const a = await resolveApiRateLimitOverride(`Bearer ${await mint(opts, "s1")}`);
+    const b = await resolveApiRateLimitOverride(`Bearer ${await mint(opts, "s2")}`);
+
+    expect(a?.identifier).toBe(expected);
+    expect(b?.identifier).toBe(expected);
+    expect(mocks.resolvePrivateApiKeyRateLimitScope).not.toHaveBeenCalled();
+  });
+
+  // Catches: dropping the MCP-audience retry, so every refreshed MCP token gets its own bucket.
+  it("keys MCP-audience UATs from the same grant on one bucket", async () => {
+    const mintMcp = (sessionId: string) =>
+      signUserActorToken("test-secret", {
+        userId: "usr_1",
+        pat: "pat_1",
+        client: "mcp",
+        sessionId,
+        audience: "https://mcp.test/mcp",
+      });
+
+    const a = await resolveApiRateLimitOverride(`Bearer ${await mintMcp("s1")}`);
+    const b = await resolveApiRateLimitOverride(`Bearer ${await mintMcp("s2")}`);
+
+    expect(a?.identifier).toBe("pat:pat_1");
+    expect(b?.identifier).toBe("pat:pat_1");
+  });
+
+  it("does not share a bucket between different PATs", async () => {
+    expect(
+      await userActorRateLimitIdentifier(await mint({ userId: "usr_1", pat: "pat_1" }, "s1"))
+    ).not.toBe(
+      await userActorRateLimitIdentifier(await mint({ userId: "usr_1", pat: "pat_2" }, "s1"))
+    );
+  });
+
+  it("does not let a forged UAT (wrong signature) borrow a victim's bucket", async () => {
+    const forged = await mint({ userId: "usr_victim", pat: "pat_victim" }, "s1", "attacker-secret");
+
+    await expect(resolveApiRateLimitOverride(`Bearer ${forged}`)).resolves.toBeUndefined();
+  });
+
+  it("falls back to the token hash for an expired UAT", async () => {
+    const expired = await mint(
+      { userId: "usr_1", pat: "pat_1", expirationTime: Math.floor(Date.now() / 1000) - 60 },
+      "s1"
+    );
+
+    await expect(resolveApiRateLimitOverride(`Bearer ${expired}`)).resolves.toBeUndefined();
+  });
+
+  it.each(["tr_uat_", "tr_uat_garbage", "tr_uat_a.!!!.c"])(
+    "falls back to the token hash for malformed UAT %j",
+    async (token) => {
+      await expect(resolveApiRateLimitOverride(`Bearer ${token}`)).resolves.toBeUndefined();
+    }
+  );
 });

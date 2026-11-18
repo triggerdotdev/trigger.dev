@@ -5,7 +5,7 @@ import {
   getTextareaProps,
   useForm,
 } from "@conform-to/react";
-import { parseWithZod } from "@conform-to/zod/v4";
+import { parseWithZod } from "~/utils/conform";
 import { InformationCircleIcon, ArrowUpCircleIcon } from "@heroicons/react/20/solid";
 import { EnvelopeIcon, ShieldCheckIcon } from "@heroicons/react/24/solid";
 import { Form, useActionData, useLocation, useNavigation, useSearchParams } from "@remix-run/react";

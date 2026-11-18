@@ -17,6 +17,20 @@ export type AuditLogs = {
    */
   record(input: AuditLogInput): void;
   /**
+   * `record` for an event that needs reads to describe it, e.g. role names, so the change doesn't
+   * wait for them. The request context and time are taken now; `build` runs in the background,
+   * only while recording is on, and returning null records nothing. The built event's org decides
+   * whether it is recorded. Never throws: a failing `build` is logged. `flush` waits for it.
+   */
+  recordLater(build: () => Promise<AuditLogInput | null>): void;
+  /**
+   * Whether `record` may store events now, for some org: the env switch only. Check it before work
+   * done only to build an event, e.g. reading the previous value, so it costs nothing while
+   * recording is off. The org's flag is checked later, so the work can still record nothing. True
+   * without the plugin when the switch is on: `record` is then a no-op anyway.
+   */
+  isRecordingEnabled(): boolean;
+  /**
    * Resolves when every recorded event, revocation and grace update has been handled. For tests
    * and shutdown.
    */
@@ -89,7 +103,11 @@ function toListedEvent(event: AuditLogListedEvent): AuditLogListedEvent {
       ? { kind: credential.kind, id: credential.id, last4: credential.last4 }
       : null,
     source: event.source,
-    endpoint: endpoint ? { ip: endpoint.ip, userAgent: endpoint.userAgent } : null,
+    // Trigger.dev staff acted: the IP and user agent are theirs, so they stay internal.
+    endpoint:
+      endpoint && event.actor.type !== "support" && event.source !== "staff"
+        ? { ip: endpoint.ip, userAgent: endpoint.userAgent }
+        : null,
     origin: origin ? { deploymentId: origin.deploymentId } : null,
     requestId: event.requestId,
     changes: event.changes,
@@ -97,12 +115,14 @@ function toListedEvent(event: AuditLogListedEvent): AuditLogListedEvent {
 }
 
 /**
- * No-op when the plugin is missing. Recording stops when the recording flag is off; fingerprint
- * calls reach the plugin whenever it is installed.
+ * No-op when the plugin is missing. Recording stops when the recording switch is off, and skips
+ * orgs without the recording flag; fingerprint calls reach the plugin whenever it is installed.
  */
 export function createAuditLogs(options: {
   controller: () => Promise<AuditLogController | null>;
   isRecordingEnabled: () => boolean;
+  /** The per-org gate, checked in the background after `isRecordingEnabled`. Never throws. */
+  isRecordingEnabledFor: (organizationId: string | null) => Promise<boolean>;
   /**
    * Called synchronously inside the request, so read request state before any await. May resolve
    * later, e.g. to wait for a credential lookup started during authentication.
@@ -126,25 +146,32 @@ export function createAuditLogs(options: {
     input: AuditLogInput,
     context: Promise<AuditLogContext>
   ): Promise<void> {
+    if (!(await options.isRecordingEnabledFor(input.organizationId ?? null))) return;
+
     const controller = await options.controller();
     if (!controller) return;
 
     await controller.record(input, await context);
   }
 
+  /** The request context, read now because it lives in the request. */
+  function currentContext(): Promise<AuditLogContext> {
+    let context: Promise<AuditLogContext>;
+    try {
+      context = Promise.resolve(options.getContext(new Date()));
+    } catch (error) {
+      context = Promise.reject(error);
+    }
+    // Handled now: without a plugin, or while it loads, nothing else waits on the context yet.
+    context.catch(() => {});
+    return context;
+  }
+
   return {
     record(input) {
       if (!options.isRecordingEnabled()) return;
 
-      let context: Promise<AuditLogContext>;
-      try {
-        context = Promise.resolve(options.getContext(new Date()));
-      } catch (error) {
-        context = Promise.reject(error);
-      }
-      // Handled now: without a plugin, or while it loads, nothing else waits on the context yet.
-      context.catch(() => {});
-
+      const context = currentContext();
       inBackground(
         () => recordWithController(input, context),
         "Audit logs: failed to record event",
@@ -152,6 +179,20 @@ export function createAuditLogs(options: {
           action: input.action,
         }
       );
+    },
+
+    recordLater(build) {
+      if (!options.isRecordingEnabled()) return;
+
+      const context = currentContext();
+      inBackground(async () => {
+        const input = await build();
+        if (input) await recordWithController(input, context);
+      }, "Audit logs: failed to record event");
+    },
+
+    isRecordingEnabled() {
+      return options.isRecordingEnabled();
     },
 
     async flush() {

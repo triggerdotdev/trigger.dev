@@ -1,0 +1,2747 @@
+{
+  "request": {
+    "jsonrpc": "2.0",
+    "id": 2,
+    "method": "tools/list",
+    "params": {
+      "_meta": {
+        "io.modelcontextprotocol/protocolVersion": "2026-07-28",
+        "io.modelcontextprotocol/clientCapabilities": {},
+        "io.modelcontextprotocol/clientInfo": {
+          "name": "golden",
+          "version": "1.0.0"
+        }
+      }
+    }
+  },
+  "response": {
+    "status": 200,
+    "headers": {
+      "content-type": "application/json"
+    },
+    "body": {
+      "result": {
+        "tools": [
+          {
+            "name": "list_orgs",
+            "title": "List Organizations",
+            "description": "List all organizations for the current user. Useful when looking up an org slug or ID.",
+            "inputSchema": {
+              "type": "object",
+              "$schema": "https://json-schema.org/draft/2020-12/schema",
+              "properties": {}
+            },
+            "annotations": {
+              "readOnlyHint": true,
+              "destructiveHint": false,
+              "title": "List Organizations"
+            }
+          },
+          {
+            "name": "list_projects",
+            "title": "List Projects",
+            "description": "List all projects for the current user, useful for when searching for a project and for looking up a projectRef",
+            "inputSchema": {
+              "type": "object",
+              "$schema": "https://json-schema.org/draft/2020-12/schema",
+              "properties": {}
+            },
+            "annotations": {
+              "readOnlyHint": true,
+              "destructiveHint": false,
+              "title": "List Projects"
+            }
+          },
+          {
+            "name": "get_current_worker",
+            "title": "Get Current Worker",
+            "description": "Get the current worker for the project, including version and registered task slugs. Use get_task_schema to get the payload schema for a specific task.",
+            "inputSchema": {
+              "type": "object",
+              "$schema": "https://json-schema.org/draft/2020-12/schema",
+              "properties": {
+                "projectRef": {
+                  "type": "string",
+                  "description": "The trigger.dev project ref, starts with proj_. We will attempt to automatically detect the project ref if running inside a directory that includes a trigger.config.ts file, or if you pass the --project-ref option to the MCP server."
+                },
+                "configPath": {
+                  "type": "string",
+                  "description": "The path to the trigger.config.ts file. Only used when the trigger.config.ts file is not at the root dir (like in a monorepo setup). If not provided, we will try to find the config file in the current working directory"
+                },
+                "environment": {
+                  "default": "dev",
+                  "type": "string",
+                  "enum": ["dev", "staging", "prod", "preview"],
+                  "description": "The environment to get tasks for"
+                },
+                "branch": {
+                  "type": "string",
+                  "description": "The branch to get tasks for, only used for preview environments and branchable development environments"
+                }
+              }
+            },
+            "annotations": {
+              "readOnlyHint": true,
+              "destructiveHint": false,
+              "title": "Get Current Worker"
+            }
+          },
+          {
+            "name": "get_task_schema",
+            "title": "Get Task Schema",
+            "description": "Get the payload schema for a specific task. Use get_current_worker first to see available task slugs.",
+            "inputSchema": {
+              "type": "object",
+              "$schema": "https://json-schema.org/draft/2020-12/schema",
+              "properties": {
+                "projectRef": {
+                  "type": "string",
+                  "description": "The trigger.dev project ref, starts with proj_. We will attempt to automatically detect the project ref if running inside a directory that includes a trigger.config.ts file, or if you pass the --project-ref option to the MCP server."
+                },
+                "configPath": {
+                  "type": "string",
+                  "description": "The path to the trigger.config.ts file. Only used when the trigger.config.ts file is not at the root dir (like in a monorepo setup). If not provided, we will try to find the config file in the current working directory"
+                },
+                "environment": {
+                  "default": "dev",
+                  "type": "string",
+                  "enum": ["dev", "staging", "prod", "preview"],
+                  "description": "The environment to get tasks for"
+                },
+                "branch": {
+                  "type": "string",
+                  "description": "The branch to get tasks for, only used for preview environments and branchable development environments"
+                },
+                "taskSlug": {
+                  "type": "string",
+                  "description": "The task slug/identifier to get the payload schema for. Use get_current_worker to see available tasks."
+                }
+              },
+              "required": ["taskSlug"]
+            },
+            "annotations": {
+              "readOnlyHint": true,
+              "destructiveHint": false,
+              "title": "Get Task Schema"
+            }
+          },
+          {
+            "name": "list_runs",
+            "title": "List Runs",
+            "description": "List all runs for a project. Use this tool when you need to search for a run or list all runs for a project.",
+            "inputSchema": {
+              "type": "object",
+              "$schema": "https://json-schema.org/draft/2020-12/schema",
+              "properties": {
+                "projectRef": {
+                  "type": "string",
+                  "description": "The trigger.dev project ref, starts with proj_. We will attempt to automatically detect the project ref if running inside a directory that includes a trigger.config.ts file, or if you pass the --project-ref option to the MCP server."
+                },
+                "configPath": {
+                  "type": "string",
+                  "description": "The path to the trigger.config.ts file. Only used when the trigger.config.ts file is not at the root dir (like in a monorepo setup). If not provided, we will try to find the config file in the current working directory"
+                },
+                "environment": {
+                  "default": "dev",
+                  "type": "string",
+                  "enum": ["dev", "staging", "prod", "preview"],
+                  "description": "The environment to get tasks for"
+                },
+                "branch": {
+                  "type": "string",
+                  "description": "The branch to get tasks for, only used for preview environments and branchable development environments"
+                },
+                "cursor": {
+                  "type": "string",
+                  "description": "The cursor to use for pagination, starts with run_"
+                },
+                "limit": {
+                  "type": "integer",
+                  "minimum": -9007199254740991,
+                  "maximum": 9007199254740991,
+                  "description": "The number of runs to list in a single page. Up to 100"
+                },
+                "status": {
+                  "type": "string",
+                  "enum": [
+                    "PENDING_VERSION",
+                    "QUEUED",
+                    "DEQUEUED",
+                    "EXECUTING",
+                    "WAITING",
+                    "COMPLETED",
+                    "CANCELED",
+                    "FAILED",
+                    "CRASHED",
+                    "SYSTEM_FAILURE",
+                    "DELAYED",
+                    "EXPIRED",
+                    "TIMED_OUT"
+                  ],
+                  "description": "Filter for runs with this run status"
+                },
+                "taskIdentifier": {
+                  "type": "string",
+                  "description": "Filter for runs that match this task identifier"
+                },
+                "version": {
+                  "type": "string",
+                  "description": "Filter for runs that match this version, e.g. 20250808.3"
+                },
+                "tag": {
+                  "type": "string",
+                  "description": "Filter for runs that include this tag"
+                },
+                "from": {
+                  "type": "string",
+                  "description": "Filter for runs created after this ISO 8601 timestamp"
+                },
+                "to": {
+                  "type": "string",
+                  "description": "Filter for runs created before this ISO 8601 timestamp"
+                },
+                "period": {
+                  "type": "string",
+                  "description": "Filter for runs created in the last N time period. e.g. 7d, 30d, 365d"
+                },
+                "machine": {
+                  "type": "string",
+                  "enum": [
+                    "micro",
+                    "small-1x",
+                    "small-2x",
+                    "medium-1x",
+                    "medium-2x",
+                    "large-1x",
+                    "large-2x"
+                  ],
+                  "description": "Filter for runs that match this machine preset"
+                },
+                "region": {
+                  "type": "string",
+                  "description": "Filter for runs that executed in this region (the worker instance group masterQueue identifier, e.g. 'us-east-1' or 'main')"
+                }
+              }
+            },
+            "annotations": {
+              "readOnlyHint": true,
+              "destructiveHint": false,
+              "title": "List Runs"
+            }
+          },
+          {
+            "name": "get_run_details",
+            "title": "Get Run Details",
+            "description": "Get the details and trace of a run. Trace events are paginated — the first call returns run details and the first page of trace lines. Pass the returned cursor to fetch subsequent pages without re-fetching the trace. The run ID starts with run_.",
+            "inputSchema": {
+              "type": "object",
+              "$schema": "https://json-schema.org/draft/2020-12/schema",
+              "properties": {
+                "projectRef": {
+                  "type": "string",
+                  "description": "The trigger.dev project ref, starts with proj_. We will attempt to automatically detect the project ref if running inside a directory that includes a trigger.config.ts file, or if you pass the --project-ref option to the MCP server."
+                },
+                "configPath": {
+                  "type": "string",
+                  "description": "The path to the trigger.config.ts file. Only used when the trigger.config.ts file is not at the root dir (like in a monorepo setup). If not provided, we will try to find the config file in the current working directory"
+                },
+                "environment": {
+                  "default": "dev",
+                  "type": "string",
+                  "enum": ["dev", "staging", "prod", "preview"],
+                  "description": "The environment to get tasks for"
+                },
+                "branch": {
+                  "type": "string",
+                  "description": "The branch to get tasks for, only used for preview environments and branchable development environments"
+                },
+                "runId": {
+                  "type": "string",
+                  "description": "The ID of the run to get the details of, starts with run_"
+                },
+                "maxTraceLines": {
+                  "default": 200,
+                  "type": "integer",
+                  "minimum": -9007199254740991,
+                  "maximum": 9007199254740991,
+                  "description": "The maximum number of trace lines per page. Defaults to 200. Use the `cursor` parameter to fetch subsequent pages."
+                },
+                "cursor": {
+                  "type": "string",
+                  "description": "Pagination cursor returned from a previous get_run_details call. Pass this to fetch the next page of trace events."
+                }
+              },
+              "required": ["runId"]
+            },
+            "annotations": {
+              "readOnlyHint": true,
+              "destructiveHint": false,
+              "title": "Get Run Details"
+            }
+          },
+          {
+            "name": "get_span_details",
+            "title": "Get Span Details",
+            "description": "Get detailed information about a specific span within a run trace. Use get_run_details first to see the trace and find span IDs (shown as [spanId] in the trace output). Returns timing, properties/attributes, error info, and for AI spans: model, tokens, cost, and response data.",
+            "inputSchema": {
+              "type": "object",
+              "$schema": "https://json-schema.org/draft/2020-12/schema",
+              "properties": {
+                "projectRef": {
+                  "type": "string",
+                  "description": "The trigger.dev project ref, starts with proj_. We will attempt to automatically detect the project ref if running inside a directory that includes a trigger.config.ts file, or if you pass the --project-ref option to the MCP server."
+                },
+                "configPath": {
+                  "type": "string",
+                  "description": "The path to the trigger.config.ts file. Only used when the trigger.config.ts file is not at the root dir (like in a monorepo setup). If not provided, we will try to find the config file in the current working directory"
+                },
+                "environment": {
+                  "default": "dev",
+                  "type": "string",
+                  "enum": ["dev", "staging", "prod", "preview"],
+                  "description": "The environment to get tasks for"
+                },
+                "branch": {
+                  "type": "string",
+                  "description": "The branch to get tasks for, only used for preview environments and branchable development environments"
+                },
+                "runId": {
+                  "type": "string",
+                  "description": "The ID of the run to get the details of, starts with run_"
+                },
+                "spanId": {
+                  "type": "string",
+                  "description": "The span ID to get details for. You can find span IDs in the trace output from get_run_details — they appear as [spanId] before each span message."
+                }
+              },
+              "required": ["runId", "spanId"]
+            },
+            "annotations": {
+              "readOnlyHint": true,
+              "destructiveHint": false,
+              "title": "Get Span Details"
+            }
+          },
+          {
+            "name": "wait_for_run_to_complete",
+            "title": "Wait for Run to Complete",
+            "description": "Wait for a run to complete. The run ID is the ID of the run that was triggered. It starts with run_. Has an optional timeoutInSeconds parameter (default 60s) - if the run doesn't complete within that time, the current state of the run will be returned.",
+            "inputSchema": {
+              "type": "object",
+              "$schema": "https://json-schema.org/draft/2020-12/schema",
+              "properties": {
+                "projectRef": {
+                  "type": "string",
+                  "description": "The trigger.dev project ref, starts with proj_. We will attempt to automatically detect the project ref if running inside a directory that includes a trigger.config.ts file, or if you pass the --project-ref option to the MCP server."
+                },
+                "configPath": {
+                  "type": "string",
+                  "description": "The path to the trigger.config.ts file. Only used when the trigger.config.ts file is not at the root dir (like in a monorepo setup). If not provided, we will try to find the config file in the current working directory"
+                },
+                "environment": {
+                  "default": "dev",
+                  "type": "string",
+                  "enum": ["dev", "staging", "prod", "preview"],
+                  "description": "The environment to get tasks for"
+                },
+                "branch": {
+                  "type": "string",
+                  "description": "The branch to get tasks for, only used for preview environments and branchable development environments"
+                },
+                "runId": {
+                  "type": "string",
+                  "description": "The ID of the run to get the details of, starts with run_"
+                },
+                "timeoutInSeconds": {
+                  "default": 60,
+                  "type": "number",
+                  "description": "The maximum time in seconds to wait for the run to complete. If the run doesn't complete within this time, the current state of the run will be returned. Defaults to 60 seconds."
+                }
+              },
+              "required": ["runId"]
+            },
+            "annotations": {
+              "readOnlyHint": true,
+              "destructiveHint": false,
+              "title": "Wait for Run to Complete"
+            }
+          },
+          {
+            "name": "list_deploys",
+            "title": "List Deploys",
+            "description": "List all deploys for a project. Use this tool when you need to search for a deploy or list all deploys for a project.",
+            "inputSchema": {
+              "type": "object",
+              "$schema": "https://json-schema.org/draft/2020-12/schema",
+              "properties": {
+                "projectRef": {
+                  "type": "string",
+                  "description": "The trigger.dev project ref, starts with proj_. We will attempt to automatically detect the project ref if running inside a directory that includes a trigger.config.ts file, or if you pass the --project-ref option to the MCP server."
+                },
+                "configPath": {
+                  "type": "string",
+                  "description": "The path to the trigger.config.ts file. Only used when the trigger.config.ts file is not at the root dir (like in a monorepo setup). If not provided, we will try to find the config file in the current working directory"
+                },
+                "branch": {
+                  "type": "string",
+                  "description": "The branch to get tasks for, only used for preview environments and branchable development environments"
+                },
+                "environment": {
+                  "default": "prod",
+                  "type": "string",
+                  "enum": ["staging", "prod", "preview"],
+                  "description": "The environment to list deploys for"
+                },
+                "from": {
+                  "type": "string",
+                  "description": "The date to start the search from, in ISO 8601 format"
+                },
+                "to": {
+                  "type": "string",
+                  "description": "The date to end the search, in ISO 8601 format"
+                },
+                "period": {
+                  "type": "string",
+                  "description": "The period to search within (e.g. 1d, 7d, 3h, etc.)"
+                },
+                "status": {
+                  "type": "string",
+                  "enum": [
+                    "PENDING",
+                    "BUILDING",
+                    "DEPLOYING",
+                    "DEPLOYED",
+                    "FAILED",
+                    "CANCELED",
+                    "TIMED_OUT"
+                  ],
+                  "description": "Filter deployments that are in this status"
+                },
+                "cursor": {
+                  "type": "string",
+                  "description": "The deployment ID to start the search from, to get the next page"
+                },
+                "limit": {
+                  "type": "number",
+                  "minimum": 1,
+                  "maximum": 100,
+                  "description": "The number of deployments to return, defaults to 20 (max 100)"
+                }
+              }
+            },
+            "annotations": {
+              "readOnlyHint": true,
+              "destructiveHint": false,
+              "title": "List Deploys"
+            }
+          },
+          {
+            "name": "list_preview_branches",
+            "title": "List Preview Branches",
+            "description": "List all preview branches for a project. Use this tool when you need to search for a preview branch or list all preview branches for a project.",
+            "inputSchema": {
+              "type": "object",
+              "$schema": "https://json-schema.org/draft/2020-12/schema",
+              "properties": {
+                "projectRef": {
+                  "type": "string",
+                  "description": "The trigger.dev project ref, starts with proj_. We will attempt to automatically detect the project ref if running inside a directory that includes a trigger.config.ts file, or if you pass the --project-ref option to the MCP server."
+                },
+                "configPath": {
+                  "type": "string",
+                  "description": "The path to the trigger.config.ts file. Only used when the trigger.config.ts file is not at the root dir (like in a monorepo setup). If not provided, we will try to find the config file in the current working directory"
+                }
+              }
+            },
+            "annotations": {
+              "readOnlyHint": true,
+              "destructiveHint": false,
+              "title": "List Preview Branches"
+            }
+          },
+          {
+            "name": "get_query_schema",
+            "title": "Get Query Schema",
+            "description": "Get the column schema for a specific TRQL table. Available tables: 'runs' (task execution data), 'metrics' (CPU, memory, custom metrics), 'llm_metrics' (LLM token usage, costs, latency). Returns columns, types, descriptions, and allowed values for the specified table.",
+            "inputSchema": {
+              "type": "object",
+              "$schema": "https://json-schema.org/draft/2020-12/schema",
+              "properties": {
+                "projectRef": {
+                  "type": "string",
+                  "description": "The trigger.dev project ref, starts with proj_. We will attempt to automatically detect the project ref if running inside a directory that includes a trigger.config.ts file, or if you pass the --project-ref option to the MCP server."
+                },
+                "configPath": {
+                  "type": "string",
+                  "description": "The path to the trigger.config.ts file. Only used when the trigger.config.ts file is not at the root dir (like in a monorepo setup). If not provided, we will try to find the config file in the current working directory"
+                },
+                "environment": {
+                  "default": "dev",
+                  "type": "string",
+                  "enum": ["dev", "staging", "prod", "preview"],
+                  "description": "The environment to get tasks for"
+                },
+                "branch": {
+                  "type": "string",
+                  "description": "The branch to get tasks for, only used for preview environments and branchable development environments"
+                },
+                "table": {
+                  "type": "string",
+                  "description": "The table name to get the schema for (e.g. 'runs', 'metrics', 'llm_metrics')."
+                }
+              },
+              "required": ["table"]
+            },
+            "annotations": {
+              "readOnlyHint": true,
+              "destructiveHint": false,
+              "title": "Get Query Schema"
+            }
+          },
+          {
+            "name": "query",
+            "title": "Query",
+            "description": "Execute a TRQL query against your Trigger.dev data. TRQL is a SQL-style query language for analyzing runs, metrics, and LLM usage. Call the get_query_schema tool first to discover available tables and columns before writing a query.",
+            "inputSchema": {
+              "type": "object",
+              "$schema": "https://json-schema.org/draft/2020-12/schema",
+              "properties": {
+                "projectRef": {
+                  "type": "string",
+                  "description": "The trigger.dev project ref, starts with proj_. We will attempt to automatically detect the project ref if running inside a directory that includes a trigger.config.ts file, or if you pass the --project-ref option to the MCP server."
+                },
+                "configPath": {
+                  "type": "string",
+                  "description": "The path to the trigger.config.ts file. Only used when the trigger.config.ts file is not at the root dir (like in a monorepo setup). If not provided, we will try to find the config file in the current working directory"
+                },
+                "environment": {
+                  "default": "dev",
+                  "type": "string",
+                  "enum": ["dev", "staging", "prod", "preview"],
+                  "description": "The environment to get tasks for"
+                },
+                "branch": {
+                  "type": "string",
+                  "description": "The branch to get tasks for, only used for preview environments and branchable development environments"
+                },
+                "query": {
+                  "type": "string",
+                  "description": "The TRQL query to execute. TRQL is a SQL-style language for analyzing your Trigger.dev data. Use the get_query_schema tool first to discover available tables and columns."
+                },
+                "scope": {
+                  "default": "environment",
+                  "description": "Data access scope. 'environment' (default) limits to the current environment, 'project' spans all environments, 'organization' spans all projects.",
+                  "type": "string",
+                  "enum": ["environment", "project", "organization"]
+                },
+                "period": {
+                  "description": "Time period shorthand, e.g. '1h', '7d', '30d'. Mutually exclusive with from/to.",
+                  "type": "string"
+                },
+                "from": {
+                  "description": "Start of time range (ISO 8601). Must be paired with 'to'.",
+                  "type": "string"
+                },
+                "to": {
+                  "description": "End of time range (ISO 8601). Must be paired with 'from'.",
+                  "type": "string"
+                }
+              },
+              "required": ["query"]
+            },
+            "annotations": {
+              "readOnlyHint": true,
+              "destructiveHint": false,
+              "title": "Query"
+            }
+          },
+          {
+            "name": "list_dashboards",
+            "title": "List Dashboards",
+            "description": "List the built-in dashboards and the organization's custom dashboards, with their widgets. Built-in dashboards contain pre-built queries for common metrics like run success rates, costs, LLM usage, and more. Use run_dashboard_query to execute a widget's query.",
+            "inputSchema": {
+              "type": "object",
+              "$schema": "https://json-schema.org/draft/2020-12/schema",
+              "properties": {
+                "projectRef": {
+                  "type": "string",
+                  "description": "The trigger.dev project ref, starts with proj_. We will attempt to automatically detect the project ref if running inside a directory that includes a trigger.config.ts file, or if you pass the --project-ref option to the MCP server."
+                },
+                "configPath": {
+                  "type": "string",
+                  "description": "The path to the trigger.config.ts file. Only used when the trigger.config.ts file is not at the root dir (like in a monorepo setup). If not provided, we will try to find the config file in the current working directory"
+                },
+                "environment": {
+                  "default": "dev",
+                  "type": "string",
+                  "enum": ["dev", "staging", "prod", "preview"],
+                  "description": "The environment to get tasks for"
+                },
+                "branch": {
+                  "type": "string",
+                  "description": "The branch to get tasks for, only used for preview environments and branchable development environments"
+                }
+              }
+            },
+            "annotations": {
+              "readOnlyHint": true,
+              "destructiveHint": false,
+              "title": "List Dashboards"
+            }
+          },
+          {
+            "name": "run_dashboard_query",
+            "title": "Run Dashboard Query",
+            "description": "Execute a single widget query from a built-in or custom dashboard. Use list_dashboards first to see available dashboards, widget IDs, and their queries. Supports time period and scope options.",
+            "inputSchema": {
+              "type": "object",
+              "$schema": "https://json-schema.org/draft/2020-12/schema",
+              "properties": {
+                "projectRef": {
+                  "type": "string",
+                  "description": "The trigger.dev project ref, starts with proj_. We will attempt to automatically detect the project ref if running inside a directory that includes a trigger.config.ts file, or if you pass the --project-ref option to the MCP server."
+                },
+                "configPath": {
+                  "type": "string",
+                  "description": "The path to the trigger.config.ts file. Only used when the trigger.config.ts file is not at the root dir (like in a monorepo setup). If not provided, we will try to find the config file in the current working directory"
+                },
+                "environment": {
+                  "default": "dev",
+                  "type": "string",
+                  "enum": ["dev", "staging", "prod", "preview"],
+                  "description": "The environment to get tasks for"
+                },
+                "branch": {
+                  "type": "string",
+                  "description": "The branch to get tasks for, only used for preview environments and branchable development environments"
+                },
+                "dashboardKey": {
+                  "type": "string",
+                  "description": "The dashboard key (e.g. 'overview', 'llm'). Use list_dashboards to discover available dashboards."
+                },
+                "widgetId": {
+                  "type": "string",
+                  "description": "The widget ID to execute. Use list_dashboards to see available widget IDs and their queries."
+                },
+                "period": {
+                  "description": "Time period shorthand, e.g. '1h', '7d', '30d'. Defaults to 1d.",
+                  "type": "string"
+                },
+                "from": {
+                  "description": "Start of time range (ISO 8601). Must be paired with 'to'.",
+                  "type": "string"
+                },
+                "to": {
+                  "description": "End of time range (ISO 8601). Must be paired with 'from'.",
+                  "type": "string"
+                },
+                "scope": {
+                  "default": "environment",
+                  "description": "Data access scope.",
+                  "type": "string",
+                  "enum": ["environment", "project", "organization"]
+                }
+              },
+              "required": ["dashboardKey", "widgetId"]
+            },
+            "annotations": {
+              "readOnlyHint": true,
+              "destructiveHint": false,
+              "title": "Run Dashboard Query"
+            }
+          },
+          {
+            "name": "list_prompts",
+            "title": "List Prompts",
+            "description": "List all managed prompts in the project environment. Shows slug, current version, override status, and version count.",
+            "inputSchema": {
+              "type": "object",
+              "$schema": "https://json-schema.org/draft/2020-12/schema",
+              "properties": {
+                "projectRef": {
+                  "type": "string",
+                  "description": "The trigger.dev project ref, starts with proj_. We will attempt to automatically detect the project ref if running inside a directory that includes a trigger.config.ts file, or if you pass the --project-ref option to the MCP server."
+                },
+                "configPath": {
+                  "type": "string",
+                  "description": "The path to the trigger.config.ts file. Only used when the trigger.config.ts file is not at the root dir (like in a monorepo setup). If not provided, we will try to find the config file in the current working directory"
+                },
+                "environment": {
+                  "default": "dev",
+                  "type": "string",
+                  "enum": ["dev", "staging", "prod", "preview"],
+                  "description": "The environment to get tasks for"
+                },
+                "branch": {
+                  "type": "string",
+                  "description": "The branch to get tasks for, only used for preview environments and branchable development environments"
+                }
+              }
+            },
+            "annotations": {
+              "readOnlyHint": true,
+              "destructiveHint": false,
+              "title": "List Prompts"
+            }
+          },
+          {
+            "name": "get_prompt_versions",
+            "title": "Get Prompt Versions",
+            "description": "List all versions for a specific prompt. Shows version number, labels (current, override, latest), source (code or dashboard), model, and content.",
+            "inputSchema": {
+              "type": "object",
+              "$schema": "https://json-schema.org/draft/2020-12/schema",
+              "properties": {
+                "projectRef": {
+                  "type": "string",
+                  "description": "The trigger.dev project ref, starts with proj_. We will attempt to automatically detect the project ref if running inside a directory that includes a trigger.config.ts file, or if you pass the --project-ref option to the MCP server."
+                },
+                "configPath": {
+                  "type": "string",
+                  "description": "The path to the trigger.config.ts file. Only used when the trigger.config.ts file is not at the root dir (like in a monorepo setup). If not provided, we will try to find the config file in the current working directory"
+                },
+                "environment": {
+                  "default": "dev",
+                  "type": "string",
+                  "enum": ["dev", "staging", "prod", "preview"],
+                  "description": "The environment to get tasks for"
+                },
+                "branch": {
+                  "type": "string",
+                  "description": "The branch to get tasks for, only used for preview environments and branchable development environments"
+                },
+                "slug": {
+                  "type": "string",
+                  "description": "The prompt slug"
+                }
+              },
+              "required": ["slug"]
+            },
+            "annotations": {
+              "readOnlyHint": true,
+              "destructiveHint": false,
+              "title": "Get Prompt Versions"
+            }
+          },
+          {
+            "name": "list_agents",
+            "title": "List Agents",
+            "description": "List all chat agents in the current worker. Agents are tasks created with chat.agent() or chat.customAgent(). Use start_agent_chat with an agent's slug to start a conversation.",
+            "inputSchema": {
+              "type": "object",
+              "$schema": "https://json-schema.org/draft/2020-12/schema",
+              "properties": {
+                "projectRef": {
+                  "type": "string",
+                  "description": "The trigger.dev project ref, starts with proj_. We will attempt to automatically detect the project ref if running inside a directory that includes a trigger.config.ts file, or if you pass the --project-ref option to the MCP server."
+                },
+                "configPath": {
+                  "type": "string",
+                  "description": "The path to the trigger.config.ts file. Only used when the trigger.config.ts file is not at the root dir (like in a monorepo setup). If not provided, we will try to find the config file in the current working directory"
+                },
+                "environment": {
+                  "default": "dev",
+                  "type": "string",
+                  "enum": ["dev", "staging", "prod", "preview"],
+                  "description": "The environment to get tasks for"
+                },
+                "branch": {
+                  "type": "string",
+                  "description": "The branch to get tasks for, only used for preview environments and branchable development environments"
+                }
+              }
+            },
+            "annotations": {
+              "readOnlyHint": true,
+              "destructiveHint": false,
+              "title": "List Agents"
+            }
+          },
+          {
+            "name": "read_session_channel",
+            "title": "Read Session Channel",
+            "description": "Read records from a session's realtime stream: a named side channel (pass `channel`) or the reserved chat transcript pair (omit `channel`). By default returns whatever records exist after the optional cursor and closes (a point-in-time drain). Set `timeoutInSeconds` to wait for the next record when none exist yet. Read `out` for the producer's feed (e.g. a screencast) or `in` for what clients have sent. Use the returned nextCursor as `afterEventId` to page forward.",
+            "inputSchema": {
+              "type": "object",
+              "$schema": "https://json-schema.org/draft/2020-12/schema",
+              "properties": {
+                "projectRef": {
+                  "type": "string",
+                  "description": "The trigger.dev project ref, starts with proj_. We will attempt to automatically detect the project ref if running inside a directory that includes a trigger.config.ts file, or if you pass the --project-ref option to the MCP server."
+                },
+                "configPath": {
+                  "type": "string",
+                  "description": "The path to the trigger.config.ts file. Only used when the trigger.config.ts file is not at the root dir (like in a monorepo setup). If not provided, we will try to find the config file in the current working directory"
+                },
+                "environment": {
+                  "default": "dev",
+                  "type": "string",
+                  "enum": ["dev", "staging", "prod", "preview"],
+                  "description": "The environment to get tasks for"
+                },
+                "branch": {
+                  "type": "string",
+                  "description": "The branch to get tasks for, only used for preview environments and branchable development environments"
+                },
+                "sessionId": {
+                  "type": "string",
+                  "description": "The session id (session_* friendlyId) or the externalId it was created with."
+                },
+                "channel": {
+                  "type": "string",
+                  "description": "The named side channel to read. Omit to read the session's reserved chat transcript pair."
+                },
+                "io": {
+                  "default": "out",
+                  "type": "string",
+                  "enum": ["out", "in"],
+                  "description": "Which side to read: `out` (producer feed) or `in` (client input)."
+                },
+                "afterEventId": {
+                  "type": "string",
+                  "description": "Cursor: only return records after this event id. Use the nextCursor from a prior read."
+                },
+                "maxRecords": {
+                  "default": 100,
+                  "type": "integer",
+                  "exclusiveMinimum": 0,
+                  "maximum": 500,
+                  "description": "Maximum records to return (default 100)."
+                },
+                "timeoutInSeconds": {
+                  "type": "integer",
+                  "exclusiveMinimum": 0,
+                  "maximum": 60,
+                  "description": "Wait up to this many seconds for at least one record when none exist yet (a bounded tail). Omit for an immediate point-in-time read."
+                }
+              },
+              "required": ["sessionId"]
+            },
+            "annotations": {
+              "readOnlyHint": true,
+              "destructiveHint": false,
+              "title": "Read Session Channel"
+            }
+          },
+          {
+            "name": "list_alert_capabilities",
+            "title": "List Alert Capabilities",
+            "description": "List what a monitoring alert can watch for a project — queues, runs and health signals. Health capabilities expose tunable params (e.g. thresholds) with defaults, surfaced on each capability. Use this before create_alert to find a valid capabilityKey and its allowed condition shape.",
+            "inputSchema": {
+              "type": "object",
+              "$schema": "https://json-schema.org/draft/2020-12/schema",
+              "properties": {
+                "projectRef": {
+                  "type": "string",
+                  "description": "The trigger.dev project ref, starts with proj_. We will attempt to automatically detect the project ref if running inside a directory that includes a trigger.config.ts file, or if you pass the --project-ref option to the MCP server."
+                },
+                "configPath": {
+                  "type": "string",
+                  "description": "The path to the trigger.config.ts file. Only used when the trigger.config.ts file is not at the root dir (like in a monorepo setup). If not provided, we will try to find the config file in the current working directory"
+                },
+                "area": {
+                  "type": "string",
+                  "description": "Filter capabilities to a specific area, e.g. 'queues', 'runs', 'health'."
+                }
+              }
+            },
+            "annotations": {
+              "readOnlyHint": true,
+              "destructiveHint": false,
+              "title": "List Alert Capabilities"
+            }
+          },
+          {
+            "name": "list_alerts",
+            "title": "List Monitoring Alerts",
+            "description": "List monitoring alerts for a project and environment, optionally filtered by lifecycle (active/completed/expired/stopped) or attention (clear/needs_attention).",
+            "inputSchema": {
+              "type": "object",
+              "$schema": "https://json-schema.org/draft/2020-12/schema",
+              "properties": {
+                "projectRef": {
+                  "type": "string",
+                  "description": "The trigger.dev project ref, starts with proj_. We will attempt to automatically detect the project ref if running inside a directory that includes a trigger.config.ts file, or if you pass the --project-ref option to the MCP server."
+                },
+                "configPath": {
+                  "type": "string",
+                  "description": "The path to the trigger.config.ts file. Only used when the trigger.config.ts file is not at the root dir (like in a monorepo setup). If not provided, we will try to find the config file in the current working directory"
+                },
+                "environment": {
+                  "default": "dev",
+                  "type": "string",
+                  "enum": ["dev", "staging", "prod", "preview"],
+                  "description": "The environment to get tasks for"
+                },
+                "branch": {
+                  "type": "string",
+                  "description": "The branch to get tasks for, only used for preview environments and branchable development environments"
+                },
+                "lifecycle": {
+                  "type": "string",
+                  "enum": ["active", "completed", "expired", "stopped"],
+                  "description": "Filter by alert lifecycle state."
+                },
+                "attention": {
+                  "type": "string",
+                  "enum": ["clear", "needs_attention"],
+                  "description": "Filter by whether the alert currently needs attention."
+                }
+              }
+            },
+            "annotations": {
+              "readOnlyHint": true,
+              "destructiveHint": false,
+              "title": "List Monitoring Alerts"
+            }
+          },
+          {
+            "name": "list_webhook_endpoints",
+            "title": "List Webhook Endpoints",
+            "description": "List the hosted webhook endpoints in the project environment: each endpoint's id (wh_...), declared id, provider source, status, webhook URL and whether its signing secret is set. Use get_webhook_endpoint_details for an endpoint's subscribers and setup prompt.",
+            "inputSchema": {
+              "type": "object",
+              "$schema": "https://json-schema.org/draft/2020-12/schema",
+              "properties": {
+                "projectRef": {
+                  "type": "string",
+                  "description": "The trigger.dev project ref, starts with proj_. We will attempt to automatically detect the project ref if running inside a directory that includes a trigger.config.ts file, or if you pass the --project-ref option to the MCP server."
+                },
+                "configPath": {
+                  "type": "string",
+                  "description": "The path to the trigger.config.ts file. Only used when the trigger.config.ts file is not at the root dir (like in a monorepo setup). If not provided, we will try to find the config file in the current working directory"
+                },
+                "environment": {
+                  "default": "dev",
+                  "type": "string",
+                  "enum": ["dev", "staging", "prod", "preview"],
+                  "description": "The environment to get tasks for"
+                },
+                "branch": {
+                  "type": "string",
+                  "description": "The branch to get tasks for, only used for preview environments and branchable development environments"
+                }
+              }
+            },
+            "annotations": {
+              "readOnlyHint": true,
+              "destructiveHint": false,
+              "title": "List Webhook Endpoints"
+            }
+          },
+          {
+            "name": "get_webhook_endpoint_details",
+            "title": "Get Webhook Endpoint Details",
+            "description": "Get a hosted webhook endpoint's details, its subscribers (with the filters that decide which events they accept) and its setup prompt: step-by-step instructions for registering the endpoint with its provider and handling the signing secret. Follow the setup prompt when asked to connect or configure a webhook.",
+            "inputSchema": {
+              "type": "object",
+              "$schema": "https://json-schema.org/draft/2020-12/schema",
+              "properties": {
+                "projectRef": {
+                  "type": "string",
+                  "description": "The trigger.dev project ref, starts with proj_. We will attempt to automatically detect the project ref if running inside a directory that includes a trigger.config.ts file, or if you pass the --project-ref option to the MCP server."
+                },
+                "configPath": {
+                  "type": "string",
+                  "description": "The path to the trigger.config.ts file. Only used when the trigger.config.ts file is not at the root dir (like in a monorepo setup). If not provided, we will try to find the config file in the current working directory"
+                },
+                "environment": {
+                  "default": "dev",
+                  "type": "string",
+                  "enum": ["dev", "staging", "prod", "preview"],
+                  "description": "The environment to get tasks for"
+                },
+                "branch": {
+                  "type": "string",
+                  "description": "The branch to get tasks for, only used for preview environments and branchable development environments"
+                },
+                "endpointId": {
+                  "type": "string",
+                  "description": "The webhook endpoint: its declared id (e.g. payments) or wh_ id. Use list_webhook_endpoints to find it."
+                }
+              },
+              "required": ["endpointId"]
+            },
+            "annotations": {
+              "readOnlyHint": true,
+              "destructiveHint": false,
+              "title": "Get Webhook Endpoint Details"
+            }
+          },
+          {
+            "name": "list_webhook_deliveries",
+            "title": "List Webhook Deliveries",
+            "description": "List recent webhook deliveries (the verified events providers sent), newest first, optionally for one endpoint and only some statuses: succeeded, failed, filtered (no subscriber's filter accepted it), pending or processing. Use this to find out whether a provider's event arrived, then get_webhook_delivery for where it went.",
+            "inputSchema": {
+              "type": "object",
+              "$schema": "https://json-schema.org/draft/2020-12/schema",
+              "properties": {
+                "projectRef": {
+                  "type": "string",
+                  "description": "The trigger.dev project ref, starts with proj_. We will attempt to automatically detect the project ref if running inside a directory that includes a trigger.config.ts file, or if you pass the --project-ref option to the MCP server."
+                },
+                "configPath": {
+                  "type": "string",
+                  "description": "The path to the trigger.config.ts file. Only used when the trigger.config.ts file is not at the root dir (like in a monorepo setup). If not provided, we will try to find the config file in the current working directory"
+                },
+                "environment": {
+                  "default": "dev",
+                  "type": "string",
+                  "enum": ["dev", "staging", "prod", "preview"],
+                  "description": "The environment to get tasks for"
+                },
+                "branch": {
+                  "type": "string",
+                  "description": "The branch to get tasks for, only used for preview environments and branchable development environments"
+                },
+                "endpointId": {
+                  "type": "string",
+                  "description": "Only this endpoint's deliveries: its declared id (e.g. payments) or wh_ id."
+                },
+                "status": {
+                  "type": "array",
+                  "items": {
+                    "type": "string",
+                    "enum": [
+                      "pending",
+                      "processing",
+                      "succeeded",
+                      "failed",
+                      "filtered",
+                      "unmatched"
+                    ]
+                  },
+                  "description": "Only deliveries with these statuses, e.g. [\"failed\", \"filtered\"]."
+                },
+                "period": {
+                  "type": "string",
+                  "description": "How far back to look, e.g. \"1h\", \"1d\" or \"7d\". Defaults to 7d."
+                },
+                "limit": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 100,
+                  "description": "How many to return (default 20)."
+                },
+                "cursor": {
+                  "type": "string",
+                  "description": "The cursor from a previous call, to get the next page of older deliveries."
+                }
+              }
+            },
+            "annotations": {
+              "readOnlyHint": true,
+              "destructiveHint": false,
+              "title": "List Webhook Deliveries"
+            }
+          },
+          {
+            "name": "get_webhook_delivery",
+            "title": "Get Webhook Delivery",
+            "description": "Get one webhook delivery: its status and error, what happened at each subscriber (the run or session it triggered, or why its filter skipped the event), how many waiting runs it resumed, and the event body and headers it carried. Use this to debug why a webhook did or didn't trigger a task.",
+            "inputSchema": {
+              "type": "object",
+              "$schema": "https://json-schema.org/draft/2020-12/schema",
+              "properties": {
+                "projectRef": {
+                  "type": "string",
+                  "description": "The trigger.dev project ref, starts with proj_. We will attempt to automatically detect the project ref if running inside a directory that includes a trigger.config.ts file, or if you pass the --project-ref option to the MCP server."
+                },
+                "configPath": {
+                  "type": "string",
+                  "description": "The path to the trigger.config.ts file. Only used when the trigger.config.ts file is not at the root dir (like in a monorepo setup). If not provided, we will try to find the config file in the current working directory"
+                },
+                "environment": {
+                  "default": "dev",
+                  "type": "string",
+                  "enum": ["dev", "staging", "prod", "preview"],
+                  "description": "The environment to get tasks for"
+                },
+                "branch": {
+                  "type": "string",
+                  "description": "The branch to get tasks for, only used for preview environments and branchable development environments"
+                },
+                "deliveryId": {
+                  "type": "string",
+                  "description": "The delivery id, starting with whd_. Use list_webhook_deliveries to find it."
+                }
+              },
+              "required": ["deliveryId"]
+            },
+            "annotations": {
+              "readOnlyHint": true,
+              "destructiveHint": false,
+              "title": "Get Webhook Delivery"
+            }
+          },
+          {
+            "name": "get_report",
+            "title": "Get Report",
+            "description": "Render an interpreted report (an answered question, not a raw panel) as text + sparklines. The server computes the verdict deterministically. Currently: 'health' — whether work is flowing, whether the runs that start are healthy, and whether the telemetry is fresh, with a headline verdict and a suggested next action.",
+            "inputSchema": {
+              "type": "object",
+              "$schema": "https://json-schema.org/draft/2020-12/schema",
+              "properties": {
+                "projectRef": {
+                  "type": "string",
+                  "description": "The trigger.dev project ref, starts with proj_. We will attempt to automatically detect the project ref if running inside a directory that includes a trigger.config.ts file, or if you pass the --project-ref option to the MCP server."
+                },
+                "configPath": {
+                  "type": "string",
+                  "description": "The path to the trigger.config.ts file. Only used when the trigger.config.ts file is not at the root dir (like in a monorepo setup). If not provided, we will try to find the config file in the current working directory"
+                },
+                "environment": {
+                  "default": "dev",
+                  "type": "string",
+                  "enum": ["dev", "staging", "prod", "preview"],
+                  "description": "The environment to get tasks for"
+                },
+                "branch": {
+                  "type": "string",
+                  "description": "The branch to get tasks for, only used for preview environments and branchable development environments"
+                },
+                "key": {
+                  "type": "string",
+                  "enum": ["health"],
+                  "description": "The report to render. 'health' answers 'is work flowing, and is a problem my code or the platform?' with an interpreted verdict (flow / execution / liveness)."
+                },
+                "period": {
+                  "description": "Time period shorthand for the live window, e.g. '1h' (default), '24h', '7d'. Minutes (m) to weeks (w), max 90d. Seconds are not supported — reports bucket by whole minutes.",
+                  "type": "string",
+                  "pattern": "^[1-9]\\d*[mhdw]$"
+                },
+                "color": {
+                  "description": "Return the report as ANSI-coloured text instead of markdown. Only renders in hosts that display ANSI in tool output.",
+                  "type": "boolean"
+                }
+              },
+              "required": ["key"]
+            },
+            "annotations": {
+              "readOnlyHint": true,
+              "destructiveHint": false,
+              "title": "Get Report"
+            }
+          },
+          {
+            "name": "search_docs",
+            "title": "Search Docs",
+            "description": "Search across the Trigger.dev documentation to find relevant information, code examples, API references, and guides. Use this tool when you need to answer questions about Trigger.dev, find specific documentation, understand how features work, or locate implementation details. The search returns contextual content with titles and direct links to the documentation pages",
+            "inputSchema": {
+              "type": "object",
+              "$schema": "https://json-schema.org/draft/2020-12/schema",
+              "properties": {
+                "query": {
+                  "type": "string"
+                }
+              },
+              "required": ["query"]
+            },
+            "annotations": {
+              "readOnlyHint": true,
+              "destructiveHint": false,
+              "title": "Search Docs"
+            }
+          },
+          {
+            "name": "start_agent_chat",
+            "title": "Start Agent Chat",
+            "description": "Start a conversation with a chat agent. Returns a chatId you can use with send_agent_message. Optionally preloads the agent so it initializes before the first message.",
+            "inputSchema": {
+              "type": "object",
+              "$schema": "https://json-schema.org/draft/2020-12/schema",
+              "properties": {
+                "projectRef": {
+                  "type": "string",
+                  "description": "The trigger.dev project ref, starts with proj_. We will attempt to automatically detect the project ref if running inside a directory that includes a trigger.config.ts file, or if you pass the --project-ref option to the MCP server."
+                },
+                "configPath": {
+                  "type": "string",
+                  "description": "The path to the trigger.config.ts file. Only used when the trigger.config.ts file is not at the root dir (like in a monorepo setup). If not provided, we will try to find the config file in the current working directory"
+                },
+                "environment": {
+                  "default": "dev",
+                  "type": "string",
+                  "enum": ["dev", "staging", "prod", "preview"],
+                  "description": "The environment to get tasks for"
+                },
+                "branch": {
+                  "type": "string",
+                  "description": "The branch to get tasks for, only used for preview environments and branchable development environments"
+                },
+                "agentId": {
+                  "type": "string",
+                  "description": "The agent task ID to chat with. Use get_current_worker to see available agents."
+                },
+                "chatId": {
+                  "type": "string",
+                  "description": "A unique conversation ID. Reuse to resume a conversation."
+                },
+                "clientData": {
+                  "type": "object",
+                  "propertyNames": {
+                    "type": "string"
+                  },
+                  "additionalProperties": {},
+                  "description": "Client data to include with every message (e.g. userId, model)."
+                },
+                "preload": {
+                  "default": true,
+                  "type": "boolean",
+                  "description": "Whether to preload the agent before the first message."
+                }
+              },
+              "required": ["agentId"]
+            },
+            "annotations": {
+              "title": "Start Agent Chat",
+              "readOnlyHint": false,
+              "destructiveHint": true
+            }
+          },
+          {
+            "name": "send_agent_message",
+            "title": "Send Agent Message",
+            "description": "Send a message to an active agent chat and get the full response text back. Use the chatId from start_agent_chat. The agent remembers full context from previous messages in the same chat.",
+            "inputSchema": {
+              "type": "object",
+              "$schema": "https://json-schema.org/draft/2020-12/schema",
+              "properties": {
+                "chatId": {
+                  "type": "string",
+                  "description": "The chat ID from start_agent_chat."
+                },
+                "message": {
+                  "type": "string",
+                  "description": "The message to send to the agent."
+                }
+              },
+              "required": ["chatId", "message"]
+            },
+            "annotations": {
+              "title": "Send Agent Message",
+              "readOnlyHint": false,
+              "destructiveHint": true
+            }
+          },
+          {
+            "name": "close_agent_chat",
+            "title": "Close Agent Chat",
+            "description": "Close an agent chat conversation. The agent exits its loop gracefully. Without this, the agent will close on its own when its idle timeout expires.",
+            "inputSchema": {
+              "type": "object",
+              "$schema": "https://json-schema.org/draft/2020-12/schema",
+              "properties": {
+                "chatId": {
+                  "type": "string",
+                  "description": "The chat ID to close."
+                }
+              },
+              "required": ["chatId"]
+            },
+            "annotations": {
+              "title": "Close Agent Chat",
+              "readOnlyHint": false,
+              "destructiveHint": true
+            }
+          },
+          {
+            "name": "create_alert",
+            "title": "Create Monitoring Alert",
+            "description": "Create a monitoring alert for a project. Use list_alert_capabilities first to find a capabilityKey and understand its condition shape.",
+            "inputSchema": {
+              "type": "object",
+              "$schema": "https://json-schema.org/draft/2020-12/schema",
+              "properties": {
+                "projectRef": {
+                  "type": "string",
+                  "description": "The trigger.dev project ref, starts with proj_. We will attempt to automatically detect the project ref if running inside a directory that includes a trigger.config.ts file, or if you pass the --project-ref option to the MCP server."
+                },
+                "configPath": {
+                  "type": "string",
+                  "description": "The path to the trigger.config.ts file. Only used when the trigger.config.ts file is not at the root dir (like in a monorepo setup). If not provided, we will try to find the config file in the current working directory"
+                },
+                "environment": {
+                  "default": "dev",
+                  "type": "string",
+                  "enum": ["dev", "staging", "prod", "preview"],
+                  "description": "The environment to get tasks for"
+                },
+                "branch": {
+                  "type": "string",
+                  "description": "The branch to get tasks for, only used for preview environments and branchable development environments"
+                },
+                "capabilityKey": {
+                  "type": "string",
+                  "description": "The capability key to monitor. Use list_alert_capabilities to discover available keys."
+                },
+                "params": {
+                  "type": "object",
+                  "properties": {
+                    "scope": {
+                      "description": "Defaults to all.",
+                      "type": "object",
+                      "properties": {
+                        "type": {
+                          "type": "string",
+                          "enum": ["queue", "queuePattern", "task", "all", "errorGroup"]
+                        },
+                        "queue": {
+                          "type": "string"
+                        },
+                        "pattern": {
+                          "type": "string"
+                        },
+                        "taskIdentifier": {
+                          "type": "string"
+                        },
+                        "fingerprint": {
+                          "type": "string"
+                        }
+                      },
+                      "required": ["type"]
+                    },
+                    "windowSec": {
+                      "type": "number"
+                    }
+                  },
+                  "description": "The scope for this capability, e.g. { scope: { type: 'queue', queue: 'my-queue' } } or { scope: { type: 'errorGroup', taskIdentifier, fingerprint } }."
+                },
+                "condition": {
+                  "oneOf": [
+                    {
+                      "type": "object",
+                      "properties": {
+                        "kind": {
+                          "type": "string",
+                          "const": "threshold"
+                        },
+                        "operator": {
+                          "type": "string",
+                          "enum": [">", "<"]
+                        },
+                        "value": {
+                          "type": "number"
+                        },
+                        "windowSec": {
+                          "type": "integer",
+                          "exclusiveMinimum": 0,
+                          "maximum": 9007199254740991
+                        },
+                        "holdSec": {
+                          "type": "integer",
+                          "exclusiveMinimum": 0,
+                          "maximum": 9007199254740991
+                        }
+                      },
+                      "required": ["kind", "operator", "value", "windowSec"]
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "kind": {
+                          "type": "string",
+                          "const": "state"
+                        },
+                        "stateKey": {
+                          "type": "string"
+                        },
+                        "holdSec": {
+                          "type": "integer",
+                          "exclusiveMinimum": 0,
+                          "maximum": 9007199254740991
+                        },
+                        "params": {
+                          "description": "Overrides for the capability's param defaults, e.g. thresholds.",
+                          "type": "object",
+                          "propertyNames": {
+                            "type": "string"
+                          },
+                          "additionalProperties": {
+                            "type": "number"
+                          }
+                        }
+                      },
+                      "required": ["kind", "stateKey"]
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "kind": {
+                          "type": "string",
+                          "const": "occurrence"
+                        }
+                      },
+                      "required": ["kind"]
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "kind": {
+                          "type": "string",
+                          "const": "absence"
+                        },
+                        "quietWindowSec": {
+                          "type": "integer",
+                          "minimum": 1800,
+                          "maximum": 9007199254740991
+                        }
+                      },
+                      "required": ["kind", "quietWindowSec"]
+                    }
+                  ],
+                  "description": "The condition that raises the alert, matching the kind returned by list_alert_capabilities for this capability."
+                },
+                "behavior": {
+                  "type": "object",
+                  "properties": {
+                    "expiresAt": {
+                      "type": "string",
+                      "description": "ISO 8601 timestamp after which the alert stops."
+                    }
+                  },
+                  "description": "Optional expiry. Alerts keep firing until they expire or are stopped."
+                },
+                "notifiers": {
+                  "minItems": 1,
+                  "type": "array",
+                  "items": {
+                    "oneOf": [
+                      {
+                        "type": "object",
+                        "properties": {
+                          "type": {
+                            "type": "string",
+                            "const": "channel"
+                          },
+                          "channelId": {
+                            "type": "string"
+                          }
+                        },
+                        "required": ["type", "channelId"]
+                      },
+                      {
+                        "type": "object",
+                        "properties": {
+                          "type": {
+                            "type": "string",
+                            "const": "chat"
+                          },
+                          "chatId": {
+                            "type": "string"
+                          },
+                          "userId": {
+                            "type": "string"
+                          }
+                        },
+                        "required": ["type", "chatId"]
+                      }
+                    ]
+                  },
+                  "description": "Who to notify when the alert raises, e.g. [{ type: 'chat', chatId: '<id>' }]."
+                },
+                "name": {
+                  "type": "string",
+                  "description": "An optional display name for the alert."
+                }
+              },
+              "required": ["capabilityKey", "params", "condition", "behavior", "notifiers"]
+            },
+            "annotations": {
+              "title": "Create Monitoring Alert",
+              "readOnlyHint": false,
+              "destructiveHint": true
+            }
+          },
+          {
+            "name": "resolve_alert",
+            "title": "Resolve Monitoring Alert",
+            "description": "Resolve a monitoring alert that needs attention, acknowledging it. The alert re-arms after resolving.",
+            "inputSchema": {
+              "type": "object",
+              "$schema": "https://json-schema.org/draft/2020-12/schema",
+              "properties": {
+                "projectRef": {
+                  "type": "string",
+                  "description": "The trigger.dev project ref, starts with proj_. We will attempt to automatically detect the project ref if running inside a directory that includes a trigger.config.ts file, or if you pass the --project-ref option to the MCP server."
+                },
+                "configPath": {
+                  "type": "string",
+                  "description": "The path to the trigger.config.ts file. Only used when the trigger.config.ts file is not at the root dir (like in a monorepo setup). If not provided, we will try to find the config file in the current working directory"
+                },
+                "environment": {
+                  "default": "dev",
+                  "type": "string",
+                  "enum": ["dev", "staging", "prod", "preview"],
+                  "description": "The environment to get tasks for"
+                },
+                "branch": {
+                  "type": "string",
+                  "description": "The branch to get tasks for, only used for preview environments and branchable development environments"
+                },
+                "alertId": {
+                  "type": "string",
+                  "description": "The id of the alert to resolve. Use list_alerts to find it."
+                }
+              },
+              "required": ["alertId"]
+            },
+            "annotations": {
+              "title": "Resolve Monitoring Alert",
+              "readOnlyHint": false,
+              "destructiveHint": true
+            }
+          },
+          {
+            "name": "create_dashboard",
+            "title": "Create Dashboard",
+            "description": "Create a custom metrics dashboard, optionally with widgets. Each widget has a title, a TRQL query (use get_query_schema to see the tables and columns, and the query tool to try a query first), and a display: a table, a chart (bar or line, with x-axis and y-axis columns), a big number, or a title section header. Widgets without a position are stacked full width in order. Returns the dashboard id.",
+            "inputSchema": {
+              "type": "object",
+              "$schema": "https://json-schema.org/draft/2020-12/schema",
+              "properties": {
+                "projectRef": {
+                  "type": "string",
+                  "description": "The trigger.dev project ref, starts with proj_. We will attempt to automatically detect the project ref if running inside a directory that includes a trigger.config.ts file, or if you pass the --project-ref option to the MCP server."
+                },
+                "configPath": {
+                  "type": "string",
+                  "description": "The path to the trigger.config.ts file. Only used when the trigger.config.ts file is not at the root dir (like in a monorepo setup). If not provided, we will try to find the config file in the current working directory"
+                },
+                "environment": {
+                  "default": "dev",
+                  "type": "string",
+                  "enum": ["dev", "staging", "prod", "preview"],
+                  "description": "The environment to get tasks for"
+                },
+                "branch": {
+                  "type": "string",
+                  "description": "The branch to get tasks for, only used for preview environments and branchable development environments"
+                },
+                "title": {
+                  "type": "string",
+                  "description": "The dashboard title"
+                },
+                "description": {
+                  "description": "An optional description",
+                  "type": "string"
+                },
+                "widgets": {
+                  "description": "The widgets to add, in order. Leave out to create an empty dashboard.",
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "id": {
+                        "type": "string",
+                        "pattern": "^[A-Za-z0-9_-]{1,64}$"
+                      },
+                      "title": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 200
+                      },
+                      "query": {
+                        "default": "",
+                        "type": "string"
+                      },
+                      "display": {
+                        "oneOf": [
+                          {
+                            "type": "object",
+                            "properties": {
+                              "type": {
+                                "type": "string",
+                                "const": "table"
+                              },
+                              "prettyFormatting": {
+                                "default": true,
+                                "type": "boolean"
+                              },
+                              "sorting": {
+                                "default": [],
+                                "type": "array",
+                                "items": {
+                                  "type": "object",
+                                  "properties": {
+                                    "desc": {
+                                      "type": "boolean"
+                                    },
+                                    "id": {
+                                      "type": "string"
+                                    }
+                                  },
+                                  "required": ["desc", "id"]
+                                }
+                              }
+                            },
+                            "required": ["type"]
+                          },
+                          {
+                            "type": "object",
+                            "properties": {
+                              "chartType": {
+                                "type": "string",
+                                "enum": ["bar", "line"]
+                              },
+                              "xAxisColumn": {
+                                "type": ["string", "null"]
+                              },
+                              "yAxisColumns": {
+                                "type": "array",
+                                "items": {
+                                  "type": "string"
+                                }
+                              },
+                              "groupByColumn": {
+                                "type": ["string", "null"]
+                              },
+                              "stacked": {
+                                "type": "boolean"
+                              },
+                              "sortByColumn": {
+                                "type": ["string", "null"]
+                              },
+                              "sortDirection": {
+                                "type": "string",
+                                "enum": ["asc", "desc"]
+                              },
+                              "aggregation": {
+                                "type": "string",
+                                "enum": ["sum", "avg", "count", "min", "max"]
+                              },
+                              "seriesColors": {
+                                "type": "object",
+                                "propertyNames": {
+                                  "type": "string"
+                                },
+                                "additionalProperties": {
+                                  "type": "string"
+                                }
+                              },
+                              "type": {
+                                "type": "string",
+                                "const": "chart"
+                              }
+                            },
+                            "required": [
+                              "chartType",
+                              "xAxisColumn",
+                              "yAxisColumns",
+                              "groupByColumn",
+                              "stacked",
+                              "sortByColumn",
+                              "sortDirection",
+                              "aggregation",
+                              "type"
+                            ]
+                          },
+                          {
+                            "type": "object",
+                            "properties": {
+                              "column": {
+                                "type": "string"
+                              },
+                              "aggregation": {
+                                "type": "string",
+                                "enum": ["sum", "avg", "count", "min", "max", "first", "last"]
+                              },
+                              "sortDirection": {
+                                "type": "string",
+                                "enum": ["asc", "desc"]
+                              },
+                              "abbreviate": {
+                                "default": false,
+                                "type": "boolean"
+                              },
+                              "prefix": {
+                                "type": "string"
+                              },
+                              "suffix": {
+                                "type": "string"
+                              },
+                              "type": {
+                                "type": "string",
+                                "const": "bignumber"
+                              }
+                            },
+                            "required": ["column", "aggregation", "type"]
+                          },
+                          {
+                            "type": "object",
+                            "properties": {
+                              "type": {
+                                "type": "string",
+                                "const": "title"
+                              }
+                            },
+                            "required": ["type"]
+                          }
+                        ]
+                      },
+                      "fillGaps": {
+                        "type": "boolean"
+                      },
+                      "position": {
+                        "type": "object",
+                        "properties": {
+                          "x": {
+                            "type": "integer",
+                            "minimum": 0,
+                            "maximum": 11
+                          },
+                          "y": {
+                            "type": "integer",
+                            "minimum": 0,
+                            "maximum": 9007199254740991
+                          },
+                          "w": {
+                            "type": "integer",
+                            "minimum": 1,
+                            "maximum": 12
+                          },
+                          "h": {
+                            "type": "integer",
+                            "minimum": 1,
+                            "maximum": 9007199254740991
+                          }
+                        },
+                        "required": ["x", "y", "w", "h"]
+                      }
+                    },
+                    "required": ["title", "display"],
+                    "additionalProperties": false
+                  }
+                }
+              },
+              "required": ["title"]
+            },
+            "annotations": {
+              "title": "Create Dashboard",
+              "readOnlyHint": false,
+              "destructiveHint": true
+            }
+          },
+          {
+            "name": "set_dashboard_widgets",
+            "title": "Set Dashboard Widgets",
+            "description": "Replace every widget on a custom dashboard with the given list, and optionally rename it. A widget that already exists keeps its position unless you pass a new one; new widgets without a position are stacked full width below the others. Use list_dashboards to find the dashboard id.",
+            "inputSchema": {
+              "type": "object",
+              "$schema": "https://json-schema.org/draft/2020-12/schema",
+              "properties": {
+                "projectRef": {
+                  "type": "string",
+                  "description": "The trigger.dev project ref, starts with proj_. We will attempt to automatically detect the project ref if running inside a directory that includes a trigger.config.ts file, or if you pass the --project-ref option to the MCP server."
+                },
+                "configPath": {
+                  "type": "string",
+                  "description": "The path to the trigger.config.ts file. Only used when the trigger.config.ts file is not at the root dir (like in a monorepo setup). If not provided, we will try to find the config file in the current working directory"
+                },
+                "environment": {
+                  "default": "dev",
+                  "type": "string",
+                  "enum": ["dev", "staging", "prod", "preview"],
+                  "description": "The environment to get tasks for"
+                },
+                "branch": {
+                  "type": "string",
+                  "description": "The branch to get tasks for, only used for preview environments and branchable development environments"
+                },
+                "dashboardId": {
+                  "type": "string",
+                  "description": "The custom dashboard id, as listed by list_dashboards"
+                },
+                "title": {
+                  "description": "A new title for the dashboard",
+                  "type": "string"
+                },
+                "widgets": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "id": {
+                        "type": "string",
+                        "pattern": "^[A-Za-z0-9_-]{1,64}$"
+                      },
+                      "title": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 200
+                      },
+                      "query": {
+                        "default": "",
+                        "type": "string"
+                      },
+                      "display": {
+                        "oneOf": [
+                          {
+                            "type": "object",
+                            "properties": {
+                              "type": {
+                                "type": "string",
+                                "const": "table"
+                              },
+                              "prettyFormatting": {
+                                "default": true,
+                                "type": "boolean"
+                              },
+                              "sorting": {
+                                "default": [],
+                                "type": "array",
+                                "items": {
+                                  "type": "object",
+                                  "properties": {
+                                    "desc": {
+                                      "type": "boolean"
+                                    },
+                                    "id": {
+                                      "type": "string"
+                                    }
+                                  },
+                                  "required": ["desc", "id"]
+                                }
+                              }
+                            },
+                            "required": ["type"]
+                          },
+                          {
+                            "type": "object",
+                            "properties": {
+                              "chartType": {
+                                "type": "string",
+                                "enum": ["bar", "line"]
+                              },
+                              "xAxisColumn": {
+                                "type": ["string", "null"]
+                              },
+                              "yAxisColumns": {
+                                "type": "array",
+                                "items": {
+                                  "type": "string"
+                                }
+                              },
+                              "groupByColumn": {
+                                "type": ["string", "null"]
+                              },
+                              "stacked": {
+                                "type": "boolean"
+                              },
+                              "sortByColumn": {
+                                "type": ["string", "null"]
+                              },
+                              "sortDirection": {
+                                "type": "string",
+                                "enum": ["asc", "desc"]
+                              },
+                              "aggregation": {
+                                "type": "string",
+                                "enum": ["sum", "avg", "count", "min", "max"]
+                              },
+                              "seriesColors": {
+                                "type": "object",
+                                "propertyNames": {
+                                  "type": "string"
+                                },
+                                "additionalProperties": {
+                                  "type": "string"
+                                }
+                              },
+                              "type": {
+                                "type": "string",
+                                "const": "chart"
+                              }
+                            },
+                            "required": [
+                              "chartType",
+                              "xAxisColumn",
+                              "yAxisColumns",
+                              "groupByColumn",
+                              "stacked",
+                              "sortByColumn",
+                              "sortDirection",
+                              "aggregation",
+                              "type"
+                            ]
+                          },
+                          {
+                            "type": "object",
+                            "properties": {
+                              "column": {
+                                "type": "string"
+                              },
+                              "aggregation": {
+                                "type": "string",
+                                "enum": ["sum", "avg", "count", "min", "max", "first", "last"]
+                              },
+                              "sortDirection": {
+                                "type": "string",
+                                "enum": ["asc", "desc"]
+                              },
+                              "abbreviate": {
+                                "default": false,
+                                "type": "boolean"
+                              },
+                              "prefix": {
+                                "type": "string"
+                              },
+                              "suffix": {
+                                "type": "string"
+                              },
+                              "type": {
+                                "type": "string",
+                                "const": "bignumber"
+                              }
+                            },
+                            "required": ["column", "aggregation", "type"]
+                          },
+                          {
+                            "type": "object",
+                            "properties": {
+                              "type": {
+                                "type": "string",
+                                "const": "title"
+                              }
+                            },
+                            "required": ["type"]
+                          }
+                        ]
+                      },
+                      "fillGaps": {
+                        "type": "boolean"
+                      },
+                      "position": {
+                        "type": "object",
+                        "properties": {
+                          "x": {
+                            "type": "integer",
+                            "minimum": 0,
+                            "maximum": 11
+                          },
+                          "y": {
+                            "type": "integer",
+                            "minimum": 0,
+                            "maximum": 9007199254740991
+                          },
+                          "w": {
+                            "type": "integer",
+                            "minimum": 1,
+                            "maximum": 12
+                          },
+                          "h": {
+                            "type": "integer",
+                            "minimum": 1,
+                            "maximum": 9007199254740991
+                          }
+                        },
+                        "required": ["x", "y", "w", "h"]
+                      }
+                    },
+                    "required": ["title", "display"],
+                    "additionalProperties": false
+                  },
+                  "description": "The full list of widgets the dashboard should have"
+                }
+              },
+              "required": ["dashboardId", "widgets"]
+            },
+            "annotations": {
+              "title": "Set Dashboard Widgets",
+              "readOnlyHint": false,
+              "destructiveHint": true
+            }
+          },
+          {
+            "name": "submit_feedback",
+            "title": "Submit Feedback",
+            "description": "Report a problem with the Trigger.dev MCP server, SDK, or documentation. Use this when a tool returned a confusing error, the docs disagreed with the actual behaviour, a capability you needed was missing, or you had to work around something to finish the user's task. Describe what you were trying to do, what happened, and what you expected instead, in your own words. Never include secrets, credentials, environment variables, tokens or the user's own data - summarise and redact instead of pasting raw output. Tell the user what you reported. Do not call this more than once for the same problem.",
+            "inputSchema": {
+              "type": "object",
+              "$schema": "https://json-schema.org/draft/2020-12/schema",
+              "properties": {
+                "message": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 4000,
+                  "description": "What you were trying to do, what actually happened, and what you expected instead, in your own words. Summarise the failing call and error rather than pasting raw output, and leave out secrets, credentials, environment variables and the user's own data."
+                },
+                "toolName": {
+                  "description": "The MCP tool the problem happened in, if it was one tool in particular.",
+                  "type": "string",
+                  "maxLength": 100
+                },
+                "projectRef": {
+                  "description": "The trigger.dev project ref, starts with proj_. Optional: a report without one is still useful.",
+                  "type": "string",
+                  "maxLength": 100,
+                  "pattern": "^proj_.*"
+                }
+              },
+              "required": ["message"]
+            },
+            "annotations": {
+              "title": "Submit Feedback",
+              "readOnlyHint": false,
+              "destructiveHint": true
+            }
+          },
+          {
+            "name": "create_project_in_org",
+            "title": "Create Project in Organization",
+            "description": "Create a new project in an organization. Only do this if the user wants to add Trigger.dev to an existing project. If there is already a trigger.config.ts file present, then you should not create a new project.",
+            "inputSchema": {
+              "type": "object",
+              "$schema": "https://json-schema.org/draft/2020-12/schema",
+              "properties": {
+                "orgParam": {
+                  "type": "string",
+                  "description": "The organization to create the project in, can either be the organization slug or the ID. Use the list_orgs tool to get a list of organizations and ask the user to select one."
+                },
+                "name": {
+                  "type": "string",
+                  "description": "The name of the project to create."
+                }
+              },
+              "required": ["orgParam", "name"]
+            },
+            "annotations": {
+              "title": "Create Project in Organization",
+              "readOnlyHint": false,
+              "destructiveHint": true
+            }
+          },
+          {
+            "name": "promote_prompt_version",
+            "title": "Promote Prompt Version",
+            "description": "Promote a prompt version to be the current active version. Only code-sourced versions can be promoted — dashboard overrides must use the override tools instead.",
+            "inputSchema": {
+              "type": "object",
+              "$schema": "https://json-schema.org/draft/2020-12/schema",
+              "properties": {
+                "projectRef": {
+                  "type": "string",
+                  "description": "The trigger.dev project ref, starts with proj_. We will attempt to automatically detect the project ref if running inside a directory that includes a trigger.config.ts file, or if you pass the --project-ref option to the MCP server."
+                },
+                "configPath": {
+                  "type": "string",
+                  "description": "The path to the trigger.config.ts file. Only used when the trigger.config.ts file is not at the root dir (like in a monorepo setup). If not provided, we will try to find the config file in the current working directory"
+                },
+                "environment": {
+                  "default": "dev",
+                  "type": "string",
+                  "enum": ["dev", "staging", "prod", "preview"],
+                  "description": "The environment to get tasks for"
+                },
+                "branch": {
+                  "type": "string",
+                  "description": "The branch to get tasks for, only used for preview environments and branchable development environments"
+                },
+                "slug": {
+                  "type": "string",
+                  "description": "The prompt slug"
+                },
+                "version": {
+                  "type": "integer",
+                  "exclusiveMinimum": 0,
+                  "maximum": 9007199254740991,
+                  "description": "The version number to promote to current"
+                }
+              },
+              "required": ["slug", "version"]
+            },
+            "annotations": {
+              "title": "Promote Prompt Version",
+              "readOnlyHint": false,
+              "destructiveHint": true
+            }
+          },
+          {
+            "name": "create_prompt_override",
+            "title": "Create Prompt Override",
+            "description": "Create a dashboard override for a prompt. The override takes precedence over the current code version when resolving the prompt. Provide the full text content for the override.",
+            "inputSchema": {
+              "type": "object",
+              "$schema": "https://json-schema.org/draft/2020-12/schema",
+              "properties": {
+                "projectRef": {
+                  "type": "string",
+                  "description": "The trigger.dev project ref, starts with proj_. We will attempt to automatically detect the project ref if running inside a directory that includes a trigger.config.ts file, or if you pass the --project-ref option to the MCP server."
+                },
+                "configPath": {
+                  "type": "string",
+                  "description": "The path to the trigger.config.ts file. Only used when the trigger.config.ts file is not at the root dir (like in a monorepo setup). If not provided, we will try to find the config file in the current working directory"
+                },
+                "environment": {
+                  "default": "dev",
+                  "type": "string",
+                  "enum": ["dev", "staging", "prod", "preview"],
+                  "description": "The environment to get tasks for"
+                },
+                "branch": {
+                  "type": "string",
+                  "description": "The branch to get tasks for, only used for preview environments and branchable development environments"
+                },
+                "slug": {
+                  "type": "string",
+                  "description": "The prompt slug"
+                },
+                "textContent": {
+                  "type": "string",
+                  "description": "The full text content for the override"
+                },
+                "model": {
+                  "description": "Optional model override",
+                  "type": "string"
+                },
+                "commitMessage": {
+                  "description": "Optional commit message describing the change",
+                  "type": "string"
+                }
+              },
+              "required": ["slug", "textContent"]
+            },
+            "annotations": {
+              "title": "Create Prompt Override",
+              "readOnlyHint": false,
+              "destructiveHint": true
+            }
+          },
+          {
+            "name": "update_prompt_override",
+            "title": "Update Prompt Override",
+            "description": "Update the active dashboard override for a prompt. Only works if an override is currently active.",
+            "inputSchema": {
+              "type": "object",
+              "$schema": "https://json-schema.org/draft/2020-12/schema",
+              "properties": {
+                "projectRef": {
+                  "type": "string",
+                  "description": "The trigger.dev project ref, starts with proj_. We will attempt to automatically detect the project ref if running inside a directory that includes a trigger.config.ts file, or if you pass the --project-ref option to the MCP server."
+                },
+                "configPath": {
+                  "type": "string",
+                  "description": "The path to the trigger.config.ts file. Only used when the trigger.config.ts file is not at the root dir (like in a monorepo setup). If not provided, we will try to find the config file in the current working directory"
+                },
+                "environment": {
+                  "default": "dev",
+                  "type": "string",
+                  "enum": ["dev", "staging", "prod", "preview"],
+                  "description": "The environment to get tasks for"
+                },
+                "branch": {
+                  "type": "string",
+                  "description": "The branch to get tasks for, only used for preview environments and branchable development environments"
+                },
+                "slug": {
+                  "type": "string",
+                  "description": "The prompt slug"
+                },
+                "textContent": {
+                  "description": "Updated text content",
+                  "type": "string"
+                },
+                "model": {
+                  "description": "Updated model",
+                  "type": "string"
+                },
+                "commitMessage": {
+                  "description": "Commit message describing the change",
+                  "type": "string"
+                }
+              },
+              "required": ["slug"]
+            },
+            "annotations": {
+              "title": "Update Prompt Override",
+              "readOnlyHint": false,
+              "destructiveHint": true
+            }
+          },
+          {
+            "name": "remove_prompt_override",
+            "title": "Remove Prompt Override",
+            "description": "Remove the active dashboard override for a prompt, reverting to the current code version.",
+            "inputSchema": {
+              "type": "object",
+              "$schema": "https://json-schema.org/draft/2020-12/schema",
+              "properties": {
+                "projectRef": {
+                  "type": "string",
+                  "description": "The trigger.dev project ref, starts with proj_. We will attempt to automatically detect the project ref if running inside a directory that includes a trigger.config.ts file, or if you pass the --project-ref option to the MCP server."
+                },
+                "configPath": {
+                  "type": "string",
+                  "description": "The path to the trigger.config.ts file. Only used when the trigger.config.ts file is not at the root dir (like in a monorepo setup). If not provided, we will try to find the config file in the current working directory"
+                },
+                "environment": {
+                  "default": "dev",
+                  "type": "string",
+                  "enum": ["dev", "staging", "prod", "preview"],
+                  "description": "The environment to get tasks for"
+                },
+                "branch": {
+                  "type": "string",
+                  "description": "The branch to get tasks for, only used for preview environments and branchable development environments"
+                },
+                "slug": {
+                  "type": "string",
+                  "description": "The prompt slug"
+                }
+              },
+              "required": ["slug"]
+            },
+            "annotations": {
+              "title": "Remove Prompt Override",
+              "readOnlyHint": false,
+              "destructiveHint": true
+            }
+          },
+          {
+            "name": "reactivate_prompt_override",
+            "title": "Reactivate Prompt Override",
+            "description": "Reactivate a previous dashboard-sourced version as the active override. Use get_prompt_versions to find dashboard versions that can be reactivated.",
+            "inputSchema": {
+              "type": "object",
+              "$schema": "https://json-schema.org/draft/2020-12/schema",
+              "properties": {
+                "projectRef": {
+                  "type": "string",
+                  "description": "The trigger.dev project ref, starts with proj_. We will attempt to automatically detect the project ref if running inside a directory that includes a trigger.config.ts file, or if you pass the --project-ref option to the MCP server."
+                },
+                "configPath": {
+                  "type": "string",
+                  "description": "The path to the trigger.config.ts file. Only used when the trigger.config.ts file is not at the root dir (like in a monorepo setup). If not provided, we will try to find the config file in the current working directory"
+                },
+                "environment": {
+                  "default": "dev",
+                  "type": "string",
+                  "enum": ["dev", "staging", "prod", "preview"],
+                  "description": "The environment to get tasks for"
+                },
+                "branch": {
+                  "type": "string",
+                  "description": "The branch to get tasks for, only used for preview environments and branchable development environments"
+                },
+                "slug": {
+                  "type": "string",
+                  "description": "The prompt slug"
+                },
+                "version": {
+                  "type": "integer",
+                  "exclusiveMinimum": 0,
+                  "maximum": 9007199254740991,
+                  "description": "The dashboard-sourced version number to reactivate as override"
+                }
+              },
+              "required": ["slug", "version"]
+            },
+            "annotations": {
+              "title": "Reactivate Prompt Override",
+              "readOnlyHint": false,
+              "destructiveHint": true
+            }
+          },
+          {
+            "name": "cancel_run",
+            "title": "Cancel Run",
+            "description": "Cancel a run. The run ID is the ID of the run that was triggered. It starts with run_",
+            "inputSchema": {
+              "type": "object",
+              "$schema": "https://json-schema.org/draft/2020-12/schema",
+              "properties": {
+                "projectRef": {
+                  "type": "string",
+                  "description": "The trigger.dev project ref, starts with proj_. We will attempt to automatically detect the project ref if running inside a directory that includes a trigger.config.ts file, or if you pass the --project-ref option to the MCP server."
+                },
+                "configPath": {
+                  "type": "string",
+                  "description": "The path to the trigger.config.ts file. Only used when the trigger.config.ts file is not at the root dir (like in a monorepo setup). If not provided, we will try to find the config file in the current working directory"
+                },
+                "environment": {
+                  "default": "dev",
+                  "type": "string",
+                  "enum": ["dev", "staging", "prod", "preview"],
+                  "description": "The environment to get tasks for"
+                },
+                "branch": {
+                  "type": "string",
+                  "description": "The branch to get tasks for, only used for preview environments and branchable development environments"
+                },
+                "runId": {
+                  "type": "string",
+                  "description": "The ID of the run to get the details of, starts with run_"
+                }
+              },
+              "required": ["runId"]
+            },
+            "annotations": {
+              "title": "Cancel Run",
+              "readOnlyHint": false,
+              "destructiveHint": true
+            }
+          },
+          {
+            "name": "replay_run",
+            "title": "Replay Run",
+            "description": "Replay a run: create a new run of the same task in the same environment, reusing the original run's payload, metadata, tags, queue, concurrency key and machine. Pass any of payload, metadata, tags, queue, concurrencyKey, machine, version, region, delay, ttl, idempotencyKey, maxAttempts, maxDuration or priority to override them for the new run. The run ID starts with run_",
+            "inputSchema": {
+              "type": "object",
+              "$schema": "https://json-schema.org/draft/2020-12/schema",
+              "properties": {
+                "projectRef": {
+                  "type": "string",
+                  "description": "The trigger.dev project ref, starts with proj_. We will attempt to automatically detect the project ref if running inside a directory that includes a trigger.config.ts file, or if you pass the --project-ref option to the MCP server."
+                },
+                "configPath": {
+                  "type": "string",
+                  "description": "The path to the trigger.config.ts file. Only used when the trigger.config.ts file is not at the root dir (like in a monorepo setup). If not provided, we will try to find the config file in the current working directory"
+                },
+                "environment": {
+                  "default": "dev",
+                  "type": "string",
+                  "enum": ["dev", "staging", "prod", "preview"],
+                  "description": "The environment to get tasks for"
+                },
+                "branch": {
+                  "type": "string",
+                  "description": "The branch to get tasks for, only used for preview environments and branchable development environments"
+                },
+                "runId": {
+                  "type": "string",
+                  "description": "The ID of the run to get the details of, starts with run_"
+                },
+                "payload": {
+                  "description": "A new payload for the replayed run, as the actual payload object (not a JSON string). Omit it to reuse the original run's payload."
+                },
+                "metadata": {
+                  "type": "object",
+                  "propertyNames": {
+                    "type": "string"
+                  },
+                  "additionalProperties": {},
+                  "description": "New metadata for the replayed run. Omit it to reuse the original run's metadata."
+                },
+                "tags": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  },
+                  "description": "Tags for the replayed run, replacing the original run's tags. Up to 10."
+                },
+                "queue": {
+                  "type": "string",
+                  "description": "The name of an existing queue to run on. Omit it to use the original run's queue."
+                },
+                "concurrencyKey": {
+                  "type": "string",
+                  "description": "The concurrency key for the replayed run"
+                },
+                "machine": {
+                  "type": "string",
+                  "enum": [
+                    "micro",
+                    "small-1x",
+                    "small-2x",
+                    "medium-1x",
+                    "medium-2x",
+                    "large-1x",
+                    "large-2x"
+                  ],
+                  "description": "The machine preset for the replayed run"
+                },
+                "version": {
+                  "type": "string",
+                  "description": "Lock the replayed run to this deployed version, e.g. 20250101.1. Defaults to the current version."
+                },
+                "region": {
+                  "type": "string",
+                  "description": "The region to run in. Defaults to the original run's region."
+                },
+                "delay": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "string",
+                      "format": "date-time",
+                      "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z))$"
+                    }
+                  ],
+                  "description": "Delay the replayed run, as a duration like 1h30m or an ISO 8601 date"
+                },
+                "ttl": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "integer",
+                      "minimum": -9007199254740991,
+                      "maximum": 9007199254740991
+                    }
+                  ],
+                  "description": "How long the replayed run can stay queued before it expires, as a duration like 10m or a number of seconds"
+                },
+                "idempotencyKey": {
+                  "type": "string",
+                  "description": "An idempotency key for the replayed run"
+                },
+                "maxAttempts": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 9007199254740991,
+                  "description": "The maximum number of attempts for the replayed run"
+                },
+                "maxDuration": {
+                  "type": "number",
+                  "description": "The maximum duration in seconds of the replayed run"
+                },
+                "priority": {
+                  "type": "number",
+                  "description": "Priority offset in seconds. Higher values are dequeued sooner."
+                }
+              },
+              "required": ["runId"]
+            },
+            "annotations": {
+              "title": "Replay Run",
+              "readOnlyHint": false,
+              "destructiveHint": true
+            }
+          },
+          {
+            "name": "write_session_channel",
+            "title": "Write Session Channel",
+            "description": "Append one record to a named side channel's `in` stream on a session. Use this to send control input to a running agent (e.g. a pause/viewport command) without waking or triggering a run. Requires a `channel` name; the reserved transcript and the `out` side are not writable here (`out` is producer-only). Pass `value` as an object for a structured record or a string for a raw one.",
+            "inputSchema": {
+              "type": "object",
+              "$schema": "https://json-schema.org/draft/2020-12/schema",
+              "properties": {
+                "projectRef": {
+                  "type": "string",
+                  "description": "The trigger.dev project ref, starts with proj_. We will attempt to automatically detect the project ref if running inside a directory that includes a trigger.config.ts file, or if you pass the --project-ref option to the MCP server."
+                },
+                "configPath": {
+                  "type": "string",
+                  "description": "The path to the trigger.config.ts file. Only used when the trigger.config.ts file is not at the root dir (like in a monorepo setup). If not provided, we will try to find the config file in the current working directory"
+                },
+                "environment": {
+                  "default": "dev",
+                  "type": "string",
+                  "enum": ["dev", "staging", "prod", "preview"],
+                  "description": "The environment to get tasks for"
+                },
+                "branch": {
+                  "type": "string",
+                  "description": "The branch to get tasks for, only used for preview environments and branchable development environments"
+                },
+                "sessionId": {
+                  "type": "string",
+                  "description": "The session id (session_* friendlyId) or the externalId it was created with."
+                },
+                "channel": {
+                  "type": "string",
+                  "description": "The named side channel to write to."
+                },
+                "value": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "object",
+                      "propertyNames": {
+                        "type": "string"
+                      },
+                      "additionalProperties": {}
+                    }
+                  ],
+                  "description": "The record to append to the channel's `in` stream. Pass an object for a structured record (e.g. { paused: true }) or a string for a raw record."
+                }
+              },
+              "required": ["sessionId", "channel", "value"]
+            },
+            "annotations": {
+              "title": "Write Session Channel",
+              "readOnlyHint": false,
+              "destructiveHint": true
+            }
+          },
+          {
+            "name": "trigger_task",
+            "title": "Trigger Task",
+            "description": "Trigger a task in the project. Use the get_tasks tool to get a list of tasks and ask the user to select one if it's not clear which one to use. The run executes in the background, so only wait for it to complete (with the wait_for_run_to_complete tool) if the user asked you to.",
+            "inputSchema": {
+              "type": "object",
+              "$schema": "https://json-schema.org/draft/2020-12/schema",
+              "properties": {
+                "projectRef": {
+                  "type": "string",
+                  "description": "The trigger.dev project ref, starts with proj_. We will attempt to automatically detect the project ref if running inside a directory that includes a trigger.config.ts file, or if you pass the --project-ref option to the MCP server."
+                },
+                "configPath": {
+                  "type": "string",
+                  "description": "The path to the trigger.config.ts file. Only used when the trigger.config.ts file is not at the root dir (like in a monorepo setup). If not provided, we will try to find the config file in the current working directory"
+                },
+                "environment": {
+                  "default": "dev",
+                  "type": "string",
+                  "enum": ["dev", "staging", "prod", "preview"],
+                  "description": "The environment to get tasks for"
+                },
+                "branch": {
+                  "type": "string",
+                  "description": "The branch to get tasks for, only used for preview environments and branchable development environments"
+                },
+                "taskId": {
+                  "type": "string",
+                  "description": "The ID/slug of the task to trigger. Use the get_tasks tool to get a list of tasks and ask the user to select one if it's not clear which one to use."
+                },
+                "payload": {
+                  "description": "The payload to trigger the task with. Should match the task's payload schema. Not a JSON string, but the actual payload object"
+                },
+                "options": {
+                  "type": "object",
+                  "properties": {
+                    "queue": {
+                      "type": "object",
+                      "properties": {
+                        "name": {
+                          "type": "string",
+                          "description": "The name of the queue to trigger the task in, by default will use the queue configured in the task"
+                        }
+                      },
+                      "required": ["name"]
+                    },
+                    "delay": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "string",
+                          "format": "date-time",
+                          "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z))$"
+                        }
+                      ],
+                      "description": "The delay before the task run is executed"
+                    },
+                    "idempotencyKey": {
+                      "type": "string",
+                      "description": "The idempotency key to use for the task run"
+                    },
+                    "machine": {
+                      "type": "string",
+                      "enum": [
+                        "micro",
+                        "small-1x",
+                        "small-2x",
+                        "medium-1x",
+                        "medium-2x",
+                        "large-1x",
+                        "large-2x"
+                      ],
+                      "description": "The machine preset to use for the task run"
+                    },
+                    "maxAttempts": {
+                      "type": "integer",
+                      "minimum": -9007199254740991,
+                      "maximum": 9007199254740991,
+                      "description": "The maximum number of attempts to retry the task run"
+                    },
+                    "maxDuration": {
+                      "type": "number",
+                      "description": "The maximum duration in seconds of the task run"
+                    },
+                    "region": {
+                      "type": "string",
+                      "description": "The region to run the task in, overriding the default region set for the project. Available regions are listed on the Regions page in the dashboard, and this has no effect in the dev environment"
+                    },
+                    "tags": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      },
+                      "description": "Tags to add to the task run. Must be less than 128 characters and cannot have more than 5"
+                    },
+                    "ttl": {
+                      "default": "10m",
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "integer",
+                          "minimum": -9007199254740991,
+                          "maximum": 9007199254740991
+                        }
+                      ],
+                      "description": "The time to live of the task run. If the run doesn't start executing within this time, it will be automatically cancelled."
+                    }
+                  }
+                }
+              },
+              "required": ["taskId", "payload"]
+            },
+            "annotations": {
+              "title": "Trigger Task",
+              "readOnlyHint": false,
+              "destructiveHint": true
+            }
+          },
+          {
+            "name": "replay_webhook_delivery",
+            "title": "Replay Webhook Delivery",
+            "description": "Replay a webhook delivery from its stored event as a new delivery. With no targetId it goes to every subscriber again, re-checking their filters; with targetId it goes to that one subscriber even if its filter skipped the event. Replays trigger real runs, so confirm with the user first.",
+            "inputSchema": {
+              "type": "object",
+              "$schema": "https://json-schema.org/draft/2020-12/schema",
+              "properties": {
+                "projectRef": {
+                  "type": "string",
+                  "description": "The trigger.dev project ref, starts with proj_. We will attempt to automatically detect the project ref if running inside a directory that includes a trigger.config.ts file, or if you pass the --project-ref option to the MCP server."
+                },
+                "configPath": {
+                  "type": "string",
+                  "description": "The path to the trigger.config.ts file. Only used when the trigger.config.ts file is not at the root dir (like in a monorepo setup). If not provided, we will try to find the config file in the current working directory"
+                },
+                "environment": {
+                  "default": "dev",
+                  "type": "string",
+                  "enum": ["dev", "staging", "prod", "preview"],
+                  "description": "The environment to get tasks for"
+                },
+                "branch": {
+                  "type": "string",
+                  "description": "The branch to get tasks for, only used for preview environments and branchable development environments"
+                },
+                "deliveryId": {
+                  "type": "string",
+                  "description": "The delivery id, starting with whd_. Use list_webhook_deliveries to find it."
+                },
+                "targetId": {
+                  "type": "string",
+                  "description": "Replay to only this subscriber (its id on the endpoint, from the delivery's targets), even if its filter skipped the event. Omit to replay to every subscriber, re-checking their filters."
+                }
+              },
+              "required": ["deliveryId"]
+            },
+            "annotations": {
+              "title": "Replay Webhook Delivery",
+              "readOnlyHint": false,
+              "destructiveHint": true
+            }
+          },
+          {
+            "name": "generate_webhook_secret",
+            "title": "Generate Webhook Secret",
+            "description": "Generate a new signing secret for a hosted webhook endpoint and return it once, for providers where you choose the secret (for example GitHub). It replaces the existing secret; pass previousSecretTtlSeconds to keep accepting the old one while you update the provider, otherwise deliveries signed with it fail. Never print, log or commit the returned secret. The returned secret enters your context. To keep it out, run the CLI instead: `npx trigger.dev@latest webhooks generate-secret <endpoint> --env <env> --to-env <NAME>` saves it to .env.local without printing it, so you can pass it to the provider by variable name, or `--print` pipes it straight into the provider's CLI. When the endpoint already has a secret, add `--previous-secret-ttl` (for example 24h, or 0 if the old secret leaked). Prefer the CLI whenever you can run shell commands.",
+            "inputSchema": {
+              "type": "object",
+              "$schema": "https://json-schema.org/draft/2020-12/schema",
+              "properties": {
+                "projectRef": {
+                  "type": "string",
+                  "description": "The trigger.dev project ref, starts with proj_. We will attempt to automatically detect the project ref if running inside a directory that includes a trigger.config.ts file, or if you pass the --project-ref option to the MCP server."
+                },
+                "configPath": {
+                  "type": "string",
+                  "description": "The path to the trigger.config.ts file. Only used when the trigger.config.ts file is not at the root dir (like in a monorepo setup). If not provided, we will try to find the config file in the current working directory"
+                },
+                "environment": {
+                  "default": "dev",
+                  "type": "string",
+                  "enum": ["dev", "staging", "prod", "preview"],
+                  "description": "The environment to get tasks for"
+                },
+                "branch": {
+                  "type": "string",
+                  "description": "The branch to get tasks for, only used for preview environments and branchable development environments"
+                },
+                "endpointId": {
+                  "type": "string",
+                  "description": "The webhook endpoint: its declared id (e.g. payments) or wh_ id. Use list_webhook_endpoints to find it."
+                },
+                "previousSecretTtlSeconds": {
+                  "description": "Keep accepting the replaced secret for this many seconds (at most 604800, 7 days) so deliveries the provider still signs with it keep verifying. Omit or pass 0 to replace it immediately, for example when it leaked.",
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 604800
+                }
+              },
+              "required": ["endpointId"]
+            },
+            "annotations": {
+              "title": "Generate Webhook Secret",
+              "readOnlyHint": false,
+              "destructiveHint": true
+            }
+          },
+          {
+            "name": "set_webhook_secret",
+            "title": "Set Webhook Secret",
+            "description": "Store the signing secret (or public key) a provider issued for a hosted webhook endpoint, for example the whsec_ secret Stripe returns when a webhook endpoint is created. It replaces the existing secret; pass previousSecretTtlSeconds to keep accepting the old one for a while. The secret you pass here enters your context. To keep it out, run the CLI instead, which never prints it: pipe it from the provider's CLI (`<provider command> | npx trigger.dev@latest webhooks set-secret <endpoint> --env <env>`), or read it from an environment variable or the project's .env files (`webhooks set-secret <endpoint> --env <env> --from-env STRIPE_WEBHOOK_SECRET`). When the endpoint already has a secret, add `--previous-secret-ttl` (for example 24h, or 0 if the old secret leaked). Prefer the CLI whenever you can run shell commands.",
+            "inputSchema": {
+              "type": "object",
+              "$schema": "https://json-schema.org/draft/2020-12/schema",
+              "properties": {
+                "projectRef": {
+                  "type": "string",
+                  "description": "The trigger.dev project ref, starts with proj_. We will attempt to automatically detect the project ref if running inside a directory that includes a trigger.config.ts file, or if you pass the --project-ref option to the MCP server."
+                },
+                "configPath": {
+                  "type": "string",
+                  "description": "The path to the trigger.config.ts file. Only used when the trigger.config.ts file is not at the root dir (like in a monorepo setup). If not provided, we will try to find the config file in the current working directory"
+                },
+                "environment": {
+                  "default": "dev",
+                  "type": "string",
+                  "enum": ["dev", "staging", "prod", "preview"],
+                  "description": "The environment to get tasks for"
+                },
+                "branch": {
+                  "type": "string",
+                  "description": "The branch to get tasks for, only used for preview environments and branchable development environments"
+                },
+                "endpointId": {
+                  "type": "string",
+                  "description": "The webhook endpoint: its declared id (e.g. payments) or wh_ id. Use list_webhook_endpoints to find it."
+                },
+                "secret": {
+                  "type": "string",
+                  "minLength": 1,
+                  "description": "The signing secret or public key the provider issued"
+                },
+                "previousSecretTtlSeconds": {
+                  "description": "Keep accepting the replaced secret for this many seconds (at most 604800, 7 days) so deliveries the provider still signs with it keep verifying. Omit or pass 0 to replace it immediately, for example when it leaked.",
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 604800
+                }
+              },
+              "required": ["endpointId", "secret"]
+            },
+            "annotations": {
+              "title": "Set Webhook Secret",
+              "readOnlyHint": false,
+              "destructiveHint": true
+            }
+          }
+        ],
+        "resultType": "complete",
+        "ttlMs": 0,
+        "cacheScope": "private",
+        "_meta": {
+          "io.modelcontextprotocol/serverInfo": {
+            "name": "trigger.dev",
+            "version": "1.0.0"
+          }
+        }
+      },
+      "jsonrpc": "2.0",
+      "id": 2
+    }
+  }
+}

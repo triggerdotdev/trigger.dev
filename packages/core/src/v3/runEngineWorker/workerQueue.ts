@@ -13,7 +13,7 @@ export type WorkerQueuePhase = z.infer<typeof WorkerQueuePhase>;
 export const WorkerQueueCompatibility = z.enum(["any", "container", "compute"]);
 export type WorkerQueueCompatibility = z.infer<typeof WorkerQueueCompatibility>;
 
-export const WorkerQueueChannel = z.enum(["stable", "canary"]);
+export const WorkerQueueChannel = z.enum(["stable", "canary", "proxy"]);
 export type WorkerQueueChannel = z.infer<typeof WorkerQueueChannel>;
 
 export const WorkerQueueSubscription = z.strictObject({

@@ -39,6 +39,7 @@ function staleDeployingResolver(prisma: PrismaClient): ControlPlaneResolver {
         ? { ...version, deployment: { ...version.deployment, status: "DEPLOYING" } }
         : version;
     },
+    resolveWorkerVersionFromPrimary: passthrough.resolveWorkerVersionFromPrimary.bind(passthrough),
     assertEnvExists: passthrough.assertEnvExists.bind(passthrough),
   };
 }

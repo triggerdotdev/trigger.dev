@@ -10,7 +10,14 @@ import {
   NEW_VARIABLE_PICK_BRANCH_PARAM,
   NEW_VARIABLE_SECRET_PARAM,
   keyPanelViewSearch,
+  KEY_PANEL_BRANCH_PAGE_PARAM,
+  KEY_PANEL_BRANCH_SEARCH_PARAM,
 } from "~/v3/environmentVariables/environmentVariableKey";
+import {
+  attentionPagePath,
+  attentionReturnPath,
+  attentionViewSearch,
+} from "~/v3/environmentVariables/attention";
 import { parseEnvironmentVariableForm } from "~/v3/environmentVariables/forms";
 import {
   LockClosedIcon,
@@ -30,7 +37,6 @@ import {
 import { json } from "@remix-run/server-runtime";
 import dotenv from "dotenv";
 import { useState } from "react";
-import { redirect } from "remix-typedjson";
 import invariant from "tiny-invariant";
 import { z } from "zod";
 import { EnvironmentLabel, environmentFullTitle } from "~/components/environments/EnvironmentLabel";
@@ -55,6 +61,7 @@ import {
   TooltipTrigger,
 } from "~/components/primitives/Tooltip";
 import { prisma } from "~/db.server";
+import { redirectWithSuccessMessage } from "~/models/message.server";
 import { useEnvironment } from "~/hooks/useEnvironment";
 import { useList } from "~/hooks/useList";
 import { useOrganization } from "~/hooks/useOrganizations";
@@ -62,11 +69,12 @@ import { useProject } from "~/hooks/useProject";
 import { useTypedMatchesData } from "~/hooks/useTypedMatchData";
 import { resolveProjectAuthScope } from "~/services/projectAuthScope.server";
 import {
+  environmentVariableAttentionKeyRouteId,
   environmentVariableKeyRouteId,
-  environmentVariablesRouteId,
+  useEnvironmentVariablesPageData,
 } from "~/routes/_app.orgs.$organizationSlug.projects.$projectParam.env.$envParam.environment-variables/EnvironmentVariableControls";
 import { type loader as environmentVariableKeyLoader } from "~/routes/_app.orgs.$organizationSlug.projects.$projectParam.env.$envParam.environment-variables.key.$keyParam/route";
-import { type loader as environmentVariablesLoader } from "~/routes/_app.orgs.$organizationSlug.projects.$projectParam.env.$envParam.environment-variables/route";
+import { requireRecentMfa } from "~/services/mfa/mfaPolicy.server";
 import { dashboardAction } from "~/services/routeBuilders/dashboardBuilder";
 import { cn } from "~/utils/cn";
 import {
@@ -80,7 +88,9 @@ import {
   EnvironmentVariableKey,
   EnvironmentVariableValue,
 } from "~/v3/environmentVariables/repository";
+import { isBlacklistedVariable } from "~/v3/environmentVariableRules.server";
 import { findTargetEnvironments } from "~/v3/environmentVariables/targetEnvironments.server";
+import { viewAfterCreate } from "~/v3/environmentVariables/viewAfterCreate.server";
 import { findUnauthorizedEnvironmentId } from "~/v3/writableEnvironments";
 import { pageMeta } from "~/utils/pageTitle";
 
@@ -148,6 +158,11 @@ export const action = dashboardAction(
     if (!projectId) {
       throw new Response("Not Found", { status: 404 });
     }
+    await requireRecentMfa(request, {
+      userId: user.id,
+      action: "environmentVariables",
+      organizationId: context.organizationId,
+    });
 
     if (request.method.toUpperCase() !== "POST") {
       throw new Response("Method Not Allowed", { status: 405 });
@@ -246,25 +261,47 @@ export const action = dashboardAction(
       return json(submission.reply({ fieldErrors }));
     }
 
-    // Back to the view the dialog was opened from: the list, or the key panel on it.
+    // Back to the view the dialog was opened from (the list, or the key panel on it), switched
+    // to show the saved environments when it showed none of them, on the new key's page.
+    // `create` skips reserved keys and succeeds with the rest: land on and name the saved ones.
+    const variables = submission.value.variables.filter(
+      (variable) => !isBlacklistedVariable(variable.key)
+    );
+    const { environmentIds } = submission.value;
+    const landing = await viewAfterCreate(prisma, {
+      url: request.url,
+      userId,
+      projectId: project.id,
+      currentEnvironmentSlug: envParam,
+      savedEnvironmentIds: environmentIds,
+      key: variables[0].key,
+    });
     const slugs = [{ slug: organizationSlug }, { slug: projectParam }, { slug: envParam }] as const;
-    return redirect(
-      keyParam !== undefined
-        ? `${v3EnvironmentVariableKeyPath(...slugs, keyParam)}${keyPanelViewSearch(request.url)}`
-        : `${v3EnvironmentVariablesPath(...slugs)}${listViewSearch(request.url)}`
+    return redirectWithSuccessMessage(
+      attentionReturnPath(request.url, params, keyParam) ??
+        (keyParam !== undefined
+          ? `${v3EnvironmentVariableKeyPath(...slugs, keyParam)}${keyPanelViewSearch(landing.url)}`
+          : `${v3EnvironmentVariablesPath(...slugs)}${listViewSearch(landing.url)}`),
+      request,
+      `Added ${variables.length === 1 ? variables[0].key : `${variables.length} variables`} to ${new Intl.ListFormat(
+        "en"
+      ).format(landing.savedEnvironments.map((environment) => environmentFullTitle(environment)))}`
     );
   }
 );
 
 export default function Page() {
   const [isOpen, _setIsOpen] = useState(true);
-  const parentData = useTypedMatchesData<typeof environmentVariablesLoader>({
-    id: environmentVariablesRouteId,
-  });
-  // The key panel this dialog sits on, when it was opened from one.
-  const keyPanelData = useTypedMatchesData<typeof environmentVariableKeyLoader>({
+  const parentData = useEnvironmentVariablesPageData();
+  // The key panel this dialog sits on, when it was opened from one (on the list, or on the needs
+  // attention page).
+  const listKeyPanelData = useTypedMatchesData<typeof environmentVariableKeyLoader>({
     id: environmentVariableKeyRouteId,
   });
+  const attentionKeyPanelData = useTypedMatchesData<typeof environmentVariableKeyLoader>({
+    id: environmentVariableAttentionKeyRouteId,
+  });
+  const keyPanelData = listKeyPanelData ?? attentionKeyPanelData;
   invariant(
     parentData,
     "Environment variables page loader data must be defined when rendering the create dialog"
@@ -291,10 +328,16 @@ export default function Page() {
   const searchParams = new URLSearchParams(location.search);
   // The view this dialog sits on: the list with its filter, search and page, or the key panel
   // open on it.
+  const attentionPath = attentionPagePath(location.pathname);
   const listPath =
-    keyParam !== undefined
-      ? `${v3EnvironmentVariableKeyPath(organization, project, environment, keyParam)}${keyPanelViewSearch(searchParams)}`
-      : `${v3EnvironmentVariablesPath(organization, project, environment)}${location.search}`;
+    attentionPath && keyParam !== undefined
+      ? `${attentionPath}/key/${encodeURIComponent(keyParam)}${attentionViewSearch(searchParams, [
+          KEY_PANEL_BRANCH_SEARCH_PARAM,
+          KEY_PANEL_BRANCH_PAGE_PARAM,
+        ])}`
+      : keyParam !== undefined
+        ? `${v3EnvironmentVariableKeyPath(organization, project, environment, keyParam)}${keyPanelViewSearch(searchParams)}`
+        : `${v3EnvironmentVariablesPath(organization, project, environment)}${location.search}`;
   // "Set" in the key panel asks for one environment, and the dialog starts on the panel's key
   // there. "Add new" on the panel of a key that doesn't exist yet asks for the key alone.
   const requestedEnvironment = environments.find(

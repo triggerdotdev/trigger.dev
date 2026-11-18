@@ -111,6 +111,8 @@ export class TraceChunkAssembler {
   // after a failed tick; released once a tail from that point completes.
   #tailFloor: number | null = null;
   #tailFloorHeld = false;
+  // Spans first seen in a live tail read, not in a stored one.
+  #liveSpanIds = new Set<string>();
 
   mergeChunk(events: TraceChunkEvent[], options?: { source?: TraceChunkSource }): void {
     const source = options?.source ?? "stream";
@@ -143,6 +145,11 @@ export class TraceChunkAssembler {
 
   markRendered(): void {
     this.#changedSinceRender = false;
+  }
+
+  /** Spans first seen in a live tail read. Only grows; a later tail re-read doesn't add. */
+  get liveSpanIds(): ReadonlySet<string> {
+    return this.#liveSpanIds;
   }
 
   #renderedSpan(spanId: string): RenderedSpan | undefined {
@@ -205,6 +212,7 @@ export class TraceChunkAssembler {
         },
       };
       this.#nodes.set(event.spanId, node);
+      if (source === "tail") this.#liveSpanIds.add(event.spanId);
     }
 
     if (isLogEvent(event.kind)) {

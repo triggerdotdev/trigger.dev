@@ -6,6 +6,7 @@ export default defineConfig({
   test: {
     include: ["src/**/*.eval.ts"],
     environment: "node",
+    env: { DASHBOARD_AGENT_API_ORIGIN: "http://localhost:3030" },
     setupFiles: ["./eval-setup.ts"],
     // Real-model turns run sequentially (the harness is single-agent-per-process).
     testTimeout: 840000,

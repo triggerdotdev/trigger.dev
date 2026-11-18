@@ -73,6 +73,16 @@ export class FinalizeDeploymentService extends BaseService {
       throw new ServiceValidationError("Worker deployment is not in DEPLOYING status");
     }
 
+    // Sandbox tasks only run on microVMs, so a deployment without a template cannot serve them.
+    const sandboxTask = deployment.worker.tasks.find((task) => task.executionMode === "SANDBOX");
+    if (sandboxTask && !deployment.templateKey) {
+      const message = `Sandbox task "${sandboxTask.slug}" needs microVM compute, but this deployment has no compute template.`;
+      await new FailDeploymentService().call(authenticatedEnv, deployment.friendlyId, {
+        error: { name: "MissingComputeTemplate", message },
+      });
+      throw new ServiceValidationError(message);
+    }
+
     const imageDigest = validatedImageDigest(body.imageDigest);
     const deployedAt = new Date();
     const imageReference = imageDigest

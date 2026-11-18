@@ -58,7 +58,6 @@ export const FEATURE_FLAG = {
   deployBuildPathStaging: "deployBuildPathStaging",
   deployBuildPathProduction: "deployBuildPathProduction",
   scheduleDefaultWindowEnabled: "scheduleDefaultWindowEnabled",
-  freeScheduleMinimumWindowEnabled: "freeScheduleMinimumWindowEnabled",
   deployNowEnabled: "deployNowEnabled",
   apiRateLimitMetricsEnabled: "apiRateLimitMetricsEnabled",
   supportAccessSettingsEnabled: "supportAccessSettingsEnabled",
@@ -66,11 +65,13 @@ export const FEATURE_FLAG = {
   externalOidc: "externalOidc",
   trustedDeploysEnabled: "trustedDeploysEnabled",
   sessionTraceEnabled: "sessionTraceEnabled",
+  sandboxTasks: "sandboxTasks",
+  auditLogsRecording: "auditLogsRecording",
 } as const;
 
 // Mirrors the core worker-queue enums; defined here because this module is imported client-side.
 const WorkerQueueCompatibilityFlag = z.enum(["any", "container", "compute"]);
-const WorkerQueueChannelFlag = z.enum(["stable", "canary"]);
+const WorkerQueueChannelFlag = z.enum(["stable", "canary", "proxy"]);
 
 export const WORKER_QUEUE_OVERRIDE_ENVIRONMENT_TYPES = [
   "PRODUCTION",
@@ -234,7 +235,6 @@ export const FeatureFlagCatalog = {
   [FEATURE_FLAG.deployBuildPathStaging]: DeployBuildPath,
   [FEATURE_FLAG.deployBuildPathProduction]: DeployBuildPath,
   [FEATURE_FLAG.scheduleDefaultWindowEnabled]: z.boolean(),
-  [FEATURE_FLAG.freeScheduleMinimumWindowEnabled]: z.boolean(),
   // Strict z.boolean() (not z.coerce.boolean()): coercion reads the string
   // "false" as true, which would enable an off-by-default gate.
   [FEATURE_FLAG.deployNowEnabled]: z.boolean(),
@@ -246,10 +246,15 @@ export const FeatureFlagCatalog = {
   [FEATURE_FLAG.runTokenInjection]: z.boolean(),
   // Org override wins over the global value; off by default.
   [FEATURE_FLAG.externalOidc]: z.boolean(),
+  [FEATURE_FLAG.sandboxTasks]: z.boolean(),
   [FEATURE_FLAG.trustedDeploysEnabled]: z.boolean(),
   // Shows the session page's Trace tab and serves its routes. Org override wins over the global
   // value; off by default. Admins always have it.
   [FEATURE_FLAG.sessionTraceEnabled]: z.boolean(),
+  // Records the org's audit events, behind the AUDIT_LOGS_RECORDING_ENABLED master switch. Org
+  // override wins over the global value; off by default. Strict z.boolean(): coercion reads the
+  // string "false" as true, which would record for an org meant to be off.
+  [FEATURE_FLAG.auditLogsRecording]: z.boolean(),
 };
 
 export type FeatureFlagKey = keyof typeof FeatureFlagCatalog;
@@ -273,6 +278,7 @@ export const GLOBAL_LOCKED_FLAGS: FeatureFlagKey[] = [
   FEATURE_FLAG.runOpsMintKindFlippedAt,
   FEATURE_FLAG.runOpsMintShardSetPrev,
   FEATURE_FLAG.runOpsMintShardSetFlippedAt,
+  FEATURE_FLAG.sandboxTasks,
 ];
 
 // Flags that are read-only on the org-level dialog.

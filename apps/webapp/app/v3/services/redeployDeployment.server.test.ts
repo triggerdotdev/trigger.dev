@@ -297,6 +297,16 @@ describe("RedeployDeploymentService", () => {
     expect(deps.enqueueGithub).not.toHaveBeenCalled();
   });
 
+  // Catches: a redeploy recording a different value from the deployment it rebuilds.
+  it.each(["SCOPED_API_KEY", "ROOT_API_KEY", null])(
+    "records how the source deployment was started (%s) on the redeploy",
+    async (initiatedByCredential) => {
+      mockLookups(artifactDeployment({ initiatedByCredential }));
+      await callOk();
+      expect(deps.initialize.mock.calls[0]![2]).toMatchObject({ initiatedByCredential });
+    }
+  );
+
   it("rebuilds a bundle deployment and carries its build env vars over", async () => {
     mockLookups(bundleDeployment());
     expect(await callOk()).toEqual({ version: "20260930.2", shortCode: "efgh" });

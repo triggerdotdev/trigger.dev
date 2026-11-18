@@ -12,6 +12,7 @@ import {
   templateCreateRequest,
   templatePrebuildTelemetry,
   validTemplateKey,
+  warmupCommandFromMetadata,
 } from "./templatePrebuild.server";
 import { createInMemoryMetrics } from "../../../test/utils/tracing";
 
@@ -184,10 +185,34 @@ describe("templateCreateRequest", () => {
     });
   });
 
+  // Catches: no_snap still sent with deploy snapshots on, so the builder never builds the
+  // deployment's warmed snapshot; or dropped with them off, which an older builder mishandles
+  it("leaves no_snap off only with deploy snapshots", () => {
+    expect(templateCreateRequest(IMAGE, ["small-1x"], "deployment_abc", undefined, true)).toEqual({
+      image: IMAGE,
+      machine_configs: [{ cpus: 0.5, memory_mb: 512 }],
+      deployment_id: "deployment_abc",
+    });
+    expect(templateCreateRequest(IMAGE, ["small-1x"], "deployment_abc").no_snap).toBe(true);
+  });
+
   it("sends each distinct shape once", () => {
     expect(
       templateCreateRequest(IMAGE, ["small-1x", "small-1x"], "deployment_abc").machine_configs
     ).toEqual([{ cpus: 0.5, memory_mb: 512 }]);
+  });
+});
+
+describe("warmupCommandFromMetadata", () => {
+  // Catches: a stored value that is not an argv reaching the builder, which refuses the request
+  it("returns only a non-empty argv of strings", () => {
+    const command = ["node", "/app/worker.mjs", "--trigger-warmup", "/app"];
+    expect(warmupCommandFromMetadata({ warmupCommand: command })).toEqual(command);
+    expect(warmupCommandFromMetadata({ packageVersion: "4.0.0" })).toBeUndefined();
+    expect(warmupCommandFromMetadata({ warmupCommand: "node /app/worker.mjs" })).toBeUndefined();
+    expect(warmupCommandFromMetadata({ warmupCommand: [] })).toBeUndefined();
+    expect(warmupCommandFromMetadata({ warmupCommand: ["node", 1] })).toBeUndefined();
+    expect(warmupCommandFromMetadata(null)).toBeUndefined();
   });
 });
 
@@ -316,6 +341,71 @@ describe("prebuild", () => {
       await server.close();
     }
   });
+
+  // Catches: the worker's warmup command not reaching the builder, so the template is primed with
+  // a generic command instead of the deploy's own imports
+  postgresTest("sends the worker's warmup command", async ({ prisma }) => {
+    const server = await builder(
+      reply(201, { template_id: "a".repeat(64), template_source: "built" })
+    );
+    try {
+      const project = await createProject(prisma, {
+        workloadType: "MICROVM",
+        orgFlags: { [FEATURE_FLAG.computeTemplatePrebuildWait]: true },
+      });
+      const row = await createDeployment(prisma, project);
+      const command = ["node", "/app/worker.mjs", "--trigger-warmup", "/app"];
+      await new TemplatePrebuildService(prisma, config({ url: server.url })).prebuild({
+        projectId: project.id,
+        deploymentId: row.id,
+        deploymentFriendlyId: row.friendlyId,
+        imageReference: IMAGE,
+        imageDigest: DIGEST,
+        workerMetadata: { packageVersion: "4.0.0", warmupCommand: command },
+      });
+
+      expect(server.requests).toHaveLength(1);
+      expect(JSON.parse(server.requests[0].body).warmup).toEqual([command]);
+    } finally {
+      await server.close();
+    }
+  });
+
+  // Catches: the template key not stored when the builder replies only after building the
+  // deployment's warmed snapshot
+  postgresTest(
+    "asks for the deploy snapshot and stores the key it replies with",
+    async ({ prisma }) => {
+      const server = await builder(
+        reply(201, { template_id: TEMPLATE_KEY, template_source: "built" })
+      );
+      try {
+        const project = await createProject(prisma, {
+          workloadType: "MICROVM",
+          orgFlags: { [FEATURE_FLAG.computeTemplatePrebuildWait]: true },
+        });
+        const row = await createDeployment(prisma, project);
+        const service = new TemplatePrebuildService(
+          prisma,
+          config({ url: server.url, deploySnapshots: true })
+        );
+        const result = await service.prebuild({
+          projectId: project.id,
+          deploymentId: row.id,
+          deploymentFriendlyId: row.friendlyId,
+          imageReference: IMAGE,
+          imageDigest: DIGEST,
+        });
+
+        expect(result).toEqual({ mode: "wait", reason: "microvm-native", outcome: "built" });
+        expect(JSON.parse(server.requests[0].body)).not.toHaveProperty("no_snap");
+        const stored = await prisma.workerDeployment.findFirst({ where: { id: row.id } });
+        expect(stored?.templateKey).toBe(TEMPLATE_KEY);
+      } finally {
+        await server.close();
+      }
+    }
+  );
 
   postgresTest("skips the call when the image has no digest", async ({ prisma }) => {
     const server = await builder(reply(201, {}));

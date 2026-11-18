@@ -5,13 +5,14 @@ import { resolvePrivateApiKeyRateLimitScope } from "~/models/runtimeEnvironment.
 import { resolveRunToken } from "~/services/oidc/runTokenAuth.server";
 import { isRunTokenFormat } from "~/services/oidc/runTokenVerify";
 import { batchStreamGrants } from "~/runEngine/concerns/batchStreamGrantsInstance.server";
-import { clientIpFromHeaders } from "@trigger.dev/rbac";
+import { clientIpFromHeaders, isUserActorToken, verifyUserActorToken } from "@trigger.dev/rbac";
 import { authenticateAuthorizationHeader } from "./apiAuth.server";
 import { recordApiRateLimitObservation } from "./apiRateLimitMetrics.server";
 import {
   authorizationRateLimitMiddleware,
   type RateLimitTenant,
 } from "./authorizationRateLimitMiddleware.server";
+import { mcpResource } from "./oauth/metadata.server";
 import { deploymentApiPaths } from "./deploymentApiPaths.server";
 import type { Duration } from "./rateLimiter.server";
 import { FEATURE_FLAG, FeatureFlagCatalog } from "~/v3/featureFlags";
@@ -24,6 +25,16 @@ const BATCH_STREAM_ITEMS_PATH = /^\/api\/v3\/batches\/([^/]+)\/items$/;
 // off PRIVATE-key buckets, which key on the bare environment id.
 export function jwtActorRateLimitIdentifier(environmentId: string, actorSub: string): string {
   return `jwt-actor:${environmentId}:${actorSub}`;
+}
+
+export async function userActorRateLimitIdentifier(token: string): Promise<string | undefined> {
+  const claims =
+    (await verifyUserActorToken(env.SESSION_SECRET, token).catch(() => undefined)) ??
+    (await verifyUserActorToken(env.SESSION_SECRET, token, { audience: mcpResource() }).catch(
+      () => undefined
+    ));
+  if (!claims) return undefined;
+  return claims.pat ? `pat:${claims.pat}` : `user:${claims.userId}`;
 }
 
 /** The organization override for the metrics opt-in flag; anything unparseable reads as off. */
@@ -47,6 +58,11 @@ export async function resolveApiRateLimitOverride(
   | undefined
 > {
   const rawApiKey = bearerTokenFromAuthorizationHeader(authorizationValue);
+
+  if (isUserActorToken(rawApiKey)) {
+    const identifier = await userActorRateLimitIdentifier(rawApiKey);
+    return identifier ? { identifier } : undefined;
+  }
 
   if (rawApiKey.startsWith("tr_")) {
     const scope = await resolvePrivateApiKeyRateLimitScope(rawApiKey);
@@ -129,7 +145,7 @@ export async function resolveApiRateLimitOverride(
   };
 }
 
-export const apiRateLimiter = authorizationRateLimitMiddleware({
+const apiRateLimiterBaseOptions = {
   redis: {
     port: env.RATE_LIMIT_REDIS_PORT,
     host: env.RATE_LIMIT_REDIS_HOST,
@@ -152,6 +168,15 @@ export const apiRateLimiter = authorizationRateLimitMiddleware({
   },
   limiterConfigOverride: resolveApiRateLimitOverride,
   onResult: recordApiRateLimitObservation,
+  log: {
+    rejections: env.API_RATE_LIMIT_REJECTION_LOGS_ENABLED === "1",
+    requests: env.API_RATE_LIMIT_REQUEST_LOGS_ENABLED === "1",
+    limiter: env.API_RATE_LIMIT_LIMITER_LOGS_ENABLED === "1",
+  },
+} satisfies Partial<Parameters<typeof authorizationRateLimitMiddleware>[0]>;
+
+export const apiRateLimiter = authorizationRateLimitMiddleware({
+  ...apiRateLimiterBaseOptions,
   pathMatchers: [/^\/api/],
   pathWhiteList: [
     // Keep allowlisted: these CLI endpoints are intentionally unauthenticated,
@@ -215,11 +240,11 @@ export const apiRateLimiter = authorizationRateLimitMiddleware({
 
     return batchStreamGrants.spend(authenticated.environment.id, batchFriendlyId);
   },
-  log: {
-    rejections: env.API_RATE_LIMIT_REJECTION_LOGS_ENABLED === "1",
-    requests: env.API_RATE_LIMIT_REQUEST_LOGS_ENABLED === "1",
-    limiter: env.API_RATE_LIMIT_LIMITER_LOGS_ENABLED === "1",
-  },
 });
+
+// Same budget as the API, for routers that authenticate before limiting.
+export function createMcpRateLimiter() {
+  return authorizationRateLimitMiddleware({ ...apiRateLimiterBaseOptions, pathMatchers: [/^\//] });
+}
 
 export type RateLimitMiddleware = ReturnType<typeof authorizationRateLimitMiddleware>;

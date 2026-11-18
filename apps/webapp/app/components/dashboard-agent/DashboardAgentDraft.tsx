@@ -1,9 +1,10 @@
-import type { SuggestedPrompt } from "@internal/dashboard-agent-contracts";
+import { sliceWellFormed, type SuggestedPrompt } from "@internal/dashboard-agent-contracts";
 import { useCallback, useState } from "react";
 import { AgentUpgradeBlock } from "./AgentUpgradeGate";
 import { DashboardAgentComposer } from "./DashboardAgentComposer";
 import { DashboardAgentContextBanner } from "./DashboardAgentContextBanner";
 import { DashboardAgentHero } from "./DashboardAgentHero";
+import { MAX_MESSAGE_CHARS } from "./message-limits";
 import { MESSAGE_QUOTA_REACHED_REASON } from "./message-quota";
 import type { AgentPageContext } from "./page-context-types";
 
@@ -11,6 +12,7 @@ import type { AgentPageContext } from "./page-context-types";
 // returns the id, and only then does `DashboardAgentChat` mount.
 export function DashboardAgentDraft({
   onSubmit,
+  prefill,
   projectName,
   environmentSlug,
   entityId,
@@ -20,6 +22,8 @@ export function DashboardAgentDraft({
   autoFocus,
 }: {
   onSubmit: (text: string) => void;
+  /** Fills the composer without sending. */
+  prefill?: { text: string; seq: number };
   projectName: string;
   environmentSlug: string;
   entityId?: string;
@@ -30,6 +34,14 @@ export function DashboardAgentDraft({
   autoFocus?: boolean;
 }) {
   const [input, setInput] = useState("");
+  const [focusKey, setFocusKey] = useState<number | undefined>(undefined);
+
+  const [appliedSeq, setAppliedSeq] = useState<number | undefined>(undefined);
+  if (prefill && prefill.seq !== appliedSeq) {
+    setAppliedSeq(prefill.seq);
+    setInput(sliceWellFormed(prefill.text, MAX_MESSAGE_CHARS));
+    setFocusKey(prefill.seq);
+  }
 
   const submit = useCallback(
     (text: string) => {
@@ -73,7 +85,8 @@ export function DashboardAgentDraft({
               onSubmit={() => submit(input)}
               onStop={() => {}}
               isStreaming={false}
-              autoFocus={autoFocus}
+              autoFocus={(autoFocus ?? true) || focusKey !== undefined}
+              focusKey={focusKey}
               context={
                 <DashboardAgentContextBanner
                   projectName={projectName}

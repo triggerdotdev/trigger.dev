@@ -50,6 +50,7 @@ vi.mock("~/services/dashboardAgent.server", () => ({
   dashboardAgentUserApiOrigin: () => "https://api.trigger.dev",
   isDashboardAgentConfigured: () => true,
   mintDashboardAgentToken: async () => "pat",
+  mintDashboardAgentAppendToken: async () => "pat_append",
   mintDashboardAgentUserActorToken: async (
     _userId: string,
     opts: { environmentId: string; alertWrites?: unknown }

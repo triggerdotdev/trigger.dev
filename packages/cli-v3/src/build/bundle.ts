@@ -1,5 +1,10 @@
 import { CORE_VERSION } from "@trigger.dev/core/v3";
-import { DEFAULT_RUNTIME, ResolvedConfig } from "@trigger.dev/core/v3/build";
+import {
+  DEFAULT_RUNTIME,
+  isNodelessBunRuntime,
+  ResolvedConfig,
+  supportsNodeCompileCache,
+} from "@trigger.dev/core/v3/build";
 import { BuildManifest, BuildTarget, TaskFile } from "@trigger.dev/core/v3/schemas";
 import chalk from "chalk";
 import * as esbuild from "esbuild";
@@ -176,8 +181,23 @@ export async function bundleWorker(options: BundleOptions): Promise<BundleResult
   return { ...bundleResult, stop };
 }
 
+// Bun 1.3 can't compile this bundle to ESM bytecode, so only the newer bun runtimes get it
+function compilesBunWorker(target: BuildTarget, resolvedConfig: ResolvedConfig) {
+  return (
+    target === "deploy" &&
+    isNodelessBunRuntime(resolvedConfig.runtime ?? DEFAULT_RUNTIME) &&
+    resolvedConfig.build.bunBytecode !== false
+  );
+}
+
+// Inside the compiled worker, import.meta points into the executable (file:///$bunfs/root/, 20
+// chars); point it back at the file under /app, the compile step's --root. process.execPath is
+// the executable too, so fork() and spawn(process.execPath) would start the run worker, not bun
+const BUN_COMPILED_BANNER =
+  'if(import.meta.url.startsWith("file:///$bunfs/root/")){const u="file:///app/"+import.meta.url.slice(20),f=Bun.fileURLToPath(u),d=f.slice(0,f.lastIndexOf("/"));import.meta.url=u;import.meta.filename=import.meta.path=f;import.meta.dirname=import.meta.dir=d;process.execPath=Bun.which("bun")??process.execPath;}';
+
 // Helper function to create build options
-async function createBuildOptions(
+export async function createBuildOptions(
   options: BundleOptions & { entryPoints: string[]; buildResultPlugin?: esbuild.Plugin }
 ): Promise<esbuild.BuildOptions & { metafile: true }> {
   const customConditions = options.resolvedConfig.build?.conditions ?? [];
@@ -197,6 +217,9 @@ async function createBuildOptions(
   return {
     entryPoints: options.entryPoints,
     outdir: options.destination,
+    // Without this the root is the common ancestor of the project and the CLI's own entry points,
+    // which climbs out of the project when the CLI isn't installed in it
+    outbase: options.cwd,
     absWorkingDir: options.cwd,
     bundle: true,
     metafile: true,
@@ -228,6 +251,9 @@ async function createBuildOptions(
     ],
     ...(options.jsxFactory && { jsxFactory: options.jsxFactory }),
     ...(options.jsxFragment && { jsxFragment: options.jsxFragment }),
+    ...(compilesBunWorker(options.target, options.resolvedConfig) && {
+      banner: { js: BUN_COMPILED_BANNER },
+    }),
     logLevel: "silent",
     logOverride: {
       "empty-glob": "silent",
@@ -414,6 +440,13 @@ export async function createBuildManifestFromBundle({
     runWorkerEntryPoint: bundle.runWorkerEntryPoint ?? getRunWorkerForTarget(target),
     loaderEntryPoint: bundle.loaderEntryPoint,
     initEntryPoint: bundle.initEntryPoint,
+    compiledRunWorkerPath: compilesBunWorker(target, resolvedConfig)
+      ? join(destination, ".trigger", "worker", "run-worker")
+      : undefined,
+    compileCacheDir:
+      target === "deploy" && supportsNodeCompileCache(resolvedConfig.runtime ?? DEFAULT_RUNTIME)
+        ? join(destination, ".trigger", "compile-cache")
+        : undefined,
     configPath: bundle.configPath,
     customConditions: resolvedConfig.build.conditions ?? [],
     deploy: {

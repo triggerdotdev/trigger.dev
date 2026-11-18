@@ -185,6 +185,8 @@ describe("analyzeQueryForAlert: threshold shapes", () => {
 
   it.each([
     "SELECT timeBucket() AS t, count() AS c FROM runs GROUP BY t",
+    // Catches: a bare timeBucket in GROUP BY reported as group_by_unprojected, not group_by_time.
+    "SELECT timeBucket(), status, count() AS run_count FROM runs GROUP BY timeBucket, status",
     "SELECT task_identifier, count() AS c FROM runs GROUP BY task_identifier, timeBucket()",
     "SELECT toStartOfHour(triggered_at) AS h, count() AS c FROM runs GROUP BY h",
     "SELECT triggered_at, count() AS c FROM runs GROUP BY triggered_at",
@@ -199,6 +201,13 @@ describe("analyzeQueryForAlert: threshold shapes", () => {
     const a = analyze(query);
     expect(a.ok).toBe(false);
     expect(unsupportedCode(a, "threshold")).toBe("group_by_time");
+  });
+
+  it("keeps group_by_unprojected for an unaliased non-time call named in GROUP BY", () => {
+    // Catches: the implicit-name lookup treating any grouped call name as a time bucket.
+    const a = analyze("SELECT lower(status), count() AS c FROM runs GROUP BY lower");
+    expect(a.ok).toBe(false);
+    expect(unsupportedCode(a, "threshold")).toBe("group_by_unprojected");
   });
 
   it.each([

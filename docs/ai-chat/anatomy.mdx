@@ -65,7 +65,7 @@ export const myAgent = chat.agent({
   run: async ({ messages, tools, signal, streamText }) =>
     streamText({
       tools,
-      model: anthropic("claude-sonnet-4-5"),
+      model: anthropic("claude-sonnet-5-5"),
       messages,
       abortSignal: signal,
       stopWhen: stepCountIs(15),

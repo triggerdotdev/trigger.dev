@@ -1,4 +1,4 @@
-import { heteroPostgresTest } from "@internal/testcontainers";
+import { heteroPostgresTest, laggingReplica } from "@internal/testcontainers";
 import type { PrismaClient } from "@trigger.dev/database";
 import { describe, expect, it, vi } from "vitest";
 import { ControlPlaneCache } from "~/v3/runOpsMigration/controlPlaneCache.server";
@@ -315,6 +315,49 @@ heteroPostgresTest(
     const second = await resolver.resolveWorkerVersion({ environmentId: environment.id });
     expect(second?.worker.id).toBe(worker.id);
     expect(reads()).toBeGreaterThan(readsAfterFirst);
+  }
+);
+
+heteroPostgresTest(
+  "resolveWorkerVersionFromPrimary finds the worker a lagging replica hides",
+  async ({ prisma14 }) => {
+    const { environment, project } = await seedControlPlane(prisma14);
+    const { worker, task, queue, deployment } = await seedWorker(
+      prisma14,
+      { projectId: project.id, environmentId: environment.id },
+      { promote: true }
+    );
+    const promotion = await prisma14.workerDeploymentPromotion.findFirstOrThrow({
+      where: { environmentId: environment.id },
+    });
+    // The replica shows the promotion but not yet its deployment's worker.
+    const replica = laggingReplica(prisma14, [
+      {
+        model: "workerDeploymentPromotion",
+        mode: "frozen",
+        rows: [{ ...promotion, deployment: { ...deployment, type: "MANAGED", worker: null } }],
+      },
+    ]);
+    const resolver = new ControlPlaneResolver({
+      controlPlaneReplica: replica.client,
+      controlPlanePrimary: prisma14,
+      cache: new ControlPlaneCache(),
+      splitEnabled: () => true,
+    });
+    const args = {
+      environmentId: environment.id,
+      type: "PRODUCTION" as const,
+      taskIdentifier: task.slug,
+      queue: { name: queue.name },
+    };
+
+    expect(await resolver.resolveWorkerVersion(args)).toBeNull();
+    expect(replica.wasHit("workerDeploymentPromotion")).toBe(true);
+
+    const fromPrimary = await resolver.resolveWorkerVersionFromPrimary(args);
+    expect(fromPrimary?.worker.id).toBe(worker.id);
+    expect(fromPrimary?.tasks.map((t) => t.slug)).toEqual([task.slug]);
+    expect(fromPrimary?.queues.map((q) => q.name)).toEqual([queue.name]);
   }
 );
 

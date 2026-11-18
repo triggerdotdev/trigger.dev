@@ -4,7 +4,7 @@ import { EditorView } from "@codemirror/view";
 import { createElement } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { act } from "react-dom/test-utils";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { OperatingSystemContextProvider } from "../primitives/OperatingSystemProvider";
 import { ShortcutsProvider } from "../primitives/ShortcutsProvider";
 import type { IgnoreKind, IgnorePatternLimits } from "~/v3/github";
@@ -52,9 +52,16 @@ function mount(
   return onChange;
 }
 
+// Radix's TooltipProvider leaves its 300ms skip-delay timer running after unmount; a faked
+// setTimeout lets afterEach drop it before jsdom is torn down under it.
+beforeEach(() => {
+  vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+});
+
 afterEach(() => {
   act(() => root.unmount());
   container.remove();
+  vi.useRealTimers();
 });
 
 function editor() {

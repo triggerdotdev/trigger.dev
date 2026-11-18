@@ -182,10 +182,13 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
     // The stored token is the agent run's own (bare `read:sessions` plus run scopes), kept for
     // the agent's replay. The browser gets a token minted for it, narrowed like every other
     // dashboard-agent issuance; a failed mint degrades to a non-streaming transcript.
-    let browserSession: typeof session = null;
+    let browserSession: { publicAccessToken: string; lastEventId: string | null } | null = null;
     if (session && isDashboardAgentConfigured()) {
       try {
-        browserSession = { ...session, publicAccessToken: await mintDashboardAgentToken(chatId) };
+        browserSession = {
+          publicAccessToken: await mintDashboardAgentToken(chatId),
+          lastEventId: session.lastEventId,
+        };
       } catch (error) {
         if (error instanceof Response) throw error;
         logger.error("Dashboard agent chat read could not mint a browser token", {

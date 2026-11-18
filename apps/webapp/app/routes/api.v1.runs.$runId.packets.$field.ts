@@ -1,6 +1,8 @@
 import { json } from "@remix-run/server-runtime";
+import type { RbacResource } from "@trigger.dev/plugins";
 import { z } from "zod";
 import { $replica } from "~/db.server";
+import { assertPacketNamespaceAccess } from "~/services/packetApi.server";
 import { anyResource, createLoaderApiRoute } from "~/services/routeBuilders/apiBuilder.server";
 import { generatePresignedUrl, jsonPacketPresignFailure } from "~/v3/objectStore.server";
 import { runStore } from "~/v3/runStore.server";
@@ -50,20 +52,28 @@ export const loader = createLoaderApiRoute(
       if (!run) return null;
 
       const packetPath = storedPacketPath(run, params.field);
-      return packetPath ? { ...run, packetPath } : null;
+      return packetPath
+        ? {
+            ...run,
+            packetPath,
+            readResources: [
+              { type: "runs", id: run.friendlyId },
+              { type: "tasks", id: run.taskIdentifier },
+              ...run.runTags.map((tag) => ({ type: "tags", id: tag })),
+              ...(run.batch ? [{ type: "batch", id: run.batch.friendlyId }] : []),
+            ] satisfies RbacResource[],
+          }
+        : null;
     },
     authorization: {
       action: "read",
-      resource: (run) =>
-        anyResource([
-          { type: "runs", id: run.friendlyId },
-          { type: "tasks", id: run.taskIdentifier },
-          ...run.runTags.map((tag) => ({ type: "tags", id: tag })),
-          ...(run.batch ? [{ type: "batch", id: run.batch.friendlyId }] : []),
-        ]),
+      resource: (run) => anyResource([...run.readResources, { type: "packets" }]),
     },
   },
-  async ({ authentication, resource }) => {
+  async ({ authentication, resource, ability }) => {
+    if (!ability.can("read", resource.readResources)) {
+      assertPacketNamespaceAccess(authentication);
+    }
     const signed = await generatePresignedUrl(
       authentication.environment.project.externalRef,
       authentication.environment.slug,

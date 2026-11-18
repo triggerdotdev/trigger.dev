@@ -1,0 +1,40 @@
+---
+title: "Autumn webhooks"
+sidebarTitle: "Autumn"
+description: "Receive and verify Autumn webhooks with Trigger.dev. Check the Svix signature and run a task for each Autumn event, filtered on event.type."
+---
+
+**`webhooks.autumn()` verifies the Svix signature Autumn sends in the `svix-*` headers on every request.**
+
+```ts /trigger/autumn.ts
+import { webhook, webhooks } from "@trigger.dev/sdk";
+
+export const autumn = webhooks.endpoint.define({
+  id: "autumn",
+  source: webhooks.autumn(),
+});
+
+export const autumnEvents = webhook({
+  id: "autumn-events",
+  endpoint: autumn,
+  filter: "event.type == 'billing.updated'",
+  onEvent: async ({ event }) => {
+    console.log(event);
+  },
+});
+```
+
+| Setting | Value |
+| --- | --- |
+| Source | `webhooks.autumn()` |
+| Verification | Svix (`svix-id`, `svix-timestamp`, `svix-signature`) |
+| Credential | Signing secret issued by Autumn |
+| Event type | `event.type` |
+| Autumn docs | [Autumn webhook docs](https://docs.useautumn.com/documentation/webhooks) |
+
+## Set up Autumn
+
+1. Start `trigger dev` or deploy, then copy the endpoint's **Webhook URL** from the **Webhooks** page.
+2. In the Autumn dashboard, open **Developer** and select the **Webhooks** tab. Choose **Add Endpoint**, enter the webhook URL and select the events your subscribers need.
+3. Copy the endpoint's signing secret (it starts with `whsec_`), then choose **Set signing secret** on the Trigger.dev endpoint.
+4. Choose **Send Test Event** in Autumn, or use the endpoint's **Test** tab, and check the endpoint's **Deliveries** tab. See [Verify the connection](/webhooks/connect#verify-the-connection) if nothing arrives.

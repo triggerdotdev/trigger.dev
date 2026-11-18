@@ -2,6 +2,7 @@ import { type LoaderFunctionArgs, json } from "@remix-run/server-runtime";
 import { z } from "zod";
 import { prisma } from "~/db.server";
 import { authenticateApiKeyWithScope } from "~/services/apiAuth.server";
+import { noteDeploymentOrigin } from "~/services/auditLogs/envVarReadAudit.server";
 import { deploymentBuildEnvVarsResponse } from "~/services/deploymentBuildEnvVars.server";
 import { environmentEncryption } from "~/services/environmentEncryption/instance.server";
 import { logger } from "~/services/logger.server";
@@ -21,6 +22,8 @@ export async function loader({ request, params }: LoaderFunctionArgs) {
       logger.info("Invalid or missing api key", { url: request.url });
       return json({ error: authResult.error }, { status: authResult.status });
     }
+    // A build fetches these for the deployment it is building.
+    noteDeploymentOrigin({ deploymentId: parsedParams.data.deploymentId });
     return deploymentBuildEnvVarsResponse({
       db: prisma,
       encryption: environmentEncryption(),

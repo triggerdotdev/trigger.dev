@@ -13,6 +13,7 @@ import {
   personalAccessTokenAuthFailureBody,
   resolveAndRecheckUserActorClaims,
 } from "~/services/personalAccessToken.server";
+import { notePersonalAccessTokenAuthentication } from "~/services/auditLogs/auditContext.server";
 import { rbac } from "~/services/rbac.server";
 
 type EnvironmentScopedResource = "envvars" | "apiKeys" | "deployments" | "branches";
@@ -194,14 +195,15 @@ export async function authorizePatEnvironmentAccess({
     return json(personalAccessTokenAuthFailureBody(userAuth), { status: userAuth.status });
   }
 
-  if (
-    userActorBearer &&
-    !(await resolveAndRecheckUserActorClaims(
+  if (userActorBearer) {
+    const claims = await resolveAndRecheckUserActorClaims(
       "claims" in userAuth ? userAuth.claims : undefined,
       userActorBearer
-    ))
-  ) {
-    return json({ error: "Invalid user-actor token" }, { status: 401 });
+    );
+    if (!claims) {
+      return json({ error: "Invalid user-actor token" }, { status: 401 });
+    }
+    notePersonalAccessTokenAuthentication(request, { userId: userAuth.userId, userActor: claims });
   }
 
   if (!resources.some((candidate) => userAuth.ability.can(action, { type: candidate, envType }))) {

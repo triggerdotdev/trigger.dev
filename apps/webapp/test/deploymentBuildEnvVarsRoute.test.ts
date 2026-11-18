@@ -1,9 +1,6 @@
 import { postgresTest } from "@internal/testcontainers";
-import {
-  $transaction,
-  type PrismaClient,
-  type WorkerDeploymentStatus,
-} from "@trigger.dev/database";
+import { $transaction } from "~/db.server";
+import { type PrismaClient, type WorkerDeploymentStatus } from "@trigger.dev/database";
 import cuid from "cuid";
 import { describe, expect } from "vitest";
 import { deploymentBuildEnvVarsResponse } from "~/services/deploymentBuildEnvVars.server";

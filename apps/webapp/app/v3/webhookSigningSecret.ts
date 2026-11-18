@@ -7,6 +7,12 @@ import { z } from "zod";
 export const StoredSigningSecret = z.object({
   secret: z.string(),
   previous: z.object({ secret: z.string(), expiresAt: z.string() }).optional(),
+  /**
+   * Set when the provider sent this secret itself (Notion's verification token) and the endpoint
+   * adopted it. The user still has to paste it back into the provider, so the dashboard shows it
+   * until they hide it; any later set, generate or rotate writes a record without it.
+   */
+  capturedAt: z.string().optional(),
 });
 export type StoredSigningSecret = z.infer<typeof StoredSigningSecret>;
 

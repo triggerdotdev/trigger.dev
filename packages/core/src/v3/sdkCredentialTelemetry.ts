@@ -10,6 +10,7 @@ export const sdkCredentialTelemetryOperations = [
   "createUploadPayloadUrl",
   "getPayloadUrl",
   "getRunPacketUrl",
+  "getRunWaitpointOutputUrl",
   "retrieveRun",
   "cancelRun",
   "resetIdempotencyKey",

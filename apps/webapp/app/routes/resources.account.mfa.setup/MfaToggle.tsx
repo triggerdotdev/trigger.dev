@@ -6,10 +6,11 @@ import { Switch } from "~/components/primitives/Switch";
 
 interface MfaToggleProps {
   isEnabled: boolean;
+  isRequired?: boolean;
   onToggle: (enabled: boolean) => void;
 }
 
-export function MfaToggle({ isEnabled, onToggle }: MfaToggleProps) {
+export function MfaToggle({ isEnabled, isRequired = false, onToggle }: MfaToggleProps) {
   return (
     <Form method="post" className="w-full">
       <div className="flex w-full items-center justify-between gap-4">
@@ -17,6 +18,9 @@ export function MfaToggle({ isEnabled, onToggle }: MfaToggleProps) {
           <Label htmlFor="mfa">Multi-factor authentication</Label>
           <Paragraph variant="small">
             Require a one-time code from your authenticator app (TOTP).
+            {isRequired && isEnabled
+              ? " Your organization requires it, so it can't be turned off."
+              : null}
           </Paragraph>
         </InputGroup>
         <div className="flex flex-none items-center">
@@ -26,6 +30,7 @@ export function MfaToggle({ isEnabled, onToggle }: MfaToggleProps) {
             labelPosition="right"
             className="w-fit pr-3"
             checked={isEnabled}
+            disabled={isRequired && isEnabled}
             onCheckedChange={onToggle}
           />
         </div>

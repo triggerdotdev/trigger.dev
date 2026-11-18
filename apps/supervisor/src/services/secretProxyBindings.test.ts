@@ -1,0 +1,611 @@
+import type {
+  SupervisorHttpClient,
+  WorkerApiRunRestoreOutcomeRequestBody,
+} from "@trigger.dev/core/v3/workers";
+import { chmod } from "node:fs/promises";
+import { setTimeout as sleep } from "node:timers/promises";
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
+import { SecretProxyFixture, deploymentClaims, executionInput } from "./fixtures/secretProxy.js";
+import {
+  SecretProxyBindings,
+  SecretProxyAllocationBusyError,
+  interceptorControl,
+  reportSecretProxyRestoreRefusal,
+  type SecretProxyCaller,
+  type SecretProxyStartResult,
+} from "./secretProxyBindings.js";
+
+type CompletionResponse = Awaited<ReturnType<SupervisorHttpClient["completeRunAttempt"]>>;
+const SWEEP_WAIT_MS = 11_000;
+const RECOVERY_RETRY_WAIT_MS = 1_100;
+
+function accepted(
+  caller: SecretProxyCaller,
+  options: {
+    attempt?: number;
+    snapshotId?: string;
+    allowedHosts?: string[];
+    expiresAt?: number;
+  } = {}
+): SecretProxyStartResult {
+  const attempt = options.attempt ?? 1;
+  const input = executionInput(caller, attempt, options.allowedHosts, options.expiresAt);
+  return {
+    execution: {
+      run: { id: caller.runId },
+      attempt: { number: attempt },
+      environment: { id: caller.claims!.environment_id },
+      deployment: { id: caller.claims!.deployment },
+    },
+    snapshot: {
+      friendlyId: options.snapshotId ?? `snap_${caller.runId}_${attempt}`,
+      createdAt: new Date(),
+    },
+    envVars: { TRIGGER_RUN_TOKEN: input.runToken },
+    secretProxy: input.proxy,
+  };
+}
+
+function acknowledged(caller: SecretProxyCaller, snapshotId: string): CompletionResponse {
+  return {
+    success: true,
+    data: {
+      result: {
+        run: {
+          id: caller.runId,
+          friendlyId: caller.runId,
+          status: "COMPLETED_SUCCESSFULLY",
+          attemptNumber: 1,
+        },
+        snapshot: {
+          id: snapshotId,
+          friendlyId: snapshotId,
+          executionStatus: "FINISHED",
+          description: "Completed",
+          createdAt: new Date(),
+        },
+        attemptStatus: "RUN_FINISHED",
+      },
+    },
+  };
+}
+const unavailable: CompletionResponse = { success: false, error: "Unavailable", statusCode: 503 };
+
+describe("SecretProxyBindings with real k3s and native interceptor UDS", () => {
+  const fixture = new SecretProxyFixture();
+  let bindings: SecretProxyBindings;
+  let callers: SecretProxyCaller[];
+  let victim: SecretProxyCaller;
+
+  function registrar(completionGraceMs?: number) {
+    return new SecretProxyBindings({
+      k8s: { core: fixture.core, custom: fixture.custom },
+      namespace: fixture.namespace,
+      nodeName: fixture.nodeName,
+      socketPath: fixture.socketPath,
+      completionGraceMs,
+    });
+  }
+  beforeAll(async () => {
+    await fixture.start();
+    callers = await fixture.placements(
+      Array.from({ length: 129 }, (_, index) => ({ runId: `run_real${index}` }))
+    );
+    [victim] = (await fixture.placements([{ runId: "run_victim" }], {
+      ...deploymentClaims,
+      environment_id: "env_other",
+      deployment: "deployment_other",
+    })) as [SecretProxyCaller];
+  }, 600_000);
+  beforeEach(async () => {
+    bindings = registrar();
+    await bindings.start();
+    await fixture.resetAllocations();
+  });
+  afterEach(async () => {
+    await bindings.stop();
+  });
+  afterAll(async () => {
+    await fixture.stop();
+  }, 60_000);
+
+  async function start(
+    caller: SecretProxyCaller,
+    options: Parameters<typeof accepted>[1] = {},
+    target = bindings
+  ) {
+    const placement = await target.prepareStart(caller);
+    expect(placement).toBeDefined();
+    const response = accepted(caller, options);
+    await target.withStart(placement!, () => target.activateStart(caller, placement!, response));
+    return response;
+  }
+  async function finish(caller: SecretProxyCaller, snapshotId: string) {
+    const response = acknowledged(caller, snapshotId);
+    expect(await bindings.complete(caller, async () => response)).toEqual(response);
+  }
+
+  it("fails checkpoint restores without attempting restore", async () => {
+    const checkpoint = {
+      id: "checkpoint_before_enrollment",
+      type: "COMPUTE" as const,
+      location: "saved",
+    };
+    const reports: WorkerApiRunRestoreOutcomeRequestBody[] = [];
+    expect(
+      await reportSecretProxyRestoreRefusal(
+        { interceptorSocket: fixture.socketPath, checkpoint },
+        {
+          report: async (body) => {
+            reports.push(body);
+            return { success: true };
+          },
+          release: async () => {
+            throw new Error("Acknowledged refusal must not release");
+          },
+        }
+      )
+    ).toEqual({ result: "ok" });
+    expect(reports).toEqual([
+      { outcome: "fail", reason: "SecretProxyCheckpointUnsupported", message: expect.any(String) },
+    ]);
+    expect(
+      await reportSecretProxyRestoreRefusal(
+        { checkpoint },
+        {
+          report: async () => {
+            throw new Error("Ordinary restore must not be refused");
+          },
+          release: async () => {
+            throw new Error("Ordinary restore must not be released");
+          },
+        }
+      )
+    ).toBe(false);
+  });
+
+  it("refuses live and concurrent starts without changing the active binding", async () => {
+    const first = callers[0]!;
+    const a = await start(first);
+    await finish(first, a.snapshot.friendlyId);
+    const stalePlacement = await bindings.prepareStart(first);
+    const warm = { ...first, runId: "run_warm" };
+    const placement = await bindings.prepareStart(warm);
+    let forwarded = 0;
+    const platform = async () => {
+      forwarded++;
+    };
+    await bindings.withStart(placement!, async () => {
+      await expect(bindings.withStart(stalePlacement!, platform)).rejects.toBeInstanceOf(
+        SecretProxyAllocationBusyError
+      );
+      await bindings.activateStart(warm, placement!, accepted(warm));
+    });
+    await expect(bindings.prepareStart(first)).rejects.toBeInstanceOf(
+      SecretProxyAllocationBusyError
+    );
+    await expect(bindings.withStart(stalePlacement!, platform)).rejects.toBeInstanceOf(
+      SecretProxyAllocationBusyError
+    );
+    expect(forwarded).toBe(0);
+    await bindings.authorize(warm);
+    await bindings.refresh(warm.runId, executionInput(warm).runToken);
+    expect(await fixture.acceptsTls(first)).toBe(true);
+    await bindings.complete(first, async () => {
+      forwarded++;
+      return acknowledged(first, a.snapshot.friendlyId);
+    });
+    expect(forwarded).toBe(1);
+    expect(await fixture.acceptsTls(first)).toBe(true);
+  });
+
+  it("does not reserve a victim run during placement checks", async () => {
+    const attacker = { ...callers[0]!, runId: victim.runId };
+    const placement = await bindings.prepareStart(attacker);
+    expect(placement).toBeDefined();
+    expect(bindings.tracks(victim.runId)).toBe(false);
+    await expect(
+      bindings.withStart(placement!, () =>
+        bindings.activateStart(attacker, placement!, accepted(victim))
+      )
+    ).rejects.toThrow();
+    expect(bindings.tracks(victim.runId)).toBe(false);
+    const response = await start(victim);
+    await bindings.authorize(victim);
+    await bindings.refresh(victim.runId, executionInput(victim).runToken);
+    expect(await fixture.acceptsTls(victim)).toBe(true);
+    await finish(victim, response.snapshot.friendlyId);
+    expect(await fixture.acceptsTls(victim)).toBe(false);
+  });
+
+  it("ignores older attempts but revokes current and legacy completions regardless of snapshot", async () => {
+    const caller = callers[0]!;
+    const first = await start(caller);
+    await finish(caller, first.snapshot.friendlyId);
+    const second = await start(caller, { attempt: 2 });
+    const rejected: CompletionResponse = {
+      success: false,
+      error: "Stale snapshot",
+      statusCode: 409,
+    };
+    expect(
+      await bindings.complete(
+        caller,
+        async () => {
+          expect(await fixture.acceptsTls(caller)).toBe(true);
+          return rejected;
+        },
+        1
+      )
+    ).toEqual(rejected);
+    await bindings.refresh(caller.runId, executionInput(caller, 2).runToken);
+    expect(
+      await bindings.complete(
+        caller,
+        async () => {
+          expect(await fixture.acceptsTls(caller)).toBe(false);
+          return rejected;
+        },
+        2
+      )
+    ).toEqual(rejected);
+    await bindings.authorize(caller, true);
+    await expect(
+      bindings.refresh(caller.runId, executionInput(caller, 2).runToken)
+    ).rejects.toThrow();
+    await finish(caller, second.snapshot.friendlyId);
+    await start(caller, { attempt: 3 });
+    await bindings.complete(caller, async () => {
+      expect(await fixture.acceptsTls(caller)).toBe(false);
+      return acknowledged(caller, "snap_after_continuation");
+    });
+  });
+
+  it("refuses mismatched callers without forwarding or touching the owner's binding", async () => {
+    const caller = callers[0]!;
+    await start(caller);
+    let forwarded = 0;
+    for (const mismatched of [
+      { ...callers[1]!, runId: caller.runId },
+      { ...caller, sourceIp: callers[1]!.sourceIp },
+      { ...caller, claims: { ...deploymentClaims, environment_id: "env_other" } },
+      { ...caller, claims: { ...deploymentClaims, deployment: "deployment_other" } },
+    ]) {
+      await expect(bindings.authorize(mismatched)).rejects.toThrow();
+      await expect(bindings.authorize(mismatched, true)).rejects.toThrow();
+      await expect(
+        bindings.complete(mismatched, async () => {
+          forwarded++;
+          return acknowledged(caller, "snap_wrong_caller");
+        })
+      ).rejects.toThrow();
+    }
+    expect(forwarded).toBe(0);
+    expect(await fixture.acceptsTls(caller)).toBe(true);
+  });
+
+  it("keeps placement checks read-only and discards accepted ordinary state", async () => {
+    for (const caller of callers) {
+      const placement = await bindings.prepareStart(caller);
+      expect(placement).toBeDefined();
+      expect(bindings.tracks(caller.runId)).toBe(false);
+      const response = accepted(caller);
+      delete response.secretProxy;
+      await bindings.withStart(placement!, () =>
+        bindings.activateStart(caller, placement!, response)
+      );
+      expect(bindings.tracks(caller.runId)).toBe(false);
+      await bindings.refresh(caller.runId);
+    }
+  }, 60_000);
+
+  it("lets an ordinary run proceed when its reservation fails and retires the VM next", async () => {
+    const caller = callers[0]!;
+    const placement = await bindings.prepareStart(caller);
+    const response = accepted(caller);
+    delete response.secretProxy;
+    try {
+      await bindings.withStart(placement!, async () => {
+        await chmod(fixture.socketPath, 0o644);
+        await bindings.activateStart(caller, placement!, response);
+      });
+    } finally {
+      await chmod(fixture.socketPath, 0o600);
+    }
+    expect(bindings.tracks(caller.runId)).toBe(false);
+    await expect(bindings.prepareStart({ ...caller, runId: "run_next" })).rejects.toThrow(
+      SecretProxyAllocationBusyError
+    );
+  });
+
+  it("declines invalid placement and fails closed if the allocation changes after preflight", async () => {
+    const caller = callers[0]!;
+    for (const invalid of [
+      { ...caller, sourceIp: callers[1]!.sourceIp },
+      { ...caller, claims: { ...deploymentClaims, environment_id: "env_other" } },
+      { ...caller, claims: { ...deploymentClaims, deployment: "deployment_other" } },
+    ])
+      expect(await bindings.prepareStart(invalid)).toBeUndefined();
+    const trusted = await bindings.prepareStart(caller);
+    for (const scope of [
+      { environment: { id: "env_other" }, deployment: { id: deploymentClaims.deployment } },
+      {
+        environment: { id: deploymentClaims.environment_id },
+        deployment: { id: "deployment_other" },
+      },
+    ]) {
+      const response = accepted(caller);
+      response.execution = { ...response.execution, ...scope };
+      await expect(
+        bindings.withStart(trusted!, () => bindings.activateStart(caller, trusted!, response))
+      ).rejects.toThrow();
+      expect(bindings.tracks(caller.runId)).toBe(false);
+    }
+    await fixture.retireAllocation(caller);
+    await expect(
+      bindings.withStart(trusted!, () => bindings.activateStart(caller, trusted!, accepted(caller)))
+    ).rejects.toThrow();
+    expect(await bindings.prepareStart(caller)).toBeUndefined();
+    await fixture.registerAllocation(caller, { runId: "run_other" });
+    expect(await bindings.prepareStart(caller)).toBeUndefined();
+    await fixture.retireAllocation(caller);
+    await fixture.registerAllocation(caller);
+    const placement = await bindings.prepareStart(caller);
+    expect(placement).toBeDefined();
+    await bindings.withStart(placement!, async () => {
+      await fixture.retireAllocation(caller);
+      await fixture.registerAllocation(caller);
+      await expect(bindings.activateStart(caller, placement!, accepted(caller))).rejects.toThrow();
+    });
+    expect(await fixture.acceptsTls(caller)).toBe(false);
+  });
+
+  it("revokes killed runners only when their trusted UID matches", async () => {
+    const caller = callers[0]!;
+    const placement = await bindings.prepareStart(caller);
+    expect(placement).toBeDefined();
+    await start(caller);
+    await bindings.revokeRunner(caller.runnerId!, "old-runner-uid");
+    expect(await fixture.acceptsTls(caller)).toBe(true);
+    await bindings.revokeRunner(caller.runnerId!, placement!.runnerUid);
+    expect(await fixture.acceptsTls(caller)).toBe(false);
+    expect(bindings.tracks(caller.runId)).toBe(false);
+  });
+
+  it("revokes an unknown binding before admitting a start", async () => {
+    const caller = callers[0]!;
+    const { allocationId, guestId } = fixture.allocation(caller).metadata;
+    const input = executionInput(caller);
+    await interceptorControl(fixture.socketPath, allocationId, {
+      allocationId,
+      guestId,
+      sourceIp: caller.sourceIp,
+      runId: caller.runId,
+      attempt: 1,
+      runToken: input.runToken,
+      expiresAtMs: input.proxy.expiresAtMs,
+      allowedHosts: input.proxy.allowedHosts,
+    });
+    expect(bindings.tracks(caller.runId)).toBe(false);
+    expect(await fixture.acceptsTls(caller)).toBe(true);
+    const warm = { ...caller, runId: "run_after_lost_state" };
+    expect(await bindings.prepareStart(warm)).toBeDefined();
+    expect(bindings.tracks(warm.runId)).toBe(false);
+    expect(await fixture.acceptsTls(caller)).toBe(false);
+    await start(warm);
+    expect(await fixture.acceptsTls(caller)).toBe(true);
+  });
+
+  it("requires an acknowledged reset and fresh execution reservations", async () => {
+    const caller = callers[0]!;
+    await start(caller);
+    const restarted = registrar();
+    await chmod(fixture.socketPath, 0o644);
+    try {
+      await restarted.start();
+      expect(await restarted.prepareStart(caller)).toBeUndefined();
+      await chmod(fixture.socketPath, 0o600);
+      await restarted.start();
+      expect(await fixture.acceptsTls(caller)).toBe(false);
+      await start(caller, {}, restarted);
+      await bindings.stop();
+      expect(await fixture.acceptsTls(caller)).toBe(true);
+    } finally {
+      await chmod(fixture.socketPath, 0o600);
+      await restarted.stop();
+    }
+  });
+
+  it("retains post-start attachment failure until revocation and platform acknowledgement", async () => {
+    const caller = callers[0]!;
+    const placement = await bindings.prepareStart(caller);
+    const response = accepted(caller);
+    let completed = 0;
+    let acknowledge = false;
+    try {
+      await bindings.withStart(placement!, async () => {
+        await chmod(fixture.socketPath, 0o644);
+        await expect(bindings.activateStart(caller, placement!, response)).rejects.toThrow();
+        await bindings.failStart(caller, placement!.bindingId, async () => {
+          completed++;
+          return acknowledge ? acknowledged(caller, response.snapshot.friendlyId) : unavailable;
+        });
+      });
+      await bindings.retryFailedStart(placement!.bindingId);
+      expect(completed).toBe(0);
+    } finally {
+      await chmod(fixture.socketPath, 0o600);
+    }
+    await sleep(RECOVERY_RETRY_WAIT_MS);
+    await bindings.retryFailedStart(placement!.bindingId);
+    expect(completed).toBe(1);
+    expect(bindings.tracks(caller.runId)).toBe(true);
+    acknowledge = true;
+    await sleep(2 * RECOVERY_RETRY_WAIT_MS);
+    await bindings.retryFailedStart(placement!.bindingId);
+    expect(completed).toBe(2);
+    expect(bindings.tracks(caller.runId)).toBe(false);
+  }, 15_000);
+
+  it("drops a permanent completion conflict only after revoking its binding", async () => {
+    const caller = callers[0]!;
+    const placement = await bindings.prepareStart(caller);
+    expect(placement).toBeDefined();
+    await bindings.withStart(placement!, () =>
+      bindings.activateStart(caller, placement!, accepted(caller))
+    );
+    expect(await fixture.acceptsTls(caller)).toBe(true);
+    let completions = 0;
+    await bindings.failStart(caller, placement!.bindingId, async () => {
+      completions++;
+      expect(await fixture.acceptsTls(caller)).toBe(false);
+      return { success: false, error: "Snapshot superseded", statusCode: 400 };
+    });
+    await bindings.retryFailedStart(placement!.bindingId);
+    expect(completions).toBe(1);
+    expect(bindings.tracks(caller.runId)).toBe(false);
+    await bindings.retryFailedStart(placement!.bindingId);
+    expect(completions).toBe(1);
+    expect(await bindings.prepareStart(caller)).toBeDefined();
+  });
+
+  it("expires a transient failure after revocation without another platform completion", async () => {
+    const caller = callers[0]!;
+    const placement = await bindings.prepareStart(caller);
+    expect(placement).toBeDefined();
+    const tokenLifetimeMs = 3_000;
+    const response = accepted(caller, {
+      expiresAt: Math.floor((Date.now() + tokenLifetimeMs) / 1000),
+    });
+    await bindings.withStart(placement!, () =>
+      bindings.activateStart(caller, placement!, response)
+    );
+    let completions = 0;
+    await bindings.failStart(caller, placement!.bindingId, async () => {
+      completions++;
+      return unavailable;
+    });
+    await bindings.retryFailedStart(placement!.bindingId);
+    await bindings.retryFailedStart(placement!.bindingId);
+    expect(completions).toBe(1);
+    await sleep(tokenLifetimeMs + RECOVERY_RETRY_WAIT_MS);
+    await bindings.retryFailedStart(placement!.bindingId);
+    expect(completions).toBe(1);
+    expect(bindings.tracks(caller.runId)).toBe(false);
+    expect(await fixture.acceptsTls(caller)).toBe(false);
+    expect(await bindings.prepareStart(caller)).toBeDefined();
+  }, 15_000);
+
+  it("renews only the current execution token and revokes on shutdown", async () => {
+    const caller = callers[0]!;
+    await start(caller, { allowedHosts: ["api--edge.example.com"] });
+    expect(await fixture.acceptsTls(caller, "api--edge.example.com")).toBe(true);
+    await expect(
+      bindings.refresh(caller.runId, executionInput(caller, 2).runToken)
+    ).rejects.toThrow();
+    const renewed = executionInput(caller, 1, ["api--edge.example.com"], deploymentClaims.exp + 60);
+    await bindings.refresh(caller.runId, renewed.runToken);
+    expect(await fixture.acceptsTls(caller, "api--edge.example.com")).toBe(true);
+    await bindings.stop();
+    expect(await fixture.acceptsTls(caller, "api--edge.example.com")).toBe(false);
+    await interceptorControl(fixture.socketPath, "absent");
+  });
+
+  it("re-reads and revokes expired authority after the control socket recovers", async () => {
+    const caller = callers[0]!;
+    await start(caller, { expiresAt: Math.floor(Date.now() / 1000) + 5 });
+    await chmod(fixture.socketPath, 0o644);
+    try {
+      await expect
+        .poll(() => bindings.tracks(caller.runId), {
+          timeout: 2 * SWEEP_WAIT_MS,
+          interval: 100,
+        })
+        .toBe(false);
+      await chmod(fixture.socketPath, 0o600);
+      const warm = { ...caller, runId: "run_after_expiry_recovery" };
+      await start(warm);
+      expect(await fixture.acceptsTls(warm)).toBe(true);
+    } finally {
+      await chmod(fixture.socketPath, 0o600);
+    }
+  }, 30_000);
+
+  it("keeps a revoked completion retryable past token expiry", async () => {
+    const caller = callers[0]!;
+    const response = await start(caller, { expiresAt: Math.floor(Date.now() / 1000) + 5 });
+    expect(await bindings.complete(caller, async () => unavailable)).toEqual(unavailable);
+    await sleep(SWEEP_WAIT_MS);
+    expect(bindings.tracks(caller.runId)).toBe(true);
+    await bindings.authorize(caller, true);
+    await expect(bindings.authorize(caller)).rejects.toThrow();
+    await finish(caller, response.snapshot.friendlyId);
+    expect(await fixture.acceptsTls(caller)).toBe(false);
+  }, 30_000);
+
+  it("reclaims expired completion state without extending its grace on retry", async () => {
+    await bindings.stop();
+    const completionGraceMs = 3_000;
+    bindings = registrar(completionGraceMs);
+    await bindings.start();
+    const caller = callers[0]!;
+    await start(caller, { expiresAt: Math.floor(Date.now() / 1000) + 2 });
+    await bindings.complete(caller, async () => unavailable);
+    await sleep(completionGraceMs / 2);
+    await bindings.complete(caller, async () => unavailable);
+    await sleep(SWEEP_WAIT_MS);
+    expect(bindings.tracks(caller.runId)).toBe(false);
+    expect(await bindings.prepareStart(caller)).toBeDefined();
+    expect(await fixture.acceptsTls(caller)).toBe(false);
+  }, 30_000);
+
+  it("bounds accepted executions and retains capacity until completion is acknowledged", async () => {
+    const admitted = callers.slice(0, 128);
+    const responses: SecretProxyStartResult[] = [];
+    for (const caller of admitted.slice(0, -1)) responses.push(await start(caller));
+    const waiting = callers[128]!;
+    const placement = await bindings.prepareStart(waiting);
+    expect(placement).toBeDefined();
+    responses.push(await start(admitted[127]!));
+    expect(await bindings.prepareStart(waiting)).toBeDefined();
+    await expect(
+      bindings.withStart(placement!, () =>
+        bindings.activateStart(waiting, placement!, accepted(waiting))
+      )
+    ).rejects.toThrow();
+    expect(bindings.tracks(waiting.runId)).toBe(false);
+    let completionCalls = 0;
+    let acknowledge = false;
+    await bindings.failStart(waiting, placement!.bindingId, async () => {
+      completionCalls++;
+      return acknowledge ? acknowledged(waiting, "snap_capacity_failure") : unavailable;
+    });
+    await bindings.retryFailedStart(placement!.bindingId);
+    expect(completionCalls).toBe(1);
+    expect(await fixture.acceptsTls(admitted[0]!)).toBe(true);
+    expect(bindings.tracks(waiting.runId)).toBe(false);
+    await expect
+      .poll(() => completionCalls, { timeout: 2 * SWEEP_WAIT_MS, interval: 100 })
+      .toBeGreaterThan(1);
+    acknowledge = true;
+    const beforeAcknowledgement = completionCalls;
+    await sleep(2 * RECOVERY_RETRY_WAIT_MS);
+    await bindings.retryFailedStart(placement!.bindingId);
+    expect(completionCalls).toBe(beforeAcknowledgement + 1);
+    const acknowledgedCalls = completionCalls;
+    await bindings.retryFailedStart(placement!.bindingId);
+    expect(completionCalls).toBe(acknowledgedCalls);
+    expect(await fixture.acceptsTls(admitted[0]!)).toBe(true);
+    const first = admitted[0]!;
+    const snapshotId = responses[0]!.snapshot.friendlyId;
+    expect(await bindings.complete(first, async () => unavailable)).toEqual(unavailable);
+    await expect(
+      bindings.withStart(placement!, () =>
+        bindings.activateStart(waiting, placement!, accepted(waiting))
+      )
+    ).rejects.toThrow();
+    await finish(first, snapshotId);
+    await start(waiting);
+    expect(await fixture.acceptsTls(waiting)).toBe(true);
+  }, 120_000);
+});

@@ -269,7 +269,8 @@ class RoleBaseAccessFallbackController implements RoleBaseAccessController {
 
   async authenticateUserActor(
     request: Request,
-    context: { organizationId?: string; projectId?: string }
+    context: { organizationId?: string; projectId?: string },
+    options?: { audience?: string }
   ): Promise<UserActorAuthResult> {
     const rawToken = request.headers
       .get("Authorization")
@@ -281,7 +282,9 @@ class RoleBaseAccessFallbackController implements RoleBaseAccessController {
     if (!this.userActorSecret) {
       return { ok: false, status: 401, error: "User-actor tokens are not configured" };
     }
-    const claims = await verifyUserActorToken(this.userActorSecret, rawToken);
+    const claims = await verifyUserActorToken(this.userActorSecret, rawToken, {
+      audience: options?.audience,
+    });
     if (!claims) {
       return { ok: false, status: 401, error: "Invalid user-actor token" };
     }

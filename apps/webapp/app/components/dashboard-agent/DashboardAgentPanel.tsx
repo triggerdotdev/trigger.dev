@@ -155,6 +155,7 @@ function expiryToIso(exp: string | undefined): string | undefined {
 export function DashboardAgentPanel({
   onClose,
   requestedMessage,
+  prefillRequest,
   createAlertPrefill,
   editAlertRequest,
   groupAlertsRequest,
@@ -183,7 +184,9 @@ export function DashboardAgentPanel({
   editAlertRequest?: { prefill: EditAlertPrefill; seq: number };
   groupAlertsRequest?: { members: { id: string; name: string }[]; seq: number };
   // Every `seq` below distinguishes repeat requests with identical contents.
-  requestedMessage?: { text: string; seq: number };
+  requestedMessage?: { text: string; seq: number; newChat?: boolean };
+  /** Fills the new-chat composer; never sends. */
+  prefillRequest?: { text: string; seq: number };
   openChatRequest?: { chatId: string; seq: number };
   newChatSeq?: number;
   promotedPrompt?: SuggestedPrompt;
@@ -368,6 +371,10 @@ export function DashboardAgentPanel({
     [actionPath, claimChatSlot, organization.id, storageKey, toast]
   );
 
+  const [draftPrefill, setDraftPrefill] = useState<{ text: string; seq: number } | undefined>(
+    undefined
+  );
+
   const createChat = useCallback(
     async (
       text: string,
@@ -380,6 +387,7 @@ export function DashboardAgentPanel({
         return;
       }
       setPendingCreate(null);
+      setDraftPrefill(undefined);
       const seq = claimChatSlot();
       setLoading(true);
       try {
@@ -452,7 +460,7 @@ export function DashboardAgentPanel({
       setLoading(false);
     } else {
       const stored = readLastChat(storageKey);
-      if (stored && stored.path === location.pathname) {
+      if (stored && stored.path === location.pathname && !requestedMessage?.newChat) {
         void openChat(stored.chatId);
       } else {
         setLoading(false);
@@ -647,8 +655,21 @@ export function DashboardAgentPanel({
   creationEntrySeqRef.current = creationEntrySeq;
 
   const handledRequestSeq = useRef<number | undefined>(undefined);
+  const [settledNewChatSeq, setSettledNewChatSeq] = useState<number>();
+  // The loader stands in for any previous chat until the new one is active (or failed).
+  const newChatPending =
+    requestedMessage?.newChat === true && settledNewChatSeq !== requestedMessage.seq;
   useEffect(() => {
     if (!requestedMessage || handledRequestSeq.current === requestedMessage.seq) return;
+    if (requestedMessage.newChat) {
+      // Waits out a restore so it can't land on top of the new chat.
+      if (loading) return;
+      const { seq, text } = requestedMessage;
+      handledRequestSeq.current = seq;
+      setCreationMode(false);
+      void createChat(text).finally(() => setSettledNewChatSeq(seq));
+      return;
+    }
     if (creationModeRef.current) {
       handledRequestSeq.current = requestedMessage.seq;
       return;
@@ -678,11 +699,25 @@ export function DashboardAgentPanel({
     setDismissedEditSeq(activeEditRef.current?.seq);
     setDismissedGroupSeq(activeGroupRef.current?.seq);
     setCreationMode(false);
+    setDraftPrefill(undefined);
     claimChatSlot();
     setLoading(false);
     setActive(null);
     forgetLastChat(storageKey);
   }, [claimChatSlot, storageKey]);
+
+  const handledPrefillSeq = useRef<number | undefined>(undefined);
+  useEffect(() => {
+    if (!prefillRequest || handledPrefillSeq.current === prefillRequest.seq) return;
+    if (creationModeRef.current) {
+      handledPrefillSeq.current = prefillRequest.seq;
+      return;
+    }
+    if (loading) return;
+    handledPrefillSeq.current = prefillRequest.seq;
+    if (active) newChat();
+    setDraftPrefill(prefillRequest);
+  }, [prefillRequest, loading, active, newChat]);
 
   const restartCreation = useCallback(() => {
     newChat();
@@ -1184,9 +1219,13 @@ export function DashboardAgentPanel({
             )}
           </CreationChatShell>
         ) : null}
-        {loading ? (
+        {loading || newChatPending ? (
           inCreationMode ? null : (
-            <div className="flex flex-1 items-center justify-center">
+            <div
+              role="status"
+              aria-label="Loading chat"
+              className="flex flex-1 items-center justify-center"
+            >
               <Spinner className="size-5" />
             </div>
           )
@@ -1238,6 +1277,7 @@ export function DashboardAgentPanel({
             ) : null}
             <DashboardAgentDraft
               onSubmit={createChat}
+              prefill={draftPrefill}
               projectName={project.name}
               environmentSlug={environment.slug}
               entityId={entityId}

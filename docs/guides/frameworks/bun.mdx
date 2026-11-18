@@ -36,6 +36,32 @@ Node.js yourself with a build extension before moving those projects off `bun`.
 
 <Prerequisites framework="Bun" />
 
+## Bytecode compilation
+
+On `bun-1.4`, deploys compile the run worker and your task files into a Bun executable with
+bytecode, so runs start faster. `trigger dev` isn't affected. Packages you mark as `external`
+still load from `node_modules`.
+
+`import.meta.url`, `import.meta.dirname` and `__dirname` point at your bundled files under `/app`,
+as they do without compilation. The executable only holds your code, so files you read next to it
+(e.g. with `new URL("./data.json", import.meta.url)`) still have to be in the image, for example
+with the [additionalFiles](/config/extensions/additionalFiles) extension. A
+`new Worker(new URL("./worker.mjs", import.meta.url))` loads the worker file from disk too.
+
+If your code still doesn't work compiled, set `bunBytecode` to `false` to turn compilation off:
+
+```ts trigger.config.ts
+import { defineConfig } from "@trigger.dev/sdk";
+
+export default defineConfig({
+  project: "<project ref>",
+  runtime: "bun-1.4",
+  build: {
+    bunBytecode: false,
+  },
+});
+```
+
 ## Known issues
 
 - Certain OpenTelemetry instrumentation will not work with Bun, because Bun does not support Node's `register` hook. This means that some libraries that rely on this hook will not work with Bun.

@@ -5,16 +5,15 @@ import {
   type ChatSnapshotV1 as CoreChatSnapshotV1,
   type ApiClientConfiguration,
   apiClientManager,
+  canFallbackToLocalPublicToken,
+  generateJWT,
   type AppendStreamOptions,
   controlSubtype,
-  generateJWT,
   getSchemaParseFn,
   headerValue,
   type inferSchemaIn,
   type inferSchemaOut,
   InputStreamOncePromise,
-  isAdditionalApiKey,
-  isRunToken,
   isSchemaZodEsque,
   logger,
   type MachinePresetName,
@@ -16387,7 +16386,7 @@ function chatLocal<T extends Record<string, unknown>>(options: { id: string }): 
  * `createChatStartSessionAction`.
  *
  * - `"sessions"` — `POST /api/v1/sessions` (session create + first run trigger).
- * - `"auth"` — `POST /api/v1/auth/jwt/claims` (only fired when
+ * - `"auth"` — `POST /api/v1/auth/public-tokens` (only fired when
  *   `tokenTTL` is set; otherwise the publicAccessToken from session create
  *   is reused as-is).
  */
@@ -16416,7 +16415,7 @@ export type CreateChatStartSessionActionOptions = {
   triggerConfig?: Partial<SessionTriggerConfigInput>;
   /**
    * Override the Trigger.dev API base URL. String applies to both
-   * `/api/v1/sessions` and `/api/v1/auth/jwt/claims`; function picks per
+   * `/api/v1/sessions` and `/api/v1/auth/public-tokens`; function picks per
    * endpoint. When unset, falls back to `apiClientManager.baseURL`
    * (typically the `TRIGGER_API_URL` env var). Set this to route session
    * create through a trusted edge proxy that injects server-side signal
@@ -16431,7 +16430,7 @@ export type CreateChatStartSessionActionOptions = {
   fetch?: ChatStartSessionFetchOverride;
   /**
    * API client config (baseURL / accessToken) to scope this action to a specific
-   * environment, for callers that can't set a global `TRIGGER_SECRET_KEY`. The
+   * environment without changing global `configure({ accessToken })` settings. The
    * returned action runs under this config.
    */
   apiClient?: ApiClientConfiguration;
@@ -16724,7 +16723,7 @@ async function callSessionsCreateWithOverride(args: {
   const apiClient = apiClientManager.client;
   if (!apiClient) {
     throw new Error(
-      "chat.createStartSessionAction: no API access token configured. Set TRIGGER_SECRET_KEY or call apiClientManager.setGlobalAPIClientConfiguration before invoking the action."
+      "chat.createStartSessionAction: no API access token configured. Call configure({ accessToken }) or pass apiClient: { accessToken } to createStartSessionAction before invoking the action."
     );
   }
   const authHeaders = apiClient.getAuthenticationHeaders("createSession");
@@ -16760,59 +16759,65 @@ async function mintPublicTokenWithOverride(args: {
 }): Promise<string> {
   const apiClient = apiClientManager.client;
   if (!apiClient) {
-    throw new Error("chat.createStartSessionAction: no API access token configured for JWT mint.");
+    throw new Error(
+      "chat.createStartSessionAction: no API access token configured for public-token minting. Call configure({ accessToken }) or pass apiClient: { accessToken } to createStartSessionAction."
+    );
   }
   const authHeaders = apiClient.getAuthenticationHeaders("createPublicToken");
-  const accessToken = authHeaders.Authorization.slice("Bearer ".length);
   const ctx: ChatStartSessionEndpointContext = { endpoint: "auth", chatId: args.chatId };
   const scopes = [`read:sessions:${args.chatId}`, `write:sessions:${args.chatId}`];
-  const serverMint = isAdditionalApiKey(accessToken) || isRunToken(accessToken);
-  const endpoint = serverMint ? "/api/v1/auth/public-tokens" : "/api/v1/auth/jwt/claims";
-  const url = `${resolveChatStartBaseURL("auth", args.chatId, args.baseURLOption)}${endpoint}`;
+  const baseURL = resolveChatStartBaseURL("auth", args.chatId, args.baseURLOption);
+  const url = `${baseURL}/api/v1/auth/public-tokens`;
   const init: RequestInit = {
     method: "POST",
     headers: overrideRequestHeaders(authHeaders),
-    ...(serverMint
-      ? {
-          body: JSON.stringify({
-            scopes,
-            expirationTime:
-              args.expirationTime instanceof Date
-                ? Math.floor(args.expirationTime.getTime() / 1000)
-                : args.expirationTime,
-          }),
-        }
-      : {}),
+    body: JSON.stringify({
+      scopes,
+      expirationTime:
+        args.expirationTime instanceof Date
+          ? Math.floor(args.expirationTime.getTime() / 1000)
+          : args.expirationTime,
+    }),
   };
   const response = args.fetchOverride
     ? await args.fetchOverride(url, init, ctx)
     : await fetch(url, init);
   if (!response.ok) {
-    if (serverMint && response.status === 404) {
-      const credentialType = isRunToken(accessToken) ? "run token" : "additional API key";
+    const accessToken = authHeaders.Authorization.slice("Bearer ".length);
+    if (canFallbackToLocalPublicToken(accessToken, scopes, response.status)) {
+      await response.arrayBuffer();
+      const claimsURL = `${baseURL}/api/v1/auth/jwt/claims`;
+      const claimsInit: RequestInit = {
+        method: "POST",
+        headers: overrideRequestHeaders(authHeaders),
+      };
+      const claimsResponse = args.fetchOverride
+        ? await args.fetchOverride(claimsURL, claimsInit, ctx)
+        : await fetch(claimsURL, claimsInit);
+      if (!claimsResponse.ok) {
+        const text = await claimsResponse.text().catch(() => "");
+        throw new Error(`auth.generateJWTClaims failed: ${claimsResponse.status} ${text}`);
+      }
+      const claims = (await claimsResponse.json()) as Record<string, unknown>;
+      return generateJWT({
+        secretKey: accessToken,
+        payload: { ...claims, scopes },
+        expirationTime: args.expirationTime,
+      });
+    }
+    if (response.status === 404) {
       throw new Error(
-        `This ${credentialType} cannot self-sign public tokens, and the server does not support public-token minting. Upgrade the server or use the root API key.`
+        "The server does not support public-token minting for this credential. Upgrade your self-hosted server."
       );
     }
     const text = await response.text().catch(() => "");
     throw new Error(`auth.createPublicToken failed: ${response.status} ${text}`);
   }
   const responseBody = (await response.json()) as Record<string, unknown>;
-  if (serverMint) {
-    if (typeof responseBody.token !== "string") {
-      throw new Error("auth.createPublicToken failed: server response did not include a token");
-    }
-    return responseBody.token;
+  if (typeof responseBody.token !== "string") {
+    throw new Error("auth.createPublicToken failed: server response did not include a token");
   }
-
-  return generateJWT({
-    secretKey: accessToken,
-    payload: {
-      ...responseBody,
-      scopes,
-    },
-    expirationTime: args.expirationTime,
-  });
+  return responseBody.token;
 }
 
 export type CreateChatLoadTranscriptActionOptions = {

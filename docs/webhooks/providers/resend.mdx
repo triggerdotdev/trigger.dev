@@ -1,0 +1,44 @@
+---
+title: "Resend webhooks"
+sidebarTitle: "Resend"
+description: "Receive and verify Resend webhooks with Trigger.dev. Check the Svix signature and run a task for each Resend event, filtered on event.type."
+---
+
+**`webhooks.resend()` verifies the Svix signature Resend sends in the `svix-*` headers on every request.**
+
+```ts /trigger/resend.ts
+import { webhook, webhooks } from "@trigger.dev/sdk";
+
+export const resend = webhooks.endpoint.define({
+  id: "resend",
+  source: webhooks.resend(),
+});
+
+export const resendEvents = webhook({
+  id: "resend-events",
+  endpoint: resend,
+  filter: "event.type == 'email.delivered'",
+  onEvent: async ({ event }) => {
+    console.log(event);
+  },
+});
+```
+
+| Setting | Value |
+| --- | --- |
+| Source | `webhooks.resend()` |
+| Verification | Svix (`svix-id`, `svix-timestamp`, `svix-signature`) |
+| Credential | Signing secret issued by Resend |
+| Event type | `event.type` |
+| Resend docs | [Resend webhook docs](https://resend.com/docs/webhooks/introduction) |
+
+## Set up Resend
+
+1. Start `trigger dev` or deploy, then copy the endpoint's **Webhook URL** from the **Webhooks** page.
+2. Add the webhook URL as an endpoint in Resend's webhook settings and subscribe it to the event types your subscribers need.
+3. Copy the endpoint's signing secret (it starts with `whsec_`), then choose **Set signing secret** on the Trigger.dev endpoint.
+4. Send a test event from Resend, or use the endpoint's **Test** tab, and check the endpoint's **Deliveries** tab. See [Verify the connection](/webhooks/connect#verify-the-connection) if nothing arrives.
+
+## Example project
+
+The [Resend email agent example](/guides/example-projects/resend-email-agent) drafts replies to a Resend inbox from these webhooks and waits for approval in Slack before sending.

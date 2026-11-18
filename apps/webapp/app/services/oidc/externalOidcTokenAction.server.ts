@@ -1,6 +1,7 @@
 import { trace } from "@internal/tracing";
 import { json, type ActionFunctionArgs } from "@remix-run/node";
 import { decodeJwt } from "jose";
+import { buildJwtAbility } from "@trigger.dev/plugins";
 import { env } from "~/env.server";
 import { logger } from "~/services/logger.server";
 import { getExternalOidcController, getExternalOidcRateLimits } from "./externalOidc.server";
@@ -54,6 +55,10 @@ export async function externalOidcTokenAction({ request }: ActionFunctionArgs) {
         : undefined;
     if (!claims) {
       return failure("INVALID_RUN_TOKEN", "A valid run bearer token is required", 401);
+    }
+
+    if (!buildJwtAbility(claims.scopes).can("write", { type: "oidc" })) {
+      return failure("RUN_TOKEN_SCOPE_DENIED", "Unauthorized. Missing permission: write:oidc", 403);
     }
 
     const parsed = ExternalOidcTokenRequest.safeParse(await request.json().catch(() => undefined));

@@ -237,6 +237,7 @@ export type RbacScopeResourceType =
   | "sessions"
   | "waitpoints"
   | "packets"
+  | "oidc"
   | "inputStreams"
   | "prompts"
   | "tags"
@@ -488,6 +489,7 @@ export async function signUserActorToken(
     pat?: string;
     cap?: string[];
     expirationTime?: string | number | Date;
+    audience?: string;
   }
 ): Promise<string> {
   const jwt = await generateJWT({
@@ -505,6 +507,7 @@ export async function signUserActorToken(
       ...(opts.cap ? { cap: opts.cap } : {}),
     },
     expirationTime: opts.expirationTime ?? "1h",
+    audience: opts.audience,
   });
   return `${USER_ACTOR_TOKEN_PREFIX}${jwt}`;
 }
@@ -512,11 +515,16 @@ export async function signUserActorToken(
 // undefined for anything that isn't a valid, unexpired, correctly-signed UAT.
 export async function verifyUserActorToken(
   secret: string,
-  token: string
+  token: string,
+  opts?: { audience?: string }
 ): Promise<UserActorClaims | undefined> {
   if (!isUserActorToken(token)) return;
 
-  const result = await validateJWT(token.slice(USER_ACTOR_TOKEN_PREFIX.length), secret);
+  const result = await validateJWT(
+    token.slice(USER_ACTOR_TOKEN_PREFIX.length),
+    secret,
+    opts?.audience
+  );
   if (!result.ok) return;
 
   const payload = result.payload;
@@ -552,8 +560,19 @@ export type BearerAuthResult =
       ability: RbacAbility;
       // `act` carries the acting user (`act.sub`) when the public JWT was
       // minted from a PAT/UAT exchange that stamped a delegation claim. Hosts
-      // surface it for attribution (e.g. who resolved an error).
-      jwt?: { realtime?: { skipColumns?: string[] }; oneTimeUse?: boolean; act?: { sub: string } };
+      // surface it for attribution (e.g. who resolved an error). `act.pat` is
+      // the source PAT, which tokens minted for the request inherit. `act.sig`
+      // signs the user together with the token's claims; it is passed through
+      // unchecked, with `act.client`, `scopes` and `expiresAt` (the token's
+      // `exp`) as minted, so the host, which holds the signing secret, can tell
+      // whether it minted this token for this user.
+      jwt?: {
+        realtime?: { skipColumns?: string[] };
+        oneTimeUse?: boolean;
+        act?: { sub: string; client?: string; sig?: string; pat?: string };
+        expiresAt?: number;
+        scopes?: string[];
+      };
     };
 
 export type BearerAuthOptions = {
@@ -683,9 +702,11 @@ export interface RoleBaseAccessController {
    * caller skip that re-check, and MUST return the token's own claims so the host re-checks the
    * right source token.
    */
+  // `audience` overrides the expected token audience, for tokens minted for another resource.
   authenticateUserActor(
     request: Request,
-    context: { organizationId?: string; projectId?: string }
+    context: { organizationId?: string; projectId?: string },
+    options?: { audience?: string }
   ): Promise<UserActorAuthResult>;
 
   // Convenience: authenticate + ability.can() check in one call; returns ok:false if check fails.

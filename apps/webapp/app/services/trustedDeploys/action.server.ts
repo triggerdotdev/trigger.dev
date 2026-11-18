@@ -306,6 +306,7 @@ export const submitAction = trustedDeployRoute(
         force: input.force,
       },
       {
+        initiatedByCredential: "TRUSTED_PUBLISHING",
         cliVersion: request.headers.get("x-trigger-cli-version")?.slice(0, 128),
         trustedDeploy: identity,
       }

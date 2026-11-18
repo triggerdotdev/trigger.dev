@@ -1,4 +1,4 @@
-import { parseWithZod } from "@conform-to/zod/v4";
+import { parseWithZod } from "~/utils/conform";
 import { configureCoercion } from "@conform-to/zod/v4/future";
 import type { z } from "zod";
 import { EnvironmentVariableValue } from "./repository";

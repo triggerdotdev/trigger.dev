@@ -1,4 +1,4 @@
-import type { AlertDetail } from "~/presenters/v3/AlertDetailPresenter.server";
+import type { ChartAlert } from "~/presenters/v3/AlertDetailPresenter.server";
 import type { HealthBandRow, HealthQuerySeries, MetricSeriesPoint } from "./alertSeriesTypes";
 import { hasTileData, type LimitTileSeries } from "./limitTiles";
 
@@ -18,7 +18,7 @@ export type AlertSeriesBundle = {
 export type GroupMemberTile = AlertSeriesBundle & {
   id: string;
   name: string;
-  alert: AlertDetail;
+  alert: ChartAlert;
   createdAt: Date;
 };
 

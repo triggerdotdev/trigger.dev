@@ -1,0 +1,90 @@
+---
+title: "Remote MCP server"
+sidebarTitle: "Remote server"
+description: "Connect AI assistants to your Trigger.dev projects over HTTP with OAuth, with no local install."
+---
+
+**The remote MCP server exposes Trigger.dev tools over HTTP at `https://mcp.trigger.dev/mcp`, so an assistant can read runs, trigger tasks, and manage resources without running the CLI.**
+
+You sign in with OAuth. Tools that change state need your approval in the dashboard before they run.
+
+## Remote vs. CLI
+
+The [CLI MCP server](/mcp-introduction) runs on your machine through `npx trigger.dev@latest mcp`. The remote server runs on Trigger.dev and has no access to your local files or processes.
+
+Use the remote server when your client supports HTTP MCP servers, or when you cannot install the CLI. Keep the CLI server for anything that touches your machine. These tools exist only in the CLI server:
+
+- `deploy`
+- `start_dev_server`, `stop_dev_server`, `dev_server_status`
+- `whoami`, `list_profiles`, `switch_profile`
+- `initialize_project`
+
+Every other tool on the [tools page](/mcp-tools) is available remotely. The endpoint accepts POST only. Other methods return `405`.
+
+## Connect with OAuth
+
+OAuth is the default. Your client opens a browser, you approve access on a consent page, and the client stores the tokens.
+
+<Tabs>
+  <Tab title="Claude Code">
+    ```bash
+    claude mcp add --transport http trigger https://mcp.trigger.dev/mcp
+    ```
+
+    Run `/mcp` in Claude Code and choose **Authenticate** for `trigger`.
+  </Tab>
+  <Tab title="Cursor">
+    ```json .cursor/mcp.json
+    {
+      "mcpServers": {
+        "trigger": {
+          "url": "https://mcp.trigger.dev/mcp"
+        }
+      }
+    }
+    ```
+  </Tab>
+  <Tab title="claude.ai">
+    Open **Settings**, then **Connectors**, and add a custom connector with the URL `https://mcp.trigger.dev/mcp`.
+  </Tab>
+</Tabs>
+
+The server publishes its protected resource metadata at `/.well-known/oauth-protected-resource`. Clients find the authorization server from there. It supports dynamic client registration, client ID metadata documents, and PKCE with `S256`. Composio and similar platforms connect the same way as any other client, through dynamic client registration.
+
+An OAuth grant stops working after 30 days without use, and 90 days after it was created. Self-hosters can change both limits (see [self-hosting](#self-hosting)). When a grant expires, the client prompts you to sign in again.
+
+## Scopes
+
+Each OAuth grant carries a list of scopes. A tool call is denied if the scopes or your role in the organization don't allow it.
+
+| Kind  | Scopes                                                                                                                                                                 |
+| ----- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Read  | `read:alerts`, `read:branches`, `read:deployments`, `read:organizations`, `read:projects`, `read:prompts`, `read:query`, `read:runs`, `read:sessions`, `read:webhooks` |
+| Write | `trigger:tasks`, `update:prompts`, `write:alerts`, `write:projects`, `write:query`, `write:runs`, `write:sessions`, `write:webhooks`                                    |
+
+## Write confirmation
+
+Every tool that changes state asks you to approve the exact call first, such as `trigger_task`, `cancel_run`, `replay_run`, or `create_alert`. Read tools never ask.
+
+1. The assistant calls the tool. The server doesn't run it and returns a confirmation link instead.
+2. Open the link and sign in to the dashboard. The page shows the tool, the organization, project, and environment, and the arguments. Values under keys like `secret`, `token`, or `password` are hidden.
+3. Select **Approve**.
+4. Tell the assistant to retry. It calls the same tool with identical arguments, and the call runs once.
+
+An approval expires after 10 minutes. It only applies to the same user, token, tool, and arguments, so changing an argument asks again.
+
+By default the link comes back as a URL elicitation error, which clients that support it show as a prompt. With `MCP_CONFIRMATION_ERROR_MODE=tool-error` it comes back as a normal tool error with the link in the message.
+
+## Self-hosting
+
+The remote server is off by default. Set these environment variables on the webapp:
+
+| Variable                      | Meaning                                                                                           |
+| ----------------------------- | ------------------------------------------------------------------------------------------------- |
+| `MCP_SERVER_ENABLED`          | Turns on the `/mcp` endpoint and the OAuth server. Default `false`. |
+| `MCP_ORIGIN`                  | Origin the MCP server is reached on. Defaults to `APP_ORIGIN`.                                    |
+| `MCP_CONFIRMATION_ERROR_MODE` | How a pending confirmation is reported: `rpc-error` (default) or `tool-error`.                    |
+| `OAUTH_GRANT_IDLE_DAYS`       | Days without use before an OAuth grant stops working. Default `30`.                  |
+| `OAUTH_GRANT_ABSOLUTE_DAYS`   | Maximum lifetime in days of an OAuth grant. Default `90`.                            |
+
+Confirmations are stored in the cache Redis, so the webapp needs the `CACHE_REDIS_*` variables.

@@ -1,4 +1,5 @@
 export { RunEngine } from "./engine/index.js";
+export { retrySettingsFromLockedConfig } from "./engine/retrying.js";
 export type { DeploymentStatusMode } from "./engine/types.js";
 // The engine's shutdown executor and its strict/best-effort gate. Exported so a caller that owns a
 // resource the engine writes to can compose the same drain semantics instead of restating them.

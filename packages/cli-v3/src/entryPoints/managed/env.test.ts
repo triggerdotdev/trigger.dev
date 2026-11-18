@@ -42,3 +42,14 @@ describe("RunnerEnv supervisor wait", () => {
     expect(env.TRIGGER_SUPERVISOR_WAIT_MS).toBe(328);
   });
 });
+
+describe("RunnerEnv controller id", () => {
+  // Catches: the default controller id being drawn once at import instead of per controller.
+  it("generates a controller id when none is set", () => {
+    const first = new RunnerEnv(requiredEnv).TRIGGER_WORKLOAD_CONTROLLER_ID;
+    const second = new RunnerEnv(requiredEnv).TRIGGER_WORKLOAD_CONTROLLER_ID;
+
+    expect(first).toMatch(/^controller_/);
+    expect(second).not.toBe(first);
+  });
+});

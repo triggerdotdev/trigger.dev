@@ -1,5 +1,5 @@
 import { getFormProps, getInputProps, getSelectProps, useForm } from "@conform-to/react";
-import { parseWithZod } from "@conform-to/zod/v4";
+import { parseWithZod } from "~/utils/conform";
 import { Form, useActionData, useParams } from "@remix-run/react";
 import { json, type LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { tryCatch } from "@trigger.dev/core/utils";

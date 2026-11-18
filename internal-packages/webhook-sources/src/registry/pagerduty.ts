@@ -12,7 +12,7 @@ export const entry: ProviderRegistryEntry = {
   label: "PagerDuty",
   category: "observability",
   docsUrl: "https://developer.pagerduty.com/docs/webhooks/webhook-signatures/",
-  secretProvisioning: "integrator",
+  secretProvisioning: "provider",
   eventTypeSource: { from: "body", path: "event.event_type" },
   sampleSource: "handauthored",
 };

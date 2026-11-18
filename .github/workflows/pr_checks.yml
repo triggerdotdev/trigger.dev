@@ -21,6 +21,7 @@ jobs:
       code: ${{ steps.code_filter.outputs.code }}
       typecheck_self: ${{ steps.filter.outputs.typecheck_self }}
       webapp: ${{ steps.filter.outputs.webapp == 'true' || steps.shared_packages_filter.outputs.shared_packages == 'true' }}
+      runops_guard: ${{ steps.filter.outputs.runops_guard }}
       migrations: ${{ steps.filter.outputs.migrations }}
       packages: ${{ steps.filter.outputs.packages }}
       internal: ${{ steps.filter.outputs.internal == 'true' || steps.shared_packages_filter.outputs.shared_packages == 'true' }}
@@ -74,6 +75,8 @@ jobs:
               - 'pnpm-lock.yaml'
               - 'pnpm-workspace.yaml'
               - 'turbo.json'
+            runops_guard:
+              - 'scripts/**'
             migrations:
               - 'internal-packages/database/prisma/migrations/**'
               - 'internal-packages/run-ops-database/prisma/migrations/**'
@@ -182,7 +185,7 @@ jobs:
 
   runops-guard:
     needs: changes
-    if: needs.changes.outputs.webapp == 'true'
+    if: needs.changes.outputs.webapp == 'true' || needs.changes.outputs.runops_guard == 'true'
     uses: ./.github/workflows/runops-guard.yml
 
   fk-cascade-guard:

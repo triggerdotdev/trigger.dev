@@ -1,5 +1,5 @@
 import { getFormProps, getInputProps, useForm } from "@conform-to/react";
-import { parseWithZod } from "@conform-to/zod/v4";
+import { parseWithZod } from "~/utils/conform";
 import { EnvelopeIcon, NoSymbolIcon, UserPlusIcon } from "@heroicons/react/20/solid";
 import { DialogClose } from "@radix-ui/react-dialog";
 import { Form, useActionData, useFetcher, useNavigation } from "@remix-run/react";
@@ -17,7 +17,13 @@ import { PageBody, PageContainer } from "~/components/layout/AppLayout";
 import { Button, ButtonContent, LinkButton } from "~/components/primitives/Buttons";
 import { PermissionButton } from "~/components/primitives/PermissionButton";
 import { DateTime } from "~/components/primitives/DateTime";
-import { Dialog, DialogContent, DialogHeader, DialogTrigger } from "~/components/primitives/Dialog";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "~/components/primitives/Dialog";
 import { Fieldset } from "~/components/primitives/Fieldset";
 import { FormButtons } from "~/components/primitives/FormButtons";
 import { FormError } from "~/components/primitives/FormError";
@@ -35,13 +41,13 @@ import { $replica, prisma } from "~/db.server";
 import { useShowSelfServe } from "~/hooks/useShowSelfServe";
 import { useOrganization } from "~/hooks/useOrganizations";
 import { useUser } from "~/hooks/useUser";
+import { setOrgMemberRole } from "~/models/orgMember.server";
 import { removeTeamMember } from "~/models/removeTeamMember.server";
 import { redirectWithSuccessMessage } from "~/models/message.server";
 import { resolveOrgIdFromSlugForUser } from "~/models/organization.server";
 import { getUserId } from "~/services/session.server";
 import { TeamPresenter } from "~/presenters/TeamPresenter.server";
 import { getCurrentPlan, getSelfServePurchaseBlockReason } from "~/services/platform.v3.server";
-import { rbac } from "~/services/rbac.server";
 import { ssoController } from "~/services/sso.server";
 import { dashboardAction, dashboardLoader } from "~/services/routeBuilders/dashboardBuilder";
 import { cn } from "~/utils/cn";
@@ -166,7 +172,17 @@ export const action = dashboardAction(
       if (submission.status !== "success") {
         return json(submission.reply());
       }
-      const result = await rbac.setUserRole({
+      // The RBAC plugin would assign a role to any user id, member or not.
+      const targetMember = await prisma.orgMember.findFirst({
+        where: { userId: submission.value.userId, organizationId: orgId },
+        select: { id: true },
+      });
+      if (!targetMember) {
+        return json({ ok: false, error: "Not a member of this organization" } as const, {
+          status: 400,
+        });
+      }
+      const result = await setOrgMemberRole({
         userId: submission.value.userId,
         organizationId: orgId,
         roleId: submission.value.roleId,
@@ -316,6 +332,9 @@ type Member = UseDataFunctionReturn<typeof loader>["members"][number];
 type Invite = UseDataFunctionReturn<typeof loader>["invites"][number];
 type Role = UseDataFunctionReturn<typeof loader>["roles"][number];
 
+const soleOwnerMessage =
+  "An organization needs at least one Owner. Make someone else an Owner first.";
+
 export default function Page() {
   const {
     members,
@@ -329,6 +348,7 @@ export default function Page() {
     roles,
     assignableRoleIds,
     memberRoles,
+    soleOwnerUserId,
     canManageMembers,
     canManageBilling,
     manualMembershipAllowed,
@@ -496,6 +516,8 @@ export default function Page() {
                     </div>
                     <RolePicker
                       memberUserId={member.user.id}
+                      isSelf={member.user.id === user.id}
+                      isSoleOwner={member.user.id === soleOwnerUserId}
                       currentRoleId={memberRoleByUserId.get(member.user.id) ?? null}
                       roles={roles}
                       assignableRoleIds={assignableRoleIds}
@@ -508,6 +530,7 @@ export default function Page() {
                         memberCount={members.length}
                         canManageMembers={canManageMembers}
                         manualMembershipAllowed={manualMembershipAllowed}
+                        isSoleOwner={member.user.id === soleOwnerUserId}
                       />
                     </div>
                   </div>
@@ -591,18 +614,25 @@ function LeaveRemoveButton({
   memberCount,
   canManageMembers,
   manualMembershipAllowed,
+  isSoleOwner,
 }: {
   userId: string;
   member: Member;
   memberCount: number;
   canManageMembers: boolean;
   manualMembershipAllowed: boolean;
+  isSoleOwner: boolean;
 }) {
   const organization = useOrganization();
 
-  // Directory-managed membership: neither removing others nor leaving is
-  // allowed — the directory drives membership. Enforced server-side too.
-  if (!manualMembershipAllowed) {
+  // Neither leaving nor removing is allowed when the directory drives
+  // membership, or when this is the org's only Owner. Enforced server-side too.
+  const blockedReason = !manualMembershipAllowed
+    ? "Membership is managed by Directory Sync"
+    : isSoleOwner && memberCount > 1
+      ? soleOwnerMessage
+      : null;
+  if (blockedReason) {
     const isSelf = userId === member.user.id;
     return (
       <SimpleTooltip
@@ -615,7 +645,7 @@ function LeaveRemoveButton({
           </ButtonContent>
         }
         disableHoverableContent
-        content="Membership is managed by Directory Sync"
+        content={blockedReason}
       />
     );
   }
@@ -694,12 +724,16 @@ function LeaveRemoveButton({
 // truth, so this is a UI-affordance layer only.
 function RolePicker({
   memberUserId,
+  isSelf,
+  isSoleOwner,
   currentRoleId,
   roles,
   assignableRoleIds,
   canManageMembers,
 }: {
   memberUserId: string;
+  isSelf: boolean;
+  isSoleOwner: boolean;
   currentRoleId: string | null;
   roles: Role[];
   assignableRoleIds: string[];
@@ -707,6 +741,10 @@ function RolePicker({
 }) {
   const organization = useOrganization();
   const fetcher = useFetcher<{ ok: boolean; error?: string } | { ok: true }>();
+  // Changing your own role can remove your permission to change it back,
+  // so it waits here for confirmation instead of submitting straight away.
+  const [pendingRoleId, setPendingRoleId] = useState<string | null>(null);
+  const wrapperRef = useRef<HTMLDivElement>(null);
   const assignable = new Set(assignableRoleIds);
   // With no RBAC plugin installed, the loader returns no roles —
   // render nothing rather than an empty dropdown.
@@ -715,6 +753,15 @@ function RolePicker({
   const isSubmitting = fetcher.state === "submitting";
   const error =
     fetcher.data && "error" in fetcher.data && fetcher.data.error ? fetcher.data.error : null;
+  const roleName = (id: string | string[] | null) =>
+    roles.find((r) => r.id === id)?.name ?? "No role";
+  const submitRole = (roleId: string) =>
+    fetcher.submit({ _formType: "set-role", userId: memberUserId, roleId }, { method: "post" });
+  const disabledReason = !canManageMembers
+    ? "You don't have permission to change roles"
+    : isSoleOwner
+      ? soleOwnerMessage
+      : null;
 
   const picker = (
     <Select
@@ -725,9 +772,9 @@ function RolePicker({
       value={currentRoleId ?? ""}
       items={roles}
       variant="tertiary/small"
-      disabled={!canManageMembers || isSubmitting}
+      disabled={disabledReason !== null || isSubmitting}
       dropdownIcon
-      text={(v) => roles.find((r) => r.id === v)?.name ?? "No role"}
+      text={roleName}
       setValue={(next) => {
         if (typeof next !== "string" || next === (currentRoleId ?? "")) return;
         // Upgrade-link rows have a value too (Ariakit needs one to
@@ -736,10 +783,11 @@ function RolePicker({
         // submit the role-change form. The Link navigates the user
         // to the plan-selection page; we just bail here.
         if (!assignable.has(next)) return;
-        fetcher.submit(
-          { _formType: "set-role", userId: memberUserId, roleId: next },
-          { method: "post" }
-        );
+        if (isSelf) {
+          setPendingRoleId(next);
+          return;
+        }
+        submitRole(next);
       }}
     >
       {(items) =>
@@ -760,15 +808,15 @@ function RolePicker({
   );
 
   return (
-    <div className="flex flex-col items-end gap-1">
-      {canManageMembers ? (
+    <div ref={wrapperRef} className="flex flex-col items-end gap-1">
+      {disabledReason === null ? (
         picker
       ) : (
         // Disabled <Select> swallows hover events on its own, so wrap it
         // in a div the tooltip can attach to.
         <SimpleTooltip
           button={<div className="cursor-not-allowed">{picker}</div>}
-          content="You don't have permission to change roles"
+          content={disabledReason}
           disableHoverableContent
         />
       )}
@@ -777,6 +825,49 @@ function RolePicker({
           {error}
         </span>
       ) : null}
+      <Dialog
+        open={pendingRoleId !== null}
+        onOpenChange={(open) => {
+          if (!open) setPendingRoleId(null);
+        }}
+      >
+        <DialogContent
+          className="sm:max-w-md"
+          onCloseAutoFocus={(event) => {
+            // No DialogTrigger here, so return focus to the role picker.
+            event.preventDefault();
+            wrapperRef.current?.querySelector<HTMLElement>('[role="combobox"]')?.focus();
+          }}
+        >
+          <DialogHeader>
+            <DialogTitle>Change your role</DialogTitle>
+          </DialogHeader>
+          <Paragraph variant="small" className="pb-4 pt-2">
+            You're changing your own role from{" "}
+            <span className="text-text-bright">{roleName(currentRoleId)}</span> to{" "}
+            <span className="text-text-bright">{roleName(pendingRoleId)}</span>. You may lose
+            permission to manage members, billing and roles. Only another Owner can change it back.
+          </Paragraph>
+          <FormButtons
+            confirmButton={
+              <Button
+                variant="danger/medium"
+                onClick={() => {
+                  if (pendingRoleId) submitRole(pendingRoleId);
+                  setPendingRoleId(null);
+                }}
+              >
+                Change role
+              </Button>
+            }
+            cancelButton={
+              <DialogClose asChild>
+                <Button variant="secondary/medium">Cancel</Button>
+              </DialogClose>
+            }
+          />
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

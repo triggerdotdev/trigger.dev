@@ -4,12 +4,21 @@ import type {
   RuntimeEnvironment,
 } from "@trigger.dev/database";
 import { parseIpRanges, type HostRbacController } from "@trigger.dev/rbac";
+import cuid from "cuid";
 import { customAlphabet } from "nanoid";
 import { MAX_API_KEY_TASK_IDENTIFIERS } from "~/consts";
 import { $transaction, boundedIn, prisma } from "~/db.server";
 import { RuntimeEnvironmentType } from "~/database-types";
 import { env } from "~/env.server";
 import { apiKeyTelemetry, type ApiKeyTelemetry } from "~/services/apiKeyTelemetry.server";
+import { auditLogs } from "~/services/auditLogs/auditLogs.server";
+import {
+  markCredentialHashRevoked,
+  markRootApiKeyRevoked,
+  saveCredentialFingerprint,
+  saveRootApiKeyFingerprint,
+  userActor,
+} from "~/services/credentialFingerprints.server";
 import { logger } from "~/services/logger.server";
 import { rbac } from "~/services/rbac.server";
 import { generateAdditionalApiKey, generateRootApiKey } from "~/utils/apiKeys";
@@ -98,6 +107,7 @@ async function findRootApiKeyEnvironment(
       pkApiKey: true,
       rootApiKeyHiddenAt: true,
       type: true,
+      organizationId: true,
       projectId: true,
       branchName: true,
     },
@@ -143,8 +153,9 @@ export async function regenerateApiKey(
   const newApiKey = createApiKeyForEnv(environment.type);
   const newPkApiKey = createPkApiKeyForEnv(environment.type);
   const revokedApiKeyExpiresAt = new Date(Date.now() + REVOKED_API_KEY_GRACE_PERIOD_MS);
+  await saveRootApiKeyFingerprint(newApiKey, environment, userActor(input.userId));
 
-  const updatedEnvironment = await $transaction(
+  const rotatedEnvironment = await $transaction(
     prismaClient,
     "regenerate root API key",
     async (tx) => {
@@ -160,12 +171,15 @@ export async function regenerateApiKey(
         },
       });
 
+      let graceEndedApiKeys: string[] = [];
       if (revokeImmediately) {
         const now = new Date();
-        await tx.revokedApiKey.updateMany({
+        const graceEnded = await tx.revokedApiKey.updateManyAndReturn({
           where: { runtimeEnvironmentId: environment.id, expiresAt: { gt: now } },
           data: { expiresAt: now },
+          select: { apiKey: true },
         });
+        graceEndedApiKeys = graceEnded.map((revoked) => revoked.apiKey);
       } else {
         await tx.revokedApiKey.create({
           data: {
@@ -177,21 +191,59 @@ export async function regenerateApiKey(
       }
 
       return {
-        ...environment,
-        apiKey: newApiKey,
-        pkApiKey: newPkApiKey,
-        rootApiKeyHiddenAt: currentEnvironment.rootApiKeyHiddenAt,
+        updatedEnvironment: {
+          ...environment,
+          apiKey: newApiKey,
+          pkApiKey: newPkApiKey,
+          rootApiKeyHiddenAt: currentEnvironment.rootApiKeyHiddenAt,
+        },
+        previousApiKey: currentEnvironment.apiKey,
+        graceEndedApiKeys,
       };
     }
   );
 
-  if (!updatedEnvironment) {
+  if (!rotatedEnvironment) {
     throw new Error("The root API key could not be regenerated");
   }
 
   controlPlaneResolver.invalidateEnvironment(environment.id);
 
-  return updatedEnvironment;
+  // Each old key gets a fingerprint first if it has none (made before fingerprints), so its
+  // revocation is recorded rather than lost.
+  const revokedBy = userActor(input.userId);
+  markRootApiKeyRevoked(rotatedEnvironment.previousApiKey, environment, {
+    revokedBy,
+    reason: revokeImmediately ? "rotated_immediately" : "rotated",
+    graceUntil: revokeImmediately ? null : revokedApiKeyExpiresAt,
+    replacedBy: newApiKey,
+  });
+  const graceEndedAt = new Date();
+  for (const apiKey of rotatedEnvironment.graceEndedApiKeys) {
+    markRootApiKeyRevoked(apiKey, environment, {
+      revokedBy,
+      reason: "rotated_immediately",
+      graceUntil: graceEndedAt,
+    });
+  }
+  auditLogs.record({
+    category: "credentials",
+    action: "api_key.rotated",
+    ...rootApiKeyAuditFields(environment),
+    // Ending the grace period of keys rotated earlier revokes them too.
+    keyLast4s: [
+      rotatedEnvironment.previousApiKey,
+      newApiKey,
+      ...rotatedEnvironment.graceEndedApiKeys,
+    ].map((apiKey) => apiKey.slice(-4)),
+    changes: {
+      previousKeyLast4: rotatedEnvironment.previousApiKey.slice(-4),
+      newKeyLast4: newApiKey.slice(-4),
+      graceUntil: revokeImmediately ? null : revokedApiKeyExpiresAt.toISOString(),
+    },
+  });
+
+  return rotatedEnvironment.updatedEnvironment;
 }
 
 export async function disableRootApiKeyVisibility(
@@ -202,8 +254,10 @@ export async function disableRootApiKeyVisibility(
   const newApiKey = createApiKeyForEnv(environment.type);
   const newPkApiKey = createPkApiKeyForEnv(environment.type);
   const rootApiKeyHiddenAt = new Date();
+  const revokedApiKeyExpiresAt = new Date(Date.now() + REVOKED_API_KEY_GRACE_PERIOD_MS);
+  await saveRootApiKeyFingerprint(newApiKey, environment, userActor(input.userId));
 
-  const updatedEnvironment = await $transaction(
+  const hiddenEnvironment = await $transaction(
     prismaClient,
     "disable root API key visibility",
     async (tx) => {
@@ -222,26 +276,47 @@ export async function disableRootApiKeyVisibility(
         data: {
           apiKey: currentEnvironment.apiKey,
           runtimeEnvironmentId: environment.id,
-          expiresAt: new Date(Date.now() + REVOKED_API_KEY_GRACE_PERIOD_MS),
+          expiresAt: revokedApiKeyExpiresAt,
         },
       });
 
       return {
-        ...environment,
-        apiKey: newApiKey,
-        pkApiKey: newPkApiKey,
-        rootApiKeyHiddenAt,
+        updatedEnvironment: {
+          ...environment,
+          apiKey: newApiKey,
+          pkApiKey: newPkApiKey,
+          rootApiKeyHiddenAt,
+        },
+        previousApiKey: currentEnvironment.apiKey,
       };
     }
   );
 
-  if (!updatedEnvironment) {
+  if (!hiddenEnvironment) {
     throw new Error("Root API key visibility could not be disabled");
   }
 
   controlPlaneResolver.invalidateEnvironment(environment.id);
 
-  return updatedEnvironment;
+  markRootApiKeyRevoked(hiddenEnvironment.previousApiKey, environment, {
+    revokedBy: userActor(input.userId),
+    reason: "hidden",
+    graceUntil: revokedApiKeyExpiresAt,
+    replacedBy: newApiKey,
+  });
+  auditLogs.record({
+    category: "credentials",
+    action: "api_key.root_visibility_disabled",
+    ...rootApiKeyAuditFields(environment),
+    keyLast4s: [hiddenEnvironment.previousApiKey.slice(-4), newApiKey.slice(-4)],
+    changes: {
+      previousKeyLast4: hiddenEnvironment.previousApiKey.slice(-4),
+      newKeyLast4: newApiKey.slice(-4),
+      graceUntil: revokedApiKeyExpiresAt.toISOString(),
+    },
+  });
+
+  return hiddenEnvironment.updatedEnvironment;
 }
 
 export async function createEnvironmentApiKey(
@@ -287,7 +362,7 @@ export async function createEnvironmentApiKey(
       id: environmentId,
       organization: { members: { some: { userId } } },
     },
-    select: { id: true, type: true, organizationId: true },
+    select: { id: true, type: true, organizationId: true, projectId: true },
   });
 
   if (!environment) {
@@ -323,11 +398,25 @@ export async function createEnvironmentApiKey(
   );
 
   const generated = generateAdditionalApiKey(environment.type);
+  // The id is chosen here so the key's fingerprint can name its row.
+  const newApiKeyId = cuid();
+  await saveCredentialFingerprint({
+    kind: "additional_api_key",
+    value: generated.apiKey,
+    organizationId: environment.organizationId,
+    projectId: environment.projectId,
+    environmentId: environment.id,
+    credentialId: newApiKeyId,
+    name,
+    createdBy: userActor(userId),
+    expiresAt,
+  });
   const apiKey = await (async () => {
     try {
       const create = (client: Pick<PrismaClient, "apiKey">) =>
         client.apiKey.create({
           data: {
+            id: newApiKeyId,
             name,
             description: note,
             keyHash: generated.keyHash,
@@ -376,6 +465,17 @@ export async function createEnvironmentApiKey(
     throw new Error("Environment not found");
   }
   telemetryRecorder.recordOperation("create", "success");
+  auditLogs.record({
+    category: "credentials",
+    action: "api_key.created",
+    ...additionalApiKeyAuditFields(environment, apiKey),
+    changes: {
+      presetId: apiKey.presetId,
+      scopes: sortedList(apiKey.scopes),
+      expiresAt: apiKey.expiresAt?.toISOString() ?? null,
+      allowedIpRanges: sortedList(apiKey.allowedIpRanges),
+    },
+  });
 
   return { apiKey, plaintext: generated.apiKey };
 }
@@ -480,7 +580,7 @@ export async function updateEnvironmentApiKeyAccess(
       id: environmentId,
       organization: { members: { some: { userId } } },
     },
-    select: { id: true, organizationId: true },
+    select: { id: true, type: true, organizationId: true, projectId: true },
   });
 
   if (!environment) {
@@ -490,7 +590,15 @@ export async function updateEnvironmentApiKeyAccess(
   const findApiKey = () =>
     prismaClient.apiKey.findFirst({
       where: { id: apiKeyId, runtimeEnvironmentId: environment.id, issuedBy: "USER" },
-      select: { revokedAt: true, expiresAt: true, presetId: true, scopes: true },
+      select: {
+        id: true,
+        name: true,
+        lastFour: true,
+        revokedAt: true,
+        expiresAt: true,
+        presetId: true,
+        scopes: true,
+      },
     });
   const reject = (uneditable: UneditableApiKey): never => {
     telemetryRecorder.recordOperation("update_access", "rejected", uneditable.reason);
@@ -540,6 +648,20 @@ export async function updateEnvironmentApiKeyAccess(
     added: prepared.policy.scopes.filter((scope) => !current.scopes.includes(scope)),
     removed: current.scopes.filter((scope) => !prepared.policy.scopes.includes(scope)),
   });
+  // "Before" is read ahead of the update, so concurrent edits can make it stale.
+  const scopesBefore = sortedList(current.scopes);
+  const scopesAfter = sortedList(prepared.policy.scopes);
+  if (current.presetId !== prepared.policy.presetId || scopesBefore !== scopesAfter) {
+    auditLogs.record({
+      category: "credentials",
+      action: "api_key.access_changed",
+      ...additionalApiKeyAuditFields(environment, current),
+      changes: {
+        presetId: { before: current.presetId, after: prepared.policy.presetId },
+        scopes: { before: scopesBefore, after: scopesAfter },
+      },
+    });
+  }
   return prepared.policy;
 }
 
@@ -572,9 +694,12 @@ export async function revokeEnvironmentApiKey(
   {
     environmentId,
     apiKeyId,
+    userId,
   }: {
     environmentId: string;
     apiKeyId: string;
+    /** Who revoked the key, for its audit fingerprint. */
+    userId?: string;
   },
   {
     prismaClient = prisma,
@@ -584,9 +709,9 @@ export async function revokeEnvironmentApiKey(
     telemetryRecorder?: ApiKeyTelemetry;
   } = {}
 ) {
-  const result = await (async () => {
+  const revoked = await (async () => {
     try {
-      return await prismaClient.apiKey.updateMany({
+      return await prismaClient.apiKey.updateManyAndReturn({
         where: {
           id: apiKeyId,
           runtimeEnvironmentId: environmentId,
@@ -594,6 +719,16 @@ export async function revokeEnvironmentApiKey(
           revokedAt: null,
         },
         data: { revokedAt: new Date() },
+        select: {
+          id: true,
+          name: true,
+          lastFour: true,
+          keyHash: true,
+          revokedAt: true,
+          runtimeEnvironment: {
+            select: { id: true, type: true, organizationId: true, projectId: true },
+          },
+        },
       });
     } catch (error) {
       telemetryRecorder.recordOperation("revoke", "error", "database_error");
@@ -601,12 +736,22 @@ export async function revokeEnvironmentApiKey(
     }
   })();
 
-  if (result.count !== 1) {
+  if (revoked.length !== 1) {
     telemetryRecorder.recordOperation("revoke", "rejected", "not_found_or_revoked");
     throw new Error("API key not found or already revoked");
   }
 
   telemetryRecorder.recordOperation("revoke", "success");
+  markCredentialHashRevoked(revoked[0].keyHash, {
+    revokedBy: userId ? userActor(userId) : null,
+    reason: "revoked",
+    revokedAt: revoked[0].revokedAt ?? undefined,
+  });
+  auditLogs.record({
+    category: "credentials",
+    action: "api_key.revoked",
+    ...additionalApiKeyAuditFields(revoked[0].runtimeEnvironment, revoked[0]),
+  });
 }
 
 /** Replace the IP ranges an API key may be used from. An empty list allows any IP. */
@@ -636,9 +781,17 @@ export async function updateEnvironmentApiKeyIpRanges(
     throw new Error(ipRanges.error);
   }
 
-  const result = await (async () => {
+  const { previous, result } = await (async () => {
     try {
-      return await prismaClient.apiKey.updateMany({
+      // Read for the audit event only, so skipped when recording is off; concurrent edits can make
+      // it stale.
+      const previous = auditLogs.isRecordingEnabled()
+        ? await prismaClient.apiKey.findFirst({
+            where: { id: apiKeyId, runtimeEnvironmentId: environmentId, issuedBy: "USER" },
+            select: { allowedIpRanges: true },
+          })
+        : null;
+      const result = await prismaClient.apiKey.updateManyAndReturn({
         where: {
           id: apiKeyId,
           runtimeEnvironmentId: environmentId,
@@ -646,20 +799,76 @@ export async function updateEnvironmentApiKeyIpRanges(
           revokedAt: null,
         },
         data: { allowedIpRanges: ipRanges.ranges },
+        select: {
+          id: true,
+          name: true,
+          lastFour: true,
+          runtimeEnvironment: {
+            select: { id: true, type: true, organizationId: true, projectId: true },
+          },
+        },
       });
+      return { previous, result };
     } catch (error) {
       telemetryRecorder.recordOperation("update_ip_ranges", "error", "database_error");
       throw error;
     }
   })();
 
-  if (result.count !== 1) {
+  if (result.length !== 1) {
     telemetryRecorder.recordOperation("update_ip_ranges", "rejected", "not_found_or_revoked");
     throw new Error("API key not found or already revoked");
   }
 
   telemetryRecorder.recordOperation("update_ip_ranges", "success");
+  const rangesBefore = sortedList(previous?.allowedIpRanges ?? []);
+  const rangesAfter = sortedList(ipRanges.ranges);
+  if (rangesBefore !== rangesAfter) {
+    auditLogs.record({
+      category: "credentials",
+      action: "api_key.ip_ranges_updated",
+      ...additionalApiKeyAuditFields(result[0].runtimeEnvironment, result[0]),
+      changes: { allowedIpRanges: { before: rangesBefore, after: rangesAfter } },
+    });
+  }
   return ipRanges.ranges;
+}
+
+/** A list as one comparable, readable value for an audit event. */
+function sortedList(values: string[]): string {
+  return [...values].sort().join(", ");
+}
+
+type AuditEnvironment = {
+  id: string;
+  type: RuntimeEnvironment["type"];
+  organizationId: string;
+  projectId: string;
+};
+
+/** Where a root key event happened. The key has no row of its own: its environment names it. */
+function rootApiKeyAuditFields(environment: AuditEnvironment) {
+  return {
+    organizationId: environment.organizationId,
+    projectId: environment.projectId,
+    environmentId: environment.id,
+    environmentType: environment.type,
+    target: { type: "root_api_key", id: environment.id, name: null },
+  };
+}
+
+function additionalApiKeyAuditFields(
+  environment: AuditEnvironment,
+  apiKey: { id: string; name: string; lastFour: string }
+) {
+  return {
+    organizationId: environment.organizationId,
+    projectId: environment.projectId,
+    environmentId: environment.id,
+    environmentType: environment.type,
+    target: { type: "additional_api_key", id: apiKey.id, name: apiKey.name },
+    keyLast4s: [apiKey.lastFour],
+  };
 }
 
 export function createApiKeyForEnv(envType: RuntimeEnvironment["type"]) {

@@ -1,0 +1,60 @@
+---
+title: "Connect to Doppler"
+sidebarTitle: "Doppler"
+description: "Fetch secrets from Doppler in your tasks with a service account identity instead of a stored Doppler token."
+---
+
+Use a Doppler [service account identity](https://docs.doppler.com/docs/service-account-identities) to exchange a Trigger.dev OIDC token for a short-lived Doppler API token. Your tasks fetch secrets with no `DOPPLER_TOKEN` stored anywhere. Service account identities are available on Doppler's Team and Enterprise plans.
+
+Follow the [OIDC prerequisites](/oidc#prerequisites), then go to the [OIDC](https://cloud.trigger.dev/_/oidc) page for your environment and copy the issuer URL and subject.
+
+## Configure Doppler
+
+1. In Doppler, create a service account (or reuse one) and give it read access to the project and config your task needs.
+2. On the service account, add an **Identity** of type OIDC with a custom discovery URL:
+
+   | Doppler field     | Value                                                                    |
+   | ----------------- | ------------------------------------------------------------------------ |
+   | **Discovery URL** | Your issuer URL, `https://oidc.trigger.dev/YOUR_ORG_SLUG`.               |
+   | **Audience** (`aud`) | A value your task requests, for example `https://api.doppler.com`. |
+   | **Subject** (`sub`)  | The **complete subject copied from the dashboard**.                |
+
+   Doppler requires both the audience and subject claim rules. Use exact values.
+
+3. Copy the **Identity ID**. It's a configuration value, not a secret.
+
+## Fetch secrets in your task
+
+```ts /trigger/read-from-doppler.ts
+import { auth, task } from "@trigger.dev/sdk";
+
+export const readFromDoppler = task({
+  id: "read-from-doppler",
+  run: async () => {
+    const { token: oidcToken } = await auth.getOIDCToken({ audience: "https://api.doppler.com" });
+
+    const exchange = await fetch("https://api.doppler.com/v3/auth/oidc", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ identity: "YOUR_IDENTITY_ID", token: oidcToken }),
+    });
+    if (!exchange.ok) throw new Error(`Doppler exchange failed: ${exchange.status}`);
+    const { token } = await exchange.json();
+
+    const response = await fetch(
+      "https://api.doppler.com/v3/configs/config/secrets/download?project=YOUR_PROJECT&config=prd&format=json",
+      { headers: { Authorization: `Bearer ${token}` } }
+    );
+    const secrets = await response.json();
+    // Use secrets.API_KEY here. Never log or return it.
+  },
+});
+```
+
+The exchange returns a short-lived API `token` and its `expires_at`. The second request uses Doppler's [download secrets](https://docs.doppler.com/reference/secrets-download) endpoint. Exchange inside `run`, and exchange again if the run outlives `expires_at`.
+
+## Remove the old credential
+
+Once runs in every deployed environment fetch secrets this way, delete `DOPPLER_TOKEN` from those environments on the Environment Variables page and revoke the old service token in Doppler.
+
+Local Development runs can't mint OIDC tokens. Use the Doppler CLI or your own token there when `ctx.environment.type === "DEVELOPMENT"`.

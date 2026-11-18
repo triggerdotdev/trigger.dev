@@ -1,0 +1,53 @@
+---
+title: "Webhook providers"
+sidebarTitle: "All providers"
+description: "Every built-in webhook provider, with its SDK function, the credential it verifies with, and a setup page for each provider."
+---
+
+**Each built-in provider has a source function that verifies its signature scheme, so you declare the endpoint with one function call and set one credential.** Every provider below has a page with the source, where to register the URL, and how to set the credential.
+
+| Provider | Source | Credential |
+| --- | --- | --- |
+| [Attio](/webhooks/providers/attio) | `webhooks.attio()` | Issued by the provider |
+| [Autumn](/webhooks/providers/autumn) | `webhooks.autumn()` | Issued by the provider |
+| [Cal.com](/webhooks/providers/cal-com) | `webhooks.calCom()` | You generate it |
+| [Calendly](/webhooks/providers/calendly) | `webhooks.calendly()` | You choose it (OAuth apps: issued by the provider) |
+| [Clerk](/webhooks/providers/clerk) | `webhooks.clerk()` | Issued by the provider |
+| [Discord](/webhooks/providers/discord) | `webhooks.discord()` | Provider's public key |
+| [DocuSign](/webhooks/providers/docusign) | `webhooks.docusign()` | Issued by the provider |
+| [ElevenLabs](/webhooks/providers/elevenlabs) | `webhooks.elevenlabs()` | Issued by the provider |
+| [Firecrawl](/webhooks/providers/firecrawl) | `webhooks.firecrawl()` | Issued by the provider |
+| [GitHub](/webhooks/providers/github) | `webhooks.github()` | You generate it |
+| [GitLab](/webhooks/providers/gitlab) | `webhooks.gitlab()` | You generate it |
+| [Granola](/webhooks/providers/granola) | `webhooks.granola()` | Issued by the provider |
+| [Hookdeck](/webhooks/providers/hookdeck) | `webhooks.hookdeck()` | Issued by the provider |
+| [Infisical](/webhooks/providers/infisical) | `webhooks.infisical()` | You generate it |
+| [Jira](/webhooks/providers/jira) | `webhooks.jira()` | You generate it |
+| [Langfuse](/webhooks/providers/langfuse) | `webhooks.langfuse()` | Issued by the provider |
+| [Linear](/webhooks/providers/linear) | `webhooks.linear()` | Issued by the provider |
+| [Loops](/webhooks/providers/loops) | `webhooks.loops()` | Issued by the provider |
+| [Metronome](/webhooks/providers/metronome) | `webhooks.metronome()` | Issued by the provider |
+| [Mux](/webhooks/providers/mux) | `webhooks.mux()` | Issued by the provider |
+| [OpenAI](/webhooks/providers/openai) | `webhooks.openai()` | Issued by the provider |
+| [PagerDuty](/webhooks/providers/pagerduty) | `webhooks.pagerduty()` | Issued by the provider |
+| [Plain](/webhooks/providers/plain) | `webhooks.plain()` | Issued by the provider |
+| [PlanetScale](/webhooks/providers/planetscale) | `webhooks.planetscale()` | Issued by the provider |
+| [Recall.ai](/webhooks/providers/recall-ai) | `webhooks.recallai()` | Issued by the provider |
+| [Replicate](/webhooks/providers/replicate) | `webhooks.replicate()` | Issued by the provider |
+| [Resend](/webhooks/providers/resend) | `webhooks.resend()` | Issued by the provider |
+| [Retell AI](/webhooks/providers/retell) | `webhooks.retell()` | Your API key with the webhook badge |
+| [Sentry](/webhooks/providers/sentry) | `webhooks.sentry()` | Issued by the provider |
+| [Shopify](/webhooks/providers/shopify) | `webhooks.shopify()` | Issued by the provider |
+| [Slack](/webhooks/providers/slack) | `webhookSource()` (`@trigger.dev/slack`) | Issued by the provider |
+| [Square](/webhooks/providers/square) | `webhooks.square()` | Issued by the provider |
+| [Stripe](/webhooks/providers/stripe) | `webhooks.stripe()` | Issued by the provider |
+| [Supabase](/webhooks/providers/supabase) | `webhooks.supabase()` | You generate it |
+| [Tailscale](/webhooks/providers/tailscale) | `webhooks.tailscale()` | Issued by the provider |
+| [Typeform](/webhooks/providers/typeform) | `webhooks.typeform()` | You generate it |
+| [Vapi](/webhooks/providers/vapi) | `webhooks.vapi()` | You generate it |
+| [Vercel](/webhooks/providers/vercel) | `webhooks.vercel()` | Issued by the provider |
+| [WhatsApp](/webhooks/providers/whatsapp) | `webhooks.whatsapp()` | Issued by the provider |
+| [WorkOS](/webhooks/providers/workos) | `webhooks.workos()` | Issued by the provider |
+| [Zendesk](/webhooks/providers/zendesk) | `webhooks.zendesk()` | Issued by the provider |
+
+For a provider that isn't listed, define a [custom provider](/webhooks/custom-providers). For providers that sign with Svix or Standard Webhooks, `webhooks.svix()` and `webhooks.standardWebhooks()` also work; see [Verification](/webhooks/verification#svix-and-standard-webhooks).

@@ -3,6 +3,7 @@ import { LogoType } from "./LogoType";
 import { Header3 } from "./primitives/Headers";
 import { Paragraph } from "./primitives/Paragraph";
 import { TextLink } from "./primitives/TextLink";
+import { cn } from "~/utils/cn";
 
 interface QuoteType {
   quote: string;
@@ -47,10 +48,16 @@ const quotes: QuoteType[] = [
 export function LoginPageLayout({
   children,
   rightContent,
+  scrollable,
+  singleColumn,
 }: {
   children: React.ReactNode;
   /** Replaces the default testimonials panel on the right (e.g. a promo highlight). */
   rightContent?: React.ReactNode;
+  /** Scrolls only the content between the logo and footer when it is taller than the viewport. */
+  scrollable?: boolean;
+  /** Drops the right-hand panel so the content column spans the full width. */
+  singleColumn?: boolean;
 }) {
   const [randomQuote, setRandomQuote] = useState<QuoteType | null>(null);
   useEffect(() => {
@@ -59,34 +66,67 @@ export function LoginPageLayout({
     setRandomQuote(quotes[randomIndex]);
   }, []);
 
+  const footer = (
+    <Paragraph variant="small" className="text-center">
+      Having login issues? <TextLink href="https://trigger.dev/contact">Email us</TextLink> or{" "}
+      <TextLink href="https://trigger.dev/discord">ask us in Discord</TextLink>
+    </Paragraph>
+  );
+
   return (
-    <main className="grid h-full grid-cols-1 lg:grid-cols-2">
-      <div className="bg-background-dimmed lg:border-r lg:border-grid-bright lg:bg-background-bright">
-        <div className="flex h-full flex-col items-center justify-center p-6 lg:justify-between">
+    <main className={cn("grid h-full grid-cols-1", !singleColumn && "lg:grid-cols-2")}>
+      <div
+        className={cn(
+          "bg-background-dimmed lg:bg-background-bright",
+          !singleColumn && "lg:border-r lg:border-grid-bright",
+          scrollable && "h-full min-h-0 overflow-hidden"
+        )}
+      >
+        <div
+          className={cn(
+            "flex h-full flex-col items-center justify-center p-6 lg:justify-between",
+            scrollable && "pb-0"
+          )}
+        >
           <div className="hidden w-full items-center justify-between lg:flex">
             <a href="https://trigger.dev">
               <LogoType className="w-36" />
             </a>
           </div>
-          <div className="flex h-full w-full max-w-xs items-center justify-center">
-            <div className="w-full">{children}</div>
-          </div>
-          <Paragraph variant="small" className="text-center">
-            Having login issues? <TextLink href="https://trigger.dev/contact">Email us</TextLink> or{" "}
-            <TextLink href="https://trigger.dev/discord">ask us in Discord</TextLink>
-          </Paragraph>
+          {scrollable ? (
+            <div className="min-h-0 w-full flex-1 overflow-y-auto">
+              <div className="flex min-h-full w-full flex-col items-center">
+                <div
+                  className={cn(
+                    "flex w-full flex-1 items-center justify-center",
+                    singleColumn ? "max-w-2xl" : "max-w-xs"
+                  )}
+                >
+                  <div className="w-full">{children}</div>
+                </div>
+                <div className="pb-6 pt-4">{footer}</div>
+              </div>
+            </div>
+          ) : (
+            <div className="flex h-full w-full max-w-xs items-center justify-center">
+              <div className="w-full">{children}</div>
+            </div>
+          )}
+          {!scrollable && footer}
         </div>
       </div>
-      <div className="hidden p-6 lg:grid">
-        {rightContent ?? (
-          <div className="flex h-full flex-col items-center justify-center px-16">
-            <Header3 className="relative text-center text-2xl font-normal leading-8 text-text-dimmed transition before:relative before:right-1 before:top-0 before:text-6xl before:text-grid-bright before:content-['❝'] dark:before:text-charcoal-750 lg-height:text-xl md-height:text-lg">
-              {randomQuote?.quote}
-            </Header3>
-            <Paragraph className="mt-4 text-text-dimmed/60">{randomQuote?.person}</Paragraph>
-          </div>
-        )}
-      </div>
+      {!singleColumn && (
+        <div className="hidden p-6 lg:grid">
+          {rightContent ?? (
+            <div className="flex h-full flex-col items-center justify-center px-16">
+              <Header3 className="relative text-center text-2xl font-normal leading-8 text-text-dimmed transition before:relative before:right-1 before:top-0 before:text-6xl before:text-grid-bright before:content-['❝'] dark:before:text-charcoal-750 lg-height:text-xl md-height:text-lg">
+                {randomQuote?.quote}
+              </Header3>
+              <Paragraph className="mt-4 text-text-dimmed/60">{randomQuote?.person}</Paragraph>
+            </div>
+          )}
+        </div>
+      )}
     </main>
   );
 }

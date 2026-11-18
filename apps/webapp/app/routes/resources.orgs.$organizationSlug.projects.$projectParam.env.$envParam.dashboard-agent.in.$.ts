@@ -15,6 +15,7 @@ import { findEnvironmentBySlug } from "~/models/runtimeEnvironment.server";
 import {
   dashboardAgentApiOrigin,
   dashboardAgentUserApiOrigin,
+  mintDashboardAgentAppendToken,
   mintDashboardAgentUserActorToken,
   resolveDashboardAgentRepoSnapshot,
 } from "~/services/dashboardAgent.server";
@@ -35,15 +36,10 @@ import { canAccessDashboardAgent } from "~/v3/canAccessDashboardAgent.server";
 import { canUseAlertsList } from "~/v3/canUseAlertsList.server";
 
 // Same-origin proxy for the chat append request. It mints a read-only delegated token scoped
-// to the environment in this URL, so the token never reaches the browser.
+// to the environment in this URL, so the token never reaches the browser. The browser's token
+// is read-only: the append upstream is signed with a token minted here.
 
-const FORWARDED_HEADERS = [
-  "authorization",
-  "content-type",
-  "x-part-id",
-  "x-trigger-source",
-  "x-trigger-branch",
-];
+const FORWARDED_HEADERS = ["content-type", "x-part-id", "x-trigger-source", "x-trigger-branch"];
 
 // The only turn metadata a browser may set: everything else the agent reads is injected
 // server-side. A whitelist — a new clientData field is server-owned until listed here on purpose.
@@ -253,6 +249,7 @@ export async function action({ request, params }: ActionFunctionArgs) {
   }
 
   try {
+    headers.set("authorization", `Bearer ${await mintDashboardAgentAppendToken(chatId)}`);
     const upstream = await fetch(upstreamUrl, { method: "POST", headers, body });
     const text = await upstream.text();
     // Charge quota only for a delivered message: a non-2xx upstream (or a throw below)

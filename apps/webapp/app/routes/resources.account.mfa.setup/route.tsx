@@ -8,8 +8,11 @@ import {
 } from "~/models/message.server";
 import { MultiFactorAuthenticationService } from "~/services/mfa/multiFactorAuthentication.server";
 import { requireUserId } from "~/services/session.server";
+import { isMfaRequiredByOrganization } from "~/services/mfa/mfaRequirement.server";
 import { ServiceValidationError } from "~/v3/services/baseService.server";
 import { MfaRateLimitError } from "~/services/mfa/mfaRateLimiterGlobal.server";
+import { sanitizeRedirectPath } from "~/utils";
+import { accountSecurityPath } from "~/utils/pathBuilder";
 import { useMfaSetup } from "./useMfaSetup";
 import { MfaToggle } from "./MfaToggle";
 import { MfaSetupDialog } from "./MfaSetupDialog";
@@ -28,6 +31,7 @@ const formSchema = z.discriminatedUnion("action", [
   }),
   z.object({
     action: z.literal("saved-recovery-codes"),
+    redirectTo: z.string().optional(),
   }),
   z.object({
     action: z.literal("cancel-totp"),
@@ -87,6 +91,15 @@ export async function action({ request }: ActionFunctionArgs) {
         });
       }
       case "disable-mfa": {
+        if (await isMfaRequiredByOrganization(userId)) {
+          return typedjson({
+            action: "disable-mfa" as const,
+            success: false as const,
+            error:
+              "Your organization requires multi-factor authentication, so it can't be turned off.",
+          });
+        }
+
         const result = await mfaSetupService.disableTotp(userId, {
           totpCode: submission.data.totpCode,
           recoveryCode: submission.data.recoveryCode,
@@ -133,7 +146,11 @@ export async function action({ request }: ActionFunctionArgs) {
         });
       }
       case "saved-recovery-codes": {
-        return redirectWithSuccessMessage("/account/security", request, "Successfully enabled MFA");
+        return redirectWithSuccessMessage(
+          sanitizeRedirectPath(submission.data.redirectTo, accountSecurityPath()),
+          request,
+          "Successfully enabled MFA"
+        );
       }
     }
   } catch (error) {
@@ -154,7 +171,13 @@ export async function action({ request }: ActionFunctionArgs) {
   }
 }
 
-export function MfaSetup({ isEnabled }: { isEnabled: boolean }) {
+export function MfaSetup({
+  isEnabled,
+  isRequired = false,
+}: {
+  isEnabled: boolean;
+  isRequired?: boolean;
+}) {
   const {
     state,
     actions,
@@ -173,7 +196,7 @@ export function MfaSetup({ isEnabled }: { isEnabled: boolean }) {
 
   return (
     <>
-      <MfaToggle isEnabled={state.isEnabled} onToggle={handleToggle} />
+      <MfaToggle isEnabled={state.isEnabled} isRequired={isRequired} onToggle={handleToggle} />
 
       <MfaSetupDialog
         isOpen={isQrDialogOpen}

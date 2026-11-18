@@ -1,0 +1,40 @@
+---
+title: "Clerk webhooks"
+sidebarTitle: "Clerk"
+description: "Receive and verify Clerk webhooks with Trigger.dev. Check the Svix signature and run a task for each Clerk event, filtered on event.type."
+---
+
+**`webhooks.clerk()` verifies the Svix signature Clerk sends in the `svix-*` headers on every request.**
+
+```ts /trigger/clerk.ts
+import { webhook, webhooks } from "@trigger.dev/sdk";
+
+export const clerk = webhooks.endpoint.define({
+  id: "clerk",
+  source: webhooks.clerk(),
+});
+
+export const clerkEvents = webhook({
+  id: "clerk-events",
+  endpoint: clerk,
+  filter: "event.type == 'user.created'",
+  onEvent: async ({ event }) => {
+    console.log(event);
+  },
+});
+```
+
+| Setting | Value |
+| --- | --- |
+| Source | `webhooks.clerk()` |
+| Verification | Svix (`svix-id`, `svix-timestamp`, `svix-signature`) |
+| Credential | Signing secret issued by Clerk |
+| Event type | `event.type` |
+| Clerk docs | [Clerk webhook docs](https://clerk.com/docs/guides/development/webhooks/overview) |
+
+## Set up Clerk
+
+1. Start `trigger dev` or deploy, then copy the endpoint's **Webhook URL** from the **Webhooks** page.
+2. Add the webhook URL as an endpoint in Clerk's webhook settings and subscribe it to the event types your subscribers need.
+3. Copy the endpoint's signing secret (it starts with `whsec_`), then choose **Set signing secret** on the Trigger.dev endpoint.
+4. Send a test event from Clerk, or use the endpoint's **Test** tab, and check the endpoint's **Deliveries** tab. See [Verify the connection](/webhooks/connect#verify-the-connection) if nothing arrives.

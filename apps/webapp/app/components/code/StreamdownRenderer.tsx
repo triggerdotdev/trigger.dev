@@ -7,6 +7,16 @@ import { createStaleAssetRecovery } from "~/components/StaleAssetRecovery";
 import type * as ShikiThemeModule from "./shikiTheme";
 
 const SAFE_LINK_SCHEMES = new Set(["http:", "https:", "mailto:"]);
+const DOT_SEGMENT = /^(\.|%2e){1,2}$/i;
+
+function isDashboardLink(path: string): boolean {
+  if (path.startsWith("#")) return true;
+  if (!path.startsWith("/orgs/")) return false;
+  return !path
+    .split(/[?#]/)[0]
+    .split(/[/\\]/)
+    .some((segment) => DOT_SEGMENT.test(segment));
+}
 
 /**
  * URL policy for model-authored markdown. A remote image is fetched the moment it
@@ -16,7 +26,8 @@ const SAFE_LINK_SCHEMES = new Set(["http:", "https:", "mailto:"]);
  */
 export const restrictModelUrls: UrlTransform = (url, key, node) => {
   const value = url.trim();
-  const isImage = node.tagName === "img" || key === "src" || key === "srcset";
+  const attr = key.toLowerCase();
+  const isImage = node.tagName === "img" || attr === "src" || attr === "srcset";
   // What the browser will actually resolve, which is not what `trim()` leaves: the URL parser
   // drops C0 controls (`trim()` keeps them) and reads `\` as `/` for special schemes, so
   // a leading-control `//evil.tld` and `\\evil.tld` both name a remote host. Classify on this; return the
@@ -26,17 +37,15 @@ export const restrictModelUrls: UrlTransform = (url, key, node) => {
     .replace(/^[/\\]+/, (run) => "/".repeat(run.length));
 
   if (isImage) {
-    // Inline images carry their own bytes; a relative path resolves to our own origin.
+    // Inline images carry their own bytes; anything else (remote or relative) would be fetched.
     if (/^data:/i.test(normalized) || /^blob:/i.test(normalized)) return url;
-    // Absolute or protocol-relative means a remote host — strip it so nothing is fetched.
-    if (/^[a-z][a-z0-9+.-]*:/i.test(normalized) || normalized.startsWith("//")) return undefined;
-    return url;
+    return undefined;
   }
 
-  // Links: relative and protocol-relative are fine; otherwise require a safe scheme.
-  if (normalized.startsWith("//")) return url;
+  // Links: relative only into the dashboard; otherwise require a safe scheme.
+  if (normalized.startsWith("//")) return undefined;
   const schemeMatch = /^([a-z][a-z0-9+.-]*):/i.exec(normalized);
-  if (!schemeMatch) return url;
+  if (!schemeMatch) return isDashboardLink(normalized) ? url : undefined;
   const scheme = `${schemeMatch[1].toLowerCase()}:`;
   if (scheme === "trigger:") return isTriggerUri(normalized) ? url : undefined;
   return SAFE_LINK_SCHEMES.has(scheme) ? url : undefined;
@@ -144,12 +153,21 @@ export function loadStreamdownRenderer(
           if (key !== "sanitize") return entry;
           const [sanitizePlugin, sanitizeSchema] = entry as unknown as [
             unknown,
-            { protocols?: Record<string, string[]> },
+            {
+              protocols?: Record<string, string[]>;
+              tagNames?: string[];
+              attributes?: Record<string, unknown>;
+            },
           ];
+          const { source: _source, ...attributes } = sanitizeSchema.attributes ?? {};
           return [
             sanitizePlugin,
             {
               ...sanitizeSchema,
+              tagNames: sanitizeSchema.tagNames?.filter(
+                (tag) => tag !== "picture" && tag !== "source"
+              ),
+              attributes,
               protocols: {
                 ...sanitizeSchema.protocols,
                 href: [...(sanitizeSchema.protocols?.href ?? []), "trigger"],

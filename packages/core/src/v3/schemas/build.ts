@@ -76,6 +76,10 @@ export const BuildManifest = z.object({
   indexControllerEntryPoint: z.string().optional(), // Only deploy has a indexControllerEntryPoint
   loaderEntryPoint: z.string().optional(),
   initEntryPoint: z.string().optional(), // Optional init.ts entry point
+  /** Where the image build writes the run worker compiled to a Bun executable, when it does. */
+  compiledRunWorkerPath: z.string().optional(),
+  // Deploys on Node runtimes that can use a compile cache built in the image
+  compileCacheDir: z.string().optional(),
   configPath: z.string(),
   externals: BuildExternal.array().optional(),
   build: z.object({
@@ -136,9 +140,11 @@ export const WorkerManifest = z.object({
   queues: QueueManifest.array().optional(),
   concurrencyLimits: ConcurrencyLimitManifest.array().optional(),
   workerEntryPoint: z.string(),
+  compiledWorkerPath: z.string().optional(),
   controllerEntryPoint: z.string().optional(),
   loaderEntryPoint: z.string().optional(),
   initEntryPoint: z.string().optional(), // Optional init.ts entry point
+  compileCacheDir: z.string().optional(),
   runtime: BuildRuntime,
   runtimeVersion: z.string().optional(),
   customConditions: z.array(z.string()).optional(),

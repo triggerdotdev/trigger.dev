@@ -10,7 +10,7 @@ export const entry: ProviderRegistryEntry = {
   label: "Calendly",
   category: "calendar-scheduling",
   docsUrl: "https://developer.calendly.com/api-docs/4c305798a61d3-webhook-signatures",
-  secretProvisioning: "provider",
+  secretProvisioning: "either",
   eventTypeSource: { from: "body", path: "event" },
   sampleSource: "handauthored",
 };

@@ -1,3 +1,5 @@
+import { GROUP_CAPABILITY_KEY } from "@internal/alert-contracts";
+import { deserializeRemix } from "remix-typedjson";
 import { beforeAll, describe, expect, it, vi } from "vitest";
 
 vi.setConfig({ testTimeout: 30_000 });
@@ -15,6 +17,7 @@ const current = vi.hoisted(() => ({ notifiers: [] as unknown[], extra: {} as obj
 const canCalls = vi.hoisted(() => [] as unknown[][]);
 const presented = vi.hoisted(() => ({ calls: [] as any[], alert: null as unknown }));
 const groupCalls = vi.hoisted(() => ({ edited: [] as any[] }));
+const group = vi.hoisted(() => ({ members: [] as unknown[], tiles: [] as unknown[] }));
 const CHANNELS = vi.hoisted(() => [
   { id: "ch_1", projectId: "p1" },
   { id: "ch_foreign", projectId: "p2" },
@@ -123,8 +126,17 @@ vi.mock("~/v3/services/alerts/storage/alertStore.server", async (importOriginal)
       notifiers: current.notifiers.length > 0 ? current.notifiers : DEFAULT_NOTIFIERS,
       ...current.extra,
     }),
+    getAlertsByIds: async () => group.members,
   };
 });
+
+vi.mock(
+  "~/routes/_app.orgs.$organizationSlug.projects.$projectParam.env.$envParam.alerts_.$alertId/alertDetailSeries.server",
+  async (importOriginal) => ({
+    ...(await importOriginal<object>()),
+    loadGroupMemberTiles: async () => group.tiles,
+  })
+);
 
 function post(fields: Record<string, string>) {
   const body = new FormData();
@@ -212,6 +224,28 @@ describe("alert detail edit action", () => {
     } as any)) as Response;
     expect(response.status).toBe(200);
     expect(edited.calls[0].notifiers).toEqual([{ type: "channel", channelId: "ch_1" }]);
+  });
+
+  it("group member tiles keep their dates through a client navigation", async () => {
+    const createdAt = new Date("2026-01-01T00:00:00.000Z");
+    current.extra = { capabilityKey: GROUP_CAPABILITY_KEY, condition: { memberAlertIds: ["m1"] } };
+    group.members = [{ id: "m1", name: "Member", capabilityKey: "queue.depth" }];
+    group.tiles = [{ id: "m1", name: "Member", createdAt, alert: { id: "m1" } }];
+    presented.alert = { id: "alert_1", kind: "state", capabilityKey: GROUP_CAPABILITY_KEY };
+    const deferred = (await loader({
+      request: new Request("http://localhost/alerts/alert_1"),
+      params: {},
+      context: {},
+    } as any)) as { data: { memberTiles: Promise<unknown> } };
+    const wire = JSON.parse(JSON.stringify(await deferred.data.memberTiles));
+    current.extra = {};
+    group.members = [];
+    group.tiles = [];
+    presented.alert = null;
+    // Catches: deferring the bare tile array, whose typedjson meta JSON drops.
+    expect(deserializeRemix<{ tiles: { createdAt: Date }[] }>(wire)?.tiles[0]?.createdAt).toEqual(
+      createdAt
+    );
   });
 
   it("loader ignores unusable from and to", async () => {

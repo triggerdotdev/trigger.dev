@@ -48,6 +48,10 @@ export class RateLimiter {
     });
   }
 
+  getRemaining(identifier: string): Promise<number> {
+    return this.#ratelimit.getRemaining(identifier);
+  }
+
   async limit(identifier: string, rate = 1): Promise<RateLimitResponse> {
     const result = this.#ratelimit.limit(identifier, { rate });
     const { success, limit, reset, remaining } = await result;

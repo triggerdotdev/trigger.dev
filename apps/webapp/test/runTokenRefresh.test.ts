@@ -1,6 +1,6 @@
 import { createStandalonePostgresContainer } from "@internal/testcontainers";
 import { metrics } from "@opentelemetry/api";
-import type { ExecutionResult } from "@trigger.dev/core/v3";
+import { sandboxExecutionPolicy, type ExecutionResult } from "@trigger.dev/core/v3";
 import { RUN_TOKEN_REFRESH_BEFORE_EXPIRY_SECONDS } from "@trigger.dev/core/v3/workers";
 import { decodeJwt } from "jose";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
@@ -105,7 +105,12 @@ function request(
     findRun: (runId) =>
       database.prisma.taskRun.findFirst({
         where: { id: runId },
-        select: { taskIdentifier: true, runtimeEnvironmentId: true, lockedById: true },
+        select: {
+          taskIdentifier: true,
+          runtimeEnvironmentId: true,
+          lockedById: true,
+          annotations: true,
+        },
       }),
     replica: database.$replica,
     ...overrides,
@@ -189,5 +194,28 @@ describe("refreshRunTokenOnHeartbeat", () => {
       await expect(refresh.refreshRunTokenOnHeartbeat(req)).resolves.toBeUndefined();
       expect(await issuedCount({ result: "skipped", reason })).toBe(before + 1);
     }
+  });
+
+  // Catches: a standard runner holding a sandbox run's ids getting that run's scoped token.
+  it("refreshes a policy run's token only for its own sandbox runner", async () => {
+    const seeded = await seedExecutingRun({ injection: false });
+    await database.prisma.taskRun.update({
+      where: { id: seeded.run.id },
+      data: {
+        annotations: {
+          executionMode: "SANDBOX",
+          executionPolicy: sandboxExecutionPolicy({}),
+        },
+      },
+    });
+
+    for (const sandboxRunId of [undefined, "run_other"]) {
+      await expect(
+        refresh.refreshRunTokenOnHeartbeat(request(seeded, 0, { sandboxRunId }))
+      ).resolves.toBeUndefined();
+    }
+    await expect(
+      refresh.refreshRunTokenOnHeartbeat(request(seeded, 0, { sandboxRunId: seeded.runFriendlyId }))
+    ).resolves.toBeDefined();
   });
 });

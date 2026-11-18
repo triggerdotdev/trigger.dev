@@ -145,6 +145,7 @@ async function getSnapshotWaitpointIds(
     return runStore.findSnapshotCompletedWaitpointIds(snapshotId, prisma, runId, organizationId);
   }
 
+  // runops-exception(legacy-teardown): fallback when no run store is passed; only tests reach it
   const result = await prisma.$queryRaw<{ B: string }[]>`
     SELECT "B" FROM "_completedWaitpoints" WHERE "A" = ${snapshotId}
   `;
@@ -169,6 +170,7 @@ async function getSnapshotWaitpointIdsWithPresence(
     );
   }
 
+  // runops-exception(legacy-teardown): fallback when no run store is passed; only tests reach it
   const rows = await prisma.$queryRaw<{ id: string; B: string | null }[]>`
     SELECT s."id", cw."B"
     FROM "TaskRunExecutionSnapshot" s
@@ -193,6 +195,7 @@ async function fetchWaitpointsInChunks(
   const allWaitpoints: Waitpoint[] = [];
   for (let i = 0; i < waitpointIds.length; i += WAITPOINT_CHUNK_SIZE) {
     const chunk = waitpointIds.slice(i, i + WAITPOINT_CHUNK_SIZE);
+    // runops-exception(legacy-teardown): fallback when no run store is passed; only tests reach it
     const waitpoints = runStore
       ? await runStore.findManyWaitpoints(
           { where: { id: { in: boundedIn(chunk) } } },
@@ -276,6 +279,7 @@ export async function getLatestExecutionSnapshot(
   environmentId?: string,
   organizationId?: SnapshotReadContext
 ): Promise<EnhancedExecutionSnapshot> {
+  // runops-exception(legacy-teardown): fallback when no run store is passed; only tests reach it
   const snapshot = runStore
     ? await runStore.findLatestExecutionSnapshot(runId, prisma, environmentId, organizationId)
     : await prisma.taskRunExecutionSnapshot.findFirst({
@@ -371,6 +375,7 @@ export async function getExecutionSnapshotsSince(
 ): Promise<EnhancedExecutionSnapshot[]> {
   const envScope = environmentId ? { environmentId } : {};
 
+  // runops-exception(legacy-teardown): fallback when no run store is passed; only tests reach it
   const sinceSnapshot = runStore
     ? await runStore.findExecutionSnapshot(
         {
@@ -391,6 +396,7 @@ export async function getExecutionSnapshotsSince(
 
   const snapshotContext = snapshotRouteFromSnapshot(sinceSnapshot);
 
+  // runops-exception(legacy-teardown): fallback when no run store is passed; only tests reach it
   const snapshots = runStore
     ? await runStore.findManyExecutionSnapshots(
         {

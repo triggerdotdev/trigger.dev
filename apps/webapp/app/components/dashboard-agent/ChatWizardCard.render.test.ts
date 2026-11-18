@@ -273,6 +273,22 @@ describe("ChatWizardCard", () => {
     expect(down.defaultPrevented).toBe(true);
   });
 
+  it("Enter picks the preselected option, and nothing when none is preselected", () => {
+    // Catches: the active row defaults to the first option instead of the preselected one
+    const enter = () =>
+      act(() => {
+        document.body.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true }));
+      });
+    const preselected = render({ steps: [{ ...steps[1]!, selected: ["b2"] }], stepIndex: 0 });
+    enter();
+    expect(preselected.props.onSelect).toHaveBeenCalledWith("b", "b2");
+    act(() => root!.unmount());
+    container!.remove();
+    const none = render({ steps: [{ ...steps[1]!, selected: [] }], stepIndex: 0 });
+    enter();
+    expect(none.props.onSelect).not.toHaveBeenCalled();
+  });
+
   it("selects the option matching a number key", () => {
     const { props } = render();
     act(() => {

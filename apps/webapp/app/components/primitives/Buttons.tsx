@@ -88,7 +88,7 @@ const theme = {
   minimal: {
     textColor: "text-text-dimmed group-disabled/button:text-text-dimmed transition",
     button:
-      "bg-transparent group-hover/button:bg-tertiary disabled:opacity-50 group-disabled/button:bg-transparent group-disabled/button:pointer-events-none",
+      "bg-transparent group-hover/button:bg-tertiary group-disabled/button:opacity-50 group-disabled/button:bg-transparent group-disabled/button:pointer-events-none",
     shortcut:
       "border-dimmed/40 text-text-dimmed group-hover/button:text-text-bright/80 group-hover/button:border-dimmed/60",
     icon: "text-text-dimmed",
@@ -96,7 +96,7 @@ const theme = {
   danger: {
     textColor: "text-white transition group-disabled/button:text-white/80",
     button:
-      "bg-error group-hover/button:bg-rose-500 disabled:opacity-50 group-disabled/button:bg-error group-disabled/button:pointer-events-none",
+      "bg-error group-hover/button:bg-rose-500 group-disabled/button:opacity-50 group-disabled/button:bg-error group-disabled/button:pointer-events-none",
     shortcut: "border-white text-white group-hover/button:border-white/60",
     icon: "text-white",
   },

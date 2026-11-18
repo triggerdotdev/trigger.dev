@@ -4,8 +4,12 @@ import {
   InitializeDeploymentRequestBody,
   type InitializeDeploymentResponseBody,
 } from "@trigger.dev/core/v3";
+import type { DeploymentInitiatedByCredential } from "@trigger.dev/database";
 import { $replica } from "~/db.server";
-import { authenticateApiKeyWithScope } from "~/services/apiAuth.server";
+import {
+  type ApiAuthenticationResultSuccess,
+  authenticateApiKeyWithScope,
+} from "~/services/apiAuth.server";
 import { logger } from "~/services/logger.server";
 import { createLoaderApiRoute } from "~/services/routeBuilders/apiBuilder.server";
 import { ServiceValidationError } from "~/v3/services/baseService.server";
@@ -13,6 +17,7 @@ import { env } from "~/env.server";
 import { resolveDeployBaseImages } from "~/v3/deployBaseImages.server";
 import { InitializeDeploymentService } from "~/v3/services/initializeDeployment.server";
 import { DeploymentAccessError } from "~/v3/deploymentAccess.server";
+import { acceptedCliVersion } from "~/v3/cliVersion";
 
 const DEPLOYMENT_ACCESS_DENIED_CODE = "DEPLOYMENT_ACCESS_DENIED";
 
@@ -48,7 +53,8 @@ export async function action({ request, params }: ActionFunctionArgs) {
 
   try {
     const result = await service.call(authenticatedEnv, body.data, {
-      cliVersion: parseCliVersionHeader(request),
+      initiatedByCredential: initiatedByApiKey(authenticationResult.credentialKind),
+      cliVersion: acceptedCliVersion(request.headers.get("x-trigger-cli-version")),
     });
     const { deployment, imageRef } = result;
 
@@ -93,12 +99,17 @@ export async function action({ request, params }: ActionFunctionArgs) {
   }
 }
 
-// Client-controlled and persisted, so cap what we accept
-const CLI_VERSION_MAX_LENGTH = 128;
-
-function parseCliVersionHeader(request: Request): string | undefined {
-  const value = request.headers.get("x-trigger-cli-version");
-  return value && value.length <= CLI_VERSION_MAX_LENGTH ? value : undefined;
+function initiatedByApiKey(
+  credentialKind: ApiAuthenticationResultSuccess["credentialKind"]
+): DeploymentInitiatedByCredential | null {
+  switch (credentialKind) {
+    case "root_api_key":
+      return "ROOT_API_KEY";
+    case "additional_api_key":
+      return "SCOPED_API_KEY";
+    default:
+      return null;
+  }
 }
 
 export const loader = createLoaderApiRoute(

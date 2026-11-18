@@ -11,12 +11,16 @@ import {
   QUERY_CONDITION_LABELS,
   QUERY_SCOPE_LABEL,
   queryConditionModes,
-  querySignalOptions,
   UNUSABLE_QUERY,
-  watchBlockedReasons,
   type QueryAlertMode,
   type QueryAlertPrefill,
 } from "~/components/alerts/queryAlertLink";
+import {
+  analysisReasons,
+  fetchQueryAnalysis,
+  queryAnalyzePath,
+  type Analyzed,
+} from "~/components/alerts/queryAnalysis";
 import { QueryBlock } from "~/components/alerts/QueryBlock";
 import { QueryPreviewResult } from "~/components/alerts/QueryPreviewResult";
 import { useQueryAlertDraft, type QueryAlertChat } from "~/components/alerts/useQueryAlertDraft";
@@ -36,7 +40,6 @@ import { Spinner } from "~/components/primitives/Spinner";
 import { useEnvironment } from "~/hooks/useEnvironment";
 import { useOrganization } from "~/hooks/useOrganizations";
 import { useProject } from "~/hooks/useProject";
-import { v3EnvironmentPath } from "~/utils/pathBuilder";
 
 export type QueryWatchPrefill = {
   query: string;
@@ -60,8 +63,6 @@ export function queryWatchPrefill(
   return { query, period, mode, measure };
 }
 
-type Analyzed = Pick<QueryAlertPrefill, "analysis" | "names">;
-
 const DEFAULT_PERIOD = "7d";
 const NEEDS_THRESHOLD = "Enter a threshold first";
 const OPERATORS = [
@@ -75,21 +76,14 @@ export function useQueryAnalysis(prefill: QueryWatchPrefill) {
   const organization = useOrganization();
   const project = useProject();
   const environment = useEnvironment();
-  const analyzePath = `/resources${v3EnvironmentPath(organization, project, environment)}/alerts/analyze-query`;
+  const analyzePath = queryAnalyzePath(organization, project, environment);
   const [analyzed, setAnalyzed] = useState<Analyzed | "error">();
 
   useEffect(() => {
     let current = true;
-    fetch(analyzePath, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ query: prefill.query }),
-    })
-      .then(async (resp) => (resp.ok ? ((await resp.json()) as Analyzed) : "error"))
-      .catch(() => "error" as const)
-      .then((result) => {
-        if (current) setAnalyzed(result);
-      });
+    void fetchQueryAnalysis(analyzePath, prefill.query).then((result) => {
+      if (current) setAnalyzed(result);
+    });
     return () => {
       current = false;
     };
@@ -99,11 +93,7 @@ export function useQueryAnalysis(prefill: QueryWatchPrefill) {
     analyzed && analyzed !== "error"
       ? { ...prefill, period: prefill.period ?? DEFAULT_PERIOD, ...analyzed }
       : undefined;
-  const blocked = full ? watchBlockedReasons(full.analysis, full.query) : [];
-  const reasons =
-    blocked.length || !full || querySignalOptions(full.analysis).length
-      ? blocked
-      : [UNUSABLE_QUERY];
+  const reasons = full ? analysisReasons(full, full.query) : [];
   return { analyzed, full, reasons };
 }
 

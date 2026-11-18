@@ -29,15 +29,30 @@ export const CreateEnvironmentVariables = z.object({
 
 export type CreateEnvironmentVariables = z.infer<typeof CreateEnvironmentVariables>;
 
+export type CreateAuditOptions = {
+  /** Marks each recorded event with `changes.imported: true`, e.g. for a CLI import or a sync. */
+  imported?: boolean;
+  /** Where imported variables came from, recorded as `changes.via`. */
+  via?: "vercel";
+};
+
+/**
+ * A write that didn't happen. `conflict` marks one that lost to another request changing the
+ * same variable at the same time, so trying again can work.
+ */
+type Failure = {
+  success: false;
+  error: string;
+  conflict?: true;
+};
+
 export type CreateResult =
   | {
       success: true;
     }
-  | {
-      success: false;
-      error: string;
+  | (Failure & {
       variableErrors?: { key: string; error: string }[];
-    };
+    });
 
 export const EditEnvironmentVariable = z.object({
   id: z.string(),
@@ -51,17 +66,55 @@ export const EditEnvironmentVariable = z.object({
 });
 export type EditEnvironmentVariable = z.infer<typeof EditEnvironmentVariable>;
 
-export const DeleteEnvironmentVariable = z.object({
-  id: z.string(),
-  environmentId: z.string().optional(),
-});
-export type DeleteEnvironmentVariable = z.infer<typeof DeleteEnvironmentVariable>;
-
 export const DeleteEnvironmentVariableValue = z.object({
   id: z.string(),
   environmentId: z.string(),
 });
 export type DeleteEnvironmentVariableValue = z.infer<typeof DeleteEnvironmentVariableValue>;
+
+/** The most values one batch delete takes. */
+export const DELETE_ENVIRONMENT_VARIABLE_VALUES_LIMIT = 100;
+
+export const DeleteEnvironmentVariableValues = z
+  .array(DeleteEnvironmentVariableValue)
+  .min(1, "Select at least one value to delete.")
+  .max(
+    DELETE_ENVIRONMENT_VARIABLE_VALUES_LIMIT,
+    `At most ${DELETE_ENVIRONMENT_VARIABLE_VALUES_LIMIT} values can be deleted at once.`
+  );
+
+export type DeleteValuesResult =
+  | {
+      success: true;
+      /** The values that were there to delete. One that was already gone isn't listed. */
+      deleted: Array<{ id: string; key: string; environmentId: string }>;
+    }
+  | Failure;
+
+/** The most values one copy takes. */
+export const COPY_ENVIRONMENT_VARIABLE_VALUES_LIMIT = 100;
+
+export const CopyEnvironmentVariableValues = z.object({
+  sourceEnvironmentId: z.string(),
+  targetEnvironmentId: z.string(),
+  variableIds: z
+    .array(z.string())
+    .min(1, "Select at least one value to copy.")
+    .max(
+      COPY_ENVIRONMENT_VARIABLE_VALUES_LIMIT,
+      `At most ${COPY_ENVIRONMENT_VARIABLE_VALUES_LIMIT} values can be copied at once.`
+    ),
+  lastUpdatedBy: EnvironmentVariableUpdaterSchema.optional(),
+});
+export type CopyEnvironmentVariableValues = z.infer<typeof CopyEnvironmentVariableValues>;
+
+export type CopyValuesResult =
+  | {
+      success: true;
+      /** Each copied variable, and whether its value was new in the target. */
+      copied: Array<{ id: string; key: string; created: boolean }>;
+    }
+  | Failure;
 
 // Forms preserve explicit empty strings through their custom coercion.
 // A missing field is still invalid.
@@ -80,10 +133,7 @@ export type Result =
   | {
       success: true;
     }
-  | {
-      success: false;
-      error: string;
-    };
+  | Failure;
 
 export type ProjectEnvironmentVariable = {
   key: string;
@@ -106,7 +156,11 @@ export type EnvironmentVariableWithSecret = EnvironmentVariable & {
 };
 
 export interface Repository {
-  create(projectId: string, options: CreateEnvironmentVariables): Promise<CreateResult>;
+  create(
+    projectId: string,
+    options: CreateEnvironmentVariables,
+    audit?: CreateAuditOptions
+  ): Promise<CreateResult>;
   edit(projectId: string, options: EditEnvironmentVariable): Promise<Result>;
   editValue(projectId: string, options: EditEnvironmentVariableValue): Promise<Result>;
   getProject(projectId: string): Promise<ProjectEnvironmentVariable[]>;
@@ -138,6 +192,10 @@ export interface Repository {
     parentEnvironmentId?: string,
     options?: { readFromReplica?: boolean }
   ): Promise<EnvironmentVariable[]>;
-  delete(projectId: string, options: DeleteEnvironmentVariable): Promise<Result>;
   deleteValue(projectId: string, options: DeleteEnvironmentVariableValue): Promise<Result>;
+  deleteValues(
+    projectId: string,
+    values: DeleteEnvironmentVariableValue[]
+  ): Promise<DeleteValuesResult>;
+  copyValues(projectId: string, options: CopyEnvironmentVariableValues): Promise<CopyValuesResult>;
 }

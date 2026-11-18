@@ -554,16 +554,29 @@ export class VercelIntegrationService {
     envVarKey: string,
     environmentType: TriggerEnvironmentType
   ): Promise<void> {
+    await this.removeSyncEnvVars(projectId, [{ key: envVarKey, type: environmentType }]);
+  }
+
+  /** Removes several keys from the sync mapping with one read and at most one write. */
+  async removeSyncEnvVars(
+    projectId: string,
+    removals: { key: string; type: TriggerEnvironmentType }[]
+  ): Promise<void> {
     const existing = await this.getVercelProjectIntegration(projectId);
     if (!existing) return;
 
-    const currentMapping = existing.parsedIntegrationData.syncEnvVarsMapping || {};
-    const envSlug = envTypeToSlug(environmentType);
-    const currentEnvSettings = currentMapping[envSlug];
-    if (!currentEnvSettings || !(envVarKey in currentEnvSettings)) return;
+    const updatedMapping = { ...existing.parsedIntegrationData.syncEnvVarsMapping };
+    let changed = false;
+    for (const { key, type } of removals) {
+      const envSlug = envTypeToSlug(type);
+      const currentEnvSettings = updatedMapping[envSlug];
+      if (!currentEnvSettings || !(key in currentEnvSettings)) continue;
 
-    const { [envVarKey]: _, ...rest } = currentEnvSettings;
-    const updatedMapping = { ...currentMapping, [envSlug]: rest };
+      const { [key]: _, ...rest } = currentEnvSettings;
+      updatedMapping[envSlug] = rest;
+      changed = true;
+    }
+    if (!changed) return;
 
     await this.#prismaClient.organizationProjectIntegration.update({
       where: { id: existing.id },

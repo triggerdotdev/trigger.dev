@@ -78,6 +78,7 @@
     "@internationalized/date": "^3.5.1",
     "@jsonhero/schema-infer": "^0.1.5",
     "@lezer/highlight": "^1.1.6",
+    "@modelcontextprotocol/server": "2.4.0",
     "@opentelemetry/api": "1.9.1",
     "@opentelemetry/api-logs": "0.219.0",
     "@opentelemetry/core": "2.8.0",

@@ -26,8 +26,9 @@ import { type SnapshotState, SnapshotManager, snapshotStatusForAttemptStatus } f
 import { measureExecutionMetrics } from "./executionMetrics.js";
 import type { SupervisorSocket } from "./controller.js";
 import { RunNotifier } from "./notifier.js";
-import type { TaskRunProcessProvider } from "./taskRunProcessProvider.js";
+import { forkEnvFromRunEnv, type TaskRunProcessProvider } from "./taskRunProcessProvider.js";
 import { RunTokenRefresher, type RunTokenUpdate } from "./runTokenRefresh.js";
+import { SecretEnv } from "./secretEnv.js";
 import { redactSecrets } from "./redact.js";
 
 class ExecutionAbortError extends Error {
@@ -65,7 +66,10 @@ export class RunExecution {
 
   private _runFriendlyId?: string;
   private currentAttemptNumber?: number;
+  public requiresRunnerExit = false;
+  // Only the non-secret part of the run env, used to fork the task process.
   private currentTaskRunEnv?: Record<string, string>;
+  private attemptEnv?: SecretEnv;
   private snapshotManager?: SnapshotManager;
 
   private dequeuedAt?: Date;
@@ -424,6 +428,8 @@ export class RunExecution {
       { isWarmStart, supportsRunTokenRefresh: true }
     );
 
+    if (!start.success && start.shouldRetry === false) this.requiresRunnerExit = true;
+
     if (this.executionAbortController.signal.aborted) {
       throw new ExecutionAbortError("Execution aborted after start");
     }
@@ -468,6 +474,10 @@ export class RunExecution {
     this.sendDebugLog("started attempt", {
       start: { ...start.data, envVars: redactSecrets(start.data.envVars) },
     });
+
+    this.currentTaskRunEnv = forkEnvFromRunEnv(start.data.envVars);
+    this.attemptEnv?.zero();
+    this.attemptEnv = SecretEnv.takeFrom(start.data.envVars);
 
     return { ...start.data, metrics };
   }
@@ -556,8 +566,6 @@ export class RunExecution {
     isWarmStart?: boolean;
     isImmediateRetry?: boolean;
   }) {
-    this.currentTaskRunEnv = envVars;
-
     const [executeError] = await tryCatch(
       this.executeRun({
         run,
@@ -570,7 +578,7 @@ export class RunExecution {
       })
     );
 
-    if (!executeError) {
+    if (!executeError || this.requiresRunnerExit) {
       return;
     }
 
@@ -617,7 +625,6 @@ export class RunExecution {
   private async executeRun({
     run,
     snapshot,
-    envVars,
     execution,
     metrics,
     isWarmStart,
@@ -631,7 +638,11 @@ export class RunExecution {
       await this.taskRunProcessProvider.handleImmediateRetry();
     }
 
-    const taskRunEnv = this.currentTaskRunEnv ?? envVars;
+    if (!this.currentTaskRunEnv || !this.attemptEnv) {
+      throw new Error("Cannot execute run: missing attempt env");
+    }
+
+    const taskRunEnv = this.currentTaskRunEnv;
 
     if (!this.taskRunProcess || this.taskRunProcess.isBeingKilled) {
       this.sendDebugLog("getting new task run process", { runId: execution.run.id });
@@ -660,6 +671,9 @@ export class RunExecution {
     // Set up an abort handler that will cleanup the task run process
     this.executionAbortController.signal.addEventListener("abort", abortHandler);
 
+    const env = this.attemptEnv.toRecord();
+    this.attemptEnv.zero();
+
     const completion = await this.taskRunProcess.execute(
       {
         payload: {
@@ -668,7 +682,7 @@ export class RunExecution {
           metrics,
         },
         messageId: run.friendlyId,
-        env: envVars,
+        env,
       },
       isWarmStart
     );
@@ -706,7 +720,7 @@ export class RunExecution {
     const completionResult = await this.httpClient.completeRunAttempt(
       this.runFriendlyId,
       this.snapshotManager.snapshotId,
-      { completion }
+      { completion, attemptNumber: this.currentAttemptNumber }
     );
 
     if (!completionResult.success) {
@@ -1131,6 +1145,7 @@ export class RunExecution {
     this.snapshotPoller?.stop();
     this.snapshotManager?.stop();
     this.notifier?.stop();
+    this.attemptEnv?.zero();
 
     this.taskRunProcess?.unsafeDetachEvtHandlers();
   }
@@ -1178,6 +1193,8 @@ export class RunExecution {
       this.abortExecution();
       return;
     }
+
+    this.attemptEnv?.zero();
 
     // Call the suspend API with the current snapshot ID
     const suspendResult = await this.httpClient.suspendRun(

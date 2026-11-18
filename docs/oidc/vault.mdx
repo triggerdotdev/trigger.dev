@@ -1,0 +1,71 @@
+---
+title: "Connect to HashiCorp Vault"
+sidebarTitle: "Vault"
+description: "Log in to Vault from your tasks with JWT auth instead of a long-lived Vault token."
+---
+
+Use Vault's [JWT auth method](https://developer.hashicorp.com/vault/docs/auth/jwt) to exchange a Trigger.dev OIDC token for a short-lived Vault token. Your tasks read secrets with no `VAULT_TOKEN` stored anywhere. This works with self-managed Vault and HCP Vault.
+
+Follow the [OIDC prerequisites](/oidc#prerequisites), then go to the [OIDC](https://cloud.trigger.dev/_/oidc) page for your environment and copy the issuer URL and subject.
+
+## Configure Vault
+
+Enable the JWT auth method and point it at your issuer's discovery document:
+
+```bash
+vault auth enable -path=trigger jwt
+
+vault write auth/trigger/config \
+  oidc_discovery_url="https://oidc.trigger.dev/YOUR_ORG_SLUG" \
+  bound_issuer="https://oidc.trigger.dev/YOUR_ORG_SLUG"
+```
+
+Create a role for each environment. Replace the subject with the **complete subject copied from the dashboard**, and the policy with one that allows only the paths your task reads:
+
+```bash
+vault write auth/trigger/role/trigger-production \
+  role_type="jwt" \
+  bound_audiences="vault" \
+  bound_subject="YOUR_ENVIRONMENT_SUBJECT" \
+  user_claim="sub" \
+  token_policies="trigger-production" \
+  token_ttl="15m"
+```
+
+`bound_audiences` is the audience your task requests; `vault` is an example, any value works if both sides match. See the [JWT auth API](https://developer.hashicorp.com/vault/api-docs/auth/jwt#create-update-role) for every role option.
+
+## Read a secret in your task
+
+```ts /trigger/read-from-vault.ts
+import { auth, task } from "@trigger.dev/sdk";
+
+const vaultAddr = "https://vault.example.com:8200";
+
+export const readFromVault = task({
+  id: "read-from-vault",
+  run: async () => {
+    const { token: jwt } = await auth.getOIDCToken({ audience: "vault" });
+
+    const login = await fetch(`${vaultAddr}/v1/auth/trigger/login`, {
+      method: "POST",
+      body: JSON.stringify({ role: "trigger-production", jwt }),
+    });
+    if (!login.ok) throw new Error(`Vault login failed: ${login.status}`);
+    const { auth: vaultAuth } = await login.json();
+
+    const secret = await fetch(`${vaultAddr}/v1/secret/data/my-app`, {
+      headers: { "X-Vault-Token": vaultAuth.client_token },
+    });
+    const { data } = await secret.json();
+    // Use data.data here. Never log or return it.
+  },
+});
+```
+
+The login response holds the Vault token at `auth.client_token`. On HCP Vault or Vault Enterprise, add an `X-Vault-Namespace` header to both requests. Log in inside `run`, and log in again if the run outlives `token_ttl`.
+
+## Remove the old credential
+
+Once runs in every deployed environment log in this way, delete `VAULT_TOKEN` from those environments on the Environment Variables page and revoke the old token with `vault token revoke`.
+
+Local Development runs can't mint OIDC tokens. Use your own Vault login there when `ctx.environment.type === "DEVELOPMENT"`.

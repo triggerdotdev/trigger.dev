@@ -4,6 +4,10 @@ import { emptyEnvironmentVariableValuesEnabled } from "~/v3/environmentVariables
 import { prisma } from "~/db.server";
 import { env } from "~/env.server";
 import { authenticateApiKeyWithScope } from "~/services/apiAuth.server";
+import {
+  environmentReadTarget,
+  recordRolledUpEnvironmentVariableRead,
+} from "~/services/auditLogs/envVarReadAudit.server";
 import { environmentVariablesForApiKeyResponse } from "~/v3/environmentVariables/environmentVariablesForApiKeyResponse.server";
 import { resolveVariablesForEnvironment } from "~/v3/environmentVariables/environmentVariablesRepository.server";
 
@@ -66,6 +70,15 @@ export async function loader({ request, params }: LoaderFunctionArgs) {
     envVarEnvironment,
     envVarEnvironment.parentEnvironment ?? undefined
   );
+
+  recordRolledUpEnvironmentVariableRead({
+    action: "envvar.listed",
+    organizationId: envVarEnvironment.organizationId,
+    projectId: envVarEnvironment.projectId,
+    environmentId: envVarEnvironment.id,
+    environmentType: envVarEnvironment.type,
+    target: environmentReadTarget(envVarEnvironment),
+  });
 
   return json({
     allowEmptyEnvironmentVariableValues: await emptyEnvironmentVariableValuesEnabled(

@@ -10,12 +10,15 @@ export function PaginationControls({
   totalPages,
   hasNextPage,
   showPageNumbers = true,
+  shortcuts = true,
 }: {
   currentPage: number;
   totalPages: number;
   /** When set, navigation uses this instead of `totalPages`. */
   hasNextPage?: boolean;
   showPageNumbers?: boolean;
+  /** Disable on duplicate controls so keyboard navigation only fires once. */
+  shortcuts?: boolean;
 }) {
   const location = useLocation();
   const hasNextMode = hasNextPage !== undefined;
@@ -34,7 +37,7 @@ export function PaginationControls({
             to={pageUrl(location, currentPage - 1)}
             variant="secondary/small"
             LeadingIcon={ChevronLeftIcon}
-            shortcut={{ key: "j" }}
+            shortcut={shortcuts ? { key: "j" } : undefined}
             tooltip="Previous"
             disabled={currentPage === 1}
             className={cn("px-2", currentPage > 1 ? "group" : "")}
@@ -48,7 +51,7 @@ export function PaginationControls({
             to={pageUrl(location, currentPage + 1)}
             variant="secondary/small"
             TrailingIcon={ChevronRightIcon}
-            shortcut={{ key: "k" }}
+            shortcut={shortcuts ? { key: "k" } : undefined}
             tooltip="Next"
             disabled={nextDisabled}
             className={cn("px-2", !nextDisabled ? "group" : "")}
@@ -61,7 +64,7 @@ export function PaginationControls({
               to={pageUrl(location, currentPage - 1)}
               variant="secondary/small"
               LeadingIcon={ChevronLeftIcon}
-              shortcut={{ key: "j" }}
+              shortcut={shortcuts ? { key: "j" } : undefined}
               tooltip="Previous"
               disabled={currentPage === 1}
               className={cn(
@@ -83,7 +86,7 @@ export function PaginationControls({
               to={pageUrl(location, currentPage + 1)}
               variant="secondary/small"
               TrailingIcon={ChevronRightIcon}
-              shortcut={{ key: "k" }}
+              shortcut={shortcuts ? { key: "k" } : undefined}
               tooltip="Next"
               disabled={nextDisabled}
               className={cn(
@@ -145,93 +148,35 @@ type SpecificPageLink = {
   isCurrent: boolean;
 };
 
-// If there are less than or equal to 6 pages, just show all the pages.
-// If there are more than 5 pages, show the first 3, the current page, and the last 3.
-function calculatePageLinks(currentPage: number, totalPages: number): Array<PageLink> {
+// Up to 10 pages: show them all. More: the first and last few, plus the current page and its
+// neighbours. "…" only stands in for 2+ hidden pages; a single hidden page is shown instead.
+export function calculatePageLinks(currentPage: number, totalPages: number): Array<PageLink> {
+  const range = (from: number, to: number) =>
+    Array.from({ length: to - from + 1 }, (_, i) => from + i);
+
+  const pages =
+    totalPages <= 10
+      ? range(1, totalPages)
+      : currentPage <= 3
+        ? [...range(1, 4), ...range(totalPages - 3, totalPages)]
+        : currentPage >= totalPages - 3
+          ? [...range(1, 3), ...range(totalPages - 4, totalPages)]
+          : [
+              ...range(1, 3),
+              ...range(currentPage - 1, currentPage + 1),
+              ...range(totalPages - 2, totalPages),
+            ];
+
   const pageLinks: Array<PageLink> = [];
-
-  if (totalPages <= 10) {
-    for (let i = 1; i <= totalPages; i++) {
-      pageLinks.push({
-        type: "specific",
-        page: i,
-        isCurrent: i === currentPage,
-      });
+  let previous = 0;
+  for (const page of [...new Set(pages)].sort((a, b) => a - b)) {
+    if (page - previous === 2) {
+      pageLinks.push({ type: "specific", page: previous + 1, isCurrent: false });
+    } else if (page - previous > 2) {
+      pageLinks.push({ type: "ellipses" });
     }
-  } else {
-    if (currentPage <= 3) {
-      for (let i = 1; i <= 4; i++) {
-        pageLinks.push({
-          type: "specific",
-          page: i,
-          isCurrent: i === currentPage,
-        });
-      }
-
-      pageLinks.push({
-        type: "ellipses",
-      });
-
-      for (let i = totalPages - 3; i <= totalPages; i++) {
-        pageLinks.push({
-          type: "specific",
-          page: i,
-          isCurrent: i === currentPage,
-        });
-      }
-    } else if (currentPage >= totalPages - 3) {
-      for (let i = 1; i <= 3; i++) {
-        pageLinks.push({
-          type: "specific",
-          page: i,
-          isCurrent: i === currentPage,
-        });
-      }
-
-      pageLinks.push({
-        type: "ellipses",
-      });
-
-      for (let i = totalPages - 4; i <= totalPages; i++) {
-        pageLinks.push({
-          type: "specific",
-          page: i,
-          isCurrent: i === currentPage,
-        });
-      }
-    } else {
-      for (let i = 1; i <= 3; i++) {
-        pageLinks.push({
-          type: "specific",
-          page: i,
-          isCurrent: i === currentPage,
-        });
-      }
-
-      pageLinks.push({
-        type: "ellipses",
-      });
-
-      for (let i = currentPage - 1; i <= currentPage + 1; i++) {
-        pageLinks.push({
-          type: "specific",
-          page: i,
-          isCurrent: i === currentPage,
-        });
-      }
-
-      pageLinks.push({
-        type: "ellipses",
-      });
-
-      for (let i = totalPages - 2; i <= totalPages; i++) {
-        pageLinks.push({
-          type: "specific",
-          page: i,
-          isCurrent: i === currentPage,
-        });
-      }
-    }
+    pageLinks.push({ type: "specific", page, isCurrent: page === currentPage });
+    previous = page;
   }
 
   return pageLinks;

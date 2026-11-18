@@ -20,6 +20,10 @@ import { $transaction, prisma } from "~/db.server";
 import { env } from "~/env.server";
 import { logger } from "~/services/logger.server";
 import { getSecretStore } from "~/services/secrets/secretStore.server";
+import {
+  environmentSecretPrefix,
+  protectedSecretKeys,
+} from "~/services/environmentEncryption/secretStore.server";
 import { generateFriendlyId } from "~/v3/friendlyIdentifiers";
 import type {
   SyncEnvVarsMapping,
@@ -1398,7 +1402,15 @@ export class VercelIntegrationRepository {
                   return;
                 }
 
+                const protectedKeys = await protectedSecretKeys(prisma, params.projectId, [
+                  mapping.runtimeEnvironmentId,
+                ]);
+                const secretPrefix = environmentSecretPrefix(
+                  params.projectId,
+                  mapping.runtimeEnvironmentId
+                );
                 const varsToSync = mergedEnvVars.filter((envVar) => {
+                  if (protectedKeys.has(`${secretPrefix}${envVar.key}`)) return false;
                   // Keep the flag-off path unchanged. When enabled, discard blanks
                   // after merging so a blank project override cannot select a shared fallback.
                   if (allowEmptyValues && envVar.value.trim() === "") {
@@ -1485,19 +1497,23 @@ export class VercelIntegrationRepository {
                 const nonSecretVars = changedVars.filter((v) => !existingSecretKeys.has(v.key));
 
                 if (nonSecretVars.length > 0) {
-                  const result = await envVarRepository.create(params.projectId, {
-                    override: true,
-                    environmentIds: [mapping.runtimeEnvironmentId],
-                    isSecret: false,
-                    variables: nonSecretVars.map((v) => ({
-                      key: v.key,
-                      value: v.value,
-                    })),
-                    lastUpdatedBy: {
-                      type: "integration",
-                      integration: "vercel",
+                  const result = await envVarRepository.create(
+                    params.projectId,
+                    {
+                      override: true,
+                      environmentIds: [mapping.runtimeEnvironmentId],
+                      isSecret: false,
+                      variables: nonSecretVars.map((v) => ({
+                        key: v.key,
+                        value: v.value,
+                      })),
+                      lastUpdatedBy: {
+                        type: "integration",
+                        integration: "vercel",
+                      },
                     },
-                  });
+                    { imported: true, via: "vercel" }
+                  );
 
                   if (result.success) {
                     syncedCount += nonSecretVars.length;
@@ -1516,19 +1532,23 @@ export class VercelIntegrationRepository {
                 }
 
                 if (secretVars.length > 0) {
-                  const result = await envVarRepository.create(params.projectId, {
-                    override: true,
-                    environmentIds: [mapping.runtimeEnvironmentId],
-                    isSecret: true,
-                    variables: secretVars.map((v) => ({
-                      key: v.key,
-                      value: v.value,
-                    })),
-                    lastUpdatedBy: {
-                      type: "integration",
-                      integration: "vercel",
+                  const result = await envVarRepository.create(
+                    params.projectId,
+                    {
+                      override: true,
+                      environmentIds: [mapping.runtimeEnvironmentId],
+                      isSecret: true,
+                      variables: secretVars.map((v) => ({
+                        key: v.key,
+                        value: v.value,
+                      })),
+                      lastUpdatedBy: {
+                        type: "integration",
+                        integration: "vercel",
+                      },
                     },
-                  });
+                    { imported: true, via: "vercel" }
+                  );
 
                   if (result.success) {
                     syncedCount += secretVars.length;

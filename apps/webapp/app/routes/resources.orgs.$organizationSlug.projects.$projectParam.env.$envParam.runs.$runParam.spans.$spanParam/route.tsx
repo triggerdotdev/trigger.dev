@@ -13,7 +13,7 @@ import {
   SignalIcon,
 } from "@heroicons/react/20/solid";
 import { type LoaderFunctionArgs } from "@remix-run/server-runtime";
-import { formatDurationMilliseconds } from "@trigger.dev/core/v3";
+import { formatDurationMilliseconds, type RunExecutionPolicy } from "@trigger.dev/core/v3";
 import { assertNever } from "assert-never";
 import { type ReactNode, useEffect } from "react";
 import { typedjson, useTypedFetcher } from "remix-typedjson";
@@ -41,6 +41,7 @@ import { CopyTextLink } from "~/components/primitives/CopyTextLink";
 import { DateTime, DateTimeAccurate } from "~/components/primitives/DateTime";
 import { Header2, Header3 } from "~/components/primitives/Headers";
 import { Paragraph } from "~/components/primitives/Paragraph";
+import { Badge } from "~/components/primitives/Badge";
 import {
   Popover,
   PopoverContent,
@@ -546,6 +547,7 @@ function RunBody({
               {run.isCached ? " (cached)" : null}
             </span>
           </Header2>
+          {run.executionPolicy && <Badge variant="extra-small">Sandbox</Badge>}
         </div>
         {panelHeaderActions(
           headerAccessory,
@@ -1000,6 +1002,12 @@ function RunBody({
                     )}
                   </Property.Value>
                 </Property.Item>
+                {run.executionPolicy && (
+                  <ExecutionPolicyProperties
+                    policy={run.executionPolicy}
+                    isDevelopment={environment.type === "DEVELOPMENT"}
+                  />
+                )}
                 <Property.Item>
                   <Property.Label>Runtime</Property.Label>
                   <Property.Value>
@@ -1432,6 +1440,41 @@ function MiniStat({
 }
 
 const EXTERNAL_DEPLOYMENT_ID_DISPLAY_LENGTH = 24;
+
+function ExecutionPolicyProperties({
+  policy,
+  isDevelopment,
+}: {
+  policy: RunExecutionPolicy;
+  isDevelopment: boolean;
+}) {
+  return (
+    <>
+      <Property.Item>
+        <Property.Label>Sandbox</Property.Label>
+        <Property.Value>
+          {isDevelopment
+            ? "Not enforced in development: runs locally with your dev environment's credentials"
+            : `Runs on a microVM${policy.rootKey ? "" : " without the environment secret key"}`}
+        </Property.Value>
+      </Property.Item>
+      <Property.Item>
+        <Property.Label>Run token scopes</Property.Label>
+        <Property.Value className="font-mono text-xs">{policy.scopes.join(", ")}</Property.Value>
+      </Property.Item>
+      <Property.Item>
+        <Property.Label>Environment variables</Property.Label>
+        <Property.Value>
+          {policy.envVars === "all"
+            ? "All"
+            : policy.envVars.length === 0
+              ? "None"
+              : policy.envVars.join(", ")}
+        </Property.Value>
+      </Property.Item>
+    </>
+  );
+}
 
 function ExternalDeploymentIdValue({
   externalDeploymentId,

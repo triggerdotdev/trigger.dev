@@ -6,6 +6,7 @@ import type {
   MachinePreset,
   MachinePresetName,
   RetryOptions,
+  RunExecutionPolicy,
   StartRunAttemptResult,
   TriggerTraceContext,
 } from "@trigger.dev/core/v3";
@@ -302,6 +303,14 @@ export type RunEngineOptions = {
    */
   duplicateAttemptStartCheck?: "off" | "log" | "enforce";
   /**
+   * What happens to an attempt completion that names a snapshot that is no longer the latest.
+   * "count" refuses it as before and counts what "enforce" would do, with no database read and no
+   * Redis call. "classify" also reads the named snapshot where the rule needs it, so the count is
+   * exact. "enforce" settles a completion one step behind the engine's own continue, and notes a
+   * refusal so that a later stall can say why. Default: "count".
+   */
+  staleCompletionMode?: "count" | "classify" | "enforce";
+  /**
    * Delay before the `ensureWaitpointCompleted` write-ahead guard fires after a manual/API waitpoint
    * completion whose inline side effects never acked it. Default: 30s.
    */
@@ -496,6 +505,9 @@ export type TriggerParams = {
     rootTriggerSource: string;
     rootScheduleId?: string;
     externalDeploymentId?: string;
+    executionMode?: "STANDARD" | "SANDBOX";
+    executionPolicy?: RunExecutionPolicy;
+    sessionId?: string;
   };
   parkedOnExternalDeploymentId?: string;
   /**

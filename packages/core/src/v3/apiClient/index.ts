@@ -1,10 +1,9 @@
 import { nanoid } from "nanoid";
 import { z } from "zod/v4";
 import { VERSION } from "../../version.js";
-import { isAdditionalApiKey } from "../apiKeys.js";
-import { isRunToken } from "../runToken.js";
-import type { ApiClientConfiguration } from "../apiClientManager-api.js";
 import { generateJWT } from "../jwt.js";
+import { canFallbackToLocalPublicToken } from "./publicTokenCompatibility.js";
+import type { ApiClientConfiguration } from "../apiClientManager-api.js";
 import { isRunTokenOperation } from "../runTokenOperations.js";
 import type { RunTokenSelectionReason } from "../runTokenTelemetry.js";
 import {
@@ -246,6 +245,7 @@ export type {
 };
 
 export * from "./getBranch.js";
+export { canFallbackToLocalPublicToken } from "./publicTokenCompatibility.js";
 export { encodeTaskIdForPath } from "./encodeTaskIdForPath.js";
 
 export type CreatePublicTokenRequestBody = {
@@ -309,7 +309,13 @@ export class ApiClient {
       ? this.resolveAccessToken(operation, recordSelection)
       : this.accessToken;
     const token = typeof selection === "object" ? selection.accessToken : selection;
-    if (!token) throw new Error(`No API credential available for ${operation}`);
+    if (!token) {
+      const reason =
+        taskContext.isInsideTask && typeof selection === "object"
+          ? ` (run token: ${selection.reason})`
+          : "";
+      throw new Error(`This run has no credential for "${operation}"${reason}`);
+    }
     const headers: Record<string, string> & { Authorization: string } = {
       Authorization: `Bearer ${token}`,
     };
@@ -327,19 +333,30 @@ export class ApiClient {
     return headers;
   }
 
-  /**
-   * Key for signing a public access token locally. Only root keys can do this —
-   * an additional key isn't the environment's signing material, so a token
-   * signed with one would never verify. Throw rather than return a dead token.
-   */
-  get #selfSigningKey(): string {
-    if (isAdditionalApiKey(this.accessToken) || isRunToken(this.accessToken)) {
-      throw new Error(
-        "This credential cannot self-sign public tokens, and the server did not return one. Upgrade the server or use the root API key."
+  async #createPublicAccessToken(
+    scope: string,
+    resourceId: string,
+    expirationTime: number | Date | string,
+    requestOptions?: ZodFetchOptions
+  ): Promise<string> {
+    try {
+      const { token } = await this.createPublicToken(
+        {
+          scopes: [scope],
+          expirationTime:
+            expirationTime instanceof Date
+              ? Math.floor(expirationTime.getTime() / 1000)
+              : expirationTime,
+        },
+        { ...requestOptions, prepareData: undefined, onResponseBody: undefined }
       );
+      return token;
+    } catch (error) {
+      if (error instanceof Error) {
+        error.message = `Resource ${resourceId} was already created, but its public access token could not be minted. Do not blindly repeat the mutation. ${error.message}`;
+      }
+      throw error;
     }
-
-    return this.accessToken;
   }
 
   get fetchClient(): typeof fetch {
@@ -487,17 +504,12 @@ export class ApiClient {
           };
         }
 
-        const claimsHeader = response.headers.get("x-trigger-jwt-claims");
-        const claims = claimsHeader ? JSON.parse(claimsHeader) : undefined;
-
-        const jwt = await generateJWT({
-          secretKey: this.#selfSigningKey,
-          payload: {
-            ...claims,
-            scopes: [`read:runs:${data.id}`],
-          },
-          expirationTime: requestOptions?.publicAccessToken?.expirationTime ?? "1h",
-        });
+        const jwt = await this.#createPublicAccessToken(
+          `read:runs:${data.id}`,
+          data.id,
+          requestOptions?.publicAccessToken?.expirationTime ?? "1h",
+          requestOptions
+        );
 
         return {
           ...data,
@@ -538,17 +550,12 @@ export class ApiClient {
           };
         }
 
-        const claimsHeader = response.headers.get("x-trigger-jwt-claims");
-        const claims = claimsHeader ? JSON.parse(claimsHeader) : undefined;
-
-        const jwt = await generateJWT({
-          secretKey: this.#selfSigningKey,
-          payload: {
-            ...claims,
-            scopes: [`read:batch:${data.id}`],
-          },
-          expirationTime: requestOptions?.publicAccessToken?.expirationTime ?? "1h",
-        });
+        const jwt = await this.#createPublicAccessToken(
+          `read:batch:${data.id}`,
+          data.id,
+          requestOptions?.publicAccessToken?.expirationTime ?? "1h",
+          requestOptions
+        );
 
         return {
           ...data,
@@ -599,17 +606,12 @@ export class ApiClient {
           };
         }
 
-        const claimsHeader = response.headers.get("x-trigger-jwt-claims");
-        const claims = claimsHeader ? JSON.parse(claimsHeader) : undefined;
-
-        const jwt = await generateJWT({
-          secretKey: this.#selfSigningKey,
-          payload: {
-            ...claims,
-            scopes: [`read:batch:${data.id}`],
-          },
-          expirationTime: requestOptions?.publicAccessToken?.expirationTime ?? "1h",
-        });
+        const jwt = await this.#createPublicAccessToken(
+          `read:batch:${data.id}`,
+          data.id,
+          requestOptions?.publicAccessToken?.expirationTime ?? "1h",
+          requestOptions
+        );
 
         return {
           ...data,
@@ -816,6 +818,35 @@ export class ApiClient {
           headers: this.#getHeaders(false, undefined, "getRunPacketUrl"),
         },
         this.#requestOptions("getRunPacketUrl", requestOptions)
+      );
+    } catch (error) {
+      if (error instanceof ApiError && error.status === 404) {
+        return await this.getPayloadUrl(path, requestOptions);
+      }
+
+      throw error;
+    }
+  }
+
+  /**
+   * Presigned GET URL for the offloaded output of a waitpoint the run resumed from, authorized
+   * against the run. Falls back to the legacy packet route on servers that predate this endpoint.
+   */
+  async getRunWaitpointOutputUrl(
+    runId: string,
+    waitpointId: string,
+    path: string,
+    requestOptions?: ZodFetchOptions
+  ) {
+    try {
+      return await zodfetch(
+        CreateUploadPayloadUrlResponseBody,
+        `${this.baseUrl}/api/v1/runs/${encodeURIComponent(runId)}/waitpoints/${encodeURIComponent(waitpointId)}/output`,
+        {
+          method: "GET",
+          headers: this.#getHeaders(false, undefined, "getRunWaitpointOutputUrl"),
+        },
+        this.#requestOptions("getRunWaitpointOutputUrl", requestOptions)
       );
     } catch (error) {
       if (error instanceof ApiError && error.status === 404) {
@@ -1393,17 +1424,12 @@ export class ApiClient {
             };
           }
 
-          const claimsHeader = response.headers.get("x-trigger-jwt-claims");
-          const claims = claimsHeader ? JSON.parse(claimsHeader) : undefined;
-
-          const jwt = await generateJWT({
-            secretKey: this.#selfSigningKey,
-            payload: {
-              ...claims,
-              scopes: [`write:waitpoints:${data.id}`],
-            },
-            expirationTime: "24h",
-          });
+          const jwt = await this.#createPublicAccessToken(
+            `write:waitpoints:${data.id}`,
+            data.id,
+            "24h",
+            requestOptions
+          );
 
           return {
             ...data,
@@ -2345,16 +2371,46 @@ export class ApiClient {
     body: CreatePublicTokenRequestBody,
     requestOptions?: ZodFetchOptions
   ): Promise<{ token: string }> {
-    return zodfetch(
-      CreatePublicTokenResponseBody,
-      `${this.baseUrl}/api/v1/auth/public-tokens`,
-      {
-        method: "POST",
-        headers: this.#getHeaders(false, undefined, "createPublicToken"),
-        body: JSON.stringify(body),
-      },
-      this.#requestOptions("createPublicToken", requestOptions)
-    );
+    const accessToken = this.getAccessToken("createPublicToken");
+    try {
+      return await zodfetch(
+        CreatePublicTokenResponseBody,
+        `${this.baseUrl}/api/v1/auth/public-tokens`,
+        {
+          method: "POST",
+          headers: this.#getHeaders(false, undefined, "createPublicToken"),
+          body: JSON.stringify(body),
+        },
+        this.#requestOptions("createPublicToken", requestOptions)
+      );
+    } catch (error) {
+      if (
+        error instanceof ApiError &&
+        canFallbackToLocalPublicToken(accessToken, body.scopes, error.status, error.body)
+      ) {
+        const claims = await this.generateJWTClaims({
+          ...requestOptions,
+          prepareData: undefined,
+          onResponseBody: undefined,
+        });
+        const token = await generateJWT({
+          secretKey: accessToken,
+          payload: {
+            ...claims,
+            scopes: body.scopes,
+            otu: body.oneTimeUse,
+            realtime: body.realtime,
+          },
+          expirationTime: body.expirationTime,
+        });
+        return { token };
+      }
+      if (error instanceof ApiError && error.status === 404) {
+        error.message =
+          "The server does not support public-token minting for this credential. Upgrade your self-hosted server (v4.8.4 or later also supports tokens without scopes).";
+      }
+      throw error;
+    }
   }
 
   retrieveBatch(batchId: string, requestOptions?: ZodFetchOptions) {

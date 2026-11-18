@@ -100,3 +100,23 @@ postgresTest(
   },
   120_000
 );
+
+postgresTest(
+  "authenticateUserActor: a token minted for another audience needs that audience",
+  async ({ prisma }) => {
+    const controller = new RoleBaseAccessFallback(prisma as PrismaClient, {
+      userActorSecret: SECRET,
+    }).create();
+    const audience = "https://mcp.example.test/mcp";
+    const scoped = await signUserActorToken(SECRET, { userId: "usr_x", client: "test", audience });
+
+    expect((await controller.authenticateUserActor(uatRequest(scoped), {})).ok).toBe(false);
+    expect((await controller.authenticateUserActor(uatRequest(scoped), {}, { audience })).ok).toBe(
+      true
+    );
+    expect(
+      (await controller.authenticateUserActor(uatRequest(await uat("usr_x")), {}, { audience })).ok
+    ).toBe(false);
+  },
+  120_000
+);

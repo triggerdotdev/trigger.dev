@@ -128,7 +128,7 @@ beforeEach(() => {
 async function complete(port: number) {
   const token = await mintWorkloadDeploymentToken(CLAIMS, SECRET, EXP);
   const res = await fetch(
-    `http://127.0.0.1:${port}/api/v1/workload-actions/runs/run_jkl/snapshots/snap_1/attempts/complete`,
+    `http://127.0.0.1:${port}/api/v1/workload-actions/runs/run_jkl/snapshots/snapshot_1/attempts/complete`,
     {
       method: "POST",
       headers: {
