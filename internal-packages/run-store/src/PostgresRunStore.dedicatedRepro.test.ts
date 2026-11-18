@@ -1294,7 +1294,7 @@ describe("run-ops split — store-level behavior against the REAL dedicated sche
   );
 
   // ===========================================================================================
-  // `getWaitpoint`'s WAITPOINT_DEDICATED relations
+  // A waitpoint read's WAITPOINT_DEDICATED relations
   // ({ blockingTaskRuns, connectedRuns, completedExecutionSnapshots }) are hydrated by the dedicated
   // store on its OWN client only (PostgresRunStore.findWaitpoint → WAITPOINT_DEDICATED
   // hydrators, all keyed by `waitpointId` on the store's single client). But a
@@ -1302,15 +1302,15 @@ describe("run-ops split — store-level behavior against the REAL dedicated sche
   // (blockRunWithWaitpointEdges routes by runId; the CompletedWaitpoint + WaitpointRunConnection
   // join rows are written on the run's DB). A cuid token blocking
   // a run-ops run therefore has every group-A TARGET on the OTHER DB → the single-client hydrator finds
-  // nothing → engine.getWaitpoint (include blockingTaskRuns→taskRun) silently returns an
-  // empty `blockingTaskRuns`. Fix: the router (RoutingRunStore.findWaitpoint/findManyWaitpoints) strips
+  // nothing → a waitpoint read that includes `blockingTaskRuns` with the nested `taskRun` silently
+  // returns an empty `blockingTaskRuns`. Fix: the router (RoutingRunStore.findWaitpoint/findManyWaitpoints) strips
   // these relation keys from the per-leg query and re-resolves the targets across BOTH DBs, mirroring
   // findManyTaskRunWaitpoints' edge fan-out.
   // ===========================================================================================
 
   // A cuid token on #legacy blocking a run-ops run on #new. The block edge + run connection live
-  // on #new (the run's DB). getWaitpoint's include{ blockingTaskRuns: { select: { taskRun } } } must
-  // surface the cross-DB blocked run. Single-store guard proves the #legacy hydrator alone misses it.
+  // on #new (the run's DB). A waitpoint read that includes `blockingTaskRuns` with the nested `taskRun`
+  // must surface the cross-DB blocked run. Single-store guard proves the #legacy hydrator alone misses it.
   heteroRunOpsPostgresTest(
     "findWaitpoint include blockingTaskRuns surfaces a cross-DB blocked run via the router",
     async ({ prisma14, prisma17 }) => {

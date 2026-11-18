@@ -161,34 +161,6 @@ postgresBlipTest(
 );
 
 postgresBlipTest(
-  "generic updateManyWaitpoints is NOT retried on a blip (propagates)",
-  { timeout: 60_000 },
-  async ({ prisma }) => {
-    const client = prisma as PrismaClient;
-    const { project, environment } = await seedEnvironment(client, "wpgen");
-    await createPendingWaitpoint(client, "wp_gen", project.id, environment.id);
-
-    let retries = 0;
-    const faulting = withOneShotBlip(prisma, "waitpoint", "updateMany");
-    const store = new PostgresRunStore({
-      prisma: faulting as never,
-      readOnlyPrisma: faulting as never,
-      infraRetry: { options: infraRetry.options, onRetry: () => retries++ },
-    });
-
-    // The generic update accepts arbitrary (possibly non-idempotent) args, so it is never retried: the
-    // injected blip surfaces to the caller and onRetry never fires.
-    await expect(
-      store.updateManyWaitpoints({
-        where: { id: "wp_gen", status: "PENDING" },
-        data: { status: "COMPLETED", completedAt: new Date() },
-      })
-    ).rejects.toThrow();
-    expect(retries).toBe(0);
-  }
-);
-
-postgresBlipTest(
   "deleteManyTaskRunWaitpoints retries a mid-statement connection loss and recovers (retry fires once)",
   { timeout: 60_000 },
   async ({ prisma }) => {

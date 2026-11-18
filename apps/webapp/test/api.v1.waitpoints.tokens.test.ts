@@ -116,11 +116,10 @@ describe("waitpoint-token create engine seam — residency-keyed id contract", (
 
         expect(ownerEngine(result.waitpoint.id)).toBe("LEGACY");
 
-        const resolved = await engine.getWaitpoint({
-          waitpointId: result.waitpoint.id,
-          environmentId: env.id,
-          projectId: env.project.id,
-        });
+        const resolved = await engine.runStore.findWaitpoint(
+          { where: { id: result.waitpoint.id } },
+          engine.prisma
+        );
         expect(resolved).not.toBeNull();
         expect(resolved?.id).toBe(result.waitpoint.id);
       } finally {
@@ -361,11 +360,10 @@ describe("waitpoint-token create engine seam — NEW residency via a run-ops run
         expect(onNew).not.toBeNull();
         expect(onLegacy).toBeNull();
 
-        const resolved = await engine.getWaitpoint({
-          waitpointId: waitpoint.id,
-          environmentId: env.environment.id,
-          projectId: env.project.id,
-        });
+        const resolved = await engine.runStore.findWaitpoint(
+          { where: { id: waitpoint.id } },
+          engine.prisma
+        );
         expect(resolved?.id).toBe(waitpoint.id);
         expect(await p14.waitpoint.findUnique({ where: { id: waitpoint.id } })).toBeNull();
       } finally {

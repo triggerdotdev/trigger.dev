@@ -2869,39 +2869,6 @@ export class RunEngine {
     );
   }
 
-  async getWaitpoint({
-    waitpointId,
-    environmentId,
-  }: {
-    environmentId: string;
-    projectId: string;
-    waitpointId: string;
-  }): Promise<Waitpoint | null> {
-    const waitpoint = await this.runStore.findWaitpoint(
-      {
-        where: { id: waitpointId },
-        include: {
-          blockingTaskRuns: {
-            select: {
-              taskRun: {
-                select: {
-                  id: true,
-                  friendlyId: true,
-                },
-              },
-            },
-          },
-        },
-      },
-      this.prisma
-    );
-
-    if (!waitpoint) return null;
-    if (waitpoint.environmentId !== environmentId) return null;
-
-    return waitpoint;
-  }
-
   async readExistingStoreDateTimeWaitpointByKey(params: {
     runId?: string;
     environmentId: string;

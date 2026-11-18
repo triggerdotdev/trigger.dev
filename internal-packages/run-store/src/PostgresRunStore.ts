@@ -340,7 +340,7 @@ const hydrateCompletedWaitpoints: DedicatedRelationHydrator = async (client, par
   );
 
 // Runs a waitpoint is blocking: TaskRunWaitpoint rows keyed by waitpointId. A nested `taskRun`
-// select (the run-engine's getWaitpoint shape) is resolved from the scalar TaskRunWaitpoint.taskRunId.
+// select is resolved from the scalar TaskRunWaitpoint.taskRunId.
 const hydrateBlockingTaskRuns: DedicatedRelationHydrator = async (client, parents, projection) => {
   const parentIds = parents.map((p) => p.id as string);
   const byParent = new Map<string, unknown[]>(parentIds.map((id) => [id, []]));
@@ -2594,17 +2594,6 @@ export class PostgresRunStore implements RunStore {
     const prisma = tx ?? this.prisma;
 
     return prisma.waitpoint.update(args) as Promise<Prisma.WaitpointGetPayload<T>>;
-  }
-
-  async updateManyWaitpoints(
-    args: Prisma.WaitpointUpdateManyArgs,
-    tx?: PrismaClientOrTransaction
-  ): Promise<Prisma.BatchPayload> {
-    // Generic update: NOT retried. It accepts arbitrary update args, which may be non-idempotent (e.g.
-    // a Prisma increment), so replaying it on a blip is unsafe. Replay-safe waitpoint completion has
-    // its own retried path, markWaitpointCompleted.
-    const prisma = tx ?? this.prisma;
-    return prisma.waitpoint.updateMany(args);
   }
 
   async markWaitpointCompleted(

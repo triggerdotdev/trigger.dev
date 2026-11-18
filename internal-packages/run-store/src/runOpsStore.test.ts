@@ -1258,7 +1258,7 @@ describe("RoutingRunStore.findRuns split-mode fan-out + drain", () => {
     }
   );
 
-  // forWaitpointCompletion selects the store a subsequent WRITE (updateManyWaitpoints) lands on,
+  // forWaitpointCompletion selects the store a subsequent WRITE (markWaitpointCompleted) lands on,
   // so its resolution probe must read each store's PRIMARY — not the replica. Here the owning
   // (NEW) store's replica lags (points at an empty DB), so a replica probe would miss the fresh
   // waitpoint and mis-resolve to the id-shape's default (LEGACY), stranding the run.

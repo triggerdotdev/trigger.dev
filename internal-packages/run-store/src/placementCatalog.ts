@@ -181,16 +181,6 @@ export const PLACEMENT_SITES: readonly PlacementSite[] = [
     why: "The waitpoint's own id wins; the co-location hint is only the fallback for a filter that names no id. Ordering matters here and the arms must stay in this order.",
   },
   {
-    method: "updateManyWaitpoints",
-    basis: "fan-out",
-    missMode: "silent",
-    routes: [
-      "#resolveWaitpointStore(id)",
-      "#sumCounts((store) => store.updateManyWaitpoints(args))",
-    ],
-    why: "Routes by waitpoint id when the filter names one, and sums across every store otherwise, because an updateMany that lands on the wrong database reports zero rows instead of failing.",
-  },
-  {
     method: "markWaitpointCompleted",
     basis: "own-id",
     missMode: "silent",

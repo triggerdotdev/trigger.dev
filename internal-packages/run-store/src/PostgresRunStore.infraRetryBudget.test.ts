@@ -73,8 +73,8 @@ postgresTest(
       readInfraRetry: { options, onRetry: () => replica++ },
     });
 
-    // markWaitpointCompleted is the retried writer op (updateManyWaitpoints is not retried); it runs
-    // waitpoint.updateMany on the writer, which the one-shot blip faults once, charging the writer budget.
+    // markWaitpointCompleted is the retried writer op; it runs waitpoint.updateMany on the writer,
+    // which the one-shot blip faults once, charging the writer budget.
     await store.markWaitpointCompleted(wpId, {
       output: { value: "{}", type: "application/json", isError: false },
     });

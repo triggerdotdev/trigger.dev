@@ -603,13 +603,6 @@ export class DelegatingRunStore implements RunStore {
     return this.delegate.updateWaitpoint(args, tx, opts);
   }
 
-  updateManyWaitpoints(
-    args: Prisma.WaitpointUpdateManyArgs,
-    tx?: PrismaClientOrTransaction
-  ): Promise<Prisma.BatchPayload> {
-    return this.delegate.updateManyWaitpoints(args, tx);
-  }
-
   markWaitpointCompleted(
     waitpointId: string,
     completion: {

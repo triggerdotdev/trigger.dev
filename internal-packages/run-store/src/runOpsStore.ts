@@ -1682,8 +1682,8 @@ export class RoutingRunStore implements RunStore {
     // A waitpoint's blockingTaskRuns / connectedRuns / completedExecutionSnapshots all co-locate with
     // the RUN/snapshot, not the waitpoint (the edge + join rows are written on the run's DB). So the
     // store that holds the waitpoint hydrates them from its own client only and MISSES a cross-DB
-    // target (engine.getWaitpoint includes blockingTaskRuns→taskRun). Strip those keys from the
-    // per-leg query and re-resolve them across BOTH DBs here, mirroring findManyTaskRunWaitpoints.
+    // target. Strip those keys from the per-leg query and re-resolve them across BOTH DBs here,
+    // mirroring findManyTaskRunWaitpoints.
     const { scalarArgs, relations } = splitWaitpointRelationProjection(
       args as Record<string, unknown>
     );
@@ -1929,19 +1929,6 @@ export class RoutingRunStore implements RunStore {
     return store.updateWaitpoint(args, undefined);
   }
 
-  async updateManyWaitpoints(
-    args: Prisma.WaitpointUpdateManyArgs,
-    tx?: PrismaClientOrTransaction
-  ): Promise<Prisma.BatchPayload> {
-    const id = RoutingRunStore.#waitpointId(args.where);
-    if (id !== undefined) {
-      const store = await this.#resolveWaitpointStore(id);
-      return store.updateManyWaitpoints(args, undefined);
-    }
-    // No single routable id (batch where): apply to every store and sum.
-    return this.#sumCounts((store) => store.updateManyWaitpoints(args));
-  }
-
   async markWaitpointCompleted(
     waitpointId: string,
     completion: {
@@ -1980,9 +1967,10 @@ export class RoutingRunStore implements RunStore {
     // Resolve to where a CUID waitpoint ACTUALLY lives: a migrated run's waitpoint can be on NEW
     // with a LEGACY-classified id (or vice versa), so verify and fall back across the gen-1 pair
     // rather than route by id-shape alone and miss it (which leaves the blocked run stuck forever).
-    // This guard selects the store a WRITE (updateManyWaitpoints) then lands on, so it must probe
-    // each store's PRIMARY: a just-created waitpoint the replica has not caught up on would
-    // otherwise mis-resolve the owner and strand the run.
+    // This guard selects the store a WRITE (markWaitpointCompleted, as
+    // LegacyPostgresWaitpointCoordinator.complete does) then lands on, so it must probe each store's
+    // PRIMARY: a just-created waitpoint the replica has not caught up on would otherwise mis-resolve
+    // the owner and strand the run.
     if (
       await preferred.findWaitpoint({ where: { id: waitpointId } }, preferred.primaryReadClient)
     ) {

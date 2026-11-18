@@ -14,18 +14,8 @@ vi.setConfig({ testTimeout: 60_000 });
 // real implementation. Dependency injection of a real store over a real container — not a mock.
 class CountingPostgresRunStore extends PostgresRunStore {
   public readonly counts = {
-    findWaitpoint: 0,
     createWaitpoint: 0,
   };
-
-  // The read client passed into the most recent findWaitpoint call (args[1]).
-  public lastFindWaitpointClient: unknown = undefined;
-
-  override findWaitpoint(...args: Parameters<PostgresRunStore["findWaitpoint"]>) {
-    this.counts.findWaitpoint++;
-    this.lastFindWaitpointClient = args[1];
-    return super.findWaitpoint(...args);
-  }
 
   override createWaitpoint(...args: Parameters<PostgresRunStore["createWaitpoint"]>) {
     this.counts.createWaitpoint++;
@@ -123,62 +113,6 @@ async function createBatch(prisma: any, environment: any) {
 }
 
 describe("RunEngine public waitpoint router", () => {
-  // getWaitpoint routes its read through the store seam, preserving the env-mismatch guard.
-  containerTest("getWaitpoint reads through the store", async ({ prisma, redisOptions }) => {
-    const environment = await setupAuthenticatedEnvironment(prisma, "PRODUCTION");
-    const store = new CountingPostgresRunStore({
-      prisma,
-      readOnlyPrisma: prisma,
-    });
-    const engine = new RunEngine(engineOptions(redisOptions, prisma, { store }));
-
-    try {
-      const { waitpoint } = await engine.createManualWaitpoint({
-        environmentId: environment.id,
-        projectId: environment.project.id,
-      });
-
-      const before = store.counts.findWaitpoint;
-      const found = await engine.getWaitpoint({
-        waitpointId: waitpoint.id,
-        environmentId: environment.id,
-        projectId: environment.project.id,
-      });
-
-      // routed through the store exactly once
-      expect(store.counts.findWaitpoint).toBe(before + 1);
-      assertNonNullable(found);
-      expect(found.id).toBe(waitpoint.id);
-      // the include shape is preserved (blockingTaskRuns is present, even if empty)
-      expect((found as any).blockingTaskRuns).toBeDefined();
-      expect(Array.isArray((found as any).blockingTaskRuns)).toBe(true);
-
-      // the read is pinned to the PRIMARY client, not defaulted to the replica
-      expect(store.lastFindWaitpointClient).toBe(prisma);
-
-      // env-mismatch guard still returns null
-      const mismatch = await engine.getWaitpoint({
-        waitpointId: waitpoint.id,
-        environmentId: "env_does_not_exist",
-        projectId: environment.project.id,
-      });
-      expect(mismatch).toBeNull();
-
-      // a non-existent waitpointId drives the `if (!waitpoint) return null` branch
-      const beforeMissing = store.counts.findWaitpoint;
-      const missing = await engine.getWaitpoint({
-        waitpointId: "waitpoint_does_not_exist",
-        environmentId: environment.id,
-        projectId: environment.project.id,
-      });
-      expect(missing).toBeNull();
-      // not-found was reached THROUGH the store (not short-circuited)
-      expect(store.counts.findWaitpoint).toBe(beforeMissing + 1);
-    } finally {
-      await engine.quit();
-    }
-  });
-
   // blockRunWithCreatedBatch routes its BATCH waitpoint create through the store (non-tx path),
   // links the run, and preserves the P2002 duplicate-idempotency-key -> null path.
   containerTest(
@@ -424,12 +358,11 @@ describe("RunEngine public waitpoint router", () => {
         });
         assertNonNullable(waitpoint);
 
-        // getWaitpoint reads back the row it wrote (with the include shape)
-        const fetched = await engine.getWaitpoint({
-          waitpointId: waitpoint.id,
-          environmentId: environment.id,
-          projectId: environment.project.id,
-        });
+        // the store reads back the row it wrote
+        const fetched = await engine.runStore.findWaitpoint(
+          { where: { id: waitpoint.id } },
+          engine.prisma
+        );
         assertNonNullable(fetched);
         expect(fetched.id).toBe(waitpoint.id);
         expect(fetched.type).toBe("BATCH");

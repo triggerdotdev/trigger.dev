@@ -100,10 +100,10 @@ function fakeStore(slot: Slot, log: Call[], config: FakeConfig = {}): FakeStore 
       return Promise.resolve((config.edges ?? []) as never);
     }) as FakeStore["findManyTaskRunWaitpoints"],
 
-    updateManyWaitpoints: ((_args: unknown) => {
-      record("updateManyWaitpoints");
+    clearIdempotencyKey: ((_params: unknown) => {
+      record("clearIdempotencyKey");
       return Promise.resolve({ count: 1 } as never);
-    }) as FakeStore["updateManyWaitpoints"],
+    }) as FakeStore["clearIdempotencyKey"],
 
     findRunsByIdempotencyKeys: ((_args: unknown, _client?: ReadClient) => {
       record("findRunsByIdempotencyKeys");
@@ -455,11 +455,15 @@ describe("RoutingRunStore #distinctStores — one entry per database", () => {
   it("counts an aliased shard's database ONCE in a sum", async () => {
     // "a" aliases "new": two keys, one database.
     const { router, log } = buildNShardRouter(["a"], { aliasOf: { a: "new" } });
-    const result = await router.updateManyWaitpoints({
-      where: { status: "PENDING" },
-      data: {},
-    } as never);
-    expect(trace(log)).toEqual(["new:updateManyWaitpoints", "legacy:updateManyWaitpoints"]);
+    const result = await router.clearIdempotencyKey({
+      byPredicate: {
+        idempotencyKey: "k1",
+        taskIdentifier: "task",
+        runtimeEnvironmentId: "env_1",
+        residency: "LEGACY",
+      },
+    });
+    expect(trace(log)).toEqual(["new:clearIdempotencyKey", "legacy:clearIdempotencyKey"]);
     expect(result.count).toBe(2);
   });
 
