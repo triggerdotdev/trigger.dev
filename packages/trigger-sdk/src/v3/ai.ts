@@ -111,6 +111,7 @@ import { forwardSubAgentChunks } from "./subAgentStream.js";
 import type { ChatStream } from "./chat-client.js";
 import {
   convertSteeredMessages,
+  generationResponseMessages,
   retainStepMessages,
   steeringMarkers,
   withoutInjectionMarkers,
@@ -3496,6 +3497,11 @@ const chatOverrideModelMessagesKey = locals.create<ModelMessage[]>("chat.overrid
 /** State stored in locals during prepareStep compaction. */
 interface CompactionState {
   summary: string;
+  /**
+   * How many of the generation's response messages the summary covers. Later
+   * steps rebuild from the summary plus the response messages after these.
+   * Returned by `chat.getCompactionState()` for custom `prepareStep` code.
+   */
   baseResponseMessageCount: number;
   /** Completed steps summarized this turn; unlike message counts, matches UI step markers. */
   baseResponseStepCount: number;
@@ -4022,6 +4028,12 @@ export type CompactOptions = {
   threshold?: number;
   /** Custom compaction trigger. When provided, used instead of `threshold`. */
   shouldCompact?: (event: ShouldCompactEvent) => boolean | Promise<boolean>;
+  /**
+   * The `responseMessages` your `prepareStep` receives. AI SDK 7 passes them,
+   * and without them later steps cannot be rebuilt after a compaction on AI
+   * SDK 7. Earlier AI SDK versions do not need them.
+   */
+  responseMessages?: ModelMessage[];
 };
 
 /**
@@ -4207,9 +4219,10 @@ function getCompactionState(): CompactionState | undefined {
  *
  * @example
  * ```ts
- * prepareStep: async ({ messages, steps }) => {
+ * prepareStep: async ({ messages, steps, responseMessages }) => {
  *   // your custom logic here...
  *   const result = await chat.compact(messages, steps, {
+ *     responseMessages, // needed on AI SDK 7 to rebuild the steps after a compaction
  *     threshold: 80_000,
  *     summarize: async (msgs) => generateText({ model, messages: msgs }).then(r => r.text),
  *   });
@@ -4240,7 +4253,10 @@ async function chatCompact(
       messages: await applyPrepareMessages(
         [
           { role: "user" as const, content: state.summary },
-          ...currentStep.response.messages.slice(state.baseResponseMessageCount),
+          ...generationResponseMessages({
+            steps,
+            responseMessages: options.responseMessages,
+          }).slice(state.baseResponseMessageCount),
         ],
         "compaction-rebuild"
       ),
@@ -4306,7 +4322,10 @@ async function chatCompact(
           // Store state in locals for subsequent steps
           locals.set(chatCompactionStateKey, {
             summary,
-            baseResponseMessageCount: currentStep.response.messages.length,
+            baseResponseMessageCount: generationResponseMessages({
+              steps,
+              responseMessages: options.responseMessages,
+            }).length,
             baseResponseStepCount: steps.length,
           });
 
@@ -4415,9 +4434,10 @@ function chatCompactionStep(
 ): (args: {
   messages: ModelMessage[];
   steps: CompactionStep[];
+  responseMessages?: ModelMessage[];
 }) => Promise<{ messages: ModelMessage[] } | undefined> {
-  return async ({ messages, steps }) => {
-    const result = await chatCompact(messages, steps, options);
+  return async ({ messages, steps, responseMessages }) => {
+    const result = await chatCompact(messages, steps, { ...options, responseMessages });
     return result.type === "skipped" ? undefined : result;
   };
 }
@@ -5405,15 +5425,18 @@ function toStreamTextOptions(
     result.prepareStep = async ({
       messages,
       steps,
+      responseMessages,
     }: {
       messages: ModelMessage[];
       steps: CompactionStep[];
+      responseMessages?: ModelMessage[];
     }) => {
       let resultMessages: ModelMessage[] | undefined;
 
       // 1. Compaction
       if (taskCompaction) {
         const compactResult = await chatCompact(messages, steps, {
+          responseMessages,
           shouldCompact: taskCompaction.shouldCompact,
           summarize: (msgs) => {
             const ctx = locals.get(chatTurnContextKey);
@@ -15302,12 +15325,21 @@ class ChatMessageAccumulator {
     const queue = this._steeringQueue;
 
     return retainStepMessages(
-      async ({ messages, steps }: { messages: ModelMessage[]; steps: CompactionStep[] }) => {
+      async ({
+        messages,
+        steps,
+        responseMessages,
+      }: {
+        messages: ModelMessage[];
+        steps: CompactionStep[];
+        responseMessages?: ModelMessage[];
+      }) => {
         let resultMessages: ModelMessage[] | undefined;
 
         // 1. Compaction
         if (comp) {
           const result = await chatCompact(messages, steps, {
+            responseMessages,
             shouldCompact: comp.shouldCompact,
             summarize: (msgs) => comp.summarize({ messages: msgs, source: "inner" }),
           });
@@ -16085,14 +16117,17 @@ function createChatSession<TClientData = unknown>(
                 async ({
                   messages: stepMsgs,
                   steps,
+                  responseMessages,
                 }: {
                   messages: ModelMessage[];
                   steps: CompactionStep[];
+                  responseMessages?: ModelMessage[];
                 }) => {
                   let resultMessages: ModelMessage[] | undefined;
 
                   if (sessionCompaction) {
                     const compactResult = await chatCompact(stepMsgs, steps, {
+                      responseMessages,
                       shouldCompact: sessionCompaction.shouldCompact,
                       summarize: (msgs) =>
                         sessionCompaction.summarize({ messages: msgs, source: "inner" }),

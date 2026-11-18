@@ -79,8 +79,7 @@
     "build": "tshy && pnpm run update-version && pnpm run bundle-docs",
     "bundle-docs": "tsx ../../scripts/bundleSdkDocs.ts",
     "dev": "tshy --watch",
-    "typecheck": "tsc --noEmit",
-    "typecheck:ai-v7": "tsc --noEmit -p tsconfig.ai-v7.json",
+    "typecheck": "tsc --noEmit && node scripts/typecheck-ai-majors.mjs",
     "test": "vitest",
     "update-version": "tsx ../../scripts/updateVersion.ts",
     "check-exports": "attw --pack ."
@@ -98,7 +97,7 @@
     "@opentelemetry/sdk-trace-base": "2.8.0",
     "@types/react": "^19.2.14",
     "ai": "^6.0.116",
-    "ai-v7": "npm:ai@7.0.0-canary.159",
+    "ai-v7": "npm:ai@7.0.134",
     "rimraf": "^6.0.1",
     "stripe": "23.0.0",
     "tshy": "^4.1.3",

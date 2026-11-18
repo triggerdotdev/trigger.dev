@@ -402,8 +402,11 @@ for (let turn = 0; turn < 100; turn++) {
 For maximum control, use `chat.compact()` directly inside a custom `prepareStep`:
 
 ```ts
-prepareStep: async ({ messages: stepMessages, steps }) => {
+prepareStep: async ({ messages: stepMessages, steps, responseMessages }) => {
   const result = await chat.compact(stepMessages, steps, {
+    // On AI SDK 7, pass these so the steps after a compaction are rebuilt
+    // with every new tool result. Earlier AI SDK versions don't need them.
+    responseMessages,
     threshold: 80_000,
     summarize: async (msgs) =>
       generateText({

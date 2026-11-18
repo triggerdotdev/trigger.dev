@@ -6,15 +6,21 @@
   //
   // `paths` points at the `.d.ts` file directly (not the package dir): under
   // `moduleResolution: NodeNext` the package-dir form silently falls back to the
-  // real installed `ai`, which would make this pass a no-op.
+  // real installed `ai`, which would make this pass a no-op. With no `baseUrl`
+  // (TypeScript 7 removed it), `paths` resolve relative to this file.
+  //
+  // Run by `scripts/typecheck-ai-majors.mjs`, once per non-default major listed
+  // in `test/ai-sdk-majors.json`.
   "extends": "./tsconfig.json",
   "compilerOptions": {
     // noEmit-only gate: disable composite/incremental so this pass never writes or
     // reads a .tsbuildinfo and can't replay stale module resolution across runs.
     "composite": false,
     "incremental": false,
-    "baseUrl": ".",
     "paths": {
+      // `ai/test` stays on the default major: its mocks are typed with a newer
+      // `@ai-sdk/provider` than the one the tests type their prompts with. The
+      // tests themselves run on AI SDK 7 through the `ai-7` vitest project.
       "ai": ["./node_modules/ai-v7/dist/index.d.ts"]
     }
   }
