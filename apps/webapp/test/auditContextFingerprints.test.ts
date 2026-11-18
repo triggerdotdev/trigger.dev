@@ -221,8 +221,17 @@ describe("credential fingerprints in the request audit context", () => {
 
     expect(pat.identity?.lookUpCredentialFingerprint).toBeUndefined();
     expect(oat.identity?.lookUpCredentialFingerprint).toBeUndefined();
-    expect((await pat.context).credential).toMatchObject({ id: "pat_1", fingerprintId: null });
-    expect((await oat.context).credential).toMatchObject({ id: "oat_1", fingerprintId: null });
+    // The kind and id are what the audit plugin finds the fingerprint by.
+    expect((await pat.context).credential).toMatchObject({
+      kind: "pat",
+      id: "pat_1",
+      fingerprintId: null,
+    });
+    expect((await oat.context).credential).toMatchObject({
+      kind: "oat",
+      id: "oat_1",
+      fingerprintId: null,
+    });
     expect(lookups).toEqual([]);
   });
 
