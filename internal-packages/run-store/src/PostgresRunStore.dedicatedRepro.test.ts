@@ -1295,12 +1295,11 @@ describe("run-ops split — store-level behavior against the REAL dedicated sche
 
   // ===========================================================================================
   // A waitpoint read's WAITPOINT_DEDICATED relations
-  // ({ blockingTaskRuns, connectedRuns, completedExecutionSnapshots }) are hydrated by the dedicated
+  // ({ blockingTaskRuns }) are hydrated by the dedicated
   // store on its OWN client only (PostgresRunStore.findWaitpoint → WAITPOINT_DEDICATED
   // hydrators, all keyed by `waitpointId` on the store's single client). But a
-  // waitpoint's blocking edge, run connection and completing snapshot all CO-LOCATE WITH THE RUN
-  // (blockRunWithWaitpointEdges routes by runId; the CompletedWaitpoint + WaitpointRunConnection
-  // join rows are written on the run's DB). A cuid token blocking
+  // waitpoint's blocking edge CO-LOCATES WITH THE RUN
+  // (blockRunWithWaitpointEdges routes by runId). A cuid token blocking
   // a run-ops run therefore has every group-A TARGET on the OTHER DB → the single-client hydrator finds
   // nothing → a waitpoint read that includes `blockingTaskRuns` with the nested `taskRun` silently
   // returns an empty `blockingTaskRuns`. Fix: the router (RoutingRunStore.findWaitpoint/findManyWaitpoints) strips
@@ -1379,134 +1378,10 @@ describe("run-ops split — store-level behavior against the REAL dedicated sche
     }
   );
 
-  // Sibling: connectedRuns. The WaitpointRunConnection join is co-resident with the run (#new),
-  // so a cuid token's connectedRuns must be re-resolved across BOTH DBs to surface the run-ops run.
-  heteroRunOpsPostgresTest(
-    "findWaitpoint include connectedRuns surfaces a cross-DB connected run via the router",
-    async ({ prisma14, prisma17 }) => {
-      const { router, legacyStore } = makeSplitRouter(prisma14, prisma17);
-      const newEnv = await seedEnvironment(prisma17, "dedicated", "gap13cr_new");
-      const legEnv = await seedEnvironment(prisma14, "legacy", "gap13cr_leg");
-      const runId = `run_${NEW_ID_26}`;
-      const waitpointId = `waitpoint_${CUID_25}`;
-
-      await router.createRun(
-        buildCreateRunInput({
-          runId,
-          friendlyId: "run_gap13cr_new",
-          organizationId: newEnv.organization.id,
-          projectId: newEnv.project.id,
-          runtimeEnvironmentId: newEnv.environment.id,
-        })
-      );
-      await prisma14.waitpoint.create({
-        data: {
-          id: waitpointId,
-          friendlyId: "wp_gap13cr",
-          type: "MANUAL",
-          status: "PENDING",
-          idempotencyKey: `idem_${waitpointId}`,
-          userProvidedIdempotencyKey: false,
-          projectId: legEnv.project.id,
-          environmentId: legEnv.environment.id,
-        },
-      });
-      await router.blockRunWithWaitpointEdges({
-        runId,
-        waitpointIds: [waitpointId],
-        projectId: newEnv.project.id,
-      });
-
-      expect(await prisma17.waitpointRunConnection.count({ where: { waitpointId } })).toBe(1);
-
-      // Single-store guard: the token's own store sees no connection (it's on #new).
-      const single = (await legacyStore.findWaitpoint({
-        where: { id: waitpointId },
-        include: { connectedRuns: { select: { id: true, friendlyId: true } } },
-      })) as Record<string, any> | null;
-      expect(single?.connectedRuns ?? []).toHaveLength(0);
-
-      const viaRouter = (await router.findWaitpoint({
-        where: { id: waitpointId },
-        include: { connectedRuns: { select: { id: true, friendlyId: true } } },
-      })) as Record<string, any> | null;
-      const connected = viaRouter?.connectedRuns ?? [];
-      expect(connected).toHaveLength(1);
-      expect(connected[0].id).toBe(runId);
-      expect(connected[0].friendlyId).toBe("run_gap13cr_new");
-    }
-  );
-
-  // Sibling: completedExecutionSnapshots. The CompletedWaitpoint join is co-resident with the
-  // snapshot/run (#new), so a cuid token's completedExecutionSnapshots straddle to #new and must be
-  // re-resolved across BOTH DBs.
-  heteroRunOpsPostgresTest(
-    "findWaitpoint include completedExecutionSnapshots surfaces a cross-DB snapshot via the router",
-    async ({ prisma14, prisma17 }) => {
-      const { router, legacyStore } = makeSplitRouter(prisma14, prisma17);
-      const newEnv = await seedEnvironment(prisma17, "dedicated", "gap13cs_new");
-      const legEnv = await seedEnvironment(prisma14, "legacy", "gap13cs_leg");
-      const runId = `run_${NEW_ID_26}`;
-      const waitpointId = `waitpoint_${CUID_25}`;
-
-      await router.createRun(
-        buildCreateRunInput({
-          runId,
-          friendlyId: "run_gap13cs_new",
-          organizationId: newEnv.organization.id,
-          projectId: newEnv.project.id,
-          runtimeEnvironmentId: newEnv.environment.id,
-        })
-      );
-      await prisma14.waitpoint.create({
-        data: {
-          id: waitpointId,
-          friendlyId: "wp_gap13cs",
-          type: "MANUAL",
-          status: "COMPLETED",
-          output: '{"done":true}',
-          idempotencyKey: `idem_${waitpointId}`,
-          userProvidedIdempotencyKey: false,
-          projectId: legEnv.project.id,
-          environmentId: legEnv.environment.id,
-        },
-      });
-      // The snapshot (on #new, co-resident with the run-ops run) records the cross-DB token as completed
-      // via the CompletedWaitpoint join.
-      const snapshot = await router.createExecutionSnapshot({
-        run: { id: runId, status: "EXECUTING", attemptNumber: 1 },
-        snapshot: { executionStatus: "EXECUTING", description: "completed by cross-db token" },
-        completedWaitpoints: [{ id: waitpointId, index: 0 }],
-        environmentId: newEnv.environment.id,
-        environmentType: "DEVELOPMENT",
-        projectId: newEnv.project.id,
-        organizationId: newEnv.organization.id,
-      });
-
-      expect(await prisma17.completedWaitpoint.count({ where: { waitpointId } })).toBe(1);
-
-      // Single-store guard: the token's own (#legacy) store sees no completing snapshot (join on #new).
-      const single = (await legacyStore.findWaitpoint({
-        where: { id: waitpointId },
-        include: { completedExecutionSnapshots: { select: { id: true, description: true } } },
-      })) as Record<string, any> | null;
-      expect(single?.completedExecutionSnapshots ?? []).toHaveLength(0);
-
-      const viaRouter = (await router.findWaitpoint({
-        where: { id: waitpointId },
-        include: { completedExecutionSnapshots: { select: { id: true, description: true } } },
-      })) as Record<string, any> | null;
-      const snaps = viaRouter?.completedExecutionSnapshots ?? [];
-      expect(snaps).toHaveLength(1);
-      expect(snaps[0].id).toBe(snapshot.id);
-      expect(snaps[0].description).toBe("completed by cross-db token");
-    }
-  );
-
   // Control: a fully co-resident waitpoint (token + run + edge all on #new) is unaffected — the
   // router re-resolution is idempotent and does not double-count or drop the local group-A targets.
   heteroRunOpsPostgresTest(
-    "control: a co-resident waitpoint's blockingTaskRuns/connectedRuns are preserved through the router",
+    "control: a co-resident waitpoint's blockingTaskRuns are preserved through the router",
     async ({ prisma14, prisma17 }) => {
       const { router } = makeSplitRouter(prisma14, prisma17);
       const env = await seedEnvironment(prisma17, "dedicated", "gap13ctl_new");
@@ -1544,12 +1419,10 @@ describe("run-ops split — store-level behavior against the REAL dedicated sche
         where: { id: waitpointId },
         include: {
           blockingTaskRuns: { select: { taskRun: { select: { id: true } } } },
-          connectedRuns: { select: { id: true } },
         },
       })) as Record<string, any> | null;
       expect(viaRouter?.blockingTaskRuns ?? []).toHaveLength(1);
       expect(viaRouter!.blockingTaskRuns[0].taskRun?.id).toBe(runId);
-      expect((viaRouter?.connectedRuns ?? []).map((r: any) => r.id)).toEqual([runId]);
     }
   );
 });

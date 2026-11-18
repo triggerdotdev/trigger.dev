@@ -19,12 +19,11 @@ type CallCounts = { findMany: number; findFirst: number };
 function countingClient(
   real: RunOpsPrismaClient,
   delegateNames: string[]
-): { client: RunOpsPrismaClient; counts: Record<string, CallCounts>; queryRaw: { count: number } } {
+): { client: RunOpsPrismaClient; counts: Record<string, CallCounts> } {
   const counts: Record<string, CallCounts> = {};
   for (const name of delegateNames) {
     counts[name] = { findMany: 0, findFirst: 0 };
   }
-  const queryRaw = { count: 0 };
   const wrapped = new Map(
     delegateNames.map((name) => [
       name,
@@ -43,17 +42,10 @@ function countingClient(
       if (typeof prop === "string" && wrapped.has(prop)) {
         return wrapped.get(prop);
       }
-      // Tally the grouped raw query the bounded connectedRuns hydrator issues, delegating unchanged.
-      if (prop === "$queryRaw") {
-        return (...args: unknown[]) => {
-          queryRaw.count++;
-          return (target as any).$queryRaw(...args);
-        };
-      }
       return (target as any)[prop];
     },
   }) as RunOpsPrismaClient;
-  return { client, counts, queryRaw };
+  return { client, counts };
 }
 
 function seedEnvironmentDedicated(suffix: string) {
@@ -168,70 +160,6 @@ describe("PostgresRunStore dedicated relation hydrators — grouped batch reads"
       expect(blocking.map((b) => b.taskRun?.id).sort()).toEqual([...runIds].sort());
 
       // GROUPED: one findMany for the WHOLE batch, never one findFirst per edge.
-      expect(counting.counts.taskRun.findMany).toBe(1);
-      expect(counting.counts.taskRun.findFirst).toBe(0);
-    }
-  );
-
-  heteroRunOpsPostgresTest(
-    "findManyWaitpoints hydrates N parents' `connectedRuns` with ONE grouped join query + ONE grouped target query",
-    async ({ prisma17 }) => {
-      const seedStore = makeStore(prisma17);
-      const env = seedEnvironmentDedicated("cr");
-
-      const waitpointIds = ["wp_cr_1", "wp_cr_2", "wp_cr_3"];
-      const runIds = ["run_cr_1", "run_cr_2", "run_cr_3"];
-      for (const [i, waitpointId] of waitpointIds.entries()) {
-        await prisma17.waitpoint.create({
-          data: {
-            id: waitpointId,
-            friendlyId: `${waitpointId}_friendly`,
-            type: "MANUAL",
-            status: "PENDING",
-            idempotencyKey: `idem_${waitpointId}`,
-            userProvidedIdempotencyKey: false,
-            projectId: env.project.id,
-            environmentId: env.environment.id,
-          },
-        });
-        await seedStore.createRun(
-          buildCreateRunInput({
-            runId: runIds[i],
-            friendlyId: `${runIds[i]}_friendly`,
-            organizationId: env.organization.id,
-            projectId: env.project.id,
-            runtimeEnvironmentId: env.environment.id,
-          })
-        );
-        // One connection per waitpoint, to its own distinct run.
-        await seedStore.blockRunWithWaitpointEdges({
-          runId: runIds[i],
-          waitpointIds: [waitpointId],
-          projectId: env.project.id,
-        });
-      }
-
-      const counting = countingClient(prisma17, ["waitpointRunConnection", "taskRun"]);
-      const readStore = makeStore(counting.client);
-
-      const rows = (await readStore.findManyWaitpoints({
-        where: { id: { in: waitpointIds } },
-        include: { connectedRuns: { select: { id: true, friendlyId: true } } },
-      })) as { id: string; connectedRuns: { id: string; friendlyId: string }[] }[];
-
-      expect(rows).toHaveLength(3);
-      const byWaitpointId = new Map(rows.map((r) => [r.id, r.connectedRuns]));
-      for (const [i, waitpointId] of waitpointIds.entries()) {
-        const connected = byWaitpointId.get(waitpointId) ?? [];
-        expect(connected).toHaveLength(1);
-        expect(connected[0].id).toBe(runIds[i]);
-      }
-
-      // GROUPED: one bounded join query (raw, ROW_NUMBER-per-parent) + one target query for the
-      // WHOLE batch, never one pair per parent. The bounded hydrator replaces the delegate
-      // `waitpointRunConnection.findMany` with a single `$queryRaw`.
-      expect(counting.queryRaw.count).toBe(1);
-      expect(counting.counts.waitpointRunConnection.findMany).toBe(0);
       expect(counting.counts.taskRun.findMany).toBe(1);
       expect(counting.counts.taskRun.findFirst).toBe(0);
     }

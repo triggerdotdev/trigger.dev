@@ -510,10 +510,6 @@ export class DelegatingRunStore implements RunStore {
     return this.delegate.findWaitpointConnectedRunIds(waitpointId, client);
   }
 
-  findWaitpointCompletedSnapshotIds(waitpointId: string, client?: ReadClient): Promise<string[]> {
-    return this.delegate.findWaitpointCompletedSnapshotIds(waitpointId, client);
-  }
-
   blockRunWithWaitpointEdges(params: {
     runId: string;
     waitpointIds: string[];

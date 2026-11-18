@@ -3,7 +3,7 @@
 // Snapshot ids are @default(cuid()), so #routeOrNew(snapshotId) always classifies LEGACY. For a
 // NEW-residency run the snapshot's CompletedWaitpoint join rows live on #new, so routing to #legacy
 // returns [] and the resumed run sees zero completed waitpoints and hangs. The fix fans out across
-// both stores and merges, like findWaitpointCompletedSnapshotIds. Real two-DB topology; never mocked.
+// both stores and merges, like findWaitpointConnectedRunIds. Real two-DB topology; never mocked.
 
 import { heteroRunOpsPostgresTest } from "@internal/testcontainers";
 import type { PrismaClient } from "@trigger.dev/database";

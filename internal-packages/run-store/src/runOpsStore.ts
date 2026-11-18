@@ -1386,7 +1386,7 @@ export class RoutingRunStore implements RunStore {
   // The CompletedWaitpoint join co-locates with the snapshot, which co-locates with its run. When the
   // caller threads the run id (executionSnapshotSystem has it in scope), route to the run's store — no
   // fan-out. Snapshot ids are cuids (they always classify LEGACY), so absent a run id we can't route
-  // by the snapshot id and must fan out to BOTH stores and merge (like findWaitpointCompletedSnapshotIds).
+  // by the snapshot id and must fan out to BOTH stores and merge (like findWaitpointConnectedRunIds).
   async findSnapshotCompletedWaitpointIds(
     snapshotId: string,
     client?: ReadClient,
@@ -1454,19 +1454,6 @@ export class RoutingRunStore implements RunStore {
       store.findWaitpointConnectedRunIds(waitpointId, RoutingRunStore.#ownPrimary(store, client))
     );
     return uniqueStrings(legs.flat()).slice(0, CONNECTED_RUNS_LIMIT);
-  }
-
-  async findWaitpointCompletedSnapshotIds(
-    waitpointId: string,
-    client?: ReadClient
-  ): Promise<string[]> {
-    const legs = await this.#fanOut(this.#probeOrder, (store) =>
-      store.findWaitpointCompletedSnapshotIds(
-        waitpointId,
-        RoutingRunStore.#ownPrimary(store, client)
-      )
-    );
-    return uniqueStrings(legs.flat());
   }
 
   async blockRunWithWaitpointEdges(params: {
@@ -1665,8 +1652,8 @@ export class RoutingRunStore implements RunStore {
     client?: ReadClient,
     opts?: WaitpointColocationOptions
   ): Promise<Prisma.WaitpointGetPayload<T> | null> {
-    // A waitpoint's blockingTaskRuns / connectedRuns / completedExecutionSnapshots all co-locate with
-    // the RUN/snapshot, not the waitpoint (the edge + join rows are written on the run's DB). So the
+    // A waitpoint's blockingTaskRuns co-locate with
+    // the RUN, not the waitpoint (the edge rows are written on the run's DB). So the
     // store that holds the waitpoint hydrates them from its own client only and MISSES a cross-DB
     // target. Strip those keys from the per-leg query and re-resolve them across BOTH DBs here,
     // mirroring findManyTaskRunWaitpoints.
@@ -1825,20 +1812,6 @@ export class RoutingRunStore implements RunStore {
         client
       );
     }
-    if ("connectedRuns" in relations) {
-      row.connectedRuns = await this.#reresolveConnectedRunsCrossDb(
-        waitpointId,
-        relations.connectedRuns,
-        client
-      );
-    }
-    if ("completedExecutionSnapshots" in relations) {
-      row.completedExecutionSnapshots = await this.#reresolveCompletedExecutionSnapshotsCrossDb(
-        waitpointId,
-        relations.completedExecutionSnapshots,
-        client
-      );
-    }
   }
 
   // blockingTaskRuns are the TaskRunWaitpoint edges keyed by waitpointId — already a both-DB read with
@@ -1854,44 +1827,6 @@ export class RoutingRunStore implements RunStore {
       {
         ...(edgeArgs as Prisma.TaskRunWaitpointFindManyArgs),
         where: { waitpointId },
-      },
-      client
-    );
-  }
-
-  // connectedRuns: the WaitpointRunConnection join co-locates with the run, so read the connected run
-  // ids from EACH store, then resolve the TaskRun rows in ONE grouped, residency-partitioned read
-  // (`findRunsByIds`) and reorder to match `runIds` (the join's own order).
-  async #reresolveConnectedRunsCrossDb(
-    waitpointId: string,
-    projection: SubProjection,
-    client?: ReadClient
-  ): Promise<unknown[]> {
-    const runIds = await this.findWaitpointConnectedRunIds(waitpointId, client);
-    const args = projectionAsArgs(projection);
-    const findRunsByIds = (
-      this.findRunsByIds as (...rest: unknown[]) => Promise<Map<string, unknown>>
-    ).bind(this);
-    const byId = runIds.length > 0 ? await findRunsByIds(runIds, args, client) : new Map();
-    return runIds.map((id) => byId.get(id)).filter((run) => run != null);
-  }
-
-  // completedExecutionSnapshots: the CompletedWaitpoint join co-locates with the snapshot/run, so read
-  // the snapshot ids from EACH store, then resolve the snapshot rows across BOTH DBs.
-  async #reresolveCompletedExecutionSnapshotsCrossDb(
-    waitpointId: string,
-    projection: SubProjection,
-    client?: ReadClient
-  ): Promise<unknown[]> {
-    const snapshotIds = await this.findWaitpointCompletedSnapshotIds(waitpointId, client);
-    if (snapshotIds.length === 0) {
-      return [];
-    }
-    const findArgs = projectionAsArgs(projection) ?? {};
-    return this.findManyExecutionSnapshots(
-      {
-        ...(findArgs as Prisma.TaskRunExecutionSnapshotFindManyArgs),
-        where: { id: { in: boundedIn(snapshotIds) } },
       },
       client
     );
@@ -2536,11 +2471,7 @@ function splitEdgeRelationProjection(args: Record<string, unknown>): {
 // The Waitpoint group-A relation keys whose TARGETS co-locate with the RUN/snapshot, not the
 // waitpoint, so a single store hydrates them from its own client and MISSES a cross-DB target
 // The router strips these from the per-leg query and re-resolves them across BOTH DBs.
-const WAITPOINT_RELATION_KEYS = [
-  "blockingTaskRuns",
-  "connectedRuns",
-  "completedExecutionSnapshots",
-] as const;
+const WAITPOINT_RELATION_KEYS = ["blockingTaskRuns"] as const;
 type WaitpointRelationKey = (typeof WAITPOINT_RELATION_KEYS)[number];
 
 // Split a Waitpoint `findFirst`/`findMany` args into the scalar args sent to each leg (the group-A
