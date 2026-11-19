@@ -57,10 +57,12 @@ An OAuth grant stops working after 30 days without use, and 90 days after it was
 
 Each OAuth grant carries a list of scopes. A tool call is denied if the scopes or your role in the organization don't allow it.
 
-| Kind  | Scopes                                                                                                                                                                 |
-| ----- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Read  | `read:alerts`, `read:branches`, `read:deployments`, `read:organizations`, `read:projects`, `read:prompts`, `read:query`, `read:runs`, `read:sessions`, `read:webhooks` |
-| Write | `trigger:tasks`, `update:prompts`, `write:alerts`, `write:projects`, `write:query`, `write:runs`, `write:sessions`, `write:webhooks`                                    |
+| Kind  | Scopes |
+| ----- | ------ |
+| Read  | `read:alerts`, `read:batch`, `read:branches`, `read:deployments`, `read:environments`, `read:envvars`, `read:errors`, `read:organizations`, `read:projects`, `read:prompts`, `read:query`, `read:queues`, `read:runs`, `read:sessions`, `read:tasks`, `read:waitpoints`, `read:webhooks` |
+| Write | `manage:project`, `trigger:tasks`, `update:prompts`, `write:alerts`, `write:batch`, `write:branches`, `write:deployments`, `write:errors`, `write:projects`, `write:query`, `write:runs`, `write:sessions`, `write:tasks`, `write:waitpoints`, `write:webhooks` |
+
+If a client doesn't ask for specific scopes, it gets every read scope except `read:envvars`, which a client must ask for by name.
 
 ## Write confirmation
 

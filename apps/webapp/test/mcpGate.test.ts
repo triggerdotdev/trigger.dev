@@ -50,7 +50,7 @@ import { resolveMcpSubject } from "~/mcp/gate/resolveSubject.server";
 import type { McpConfirmationStore } from "~/mcp/confirm/store.server";
 import type { McpIdentity, McpToolAuth } from "~/mcp/gate/types";
 import { withMcpToolAuth, type McpToolResult } from "~/mcp/gate/withMcpToolAuth.server";
-import { mcpResource } from "~/services/oauth/metadata.server";
+import { MCP_SCOPES, mcpResource } from "~/services/oauth/metadata.server";
 
 const ok: McpToolResult = { content: [{ type: "text", text: "ok" }] };
 
@@ -277,6 +277,30 @@ describe("withMcpToolAuth", () => {
         "mcp.tool",
         expect.objectContaining({ outcome: "insufficient_scope", denyReason: "scope" })
       );
+    }
+  });
+
+  // Catches (OSS fallback ability only): a project tool needing manage:project allowed for a UAT
+  // capped to every other MCP scope, or for a cap-less UAT; or denied for one capped to manage:project.
+  postgresTest("only manage:project satisfies a manage:project tool", async ({ prisma }) => {
+    const { a } = await seed(prisma);
+    const { handler } = spyHandler();
+    const args = { projectRef: a.project.externalRef };
+    const tool = withMcpToolAuth(
+      { action: "manage", subject: "project", confirm: false },
+      handler,
+      "t"
+    );
+    const allButManage = MCP_SCOPES.filter((s) => s !== "manage:project");
+
+    for (const [cap, allowed] of [
+      [undefined, false],
+      [allButManage, false],
+      [["manage:project"], true],
+    ] as const) {
+      const { identity, request } = await uatCall(prisma, a.user.id, cap ? { cap: [...cap] } : {});
+      const result = await tool(args, identity, request);
+      expect({ cap, allowed: !result.isError }).toEqual({ cap, allowed });
     }
   });
 
