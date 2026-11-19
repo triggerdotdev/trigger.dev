@@ -132,8 +132,14 @@ export class ProjectSettingsService {
     productionBranch?: string,
     stagingBranch?: string,
     previewDeploymentsEnabled?: boolean,
-    buildFilters?: Partial<BuildFilters>
+    options?: {
+      buildFilters?: Partial<BuildFilters>;
+      supersedeProductionBuilds?: boolean;
+      supersedeStagingBuilds?: boolean;
+      supersedePreviewBuilds?: boolean;
+    }
   ) {
+    const buildFilters = options?.buildFilters;
     const getExistingConnectedRepo = () =>
       fromPromise(
         this.#prismaClient.connectedGithubRepository.findFirst({
@@ -234,6 +240,9 @@ export class ProjectSettingsService {
             } satisfies BranchTrackingConfig,
             previewDeploymentsEnabled: data.previewDeploymentsEnabled,
             buildFilters: data.buildFilters,
+            supersedeProductionBuilds: options?.supersedeProductionBuilds,
+            supersedeStagingBuilds: options?.supersedeStagingBuilds,
+            supersedePreviewBuilds: options?.supersedePreviewBuilds,
           },
         }),
         (error) => ({ type: "other" as const, cause: error })

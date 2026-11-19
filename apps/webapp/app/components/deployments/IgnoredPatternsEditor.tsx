@@ -47,7 +47,7 @@ const copy = {
   paths: {
     label: "Ignored paths",
     placeholder: "docs/**",
-    empty: "No paths yet, so every push to a tracked branch deploys.",
+    empty: "No paths yet, every push to a tracked branch deploys.",
     testLabel: "Path to test",
     testPlaceholder: "apps/web/src/index.ts",
     test: "Test a path",
@@ -57,7 +57,7 @@ const copy = {
   branches: {
     label: "Ignored branches",
     placeholder: "dependabot/**",
-    empty: "No branches yet, so every pull request gets a preview.",
+    empty: "No branches yet, every pull request gets a preview.",
     testLabel: "Branch to test",
     testPlaceholder: "dependabot/npm_and_yarn/react-19.0.0",
     test: "Test a branch",

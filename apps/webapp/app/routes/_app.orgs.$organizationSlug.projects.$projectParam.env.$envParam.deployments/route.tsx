@@ -60,6 +60,7 @@ import {
 } from "~/components/primitives/Table";
 import {
   DeploymentStatus,
+  deploymentDisplayStatus,
   deploymentStatusDescription,
   deploymentStatuses,
 } from "~/components/runs/v3/DeploymentStatus";
@@ -348,7 +349,10 @@ export default function Page() {
                             </TableCell>
                             <TableCell to={path} isSelected={isSelected}>
                               <DeploymentStatus
-                                status={deployment.status}
+                                status={deploymentDisplayStatus(
+                                  deployment.status,
+                                  deployment.isSuperseded
+                                )}
                                 isBuilt={deployment.isBuilt}
                               />
                             </TableCell>
