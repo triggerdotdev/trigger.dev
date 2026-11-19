@@ -31,10 +31,30 @@ const LOCAL_ONLY = [
 
 const pendingWriteTools: string[] = [];
 
-const UNCONFIRMED_WRITE_TOOLS: Record<string, string> = {
-  submit_feedback: "only logs a report about the MCP server, touches no project data",
-  send_agent_message: "covered by the start_agent_chat confirmation for that chat",
-  close_agent_chat: "covered by the start_agent_chat confirmation for that chat",
+const REMOTE_ONLY: Record<string, string> = {};
+
+const WRITE_TOOL_APPROVAL: Record<string, "required" | "configurable" | { none: string }> = {
+  replay_webhook_delivery: "required",
+  generate_webhook_secret: "required",
+  set_webhook_secret: "required",
+  submit_feedback: { none: "only logs a report about the MCP server, touches no project data" },
+  send_agent_message: { none: "covered by the start_agent_chat confirmation for that chat" },
+  close_agent_chat: { none: "covered by the start_agent_chat confirmation for that chat" },
+  cancel_run: "configurable",
+  replay_run: "configurable",
+  trigger_task: "configurable",
+  create_alert: "configurable",
+  resolve_alert: "configurable",
+  create_dashboard: "configurable",
+  set_dashboard_widgets: "configurable",
+  promote_prompt_version: "configurable",
+  create_prompt_override: "configurable",
+  update_prompt_override: "configurable",
+  remove_prompt_override: "configurable",
+  reactivate_prompt_override: "configurable",
+  start_agent_chat: "configurable",
+  write_session_channel: "configurable",
+  create_project_in_org: "configurable",
 };
 
 type CliTool = {
@@ -69,12 +89,32 @@ const expectedWrite = cliWriteNames
   .sort();
 const expectedTools = [...expectedRead, ...expectedWrite].sort();
 
+function classifyHostedTools(hosted: string[], cli: string[], remoteOnly: string[]) {
+  const cliSet = new Set(cli);
+  const remoteOnlySet = new Set(remoteOnly);
+  return {
+    shared: hosted.filter((name) => cliSet.has(name)).sort(),
+    undeclared: hosted.filter((name) => !cliSet.has(name) && !remoteOnlySet.has(name)).sort(),
+    remoteOnlyWithCliTwin: remoteOnly.filter((name) => cliSet.has(name)).sort(),
+    remoteOnlyUnregistered: remoteOnly.filter((name) => !hosted.includes(name)).sort(),
+  };
+}
+
 const toJson = (shape: z.ZodRawShape) => z.toJSONSchema(z.object(shape), { io: "input" });
 
 describe("MCP remote/CLI contract", () => {
-  it("registers exactly the CLI read and write tools, each once, and nothing outside toolsMetadata", () => {
-    expect(mcpTools.map((t) => t.name).sort()).toEqual(expectedTools);
-    for (const { name } of mcpTools) expect(Object.keys(toolsMetadata)).toContain(name);
+  // Catches: a hosted tool with no CLI twin slipping in undeclared, a REMOTE_ONLY entry with a CLI twin, or a stale REMOTE_ONLY entry.
+  it("registers exactly the CLI read and write tools plus declared remote-only tools, each once, and nothing outside toolsMetadata", () => {
+    const hosted = mcpTools.map((t) => t.name);
+    const result = classifyHostedTools(hosted, [...cliAll.keys()], Object.keys(REMOTE_ONLY));
+    expect(result.undeclared).toEqual([]);
+    expect(result.remoteOnlyWithCliTwin).toEqual([]);
+    expect(result.remoteOnlyUnregistered).toEqual([]);
+    expect(result.shared).toEqual(expectedTools);
+    expect([...hosted].sort()).toEqual([...expectedTools, ...Object.keys(REMOTE_ONLY)].sort());
+    for (const name of hosted) {
+      if (!(name in REMOTE_ONLY)) expect(Object.keys(toolsMetadata)).toContain(name);
+    }
   });
 
   it.each(expectedTools)("%s matches the CLI title, description and input schema", (name) => {
@@ -89,18 +129,35 @@ describe("MCP remote/CLI contract", () => {
     expect(toJson(remote.inputSchema)).toEqual(toJson(cli.inputSchema));
   });
 
+  // Catches: a CLI or remote-only write tool advertised as read-only.
   it("marks every write tool non-read-only", () => {
-    for (const name of expectedWrite) {
+    const remoteOnlyWrite = Object.keys(REMOTE_ONLY).filter((name) => name in WRITE_TOOL_APPROVAL);
+    for (const name of [...expectedWrite, ...remoteOnlyWrite]) {
       expect(mcpTools.find((t) => t.name === name)!.annotations?.readOnlyHint).toBe(false);
     }
   });
 
-  it("holds every write tool for confirmation except the declared exceptions", () => {
-    const unconfirmed = mcpTools
-      .filter((t) => t.annotations?.readOnlyHint === false && t.confirm !== true)
-      .map((t) => t.name)
-      .sort();
-    expect(unconfirmed).toEqual(Object.keys(UNCONFIRMED_WRITE_TOOLS).sort());
+  // Catches: a write tool (by annotations, class, CLI twin or write auth) with no approval class or a wrong one, or a class that disagrees with whether the gate confirms it.
+  it("gives every write tool its approval class, none exactly for the unconfirmed ones", () => {
+    const writeTools = mcpTools.filter(
+      (t) =>
+        t.annotations?.readOnlyHint === false ||
+        t.approval !== undefined ||
+        expectedWrite.includes(t.name) ||
+        (t.auth !== undefined && !("public" in t.auth) && t.auth.action !== "read")
+    );
+    const actual = Object.fromEntries(
+      writeTools.map((t) => [t.name, { approval: t.approval, confirms: t.confirm === true }])
+    );
+    const expected = Object.fromEntries(
+      Object.entries(WRITE_TOOL_APPROVAL).map(([name, approval]) => [
+        name,
+        typeof approval === "string"
+          ? { approval, confirms: true }
+          : { approval: "none", confirms: false },
+      ])
+    );
+    expect(actual).toEqual(expected);
   });
 
   it("leaves only the agent-chat and session write tools pending", () => {

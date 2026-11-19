@@ -60,20 +60,24 @@ const store: McpConfirmationStore = {
     return true;
   },
   async consumeApproved(lookup) {
-    if (state.autoApprove) return { id: "mcpc_auto" };
+    if (state.autoApprove)
+      return { id: "mcpc_auto", preview: "<autoApprove: no preview recorded>" };
     const key = approvalKey(lookup);
     const record = live(state.records.get(state.approvals.get(key) ?? ""));
     state.approvals.delete(key);
     if (!record?.approvedAt || record.consumedAt || record.deniedAt) return null;
     record.consumedAt = Date.now();
-    return { id: record.id };
+    return { id: record.id, preview: record.preview };
   },
 };
 
 export const getMcpConfirmationStore = () => store;
 export let mcpConfirmationErrorMode: "rpc-error" | "tool-error" = "rpc-error";
 
-/** Clears records; with autoApprove every confirm-tool call runs as if approved. */
+/**
+ * Clears records. autoApprove approves without recording a preview, so a tool that calls
+ * `staleApproval` must use `autoApprove: false` plus `approveAll()`; otherwise every confirmed call is stale.
+ */
 export function resetConfirmations({
   autoApprove,
   mode = "rpc-error",

@@ -132,6 +132,7 @@ describe("withMcpToolAuth", () => {
     });
   });
 
+  // Catches: a cross-org denial logged with a scope or role denyReason instead of other.
   postgresTest("denies another org's project without calling the handler", async ({ prisma }) => {
     const { b, identity, request } = await seed(prisma);
     const { calls, handler } = spyHandler();
@@ -248,7 +249,7 @@ describe("withMcpToolAuth", () => {
     expect(mocks.rbacCalls).toBe(0);
   });
 
-  // Catches: a missing scope reported as a generic or role denial, or the audit outcome not distinct.
+  // Catches: a missing scope reported as a generic or role denial, or the audit outcome or denyReason not scope.
   postgresTest("a uat cap limits tools and names the missing scope", async ({ prisma }) => {
     const { a } = await seed(prisma);
     const { identity, request } = await uatCall(prisma, a.user.id, { cap: ["read:runs"] });
@@ -279,7 +280,7 @@ describe("withMcpToolAuth", () => {
     }
   });
 
-  // Catches: a role denial reported as a scope problem or the generic text.
+  // Catches: a role denial reported as a scope problem or the generic text, or logged without denyReason role.
   postgresTest("a role denial names the action and subject", async ({ prisma }) => {
     const { a, identity, request } = await seed(prisma);
     const fallback = mocks.rbac;
@@ -519,6 +520,151 @@ describe("withMcpToolAuth", () => {
       })
     );
   });
+
+  // Catches: a named precheck pair always rendered as a role denial, whatever the token's scopes.
+  postgresTest(
+    "a precheck's named pair is a scope or a role denial by token",
+    async ({ prisma }) => {
+      const { a } = await seed(prisma);
+      const { calls, handler } = spyHandler();
+      const tool = withMcpToolAuth(
+        {
+          action: "write",
+          subject: "runs",
+          confirm: {
+            preview: () => "x",
+            precheck: () => ({ action: "trigger", subject: "tasks" }),
+          },
+        },
+        handler,
+        "bulk_replay",
+        {
+          confirmations: () => {
+            throw new Error("store reached");
+          },
+          confirmationErrorMode: "rpc-error",
+        }
+      );
+      const cases = [
+        {
+          cap: ["write:runs"],
+          text: "Insufficient scope: this tool requires trigger:tasks",
+          log: { outcome: "insufficient_scope", denyReason: "scope" },
+        },
+        {
+          cap: ["write:runs", "trigger:tasks"],
+          text: "Not authorized: your role in this organization does not allow trigger on tasks",
+          log: { outcome: "forbidden", denyReason: "role" },
+        },
+      ];
+
+      for (const { cap, text, log } of cases) {
+        mocks.info.mockClear();
+        const { identity, request } = await uatCall(prisma, a.user.id, { cap });
+
+        const result = await tool({ projectRef: a.project.externalRef }, identity, request);
+
+        expect(result).toEqual({ content: [{ type: "text", text }], isError: true });
+        expect(mocks.info).toHaveBeenCalledWith("mcp.tool", expect.objectContaining(log));
+      }
+      expect(calls).toHaveLength(0);
+    }
+  );
+
+  // Catches: the named pair's id dropped from the scope check, so a narrowed token reads as a role denial.
+  postgresTest("a precheck's named id is checked against a narrowed scope", async ({ prisma }) => {
+    const { a } = await seed(prisma);
+    const { calls, handler } = spyHandler();
+    const target = { id: "task-b" };
+    const tool = withMcpToolAuth(
+      {
+        action: "write",
+        subject: "runs",
+        confirm: {
+          preview: () => "x",
+          precheck: () => ({ action: "trigger", subject: "tasks", id: target.id }),
+        },
+      },
+      handler,
+      "bulk_replay",
+      {
+        confirmations: () => {
+          throw new Error("store reached");
+        },
+        confirmationErrorMode: "rpc-error",
+      }
+    );
+    const cases = [
+      {
+        id: "task-b",
+        text: "Insufficient scope: this tool requires trigger:tasks",
+        log: { outcome: "insufficient_scope", denyReason: "scope" },
+      },
+      {
+        id: "task-a",
+        text: "Not authorized: your role in this organization does not allow trigger on tasks",
+        log: { outcome: "forbidden", denyReason: "role" },
+      },
+    ];
+
+    for (const { id, text, log } of cases) {
+      mocks.info.mockClear();
+      target.id = id;
+      const { identity, request } = await uatCall(prisma, a.user.id, {
+        cap: ["write:runs", "trigger:tasks:task-a"],
+      });
+
+      const result = await tool({ projectRef: a.project.externalRef }, identity, request);
+
+      expect(result).toEqual({ content: [{ type: "text", text }], isError: true });
+      expect(JSON.stringify(result)).not.toContain(id);
+      expect(mocks.info).toHaveBeenCalledWith("mcp.tool", expect.objectContaining(log));
+    }
+    expect(calls).toHaveLength(0);
+  });
+
+  // Catches: a named pair without an id read as unrestricted by an id-narrowed token.
+  postgresTest(
+    "a named pair without an id is a scope denial for a narrowed token",
+    async ({ prisma }) => {
+      const { a } = await seed(prisma);
+      const { calls, handler } = spyHandler();
+      const tool = withMcpToolAuth(
+        {
+          action: "write",
+          subject: "runs",
+          confirm: {
+            preview: () => "x",
+            precheck: () => ({ action: "trigger", subject: "tasks" }),
+          },
+        },
+        handler,
+        "bulk_replay",
+        {
+          confirmations: () => {
+            throw new Error("store reached");
+          },
+          confirmationErrorMode: "rpc-error",
+        }
+      );
+      mocks.info.mockClear();
+      const { identity, request } = await uatCall(prisma, a.user.id, {
+        cap: ["write:runs", "trigger:tasks:task-a"],
+      });
+
+      const result = await tool({ projectRef: a.project.externalRef }, identity, request);
+
+      expect(result).toEqual({
+        content: [{ type: "text", text: "Insufficient scope: this tool requires trigger:tasks" }],
+        isError: true,
+      });
+      expect(mocks.info).toHaveBeenCalledWith(
+        "mcp.tool",
+        expect.objectContaining({ outcome: "insufficient_scope", denyReason: "scope" })
+      );
+      expect(calls).toHaveLength(0);
+    }
+  );
 
   it("public tools run without args or rbac", async () => {
     mocks.rbacCalls = 0;

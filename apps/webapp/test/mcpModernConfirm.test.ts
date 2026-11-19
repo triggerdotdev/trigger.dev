@@ -39,6 +39,7 @@ const tool = defineWriteTool({
   title: "Rename Thing",
   description: "Rename a thing.",
   shape: { name: z.string() },
+  approval: "configurable",
   auth: { user: true, action: "write", subject: "projects" },
   run: async (input) => {
     runs.push(input.name);

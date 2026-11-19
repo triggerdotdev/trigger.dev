@@ -17,6 +17,7 @@ export const orgsWriteTools: McpToolDefinition[] = [
     description:
       "Create a new project in an organization. Only do this if the user wants to add Trigger.dev to an existing project. If there is already a trigger.config.ts file present, then you should not create a new project.",
     shape: CreateProjectInOrgInput.shape,
+    approval: "configurable",
     auth: { user: true, action: "write", subject: "projects" },
     run: async (input, { identity }) => {
       const organization = await prisma.organization.findFirst({

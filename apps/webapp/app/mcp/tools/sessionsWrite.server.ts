@@ -55,6 +55,7 @@ export function createSessionsWriteTools(
       description:
         "Append one record to a named side channel's `in` stream on a session. Use this to send control input to a running agent (e.g. a pause/viewport command) without waking or triggering a run. Requires a `channel` name; the reserved transcript and the `out` side are not writable here (`out` is producer-only). Pass `value` as an object for a structured record or a string for a raw one.",
       shape: WriteSessionChannelInput.shape,
+      approval: "configurable",
       auth: { action: "write", subject: "sessions" },
       run: async (input, ctx) => {
         if (!SESSION_CHANNEL_NAME_REGEX.test(input.channel)) {
