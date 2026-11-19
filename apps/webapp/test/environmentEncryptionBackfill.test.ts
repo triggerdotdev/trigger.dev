@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 import { Redis, type RedisOptions } from "@internal/redis";
 import { postgresAndRedisTest } from "@internal/testcontainers";
 import type { PrismaClient } from "@trigger.dev/database";
-import { expect, vi } from "vitest";
+import { expect } from "vitest";
 import { $transaction } from "~/db.server";
 import { EnvironmentEncryptionBackfill } from "~/services/environmentEncryption/backfill.server";
 import { EnvironmentEncryptionService } from "~/services/environmentEncryption/service.server";
@@ -28,12 +28,16 @@ function encryption(db: PrismaClient) {
 }
 function backfill(db: PrismaClient, redisOptions: RedisOptions) {
   const redis = new Redis({ ...redisOptions, keyPrefix: randomUUID() });
-  const create = () =>
+  const create = (afterWrite?: () => Promise<void>) =>
     new EnvironmentEncryptionBackfill({
       db,
       redis,
       encryption: encryption(db),
-      transaction: (fn) => $transaction(db, fn),
+      transaction: async (fn) => {
+        const result = await $transaction(db, fn);
+        await afterWrite?.();
+        return result;
+      },
     });
   return { redis, create };
 }
@@ -51,12 +55,24 @@ async function seed(db: PrismaClient) {
   return { ...data, environment, prefix: environmentSecretPrefix(data.project.id, environment.id) };
 }
 
-// Catches: enrollment rewriting secrets, verification enrolling environments, missing build envelopes, or crossing cohort boundaries.
+// Catches: enrollment changing values, verification losing earlier environments' remaining counts, premature advancement, or rewrites crossing page scope.
 postgresAndRedisTest(
-  "inspects, enrolls, migrates and cold-verifies only the selected cohort",
+  "inspects, enrolls, migrates and cold-verifies the same selected page",
   async ({ prisma, redisOptions }) => {
     const target = await seed(prisma);
     const other = await seed(prisma);
+    await prisma.runtimeEnvironment.create({
+      data: {
+        id: "zz-empty-after-values",
+        slug: "empty",
+        projectId: target.project.id,
+        organizationId: target.organization.id,
+        type: "STAGING",
+        apiKey: randomUUID(),
+        pkApiKey: randomUUID(),
+        shortcode: "empty",
+      },
+    });
     const original = encryptValue(JSON.stringify({ secret: "runtime" }), keyring);
     const build = encryptValue(JSON.stringify({ TOKEN: "build" }), keyring);
     await prisma.secretStore.createMany({
@@ -80,18 +96,22 @@ postgresAndRedisTest(
     const { redis, create } = backfill(prisma, redisOptions);
     try {
       const service = create();
-      const ids = [target.organization.id];
-      await expect(service.create("migrate", ids, target.user.id)).rejects.toThrow("Enroll");
-      const inspect = await service.create("inspect", ids, target.user.id);
+      const page = await service.selectPage([target.organization.id]);
+      await expect(service.create("migrate", page.id, target.user.id)).rejects.toThrow("enrolled");
+      const inspect = await service.create("inspect", page.id, target.user.id);
       await service.run(inspect.id);
-      expect((await service.current())?.environments[0]?.progress).toMatchObject({
+      expect((await service.current())?.progress).toMatchObject({
         scanned: 3,
         remaining: 3,
         rewritten: 0,
       });
       expect(await prisma.environmentEncryptionPolicy.count()).toBe(0);
+      const earlyVerify = await service.create("verify", page.id, target.user.id);
+      await service.run(earlyVerify.id);
+      expect(await service.pageVerified()).toBe(false);
+      await expect(service.nextPage(page.id)).rejects.toThrow("Verify");
 
-      const enroll = await service.create("enroll", ids, target.user.id);
+      const enroll = await service.create("enroll", page.id, target.user.id);
       await service.run(enroll.id);
       expect((await service.current())?.status).toBe("completed");
       expect(
@@ -103,26 +123,29 @@ postgresAndRedisTest(
           .buildEnvVars
       ).toEqual(build);
       const keyCount = await prisma.environmentEncryptionKey.count();
-      const enrollAgain = await service.create("enroll", ids, target.user.id);
-      await service.run(enrollAgain.id);
+      const again = await service.create("enroll", page.id, target.user.id);
+      await service.run(again.id);
       expect(await prisma.environmentEncryptionKey.count()).toBe(keyCount);
-
-      const migrate = await service.create("migrate", ids, target.user.id);
+      const migrate = await service.create("migrate", page.id, target.user.id);
       await service.run(migrate.id);
-      expect((await service.current())?.environments[0]?.progress).toMatchObject({
+      expect((await service.current())?.progress).toMatchObject({
         rewritten: 3,
         remaining: 0,
         runtimeValues: 2,
         buildEnvelopes: 1,
       });
+      expect(await service.pageVerified()).toBe(false);
       const cold = create();
-      const verify = await cold.create("verify", ids, target.user.id);
+      const verify = await cold.create("verify", page.id, target.user.id);
       await cold.run(verify.id);
-      expect((await cold.current())?.environments[0]?.progress).toMatchObject({
+      expect((await cold.current())?.progress).toMatchObject({
         scanned: 3,
         remaining: 0,
         rewritten: 0,
       });
+      expect(await cold.pageVerified()).toBe(true);
+      expect((await cold.current())?.completedEnvironments).toBe(2);
+      expect((await cold.page())?.id).toBe(page.id);
       const row = await prisma.secretStore.findUniqueOrThrow({
         where: { key: `${target.prefix}LEGACY` },
       });
@@ -168,9 +191,9 @@ postgresAndRedisTest(
   30_000
 );
 
-// Catches: Stop being ignored between batches, overlapping workers/cohorts, or a retry skipping unprocessed values.
+// Catches: Stop being ignored between batches, overlapping workers/pages, or retry changing the selected page/skipping unprocessed rows.
 postgresAndRedisTest(
-  "stops at a batch boundary and safely rescans on retry",
+  "stops after a committed batch and safely retries the fixed page",
   async ({ prisma, redisOptions }) => {
     const target = await seed(prisma);
     await prisma.secretStore.createMany({
@@ -183,39 +206,35 @@ postgresAndRedisTest(
     const { redis, create } = backfill(prisma, redisOptions);
     try {
       const service = create();
-      const ids = [target.organization.id];
-      const enroll = await service.create("enroll", ids, target.user.id);
+      const page = await service.selectPage([target.organization.id]);
+      const enroll = await service.create("enroll", page.id, target.user.id);
       await service.run(enroll.id);
-      const job = await service.create("migrate", ids, target.user.id);
-      const running = service.run(job.id);
-      try {
-        await vi.waitFor(
-          async () => {
-            expect((await service.current())?.environments[0]?.progress?.rewritten).toBe(25);
-          },
-          { timeout: 15_000, interval: 20 }
-        );
-        await expect(service.create("verify", ids, target.user.id)).rejects.toThrow("active");
+      const job = await service.create("migrate", page.id, target.user.id);
+      let writes = 0;
+      const runner = create(async () => {
+        if (++writes !== 25) return;
         await expect(create().run(job.id)).rejects.toThrow("already running");
         await service.stop(job.id);
-      } finally {
-        await running;
-      }
+      });
+      await expect(service.create("verify", page.id, target.user.id)).rejects.toThrow("active");
+      await expect(service.selectPage([target.organization.id])).rejects.toThrow("active");
+      await runner.run(job.id);
       expect((await service.current())?.status).toBe("stopped");
+      expect((await service.current())?.completedEnvironments).toBe(0);
+      expect(await service.pageVerified()).toBe(false);
       expect(await prisma.secretStore.count({ where: { version: "environment-v1" } })).toBe(25);
-      const retry = await service.create("migrate", ids, target.user.id);
+      const retry = await service.create("migrate", page.id, target.user.id);
       await service.run(retry.id);
-      expect((await service.current())?.environments[0]?.progress).toMatchObject({
+      expect((await service.current())?.progress).toMatchObject({
         scanned: 30,
         rewritten: 5,
         conflicts: 0,
       });
-      const verify = await create().create("verify", ids, target.user.id);
+      expect((await service.page())?.id).toBe(page.id);
+      const verify = await create().create("verify", page.id, target.user.id);
       await create().run(verify.id);
-      expect((await service.current())?.environments[0]?.progress).toMatchObject({
-        scanned: 30,
-        remaining: 0,
-      });
+      expect((await service.current())?.progress).toMatchObject({ scanned: 30, remaining: 0 });
+      expect(await service.pageVerified()).toBe(true);
     } finally {
       await redis.quit();
     }
@@ -223,7 +242,7 @@ postgresAndRedisTest(
   30_000
 );
 
-// Catches: a job with no consuming worker permanently blocking new cohorts, or a late delivery reviving it.
+// Catches: unclaimed jobs blocking the tool permanently, or stale queue deliveries reviving them.
 postgresAndRedisTest(
   "stops an unclaimed job and ignores its late delivery",
   async ({ prisma, redisOptions }) => {
@@ -231,13 +250,13 @@ postgresAndRedisTest(
     const { redis, create } = backfill(prisma, redisOptions);
     try {
       const service = create();
-      const ids = [target.organization.id];
-      const abandoned = await service.create("enroll", ids, target.user.id);
+      const page = await service.selectPage([target.organization.id]);
+      const abandoned = await service.create("enroll", page.id, target.user.id);
       await service.stop(abandoned.id);
       expect((await service.current())?.status).toBe("stopped");
       await service.run(abandoned.id);
       expect(await prisma.environmentEncryptionPolicy.count()).toBe(0);
-      const next = await service.create("inspect", ids, target.user.id);
+      const next = await service.create("inspect", page.id, target.user.id);
       await service.run(abandoned.id);
       expect((await service.current())?.id).toBe(next.id);
       expect((await service.current())?.status).toBe("queued");
@@ -249,9 +268,9 @@ postgresAndRedisTest(
   }
 );
 
-// Catches: a crypto failure being treated as success or allowing the cohort to advance to another environment.
+// Catches: crypto failures being marked verified or advancing past the failing environment.
 postgresAndRedisTest(
-  "fails the cohort on unreadable ciphertext without changing it",
+  "fails the page on unreadable ciphertext without changing it",
   async ({ prisma, redisOptions }) => {
     const target = await seed(prisma);
     await createRuntimeEnvironment(prisma, {
@@ -262,22 +281,107 @@ postgresAndRedisTest(
     const { redis, create } = backfill(prisma, redisOptions);
     try {
       const service = create();
-      const inspect = await service.create("inspect", [target.organization.id], target.user.id);
-      const environment = inspect.environments[0]!;
+      const page = await service.selectPage([target.organization.id]);
+      const environment = page.environments[0]!;
       const key = `${environmentSecretPrefix(environment.projectId, environment.id)}BAD`;
       const original = encryptValue(JSON.stringify({ secret: "do-not-expose" }), keyring);
       const invalid = { ...original, tag: "00".repeat(16) };
       await prisma.secretStore.create({ data: { key, version: "2", value: invalid } });
-      await service.run(inspect.id);
+      const verify = await service.create("verify", page.id, target.user.id);
+      await service.run(verify.id);
       const result = await service.current();
       expect(result?.status).toBe("failed");
-      expect(result?.environments[1]?.status).toBe("pending");
+      expect(result?.completedEnvironments).toBe(0);
+      expect(result?.currentEnvironment?.id).toBe(environment.id);
       expect(JSON.stringify(result)).not.toContain("do-not-expose");
       expect((await prisma.secretStore.findUniqueOrThrow({ where: { key } })).value).toEqual(
         invalid
       );
+      expect(await service.pageVerified()).toBe(false);
+      await expect(service.nextPage(page.id)).rejects.toThrow("Verify");
     } finally {
       await redis.quit();
     }
   }
+);
+
+// Catches: large org rejection/truncation, unstable page scope, duplicate/skipped environments, or stale actions advancing a different page.
+postgresAndRedisTest(
+  "advances verified fixed pages without omissions and rejects stale page actions",
+  async ({ prisma, redisOptions }) => {
+    const firstOrg = await seed(prisma);
+    const secondOrg = await seed(prisma);
+    const [target, selectedOther] =
+      firstOrg.organization.id < secondOrg.organization.id
+        ? [firstOrg, secondOrg]
+        : [secondOrg, firstOrg];
+    const other = await seed(prisma);
+    const envData = (id: string) => ({
+      id,
+      slug: id,
+      projectId: target.project.id,
+      organizationId: target.organization.id,
+      apiKey: `api-${id}`,
+      pkApiKey: `pk-${id}`,
+      shortcode: `sc-${id}`,
+      type: "PRODUCTION" as const,
+    });
+    await prisma.runtimeEnvironment.createMany({
+      data: Array.from({ length: 1_000 }, (_, i) =>
+        envData(`page-env-${String(i).padStart(4, "0")}`)
+      ),
+    });
+    const { redis, create } = backfill(prisma, redisOptions);
+    try {
+      const service = create();
+      const first = await service.selectPage([
+        target.organization.id,
+        selectedOther.organization.id,
+      ]);
+      expect(first.number).toBe(1);
+      expect(first.environments).toHaveLength(1_000);
+      expect(first.nextCursor).not.toBeNull();
+      await expect(service.nextPage(first.id)).rejects.toThrow("Verify");
+      await prisma.runtimeEnvironment.create({ data: envData("zz-new-environment") });
+      const verify = await service.create("verify", first.id, target.user.id);
+      await service.run(verify.id);
+      expect((await service.current())?.completedEnvironments).toBe(1_000);
+      expect(await service.pageVerified()).toBe(true);
+      expect((await service.page())?.environments.map((env) => env.id)).toEqual(
+        first.environments.map((env) => env.id)
+      );
+      const second = await service.nextPage(first.id);
+      expect(second.number).toBe(2);
+      expect(second.after).toEqual(first.nextCursor);
+      expect(second.environments.map((env) => env.id)).toEqual([
+        "page-env-0999",
+        "zz-new-environment",
+        selectedOther.environment.id,
+      ]);
+      expect(second.nextCursor).toBeNull();
+      expect(
+        [...first.environments, ...second.environments].some(
+          (env) => env.id === other.environment.id
+        )
+      ).toBe(false);
+      expect(await service.pageVerified()).toBe(false);
+      await expect(service.create("enroll", first.id, target.user.id)).rejects.toThrow(
+        "Page changed"
+      );
+      await expect(service.nextPage(first.id)).rejects.toThrow("Page changed");
+      await expect(service.selectPage([target.organization.id], first.id)).rejects.toThrow(
+        "Page changed"
+      );
+      await service.run(verify.id);
+      expect((await service.page())?.id).toBe(second.id);
+      const finalVerify = await service.create("verify", second.id, target.user.id);
+      await service.run(finalVerify.id);
+      expect((await service.current())?.completedEnvironments).toBe(3);
+      expect(await service.pageVerified()).toBe(true);
+      await expect(service.nextPage(second.id)).rejects.toThrow("No more pages");
+    } finally {
+      await redis.quit();
+    }
+  },
+  60_000
 );
