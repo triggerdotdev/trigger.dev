@@ -19,6 +19,7 @@ import { fromFriendlyId } from "@trigger.dev/core/v3/isomorphic";
 import {
   WORKER_HEADERS,
   type RunTokenHeartbeatReport,
+  type WorkerApiRunHeartbeatRequestBody,
   type WeightedWorkerQueueSubscription,
   type WorkerQueueClass,
 } from "@trigger.dev/core/v3/workers";
@@ -66,6 +67,11 @@ import type { EnvironmentVariable } from "~/v3/environmentVariables/repository";
 import { machinePresetFromName } from "~/v3/machinePresets.server";
 import { meteringClaims } from "~/v3/utils/meteringClaims.server";
 import { issueContinueRunToken, refreshRunTokenOnHeartbeat } from "./runTokenRefresh.server";
+import {
+  countInitialUsageAuth,
+  initialUsageAuth,
+  refreshUsageJwtOnHeartbeat,
+} from "./usageJwtRefresh.server";
 import type { WithRunEngineOptions } from "../baseService.server";
 import { WithRunEngine } from "../baseService.server";
 
@@ -602,6 +608,7 @@ export class AuthenticatedWorkerInstance extends WithRunEngine {
     environmentId,
     sandboxRunId,
     runTokenReport,
+    usageJwtReport,
   }: {
     runFriendlyId: string;
     snapshotFriendlyId: string;
@@ -609,7 +616,8 @@ export class AuthenticatedWorkerInstance extends WithRunEngine {
     environmentId?: string;
     sandboxRunId?: string;
     runTokenReport?: RunTokenHeartbeatReport;
-  }): Promise<{ runToken?: string }> {
+    usageJwtReport?: WorkerApiRunHeartbeatRequestBody["usageJwt"];
+  }): Promise<{ runToken?: string; usageJwt?: string; usageJwtError?: "refresh_failed" }> {
     const heartbeat = await this._engine.heartbeatRun({
       runId: fromFriendlyId(runFriendlyId),
       snapshotId: fromFriendlyId(snapshotFriendlyId),
@@ -638,7 +646,33 @@ export class AuthenticatedWorkerInstance extends WithRunEngine {
       replica: this._replica,
     });
 
-    return { runToken };
+    let usageJwt: string | undefined;
+    let usageJwtError: "refresh_failed" | undefined;
+    try {
+      usageJwt = await refreshUsageJwtOnHeartbeat({
+        report: usageJwtReport,
+        runId: fromFriendlyId(runFriendlyId),
+        snapshotId: fromFriendlyId(snapshotFriendlyId),
+        workerId: this.workerInstanceId,
+        runnerId,
+        environmentId,
+        projectId: this.type === "UNMANAGED" ? (this.projectId ?? undefined) : undefined,
+        store: this._engine.runStore,
+        resolveContext: (runId) => this._engine.resolveTaskRunContext(runId),
+        sign: generateJWTTokenForEnvironment,
+      });
+    } catch (error) {
+      usageJwtError = "refresh_failed";
+      logger.warn("Billing JWT refresh rejected or failed", {
+        runId: runFriendlyId,
+        snapshotId: snapshotFriendlyId,
+        workerId: this.workerInstanceId,
+        runnerId,
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
+
+    return { runToken, usageJwt, usageJwtError };
   }
 
   async startRunAttempt({
@@ -651,6 +685,7 @@ export class AuthenticatedWorkerInstance extends WithRunEngine {
     environmentId,
     sandboxRunId,
     supportsRunTokenRefresh,
+    supportsUsageJwtRefresh,
     supportsSecretProxy,
   }: {
     runFriendlyId: string;
@@ -662,6 +697,7 @@ export class AuthenticatedWorkerInstance extends WithRunEngine {
     environmentId?: string;
     sandboxRunId?: string;
     supportsRunTokenRefresh?: boolean;
+    supportsUsageJwtRefresh?: boolean;
     supportsSecretProxy?: boolean;
   }): Promise<
     StartRunAttemptResult & {
@@ -758,16 +794,32 @@ export class AuthenticatedWorkerInstance extends WithRunEngine {
       variables = [...variables, ...delivery.placeholders];
     }
 
+    const usageAuth = this.initialUsageAuthFor({
+      runId: engineResult.run.id,
+      supportsUsageJwtRefresh,
+      verifiedEnvironmentId: environmentId,
+      environmentId: environment.id,
+      hasRootKey: variables.some((variable) => variable.key === "TRIGGER_SECRET_KEY"),
+    });
+
     const envVars = await this.getEnvVars(
       variables,
       environment,
       engineResult.run.id,
       engineResult.execution.machine ?? defaultMachinePreset,
-      meteringClaims({
-        environmentType: environment.type,
-        region: engineResult.run.region,
-        workerQueue: engineResult.run.workerQueue,
-      }),
+      {
+        ...meteringClaims({
+          environmentType: environment.type,
+          region: engineResult.run.region,
+          workerQueue: engineResult.run.workerQueue,
+        }),
+        ...(usageAuth === "control_plane"
+          ? {
+              usage_auth: "control-plane-v1",
+              usage_attempt: String(engineResult.execution.attempt.number),
+            }
+          : {}),
+      },
       engineResult.run.taskEventStore ?? undefined,
       runToken
     );
@@ -777,6 +829,30 @@ export class AuthenticatedWorkerInstance extends WithRunEngine {
       envVars,
       ...(secretProxyMetadata ? { secretProxy: secretProxyMetadata } : {}),
     };
+  }
+
+  private initialUsageAuthFor(opts: {
+    runId: string;
+    supportsUsageJwtRefresh?: boolean;
+    verifiedEnvironmentId?: string;
+    environmentId: string;
+    hasRootKey: boolean;
+  }) {
+    const kind = initialUsageAuth(opts);
+    countInitialUsageAuth(kind);
+
+    // A run without the root key whose environment the supervisor did not verify: its credential
+    // cannot be renewed by either path. This is the alert signal.
+    if (kind === "legacy_unverified") {
+      logger.warn("Billing JWT issued without any renewal path: unverified environment", {
+        runId: opts.runId,
+        environmentId: opts.environmentId,
+        verifiedEnvironmentId: opts.verifiedEnvironmentId,
+        workerId: this.workerInstanceId,
+      });
+    }
+
+    return kind;
   }
 
   // The engine validates the header's scope before any resolved variables are returned.

@@ -28,15 +28,16 @@ export const action = createActionWorkerApiRoute(
   }): Promise<TypedResponse<WorkerApiRunHeartbeatResponseBody>> => {
     const { runFriendlyId, snapshotFriendlyId } = params;
 
-    const { runToken } = await authenticatedWorker.heartbeatRun({
+    const { runToken, usageJwt, usageJwtError } = await authenticatedWorker.heartbeatRun({
       runFriendlyId,
       snapshotFriendlyId,
       runnerId,
       environmentId,
       sandboxRunId,
       runTokenReport: body.runToken,
+      usageJwtReport: body.usageJwt,
     });
 
-    return json({ ok: true, runToken });
+    return json({ ok: true, runToken, usageJwt, usageJwtError });
   }
 );

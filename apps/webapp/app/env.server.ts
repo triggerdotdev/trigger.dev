@@ -1289,6 +1289,8 @@ const EnvironmentSchema = z
     /* Usage settings */
     USAGE_EVENT_URL: z.string().optional(),
     PROD_USAGE_HEARTBEAT_INTERVAL_MS: z.coerce.number().int().optional(),
+    /** "1" lets runs resend usage reports that got no definite answer. Turn on only with billing dedup enabled. */
+    USAGE_RETRY_AMBIGUOUS_REPORTS: z.enum(["0", "1"]).default("0"),
 
     CENTS_PER_RUN: z.coerce.number().default(0),
 

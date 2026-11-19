@@ -416,6 +416,8 @@ export class DequeueSystem {
                     projectId: snapshot.projectId,
                     organizationId: snapshot.organizationId,
                     batchId: snapshot.batchId ?? undefined,
+                    workerId: snapshot.workerId ?? undefined,
+                    runnerId: snapshot.runnerId ?? undefined,
                     completedWaitpoints: snapshot.completedWaitpoints.map((waitpoint) => ({
                       id: waitpoint.id,
                       index: waitpoint.index,

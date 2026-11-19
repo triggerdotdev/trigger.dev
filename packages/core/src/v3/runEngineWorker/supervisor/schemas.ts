@@ -126,11 +126,17 @@ export type WorkerApiDequeueRequestBody = z.infer<typeof WorkerApiDequeueRequest
 export const WorkerApiDequeueResponseBody = DequeuedMessage.array();
 export type WorkerApiDequeueResponseBody = z.infer<typeof WorkerApiDequeueResponseBody>;
 
+export const USAGE_JWT_REFRESH_BEFORE_EXPIRY_SECONDS = 5 * 60;
+
 export const WorkerApiRunHeartbeatRequestBody = z.object({
   cpu: z.number().optional(),
   memory: z.number().optional(),
   // A malformed report must never fail the heartbeat itself.
   runToken: RunTokenHeartbeatReport.optional().catch(undefined),
+  usageJwt: z
+    .object({ expiresAt: z.number().finite(), attemptNumber: z.number().int().positive() })
+    .optional()
+    .catch(undefined),
 });
 export type WorkerApiRunHeartbeatRequestBody = z.infer<typeof WorkerApiRunHeartbeatRequestBody>;
 
@@ -138,6 +144,9 @@ export const WorkerApiRunHeartbeatResponseBody = z.object({
   ok: z.literal(true),
   /** A replacement TRIGGER_RUN_TOKEN, only when the runner's reported token is due for refresh. */
   runToken: z.string().optional(),
+  /** Scoped billing credential. Never a worker token or a signing key. */
+  usageJwt: z.string().optional(),
+  usageJwtError: z.literal("refresh_failed").optional(),
 });
 export type WorkerApiRunHeartbeatResponseBody = z.infer<typeof WorkerApiRunHeartbeatResponseBody>;
 
@@ -150,6 +159,7 @@ export const WorkerApiRunAttemptStartRequestBody = z.object({
   workerLane: z.string().max(32).optional().catch(undefined),
   /** Set by runners that report and install run-token refreshes, so the attempt can get a short-lived token. */
   supportsRunTokenRefresh: z.boolean().optional().catch(undefined),
+  supportsUsageJwtRefresh: z.boolean().optional().catch(undefined),
 });
 export type WorkerApiRunAttemptStartRequestBody = z.infer<
   typeof WorkerApiRunAttemptStartRequestBody

@@ -123,6 +123,14 @@ export const WorkerToExecutorMessageCatalog = {
       waitpoint: CompletedWaitpoint,
     }),
   },
+  UPDATE_USAGE_JWT: {
+    message: z.object({
+      runId: z.string(),
+      attemptNumber: z.number().int(),
+      token: z.string(),
+    }),
+    callback: z.object({ installed: z.boolean() }).optional(),
+  },
   /** Replaces TRIGGER_RUN_TOKEN, but only while the process is still executing this run attempt. */
   UPDATE_RUN_TOKEN: {
     message: z.object({

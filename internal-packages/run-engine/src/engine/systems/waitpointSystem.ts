@@ -1744,8 +1744,11 @@ export class WaitpointSystem {
           organizationId,
           // Never carry over the previous snapshot's batchId.
           batchId: batch?.id,
-          workerId,
-          runnerId,
+          // API-driven waits do not transfer ownership of a live runner.
+          workerId:
+            newStatus === "EXECUTING_WITH_WAITPOINTS" ? (snapshot.workerId ?? undefined) : workerId,
+          runnerId:
+            newStatus === "EXECUTING_WITH_WAITPOINTS" ? (snapshot.runnerId ?? undefined) : runnerId,
         });
 
         // Tell the worker now, so it can suspend the run.
@@ -2302,6 +2305,8 @@ export class WaitpointSystem {
               projectId: snapshot.projectId,
               organizationId: snapshot.organizationId,
               batchId: this.#resumeBatchId(runId, snapshot.batchId, blockingWaitpoints),
+              workerId: snapshot.workerId ?? undefined,
+              runnerId: snapshot.runnerId ?? undefined,
               completedWaitpoints: blockingWaitpoints.map((b) => ({
                 id: b.waitpoint.id,
                 index: b.batchIndex ?? undefined,
