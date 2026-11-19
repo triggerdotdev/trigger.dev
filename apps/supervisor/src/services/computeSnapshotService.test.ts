@@ -24,7 +24,8 @@ function delayedSnapshot(runnerId = "runner-1") {
 function createRunnerService(
   outcome: { ok: true; location: string } | { ok: false; error: string },
   requested: { ok: true } | { ok: false; error: string } = { ok: true },
-  published: PublishedSuspend[] = []
+  published: PublishedSuspend[] = [],
+  beforeSuspend?: (runFriendlyId: string) => Promise<void>
 ) {
   const requestSuspend = vi.fn(async (_opts: RunnerSuspendRequest) => requested);
   const awaitSuspend = vi.fn(
@@ -64,6 +65,7 @@ function createRunnerService(
       submitSuspendCompletion,
     } as unknown as SupervisorHttpClient,
     wideEventOpts: { service: "supervisor-test", env: {}, enabled: false },
+    beforeSuspend,
   });
   return {
     service,
@@ -249,6 +251,27 @@ describe("ComputeSnapshotService with a runner snapshotter", () => {
 
       await vi.waitFor(() => expect(requestSuspend).toHaveBeenCalledTimes(2), { timeout: 2_000 });
       expect(awaitSuspend).toHaveBeenCalledTimes(2);
+    } finally {
+      service.stop();
+    }
+  });
+
+  it("refuses the suspend when the run's authority cannot be revoked first", async () => {
+    const { service, requestSuspend, submitSuspendCompletion } = createRunnerService(
+      { ok: true, location: "snap-1" },
+      { ok: true },
+      [],
+      async () => {
+        throw new Error("revocation not durable");
+      }
+    );
+    try {
+      service.schedule("run_1", delayedSnapshot());
+      await vi.waitFor(() => expect(submitSuspendCompletion).toHaveBeenCalledTimes(1), {
+        timeout: 2_000,
+      });
+      expect(requestSuspend).not.toHaveBeenCalled();
+      expect(submitSuspendCompletion.mock.calls[0]).toMatchObject([{ body: { success: false } }]);
     } finally {
       service.stop();
     }

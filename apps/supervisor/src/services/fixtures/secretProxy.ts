@@ -19,7 +19,7 @@ import { connect as connectTls } from "node:tls";
 import { promisify } from "node:util";
 import { fileURLToPath } from "node:url";
 import { setTimeout as sleep } from "node:timers/promises";
-import { getRunnerId } from "../../util.js";
+import { getRestoreRunnerId, getRunnerId } from "../../util.js";
 import type { SecretProxyCaller } from "../secretProxyBindings.js";
 
 const exec = promisify(execFile);
@@ -99,6 +99,10 @@ function controlHealth(socketPath: string) {
     req.on("timeout", () => req.destroy(new Error("Control health timeout")));
     req.end();
   });
+}
+
+function runnerName(runId: string, attempt?: number, checkpoint?: string) {
+  return checkpoint ? getRestoreRunnerId(runId, checkpoint) : getRunnerId(runId, attempt);
 }
 
 export type FixtureAllocation = {
@@ -400,92 +404,97 @@ export class SecretProxyFixture {
   }
 
   async placements(
-    requests: { runId: string; attempt?: number; singleUse?: boolean }[],
+    requests: { runId: string; attempt?: number; singleUse?: boolean; checkpoint?: string }[],
     claims = deploymentClaims
   ): Promise<SecretProxyCaller[]> {
     for (let offset = 0; offset < requests.length; offset += 8) {
       await Promise.all(
-        requests.slice(offset, offset + 8).map(async ({ runId, attempt, singleUse }) => {
-          const name = getRunnerId(runId, attempt);
-          const runner = (await this.custom.createNamespacedCustomObject({
-            group: "compute.trigger.dev",
-            version: "v1alpha1",
-            plural: "runners",
-            namespace: this.namespace,
-            body: {
-              apiVersion: "compute.trigger.dev/v1alpha1",
-              kind: "Runner",
-              metadata: { name },
-              spec: {
-                runtime: "microvm",
-                singleUse,
-                templateKey: "a".repeat(64),
-                image: PAUSE_IMAGE,
-                machine: { name: "test", cpu: "0.01", memory: "8Mi" },
-                owner: {
-                  envID: claims.environment_id,
-                  envType: claims.environment_type,
-                  orgID: claims.org_id,
-                  projectID: claims.project_id,
-                },
-                deployment: { friendlyID: claims.deployment, version: claims.deployment_version },
-                bootstrap: {
-                  runFriendlyID: runId,
-                  snapshotFriendlyID: "snap_test",
-                  dequeuedAt: new Date().toISOString(),
-                },
-              },
-            },
-          })) as { metadata: { uid: string } };
-          await this.core.createNamespacedPod({
-            namespace: this.namespace,
-            body: {
-              metadata: {
-                name,
-                ownerReferences: [
-                  {
-                    apiVersion: "compute.trigger.dev/v1alpha1",
-                    kind: "Runner",
-                    name,
-                    uid: runner.metadata.uid,
-                    controller: true,
+        requests
+          .slice(offset, offset + 8)
+          .map(async ({ runId, attempt, singleUse, checkpoint }) => {
+            const name = runnerName(runId, attempt, checkpoint);
+            const runner = (await this.custom.createNamespacedCustomObject({
+              group: "compute.trigger.dev",
+              version: "v1alpha1",
+              plural: "runners",
+              namespace: this.namespace,
+              body: {
+                apiVersion: "compute.trigger.dev/v1alpha1",
+                kind: "Runner",
+                metadata: { name },
+                spec: {
+                  runtime: "microvm",
+                  singleUse,
+                  restore: checkpoint ? { snapshotID: checkpoint, node: this.nodeName } : undefined,
+                  templateKey: "a".repeat(64),
+                  image: PAUSE_IMAGE,
+                  machine: { name: "test", cpu: "0.01", memory: "8Mi" },
+                  owner: {
+                    envID: claims.environment_id,
+                    envType: claims.environment_type,
+                    orgID: claims.org_id,
+                    projectID: claims.project_id,
                   },
-                ],
-              },
-              spec: {
-                nodeName: this.nodeName,
-                terminationGracePeriodSeconds: 0,
-                containers: [
-                  {
-                    name: "run-controller",
-                    image: PAUSE_IMAGE,
-                    resources: { requests: { cpu: "1m", memory: "2Mi" } },
+                  deployment: { friendlyID: claims.deployment, version: claims.deployment_version },
+                  bootstrap: {
+                    runFriendlyID: runId,
+                    snapshotFriendlyID: "snap_test",
+                    dequeuedAt: new Date().toISOString(),
                   },
-                ],
+                },
               },
-            },
-          });
-        })
+            })) as { metadata: { uid: string } };
+            await this.core.createNamespacedPod({
+              namespace: this.namespace,
+              body: {
+                metadata: {
+                  name,
+                  ownerReferences: [
+                    {
+                      apiVersion: "compute.trigger.dev/v1alpha1",
+                      kind: "Runner",
+                      name,
+                      uid: runner.metadata.uid,
+                      controller: true,
+                    },
+                  ],
+                },
+                spec: {
+                  nodeName: this.nodeName,
+                  terminationGracePeriodSeconds: 0,
+                  containers: [
+                    {
+                      name: "run-controller",
+                      image: PAUSE_IMAGE,
+                      resources: { requests: { cpu: "1m", memory: "2Mi" } },
+                    },
+                  ],
+                },
+              },
+            });
+          })
       );
     }
     const pods = await waitFor(async () => {
       const result = await this.core.listNamespacedPod({ namespace: this.namespace });
       const byName = new Map(result.items.map((pod) => [pod.metadata!.name!, pod]));
       return requests.every(
-        ({ runId, attempt }) =>
-          byName.get(getRunnerId(runId, attempt))?.status?.containerStatuses?.[0]?.state?.running
+        ({ runId, attempt, checkpoint }) =>
+          byName.get(runnerName(runId, attempt, checkpoint))?.status?.containerStatuses?.[0]?.state
+            ?.running
       )
         ? byName
         : undefined;
     }, `${requests.length} running placement pods`);
-    return requests.map(({ runId, attempt }) => {
-      const runnerId = getRunnerId(runId, attempt);
+    return requests.map(({ runId, attempt, checkpoint }) => {
+      const runnerId = runnerName(runId, attempt, checkpoint);
       const pod = pods.get(runnerId)!;
       this.placementsByRunner.set(runnerId, {
         allocationId: randomUUID(),
         guestId: pod.status!.containerStatuses![0]!.containerID!.replace(/^containerd:\/\//, ""),
         runId,
-        attempt: attempt ?? 1,
+        // A restored allocation has no attempt until its first binding.
+        attempt: checkpoint ? 0 : (attempt ?? 1),
       });
       return { runId, runnerId, claims, sourceIp: pod.status!.podIP! };
     });

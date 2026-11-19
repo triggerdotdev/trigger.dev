@@ -244,10 +244,19 @@ export class WorkloadServer extends EventEmitter<WorkloadServerEvents> {
     });
 
     if (opts.runnerSnapshotter?.snapshotsEnabled) {
+      const secretProxy = opts.secretProxy;
       this.snapshotService = new ComputeSnapshotService({
         runnerSnapshotter: opts.runnerSnapshotter,
         workerClient: opts.workerClient,
         wideEventOpts: this.wideEventOpts,
+        beforeSuspend: secretProxy
+          ? (runFriendlyId, snapshotFriendlyId) =>
+              secretProxy.revokeSuspending(runFriendlyId, snapshotFriendlyId)
+          : undefined,
+        suspendSettled: secretProxy
+          ? (runFriendlyId, snapshotFriendlyId, accepted) =>
+              secretProxy.suspendSettled(runFriendlyId, snapshotFriendlyId, accepted)
+          : undefined,
       });
     }
 
@@ -869,6 +878,18 @@ export class WorkloadServer extends EventEmitter<WorkloadServerEvents> {
                     return response;
                   }
                 );
+                // An execution that lost its binding mid-attempt is bound again by its own VM.
+                if (heartbeatResponse.success) {
+                  await this.secretProxy?.rebindContinued(
+                    {
+                      runId: params.runFriendlyId,
+                      runnerId: this.runnerIdFromRequest(req),
+                      sourceIp: req.socket.remoteAddress,
+                      claims: auth.claims,
+                    },
+                    heartbeatResponse.data.runToken
+                  );
+                }
 
                 if (!heartbeatResponse.success) {
                   this.logger.error("Failed to heartbeat run", {
@@ -905,14 +926,6 @@ export class WorkloadServer extends EventEmitter<WorkloadServerEvents> {
                   return;
                 }
                 const runnerId = this.runnerIdFromRequest(req);
-                if (this.secretProxy) {
-                  reply.json(
-                    { ok: false, error: "Secret proxy checkpoint CA continuity is not verified" },
-                    false,
-                    409
-                  );
-                  return;
-                }
                 const deploymentVersion = this.deploymentVersionFromRequest(req);
                 const projectRef = this.projectRefFromRequest(req);
 
@@ -1023,12 +1036,27 @@ export class WorkloadServer extends EventEmitter<WorkloadServerEvents> {
                 // Cancel any pending delayed snapshot for this run
                 this.snapshotService?.cancel(params.runFriendlyId);
 
+                const caller = {
+                  runId: params.runFriendlyId,
+                  runnerId: this.runnerIdFromRequest(req),
+                  sourceIp: req.socket.remoteAddress,
+                  claims: auth.claims,
+                };
+                const placement = this.secretProxy?.tracks(params.runFriendlyId)
+                  ? undefined
+                  : await this.secretProxy
+                      ?.prepareStart(caller, { continuing: true })
+                      .catch(() => undefined);
                 const continuationResult = await this.workerClient.continueRunExecution(
                   params.runFriendlyId,
                   params.snapshotFriendlyId,
-                  this.runnerIdFromRequest(req),
+                  caller.runnerId,
                   auth.environmentId,
-                  { retryBudget: this.continueRetryBudget }
+                  {
+                    retryBudget: this.continueRetryBudget,
+                    supportsSecretProxy: !!placement,
+                    sandboxRunId: auth.sandboxRunId,
+                  }
                 );
 
                 if (continuationResult.retry) {
@@ -1056,7 +1084,22 @@ export class WorkloadServer extends EventEmitter<WorkloadServerEvents> {
                   return;
                 }
 
-                reply.json(continuationResult.data as WorkloadContinueRunExecutionResponseBody);
+                const { runToken, secretProxy, ...continuation } = continuationResult.data;
+                if (placement && this.secretProxy && secretProxy) {
+                  try {
+                    await this.secretProxy.activateContinue(caller, placement, {
+                      ...continuation,
+                      runToken,
+                      secretProxy,
+                    });
+                  } catch (error) {
+                    this.logger.error("Failed to bind continued secret proxy execution", {
+                      params,
+                      error,
+                    });
+                  }
+                }
+                reply.json(continuation as WorkloadContinueRunExecutionResponseBody);
 
                 await this.cancelCheckpointsAfterReply(params.runFriendlyId);
               }

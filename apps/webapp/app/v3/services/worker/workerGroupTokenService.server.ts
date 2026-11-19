@@ -7,6 +7,7 @@ import {
 import type {
   CheckpointInput,
   CompleteRunAttemptResult,
+  ExecutionResult,
   DequeuedMessage,
   MachinePreset,
   StartRunAttemptResult,
@@ -64,7 +65,7 @@ import {
 import type { EnvironmentVariable } from "~/v3/environmentVariables/repository";
 import { machinePresetFromName } from "~/v3/machinePresets.server";
 import { meteringClaims } from "~/v3/utils/meteringClaims.server";
-import { refreshRunTokenOnHeartbeat } from "./runTokenRefresh.server";
+import { issueContinueRunToken, refreshRunTokenOnHeartbeat } from "./runTokenRefresh.server";
 import type { WithRunEngineOptions } from "../baseService.server";
 import { WithRunEngine } from "../baseService.server";
 
@@ -934,11 +935,15 @@ export class AuthenticatedWorkerInstance extends WithRunEngine {
     snapshotFriendlyId,
     runnerId,
     environmentId,
+    supportsSecretProxy,
+    sandboxRunId,
   }: {
     runFriendlyId: string;
     snapshotFriendlyId: string;
     runnerId?: string;
     environmentId?: string;
+    supportsSecretProxy?: boolean;
+    sandboxRunId?: string;
   }) {
     await this.assertCreatedAtGate({
       runId: fromFriendlyId(runFriendlyId),
@@ -946,13 +951,78 @@ export class AuthenticatedWorkerInstance extends WithRunEngine {
       action: "continue",
     });
 
-    return await this._engine.continueRunExecution({
+    const result = await this._engine.continueRunExecution({
       runId: fromFriendlyId(runFriendlyId),
       snapshotId: fromFriendlyId(snapshotFriendlyId),
       workerId: this.workerInstanceId,
       runnerId,
       environmentId,
     });
+    if (!supportsSecretProxy || !environmentId) return result;
+    // The run already continued, so a proxy failure must not fail the continue. Without
+    // metadata the guest stays unbound and its protected requests fail closed.
+    try {
+      return {
+        ...result,
+        ...(await this.secretProxyContinuation(result, environmentId, sandboxRunId)),
+      };
+    } catch (error) {
+      logger.warn("Secret proxy continuation unavailable", {
+        runId: result.run.friendlyId,
+        error: error instanceof Error ? error.message : String(error),
+      });
+      return result;
+    }
+  }
+
+  private async secretProxyContinuation(
+    result: ExecutionResult,
+    environmentId: string,
+    sandboxRunId?: string
+  ): Promise<{ runToken?: string; secretProxy?: SecretProxyExecutionMetadata }> {
+    const { environment, pinned } = await this.findAttemptEnvironment(result.run.id, environmentId);
+    const resolved = await resolveAttemptVariables(
+      environment,
+      environment.parentEnvironment ?? undefined,
+      { grant: pinned?.policy.envVars }
+    );
+    if (!resolved.proxyValues.length || !result.run.attemptNumber) return {};
+    const proxy = secretProxy(
+      env.CONTROL_PLANE_DEQUEUE_READS_FROM_REPLICA === "1" ? this._replica : this._prisma
+    );
+    const runToken = await issueContinueRunToken({
+      heartbeat: result,
+      snapshotFriendlyId: result.snapshot.friendlyId,
+      environmentId,
+      sandboxRunId,
+      findRun: (runId) =>
+        this._engine.runStore.findRun(
+          { id: runId },
+          {
+            select: {
+              taskIdentifier: true,
+              runtimeEnvironmentId: true,
+              lockedById: true,
+              annotations: true,
+            },
+          }
+        ),
+      replica: this._replica,
+    });
+    if (!runToken) return {};
+    const hosts = await proxy.preflightRuntime(
+      environment.projectId,
+      environment.id,
+      resolved.proxyValues,
+      true,
+      true
+    );
+    const { secretProxy: metadata } = proxy.finalizeRuntime(resolved.proxyValues, hosts, {
+      runId: result.run.friendlyId,
+      attempt: result.run.attemptNumber,
+      expiresAtMs: decodeJwt(runToken).exp! * 1000,
+    });
+    return { runToken, secretProxy: metadata };
   }
 
   async reportRestoreOutcome({

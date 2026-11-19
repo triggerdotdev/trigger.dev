@@ -163,6 +163,14 @@ export const SecretProxyExecution = z.object({
 });
 export type SecretProxyExecution = z.infer<typeof SecretProxyExecution>;
 
+export const WorkerApiContinueRunExecutionResponseBody = ExecutionResult.extend({
+  runToken: z.string().optional(),
+  secretProxy: SecretProxyExecution.optional(),
+});
+export type WorkerApiContinueRunExecutionResponseBody = z.infer<
+  typeof WorkerApiContinueRunExecutionResponseBody
+>;
+
 export const WorkerApiRunAttemptStartResponseBody = StartRunAttemptResult.and(
   z.object({
     envVars: z.record(z.string(), z.string()),

@@ -1,7 +1,4 @@
-import type {
-  SupervisorHttpClient,
-  WorkerApiRunRestoreOutcomeRequestBody,
-} from "@trigger.dev/core/v3/workers";
+import type { SupervisorHttpClient } from "@trigger.dev/core/v3/workers";
 import { chmod } from "node:fs/promises";
 import { setTimeout as sleep } from "node:timers/promises";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
@@ -10,7 +7,7 @@ import {
   SecretProxyBindings,
   SecretProxyAllocationBusyError,
   interceptorControl,
-  reportSecretProxyRestoreRefusal,
+  type RunExecution,
   type SecretProxyCaller,
   type SecretProxyStartResult,
 } from "./secretProxyBindings.js";
@@ -46,6 +43,15 @@ function accepted(
   };
 }
 
+function execution(
+  friendlyId: string,
+  executionStatus: string,
+  attemptNumber = 1,
+  checkpoint?: object
+): RunExecution {
+  return { run: { attemptNumber }, snapshot: { friendlyId, executionStatus }, checkpoint };
+}
+
 function acknowledged(caller: SecretProxyCaller, snapshotId: string): CompletionResponse {
   return {
     success: true,
@@ -76,6 +82,9 @@ describe("SecretProxyBindings with real k3s and native interceptor UDS", () => {
   let bindings: SecretProxyBindings;
   let callers: SecretProxyCaller[];
   let victim: SecretProxyCaller;
+  // The platform's answers for the run's executions since a snapshot, and its latest.
+  let executionsSince: RunExecution[] = [];
+  let latestExecution: RunExecution | undefined;
 
   function registrar(completionGraceMs?: number) {
     return new SecretProxyBindings({
@@ -84,6 +93,9 @@ describe("SecretProxyBindings with real k3s and native interceptor UDS", () => {
       nodeName: fixture.nodeName,
       socketPath: fixture.socketPath,
       completionGraceMs,
+      snapshotsSince: async () => executionsSince,
+      latestExecution: async () =>
+        latestExecution ?? executionsSince[0] ?? execution("snap_unchanged", "EXECUTING"),
     });
   }
   beforeAll(async () => {
@@ -98,6 +110,8 @@ describe("SecretProxyBindings with real k3s and native interceptor UDS", () => {
     })) as [SecretProxyCaller];
   }, 600_000);
   beforeEach(async () => {
+    executionsSince = [];
+    latestExecution = undefined;
     bindings = registrar();
     await fixture.resetAllocations();
     await bindings.start();
@@ -124,45 +138,6 @@ describe("SecretProxyBindings with real k3s and native interceptor UDS", () => {
     const response = acknowledged(caller, snapshotId);
     expect(await bindings.complete(caller, async () => response)).toEqual(response);
   }
-
-  it("fails checkpoint restores without attempting restore", async () => {
-    const checkpoint = {
-      id: "checkpoint_before_enrollment",
-      type: "COMPUTE" as const,
-      location: "saved",
-    };
-    const reports: WorkerApiRunRestoreOutcomeRequestBody[] = [];
-    expect(
-      await reportSecretProxyRestoreRefusal(
-        { interceptorSocket: fixture.socketPath, checkpoint },
-        {
-          report: async (body) => {
-            reports.push(body);
-            return { success: true };
-          },
-          release: async () => {
-            throw new Error("Acknowledged refusal must not release");
-          },
-        }
-      )
-    ).toEqual({ result: "ok" });
-    expect(reports).toEqual([
-      { outcome: "fail", reason: "SecretProxyCheckpointUnsupported", message: expect.any(String) },
-    ]);
-    expect(
-      await reportSecretProxyRestoreRefusal(
-        { checkpoint },
-        {
-          report: async () => {
-            throw new Error("Ordinary restore must not be refused");
-          },
-          release: async () => {
-            throw new Error("Ordinary restore must not be released");
-          },
-        }
-      )
-    ).toBe(false);
-  });
 
   it("refuses live and concurrent starts without changing the active binding", async () => {
     const first = callers[0]!;
@@ -601,6 +576,147 @@ describe("SecretProxyBindings with real k3s and native interceptor UDS", () => {
       await chmod(fixture.socketPath, 0o600);
     }
   }, 30_000);
+
+  it("lets a pinned VM continue its own attempt after a suspend revocation, and nothing else", async () => {
+    const [sandbox] = (await fixture.placements([
+      { runId: "run_sandboxsuspend", singleUse: true },
+    ])) as [SecretProxyCaller];
+    await fixture.registerAllocation(sandbox);
+    const first = await start(sandbox);
+
+    await chmod(fixture.socketPath, 0o644);
+    await expect(bindings.revokeSuspending(sandbox.runId, "snap_failed")).rejects.toThrow();
+    await chmod(fixture.socketPath, 0o600);
+    await bindings.authorize(sandbox);
+    await bindings.revokeSuspending(sandbox.runId, "snap_revoked");
+    expect(await fixture.acceptsTls(sandbox)).toBe(false);
+
+    await expect(bindings.prepareStart(sandbox)).rejects.toBeInstanceOf(
+      SecretProxyAllocationBusyError
+    );
+    const other = { ...sandbox, runId: "run_notthesandbox" };
+    expect(await bindings.prepareStart(other, { continuing: true })).toBeUndefined();
+    const placement = await bindings.prepareStart(sandbox, { continuing: true });
+    expect(placement).toBeDefined();
+    const next = accepted(sandbox, { snapshotId: "snap_continued" });
+    await bindings.activateContinue(sandbox, placement!, {
+      run: { friendlyId: sandbox.runId, attemptNumber: 1 },
+      snapshot: next.snapshot,
+      runToken: next.envVars.TRIGGER_RUN_TOKEN,
+      secretProxy: next.secretProxy,
+    });
+    expect(await fixture.acceptsTls(sandbox)).toBe(true);
+    await finish(sandbox, first.snapshot.friendlyId);
+  }, 60_000);
+
+  it("rebinds the source VM on its next heartbeat when the platform discards its suspend", async () => {
+    const caller = { ...callers[0]!, runId: "run_discardedsuspend" };
+    const response = await start(caller);
+    expect(await fixture.acceptsTls(caller)).toBe(true);
+    await bindings.revokeSuspending(caller.runId, "snap_discarded");
+    expect(await fixture.acceptsTls(caller)).toBe(false);
+
+    // Not rebound before the platform answers that suspend, nor for another VM.
+    await bindings.rebindContinued(caller);
+    bindings.suspendSettled(caller.runId, "snap_earlier", false);
+    await bindings.rebindContinued(caller);
+    expect(await fixture.acceptsTls(caller)).toBe(false);
+    bindings.suspendSettled(caller.runId, "snap_discarded", false);
+    await bindings.rebindContinued({ ...callers[1]!, runId: caller.runId });
+    expect(await fixture.acceptsTls(caller)).toBe(false);
+
+    // A stale completion from an earlier attempt leaves it pending.
+    await bindings.complete(caller, async () => acknowledged(caller, "snap_old"), 0);
+    executionsSince = [execution("snap_waiting", "EXECUTING_WITH_WAITPOINTS")];
+    // A history that does not reach the latest snapshot (a lagging replica) is not enough.
+    latestExecution = execution("snap_not_replicated", "SUSPENDED", 1, {});
+    await bindings.rebindContinued(caller, executionInput(caller).runToken);
+    expect(await fixture.acceptsTls(caller)).toBe(false);
+    latestExecution = undefined;
+    await bindings.rebindContinued(caller, executionInput(caller).runToken);
+    expect(await fixture.acceptsTls(caller)).toBe(true);
+    await finish(caller, response.snapshot.friendlyId);
+    expect(await fixture.acceptsTls(caller)).toBe(false);
+  });
+
+  it("does not rebind a source VM once its attempt may run elsewhere", async () => {
+    const moved: RunExecution[][] = [
+      [execution("snap_checkpointed", "SUSPENDED", 1, {})],
+      [execution("snap_pending", "PENDING_EXECUTING")],
+      [execution("snap_next_attempt", "EXECUTING", 2)],
+    ];
+    for (const [index, since] of moved.entries()) {
+      const caller = { ...callers[0]!, runId: `run_moved${index}` };
+      const response = await start(caller);
+      await bindings.revokeSuspending(caller.runId, "snap_lost_ack");
+      // A later suspend from the unbound VM must not move the cursor past that history.
+      await bindings.revokeSuspending(caller.runId, "snap_later");
+      bindings.suspendSettled(caller.runId, "snap_later", false);
+      executionsSince = since;
+      await bindings.rebindContinued(caller, executionInput(caller).runToken);
+      expect(await fixture.acceptsTls(caller)).toBe(false);
+      executionsSince = [];
+      await bindings.rebindContinued(caller, executionInput(caller).runToken);
+      expect(await fixture.acceptsTls(caller)).toBe(false);
+      await finish(caller, response.snapshot.friendlyId);
+    }
+  });
+
+  it("leaves the source VM unbound when the platform accepts its suspend", async () => {
+    const caller = { ...callers[0]!, runId: "run_acceptedsuspend" };
+    const response = await start(caller);
+    await bindings.revokeSuspending(caller.runId, "snap_accepted");
+    bindings.suspendSettled(caller.runId, "snap_accepted", true);
+    await bindings.rebindContinued(caller, executionInput(caller).runToken);
+    expect(await fixture.acceptsTls(caller)).toBe(false);
+    await finish(caller, response.snapshot.friendlyId);
+  });
+
+  it("lets a restored VM continue its attempt after a supervisor restart and a failed suspend", async () => {
+    const [restored] = (await fixture.placements([
+      { runId: "run_restoredsuspend", checkpoint: "checkpoint_a1b2c3d4" },
+    ])) as [SecretProxyCaller];
+    await fixture.registerAllocation(restored);
+    const placement = await bindings.prepareStart(restored, { continuing: true });
+    expect(placement).toBeDefined();
+    const first = accepted(restored, { attempt: 2 });
+    await bindings.activateContinue(restored, placement!, {
+      run: { friendlyId: restored.runId, attemptNumber: 2 },
+      snapshot: first.snapshot,
+      runToken: first.envVars.TRIGGER_RUN_TOKEN,
+      secretProxy: first.secretProxy,
+    });
+    expect(await fixture.acceptsTls(restored)).toBe(true);
+
+    await bindings.stop();
+    bindings = registrar();
+    await bindings.start();
+    await bindings.authorize(restored);
+    await bindings.revokeSuspending(restored.runId, "snap_restored_suspend");
+    expect(await fixture.acceptsTls(restored)).toBe(false);
+
+    const again = await bindings.prepareStart(restored, { continuing: true });
+    expect(again).toBeDefined();
+    const other = accepted(restored, { attempt: 3, snapshotId: "snap_other_attempt" });
+    await expect(
+      bindings.activateContinue(restored, again!, {
+        run: { friendlyId: restored.runId, attemptNumber: 3 },
+        snapshot: other.snapshot,
+        runToken: other.envVars.TRIGGER_RUN_TOKEN,
+        secretProxy: other.secretProxy,
+      })
+    ).rejects.toThrow();
+    const retry = await bindings.prepareStart(restored, { continuing: true });
+    const next = accepted(restored, { attempt: 2, snapshotId: "snap_restored_continued" });
+    await bindings.activateContinue(restored, retry!, {
+      run: { friendlyId: restored.runId, attemptNumber: 2 },
+      snapshot: next.snapshot,
+      runToken: next.envVars.TRIGGER_RUN_TOKEN,
+      secretProxy: next.secretProxy,
+    });
+    expect(await fixture.acceptsTls(restored)).toBe(true);
+    await finish(restored, next.snapshot.friendlyId);
+  }, 60_000);
 
   it("keeps a revoked completion retryable past token expiry", async () => {
     const caller = callers[0]!;

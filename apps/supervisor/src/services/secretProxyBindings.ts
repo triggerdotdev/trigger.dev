@@ -1,5 +1,5 @@
 import type { V1Pod } from "@kubernetes/client-node";
-import type { DequeuedMessage, WorkloadDeploymentTokenClaims } from "@trigger.dev/core/v3";
+import type { WorkloadDeploymentTokenClaims } from "@trigger.dev/core/v3";
 import {
   SecretProxyExecution,
   type SupervisorHttpClient,
@@ -13,8 +13,6 @@ import { Counter, Gauge } from "prom-client";
 import { register } from "../metrics.js";
 import { type K8sApi, withTimeout } from "../clients/kubernetes.js";
 import { attemptOfRunnerId } from "../util.js";
-import type { RestoreOutcomeReport } from "../workloadManager/runCrd.js";
-import type { RunReleaser } from "./runReleases.js";
 
 const CONTROL_TIMEOUT_MS = 2_000;
 const MAX_CONTROL_RESPONSE_BYTES = 2 * 1024 * 1024;
@@ -30,6 +28,8 @@ const MAX_CONTROL_RETRY_MS = 60_000;
 const INITIAL_START_FAILURE_RETRY_MS = 1_000;
 const MAX_START_FAILURE_RETRY_MS = 60_000;
 
+const RESTORED_ATTEMPT = 0;
+
 const controlRequests = new Counter({
   name: "supervisor_secret_proxy_control_requests_total",
   help: "Local interceptor control calls by bounded operation and outcome",
@@ -38,6 +38,16 @@ const controlRequests = new Counter({
 });
 for (const operation of ["reset", "lookup", "bind", "revoke"]) {
   for (const outcome of ["success", "error"]) controlRequests.inc({ operation, outcome }, 0);
+}
+
+const continuedBindings = new Counter({
+  name: "supervisor_secret_proxy_continued_bindings_total",
+  help: "Executions that lost their binding mid-attempt (a failed continue bind or a suspend that was not accepted), by whether a later heartbeat bound them again",
+  labelNames: ["trigger", "outcome"],
+  registers: [register],
+});
+for (const trigger of ["continue", "suspend"]) {
+  for (const outcome of ["bound", "lost"]) continuedBindings.inc({ trigger, outcome }, 0);
 }
 
 function readinessMetric(): Gauge {
@@ -82,7 +92,7 @@ const Allocation = z.object({
     .regex(/^[a-zA-Z0-9_-]+$/),
   guestId: z.string().min(1),
   runId: z.string().min(1),
-  attempt: z.number().int().positive().safe(),
+  attempt: z.number().int().nonnegative().safe(),
   bindingId: z.string().min(1),
   empty: z.boolean(),
   hasBeenBound: z.boolean(),
@@ -105,6 +115,7 @@ type Identity = {
   environmentId: string;
   deploymentId: string;
   singleUseAttempt?: number;
+  pinned?: boolean;
 };
 
 export type SecretProxyPlacement = Pick<
@@ -119,7 +130,8 @@ export type SecretProxyPlacement = Pick<
   | "environmentId"
   | "deploymentId"
   | "singleUseAttempt"
-> & { isWarmStart: boolean };
+  | "pinned"
+> & { isWarmStart: boolean; continuing?: boolean };
 
 export type SecretProxyStartResult = {
   execution: {
@@ -133,11 +145,44 @@ export type SecretProxyStartResult = {
   envVars: Record<string, string>;
 };
 
+export type SecretProxyContinueResult = {
+  run: { friendlyId: string; attemptNumber?: number | null };
+  snapshot: { friendlyId: string; createdAt: Date };
+  runToken?: string;
+  secretProxy?: SecretProxyExecution;
+};
+
 type Binding = Identity & {
   expiresAtMs: number;
   busy: boolean;
   completed: boolean;
   proxy?: SecretProxyExecution;
+  runToken?: string;
+};
+
+export type RunExecution = {
+  run: { attemptNumber?: number | null };
+  snapshot: { friendlyId: string; executionStatus: string };
+  checkpoint?: unknown;
+};
+
+/** An execution in these states stays in process; any other may have moved to another VM. */
+const IN_PROCESS_STATUSES = new Set(["EXECUTING", "EXECUTING_WITH_WAITPOINTS"]);
+/** The platform returns at most this many executions since a snapshot; a full page is unproven. */
+const MAX_SNAPSHOTS_SINCE = 50;
+
+type PendingRebind = {
+  trigger: "continue" | "suspend";
+  /** The suspend whose outcome decides whether to rebind; unset once it is known. */
+  suspend?: string;
+  /** The execution snapshot the VM last held authority at. */
+  since: string;
+  runnerId: string;
+  attempt: number;
+  proxy: SecretProxyExecution;
+  runToken?: string;
+  ready: boolean;
+  busy: boolean;
 };
 
 export class SecretProxyAllocationBusyError extends Error {
@@ -190,6 +235,7 @@ type CachedPlacement = ReturnType<typeof trustedSecretProxyIdentity> & {
   allocationId: string;
   hasBeenBound: boolean;
   bindingId?: string;
+  boundAttempt?: number;
 };
 
 export function trustedSecretProxyIdentity(
@@ -206,15 +252,18 @@ export function trustedSecretProxyIdentity(
   if (!parsed.success) return denied();
   const runner = parsed.data;
   const ip = sourceIp(caller.sourceIp);
-  const attempt =
-    caller.runnerId && attemptOfRunnerId(caller.runnerId, runner.spec.bootstrap.runFriendlyID);
+  const attempt = runner.spec.restore
+    ? RESTORED_ATTEMPT
+    : caller.runnerId
+      ? attemptOfRunnerId(caller.runnerId, runner.spec.bootstrap.runFriendlyID)
+      : undefined;
   const container = pod.spec?.containers[0]?.name;
   const status = pod.status?.containerStatuses?.find((s) => s.name === container);
   const guestId = status?.containerID?.match(/^containerd:\/\/([a-zA-Z0-9_-]+)$/)?.[1];
   if (
     !caller.claims ||
     !ip ||
-    !attempt ||
+    attempt === undefined ||
     !guestId ||
     !pod.metadata?.uid ||
     runner.metadata.deletionTimestamp ||
@@ -223,7 +272,7 @@ export function trustedSecretProxyIdentity(
     pod.metadata.namespace !== namespace ||
     runner.metadata.name !== caller.runnerId ||
     pod.metadata.name !== caller.runnerId ||
-    runner.spec.restore ||
+    (runner.spec.restore && caller.runId !== runner.spec.bootstrap.runFriendlyID) ||
     (runner.spec.singleUse && caller.runId !== runner.spec.bootstrap.runFriendlyID) ||
     runner.spec.owner.envID !== caller.claims.environment_id ||
     runner.spec.deployment.friendlyID !== caller.claims.deployment ||
@@ -248,7 +297,8 @@ export function trustedSecretProxyIdentity(
     sourceIp: ip,
     bootstrapRunId: runner.spec.bootstrap.runFriendlyID,
     bootstrapAttempt: attempt,
-    singleUseAttempt: runner.spec.singleUse ? attempt : undefined,
+    singleUseAttempt: runner.spec.singleUse && !runner.spec.restore ? attempt : undefined,
+    pinned: !!runner.spec.singleUse || !!runner.spec.restore,
     runnerId: runner.metadata.name,
     runnerUid: runner.metadata.uid,
     environmentId: runner.spec.owner.envID,
@@ -379,28 +429,6 @@ async function allocationForGuest(socketPath: string, guestId: string) {
   }
 }
 
-export async function reportSecretProxyRestoreRefusal(
-  options: { interceptorSocket?: string; checkpoint?: DequeuedMessage["checkpoint"] },
-  deps: {
-    report: RestoreOutcomeReport;
-    release: () => ReturnType<RunReleaser["release"]>;
-  }
-): Promise<
-  | false
-  | { result: "ok" | "conflict" }
-  | { result: "error"; error: string; releaseResult: Awaited<ReturnType<RunReleaser["release"]>> }
-> {
-  if (!options.interceptorSocket || !options.checkpoint) return false;
-  const reported = await deps.report({
-    outcome: "fail",
-    reason: "SecretProxyCheckpointUnsupported",
-    message: "The secret proxy lab lane does not support checkpoint restores",
-  });
-  if (reported.success) return { result: "ok" };
-  if (reported.statusCode === 409) return { result: "conflict" };
-  return { result: "error", error: reported.error, releaseResult: await deps.release() };
-}
-
 export class SecretProxyBindings {
   private readonly bindings = new Map<string, Binding>();
   private readonly failedStarts = new Map<
@@ -425,6 +453,7 @@ export class SecretProxyBindings {
   >();
   private readonly recoverable = new Map<string, Set<string>>();
   private readonly pendingRevocations = new Map<string, Set<string>>();
+  private readonly rebinds = new Map<string, PendingRebind>();
   private discovery?: Promise<void>;
   private verifying = 0;
   private controlling = 0;
@@ -446,6 +475,10 @@ export class SecretProxyBindings {
       nodeName: string;
       socketPath: string;
       completionGraceMs?: number;
+      /** The run's executions after a snapshot, from the authenticated platform connection. */
+      snapshotsSince?: (caller: SecretProxyCaller, snapshotId: string) => Promise<RunExecution[]>;
+      /** The run's latest execution, read from the primary. */
+      latestExecution?: (caller: SecretProxyCaller) => Promise<RunExecution>;
     }
   ) {
     this.readiness.set(0);
@@ -602,7 +635,11 @@ export class SecretProxyBindings {
       )
         return denied();
       if (this.bindings.has(caller.runId)) return;
-      this.remember({ ...placement, hasBeenBound: true });
+      this.remember({
+        ...placement,
+        hasBeenBound: true,
+        ...(placement.pinned ? { boundAttempt: recovered.attempt } : {}),
+      });
       this.bindings.set(caller.runId, {
         ...placement,
         bindingId: recovered.bindingId,
@@ -618,7 +655,10 @@ export class SecretProxyBindings {
     if (guests.size === 0) this.recoverable.delete(caller.runId);
   }
 
-  async prepareStart(caller: SecretProxyCaller): Promise<SecretProxyPlacement | undefined> {
+  async prepareStart(
+    caller: SecretProxyCaller,
+    { continuing = false } = {}
+  ): Promise<SecretProxyPlacement | undefined> {
     if (
       !this.ready ||
       this.stopped ||
@@ -682,10 +722,10 @@ export class SecretProxyBindings {
       !this.ready ||
       this.placements.get(cached.podUid) !== cached ||
       !matchesPlacementCaller(cached, caller) ||
-      (cached.singleUseAttempt !== undefined && caller.runId !== cached.bootstrapRunId)
+      (cached.pinned && caller.runId !== cached.bootstrapRunId)
     )
       return;
-    if (cached.bindingId || (cached.singleUseAttempt !== undefined && cached.hasBeenBound))
+    if (cached.bindingId || (cached.pinned && cached.hasBeenBound && !continuing))
       throw new SecretProxyAllocationBusyError(cached);
     this.placements.delete(cached.podUid);
     this.placements.set(cached.podUid, cached);
@@ -693,6 +733,7 @@ export class SecretProxyBindings {
       ...cached,
       bindingId: randomUUID(),
       isWarmStart: caller.runId !== cached.bootstrapRunId || cached.hasBeenBound,
+      continuing,
     };
   }
 
@@ -747,7 +788,7 @@ export class SecretProxyBindings {
     this.starting.set(placement.allocationId, placement);
     try {
       const cached = this.currentPlacement(placement);
-      if (cached.bindingId || (cached.singleUseAttempt !== undefined && cached.hasBeenBound))
+      if (cached.bindingId || (cached.pinned && cached.hasBeenBound && !placement.continuing))
         throw new SecretProxyAllocationBusyError(placement);
       placement.isWarmStart ||= cached.hasBeenBound;
       return await operation();
@@ -776,14 +817,20 @@ export class SecretProxyBindings {
   async activateStart(
     caller: SecretProxyCaller,
     placement: SecretProxyPlacement,
-    response: SecretProxyStartResult
+    response: Omit<SecretProxyStartResult, "snapshot">
   ): Promise<void> {
     const { execution } = response;
     const protectedStart = response.secretProxy !== undefined;
     const cached = this.currentPlacement(placement);
+    const pinnedAttempt = placement.singleUseAttempt ?? cached.boundAttempt;
     if (
       this.stopped ||
       !this.ready ||
+      (cached.pinned &&
+        (execution.run.id !== cached.bootstrapRunId ||
+          (pinnedAttempt === undefined
+            ? cached.hasBeenBound
+            : execution.attempt.number !== pinnedAttempt))) ||
       execution.run.id !== caller.runId ||
       execution.environment.id !== placement.environmentId ||
       execution.deployment?.id !== placement.deploymentId ||
@@ -819,6 +866,7 @@ export class SecretProxyBindings {
         { bindingId: binding.bindingId }
       );
       cached.hasBeenBound = true;
+      if (cached.pinned) cached.boundAttempt = execution.attempt.number;
       if (this.currentPlacement(placement) !== cached) return denied();
       if (response.secretProxy) {
         await this.attach(
@@ -831,6 +879,7 @@ export class SecretProxyBindings {
         this.bindings.delete(binding.runId);
       }
       if (this.currentPlacement(placement) !== cached) return denied();
+      this.rebinds.delete(execution.run.id);
     } catch (error) {
       if (!protectedStart && !this.retiredStarts.has(placement)) {
         if (this.bindings.get(binding.runId) === binding) this.bindings.delete(binding.runId);
@@ -963,6 +1012,7 @@ export class SecretProxyBindings {
     binding.proxy = proxy;
     binding.expiresAtMs = proxy.expiresAtMs;
     await this.put(binding, runToken);
+    binding.runToken = runToken;
     this.get(runId);
   }
 
@@ -980,6 +1030,7 @@ export class SecretProxyBindings {
     }
     await this.put({ ...binding, expiresAtMs }, runToken);
     binding.expiresAtMs = expiresAtMs;
+    binding.runToken = runToken;
   }
 
   async complete(
@@ -992,11 +1043,217 @@ export class SecretProxyBindings {
     if (!this.ready) return denied();
     await this.finishRevocations(caller.runId);
     await this.recover(caller);
+    const rebind = this.rebinds.get(caller.runId);
+    if (
+      rebind &&
+      rebind.runnerId === caller.runnerId &&
+      (attemptNumber === undefined || attemptNumber >= rebind.attempt)
+    ) {
+      if (rebind.busy) return denied();
+      this.dropRebind(caller.runId);
+    }
     const binding = this.bindings.get(caller.runId);
     if (!binding) return operation();
     if (!matchesCaller(binding, caller)) return denied();
     if (attemptNumber !== undefined && attemptNumber < binding.attempt) return operation();
     return this.completeBinding(binding, operation);
+  }
+
+  async revokeSuspending(runId: string, snapshotFriendlyId: string): Promise<void> {
+    if (this.stopped) return denied();
+    const rebind = this.rebinds.get(runId);
+    if (rebind?.busy) return denied();
+    // An unbound VM keeps its original cursor, so a later suspend cannot skip the history since.
+    if (rebind) {
+      rebind.ready = false;
+      rebind.suspend = snapshotFriendlyId;
+    }
+    await this.finishRevocations(runId);
+    const guests = this.recoverable.get(runId);
+    for (const guestId of guests ?? []) {
+      const allocation = await allocationForGuest(this.opts.socketPath, guestId);
+      if (allocation.binding?.runId === runId) await this.control(allocation.bindingId);
+      guests!.delete(guestId);
+    }
+    if (guests?.size === 0) this.recoverable.delete(runId);
+    const binding = this.bindings.get(runId);
+    if (!binding) return;
+    if (binding.busy) return denied();
+    if (binding.proxy)
+      this.rebinds.set(runId, {
+        trigger: "suspend",
+        suspend: snapshotFriendlyId,
+        since: snapshotFriendlyId,
+        runnerId: binding.runnerId,
+        attempt: binding.attempt,
+        proxy: { ...binding.proxy, expiresAtMs: binding.expiresAtMs },
+        runToken: binding.runToken,
+        ready: false,
+        busy: false,
+      });
+    binding.busy = true;
+    try {
+      await this.closeBinding(binding);
+    } catch (error) {
+      const pending = this.pendingRevocations.get(runId) ?? new Set<string>();
+      pending.add(binding.bindingId);
+      this.pendingRevocations.set(runId, pending);
+      const cached = this.placements.get(binding.podUid);
+      if (cached?.bindingId === binding.bindingId) cached.bindingId = undefined;
+      throw error;
+    } finally {
+      binding.busy = false;
+      if (this.bindings.get(runId) === binding) this.bindings.delete(runId);
+    }
+  }
+
+  async activateContinue(
+    caller: SecretProxyCaller,
+    placement: SecretProxyPlacement,
+    response: SecretProxyContinueResult
+  ): Promise<void> {
+    const { secretProxy, runToken, run } = response;
+    const attempt = run.attemptNumber;
+    if (!secretProxy || !runToken || !attempt || !caller.runnerId) return;
+    try {
+      await this.bindContinued(caller, placement, attempt, runToken, secretProxy);
+    } catch (error) {
+      if (!this.stopped)
+        this.rebinds.set(caller.runId, {
+          trigger: "continue",
+          since: response.snapshot.friendlyId,
+          runnerId: caller.runnerId,
+          attempt,
+          proxy: secretProxy,
+          runToken,
+          ready: true,
+          busy: false,
+        });
+      throw error;
+    }
+  }
+
+  /** A suspend's platform outcome: only an accepted one leaves the source VM unbound. */
+  suspendSettled(runId: string, snapshotFriendlyId: string, accepted: boolean): void {
+    const pending = this.rebinds.get(runId);
+    if (!pending || pending.suspend !== snapshotFriendlyId) return;
+    if (accepted) {
+      this.rebinds.delete(runId);
+      return;
+    }
+    pending.suspend = undefined;
+    pending.ready = true;
+  }
+
+  /**
+   * Call after a successful platform heartbeat from the VM. Binds only if, since the VM last held
+   * authority, the attempt never left the process: no checkpoint and no state it could resume
+   * elsewhere from. Never throws.
+   */
+  async rebindContinued(caller: SecretProxyCaller, heartbeatToken?: string): Promise<void> {
+    const pending = this.rebinds.get(caller.runId);
+    if (!pending?.ready || pending.busy || pending.runnerId !== caller.runnerId) return;
+    if (
+      !(heartbeatToken ?? pending.runToken) ||
+      !this.opts.snapshotsSince ||
+      !this.opts.latestExecution
+    )
+      return;
+    pending.busy = true;
+    try {
+      const executions = await this.opts.snapshotsSince(caller, pending.since);
+      // Read after the history: a replica may lag, so the history counts only if it reaches the
+      // primary's latest snapshot.
+      const latest = await this.opts.latestExecution(caller);
+      const complete =
+        latest.snapshot.friendlyId === pending.since ||
+        executions.some(
+          (execution) => execution.snapshot.friendlyId === latest.snapshot.friendlyId
+        );
+      if (!complete) return;
+      if (
+        executions.length >= MAX_SNAPSHOTS_SINCE ||
+        executions.some(
+          (execution) =>
+            execution.checkpoint ||
+            execution.run.attemptNumber !== pending.attempt ||
+            !IN_PROCESS_STATUSES.has(execution.snapshot.executionStatus)
+        )
+      ) {
+        this.dropRebind(caller.runId);
+        return;
+      }
+      if (heartbeatToken) {
+        const expiresAtMs = platformTokenExpiry(heartbeatToken, {
+          runId: caller.runId,
+          attempt: pending.attempt,
+          environmentId: caller.claims?.environment_id ?? "",
+          deploymentId: caller.claims?.deployment ?? "",
+        });
+        pending.runToken = heartbeatToken;
+        pending.proxy = { ...pending.proxy, expiresAtMs };
+      }
+      await this.finishRevocations(caller.runId);
+      const placement = await this.prepareStart(caller, { continuing: true });
+      if (!placement) return;
+      const cached = this.placements.get(placement.podUid);
+      if (cached?.pinned) cached.boundAttempt ??= pending.attempt;
+      await this.bindContinued(
+        caller,
+        placement,
+        pending.attempt,
+        pending.runToken!,
+        pending.proxy
+      );
+      continuedBindings.inc({ trigger: pending.trigger, outcome: "bound" });
+    } catch {
+      // Retried on the next heartbeat until the authority expires.
+    } finally {
+      pending.busy = false;
+    }
+  }
+
+  private dropRebind(runId: string): void {
+    const pending = this.rebinds.get(runId);
+    if (!pending) return;
+    this.rebinds.delete(runId);
+    if (pending.ready) continuedBindings.inc({ trigger: pending.trigger, outcome: "lost" });
+  }
+
+  private async bindContinued(
+    caller: SecretProxyCaller,
+    placement: SecretProxyPlacement,
+    attempt: number,
+    runToken: string,
+    secretProxy: SecretProxyExecution
+  ): Promise<void> {
+    // `withStart` is keyed by this exact object, so it must not be copied.
+    placement.continuing = true;
+    try {
+      await this.withStart(placement, () =>
+        this.activateStart(caller, placement, {
+          execution: {
+            run: { id: caller.runId },
+            attempt: { number: attempt },
+            environment: { id: placement.environmentId },
+            deployment: { id: placement.deploymentId },
+          },
+          secretProxy,
+          envVars: { TRIGGER_RUN_TOKEN: runToken },
+        })
+      );
+    } catch (error) {
+      // Its credential write may have landed, so revoke it before the next attempt to bind.
+      const failed = this.bindings.get(caller.runId);
+      if (failed?.bindingId === placement.bindingId) {
+        this.bindings.delete(caller.runId);
+        const pending = this.pendingRevocations.get(caller.runId) ?? new Set<string>();
+        pending.add(placement.bindingId);
+        this.pendingRevocations.set(caller.runId, pending);
+        await this.finishRevocations(caller.runId).catch(() => {});
+      }
+      throw error;
+    }
   }
 
   async revokeRunner(
@@ -1019,6 +1276,8 @@ export class SecretProxyBindings {
     const cached = this.placements.get(this.runnerPlacements.get(runnerId) ?? "");
     if (cached?.runnerUid === runnerUid) this.forgetPlacement(cached);
     this.placementLookups.delete(runnerId);
+    for (const [runId, pending] of this.rebinds)
+      if (pending.runnerId === runnerId) this.rebinds.delete(runId);
     const revocations = [...this.bindings]
       .filter(([, binding]) => binding.runnerId === runnerId && binding.runnerUid === runnerUid)
       .map(async ([runId, binding]) => {
@@ -1097,6 +1356,8 @@ export class SecretProxyBindings {
     for (const runId of this.pendingRevocations.keys())
       await this.finishRevocations(runId).catch(() => {});
     for (const bindingId of this.failedStarts.keys()) await this.retryFailedStart(bindingId);
+    for (const [runId, pending] of this.rebinds)
+      if (pending.proxy.expiresAtMs <= Date.now()) this.dropRebind(runId);
     for (const [runId, binding] of this.bindings) {
       if (this.failedStarts.has(binding.bindingId)) continue;
       if (!binding.proxy && binding.expiresAtMs <= Date.now()) {
@@ -1137,5 +1398,6 @@ export class SecretProxyBindings {
     this.placementLookups.clear();
     this.recoverable.clear();
     this.pendingRevocations.clear();
+    this.rebinds.clear();
   }
 }

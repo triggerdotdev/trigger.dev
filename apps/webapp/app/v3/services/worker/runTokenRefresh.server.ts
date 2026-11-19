@@ -117,6 +117,14 @@ export async function refreshRunTokenOnHeartbeat(
   return outcome.result === "success" ? outcome.token : undefined;
 }
 
+export async function issueContinueRunToken(
+  request: Omit<RunTokenRefreshRequest, "report">
+): Promise<string | undefined> {
+  const outcome = await issue({ ...request, report: undefined }, "restore");
+  telemetry.issued.add(1, { trigger: "restore", result: outcome.result, reason: outcome.reason });
+  return outcome.result === "success" ? outcome.token : undefined;
+}
+
 async function issue(
   {
     heartbeat,
