@@ -9,6 +9,7 @@ import {
   getRawImpersonationId,
   getSupportAccessExpiresAt,
   getSupportAccessOrgSlugs,
+  getSupportAccessRequestId,
   setImpersonationId,
 } from "~/services/impersonation.server";
 import { authenticator } from "~/services/auth.server";
@@ -330,6 +331,7 @@ export async function redirectWithImpersonation(
   const session = await setImpersonationId(userId, request, {
     organizationSlugs: [organizationSlug],
     expiresAt: access.value.type === "scoped" ? access.value.expiresAt : undefined,
+    requestId: access.value.type === "scoped" ? access.value.requestId : undefined,
   });
 
   const setCookie = await commitImpersonationSession(session);
@@ -410,14 +412,16 @@ function supportSessionEvent(
 /** Nothing limits a request's reason when it's made, so the event keeps only its start. */
 const MAX_SUPPORT_REASON_LENGTH = 500;
 
-// The reason the organization approved. Shown to the customer already, so it's safe to log.
+// The reason the organization approved. Shown to the customer already, so it's safe to log. With an
+// organization, only a request that organization approved counts.
 async function supportAccessRequestChanges(
   prismaClient: PrismaClientOrTransaction,
-  requestId: string
+  requestId: string,
+  organizationId?: string
 ): Promise<AuditLogChanges | null> {
   try {
     const request = await prismaClient.supportAccessRequest.findFirst({
-      where: { id: requestId },
+      where: { id: requestId, ...(organizationId ? { organizationId } : {}) },
       select: { reason: true },
     });
     return request ? { reason: request.reason.slice(0, MAX_SUPPORT_REASON_LENGTH) } : null;
@@ -432,10 +436,15 @@ async function supportAccessRequestChanges(
 
 // One end event per organization the session's scope covered. A session is started for one
 // organization, but the cookie holds a list of slugs. Each is resolved to its organization in the
-// background, so ending the session doesn't wait for it.
+// background, so ending the session doesn't wait for it. A session under an approved request ends
+// with that request's reason, in the organization that approved it, as it started.
 function recordSupportSessionEndsLater(
   organizationSlugs: string[],
-  { impersonatedUserId, staffUserId }: { impersonatedUserId: string; staffUserId: string }
+  {
+    impersonatedUserId,
+    staffUserId,
+    supportAccessRequestId,
+  }: { impersonatedUserId: string; staffUserId: string; supportAccessRequestId?: string }
 ) {
   for (const slug of organizationSlugs) {
     auditLogs.recordLater(async () => {
@@ -448,6 +457,9 @@ function recordSupportSessionEndsLater(
         organizationId: organization.id,
         impersonatedUserId,
         staffUserId,
+        changes: supportAccessRequestId
+          ? await supportAccessRequestChanges(prisma, supportAccessRequestId, organization.id)
+          : null,
       });
     });
   }
@@ -547,6 +559,10 @@ export async function clearImpersonation(request: Request, path: string) {
     staffUserId && auditLogs.isRecordingEnabled()
       ? ((await getSupportAccessOrgSlugs(request)) ?? [])
       : [];
+  const supportAccessRequestId =
+    staffUserId && auditLogs.isRecordingEnabled()
+      ? await getSupportAccessRequestId(request)
+      : undefined;
 
   if (targetId && authUser?.userId) {
     const xff = request.headers.get("x-forwarded-for");
@@ -574,7 +590,11 @@ export async function clearImpersonation(request: Request, path: string) {
   const setCookie = await commitImpersonationSession(session);
 
   if (targetId && staffUserId) {
-    recordSupportSessionEndsLater(organizationSlugs, { impersonatedUserId: targetId, staffUserId });
+    recordSupportSessionEndsLater(organizationSlugs, {
+      impersonatedUserId: targetId,
+      staffUserId,
+      supportAccessRequestId,
+    });
   }
 
   return redirect(path, {
