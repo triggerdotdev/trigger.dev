@@ -89,6 +89,28 @@ export function runNotShown({
   return loadNote;
 }
 
+/**
+ * A linked span the Trace tab never showed: only once its run's read has ended (not while it
+ * pages, since a later page can bring it) and only on the Trace tab. The run's own span has no
+ * row (the run row stands for it), and the run panel already shows it.
+ */
+export function spanNotLoaded({
+  spanId,
+  runSpanId,
+  spanSeen,
+  runSettled,
+  onTraceTab,
+}: {
+  spanId: string | undefined;
+  runSpanId: string | undefined;
+  spanSeen: boolean;
+  runSettled: boolean;
+  onTraceTab: boolean;
+}): boolean {
+  if (spanId === undefined || spanId === runSpanId) return false;
+  return !spanSeen && runSettled && onTraceTab;
+}
+
 /** When a starting run's note turns into "never started", so the panel can re-render then. */
 export function startingEndsAtMs(facts: RunFacts) {
   return new Date(facts.triggeredAt).getTime() + RUN_STARTING_WINDOW_MS;

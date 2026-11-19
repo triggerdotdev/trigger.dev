@@ -294,13 +294,8 @@ function SessionLeftPane({
   const organization = useOrganization();
   const project = useProject();
   const environment = useEnvironment();
-  const { value, replace } = useSearchParams();
-  const view = resolveSessionPageView({
-    view: value("view"),
-    raw: value("raw"),
-    channel: value("channel"),
-    traceEnabled: true,
-  });
+  const { replace } = useSearchParams();
+  const view = useSessionPageView(true);
   const track = useSessionViewAnalytics();
   // Kept here so switching tabs doesn't fetch it again.
   const transcript = useSessionTranscript({
@@ -1117,6 +1112,17 @@ function MergedStreamRow({
   );
 }
 
+/** The tab the URL asks for; the loader works it out from the request the same way. */
+function useSessionPageView(traceEnabled: boolean) {
+  const { value } = useSearchParams();
+  return resolveSessionPageView({
+    view: value("view"),
+    raw: value("raw"),
+    channel: value("channel"),
+    traceEnabled,
+  });
+}
+
 function InspectorPane({
   session,
   status,
@@ -1133,11 +1139,13 @@ function InspectorPane({
   const organization = useOrganization();
   const project = useProject();
   const environment = useEnvironment();
+  const onTraceTab = useSessionPageView(sessionTraceEnabled) === "trace";
   if (sessionTraceEnabled && selection.kind !== "session") {
     return (
       <SessionRunInspector
         selection={selection}
         runsPath={v3SessionRunsPath(organization, project, environment, session)}
+        onTraceTab={onTraceTab}
         onClose={() => setSelection({ kind: "session" })}
       />
     );
