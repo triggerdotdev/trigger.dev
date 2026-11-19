@@ -388,9 +388,15 @@ for (let turn = 0; turn < 100; turn++) {
   const { message } = await chat.pipeAndCapture(result);
   if (message) await conversation.addResponse(message);
 
-  // Outer-loop compaction
-  const usage = await result.totalUsage;
-  await conversation.compactIfNeeded(usage, { chatId: payload.chatId, turn });
+  // Outer-loop compaction. Pass the last step's usage: it's what the model's
+  // context window held on its final call. `result.usage` is the turn's sum on
+  // AI SDK 7, so read it from `steps`, and pass the turn's sum separately.
+  const lastStepUsage = (await result.steps).at(-1)?.usage;
+  await conversation.compactIfNeeded(lastStepUsage, {
+    chatId: payload.chatId,
+    turn,
+    turnUsage: await result.totalUsage,
+  });
 
   await db.chat.update({ data: { messages: conversation.uiMessages } });
   await chat.writeTurnComplete();

@@ -440,4 +440,88 @@ describe("chat.MessageAccumulator compaction", () => {
     expect(lane).not.toContain("EARLY-SENTINEL");
     expect(lane).toContain("tool-approval-response");
   });
+
+  const pendingRefund = (id: string) =>
+    ({
+      id,
+      role: "assistant",
+      parts: [
+        {
+          type: "tool-issueRefund",
+          toolCallId: "call_real",
+          state: "approval-requested",
+          input: OWN_INPUT,
+          approval: { id: "ap_real" },
+        },
+      ],
+    }) as unknown as UIMessage;
+
+  // Catches: an approval for a message that is not the trailing one spliced its run in at the
+  // lane's tail, after the later turns, when the call awaiting approval converts to no model
+  // messages (AI SDK 7).
+  it("keeps chronological order when an approval answers a message that is not the last", async () => {
+    const conversation = new chat.MessageAccumulator();
+    await conversation.addIncoming(
+      [
+        userMessage("FIRST-Q", "u1"),
+        pendingRefund("a1"),
+        userMessage("LATER-Q", "u2"),
+        {
+          id: "a2",
+          role: "assistant",
+          parts: [{ type: "text", text: "LATER-A" }],
+        } as UIMessage,
+      ],
+      "submit-message",
+      0
+    );
+    const model = await conversation.addIncoming(
+      [slimApproval("a1", "call_real", "ap_real")],
+      "submit-message",
+      1
+    );
+    const lane = JSON.stringify(model);
+    expect(lane).toContain("tool-approval-response");
+    expect(lane.indexOf("call_real")).toBeLessThan(lane.indexOf("LATER-Q"));
+    expect(lane.indexOf("tool-approval-response")).toBeLessThan(lane.indexOf("LATER-Q"));
+  });
+
+  // Catches: replacing a message that converts to nothing while the lane already holds its tool
+  // call (a spliced head-start partial) left the old form behind, so the call appeared twice.
+  it("does not carry a tool call twice when the lane already holds the pending call", async () => {
+    const conversation = new chat.MessageAccumulator();
+    await conversation.addIncoming(
+      [userMessage("FIRST-Q", "u1"), pendingRefund("a1")],
+      "submit-message",
+      0
+    );
+    conversation.modelMessages = [
+      ...conversation.modelMessages.filter((m) => m.role === "user"),
+      {
+        role: "assistant",
+        content: [
+          {
+            type: "tool-call",
+            toolCallId: "call_real",
+            toolName: "issueRefund",
+            input: OWN_INPUT,
+          },
+        ],
+      },
+    ];
+    const model = await conversation.addIncoming(
+      [slimApproval("a1", "call_real", "ap_real")],
+      "submit-message",
+      1
+    );
+    const calls = model.flatMap((m) =>
+      Array.isArray(m.content)
+        ? m.content.filter(
+            (p) =>
+              p.type === "tool-call" && (p as { toolCallId: string }).toolCallId === "call_real"
+          )
+        : []
+    );
+    expect(calls).toHaveLength(1);
+  });
 });

@@ -3022,6 +3022,32 @@ function emptyUsage(): LanguageModelUsage {
   };
 }
 
+/**
+ * The last step's usage of a `streamText` result: what the model's context window held on
+ * its final call. It comes from `steps` because the result's `usage` is the last step's on
+ * AI SDK 6 but the turn's sum on AI SDK 7. A custom stream source with no `steps` falls
+ * back to its `usage`, which such a source supplies as the last step's. Raced against a 2s
+ * timeout like the turn's `totalUsage`, since the promises can hang on a stop-abort.
+ * Returns undefined when neither resolves in time.
+ */
+async function readLastStepUsage(result: unknown): Promise<LanguageModelUsage | undefined> {
+  const stepsPromise = result != null ? (result as any).steps : undefined;
+  const hasSteps = typeof stepsPromise?.then === "function";
+  const source = hasSteps ? stepsPromise : result != null ? (result as any).usage : undefined;
+  if (typeof source?.then !== "function") return undefined;
+  try {
+    const resolved = await Promise.race([
+      source,
+      new Promise<undefined>((r) => setTimeout(() => r(undefined), 2_000)),
+    ]);
+    return hasSteps
+      ? (resolved as Array<{ usage?: LanguageModelUsage }> | undefined)?.at(-1)?.usage
+      : (resolved as LanguageModelUsage | undefined);
+  } catch {
+    return undefined;
+  }
+}
+
 function addUsage(a: LanguageModelUsage, b: LanguageModelUsage): LanguageModelUsage {
   const add = (x: number | undefined, y: number | undefined) =>
     x != null || y != null ? (x ?? 0) + (y ?? 0) : undefined;
@@ -5637,17 +5663,39 @@ async function replaceModelRun(
   oldUi: UIMessage,
   newUi: UIMessage,
   tailAfter: number,
-  knownOldRun?: ModelMessage[]
+  knownOldRun?: ModelMessage[],
+  oldIsLastUiMessage = false
 ): Promise<boolean> {
   const oldRun = knownOldRun ?? (await toModelMessages([stripProviderMetadata(oldUi)]));
   const newRun = await toModelMessages([stripProviderMetadata(newUi)]);
-  // A message that converts to nothing (a pending tool call with no output yet,
-  // which `ignoreIncompleteToolCalls` drops) locates no run in the lane. Matching
-  // an empty slice would splice the new run in without removing what the message
-  // actually contributed, such as a spliced head-start partial, and the lane would
-  // then carry the same tool call twice.
-  if (oldRun.length === 0) return false;
   const end = lane.length - tailAfter;
+  // A message that converts to nothing (a tool call awaiting approval on AI SDK 7,
+  // or a pending one with no output yet, which `ignoreIncompleteToolCalls` drops)
+  // locates no run in the lane. When it is the last UI message and the lane holds
+  // none of its tool calls, it contributed nothing, so the new run goes in at the
+  // tail. A message that is not the last one has later turns after its place, which
+  // the tail is not. When the lane does hold one of its calls, such as a spliced
+  // head-start partial, matching an empty slice would leave the old form behind and
+  // the lane would carry the same tool call twice.
+  if (oldRun.length === 0) {
+    if (!oldIsLastUiMessage || end < 0 || end > lane.length) return false;
+    const oldCallIds = new Set<string>();
+    for (const part of oldUi.parts) {
+      const id = (part as { toolCallId?: unknown }).toolCallId;
+      if (typeof id === "string") oldCallIds.add(id);
+    }
+    // Tool-call, tool-result and approval parts of a lane message all carry `toolCallId`.
+    const holdsOldCall = lane.some(
+      (message) =>
+        Array.isArray(message.content) &&
+        message.content.some((part) =>
+          oldCallIds.has((part as { toolCallId?: string }).toolCallId!)
+        )
+    );
+    if (holdsOldCall) return false;
+    lane.splice(end, 0, ...newRun);
+    return true;
+  }
   const start = end - oldRun.length;
   if (start < 0 || end > lane.length) return false;
   if (JSON.stringify(lane.slice(start, end)) !== JSON.stringify(oldRun)) return false;
@@ -11600,7 +11648,11 @@ function chatAgent<
                       // resolutions onto the existing entry, keeping text,
                       // reasoning, and tool `input` from the prior snapshot.
                       let replaced = false;
-                      const replacedPairs: { previous: TUIMessage; merged: TUIMessage }[] = [];
+                      const replacedPairs: {
+                        previous: TUIMessage;
+                        merged: TUIMessage;
+                        isLast: boolean;
+                      }[] = [];
                       for (const incoming of cleanedUIMessages) {
                         const idx = accumulatedUIMessages.findIndex((m) => m.id === incoming.id);
                         if (idx !== -1) {
@@ -11609,7 +11661,11 @@ function chatAgent<
                             previous,
                             incoming
                           ) as TUIMessage;
-                          replacedPairs.push({ previous, merged: accumulatedUIMessages[idx]! });
+                          replacedPairs.push({
+                            previous,
+                            merged: accumulatedUIMessages[idx]!,
+                            isLast: idx === accumulatedUIMessages.length - 1,
+                          });
                           replaced = true;
                         } else {
                           accumulatedUIMessages.push(incoming as TUIMessage);
@@ -11618,8 +11674,17 @@ function chatAgent<
                       }
                       if (replaced) {
                         let inPlace = true;
-                        for (const { previous, merged } of replacedPairs) {
-                          if (!(await replaceModelRun(accumulatedMessages, previous, merged, 0))) {
+                        for (const { previous, merged, isLast } of replacedPairs) {
+                          if (
+                            !(await replaceModelRun(
+                              accumulatedMessages,
+                              previous,
+                              merged,
+                              0,
+                              undefined,
+                              isLast
+                            ))
+                          ) {
                             inPlace = false;
                             break;
                           }
@@ -12259,18 +12324,7 @@ function chatAgent<
                       /* non-fatal — usage capture failed */
                     }
                   }
-                  const lastStepUsagePromise =
-                    runResult != null ? (runResult as any).usage : undefined;
-                  if (typeof lastStepUsagePromise?.then === "function") {
-                    try {
-                      lastStepUsage = (await Promise.race([
-                        lastStepUsagePromise,
-                        new Promise<undefined>((r) => setTimeout(() => r(undefined), 2_000)),
-                      ])) as LanguageModelUsage | undefined;
-                    } catch {
-                      /* non-fatal — usage capture failed */
-                    }
-                  }
+                  lastStepUsage = await readLastStepUsage(runResult);
                   if (turnUsage) {
                     cumulativeUsage = addUsage(cumulativeUsage, turnUsage);
                     previousTurnUsage = turnUsage;
@@ -15168,6 +15222,7 @@ class ChatMessageAccumulator {
     const ui = replace ? [] : [...this.uiMessages];
     const lane = replace ? [] : [...this.modelMessages];
     let appendedModelCount = 0;
+    let appendedUiCount = 0;
     let rebuild = replace;
     for (const raw of messages) {
       const message = raw.role === "assistant" ? cleanupAbortedParts(raw) : raw;
@@ -15183,13 +15238,20 @@ class ChatMessageAccumulator {
         const idx = ui.findIndex((m) => m.id === resolved.id);
         const previous = ui[idx]!;
         ui[idx] = mergeIncomingIntoHydrated(previous, resolved);
-        if (!rebuild && !(await replaceModelRun(lane, previous, ui[idx]!, appendedModelCount))) {
+        // The lane's tail is only this message's place when nothing came after it
+        // before this call's own appends.
+        const isLast = idx === ui.length - 1 - appendedUiCount;
+        if (
+          !rebuild &&
+          !(await replaceModelRun(lane, previous, ui[idx]!, appendedModelCount, undefined, isLast))
+        ) {
           rebuild = true;
         }
         continue;
       }
       ui.push(message);
       if (!rebuild) {
+        appendedUiCount++;
         const converted = await toModelMessages([message]);
         lane.push(...converted);
         appendedModelCount += converted.length;
@@ -15426,9 +15488,11 @@ class ChatMessageAccumulator {
 
   /**
    * Run outer-loop compaction if needed. Call after adding the response
-   * and capturing usage. Pass the LAST step's usage (`result.usage`), which is
-   * the context the model held on its final call; `result.totalUsage` sums every
-   * step of a tool-using turn and belongs in `context.turnUsage`. Applies
+   * and capturing usage. Pass the LAST step's usage
+   * (`(await result.steps).at(-1)?.usage`), which is the context the model held on
+   * its final call. `result.usage` is that on AI SDK 6 but the turn's sum on AI SDK 7,
+   * so read `steps`. The turn's sum (`result.totalUsage` on AI SDK 6, `result.usage`
+   * on AI SDK 7) belongs in `context.turnUsage`. Applies
    * `compactModelMessages` and `compactUIMessages` callbacks if configured.
    *
    * @returns `true` if compaction was performed, `false` otherwise.
@@ -16088,17 +16152,7 @@ function createChatSession<TClientData = unknown>(
                   /* non-fatal */
                 }
               }
-              const lastStepUsagePromise = (source as any).usage;
-              if (typeof lastStepUsagePromise?.then === "function") {
-                try {
-                  lastStepUsage = (await Promise.race([
-                    lastStepUsagePromise,
-                    new Promise<undefined>((r) => setTimeout(() => r(undefined), 2_000)),
-                  ])) as LanguageModelUsage | undefined;
-                } catch {
-                  /* non-fatal */
-                }
-              }
+              lastStepUsage = await readLastStepUsage(source);
 
               // Outer-loop compaction (same logic as chat.agent)
               if (sessionCompaction && turnUsage && !turnObj.stopped) {

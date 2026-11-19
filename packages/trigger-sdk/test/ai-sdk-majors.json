@@ -13,24 +13,6 @@
   "knownFailures": [
     {
       "major": 7,
-      "file": "test/client-message-trust.test.ts",
-      "test": "chat.MessageAccumulator compaction > keeps a compacted model lane when an approval merges",
-      "reason": "A compaction summary is missing from the next turn's model history after a tool-approval turn."
-    },
-    {
-      "major": 7,
-      "file": "test/hitl-uncompacts.test.ts",
-      "test": "a tool-approval turn after compaction > keeps the summary in the model lane",
-      "reason": "A compaction summary is missing from the next turn's model history after a tool-approval turn."
-    },
-    {
-      "major": 7,
-      "file": "test/outer-compaction-last-step-usage.test.ts",
-      "test": "outer-loop compaction on a tool-using turn > is asked about the last step's context, with the turn's sum alongside",
-      "reason": "Outer-loop compaction is given the whole turn's usage where the last step's is expected."
-    },
-    {
-      "major": 7,
       "file": "test/steering-error-path.test.ts",
       "test": "chat.agent steering on a turn that fails > still reports the steer in the error path's newUIMessages",
       "reason": "A steered turn that fails does not end in an error part."
