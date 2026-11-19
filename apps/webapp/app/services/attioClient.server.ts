@@ -26,7 +26,7 @@ class AttioRequestError extends Error {
 const EXPECTED_REJECTION_CODES = new Set(["uniqueness_conflict", "missing_value"]);
 
 // A 4xx can't succeed on retry: warn and finish the job. Others are rethrown so the job retries.
-function handleSyncFailure(job: string, ids: Record<string, string>, error: unknown) {
+export function handleSyncFailure(job: string, ids: Record<string, string>, error: unknown) {
   if (error instanceof AttioRequestError && !error.transient) {
     const expected = error.code !== undefined && EXPECTED_REJECTION_CODES.has(error.code);
     // Never log the body: it can contain the conflicting email.
@@ -55,10 +55,34 @@ export type AttioClientOptions = {
   // Marks records written from non-production environments.
   isTest: boolean;
   baseUrl?: string;
+  // The member sync owns Workspace.users, so the workspace sync leaves it alone.
+  memberSyncEnabled?: boolean;
 };
 
 export class AttioClient {
   constructor(private readonly options: AttioClientOptions) {}
+
+  get isTest() {
+    return this.options.isTest;
+  }
+
+  async #request(object: string, method: string, path: string, body: unknown): Promise<any> {
+    const baseUrl = this.options.baseUrl ?? ATTIO_API;
+    const response = await fetch(`${baseUrl}${path}`, {
+      method,
+      headers: {
+        Authorization: `Bearer ${this.options.apiKey}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(body),
+    });
+
+    if (!response.ok) {
+      const text = await response.text();
+      throw new AttioRequestError(object, response.status, errorCode(text), text);
+    }
+    return response.json();
+  }
 
   // Create-or-update by unique attribute; returns the record id. Throws on failure so the worker retries.
   async #assert(
@@ -66,33 +90,56 @@ export class AttioClient {
     matchingAttribute: string,
     values: Record<string, unknown>
   ): Promise<string> {
-    const baseUrl = this.options.baseUrl ?? ATTIO_API;
-    const url = `${baseUrl}/objects/${object}/records?matching_attribute=${matchingAttribute}`;
-    const response = await fetch(url, {
-      method: "PUT",
-      headers: {
-        Authorization: `Bearer ${this.options.apiKey}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({ data: { values } }),
-    });
-
-    if (!response.ok) {
-      const body = await response.text();
-      throw new AttioRequestError(object, response.status, errorCode(body), body);
-    }
-
-    const recordId = ((await response.json()) as any).data?.id?.record_id;
+    const json = await this.#request(
+      object,
+      "PUT",
+      `/objects/${object}/records?matching_attribute=${matchingAttribute}`,
+      { data: { values } }
+    );
+    const recordId = json?.data?.id?.record_id;
     if (typeof recordId !== "string") {
       throw new Error(`Attio assert ${object}: response missing data.id.record_id`);
     }
     return recordId;
   }
 
+  assertRecord(object: string, matchingAttribute: string, values: Record<string, unknown>) {
+    return this.#assert(object, matchingAttribute, values);
+  }
+
+  async queryRecords(
+    object: string,
+    filter: Record<string, unknown>,
+    limit: number
+  ): Promise<AttioRecord[]> {
+    const json = await this.#request(object, "POST", `/objects/${object}/records/query`, {
+      filter,
+      limit,
+    });
+    return Array.isArray(json?.data) ? json.data : [];
+  }
+
+  // PUT replaces the multiselect values it's given; other attributes are left alone.
+  async replaceRecordValues(object: string, recordId: string, values: Record<string, unknown>) {
+    await this.#request(object, "PUT", `/objects/${object}/records/${recordId}`, {
+      data: { values },
+    });
+  }
+
+  // The user's Attio record id, creating it with their email when missing. Returns undefined when
+  // Attio rejects the user; transient failures throw so the job retries.
+  async ensureUser(userId: string, email: string | undefined) {
+    return this.#assertUser(userId, email, {});
+  }
+
   // The org's creator as an Attio admin user. Returns undefined when Attio rejects the user,
   // so the workspace is still written; transient failures throw so the job retries.
   async #assertAdminUser(userId: string, email: string | undefined) {
-    const values = { user_id: userId, role: "Admin", is_test: this.options.isTest };
+    return this.#assertUser(userId, email, { role: "Admin" });
+  }
+
+  async #assertUser(userId: string, email: string | undefined, extra: Record<string, unknown>) {
+    const values = { user_id: userId, ...extra, is_test: this.options.isTest };
     try {
       return await this.#assert("users", "user_id", values);
     } catch (error) {
@@ -125,7 +172,7 @@ export class AttioClient {
         }
       }
 
-      logger.warn("Attio admin user not synced, writing the workspace without it", {
+      logger.warn("Attio user not synced", {
         userId,
         error: rejection.message,
       });
@@ -151,9 +198,10 @@ export class AttioClient {
       account_status: "Active",
       ...attributionValues(attribution),
       is_test: this.options.isTest,
-      users: adminRecordId
-        ? [{ target_object: "users", target_record_id: adminRecordId }]
-        : undefined,
+      users:
+        adminRecordId && !this.options.memberSyncEnabled
+          ? [{ target_object: "users", target_record_id: adminRecordId }]
+          : undefined,
     });
   }
 
@@ -183,6 +231,8 @@ export class AttioClient {
     }
   }
 }
+
+export type AttioRecord = { id?: { record_id?: string }; values?: Record<string, any[]> };
 
 // How the user found us and their role, from the onboarding form.
 export type SignupAttribution = {
@@ -279,7 +329,7 @@ export async function syncAttioUser(payload: AttioUserSync, client: AttioClient)
 // Orgs have no creator column. The creator's membership is written in the same insert as the
 // org, so one created within a second of an earlier org marks it as one this user created;
 // invited members (and whoever is oldest after the founder leaves) joined later.
-const CREATED_WITH_ORG_MS = 1_000;
+export const CREATED_WITH_ORG_MS = 1_000;
 
 async function createdAnEarlierOrg(db: PrismaClientOrTransaction, payload: AttioWorkspaceSync) {
   const memberships = await db.orgMember.findMany({

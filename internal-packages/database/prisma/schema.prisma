@@ -386,6 +386,11 @@ model OrgMember {
 
   role OrgMemberRole @default(MEMBER)
 
+  /// Who invited them (a User id, kept if that user is deleted). Null if not invited or joined before this was recorded.
+  invitedById String?
+  /// How they joined: created, invite, sso_jit, directory_sync or manual. Null if joined before this was recorded.
+  joinMethod  String?
+
   createdAt    DateTime             @default(now())
   updatedAt    DateTime             @updatedAt
   environments RuntimeEnvironment[]

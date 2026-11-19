@@ -1280,6 +1280,8 @@ const EnvironmentSchema = z
 
     LOOPS_API_KEY: z.string().optional(),
     ATTIO_API_KEY: z.string().optional(),
+    // "1" syncs workspace memberships to Attio on join, leave and role change.
+    ATTIO_MEMBER_SYNC_ENABLED: z.string().default("0"),
 
     PROD_TASK_HEARTBEAT_INTERVAL_MS: z.coerce.number().int().optional(),
 

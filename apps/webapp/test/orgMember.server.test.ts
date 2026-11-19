@@ -122,6 +122,11 @@ describe("ensureOrgMember development environment provisioning", () => {
     expect(enqueueCalls).toEqual([
       { userId: user.id, organizationId: organization.id, source: "sso_jit" },
     ]);
+
+    const member = await prisma.orgMember.findFirstOrThrow({
+      where: { userId: user.id, organizationId: organization.id },
+    });
+    expect(member).toMatchObject({ joinMethod: "sso_jit", invitedById: null });
   });
 
   postgresTest("queues provisioning for a membership that already exists", async ({ prisma }) => {

@@ -9,13 +9,14 @@ import {
   memberAuditTarget,
   recordMemberAuditEventInBackground,
 } from "./memberAudit.server";
-import type { MembershipSource } from "~/models/member.server";
+import type { MembershipSource, OrgMemberJoinMethod } from "~/models/member.server";
 import { isOrganizationJoinAllowed } from "~/services/accessPolicy.server";
 import { auditLogs } from "~/services/auditLogs/auditLogs.server";
 import {
   recordMemberRemovalCredentials,
   SYSTEM_ACTOR,
 } from "~/services/credentialFingerprints.server";
+import { enqueueAttioMemberSync } from "~/services/attio.server";
 import { logger } from "~/services/logger.server";
 import { enqueueMemberDevelopmentEnvironments } from "~/services/memberDevEnvironments.server";
 import { rbac } from "~/services/rbac.server";
@@ -92,6 +93,17 @@ async function wasMemberAtWrite(userId: string, organizationId: string): Promise
  * `attribution` is for callers with no user behind them, such as the directory sync worker.
  */
 export async function setOrgMemberRole(
+  params: { userId: string; organizationId: string; roleId: string },
+  attribution?: MemberAuditAttribution
+): Promise<RoleAssignmentResult> {
+  const result = await writeOrgMemberRole(params, attribution);
+  if (result.ok) {
+    await enqueueAttioMemberSync({ organizationId: params.organizationId, userId: params.userId });
+  }
+  return result;
+}
+
+async function writeOrgMemberRole(
   params: { userId: string; organizationId: string; roleId: string },
   attribution?: MemberAuditAttribution
 ): Promise<RoleAssignmentResult> {
@@ -211,7 +223,9 @@ async function healMissingRoleAssignment(params: {
   if (currentRole !== null) return;
 
   const result = await rbac.setUserRole({ userId, organizationId, roleId });
-  if (!result.ok) {
+  if (result.ok) {
+    await enqueueAttioMemberSync({ organizationId, userId });
+  } else {
     logger.warn("ensureOrgMember.setUserRole failed while healing unassigned membership", {
       source,
       userId,
@@ -285,6 +299,7 @@ export async function ensureOrgMember(
         userId,
         organizationId,
         role: "MEMBER",
+        joinMethod: source satisfies OrgMemberJoinMethod,
       },
       select: { id: true, user: { select: { email: true } } },
     });
@@ -356,6 +371,9 @@ export async function ensureOrgMember(
       ...attribution,
     });
   }
+
+  // Only once the role has applied: a failed role rolls the membership back above.
+  await enqueueAttioMemberSync({ organizationId, userId });
 
   const { enqueued } = await enqueueMemberDevelopmentEnvironments({
     userId,
@@ -432,6 +450,7 @@ export async function removeOrgMemberForDirectory(
   }
 
   await deleteMembership(member.id, organizationId);
+  await enqueueAttioMemberSync({ organizationId, userId });
   auditLogs.record({
     category: "members",
     action: "member.removed",
