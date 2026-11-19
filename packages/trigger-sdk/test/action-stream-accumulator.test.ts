@@ -54,10 +54,8 @@ describe("a regenerate action that returns chat.turn()", () => {
     const harness = mockChatAgent(agent, { chatId: "action-turn-stream" });
     try {
       await harness.sendMessage({ id: "u1", role: "user", parts: [{ type: "text", text: "ask" }] });
-      await new Promise((r) => setTimeout(r, 40));
       const before = harness.allRawChunks.length;
       await harness.sendAction({ type: "regenerate" });
-      await new Promise((r) => setTimeout(r, 120));
 
       const streamed = (harness.allRawChunks.slice(before) as { type?: string; delta?: string }[])
         .filter((c) => c.type === "text-delta")
@@ -116,9 +114,7 @@ describe("a regenerate action that returns chat.turn()", () => {
     const harness = mockChatAgent(agent, { chatId: "action-turn-stream-error" });
     try {
       await harness.sendMessage({ id: "u1", role: "user", parts: [{ type: "text", text: "ask" }] });
-      await new Promise((r) => setTimeout(r, 40));
       await harness.sendAction({ type: "regenerate" }).catch(() => {});
-      await new Promise((r) => setTimeout(r, 300));
 
       const errors = (harness.allRawChunks as { type?: string }[]).filter(
         (c) => c.type === "error"

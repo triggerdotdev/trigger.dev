@@ -97,7 +97,6 @@ describe("chat.skills runtime integration", () => {
     const harness = mockChatAgent(agent, { chatId: "t1" });
     try {
       await harness.sendMessage(userMessage("hi"));
-      await new Promise((r) => setTimeout(r, 20));
       expect(capturedSystem).toContain("Available skills");
       expect(capturedSystem).toContain("demo: Demo skill for tests");
     } finally {
@@ -135,7 +134,6 @@ describe("chat.skills runtime integration", () => {
     const harness = mockChatAgent(agent, { chatId: "t2" });
     try {
       await harness.sendMessage(userMessage("hi"));
-      await new Promise((r) => setTimeout(r, 20));
       expect(capturedToolNames).toEqual(expect.arrayContaining(["loadSkill", "readFile", "bash"]));
     } finally {
       await harness.close();

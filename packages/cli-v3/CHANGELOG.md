@@ -1,5 +1,26 @@
 # trigger.dev
 
+## 4.8.6
+
+### Patch Changes
+
+- Deploys on the `bun-1.4` runtime now compile the run worker and your task files into a Bun executable with bytecode, so runs start faster. `import.meta.url` and `__dirname` still point at your files under `/app`, so files you read next to your code must be in the image as before (e.g. with `additionalFiles`). Set `build.bunBytecode: false` in `trigger.config.ts` to turn compilation off. ([`8130e5e73`](https://github.com/triggerdotdev/trigger.dev/commit/8130e5e735bd5324b58c5efa829c94c7026c371c))
+- Fix `child_process.fork()` and `spawn(process.execPath, ...)` in compiled `bun-1.4` deploys. They started the run worker again instead of Bun, so the child never ran and the task hung. `process.execPath` now points at the image's `bun` binary, as it does in uncompiled deploys. ([`d63b49ef3`](https://github.com/triggerdotdev/trigger.dev/commit/d63b49ef30e614cf5c777630bd532bd1295b0e31))
+- `trigger dev` and `trigger deploy` no longer crash with `spawn ... ENOENT` on bun runtimes when Bun isn't installed at `~/.bun`. The CLI now falls back to `bun` on your `PATH` (Homebrew, mise and similar installs), and if Bun still can't be started, `trigger dev` reports a readable error and `trigger deploy` skips local skill discovery with a warning and carries on. ([`15797c9f2`](https://github.com/triggerdotdev/trigger.dev/commit/15797c9f2bf14fbbd36175bbc242aec80a479c5d))
+- Bundled task files now keep their project layout (for example `/app/src/trigger/tasks.mjs`) when the CLI runs from outside the project, such as `npx trigger.dev deploy`. Before, they could land under a path containing the project's location, away from the files `additionalFiles` copies next to them, so reads relative to `import.meta.url` failed. ([`0c03b59b9`](https://github.com/triggerdotdev/trigger.dev/commit/0c03b59b9533c59f287d62478685db35f6b4b6d6))
+- Show CLI command errors in the same error format as other CLI errors, and keep them visible with `--log-level error`. ([`c515c3f74`](https://github.com/triggerdotdev/trigger.dev/commit/c515c3f74656fe79e311acb1d32fe8f091f18a8d))
+- Deploys now report a warmup command that loads your config and task files offline without running any task, so the platform can prepare faster run starts for your deployment. ([`5479177af`](https://github.com/triggerdotdev/trigger.dev/commit/5479177af219875c69ffaee402c701824db2a678))
+- Generate the machine ID and the managed run controller ID on first use instead of at import, so importing these modules draws no randomness and a process restored from a warm start does not reuse IDs drawn before it was saved. ([`a8ac49cd3`](https://github.com/triggerdotdev/trigger.dev/commit/a8ac49cd30fffb779dbd93275d04a001d926e915))
+- Deploys on the `node-24` and `node-26` runtimes now build a Node compile cache for your bundled code during the image build, so runs spend less time compiling your tasks and their dependencies before they start. `node-22` deploys are unchanged. ([`cb1e7362f`](https://github.com/triggerdotdev/trigger.dev/commit/cb1e7362fe9d804ceb2b4e643cf8fa0d0334b676))
+- Report a run whose process the kernel killed for running out of memory as `TASK_PROCESS_OOM_KILLED`, rather than as a generic exit after `SIGKILL`, when the out-of-memory kill is counted in the run's cgroup. ([`7a2a7dc80`](https://github.com/triggerdotdev/trigger.dev/commit/7a2a7dc801fc5bc97a03add95dc1b2a12f978e58))
+- Deployed task processes now receive secret environment variables only with the run, instead of also in the environment the process starts with. ([`489a6dff3`](https://github.com/triggerdotdev/trigger.dev/commit/489a6dff3d8b618779bc36f6b785c201310e1480))
+- Deployed task processes now start with the environment variables that Node, OpenSSL, libuv or the dynamic loader read only at startup (such as `LD_PRELOAD`, `OPENSSL_CONF`, `NODE_ICU_DATA`, `TZ` and `UV_*`), and the run's logs warn, by name only, about other startup-only variables (such as `NODE_OPTIONS`, `MALLOC_*` or `GLIBC_TUNABLES`) that arrive too late to take effect. ([`60d1774df`](https://github.com/triggerdotdev/trigger.dev/commit/60d1774dfe9f0534f2260f2dd94e27cbffa1c92a))
+- Builds from `trigger dev` and `trigger deploy` now use esbuild 0.28. TypeScript parameter properties are now emitted as class fields, and source map paths are URL-encoded. ([`af2098570`](https://github.com/triggerdotdev/trigger.dev/commit/af209857030fc763da0ea0d4595343c2875d007c))
+- Updated dependencies:
+  - `@trigger.dev/core@4.8.6`
+  - `@trigger.dev/build@4.8.6`
+  - `@trigger.dev/schema-to-json@4.8.6`
+
 ## 4.8.5
 
 ### Patch Changes

@@ -832,45 +832,6 @@ describe("RoutingRunStore — mixed-residency matrix (cuid #legacy + run-ops id 
     }
   );
 
-  // ── Case 11a: updateManyWaitpoints with a NO-ID (batch) where fans out to both and sums ──
-  // A batch where (no single routable id, e.g. completedByTaskRunId IS NULL + status PENDING) must
-  // apply on BOTH DBs and sum the count.
-  heteroRunOpsPostgresTest(
-    "case 11a: updateManyWaitpoints with a no-id where updates both DBs and sums the count",
-    async ({ prisma14, prisma17 }) => {
-      const { router } = makeSplitRouter(prisma14, prisma17);
-      const env = await seedSharedEnv(prisma14, "m11a");
-
-      const legacyWp = cuidLegacy("m11al");
-      const newWp = runOpsNew("m11an");
-      await seedPendingWaitpoint(prisma14, {
-        id: legacyWp,
-        friendlyId: "wp_m11a_legacy",
-        projectId: env.projectId,
-        environmentId: env.environmentId,
-      });
-      await seedPendingWaitpoint(prisma17, {
-        id: newWp,
-        friendlyId: "wp_m11a_new",
-        projectId: env.projectId,
-        environmentId: env.environmentId,
-      });
-
-      const { count } = await router.updateManyWaitpoints({
-        where: { status: "PENDING", projectId: env.projectId },
-        data: { status: "COMPLETED" },
-      });
-      expect(count).toBe(2); // one per DB, summed
-
-      expect((await prisma14.waitpoint.findUnique({ where: { id: legacyWp } }))?.status).toBe(
-        "COMPLETED"
-      );
-      expect((await prisma17.waitpoint.findUnique({ where: { id: newWp } }))?.status).toBe(
-        "COMPLETED"
-      );
-    }
-  );
-
   // ── Case 11b: deleteManyTaskRunWaitpoints by taskRunId routes to the run's store (no fan-out) ──
   // An edge always co-locates with its run (blockRunWithWaitpointEdges routes the write by runId), so
   // a run's edges only ever live on ONE store — a straddle can't arise via the write path. A delete

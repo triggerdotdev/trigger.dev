@@ -307,7 +307,7 @@ async function runBlockingTaskRunsScenario(
     projectId: env.project.id,
   });
 
-  // The run-engine call shape (engine.getWaitpoint).
+  // A waitpoint read that includes `blockingTaskRuns` with the nested `taskRun`.
   const waitpoint = await store.findWaitpoint({
     where: { id: waitpointId },
     include: {

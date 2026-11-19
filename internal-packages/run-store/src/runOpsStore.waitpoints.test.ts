@@ -220,14 +220,9 @@ describe("RunStore run-ops persistence — waitpoints", () => {
           waitpointIds: [w],
           projectId: env.project.id,
         });
-        await store.updateManyWaitpoints({
-          where: { id: w },
-          data: {
-            status: "COMPLETED",
-            output: '{"done":true}',
-            outputType: "application/json",
-            completedAt,
-          },
+        await store.markWaitpointCompleted(w, {
+          output: { value: '{"done":true}', type: "application/json" },
+          completedAt,
         });
 
         return store.findWaitpoint({ where: { id: w } });
@@ -308,7 +303,7 @@ describe("RunStore run-ops persistence — waitpoints", () => {
         await block();
         const afterSecond = await countEdges();
 
-        await store.updateManyWaitpoints({ where: { id: w }, data: { status: "COMPLETED" } });
+        await store.markWaitpointCompleted(w, {});
         const pendingAfter = await store.countPendingWaitpoints([w]);
 
         return { afterFirst, afterSecond, pendingBefore, pendingAfter };
@@ -475,7 +470,7 @@ describe("RunStore run-ops persistence — waitpoints", () => {
         waitpointIds: [w],
         projectId: env.project.id,
       });
-      await router.updateManyWaitpoints({ where: { id: w }, data: { status: "COMPLETED" } });
+      await router.markWaitpointCompleted(w, {});
 
       const latest = await router.findLatestExecutionSnapshot(runId);
       expect(latest?.id).toBe(snapshot.id);
@@ -592,7 +587,7 @@ describe("RunStore run-ops persistence — waitpoints", () => {
         waitpointIds: [token],
         projectId: env17.project.id,
       });
-      await router.updateManyWaitpoints({ where: { id: token }, data: { status: "COMPLETED" } });
+      await router.markWaitpointCompleted(token, {});
 
       // Drive the continueRunIfUnblocked read+delete shape (by taskRunId) twice.
       const unblockPass = async () => {

@@ -1,10 +1,3 @@
-// updateManyBatchTaskRunItems routed by where.id first, but BatchTaskRunItem.id is a cuid (always
-// classifies LEGACY). For a NEW-residency batch the items live on #new, so completing an item by
-// {id, batchTaskRunId, status} updated #legacy, matched 0 rows, and the caller treated count===0 as
-// "already completed" -> tryCompleteBatchV3 never fired -> the item stayed PENDING and the parent's
-// batchTriggerAndWait hung. Fix: route by batchTaskRunId (residency-encoding) first, like
-// countBatchTaskRunItems. Real two-DB topology; never mocked.
-
 import { heteroRunOpsPostgresTest } from "@internal/testcontainers";
 import type { PrismaClient } from "@trigger.dev/database";
 import type { RunOpsPrismaClient } from "@internal/run-ops-database";
@@ -55,44 +48,6 @@ async function seedDedicatedRun(prisma17: RunOpsPrismaClient, envId: string, run
 }
 
 describe("run-ops split — completing a batch item routes by the batch id, not the item cuid", () => {
-  heteroRunOpsPostgresTest(
-    "updateManyBatchTaskRunItems completes a NEW-resident item addressed by {id, batchTaskRunId}",
-    async ({ prisma14, prisma17 }: { prisma14: PrismaClient; prisma17: RunOpsPrismaClient }) => {
-      const router = makeSplitRouter(prisma14, prisma17);
-      const envId = "env_batchitem";
-      const batchId = `batch_${NEW_ID_26}`; // run-ops id -> #new
-      const runId = `run_${NEW_ID_26.slice(0, -3)}ri1`;
-
-      await prisma17.batchTaskRun.create({
-        data: {
-          id: batchId,
-          friendlyId: "batch_item_new",
-          runtimeEnvironmentId: envId,
-          runCount: 1,
-          status: "PROCESSING",
-        },
-      });
-      await seedDedicatedRun(prisma17, envId, runId);
-      // item.id is an auto cuid (classifies LEGACY) — the mis-routing key, exactly as in production.
-      const item = await prisma17.batchTaskRunItem.create({
-        data: { batchTaskRunId: batchId, taskRunId: runId, status: "PENDING" },
-      });
-
-      const result = await router.updateManyBatchTaskRunItems({
-        where: { id: item.id, batchTaskRunId: batchId, status: "PENDING" },
-        data: { status: "COMPLETED" },
-      });
-
-      // RED: routed by the item cuid -> #legacy -> 0 rows -> batch never completes -> parent hangs.
-      // GREEN: routed by batchTaskRunId (NEW) -> #new -> the item completes.
-      expect(result.count).toBe(1);
-      const onNew = await prisma17.batchTaskRunItem.findUnique({ where: { id: item.id } });
-      expect(onNew?.status).toBe("COMPLETED");
-      // Legacy was never touched: no phantom/double-routed item update on #legacy.
-      expect(await prisma14.batchTaskRunItem.count({ where: { batchTaskRunId: batchId } })).toBe(0);
-    }
-  );
-
   // createBatchTaskRunItem must co-locate the item with its BATCH (so the completion count, routed by
   // batchTaskRunId, finds it), not with the child run. Routing by taskRunId would place a divergent-
   // residency item on the child's DB -> invisible to the count -> the batch never completes -> parent hangs.

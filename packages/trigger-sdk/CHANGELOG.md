@@ -1,5 +1,29 @@
 # @trigger.dev/sdk
 
+## 4.8.6
+
+### Patch Changes
+
+- Fix `chat.agent` on AI SDK 7 sending the model the same input on every step. Once a step's `prepareStep` returned messages (a steering message, a mid-turn `chat.inject`, context compaction, or your own `prepareStep`), later steps no longer included the newest tool results, so the model kept repeating the same tool call until the step limit. ([`1a2c99034`](https://github.com/triggerdotdev/trigger.dev/commit/1a2c99034ee8741fabb2b500e2766f0ecd8fbdb1))
+
+  If you call `chat.compact()` from your own `prepareStep`, pass it the `responseMessages` your `prepareStep` receives (`chat.compact(messages, steps, { ...options, responseMessages })`) so steps after a compaction are rebuilt correctly on AI SDK 7.
+
+- `chat.agent` now passes `chatId`, `turn` and `clientData` to the callbacks an agent can call a model from, so a mock model injected through `clientData` reaches them. The compaction `summarize` that runs through `chat.MessageAccumulator.prepareStep()` and a `chat.createSession` turn's `prepareStep()`, `onCompacted`, `onValidateMessages`, and the `pendingMessages` `onReceived` and `onInjected` callbacks previously lacked it. The `mockChatAgent` turn methods (`sendMessage`, `sendRegenerate`, `sendAction`) now also wait for `onTurnComplete` and the transcript save to finish, so tests can assert on what those hooks recorded without a sleep. ([`579904220`](https://github.com/triggerdotdev/trigger.dev/commit/579904220ce83f8016179d09f68b6b3423eaba9c))
+- `concurrencyKey` now also takes an object, so one run can be limited by two limits keyed by different things, like a cap per session and a cap per organization. `default` is the run's own key and every other entry gives a named limit its own key: `concurrencyKey: { default: sessionId, [orgLimit.name]: orgId }`. A string key works as before. ([`4961fc474`](https://github.com/triggerdotdev/trigger.dev/commit/4961fc474c2fe155e557573f48c5eb95868d3015))
+- `webhooks.notion()` endpoints accept Notion's verification request. While the endpoint has no signing secret, the `verification_token` Notion sends is stored as its signing secret, so you can paste it back into Notion and later deliveries verify with it. Redeploy with this version for existing Notion endpoints to pick it up. ([`4288ea912`](https://github.com/triggerdotdev/trigger.dev/commit/4288ea9126432bfede2c6162e1bdc81a2348a127))
+- Support scoped run tokens without an environment key, including offloaded task inputs and stream waits. Explain why a run has no usable credential for an operation. ([`ed0147895`](https://github.com/triggerdotdev/trigger.dev/commit/ed0147895c9b65069c3a6d6e404c3074d47c4018))
+- Public-token helpers and chat token creation now prefer server minting for root API keys too, avoiding the legacy claims endpoint on compatible servers. Trigger, batch, and waitpoint responses missing a token also try server minting first. ([`90d677b12`](https://github.com/triggerdotdev/trigger.dev/commit/90d677b12a5a37d00a96da922d60a54fc7dd7709))
+
+  Root-key callers retain local-signing compatibility only when the mint endpoint is missing or an older server specifically rejects an empty scope list. Named API keys and run tokens never self-sign. Authorization failures, expiration validation errors, rate limits, and server or connection failures do not activate the fallback.
+
+  Server minting with a root key signs with that same authenticated key, including during its rotation grace period, rather than with its replacement. Tokens stop authenticating when that key's grace period ends or it is immediately revoked. Deploy this server update before upgrading the SDK if you rely on minting during root-key rotation; older servers can still reject grace-window keys.
+
+  Server-minted tokens use the API rate-limit budget and follow the server's expiration rules, including its 30-day maximum. Minting tokens without scopes requires self-hosted v4.8.4 or later unless the root-key compatibility fallback is available. The default expiration remains 15 minutes.
+
+- Fix webhook verification for `webhooks.brex()`, which now reads the `webhook-id`, `webhook-timestamp` and `webhook-signature` headers Brex sends instead of `svix-*` headers, and for `webhooks.composio()`, which now keys the signature with the secret's raw text as Composio does instead of base64-decoding it. PagerDuty, Sentry, Vercel, Zendesk, Attio, DocuSign and Intercom endpoints now default to pasting the provider-issued signing secret, and Linear and Calendly offer both generating and pasting one. Redeploy with this version for existing endpoints to pick up the change. ([`b5b311407`](https://github.com/triggerdotdev/trigger.dev/commit/b5b311407aa185457f42361d85eef0cd15f20f4a))
+- Updated dependencies:
+  - `@trigger.dev/core@4.8.6`
+
 ## 4.8.5
 
 ### Patch Changes

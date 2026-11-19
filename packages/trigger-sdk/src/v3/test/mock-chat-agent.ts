@@ -11,6 +11,7 @@ import {
   __resetChatInputRouterForTests,
   __setReadChatSnapshotImplForTests,
   __waitForChannelEgressForTests,
+  __waitForPostTurnHooksForTests,
   __setReplaySessionInTailImplForTests,
   __setReplaySessionOutTailImplForTests,
   __setWriteChatSnapshotImplForTests,
@@ -434,28 +435,46 @@ export type MockChatAgentHarness = {
 export const DEFAULT_TEST_CONNECTOR_ID = "test-channel";
 
 /**
- * Wait for a channel turn's post-completion egress to land. The run loop
- * writes the `trigger:turn-complete` chunk (which unblocks the harness's
- * turn-complete latch) BEFORE it awaits the connector's final `send()` and
- * its done/error reactions, and settles a per-chat latch once those have
- * finished. Awaiting that latch, rather than draining timers, makes the
- * connector's recorded sends and reactions deterministic for any connector
- * latency. A latch that never settles is a runtime bug, so it fails loudly.
+ * Wait for a per-chat latch the run loop settles once the work it does AFTER writing
+ * `trigger:turn-complete` (which unblocks the harness's turn-complete latch) has finished.
+ * Awaiting a latch, rather than draining timers, makes what that work records deterministic for
+ * any latency. A latch that never settles is a runtime bug, so it fails loudly.
+ *
+ * `runEnded` is the run's own promise: a run that ends (or throws) with a latch still open will
+ * never settle it, so the wait stops there and the run's error, if any, is what the caller sees.
  */
-async function settlePostTurnChannelEgress(chatId: string): Promise<void> {
+async function settleLatch(
+  what: string,
+  chatId: string,
+  wait: Promise<"settled" | "run-ended" | undefined>,
+  runEnded: Promise<void>
+): Promise<void> {
   let timer: ReturnType<typeof setTimeout> | undefined;
   const timeout = new Promise<never>((_, reject) => {
     timer = setTimeout(
-      () => reject(new Error(`channel egress for ${chatId} did not settle within 10s`)),
+      () => reject(new Error(`${what} for ${chatId} did not settle within 10s`)),
       10_000
     );
   });
   try {
-    await Promise.race([__waitForChannelEgressForTests(chatId), timeout]);
+    const reason = await Promise.race([wait, runEnded, timeout]);
+    // A run that ends settles its latches on the way out, which can beat its own rejection to
+    // this race. Its latch says so, and the run's own promise then carries the outcome: its
+    // rejection, or normal completion. Still bounded by the timeout, in case the run hangs on
+    // its way out after settling.
+    if (reason === "run-ended") await Promise.race([runEnded, timeout]);
   } finally {
     clearTimeout(timer);
   }
 }
+
+/** A channel turn's final `send()` and done/error reactions. */
+const settlePostTurnChannelEgress = (chatId: string, runEnded: Promise<void>) =>
+  settleLatch("channel egress", chatId, __waitForChannelEgressForTests(chatId), runEnded);
+
+/** `onTurnComplete` and the turn-complete transcript save. */
+const settlePostTurnHooks = (chatId: string, runEnded: Promise<void>) =>
+  settleLatch("post-turn hooks", chatId, __waitForPostTurnHooksForTests(chatId), runEnded);
 
 const CONTROL_CHUNK_TYPES = new Set(["trigger:turn-complete", "trigger:upgrade-required"]);
 
@@ -816,6 +835,7 @@ export function mockChatAgent(
     const turnComplete = waitForTurnComplete();
     await sendSessionInput(sessionId, { kind: "message", payload });
     await turnComplete;
+    await settlePostTurnHooks(chatId, taskFinished);
     const rawChunks = allRawChunks.slice(before);
     const chunks = rawChunks.filter((c) => !isControlChunk(c)) as UIMessageChunk[];
     return { chunks, rawChunks };
@@ -875,7 +895,7 @@ export function mockChatAgent(
         },
         metadata: clientData,
       });
-      await settlePostTurnChannelEgress(chatId);
+      await settlePostTurnChannelEgress(chatId, taskFinished);
       return turn;
     },
 
@@ -955,7 +975,7 @@ export function mockChatAgent(
         },
         metadata: clientData,
       });
-      await settlePostTurnChannelEgress(chatId);
+      await settlePostTurnChannelEgress(chatId, taskFinished);
       return turn;
     },
 
@@ -974,7 +994,7 @@ export function mockChatAgent(
         },
         metadata: clientData,
       });
-      await settlePostTurnChannelEgress(chatId);
+      await settlePostTurnChannelEgress(chatId, taskFinished);
     },
 
     async sendStop(message) {

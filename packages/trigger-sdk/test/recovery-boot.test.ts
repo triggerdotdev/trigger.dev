@@ -83,7 +83,6 @@ describe("onRecoveryBoot — chat.agent recovery hook", () => {
       // Snapshot is empty, no in-flight users, no partial — guard
       // (partialAssistant !== undefined || inFlightUsers.length > 0) is false.
       await harness.sendMessage(userMessage("fresh message"));
-      await new Promise((r) => setTimeout(r, 20));
       expect(onRecoveryBoot).not.toHaveBeenCalled();
     } finally {
       await harness.close();
@@ -112,7 +111,6 @@ describe("onRecoveryBoot — chat.agent recovery hook", () => {
     harness.seedSessionOutPartial(partial as never);
     try {
       await harness.sendMessage(userMessage("next user message"));
-      await new Promise((r) => setTimeout(r, 20));
       expect(captured.event).toBeDefined();
       expect(captured.event!.partialAssistant?.id).toBe("a-orphan");
       expect(captured.event!.pendingToolCalls).toHaveLength(1);
@@ -346,11 +344,17 @@ describe("onRecoveryBoot — chat.agent recovery hook", () => {
   });
 
   it("hook's recoveredTurns: [] suppresses re-dispatch of in-flight users", async () => {
-    let turnCount = 0;
+    // The last user message of each model call: which turn ran, not how many.
+    const lastUserTexts: string[] = [];
     const model = new MockLanguageModelV3({
-      doStream: async () => {
-        turnCount++;
-        return { stream: textStream(`reply ${turnCount}`) };
+      doStream: async ({ prompt }) => {
+        const lastUser = prompt.filter((m) => m.role === "user").at(-1);
+        lastUserTexts.push(
+          Array.isArray(lastUser?.content)
+            ? lastUser.content.map((c) => (c.type === "text" ? c.text : "")).join("")
+            : ""
+        );
+        return { stream: textStream(`reply ${lastUserTexts.length}`) };
       },
     });
     const partial = assistantMessage("partial answer", "a-partial");
@@ -371,8 +375,10 @@ describe("onRecoveryBoot — chat.agent recovery hook", () => {
       // No turn should fire from the boot-injected queue.
       // Send a fresh user message to confirm the agent is alive.
       await harness.sendMessage(userMessage("real next message"));
-      await new Promise((r) => setTimeout(r, 20));
-      expect(turnCount).toBe(1); // only the explicit sendMessage turn
+      // A re-dispatched buffered turn would write its own turn-complete and resolve the send
+      // above first, so a count can read 1 while the wrong turn ran. The first model call must be
+      // the explicit message's.
+      expect(lastUserTexts[0]).toBe("real next message");
     } finally {
       await harness.close();
     }
@@ -435,7 +441,6 @@ describe("onRecoveryBoot — chat.agent recovery hook", () => {
     harness.seedSessionInTail([u1 as never]);
     try {
       await harness.sendMessage(userMessage("fresh"));
-      await new Promise((r) => setTimeout(r, 20));
       expect(onRecoveryBoot).not.toHaveBeenCalled();
     } finally {
       await harness.close();
@@ -597,7 +602,6 @@ describe("continuation boot — the message that resumed the run", () => {
       // accumulator, so the turn adds nothing and the chain still ends on
       // the assistant's completed answer.
       const turn = await harness.sendMessage(u1 as never);
-      await new Promise((r) => setTimeout(r, 20));
 
       expect(modelCalls).toBe(0);
       // The client still gets its turn-complete, so the stream closes.

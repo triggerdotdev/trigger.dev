@@ -111,6 +111,7 @@ import { forwardSubAgentChunks } from "./subAgentStream.js";
 import type { ChatStream } from "./chat-client.js";
 import {
   convertSteeredMessages,
+  generationResponseMessages,
   retainStepMessages,
   steeringMarkers,
   withoutInjectionMarkers,
@@ -240,6 +241,16 @@ type ChatTurnContext<TClientData = unknown> = {
   recordUserMessage?: boolean;
 };
 const chatTurnContextKey = locals.create<ChatTurnContext>("chat.turnContext");
+
+/**
+ * The running chat turn's `chatId`, `turn` and `clientData`: the one place every callback event
+ * the SDK builds takes them from, so a callback never lacks the `clientData` its siblings get.
+ * All three are undefined outside a turn. One locals lookup; the values are not copied.
+ */
+function chatEventContext(): { chatId?: string; turn?: number; clientData?: unknown } {
+  const ctx = locals.get(chatTurnContextKey);
+  return { chatId: ctx?.chatId, turn: ctx?.turn, clientData: ctx?.clientData };
+}
 
 /**
  * Per-run slot holding the Session handle that backs this chat's `.in` /
@@ -3496,6 +3507,11 @@ const chatOverrideModelMessagesKey = locals.create<ModelMessage[]>("chat.overrid
 /** State stored in locals during prepareStep compaction. */
 interface CompactionState {
   summary: string;
+  /**
+   * How many of the generation's response messages the summary covers. Later
+   * steps rebuild from the summary plus the response messages after these.
+   * Returned by `chat.getCompactionState()` for custom `prepareStep` code.
+   */
   baseResponseMessageCount: number;
   /** Completed steps summarized this turn; unlike message counts, matches UI step markers. */
   baseResponseStepCount: number;
@@ -3730,6 +3746,8 @@ export type PendingMessageReceivedEvent<TUIM extends UIMessage = UIMessage> = {
   chatId: string;
   /** Current turn number (0-indexed). */
   turn: number;
+  /** Custom data from the frontend. */
+  clientData?: unknown;
 };
 
 /**
@@ -3744,6 +3762,8 @@ export type PendingMessagesInjectedEvent<TUIM extends UIMessage = UIMessage> = {
   chatId: string;
   /** Current turn number (0-indexed). */
   turn: number;
+  /** Custom data from the frontend. */
+  clientData?: unknown;
   /** Step number where injection occurred. */
   stepNumber: number;
 };
@@ -3931,6 +3951,8 @@ export type CompactedEvent = {
   chatId?: string;
   /** The current turn number (if running inside a chat.agent). */
   turn?: number;
+  /** Custom data from the frontend (if inside a chat.agent). */
+  clientData?: unknown;
   /** Stream writer — write custom `UIMessageChunk` parts to the chat stream. Lazy: no overhead if unused. */
   writer: ChatWriter;
 };
@@ -4022,7 +4044,33 @@ export type CompactOptions = {
   threshold?: number;
   /** Custom compaction trigger. When provided, used instead of `threshold`. */
   shouldCompact?: (event: ShouldCompactEvent) => boolean | Promise<boolean>;
+  /**
+   * The `responseMessages` your `prepareStep` receives. AI SDK 7 passes them,
+   * and without them later steps cannot be rebuilt after a compaction on AI
+   * SDK 7. Earlier AI SDK versions do not need them.
+   */
+  responseMessages?: ModelMessage[];
 };
+
+/**
+ * The `summarize` that `chatCompact` calls between tool steps for a compaction configured on
+ * `chat.agent`, a session turn or a `MessageAccumulator`: the event is built here once, so no
+ * surface hands the callback less than the others do.
+ * @internal
+ */
+function innerSummarize(
+  compaction: ChatAgentCompactionOptions,
+  steps: CompactionStep[]
+): (messages: ModelMessage[]) => Promise<string> {
+  return (messages) =>
+    compaction.summarize({
+      messages,
+      usage: steps.at(-1)?.usage,
+      source: "inner",
+      stepNumber: steps.length - 1,
+      ...chatEventContext(),
+    });
+}
 
 /**
  * Check that no tool calls are in-flight in a step's content.
@@ -4113,18 +4161,12 @@ async function applyPrepareMessages(
   const hook = locals.get(chatPrepareMessagesKey);
   if (!hook) return messages;
 
-  const turnCtx = locals.get(chatTurnContextKey);
+  const { chatId = "", turn = 0, clientData } = chatEventContext();
 
   const prepared = await tracer.startActiveSpan(
     "prepareMessages()",
     async () => {
-      return hook({
-        messages,
-        reason,
-        chatId: turnCtx?.chatId ?? "",
-        turn: turnCtx?.turn ?? 0,
-        clientData: turnCtx?.clientData,
-      });
+      return hook({ messages, reason, chatId, turn, clientData });
     },
     {
       attributes: {
@@ -4207,9 +4249,10 @@ function getCompactionState(): CompactionState | undefined {
  *
  * @example
  * ```ts
- * prepareStep: async ({ messages, steps }) => {
+ * prepareStep: async ({ messages, steps, responseMessages }) => {
  *   // your custom logic here...
  *   const result = await chat.compact(messages, steps, {
+ *     responseMessages, // needed on AI SDK 7 to rebuild the steps after a compaction
  *     threshold: 80_000,
  *     summarize: async (msgs) => generateText({ model, messages: msgs }).then(r => r.text),
  *   });
@@ -4240,7 +4283,10 @@ async function chatCompact(
       messages: await applyPrepareMessages(
         [
           { role: "user" as const, content: state.summary },
-          ...currentStep.response.messages.slice(state.baseResponseMessageCount),
+          ...generationResponseMessages({
+            steps,
+            responseMessages: options.responseMessages,
+          }).slice(state.baseResponseMessageCount),
         ],
         "compaction-rebuild"
       ),
@@ -4256,7 +4302,7 @@ async function chatCompact(
   const inputTokens = currentStep.usage.inputTokens;
   const outputTokens = currentStep.usage.outputTokens;
 
-  const turnCtx = locals.get(chatTurnContextKey);
+  const turnCtx = chatEventContext();
   const stepNumber = steps.length - 1;
 
   const shouldTrigger = options.shouldCompact
@@ -4269,9 +4315,7 @@ async function chatCompact(
         source: "inner",
         stepNumber,
         steps,
-        chatId: turnCtx?.chatId,
-        turn: turnCtx?.turn,
-        clientData: turnCtx?.clientData,
+        ...turnCtx,
       })
     : totalTokens != null && options.threshold != null && totalTokens > options.threshold;
 
@@ -4306,7 +4350,10 @@ async function chatCompact(
           // Store state in locals for subsequent steps
           locals.set(chatCompactionStateKey, {
             summary,
-            baseResponseMessageCount: currentStep.response.messages.length,
+            baseResponseMessageCount: generationResponseMessages({
+              steps,
+              responseMessages: options.responseMessages,
+            }).length,
             baseResponseStepCount: steps.length,
           });
 
@@ -4334,8 +4381,7 @@ async function chatCompact(
               inputTokens,
               outputTokens,
               stepNumber,
-              chatId: turnCtx?.chatId,
-              turn: turnCtx?.turn,
+              ...turnCtx,
               writer: { write, merge },
             });
           }
@@ -4415,9 +4461,10 @@ function chatCompactionStep(
 ): (args: {
   messages: ModelMessage[];
   steps: CompactionStep[];
+  responseMessages?: ModelMessage[];
 }) => Promise<{ messages: ModelMessage[] } | undefined> {
-  return async ({ messages, steps }) => {
-    const result = await chatCompact(messages, steps, options);
+  return async ({ messages, steps, responseMessages }) => {
+    const result = await chatCompact(messages, steps, { ...options, responseMessages });
     return result.type === "skipped" ? undefined : result;
   };
 }
@@ -4645,6 +4692,7 @@ async function drainSteeringQueue(
             injectedModelMessages: injected,
             chatId: ctx?.chatId ?? "",
             turn: ctx?.turn ?? 0,
+            clientData: ctx?.clientData,
             stepNumber,
           });
         } catch {
@@ -5405,29 +5453,20 @@ function toStreamTextOptions(
     result.prepareStep = async ({
       messages,
       steps,
+      responseMessages,
     }: {
       messages: ModelMessage[];
       steps: CompactionStep[];
+      responseMessages?: ModelMessage[];
     }) => {
       let resultMessages: ModelMessage[] | undefined;
 
       // 1. Compaction
       if (taskCompaction) {
         const compactResult = await chatCompact(messages, steps, {
+          responseMessages,
           shouldCompact: taskCompaction.shouldCompact,
-          summarize: (msgs) => {
-            const ctx = locals.get(chatTurnContextKey);
-            const lastStep = steps.at(-1);
-            return taskCompaction.summarize({
-              messages: msgs,
-              usage: lastStep?.usage,
-              source: "inner",
-              stepNumber: steps.length - 1,
-              chatId: ctx?.chatId,
-              turn: ctx?.turn,
-              clientData: ctx?.clientData,
-            });
-          },
+          summarize: innerSummarize(taskCompaction, steps),
         });
         if (compactResult.type !== "skipped") {
           resultMessages = compactResult.messages;
@@ -6057,6 +6096,8 @@ export type ValidateMessagesEvent<TUIM extends UIMessage = UIMessage> = {
   chatId: string;
   /** The turn number (0-indexed). */
   turn: number;
+  /** Custom data from the frontend. */
+  clientData?: unknown;
   /** The trigger type for this turn. */
   trigger: "submit-message" | "regenerate-message" | "preload" | "close";
 };
@@ -7915,31 +7956,57 @@ export {
   makeChannelLifecycleReporter as __makeChannelLifecycleReporterForTests,
 };
 
+type ChatLatchReason = "settled" | "run-ended";
+
 /**
- * Per-chat latch for the channel egress that runs AFTER `trigger:turn-complete` is written (the
- * final `send()` and the done/error reactions). The run loop opens it before writing the chunk and
- * settles it once that egress has finished, so a caller that saw the chunk can wait for the
- * connector to be quiet instead of guessing with timers. One latch per chat at a time; a chat with
- * no open latch is quiet.
+ * Per-chat latches for work the run loop does AFTER it writes `trigger:turn-complete`. The loop
+ * opens a latch before writing the chunk and settles it once that work has finished, so a caller
+ * that saw the chunk can wait for it instead of guessing with timers. One latch per chat at a
+ * time (opening an open one keeps it); a chat with no open latch is quiet.
  */
-const channelEgressLatches = new Map<string, { promise: Promise<void>; settle: () => void }>();
-
-function openChannelEgressLatch(chatId: string): void {
-  let settle!: () => void;
-  const promise = new Promise<void>((resolve) => (settle = resolve));
-  channelEgressLatches.set(chatId, { promise, settle });
+function createChatLatches() {
+  const latches = new Map<
+    string,
+    { promise: Promise<ChatLatchReason>; settle: (reason: ChatLatchReason) => void }
+  >();
+  return {
+    open(chatId: string): void {
+      if (latches.has(chatId)) return;
+      let settle!: (reason: ChatLatchReason) => void;
+      const promise = new Promise<ChatLatchReason>((resolve) => (settle = resolve));
+      latches.set(chatId, { promise, settle });
+    },
+    /** `"run-ended"` marks a settle made as the run exits, so a waiter knows the run itself is over. */
+    settle(chatId: string, reason: ChatLatchReason = "settled"): void {
+      const latch = latches.get(chatId);
+      if (!latch) return;
+      latches.delete(chatId);
+      latch.settle(reason);
+    },
+    /** Why the latch settled; `undefined` when nothing is open. */
+    async wait(chatId: string): Promise<ChatLatchReason | undefined> {
+      return latches.get(chatId)?.promise;
+    },
+  };
 }
 
-function settleChannelEgressLatch(chatId: string): void {
-  const latch = channelEgressLatches.get(chatId);
-  if (!latch) return;
-  channelEgressLatches.delete(chatId);
-  latch.settle();
-}
+/** The channel egress after the chunk: the final `send()` and the done/error reactions. */
+const channelEgressLatches = createChatLatches();
+/** The post-turn hooks after the chunk: `onTurnComplete` and the turn-complete transcript save. */
+const postTurnHookLatches = createChatLatches();
 
 /** Resolves once the post-turn channel egress for `chatId` has finished (immediately when none is running). */
-export async function __waitForChannelEgressForTests(chatId: string): Promise<void> {
-  await channelEgressLatches.get(chatId)?.promise;
+export async function __waitForChannelEgressForTests(
+  chatId: string
+): Promise<ChatLatchReason | undefined> {
+  return channelEgressLatches.wait(chatId);
+}
+
+/** Resolves once the post-turn hooks for `chatId` have finished (immediately when none are running). */
+export async function __waitForPostTurnHooksForTests(
+  chatId: string
+): Promise<ChatLatchReason | undefined> {
+  return postTurnHookLatches.wait(chatId);
 }
 
 // The `action` type onAction receives: the actionSchema output (when set) unioned with the action
@@ -11119,6 +11186,7 @@ function chatAgent<
                               message: lastUIMessage as TUIMessage,
                               chatId: currentWirePayload.chatId,
                               turn,
+                              clientData: chatEventContext().clientData,
                             });
                           } catch {
                             /* non-fatal */
@@ -11368,6 +11436,7 @@ function chatAgent<
                           messages: cleanedUIMessages as TUIMessage[],
                           chatId: currentWirePayload.chatId,
                           turn,
+                          clientData: chatEventContext().clientData,
                           trigger: currentWirePayload.trigger as ValidateMessagesEvent["trigger"],
                         });
                       },
@@ -12478,9 +12547,7 @@ function chatAgent<
                       usage: contextUsage,
                       turnUsage,
                       totalUsage: cumulativeUsage,
-                      chatId: currentWirePayload.chatId,
-                      turn,
-                      clientData,
+                      ...chatEventContext(),
                       source: "outer",
                     });
 
@@ -12505,9 +12572,7 @@ function chatAgent<
                                 messages: accumulatedMessages,
                                 usage: turnUsage,
                                 totalUsage: cumulativeUsage,
-                                chatId: currentWirePayload.chatId,
-                                turn,
-                                clientData,
+                                ...chatEventContext(),
                                 source: "outer",
                               });
 
@@ -12561,8 +12626,7 @@ function chatAgent<
                                   inputTokens: turnUsage.inputTokens,
                                   outputTokens: turnUsage.outputTokens,
                                   stepNumber: -1, // outer loop, not a step
-                                  chatId: currentWirePayload.chatId,
-                                  turn,
+                                  ...chatEventContext(),
                                   writer: { write, merge },
                                 });
                               }
@@ -12703,7 +12767,8 @@ function chatAgent<
 
                   settleRecoveredTurn(currentWirePayload);
 
-                  openChannelEgressLatch(currentWirePayload.chatId);
+                  channelEgressLatches.open(currentWirePayload.chatId);
+                  postTurnHookLatches.open(currentWirePayload.chatId);
                   // Write turn-complete control chunk — closes the frontend stream.
                   const turnCompleteResult = await writeTurnCompleteChunk(
                     currentWirePayload.chatId,
@@ -12935,7 +13000,7 @@ function chatAgent<
                       });
                     }
                   }
-                  settleChannelEgressLatch(currentWirePayload.chatId);
+                  channelEgressLatches.settle(currentWirePayload.chatId);
 
                   // Fire onTurnComplete — stream is closed, use for persistence.
                   if (onTurnComplete) {
@@ -13051,6 +13116,7 @@ function chatAgent<
                       );
                     }
                   }
+                  postTurnHookLatches.settle(currentWirePayload.chatId);
                 } // end if (!isAction)
 
                 // NOTE: We intentionally do NOT await deferred work from onTurnComplete here.
@@ -13190,12 +13256,13 @@ function chatAgent<
               turnError.name === "AbortError" &&
               runSignal.aborted
             ) {
-              settleChannelEgressLatch(currentWirePayload.chatId);
+              channelEgressLatches.settle(currentWirePayload.chatId);
+              postTurnHookLatches.settle(currentWirePayload.chatId);
               channelLifecycle.dispose();
               // Full run cancellation — exit immediately
               throw turnError;
             }
-            settleChannelEgressLatch(currentWirePayload.chatId);
+            channelEgressLatches.settle(currentWirePayload.chatId);
 
             // OOM errors must escape the turn loop so the task runtime can
             // honor `retry.outOfMemory.machine` (set on chat.agent via
@@ -13328,6 +13395,7 @@ function chatAgent<
                 writer.write({ type: "error", errorText } as any);
               });
               // Signal turn complete so the client knows this turn is done
+              postTurnHookLatches.open(currentWirePayload.chatId);
               errorTurnCompleteResult = await writeTurnCompleteChunk(currentWirePayload.chatId);
               // A later action's snapshot reuses this cursor, so it has to move
               // here too or that snapshot resumes from before the failed turn.
@@ -13567,6 +13635,7 @@ function chatAgent<
                 });
               }
             }
+            postTurnHookLatches.settle(currentWirePayload.chatId);
 
             if (locals.get(chatCloseRequestedKey)) {
               await performChatClose();
@@ -13633,6 +13702,12 @@ function chatAgent<
         // reaching one of the loop's close checks (a turn timeout, an OOM
         // re-throw). `performChatClose` is idempotent, so the ordinary path
         // having already run it costs nothing here.
+        // Any exit that skips a turn's own settle (an OOM re-throw, a throw from the turn's
+        // error handler) leaves its post-turn latches open, and the module-level entries would
+        // outlive this run and block the next one for the same chat. Settling is a no-op when
+        // nothing is open, and runs first so a throwing close cannot skip it.
+        channelEgressLatches.settle(currentWirePayload.chatId, "run-ended");
+        postTurnHookLatches.settle(currentWirePayload.chatId, "run-ended");
         await performChatClose();
         // `stopSub` is registered post-preload so the close-during-preload
         // early-return path may exit before it ever attached. Guard the
@@ -15302,14 +15377,23 @@ class ChatMessageAccumulator {
     const queue = this._steeringQueue;
 
     return retainStepMessages(
-      async ({ messages, steps }: { messages: ModelMessage[]; steps: CompactionStep[] }) => {
+      async ({
+        messages,
+        steps,
+        responseMessages,
+      }: {
+        messages: ModelMessage[];
+        steps: CompactionStep[];
+        responseMessages?: ModelMessage[];
+      }) => {
         let resultMessages: ModelMessage[] | undefined;
 
         // 1. Compaction
         if (comp) {
           const result = await chatCompact(messages, steps, {
+            responseMessages,
             shouldCompact: comp.shouldCompact,
-            summarize: (msgs) => comp.summarize({ messages: msgs, source: "inner" }),
+            summarize: innerSummarize(comp, steps),
           });
           if (result.type !== "skipped") {
             resultMessages = result.messages;
@@ -15357,6 +15441,14 @@ class ChatMessageAccumulator {
   ): Promise<boolean> {
     if (!this._compaction || !usage) return false;
 
+    // An explicit context wins; inside a chat turn the turn's own fills in what it leaves out.
+    const turnContext = chatEventContext();
+    const eventContext = {
+      chatId: context?.chatId ?? turnContext.chatId,
+      turn: context?.turn ?? turnContext.turn,
+      clientData: context?.clientData ?? turnContext.clientData,
+    };
+
     const shouldTrigger = await this._compaction.shouldCompact({
       messages: this.modelMessages,
       totalTokens: usage.totalTokens,
@@ -15365,9 +15457,7 @@ class ChatMessageAccumulator {
       usage,
       turnUsage: context?.turnUsage,
       totalUsage: context?.totalUsage,
-      chatId: context?.chatId,
-      turn: context?.turn,
-      clientData: context?.clientData,
+      ...eventContext,
       source: "outer",
     });
 
@@ -15377,9 +15467,7 @@ class ChatMessageAccumulator {
       messages: this.modelMessages,
       usage,
       totalUsage: context?.totalUsage,
-      chatId: context?.chatId,
-      turn: context?.turn,
-      clientData: context?.clientData,
+      ...eventContext,
       source: "outer",
     });
 
@@ -15387,9 +15475,9 @@ class ChatMessageAccumulator {
       summary,
       uiMessages: this.uiMessages,
       modelMessages: this.modelMessages,
-      chatId: context?.chatId ?? "",
-      turn: context?.turn ?? 0,
-      clientData: context?.clientData,
+      chatId: eventContext.chatId ?? "",
+      turn: eventContext.turn ?? 0,
+      clientData: eventContext.clientData,
       source: "outer",
     };
 
@@ -15823,6 +15911,7 @@ function createChatSession<TClientData = unknown>(
                     message: lastUIMessage,
                     chatId: currentPayload.chatId,
                     turn,
+                    clientData: chatEventContext().clientData,
                   });
                 } catch {
                   /* non-fatal */
@@ -16017,9 +16106,7 @@ function createChatSession<TClientData = unknown>(
                   usage: contextUsage,
                   turnUsage,
                   totalUsage: cumulativeUsage,
-                  chatId: currentPayload.chatId,
-                  turn,
-                  clientData: currentPayload.metadata,
+                  ...chatEventContext(),
                   source: "outer",
                 });
 
@@ -16028,9 +16115,7 @@ function createChatSession<TClientData = unknown>(
                     messages: accumulator.modelMessages,
                     usage: turnUsage,
                     totalUsage: cumulativeUsage,
-                    chatId: currentPayload.chatId,
-                    turn,
-                    clientData: currentPayload.metadata,
+                    ...chatEventContext(),
                     source: "outer",
                   });
 
@@ -16085,17 +16170,19 @@ function createChatSession<TClientData = unknown>(
                 async ({
                   messages: stepMsgs,
                   steps,
+                  responseMessages,
                 }: {
                   messages: ModelMessage[];
                   steps: CompactionStep[];
+                  responseMessages?: ModelMessage[];
                 }) => {
                   let resultMessages: ModelMessage[] | undefined;
 
                   if (sessionCompaction) {
                     const compactResult = await chatCompact(stepMsgs, steps, {
+                      responseMessages,
                       shouldCompact: sessionCompaction.shouldCompact,
-                      summarize: (msgs) =>
-                        sessionCompaction.summarize({ messages: msgs, source: "inner" }),
+                      summarize: innerSummarize(sessionCompaction, steps),
                     });
                     if (compactResult.type !== "skipped") {
                       resultMessages = compactResult.messages;

@@ -115,9 +115,7 @@ describe("the streamText handed to run()", () => {
 
     try {
       await harness.sendMessage({ id: "u1", role: "user", parts: [{ type: "text", text: "one" }] });
-      await new Promise((r) => setTimeout(r, 40));
       await harness.sendMessage({ id: "u2", role: "user", parts: [{ type: "text", text: "two" }] });
-      await new Promise((r) => setTimeout(r, 40));
 
       const system = JSON.stringify(
         model.doStreamCalls.at(-1)!.prompt.filter((m) => m.role === "system")
@@ -176,7 +174,6 @@ describe("the streamText handed to run()", () => {
 
     try {
       await harness.sendMessage({ id: "u1", role: "user", parts: [{ type: "text", text: "hi" }] });
-      await new Promise((r) => setTimeout(r, 60));
 
       const names = (model.doStreamCalls.at(-1)!.tools ?? []).map((t) => t.name).sort();
       expect(names).toEqual(["agentTool", "bash", "callerTool", "loadSkill", "readFile"].sort());
@@ -200,7 +197,6 @@ describe("the streamText handed to run()", () => {
 
     try {
       await harness.sendMessage({ id: "u1", role: "user", parts: [{ type: "text", text: "hi" }] });
-      await new Promise((r) => setTimeout(r, 60));
 
       const prompt = JSON.stringify(model.doStreamCalls.at(-1)!.prompt);
       expect(prompt).toContain("CALLER-SYSTEM");
@@ -231,9 +227,7 @@ describe("the streamText handed to run()", () => {
 
     try {
       await harness.sendMessage({ id: "u1", role: "user", parts: [{ type: "text", text: "one" }] });
-      await new Promise((r) => setTimeout(r, 40));
       await harness.sendMessage({ id: "u2", role: "user", parts: [{ type: "text", text: "two" }] });
-      await new Promise((r) => setTimeout(r, 40));
 
       const system = JSON.stringify(
         model.doStreamCalls.at(-1)!.prompt.filter((m) => m.role === "system")
@@ -269,7 +263,6 @@ describe("the streamText handed to run()", () => {
 
     try {
       await harness.sendMessage({ id: "u1", role: "user", parts: [{ type: "text", text: "hi" }] });
-      await new Promise((r) => setTimeout(r, 60));
 
       expect((thrown as Error)?.message).toContain("already set");
       expect((thrown as Error)?.message).toContain("chat.agent({ system })");
@@ -568,9 +561,7 @@ describe("a turn started from an action", () => {
 
     try {
       await harness.sendMessage({ id: "u1", role: "user", parts: [{ type: "text", text: "ask" }] });
-      await new Promise((r) => setTimeout(r, 40));
       await harness.sendAction({ type: "regenerate" });
-      await new Promise((r) => setTimeout(r, 80));
 
       expect(prompts).toHaveLength(2);
       const regen = prompts[1]!;

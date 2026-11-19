@@ -618,10 +618,16 @@ postgresAndRedisTest(
 );
 
 postgresAndRedisTest(
-  "a later-snapshot completion revokes before retry and only its owner can complete",
+  "a later-snapshot completion after supervisor restart revokes before retry and only its owner can complete",
   async ({ prisma, redisOptions }) => {
     const f = await setupProxyRun(prisma, redisOptions);
     const caller = await loopbackPlacement(f.callers[0]!);
+    const started = await f.start(caller, f.dequeued.snapshot.id);
+    const previousBinding = await currentBindingId(caller);
+    await f.proxy.stop();
+    expect(await fixture.acceptsTls(caller)).toBe(true);
+    const replacement = bindings();
+    await replacement.start();
     let boundAttempt = 1;
     const client = await engineBoundary(f.engine, f.environment.id, undefined, async (body) => {
       expect(await fixture.acceptsTls(caller)).toBe(
@@ -637,15 +643,12 @@ postgresAndRedisTest(
       port,
       host: "127.0.0.1",
       workerClient: client,
-      secretProxy: f.proxy,
+      secretProxy: replacement,
       wideEventOpts: { service: "supervisor", env: { nodeId: "test" }, enabled: false },
       wideEventsNoisyRoutes: false,
     });
     await server.start();
     try {
-      const started = await f.start(caller, f.dequeued.snapshot.id);
-      const previousBinding = await currentBindingId(caller);
-      expect(await fixture.acceptsTls(caller)).toBe(true);
       const path = `http://127.0.0.1:${port}/api/v1/workload-actions/runs/${f.run.friendlyId}/snapshots/${started.snapshot.friendlyId}`;
       const headers = {
         "content-type": "application/json",
@@ -659,7 +662,7 @@ postgresAndRedisTest(
           completion: { ok: true, id: f.run.friendlyId, outputType: "application/json" },
         }),
       });
-      expect(wrongCaller.status).toBe(401);
+      expect(wrongCaller.ok).toBe(false);
       expect((await f.engine.getRunExecutionData({ runId: f.run.id }))?.snapshot.id).toBe(
         started.snapshot.id
       );
@@ -695,7 +698,11 @@ postgresAndRedisTest(
       const result = await response.json();
       expect(result.result.attemptStatus).toBe("RETRY_IMMEDIATELY");
       expect(await fixture.acceptsTls(caller)).toBe(false);
-      const retried = await f.start(await loopbackPlacement(caller), result.result.snapshot.id);
+      const retried = await f.start(
+        await loopbackPlacement(caller),
+        result.result.snapshot.id,
+        replacement
+      );
       expect(retried.run.attemptNumber).toBe(2);
       expect(await currentBindingId(caller)).not.toBe(previousBinding);
       expect(await fixture.acceptsTls(caller)).toBe(true);

@@ -12,16 +12,49 @@ export type SteeringInjection = {
   trimmedMessageIds?: string[];
 };
 
-type StepInput = {
-  messages: ModelMessage[];
-  steps: Array<{ response: { messages: ModelMessage[] } }>;
+type StepWithResponse = { response: { messages: ModelMessage[] } };
+
+/** What prepareStep receives from the AI SDK, as far as these helpers read it. */
+type GenerationInput = {
+  steps: readonly StepWithResponse[];
+  /** Passed from AI SDK 7: every response message of the generation so far. */
+  responseMessages?: ModelMessage[];
 };
 
+type StepInput = GenerationInput & {
+  messages: ModelMessage[];
+  steps: StepWithResponse[];
+};
+
+const sameMessage = (a: ModelMessage, b: ModelMessage) =>
+  a === b || JSON.stringify(a) === JSON.stringify(b);
+
 /**
- * AI SDK 5/6 rebuild input from the original prompt on every step. Retain an
- * override and append only the newly completed response messages. The same
- * logic works when the installed AI SDK already retains overrides: its input
- * is not concatenated again. State belongs to one generation, not one turn.
+ * Every response message of the generation so far, oldest first, taken from
+ * what the AI SDK hands prepareStep rather than inferred from the steps.
+ *
+ * AI SDK 7 passes it as `responseMessages`, and its steps each carry only
+ * their own messages. Up to AI SDK 6 there is no such argument, but each
+ * step's `response.messages` already holds every response message so far, so
+ * the last step's is the list (a step that adds nothing leaves it as it was).
+ * Telling the two apart from the steps' contents is ambiguous, which is why
+ * neither is guessed. A major that changes this again fails the per-major
+ * tests.
+ */
+export function generationResponseMessages(input: GenerationInput): ModelMessage[] {
+  return input.responseMessages ?? input.steps.at(-1)?.response.messages ?? [];
+}
+
+/**
+ * Keeps a prepareStep override in place for the rest of the generation.
+ *
+ * Once a step's prepareStep returns `messages` (a steer, an injection, a
+ * compaction, tool results put back in call order), every later step's input
+ * is that override plus the response messages added since, counted against
+ * `generationResponseMessages`. AI SDK 5/6 rebuild each step's input from the
+ * original prompt and would drop the override; AI SDK 7 carries it forward
+ * itself, and this builds the same input it would. State belongs to one
+ * generation, not one turn.
  *
  * Response messages can already be in the input an override was retained from:
  * tool calls approved before the first step (a head-start handover) are executed
@@ -33,24 +66,26 @@ export function retainStepMessages<T extends StepInput, R extends { messages?: M
 ): (input: T) => Promise<R | undefined> {
   let retained: ModelMessage[] | undefined;
   let retainedFrom: ModelMessage[] | undefined;
-  let responseCount = 0;
   let previousSteps = -1;
+  /** How many of the generation's response messages the last call saw. */
+  let seen = 0;
   return async (input) => {
     if (input.steps.length <= previousSteps) {
       retained = undefined;
       retainedFrom = undefined;
-      responseCount = 0;
+      seen = 0;
     }
-    const responses = input.steps.at(-1)?.response.messages ?? [];
+    const responses = generationResponseMessages(input);
+    let fresh = responses.slice(seen);
     if (retainedFrom) {
-      responseCount += alreadyIncluded(retainedFrom, responses.slice(responseCount));
+      fresh = fresh.slice(alreadyIncluded(retainedFrom, fresh));
       retainedFrom = undefined;
     }
-    const messages = retained ? [...retained, ...responses.slice(responseCount)] : input.messages;
+    const messages = retained ? [...retained, ...fresh] : input.messages;
     const result = await prepare({ ...input, messages });
     if (!retained && result?.messages) retainedFrom = input.messages;
     retained = result?.messages ?? (retained ? messages : undefined);
-    responseCount = responses.length;
+    seen = responses.length;
     previousSteps = input.steps.length;
     return retained ? ({ ...result, messages: retained } as R) : result;
   };
@@ -58,11 +93,9 @@ export function retainStepMessages<T extends StepInput, R extends { messages?: M
 
 /** How many of `next` already end `input`, as the longest overlap. */
 function alreadyIncluded(input: ModelMessage[], next: ModelMessage[]): number {
-  const same = (a: ModelMessage, b: ModelMessage) =>
-    a === b || JSON.stringify(a) === JSON.stringify(b);
   for (let count = Math.min(input.length, next.length); count > 0; count--) {
     const tail = input.slice(input.length - count);
-    if (tail.every((message, i) => same(message, next[i]!))) return count;
+    if (tail.every((message, i) => sameMessage(message, next[i]!))) return count;
   }
   return 0;
 }

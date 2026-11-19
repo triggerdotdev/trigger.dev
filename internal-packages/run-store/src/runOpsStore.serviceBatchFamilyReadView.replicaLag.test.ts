@@ -8,7 +8,7 @@
 // countBatchTaskRunItems routes by batchTaskRunId, each leg via #ownPrimary(store, undefined), which
 // returns undefined for a null client; each PostgresRunStore method then falls back to
 // `client ?? this.prisma` — the OWNING store's PRIMARY, not readOnlyPrisma. (Contrast
-// findBatchTaskRunByFriendlyId / findManyBatchTaskRunItems, which default to readOnlyPrisma — covered
+// findBatchTaskRunByFriendlyId, which defaults to readOnlyPrisma — covered
 // separately.)
 //
 // So under owning-replica lag the just-written batch/items are found and no downstream decision is

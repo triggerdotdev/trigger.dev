@@ -88,13 +88,6 @@ class CountingRunStore extends PostgresRunStore {
     this.calls.push("forWaitpointCompletion");
     return super.forWaitpointCompletion(waitpointId, context);
   }
-  override async updateManyWaitpoints(
-    args: Prisma.WaitpointUpdateManyArgs,
-    tx?: any
-  ): Promise<Prisma.BatchPayload> {
-    this.calls.push("updateManyWaitpoints");
-    return super.updateManyWaitpoints(args, tx);
-  }
   // The completion write goes through markWaitpointCompleted (the replay-safe completion method), so
   // it is the DB step the guard must precede on every completion route.
   override async markWaitpointCompleted(
@@ -1042,7 +1035,7 @@ async function triggerChildResumingParent(
  * completeWaitpoint's FIRST statement is the residency guard
  * (this.$.runStore.forWaitpointCompletion). Every route that reaches
  * completeWaitpoint therefore records exactly one `forWaitpointCompletion`
- * BEFORE its `updateManyWaitpoints`. A missed unblock route in production is a
+ * BEFORE its `markWaitpointCompleted`. A missed unblock route in production is a
  * silent permanent run hang, so Group 1 enumerates EVERY route exhaustively —
  * the 7 callers plus the 2 in-file wrappers — and proves the
  * guard fires on each, not a representative sample.
@@ -1052,12 +1045,8 @@ describe("WaitpointSystem completion fan-out + residency store-selection guard",
   // than) the first completion DB write on the same store.
   function expectGuardFiredBeforeUpdate(calls: string[]) {
     const guardIdx = calls.indexOf("forWaitpointCompletion");
-    // The completion DB write is markWaitpointCompleted (some routes may also touch
-    // updateManyWaitpoints); take whichever completion write lands first.
-    const writeIdx = ["markWaitpointCompleted", "updateManyWaitpoints"]
-      .map((m) => calls.indexOf(m))
-      .filter((i) => i >= 0)
-      .sort((a, b) => a - b)[0];
+    // The completion DB write is markWaitpointCompleted.
+    const writeIdx = calls.indexOf("markWaitpointCompleted");
     expect(guardIdx).toBeGreaterThanOrEqual(0);
     expect(writeIdx).toBeGreaterThanOrEqual(0);
     expect(guardIdx).toBeLessThanOrEqual(writeIdx);
@@ -1722,7 +1711,7 @@ describe("WaitpointSystem completion fan-out + residency store-selection guard",
 
   // Cross-seam completion applied to the OWNING store: a run-ops waitpoint resides on the dedicated
   // run-ops (NEW) DB, a cuid waitpoint on the legacy/control-plane DB. Driving the completion at the
-  // store seam (forWaitpointCompletion -> updateManyWaitpoints, as the engine does) must apply each
+  // store seam (forWaitpointCompletion -> markWaitpointCompleted, as the engine does) must apply each
   // completion to its owning store only.
   heteroPostgresTest(
     "cross-seam completion lands on the owning store only",
@@ -1765,15 +1754,9 @@ describe("WaitpointSystem completion fan-out + residency store-selection guard",
 
       const completedAt = new Date();
       const runOpsOwner = await router.forWaitpointCompletion(runOpsId, { routeKind: "MANUAL" });
-      await runOpsOwner.updateManyWaitpoints({
-        where: { id: runOpsId, status: "PENDING" },
-        data: { status: "COMPLETED", completedAt },
-      });
+      await runOpsOwner.markWaitpointCompleted(runOpsId, { completedAt });
       const ownerCuid = await router.forWaitpointCompletion(cuidId, { routeKind: "MANUAL" });
-      await ownerCuid.updateManyWaitpoints({
-        where: { id: cuidId, status: "PENDING" },
-        data: { status: "COMPLETED", completedAt },
-      });
+      await ownerCuid.markWaitpointCompleted(cuidId, { completedAt });
 
       // run-ops id completed on the dedicated run-ops (NEW) DB only.
       expect((await prisma17.waitpoint.findUniqueOrThrow({ where: { id: runOpsId } })).status).toBe(

@@ -103,9 +103,6 @@ describe("mockChatAgent", () => {
     const harness = mockChatAgent(agent, { chatId: "test-hooks" });
     try {
       await harness.sendMessage(userMessage("hello"));
-      // onTurnComplete may fire after the turn-complete chunk is written,
-      // so give it a tick to run before we assert.
-      await new Promise((r) => setTimeout(r, 20));
       expect(events).toEqual([
         "onChatStart",
         "onTurnStart",
@@ -221,7 +218,6 @@ describe("mockChatAgent", () => {
     const harness = mockChatAgent(agent, { chatId: "test-hydrate-newui-fresh-user" });
     try {
       await harness.sendMessage(userMessage("hello", "u-fresh"));
-      await new Promise((r) => setTimeout(r, 50));
 
       // `newUIMessages` for a fresh user turn must contain BOTH the
       // user message and the assistant response. The bug surfaces as
@@ -319,7 +315,6 @@ describe("mockChatAgent", () => {
     try {
       // Turn 1: user message → agent emits tool-input-available for askUser
       await harness.sendMessage(userMessage("hi"));
-      await new Promise((r) => setTimeout(r, 50));
 
       // Capture the head assistant id the agent produced.
       const turn1 = turnsSeen.at(-1);
@@ -347,7 +342,6 @@ describe("mockChatAgent", () => {
         ],
       };
       await harness.sendMessage(toolAnswerMessage as any);
-      await new Promise((r) => setTimeout(r, 50));
 
       // The merge must rewrite FRESH_ID back to HEAD_ID via the toolCallId
       // map, attaching the tool answer to the existing head — no duplicate.
@@ -435,7 +429,6 @@ describe("mockChatAgent", () => {
         ],
       };
       await harness.sendMessage(slim as any);
-      await new Promise((r) => setTimeout(r, 50));
 
       expect(mergedToolPart?.state).toBe("output-available");
       expect(mergedToolPart?.output).toEqual({ hits: 7 });
@@ -511,7 +504,6 @@ describe("mockChatAgent", () => {
         ],
       };
       await harness.sendMessage(slim as any);
-      await new Promise((r) => setTimeout(r, 50));
 
       expect(mergedToolPart?.state).toBe("approval-responded");
       expect(mergedToolPart?.approval).toEqual({ id: "appr_1", approved: true });
@@ -588,7 +580,6 @@ describe("mockChatAgent", () => {
         ],
       };
       await harness.sendMessage(stale as any);
-      await new Promise((r) => setTimeout(r, 50));
 
       // The hydrated terminal state survives the merge.
       expect(mergedToolPart?.state).toBe("output-denied");
@@ -698,7 +689,6 @@ describe("mockChatAgent", () => {
     try {
       // Turn 1: user message. Validator sees a user message; validate passes.
       await harness.sendMessage(userMessage("hi"));
-      await new Promise((r) => setTimeout(r, 50));
 
       expect(validateCalls).toHaveLength(1);
       expect(validateCalls[0].messages[0].role).toBe("user");
@@ -723,7 +713,6 @@ describe("mockChatAgent", () => {
         ],
       };
       await harness.sendMessage(slim as any);
-      await new Promise((r) => setTimeout(r, 50));
 
       expect(validateCalls).toHaveLength(2);
       expect(validateCalls[1].trigger).toBe("submit-message");
@@ -817,7 +806,6 @@ describe("mockChatAgent", () => {
     try {
       // Turn 1: user message → agent emits tool call (state=input-available, has input).
       await harness.sendMessage(userMessage("hi"));
-      await new Promise((r) => setTimeout(r, 50));
 
       const turn1Assistant = turnsSeen.at(-1)?.uiMessages.find((m: any) => m.role === "assistant");
       expect(turn1Assistant).toBeTruthy();
@@ -837,7 +825,6 @@ describe("mockChatAgent", () => {
         ],
       };
       await harness.sendMessage(slim as any);
-      await new Promise((r) => setTimeout(r, 50));
 
       const turn2 = turnsSeen.at(-1);
       const head = turn2!.uiMessages.find((m: any) => m.id === HEAD_ID);
@@ -916,9 +903,6 @@ describe("mockChatAgent", () => {
     try {
       // Bootstrap with a message so the message-turn hooks fire once.
       await harness.sendMessage(userMessage("hi"));
-      // sendMessage resolves on `trigger:turn-complete`, but onTurnComplete
-      // fires as a separate microtask after — let it settle before snapshotting.
-      await new Promise((r) => setTimeout(r, 50));
 
       // Snapshot call counts after the bootstrap — we'll assert these
       // don't change for the action below.
@@ -929,7 +913,6 @@ describe("mockChatAgent", () => {
       const baselineComplete = onTurnComplete.mock.calls.length;
 
       const actionTurn = await harness.sendAction({ type: "undo" });
-      await new Promise((r) => setTimeout(r, 50));
 
       // onAction fired exactly once; no turn hooks fired; run() / LLM did not.
       expect(onAction).toHaveBeenCalledTimes(1);
@@ -980,12 +963,10 @@ describe("mockChatAgent", () => {
     const harness = mockChatAgent(agent, { chatId: "test-turn-action" });
     try {
       await harness.sendMessage(userMessage("hi"));
-      await new Promise((r) => setTimeout(r, 50));
       const baselineTurnStart = onTurnStart.mock.calls.length;
       const baselineTurnComplete = onTurnComplete.mock.calls.length;
 
       const actionTurn = await harness.sendAction({ type: "regenerate" });
-      await new Promise((r) => setTimeout(r, 50));
 
       // It is a turn: each hook fired once more.
       expect(onTurnStart.mock.calls.length).toBe(baselineTurnStart + 1);
@@ -1123,7 +1104,6 @@ describe("mockChatAgent", () => {
     const harness = mockChatAgent(agent, { chatId: "test-finish-reason" });
     try {
       await harness.sendMessage(userMessage("hello"));
-      await new Promise((r) => setTimeout(r, 20));
       expect(seenReason).toBe("stop");
     } finally {
       await harness.close();
@@ -1142,7 +1122,6 @@ describe("mockChatAgent", () => {
     const harness = mockChatAgent(agent, { chatId: "err-run" });
     try {
       await harness.sendMessage(userMessage("hello", "u-err-run"));
-      await new Promise((r) => setTimeout(r, 50));
       expect(onTurnComplete).toHaveBeenCalledTimes(1);
       const evt = onTurnComplete.mock.calls[0]![0];
       expect(evt.error).toBeInstanceOf(Error);
@@ -1175,7 +1154,6 @@ describe("mockChatAgent", () => {
     const harness = mockChatAgent(agent, { chatId: "err-prehook" });
     try {
       await harness.sendMessage(userMessage("validate me", "u-err-prehook"));
-      await new Promise((r) => setTimeout(r, 50));
       expect(onTurnComplete).toHaveBeenCalledTimes(1);
       const evt = onTurnComplete.mock.calls[0]![0];
       expect(evt.error).toBeInstanceOf(Error);
@@ -1282,7 +1260,6 @@ describe("mockChatAgent", () => {
       const harness = mockChatAgent(agent, { chatId: "test-history-pending" });
       try {
         await harness.sendMessage(userMessage("hi"));
-        await new Promise((r) => setTimeout(r, 50));
 
         expect(pending).toHaveLength(1);
         expect(pending[0]).toMatchObject({ toolCallId: TC, toolName: "askUser" });
@@ -1310,7 +1287,6 @@ describe("mockChatAgent", () => {
       const harness = mockChatAgent(agent, { chatId: "test-history-pending-empty" });
       try {
         await harness.sendMessage(userMessage("hi"));
-        await new Promise((r) => setTimeout(r, 50));
         expect(pending).toEqual([]);
       } finally {
         await harness.close();
@@ -1348,7 +1324,6 @@ describe("mockChatAgent", () => {
       const harness = mockChatAgent(agent, { chatId: "test-history-resolved" });
       try {
         await harness.sendMessage(userMessage("hi"));
-        await new Promise((r) => setTimeout(r, 50));
 
         // Send a HITL tool answer that resolves TC. The merge attaches the
         // output to the head assistant — it now shows in `output-available`
@@ -1367,7 +1342,6 @@ describe("mockChatAgent", () => {
           ],
         };
         await harness.sendMessage(toolAnswer as any);
-        await new Promise((r) => setTimeout(r, 50));
 
         // After turn 1 only, no tool call is resolved yet (input-available).
         // After the HITL answer is merged, the merged head shows the tool
@@ -1448,7 +1422,6 @@ describe("mockChatAgent", () => {
       const harness = mockChatAgent(agent, { chatId: "test-history-extract" });
       try {
         await harness.sendMessage(userMessage("kick"));
-        await new Promise((r) => setTimeout(r, 50));
 
         expect(extracted).toEqual([
           { toolCallId: "tc-2", toolName: "search", output: { hits: 7 } },
@@ -1484,7 +1457,6 @@ describe("mockChatAgent", () => {
       const harness = mockChatAgent(agent, { chatId: "test-history-find" });
       try {
         await harness.sendMessage(userMessage("hello", "u-fixed"));
-        await new Promise((r) => setTimeout(r, 50));
 
         expect(foundUser?.id).toBe("u-fixed");
         expect(foundAssistant).toBeTruthy();
@@ -1550,7 +1522,6 @@ describe("mockChatAgent", () => {
       const harness = mockChatAgent(agent, { chatId: "test-history-extract-real" });
       try {
         await harness.sendMessage(userMessage("hi"));
-        await new Promise((r) => setTimeout(r, 50));
         // HITL answer for TC, lands via the runtime merger.
         const toolAnswer = {
           id: "ai-sdk-fresh-id-real",
@@ -1566,7 +1537,6 @@ describe("mockChatAgent", () => {
           ],
         };
         await harness.sendMessage(toolAnswer as any);
-        await new Promise((r) => setTimeout(r, 50));
 
         expect(extractedAgainstRealChain).toEqual([
           { toolCallId: "tc_real_chain_2", toolName: "askUser", output: { answer: "yes" } },
@@ -1628,7 +1598,6 @@ describe("mockChatAgent", () => {
       const harness = mockChatAgent(agent, { chatId: "test-history-extract-error" });
       try {
         await harness.sendMessage(userMessage("kick"));
-        await new Promise((r) => setTimeout(r, 50));
         // HITL answer arriving as output-error.
         const errAnswer = {
           id: "ai-sdk-err-fresh",
@@ -1644,7 +1613,6 @@ describe("mockChatAgent", () => {
           ],
         };
         await harness.sendMessage(errAnswer as any);
-        await new Promise((r) => setTimeout(r, 50));
 
         expect(resolved).toHaveLength(1);
         expect(resolved[0]).toMatchObject({ toolCallId: TC, toolName: "search" });
@@ -1726,7 +1694,6 @@ describe("mockChatAgent", () => {
       const harness = mockChatAgent(agent, { chatId: "test-history-extract-multi" });
       try {
         await harness.sendMessage(userMessage("kick"));
-        await new Promise((r) => setTimeout(r, 50));
 
         expect(extracted).toEqual([
           { toolCallId: "tc-new", toolName: "search", output: { hits: 9 } },
@@ -1774,7 +1741,6 @@ describe("mockChatAgent", () => {
       const harness = mockChatAgent(agent, { chatId: "test-history-pending-after-user" });
       try {
         await harness.sendMessage(userMessage("kick"));
-        await new Promise((r) => setTimeout(r, 50));
 
         expect(pendingAfterUser).toEqual([
           { toolCallId: "tc-still-pending", toolName: "askUser", messageId: "a-pending" },
@@ -1806,7 +1772,6 @@ describe("mockChatAgent", () => {
       const harness = mockChatAgent(agent, { chatId: "test-history-chain" });
       try {
         await harness.sendMessage(userMessage("a"));
-        await new Promise((r) => setTimeout(r, 50));
 
         expect(chainCopy.length).toBeGreaterThan(0);
         expect(allCopy.length).toBe(chainCopy.length - 1);
@@ -1870,9 +1835,6 @@ describe("mockChatAgent", () => {
       try {
         expect(harness.getSnapshot()).toBeUndefined();
         await harness.sendMessage(userMessage("hi"));
-        // onTurnComplete -> writeChatSnapshot fires AFTER turn-complete chunk;
-        // give it a tick to settle.
-        await new Promise((r) => setTimeout(r, 50));
         const snap = harness.getSnapshot();
         expect(snap).toBeDefined();
         expect(snap!.version).toBe(2);
@@ -1915,7 +1877,6 @@ describe("mockChatAgent", () => {
       });
       try {
         await harness.sendMessage(userMessage("now"));
-        await new Promise((r) => setTimeout(r, 50));
         // onChatStart sees ModelMessage[] (not UIMessage[]). The exact
         // count varies because `toModelMessages` may split a single UI
         // message into multiple ModelMessages depending on parts. The
@@ -2022,7 +1983,6 @@ describe("mockChatAgent", () => {
       const harness = mockChatAgent(agent, { chatId: "hydrate-skip" });
       try {
         await harness.sendMessage(userMessage("hi"));
-        await new Promise((r) => setTimeout(r, 50));
         // No snapshot was written — customer with hydrateMessages owns
         // persistence themselves.
         expect(harness.getSnapshot()).toBeUndefined();
@@ -2055,7 +2015,6 @@ describe("mockChatAgent", () => {
       const harness = mockChatAgent(agent, { chatId: "fresh-baseline" });
       try {
         await harness.sendMessage(userMessage("hello"));
-        await new Promise((r) => setTimeout(r, 20));
         expect(onChatStart).toHaveBeenCalledTimes(1);
         expect(onTurnStart).toHaveBeenCalledTimes(1);
       } finally {
@@ -2092,7 +2051,6 @@ describe("mockChatAgent", () => {
         // The continuation-wait branch parks until the first session.in
         // message arrives — sending one wakes it and runs turn 0.
         await harness.sendMessage(userMessage("first user message of this run"));
-        await new Promise((r) => setTimeout(r, 20));
         expect(onChatStart).not.toHaveBeenCalled();
         expect(onTurnStart).toHaveBeenCalledTimes(1);
       } finally {
@@ -2121,7 +2079,6 @@ describe("mockChatAgent", () => {
       });
       try {
         await harness.sendMessage(userMessage("hi"));
-        await new Promise((r) => setTimeout(r, 20));
         expect(onChatStart).not.toHaveBeenCalled();
         expect(onTurnStart).toHaveBeenCalledTimes(1);
       } finally {
@@ -2189,7 +2146,6 @@ describe("mockChatAgent tools / toModelOutput (TRI-10149)", () => {
     try {
       await harness.sendMessage(userMessage("hello"));
       await harness.sendMessage(userMessage("recall"));
-      await new Promise((r) => setTimeout(r, 20));
 
       const all = seenToolResults.join("|");
       // toModelOutput ran → transformed value present, raw output gone.
@@ -2231,7 +2187,6 @@ describe("mockChatAgent tools / toModelOutput (TRI-10149)", () => {
     try {
       await harness.sendMessage(userMessage("hello"));
       await harness.sendMessage(userMessage("recall"));
-      await new Promise((r) => setTimeout(r, 20));
 
       const all = seenToolResults.join("|");
       expect(all).toContain("MARKER-XYZ");
@@ -2268,7 +2223,6 @@ describe("mockChatAgent tools / toModelOutput (TRI-10149)", () => {
     try {
       await harness.sendMessage(userMessage("hello"));
       await harness.sendMessage(userMessage("recall"));
-      await new Promise((r) => setTimeout(r, 20));
 
       // No tools declared → no toModelOutput lookup → raw output stringified
       // (the pre-feature behavior, preserved for backward compatibility).

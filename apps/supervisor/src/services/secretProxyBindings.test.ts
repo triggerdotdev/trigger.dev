@@ -99,8 +99,8 @@ describe("SecretProxyBindings with real k3s and native interceptor UDS", () => {
   }, 600_000);
   beforeEach(async () => {
     bindings = registrar();
-    await bindings.start();
     await fixture.resetAllocations();
+    await bindings.start();
   });
   afterEach(async () => {
     await bindings.stop();
@@ -396,24 +396,95 @@ describe("SecretProxyBindings with real k3s and native interceptor UDS", () => {
     expect(await fixture.acceptsTls(caller)).toBe(true);
   });
 
-  it("requires an acknowledged reset and fresh execution reservations", async () => {
-    const caller = callers[0]!;
-    await start(caller);
-    const restarted = registrar();
+  it("adopts existing bindings after a restart and completes safely while discovery is unavailable", async () => {
+    const warm = { ...callers[0]!, runId: "run_recovered_warm" };
+    const warmResponse = await start(warm, { attempt: 2 });
+    const completing = callers[1]!;
+    const completion = await start(completing);
+    await bindings.stop();
+    expect(await fixture.acceptsTls(warm)).toBe(true);
+    bindings = registrar();
     await chmod(fixture.socketPath, 0o644);
     try {
-      await restarted.start();
-      expect(await restarted.prepareStart(caller)).toBeUndefined();
-      await chmod(fixture.socketPath, 0o600);
-      await restarted.start();
-      expect(await fixture.acceptsTls(caller)).toBe(false);
-      await start(caller, {}, restarted);
-      await bindings.stop();
-      expect(await fixture.acceptsTls(caller)).toBe(true);
+      await bindings.start();
+      expect(await bindings.prepareStart(warm)).toBeUndefined();
+      await expect(
+        bindings.complete(completing, async () => {
+          throw new Error("Unresolved discovery must not acknowledge live authority");
+        })
+      ).rejects.toThrow("Secret proxy execution unavailable");
+      await expect(
+        bindings.refresh(warm.runId, warmResponse.envVars.TRIGGER_RUN_TOKEN)
+      ).rejects.toThrow();
+      expect(await fixture.acceptsTls(completing)).toBe(true);
     } finally {
       await chmod(fixture.socketPath, 0o600);
-      await restarted.stop();
     }
+    await bindings.complete(completing, async () => {
+      expect(await fixture.acceptsTls(completing)).toBe(false);
+      return acknowledged(completing, completion.snapshot.friendlyId);
+    });
+    const foreign = { ...callers[2]!, runId: warm.runId };
+    await expect(bindings.authorize(foreign)).rejects.toThrow();
+    expect(bindings.tracks(warm.runId)).toBe(true);
+    await expect(bindings.prepareStart({ ...warm, runId: "run_other" })).rejects.toThrow(
+      SecretProxyAllocationBusyError
+    );
+    await bindings.authorize(warm);
+    await bindings.refresh(warm.runId);
+    await bindings.refresh(warm.runId, executionInput(warm, 2).runToken);
+    expect(await fixture.acceptsTls(warm)).toBe(true);
+    await bindings.complete(warm, async () => unavailable, 1);
+    expect(await fixture.acceptsTls(warm)).toBe(true);
+    await finish(warm, warmResponse.snapshot.friendlyId);
+    expect(await fixture.acceptsTls(warm)).toBe(false);
+  });
+
+  it("revokes a discovered binding when its Runner is retired before adoption", async () => {
+    const caller = { ...callers[0]!, runId: "run_retired_before_adoption" };
+    await start(caller);
+    await bindings.stop();
+    bindings = registrar();
+    await bindings.start();
+    expect(await fixture.acceptsTls(caller)).toBe(true);
+    const busy = await bindings
+      .prepareStart({ ...caller, runId: "run_other" })
+      .catch((error: unknown) => error);
+    expect(busy).toBeInstanceOf(SecretProxyAllocationBusyError);
+    const { runner, discovered } = busy as SecretProxyAllocationBusyError;
+    expect(discovered?.runId).toBe(caller.runId);
+    await bindings.revokeRunner(runner.runnerId, runner.runnerUid, discovered);
+    expect(await fixture.acceptsTls(caller)).toBe(false);
+    expect(bindings.tracks(caller.runId)).toBe(false);
+    await expect(
+      bindings.refresh(caller.runId, executionInput(caller).runToken)
+    ).resolves.toBeUndefined();
+    expect(await fixture.acceptsTls(caller)).toBe(false);
+  });
+
+  it("keeps retirement retryable when adoption races it and revokes fail", async () => {
+    const caller = { ...callers[0]!, runId: "run_adopted_during_retirement" };
+    await start(caller);
+    await bindings.stop();
+    bindings = registrar();
+    await bindings.start();
+    const busy = await bindings
+      .prepareStart({ ...caller, runId: "run_other" })
+      .catch((error: unknown) => error);
+    expect(busy).toBeInstanceOf(SecretProxyAllocationBusyError);
+    const { runner, discovered } = busy as SecretProxyAllocationBusyError;
+    await bindings.authorize(caller);
+    await chmod(fixture.socketPath, 0o644);
+    try {
+      await expect(
+        bindings.revokeRunner(runner.runnerId, runner.runnerUid, discovered)
+      ).rejects.toThrow();
+    } finally {
+      await chmod(fixture.socketPath, 0o600);
+    }
+    expect(await fixture.acceptsTls(caller)).toBe(true);
+    await bindings.revokeRunner(runner.runnerId, runner.runnerUid, discovered);
+    expect(await fixture.acceptsTls(caller)).toBe(false);
   });
 
   it("retains post-start attachment failure until revocation and platform acknowledgement", async () => {
@@ -496,7 +567,7 @@ describe("SecretProxyBindings with real k3s and native interceptor UDS", () => {
     expect(await bindings.prepareStart(caller)).toBeDefined();
   }, 15_000);
 
-  it("renews only the current execution token and revokes on shutdown", async () => {
+  it("renews only the current execution token and preserves it on shutdown", async () => {
     const caller = callers[0]!;
     await start(caller, { allowedHosts: ["api--edge.example.com"] });
     expect(await fixture.acceptsTls(caller, "api--edge.example.com")).toBe(true);
@@ -507,7 +578,7 @@ describe("SecretProxyBindings with real k3s and native interceptor UDS", () => {
     await bindings.refresh(caller.runId, renewed.runToken);
     expect(await fixture.acceptsTls(caller, "api--edge.example.com")).toBe(true);
     await bindings.stop();
-    expect(await fixture.acceptsTls(caller, "api--edge.example.com")).toBe(false);
+    expect(await fixture.acceptsTls(caller, "api--edge.example.com")).toBe(true);
     await interceptorControl(fixture.socketPath, "absent");
   });
 

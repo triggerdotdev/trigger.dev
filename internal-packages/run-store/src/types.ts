@@ -327,20 +327,6 @@ export type RewriteDebouncedRunData = {
   runTags?: string[];
 };
 
-/**
- * Input for {@link RunStore.finalizeRun}: the terminal `status` and its `error` are written in ONE
- * update (a separate later error write races realtime, which shuts the stream on the final status
- * before the error lands). `bulkActionId` is pushed onto `bulkActionGroupIds`. Every field is
- * optional so a caller can finalize with any subset (e.g. status-only, or expire with expiredAt).
- */
-export type FinalizeRunData = {
-  status?: TaskRunStatus;
-  expiredAt?: Date;
-  completedAt?: Date;
-  error?: TaskRunError;
-  bulkActionId?: string;
-};
-
 export type ClearIdempotencyKeyInput =
   | { byId: { runId: string; idempotencyKey: string }; byPredicate?: never; byFriendlyIds?: never }
   | {
@@ -601,27 +587,6 @@ export interface RunStore {
     tx?: PrismaClientOrTransaction
   ): Promise<Prisma.TaskRunGetPayload<{ select: S }>>;
 
-  // Generic dual-residency finalize: writes the terminal `status` and its `error` in ONE update,
-  // pushing `bulkActionId` onto `bulkActionGroupIds`. Overloads mirror findRun: select / include /
-  // bare full-row.
-  finalizeRun<S extends Prisma.TaskRunSelect>(
-    runId: string,
-    data: FinalizeRunData,
-    args: { select: S },
-    tx?: PrismaClientOrTransaction
-  ): Promise<Prisma.TaskRunGetPayload<{ select: S }>>;
-  finalizeRun<I extends Prisma.TaskRunInclude>(
-    runId: string,
-    data: FinalizeRunData,
-    args: { include: I },
-    tx?: PrismaClientOrTransaction
-  ): Promise<Prisma.TaskRunGetPayload<{ include: I }>>;
-  finalizeRun(
-    runId: string,
-    data: FinalizeRunData,
-    tx?: PrismaClientOrTransaction
-  ): Promise<TaskRun>;
-
   // Expiry
   expireRun<S extends Prisma.TaskRunSelect>(
     runId: string,
@@ -769,16 +734,6 @@ export interface RunStore {
     args: { include: I }
   ): Promise<Prisma.TaskRunGetPayload<{ include: I }> | null>;
   findRunOnPrimary(where: Prisma.TaskRunWhereInput): Promise<TaskRun | null>;
-
-  findRunOrThrowOnPrimary<S extends Prisma.TaskRunSelect>(
-    where: Prisma.TaskRunWhereInput,
-    args: { select: S }
-  ): Promise<Prisma.TaskRunGetPayload<{ select: S }>>;
-  findRunOrThrowOnPrimary<I extends Prisma.TaskRunInclude>(
-    where: Prisma.TaskRunWhereInput,
-    args: { include: I }
-  ): Promise<Prisma.TaskRunGetPayload<{ include: I }>>;
-  findRunOrThrowOnPrimary(where: Prisma.TaskRunWhereInput): Promise<TaskRun>;
 
   findRuns<S extends Prisma.TaskRunSelect>(
     args: {
@@ -962,15 +917,11 @@ export interface RunStore {
     tx?: PrismaClientOrTransaction,
     opts?: WaitpointColocationOptions
   ): Promise<Prisma.WaitpointGetPayload<T>>;
-  updateManyWaitpoints(
-    args: Prisma.WaitpointUpdateManyArgs,
-    tx?: PrismaClientOrTransaction
-  ): Promise<Prisma.BatchPayload>;
   /**
    * Replay-safe waitpoint completion: transitions a single waitpoint PENDING -> COMPLETED by stable
    * id. The status guard and the completed values are constructed inside the implementation, so the
    * write is always idempotent (a replay matches 0 rows) and safe to retry on a connection blip. This
-   * is the ONLY waitpoint-update path that receives infra retry; `updateManyWaitpoints` does not.
+   * is the ONLY waitpoint-update path that receives infra retry.
    *
    * Takes NO caller transaction on purpose: it is a standalone, always-retried write that runs on its
    * own writer client. A completion that must be part of a caller-owned transaction uses a different
@@ -1080,24 +1031,6 @@ export interface RunStore {
     where: { batchTaskRunId: string; status?: BatchTaskRunItemStatus },
     client?: ReadClient
   ): Promise<number>;
-  // updateMany of batch items: route by `where.id`/`where.batchTaskRunId`, else fan-out + sum.
-  updateManyBatchTaskRunItems(
-    args: Prisma.BatchTaskRunItemUpdateManyArgs,
-    tx?: PrismaClientOrTransaction
-  ): Promise<Prisma.BatchPayload>;
-  // An item co-resides with both its batch (batchTaskRunId FK) and its child run (taskRunId FK) on
-  // ONE DB, so a read keyed by either scalar routes to that store; `include` resolves the co-resident
-  // relations locally.
-  findManyBatchTaskRunItems<I extends Prisma.BatchTaskRunItemInclude = {}>(
-    where: { taskRunId?: string; batchTaskRunId?: string },
-    args?: { include?: I },
-    client?: ReadClient
-  ): Promise<Prisma.BatchTaskRunItemGetPayload<{ include: I }>[]>;
-  findBatchTaskRunItem<I extends Prisma.BatchTaskRunItemInclude = {}>(
-    where: { batchTaskRunId: string; taskRunId?: string },
-    args?: { include?: I },
-    client?: ReadClient
-  ): Promise<Prisma.BatchTaskRunItemGetPayload<{ include: I }> | null>;
 
   // --- WaitpointTag (run-ops) ---
   // A WaitpointTag has no run/waitpoint FK — a standalone entity keyed by (environmentId, name).
