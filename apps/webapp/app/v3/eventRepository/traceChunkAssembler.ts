@@ -113,6 +113,8 @@ export class TraceChunkAssembler {
   #tailFloorHeld = false;
   // Spans first seen in a live tail read, not in a stored one.
   #liveSpanIds = new Set<string>();
+  // Times a span already held got a new message, so search can refilter on the same tree.
+  #messageChanges = 0;
 
   mergeChunk(events: TraceChunkEvent[], options?: { source?: TraceChunkSource }): void {
     const source = options?.source ?? "stream";
@@ -150,6 +152,10 @@ export class TraceChunkAssembler {
   /** Spans first seen in a live tail read. Only grows; a later tail re-read doesn't add. */
   get liveSpanIds(): ReadonlySet<string> {
     return this.#liveSpanIds;
+  }
+
+  get messageChanges(): number {
+    return this.#messageChanges;
   }
 
   #renderedSpan(spanId: string): RenderedSpan | undefined {
@@ -260,8 +266,9 @@ export class TraceChunkAssembler {
     }
 
     if (event.kind === "SPAN") {
-      if (!isStalePartial) {
+      if (!isStalePartial && node.data.message !== event.message) {
         node.data.message = event.message;
+        this.#messageChanges++;
       }
       if (event.status === "ERROR") {
         node.data.isError = true;

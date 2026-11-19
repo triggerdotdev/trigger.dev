@@ -77,6 +77,7 @@ import {
   unavailableReasonText,
   type RunLoadBlock,
 } from "./sessionRunFallback";
+import { traceFilterKey } from "~/components/runs/v3/trace/traceFilterKey";
 import { SessionTimelineRow } from "./SessionTimelineRow";
 import { type RunPanelData, useSessionPanelStore } from "./sessionPanelStore";
 import {
@@ -427,6 +428,11 @@ function SessionTraceTree({
     () => new Map(Object.entries(snapshots).map(([id, snapshot]) => [id, snapshot.events])),
     [snapshots]
   );
+  // A span turning into an error, or getting a new message, refilters the same tree.
+  const filterKey = useMemo(
+    () => (filtering ? traceFilterKey(Object.values(snapshots)) : undefined),
+    [filtering, snapshots]
+  );
   const { tree, structureKey } = useMemo(
     () => buildSessionTree<SpanData>({ runs, totalCount, spansByRun }),
     [runs, totalCount, spansByRun]
@@ -535,6 +541,7 @@ function SessionTraceTree({
       !runOpensExpanded(loadsRef.current, node.data.run.friendlyId, newestRunId),
     canExpand: rowCanExpand,
     structureKey,
+    filterKey,
     // Derived, never set by code: a span not in the tree yet highlights its run.
     selectedId: highlightedId,
     // Changes that match the highlight come from the prop; only the user's become intent.
@@ -1109,7 +1116,9 @@ function SessionTraceTree({
                     isExpanded={state.expanded}
                     canExpand={node.hasChildren}
                     showRootBadge={false}
-                    onChevronClick={() => toggleExpandNode(node.id, false)}
+                    onChevronClick={() =>
+                      node.hasChildren ? toggleExpandNode(node.id, false) : selectRow(node.id)
+                    }
                   />
                 ) : (
                   <SessionTreeRowView

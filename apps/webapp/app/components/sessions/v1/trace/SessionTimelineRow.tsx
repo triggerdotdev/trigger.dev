@@ -42,7 +42,8 @@ export function SessionTimelineRow({
 
   return (
     <TraceTimelineRowScale scale={scale}>
-      <Timeline.Row className={rowClassName} onClick={onClick}>
+      {/* A span's own row takes the click; handling it here too would select it twice. */}
+      <Timeline.Row className={rowClassName} onClick={row.kind === "run" ? onClick : undefined}>
         <RowGridlines />
         {row.kind === "run" ? (
           <Timeline.Span

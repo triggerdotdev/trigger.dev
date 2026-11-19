@@ -164,6 +164,8 @@ type UpdateFilterAction = {
   type: "UPDATE_FILTER";
   payload: {
     filter: Filter<any, any> | undefined;
+    /** The latest tree, when its node data may have changed since the last tree update. */
+    tree?: FlatTree<any>;
   };
 };
 
@@ -505,11 +507,18 @@ export function reducer(state: TreeState, action: Action): TreeState {
       return newState;
     }
     case "UPDATE_FILTER": {
-      const newState = applyFilterToState({
-        ...state,
-        filter: action.payload.filter,
+      const { filter, tree } = action.payload;
+      if (!tree || sameShape(state.tree, tree)) {
+        return applyFilterToState({ ...state, tree: tree ?? state.tree, filter });
+      }
+      // The stored tree is out of date (same size, different rows): rebuild like UPDATE_TREE.
+      return concreteStateFromInput({
+        tree,
+        filter,
+        selectedId: selectedIdFromState(state.nodes),
+        collapsedIds: collapsedIdsFromState(state.nodes),
+        openSelectedAncestors: false,
       });
-      return newState;
     }
     default: {
       assertNever(action);
@@ -517,6 +526,15 @@ export function reducer(state: TreeState, action: Action): TreeState {
   }
 
   throw new Error(`Unhandled action type: ${(action as any).type}`);
+}
+
+// Same ids in the same order, so the node states still line up with the tree.
+function sameShape(current: FlatTree<any>, next: FlatTree<any>): boolean {
+  if (next.length !== current.length) return false;
+  for (let i = 0; i < next.length; i++) {
+    if (next[i].id !== current[i].id) return false;
+  }
+  return true;
 }
 
 function findLastNode(nodes: FlatTree<any>, canSelect: CanSelectNode) {
