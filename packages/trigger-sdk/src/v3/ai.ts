@@ -5536,6 +5536,19 @@ function toStreamTextOptions(
     result.prepareStep = retainStepMessages(result.prepareStep as any);
   }
 
+  /**
+   * A steer that `pendingMessages.prepare` turns into a `system` message lands in
+   * the model lane in that form, and so replays in every later turn's `messages`.
+   * AI SDK 7 rejects a system message in `messages` unless this is set (its default
+   * is `false`), so without it the step fails with an invalid-prompt error on the
+   * turn that was steered and on every turn after it. Routing the note to
+   * `instructions` for one step would not help the later turns, because the lane
+   * is what the caller's own `streamText({ messages })` reads. A caller that wants
+   * the strict behaviour passes `allowSystemInMessages: false` after the spread.
+   * AI SDK 5 and 6 ignore the key and accept system messages already.
+   */
+  result.allowSystemInMessages = true;
+
   const channelDownload = locals.get(chatChannelDownloadKey);
   if (channelDownload) {
     result.experimental_download = channelAwareDownload(channelDownload);
@@ -12319,6 +12332,22 @@ function chatAgent<
                     ]);
                   }
 
+                  /**
+                   * A stream-level failure (an `error` chunk) is the turn's finish
+                   * reason. A step rejected before the model runs (an invalid prompt,
+                   * a throwing `prepareStep`) ends the stream with one but no finish
+                   * reason of its own, or the previous step's. Tool errors do not
+                   * count: they are `tool-input-error` / `tool-output-error` parts
+                   * that go back to the model, and the turn finishes normally.
+                   */
+                  // Looked up once per turn; the buffer is only scanned again from
+                  // `errorScanLength` on, in case a chunk lands after this point.
+                  const errorScanLength = turnBufferedChunks.length;
+                  const earlyErrorChunk = turnBufferedChunks.find(isErrorUIMessageChunk);
+                  if (earlyErrorChunk) {
+                    capturedFinishReason = "error";
+                  }
+
                   capturedResponseMessage =
                     ((await locals.get(chatManagedResponseKey)?.snapshot()) as
                       | TUIMessage
@@ -12584,9 +12613,10 @@ function chatAgent<
                   if (capturedResponseMessage) {
                     responseCommitted = true;
                     capturedPartialResponse = capturedResponseMessage;
-                    const errorChunk = turnBufferedChunks.find(
-                      (chunk) => (chunk as { type?: string }).type === "error"
-                    ) as { errorText?: string } | undefined;
+                    const errorChunk = (earlyErrorChunk ??
+                      turnBufferedChunks.slice(errorScanLength).find(isErrorUIMessageChunk)) as
+                      | { errorText?: string }
+                      | undefined;
                     channelStreamErrorText = errorChunk?.errorText;
                     channelTurnText = turnBufferedChunks
                       .map((chunk) => {
@@ -15035,6 +15065,11 @@ export type PipeAndCaptureResult = {
   /** What the stream threw, present only when `status === "error"`. */
   error?: unknown;
 };
+
+/** Whether a buffered chunk is a stream-level `error` chunk. */
+function isErrorUIMessageChunk(chunk: UIMessageChunk): boolean {
+  return (chunk as { type?: string }).type === "error";
+}
 
 /**
  * Pass every chunk through untouched while recording it in `buffer`. Handles
