@@ -691,6 +691,15 @@ describe("chat.customAgent clientData validation", () => {
 
       await first;
       await waitFor(() => validationErrors.length === 1);
+      // The error chunk is written after the handler returns, so wait for the chunk itself
+      // rather than for the handler: the handler can finish before the write lands.
+      await waitFor(() =>
+        harness.allChunks.some(
+          (chunk) =>
+            (chunk as { type?: string; errorText?: string }).type === "error" &&
+            (chunk as { errorText?: string }).errorText === "Invalid client data"
+        )
+      );
       expect(lateFrameParseCalls).toBe(1);
       expect(receivedSequences).toEqual([1]);
       expect(harness.allChunks).toContainEqual(

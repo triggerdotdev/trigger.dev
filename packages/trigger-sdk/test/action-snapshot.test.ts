@@ -69,7 +69,6 @@ describe("snapshot durability of history mutated by an action", () => {
       ]);
 
       await harness.sendAction({ type: "undo" });
-      await new Promise((r) => setTimeout(r, 30));
 
       /**
        * An action is not a turn, so it never reaches the turn-complete path where

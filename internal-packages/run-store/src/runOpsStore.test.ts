@@ -1258,7 +1258,7 @@ describe("RoutingRunStore.findRuns split-mode fan-out + drain", () => {
     }
   );
 
-  // forWaitpointCompletion selects the store a subsequent WRITE (updateManyWaitpoints) lands on,
+  // forWaitpointCompletion selects the store a subsequent WRITE (markWaitpointCompleted) lands on,
   // so its resolution probe must read each store's PRIMARY — not the replica. Here the owning
   // (NEW) store's replica lags (points at an empty DB), so a replica probe would miss the fresh
   // waitpoint and mis-resolve to the id-shape's default (LEGACY), stranding the run.
@@ -2083,37 +2083,6 @@ describe("RoutingRunStore batch-residency accessors", () => {
     }
   );
 
-  // updateManyBatchTaskRunItems: routes by where.batchTaskRunId so items move with their batch.
-  heteroRunOpsPostgresTest(
-    "updateManyBatchTaskRunItems routes by where.batchTaskRunId",
-    async ({ prisma14, prisma17 }) => {
-      const legacyStore = new PostgresRunStore({ prisma: prisma14, readOnlyPrisma: prisma14 });
-      const newStore = new PostgresRunStore({ prisma: prisma17, readOnlyPrisma: prisma17 });
-      const router = new RoutingRunStore({ new: newStore, legacy: legacyStore });
-
-      const runOpsBatchId = `${NEW_ID_26.slice(0, -2)}u1`;
-      await newStore.createBatchTaskRun(
-        batchData({ id: runOpsBatchId, friendlyId: "batch_ui_new", runtimeEnvironmentId: ENV_NEW })
-      );
-
-      const runX = `${NEW_ID_26.slice(0, -3)}ux1`;
-      await seedDedicatedRun(prisma17, ENV_NEW, runX);
-      await prisma17.batchTaskRunItem.create({
-        data: { batchTaskRunId: runOpsBatchId, taskRunId: runX, status: "PENDING" },
-      });
-
-      const res = await router.updateManyBatchTaskRunItems({
-        where: { batchTaskRunId: runOpsBatchId, taskRunId: runX },
-        data: { status: "COMPLETED" },
-      });
-      expect(res.count).toBe(1);
-      const item = await prisma17.batchTaskRunItem.findFirst({
-        where: { batchTaskRunId: runOpsBatchId, taskRunId: runX },
-      });
-      expect(item?.status).toBe("COMPLETED");
-    }
-  );
-
   // Single-DB passthrough: both stores are the same; all four accessors collapse to it.
   heteroRunOpsPostgresTest(
     "single-DB passthrough for the batch-residency accessors",
@@ -2141,14 +2110,6 @@ describe("RoutingRunStore batch-residency accessors", () => {
         data: { batchTaskRunId: batchId, taskRunId: runId, status: "PENDING" },
       });
       expect(await router.countBatchTaskRunItems({ batchTaskRunId: batchId })).toBe(1);
-      expect(
-        (
-          await router.updateManyBatchTaskRunItems({
-            where: { batchTaskRunId: batchId },
-            data: { status: "COMPLETED" },
-          })
-        ).count
-      ).toBe(1);
       expect(
         (
           await router.updateManyBatchTaskRun({

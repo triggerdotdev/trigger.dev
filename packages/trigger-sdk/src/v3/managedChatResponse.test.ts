@@ -356,9 +356,16 @@ describe("steering model context", () => {
         steps: [{ response: { messages: outputs.slice(0, 1) } }],
       });
       expect(second?.messages).toEqual([first, outputs[0], steer]);
+      // A resetting SDK (AI SDK 5/6) rebuilds input from the original prompt
+      // and gives each step every response message so far; a retaining one
+      // (AI SDK 7) carries the override forward, gives each step only its own
+      // response messages, and passes the generation's as `responseMessages`.
       const third = await prepare({
         messages: sdkRetains ? [...second!.messages!, outputs[1]!] : [first, ...outputs],
-        steps: outputs.map((_, i) => ({ response: { messages: outputs.slice(0, i + 1) } })),
+        steps: outputs.map((_, i) => ({
+          response: { messages: sdkRetains ? [outputs[i]!] : outputs.slice(0, i + 1) },
+        })),
+        ...(sdkRetains ? { responseMessages: outputs } : {}),
       });
       expect(third?.messages).toEqual([first, outputs[0], steer, outputs[1]]);
       expect(

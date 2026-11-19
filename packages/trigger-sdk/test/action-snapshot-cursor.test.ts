@@ -59,7 +59,6 @@ describe("the snapshot an action writes", () => {
       expect(afterTurn?.lastOutEventId).toBeDefined();
 
       await harness.sendAction({ type: "undo" });
-      await new Promise((r) => setTimeout(r, 30));
 
       const afterAction = harness.getSnapshot();
 

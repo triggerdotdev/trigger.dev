@@ -233,11 +233,7 @@ describe("storeDateTimeTokenCompatibility", () => {
           organizationId: env.organization.id,
         });
         expect(
-          await engine.getWaitpoint({
-            waitpointId: manual.waitpoint.id,
-            environmentId: env.id,
-            projectId: env.project.id,
-          })
+          await engine.runStore.findWaitpoint({ where: { id: manual.waitpoint.id } }, engine.prisma)
         ).toMatchObject({ id: manual.waitpoint.id, type: "MANUAL" });
       } finally {
         await engine.quit();

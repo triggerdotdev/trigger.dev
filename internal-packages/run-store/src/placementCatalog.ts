@@ -27,7 +27,6 @@ export const ROUTES_BY_GIVEN_RUN_ID: readonly string[] = [
   "markRunWaitpointsOnStore",
   "cancelRun",
   "failRunPermanently",
-  "finalizeRun",
   "expireRun",
   "lockRunToWorker",
   "parkPendingVersion",
@@ -161,13 +160,6 @@ export const PLACEMENT_SITES: readonly PlacementSite[] = [
     why: "Routes by batch id when the filter names one, and otherwise sums across every store. An updateMany reports zero rows rather than failing, so the fan-out is what keeps a filtered update from silently skipping a shard.",
   },
   {
-    method: "updateManyBatchTaskRunItems",
-    basis: "fan-out",
-    missMode: "silent",
-    routes: ["#routeOrNew(id)", "#sumCounts((store) => store.updateManyBatchTaskRunItems(args))"],
-    why: "Same shape as updateManyBatchTaskRun: id when available, every store otherwise.",
-  },
-  {
     method: "createWaitpoint",
     basis: "own-id",
     missMode: "silent",
@@ -187,16 +179,6 @@ export const PLACEMENT_SITES: readonly PlacementSite[] = [
     missMode: "loud",
     routes: ["#resolveWaitpointStore(id)", "#routeOrNew(opts.coLocateWithRunId)"],
     why: "The waitpoint's own id wins; the co-location hint is only the fallback for a filter that names no id. Ordering matters here and the arms must stay in this order.",
-  },
-  {
-    method: "updateManyWaitpoints",
-    basis: "fan-out",
-    missMode: "silent",
-    routes: [
-      "#resolveWaitpointStore(id)",
-      "#sumCounts((store) => store.updateManyWaitpoints(args))",
-    ],
-    why: "Routes by waitpoint id when the filter names one, and sums across every store otherwise, because an updateMany that lands on the wrong database reports zero rows instead of failing.",
   },
   {
     method: "markWaitpointCompleted",
@@ -220,7 +202,6 @@ export const READ_ONLY_METHODS: readonly string[] = [
   "findRun",
   "findRunOrThrow",
   "findRunOnPrimary",
-  "findRunOrThrowOnPrimary",
   "findRuns",
   "findRunsByIds",
   "findRunsByIdempotencyKeys",
@@ -245,7 +226,5 @@ export const READ_ONLY_METHODS: readonly string[] = [
   "findBatchTaskRunByFriendlyId",
   "findBatchTaskRunByIdempotencyKey",
   "countBatchTaskRunItems",
-  "findManyBatchTaskRunItems",
-  "findBatchTaskRunItem",
   "findManyWaitpointTags",
 ];

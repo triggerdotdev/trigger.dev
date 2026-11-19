@@ -105,7 +105,6 @@ describe("injected steering messages", () => {
 
     try {
       await harness.sendMessage(userMessage("summarise every project", "u1"));
-      await new Promise((resolve) => setTimeout(resolve, 50));
 
       // The injection happened — this is the SDK's own bookkeeping.
       expect(injectedCount).toBe(1);

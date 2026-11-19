@@ -1,5 +1,27 @@
 # internal-platform
 
+## 4.8.6
+
+### Patch Changes
+
+- Deploys on the `bun-1.4` runtime now compile the run worker and your task files into a Bun executable with bytecode, so runs start faster. `import.meta.url` and `__dirname` still point at your files under `/app`, so files you read next to your code must be in the image as before (e.g. with `additionalFiles`). Set `build.bunBytecode: false` in `trigger.config.ts` to turn compilation off. ([`8130e5e73`](https://github.com/triggerdotdev/trigger.dev/commit/8130e5e735bd5324b58c5efa829c94c7026c371c))
+- `trigger dev` and `trigger deploy` no longer crash with `spawn ... ENOENT` on bun runtimes when Bun isn't installed at `~/.bun`. The CLI now falls back to `bun` on your `PATH` (Homebrew, mise and similar installs), and if Bun still can't be started, `trigger dev` reports a readable error and `trigger deploy` skips local skill discovery with a warning and carries on. ([`15797c9f2`](https://github.com/triggerdotdev/trigger.dev/commit/15797c9f2bf14fbbd36175bbc242aec80a479c5d))
+- Deploys now report a warmup command that loads your config and task files offline without running any task, so the platform can prepare faster run starts for your deployment. ([`5479177af`](https://github.com/triggerdotdev/trigger.dev/commit/5479177af219875c69ffaee402c701824db2a678))
+- Allow an explicit audience when signing and verifying JWTs and user-actor tokens. ([`01337977e`](https://github.com/triggerdotdev/trigger.dev/commit/01337977ece1df88b9de49ea7de5ac8b88f82e4b))
+- Generate the machine ID and the managed run controller ID on first use instead of at import, so importing these modules draws no randomness and a process restored from a warm start does not reuse IDs drawn before it was saved. ([`a8ac49cd3`](https://github.com/triggerdotdev/trigger.dev/commit/a8ac49cd30fffb779dbd93275d04a001d926e915))
+- Deploys on the `node-24` and `node-26` runtimes now build a Node compile cache for your bundled code during the image build, so runs spend less time compiling your tasks and their dependencies before they start. `node-22` deploys are unchanged. ([`cb1e7362f`](https://github.com/triggerdotdev/trigger.dev/commit/cb1e7362fe9d804ceb2b4e643cf8fa0d0334b676))
+- `webhooks.notion()` endpoints accept Notion's verification request. While the endpoint has no signing secret, the `verification_token` Notion sends is stored as its signing secret, so you can paste it back into Notion and later deliveries verify with it. Redeploy with this version for existing Notion endpoints to pick it up. ([`4288ea912`](https://github.com/triggerdotdev/trigger.dev/commit/4288ea9126432bfede2c6162e1bdc81a2348a127))
+- Support scoped run tokens without an environment key, including offloaded task inputs and stream waits. Explain why a run has no usable credential for an operation. ([`ed0147895`](https://github.com/triggerdotdev/trigger.dev/commit/ed0147895c9b65069c3a6d6e404c3074d47c4018))
+- Public-token helpers and chat token creation now prefer server minting for root API keys too, avoiding the legacy claims endpoint on compatible servers. Trigger, batch, and waitpoint responses missing a token also try server minting first. ([`90d677b12`](https://github.com/triggerdotdev/trigger.dev/commit/90d677b12a5a37d00a96da922d60a54fc7dd7709))
+
+  Root-key callers retain local-signing compatibility only when the mint endpoint is missing or an older server specifically rejects an empty scope list. Named API keys and run tokens never self-sign. Authorization failures, expiration validation errors, rate limits, and server or connection failures do not activate the fallback.
+
+  Server minting with a root key signs with that same authenticated key, including during its rotation grace period, rather than with its replacement. Tokens stop authenticating when that key's grace period ends or it is immediately revoked. Deploy this server update before upgrading the SDK if you rely on minting during root-key rotation; older servers can still reject grace-window keys.
+
+  Server-minted tokens use the API rate-limit budget and follow the server's expiration rules, including its 30-day maximum. Minting tokens without scopes requires self-hosted v4.8.4 or later unless the root-key compatibility fallback is available. The default expiration remains 15 minutes.
+
+- Fix webhook verification for `webhooks.brex()`, which now reads the `webhook-id`, `webhook-timestamp` and `webhook-signature` headers Brex sends instead of `svix-*` headers, and for `webhooks.composio()`, which now keys the signature with the secret's raw text as Composio does instead of base64-decoding it. PagerDuty, Sentry, Vercel, Zendesk, Attio, DocuSign and Intercom endpoints now default to pasting the provider-issued signing secret, and Linear and Calendly offer both generating and pasting one. Redeploy with this version for existing endpoints to pick up the change. ([`b5b311407`](https://github.com/triggerdotdev/trigger.dev/commit/b5b311407aa185457f42361d85eef0cd15f20f4a))
+
 ## 4.8.5
 
 ## 4.8.4

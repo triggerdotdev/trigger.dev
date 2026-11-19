@@ -157,7 +157,6 @@ describe("an action that returns chat.turn()", () => {
       await harness.sendMessage(userMessage("ask", "u-1"));
       await waitFor(() => completes.length >= 1, "turn 0");
       await harness.sendAction({ type: "undo" });
-      await new Promise((r) => setTimeout(r, 60));
       expect(starts).toEqual([0]);
       expect(completes).toHaveLength(1);
       expect(harness.getSnapshot()?.messages ?? []).toEqual([]);
@@ -176,7 +175,6 @@ describe("an action that returns chat.turn()", () => {
       await harness.sendMessage(userMessage("ask", "u-1"));
       await waitFor(() => completes.length >= 1, "turn 0");
       await harness.sendAction({ type: "bad" }).catch(() => {});
-      await new Promise((r) => setTimeout(r, 120));
       const errors = (harness.allRawChunks as { type?: string; errorText?: string }[])
         .filter((c) => c.type === "error")
         .map((c) => c.errorText ?? "");

@@ -96,7 +96,6 @@ describe("the snapshot an action writes after a failed turn", () => {
       expect(afterFailedTurn).not.toBe(afterTurn0);
 
       await harness.sendAction({ type: "undo" });
-      await new Promise((r) => setTimeout(r, 60));
 
       // An action's write is cursor-neutral, so it has to keep the CURRENT
       // cursor, which is the failed turn's, not the one from before it.

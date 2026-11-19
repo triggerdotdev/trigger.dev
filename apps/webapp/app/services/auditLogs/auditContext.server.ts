@@ -110,7 +110,7 @@ export function noteBearerAuthentication(request: Request, result: HostBearerAut
 
     const token = bearerToken(request) ?? "";
 
-    // An additional key has a row id, so its fingerprint needs no lookup here.
+    // An additional key has a row id: the audit plugin finds its fingerprint by kind and id.
     if (subject.type === "apiKey") {
       return apiKeyIdentity(request, {
         kind: "additional_api_key",
@@ -242,7 +242,8 @@ export function noteOrganizationAccessTokenAuthentication(
  * What a note function learned. `hashCredential` returns the SHA-256 hex of the credential that has
  * a fingerprint; it runs only when a lookup starts, and neither it nor its result is stored.
  * Only credentials without a row id need it: root keys, the root key signing a public JWT, and
- * legacy-path additional keys. A PAT, OAT or RBAC additional key is identified by its row id.
+ * legacy-path additional keys. A PAT, OAT or RBAC additional key is identified by its row id: the
+ * host records its kind and id with no fingerprint, and the audit plugin finds the fingerprint.
  */
 type NotedIdentity = Omit<RequestAuditIdentity, "endpoint" | "lookUpCredentialFingerprint"> & {
   hashCredential?: () => string;
