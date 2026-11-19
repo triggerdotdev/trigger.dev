@@ -146,6 +146,10 @@ export class McpContext {
       return options.projectRef;
     }
 
+    if (this.options.projectRef) {
+      return this.options.projectRef;
+    }
+
     const projectDir = await this.getProjectDir({ cwd: options.cwd });
 
     if (!projectDir.ok) {
