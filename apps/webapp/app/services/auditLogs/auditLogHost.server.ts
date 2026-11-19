@@ -106,7 +106,18 @@ function toListedEvent(event: AuditLogListedEvent): AuditLogListedEvent {
     // Trigger.dev staff acted: the IP and user agent are theirs, so they stay internal.
     endpoint:
       endpoint && event.actor.type !== "support" && event.source !== "staff"
-        ? { ip: endpoint.ip, userAgent: endpoint.userAgent }
+        ? {
+            ip: endpoint.ip,
+            userAgent: endpoint.userAgent,
+            location:
+              endpoint.ip !== null && endpoint.location
+                ? {
+                    countryCode: endpoint.location.countryCode,
+                    asn: endpoint.location.asn,
+                    asName: endpoint.location.asName,
+                  }
+                : null,
+          }
         : null,
     origin: origin ? { deploymentId: origin.deploymentId } : null,
     requestId: event.requestId,

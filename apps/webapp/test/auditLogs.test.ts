@@ -471,6 +471,7 @@ describe("audit logs host", () => {
   // Catches: staff identity, fingerprint ids or internal auth events reaching customers because
   // the plugin returned stored rows as they are.
   it("lists only the fields customers may see", async () => {
+    const location = { countryCode: "GB", asn: 64500, asName: "Example ISP" };
     const stored: AuditLogEvent = {
       ...input,
       id: "evt_1",
@@ -483,7 +484,8 @@ describe("audit logs host", () => {
       credential: { kind: "pat", id: "pat_1", last4: "k9Qz", fingerprintId: "fp_1" },
       onBehalfOf: { userId: "staff_1" },
       source: "dashboard",
-      endpoint: { ip: "203.0.113.7", userAgent: "test" },
+      // As listEvents returns it: with the IP's location.
+      endpoint: { ip: "203.0.113.7", userAgent: "test", location } as AuditLogEvent["endpoint"],
       origin: { deploymentId: "deployment_1" },
       requestId: "req_1",
     };
@@ -495,7 +497,14 @@ describe("audit logs host", () => {
     };
     const controller = inMemoryController({
       listEvents: async () => ({
-        events: [{ ...stored, internalNote: "x" }, internal] as never,
+        events: [
+          {
+            ...stored,
+            internalNote: "x",
+            endpoint: { ip: "203.0.113.7", userAgent: "test", location: { ...location, raw: "x" } },
+          },
+          internal,
+        ] as never,
         nextCursor: "next",
       }),
     });
@@ -515,9 +524,10 @@ describe("audit logs host", () => {
     });
   });
 
-  // Catches: a staff member's IP and user agent reaching the customer, whether staff act as
-  // Trigger.dev support or while impersonating a user.
-  it("hides the endpoint of events Trigger.dev staff made", async () => {
+  // Catches: a staff member's IP, user agent or location reaching the customer, whether staff act
+  // as Trigger.dev support or while impersonating a user; or a location shown for a hidden IP.
+  it("hides the endpoint of events Trigger.dev staff made, and the location of a hidden IP", async () => {
+    const location = { countryCode: "GB", asn: 64500, asName: "Example ISP" };
     const base: AuditLogEvent = {
       ...input,
       id: "evt_1",
@@ -527,10 +537,15 @@ describe("audit logs host", () => {
       credential: null,
       onBehalfOf: null,
       source: "dashboard",
-      endpoint: { ip: "203.0.113.7", userAgent: "test" },
+      endpoint: { ip: "203.0.113.7", userAgent: "test", location } as AuditLogEvent["endpoint"],
       origin: null,
       requestId: null,
     };
+    const hiddenIp = {
+      ...base,
+      id: "evt_hidden_ip",
+      endpoint: { ip: null, userAgent: "node", location } as AuditLogEvent["endpoint"],
+    } satisfies AuditLogEvent;
     const support = {
       ...base,
       id: "evt_support",
@@ -545,7 +560,10 @@ describe("audit logs host", () => {
       onBehalfOf: { userId: "staff_1" },
     } satisfies AuditLogEvent;
     const controller = inMemoryController({
-      listEvents: async () => ({ events: [base, support, impersonated], nextCursor: null }),
+      listEvents: async () => ({
+        events: [base, hiddenIp, support, impersonated] as never,
+        nextCursor: null,
+      }),
     });
     const audit = host({ controller: async () => controller });
 
@@ -557,7 +575,8 @@ describe("audit logs host", () => {
     });
 
     expect(page.events.map((event) => [event.id, event.endpoint])).toEqual([
-      ["evt_1", { ip: "203.0.113.7", userAgent: "test" }],
+      ["evt_1", { ip: "203.0.113.7", userAgent: "test", location }],
+      ["evt_hidden_ip", { ip: null, userAgent: "node", location: null }],
       ["evt_support", null],
       ["evt_impersonated", null],
     ]);

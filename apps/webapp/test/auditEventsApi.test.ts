@@ -138,7 +138,12 @@ function storedEvent(organizationId: string): AuditLogEvent {
     credential: { kind: "pat", id: "pat_1", last4: "k9Qz", fingerprintId: "fp_internal" },
     onBehalfOf: { userId: "staff_internal" },
     source: "api",
-    endpoint: { ip: "203.0.113.7", userAgent: "curl/8" },
+    // As listEvents returns it: with the IP's location.
+    endpoint: {
+      ip: "203.0.113.7",
+      userAgent: "curl/8",
+      location: { countryCode: "GB", asn: 64500, asName: "Example ISP" },
+    } as AuditLogEvent["endpoint"],
     origin: null,
     requestId: "req_1",
     changes: { name: { before: "old", after: "CI" } },
@@ -213,7 +218,11 @@ describe("GET /api/v1/orgs/:orgParam/audit-events", () => {
               actor: { type: "user", id: "user_1" },
               credential: { kind: "pat", id: "pat_1", last4: "k9Qz" },
               source: "api",
-              endpoint: { ip: "203.0.113.7", userAgent: "curl/8" },
+              endpoint: {
+                ip: "203.0.113.7",
+                userAgent: "curl/8",
+                location: { countryCode: "GB", asn: 64500, asName: "Example ISP" },
+              },
               origin: null,
               requestId: "req_1",
               changes: { name: { before: "old", after: "CI" } },

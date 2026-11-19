@@ -85,6 +85,20 @@ export type AuditLogEndpoint = {
   userAgent: string | null;
 };
 
+/** Where a listed event's IP is: its country and the network (AS) that announces it. */
+export type AuditLogIpLocation = {
+  /** ISO 3166-1 alpha-2, e.g. `RO`. */
+  countryCode: string | null;
+  asn: number | null;
+  asName: string | null;
+};
+
+/**
+ * A listed event's endpoint. The location is looked up when the event is stored, and is null when
+ * the lookup found nothing or whenever the IP isn't shown.
+ */
+export type AuditLogListedEndpoint = AuditLogEndpoint & { location: AuditLogIpLocation | null };
+
 /** Set when Trigger.dev infrastructure acted, e.g. the build server for a deployment. */
 export type AuditLogOrigin = {
   deploymentId: string;
@@ -203,10 +217,14 @@ type AuditLogListedCategoryAndAction = {
   [C in AuditLogListedCategory]: AuditLogEventFor<C>;
 }[AuditLogListedCategory];
 
-/** An event as `listEvents` returns it: no `onBehalfOf`, no credential `fingerprintId`. */
+/**
+ * An event as `listEvents` returns it: no `onBehalfOf`, no credential `fingerprintId`, and the
+ * IP's location when the IP is shown.
+ */
 export type AuditLogListedEvent = AuditLogListedCategoryAndAction &
-  Omit<AuditLogEventFields, "onBehalfOf" | "credential"> & {
+  Omit<AuditLogEventFields, "onBehalfOf" | "credential" | "endpoint"> & {
     credential: Omit<AuditLogCredential, "fingerprintId"> | null;
+    endpoint: AuditLogListedEndpoint | null;
   };
 
 export type AuditLogEventQuery = {
