@@ -146,6 +146,10 @@ export class McpContext {
       return options.projectRef;
     }
 
+    if (this.options.projectRef) {
+      return this.options.projectRef;
+    }
+
     const projectDir = await this.getProjectDir({ cwd: options.cwd });
 
     if (!projectDir.ok) {
@@ -162,7 +166,9 @@ export class McpContext {
       return config.project;
     }
 
-    throw new Error("No project ref found. Please provide a projectRef.");
+    throw new Error(
+      "No project ref found. Pass projectRef in the tool call, use --project-ref when starting the MCP server, or run from a directory with a trigger.config.ts file."
+    );
   }
 
   public async getProjectDir({ cwd }: { cwd?: string }) {
