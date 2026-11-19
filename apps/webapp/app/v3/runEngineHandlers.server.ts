@@ -120,7 +120,9 @@ export function registerRunEngineEventBusHandlers() {
   });
 
   // Handle alerts
-  engine.eventBus.on("runFailed", async ({ time, run }) => {
+  engine.eventBus.on("runFailed", async ({ time, run, suppressAlerts }) => {
+    // A never-run duplicate child retired by the waitpoint store is not a task failure.
+    if (suppressAlerts) return;
     try {
       await PerformTaskRunAlertsService.enqueue(run.id);
     } catch (error) {

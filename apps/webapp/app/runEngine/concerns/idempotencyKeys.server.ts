@@ -480,6 +480,7 @@ export class IdempotencyKeyConcern {
     const parentRunId = request.body.options?.parentRunId;
     const resumeParentOnCompletion = request.body.options?.resumeParentOnCompletion;
 
+    let resolvedRun: TaskRun = existingRun;
     //We're using `andWait` so we need to block the parent run with a waitpoint
     if (resumeParentOnCompletion && parentRunId) {
       // `parentRunId` comes from the request body and isn't re-validated
@@ -559,12 +560,16 @@ export class IdempotencyKeyConcern {
           };
           if (idempotentBlockOperation !== undefined)
             blockInput.blockOperation = idempotentBlockOperation;
-          await this.engine.blockRunWithWaitpoint(blockInput);
+          // A batch position another run already holds resolves the item to that run.
+          resolvedRun = await this.engine.blockRunWithCachedRun({
+            ...blockInput,
+            cachedRun: existingRun,
+          });
         }
       );
     }
 
-    return { isCached: true, run: existingRun };
+    return { isCached: true, run: resolvedRun };
   }
 
   // Re-serialise a cross-DB recreate through the claim after a claim-loser's

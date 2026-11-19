@@ -39,6 +39,7 @@ import { sendNotificationToWorker } from "../eventBus.js";
 import { isExecuting, isFinalRunStatus, isPendingExecuting } from "../statuses.js";
 import { LegacyPostgresWaitpointCoordinator } from "../waitpointCoordinator/legacyPostgresCoordinator.js";
 import {
+  batchPositionOwner,
   StoreWaitpointBlockRefusedError,
   waitpointFromStoredRecord,
 } from "../waitpointCoordinator/storeWaitpointCoordinator.js";
@@ -123,6 +124,7 @@ export type WaitpointSystemOptions = {
         | "readRelatedRunIds"
         | "manualCatalog"
         | "retireManualCatalog"
+        | "isAwaited"
       >
     >;
 };
@@ -218,6 +220,7 @@ export class WaitpointSystem {
         | "readRelatedRunIds"
         | "manualCatalog"
         | "retireManualCatalog"
+        | "isAwaited"
       >
     >;
   // Whether a store coordinator is wired at all. When it is not, the RUN mint decision and terminal
@@ -1296,7 +1299,7 @@ export class WaitpointSystem {
     workerId?: string;
     runnerId?: string;
     ownerWaitpointId?: string;
-  }): Promise<void> {
+  }): Promise<boolean> {
     const snapshot = await getLatestExecutionSnapshot(
       this.$.prisma,
       params.runId,
@@ -1316,12 +1319,14 @@ export class WaitpointSystem {
           cycleAnchor: cycleAnchorSnapshotId(snapshot),
         },
       });
+      return true;
     } catch (error) {
+      // Not admitted: the batch finished or the parent moved on. Nothing waits on this child.
       if (
         error instanceof StoreWaitpointBlockCycleAdvanced ||
         (error instanceof StoreWaitpointBlockRefusedError && error.outcome === "ownerGone")
       )
-        return;
+        return false;
       throw error;
     }
   }
@@ -1545,6 +1550,8 @@ export class WaitpointSystem {
     await this.$.raceSimulationSystem.waitForRacepoint({ runId });
 
     let $waitpoints = typeof waitpoints === "string" ? [waitpoints] : waitpoints;
+    // A caller that names the pending owner (blockBatchChild) handles `ownerGone` itself.
+    const callerHandlesOwnerGone = !!requirePendingWaitpointId;
 
     return await this.$.runLock.lock("blockRunWithWaitpoint", [runId], async () => {
       // Scoped to expectedEnvironmentId when the caller supplied one: a foreign run has no snapshot in
@@ -1687,6 +1694,7 @@ export class WaitpointSystem {
         } catch (error) {
           if (
             requirePendingWaitpointId &&
+            !callerHandlesOwnerGone &&
             error instanceof StoreWaitpointBlockRefusedError &&
             error.outcome === "ownerGone"
           )
@@ -1924,21 +1932,28 @@ export class WaitpointSystem {
     /** Caller-owned identity for a store-format waitpoint; undefined for a legacy blocker (ignored). */
     blockOperation?: { id: string; absorptionId: string; cycleAnchor: string };
   }): Promise<void> {
-    if (
-      batch &&
-      classifyWaitpointCoordinator(waitpointId) === "store" &&
-      (await this.isStoreRoutingEnabled(organizationId))
-    ) {
-      await this.blockBatchChild({ runId, waitpointId, projectId, organizationId, batch });
-    } else {
-      await this.blockRunWithWaitpoint({
-        runId,
-        waitpoints: waitpointId,
-        projectId,
-        organizationId,
-        batch,
-        blockOperation,
-      });
+    let positionOwned: unknown;
+    try {
+      if (
+        batch &&
+        classifyWaitpointCoordinator(waitpointId) === "store" &&
+        (await this.isStoreRoutingEnabled(organizationId))
+      ) {
+        await this.blockBatchChild({ runId, waitpointId, projectId, organizationId, batch });
+      } else {
+        await this.blockRunWithWaitpoint({
+          runId,
+          waitpoints: waitpointId,
+          projectId,
+          organizationId,
+          batch,
+          blockOperation,
+        });
+      }
+    } catch (error) {
+      if (!batchPositionOwner(error)) throw error;
+      // Still complete the refused child's waitpoint, so no pending source is left behind.
+      positionOwned = error;
     }
 
     await this.completeWaitpoint({
@@ -1946,6 +1961,36 @@ export class WaitpointSystem {
       output,
       organizationId,
     });
+    if (positionOwned) throw positionOwned;
+  }
+
+  /** The run behind the waitpoint holding a batch position: store record or Postgres row. */
+  async batchPositionOwnerRunId(
+    waitpointId: string,
+    parentRunId: string
+  ): Promise<string | undefined> {
+    if (classifyWaitpointCoordinator(waitpointId) === "store") {
+      const records = await this.#waitpointStore?.readCompletedRecords([waitpointId], parentRunId);
+      return records?.get(waitpointId)?.record.completedByTaskRunId;
+    }
+    const row = await this.$.runStore.findWaitpoint({
+      where: { id: waitpointId },
+      select: { completedByTaskRunId: true },
+    });
+    return row?.completedByTaskRunId ?? undefined;
+  }
+
+  /** Does the parent's active block hold this child's exact edge, or does another run watch it? */
+  async isChildAwaited(
+    parentRunId: string,
+    waitpointId: string,
+    batchIndex?: number,
+    // false: only the parent's exact edge counts.
+    sharedWaiters = true
+  ): Promise<boolean> {
+    if (!this.#waitpointStore?.isAwaited)
+      throw new Error("Edge check requires the waitpoint store");
+    return this.#waitpointStore.isAwaited(parentRunId, waitpointId, batchIndex, sharedWaiters);
   }
 
   /** Finish cleanup only when the exact resume snapshot committed. */
@@ -2641,13 +2686,20 @@ export class WaitpointSystem {
       organizationId: payload.organizationId,
     });
     if (payload.batch) {
-      await this.blockBatchChild({
-        runId: payload.parentRunId,
-        waitpointId: payload.waitpointId,
-        projectId: run.projectId,
-        organizationId: payload.organizationId,
-        batch: payload.batch,
-      });
+      // Position ownership makes admission safe: the child admits only into a free position of a
+      // still-pending batch, so an item whose every attempt failed still gets exactly one result.
+      // A child refused here is retired by the caller once it finds nothing waiting on it.
+      try {
+        await this.blockBatchChild({
+          runId: payload.parentRunId,
+          waitpointId: payload.waitpointId,
+          projectId: run.projectId,
+          organizationId: payload.organizationId,
+          batch: payload.batch,
+        });
+      } catch (error) {
+        if (!batchPositionOwner(error)) throw error;
+      }
       return;
     }
     await this.recoverWaitpointBlock({

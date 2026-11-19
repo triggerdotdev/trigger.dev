@@ -11,6 +11,7 @@ import { createRedisClient, type RedisOptions } from "@internal/redis";
 import type { PrismaClient } from "@trigger.dev/database";
 import { expect, vi } from "vitest";
 import { RunEngine } from "../../index.js";
+import type { LockRetryConfig } from "../../locking.js";
 import { createCompletedWaitpointResolver } from "../../systems/completedWaitpointResolver.js";
 import { StoreWaitpointCoordinator } from "../../waitpointCoordinator/storeWaitpointCoordinator.js";
 import { WaitpointStoreCoordinator } from "../../waitpointCoordinator/storeCoordinator.js";
@@ -52,6 +53,8 @@ export function makeEngine(
     resolveDial?: () => SnapshotStoreDial;
     coordinator?: StoreWaitpointCoordinator;
     runStore?: RunStore;
+    runLockRetryConfig?: LockRetryConfig;
+    isCapabilityReady?: () => boolean;
   }
 ) {
   return new RunEngine({
@@ -71,7 +74,7 @@ export function makeEngine(
       masterQueueConsumersDisabled: true,
       processWorkerQueueDebounceMs: 50,
     },
-    runLock: { redis: redisOptions },
+    runLock: { redis: redisOptions, retryConfig: opts.runLockRetryConfig },
     machines: {
       defaultMachine: "small-1x",
       machines: {
@@ -86,7 +89,10 @@ export function makeEngine(
       ? {
           waitpointRouting: {
             store: opts.coordinator ?? new StoreWaitpointCoordinator({ store: opts.store }),
-            mintPolicy: { resolveMintMode: () => "redis", isCapabilityReady: () => true },
+            mintPolicy: {
+              resolveMintMode: () => "redis",
+              isCapabilityReady: opts.isCapabilityReady ?? (() => true),
+            },
           },
           waitpointStore: opts.store,
           waitpointFanoutStore: opts.store,

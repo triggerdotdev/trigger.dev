@@ -289,7 +289,9 @@ export class TriggerFailedTaskService {
       // but doesn't block returning the friendlyId, mirroring the
       // engine handler's behaviour at runEngineHandlers.server.ts:81.
       try {
-        await PerformTaskRunAlertsService.enqueue(failedRun.id);
+        // A batch position another run already holds resolves the item to that run: no alert.
+        if (failedRun.friendlyId === failedRunFriendlyId)
+          await PerformTaskRunAlertsService.enqueue(failedRun.id);
       } catch (alertsError) {
         logger.warn("TriggerFailedTaskService: alert enqueue failed", {
           taskId: request.taskId,
@@ -411,7 +413,8 @@ export class TriggerFailedTaskService {
       // alert directly so customers' ERROR channels still see the
       // failure. Best-effort, mirroring the `call()` path.
       try {
-        await PerformTaskRunAlertsService.enqueue(failedRun.id);
+        if (failedRun.friendlyId === failedRunFriendlyId)
+          await PerformTaskRunAlertsService.enqueue(failedRun.id);
       } catch (alertsError) {
         logger.warn("TriggerFailedTaskService.callWithoutTraceEvents: alert enqueue failed", {
           taskId: opts.taskId,
@@ -420,7 +423,8 @@ export class TriggerFailedTaskService {
         });
       }
 
-      return failedRunFriendlyId;
+      // The run the item resolves to: this failed run, or the run holding its batch position.
+      return failedRun.friendlyId;
     } catch (createError) {
       logger.error("TriggerFailedTaskService: failed to create pre-failed TaskRun (no trace)", {
         taskId: opts.taskId,

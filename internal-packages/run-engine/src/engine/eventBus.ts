@@ -246,6 +246,8 @@ export type EventBusEvents = {
       environment: {
         id: string;
       };
+      /** Internal: a never-run child retired by the waitpoint store; no alert. */
+      suppressAlerts?: boolean;
     },
   ];
   runRetryScheduled: [
