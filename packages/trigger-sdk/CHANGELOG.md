@@ -1,5 +1,24 @@
 # @trigger.dev/sdk
 
+## 4.8.7
+
+### Patch Changes
+
+- Fix `chat.agent` channels on AI SDK 7 failing the whole turn when a channel file can't be downloaded. A file the connector owns but can't read is now replaced with an `[Attached file "…" could not be loaded]` note and the agent still answers, as it does on AI SDK 6. AI SDK 7 describes a file's URL in a tagged form that the SDK didn't recognise, so the failed file was never found. ([`c888eb885`](https://github.com/triggerdotdev/trigger.dev/commit/c888eb885ea0ef04f777720df4c534eed80d1eec))
+
+  An inline `data:` file in a channel message is no longer passed to a connector's `download`, and on AI SDK 6 it reaches the model instead of failing the turn.
+
+- Fix two compaction problems on AI SDK 7. After a compaction, a `chat.agent` turn that continued a tool approval sent the model the full pre-compaction transcript instead of the summary, which undid the compaction (this also affected `chat.MessageAccumulator`). And between-turn compaction, in `chat.agent` and `chat.createSession`, was asked about the whole turn's token usage instead of the last step's, so `shouldCompact` thresholds triggered too early on multi-step turns. ([`c615d762e`](https://github.com/triggerdotdev/trigger.dev/commit/c615d762e4644f70c9b7e4420e8edc75fe97c8d1))
+
+  If you call `compactIfNeeded` on a `chat.MessageAccumulator`, pass it the last step's usage, `(await result.steps).at(-1)?.usage`. `result.usage` is the turn's sum on AI SDK 7.
+
+- Fix `chat.agent` steering on AI SDK 7. A steering message that `pendingMessages.prepare` turns into a `system` message no longer makes the step fail with an invalid-prompt error: `chat.toStreamTextOptions()` now sets `allowSystemInMessages: true`, as AI SDK 5 and 6 already behave (pass `allowSystemInMessages: false` after the spread to keep AI SDK 7's strict default). A turn whose stream ends on an error now reports `finishReason: "error"` in `onTurnComplete`, where it could be `undefined` or the previous step's reason. ([`53f17ee0b`](https://github.com/triggerdotdev/trigger.dev/commit/53f17ee0b9d7ca3be81b482f73f7fe15ba2f1f8a))
+- Fix a `chat.agent` tool result containing a `BigInt` failing the next turn's model call in apps that define `BigInt.prototype.toJSON`. It is now sent as the JSON that `toJSON` gives, in the next step and in later turns. ([`8167e49f3`](https://github.com/triggerdotdev/trigger.dev/commit/8167e49f3f7274757d8b3adf55b32f2390c4ada4))
+- Fix `chat.agent` failing the next step or turn with `AI_InvalidPromptError` ("The messages do not match the ModelMessage[] schema") when a tool returned a value that isn't plain JSON, such as a `Date` from an ORM row. On AI SDK 6, and AI SDK 7 before 7.0.101, tool results are now converted to JSON the way newer AI SDK versions do it, so a `Date` reaches the model as its ISO string. A value JSON can't hold, such as a `BigInt` or a circular reference, is replaced by an error result that names the tool and the field, and the same error is logged on the run. ([`49b3dc055`](https://github.com/triggerdotdev/trigger.dev/commit/49b3dc055da8ef8ee62cf860e9b4c57d1e751b7e))
+- Sessions and `chat.agent` now accept the object form of `concurrencyKey` in `triggerConfig`, giving each concurrency limit its own key, the same as `task.trigger()`. ([`767ab4521`](https://github.com/triggerdotdev/trigger.dev/commit/767ab452135fc9c0107f84ba56d0add7a8b65567))
+- Updated dependencies:
+  - `@trigger.dev/core@4.8.7`
+
 ## 4.8.6
 
 ### Patch Changes

@@ -1,5 +1,12 @@
 # internal-platform
 
+## 4.8.7
+
+### Patch Changes
+
+- Fix runs failing with `TASK_DID_CONCURRENT_WAIT` on their first wait when `processKeepAlive` is enabled. ([`fe57ea018`](https://github.com/triggerdotdev/trigger.dev/commit/fe57ea0183f1bba5607967f2c6a929a0a4a81e11))
+- Sessions and `chat.agent` now accept the object form of `concurrencyKey` in `triggerConfig`, giving each concurrency limit its own key, the same as `task.trigger()`. ([`767ab4521`](https://github.com/triggerdotdev/trigger.dev/commit/767ab452135fc9c0107f84ba56d0add7a8b65567))
+
 ## 4.8.6
 
 ### Patch Changes
