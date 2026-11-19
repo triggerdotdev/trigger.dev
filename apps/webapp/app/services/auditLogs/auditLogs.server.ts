@@ -1,5 +1,6 @@
 import type { AuditLogController, AuditLogPluginConfig } from "@trigger.dev/plugins";
 import { env } from "~/env.server";
+import { getIpLocation } from "~/services/platform.v3.server";
 import { signalsEmitter } from "~/services/signals.server";
 import { singleton } from "~/utils/singleton";
 import { countMissingFingerprint, getRequestAuditContext } from "./auditContext.server";
@@ -13,6 +14,7 @@ function pluginConfig(): AuditLogPluginConfig {
       writerUrl: env.CONTROL_PLANE_DATABASE_URL ?? env.DATABASE_URL,
       readerUrl: env.CONTROL_PLANE_DATABASE_READ_REPLICA_URL ?? env.DATABASE_READ_REPLICA_URL,
     },
+    lookupIpLocation: (ip) => getIpLocation(ip),
   };
 }
 

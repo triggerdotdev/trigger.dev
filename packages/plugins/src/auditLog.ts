@@ -1,4 +1,5 @@
 import type { PluginDatabaseConfig } from "./databaseConfig.js";
+import type { IpLocationLookup } from "./ipLocation.js";
 
 type AuditLogActionsByCategory = {
   credentials:
@@ -287,6 +288,11 @@ export type AuditLogCredentialRevokedInput = {
 export type AuditLogPluginConfig = {
   /** The control-plane database, where credential fingerprints live. */
   controlPlane: PluginDatabaseConfig;
+  /**
+   * Country and network of an event's IP, stored with the event. Optional: without it, events are
+   * stored with no location. Called by the plugin off the request path, which caches answers per IP.
+   */
+  lookupIpLocation?: IpLocationLookup;
 };
 
 export interface AuditLogController {

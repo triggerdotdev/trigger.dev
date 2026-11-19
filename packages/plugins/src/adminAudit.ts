@@ -1,3 +1,5 @@
+import type { IpLocation, IpLocationLookup } from "./ipLocation.js";
+
 /** What happened. Field names follow the OCSF API Activity class where one exists. */
 export type AdminAuditActivity =
   | "api_call"
@@ -55,12 +57,7 @@ export type AdminAuditEvent = {
   pat: AdminAuditPat | null;
 };
 
-export type AdminAuditIpLocation = {
-  country: string | null;
-  countryCode: string | null;
-  asn: number | null;
-  asName: string | null;
-};
+export type AdminAuditIpLocation = IpLocation;
 
 export interface AdminAuditController {
   /** Never throws and never blocks the request; delivery happens in the background. */
@@ -71,7 +68,7 @@ export interface AdminAuditController {
 
 export type AdminAuditPluginConfig = {
   /** Approximate location of an IP, or undefined when unknown. Must not throw. */
-  lookupIpLocation: (ip: string) => Promise<AdminAuditIpLocation | undefined>;
+  lookupIpLocation: IpLocationLookup;
   /** The deployment's public origin, shown in alerts so test and prod can be told apart. */
   appOrigin: string;
 };
