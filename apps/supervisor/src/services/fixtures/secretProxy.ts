@@ -27,6 +27,8 @@ const K3S_IMAGE =
   "rancher/k3s:v1.32.4-k3s1@sha256:1b71c68b063364bab469452eb9cc27edcb2767273f1aca5582db3586a3927483";
 const PAUSE_IMAGE =
   "rancher/mirrored-pause:3.6@sha256:74c4244427b7312c5b901fe0f67cbc53683d06f4f24c6faee65d4182bf0fa893";
+// Never pullable, so its container stays waiting: a Pod with an IP and no running container.
+const UNPULLABLE_IMAGE = "registry.invalid/secret-proxy/never-pulled:0";
 const STARTUP_TIMEOUT_MS = 180_000;
 const INTERCEPTOR_GRACE_MS = 5_000;
 const INTERCEPTOR_EXIT_TIMEOUT_MS = 10_000;
@@ -403,76 +405,100 @@ export class SecretProxyFixture {
     );
   }
 
+  /**
+   * A Runner and Pod whose container never starts (unpullable image), so the Pod has an IP but
+   * no running container: the state a guest can call start in before kubelet publishes status.
+   */
+  async pendingPlacement(runId: string, claims = deploymentClaims): Promise<SecretProxyCaller> {
+    const name = runnerName(runId);
+    await this.createPlacement(name, runId, claims, UNPULLABLE_IMAGE);
+    const pod = await waitFor(async () => {
+      const current = await this.core.readNamespacedPod({ name, namespace: this.namespace });
+      return current.status?.podIP ? current : undefined;
+    }, "pending placement Pod IP");
+    return { runId, runnerId: name, claims, sourceIp: pod.status!.podIP! };
+  }
+
+  private async createPlacement(
+    name: string,
+    runId: string,
+    claims: typeof deploymentClaims,
+    image: string,
+    { singleUse, checkpoint }: { singleUse?: boolean; checkpoint?: string } = {}
+  ) {
+    const runner = (await this.custom.createNamespacedCustomObject({
+      group: "compute.trigger.dev",
+      version: "v1alpha1",
+      plural: "runners",
+      namespace: this.namespace,
+      body: {
+        apiVersion: "compute.trigger.dev/v1alpha1",
+        kind: "Runner",
+        metadata: { name },
+        spec: {
+          runtime: "microvm",
+          singleUse,
+          restore: checkpoint ? { snapshotID: checkpoint, node: this.nodeName } : undefined,
+          templateKey: "a".repeat(64),
+          image,
+          machine: { name: "test", cpu: "0.01", memory: "8Mi" },
+          owner: {
+            envID: claims.environment_id,
+            envType: claims.environment_type,
+            orgID: claims.org_id,
+            projectID: claims.project_id,
+          },
+          deployment: { friendlyID: claims.deployment, version: claims.deployment_version },
+          bootstrap: {
+            runFriendlyID: runId,
+            snapshotFriendlyID: "snap_test",
+            dequeuedAt: new Date().toISOString(),
+          },
+        },
+      },
+    })) as { metadata: { uid: string } };
+    await this.core.createNamespacedPod({
+      namespace: this.namespace,
+      body: {
+        metadata: {
+          name,
+          ownerReferences: [
+            {
+              apiVersion: "compute.trigger.dev/v1alpha1",
+              kind: "Runner",
+              name,
+              uid: runner.metadata.uid,
+              controller: true,
+            },
+          ],
+        },
+        spec: {
+          nodeName: this.nodeName,
+          terminationGracePeriodSeconds: 0,
+          containers: [
+            {
+              name: "run-controller",
+              image,
+              resources: { requests: { cpu: "1m", memory: "2Mi" } },
+            },
+          ],
+        },
+      },
+    });
+  }
+
   async placements(
     requests: { runId: string; attempt?: number; singleUse?: boolean; checkpoint?: string }[],
     claims = deploymentClaims
   ): Promise<SecretProxyCaller[]> {
     for (let offset = 0; offset < requests.length; offset += 8) {
       await Promise.all(
-        requests
-          .slice(offset, offset + 8)
-          .map(async ({ runId, attempt, singleUse, checkpoint }) => {
-            const name = runnerName(runId, attempt, checkpoint);
-            const runner = (await this.custom.createNamespacedCustomObject({
-              group: "compute.trigger.dev",
-              version: "v1alpha1",
-              plural: "runners",
-              namespace: this.namespace,
-              body: {
-                apiVersion: "compute.trigger.dev/v1alpha1",
-                kind: "Runner",
-                metadata: { name },
-                spec: {
-                  runtime: "microvm",
-                  singleUse,
-                  restore: checkpoint ? { snapshotID: checkpoint, node: this.nodeName } : undefined,
-                  templateKey: "a".repeat(64),
-                  image: PAUSE_IMAGE,
-                  machine: { name: "test", cpu: "0.01", memory: "8Mi" },
-                  owner: {
-                    envID: claims.environment_id,
-                    envType: claims.environment_type,
-                    orgID: claims.org_id,
-                    projectID: claims.project_id,
-                  },
-                  deployment: { friendlyID: claims.deployment, version: claims.deployment_version },
-                  bootstrap: {
-                    runFriendlyID: runId,
-                    snapshotFriendlyID: "snap_test",
-                    dequeuedAt: new Date().toISOString(),
-                  },
-                },
-              },
-            })) as { metadata: { uid: string } };
-            await this.core.createNamespacedPod({
-              namespace: this.namespace,
-              body: {
-                metadata: {
-                  name,
-                  ownerReferences: [
-                    {
-                      apiVersion: "compute.trigger.dev/v1alpha1",
-                      kind: "Runner",
-                      name,
-                      uid: runner.metadata.uid,
-                      controller: true,
-                    },
-                  ],
-                },
-                spec: {
-                  nodeName: this.nodeName,
-                  terminationGracePeriodSeconds: 0,
-                  containers: [
-                    {
-                      name: "run-controller",
-                      image: PAUSE_IMAGE,
-                      resources: { requests: { cpu: "1m", memory: "2Mi" } },
-                    },
-                  ],
-                },
-              },
-            });
+        requests.slice(offset, offset + 8).map(({ runId, attempt, singleUse, checkpoint }) =>
+          this.createPlacement(runnerName(runId, attempt, checkpoint), runId, claims, PAUSE_IMAGE, {
+            singleUse,
+            checkpoint,
           })
+        )
       );
     }
     const pods = await waitFor(async () => {

@@ -5,6 +5,8 @@ import { forwardKubernetes } from "./fixtures/forwardKubernetes.js";
 import { SecretProxyFixture, deploymentClaims } from "./fixtures/secretProxy.js";
 import {
   SecretProxyBindings,
+  SecretProxyPlacementPendingError,
+  SecretProxyPlacementSaturatedError,
   type SecretProxyCaller,
   type SecretProxyStartResult,
 } from "./secretProxyBindings.js";
@@ -216,6 +218,46 @@ describe("trusted placement with real k3s and native interceptor", () => {
     expect(current.podUid).not.toBe(old.podUid);
     expect(current.guestId).toBe(guestId);
   }, 60_000);
+
+  describe("while kubelet has not published the container", () => {
+    let pending: SecretProxyCaller;
+    beforeEach(async () => {
+      pending = await fixture.pendingPlacement(`run_${randomUUID().replaceAll("-", "")}`);
+    }, 60_000);
+    const reads = (kind: "pods") =>
+      probe.requests.filter((entry) => entry.path.includes(`/${kind}/${pending.runnerId}`)).length;
+
+    it("does not make a coalesced caller with other claims wait", async () => {
+      const release = probe.holdResponses((path) => path.includes("/pods/"));
+      const owner = bindings.prepareStart(pending);
+      const other = bindings.prepareStart({
+        ...pending,
+        claims: { ...deploymentClaims, deployment: "deployment_other" },
+      });
+      await expect.poll(() => reads("pods")).toBe(1);
+      release();
+      await expect(owner).rejects.toThrow(SecretProxyPlacementPendingError);
+      expect(await other).toBeUndefined();
+      expect(reads("pods")).toBe(1);
+    }, 20_000);
+
+    it("keeps a retrying caller waiting when lookups are saturated", async () => {
+      const release = probe.holdResponses((path) => path.includes("runner-saturating-"));
+      const saturating = Array.from({ length: LOOKUP_LIMIT }, (_, index) =>
+        bindings.prepareStart({ ...caller, runnerId: `runner-saturating-${index}` })
+      );
+      await expect
+        .poll(() => probe.requests.filter((e) => e.path.includes("runner-saturating-")).length)
+        .toBe(2 * LOOKUP_LIMIT);
+      expect(await bindings.prepareStart(pending)).toBeUndefined();
+      await expect(bindings.prepareStart(pending, { retrying: true })).rejects.toThrow(
+        SecretProxyPlacementSaturatedError
+      );
+      expect(reads("pods")).toBe(0);
+      release();
+      await Promise.all(saturating);
+    }, 20_000);
+  });
 
   it("coalesces concurrent real misses", async () => {
     const release = probe.holdResponses((path) => path.includes("/pods/"));
