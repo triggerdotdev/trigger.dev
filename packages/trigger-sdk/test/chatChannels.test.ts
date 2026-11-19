@@ -1616,6 +1616,122 @@ describe("chat.agent channel files", () => {
       await harness.close();
     }
   });
+  // Catches: on AI SDK 7 every file part reaches the SDK as a URL object, so an inline `data:` upload
+  // was handed to the connector's downloader (and cached and logged under its base64 content).
+  it("does not hand an inline data: file to the connector's downloader", async () => {
+    const prompts: unknown[] = [];
+    const model = new MockLanguageModelV3({
+      doStream: async (options) => {
+        prompts.push(options.prompt);
+        return { stream: textStream("a chart") };
+      },
+    });
+    const downloaded: string[] = [];
+    const channel = fileChannel(async (url) => {
+      downloaded.push(url.href);
+      throw new Error("must not be asked for an inline file");
+    });
+    const agent = chat.agent({
+      id: "chatChannels.files-inline",
+      channels: [channel],
+      run: async ({ messages, signal, streamText }) =>
+        streamText({ model, messages, abortSignal: signal }),
+    });
+    const harness = mockChatAgent(agent, { chatId: "chan-files-inline" });
+    try {
+      await harness.sendChannelEvent({
+        event: fileEvent(`data:image/png;base64,${Buffer.from(PNG).toString("base64")}`),
+      });
+      expect(downloaded).toEqual([]);
+      expect(prompts).toHaveLength(1);
+      const file = promptParts(prompts[0]).find((p: any) => p.type === "file") as any;
+      expect(file?.mediaType).toBe("image/png");
+      const bytes =
+        typeof file?.data === "string" ? Buffer.from(file.data, "base64") : Buffer.from(file?.data);
+      expect([...bytes]).toEqual([...PNG]);
+      expect(channel.finalText()).toBe("a chart");
+    } finally {
+      await harness.close();
+    }
+  });
+
+  // Catches: a connector serving a non-http scheme (here `s3://`) stopped being asked for its files,
+  // so the model never got the bytes the connector can read.
+  it("asks the connector for a non-http file it serves and hands the bytes to the model", async () => {
+    const prompts: unknown[] = [];
+    const model = new MockLanguageModelV3({
+      doStream: async (options) => {
+        prompts.push(options.prompt);
+        return { stream: textStream("a chart") };
+      },
+    });
+    const asked: string[] = [];
+    const channel = fileChannel(async (url) => {
+      asked.push(url.href);
+      return url.protocol === "s3:" ? { data: PNG, mediaType: "image/png" } : null;
+    });
+    const agent = chat.agent({
+      id: "chatChannels.files-non-http",
+      channels: [channel],
+      run: async ({ messages, signal, streamText }) =>
+        streamText({ model, messages, abortSignal: signal }),
+    });
+    const harness = mockChatAgent(agent, { chatId: "chan-files-non-http" });
+    try {
+      await harness.sendChannelEvent({ event: fileEvent("s3://bucket/chart.png") });
+      expect(asked).toEqual(["s3://bucket/chart.png"]);
+      const file = promptParts(prompts[0]).find((p: any) => p.type === "file") as any;
+      expect(file?.mediaType).toBe("image/png");
+      expect(file?.data).toEqual(PNG);
+      expect(channel.finalText()).toBe("a chart");
+    } finally {
+      await harness.close();
+    }
+  });
+
+  // Catches: a channel being active dropped every non-http(s) URL from the caller's own
+  // `experimental_download`, so an `s3://` file never reached the hook that can read it.
+  it("still gives a non-http file to the caller's own download hook when the connector declines it", async () => {
+    const prompts: unknown[] = [];
+    const model = new MockLanguageModelV3({
+      doStream: async (options) => {
+        prompts.push(options.prompt);
+        return { stream: textStream("a chart") };
+      },
+    });
+    const channelAsked: string[] = [];
+    const channel = fileChannel(async (url) => {
+      channelAsked.push(url.href);
+      return null;
+    });
+    const hookAsked: string[] = [];
+    const agent = chat.agent({
+      id: "chatChannels.files-caller-hook",
+      channels: [channel],
+      run: async ({ messages, signal, streamText }) =>
+        streamText({
+          model,
+          messages,
+          abortSignal: signal,
+          experimental_download: async (requests: { url: URL }[]) =>
+            requests.map(({ url }) => {
+              hookAsked.push(url.href);
+              return url.protocol === "s3:" ? { data: PNG, mediaType: "image/png" } : null;
+            }),
+        }),
+    });
+    const harness = mockChatAgent(agent, { chatId: "chan-files-caller-hook" });
+    try {
+      await harness.sendChannelEvent({ event: fileEvent("s3://bucket/chart.png") });
+      expect(channelAsked).toEqual(["s3://bucket/chart.png"]);
+      expect(hookAsked).toEqual(["s3://bucket/chart.png"]);
+      const file = promptParts(prompts[0]).find((p: any) => p.type === "file") as any;
+      expect(file?.data).toEqual(PNG);
+    } finally {
+      await harness.close();
+    }
+  });
+
   it("downloads with the connector bound to the session, even when another connector is listed first", async () => {
     const prompts: unknown[] = [];
     const model = new MockLanguageModelV3({

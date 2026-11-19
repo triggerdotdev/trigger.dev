@@ -40,12 +40,6 @@
       "file": "test/steering-prepare-transform.test.ts",
       "test": "a steer transformed by pendingMessages.prepare > reaches later turns in the transformed form",
       "reason": "A steer transformed by pendingMessages.prepare never reaches the second step."
-    },
-    {
-      "major": 7,
-      "file": "test/chatChannels.test.ts",
-      "test": "chat.agent channel files > replaces a channel file that cannot be downloaded with a note and still answers",
-      "reason": "A channel file that cannot be downloaded throws instead of being replaced with a note."
     }
   ]
 }

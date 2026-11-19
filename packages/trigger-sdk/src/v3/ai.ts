@@ -7162,6 +7162,7 @@ function makeChannelDownloader(
     return null;
   };
   return (url) => {
+    if (isInlineDataUrl(url)) return Promise.resolve(null);
     const key = url.href;
     const cached = cache.get(key);
     if (cached) return cached;
@@ -7186,14 +7187,30 @@ function makeChannelDownloader(
 
 function fileUrlOf(part: unknown): URL | undefined {
   const p = part as { type?: string; data?: unknown; image?: unknown };
-  const raw = p?.type === "file" ? p.data : p?.type === "image" ? p.image : undefined;
-  if (raw instanceof URL) return raw;
-  if (typeof raw !== "string" || !/^https?:\/\//i.test(raw)) return undefined;
-  try {
-    return new URL(raw);
-  } catch {
+  let raw = p?.type === "file" ? p.data : p?.type === "image" ? p.image : undefined;
+  // AI SDK 7 tags the data (`{ type: "url", url }`); AI SDK 6 puts a URL or string there directly.
+  if (raw && typeof raw === "object" && !(raw instanceof URL)) {
+    const tagged = raw as { type?: unknown; url?: unknown };
+    raw = tagged.type === "url" ? tagged.url : undefined;
+  }
+  let url: URL;
+  if (raw instanceof URL) {
+    url = raw;
+  } else if (typeof raw === "string" && /^https?:\/\//i.test(raw)) {
+    try {
+      url = new URL(raw);
+    } catch {
+      return undefined;
+    }
+  } else {
     return undefined;
   }
+  return isInlineDataUrl(url) ? undefined : url;
+}
+
+/** An inline `data:` upload carries its bytes in the URL, so it is never handed to a connector, cached or logged. */
+function isInlineDataUrl(url: URL): boolean {
+  return url.protocol === "data:";
 }
 
 /**
@@ -7267,7 +7284,8 @@ type ModelDownloadFunction = (
 /**
  * The AI SDK `experimental_download` for a turn: channel-owned URLs come from the connectors, and
  * every other URL goes to `fallback`, or to the AI SDK's default behaviour (left for a model that
- * reads the URL itself, fetched from a public host otherwise).
+ * reads the URL itself, fetched from a public host otherwise). An inline `data:` URL is neither: it
+ * is left to the AI SDK to decode, and reaches no connector, fallback or fetch.
  */
 function channelAwareDownload(
   download: ChannelFileDownloader,
@@ -7280,7 +7298,11 @@ function channelAwareDownload(
         return file ? { data: file.data, mediaType: file.mediaType } : null;
       })
     );
-    const misses = requests.flatMap((_, i) => (results[i] ? [] : [i]));
+    // An inline `data:` file is left to the AI SDK, which decodes it itself: it is no connector's
+    // file, and `fetchPublicFile` would refuse it with the whole upload in the error message.
+    const misses = requests.flatMap((request, i) =>
+      results[i] || request.url.protocol === "data:" ? [] : [i]
+    );
     if (misses.length === 0) return results;
     const rest = fallback
       ? await fallback(misses.map((i) => requests[i]!))
