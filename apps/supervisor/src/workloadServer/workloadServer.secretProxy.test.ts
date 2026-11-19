@@ -22,6 +22,11 @@ describe.each([
 ])("workload server with proxy=$proxy", ({ proxy, port }) => {
   const base = `http://127.0.0.1:${port}/api/v1/workload-actions/runs/run_1/snapshots/snapshot_1`;
   const startRunAttempt = vi.fn(async () => ({ success: true as const, data: { envVars: {} } }));
+  const continueRunExecution = vi.fn(async () => ({
+    success: true as const,
+    data: { run: { friendlyId: "run_1" }, snapshot: { friendlyId: "snapshot_2" } },
+  }));
+  const prepareStart = vi.fn(async (): Promise<unknown> => undefined);
   const completeRunAttempt = vi.fn(async () => ({
     success: true as const,
     data: { result: { attemptStatus: "RUN_FINISHED" } },
@@ -46,7 +51,7 @@ describe.each([
       ? ({
           start: async () => {},
           stop: async () => {},
-          prepareStart: async () => undefined,
+          prepareStart,
           tracks: () => false,
           complete: async (_caller: unknown, operation: () => Promise<unknown>) => operation(),
         } as unknown as SecretProxyBindings)
@@ -54,7 +59,7 @@ describe.each([
     server = new WorkloadServer({
       port,
       host: "127.0.0.1",
-      workerClient: { startRunAttempt, completeRunAttempt } as any,
+      workerClient: { startRunAttempt, completeRunAttempt, continueRunExecution } as any,
       secretProxy,
       wideEventOpts: { service: "supervisor", env: { nodeId: "test" }, enabled: false },
       wideEventsNoisyRoutes: false,
@@ -65,6 +70,9 @@ describe.each([
   beforeEach(() => {
     startRunAttempt.mockClear();
     completeRunAttempt.mockClear();
+    continueRunExecution.mockClear();
+    prepareStart.mockReset();
+    prepareStart.mockResolvedValue(undefined);
   });
 
   afterAll(async () => {
@@ -93,6 +101,21 @@ describe.each([
     expect(startRunAttempt).toHaveBeenCalledOnce();
     expect((startRunAttempt.mock.calls[0] as unknown[])[2]).toMatchObject({
       supportsSecretProxy: false,
+    });
+  });
+
+  it.runIf(proxy)("waits for a placement before forwarding a continue", async () => {
+    prepareStart.mockResolvedValueOnce(undefined).mockResolvedValueOnce({ bindingId: "binding_1" });
+    const res = await fetch(`${base}/continue`, {
+      headers: {
+        [WORKLOAD_HEADERS.DEPLOYMENT_ID]: token,
+        [WORKLOAD_HEADERS.RUNNER_ID]: "runner_1",
+      },
+    });
+    expect(res.status).toBe(200);
+    expect(prepareStart).toHaveBeenCalledTimes(2);
+    expect((continueRunExecution.mock.calls[0] as unknown[])[4]).toMatchObject({
+      supportsSecretProxy: true,
     });
   });
 

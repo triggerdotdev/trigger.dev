@@ -18,6 +18,7 @@ import {
   type WorkloadSuspendRunResponseBody,
 } from "@trigger.dev/core/v3/workers";
 import EventEmitter from "node:events";
+import { setTimeout as sleep } from "node:timers/promises";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { type Namespace, Server, type Socket } from "socket.io";
 import { z } from "zod";
@@ -39,6 +40,8 @@ import type { WorkloadDeploymentTokenClaims } from "@trigger.dev/core/v3";
 import {
   SecretProxyAllocationBusyError,
   type SecretProxyBindings,
+  type SecretProxyCaller,
+  type SecretProxyPlacement,
 } from "../services/secretProxyBindings.js";
 import {
   ComputeSnapshotService,
@@ -59,6 +62,15 @@ interface DefaultEventsMap {
 }
 
 const SECRET_PROXY_ATTACH_RETRY_DELAY_MS = 1_000;
+// A restored guest can call continue before its Pod status shows it running.
+const SECRET_PROXY_CONTINUE_PLACEMENT_WAIT_MS = 5_000;
+const SECRET_PROXY_CONTINUE_PLACEMENT_RETRY_MS = 250;
+
+const unplacedSecretProxyContinues = new Counter({
+  name: "supervisor_secret_proxy_unplaced_continues_total",
+  help: "Continues forwarded without proxy capability on a proxy-configured supervisor",
+  registers: [register],
+});
 
 const unsupportedSecretProxyStarts = new Counter({
   name: "supervisor_secret_proxy_unsupported_starts_total",
@@ -1044,9 +1056,7 @@ export class WorkloadServer extends EventEmitter<WorkloadServerEvents> {
                 };
                 const placement = this.secretProxy?.tracks(params.runFriendlyId)
                   ? undefined
-                  : await this.secretProxy
-                      ?.prepareStart(caller, { continuing: true })
-                      .catch(() => undefined);
+                  : await this.placeContinue(caller);
                 const continuationResult = await this.workerClient.continueRunExecution(
                   params.runFriendlyId,
                   params.snapshotFriendlyId,
@@ -1491,6 +1501,27 @@ export class WorkloadServer extends EventEmitter<WorkloadServerEvents> {
     });
 
     return websocketServer;
+  }
+
+  /** Waits briefly for a placement, then forwards the continue without one. */
+  private async placeContinue(
+    caller: SecretProxyCaller
+  ): Promise<SecretProxyPlacement | undefined> {
+    const secretProxy = this.secretProxy;
+    if (!secretProxy) return;
+    const deadline = Date.now() + SECRET_PROXY_CONTINUE_PLACEMENT_WAIT_MS;
+    for (;;) {
+      try {
+        const placement = await secretProxy.prepareStart(caller, { continuing: true });
+        if (placement) return placement;
+      } catch {
+        break;
+      }
+      if (Date.now() + SECRET_PROXY_CONTINUE_PLACEMENT_RETRY_MS >= deadline) break;
+      await sleep(SECRET_PROXY_CONTINUE_PLACEMENT_RETRY_MS);
+    }
+    unplacedSecretProxyContinues.inc();
+    return;
   }
 
   private async revokeRunner(

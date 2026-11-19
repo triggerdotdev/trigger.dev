@@ -272,7 +272,6 @@ export function trustedSecretProxyIdentity(
     pod.metadata.namespace !== namespace ||
     runner.metadata.name !== caller.runnerId ||
     pod.metadata.name !== caller.runnerId ||
-    (runner.spec.restore && caller.runId !== runner.spec.bootstrap.runFriendlyID) ||
     (runner.spec.singleUse && caller.runId !== runner.spec.bootstrap.runFriendlyID) ||
     runner.spec.owner.envID !== caller.claims.environment_id ||
     runner.spec.deployment.friendlyID !== caller.claims.deployment ||
@@ -298,7 +297,7 @@ export function trustedSecretProxyIdentity(
     bootstrapRunId: runner.spec.bootstrap.runFriendlyID,
     bootstrapAttempt: attempt,
     singleUseAttempt: runner.spec.singleUse && !runner.spec.restore ? attempt : undefined,
-    pinned: !!runner.spec.singleUse || !!runner.spec.restore,
+    pinned: !!runner.spec.singleUse,
     runnerId: runner.metadata.name,
     runnerUid: runner.metadata.uid,
     environmentId: runner.spec.owner.envID,

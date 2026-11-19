@@ -672,7 +672,7 @@ describe("SecretProxyBindings with real k3s and native interceptor UDS", () => {
     await finish(caller, response.snapshot.friendlyId);
   });
 
-  it("lets a restored VM continue its attempt after a supervisor restart and a failed suspend", async () => {
+  it("lets a restored VM continue after a supervisor restart and a failed suspend, then serve another run", async () => {
     const [restored] = (await fixture.placements([
       { runId: "run_restoredsuspend", checkpoint: "checkpoint_a1b2c3d4" },
     ])) as [SecretProxyCaller];
@@ -695,17 +695,6 @@ describe("SecretProxyBindings with real k3s and native interceptor UDS", () => {
     await bindings.revokeSuspending(restored.runId, "snap_restored_suspend");
     expect(await fixture.acceptsTls(restored)).toBe(false);
 
-    const again = await bindings.prepareStart(restored, { continuing: true });
-    expect(again).toBeDefined();
-    const other = accepted(restored, { attempt: 3, snapshotId: "snap_other_attempt" });
-    await expect(
-      bindings.activateContinue(restored, again!, {
-        run: { friendlyId: restored.runId, attemptNumber: 3 },
-        snapshot: other.snapshot,
-        runToken: other.envVars.TRIGGER_RUN_TOKEN,
-        secretProxy: other.secretProxy,
-      })
-    ).rejects.toThrow();
     const retry = await bindings.prepareStart(restored, { continuing: true });
     const next = accepted(restored, { attempt: 2, snapshotId: "snap_restored_continued" });
     await bindings.activateContinue(restored, retry!, {
@@ -716,6 +705,14 @@ describe("SecretProxyBindings with real k3s and native interceptor UDS", () => {
     });
     expect(await fixture.acceptsTls(restored)).toBe(true);
     await finish(restored, next.snapshot.friendlyId);
+    expect(await fixture.acceptsTls(restored)).toBe(false);
+
+    // Its controller keeps polling for warm starts, so it serves the next run like any warm VM.
+    const warm = { ...restored, runId: "run_afterrestore" };
+    const warmResponse = await start(warm);
+    expect(await fixture.acceptsTls(warm)).toBe(true);
+    await finish(warm, warmResponse.snapshot.friendlyId);
+    expect(await fixture.acceptsTls(warm)).toBe(false);
   }, 60_000);
 
   it("keeps a revoked completion retryable past token expiry", async () => {
