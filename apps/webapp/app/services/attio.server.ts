@@ -36,7 +36,9 @@ export type AttioUserSync = z.infer<typeof AttioUserSyncSchema>;
 export const AttioMemberSyncSchema = z.object({ organizationId: z.string(), userId: z.string() });
 export const AttioWorkspaceMembersSyncSchema = z.object({ organizationId: z.string() });
 
-const memberSyncEnabled = env.ATTIO_MEMBER_SYNC_ENABLED === "1";
+const memberSyncEnabled =
+  env.ATTIO_MEMBER_SYNC_ENABLED === "1" ||
+  (env.APP_ENV === "production" && env.ATTIO_MEMBER_SYNC_ENABLED !== "0");
 
 const attioClient = env.ATTIO_API_KEY
   ? new AttioClient({

@@ -226,8 +226,8 @@ export async function syncAttioMember(
 
 export type AttioWorkspaceMembersSync = { organizationId: string };
 
-// Attio's query limit.
-const USER_QUERY_PAGE = 500;
+// Attio rejects an $in filter with more than 100 values.
+const USER_QUERY_PAGE = 100;
 
 async function readWorkspaceMembers(db: PrismaClientOrTransaction, organizationId: string) {
   const org = await db.organization.findFirst({
