@@ -19,7 +19,8 @@ jobs:
     if: >-
       vars.ENABLE_CLAUDE_CODE != 'false' &&
       github.event.pull_request.draft == false &&
-      github.event.pull_request.head.repo.full_name == github.repository
+      github.event.pull_request.head.repo.full_name == github.repository &&
+      !startsWith(github.event.pull_request.head.ref, 'changeset-release/')
     runs-on: warp-ubuntu-latest-x64-2x
     permissions:
       contents: read
