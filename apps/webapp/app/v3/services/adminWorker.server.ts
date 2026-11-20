@@ -44,6 +44,10 @@ function initializeWorker() {
     name: "admin-worker",
     redisOptions,
     catalog: {
+      "admin.environmentEncryptionFleet": {
+        schema: z.object({ jobId: z.string() }),
+        visibilityTimeoutMs: 15 * 60_000,
+      },
       "admin.environmentEncryptionBackfillPage": {
         schema: z.object({ jobId: z.string() }),
         visibilityTimeoutMs: 15 * 60_000,
@@ -76,6 +80,11 @@ function initializeWorker() {
     shutdownTimeoutMs: env.ADMIN_WORKER_SHUTDOWN_TIMEOUT_MS,
     logger: new Logger("AdminWorker", env.ADMIN_WORKER_LOG_LEVEL),
     jobs: {
+      "admin.environmentEncryptionFleet": async ({ payload, id }) => {
+        if (await environmentEncryptionBackfill.run(payload.jobId)) {
+          await worker.enqueue({ id, job: "admin.environmentEncryptionFleet", payload });
+        }
+      },
       "admin.environmentEncryptionBackfillPage": async ({ payload }) => {
         await environmentEncryptionBackfill.run(payload.jobId);
       },
