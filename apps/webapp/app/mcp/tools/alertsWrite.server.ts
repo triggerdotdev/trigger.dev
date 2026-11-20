@@ -97,6 +97,7 @@ export const alertsWriteTools: McpToolDefinition[] = [
     description:
       "Create a monitoring alert for a project. Use list_alert_capabilities first to find a capabilityKey and understand its condition shape.",
     shape: CreateAlertInput.shape,
+    approval: "configurable",
     auth: { action: "write", subject: "alerts" },
     run: async (input, ctx) => {
       const project = await findMonitoringAlertsProject(input.projectRef!, ctx.identity.userId);
@@ -177,6 +178,7 @@ export const alertsWriteTools: McpToolDefinition[] = [
     description:
       "Resolve a monitoring alert that needs attention, acknowledging it. The alert re-arms after resolving.",
     shape: ResolveAlertInput.shape,
+    approval: "configurable",
     auth: { action: "write", subject: "alerts" },
     run: async (input, ctx) => {
       const project = await findMonitoringAlertsProject(input.projectRef!, ctx.identity.userId);

@@ -621,3 +621,40 @@ describe("TraceChunkAssembler live spans", () => {
     expect([...assembler.liveSpanIds]).toEqual(["live"]);
   });
 });
+
+describe("TraceChunkAssembler message changes", () => {
+  // Catches: search not refiltering a shown span whose message changed in place (same tree shape).
+  it("counts new messages on spans it already holds, not new spans or repeats", () => {
+    const assembler = new TraceChunkAssembler();
+    assembler.mergeChunk([ev("root", "", 0), ev("a", "root", 1, { status: "PARTIAL" })]);
+    expect(assembler.messageChanges).toBe(0);
+
+    assembler.mergeChunk([ev("a", "root", 1, { message: "a done" })], { source: "tail" });
+    assembler.mergeChunk([ev("a", "root", 1, { message: "a done" })], { source: "tail" });
+
+    expect(assembler.messageChanges).toBe(1);
+  });
+
+  // Catches: a span shown under an event row's message, then given its real name by its SPAN
+  // row, never being re-checked by search.
+  it("counts a span's first SPAN row replacing an event row's message", () => {
+    const assembler = new TraceChunkAssembler();
+    assembler.mergeChunk([
+      ev("root", "", 0),
+      ev("a", "root", 1, { kind: "SPAN_EVENT", message: "exception" }),
+    ]);
+    expect(assembler.messageChanges).toBe(0);
+
+    assembler.mergeChunk([ev("a", "root", 1, { message: "real name" })], { source: "tail" });
+
+    expect(assembler.messageChanges).toBe(1);
+  });
+
+  it("ignores an older partial row arriving after the final one", () => {
+    const assembler = new TraceChunkAssembler();
+    assembler.mergeChunk([ev("root", "", 0), ev("a", "root", 1, { message: "final" })]);
+    assembler.mergeChunk([ev("a", "root", 1, { status: "PARTIAL", message: "partial" })]);
+
+    expect(assembler.messageChanges).toBe(0);
+  });
+});

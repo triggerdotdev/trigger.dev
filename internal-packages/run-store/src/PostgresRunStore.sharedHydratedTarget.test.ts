@@ -1,7 +1,7 @@
-// RED→GREEN: bare-projection dedicated-relation hydration (e.g. `connectedRuns: true`) shares ONE
+// RED→GREEN: bare-projection dedicated-relation hydration (e.g. `completedWaitpoints: true`) shares ONE
 // target object reference across every parent bucket that links it, so an in-place mutation on one
-// parent's hydrated target aliases into another's. Two waitpoints connecting to the SAME run should
-// come back with DISTINCT `TaskRun` objects, not the same instance.
+// parent's hydrated target aliases into another's. Two snapshots completed by the SAME waitpoint should
+// come back with DISTINCT `Waitpoint` objects, not the same instance.
 
 import { heteroRunOpsPostgresTest } from "@internal/testcontainers";
 import type { RunOpsPrismaClient } from "@internal/run-ops-database";
@@ -70,13 +70,13 @@ function makeStore(prisma: RunOpsPrismaClient) {
 
 describe("PostgresRunStore dedicated relation hydrators — shared target identity (bare projection)", () => {
   heteroRunOpsPostgresTest(
-    "findManyWaitpoints hydrates bare `connectedRuns: true` for two waitpoints sharing one run as DISTINCT objects",
+    "findManyExecutionSnapshots hydrates bare `completedWaitpoints: true` for two snapshots sharing one waitpoint as DISTINCT objects",
     async ({ prisma17 }) => {
       const store = makeStore(prisma17);
       const env = seedEnvironmentDedicated("shared_target");
 
       const runId = "run_shared_target";
-      const waitpointIds = ["wp_shared_1", "wp_shared_2"];
+      const waitpointId = "wp_shared_1";
 
       await store.createRun(
         buildCreateRunInput({
@@ -88,50 +88,55 @@ describe("PostgresRunStore dedicated relation hydrators — shared target identi
         })
       );
 
-      for (const waitpointId of waitpointIds) {
-        await prisma17.waitpoint.create({
-          data: {
-            id: waitpointId,
-            friendlyId: `${waitpointId}_friendly`,
-            type: "MANUAL",
-            status: "PENDING",
-            idempotencyKey: `idem_${waitpointId}`,
-            userProvidedIdempotencyKey: false,
-            projectId: env.project.id,
-            environmentId: env.environment.id,
-          },
-        });
-      }
-
-      // Both waitpoints connect to the SAME run: the target-row `findMany` in
-      // `batchHydrateJoinRelation` returns ONE row for the run, shared across both parents' buckets.
-      await store.blockRunWithWaitpointEdges({
-        runId,
-        waitpointIds,
-        projectId: env.project.id,
+      await prisma17.waitpoint.create({
+        data: {
+          id: waitpointId,
+          friendlyId: `${waitpointId}_friendly`,
+          type: "MANUAL",
+          status: "PENDING",
+          idempotencyKey: `idem_${waitpointId}`,
+          userProvidedIdempotencyKey: false,
+          projectId: env.project.id,
+          environmentId: env.environment.id,
+        },
       });
 
-      // Bare projection (`connectedRuns: true`, no sub-select) — the buggy path: `applyProjection`
+      // Both snapshots record the SAME waitpoint as completed: the target-row `findMany` in
+      // `batchHydrateJoinRelation` returns ONE row for the waitpoint, shared across both parents' buckets.
+      const createSnapshot = () =>
+        store.createExecutionSnapshot({
+          run: { id: runId, status: "EXECUTING", attemptNumber: 1 },
+          snapshot: { executionStatus: "EXECUTING", description: "completed by shared waitpoint" },
+          completedWaitpoints: [{ id: waitpointId, index: 0 }],
+          environmentId: env.environment.id,
+          environmentType: "DEVELOPMENT",
+          projectId: env.project.id,
+          organizationId: env.organization.id,
+        });
+      const s1 = await createSnapshot();
+      const s2 = await createSnapshot();
+
+      // Bare projection (`completedWaitpoints: true`, no sub-select) — the buggy path: `applyProjection`
       // returns the row UNCHANGED instead of a fresh object.
-      const rows = (await store.findManyWaitpoints({
-        where: { id: { in: waitpointIds } },
-        include: { connectedRuns: true },
-      })) as { id: string; connectedRuns: { id: string; friendlyId: string }[] }[];
+      const rows = (await store.findManyExecutionSnapshots({
+        where: { id: { in: [s1.id, s2.id] } },
+        include: { completedWaitpoints: true },
+      })) as { id: string; completedWaitpoints: { id: string; friendlyId: string }[] }[];
 
       expect(rows).toHaveLength(2);
-      const byWaitpointId = new Map(rows.map((r) => [r.id, r.connectedRuns]));
-      const target1 = byWaitpointId.get("wp_shared_1")?.[0];
-      const target2 = byWaitpointId.get("wp_shared_2")?.[0];
+      const bySnapshotId = new Map(rows.map((r) => [r.id, r.completedWaitpoints]));
+      const target1 = bySnapshotId.get(s1.id)?.[0];
+      const target2 = bySnapshotId.get(s2.id)?.[0];
 
       expect(target1).toBeDefined();
       expect(target2).toBeDefined();
-      expect(target1!.id).toBe(runId);
-      expect(target2!.id).toBe(runId);
+      expect(target1!.id).toBe(waitpointId);
+      expect(target2!.id).toBe(waitpointId);
 
       // THE BUG: both hydrated targets are the SAME object reference.
       expect(target1).not.toBe(target2);
 
-      // Mutating a top-level field on one parent's hydrated target must NOT change the other's.
+      // Mutating a top-level field on one snapshot's hydrated waitpoint must NOT change the other's.
       (target1 as { friendlyId: string }).friendlyId = "mutated";
       expect(target2!.friendlyId).not.toBe("mutated");
     }

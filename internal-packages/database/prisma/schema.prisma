@@ -386,6 +386,11 @@ model OrgMember {
 
   role OrgMemberRole @default(MEMBER)
 
+  /// Who invited them (a User id, kept if that user is deleted). Null if not invited or joined before this was recorded.
+  invitedById String?
+  /// How they joined: created, invite, sso_jit, directory_sync or manual. Null if joined before this was recorded.
+  joinMethod  String?
+
   createdAt    DateTime             @default(now())
   updatedAt    DateTime             @updatedAt
   environments RuntimeEnvironment[]
@@ -2721,6 +2726,9 @@ model WorkerDeployment {
   canceledAt     DateTime?
   canceledReason String?
 
+  /// The newer GitHub build that superseded this one while it was still queued
+  supersededById String?
+
   // This is GitMeta type
   git Json?
 
@@ -3385,6 +3393,11 @@ model ConnectedGithubRepository {
   branchTracking Json
 
   previewDeploymentsEnabled Boolean @default(true)
+
+  /// Skip queued builds once a newer commit is queued for the same environment or preview branch
+  supersedeProductionBuilds Boolean @default(false)
+  supersedeStagingBuilds    Boolean @default(true)
+  supersedePreviewBuilds    Boolean @default(true)
 
   buildFilters Json?
 

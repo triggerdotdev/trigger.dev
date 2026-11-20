@@ -5,6 +5,8 @@ import type { PrismaClient } from "@trigger.dev/database";
 import { describe, expect, vi } from "vitest";
 import type { AuthenticatedEnvironment } from "~/services/apiAuth.server";
 import { FEATURE_FLAG } from "~/v3/featureFlags";
+import { ServiceValidationError } from "~/v3/services/common.server";
+import { deflateSync } from "node:zlib";
 import {
   CreateBackgroundWorkerService,
   createWorkerResources,
@@ -398,6 +400,51 @@ describe("sandbox task registration", () => {
       });
       expect(task.executionMode).toBe("SANDBOX");
       expect(task.executionPolicy).toMatchObject({ rootKey: false, envVars: ["API_KEY"] });
+    }
+  );
+});
+
+describe("source file size limits", () => {
+  // Catches: an upload whose source inflates without bound, and a refused upload leaving rows behind.
+  containerTest(
+    "refuses oversized source before persisting anything and registers normal source",
+    async ({ prisma }) => {
+      const { project, devEnv } = await seedProjectWithEnvs(prisma);
+      const environment = { ...asEnv(devEnv), project } as AuthenticatedEnvironment;
+      const body = (contentHash: string, source: string | Buffer) =>
+        ({
+          engine: "V2",
+          metadata: {
+            contentHash,
+            tasks: [{ id: "task-a", filePath: "src/trigger/a.ts", exportName: "a" }],
+            sourceFiles: [
+              {
+                filePath: "src/trigger/a.ts",
+                contentHash: `${contentHash}-file`,
+                contents: deflateSync(source).toString("base64"),
+                taskIds: ["task-a"],
+              },
+            ],
+          },
+        }) as Parameters<CreateBackgroundWorkerService["call"]>[2];
+      const service = new CreateBackgroundWorkerService(prisma, prisma);
+
+      const error = await service
+        .call(
+          project.externalRef,
+          environment,
+          body("oversized-hash", Buffer.alloc(64 * 1024 * 1024))
+        )
+        .catch((e) => e);
+
+      expect(error).toBeInstanceOf(ServiceValidationError);
+      expect(error.status).toBe(413);
+      expect(error.message).toContain('"src/trigger/a.ts"');
+      expect(await prisma.backgroundWorker.count({ where: { projectId: project.id } })).toBe(0);
+      expect(await prisma.backgroundWorkerFile.count({ where: { projectId: project.id } })).toBe(0);
+
+      await service.call(project.externalRef, environment, body("ok-hash", "export const a = 1;"));
+      expect(await prisma.backgroundWorkerFile.count({ where: { projectId: project.id } })).toBe(1);
     }
   );
 });

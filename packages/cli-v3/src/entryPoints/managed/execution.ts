@@ -29,7 +29,10 @@ import { RunNotifier } from "./notifier.js";
 import { forkEnvFromRunEnv, type TaskRunProcessProvider } from "./taskRunProcessProvider.js";
 import { RunTokenRefresher, type RunTokenUpdate } from "./runTokenRefresh.js";
 import { SecretEnv } from "./secretEnv.js";
+import { UsageJwtRefresher } from "./usageJwtRefresh.js";
 import { redactSecrets } from "./redact.js";
+
+const USAGE_JWT_RESUME_RETRY_DELAYS_MS = [0, 1_000, 3_000];
 
 class ExecutionAbortError extends Error {
   constructor(message: string) {
@@ -83,6 +86,8 @@ export class RunExecution {
 
   private taskRunProcess?: TaskRunProcess;
   private runToken?: RunTokenRefresher;
+  private usageJwt?: UsageJwtRefresher;
+  private heartbeatInFlight?: ReturnType<RunExecution["performHeartbeat"]>;
   private snapshotPoller?: RunExecutionSnapshotPoller;
 
   private lastHeartbeat?: Date;
@@ -379,6 +384,7 @@ export class RunExecution {
           return;
         }
 
+        await this.refreshBeforeResume();
         for (const waitpoint of completedWaitpoints) {
           this.taskRunProcess.waitpointCompleted(waitpoint);
         }
@@ -425,7 +431,7 @@ export class RunExecution {
     const start = await this.httpClient.startRunAttempt(
       this.runFriendlyId,
       this.snapshotManager.snapshotId,
-      { isWarmStart, supportsRunTokenRefresh: true }
+      { isWarmStart, supportsRunTokenRefresh: true, supportsUsageJwtRefresh: true }
     );
 
     if (!start.success && start.shouldRetry === false) this.requiresRunnerExit = true;
@@ -449,6 +455,22 @@ export class RunExecution {
     if (attemptNumber && attemptNumber > 0) {
       this.currentAttemptNumber = attemptNumber;
       // Replaced per attempt, so late refreshes for an earlier attempt can't reach this one.
+      this.usageJwt = new UsageJwtRefresher({
+        runId: this.runFriendlyId,
+        attemptNumber,
+        usageOptions: {
+          jwt: start.data.envVars.TRIGGER_JWT,
+          url: start.data.envVars.USAGE_EVENT_URL,
+          heartbeatIntervalMs: Number.parseInt(
+            start.data.envVars.USAGE_HEARTBEAT_INTERVAL_MS ?? "",
+            10
+          ),
+        },
+        install: (update) => this.taskRunProcess?.installUsageJwt(update) ?? Promise.resolve(false),
+      });
+      if (this.usageJwt.fallbackReason) {
+        this.sendDebugLog("billing JWT fallback", { reason: this.usageJwt.fallbackReason });
+      }
       this.runToken = new RunTokenRefresher({
         runId: this.runFriendlyId,
         attemptNumber,
@@ -634,12 +656,12 @@ export class RunExecution {
     isWarmStart?: boolean;
     isImmediateRetry?: boolean;
   }) {
-    if (isImmediateRetry) {
-      await this.taskRunProcessProvider.handleImmediateRetry();
-    }
-
     if (!this.currentTaskRunEnv || !this.attemptEnv) {
       throw new Error("Cannot execute run: missing attempt env");
+    }
+
+    if (isImmediateRetry) {
+      await this.taskRunProcessProvider.handleImmediateRetry();
     }
 
     const taskRunEnv = this.currentTaskRunEnv;
@@ -849,11 +871,10 @@ export class RunExecution {
     // Process any env overrides
     await this.processEnvOverrides("restore");
 
-    // Install a fresh token before continuing, which releases waitpoints to the task. On failure
-    // the run continues and later heartbeats retry.
-    if (this.runToken?.isDue) {
-      await this.sendHeartbeat("restore");
-    }
+    // Continue assigns the restored runner to a new EXECUTING snapshot. Billing renewal checks
+    // that ownership before the EXECUTING handler below releases any waitpoints to user code.
+    // No billing report here: the restored runner does not own the suspended snapshot yet.
+    if (this.runToken?.isDue) await this.sendHeartbeat("restore", { reportUsageJwt: false });
 
     const continuationResult = await this.httpClient.continueRunExecution(
       this.runFriendlyId,
@@ -1006,7 +1027,30 @@ export class RunExecution {
     this.lastHeartbeat = new Date();
   }
 
-  private async sendHeartbeat(trigger: RunTokenRefreshTrigger) {
+  private async refreshBeforeResume() {
+    if (!this.usageJwt?.isDue) return;
+    for (const delayMs of USAGE_JWT_RESUME_RETRY_DELAYS_MS) {
+      if (delayMs) await sleep(delayMs);
+      await this.sendHeartbeat("restore");
+      if (!this.usageJwt.isDue) return;
+    }
+    // Rejected usage is retained and sent once a later heartbeat installs a credential, so a
+    // billing outage must not fail the customer's run.
+    this.sendDebugLog("resuming with a due billing JWT; heartbeats will keep retrying the refresh");
+  }
+
+  private sendHeartbeat(trigger: RunTokenRefreshTrigger, opts?: { reportUsageJwt?: boolean }) {
+    if (this.heartbeatInFlight) return this.heartbeatInFlight;
+    this.heartbeatInFlight = this.performHeartbeat(trigger, opts).finally(() => {
+      this.heartbeatInFlight = undefined;
+    });
+    return this.heartbeatInFlight;
+  }
+
+  private async performHeartbeat(
+    trigger: RunTokenRefreshTrigger,
+    { reportUsageJwt = true }: { reportUsageJwt?: boolean } = {}
+  ) {
     const runId = this.runFriendlyId;
     const snapshotId = this.snapshotManager?.snapshotId;
     if (!runId || !snapshotId) {
@@ -1015,11 +1059,25 @@ export class RunExecution {
 
     const runToken = this.runToken;
     const report = runToken?.report(trigger);
-    const response = await this.httpClient.heartbeatRun(
-      runId,
-      snapshotId,
-      report ? { runToken: report } : undefined
-    );
+    const usageJwt = this.usageJwt;
+    const usageReport = reportUsageJwt ? usageJwt?.report() : undefined;
+    const response = await this.httpClient.heartbeatRun(runId, snapshotId, {
+      runToken: report,
+      usageJwt: usageReport,
+    });
+
+    if (usageReport && usageJwt) {
+      const installed =
+        response.success && response.data.usageJwt
+          ? await usageJwt.installReplacement(response.data.usageJwt)
+          : false;
+      if (!installed) {
+        this.sendDebugLog("billing JWT refresh/install failed; will retry on next heartbeat", {
+          trigger,
+        });
+        console.error("Billing JWT refresh/install failed; usage rejections retained for retry");
+      }
+    }
 
     if (response.success && runToken) {
       const outcome = await runToken.handleHeartbeatResponse(report, response.data.runToken);

@@ -160,6 +160,7 @@ export class DeploymentListPresenter {
         buildServerMetadata: Prisma.JsonValue | null;
         hasBuildEnvVars: boolean;
         createdAt: Date;
+        isSuperseded: boolean;
         integrationDeploymentId: string | null;
       }[]
     >`
@@ -184,7 +185,8 @@ export class DeploymentListPresenter {
   wd."git",
   wd."buildServerMetadata",
   wd."buildEnvVars" IS NOT NULL AS "hasBuildEnvVars",
-  wd."createdAt"
+  wd."createdAt",
+  wd."supersededById" IS NOT NULL AS "isSuperseded"
   ${vercelSelect}
 FROM
   ${sqlDatabaseSchema}."WorkerDeployment" as wd
@@ -280,6 +282,7 @@ LIMIT ${pageSize} OFFSET ${pageSize * (page - 1)};`;
           triggeredVia: deployment.triggeredVia,
           git: processGitMetadata(deployment.git),
           createdAt: deployment.createdAt,
+          isSuperseded: deployment.status === "CANCELED" && deployment.isSuperseded,
           redeploySource:
             redeploySource?.kind === "artifact" && redeploySource.fromBundle
               ? ("bundle" as const)

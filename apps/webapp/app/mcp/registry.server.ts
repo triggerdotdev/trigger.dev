@@ -38,6 +38,8 @@ import { sessionsWriteTools } from "./tools/sessionsWrite.server";
 import { tasksWriteTools } from "./tools/tasksWrite.server";
 import { webhooksWriteTools } from "./tools/webhooksWrite.server";
 
+export type McpApprovalClass = "required" | "configurable" | "none";
+
 export type McpToolDefinition = {
   name: string;
   title?: string;
@@ -46,6 +48,7 @@ export type McpToolDefinition = {
   annotations?: ToolAnnotations;
   /** The gate holds the call for user confirmation. */
   confirm?: boolean;
+  approval?: McpApprovalClass;
   auth?: McpToolAuth;
   handler: (
     args: unknown,

@@ -66,6 +66,7 @@ export function createTasksWriteTools(options: TasksWriteOptions = {}): McpToolD
       description:
         "Trigger a task in the project. Use the get_tasks tool to get a list of tasks and ask the user to select one if it's not clear which one to use. The run executes in the background, so only wait for it to complete (with the wait_for_run_to_complete tool) if the user asked you to.",
       shape: TriggerTaskInput.shape,
+      approval: "configurable",
       auth: {
         action: "trigger",
         subject: "tasks",

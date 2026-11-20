@@ -19,6 +19,7 @@ class SessionPanelStore {
   #confirmedSpans = new Set<string>();
   #facts = new Map<string, RunFacts>();
   #loadNotes = new Map<string, RunLoadNote>();
+  #settledRuns = new Set<string>();
   #listeners = new Set<() => void>();
 
   subscribe = (listener: () => void) => {
@@ -69,6 +70,23 @@ class SessionPanelStore {
       changed = true;
     }
     if (changed) this.#notify();
+  }
+
+  /**
+   * Runs whose read in the Trace tab has ended: fully loaded, cut off, failed or can't load.
+   * Replaces the last set: these belong to the Trace tab's loads.
+   */
+  setSettledRuns(runFriendlyIds: ReadonlySet<string>) {
+    const same =
+      runFriendlyIds.size === this.#settledRuns.size &&
+      [...runFriendlyIds].every((id) => this.#settledRuns.has(id));
+    if (same) return;
+    this.#settledRuns = new Set(runFriendlyIds);
+    this.#notify();
+  }
+
+  isRunSettled(runFriendlyId: string) {
+    return this.#settledRuns.has(runFriendlyId);
   }
 
   getRunFacts(runFriendlyId: string) {
@@ -138,6 +156,12 @@ export function useRunPanelData(runFriendlyId: string | undefined) {
 export function useSpanConfirmed(runFriendlyId: string, spanId: string | undefined) {
   const store = useSessionPanelStore();
   const read = () => (store && spanId ? store.isSpanConfirmed(runFriendlyId, spanId) : false);
+  return useSyncExternalStore(store?.subscribe ?? noSubscribe, read, read);
+}
+
+export function useRunSettled(runFriendlyId: string) {
+  const store = useSessionPanelStore();
+  const read = () => store?.isRunSettled(runFriendlyId) ?? false;
   return useSyncExternalStore(store?.subscribe ?? noSubscribe, read, read);
 }
 

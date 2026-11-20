@@ -858,8 +858,6 @@ export interface RunStore {
   ): Promise<{ present: boolean; ids: string[] }>;
   /** Run ids connected to a waitpoint (WaitpointRunConnection / `_WaitpointRunConnections`), this DB only. */
   findWaitpointConnectedRunIds(waitpointId: string, client?: ReadClient): Promise<string[]>;
-  /** Snapshot ids that completed a waitpoint (CompletedWaitpoint / `_completedWaitpoints`), this DB only. */
-  findWaitpointCompletedSnapshotIds(waitpointId: string, client?: ReadClient): Promise<string[]>;
   blockRunWithWaitpointEdges(params: {
     runId: string;
     waitpointIds: string[];

@@ -71,14 +71,14 @@ function makeStore(prisma: RunOpsPrismaClient) {
   });
 }
 
-// Wraps `taskRun.findMany` with a REAL Prisma Client Extension query hook: every call's `args` is
+// Wraps `waitpoint.findMany` with a REAL Prisma Client Extension query hook: every call's `args` is
 // captured, then delegated unchanged to `query(args)` so the DB still executes it. This is
 // observation, not a mock — the extension can't fabricate a result, only see what's sent.
-function withCapturedTaskRunFindManyArgs(real: RunOpsPrismaClient) {
+function withCapturedWaitpointFindManyArgs(real: RunOpsPrismaClient) {
   const capturedArgs: Record<string, unknown>[] = [];
   const extended = (real as unknown as { $extends: (config: unknown) => unknown }).$extends({
     query: {
-      taskRun: {
+      waitpoint: {
         findMany({
           args,
           query,
@@ -97,73 +97,7 @@ function withCapturedTaskRunFindManyArgs(real: RunOpsPrismaClient) {
 
 describe("PostgresRunStore dedicated relation hydrators — target findMany select pushdown", () => {
   heteroRunOpsPostgresTest(
-    "hydrateConnectedRuns narrows the target taskRun.findMany to the caller's select instead of fetching the full row",
-    async ({ prisma17 }) => {
-      const seedStore = makeStore(prisma17);
-      const env = seedEnvironmentDedicated("select_pushdown");
-
-      const runId = "run_select_pushdown";
-      const waitpointId = "wp_select_pushdown";
-
-      await prisma17.waitpoint.create({
-        data: {
-          id: waitpointId,
-          friendlyId: `${waitpointId}_friendly`,
-          type: "MANUAL",
-          status: "PENDING",
-          idempotencyKey: `idem_${waitpointId}`,
-          userProvidedIdempotencyKey: false,
-          projectId: env.project.id,
-          environmentId: env.environment.id,
-        },
-      });
-
-      await seedStore.createRun(
-        buildCreateRunInput({
-          runId,
-          friendlyId: `${runId}_friendly`,
-          organizationId: env.organization.id,
-          projectId: env.project.id,
-          runtimeEnvironmentId: env.environment.id,
-        })
-      );
-
-      // Seeds BOTH the TaskRunWaitpoint edge and the WaitpointRunConnection join row that
-      // `connectedRuns` reads from.
-      await seedStore.blockRunWithWaitpointEdges({
-        runId,
-        waitpointIds: [waitpointId],
-        projectId: env.project.id,
-      });
-
-      const { client: capturingClient, capturedArgs } = withCapturedTaskRunFindManyArgs(prisma17);
-      const readStore = makeStore(capturingClient);
-
-      const waitpoint = (await readStore.findWaitpoint({
-        where: { id: waitpointId },
-        include: { connectedRuns: { select: { friendlyId: true } } },
-      })) as { connectedRuns: { friendlyId: string }[] } | null;
-
-      expect(capturedArgs).toHaveLength(1);
-      const targetArgs = capturedArgs[0] as { where: unknown; select?: Record<string, unknown> };
-
-      // THE FIX: the target `findMany` carries a `select` narrowed to the caller's projection (plus
-      // the `id` the hydrator keys off), never a bare where-only (= full row) query.
-      expect(targetArgs.select).toBeDefined();
-      expect(targetArgs.select).toMatchObject({ friendlyId: true, id: true });
-      expect(targetArgs.select?.payload).toBeUndefined();
-      expect(targetArgs.select?.output).toBeUndefined();
-      expect(targetArgs.select?.context).toBeUndefined();
-
-      // `applyProjection` still trims correctly: exactly `{ friendlyId }`, no `id` leak, no wide
-      // columns — proving the pushdown didn't change the caller-visible result.
-      expect(waitpoint?.connectedRuns).toHaveLength(1);
-      expect(waitpoint?.connectedRuns[0]).toEqual({ friendlyId: `${runId}_friendly` });
-    }
-  );
-
-  heteroRunOpsPostgresTest(
-    "hydrateEdgeTaskRun (batchHydrateEdgeTarget) narrows the target taskRun.findMany to the caller's select instead of fetching the full row",
+    "hydrateEdgeWaitpoint (batchHydrateEdgeTarget) narrows the target waitpoint.findMany to the caller's select instead of fetching the full row",
     async ({ prisma17 }) => {
       const seedStore = makeStore(prisma17);
       const env = seedEnvironmentDedicated("edge_pushdown");
@@ -200,27 +134,27 @@ describe("PostgresRunStore dedicated relation hydrators — target findMany sele
         projectId: env.project.id,
       });
 
-      const { client: capturingClient, capturedArgs } = withCapturedTaskRunFindManyArgs(prisma17);
+      const { client: capturingClient, capturedArgs } = withCapturedWaitpointFindManyArgs(prisma17);
       const readStore = makeStore(capturingClient);
 
-      // TaskRunWaitpoint's `taskRun` relation is the dedicated `hydrateEdgeTaskRun` ->
+      // TaskRunWaitpoint's `waitpoint` relation is the dedicated `hydrateEdgeWaitpoint` ->
       // `batchHydrateEdgeTarget` path (the scalar-FK-on-the-parent variant).
       const edges = (await readStore.findManyTaskRunWaitpoints({
         where: { waitpointId },
-        select: { taskRun: { select: { friendlyId: true } } },
-      })) as { taskRun: { friendlyId: string } | null }[];
+        select: { waitpoint: { select: { friendlyId: true } } },
+      })) as { waitpoint: { friendlyId: string } | null }[];
 
       expect(capturedArgs).toHaveLength(1);
       const targetArgs = capturedArgs[0] as { where: unknown; select?: Record<string, unknown> };
 
       expect(targetArgs.select).toBeDefined();
       expect(targetArgs.select).toMatchObject({ friendlyId: true, id: true });
-      expect(targetArgs.select?.payload).toBeUndefined();
+      expect(targetArgs.select?.tags).toBeUndefined();
       expect(targetArgs.select?.output).toBeUndefined();
-      expect(targetArgs.select?.context).toBeUndefined();
+      expect(targetArgs.select?.outputType).toBeUndefined();
 
       expect(edges).toHaveLength(1);
-      expect(edges[0].taskRun).toEqual({ friendlyId: `${runId}_friendly` });
+      expect(edges[0].waitpoint).toEqual({ friendlyId: `${waitpointId}_friendly` });
     }
   );
 });

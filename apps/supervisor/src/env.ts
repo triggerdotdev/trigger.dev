@@ -691,11 +691,6 @@ export const Env = z
   })
   .transform((data) => ({
     ...data,
-    TRIGGER_CHECKPOINT_URL: data.SECRET_PROXY_INTERCEPTOR_SOCKET
-      ? undefined
-      : data.TRIGGER_CHECKPOINT_URL,
-    COMPUTE_SNAPSHOTS_ENABLED:
-      data.COMPUTE_SNAPSHOTS_ENABLED && !data.SECRET_PROXY_INTERCEPTOR_SOCKET,
     TRIGGER_WORKER_QUEUE_CLASS:
       data.TRIGGER_WORKER_QUEUE_CLASS ??
       (data.TRIGGER_WORKER_QUEUE_SUBSCRIPTIONS === undefined ? "default" : undefined),

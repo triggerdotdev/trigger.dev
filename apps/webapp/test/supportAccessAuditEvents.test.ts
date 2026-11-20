@@ -43,6 +43,7 @@ import { loader as supportAccessLoader } from "~/routes/_app.@.orgs.$organizatio
 import { noteSessionAuthentication } from "~/services/auditLogs/auditContext.server";
 import { auditLogs } from "~/services/auditLogs/auditLogs.server";
 import { runWithHttpContext } from "~/services/httpAsyncStorage.server";
+import { commitImpersonationSession, setImpersonationId } from "~/services/impersonation.server";
 import { commitSession, getSession } from "~/services/sessionStorage.server";
 import {
   enableAuditRecording,
@@ -370,12 +371,122 @@ describe("Support Access audit events", () => {
         }),
       ]);
       expect((recorded[1]!.input.changes as { reason: string }).reason).toHaveLength(500);
+
+      // Catches: an end that doesn't say why, or says another organization's why.
+      const stop = async (startResponse: Response) =>
+        clearImpersonation(
+          new Request("http://localhost:3030/@", {
+            headers: { Cookie: await staffCookie(staff.id, startResponse) },
+          }),
+          "/admin"
+        );
+      await stop(started);
+      await stop(startedOther);
+      await auditLogs.flush();
+
+      expect(recorded.slice(2).map(({ input }) => input)).toEqual([
+        support("support.session_ended", {
+          organizationId: home.id,
+          customerId: customer.id,
+          staffId: staff.id,
+          changes: { reason: "Ticket 4821: runs stuck in queue" },
+        }),
+        support("support.session_ended", {
+          organizationId: other.id,
+          customerId: customer.id,
+          staffId: staff.id,
+          changes: { reason: longReason.slice(0, 500) },
+        }),
+      ]);
       for (const { input } of recorded) {
         for (const approval of approvals) {
           expect(JSON.stringify(input)).not.toContain(approval.id);
         }
         expectNoStaffIdentityOutsideOnBehalfOf(input, staff);
       }
+    }
+  );
+
+  // Catches: a reason one organization gave shown in another organization's log. A session cookie
+  // can name several organizations; the request belongs to one of them.
+  postgresTest(
+    "a session's end carries its reason only in the organization that approved it",
+    async ({ prisma }) => {
+      db.client = prisma;
+      const { recorded } = installAuditLogPlugin();
+      disableRecording = await enableAuditRecording();
+      const { staff, customer, home, other } = await createFixture(prisma, "REQUIRES_REQUEST");
+      const approval = await prisma.supportAccessRequest.create({
+        data: {
+          organizationId: home.id,
+          requestedById: staff.id,
+          approvedById: customer.id,
+          approvedAt: new Date(),
+          reason: "Ticket 4824",
+          status: "APPROVED",
+          expiresAt: new Date(Date.now() + 60 * 60 * 1000),
+        },
+      });
+      const session = await setImpersonationId(customer.id, new Request("http://localhost:3030/"), {
+        organizationSlugs: [home.slug, other.slug],
+        requestId: approval.id,
+      });
+      const impersonation = (await commitImpersonationSession(session)).split(";")[0];
+
+      await clearImpersonation(
+        new Request("http://localhost:3030/@", {
+          headers: { Cookie: `${await loginCookie(staff.id)}; ${impersonation}` },
+        }),
+        "/admin"
+      );
+      await auditLogs.flush();
+
+      const ends = recorded.map(({ input }) => [input.organizationId, input.changes]);
+      expect(ends).toEqual(
+        expect.arrayContaining([
+          [home.id, { reason: "Ticket 4824" }],
+          [other.id, null],
+        ])
+      );
+      expect(ends).toHaveLength(2);
+    }
+  );
+
+  postgresTest(
+    "a session whose request is gone by its end still ends, without a reason",
+    async ({ prisma }) => {
+      db.client = prisma;
+      const { recorded } = installAuditLogPlugin();
+      disableRecording = await enableAuditRecording();
+      const { staff, customer, home } = await createFixture(prisma, "REQUIRES_REQUEST");
+      const approval = await prisma.supportAccessRequest.create({
+        data: {
+          organizationId: home.id,
+          requestedById: staff.id,
+          approvedById: customer.id,
+          approvedAt: new Date(),
+          reason: "Ticket 4823",
+          status: "APPROVED",
+          expiresAt: new Date(Date.now() + 60 * 60 * 1000),
+        },
+      });
+
+      const started = await startSession(prisma, staff, customer, home.slug);
+      await prisma.supportAccessRequest.delete({ where: { id: approval.id } });
+      const response = await clearImpersonation(
+        new Request("http://localhost:3030/@", {
+          headers: { Cookie: await staffCookie(staff.id, started) },
+        }),
+        "/admin"
+      );
+      expect(response.headers.get("location")).toBe("/admin");
+      await auditLogs.flush();
+
+      expect(recorded.map(({ input }) => input.action)).toEqual([
+        "support.session_started",
+        "support.session_ended",
+      ]);
+      expect(recorded[1]!.input.changes).toBeNull();
     }
   );
 
@@ -641,8 +752,9 @@ describe("Support Access audit events", () => {
       await auditLogs.flush();
       expect(auditOnlyReads(queries)).toEqual([]);
 
-      // Control: with recording on, the same calls make both reads, so the filter above sees them.
-      // The organization is read in the background, after the stop returns.
+      // Control: with recording on, the same calls make these reads, so the filter above sees them.
+      // The organization, and the request's reason for the end, are read in the background, after
+      // the stop returns.
       queries.length = 0;
       disableRecording = await enableAuditRecording();
       await startAndStop();
@@ -650,6 +762,7 @@ describe("Support Access audit events", () => {
       expect(auditOnlyReads(queries)).toEqual([
         "SupportAccessRequest.findFirst",
         "Organization.findFirst",
+        "SupportAccessRequest.findFirst",
       ]);
     }
   );

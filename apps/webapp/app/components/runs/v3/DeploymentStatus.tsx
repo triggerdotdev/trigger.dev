@@ -1,6 +1,7 @@
 import {
   CheckCircleIcon,
   ExclamationTriangleIcon,
+  ForwardIcon,
   NoSymbolIcon,
   RectangleStackIcon,
   XCircleIcon,
@@ -10,12 +11,21 @@ import assertNever from "assert-never";
 import { Spinner } from "~/components/primitives/Spinner";
 import { cn } from "~/utils/cn";
 
+export type DeploymentDisplayStatus = WorkerDeploymentStatus | "SUPERSEDED";
+
+export function deploymentDisplayStatus(
+  status: WorkerDeploymentStatus,
+  isSuperseded: boolean
+): DeploymentDisplayStatus {
+  return status === "CANCELED" && isSuperseded ? "SUPERSEDED" : status;
+}
+
 export function DeploymentStatus({
   status,
   isBuilt,
   className,
 }: {
-  status: WorkerDeploymentStatus;
+  status: DeploymentDisplayStatus;
   isBuilt: boolean;
   className?: string;
 }) {
@@ -31,7 +41,7 @@ function DeploymentStatusLabel({
   status,
   isBuilt,
 }: {
-  status: WorkerDeploymentStatus;
+  status: DeploymentDisplayStatus;
   isBuilt: boolean;
 }) {
   return (
@@ -46,7 +56,7 @@ function DeploymentStatusIcon({
   status,
   className,
 }: {
-  status: WorkerDeploymentStatus;
+  status: DeploymentDisplayStatus;
   className: string;
 }) {
   switch (status) {
@@ -62,6 +72,8 @@ function DeploymentStatusIcon({
       return <CheckCircleIcon className={cn(deploymentStatusClassNameColor(status), className)} />;
     case "CANCELED":
       return <NoSymbolIcon className={cn(deploymentStatusClassNameColor(status), className)} />;
+    case "SUPERSEDED":
+      return <ForwardIcon className={cn(deploymentStatusClassNameColor(status), className)} />;
     case "FAILED":
       return <XCircleIcon className={cn(deploymentStatusClassNameColor(status), className)} />;
     case "TIMED_OUT":
@@ -76,7 +88,7 @@ function DeploymentStatusIcon({
   }
 }
 
-function deploymentStatusClassNameColor(status: WorkerDeploymentStatus): string {
+function deploymentStatusClassNameColor(status: DeploymentDisplayStatus): string {
   switch (status) {
     case "PENDING":
       return "text-text-faint";
@@ -86,6 +98,7 @@ function deploymentStatusClassNameColor(status: WorkerDeploymentStatus): string 
       return "text-pending";
     case "TIMED_OUT":
     case "CANCELED":
+    case "SUPERSEDED":
       return "text-text-faint";
     case "DEPLOYED":
       return "text-success";
@@ -97,7 +110,7 @@ function deploymentStatusClassNameColor(status: WorkerDeploymentStatus): string 
   }
 }
 
-function deploymentStatusTitle(status: WorkerDeploymentStatus, isBuilt: boolean): string {
+function deploymentStatusTitle(status: DeploymentDisplayStatus, isBuilt: boolean): string {
   switch (status) {
     case "PENDING":
       return "Queued…";
@@ -111,6 +124,8 @@ function deploymentStatusTitle(status: WorkerDeploymentStatus, isBuilt: boolean)
       return "Deployed";
     case "CANCELED":
       return "Canceled";
+    case "SUPERSEDED":
+      return "Superseded";
     case "TIMED_OUT":
       if (!isBuilt) {
         return "Build timed out";
@@ -129,8 +144,7 @@ function deploymentStatusTitle(status: WorkerDeploymentStatus, isBuilt: boolean)
   }
 }
 
-// PENDING and CANCELED are not used so are ommited from the UI
-export const deploymentStatuses: WorkerDeploymentStatus[] = [
+export const deploymentStatuses: DeploymentDisplayStatus[] = [
   "PENDING",
   "INSTALLING",
   "BUILDING",
@@ -139,9 +153,10 @@ export const deploymentStatuses: WorkerDeploymentStatus[] = [
   "FAILED",
   "TIMED_OUT",
   "CANCELED",
+  "SUPERSEDED",
 ];
 
-export function deploymentStatusDescription(status: WorkerDeploymentStatus): string {
+export function deploymentStatusDescription(status: DeploymentDisplayStatus): string {
   switch (status) {
     case "PENDING":
       return "The deployment is queued and waiting to be processed.";
@@ -155,6 +170,8 @@ export function deploymentStatusDescription(status: WorkerDeploymentStatus): str
       return "The deployment has completed successfully.";
     case "CANCELED":
       return "The deployment was manually canceled.";
+    case "SUPERSEDED":
+      return "A newer commit was queued for the same environment or branch, so this build was skipped.";
     case "FAILED":
       return "The deployment encountered an error and could not complete.";
     case "TIMED_OUT":

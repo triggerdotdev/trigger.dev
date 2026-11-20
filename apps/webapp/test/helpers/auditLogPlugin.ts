@@ -16,13 +16,16 @@ import { runWithHttpContext } from "~/services/httpAsyncStorage.server";
  * `recorded` keeps each event with its context; the host only records while recording is on (see
  * `enableAuditRecording`), and hands events over in the background (`auditLogs.flush()` waits).
  * An event the real plugin would drop lands in `dropped` instead, with the reason.
+ * `listEvents` answers listings; without it there are no events.
  */
 export function installAuditLogPlugin({
   failSaves = false,
   onSave,
+  listEvents,
 }: {
   failSaves?: boolean;
   onSave?: (input: AuditLogCredentialFingerprintInput) => Promise<void>;
+  listEvents?: AuditLogController["listEvents"];
 } = {}) {
   const saved: AuditLogCredentialFingerprintInput[] = [];
   const recorded: Array<{ input: AuditLogInput; context: AuditLogContext }> = [];
@@ -63,8 +66,8 @@ export function installAuditLogPlugin({
     async findCredentialFingerprint() {
       return null;
     },
-    async listEvents() {
-      return { events: [], nextCursor: null };
+    async listEvents(query) {
+      return listEvents ? listEvents(query) : { events: [], nextCursor: null };
     },
   };
   // The host resolves its plugin through this singleton; a test sets it like a loaded plugin.

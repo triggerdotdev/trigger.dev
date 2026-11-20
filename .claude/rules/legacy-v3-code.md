@@ -13,11 +13,12 @@ There is no `V1` execution path anymore. If you find a `RunEngineVersion` branch
 
 Requests from clients still on v3 (old SDK/CLI) or historical V1 runs must return a clean 4xx, never a 5xx. The boundary lives in:
 
-- `engineDeprecation.server.ts` - the `V3_TRIGGER_DEPRECATION_MESSAGE` / `V3_DEV_DEPRECATION_MESSAGE` / `V3_MIGRATION_URL` upgrade messages.
+- `engineDeprecation.server.ts` - the `V3_TRIGGER_DEPRECATION_MESSAGE` upgrade message.
 - `engineVersion.server.ts` - `determineEngineVersion()` still detects a V1 project/run so callers can reject it.
 - `services/triggerTask.server.ts`, `services/cancelTaskRun.server.ts`, `services/rescheduleTaskRun.server.ts` - the `V1` arm rejects or finalizes gracefully instead of executing.
 - `services/initializeDeployment.server.ts` - the `DEPRECATE_V3_CLI_DEPLOYS_ENABLED`-gated v3 CLI deploy rejection.
-- `handleWebsockets.server.ts` - the legacy `trigger dev` websocket closes with the upgrade message.
+
+The legacy v3 `trigger dev` websocket (`/ws`) has been removed: the webapp refuses that upgrade outright. Do not reintroduce it.
 
 ## V2 modern stack
 

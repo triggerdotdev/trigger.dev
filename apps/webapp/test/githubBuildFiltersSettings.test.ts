@@ -119,7 +119,7 @@ function runAction(seeded: Seeded, request: Request) {
   }) as Promise<Response>;
 }
 
-function submitSettings(seeded: Seeded, fields: { ignorePaths?: string; ignoreBranches?: string }) {
+function submitSettings(seeded: Seeded, fields: Record<string, string>) {
   const body = new FormData();
   body.set("action", "update-git-settings");
   body.set("productionBranch", "main");
@@ -339,6 +339,52 @@ describe("both lists in the Git settings action", () => {
         previewDeploymentsEnabled: false,
         buildFilters: { ignorePaths: ["docs/**"], ignoreBranches: ["dependabot/**"] },
       });
+    }
+  );
+});
+
+describe("skip superseded settings in the Git settings action", () => {
+  postgresTest(
+    "saves each environment's switch and keeps them when a form omits the fields",
+    async ({ prisma }) => {
+      // Catches: a form without the switches, like onboarding autosave, resetting them.
+      const seeded = await seed(prisma);
+      const stored = () =>
+        prisma.connectedGithubRepository.findFirstOrThrow({
+          where: { projectId: seeded.project.id },
+          select: {
+            supersedeProductionBuilds: true,
+            supersedeStagingBuilds: true,
+            supersedePreviewBuilds: true,
+          },
+        });
+
+      await submitSettings(seeded, {
+        supersedeProductionBuilds: "on",
+        supersedeStagingBuilds: "off",
+      });
+
+      const saved = {
+        supersedeProductionBuilds: true,
+        supersedeStagingBuilds: false,
+        supersedePreviewBuilds: true,
+      };
+      expect(await stored()).toEqual(saved);
+
+      vi.stubGlobal("fetch", (url: string, init: RequestInit) =>
+        runAction(seeded, new Request(url, init))
+      );
+      try {
+        await saveGitSettings(`http://localhost${seeded.path}`, {
+          productionBranch: "main",
+          stagingBranch: "",
+          previewDeploymentsEnabled: true,
+        });
+      } finally {
+        vi.unstubAllGlobals();
+      }
+
+      expect(await stored()).toEqual(saved);
     }
   );
 });

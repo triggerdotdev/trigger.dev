@@ -37,7 +37,13 @@ export interface ValidationIssue {
   /** Severity of the issue */
   severity: ValidationSeverity;
   /** The type of issue */
-  type: "unknown_column" | "unknown_table" | "invalid_enum_value" | "select_star";
+  type:
+    | "unknown_column"
+    | "unknown_table"
+    | "invalid_enum_value"
+    | "select_star"
+    | "invalid_asterisk"
+    | "invalid_alias";
   /** Optional: the column name that caused the issue */
   columnName?: string;
   /** Optional: the table name that caused the issue */
@@ -72,6 +78,12 @@ interface ValidationContext {
   issues: ValidationIssue[];
   /** Set of column aliases defined in the SELECT clause */
   selectAliases: Set<string>;
+  /** Aliases of subqueries used in a FROM clause */
+  subqueryAliases: Set<string>;
+  /** Whether any FROM clause contains a subquery */
+  hasSubqueryInFrom: boolean;
+  /** ARRAY JOIN aliases of the current SELECT, usable only as qualifiers */
+  arrayJoinAliases: Set<string>;
 }
 
 /**
@@ -90,6 +102,9 @@ export function validateQuery(
     schema,
     issues: [],
     selectAliases: new Set(),
+    subqueryAliases: new Set(),
+    hasSubqueryInFrom: false,
+    arrayJoinAliases: new Set(),
   };
 
   if (ast.expression_type === "select_set_query") {
@@ -193,6 +208,18 @@ function validateSelectQuery(node: SelectQuery, context: ValidationContext): voi
   const parentAliases = context.selectAliases;
   context.selectAliases = new Set();
 
+  // Column CTE names resolve like SELECT aliases
+  for (const cte of Object.values(node.ctes ?? {})) {
+    if (cte.cte_type === "column") context.selectAliases.add(cte.name.toLowerCase());
+  }
+  // ARRAY JOIN aliases only as qualifiers (item.id): the printer rejects a bare one
+  const parentArrayJoinAliases = context.arrayJoinAliases;
+  context.arrayJoinAliases = new Set(
+    (node.array_join_list ?? []).flatMap((expr) =>
+      (expr as Alias).expression_type === "alias" ? [(expr as Alias).alias] : []
+    )
+  );
+
   // First, extract tables from FROM clause to build context
   if (node.select_from) {
     extractTablesFromJoin(node.select_from, context);
@@ -245,7 +272,11 @@ function validateSelectQuery(node: SelectQuery, context: ValidationContext): voi
   // Validate SELECT columns
   if (node.select) {
     for (const expr of node.select) {
-      validateExpression(expr, context);
+      if (isSelectStar(expr)) {
+        validateAsteriskQualifier(expr as Field, context);
+      } else {
+        validateExpression(expr, context);
+      }
     }
   }
 
@@ -275,12 +306,22 @@ function validateSelectQuery(node: SelectQuery, context: ValidationContext): voi
 
   // Restore parent aliases
   context.selectAliases = parentAliases;
+  context.arrayJoinAliases = parentArrayJoinAliases;
 }
 
 /**
  * Extract table schemas from JOIN expressions
  */
 function extractTablesFromJoin(node: JoinExpr, context: ValidationContext): void {
+  if (node.alias && isPhysicalTableName(node.alias, context)) {
+    context.issues.push({
+      message: `Table alias "${node.alias}" is not allowed`,
+      severity: "error",
+      type: "invalid_alias",
+      tableName: node.alias,
+    });
+  }
+
   if (node.table) {
     const tableExpr = node.table;
 
@@ -297,7 +338,7 @@ function extractTablesFromJoin(node: JoinExpr, context: ValidationContext): void
         if (tableSchema) {
           // Register with alias if provided, otherwise use table name
           const key = node.alias || tableName;
-          context.tables.set(key.toLowerCase(), tableSchema);
+          context.tables.set(key, tableSchema);
         } else {
           // Unknown table
           context.issues.push({
@@ -319,6 +360,10 @@ function extractTablesFromJoin(node: JoinExpr, context: ValidationContext): void
         validateSelectSetQuery(tableExpr as SelectSetQuery, context);
       } else {
         validateSelectQuery(tableExpr as SelectQuery, context);
+      }
+      context.hasSubqueryInFrom = true;
+      if (node.alias) {
+        context.subqueryAliases.add(node.alias);
       }
     }
   }
@@ -371,6 +416,10 @@ function validateExpression(expr: Expression, context: ValidationContext): void 
       break;
 
     case "call":
+      if (isCountAsterisk(expr as Call)) {
+        validateAsteriskQualifier((expr as Call).args[0] as Field, context);
+        break;
+      }
       for (const arg of (expr as Call).args) {
         validateExpression(arg, context);
       }
@@ -397,6 +446,72 @@ function validateExpression(expr: Expression, context: ValidationContext): void 
   }
 }
 
+function isCountAsterisk(call: Call): boolean {
+  if (call.name.toLowerCase() !== "count" || call.distinct || call.args.length !== 1) {
+    return false;
+  }
+  const arg = call.args[0] as Field;
+  return arg.expression_type === "field" && arg.chain[arg.chain.length - 1] === "*";
+}
+
+/**
+ * Validate the qualifier of `*` or `alias.*`, which must be a table or subquery alias
+ */
+function validateAsteriskQualifier(field: Field, context: ValidationContext): void {
+  if (field.chain.length === 1) return;
+  const qualifier = field.chain[0];
+  if (
+    field.chain.length === 2 &&
+    typeof qualifier === "string" &&
+    (context.tables.has(qualifier) ||
+      (context.subqueryAliases.has(qualifier) && !isPhysicalTableName(qualifier, context)))
+  ) {
+    return;
+  }
+  pushUnknownTable(field.chain.slice(0, -1).join("."), context);
+}
+
+/**
+ * Validate the first part of a dotted name that isn't a table alias.
+ * Mirrors the printer: a JSON/Map path, a subquery alias or a SELECT alias.
+ */
+function validateQualifier(qualifier: string, context: ValidationContext): void {
+  // Checked first: ClickHouse resolves a physical name to the table even when an alias matches it
+  if (isPhysicalTableName(qualifier, context)) {
+    pushUnknownTable(qualifier, context);
+    return;
+  }
+
+  const isColumn = [...context.tables.values()].some((table) =>
+    Object.prototype.hasOwnProperty.call(table.columns, qualifier)
+  );
+  if (
+    isColumn ||
+    context.subqueryAliases.has(qualifier) ||
+    context.arrayJoinAliases.has(qualifier) ||
+    context.selectAliases.has(qualifier.toLowerCase())
+  ) {
+    return;
+  }
+
+  if (context.hasSubqueryInFrom) return;
+
+  pushUnknownTable(qualifier, context);
+}
+
+function isPhysicalTableName(name: string, context: ValidationContext): boolean {
+  return context.schema.some((table) => table.clickhouseName.split(".").includes(name));
+}
+
+function pushUnknownTable(tableName: string, context: ValidationContext): void {
+  context.issues.push({
+    message: `Unknown table "${tableName}"`,
+    severity: "error",
+    type: "unknown_table",
+    tableName,
+  });
+}
+
 /**
  * Validate a field reference
  */
@@ -404,16 +519,22 @@ function validateField(field: Field, context: ValidationContext): void {
   const chain = field.chain;
   if (chain.length === 0) return;
 
-  // Handle asterisk
-  if (chain[0] === "*") return;
-  if (chain.length === 2 && chain[1] === "*") return;
+  // SELECT-list and count(*) asterisks are handled by the callers
+  if (chain[chain.length - 1] === "*") {
+    context.issues.push({
+      message: "* is only allowed as a SELECT column or in count(*)",
+      severity: "error",
+      type: "invalid_asterisk",
+    });
+    return;
+  }
 
   const firstPart = chain[0];
   if (typeof firstPart !== "string") return;
 
   // Case 1: Qualified reference like table.column
   if (chain.length >= 2) {
-    const tableAlias = firstPart.toLowerCase();
+    const tableAlias = firstPart;
     const columnName = chain[1];
 
     if (typeof columnName !== "string") return;
@@ -431,6 +552,8 @@ function validateField(field: Field, context: ValidationContext): void {
           tableName: tableAlias,
         });
       }
+    } else {
+      validateQualifier(firstPart, context);
     }
     return;
   }
@@ -532,7 +655,7 @@ function extractColumnFromExpression(
 
   // Qualified reference: table.column
   if (chain.length >= 2) {
-    const tableAlias = firstPart.toLowerCase();
+    const tableAlias = firstPart;
     const columnName = chain[1];
 
     if (typeof columnName !== "string") return null;

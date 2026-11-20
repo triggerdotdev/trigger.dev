@@ -58,9 +58,14 @@ export async function resolveSecretProxyRequest(service: SecretProxyService, req
   return response;
 }
 
-function failure(reason: SecretProxyFailureReason, error: string, status: number) {
+function failure(
+  reason: SecretProxyFailureReason,
+  error: string,
+  status: number,
+  details?: Record<string, unknown>
+) {
   recordSecretProxyFailure("resolve", reason);
-  return json({ error }, { status, headers });
+  return json({ error, ...details }, { status, headers });
 }
 
 async function resolveRequest(service: SecretProxyService, request: Request) {
@@ -85,7 +90,14 @@ async function resolveRequest(service: SecretProxyService, request: Request) {
       return failure("policy", "Invalid request or policy", 400);
     }
     if (error instanceof SecretProxyDeniedError) {
-      return failure(error.reason, "Resolution denied", 403);
+      // "selection": the run is valid and only the listed selections are refused. Any other
+      // 403, including from resolvers without a scope, denies the whole run.
+      return failure(
+        error.reason,
+        "Resolution denied",
+        403,
+        error.selections ? { scope: "selection", selections: error.selections } : { scope: "run" }
+      );
     }
     return failure("dependency", "Secret resolution unavailable", 503);
   }

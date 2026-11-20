@@ -25,6 +25,7 @@ import { singleton } from "~/utils/singleton";
 import { tracer } from "../tracer.server";
 import { $replica } from "~/db.server";
 import { RunsBackfillerService } from "../../services/runsBackfiller.server";
+import { environmentEncryptionBackfill } from "~/services/environmentEncryption/backfillInstance.server";
 
 function initializeWorker() {
   const redisOptions = {
@@ -43,6 +44,14 @@ function initializeWorker() {
     name: "admin-worker",
     redisOptions,
     catalog: {
+      "admin.environmentEncryptionBackfillPage": {
+        schema: z.object({ jobId: z.string() }),
+        visibilityTimeoutMs: 15 * 60_000,
+      },
+      "admin.environmentEncryptionBackfill": {
+        schema: z.object({ jobId: z.string() }),
+        visibilityTimeoutMs: 15 * 60_000,
+      },
       "admin.backfillRunsToReplication": {
         schema: z.object({
           from: z.coerce.date(),
@@ -67,6 +76,12 @@ function initializeWorker() {
     shutdownTimeoutMs: env.ADMIN_WORKER_SHUTDOWN_TIMEOUT_MS,
     logger: new Logger("AdminWorker", env.ADMIN_WORKER_LOG_LEVEL),
     jobs: {
+      "admin.environmentEncryptionBackfillPage": async ({ payload }) => {
+        await environmentEncryptionBackfill.run(payload.jobId);
+      },
+      "admin.environmentEncryptionBackfill": async ({ payload }) => {
+        await environmentEncryptionBackfill.run(payload.jobId);
+      },
       "admin.backfillRunsToReplication": async ({ payload, id }) => {
         const replicationService = getRunsReplicationGlobal() ?? runsReplicationInstance;
         if (!replicationService) {

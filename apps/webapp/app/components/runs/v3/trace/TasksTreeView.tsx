@@ -5,7 +5,7 @@ import {
   MagnifyingGlassPlusIcon,
 } from "@heroicons/react/20/solid";
 import type { RuntimeEnvironmentType } from "@trigger.dev/database";
-import { useRef, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import { WarmStartIconWithTooltip } from "~/components/WarmStarts";
 import { Badge } from "~/components/primitives/Badge";
 import { Header3 } from "~/components/primitives/Headers";
@@ -25,6 +25,7 @@ import { TaskRunStatusIcon, runStatusClassNameColor } from "~/components/runs/v3
 import { cn } from "~/utils/cn";
 import { resizableSettings } from "./resizableSettings";
 import { TimelineView } from "./TimelineView";
+import { traceFilterKey } from "./traceFilterKey";
 import { KeyboardShortcuts, type TreeShortcutOptions } from "./TraceShortcuts";
 import { type TraceEvent } from "./types";
 
@@ -52,6 +53,8 @@ export type TasksTreeViewProps = {
   errorsOnly: boolean;
   filterText: string;
   showQueueTime: boolean;
+  /** Times a span already shown got a new message, so search refilters. */
+  messageChanges?: number;
 };
 
 export function TasksTreeView({
@@ -74,6 +77,7 @@ export function TasksTreeView({
   errorsOnly,
   filterText,
   showQueueTime,
+  messageChanges = 0,
 }: TasksTreeViewProps) {
   const [showDurations] = useState(true);
   const [scale, setScale] = useState(0);
@@ -82,6 +86,12 @@ export function TasksTreeView({
   const timelineScrollRef = useRef<HTMLDivElement>(null);
   const displayEvents = events;
   const queuedTime = showQueueTime ? undefined : queuedDuration;
+  // A span turning into an error, or getting a new message, refilters the same tree.
+  const filtering = errorsOnly || filterText !== "";
+  const filterKey = useMemo(
+    () => (filtering ? traceFilterKey([{ events, messageChanges }]) : undefined),
+    [filtering, events, messageChanges]
+  );
 
   const {
     nodes,
@@ -102,6 +112,7 @@ export function TasksTreeView({
     onSelectedIdChanged,
     estimatedRowHeight: () => 32,
     parentRef,
+    filterKey,
     filter: {
       value: { text: filterText, errorsOnly },
       fn: (value, node) => {

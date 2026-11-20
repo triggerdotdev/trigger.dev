@@ -114,6 +114,7 @@ export function useRunTrace({
     loadFailed,
     loadAttempt,
     liveSpanIds,
+    messageChanges,
     tailLive,
     liveTailEnabled,
     retryLoad,
@@ -270,5 +271,7 @@ export function useRunTrace({
     loadAttempt,
     /** Spans first seen in a live tail read, not a stored one. */
     liveSpanIds,
+    /** Times a span already shown got a new message. */
+    messageChanges,
   };
 }

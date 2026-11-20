@@ -1,8 +1,17 @@
 import { createStandalonePostgresContainer } from "@internal/testcontainers";
+import { metrics } from "@internal/tracing";
+import {
+  AggregationTemporality,
+  InMemoryMetricExporter,
+  MeterProvider,
+  PeriodicExportingMetricReader,
+} from "@opentelemetry/sdk-metrics";
 import type { AuditLogInput } from "@trigger.dev/plugins";
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import type * as Database from "~/db.server";
+import type * as AuditContextModule from "~/services/auditLogs/auditContext.server";
 import type * as AuditLogsModule from "~/services/auditLogs/auditLogs.server";
+import { runWithHttpContext } from "~/services/httpAsyncStorage.server";
 import { FEATURE_FLAG } from "~/v3/featureFlags";
 import {
   enableAuditRecording,
@@ -17,9 +26,32 @@ vi.mock("~/env.server", async (original) =>
 
 vi.setConfig({ testTimeout: 30_000 });
 
+// A real meter provider, read on demand. It replaces the one the app's tracer setup registers on
+// import, before the counters are first created.
+const exporter = new InMemoryMetricExporter(AggregationTemporality.CUMULATIVE);
+const meterProvider = new MeterProvider({
+  readers: [new PeriodicExportingMetricReader({ exporter, exportIntervalMillis: 3_600_000 })],
+});
+metrics.disable();
+metrics.setGlobalMeterProvider(meterProvider);
+
+/** `audit_logs.events_without_fingerprint` so far (cumulative), for one reason. */
+async function withoutFingerprint(reason: string): Promise<number> {
+  await meterProvider.forceFlush();
+  const latest = exporter.getMetrics().at(-1);
+  exporter.reset();
+  return (latest?.scopeMetrics ?? [])
+    .flatMap((scope) => scope.metrics)
+    .filter((metric) => metric.descriptor.name === "audit_logs.events_without_fingerprint")
+    .flatMap((metric) => metric.dataPoints)
+    .filter((point) => point.attributes.reason === reason)
+    .reduce((sum, point) => sum + (point.value as number), 0);
+}
+
 let container: Awaited<ReturnType<typeof createStandalonePostgresContainer>>;
 let database: typeof Database;
 let auditLogs: typeof AuditLogsModule.auditLogs;
+let auditContext: typeof AuditContextModule;
 
 beforeAll(async () => {
   container = await createStandalonePostgresContainer();
@@ -30,6 +62,7 @@ beforeAll(async () => {
 
   database = await import("~/db.server");
   ({ auditLogs } = await import("~/services/auditLogs/auditLogs.server"));
+  auditContext = await import("~/services/auditLogs/auditContext.server");
 }, 120_000);
 
 afterAll(async () => {
@@ -135,6 +168,54 @@ describe("audit log recording in tests", () => {
     await auditLogs.flush();
 
     expect(recorded.map(({ input }) => input.organizationId)).toEqual([flagged.id]);
+  });
+
+  // Catches: events an org doesn't record (its flag is off) counted as missing their credential's
+  // fingerprint, which would raise false alerts during a staged rollout. The helper's plugin finds
+  // no fingerprint, so each recorded event with a root key misses one.
+  it("counts a missing fingerprint only for an event the org records", async () => {
+    const { recorded } = installAuditLogPlugin();
+    disableRecording = await enableAuditRecording();
+    const key = FEATURE_FLAG.auditLogsRecording;
+    await database.prisma.featureFlag.deleteMany({ where: { key } });
+    const flagged = await database.prisma.organization.create({
+      data: { title: "flagged", slug: `flagged-fp-${Date.now()}`, featureFlags: { [key]: true } },
+    });
+    const before = await withoutFingerprint("request_not_found");
+
+    const apiKey = "tr_prod_abcdefghijklmnopqrstuvwxyz0123";
+    await runWithHttpContext(
+      {
+        requestId: "req_test",
+        path: "/api/v1/test",
+        host: "api.trigger.dev",
+        method: "POST",
+        abortController: new AbortController(),
+      },
+      async () => {
+        auditContext.noteLegacyApiKeyAuthentication(
+          new Request("https://api.trigger.dev/api/v1/test", {
+            headers: { Authorization: `Bearer ${apiKey}` },
+          }),
+          {
+            ok: true,
+            apiKey,
+            type: "PRIVATE",
+            environment: { id: "env_1", parentEnvironmentId: null },
+          }
+        );
+        auditLogs.record(memberRemoved("org_without_flag"));
+        auditLogs.record(memberRemoved(flagged.id));
+      }
+    );
+    await auditLogs.flush();
+
+    expect(recorded.map(({ input }) => input.organizationId)).toEqual([flagged.id]);
+    expect(recorded[0]!.context.credential).toMatchObject({
+      kind: "root_api_key",
+      fingerprintId: null,
+    });
+    expect((await withoutFingerprint("request_not_found")) - before).toBe(1);
   });
 
   // Catches: the helper's undo leaving the global row behind, so later tests record while off.

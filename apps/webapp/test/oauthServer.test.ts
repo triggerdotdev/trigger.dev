@@ -1,5 +1,5 @@
 import { createHash, randomBytes } from "node:crypto";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, onTestFinished, vi } from "vitest";
 
 const db = vi.hoisted(() => ({ client: null as any, rbac: null as any }));
 const mockEnv = vi.hoisted(() => ({
@@ -50,7 +50,11 @@ import { hashToken } from "~/utils/tokens.server";
 import { createMcpBearerAuthenticator } from "~/mcp/auth/bearer.server";
 import { withMcpToolAuth } from "~/mcp/gate/withMcpToolAuth.server";
 import { createMcpProtectedResourceHandler } from "~/mcp/protectedResource.server";
-import { MCP_SCOPES, mcpResource } from "~/services/oauth/metadata.server";
+import {
+  authorizationServerMetadata,
+  MCP_SCOPES,
+  mcpResource,
+} from "~/services/oauth/metadata.server";
 import {
   createPersonalAccessToken,
   resolveAndRecheckUserActorClaims,
@@ -63,11 +67,8 @@ import {
   createOAuthAuthorizationCode,
   validateAuthorizationRequest,
 } from "~/services/oauth/authorize.server";
-import {
-  isPublicAddress,
-  publicOnlyLookup,
-  type MetadataTransport,
-} from "~/services/oauth/cimdFetch.server";
+import { publicOnlyLookup, type MetadataTransport } from "~/services/oauth/cimdFetch.server";
+import { isPublicAddress } from "~/services/publicAddress.server";
 import { registerClient, resolveClient } from "~/services/oauth/clients.server";
 import { sweepOAuthClients } from "~/services/oauth/clientSweep.server";
 import { action as tokenAction } from "~/routes/oauth.token";
@@ -84,6 +85,8 @@ vi.setConfig({ testTimeout: 60_000 });
 const REDIRECT_URI = "https://claude.ai/api/mcp/auth_callback";
 const RESOURCE = "https://mcp.example.com/mcp";
 const audit = { ip: null, userAgent: null };
+// Keep each burst in one bucket: sliding windows discount requests across minute boundaries.
+const RATE_LIMIT_TEST_TIME = new Date("2026-01-01T00:00:30Z");
 
 let userCounter = 0;
 
@@ -172,6 +175,23 @@ async function grant(clientId: string, userId: string) {
 function livePats(userId: string) {
   return db.client.personalAccessToken.count({ where: { userId, revokedAt: null } });
 }
+
+const V15_SCOPES = [
+  "read:errors",
+  "write:errors",
+  "read:queues",
+  "read:tasks",
+  "write:tasks",
+  "read:batch",
+  "write:batch",
+  "read:waitpoints",
+  "write:waitpoints",
+  "read:environments",
+  "write:deployments",
+  "write:branches",
+  "read:envvars",
+  "manage:project",
+];
 
 function documentTransport(status: number, body: string): MetadataTransport {
   return async () => ({ status, body: [new TextEncoder().encode(body)] });
@@ -409,13 +429,15 @@ describe("OAuth authorization server", () => {
     expect(await prisma.oAuthClient.count({ where: { clientId } })).toBe(1);
   });
 
-  postgresTest("a granted write scope caps the access token", async ({ prisma }) => {
+  // Catches: authorize or token refusing, dropping or reordering a requested write or V1.5 scope.
+  postgresTest("granted write and V1.5 scopes cap the access token", async ({ prisma }) => {
     db.client = prisma;
     const user = await createUser(prisma);
     const clientId = await register();
     const { verifier, challenge } = pkce();
+    const requested = ["read:runs", "write:runs", ...V15_SCOPES];
     const authorized = await validateAuthorizationRequest(
-      authorizeParams(clientId, challenge, { scope: "read:runs write:runs" })
+      authorizeParams(clientId, challenge, { scope: requested.join(" ") })
     );
     if (!authorized.ok) throw new Error(authorized.error.error_description);
     const code = await createOAuthAuthorizationCode(authorized.request, user.id);
@@ -432,11 +454,51 @@ describe("OAuth authorization server", () => {
     const claims = await verifyUserActorToken(mockEnv.SESSION_SECRET, issued.body.access_token, {
       audience: RESOURCE,
     });
-    expect(claims?.cap).toEqual(["read:runs", "write:runs"]);
+    expect(claims?.cap).toEqual(requested);
   });
 
-  // Catches: protected resource metadata dropping scopes_supported or the MCP resource origin.
-  it("protected resource metadata advertises every MCP scope", () => {
+  // Catches: a refresh widening a grant to the default or a new scope, ignoring a narrowing, or undoing it later.
+  postgresTest(
+    "a refresh keeps or narrows the grant's scopes, never widens",
+    async ({ prisma }) => {
+      db.client = prisma;
+      const user = await createUser(prisma);
+      const clientId = await register();
+      const issued = await grant(clientId, user.id);
+
+      const rotated = await exchangeRefreshToken(refreshParams(clientId, issued.refresh_token));
+      if (!rotated.ok) throw new Error(rotated.body.error_description);
+      expect(rotated.body.scope).toBe("read:runs read:query");
+      const claims = await verifyUserActorToken(mockEnv.SESSION_SECRET, rotated.body.access_token, {
+        audience: RESOURCE,
+      });
+      expect(claims?.cap).toEqual(["read:runs", "read:query"]);
+
+      const refreshWith = (refreshToken: string, scope: string) =>
+        exchangeRefreshToken(
+          new URLSearchParams({
+            ...Object.fromEntries(refreshParams(clientId, refreshToken)),
+            scope,
+          })
+        );
+      const widened = await refreshWith(rotated.body.refresh_token, "read:runs read:errors");
+      expect(widened).toMatchObject({ ok: false, body: { error: "invalid_scope" } });
+
+      const narrowed = await refreshWith(rotated.body.refresh_token, "read:runs");
+      if (!narrowed.ok) throw new Error(narrowed.body.error_description);
+      expect(narrowed.body.scope).toBe("read:runs");
+      expect(await refreshWith(narrowed.body.refresh_token, "read:runs read:query")).toMatchObject({
+        ok: false,
+        body: { error: "invalid_scope" },
+      });
+      const kept = await exchangeRefreshToken(refreshParams(clientId, narrowed.body.refresh_token));
+      if (!kept.ok) throw new Error(kept.body.error_description);
+      expect(kept.body.scope).toBe("read:runs");
+    }
+  );
+
+  // Catches: either metadata document dropping scopes_supported, a V1.5 scope, or the MCP resource origin.
+  it("both metadata documents advertise every MCP scope", () => {
     let body: { scopes_supported?: string[]; resource?: string } = {};
     createMcpProtectedResourceHandler({
       origin: "https://mcp.test",
@@ -444,7 +506,8 @@ describe("OAuth authorization server", () => {
       scopes: MCP_SCOPES,
     })({} as never, { json: (b: typeof body) => (body = b) } as never, () => {});
     expect(body.scopes_supported).toEqual([...MCP_SCOPES]);
-    expect(body.scopes_supported).toContain("write:runs");
+    expect(body.scopes_supported).toEqual(expect.arrayContaining(["write:runs", ...V15_SCOPES]));
+    expect(authorizationServerMetadata().scopes_supported).toEqual(body.scopes_supported);
     expect(body.resource).toBe("https://mcp.test/mcp");
   });
 
@@ -457,14 +520,31 @@ describe("OAuth authorization server", () => {
     expect(result.request.scope).toEqual(["read:runs", "write:projects"]);
   });
 
-  postgresTest("an absent scope grants only read scopes", async ({ prisma }) => {
+  // Catches: read:envvars, a write or a manage scope in the default grant, or a read scope missing from it.
+  postgresTest("an absent scope grants every read scope but read:envvars", async ({ prisma }) => {
     db.client = prisma;
     const result = await validateAuthorizationRequest(
       authorizeParams(await register(), pkce().challenge, { scope: "" })
     );
     if (!result.ok) throw new Error(result.error.error_description);
-    expect(result.request.scope.length).toBeGreaterThan(0);
-    expect(result.request.scope.every((s) => s.startsWith("read:"))).toBe(true);
+    expect([...result.request.scope].sort()).toEqual([
+      "read:alerts",
+      "read:batch",
+      "read:branches",
+      "read:deployments",
+      "read:environments",
+      "read:errors",
+      "read:organizations",
+      "read:projects",
+      "read:prompts",
+      "read:query",
+      "read:queues",
+      "read:runs",
+      "read:sessions",
+      "read:tasks",
+      "read:waitpoints",
+      "read:webhooks",
+    ]);
   });
 
   postgresTest("the access token is only valid for the MCP audience", async ({ prisma }) => {
@@ -727,6 +807,8 @@ describe("OAuth authorization server", () => {
       mockEnv.RATE_LIMIT_REDIS_HOST = redisOptions.host!;
       mockEnv.RATE_LIMIT_REDIS_PORT = redisOptions.port!;
       mockEnv.RATE_LIMIT_REDIS_PASSWORD = redisOptions.password;
+      onTestFinished(() => vi.useRealTimers());
+      vi.useFakeTimers({ toFake: ["Date"], now: RATE_LIMIT_TEST_TIME });
       const send = () =>
         action({
           request: new Request(`https://app.example.com${path}`, {
@@ -845,6 +927,11 @@ describe("OAuth authorization server", () => {
   postgresTest.for([
     { name: "admin scope", extra: { scope: "admin" }, error: "invalid_scope" },
     {
+      name: "an unknown scope",
+      extra: { scope: "read:runs manage:everything" },
+      error: "invalid_scope",
+    },
+    {
       name: "unknown resource",
       extra: { resource: "https://evil.example.com/mcp" },
       error: "invalid_target",
@@ -913,6 +1000,8 @@ describe("OAuth authorization server", () => {
       mockEnv.RATE_LIMIT_REDIS_PORT = redisOptions.port!;
       mockEnv.RATE_LIMIT_REDIS_PASSWORD = redisOptions.password;
       session.user = { id: "u", isImpersonating: false };
+      onTestFinished(() => vi.useRealTimers());
+      vi.useFakeTimers({ toFake: ["Date"], now: RATE_LIMIT_TEST_TIME });
       const send = () =>
         authorizeLoader({
           request: new Request("https://app.example.com/oauth/authorize?client_id=plain", {
@@ -1040,6 +1129,11 @@ describe("OAuth authorization server", () => {
     ["169.254.169.254", false],
     ["fd00::1", false],
     ["fe80::1", false],
+    // Catches: the metadata fetch disagreeing with the shared address rule on NAT64 and 6to4.
+    ["64:ff9b::808:808", true],
+    ["64:ff9b::a9fe:a9fe", false],
+    ["2002:a9fe:a9fe::1", false],
+    ["::a9fe:a9fe", false],
   ] as const)("isPublicAddress(%s) is %s", ([address, expected]) => {
     expect(isPublicAddress(address)).toBe(expected);
   });

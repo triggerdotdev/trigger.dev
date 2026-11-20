@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { isSecretProxyHostname, trustedSecretProxyIdentity } from "./secretProxyBindings.js";
+import {
+  isSecretProxyHostname,
+  SecretProxyPlacementPendingError,
+  trustedSecretProxyIdentity,
+} from "./secretProxyBindings.js";
 import { deploymentClaims } from "./fixtures/secretProxy.js";
 
 describe("secret proxy warm placement", () => {
@@ -49,6 +53,29 @@ describe("secret proxy warm placement", () => {
     sourceIp: "10.0.0.1",
     claims: deploymentClaims,
   };
+
+  it("only treats missing Pod status as pending after validating identity", () => {
+    const verify = (
+      status: Omit<typeof pod.status, "podIP"> & { podIP?: string },
+      input = caller
+    ) => trustedSecretProxyIdentity(runner, { ...pod, status }, input, "node-1", "runners");
+    const noPodIP = { ...pod.status, podIP: undefined };
+    const noContainerID = {
+      ...pod.status,
+      containerStatuses: [{ ...pod.status.containerStatuses[0]!, containerID: "" }],
+    };
+    expect(() => verify(noPodIP)).toThrow(SecretProxyPlacementPendingError);
+    expect(() => verify(noContainerID)).toThrow(SecretProxyPlacementPendingError);
+    expect(() => verify(noContainerID, { ...caller, sourceIp: "10.0.0.2" })).toThrow(
+      "Secret proxy execution unavailable"
+    );
+    expect(() =>
+      verify(noPodIP, {
+        ...caller,
+        claims: { ...deploymentClaims, deployment: "deployment_other" },
+      })
+    ).toThrow("Secret proxy execution unavailable");
+  });
 
   it("admits another run only inside the VM's environment and deployment", () => {
     const verify = (input = caller, vm = runner) =>

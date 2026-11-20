@@ -26,8 +26,27 @@ type StepInput = GenerationInput & {
   steps: StepWithResponse[];
 };
 
-const sameMessage = (a: ModelMessage, b: ModelMessage) =>
-  a === b || JSON.stringify(a) === JSON.stringify(b);
+/**
+ * A message as JSON text, or null when JSON cannot hold it. The input an override
+ * is retained from is the AI SDK's own, so a tool result in it can still hold a
+ * BigInt or a circular reference. Plain `JSON.stringify` is tried first, since a
+ * replacer function takes it off V8's fast path and tool results can be large;
+ * only a BigInt (a TypeError) retries with the BigInt encoded by value, as an
+ * object a string cannot equal. Anything still unserializable is null.
+ */
+function serializeMessage(message: ModelMessage): string | null {
+  try {
+    return JSON.stringify(message);
+  } catch {
+    try {
+      return JSON.stringify(message, (_key, value) =>
+        typeof value === "bigint" ? { $bigint: value.toString() } : value
+      );
+    } catch {
+      return null;
+    }
+  }
+}
 
 /**
  * Every response message of the generation so far, oldest first, taken from
@@ -91,11 +110,37 @@ export function retainStepMessages<T extends StepInput, R extends { messages?: M
   };
 }
 
-/** How many of `next` already end `input`, as the longest overlap. */
+/**
+ * How many of `next` already end `input`, as the longest overlap.
+ *
+ * A message is the same as another when it is the same object or both serialize
+ * to the same JSON. One that JSON cannot hold counts as different, so it is not
+ * de-duplicated: a head-start tool result with a circular reference is sent
+ * twice, which is rare and better than a failed step. Each message is
+ * serialized at most once, so the cost is linear in the messages' size rather
+ * than once per overlap length tried.
+ */
 function alreadyIncluded(input: ModelMessage[], next: ModelMessage[]): number {
+  const serialized = new Map<ModelMessage, string | null>();
+  const json = (message: ModelMessage) => {
+    let text = serialized.get(message);
+    if (text === undefined) {
+      text = serializeMessage(message);
+      serialized.set(message, text);
+    }
+    return text;
+  };
+  const same = (a: ModelMessage, b: ModelMessage) => {
+    if (a === b) return true;
+    if (a.role !== b.role) return false;
+    const text = json(a);
+    return text !== null && text === json(b);
+  };
   for (let count = Math.min(input.length, next.length); count > 0; count--) {
-    const tail = input.slice(input.length - count);
-    if (tail.every((message, i) => sameMessage(message, next[i]!))) return count;
+    const start = input.length - count;
+    let matches = true;
+    for (let i = 0; i < count && matches; i++) matches = same(input[start + i]!, next[i]!);
+    if (matches) return count;
   }
   return 0;
 }

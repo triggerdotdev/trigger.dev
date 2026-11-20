@@ -48,6 +48,9 @@ export function deploymentCheckTelemetry(meter: Meter) {
     pluginMissing: meter.createCounter("deployment_checks.plugin_missing_total", {
       description: "Times the deployment checks plugin did not load on Cloud",
     }),
+    noPlugin: meter.createCounter("deployment_checks.no_plugin_total", {
+      description: "Queued deployment checks this worker could not run",
+    }),
   };
 }
 
@@ -89,7 +92,7 @@ export async function loadDeploymentChecksController({
   telemetry?: DeploymentCheckTelemetry;
   config?: () => DeploymentChecksPluginConfig;
 }): Promise<DeploymentChecksController | null> {
-  if (!requirePlugins && !cloud) return null;
+  if (!deploymentChecksCanRun({ requirePlugins, cloud })) return null;
 
   let plugin: DeploymentChecksPlugin;
   try {
@@ -156,17 +159,29 @@ type DeploymentCheckQueue = {
   }): Promise<unknown>;
 };
 
+/** Whether deployment checks are enabled: on Cloud, or wherever plugins are required. */
+function deploymentChecksCanRun({
+  requirePlugins,
+  cloud,
+}: {
+  requirePlugins: boolean;
+  cloud: boolean;
+}): boolean {
+  return requirePlugins || cloud;
+}
+
 /**
- * Queues one check per deployment: the job id is stable. Does nothing without the plugin. Never
- * throws.
+ * Queues one check per deployment: the job id is stable. Queues a check wherever checks are
+ * enabled. Never throws.
  */
 export async function enqueueDeploymentCheck(
   queue: DeploymentCheckQueue,
   deploymentId: string,
-  controller: () => Promise<DeploymentChecksController | null> = getDeploymentChecksController
+  canRun: () => boolean = () =>
+    deploymentChecksCanRun({ requirePlugins: env.REQUIRE_PLUGINS === "1", cloud: isCloud() })
 ): Promise<void> {
   try {
-    if (!(await controller())) return;
+    if (!canRun()) return;
     await queue.enqueueOnce({
       id: `deploymentCheck:${deploymentId}`,
       job: JOB,
@@ -279,7 +294,11 @@ export async function runDeploymentCheck(
 ): Promise<DeploymentCheckJobOutcome> {
   const controller =
     injectedController === undefined ? await getDeploymentChecksController() : injectedController;
-  if (!controller) return "no_plugin";
+  if (!controller) {
+    // A queued check this worker cannot run is counted.
+    telemetry.noPlugin.add(1);
+    return "no_plugin";
+  }
 
   const deployment = await prisma.workerDeployment.findFirst({
     where: { id: deploymentId },
@@ -316,7 +335,10 @@ export async function runDeploymentCheck(
       outcome,
     });
     const line = { ...log, outcome, attempt, ...details };
-    if (outcome === "unavailable") logger.warn("deploymentChecks.result", line);
+    // Log a deployment that was selected for a check but could not be checked.
+    const selectedButSkipped = outcome === "skipped" && decision.plan !== "skip";
+    if (outcome === "unavailable" || selectedButSkipped)
+      logger.warn("deploymentChecks.result", line);
     else if (outcome === "skipped") logger.debug("deploymentChecks.result", line);
     else logger.info("deploymentChecks.result", line);
     return outcome;

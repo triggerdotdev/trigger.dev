@@ -213,7 +213,6 @@ export const READ_ONLY_METHODS: readonly string[] = [
   "findSnapshotCompletedWaitpointIdsWithPresence",
   "findTaskRunCheckpointById",
   "findWaitpointConnectedRunIds",
-  "findWaitpointCompletedSnapshotIds",
   "countPendingWaitpoints",
   "countPendingWaitpointsWithPresence",
   "findWaitpoint",

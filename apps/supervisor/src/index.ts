@@ -43,10 +43,7 @@ import {
 } from "@trigger.dev/core/v3/serverOnly";
 import { installShutdown } from "./shutdown.js";
 import { createK8sApi, createPodCountFetcher } from "./clients/kubernetes.js";
-import {
-  SecretProxyBindings,
-  reportSecretProxyRestoreRefusal,
-} from "./services/secretProxyBindings.js";
+import { SecretProxyBindings } from "./services/secretProxyBindings.js";
 import { resolveResponseSchema } from "./clients/responseSchemas.js";
 import { collectDefaultMetrics, Counter, Gauge, Histogram } from "prom-client";
 import { register } from "./metrics.js";
@@ -625,34 +622,6 @@ class ManagedSupervisor {
 
             const { checkpoint, ...rest } = message;
 
-            const restoreRefusal = await reportSecretProxyRestoreRefusal(
-              { interceptorSocket: env.SECRET_PROXY_INTERCEPTOR_SOCKET, checkpoint },
-              {
-                report: (body) =>
-                  this.workerSession.httpClient.reportRestoreOutcome(
-                    message.run.friendlyId,
-                    message.snapshot.friendlyId,
-                    body,
-                    undefined,
-                    message.environment.id
-                  ),
-                release: () =>
-                  this.runReleaser!.release(dequeuedRun(message), "RestoreRefusalFailed"),
-              }
-            );
-            if (restoreRefusal) {
-              setExtra(fromContext(), "path_taken", "secret_proxy_restore_refused");
-              if (restoreRefusal.result === "error") {
-                this.logger.error("Checkpoint refusal report failed", {
-                  runId: message.run.friendlyId,
-                  snapshotId: message.snapshot.friendlyId,
-                  error: restoreRefusal.error,
-                  releaseResult: restoreRefusal.releaseResult,
-                });
-              }
-              return;
-            }
-
             if (this.runCrdManager && (await this.refuseWithoutTemplateKey(message))) {
               setExtra(fromContext(), "path_taken", "no_template_key");
               return;
@@ -768,6 +737,25 @@ class ManagedSupervisor {
             namespace: env.KUBERNETES_NAMESPACE,
             nodeName: env.TRIGGER_WORKER_INSTANCE_NAME,
             socketPath: env.SECRET_PROXY_INTERCEPTOR_SOCKET,
+            snapshotsSince: async (caller, snapshotId) => {
+              const result = await this.workerSession.httpClient.getSnapshotsSince(
+                caller.runId,
+                snapshotId,
+                caller.runnerId,
+                caller.claims?.environment_id
+              );
+              if (!result.success) throw new Error("Run executions unavailable");
+              return result.data.snapshots;
+            },
+            latestExecution: async (caller) => {
+              const result = await this.workerSession.httpClient.getLatestSnapshot(
+                caller.runId,
+                caller.runnerId,
+                caller.claims?.environment_id
+              );
+              if (!result.success) throw new Error("Run execution unavailable");
+              return result.data.execution;
+            },
           })
         : undefined,
     });

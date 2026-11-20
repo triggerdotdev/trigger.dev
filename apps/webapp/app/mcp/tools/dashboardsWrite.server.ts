@@ -49,6 +49,7 @@ export const dashboardsWriteTools: McpToolDefinition[] = [
     description:
       "Create a custom metrics dashboard, optionally with widgets. Each widget has a title, a TRQL query (use get_query_schema to see the tables and columns, and the query tool to try a query first), and a display: a table, a chart (bar or line, with x-axis and y-axis columns), a big number, or a title section header. Widgets without a position are stacked full width in order. Returns the dashboard id.",
     shape: CreateDashboardInput.shape,
+    approval: "configurable",
     auth: { action: "write", subject: "query" },
     run: async (input, ctx) => {
       const environment = await subjectEnvironment(ctx);
@@ -80,6 +81,7 @@ export const dashboardsWriteTools: McpToolDefinition[] = [
     description:
       "Replace every widget on a custom dashboard with the given list, and optionally rename it. A widget that already exists keeps its position unless you pass a new one; new widgets without a position are stacked full width below the others. Use list_dashboards to find the dashboard id.",
     shape: SetDashboardWidgetsInput.shape,
+    approval: "configurable",
     auth: { action: "write", subject: "query" },
     run: async (input, ctx) => {
       const environment = await subjectEnvironment(ctx);

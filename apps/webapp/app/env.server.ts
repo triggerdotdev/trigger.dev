@@ -1280,12 +1280,17 @@ const EnvironmentSchema = z
 
     LOOPS_API_KEY: z.string().optional(),
     ATTIO_API_KEY: z.string().optional(),
+    // Syncs workspace memberships to Attio on join, leave and role change. On by default when
+    // APP_ENV is production; "0" turns it off, "1" turns it on elsewhere.
+    ATTIO_MEMBER_SYNC_ENABLED: z.string().optional(),
 
     PROD_TASK_HEARTBEAT_INTERVAL_MS: z.coerce.number().int().optional(),
 
     /* Usage settings */
     USAGE_EVENT_URL: z.string().optional(),
     PROD_USAGE_HEARTBEAT_INTERVAL_MS: z.coerce.number().int().optional(),
+    /** "1" lets runs resend usage reports that got no definite answer. Turn on only with billing dedup enabled. */
+    USAGE_RETRY_AMBIGUOUS_REPORTS: z.enum(["0", "1"]).default("0"),
 
     CENTS_PER_RUN: z.coerce.number().default(0),
 
@@ -1304,6 +1309,13 @@ const EnvironmentSchema = z
     // The most keys one environment variables comparison reads and compares; above it the page asks to narrow down.
     ENVIRONMENT_VARIABLES_COMPARE_MAX_KEYS: z.coerce.number().int().positive().default(1_000),
     TASK_RUN_METADATA_MAXIMUM_SIZE: z.coerce.number().int().default(262_144), // 256KB
+    // Inflated size limits for a worker's uploaded source files: one file, and all files of a worker.
+    WORKER_SOURCE_FILE_MAX_INFLATED_BYTES: z.coerce.number().int().positive().default(67_108_864), // 64MiB
+    WORKER_SOURCE_MAX_TOTAL_INFLATED_BYTES: z.coerce.number().int().positive().default(134_217_728), // 128MiB
+    // Worker source reads per process: how many run at once, how many may wait, and how long one holds its slot.
+    WORKER_SOURCE_READ_CONCURRENCY: z.coerce.number().int().positive().default(1),
+    WORKER_SOURCE_READ_MAX_PENDING: z.coerce.number().int().nonnegative().default(10),
+    WORKER_SOURCE_READ_MAX_HOLD_MS: z.coerce.number().int().positive().default(60_000),
 
     MAXIMUM_DEV_QUEUE_SIZE: z.coerce.number().int().optional(),
     MAXIMUM_DEPLOYED_QUEUE_SIZE: z.coerce.number().int().optional(),

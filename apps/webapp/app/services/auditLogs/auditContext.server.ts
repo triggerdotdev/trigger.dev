@@ -1,3 +1,4 @@
+import { getMeter } from "@internal/tracing";
 import type {
   AuditLogActor,
   AuditLogContext,
@@ -12,6 +13,7 @@ import { bearerPublicJwtActor, type PublicJwtActor } from "~/services/publicJwtA
 import { publicTokenSecret } from "~/services/publicTokenSubject.server";
 import { hashApiKey } from "~/utils/apiKeys";
 import { extractClientIp } from "~/utils/extractClientIp.server";
+import { singleton } from "~/utils/singleton";
 import { auditLogs } from "./auditLogs.server";
 
 // The auth functions call these on success to say who is making the request. They run on every
@@ -24,6 +26,31 @@ const MAX_USER_AGENT_LENGTH = 300;
 
 /** How long an event waits for its credential's fingerprint before recording it without one. */
 const FINGERPRINT_WAIT_MS = 200;
+
+const TIMED_OUT = Symbol("timed out");
+
+/** Why a request's event has no fingerprint, kept with its context until it is recorded. */
+const missingFingerprint = new WeakMap<
+  AuditLogContext,
+  "request_lookup_timed_out" | "request_not_found"
+>();
+
+/**
+ * Counts an event that is being recorded without its credential's fingerprint, on the same counter
+ * the audit log plugin's writer adds to. The host calls it once the event has passed the recording
+ * gates, so events an organization doesn't record aren't counted.
+ */
+export function countMissingFingerprint(context: AuditLogContext): void {
+  const reason = missingFingerprint.get(context);
+  if (!reason) return;
+  // Created on first use, not at import: before the tracer registers its meter provider,
+  // `getMeter` returns a meter that records nothing.
+  singleton("auditEventsWithoutFingerprint", () =>
+    getMeter("audit-logs").createCounter("audit_logs.events_without_fingerprint", {
+      description: "Audit events that named a credential but got no fingerprint, by reason",
+    })
+  ).add(1, { reason });
+}
 
 /**
  * The audit context for an event recorded now, from what the request's auth functions noted. Read
@@ -50,10 +77,16 @@ export function getRequestAuditContext(
   const lookUpFingerprint = identity?.lookUpCredentialFingerprint;
   if (!credential || !lookUpFingerprint) return context;
 
-  return settleWithin(lookUpFingerprint(), FINGERPRINT_WAIT_MS).then((fingerprintId) => ({
-    ...context,
-    credential: { ...credential, fingerprintId },
-  }));
+  return settleWithin(lookUpFingerprint(), FINGERPRINT_WAIT_MS).then((found) => {
+    const resolved: AuditLogContext = {
+      ...context,
+      credential: { ...credential, fingerprintId: typeof found === "string" ? found : null },
+    };
+    // Undefined without the plugin: nothing is fingerprinted, so nothing is missing.
+    if (found === TIMED_OUT) missingFingerprint.set(resolved, "request_lookup_timed_out");
+    else if (found === null) missingFingerprint.set(resolved, "request_not_found");
+    return resolved;
+  });
 }
 
 /**
@@ -267,26 +300,29 @@ function setAuditIdentity(request: Request, build: () => NotedIdentity): void {
 
 /**
  * The credential's fingerprint lookup, started by the first event that asks for it and shared by
- * the rest. Requests that record nothing never query. Resolves to null when the plugin is
- * missing or the lookup fails.
+ * the rest. Requests that record nothing never query. Resolves to null when none is found or the
+ * lookup fails (the host logs the failure), and to undefined when the plugin is missing.
  */
-function lookUpOnce(hashCredential: () => string): () => Promise<string | null> {
-  let lookup: Promise<string | null> | undefined;
+function lookUpOnce(hashCredential: () => string): () => Promise<string | null | undefined> {
+  let lookup: Promise<string | null | undefined> | undefined;
   return () =>
     (lookup ??= auditLogs
       .isFingerprintingEnabled()
-      .then((enabled) => (enabled ? auditLogs.findCredentialFingerprint(hashCredential()) : null))
-      .then(
-        (found) => found?.fingerprintId ?? null,
-        () => null
-      ));
+      .then((enabled) =>
+        enabled
+          ? auditLogs
+              .findCredentialFingerprint(hashCredential())
+              .then((found) => found?.fingerprintId ?? null)
+          : undefined
+      )
+      .catch(() => null));
 }
 
-/** The promise's value, or null if it rejects or takes longer than `ms`. Never rejects. */
-function settleWithin<T>(promise: Promise<T>, ms: number): Promise<T | null> {
+/** The promise's value, null if it rejects, or TIMED_OUT after `ms`. Never rejects. */
+function settleWithin<T>(promise: Promise<T>, ms: number): Promise<T | null | typeof TIMED_OUT> {
   let timer: ReturnType<typeof setTimeout> | undefined;
-  const timeout = new Promise<null>((resolve) => {
-    timer = setTimeout(() => resolve(null), ms);
+  const timeout = new Promise<typeof TIMED_OUT>((resolve) => {
+    timer = setTimeout(() => resolve(TIMED_OUT), ms);
   });
   return Promise.race([promise.catch(() => null), timeout]).finally(() => clearTimeout(timer));
 }

@@ -85,6 +85,8 @@ export type ProgressiveTraceState = {
   loadAttempt: number;
   /** Spans first seen in a live tail read, not a stored one. */
   liveSpanIds: ReadonlySet<string>;
+  /** Times a span already shown got a new message. */
+  messageChanges: number;
 };
 
 const NO_LIVE_SPANS: ReadonlySet<string> = new Set();
@@ -117,6 +119,7 @@ function initialState(trace: ProgressiveTraceInput, loadAttempt = 0): Progressiv
     loadFailed: false,
     loadAttempt,
     liveSpanIds: NO_LIVE_SPANS,
+    messageChanges: 0,
   };
 }
 
@@ -265,6 +268,7 @@ export function useProgressiveTrace(
       loadFailed: prev.loadFailed,
       loadAttempt: prev.loadAttempt,
       liveSpanIds: assembler.liveSpanIds,
+      messageChanges: assembler.messageChanges,
     }));
   }, []);
 

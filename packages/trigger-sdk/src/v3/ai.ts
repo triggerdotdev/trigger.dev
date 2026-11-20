@@ -184,6 +184,7 @@ import {
   type SessionTriggerConfigInput,
 } from "./sessions.js";
 import { createTask } from "./shared.js";
+import { withJsonToolResults } from "./toolOutputJson.js";
 import { triggerConcurrencyBody } from "./concurrency-shared.js";
 import { markChatAgentRunForStreamsWarning } from "./streams.js";
 import { tracer } from "./tracer.js";
@@ -208,10 +209,12 @@ function toModelMessages(messages: UIMessage[], context?: UIMessage[]): Promise<
   return convertSteeredMessages(
     messages,
     async (batch) =>
-      convertToModelMessages(batch, {
-        ignoreIncompleteToolCalls: true,
-        ...(tools ? { tools } : {}),
-      }),
+      withJsonToolResults(
+        await convertToModelMessages(batch, {
+          ignoreIncompleteToolCalls: true,
+          ...(tools ? { tools } : {}),
+        })
+      ),
     locals.get(chatSteeringInjectionsKey) ?? new Map(),
     context ?? locals.get(chatCurrentUIMessagesKey) ?? messages,
     context !== undefined || locals.get(chatCurrentUIMessagesKey) !== undefined
@@ -3019,6 +3022,32 @@ function emptyUsage(): LanguageModelUsage {
   };
 }
 
+/**
+ * The last step's usage of a `streamText` result: what the model's context window held on
+ * its final call. It comes from `steps` because the result's `usage` is the last step's on
+ * AI SDK 6 but the turn's sum on AI SDK 7. A custom stream source with no `steps` falls
+ * back to its `usage`, which such a source supplies as the last step's. Raced against a 2s
+ * timeout like the turn's `totalUsage`, since the promises can hang on a stop-abort.
+ * Returns undefined when neither resolves in time.
+ */
+async function readLastStepUsage(result: unknown): Promise<LanguageModelUsage | undefined> {
+  const stepsPromise = result != null ? (result as any).steps : undefined;
+  const hasSteps = typeof stepsPromise?.then === "function";
+  const source = hasSteps ? stepsPromise : result != null ? (result as any).usage : undefined;
+  if (typeof source?.then !== "function") return undefined;
+  try {
+    const resolved = await Promise.race([
+      source,
+      new Promise<undefined>((r) => setTimeout(() => r(undefined), 2_000)),
+    ]);
+    return hasSteps
+      ? (resolved as Array<{ usage?: LanguageModelUsage }> | undefined)?.at(-1)?.usage
+      : (resolved as LanguageModelUsage | undefined);
+  } catch {
+    return undefined;
+  }
+}
+
 function addUsage(a: LanguageModelUsage, b: LanguageModelUsage): LanguageModelUsage {
   const add = (x: number | undefined, y: number | undefined) =>
     x != null || y != null ? (x ?? 0) + (y ?? 0) : undefined;
@@ -5496,14 +5525,29 @@ function toStreamTextOptions(
       // 4. Parallel tool results in call order, the order the next turn's history
       // will list them in. See `withToolResultsInCallOrder`.
       const base = resultMessages ?? messages;
-      const ordered = withToolResultsInCallOrder(base);
-      return resultMessages || ordered !== base ? { messages: ordered } : undefined;
+      // 5. Tool results as plain JSON, which AI SDK 7 before 7.0.101 checks on
+      // every step. See `withJsonToolResults`.
+      const prepared = await withJsonToolResults(withToolResultsInCallOrder(base));
+      return resultMessages || prepared !== base ? { messages: prepared } : undefined;
     };
   }
 
   if (retain && typeof result.prepareStep === "function") {
     result.prepareStep = retainStepMessages(result.prepareStep as any);
   }
+
+  /**
+   * A steer that `pendingMessages.prepare` turns into a `system` message lands in
+   * the model lane in that form, and so replays in every later turn's `messages`.
+   * AI SDK 7 rejects a system message in `messages` unless this is set (its default
+   * is `false`), so without it the step fails with an invalid-prompt error on the
+   * turn that was steered and on every turn after it. Routing the note to
+   * `instructions` for one step would not help the later turns, because the lane
+   * is what the caller's own `streamText({ messages })` reads. A caller that wants
+   * the strict behaviour passes `allowSystemInMessages: false` after the spread.
+   * AI SDK 5 and 6 ignore the key and accept system messages already.
+   */
+  result.allowSystemInMessages = true;
 
   const channelDownload = locals.get(chatChannelDownloadKey);
   if (channelDownload) {
@@ -5632,17 +5676,39 @@ async function replaceModelRun(
   oldUi: UIMessage,
   newUi: UIMessage,
   tailAfter: number,
-  knownOldRun?: ModelMessage[]
+  knownOldRun?: ModelMessage[],
+  oldIsLastUiMessage = false
 ): Promise<boolean> {
   const oldRun = knownOldRun ?? (await toModelMessages([stripProviderMetadata(oldUi)]));
   const newRun = await toModelMessages([stripProviderMetadata(newUi)]);
-  // A message that converts to nothing (a pending tool call with no output yet,
-  // which `ignoreIncompleteToolCalls` drops) locates no run in the lane. Matching
-  // an empty slice would splice the new run in without removing what the message
-  // actually contributed, such as a spliced head-start partial, and the lane would
-  // then carry the same tool call twice.
-  if (oldRun.length === 0) return false;
   const end = lane.length - tailAfter;
+  // A message that converts to nothing (a tool call awaiting approval on AI SDK 7,
+  // or a pending one with no output yet, which `ignoreIncompleteToolCalls` drops)
+  // locates no run in the lane. When it is the last UI message and the lane holds
+  // none of its tool calls, it contributed nothing, so the new run goes in at the
+  // tail. A message that is not the last one has later turns after its place, which
+  // the tail is not. When the lane does hold one of its calls, such as a spliced
+  // head-start partial, matching an empty slice would leave the old form behind and
+  // the lane would carry the same tool call twice.
+  if (oldRun.length === 0) {
+    if (!oldIsLastUiMessage || end < 0 || end > lane.length) return false;
+    const oldCallIds = new Set<string>();
+    for (const part of oldUi.parts) {
+      const id = (part as { toolCallId?: unknown }).toolCallId;
+      if (typeof id === "string") oldCallIds.add(id);
+    }
+    // Tool-call, tool-result and approval parts of a lane message all carry `toolCallId`.
+    const holdsOldCall = lane.some(
+      (message) =>
+        Array.isArray(message.content) &&
+        message.content.some((part) =>
+          oldCallIds.has((part as { toolCallId?: string }).toolCallId!)
+        )
+    );
+    if (holdsOldCall) return false;
+    lane.splice(end, 0, ...newRun);
+    return true;
+  }
   const start = end - oldRun.length;
   if (start < 0 || end > lane.length) return false;
   if (JSON.stringify(lane.slice(start, end)) !== JSON.stringify(oldRun)) return false;
@@ -7109,6 +7175,7 @@ function makeChannelDownloader(
     return null;
   };
   return (url) => {
+    if (isInlineDataUrl(url)) return Promise.resolve(null);
     const key = url.href;
     const cached = cache.get(key);
     if (cached) return cached;
@@ -7133,14 +7200,30 @@ function makeChannelDownloader(
 
 function fileUrlOf(part: unknown): URL | undefined {
   const p = part as { type?: string; data?: unknown; image?: unknown };
-  const raw = p?.type === "file" ? p.data : p?.type === "image" ? p.image : undefined;
-  if (raw instanceof URL) return raw;
-  if (typeof raw !== "string" || !/^https?:\/\//i.test(raw)) return undefined;
-  try {
-    return new URL(raw);
-  } catch {
+  let raw = p?.type === "file" ? p.data : p?.type === "image" ? p.image : undefined;
+  // AI SDK 7 tags the data (`{ type: "url", url }`); AI SDK 6 puts a URL or string there directly.
+  if (raw && typeof raw === "object" && !(raw instanceof URL)) {
+    const tagged = raw as { type?: unknown; url?: unknown };
+    raw = tagged.type === "url" ? tagged.url : undefined;
+  }
+  let url: URL;
+  if (raw instanceof URL) {
+    url = raw;
+  } else if (typeof raw === "string" && /^https?:\/\//i.test(raw)) {
+    try {
+      url = new URL(raw);
+    } catch {
+      return undefined;
+    }
+  } else {
     return undefined;
   }
+  return isInlineDataUrl(url) ? undefined : url;
+}
+
+/** An inline `data:` upload carries its bytes in the URL, so it is never handed to a connector, cached or logged. */
+function isInlineDataUrl(url: URL): boolean {
+  return url.protocol === "data:";
 }
 
 /**
@@ -7214,7 +7297,8 @@ type ModelDownloadFunction = (
 /**
  * The AI SDK `experimental_download` for a turn: channel-owned URLs come from the connectors, and
  * every other URL goes to `fallback`, or to the AI SDK's default behaviour (left for a model that
- * reads the URL itself, fetched from a public host otherwise).
+ * reads the URL itself, fetched from a public host otherwise). An inline `data:` URL is neither: it
+ * is left to the AI SDK to decode, and reaches no connector, fallback or fetch.
  */
 function channelAwareDownload(
   download: ChannelFileDownloader,
@@ -7227,7 +7311,11 @@ function channelAwareDownload(
         return file ? { data: file.data, mediaType: file.mediaType } : null;
       })
     );
-    const misses = requests.flatMap((_, i) => (results[i] ? [] : [i]));
+    // An inline `data:` file is left to the AI SDK, which decodes it itself: it is no connector's
+    // file, and `fetchPublicFile` would refuse it with the whole upload in the error message.
+    const misses = requests.flatMap((request, i) =>
+      results[i] || request.url.protocol === "data:" ? [] : [i]
+    );
     if (misses.length === 0) return results;
     const rest = fallback
       ? await fallback(misses.map((i) => requests[i]!))
@@ -11595,7 +11683,11 @@ function chatAgent<
                       // resolutions onto the existing entry, keeping text,
                       // reasoning, and tool `input` from the prior snapshot.
                       let replaced = false;
-                      const replacedPairs: { previous: TUIMessage; merged: TUIMessage }[] = [];
+                      const replacedPairs: {
+                        previous: TUIMessage;
+                        merged: TUIMessage;
+                        isLast: boolean;
+                      }[] = [];
                       for (const incoming of cleanedUIMessages) {
                         const idx = accumulatedUIMessages.findIndex((m) => m.id === incoming.id);
                         if (idx !== -1) {
@@ -11604,7 +11696,11 @@ function chatAgent<
                             previous,
                             incoming
                           ) as TUIMessage;
-                          replacedPairs.push({ previous, merged: accumulatedUIMessages[idx]! });
+                          replacedPairs.push({
+                            previous,
+                            merged: accumulatedUIMessages[idx]!,
+                            isLast: idx === accumulatedUIMessages.length - 1,
+                          });
                           replaced = true;
                         } else {
                           accumulatedUIMessages.push(incoming as TUIMessage);
@@ -11613,8 +11709,17 @@ function chatAgent<
                       }
                       if (replaced) {
                         let inPlace = true;
-                        for (const { previous, merged } of replacedPairs) {
-                          if (!(await replaceModelRun(accumulatedMessages, previous, merged, 0))) {
+                        for (const { previous, merged, isLast } of replacedPairs) {
+                          if (
+                            !(await replaceModelRun(
+                              accumulatedMessages,
+                              previous,
+                              merged,
+                              0,
+                              undefined,
+                              isLast
+                            ))
+                          ) {
                             inPlace = false;
                             break;
                           }
@@ -12227,6 +12332,22 @@ function chatAgent<
                     ]);
                   }
 
+                  /**
+                   * A stream-level failure (an `error` chunk) is the turn's finish
+                   * reason. A step rejected before the model runs (an invalid prompt,
+                   * a throwing `prepareStep`) ends the stream with one but no finish
+                   * reason of its own, or the previous step's. Tool errors do not
+                   * count: they are `tool-input-error` / `tool-output-error` parts
+                   * that go back to the model, and the turn finishes normally.
+                   */
+                  // Looked up once per turn; the buffer is only scanned again from
+                  // `errorScanLength` on, in case a chunk lands after this point.
+                  const errorScanLength = turnBufferedChunks.length;
+                  const earlyErrorChunk = turnBufferedChunks.find(isErrorUIMessageChunk);
+                  if (earlyErrorChunk) {
+                    capturedFinishReason = "error";
+                  }
+
                   capturedResponseMessage =
                     ((await locals.get(chatManagedResponseKey)?.snapshot()) as
                       | TUIMessage
@@ -12254,18 +12375,7 @@ function chatAgent<
                       /* non-fatal — usage capture failed */
                     }
                   }
-                  const lastStepUsagePromise =
-                    runResult != null ? (runResult as any).usage : undefined;
-                  if (typeof lastStepUsagePromise?.then === "function") {
-                    try {
-                      lastStepUsage = (await Promise.race([
-                        lastStepUsagePromise,
-                        new Promise<undefined>((r) => setTimeout(() => r(undefined), 2_000)),
-                      ])) as LanguageModelUsage | undefined;
-                    } catch {
-                      /* non-fatal — usage capture failed */
-                    }
-                  }
+                  lastStepUsage = await readLastStepUsage(runResult);
                   if (turnUsage) {
                     cumulativeUsage = addUsage(cumulativeUsage, turnUsage);
                     previousTurnUsage = turnUsage;
@@ -12503,9 +12613,10 @@ function chatAgent<
                   if (capturedResponseMessage) {
                     responseCommitted = true;
                     capturedPartialResponse = capturedResponseMessage;
-                    const errorChunk = turnBufferedChunks.find(
-                      (chunk) => (chunk as { type?: string }).type === "error"
-                    ) as { errorText?: string } | undefined;
+                    const errorChunk = (earlyErrorChunk ??
+                      turnBufferedChunks.slice(errorScanLength).find(isErrorUIMessageChunk)) as
+                      | { errorText?: string }
+                      | undefined;
                     channelStreamErrorText = errorChunk?.errorText;
                     channelTurnText = turnBufferedChunks
                       .map((chunk) => {
@@ -14955,6 +15066,11 @@ export type PipeAndCaptureResult = {
   error?: unknown;
 };
 
+/** Whether a buffered chunk is a stream-level `error` chunk. */
+function isErrorUIMessageChunk(chunk: UIMessageChunk): boolean {
+  return (chunk as { type?: string }).type === "error";
+}
+
 /**
  * Pass every chunk through untouched while recording it in `buffer`. Handles
  * both the `AsyncIterable` and `ReadableStream` shapes `toUIMessageStream()`
@@ -15163,6 +15279,7 @@ class ChatMessageAccumulator {
     const ui = replace ? [] : [...this.uiMessages];
     const lane = replace ? [] : [...this.modelMessages];
     let appendedModelCount = 0;
+    let appendedUiCount = 0;
     let rebuild = replace;
     for (const raw of messages) {
       const message = raw.role === "assistant" ? cleanupAbortedParts(raw) : raw;
@@ -15178,13 +15295,20 @@ class ChatMessageAccumulator {
         const idx = ui.findIndex((m) => m.id === resolved.id);
         const previous = ui[idx]!;
         ui[idx] = mergeIncomingIntoHydrated(previous, resolved);
-        if (!rebuild && !(await replaceModelRun(lane, previous, ui[idx]!, appendedModelCount))) {
+        // The lane's tail is only this message's place when nothing came after it
+        // before this call's own appends.
+        const isLast = idx === ui.length - 1 - appendedUiCount;
+        if (
+          !rebuild &&
+          !(await replaceModelRun(lane, previous, ui[idx]!, appendedModelCount, undefined, isLast))
+        ) {
           rebuild = true;
         }
         continue;
       }
       ui.push(message);
       if (!rebuild) {
+        appendedUiCount++;
         const converted = await toModelMessages([message]);
         lane.push(...converted);
         appendedModelCount += converted.length;
@@ -15421,9 +15545,11 @@ class ChatMessageAccumulator {
 
   /**
    * Run outer-loop compaction if needed. Call after adding the response
-   * and capturing usage. Pass the LAST step's usage (`result.usage`), which is
-   * the context the model held on its final call; `result.totalUsage` sums every
-   * step of a tool-using turn and belongs in `context.turnUsage`. Applies
+   * and capturing usage. Pass the LAST step's usage
+   * (`(await result.steps).at(-1)?.usage`), which is the context the model held on
+   * its final call. `result.usage` is that on AI SDK 6 but the turn's sum on AI SDK 7,
+   * so read `steps`. The turn's sum (`result.totalUsage` on AI SDK 6, `result.usage`
+   * on AI SDK 7) belongs in `context.turnUsage`. Applies
    * `compactModelMessages` and `compactUIMessages` callbacks if configured.
    *
    * @returns `true` if compaction was performed, `false` otherwise.
@@ -16083,17 +16209,7 @@ function createChatSession<TClientData = unknown>(
                   /* non-fatal */
                 }
               }
-              const lastStepUsagePromise = (source as any).usage;
-              if (typeof lastStepUsagePromise?.then === "function") {
-                try {
-                  lastStepUsage = (await Promise.race([
-                    lastStepUsagePromise,
-                    new Promise<undefined>((r) => setTimeout(() => r(undefined), 2_000)),
-                  ])) as LanguageModelUsage | undefined;
-                } catch {
-                  /* non-fatal */
-                }
-              }
+              lastStepUsage = await readLastStepUsage(source);
 
               // Outer-loop compaction (same logic as chat.agent)
               if (sessionCompaction && turnUsage && !turnObj.stopped) {

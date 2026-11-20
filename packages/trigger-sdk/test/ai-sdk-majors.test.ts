@@ -1,6 +1,6 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
-import aiSdkMajors from "./ai-sdk-majors.json" with { type: "json" };
+import { aiSdkMajors } from "./aiSdkMajors.js";
 
 const readJson = (path: string) =>
   JSON.parse(readFileSync(new URL(path, import.meta.url), "utf8")) as Record<string, any>;

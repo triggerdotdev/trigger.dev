@@ -11,6 +11,7 @@ import { v3RunPath, v3RunSpanPath } from "~/utils/pathBuilder";
 import {
   useRunNote,
   useRunPanelData,
+  useRunSettled,
   useRunSpanId,
   useSessionPanelStore,
   useSpanConfirmed,
@@ -20,6 +21,7 @@ import {
   panelLinksToRunPage,
   runFactsOf,
   runNotShown,
+  spanNotLoaded,
   startedBecauseText,
   startingEndsAtMs,
   type RunFacts,
@@ -35,11 +37,14 @@ type RunOrSpanSelection = Exclude<SessionTraceSelection, { kind: "session" }>;
 export function SessionRunInspector({
   selection,
   runsPath,
+  onTraceTab,
   onClose,
 }: {
   selection: RunOrSpanSelection;
   /** The session runs route, to look up a run's span id the tree hasn't supplied. */
   runsPath: string;
+  /** The Trace tab is shown: only it can say a linked span never loaded. */
+  onTraceTab: boolean;
   onClose: () => void;
 }) {
   const track = useSessionViewAnalytics();
@@ -124,6 +129,14 @@ export function SessionRunInspector({
   const selectedSpanId = selection.kind === "span" ? selection.spanId : undefined;
   const spanConfirmed = useSpanConfirmed(selection.runFriendlyId, selectedSpanId);
   const spanId = selectedSpanId && spanConfirmed ? selectedSpanId : runSpanId;
+  const runSettled = useRunSettled(selection.runFriendlyId);
+  const showSpanNotLoaded = spanNotLoaded({
+    spanId: selectedSpanId,
+    runSpanId,
+    spanSeen: spanConfirmed,
+    runSettled,
+    onTraceTab,
+  });
   const runPagePath =
     selection.kind === "span"
       ? v3RunSpanPath(organization, project, environment, run, { spanId: selection.spanId })
@@ -137,8 +150,8 @@ export function SessionRunInspector({
       Open run page
     </LinkButton>
   ) : null;
-  const hasNote = facts !== undefined || notShown !== undefined;
-  const runNote = <RunNote info={facts} notShown={notShown} />;
+  const hasNote = facts !== undefined || notShown !== undefined || showSpanNotLoaded;
+  const runNote = <RunNote info={facts} notShown={notShown} spanNotLoaded={showSpanNotLoaded} />;
 
   // The run's own span isn't known yet: its runs page hasn't loaded or it isn't in the run store.
   if (!spanId) {
@@ -218,15 +231,23 @@ export function SessionRunInspector({
 function RunNote({
   info,
   notShown,
+  spanNotLoaded,
 }: {
   info: RunFacts | undefined;
   notShown: RunNotShown | undefined;
+  /** A linked span never loaded here; the header's "Open run page" goes to it. */
+  spanNotLoaded: boolean;
 }) {
-  if (!info && !notShown) return null;
+  if (!info && !notShown && !spanNotLoaded) return null;
   return (
     <div className="flex flex-col gap-0.5 border-b border-grid-dimmed bg-background-bright px-3 py-2">
       {info && <Paragraph variant="small">{startedBecauseText(info)}</Paragraph>}
       {notShown && <Paragraph variant="small/dimmed">{notShownText(notShown)}</Paragraph>}
+      {spanNotLoaded && (
+        <Paragraph variant="small/dimmed">
+          This span isn't loaded here. Open run page to see it.
+        </Paragraph>
+      )}
     </div>
   );
 }

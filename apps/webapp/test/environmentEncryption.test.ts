@@ -238,7 +238,15 @@ describe("environment encryption", () => {
         batchSize: 1,
         pauseMs: 0,
       });
-      expect(result).toEqual({ scanned: names.length, rewritten: names.length, conflicts: 0 });
+      expect(result).toEqual({
+        scanned: names.length,
+        rewritten: names.length,
+        conflicts: 0,
+        remaining: 0,
+        runtimeValues: names.length,
+        buildEnvelopes: 0,
+        stopped: false,
+      });
       expect(
         (await prisma.secretStore.findFirstOrThrow({ where: { key: outsideKey } })).version
       ).toBe("1");
@@ -750,6 +758,18 @@ describe("environment encryption", () => {
           buildEnvVars: encryptValue(JSON.stringify({ TOKEN: "build-secret" }), keyring),
         },
       });
+      await prisma.workerDeployment.create({
+        data: {
+          id: `z${source.id}`,
+          projectId: project.id,
+          environmentId: scope.environmentId,
+          version: "v0",
+          shortCode: "older",
+          friendlyId: "deployment_older",
+          contentHash: "older-hash",
+          buildEnvVars: encryptValue(JSON.stringify({ TOKEN: "older-build-secret" }), keyring),
+        },
+      });
       const encryption = service(prisma);
       const migration = {
         db: prisma,
@@ -759,7 +779,9 @@ describe("environment encryption", () => {
         ...scope,
         pauseMs: 0,
       };
-      expect((await migrateEnvironmentEncryption({ ...migration, apply: true })).rewritten).toBe(3);
+      expect(
+        (await migrateEnvironmentEncryption({ ...migration, apply: true, batchSize: 1 })).rewritten
+      ).toBe(4);
       expect((await migrateEnvironmentEncryption({ ...migration, apply: true })).rewritten).toBe(0);
       const migrated = await prisma.workerDeployment.findFirstOrThrow({ where: { id: source.id } });
       const prepared = await encryption.prepareWrite(scope);

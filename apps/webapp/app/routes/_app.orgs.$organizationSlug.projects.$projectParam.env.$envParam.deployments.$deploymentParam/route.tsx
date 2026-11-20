@@ -36,7 +36,7 @@ import {
   TableRow,
 } from "~/components/primitives/Table";
 import { DeploymentError } from "~/components/runs/v3/DeploymentError";
-import { DeploymentStatus } from "~/components/runs/v3/DeploymentStatus";
+import { DeploymentStatus, deploymentDisplayStatus } from "~/components/runs/v3/DeploymentStatus";
 import {
   Tooltip,
   TooltipContent,
@@ -52,6 +52,7 @@ import { cn } from "~/utils/cn";
 import {
   v3DeploymentParams,
   v3DeploymentPath,
+  v3DeploymentVersionPath,
   v3DeploymentsPath,
   v3RunsPath,
 } from "~/utils/pathBuilder";
@@ -323,12 +324,29 @@ export default function Page() {
                 <Property.Label>Status</Property.Label>
                 <Property.Value>
                   <DeploymentStatus
-                    status={deployment.status}
+                    status={deploymentDisplayStatus(deployment.status, !!deployment.supersededBy)}
                     isBuilt={deployment.isBuilt}
                     className="text-sm"
                   />
                 </Property.Value>
               </Property.Item>
+              {deployment.supersededBy && (
+                <Property.Item>
+                  <Property.Label>Superseded by</Property.Label>
+                  <Property.Value>
+                    <TextLink
+                      to={v3DeploymentVersionPath(
+                        organization,
+                        project,
+                        environment,
+                        deployment.supersededBy.version
+                      )}
+                    >
+                      {deployment.supersededBy.version}
+                    </TextLink>
+                  </Property.Value>
+                </Property.Item>
+              )}
               {!logsDisabled && (
                 <Property.Item>
                   <Property.Label>Logs</Property.Label>
@@ -353,7 +371,7 @@ export default function Page() {
                   </Property.Value>
                 </Property.Item>
               )}
-              {deployment.canceledReason && (
+              {deployment.canceledReason && !deployment.supersededBy && (
                 <Property.Item>
                   <Property.Label>Cancelation reason</Property.Label>
                   <Property.Value>{deployment.canceledReason}</Property.Value>

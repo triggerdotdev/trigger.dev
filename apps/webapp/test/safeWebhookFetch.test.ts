@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   assertSafeWebhookUrl,
+  safeWebhookFetch,
   UnsafeWebhookUrlError,
 } from "../app/v3/services/alerts/safeWebhookFetch.server.js";
 
@@ -63,4 +64,16 @@ describe("assertSafeWebhookUrl", () => {
   it("rejects malformed URLs", async () => {
     await expect(assertSafeWebhookUrl("not a url")).rejects.toBeInstanceOf(UnsafeWebhookUrlError);
   });
+});
+
+describe("safeWebhookFetch with IP-literal hosts", () => {
+  // Catches: delivery connecting to a reserved IP literal, which skips the DNS lookup check.
+  it.each(["http://[64:ff9b::a9fe:a9fe]/hook", "http://[::a9fe:a9fe]/", "http://192.0.0.192/"])(
+    "refuses %s without connecting",
+    async (url) => {
+      await expect(safeWebhookFetch(url, { method: "POST", body: "{}" })).rejects.toBeInstanceOf(
+        UnsafeWebhookUrlError
+      );
+    }
+  );
 });

@@ -1,8 +1,8 @@
 import { createHash, createHmac } from "node:crypto";
 import { $replica } from "~/db.server";
-import type { McpConfirmSpec, McpIdentity, McpSubject } from "../gate/types";
+import type { McpConfirmSpec, McpIdentity, McpPreviewRefusal, McpSubject } from "../gate/types";
 
-const PREVIEW_LIMIT = 64 * 1024;
+export const PREVIEW_LIMIT = 64 * 1024;
 const SENSITIVE_KEY = /secret|password|token|apikey|api_key|authorization/i;
 
 export function canonicalJson(value: unknown): string {
@@ -53,17 +53,38 @@ async function defaultFingerprintKey() {
 
 export async function confirmationPreview(
   tool: string,
+  spec: true,
+  args: unknown,
+  subject: McpSubject | null,
+  fingerprintKey?: string
+): Promise<{ preview: string; truncated: boolean }>;
+export async function confirmationPreview(
+  tool: string,
   spec: true | McpConfirmSpec,
   args: unknown,
   subject: McpSubject | null,
   fingerprintKey?: string
-): Promise<{ preview: string; truncated: boolean }> {
-  const preview =
-    spec === true
-      ? `${tool} ${canonicalJson(
-          hideSensitive(args ?? {}, fingerprintKey ?? (await defaultFingerprintKey()))
-        )}`
-      : spec.preview(args, subject);
+): Promise<{ preview: string; truncated: boolean } | McpPreviewRefusal>;
+export async function confirmationPreview(
+  tool: string,
+  spec: true | McpConfirmSpec,
+  args: unknown,
+  subject: McpSubject | null,
+  fingerprintKey?: string
+): Promise<{ preview: string; truncated: boolean } | McpPreviewRefusal> {
+  if (spec !== true) {
+    const preview = await spec.preview(args, subject);
+    if (typeof preview !== "string") return preview;
+    if (preview.length > PREVIEW_LIMIT) {
+      return {
+        refuse: `This change is too large to confirm in full (${preview.length} characters, the limit is ${PREVIEW_LIMIT}). Split it into smaller calls.`,
+      };
+    }
+    return { preview, truncated: false };
+  }
+  const preview = `${tool} ${canonicalJson(
+    hideSensitive(args ?? {}, fingerprintKey ?? (await defaultFingerprintKey()))
+  )}`;
   return preview.length > PREVIEW_LIMIT
     ? { preview: `${preview.slice(0, PREVIEW_LIMIT)}…`, truncated: true }
     : { preview, truncated: false };

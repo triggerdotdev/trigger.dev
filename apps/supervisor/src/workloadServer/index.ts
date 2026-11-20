@@ -18,11 +18,12 @@ import {
   type WorkloadSuspendRunResponseBody,
 } from "@trigger.dev/core/v3/workers";
 import EventEmitter from "node:events";
+import { setTimeout as sleep } from "node:timers/promises";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { type Namespace, Server, type Socket } from "socket.io";
 import { z } from "zod";
 import { tryCatch } from "@trigger.dev/core/utils";
-import { Counter } from "prom-client";
+import { Counter, Histogram } from "prom-client";
 import { env } from "../env.js";
 import { register } from "../metrics.js";
 import {
@@ -38,7 +39,11 @@ import {
 import type { WorkloadDeploymentTokenClaims } from "@trigger.dev/core/v3";
 import {
   SecretProxyAllocationBusyError,
+  SecretProxyPlacementPendingError,
+  SecretProxyPlacementSaturatedError,
   type SecretProxyBindings,
+  type SecretProxyCaller,
+  type SecretProxyPlacement,
 } from "../services/secretProxyBindings.js";
 import {
   ComputeSnapshotService,
@@ -59,6 +64,23 @@ interface DefaultEventsMap {
 }
 
 const SECRET_PROXY_ATTACH_RETRY_DELAY_MS = 1_000;
+// A guest can call start or continue before kubelet publishes its Pod status.
+const SECRET_PROXY_PLACEMENT_WAIT_MS = 5_000;
+const SECRET_PROXY_PLACEMENT_RETRY_MS = 250;
+
+const secretProxyPlacementWait = new Histogram({
+  name: "supervisor_secret_proxy_placement_wait_seconds",
+  help: "Time spent waiting for placement after an incomplete Pod status lookup",
+  labelNames: ["route", "outcome"],
+  buckets: [0.25, 0.5, 0.75, 1, 1.5, 2, 3, 4, 5, 6, 8],
+  registers: [register],
+});
+
+const unplacedSecretProxyContinues = new Counter({
+  name: "supervisor_secret_proxy_unplaced_continues_total",
+  help: "Continues forwarded without proxy capability on a proxy-configured supervisor",
+  registers: [register],
+});
 
 const unsupportedSecretProxyStarts = new Counter({
   name: "supervisor_secret_proxy_unsupported_starts_total",
@@ -244,10 +266,19 @@ export class WorkloadServer extends EventEmitter<WorkloadServerEvents> {
     });
 
     if (opts.runnerSnapshotter?.snapshotsEnabled) {
+      const secretProxy = opts.secretProxy;
       this.snapshotService = new ComputeSnapshotService({
         runnerSnapshotter: opts.runnerSnapshotter,
         workerClient: opts.workerClient,
         wideEventOpts: this.wideEventOpts,
+        beforeSuspend: secretProxy
+          ? (runFriendlyId, snapshotFriendlyId) =>
+              secretProxy.revokeSuspending(runFriendlyId, snapshotFriendlyId)
+          : undefined,
+        suspendSettled: secretProxy
+          ? (runFriendlyId, snapshotFriendlyId, accepted) =>
+              secretProxy.suspendSettled(runFriendlyId, snapshotFriendlyId, accepted)
+          : undefined,
       });
     }
 
@@ -642,7 +673,7 @@ export class WorkloadServer extends EventEmitter<WorkloadServerEvents> {
                   claims: auth.claims,
                 };
                 try {
-                  const placement = await this.secretProxy?.prepareStart(caller);
+                  const placement = await this.waitForSecretProxyPlacement(caller);
                   const supportsSecretProxy = !!placement;
                   if (this.secretProxy && !supportsSecretProxy) {
                     unsupportedSecretProxyStarts.inc({ reason: "unavailable" });
@@ -869,6 +900,18 @@ export class WorkloadServer extends EventEmitter<WorkloadServerEvents> {
                     return response;
                   }
                 );
+                // An execution that lost its binding mid-attempt is bound again by its own VM.
+                if (heartbeatResponse.success) {
+                  await this.secretProxy?.rebindContinued(
+                    {
+                      runId: params.runFriendlyId,
+                      runnerId: this.runnerIdFromRequest(req),
+                      sourceIp: req.socket.remoteAddress,
+                      claims: auth.claims,
+                    },
+                    heartbeatResponse.data.runToken
+                  );
+                }
 
                 if (!heartbeatResponse.success) {
                   this.logger.error("Failed to heartbeat run", {
@@ -905,14 +948,6 @@ export class WorkloadServer extends EventEmitter<WorkloadServerEvents> {
                   return;
                 }
                 const runnerId = this.runnerIdFromRequest(req);
-                if (this.secretProxy) {
-                  reply.json(
-                    { ok: false, error: "Secret proxy checkpoint CA continuity is not verified" },
-                    false,
-                    409
-                  );
-                  return;
-                }
                 const deploymentVersion = this.deploymentVersionFromRequest(req);
                 const projectRef = this.projectRefFromRequest(req);
 
@@ -1023,12 +1058,25 @@ export class WorkloadServer extends EventEmitter<WorkloadServerEvents> {
                 // Cancel any pending delayed snapshot for this run
                 this.snapshotService?.cancel(params.runFriendlyId);
 
+                const caller = {
+                  runId: params.runFriendlyId,
+                  runnerId: this.runnerIdFromRequest(req),
+                  sourceIp: req.socket.remoteAddress,
+                  claims: auth.claims,
+                };
+                const placement = this.secretProxy?.tracks(params.runFriendlyId)
+                  ? undefined
+                  : await this.waitForSecretProxyPlacement(caller, { continuing: true });
                 const continuationResult = await this.workerClient.continueRunExecution(
                   params.runFriendlyId,
                   params.snapshotFriendlyId,
-                  this.runnerIdFromRequest(req),
+                  caller.runnerId,
                   auth.environmentId,
-                  { retryBudget: this.continueRetryBudget }
+                  {
+                    retryBudget: this.continueRetryBudget,
+                    supportsSecretProxy: !!placement,
+                    sandboxRunId: auth.sandboxRunId,
+                  }
                 );
 
                 if (continuationResult.retry) {
@@ -1056,7 +1104,22 @@ export class WorkloadServer extends EventEmitter<WorkloadServerEvents> {
                   return;
                 }
 
-                reply.json(continuationResult.data as WorkloadContinueRunExecutionResponseBody);
+                const { runToken, secretProxy, ...continuation } = continuationResult.data;
+                if (placement && this.secretProxy && secretProxy) {
+                  try {
+                    await this.secretProxy.activateContinue(caller, placement, {
+                      ...continuation,
+                      runToken,
+                      secretProxy,
+                    });
+                  } catch (error) {
+                    this.logger.error("Failed to bind continued secret proxy execution", {
+                      params,
+                      error,
+                    });
+                  }
+                }
+                reply.json(continuation as WorkloadContinueRunExecutionResponseBody);
 
                 await this.cancelCheckpointsAfterReply(params.runFriendlyId);
               }
@@ -1448,6 +1511,51 @@ export class WorkloadServer extends EventEmitter<WorkloadServerEvents> {
     });
 
     return websocketServer;
+  }
+
+  private async waitForSecretProxyPlacement(
+    caller: SecretProxyCaller,
+    { continuing = false } = {}
+  ): Promise<SecretProxyPlacement | undefined> {
+    const secretProxy = this.secretProxy;
+    if (!secretProxy) return;
+    const deadline = performance.now() + SECRET_PROXY_PLACEMENT_WAIT_MS;
+    let endWait: ReturnType<typeof secretProxyPlacementWait.startTimer> | undefined;
+    let outcome = "unavailable";
+    let retrying = false;
+    let saturated = false;
+    try {
+      for (;;) {
+        try {
+          const placement = await secretProxy.prepareStart(caller, { continuing, retrying });
+          if (placement) {
+            outcome = "placed";
+            return placement;
+          }
+          break;
+        } catch (error) {
+          if (!(error instanceof SecretProxyPlacementPendingError)) {
+            if (!continuing) throw error;
+            break;
+          }
+          saturated = error instanceof SecretProxyPlacementSaturatedError;
+        }
+        if (performance.now() + SECRET_PROXY_PLACEMENT_RETRY_MS >= deadline) {
+          // "saturated": the wait ended on a full lookup queue, not on kubelet.
+          outcome = saturated ? "saturated" : "timeout";
+          break;
+        }
+        retrying = true;
+        endWait ??= secretProxyPlacementWait.startTimer({
+          route: continuing ? "continue" : "start",
+        });
+        await sleep(SECRET_PROXY_PLACEMENT_RETRY_MS);
+      }
+      if (continuing) unplacedSecretProxyContinues.inc();
+      return;
+    } finally {
+      endWait?.({ outcome });
+    }
   }
 
   private async revokeRunner(

@@ -48,7 +48,7 @@ export type McpConfirmationStore = {
   get: (id: string, userId: string) => Promise<McpConfirmationRecord | null>;
   approve: (id: string, userId: string) => Promise<boolean>;
   deny: (id: string, userId: string) => Promise<boolean>;
-  consumeApproved: (lookup: McpApprovalLookup) => Promise<{ id: string } | null>;
+  consumeApproved: (lookup: McpApprovalLookup) => Promise<{ id: string; preview: string } | null>;
 };
 
 const approveScript = `
@@ -96,7 +96,7 @@ if ttl <= 0 then return nil end
 r.consumedAt = tonumber(ARGV[7])
 redis.call("SET", KEYS[2], cjson.encode(r), "PX", ttl)
 redis.call("DEL", KEYS[1])
-return r.id
+return { r.id, r.preview }
 `;
 
 const recordKey = (userId: string, id: string) => `mcp:confirm:{${userId}}:record:${id}`;
@@ -208,7 +208,9 @@ export function createMcpConfirmationStore(
         lookup.argsDigest,
         String(now())
       );
-      return typeof consumed === "string" ? { id: consumed } : null;
+      return Array.isArray(consumed)
+        ? { id: consumed[0] as string, preview: consumed[1] as string }
+        : null;
     },
   };
 }

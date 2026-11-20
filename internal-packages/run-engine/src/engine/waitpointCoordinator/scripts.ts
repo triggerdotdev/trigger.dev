@@ -1025,6 +1025,10 @@ export function registerWaitpointCommands(redis: RedisClient): void {
    * all preserved and the handoff state is left alone.
    *
    * The caller therefore owes a fresh id per block operation.
+   *
+   * After the edge groups: requirePending, then optionally a batch position and its owner, then the
+   * absorption evidence. A position is a `refs` field `@header#index`, so it shares the block's lifetime;
+   * a different owner is refused as `positionOwned` before any write.
    */
   redis.defineCommand("runAbsorbBlockers", {
     numberOfKeys: 15,
@@ -1037,10 +1041,13 @@ export function registerWaitpointCommands(redis: RedisClient): void {
       -- Guard before any write: a wrong n must not half-apply the script. HDEL/HSETNX below
       -- are irreversible mid-script, and Redis does not roll back a script that errors. The trailing
       -- ARGV carries the absorption id, index member and read revision after the edge groups.
-      if n == nil or (#ARGV ~= 9 + n * 5 and #ARGV ~= 8 + n * 5) then
+      if n == nil or (#ARGV ~= 11 + n * 5 and #ARGV ~= 9 + n * 5 and #ARGV ~= 8 + n * 5) then
         return redis.error_reply('runAbsorbBlockers: arity mismatch')
       end
-      local evidenceOffset = #ARGV == 9 + n * 5 and 3 or 2
+      local evidenceOffset = #ARGV == 8 + n * 5 and 2 or 3
+      -- Optional batch position (refs field '@header#index') and the waitpoint claiming it.
+      local position, positionOwner = '', ''
+      if #ARGV == 11 + n * 5 then position, positionOwner = ARGV[6 + n * 5], ARGV[7 + n * 5] end
       if ARGV[1] == '' then
         return redis.error_reply('runAbsorbBlockers: ARGV[1] must be a block id')
       end
@@ -1088,6 +1095,12 @@ export function registerWaitpointCommands(redis: RedisClient): void {
              (evidenceOffset == 2 and redis.call('EXISTS', contrib) == 1))) then
         return { 'ownerGone', previous }
       end
+      -- One waitpoint per native batch position. A retried item's new child must not add a
+      -- second result at an index another waitpoint already holds in this block.
+      if position ~= '' and not isRollover then
+        local owner = redis.call('HGET', KEYS[7], position)
+        if owner and owner ~= positionOwner then return { 'positionOwned', owner } end
+      end
       -- Validate the declared predecessor's retained keys before any mutation. Rollover moves the
       -- hash instead of enumerating it; the manifest survives a lost reply and empty old blocks.
       if isRollover and (redis.call('EXISTS', wd, targets) > 0) then
@@ -1111,6 +1124,11 @@ ${PERSIST_RUN_KEYS}
       if evidenceOffset == 3 and ARGV[#ARGV - evidenceOffset] ~= '' then
         redis.call('SADD', contrib, '!accepted', ARGV[#ARGV - 1])
         redis.call('ZADD', KEYS[14], 0, ARGV[#ARGV - evidenceOffset + 1])
+      end
+      -- Compensation of this contribution releases a position it claimed.
+      if position ~= '' and redis.call('HSETNX', KEYS[7], position, positionOwner) == 1 and
+          evidenceOffset == 3 and ARGV[#ARGV - evidenceOffset] ~= '' then
+        redis.call('SADD', contrib, position)
       end
       local requestedIds = {}
       local seenDelivered = {}
@@ -1707,9 +1725,11 @@ ${PERSIST_RUN_KEYS}
       local removedFields = 0
       for i = 1, #removed do
         local field = removed[i]
-        if string.sub(field, 1, 1) ~= '!' then removedFields = removedFields + 1 end
+        local kind = string.sub(field, 1, 1)
+        if kind == '@' then redis.call('HDEL', refs, field) end
+        if kind ~= '!' and kind ~= '@' then removedFields = removedFields + 1 end
         local releaseEdge = false
-        if string.sub(field, 1, 1) ~= '!' and redis.call('HEXISTS', edge, field) == 1 then
+        if kind ~= '!' and kind ~= '@' and redis.call('HEXISTS', edge, field) == 1 then
           local claimField = '!' .. field
           local claims = tonumber(redis.call('HGET', refs, claimField)) or 1
           if claims > 1 then

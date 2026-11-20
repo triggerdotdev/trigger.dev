@@ -248,6 +248,9 @@ function settingsForm(
       connectedGitHubRepo: {
         branchTracking: { prod: { branch: "main" }, staging: { branch: "staging" } },
         previewDeploymentsEnabled: true,
+        supersedeProductionBuilds: false,
+        supersedeStagingBuilds: true,
+        supersedePreviewBuilds: true,
         buildFilters,
         createdAt: new Date("2026-09-15T00:00:00Z"),
         repository: {

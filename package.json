@@ -34,7 +34,7 @@
     "dev:docker:stop": "node scripts/docker.mjs -p triggerdotdev-dev-docker -f docker/dev-compose.yml stop",
     "test": "turbo run test --concurrency=1 -- --run",
     "test:webapp": "turbo run test --filter webapp -- --run",
-    "test:packages": "turbo run test --concurrency=1 --filter \"@trigger.dev/*\" -- --run",
+    "test:packages": "turbo run test --concurrency=1 --filter \"@trigger.dev/*\" --filter trigger.dev -- --run",
     "test:internal": "turbo run test --concurrency=1 --filter \"@internal/*\" -- --run",
     "test:dev": "turbo run test:dev",
     "start": "turbo run start",

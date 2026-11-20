@@ -56,6 +56,7 @@ export const webhooksWriteTools: McpToolDefinition[] = [
     description:
       "Replay a webhook delivery from its stored event as a new delivery. With no targetId it goes to every subscriber again, re-checking their filters; with targetId it goes to that one subscriber even if its filter skipped the event. Replays trigger real runs, so confirm with the user first.",
     shape: ReplayInput.shape,
+    approval: "required",
     auth,
     run: async (input, ctx) => {
       if (serverEnv.WEBHOOK_ENABLED !== "1") return errorResult("Not found");
@@ -125,6 +126,7 @@ export const webhooksWriteTools: McpToolDefinition[] = [
     description:
       "Generate a new signing secret for a hosted webhook endpoint and return it once, for providers where you choose the secret (for example GitHub). It replaces the existing secret; pass previousSecretTtlSeconds to keep accepting the old one while you update the provider, otherwise deliveries signed with it fail. Never print, log or commit the returned secret. The returned secret enters your context. To keep it out, run the CLI instead: `npx trigger.dev@latest webhooks generate-secret <endpoint> --env <env> --to-env <NAME>` saves it to .env.local without printing it, so you can pass it to the provider by variable name, or `--print` pipes it straight into the provider's CLI. When the endpoint already has a secret, add `--previous-secret-ttl` (for example 24h, or 0 if the old secret leaked). Prefer the CLI whenever you can run shell commands.",
     shape: GenerateSecretInput.shape,
+    approval: "required",
     auth,
     run: async (input, ctx) => {
       const environment = await resolveToolEnvironment(ctx);
@@ -178,5 +180,6 @@ export const webhooksWriteTools: McpToolDefinition[] = [
       },
     }),
     annotations: { title: "Set Webhook Secret", readOnlyHint: false, destructiveHint: true },
+    approval: "required",
   },
 ];

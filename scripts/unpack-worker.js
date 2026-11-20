@@ -2,6 +2,10 @@ const fs = require("fs");
 const zlib = require("zlib");
 const path = require("path");
 
+// Caps on inflated source, so a small bundle can't exhaust memory or disk.
+const MAX_FILE_BYTES = 64 * 1024 * 1024;
+const MAX_TOTAL_BYTES = 256 * 1024 * 1024;
+
 // Get the file paths from command line arguments
 let [jsonFilePath, destDir] = process.argv.slice(2);
 
@@ -10,16 +14,19 @@ if (!jsonFilePath || !destDir) {
   process.exit(1);
 }
 
-// Function to decompress the content
-function decompressContent(base64Encoded) {
-  // Decode base64 string to buffer
+const toMiB = (bytes) => `${bytes / 1024 / 1024} MiB`;
+
+function decompressContent(base64Encoded, filePath) {
   const compressedData = Buffer.from(base64Encoded, "base64");
 
-  // Decompress the data
-  const decompressedData = zlib.inflateSync(compressedData);
-
-  // Convert buffer to string
-  return decompressedData.toString();
+  try {
+    return zlib.inflateSync(compressedData, { maxOutputLength: MAX_FILE_BYTES });
+  } catch (error) {
+    if (error.code !== "ERR_BUFFER_TOO_LARGE") throw error;
+    throw new Error(
+      `Refusing ${filePath}: inflates past the ${toMiB(MAX_FILE_BYTES)} per-file limit`
+    );
+  }
 }
 
 try {
@@ -54,17 +61,11 @@ try {
   // Resolve the extraction root once so we can keep every file inside it.
   const extractionRoot = path.resolve(destDir);
 
-  // Create the destination directory if it doesn't exist
-  fs.mkdirSync(extractionRoot, { recursive: true });
+  // Inflate and check every file before writing any, so a refused bundle writes nothing.
+  const files = [];
+  let totalBytes = 0;
 
-  // Process each item in the array
-  const sourceFiles = data.metadata.sourceFiles;
-
-  sourceFiles.forEach((file) => {
-    // Decompress the contents
-    const decompressedContent = decompressContent(file.contents);
-
-    // Combine destination directory with file path
+  for (const file of data.metadata.sourceFiles) {
     const fullPath = path.resolve(extractionRoot, file.filePath);
 
     // Reject any path that escapes the extraction root (zip-slip via ../ etc.)
@@ -72,15 +73,25 @@ try {
       throw new Error(`Refusing to write outside destination: ${file.filePath}`);
     }
 
-    // Create directory structure if it doesn't exist
-    const dirPath = path.dirname(fullPath);
-    fs.mkdirSync(dirPath, { recursive: true });
+    const inflated = decompressContent(file.contents, file.filePath);
 
-    // Write the decompressed content to the file
-    fs.writeFileSync(fullPath, decompressedContent);
+    totalBytes += inflated.length;
+    if (totalBytes > MAX_TOTAL_BYTES) {
+      throw new Error(
+        `Refusing bundle: source inflates past the ${toMiB(MAX_TOTAL_BYTES)} total limit`
+      );
+    }
 
+    files.push({ fullPath, contents: inflated.toString() });
+  }
+
+  fs.mkdirSync(extractionRoot, { recursive: true });
+
+  for (const { fullPath, contents } of files) {
+    fs.mkdirSync(path.dirname(fullPath), { recursive: true });
+    fs.writeFileSync(fullPath, contents);
     console.log(`Created file: ${fullPath}`);
-  });
+  }
 
   console.log(`\nAll files have been extracted to: ${extractionRoot}`);
 } catch (error) {

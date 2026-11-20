@@ -2,25 +2,41 @@ import { env } from "~/env.server";
 
 /** The UAT cap vocabulary the MCP tools check. */
 export const MCP_SCOPES: readonly string[] = [
+  "manage:project",
   "read:alerts",
+  "read:batch",
   "read:branches",
   "read:deployments",
+  "read:environments",
+  "read:envvars",
+  "read:errors",
   "read:organizations",
   "read:projects",
   "read:prompts",
   "read:query",
+  "read:queues",
   "read:runs",
   "read:sessions",
+  "read:tasks",
+  "read:waitpoints",
   "read:webhooks",
   "trigger:tasks",
   "update:prompts",
   "write:alerts",
+  "write:batch",
+  "write:branches",
+  "write:deployments",
+  "write:errors",
   "write:projects",
   "write:query",
   "write:runs",
   "write:sessions",
+  "write:tasks",
+  "write:waitpoints",
   "write:webhooks",
 ];
+
+const EXPLICIT_ONLY_SCOPES = ["read:envvars"];
 
 export function mcpResource() {
   return `${env.MCP_ORIGIN}/mcp`;
@@ -63,9 +79,11 @@ export function oauthError(error: OAuthErrorCode, error_description: string): OA
   return { error, error_description };
 }
 
-/** Parses a space-delimited scope; absent means every read scope. Null when any is unknown. */
+/** Parses a space-delimited scope; absent means the default read scopes. Null when any is unknown. */
 export function parseScope(scope: string | null | undefined): string[] | null {
-  if (!scope?.trim()) return MCP_SCOPES.filter((s) => s.startsWith("read:"));
+  if (!scope?.trim()) {
+    return MCP_SCOPES.filter((s) => s.startsWith("read:") && !EXPLICIT_ONLY_SCOPES.includes(s));
+  }
   const requested = [...new Set(scope.trim().split(/\s+/))];
   return requested.every((s) => MCP_SCOPES.includes(s)) ? requested : null;
 }

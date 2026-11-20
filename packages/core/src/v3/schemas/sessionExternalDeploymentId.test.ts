@@ -99,3 +99,24 @@ describe("EndAndContinueSessionRequestBody.externalDeploymentId", () => {
     if (result.success) expect(result.data.externalDeploymentId).toBeUndefined();
   });
 });
+
+describe("SessionTriggerConfig.concurrencyKey", () => {
+  it("accepts a key per limit, like a trigger", () => {
+    const result = SessionTriggerConfig.safeParse({
+      ...baseConfig,
+      concurrencyKey: { default: "session-1", "org-subagents": 42 },
+    });
+
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.concurrencyKey).toEqual({ default: "session-1", "org-subagents": "42" });
+    }
+  });
+
+  it("rejects a key map without a default", () => {
+    expect(
+      SessionTriggerConfig.safeParse({ ...baseConfig, concurrencyKey: { "org-subagents": "a" } })
+        .success
+    ).toBe(false);
+  });
+});

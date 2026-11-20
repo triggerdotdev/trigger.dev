@@ -55,7 +55,6 @@ export const RUN_STORE_METHOD_NAMES = [
   "findSnapshotCompletedWaitpointIds",
   "findSnapshotCompletedWaitpointIdsWithPresence",
   "findWaitpointConnectedRunIds",
-  "findWaitpointCompletedSnapshotIds",
   "blockRunWithWaitpointEdges",
   "countPendingWaitpoints",
   "countPendingWaitpointsWithPresence",

@@ -132,7 +132,7 @@ describe("IgnoredPatternsEditor", () => {
   it("starts with a note that every push deploys and reports typed paths", () => {
     const onChange = mount();
     expect(container.textContent).toContain(
-      "No paths yet, so every push to a tracked branch deploys."
+      "No paths yet, every push to a tracked branch deploys."
     );
     expect(button("Expand")).toBeNull();
 
