@@ -24,4 +24,5 @@ export type SystemResources = {
   runQueue: RunQueue;
   raceSimulationSystem: RaceSimulationSystem;
   pendingVersionRunIdLookup: PendingVersionRunIdLookup;
+  legacyToV2WorkerQueues?: ReadonlyMap<string, string>;
 };

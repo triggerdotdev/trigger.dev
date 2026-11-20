@@ -1402,7 +1402,12 @@ export class RunAttemptSystem {
                   projectId: env.project.id,
                   timestamp: retryAt.getTime(),
                   resetQueueAttempts: resetQueueAttempts ?? !forceRequeue,
-                  workerQueue: workerQueueForPublish(run, env),
+                  workerQueue: workerQueueForPublish(
+                    run,
+                    env,
+                    undefined,
+                    this.$.legacyToV2WorkerQueues
+                  ),
                   error: {
                     type: "INTERNAL_ERROR",
                     code: "TASK_RUN_DEQUEUED_MAX_RETRIES",
@@ -1957,7 +1962,8 @@ export class RunAttemptSystem {
         latestSnapshot.executionStatus !== "PENDING_EXECUTING" ||
         (outcome === "fail" && !latestSnapshot.checkpointId) ||
         (outcome === "fallback" && latestSnapshot.checkpointId) ||
-        (servesWorkerQueue && !servesRun(run, latestSnapshot, servesWorkerQueue))
+        (servesWorkerQueue &&
+          !servesRun(run, latestSnapshot, servesWorkerQueue, this.$.legacyToV2WorkerQueues))
       ) {
         this.restoreOutcomesCounter.add(1, {
           outcome,
@@ -2114,7 +2120,7 @@ export class RunAttemptSystem {
           { id: runId },
           { select: { workerQueue: true } }
         );
-        refused = !servesRun(run, latestSnapshot, servesWorkerQueue);
+        refused = !servesRun(run, latestSnapshot, servesWorkerQueue, this.$.legacyToV2WorkerQueues);
       }
 
       if (refused) {
@@ -3441,21 +3447,22 @@ const METRIC_REASONS = new Set([
 function servesRun(
   run: { workerQueue: string } | null,
   snapshot: Pick<EnhancedExecutionSnapshot, "environmentId" | "environmentType" | "checkpoint">,
-  serves: (workerQueue: string) => boolean
+  serves: (workerQueue: string) => boolean,
+  legacyToV2: ReadonlyMap<string, string> | undefined
 ): boolean {
   if (!run) {
     return false;
   }
   return (
     serves(run.workerQueue) ||
-    (!!snapshot.checkpoint &&
-      serves(
-        workerQueueForPublish(
-          run,
-          { id: snapshot.environmentId, type: snapshot.environmentType },
-          snapshot.checkpoint
-        )
-      ))
+    serves(
+      workerQueueForPublish(
+        run,
+        { id: snapshot.environmentId, type: snapshot.environmentType },
+        snapshot.checkpoint ?? undefined,
+        legacyToV2
+      )
+    )
   );
 }
 

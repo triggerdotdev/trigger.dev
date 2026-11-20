@@ -1818,6 +1818,15 @@ const EnvironmentSchema = z
     TRIGGER_WORKER_QUEUE_SCHEDULED_SPLIT_ENABLED: z.string().default("0"),
     // Controls new assignments only; existing v2 runs retain their routing.
     TRIGGER_WORKER_QUEUE_V2_ENABLED: z.string().default("0"),
+    TRIGGER_WORKER_QUEUE_LEGACY_ON_V2: z
+      .string()
+      .default("")
+      .transform((raw) =>
+        raw
+          .split(",")
+          .map((queue) => queue.trim())
+          .filter(Boolean)
+      ),
 
     TRIGGER_MOLLIFIER_ENABLED: z.string().default("0"),
     // Separate switch for the drainer (consumer side) so it can be split

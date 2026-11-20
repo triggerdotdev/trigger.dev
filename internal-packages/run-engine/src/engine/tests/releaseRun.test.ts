@@ -17,7 +17,12 @@ vi.setConfig({ testTimeout: 60_000 });
 const taskIdentifier = "test-task";
 const queueName = "task/test-task";
 
-function createEngine(prisma: PrismaClient, redisOptions: any, queueMaxAttempts?: number) {
+function createEngine(
+  prisma: PrismaClient,
+  redisOptions: any,
+  queueMaxAttempts?: number,
+  legacyWorkerQueuesOnV2?: string[]
+) {
   const { meter, getCounterValue } = createTestMetricsMeter();
   const engine = new RunEngine({
     prisma,
@@ -54,6 +59,7 @@ function createEngine(prisma: PrismaClient, redisOptions: any, queueMaxAttempts?
     },
     tracer: trace.getTracer("test", "0.0.0"),
     meter: meter as Meter,
+    legacyWorkerQueuesOnV2,
   });
   return { engine, getCounterValue };
 }
@@ -326,6 +332,52 @@ describe("RunEngine releaseRun", () => {
             result: "requeued",
           })
         ).toBe(1);
+      } finally {
+        await engine.quit();
+      }
+    }
+  );
+
+  containerTestWithIsolatedRedis(
+    "accepts a migrated legacy run's release from a worker that serves only its v2 queue",
+    async ({ prisma, redisOptions }) => {
+      const { engine } = createEngine(prisma, redisOptions, undefined, ["us-east-1"]);
+      const v2Queue = "us-east-1:v2:ondemand:fresh:container:stable";
+
+      try {
+        const environment = await setupAuthenticatedEnvironment(prisma, "PRODUCTION");
+        await setupBackgroundWorker(engine, environment, taskIdentifier);
+        const run = await engine.trigger(
+          {
+            number: 1,
+            friendlyId: "run_1234",
+            environment,
+            taskIdentifier,
+            payload: "{}",
+            payloadType: "application/json",
+            context: {},
+            traceContext: {},
+            traceId: "t12345",
+            spanId: "s12345",
+            workerQueue: "us-east-1",
+            queue: queueName,
+            isTest: false,
+            tags: [],
+          },
+          prisma
+        );
+        const dequeued = await dequeueNext(engine, environment, v2Queue);
+
+        const released = await engine.releaseRun({
+          runId: run.id,
+          snapshotId: dequeued.snapshot.id,
+          reason: "PodFailed",
+          servesWorkerQueue: (workerQueue) => workerQueue === v2Queue,
+        });
+        expect(released).toEqual({ ok: true, requeued: true });
+
+        const redelivered = await dequeueNext(engine, environment, v2Queue);
+        expect(redelivered.run.id).toBe(run.id);
       } finally {
         await engine.quit();
       }
