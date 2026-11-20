@@ -4,6 +4,7 @@ import { STSClient, GetCallerIdentityCommand } from "@aws-sdk/client-sts";
 import {
   ApiError,
   OIDCTokenError,
+  RateLimitError,
   apiClientManager,
   sdkScope,
   taskContext,
@@ -67,6 +68,7 @@ describe("run-only OIDC and AWS credentials over HTTP", () => {
   let stsRequests: URLSearchParams[];
   let mintStatus: number;
   let mintHeaders: Record<string, string>;
+  let mintErrorBody: { error: string; code?: string };
   let mintExpiresAt: Date;
   let stsComplete: boolean;
   let expiration: Date;
@@ -86,6 +88,7 @@ describe("run-only OIDC and AWS credentials over HTTP", () => {
     stsRequests = [];
     mintStatus = 200;
     mintHeaders = {};
+    mintErrorBody = { error: "OIDC access denied", code: "OIDC_DENIED" };
     mintExpiresAt = new Date(Date.now() + 300_000);
     stsComplete = true;
     expiration = new Date(Date.now() + 3600 * 1000);
@@ -112,7 +115,7 @@ describe("run-only OIDC and AWS credentials over HTTP", () => {
                   token: `external-${mintRequests.length}`,
                   expiresAt: mintExpiresAt.toISOString(),
                 }
-              : { error: "OIDC access denied", code: "OIDC_DENIED" }
+              : mintErrorBody
           )
         );
       })
@@ -238,7 +241,7 @@ describe("run-only OIDC and AWS credentials over HTTP", () => {
     }
   );
 
-  it.each([401, 403, 429])(
+  it.each([401, 403])(
     "preserves API error details without a root-key retry (%s)",
     async (status) => {
       mintStatus = status;
@@ -260,6 +263,31 @@ describe("run-only OIDC and AWS credentials over HTTP", () => {
       expect(mintRequests[0]?.authorization).toBe(`Bearer ${process.env.TRIGGER_RUN_TOKEN}`);
     }
   );
+
+  it.each([
+    { error: "Rate Limit Exceeded" },
+    { error: "OIDC token rate limit exceeded", code: "RATE_LIMIT_EXCEEDED" },
+  ])("reports OIDC throttling as a RateLimitError: $error", async (body) => {
+    mintStatus = 429;
+    mintErrorBody = body;
+    const reset = String(Date.now() + 10_000);
+    mintHeaders = { "x-ratelimit-reset": reset };
+    auth.configure({ requestOptions: { retry: { maxAttempts: 1 } } });
+
+    const error = await auth.getOIDCToken({ audience: "service" }).catch((error) => error);
+
+    expect(error).toBeInstanceOf(RateLimitError);
+    expect(error).toMatchObject({
+      status: 429,
+      code: "RATE_LIMIT_EXCEEDED",
+      message: body.error,
+      headers: { "x-ratelimit-reset": reset },
+      body,
+    });
+    expect(error.millisecondsUntilReset).toBeGreaterThan(0);
+    expect(mintRequests).toHaveLength(1);
+    expect(mintRequests[0]?.authorization).toBe(`Bearer ${process.env.TRIGGER_RUN_TOKEN}`);
+  });
 
   // Catches: retrying permanently unavailable OIDC, or disabling retries for transient outages.
   it.each([
