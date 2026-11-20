@@ -160,6 +160,7 @@ export const WorkerApiRunAttemptStartRequestBody = z.object({
   /** Set by runners that report and install run-token refreshes, so the attempt can get a short-lived token. */
   supportsRunTokenRefresh: z.boolean().optional().catch(undefined),
   supportsUsageJwtRefresh: z.boolean().optional().catch(undefined),
+  supportsRootKeyFreeExecution: z.boolean().optional().catch(undefined),
 });
 export type WorkerApiRunAttemptStartRequestBody = z.infer<
   typeof WorkerApiRunAttemptStartRequestBody
@@ -184,6 +185,7 @@ export type WorkerApiContinueRunExecutionResponseBody = z.infer<
 export const WorkerApiRunAttemptStartResponseBody = StartRunAttemptResult.and(
   z.object({
     envVars: z.record(z.string(), z.string()),
+    requiresRunToken: z.boolean().optional(),
     secretProxy: SecretProxyExecution.optional(),
   })
 );

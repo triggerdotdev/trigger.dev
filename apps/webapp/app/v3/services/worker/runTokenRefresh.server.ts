@@ -11,6 +11,7 @@ import type { PrismaClientOrTransaction } from "~/db.server";
 import { env } from "~/env.server";
 import { logger } from "~/services/logger.server";
 import { mintRunToken, runTokenInjectionEnabled } from "~/services/oidc/runToken.server";
+import { rootKeyInjectionDisabled } from "./rootKeyInjectionPolicy.server";
 import { singleton } from "~/utils/singleton";
 import { pinnedRunPolicy, runTokenScopes } from "./runExecutionPolicy.server";
 
@@ -171,7 +172,11 @@ async function issue(
     return { result: "skipped", reason: "identity_mismatch" };
   }
   // A policy run has no root key, so its token is refreshed whatever the injection flag says.
-  if (!pinned && !runTokenInjectionEnabled(environment.organization.featureFlags)) {
+  if (
+    !pinned &&
+    !rootKeyInjectionDisabled(environment) &&
+    !runTokenInjectionEnabled(environment.organization.featureFlags)
+  ) {
     return { result: "skipped", reason: "injection_disabled" };
   }
 
@@ -215,6 +220,8 @@ async function loadIdentity(
         type: true,
         organizationId: true,
         projectId: true,
+        rootKeyInjectionDisabledAt: true,
+        parentEnvironment: { select: { rootKeyInjectionDisabledAt: true } },
         organization: { select: { featureFlags: true } },
       },
     }),

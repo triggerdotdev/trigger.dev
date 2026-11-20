@@ -441,6 +441,8 @@ model RuntimeEnvironment {
   apiKey             String    @unique
   /// Non-null prevents the root API key from being returned to users.
   rootApiKeyHiddenAt DateTime?
+  /// Non-null disables automatic root key injection into new deployed attempts.
+  rootKeyInjectionDisabledAt DateTime?
 
   /// @deprecated was for v2
   pkApiKey String @unique

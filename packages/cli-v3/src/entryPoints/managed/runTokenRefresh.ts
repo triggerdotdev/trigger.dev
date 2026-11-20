@@ -1,4 +1,5 @@
 import {
+  RUN_TOKEN_EXPIRY_BUFFER_SECONDS,
   RUN_TOKEN_REFRESH_BEFORE_EXPIRY_SECONDS,
   type RunTokenHeartbeatReport,
   type RunTokenInstallResult,
@@ -40,6 +41,13 @@ export class RunTokenRefresher {
     return { expiresAt: this.expiresAt, trigger, installation: this.pendingReport };
   }
 
+  get hasUsableToken(): boolean {
+    return (
+      this.expiresAt !== undefined &&
+      this.expiresAt > this.nowSeconds() + RUN_TOKEN_EXPIRY_BUFFER_SECONDS
+    );
+  }
+
   get isDue(): boolean {
     return (
       this.expiresAt !== undefined &&
@@ -63,7 +71,8 @@ export class RunTokenRefresher {
       !claims ||
       claims.run_id !== this.opts.runId ||
       claims.attempt !== this.opts.attemptNumber ||
-      claims.exp === undefined
+      claims.exp === undefined ||
+      claims.exp <= this.nowSeconds()
     ) {
       outcome = { result: "failure", reason: "invalid_token" };
     } else {
@@ -88,6 +97,17 @@ export class RunTokenRefresher {
   private nowSeconds() {
     return (this.opts.now?.() ?? Date.now()) / 1_000;
   }
+}
+
+export function hasUsableRunToken(token: string | undefined, runId: string, attempt: number) {
+  const claims = token && claimsOf(token);
+  return (
+    !!claims &&
+    claims.run_id === runId &&
+    claims.attempt === attempt &&
+    claims.exp !== undefined &&
+    claims.exp > Date.now() / 1000 + RUN_TOKEN_EXPIRY_BUFFER_SECONDS
+  );
 }
 
 // Not verification: the token came from the control plane, this only reads timing and identity.

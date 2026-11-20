@@ -78,9 +78,11 @@ export type TaskRunProcessExecuteParams = {
   payload: TaskRunExecutionPayload;
   messageId: string;
   env?: Record<string, string>;
+  requiresRunToken?: boolean;
 };
 
 export class TaskRunProcess {
+  hasReceivedRootKey = false;
   private _ipc?: WorkerToExecutorProcessConnection;
   private _child: ChildProcess | undefined;
   private _childPid?: number;
@@ -328,6 +330,7 @@ export class TaskRunProcess {
     const { execution, traceContext, metrics } = params.payload;
 
     this._currentExecution = execution;
+    this.hasReceivedRootKey ||= Object.hasOwn(params.env ?? {}, "TRIGGER_SECRET_KEY");
 
     // Read before the attempt is dispatched, so a kill straight after it is not in the baseline.
     // A read that does not finish in time leaves detection off for this attempt.
@@ -355,6 +358,7 @@ export class TaskRunProcess {
         metadata: this.options.serverWorker,
         metrics,
         env: params.env,
+        requiresRunToken: params.requiresRunToken,
         isWarmStart: isWarmStart ?? this.options.isWarmStart,
       });
 
