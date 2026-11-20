@@ -283,9 +283,16 @@ export class S2RealtimeStreams implements StreamResponder, StreamIngestor {
   async readRecords(
     runId: string,
     streamId: string,
-    afterSeqNum?: number
+    afterSeqNum?: number,
+    limit?: number
   ): Promise<StreamRecord[]> {
-    return this.#readRecordsByName(this.toStreamName(runId, streamId), afterSeqNum);
+    return this.#readRecordsByName(this.toStreamName(runId, streamId), afterSeqNum, limit);
+  }
+
+  async listRunStreams(runId: string): Promise<string[]> {
+    const prefix = this.toStreamName(runId, "");
+    const names = await this.#s2ListStreamNames(prefix);
+    return names.map((name) => name.slice(prefix.length)).filter((streamId) => streamId);
   }
 
   /**

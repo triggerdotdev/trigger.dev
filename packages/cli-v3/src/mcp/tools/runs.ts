@@ -453,6 +453,10 @@ export const listRunsTool = {
       period: input.period,
       machine: input.machine,
       region: input.region,
+      queue: input.queue ? { type: "custom", name: input.queue } : undefined,
+      batch: input.batch,
+      schedule: input.schedule,
+      bulkAction: input.bulkAction,
     });
 
     const formattedRuns = formatRunList(result);

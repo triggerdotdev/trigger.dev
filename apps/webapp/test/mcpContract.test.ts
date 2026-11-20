@@ -31,7 +31,20 @@ const LOCAL_ONLY = [
 
 const pendingWriteTools: string[] = [];
 
-const REMOTE_ONLY: Record<string, string> = {};
+const REMOTE_ONLY: Record<string, string> = {
+  list_run_tags: "the public API has no endpoint to list run tags",
+  search_logs: "the public API has no endpoint to search logs",
+  get_log: "the public API has no endpoint to read a log entry",
+  reset_run_idempotency_key: "the public API has no endpoint for it; it mirrors a dashboard action",
+  update_run_metadata: "the CLI has no tool for it yet",
+  add_run_tags: "the CLI has no tool for it yet",
+  reschedule_run: "the CLI has no tool for it yet",
+  read_run_stream: "the CLI has no tool for it yet",
+  list_bulk_actions: "the CLI has no tool for it yet",
+  get_bulk_action: "the CLI has no tool for it yet",
+  create_bulk_action: "the CLI has no tool for it yet",
+  abort_bulk_action: "the CLI has no tool for it yet",
+};
 
 const WRITE_TOOL_APPROVAL: Record<string, "required" | "configurable" | { none: string }> = {
   replay_webhook_delivery: "required",
@@ -42,6 +55,12 @@ const WRITE_TOOL_APPROVAL: Record<string, "required" | "configurable" | { none: 
   close_agent_chat: { none: "covered by the start_agent_chat confirmation for that chat" },
   cancel_run: "configurable",
   replay_run: "configurable",
+  reset_run_idempotency_key: "configurable",
+  update_run_metadata: "configurable",
+  add_run_tags: "configurable",
+  reschedule_run: "configurable",
+  create_bulk_action: "required",
+  abort_bulk_action: "configurable",
   trigger_task: "configurable",
   create_alert: "configurable",
   resolve_alert: "configurable",
