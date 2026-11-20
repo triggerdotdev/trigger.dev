@@ -12,6 +12,7 @@ import {
   QueueListIcon,
   SignalIcon,
 } from "@heroicons/react/20/solid";
+import { useParams } from "@remix-run/react";
 import { type LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { formatDurationMilliseconds, type RunExecutionPolicy } from "@trigger.dev/core/v3";
 import { assertNever } from "assert-never";
@@ -81,6 +82,8 @@ import {
 import { WaitpointDetailTable } from "~/components/runs/v3/WaitpointDetails";
 import { RuntimeIcon } from "~/components/RuntimeIcon";
 import { SessionStatusCombo } from "~/components/sessions/v1/SessionStatus";
+import { SESSION_RUN_PARAM } from "~/components/sessions/v1/trace/sessionTraceSelection";
+import type { SessionStatus } from "~/services/sessionsRepository/sessionsRepository.server";
 import { WarmStartCombo } from "~/components/WarmStarts";
 import { useEnvironment } from "~/hooks/useEnvironment";
 import { useOrganization } from "~/hooks/useOrganizations";
@@ -789,30 +792,7 @@ function RunBody({
                   </Property.Item>
                 )}
                 {run.session && (
-                  <Property.Item>
-                    <Property.Label>Session</Property.Label>
-                    <Property.Value>
-                      <SimpleTooltip
-                        button={
-                          <TextLink
-                            to={v3SessionPath(organization, project, environment, {
-                              friendlyId: run.session.friendlyId,
-                            })}
-                            className="group flex flex-wrap items-center gap-x-2 gap-y-0"
-                          >
-                            <CopyableText
-                              value={run.session.externalId ?? run.session.friendlyId}
-                              copyValue={run.session.externalId ?? run.session.friendlyId}
-                              asChild
-                            />
-                            <SessionStatusCombo status={run.session.status} />
-                          </TextLink>
-                        }
-                        content={`Jump to session (${run.session.reason})`}
-                        disableHoverableContent
-                      />
-                    </Property.Value>
-                  </Property.Item>
+                  <RunSessionProperty session={run.session} runFriendlyId={run.friendlyId} />
                 )}
                 <Property.Item>
                   <Property.Label>
@@ -1709,6 +1689,58 @@ function TraceExportMenuItems({ runParam }: { runParam: string }) {
         openInNewTab
       />
     </>
+  );
+}
+
+function RunSessionProperty({
+  session,
+  runFriendlyId,
+}: {
+  session: { friendlyId: string; externalId: string | null; status: SessionStatus; reason: string };
+  runFriendlyId: string;
+}) {
+  const organization = useOrganization();
+  const project = useProject();
+  const environment = useEnvironment();
+  // On this session's own page a link would only reload it and drop the selection.
+  const { sessionParam } = useParams();
+  const onSessionPage = sessionParam === session.friendlyId || sessionParam === session.externalId;
+
+  const id = (
+    <CopyableText
+      value={session.externalId ?? session.friendlyId}
+      copyValue={session.externalId ?? session.friendlyId}
+      asChild
+    />
+  );
+  const status = <SessionStatusCombo status={session.status} />;
+
+  return (
+    <Property.Item>
+      <Property.Label>Session</Property.Label>
+      <Property.Value>
+        {onSessionPage ? (
+          <span className="flex flex-wrap items-center gap-x-2 gap-y-0">
+            {id}
+            {status}
+          </span>
+        ) : (
+          <SimpleTooltip
+            button={
+              <TextLink
+                to={`${v3SessionPath(organization, project, environment, session)}?${SESSION_RUN_PARAM}=${runFriendlyId}`}
+                className="group flex flex-wrap items-center gap-x-2 gap-y-0"
+              >
+                {id}
+                {status}
+              </TextLink>
+            }
+            content={`Jump to session (${session.reason})`}
+            disableHoverableContent
+          />
+        )}
+      </Property.Value>
+    </Property.Item>
   );
 }
 

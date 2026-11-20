@@ -1,4 +1,4 @@
-import { millisecondsToNanoseconds } from "@trigger.dev/core/v3";
+import { millisecondsToNanoseconds, nanosecondsToMilliseconds } from "@trigger.dev/core/v3";
 import type { TraceTimelineScale } from "~/components/runs/v3/trace/timelineScale";
 import { isFinalRunStatus } from "~/v3/taskStatus";
 import type { SessionTraceRun } from "./sessionTraceTypes";
@@ -76,6 +76,56 @@ export function initiallyExpandedRunFriendlyId(
   totalCount: number
 ): string | undefined {
   return liveRunFriendlyId(runs, totalCount) ?? newestRun(runs)?.friendlyId;
+}
+
+/** Span names chat.agent opens while it waits for the user's next message. */
+const MESSAGE_WAIT_SPAN_NAMES = new Set([
+  "first message",
+  "first message (continuation)",
+  "next message",
+  "next message (after error)",
+]);
+
+export type MessageWait = { sinceMs: number | undefined };
+
+/** Runs inside the wait span once the message has arrived, before the span closes. */
+const RESUME_SPAN_NAME = "onChatResume()";
+
+/**
+ * Whether a chat run is waiting for a message: its newest wait span is still open and no resume
+ * work has started inside it. A waiting run's status stays executing, so only its spans say so.
+ * Waits sit at different depths (the first under `run()`, later ones inside the turn), so this
+ * goes by name and start, not position.
+ */
+export function runMessageWait(
+  snapshot:
+    | {
+        events: ReadonlyArray<{ data: { message: string; isPartial: boolean; offset: number } }>;
+        rootStartedAt: Date | string | undefined;
+      }
+    | undefined
+): MessageWait | undefined {
+  if (!snapshot) return undefined;
+  let newest: { isPartial: boolean; offset: number } | undefined;
+  let newestResumeOffset = -1;
+  for (const event of snapshot.events) {
+    if (event.data.message === RESUME_SPAN_NAME) {
+      newestResumeOffset = Math.max(newestResumeOffset, event.data.offset);
+      continue;
+    }
+    if (!MESSAGE_WAIT_SPAN_NAMES.has(event.data.message)) continue;
+    if (!newest || event.data.offset >= newest.offset) newest = event.data;
+  }
+  if (!newest?.isPartial || newestResumeOffset >= newest.offset) return undefined;
+  const rootStartMs = snapshot.rootStartedAt
+    ? new Date(snapshot.rootStartedAt).getTime()
+    : undefined;
+  return {
+    sinceMs:
+      rootStartMs === undefined
+        ? undefined
+        : rootStartMs + nanosecondsToMilliseconds(newest.offset),
+  };
 }
 
 function newestRun(runs: SessionTraceRun[]) {

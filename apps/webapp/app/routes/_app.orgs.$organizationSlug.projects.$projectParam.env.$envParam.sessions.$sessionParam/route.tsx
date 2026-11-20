@@ -251,6 +251,7 @@ export default function Page() {
                   channels={channels}
                   transcriptRead={transcriptRead}
                   traceTreeSnapshot={traceTreeSnapshot}
+                  sessionOpen={status === "ACTIVE"}
                 />
               ) : (
                 <StandaloneConversationPane session={session} channels={channels} />
@@ -285,11 +286,14 @@ function SessionLeftPane({
   channels,
   transcriptRead,
   traceTreeSnapshot,
+  sessionOpen,
 }: {
   session: LoadedSession;
   channels: string[];
   transcriptRead: boolean;
   traceTreeSnapshot: ResizableSnapshot | undefined;
+  /** Closed and expired sessions start no more runs. */
+  sessionOpen: boolean;
 }) {
   const organization = useOrganization();
   const project = useProject();
@@ -358,6 +362,7 @@ function SessionLeftPane({
               runsPath={v3SessionRunsPath(organization, project, environment, session)}
               treeSnapshot={traceTreeSnapshot}
               active={view === "trace"}
+              sessionOpen={sessionOpen}
             />
           </SessionTabPanel>
         )}
