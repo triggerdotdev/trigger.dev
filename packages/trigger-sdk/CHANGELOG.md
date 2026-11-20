@@ -1,5 +1,13 @@
 # @trigger.dev/sdk
 
+## 4.8.8
+
+### Patch Changes
+
+- When OIDC token requests are still throttled after retries, `auth.getOIDCToken()` now throws `RateLimitError` with code `RATE_LIMIT_EXCEEDED` for both per-run and shared API limits. If you catch these errors with `instanceof OIDCTokenError`, check for `RateLimitError` instead. Other OIDC errors and retry behavior are unchanged. ([`04b139db7`](https://github.com/triggerdotdev/trigger.dev/commit/04b139db725afe0be06ef02aff590f072c8a6033))
+- Updated dependencies:
+  - `@trigger.dev/core@4.8.8`
+
 ## 4.8.7
 
 ### Patch Changes
