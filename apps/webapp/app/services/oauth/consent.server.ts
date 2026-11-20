@@ -75,14 +75,23 @@ export async function describeOAuthClientName(clientId: string): Promise<string>
 }
 
 const SCOPE_LABEL_OVERRIDES: Record<string, string> = {
+  "manage:project": "Manage project settings",
+  "read:batch": "Read batches",
+  "read:envvars": "Read environment variable names",
   "read:query": "Run read-only queries",
   "trigger:tasks": "Trigger tasks",
   "update:prompts": "Update prompts",
   "write:alerts": "Create and resolve alerts",
+  "write:batch": "Manage batches",
+  "write:branches": "Manage preview branches",
+  "write:deployments": "Manage deployments",
+  "write:errors": "Resolve and ignore errors",
   "write:projects": "Create projects",
   "write:query": "Run queries",
   "write:runs": "Cancel and replay runs",
   "write:sessions": "Send to and end agent sessions",
+  "write:tasks": "Manage tasks",
+  "write:waitpoints": "Complete waitpoints",
   "write:webhooks": "Manage webhooks",
 };
 

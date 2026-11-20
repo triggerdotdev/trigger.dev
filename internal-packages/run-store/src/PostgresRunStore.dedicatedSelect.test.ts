@@ -272,58 +272,6 @@ async function runCompletedWaitpointsScenario(
   return { snapshotId: snapshot.id, w1, w2, fetched };
 }
 
-// --- connection back-ref on Waitpoint: blockingTaskRuns --------------------------------------
-
-async function runBlockingTaskRunsScenario(
-  prisma: AnyClient,
-  schemaVariant: RunStoreSchemaVariant,
-  suffix: string
-) {
-  const store = makeStore(prisma, schemaVariant);
-  const env = await seedEnvironment(prisma, schemaVariant, suffix);
-  const runId = `run_${suffix}`;
-  const waitpointId = `wp_block_${suffix}`;
-
-  await store.createRun(
-    buildCreateRunInput({
-      runId,
-      friendlyId: `run_friendly_${suffix}`,
-      organizationId: env.organization.id,
-      projectId: env.project.id,
-      runtimeEnvironmentId: env.environment.id,
-    })
-  );
-  await seedPendingWaitpoint(prisma, {
-    id: waitpointId,
-    friendlyId: `waitpoint_block_${suffix}`,
-    projectId: env.project.id,
-    environmentId: env.environment.id,
-  });
-
-  // Block the run on the waitpoint (writes the TaskRunWaitpoint block edge + connection).
-  await store.blockRunWithWaitpointEdges({
-    runId,
-    waitpointIds: [waitpointId],
-    projectId: env.project.id,
-  });
-
-  // A waitpoint read that includes `blockingTaskRuns` with the nested `taskRun`.
-  const waitpoint = await store.findWaitpoint({
-    where: { id: waitpointId },
-    include: {
-      blockingTaskRuns: {
-        select: {
-          taskRun: {
-            select: { id: true, friendlyId: true },
-          },
-        },
-      },
-    },
-  });
-
-  return { runId, waitpointId, waitpoint, friendlyId: `run_friendly_${suffix}` };
-}
-
 describe("PostgresRunStore dedicated caller-select adapter (P2-store-bodies-2)", () => {
   // associatedWaitpoint (TaskRun group-A) — RED on dedicated before this task, GREEN after.
   heteroRunOpsPostgresTest(
@@ -375,34 +323,6 @@ describe("PostgresRunStore dedicated caller-select adapter (P2-store-bodies-2)",
 
       expect(r.fetched).not.toBeNull();
       expect(r.fetched!.completedWaitpoints.map((w) => w.id).sort()).toEqual([r.w1, r.w2].sort());
-    }
-  );
-
-  // blockingTaskRuns connection back-ref (Waitpoint group-A) — RED on dedicated before, GREEN after.
-  heteroRunOpsPostgresTest(
-    "findWaitpoint honors blockingTaskRuns back-ref on the DEDICATED client",
-    async ({ prisma17 }) => {
-      const r = await runBlockingTaskRunsScenario(prisma17, "dedicated", "ded_bk");
-
-      expect(r.waitpoint).not.toBeNull();
-      expect(r.waitpoint!.id).toBe(r.waitpointId);
-      const blocking = r.waitpoint!.blockingTaskRuns;
-      expect(blocking.length).toBe(1);
-      expect(blocking[0].taskRun.id).toBe(r.runId);
-      expect(blocking[0].taskRun.friendlyId).toBe(r.friendlyId);
-    }
-  );
-
-  heteroRunOpsPostgresTest(
-    "findWaitpoint honors blockingTaskRuns back-ref on the LEGACY client",
-    async ({ prisma14 }) => {
-      const r = await runBlockingTaskRunsScenario(prisma14, "legacy", "leg_bk");
-
-      expect(r.waitpoint).not.toBeNull();
-      const blocking = r.waitpoint!.blockingTaskRuns;
-      expect(blocking.length).toBe(1);
-      expect(blocking[0].taskRun.id).toBe(r.runId);
-      expect(blocking[0].taskRun.friendlyId).toBe(r.friendlyId);
     }
   );
 

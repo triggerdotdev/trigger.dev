@@ -10,7 +10,6 @@ import path from "path";
 import { setSourceMapsSupport } from "node:module";
 import { pathToFileURL } from "node:url";
 import type { Server as IoServer } from "socket.io";
-import type { WebSocketServer } from "ws";
 import type { RateLimitMiddleware } from "~/services/apiRateLimit.server";
 import { type RunWithHttpContextFunction } from "~/services/httpAsyncStorage.server";
 import { createHostHeaderGuard } from "./app/utils/hostHeader";
@@ -32,6 +31,28 @@ const WORKERS =
 // LB pipelining a request onto a connection Node has already closed (→ 502).
 const HTTP_KEEPALIVE_TIMEOUT_MS =
   Number.parseInt(process.env.HTTP_KEEPALIVE_TIMEOUT_MS || "", 10) || 65 * 1000;
+const HEALTHCHECK_PORT = parseHealthcheckPort(process.env.HEALTHCHECK_PORT);
+
+function parseHealthcheckPort(value: string | undefined) {
+  if (!value) return undefined;
+
+  const port = Number(value);
+  if (!Number.isInteger(port) || port < 1 || port > 65535) {
+    throw new Error(`Invalid HEALTHCHECK_PORT: ${value}`);
+  }
+  return port;
+}
+
+function createHealthApp(healthcheckHandler: RequestHandler) {
+  const app = express();
+  app.disable("x-powered-by");
+  app.use(createHostHeaderGuard());
+  app.get("/healthcheck", healthcheckHandler);
+  app.use((_req, res) => {
+    res.status(404).send("Not Found");
+  });
+  return app;
+}
 
 function forkWorkers() {
   for (let i = 0; i < WORKERS; i++) {
@@ -198,7 +219,7 @@ async function startServer() {
     return build;
   };
 
-  // Boots the entry.server singletons (socket.io, wss, rate limiters).
+  // Boots the entry.server singletons (socket.io, rate limiters).
   const build = await loadBuild();
 
   const port = process.env.REMIX_APP_PORT || process.env.PORT || 3000;
@@ -214,7 +235,6 @@ async function startServer() {
     });
 
     const socketIo: { io: IoServer } | undefined = build.entry.module.socketIo;
-    const wss: WebSocketServer | undefined = build.entry.module.wss;
     const apiRateLimiter: RateLimitMiddleware = build.entry.module.apiRateLimiter;
     const deploymentRateLimiter: RateLimitMiddleware = build.entry.module.deploymentRateLimiter;
     const engineRateLimiter: RateLimitMiddleware = build.entry.module.engineRateLimiter;
@@ -263,6 +283,7 @@ async function startServer() {
           host: req.hostname,
           method: req.method,
           abortController,
+          closeConnection: () => res.destroy(),
         },
         next
       );
@@ -343,12 +364,25 @@ async function startServer() {
     // headers will instead be limited by the maxHeaderSize
     server.maxHeadersCount = 0;
 
+    const healthServer = HEALTHCHECK_PORT
+      ? createHealthApp(
+          // @ts-ignore
+          createRequestHandler({
+            build: viteDevServer ? loadBuild : build,
+            mode: MODE,
+          })
+        ).listen(HEALTHCHECK_PORT, () => {
+          console.log(`✅ healthcheck ready: http://localhost:${HEALTHCHECK_PORT}/healthcheck`);
+        })
+      : undefined;
+
     let didCloseServer = false;
 
     function closeServer(signal: NodeJS.Signals) {
       if (didCloseServer) return;
       didCloseServer = true;
 
+      healthServer?.close();
       server.close((err) => {
         if (err) {
           console.error("Error closing express server:", err);
@@ -386,19 +420,8 @@ async function startServer() {
           return;
         }
 
-        if (pathname !== "/ws") {
-          console.warn(
-            `Rejected upgrade request: path must be /ws, got ${pathname ?? "<invalid>"}`
-          );
-          socket.destroy();
-          return;
-        }
-
-        console.log(`Client connected, upgrading their connection...`);
-
-        wss?.handleUpgrade(req, socket, head, (ws) => {
-          wss?.emit("connection", ws, req);
-        });
+        console.warn(`Rejected upgrade request: unsupported path ${pathname ?? "<invalid>"}`);
+        socket.destroy();
       } catch (error) {
         console.error("Connection upgrade handler failed:", error);
         socket.destroy();

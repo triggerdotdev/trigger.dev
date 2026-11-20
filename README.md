@@ -20,11 +20,11 @@
 
 ## About Trigger.dev
 
-Trigger.dev is the open-source platform for building AI workflows in TypeScript. Long-running tasks with retries, queues, observability, and elastic scaling.
+Trigger.dev is the open-source platform for building AI workflows in TypeScript. Long-running tasks with retries, queues, LLM observability, and elastic scaling.
 
 ## The platform designed for building AI agents
 
-Build [AI agents](https://trigger.dev/product/ai-agents) using all the frameworks, services and LLMs you're used to, deploy them to Trigger.dev and get durable, long-running tasks with retries, queues, observability, and elastic scaling out of the box.
+Build [AI agents](https://trigger.dev/product/ai-agents) using all the frameworks, services and LLMs you're used to, deploy them to Trigger.dev and get durable, long-running agents with retries, queues, LLM observability, and elastic scaling out of the box.
 
 - **Long-running without timeouts**: Execute your tasks with absolutely no timeouts, unlike AWS Lambda, Vercel, and other serverless platforms.
 
@@ -40,18 +40,30 @@ Build [AI agents](https://trigger.dev/product/ai-agents) using all the framework
 
 ## Key features
 
+- **[AI chat agents](https://trigger.dev/docs/ai-chat/overview)** - Durable multi-turn AI chats — one Trigger.dev task per conversation, surviving refreshes, deploys, and crashes.
+- **[Prompts](https://trigger.dev/docs/ai/prompts)** - Define prompt templates as code, version them on deploy, and override from the dashboard without redeploying.
+- **[LLM observability](https://trigger.dev/docs/ai/observability)** - Capture Vercel AI SDK calls in a task as spans in the run trace, with model, token usage, cost, and latency.
+- **[Webhooks](https://trigger.dev/docs/webhooks/overview)** (public beta) - Receive provider webhooks on hosted, verified endpoints and route each event to tasks, agents, and waiting runs.
+- **[MCP server](https://trigger.dev/docs/mcp-introduction)** - The Trigger.dev MCP (Model Context Protocol) Server enables AI assistants to interact directly with your Trigger.dev projects.
+- **[Skills](https://trigger.dev/docs/skills)** - Install Trigger.dev agent skills to teach any AI coding assistant how to write tasks, realtime frontends, and chat.agent AI agents.
+- **[Query](https://trigger.dev/docs/observability/query)** - Query allows you to write custom queries against your data using TRQL (Trigger.dev Query Language), a SQL-style language based on ClickHouse SQL.
+- **[Dashboards](https://trigger.dev/docs/observability/dashboards)** - Create custom dashboards with real-time metrics powered by TRQL queries.
+- **[Health report](https://trigger.dev/docs/reports)** - Get a deterministic verdict on your project's health — split into Flow, Execution, and Liveness — from the CLI, an MCP tool or prompt, or the HTTP API.
+- **[Input streams](https://trigger.dev/docs/realtime/backend/input-streams)** - Send data into running tasks from your backend code
+- **[Development branches](https://trigger.dev/docs/deployment/dev-branches)** - Run multiple local dev sessions in isolation by giving each one its own development branch.
+- **[Atomic deployments](https://trigger.dev/docs/deployment/atomic-deployment)** - Keep your app and your tasks in sync with version skew protection: pin every run to the deployment built for the release of your app that triggered it.
 - **[JavaScript and TypeScript SDK](https://trigger.dev/docs/tasks/overview)** - Build background tasks using familiar programming models
 - **[Long-running tasks](https://trigger.dev/docs/runs/max-duration)** - Handle resource-heavy tasks without timeouts
-- **[Durable cron schedules](https://trigger.dev/docs/tasks/scheduled#scheduled-tasks-cron)** - Create and attach recurring schedules of up to a year
+- **[Durable cron schedules](https://trigger.dev/docs/tasks/scheduled)** - Create and attach recurring schedules of up to a year
 - **[Trigger.dev Realtime](https://trigger.dev/docs/realtime/overview)** - Trigger, subscribe to, and get real-time updates for runs, with LLM streaming support
-- **[Build extensions](https://trigger.dev/docs/config/extensions/overview#build-extensions)** - Hook directly into the build system and customize the build process. Run Python scripts, FFmpeg, browsers, and more.
-- **[React hooks](https://trigger.dev/docs/frontend/react-hooks#react-hooks)** - Interact with the Trigger.dev API on your frontend using our React hooks package
+- **[Build extensions](https://trigger.dev/docs/config/extensions/overview)** - Hook directly into the build system and customize the build process. Run Python scripts, FFmpeg, browsers, and more.
+- **[React hooks](https://trigger.dev/docs/frontend/react-hooks)** - Interact with the Trigger.dev API on your frontend using our React hooks package
 - **[Batch triggering](https://trigger.dev/docs/triggering#tasks-batchtrigger)** - Use batchTrigger() to initiate multiple runs of a task with custom payloads and options
-- **[Structured inputs / outputs](https://trigger.dev/docs/tasks/schemaTask#schematask)** - Define precise data schemas for your tasks with runtime payload validation
+- **[Structured inputs / outputs](https://trigger.dev/docs/tasks/schemaTask)** - Define precise data schemas for your tasks with runtime payload validation
 - **[Waits](https://trigger.dev/docs/wait)** - Add waits to your tasks to pause execution for a specified duration
 - **[Preview branches](https://trigger.dev/docs/deployment/preview-branches)** - Create isolated environments for testing and development. Integrates with Vercel and git workflows
-- **[Waitpoints](https://trigger.dev/docs/wait-for-token#wait-for-token)** - Add human-in-the-loop judgment at critical decision points without disrupting workflow
-- **[Concurrency & queues](https://trigger.dev/docs/queue-concurrency#concurrency-and-queues)** - Set concurrency rules to manage how multiple tasks execute
+- **[Waitpoints](https://trigger.dev/docs/wait-for-token)** - Add human-in-the-loop judgment at critical decision points without disrupting workflow
+- **[Concurrency & queues](https://trigger.dev/docs/queue-concurrency)** - Set concurrency rules to manage how multiple tasks execute
 - **[Multiple environments](https://trigger.dev/docs/how-it-works#dev-mode)** - Support for DEV, PREVIEW, STAGING, and PROD environments
 - **[No infrastructure to manage](https://trigger.dev/docs/how-it-works#trigger-dev-architecture)** - Auto-scaling infrastructure that eliminates timeouts and server management
 - **[Automatic retries](https://trigger.dev/docs/errors-retrying)** - If your task encounters an uncaught error, we automatically attempt to run it again
@@ -60,26 +72,29 @@ Build [AI agents](https://trigger.dev/product/ai-agents) using all the framework
 - **[Machines](https://trigger.dev/docs/machines)** - Configure the number of vCPUs and GBs of RAM you want the task to use
 - **[Observability & monitoring](https://trigger.dev/product/observability-and-monitoring)** - Monitor every aspect of your tasks' performance with comprehensive logging and visualization tools
 - **[Logging & tracing](https://trigger.dev/docs/logging)** - Comprehensive logging and tracing for all your tasks
-- **[Tags](https://trigger.dev/docs/tags#tags)** - Attach up to ten tags to each run, allowing you to filter via the dashboard, realtime, and the SDK
-- **[Run metadata](https://trigger.dev/docs/runs/metadata#run-metadata)** - Attach metadata to runs which updates as the run progresses and is available to use in your frontend for live updates
+- **[Tags](https://trigger.dev/docs/tags)** - Attach up to ten tags to each run, allowing you to filter via the dashboard, realtime, and the SDK
+- **[Run metadata](https://trigger.dev/docs/runs/metadata)** - Attach metadata to runs which updates as the run progresses and is available to use in your frontend for live updates
 - **[Bulk actions](https://trigger.dev/docs/bulk-actions)** - Perform actions on multiple runs simultaneously, including replaying and cancelling
-- **[Real-time alerts](https://trigger.dev/docs/troubleshooting-alerts#alerts)** - Choose your preferred notification method for run failures and deployments
+- **[Real-time alerts](https://trigger.dev/docs/troubleshooting-alerts)** - Choose your preferred notification method for run failures and deployments
 
-## Write tasks in your codebase
+## Write long-running agents in your codebase
 
-Create tasks where they belong: in your codebase. Version control, localhost, test and review like you're already used to.
+Create agents where they belong: in your codebase. Version control, localhost, test and review like you're already used to.
 
 ```ts
-import { task } from "@trigger.dev/sdk";
+import { chat } from "@trigger.dev/sdk/ai";
+import { stepCountIs } from "ai";
+import { anthropic } from "@ai-sdk/anthropic";
 
-//1. You need to export each task
-export const helloWorld = task({
-  //2. Use a unique id for each task
-  id: "hello-world",
-  //3. The run function is the main function of the task
-  run: async (payload: { message: string }) => {
-    //4. You can write code that runs for a long time here, there are no timeouts
-    console.log(payload.message);
+export const myChat = chat.agent({
+  id: "my-chat",
+  run: async ({ messages, signal, streamText }) => {
+    return streamText({
+      model: anthropic("claude-opus-5-5"),
+      messages,
+      abortSignal: signal,
+      stopWhen: stepCountIs(15),
+    });
   },
 });
 ```

@@ -1,7 +1,7 @@
 import { relative } from "node:path";
 import { fileURLToPath } from "node:url";
 import { beforeEach } from "vitest";
-import aiSdkMajors from "./ai-sdk-majors.json" with { type: "json" };
+import { aiSdkMajors } from "./aiSdkMajors.js";
 
 /**
  * Loaded in every non-default AI SDK major's vitest project. Runs the tests

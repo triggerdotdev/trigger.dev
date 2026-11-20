@@ -120,6 +120,9 @@ export type GitHubAppInstallation = {
 export type ConnectedGitHubRepo = {
   branchTracking: BranchTrackingConfig | undefined;
   previewDeploymentsEnabled: boolean;
+  supersedeProductionBuilds: boolean;
+  supersedeStagingBuilds: boolean;
+  supersedePreviewBuilds: boolean;
   buildFilters: BuildFilters | undefined;
   createdAt: Date;
   repository: GitHubRepository;
@@ -152,10 +155,18 @@ export const UpdateGitSettingsFormSchema = z.object({
   redirectUrl: z.string().optional(),
 });
 
+const optionalOnOff = z
+  .enum(["on", "off"])
+  .optional()
+  .transform((val) => (val === undefined ? undefined : val === "on"));
+
 function gitSettingsWithBuildFiltersSchema(limits: IgnorePatternLimits) {
   return UpdateGitSettingsFormSchema.extend({
     ignoreBranches: ignorePatternsSchema("branches", limits),
     ignorePaths: ignorePatternsSchema("paths", limits),
+    supersedeProductionBuilds: optionalOnOff,
+    supersedeStagingBuilds: optionalOnOff,
+    supersedePreviewBuilds: optionalOnOff,
   });
 }
 
@@ -405,6 +416,9 @@ export const action = dashboardAction(
         previewDeploymentsEnabled,
         ignoreBranches,
         ignorePaths,
+        supersedeProductionBuilds,
+        supersedeStagingBuilds,
+        supersedePreviewBuilds,
       } = submission.value;
       // Empty and omitted both parse to []; only forms that send a field may clear it.
       const buildFilters = {
@@ -417,7 +431,12 @@ export const action = dashboardAction(
         productionBranch,
         stagingBranch,
         previewDeploymentsEnabled,
-        Object.keys(buildFilters).length > 0 ? buildFilters : undefined
+        {
+          buildFilters: Object.keys(buildFilters).length > 0 ? buildFilters : undefined,
+          supersedeProductionBuilds,
+          supersedeStagingBuilds,
+          supersedePreviewBuilds,
+        }
       );
 
       if (resultOrFail.isOk()) {
@@ -897,6 +916,9 @@ export function ConnectedGitHubRepoForm({
     productionBranch: connectedGitHubRepo.branchTracking?.prod?.branch || "",
     stagingBranch: connectedGitHubRepo.branchTracking?.staging?.branch || "",
     previewDeploymentsEnabled: connectedGitHubRepo.previewDeploymentsEnabled,
+    supersedeProductionBuilds: connectedGitHubRepo.supersedeProductionBuilds,
+    supersedeStagingBuilds: connectedGitHubRepo.supersedeStagingBuilds,
+    supersedePreviewBuilds: connectedGitHubRepo.supersedePreviewBuilds,
     ignoreBranches: savedIgnoreBranches,
     ignorePaths: savedIgnorePaths,
   });
@@ -924,6 +946,10 @@ export function ConnectedGitHubRepoForm({
         (connectedGitHubRepo.branchTracking?.staging?.branch || "") ||
       gitSettingsValues.previewDeploymentsEnabled !==
         connectedGitHubRepo.previewDeploymentsEnabled ||
+      gitSettingsValues.supersedeProductionBuilds !==
+        connectedGitHubRepo.supersedeProductionBuilds ||
+      gitSettingsValues.supersedeStagingBuilds !== connectedGitHubRepo.supersedeStagingBuilds ||
+      gitSettingsValues.supersedePreviewBuilds !== connectedGitHubRepo.supersedePreviewBuilds ||
       gitSettingsValues.ignoreBranches !== savedIgnoreBranches ||
       gitSettingsValues.ignorePaths !== savedIgnorePaths;
     // oxlint-disable-next-line react/set-state-in-effect -- This effect intentionally synchronizes route state after an external or lifecycle change.
@@ -1039,30 +1065,54 @@ export function ConnectedGitHubRepoForm({
       <Form method="post" action={actionUrl} {...getFormProps(gitSettingsForm)}>
         {redirectUrl && <input type="hidden" name="redirectUrl" value={redirectUrl} />}
 
-        <SettingsBlock size="sm">
+        <SettingsBlock size="sm" bordered={false}>
           <Hint>
-            Every push to the selected tracking branch creates a deployment in the corresponding
-            environment.
+            Pushes to a tracking branch deploy to its environment. With Skip superseded on, older
+            queued builds are dropped when a newer commit arrives.
           </Hint>
         </SettingsBlock>
 
+        <div className="flex gap-6 border-b border-grid-dimmed pb-2">
+          <Paragraph variant="extra-extra-small/caps" className="flex-1">
+            Environment
+          </Paragraph>
+          <Paragraph variant="extra-extra-small/caps" className="w-64 shrink-0">
+            Tracking branch
+          </Paragraph>
+          <Paragraph variant="extra-extra-small/caps" className="w-28 shrink-0 text-right">
+            Skip superseded
+          </Paragraph>
+        </div>
+
         <SettingsRow
           action={
-            <Input
-              {...getInputProps(fields.productionBranch, { type: "text" })}
-              defaultValue={connectedGitHubRepo.branchTracking?.prod?.branch}
-              placeholder="none"
-              variant="medium"
-              className="font-mono"
-              containerClassName="w-64"
-              icon={GitBranchIcon}
-              onChange={(e) => {
-                setGitSettingsValues((prev) => ({
-                  ...prev,
-                  productionBranch: e.target.value,
-                }));
-              }}
-            />
+            <div className="flex items-center gap-6">
+              <div className="w-64 shrink-0">
+                <Input
+                  {...getInputProps(fields.productionBranch, { type: "text" })}
+                  defaultValue={connectedGitHubRepo.branchTracking?.prod?.branch}
+                  placeholder="none"
+                  variant="medium"
+                  className="font-mono"
+                  icon={GitBranchIcon}
+                  onChange={(e) => {
+                    setGitSettingsValues((prev) => ({
+                      ...prev,
+                      productionBranch: e.target.value,
+                    }));
+                  }}
+                />
+              </div>
+              <SupersedeSwitch
+                name="supersedeProductionBuilds"
+                label="Skip superseded production builds"
+                checked={gitSettingsValues.supersedeProductionBuilds}
+                disabled={!canManageGithub}
+                onCheckedChange={(checked) => {
+                  setGitSettingsValues((prev) => ({ ...prev, supersedeProductionBuilds: checked }));
+                }}
+              />
+            </div>
           }
         >
           <EnvironmentRowLabel type="PRODUCTION" />
@@ -1070,32 +1120,44 @@ export function ConnectedGitHubRepoForm({
 
         <SettingsRow
           action={
-            stagingEnvironmentEnabled ? (
-              <Input
-                {...getInputProps(fields.stagingBranch, { type: "text" })}
-                defaultValue={connectedGitHubRepo.branchTracking?.staging?.branch}
-                placeholder="none"
-                variant="medium"
-                className="font-mono"
-                containerClassName="w-64"
-                icon={GitBranchIcon}
-                onChange={(e) => {
-                  setGitSettingsValues((prev) => ({
-                    ...prev,
-                    stagingBranch: e.target.value,
-                  }));
+            <div className="flex items-center gap-6">
+              <div className="w-64 shrink-0">
+                {stagingEnvironmentEnabled ? (
+                  <Input
+                    {...getInputProps(fields.stagingBranch, { type: "text" })}
+                    defaultValue={connectedGitHubRepo.branchTracking?.staging?.branch}
+                    placeholder="none"
+                    variant="medium"
+                    className="font-mono"
+                    icon={GitBranchIcon}
+                    onChange={(e) => {
+                      setGitSettingsValues((prev) => ({
+                        ...prev,
+                        stagingBranch: e.target.value,
+                      }));
+                    }}
+                  />
+                ) : (
+                  <LinkButton
+                    to={billingPath}
+                    variant="secondary/small"
+                    LeadingIcon={ArrowUpCircleIcon}
+                    leadingIconClassName="text-indigo-500"
+                  >
+                    Upgrade
+                  </LinkButton>
+                )}
+              </div>
+              <SupersedeSwitch
+                name="supersedeStagingBuilds"
+                label="Skip superseded staging builds"
+                checked={gitSettingsValues.supersedeStagingBuilds}
+                disabled={!canManageGithub || !stagingEnvironmentEnabled}
+                onCheckedChange={(checked) => {
+                  setGitSettingsValues((prev) => ({ ...prev, supersedeStagingBuilds: checked }));
                 }}
               />
-            ) : (
-              <LinkButton
-                to={billingPath}
-                variant="secondary/small"
-                LeadingIcon={ArrowUpCircleIcon}
-                leadingIconClassName="text-indigo-500"
-              >
-                Upgrade
-              </LinkButton>
-            )
+            </div>
           }
         >
           <EnvironmentRowLabel
@@ -1110,33 +1172,52 @@ export function ConnectedGitHubRepoForm({
 
         <SettingsRow
           action={
-            previewEnvironmentEnabled ? (
-              <Switch
-                name="previewDeploymentsEnabled"
-                defaultChecked={connectedGitHubRepo.previewDeploymentsEnabled}
-                variant="medium"
+            <div className="flex items-center gap-6">
+              <div className="w-64 shrink-0">
+                {previewEnvironmentEnabled ? (
+                  <Switch
+                    name="previewDeploymentsEnabled"
+                    defaultChecked={connectedGitHubRepo.previewDeploymentsEnabled}
+                    variant="medium"
+                    label="Deploy pull requests"
+                    labelPosition="right"
+                    onCheckedChange={(checked) => {
+                      setGitSettingsValues((prev) => ({
+                        ...prev,
+                        previewDeploymentsEnabled: checked,
+                      }));
+                    }}
+                  />
+                ) : (
+                  <>
+                    {connectedGitHubRepo.previewDeploymentsEnabled && (
+                      <input type="hidden" name="previewDeploymentsEnabled" value="on" />
+                    )}
+                    <LinkButton
+                      to={billingPath}
+                      variant="secondary/small"
+                      LeadingIcon={ArrowUpCircleIcon}
+                      leadingIconClassName="text-indigo-500"
+                    >
+                      Upgrade
+                    </LinkButton>
+                  </>
+                )}
+              </div>
+              <SupersedeSwitch
+                name="supersedePreviewBuilds"
+                label="Skip superseded preview builds"
+                checked={gitSettingsValues.supersedePreviewBuilds}
+                disabled={
+                  !canManageGithub ||
+                  !previewEnvironmentEnabled ||
+                  !gitSettingsValues.previewDeploymentsEnabled
+                }
                 onCheckedChange={(checked) => {
-                  setGitSettingsValues((prev) => ({
-                    ...prev,
-                    previewDeploymentsEnabled: checked,
-                  }));
+                  setGitSettingsValues((prev) => ({ ...prev, supersedePreviewBuilds: checked }));
                 }}
               />
-            ) : (
-              <>
-                {connectedGitHubRepo.previewDeploymentsEnabled && (
-                  <input type="hidden" name="previewDeploymentsEnabled" value="on" />
-                )}
-                <LinkButton
-                  to={billingPath}
-                  variant="secondary/small"
-                  LeadingIcon={ArrowUpCircleIcon}
-                  leadingIconClassName="text-indigo-500"
-                >
-                  Upgrade
-                </LinkButton>
-              </>
-            )
+            </div>
           }
         >
           <EnvironmentRowLabel
@@ -1243,6 +1324,33 @@ function EnvironmentRowLabel({
         </span>
       </div>
       {description ? <SettingsRowDescription>{description}</SettingsRowDescription> : null}
+    </div>
+  );
+}
+
+function SupersedeSwitch({
+  name,
+  label,
+  checked,
+  disabled,
+  onCheckedChange,
+}: {
+  name: string;
+  label: string;
+  checked: boolean;
+  disabled?: boolean;
+  onCheckedChange: (checked: boolean) => void;
+}) {
+  return (
+    <div className="flex w-28 shrink-0 justify-end">
+      {!disabled && <input type="hidden" name={name} value={checked ? "on" : "off"} />}
+      <Switch
+        aria-label={label}
+        checked={checked}
+        disabled={disabled}
+        variant="medium"
+        onCheckedChange={onCheckedChange}
+      />
     </div>
   );
 }

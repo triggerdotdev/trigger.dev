@@ -6,12 +6,15 @@ import type { TaskRunError, TaskRunExecutionResult } from "@trigger.dev/core/v3"
 import type { PrismaClient } from "@trigger.dev/database";
 import { setTimeout } from "node:timers/promises";
 import { expect } from "vitest";
-import type { MinimalAuthenticatedEnvironment } from "../../shared/index.js";
 import { RunEngine } from "../index.js";
 import { RETURNED_WHILE_RESUMING_ERROR } from "../staleCompletions.js";
 import type { RunEngineOptions } from "../types.js";
 import { createTestMetricsMeter } from "./helpers/replicaTestHelpers.js";
-import { setupAuthenticatedEnvironment, setupBackgroundWorker } from "./setup.js";
+import {
+  type AuthenticatedEnvironment,
+  setupAuthenticatedEnvironment,
+  setupBackgroundWorker,
+} from "./setup.js";
 
 vi.setConfig({ testTimeout: 60_000 });
 
@@ -79,7 +82,7 @@ function createEngine(
   });
 }
 
-async function dequeue(engine: RunEngine, environment: MinimalAuthenticatedEnvironment) {
+async function dequeue(engine: RunEngine, environment: AuthenticatedEnvironment) {
   const deadline = performance.now() + 10_000;
   while (performance.now() < deadline) {
     await engine.runQueue.processMasterQueueForEnvironment(environment.id, 1);
@@ -101,7 +104,7 @@ async function dequeue(engine: RunEngine, environment: MinimalAuthenticatedEnvir
 async function startAttempt(
   engine: RunEngine,
   prisma: PrismaClient,
-  environment: MinimalAuthenticatedEnvironment
+  environment: AuthenticatedEnvironment
 ) {
   await setupBackgroundWorker(engine, environment, taskIdentifier);
 
@@ -139,7 +142,7 @@ async function startAttempt(
 async function startAttemptBlockedOnWaitpoint(
   engine: RunEngine,
   prisma: PrismaClient,
-  environment: MinimalAuthenticatedEnvironment
+  environment: AuthenticatedEnvironment
 ) {
   const { runId } = await startAttempt(engine, prisma, environment);
   return { runId, ...(await blockOnWaitpoint(engine, environment, runId)) };
@@ -147,7 +150,7 @@ async function startAttemptBlockedOnWaitpoint(
 
 async function blockOnWaitpoint(
   engine: RunEngine,
-  environment: MinimalAuthenticatedEnvironment,
+  environment: AuthenticatedEnvironment,
   runId: string
 ) {
   const { waitpoint } = await engine.createManualWaitpoint({
@@ -294,7 +297,7 @@ async function expectSuccessSettledAsReturnedWhileResuming({
 /** Suspends a blocked run, completes its waitpoint and continues it as the restored runner. */
 async function suspendAndRestore(
   engine: RunEngine,
-  environment: MinimalAuthenticatedEnvironment,
+  environment: AuthenticatedEnvironment,
   {
     runId,
     waitpointId,
@@ -375,6 +378,48 @@ describe("RunEngine completion one step behind the engine's own continue", () =>
           prisma,
           runId,
           staleSnapshotId: blockedSnapshotId,
+        });
+      } finally {
+        await engine.quit();
+      }
+    }
+  );
+
+  // Catches: API-driven waits losing ownership and accepting another runner's stale completion.
+  containerTest(
+    "API-driven wait refuses a different runner's stale completion while the owner settles",
+    async ({ prisma, redisOptions }) => {
+      const environment = await setupAuthenticatedEnvironment(prisma, "PRODUCTION");
+      const engine = createEngine(prisma, redisOptions, { staleCompletionMode: "enforce" });
+
+      try {
+        const { runId } = await startAttempt(engine, prisma, environment);
+        const { waitpoint } = await engine.createManualWaitpoint({
+          environmentId: environment.id,
+          projectId: environment.projectId,
+        });
+        const blocked = await engine.blockRunWithWaitpoint({
+          runId,
+          waitpoints: waitpoint.id,
+          projectId: environment.projectId,
+          organizationId: environment.organizationId,
+        });
+
+        await engine.completeWaitpoint({ id: waitpoint.id });
+        const unblocked = await waitForSnapshot(
+          engine,
+          runId,
+          (snapshot) => snapshot.id !== blocked.id && snapshot.executionStatus === "EXECUTING"
+        );
+
+        const stranger = await complete(engine, runId, blocked.id, success(runId), "runner_other");
+        expect(stranger).toMatchObject(refusal(unblocked.snapshot.id));
+
+        await expectSuccessSettledAsReturnedWhileResuming({
+          engine,
+          prisma,
+          runId,
+          staleSnapshotId: blocked.id,
         });
       } finally {
         await engine.quit();

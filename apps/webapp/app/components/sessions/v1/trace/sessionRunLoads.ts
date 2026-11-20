@@ -113,6 +113,21 @@ export function runLoadId(load: SessionRunLoad): number | undefined {
   return "loadId" in load ? load.loadId : undefined;
 }
 
+/** Whether the run's read has ended: fully loaded, cut off, failed or can't load. */
+export function isRunReadSettled(load: SessionRunLoad): boolean {
+  switch (load.state) {
+    case "progressive":
+    case "empty":
+    case "unavailable":
+    case "logsDeleted":
+    case "error":
+    case "cutOff":
+      return true;
+    default:
+      return false;
+  }
+}
+
 /** Whether the run's trace source is mounted: collapsing keeps its spans, and so does a failure. */
 export function isRunTraceMounted(load: SessionRunLoad): boolean {
   switch (load.state) {

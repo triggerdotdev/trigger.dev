@@ -4384,7 +4384,7 @@ describe("Generated column names", () => {
     ["SELECT *", "SELECT * FROM task_runs AS execution_duration"],
     [
       "a joined table",
-      "SELECT r.id, lower(e.event_type) FROM task_runs AS r JOIN task_events AS lower ON r.id = lower.run_id",
+      "SELECT r.id, lower(lower.event_type) FROM task_runs AS r JOIN task_events AS lower ON r.id = lower.run_id",
     ],
     [
       "an IN subquery",
@@ -4415,5 +4415,107 @@ describe("Generated column names", () => {
     expect(() =>
       printQuery("SELECT lower FROM (SELECT lower(status) FROM task_runs) AS lower")
     ).not.toThrow();
+  });
+});
+
+describe("Identifier resolution", () => {
+  const runsWithJsonSchema: TableSchema = {
+    ...taskRunsSchema,
+    name: "runs",
+    columns: {
+      ...taskRunsSchema.columns,
+      output: { name: "output", ...column("JSON") },
+      metadata: { name: "metadata", ...column("Map(String, String)") },
+      root_run_id: { name: "root_run_id", ...column("String") },
+    },
+  };
+
+  function print(query: string) {
+    const schema = createSchemaRegistry([runsWithJsonSchema, taskEventsSchema]);
+    const context = createPrinterContext({
+      schema,
+      enforcedWhereClause: {
+        organization_id: { op: "eq", value: "org_test123" },
+        project_id: { op: "eq", value: "proj_test456" },
+        environment_id: { op: "eq", value: "env_test789" },
+      },
+    });
+    return printToClickHouse(parseTSQLSelect(query), context);
+  }
+
+  describe("allowed forms", () => {
+    // Catches: tightening asterisk or qualifier handling breaks a form that compiles today
+    it.each([
+      "SELECT r.* FROM runs AS r",
+      "SELECT COUNT(*) FROM runs",
+      "SELECT count(r.*) FROM runs AS r",
+      "SELECT output.message FROM runs",
+      "SELECT r.output.message FROM runs AS r",
+      "SELECT metadata.country FROM runs",
+      "SELECT s.* FROM (SELECT id FROM runs) AS s",
+      "SELECT output.message FROM (SELECT output FROM runs) AS s",
+      "SELECT r.id, m.n FROM runs r INNER JOIN (SELECT run_id, count() AS n FROM task_events GROUP BY run_id) m ON m.run_id = r.id",
+      "SELECT c.root_run_id FROM (SELECT root_run_id FROM runs) c INNER JOIN (SELECT id FROM runs) root ON c.root_run_id = root.id",
+      "SELECT count() FROM (SELECT r.id AS id, m.n AS n FROM runs r INNER JOIN (SELECT run_id, count() AS n FROM task_events GROUP BY run_id) m ON m.run_id = r.id)",
+      "SELECT countIf(id NOT IN (SELECT run_id FROM task_events)) FROM runs",
+      "SELECT replaceRegexpOne(status, '^a(.*)$', '\\\\1') AS s FROM runs",
+      "SELECT item.id FROM runs ARRAY JOIN [JSONExtract('{\"id\":\"a\"}', 'Tuple(id String)')] AS item",
+      "WITH JSONExtract('{\"s\":\"\"}', 'Tuple(s String)') AS k SELECT r.id FROM runs r JOIN runs r2 ON r.id = concat(r2.id, k.s)",
+      "WITH output AS o SELECT o.message FROM runs",
+    ])("%s", (query) => {
+      expect(() => print(query)).not.toThrow();
+    });
+  });
+
+  describe("asterisk outside the SELECT list or count", () => {
+    // Catches: an asterisk printed as-is lets ClickHouse expand it to columns the schema hides
+    it.each([
+      "SELECT toString(tuple(*)) FROM runs",
+      "SELECT tuple(r.*) FROM runs AS r",
+      "SELECT [*] FROM runs",
+      "SELECT uniq(*) FROM runs",
+      "SELECT count(DISTINCT *) FROM runs",
+      "SELECT id FROM runs AS r WHERE r.* = 1",
+      "SELECT id FROM runs ORDER BY *",
+      "SELECT id FROM runs GROUP BY *",
+      "SELECT count() FROM runs HAVING count(*) > 0 AND tuple(*) != tuple()",
+    ])("%s", (query) => {
+      expect(() => print(query)).toThrow(QueryError);
+    });
+  });
+
+  describe("qualifiers that are not in scope", () => {
+    // Catches: ClickHouse resolves a physical table or database name to the aliased table
+    it.each([
+      "SELECT task_runs_v2.payload FROM runs",
+      "SELECT trigger_dev.task_runs_v2.organization_id FROM runs",
+      "SELECT task_runs_v2.* FROM runs",
+      "SELECT trigger_dev.task_runs_v2.* FROM runs",
+      "SELECT x.* FROM runs AS r",
+      "SELECT count(x.*) FROM runs AS r",
+      "SELECT id FROM runs WHERE task_runs_v2.payload = 'a'",
+      "SELECT r.id FROM runs r INNER JOIN (SELECT run_id FROM task_events) m ON m.run_id = r.id WHERE task_runs_v2.payload = 'a'",
+      "SELECT (SELECT task_runs_v2.payload) FROM runs",
+      "SELECT 1 AS task_runs_v2, task_runs_v2.payload FROM runs",
+      "SELECT 1 AS trigger_dev, trigger_dev.task_runs_v2.payload FROM runs",
+      "WITH 1 AS task_runs_v2 SELECT task_runs_v2.payload FROM runs",
+      "SELECT task_runs_v2.payload FROM runs ARRAY JOIN [1] AS task_runs_v2",
+      "SELECT item FROM runs ARRAY JOIN [1] AS item",
+    ])("%s", (query) => {
+      expect(() => print(query)).toThrow(QueryError);
+    });
+  });
+
+  describe("table aliases named like a physical table", () => {
+    // Catches: ClickHouse binding a tenant guard written on the alias to the physical table it names
+    it.each([
+      "SELECT event_type FROM runs AS r JOIN task_events AS task_runs_v2 ON 1 = 1",
+      "SELECT event_type FROM runs AS r JOIN task_events AS trigger_dev ON 1 = 1",
+      "SELECT id FROM runs AS task_events_v2",
+      "SELECT s.id FROM runs AS r JOIN (SELECT id FROM runs) AS task_events_v2 ON 1 = 1",
+      "SELECT task_runs_v2.* FROM runs, (SELECT 1 AS x) AS task_runs_v2",
+    ])("%s", (query) => {
+      expect(() => print(query)).toThrow(QueryError);
+    });
   });
 });

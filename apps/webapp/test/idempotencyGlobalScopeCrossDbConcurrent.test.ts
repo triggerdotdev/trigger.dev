@@ -671,9 +671,13 @@ describe("run-ops split — CONCURRENT global-scope idempotency dedup across two
           getOrCreateCalls.push(input);
           return winnerWaitpoint;
         },
-        async blockRunWithWaitpoint(input: { runId: string; waitpoints: string | string[] }) {
+        async blockRunWithCachedRun(input: {
+          runId: string;
+          waitpoints: string | string[];
+          cachedRun: unknown;
+        }) {
           blockCalls.push({ runId: input.runId, waitpoints: input.waitpoints });
-          return {};
+          return input.cachedRun;
         },
       };
 

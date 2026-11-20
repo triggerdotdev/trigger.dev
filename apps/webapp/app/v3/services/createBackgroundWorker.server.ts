@@ -77,6 +77,7 @@ import { CronPattern } from "../schedules";
 import { projectPubSub } from "./projectPubSub.server";
 
 import { assertNoDuplicateTaskIds } from "./duplicateTaskIds.server";
+import { assertSourceFilesWithinLimits } from "../workerSourceFiles.server";
 import { stripBackgroundWorkerMetadataForStorage } from "./stripBackgroundWorkerMetadataForStorage.server";
 
 export type BackgroundWorkerWithWarnings = BackgroundWorker & {
@@ -130,6 +131,7 @@ export class CreateBackgroundWorkerService extends BaseService {
       // Before the worker row and the content-hash shortcut, so a rejected registration leaves
       // nothing a same-content retry would accept.
       body.metadata.tasks.forEach((task) => validateSandboxTask(task, environment));
+      await assertSourceFilesWithinLimits(body.metadata.sourceFiles);
 
       const latestBackgroundWorker = project.backgroundWorkers[0];
 

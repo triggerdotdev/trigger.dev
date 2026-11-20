@@ -67,6 +67,7 @@ export const FEATURE_FLAG = {
   sessionTraceEnabled: "sessionTraceEnabled",
   sandboxTasks: "sandboxTasks",
   auditLogsRecording: "auditLogsRecording",
+  hasAuditLogsAccess: "hasAuditLogsAccess",
 } as const;
 
 // Mirrors the core worker-queue enums; defined here because this module is imported client-side.
@@ -255,6 +256,10 @@ export const FeatureFlagCatalog = {
   // override wins over the global value; off by default. Strict z.boolean(): coercion reads the
   // string "false" as true, which would record for an org meant to be off.
   [FEATURE_FLAG.auditLogsRecording]: z.boolean(),
+  // Shows the org's audit log: the page, the audit events API and the `manage:audit-logs` permission
+  // on the Roles page. Independent of recording. Org override wins over the global value; off by
+  // default. Strict z.boolean(), as for recording: the string "false" must not show the log.
+  [FEATURE_FLAG.hasAuditLogsAccess]: z.boolean(),
 };
 
 export type FeatureFlagKey = keyof typeof FeatureFlagCatalog;

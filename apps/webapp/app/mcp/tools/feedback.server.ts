@@ -110,6 +110,7 @@ export function createFeedbackTools(
         },
       }),
       annotations: { title: "Submit Feedback", readOnlyHint: false, destructiveHint: true },
+      approval: "none",
     },
   ];
 }

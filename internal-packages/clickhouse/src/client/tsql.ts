@@ -217,6 +217,9 @@ export async function executeTSQL<TOut extends z.ZodSchema>(
 
     generatedSql = sql;
 
+    // A correlated subquery could read outer-row columns the printer never resolved
+    const settings = { ...options.clickhouseSettings, allow_experimental_correlated_subqueries: 0 };
+
     // 2. Execute the query (or EXPLAIN) with stats
     const queryToExecute = isExplain ? `EXPLAIN indexes = 1 ${sql}` : sql;
 
@@ -226,7 +229,7 @@ export async function executeTSQL<TOut extends z.ZodSchema>(
       params: z.record(z.string(), z.any()),
       // EXPLAIN returns rows with an 'explain' column
       schema: isExplain ? z.object({ explain: z.string() }) : options.schema,
-      settings: options.clickhouseSettings,
+      settings,
       userAuthoredQuery: options.userAuthoredQuery,
     });
 
@@ -260,7 +263,7 @@ export async function executeTSQL<TOut extends z.ZodSchema>(
             query: explainType.query,
             params: z.record(z.string(), z.any()),
             schema: z.object({ explain: z.string() }),
-            settings: options.clickhouseSettings,
+            settings,
             userAuthoredQuery: options.userAuthoredQuery,
           });
 

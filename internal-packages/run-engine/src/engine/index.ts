@@ -1,5 +1,6 @@
 import type { ManualWaitpointCatalogListInput } from "./waitpointCoordinator/manualWaitpointCatalog.js";
 import { classifyWaitpointCoordinator } from "./waitpointCoordinator/routing.js";
+import { batchPositionOwner } from "./waitpointCoordinator/storeWaitpointCoordinator.js";
 import { createWaitpointResultRunStore } from "./systems/waitpointResultRunStore.js";
 import { type Redis, createRedisClient } from "@internal/redis";
 import {
@@ -68,6 +69,7 @@ import {
   NotImplementedError,
   RunDuplicateIdempotencyKeyError,
   RunOneTimeUseTokenError,
+  ServiceValidationError,
 } from "./errors.js";
 import type { EventBus, EventBusEvents } from "./eventBus.js";
 import { RunLocker } from "./locking.js";
@@ -426,6 +428,33 @@ export class RunEngine {
           await this.runLock.lock("recoverChildPublish", [payload.runId], async () => {
             const run = await this.runStore.findRunOnPrimary({ id: payload.runId });
             if (!run) return;
+            // Publish a child born for this parent only if something waits on it. Contribution
+            // evidence is gone after finalization, so read the exact edge (or a shared child's
+            // watchers). A lazily associated run was published by its own trigger: left alone.
+            if (
+              run.parentTaskRunId === payload.parentRunId &&
+              run.resumeParentOnCompletion &&
+              (run.status === "PENDING" ||
+                run.status === "DELAYED" ||
+                run.status === "PENDING_VERSION") &&
+              !(await this.waitpointSystem.isChildAwaited(
+                payload.parentRunId,
+                payload.waitpointId,
+                payload.batch?.index
+              ))
+            ) {
+              // A failed retirement must retry: an unqueued PENDING child blocks batch completion.
+              if (
+                !(await this.#retireUnblockedChild(
+                  run,
+                  payload.organizationId,
+                  "no parent edge",
+                  true
+                ))
+              )
+                throw new Error(`Failed to retire unawaited child ${run.id}`);
+              return;
+            }
             if (run.status === "PENDING_VERSION" && payload.parkedOnExternalDeploymentId) {
               await this.pendingVersionSystem.scheduleExternalDeploymentParkDeadline({
                 runId: run.id,
@@ -1256,18 +1285,22 @@ export class RunEngine {
                         waitpointId,
                         organizationId: environment.organization.id,
                       });
-                    await this.waitpointSystem.blockRunWithWaitpoint({
-                      runId: parentTaskRunId,
-                      waitpoints: waitpointId,
-                      spanIdToComplete,
-                      projectId: environment.project.id,
-                      organizationId: environment.organization.id,
-                      batch,
-                      workerId,
-                      runnerId,
-                      blockOperation: debounceBlockOperation,
-                      // No tx: the block edge is routed to the run's owning store.
-                    });
+                    const block = () =>
+                      this.waitpointSystem.blockRunWithWaitpoint({
+                        runId: parentTaskRunId,
+                        waitpoints: waitpointId,
+                        spanIdToComplete,
+                        projectId: environment.project.id,
+                        organizationId: environment.organization.id,
+                        batch,
+                        workerId,
+                        runnerId,
+                        blockOperation: debounceBlockOperation,
+                        // No tx: the block edge is routed to the run's owning store.
+                      });
+                    await (nativeWaitpoint
+                      ? this.#admitStoreChild(debounceResult.run.id, block)
+                      : block());
                   })());
 
                 const traceAndBlockRun = async () => {
@@ -1282,16 +1315,21 @@ export class RunEngine {
                   }
                   await blockRun(spanIdToComplete);
                 };
-                if (!nativeWaitpoint) {
-                  // Refuse an already-owed parent cleanup before trace persistence. The edge write
-                  // re-checks the fence under the parent lock, after the trace callback has run.
-                  await this.waitpointSystem.admitLegacyRegistration(
-                    parentTaskRunId,
-                    environment.organization.id,
-                    traceAndBlockRun
-                  );
-                } else {
-                  await traceAndBlockRun();
+                try {
+                  if (!nativeWaitpoint) {
+                    // Refuse an already-owed parent cleanup before trace persistence. The edge write
+                    // re-checks the fence under the parent lock, after the trace callback has run.
+                    await this.waitpointSystem.admitLegacyRegistration(
+                      parentTaskRunId,
+                      environment.organization.id,
+                      traceAndBlockRun
+                    );
+                  } else {
+                    await traceAndBlockRun();
+                  }
+                } catch (error) {
+                  // Another run holds this batch position; the shared debounced run stays as is.
+                  return await this.#batchPositionOwnerRun(error, parentTaskRunId);
                 }
               } else {
                 let spanIdToComplete: string | undefined;
@@ -1571,13 +1609,18 @@ export class RunEngine {
                 });
               }
 
+              let admitted = true;
               try {
                 if (batch) {
                   // The batch header fixes child storage; native headers guard each additive admission.
                   // Disabled registration is lockless; enabled registration takes the parent lock
                   // around the edge write to protect the cleanup fence.
-                  if (classifyWaitpointCoordinator(waitpointId) === "store") {
-                    await this.waitpointSystem.blockBatchChild({
+                  // A legacy-format child under a native header must own its position too.
+                  if (
+                    classifyWaitpointCoordinator(waitpointId) === "store" ||
+                    nativeBatchWaitpointId
+                  ) {
+                    admitted = await this.waitpointSystem.blockBatchChild({
                       runId: parentTaskRunId,
                       waitpointId,
                       projectId: waitpointProjectId,
@@ -1616,17 +1659,37 @@ export class RunEngine {
               } catch (blockError) {
                 // Committed but never enqueued: retire it so a keyed re-trigger cannot resolve to it
                 // and block the parent on a waitpoint nothing will complete.
-                await this.#retireUnblockedChild(taskRun, environment.organization.id, blockError);
-                throw blockError;
+                const owned = !!batchPositionOwner(blockError);
+                if (owned)
+                  positionOwner = await this.#batchPositionOwnerRun(blockError, parentTaskRunId);
+                await this.#retireUnblockedChild(
+                  taskRun,
+                  environment.organization.id,
+                  blockError,
+                  owned
+                );
+                if (!owned) throw blockError;
+              }
+              // The batch finished before this item: retire the unpublished child, as the store path does.
+              if (!admitted) {
+                await this.#retireUnblockedChild(
+                  taskRun,
+                  environment.organization.id,
+                  "batch no longer pending",
+                  true
+                );
+                positionOwner = taskRun;
               }
             }
             return taskRun;
           };
+          let positionOwner: TaskRun | undefined;
           taskRun = await this.waitpointSystem.admitLegacyRegistration(
             parentTaskRunId,
             environment.organization.id,
             createAndBlockRun
           );
+          if (positionOwner) return positionOwner;
         } else {
           try {
             // Forward the bare caller tx so the routing store picks the owning DB by id.
@@ -1698,16 +1761,43 @@ export class RunEngine {
               // Disabled registration is lockless; enabled registration takes the parent lock
               // around the edge write to protect the cleanup fence.
               if (classifyWaitpointCoordinator(waitpointId) === "store") {
-                await this.waitpointSystem.blockBatchChild({
-                  runId: parentTaskRunId,
-                  waitpointId,
-                  projectId: waitpointProjectId,
-                  organizationId: environment.organization.id,
-                  batch,
-                  workerId,
-                  runnerId,
-                  ownerWaitpointId: nativeBatchWaitpointId,
-                });
+                let admitted: boolean;
+                try {
+                  admitted = await this.#admitStoreChild(taskRunId, () =>
+                    this.waitpointSystem.blockBatchChild({
+                      runId: parentTaskRunId,
+                      waitpointId,
+                      projectId: waitpointProjectId,
+                      organizationId: environment.organization.id,
+                      batch,
+                      workerId,
+                      runnerId,
+                      ownerWaitpointId: nativeBatchWaitpointId,
+                    })
+                  );
+                } catch (error) {
+                  // An earlier attempt of this item holds the position: retire this unpublished
+                  // child and resolve the item to the position's run.
+                  const owner = await this.#batchPositionOwnerRun(error, parentTaskRunId);
+                  await this.#retireUnadmittedStoreChild(taskRun, error, {
+                    organizationId: environment.organization.id,
+                    parentRunId: parentTaskRunId,
+                    waitpointId,
+                    batchIndex: batch.index,
+                  });
+                  return owner;
+                }
+                // The batch finished before this item: retire the unpublished child. No position
+                // owner is left, so the item resolves to the retired child.
+                if (!admitted) {
+                  await this.#retireUnadmittedStoreChild(taskRun, "batch no longer pending", {
+                    organizationId: environment.organization.id,
+                    parentRunId: parentTaskRunId,
+                    waitpointId,
+                    batchIndex: batch.index,
+                  });
+                  return taskRun;
+                }
               } else {
                 await this.waitpointSystem.blockRunWithWaitpointLockless({
                   runId: parentTaskRunId,
@@ -1723,16 +1813,34 @@ export class RunEngine {
               // and the resolved parent route so the three-phase protocol runs; both are undefined for a
               // legacy blocker, which ignores them.
               const blockOperation = runWaitpointBlockOperation;
-              await this.waitpointSystem.blockRunWithWaitpoint({
-                runId: parentTaskRunId,
-                waitpoints: waitpointId,
-                projectId: waitpointProjectId,
-                organizationId: environment.organization.id,
-                batch,
-                workerId,
-                runnerId,
-                blockOperation,
-              });
+              const block = () =>
+                this.waitpointSystem.blockRunWithWaitpoint({
+                  runId: parentTaskRunId,
+                  waitpoints: waitpointId,
+                  projectId: waitpointProjectId,
+                  organizationId: environment.organization.id,
+                  batch,
+                  workerId,
+                  runnerId,
+                  blockOperation,
+                });
+              if (!blockOperation) await block();
+              else
+                await this.#admitStoreChild(taskRunId, block).catch(async (error) => {
+                  // The parent accepted this child's edge: publish it, and recoverWaitpointBlock
+                  // finishes registration. Throwing would make the SDK retry and run a second child.
+                  // Only this parent's exact edge counts: another parent's watcher or an in-flight
+                  // registration does not block this parent. An unreadable store keeps the error.
+                  const accepted = await this.waitpointSystem
+                    .isChildAwaited(parentTaskRunId, waitpointId, undefined, false)
+                    .catch(() => false);
+                  if (!accepted) throw error;
+                  this.logger.warn("engine.trigger(): accepted store wait failed registration", {
+                    runId: taskRunId,
+                    parentTaskRunId,
+                    error,
+                  });
+                });
             }
           }
         }
@@ -2037,6 +2145,8 @@ export class RunEngine {
             runWaitpointPlan?.plan.residency === "store" ? undefined : waitpointData,
         };
         let taskRun: Awaited<ReturnType<RunStore["createFailedRun"]>>;
+        // Another attempt of this item already holds its batch position.
+        let positionOwner: TaskRun | undefined;
         if (
           waitpointData &&
           runWaitpointPlan?.plan.residency !== "store" &&
@@ -2066,21 +2176,25 @@ export class RunEngine {
                 });
               }
               const blockOperation = runWaitpointBlockOperation;
-              await this.waitpointSystem.blockRunAndCompleteWaitpoint({
-                runId: parentTaskRunId,
-                waitpointId,
-                output: {
-                  value:
-                    runWaitpointPlan?.plan.residency === "store"
-                      ? this.waitpointSystem.serializeRunError(waitpointId, error)
-                      : JSON.stringify(error),
-                  isError: true,
-                },
-                projectId: environment.project.id,
-                organizationId: environment.organization.id,
-                batch,
-                blockOperation,
-              });
+              try {
+                await this.waitpointSystem.blockRunAndCompleteWaitpoint({
+                  runId: parentTaskRunId,
+                  waitpointId,
+                  output: {
+                    value:
+                      runWaitpointPlan?.plan.residency === "store"
+                        ? this.waitpointSystem.serializeRunError(waitpointId, error)
+                        : JSON.stringify(error),
+                    isError: true,
+                  },
+                  projectId: environment.project.id,
+                  organizationId: environment.organization.id,
+                  batch,
+                  blockOperation,
+                });
+              } catch (blockError) {
+                positionOwner = await this.#batchPositionOwnerRun(blockError, parentTaskRunId);
+              }
             }
             return taskRun;
           };
@@ -2120,21 +2234,25 @@ export class RunEngine {
               });
             }
             const blockOperation = runWaitpointBlockOperation;
-            await this.waitpointSystem.blockRunAndCompleteWaitpoint({
-              runId: parentTaskRunId,
-              waitpointId,
-              output: {
-                value:
-                  runWaitpointPlan?.plan.residency === "store"
-                    ? this.waitpointSystem.serializeRunError(waitpointId, error)
-                    : JSON.stringify(error),
-                isError: true,
-              },
-              projectId: environment.project.id,
-              organizationId: environment.organization.id,
-              batch,
-              blockOperation,
-            });
+            try {
+              await this.waitpointSystem.blockRunAndCompleteWaitpoint({
+                runId: parentTaskRunId,
+                waitpointId,
+                output: {
+                  value:
+                    runWaitpointPlan?.plan.residency === "store"
+                      ? this.waitpointSystem.serializeRunError(waitpointId, error)
+                      : JSON.stringify(error),
+                  isError: true,
+                },
+                projectId: environment.project.id,
+                organizationId: environment.organization.id,
+                batch,
+                blockOperation,
+              });
+            } catch (blockError) {
+              positionOwner = await this.#batchPositionOwnerRun(blockError, parentTaskRunId);
+            }
           }
         }
 
@@ -2159,7 +2277,7 @@ export class RunEngine {
         // `PerformTaskRunAlertsService.enqueue` directly after the
         // trace event closes).
         if (!emitRunFailedEvent) {
-          return taskRun;
+          return positionOwner ?? taskRun;
         }
         this.eventBus.emit("runFailed", {
           time: taskRun.completedAt ?? new Date(),
@@ -2186,9 +2304,11 @@ export class RunEngine {
           environment: {
             id: environment.id,
           },
+          // The item resolves to the position's run; this unused failed run raises no alert.
+          ...(positionOwner ? { suppressAlerts: true } : {}),
         });
 
-        return taskRun;
+        return positionOwner ?? taskRun;
       },
       {
         attributes: {
@@ -2938,6 +3058,31 @@ export class RunEngine {
     });
   }
 
+  /**
+   * Blocks a parent on an idempotency-cached run's waitpoint. Returns the run the request resolves
+   * to: the cached run, or the run that already holds the native batch position it targets.
+   */
+  async blockRunWithCachedRun({
+    cachedRun,
+    ...params
+  }: Parameters<RunEngine["blockRunWithWaitpoint"]>[0] & { cachedRun: TaskRun }): Promise<TaskRun> {
+    const block = () => this.waitpointSystem.blockRunWithWaitpoint(params);
+    try {
+      const waitpointId = [params.waitpoints].flat()[0]!;
+      if (
+        classifyWaitpointCoordinator(waitpointId) === "store" &&
+        (await this.waitpointSystem.isStoreRoutingEnabled(params.organizationId))
+      ) {
+        await this.#admitStoreChild(cachedRun.id, block);
+      } else {
+        await block();
+      }
+      return cachedRun;
+    } catch (error) {
+      return this.#batchPositionOwnerRun(error, params.runId);
+    }
+  }
+
   /** Completes a waitpoint and unblocks every run it no longer blocks. Safe against races. */
   async completeWaitpoint({
     id,
@@ -3402,7 +3547,13 @@ export class RunEngine {
   }
 
   /** Free the key and fail the run without retry; a retirement failure must not mask the cause. */
-  async #retireUnblockedChild(run: TaskRun, organizationId: string, cause: unknown) {
+  async #retireUnblockedChild(
+    run: TaskRun,
+    organizationId: string,
+    cause: unknown,
+    // Store retirements of a never-run duplicate child raise no alert.
+    silent = false
+  ): Promise<boolean> {
     const [error] = await tryCatch(
       (async () => {
         if (run.idempotencyKey) {
@@ -3418,6 +3569,7 @@ export class RunEngine {
             code: "UNSPECIFIED_ERROR",
             message: "Parent registration failed after the child run was created",
           },
+          ...(silent ? { suppressAlerts: true } : {}),
         });
       })()
     );
@@ -3428,6 +3580,61 @@ export class RunEngine {
         cause,
       });
     }
+    return !error;
+  }
+
+  /**
+   * Retire a store batch child its parent refused, under the child's run lock that a cached attach
+   * also takes. A child another run waits on, or may be registering on, is left to its recovery,
+   * which publishes it. A retired child must never be admitted later by its own recovery.
+   */
+  async #retireUnadmittedStoreChild(
+    run: TaskRun,
+    cause: unknown,
+    c: { organizationId: string; parentRunId: string; waitpointId: string; batchIndex?: number }
+  ): Promise<void> {
+    const [error] = await tryCatch(
+      this.runLock.lock("retireStoreWaitpointChild", [run.id], async () => {
+        const awaited = await this.waitpointSystem
+          .isChildAwaited(c.parentRunId, c.waitpointId, c.batchIndex)
+          .catch(() => true);
+        if (awaited) return;
+        if (await this.#retireUnblockedChild(run, c.organizationId, cause, true))
+          await this.worker.ack(`recoverRunWaitpoint:${run.id}`);
+      })
+    );
+    if (error)
+      this.logger.warn("Left an unadmitted store child to its recovery", { runId: run.id, error });
+  }
+
+  /**
+   * Admit a store child under its own run lock, which its recovery also holds while it decides to
+   * retire a never-published child. A retired child is never admitted: the caller retries.
+   */
+  async #admitStoreChild<T>(childRunId: string, admit: () => Promise<T>): Promise<T> {
+    return this.runLock.lock("admitStoreWaitpointChild", [childRunId], async () => {
+      const child = await this.runStore.findRunOnPrimary(
+        { id: childRunId },
+        { select: { status: true } }
+      );
+      if (child?.status === "SYSTEM_FAILURE") {
+        throw new ServiceValidationError(
+          "The child run was retired before its parent could wait on it. Retry the trigger.",
+          503
+        );
+      }
+      return admit();
+    });
+  }
+
+  /** The run holding the batch position `error` was refused for; rethrows any other error. */
+  async #batchPositionOwnerRun(error: unknown, parentRunId: string): Promise<TaskRun> {
+    const ownerWaitpointId = batchPositionOwner(error);
+    if (!ownerWaitpointId) throw error;
+    const runId = await this.waitpointSystem.batchPositionOwnerRunId(ownerWaitpointId, parentRunId);
+    const run = runId ? await this.runStore.findRunOnPrimary({ id: runId }) : null;
+    if (!run) throw error;
+    return run;
   }
 
   async #repairRuns(runIds: string[], dryRun: boolean, organizationId: string) {

@@ -7,6 +7,7 @@ import {
 import type {
   CheckpointInput,
   CompleteRunAttemptResult,
+  ExecutionResult,
   DequeuedMessage,
   MachinePreset,
   StartRunAttemptResult,
@@ -18,6 +19,7 @@ import { fromFriendlyId } from "@trigger.dev/core/v3/isomorphic";
 import {
   WORKER_HEADERS,
   type RunTokenHeartbeatReport,
+  type WorkerApiRunHeartbeatRequestBody,
   type WeightedWorkerQueueSubscription,
   type WorkerQueueClass,
 } from "@trigger.dev/core/v3/workers";
@@ -64,7 +66,12 @@ import {
 import type { EnvironmentVariable } from "~/v3/environmentVariables/repository";
 import { machinePresetFromName } from "~/v3/machinePresets.server";
 import { meteringClaims } from "~/v3/utils/meteringClaims.server";
-import { refreshRunTokenOnHeartbeat } from "./runTokenRefresh.server";
+import { issueContinueRunToken, refreshRunTokenOnHeartbeat } from "./runTokenRefresh.server";
+import {
+  countInitialUsageAuth,
+  initialUsageAuth,
+  refreshUsageJwtOnHeartbeat,
+} from "./usageJwtRefresh.server";
 import type { WithRunEngineOptions } from "../baseService.server";
 import { WithRunEngine } from "../baseService.server";
 
@@ -601,6 +608,7 @@ export class AuthenticatedWorkerInstance extends WithRunEngine {
     environmentId,
     sandboxRunId,
     runTokenReport,
+    usageJwtReport,
   }: {
     runFriendlyId: string;
     snapshotFriendlyId: string;
@@ -608,7 +616,8 @@ export class AuthenticatedWorkerInstance extends WithRunEngine {
     environmentId?: string;
     sandboxRunId?: string;
     runTokenReport?: RunTokenHeartbeatReport;
-  }): Promise<{ runToken?: string }> {
+    usageJwtReport?: WorkerApiRunHeartbeatRequestBody["usageJwt"];
+  }): Promise<{ runToken?: string; usageJwt?: string; usageJwtError?: "refresh_failed" }> {
     const heartbeat = await this._engine.heartbeatRun({
       runId: fromFriendlyId(runFriendlyId),
       snapshotId: fromFriendlyId(snapshotFriendlyId),
@@ -637,7 +646,33 @@ export class AuthenticatedWorkerInstance extends WithRunEngine {
       replica: this._replica,
     });
 
-    return { runToken };
+    let usageJwt: string | undefined;
+    let usageJwtError: "refresh_failed" | undefined;
+    try {
+      usageJwt = await refreshUsageJwtOnHeartbeat({
+        report: usageJwtReport,
+        runId: fromFriendlyId(runFriendlyId),
+        snapshotId: fromFriendlyId(snapshotFriendlyId),
+        workerId: this.workerInstanceId,
+        runnerId,
+        environmentId,
+        projectId: this.type === "UNMANAGED" ? (this.projectId ?? undefined) : undefined,
+        store: this._engine.runStore,
+        resolveContext: (runId) => this._engine.resolveTaskRunContext(runId),
+        sign: generateJWTTokenForEnvironment,
+      });
+    } catch (error) {
+      usageJwtError = "refresh_failed";
+      logger.warn("Billing JWT refresh rejected or failed", {
+        runId: runFriendlyId,
+        snapshotId: snapshotFriendlyId,
+        workerId: this.workerInstanceId,
+        runnerId,
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
+
+    return { runToken, usageJwt, usageJwtError };
   }
 
   async startRunAttempt({
@@ -650,6 +685,7 @@ export class AuthenticatedWorkerInstance extends WithRunEngine {
     environmentId,
     sandboxRunId,
     supportsRunTokenRefresh,
+    supportsUsageJwtRefresh,
     supportsSecretProxy,
   }: {
     runFriendlyId: string;
@@ -661,6 +697,7 @@ export class AuthenticatedWorkerInstance extends WithRunEngine {
     environmentId?: string;
     sandboxRunId?: string;
     supportsRunTokenRefresh?: boolean;
+    supportsUsageJwtRefresh?: boolean;
     supportsSecretProxy?: boolean;
   }): Promise<
     StartRunAttemptResult & {
@@ -757,16 +794,32 @@ export class AuthenticatedWorkerInstance extends WithRunEngine {
       variables = [...variables, ...delivery.placeholders];
     }
 
+    const usageAuth = this.initialUsageAuthFor({
+      runId: engineResult.run.id,
+      supportsUsageJwtRefresh,
+      verifiedEnvironmentId: environmentId,
+      environmentId: environment.id,
+      hasRootKey: variables.some((variable) => variable.key === "TRIGGER_SECRET_KEY"),
+    });
+
     const envVars = await this.getEnvVars(
       variables,
       environment,
       engineResult.run.id,
       engineResult.execution.machine ?? defaultMachinePreset,
-      meteringClaims({
-        environmentType: environment.type,
-        region: engineResult.run.region,
-        workerQueue: engineResult.run.workerQueue,
-      }),
+      {
+        ...meteringClaims({
+          environmentType: environment.type,
+          region: engineResult.run.region,
+          workerQueue: engineResult.run.workerQueue,
+        }),
+        ...(usageAuth === "control_plane"
+          ? {
+              usage_auth: "control-plane-v1",
+              usage_attempt: String(engineResult.execution.attempt.number),
+            }
+          : {}),
+      },
       engineResult.run.taskEventStore ?? undefined,
       runToken
     );
@@ -776,6 +829,30 @@ export class AuthenticatedWorkerInstance extends WithRunEngine {
       envVars,
       ...(secretProxyMetadata ? { secretProxy: secretProxyMetadata } : {}),
     };
+  }
+
+  private initialUsageAuthFor(opts: {
+    runId: string;
+    supportsUsageJwtRefresh?: boolean;
+    verifiedEnvironmentId?: string;
+    environmentId: string;
+    hasRootKey: boolean;
+  }) {
+    const kind = initialUsageAuth(opts);
+    countInitialUsageAuth(kind);
+
+    // A run without the root key whose environment the supervisor did not verify: its credential
+    // cannot be renewed by either path. This is the alert signal.
+    if (kind === "legacy_unverified") {
+      logger.warn("Billing JWT issued without any renewal path: unverified environment", {
+        runId: opts.runId,
+        environmentId: opts.environmentId,
+        verifiedEnvironmentId: opts.verifiedEnvironmentId,
+        workerId: this.workerInstanceId,
+      });
+    }
+
+    return kind;
   }
 
   // The engine validates the header's scope before any resolved variables are returned.
@@ -934,11 +1011,15 @@ export class AuthenticatedWorkerInstance extends WithRunEngine {
     snapshotFriendlyId,
     runnerId,
     environmentId,
+    supportsSecretProxy,
+    sandboxRunId,
   }: {
     runFriendlyId: string;
     snapshotFriendlyId: string;
     runnerId?: string;
     environmentId?: string;
+    supportsSecretProxy?: boolean;
+    sandboxRunId?: string;
   }) {
     await this.assertCreatedAtGate({
       runId: fromFriendlyId(runFriendlyId),
@@ -946,13 +1027,78 @@ export class AuthenticatedWorkerInstance extends WithRunEngine {
       action: "continue",
     });
 
-    return await this._engine.continueRunExecution({
+    const result = await this._engine.continueRunExecution({
       runId: fromFriendlyId(runFriendlyId),
       snapshotId: fromFriendlyId(snapshotFriendlyId),
       workerId: this.workerInstanceId,
       runnerId,
       environmentId,
     });
+    if (!supportsSecretProxy || !environmentId) return result;
+    // The run already continued, so a proxy failure must not fail the continue. Without
+    // metadata the guest stays unbound and its protected requests fail closed.
+    try {
+      return {
+        ...result,
+        ...(await this.secretProxyContinuation(result, environmentId, sandboxRunId)),
+      };
+    } catch (error) {
+      logger.warn("Secret proxy continuation unavailable", {
+        runId: result.run.friendlyId,
+        error: error instanceof Error ? error.message : String(error),
+      });
+      return result;
+    }
+  }
+
+  private async secretProxyContinuation(
+    result: ExecutionResult,
+    environmentId: string,
+    sandboxRunId?: string
+  ): Promise<{ runToken?: string; secretProxy?: SecretProxyExecutionMetadata }> {
+    const { environment, pinned } = await this.findAttemptEnvironment(result.run.id, environmentId);
+    const resolved = await resolveAttemptVariables(
+      environment,
+      environment.parentEnvironment ?? undefined,
+      { grant: pinned?.policy.envVars }
+    );
+    if (!resolved.proxyValues.length || !result.run.attemptNumber) return {};
+    const proxy = secretProxy(
+      env.CONTROL_PLANE_DEQUEUE_READS_FROM_REPLICA === "1" ? this._replica : this._prisma
+    );
+    const runToken = await issueContinueRunToken({
+      heartbeat: result,
+      snapshotFriendlyId: result.snapshot.friendlyId,
+      environmentId,
+      sandboxRunId,
+      findRun: (runId) =>
+        this._engine.runStore.findRun(
+          { id: runId },
+          {
+            select: {
+              taskIdentifier: true,
+              runtimeEnvironmentId: true,
+              lockedById: true,
+              annotations: true,
+            },
+          }
+        ),
+      replica: this._replica,
+    });
+    if (!runToken) return {};
+    const hosts = await proxy.preflightRuntime(
+      environment.projectId,
+      environment.id,
+      resolved.proxyValues,
+      true,
+      true
+    );
+    const { secretProxy: metadata } = proxy.finalizeRuntime(resolved.proxyValues, hosts, {
+      runId: result.run.friendlyId,
+      attempt: result.run.attemptNumber,
+      expiresAtMs: decodeJwt(runToken).exp! * 1000,
+    });
+    return { runToken, secretProxy: metadata };
   }
 
   async reportRestoreOutcome({

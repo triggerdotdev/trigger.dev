@@ -485,9 +485,11 @@ export type AbsorbResult = {
    * on to a block this operation did not expect; `terminal` means it has been through
    * cleanup. Both mutated nothing, and neither may proceed to registration.
    */
-  outcome: "absorbed" | "stale" | "terminal" | "cleanupOwed" | "ownerGone";
+  outcome: "absorbed" | "stale" | "terminal" | "cleanupOwed" | "ownerGone" | "positionOwned";
   /** The block the run is actually on, for diagnosing a refusal. */
   currentBlockId?: string;
+  /** `positionOwned`: the waitpoint that already holds the requested batch position. */
+  positionOwnerWaitpointId?: string;
   /**
    * How many DISTINCT requested ids were still pending. Equivalent to the count the
    * previous path took over this call's ids, which was a COUNT over waitpoint rows — so
@@ -1694,6 +1696,8 @@ export class WaitpointStoreCoordinator {
     absorptionId?: string;
     registrationEvidence?: string;
     batchIndex?: number;
+    /** A native batch item: claim `position` for `owner`, refusing if another waitpoint holds it. */
+    batchPosition?: { position: string; owner: string };
   }): Promise<AbsorbResult> {
     // Every reported completion, checked before the loop below serializes any of them. A
     // reported completion rides into absorption as a receipt, so it reaches the same
@@ -1753,6 +1757,8 @@ export class WaitpointStoreCoordinator {
       ],
       ...argv,
       args.requirePendingWaitpointId ?? "",
+      args.batchPosition?.position ?? "",
+      args.batchPosition?.owner ?? "",
       args.absorptionId ?? "",
       contributionMember(args.blockId, args.absorptionId ?? ""),
       args.registrationEvidence ??
@@ -1769,14 +1775,17 @@ export class WaitpointStoreCoordinator {
       reply[0] === "stale" ||
       reply[0] === "terminal" ||
       reply[0] === "cleanupOwed" ||
-      reply[0] === "ownerGone"
+      reply[0] === "ownerGone" ||
+      reply[0] === "positionOwned"
     ) {
       this.metrics.staleAbsorbs?.add(1, { outcome: reply[0] });
       return {
         // `cleanupOwed`: a previous mixed block's cross-store cleanup is still owed, so this DIFFERENT block
         // is refused (active block unchanged) until the fence clears — reply[1] is the block that owes cleanup.
         outcome: reply[0],
-        currentBlockId: reply[1] || undefined,
+        ...(reply[0] === "positionOwned"
+          ? { positionOwnerWaitpointId: reply[1] }
+          : { currentBlockId: reply[1] || undefined }),
         pendingOfRequested: 0,
         storePendingTotal: 0,
         alreadyDelivered: [],
@@ -2658,6 +2667,30 @@ ${RETAIN_WAITPOINT_RECORD}
     );
   }
 
+  /**
+   * Whether anything waits on this child: the parent's active block holds its exact edge (which
+   * survives contribution finalization), or another run registered a watcher on a shared child.
+   * Throws while another run's registration still holds the child without a watcher.
+   */
+  async isAwaited(
+    parentRunId: string,
+    waitpointId: string,
+    batchIndex?: number,
+    sharedWaiters = true
+  ): Promise<boolean> {
+    await this.beforeCommand?.();
+    const edge = edgeField(waitpointId, batchIndex);
+    if ((await this.redis.hexists(runBlockKeys(parentRunId).edge, edge)) === 1) return true;
+    if (!sharedWaiters) return false;
+    const keys = waitpointKeys(waitpointId);
+    // Read holds first: a registration writes its watcher before releasing its hold.
+    const holds = Number(await this.redis.hget(keys.record, "rh")) || 0;
+    if ((await this.redis.hlen(keys.watchers)) > 0) return true;
+    // Another run accepted this child but has not registered its watcher yet: decide later.
+    if (holds > 0) throw new Error(`Waitpoint ${waitpointId} has a registration in flight`);
+    return false;
+  }
+
   /** Remove cleanup targets after phase 3. Keep the request proof until registration finishes. */
   async markRegistrationComplete(args: {
     runId: string;
@@ -2692,7 +2725,7 @@ ${RETAIN_WAITPOINT_RECORD}
     await this.beforeCommand?.();
     return (
       await this.redis.smembers(runContributionKey(args.runId, args.blockId, args.absorptionId))
-    ).filter((field) => !field.startsWith("!"));
+    ).filter((field) => !field.startsWith("!") && !field.startsWith("@"));
   }
 
   /** Remove the request proof and its index entry after registration finishes. */

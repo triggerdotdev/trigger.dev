@@ -1,4 +1,3 @@
-import { StoreWaitpointBlockCycleAdvanced } from "../errors.js";
 import {
   containerTestWithIsolatedRedis as containerTest,
   redisTest,
@@ -66,7 +65,7 @@ describe("storeWaitpointAutomaticRecovery", () => {
               parentTaskRunId: parent.id,
               resumeParentOnCompletion: true,
             })
-          ).rejects.toThrow("WRONGTYPE");
+          ).resolves.toMatchObject({ id: childId });
           expect(
             (await engine.getRunExecutionData({ runId: parent.id }))?.snapshot.executionStatus
           ).toBe("EXECUTING_WITH_WAITPOINTS");
@@ -340,7 +339,7 @@ describe("storeWaitpointAutomaticRecovery", () => {
 
   for (const retireParent of [false, true]) {
     containerTest(
-      `a delayed original producer ${retireParent ? "cannot reattach a retired parent cycle" : "cannot republish the child after recovery queues it"}`,
+      `a delayed original producer ${retireParent ? "cannot reattach a retired parent cycle" : "is refused once recovery retired the child"}`,
       async ({ prisma, redisOptions }) => {
         const snapshotStore = new RedisSnapshotStore({ redisOptions, completedTtlMs: 60_000 });
         const store = new WaitpointStoreCoordinator({ redisOptions });
@@ -455,15 +454,17 @@ describe("storeWaitpointAutomaticRecovery", () => {
           }
           // Start the actual worker only after the chosen parent cycle is durable.
           recoveryEngine["worker"].start();
+          // The parent holds no edge for the child, so recovery retires it instead of queueing it.
           await vi.waitFor(
             async () => {
               expect(
-                await engine.runQueue.messageExists(env.organization.id, runId),
-                "child was never published to its run queue"
-              ).toBe(1);
+                (await prisma.taskRun.findUniqueOrThrow({ where: { id: runId } })).status,
+                "child was never retired"
+              ).toBe("SYSTEM_FAILURE");
             },
             { timeout: 10_000 }
           );
+          expect(await engine.runQueue.messageExists(env.organization.id, runId)).toBeFalsy();
           await expect
             .poll(() => recoveryEngine["worker"].queue.getJob(`recoverRunWaitpoint:${runId}`), {
               timeout: 10_000,
@@ -482,21 +483,23 @@ describe("storeWaitpointAutomaticRecovery", () => {
             ).toBe(0);
           }
           if (!retireParent) {
-            // Recovery can queue the child before the original producer accepts its first edge.
+            // Recovery can retire the child before the original producer accepts its first edge.
             expect((await store.readBlockState(parent.id)).pendingIds).toEqual([]);
             expect(
               (await engine.getRunExecutionData({ runId: parent.id }))?.snapshot.executionStatus
             ).toBe("EXECUTING");
           }
           barrier.release();
-          if (retireParent)
-            await expect(original).rejects.toBeInstanceOf(StoreWaitpointBlockCycleAdvanced);
-          else {
-            expect((await original).id).toBe(runId);
-            expect((await store.readBlockState(parent.id)).pendingIds).toEqual([waitpointId]);
-          }
-          const child = await dequeueAndStart(engine, "recovery-delayed-producer-child");
-          expect(child.run.id).toBe(runId);
+          // The late producer never admits the retired child; its caller retries the trigger.
+          await expect(original).rejects.toMatchObject({ status: 503 });
+          expect((await store.readBlockState(parent.id)).pendingIds).toEqual(
+            retireParent ? [laterWaitpointId] : []
+          );
+          expect(
+            (await engine.getRunExecutionData({ runId: parent.id }))?.completedWaitpoints.map(
+              (w) => w.id
+            )
+          ).not.toContain(waitpointId);
           expect(
             await engine.dequeueFromWorkerQueue({
               blockingPopTimeoutSeconds: 1,
@@ -505,19 +508,8 @@ describe("storeWaitpointAutomaticRecovery", () => {
             })
           ).toHaveLength(0);
           if (retireParent) {
-            await recoveryEngine.completeRunAttempt({
-              runId,
-              snapshotId: child.snapshot.id,
-              completion: {
-                id: runId,
-                ok: true,
-                output: '{"committed":true}',
-                outputType: "application/json",
-              },
-            });
             const source = (await store.readCompletedRecords([waitpointId])).get(waitpointId)!;
             expect(source.status).toBe("COMPLETED");
-            expect(source.completion?.output).toEqual({ inline: '{"committed":true}' });
             await expect
               .poll(
                 async () => {
@@ -839,7 +831,7 @@ describe("storeWaitpointAutomaticRecovery", () => {
     }
   );
   containerTest(
-    "a failed pre-absorption child is queued by recovery without blocking a fresh retry",
+    "a failed pre-absorption child is retired by recovery without blocking a fresh retry",
     async ({ prisma, redisOptions }) => {
       const snapshotStore = new RedisSnapshotStore({ redisOptions, completedTtlMs: 60_000 });
       const store = new WaitpointStoreCoordinator({ redisOptions });
@@ -884,7 +876,7 @@ describe("storeWaitpointAutomaticRecovery", () => {
         });
         const retryWaitpointId = deriveRunWaitpointId(retry.id)!;
         // Run both actual production handlers: neither may add the failed request's absent edge to
-        // the retry's active block. The child itself remains recoverable and queueable.
+        // the retry's active block. The parent never waited on the child, so it is retired unrun.
         await engine["worker"]["jobs"].recoverRunWaitpoint({
           id: `recoverRunWaitpoint:${childId}`,
           payload: runPayload,
@@ -897,7 +889,7 @@ describe("storeWaitpointAutomaticRecovery", () => {
           attempt: 0,
           visibilityTimeoutMs: 30_000,
         });
-        expect(await engine.runQueue.messageExists(env.organization.id, childId)).toBe(1);
+        expect(await engine.runQueue.messageExists(env.organization.id, childId)).toBeFalsy();
         expect((await store.readBlockState(parent.id)).pendingIds).toEqual([retryWaitpointId]);
         await engine.waitpointSystem.completeWaitpoint({
           id: retryWaitpointId,
@@ -914,7 +906,7 @@ describe("storeWaitpointAutomaticRecovery", () => {
         expect((await store.readBlockState(parent.id)).pendingIds).toEqual([]);
         expect((await store.describeWaitpoint(waitpointId)).outcome).toBe("exists");
         expect((await prisma.taskRun.findUniqueOrThrow({ where: { id: childId } })).status).toBe(
-          "PENDING"
+          "SYSTEM_FAILURE"
         );
       } finally {
         redis.disconnect();

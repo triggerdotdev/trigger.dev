@@ -77,6 +77,7 @@ import sourceMapSupport from "source-map-support";
 import { env } from "std-env";
 import { normalizeImportPath } from "../utilities/normalizeImportPath.js";
 import { dropInheritedRunToken, installRunToken } from "./runTokenEnv.js";
+import { installUsageJwt } from "./usageJwt.js";
 import { WARMUP_FLAG } from "./warmupCommand.js";
 import {
   pickStartupOnlyEnv,
@@ -360,6 +361,7 @@ async function bootstrap() {
 }
 
 let _execution: TaskRunExecution | undefined;
+let _prodUsageManager: ProdUsageManager | undefined;
 let _isRunning = false;
 let _isCancelled = false;
 let _tracingSDK: TracingSDK | undefined;
@@ -451,6 +453,7 @@ const zodIpc = new ZodIpcConnection({
         usageIntervalMs: getEnvVar("USAGE_HEARTBEAT_INTERVAL_MS"),
         usageEventUrl: getEnvVar("USAGE_EVENT_URL"),
         triggerJWT: getEnvVar("TRIGGER_JWT"),
+        retryAmbiguousReports: getEnvVar("USAGE_RETRY_AMBIGUOUS_REPORTS") === "1",
       });
 
       prodManager.setInitialState({
@@ -721,6 +724,9 @@ const zodIpc = new ZodIpcConnection({
       _sharedWorkerRuntime?.resolveWaitpoints([waitpoint]);
     },
     UPDATE_RUN_TOKEN: async (update) => ({ installed: installRunToken(_execution, update) }),
+    UPDATE_USAGE_JWT: async (update) => ({
+      installed: installUsageJwt(_execution, _prodUsageManager, update),
+    }),
   },
 });
 
@@ -829,18 +835,22 @@ function initializeUsageManager({
   usageIntervalMs,
   usageEventUrl,
   triggerJWT,
+  retryAmbiguousReports,
 }: {
   usageIntervalMs?: string;
   usageEventUrl?: string;
   triggerJWT?: string;
+  retryAmbiguousReports?: boolean;
 }) {
   const devUsageManager = new DevUsageManager();
   const prodUsageManager = new ProdUsageManager(devUsageManager, {
     heartbeatIntervalMs: usageIntervalMs ? parseInt(usageIntervalMs, 10) : undefined,
     url: usageEventUrl,
     jwt: triggerJWT,
+    retryAmbiguousReports,
   });
 
+  _prodUsageManager = prodUsageManager;
   usage.setGlobalUsageManager(prodUsageManager);
   timeout.setGlobalManager(new UsageTimeoutManager(devUsageManager));
 

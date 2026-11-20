@@ -2,7 +2,7 @@ import { UrlElicitationRequiredError } from "@modelcontextprotocol/server";
 import { buildJwtAbility, CAPLESS_USER_ACTOR_SCOPES, type RbacAbility } from "@trigger.dev/rbac";
 import { logger } from "~/services/logger.server";
 import { resolveAndRecheckUserActorClaims } from "~/services/personalAccessToken.server";
-import { mcpResource } from "~/services/oauth/metadata.server";
+import { MCP_SCOPES, mcpResource } from "~/services/oauth/metadata.server";
 import { rbac } from "~/services/rbac.server";
 import {
   confirmationClient,
@@ -55,6 +55,8 @@ type Outcome =
   | "insufficient_scope"
   | "forbidden"
   | "user_denied"
+  | "refused"
+  | "stale"
   | "error"
   | "pending"
   | "confirmed";
@@ -62,6 +64,13 @@ type Outcome =
 type Denial = "denied" | "insufficient_scope" | "forbidden";
 
 const DENY_REASONS = { insufficient_scope: "scope", forbidden: "role", denied: "other" } as const;
+
+const staleResults = new WeakSet<McpToolResult>();
+
+export const markStale = (result: McpToolResult): McpToolResult => {
+  staleResults.add(result);
+  return result;
+};
 
 const NO_EXTRA: McpRequestExtra = { signal: new AbortController().signal, requestId: "" };
 
@@ -97,6 +106,14 @@ function denialResult(denial: Denial, auth: McpToolAuth): McpToolResult {
   return errorText(
     `Not authorized: your role in this organization does not allow ${auth.action} on ${auth.subject}`
   );
+}
+
+function namedPermission(denial: unknown): { action: string; subject: string; id?: string } | null {
+  if (typeof denial !== "object" || denial === null) return null;
+  const { action, subject, id } = denial as Record<string, unknown>;
+  if (typeof action !== "string" || typeof subject !== "string") return null;
+  if (!MCP_SCOPES.includes(`${action}:${subject}`)) return null;
+  return { action, subject, ...(typeof id === "string" ? { id } : {}) };
 }
 
 const failed = (): McpToolResult => ({
@@ -204,9 +221,10 @@ async function confirm(
   identity: McpIdentity,
   subject: McpSubject | null
 ): Promise<
-  | { approved: true; id: string }
+  | { approved: true; id: string; preview: string }
   | { approved: false; id: string; url: string; message: string }
   | { approved: false; denied: true; id: string }
+  | { approved: false; refused: string }
 > {
   const lookup = {
     userId: identity.userId,
@@ -216,13 +234,16 @@ async function confirm(
     argsDigest: confirmationDigest(tool, args, subject),
   };
   const consumed = await store.consumeApproved(lookup);
-  if (consumed) return { approved: true, id: consumed.id };
+  if (consumed) return { approved: true, id: consumed.id, preview: consumed.preview };
+
+  const preview = await confirmationPreview(tool, spec, args, subject);
+  if ("refuse" in preview) return { approved: false, refused: preview.refuse };
 
   const created = await store.createPending({
     ...lookup,
     clientId: identity.kind === "uat" ? (identity.clientId ?? "Unknown client") : undefined,
     subject: confirmationSubject(subject),
-    ...(await confirmationPreview(tool, spec, args, subject)),
+    ...preview,
   });
   if ("denied" in created) return { approved: false, denied: true, id: created.id };
   const { id, url } = created;
@@ -260,11 +281,38 @@ export function withMcpToolAuth<TArgs>(
         return denialResult(authorization.denial, auth);
       }
 
-      let confirmation: { id: string } | undefined;
+      let confirmation: { id: string; preview: string } | undefined;
       const approval = requiresApproval(auth);
       if (approval) {
+        const precheck =
+          typeof approval === "object"
+            ? await approval.precheck?.(args, authorization.ability, subject)
+            : undefined;
+        if (precheck !== undefined) {
+          const named = precheck === "forbidden" ? null : namedPermission(precheck);
+          if (!named && precheck !== "forbidden") {
+            outcome = "denied";
+            return denialResult(outcome, auth);
+          }
+          const resource = named
+            ? {
+                type: named.subject,
+                ...(named.id ? { id: named.id } : {}),
+                ...(subject?.environmentType ? { envType: subject.environmentType } : {}),
+              }
+            : undefined;
+          outcome =
+            named && missingScopes(named, identity, resource).length
+              ? "insufficient_scope"
+              : "forbidden";
+          return denialResult(outcome, named ?? auth);
+        }
         const { store, mode } = await confirmationDefaults(options);
         const check = await confirm(store, tool, approval, args, identity, subject);
+        if ("refused" in check) {
+          outcome = "refused";
+          return errorText(check.refused);
+        }
         confirmationId = check.id;
         if ("denied" in check) {
           outcome = "user_denied";
@@ -288,7 +336,7 @@ export function withMcpToolAuth<TArgs>(
             check.message
           );
         }
-        confirmation = { id: check.id };
+        confirmation = { id: check.id, preview: check.preview };
       }
 
       const result = await handler(args, {
@@ -300,7 +348,13 @@ export function withMcpToolAuth<TArgs>(
         requestId: extra.requestId,
         confirmation,
       });
-      outcome = result.isError ? "error" : confirmation ? "confirmed" : "ok";
+      outcome = staleResults.has(result)
+        ? "stale"
+        : result.isError
+          ? "error"
+          : confirmation
+            ? "confirmed"
+            : "ok";
       return result;
     } catch (error) {
       if (error instanceof UrlElicitationRequiredError) throw error;

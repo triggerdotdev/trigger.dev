@@ -8,13 +8,10 @@ import { findEnvironmentBySlug } from "~/models/runtimeEnvironment.server";
 import { getRequestAbortSignal } from "~/services/httpAsyncStorage.server";
 import { requireUserId } from "~/services/session.server";
 import { EnvironmentParamSchema } from "~/utils/pathBuilder";
-import { inflate } from "node:zlib";
-import { promisify } from "node:util";
-
-const inflateAsync = promisify(inflate);
 import { $replica } from "~/db.server";
 import { logger } from "~/services/logger.server";
 import { findCurrentWorkerDeployment } from "~/v3/models/workerDeployment.server";
+import { sourceForPrompt } from "~/v3/workerSourceFiles.server";
 
 const RequestSchema = z.object({
   prompt: z.string().min(1, "Prompt is required").max(1000),
@@ -224,10 +221,7 @@ async function getTaskSourceCode(
       return "Source code not available for this task.";
     }
 
-    // File contents are zlib-deflated then base64-encoded by the CLI,
-    // stored as Buffer.from(base64String) in Prisma Bytes
-    const base64 = Buffer.from(file.contents).toString("utf-8");
-    const decompressed = (await inflateAsync(Buffer.from(base64, "base64"))).toString("utf-8");
+    const decompressed = await sourceForPrompt(file.contents);
 
     logger.info("[AI payload] Found task source code", {
       taskIdentifier,

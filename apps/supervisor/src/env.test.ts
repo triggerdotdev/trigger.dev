@@ -46,7 +46,7 @@ describe("secret proxy lane", () => {
     }
   });
 
-  it("preserves warm services and snapshot deletes but disables checkpoints with the proxy enabled", () => {
+  it("keeps warm services, checkpoints and snapshot deletes with the proxy enabled", () => {
     const services = {
       TRIGGER_WARM_START_URL: "http://warm.example",
       TRIGGER_WARM_START_DISPATCH_URL: "http://dispatch.example",
@@ -57,8 +57,8 @@ describe("secret proxy lane", () => {
     const lab = Env.parse({ ...enabled, ...services });
     expect(lab.TRIGGER_WARM_START_URL).toBe(services.TRIGGER_WARM_START_URL);
     expect(lab.TRIGGER_WARM_START_DISPATCH_URL).toBe(services.TRIGGER_WARM_START_DISPATCH_URL);
-    expect(lab.TRIGGER_CHECKPOINT_URL).toBeUndefined();
-    expect(lab.COMPUTE_SNAPSHOTS_ENABLED).toBe(false);
+    expect(lab.TRIGGER_CHECKPOINT_URL).toBe(services.TRIGGER_CHECKPOINT_URL);
+    expect(lab.COMPUTE_SNAPSHOTS_ENABLED).toBe(true);
     expect(lab.TRIGGER_SNAPSHOT_DELETE_URL).toBe(services.TRIGGER_SNAPSHOT_DELETE_URL);
     const ordinary = Env.parse({ ...base, ...services });
     expect(ordinary.TRIGGER_WARM_START_URL).toBe(services.TRIGGER_WARM_START_URL);

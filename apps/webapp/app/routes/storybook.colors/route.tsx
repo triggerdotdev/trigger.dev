@@ -22,7 +22,6 @@ import type {
   BulkActionType,
   ErrorGroupStatus,
   TaskRunAttemptStatus,
-  WorkerDeploymentStatus,
 } from "@trigger.dev/database";
 import type { WaitpointTokenStatus } from "@trigger.dev/core/v3";
 import { type ReactNode, useEffect, useRef, useState } from "react";
@@ -1155,10 +1154,10 @@ export default function Story_() {
         <Audit
           title="Deployment statuses"
           where={["DeploymentStatus.tsx"]}
-          note="Three states share the Spinner, and Queued / Canceled / Timed out all share text-text-faint with distinct glyphs."
+          note="Three states share the Spinner, and Queued / Canceled / Superseded / Timed out all share text-text-faint with distinct glyphs."
         >
           <Stack>
-            {deploymentStatuses.map((status: WorkerDeploymentStatus) => (
+            {deploymentStatuses.map((status) => (
               <DeploymentStatus key={status} status={status} isBuilt={false} />
             ))}
           </Stack>

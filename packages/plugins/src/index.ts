@@ -122,8 +122,10 @@ export type {
   AuditLogEventQuery,
   AuditLogFingerprintedCredentialKind,
   AuditLogInput,
+  AuditLogIpLocation,
   AuditLogListedAction,
   AuditLogListedCategory,
+  AuditLogListedEndpoint,
   AuditLogListedEvent,
   AuditLogOrigin,
   AuditLogPlugin,
@@ -132,6 +134,7 @@ export type {
   AuditLogTarget,
 } from "./auditLog.js";
 export { resolveAuditEventAttribution } from "./auditLog.js";
+export type { IpLocation, IpLocationLookup } from "./ipLocation.js";
 export type {
   ExternalOidcController,
   ExternalOidcEnvironment,

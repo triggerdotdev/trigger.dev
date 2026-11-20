@@ -44,6 +44,7 @@ import {
 } from "~/components/sessions/v1/trace/sessionRunFallback";
 import { highlightedNodeId } from "~/components/sessions/v1/trace/sessionTraceSelection";
 import {
+  deepLinkFailed,
   earlierRunsCursor,
   holeCursor,
   mergeSessionRunPage,
@@ -1653,5 +1654,38 @@ describe("runs that can't load here", () => {
     const at = (minutes: number) => Date.parse(triggered.triggeredAt) + minutes * MINUTE;
     expect(isRunStarting(triggered, at(4))).toBe(true);
     expect(isRunStarting(triggered, at(5))).toBe(false);
+  });
+});
+
+describe("the notice for a deep-linked run whose page failed", () => {
+  const failed = (overrides: Partial<Parameters<typeof deepLinkFailed>[0]> = {}) =>
+    deepLinkFailed({
+      deepLink: "failed",
+      deepLinkRunId: "run_old",
+      selectedRunId: "run_old",
+      runs: [{ friendlyId: "run_new" }],
+      ...overrides,
+    });
+
+  // Catches: a failed deep-link read leaving the tree at the latest run with no word about it.
+  it("shows when the linked run's page failed and the run isn't loaded", () => {
+    expect(failed()).toBe(true);
+  });
+
+  // Catches: a notice for a linked run that the newest page loaded anyway.
+  it("says nothing when the linked run is in the newest page", () => {
+    expect(failed({ runs: [{ friendlyId: "run_new" }, { friendlyId: "run_old" }] })).toBe(false);
+  });
+
+  // Catches: the notice staying once another row is picked, where Retry would read the wrong run.
+  it("says nothing once something else is selected", () => {
+    expect(failed({ selectedRunId: "run_new" })).toBe(false);
+    expect(failed({ selectedRunId: undefined })).toBe(false);
+  });
+
+  // Catches: a 404 deep link getting a Retry instead of "isn't in this session".
+  it("only covers a failed read", () => {
+    expect(failed({ deepLink: "notFound" })).toBe(false);
+    expect(failed({ deepLink: "loaded" })).toBe(false);
   });
 });

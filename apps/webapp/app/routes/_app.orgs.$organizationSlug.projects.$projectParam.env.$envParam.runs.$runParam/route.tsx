@@ -590,6 +590,7 @@ function TraceView({
     traceStatus,
     retryLoad,
     inspectorRefreshKey,
+    messageChanges,
   } = useRunTrace({
     run,
     trace: trace as unknown as RunTraceInput,
@@ -686,6 +687,7 @@ function TraceView({
                 errorsOnly={errorsOnly}
                 filterText={filterText}
                 showQueueTime={showQueueTime}
+                messageChanges={messageChanges}
               />
             </div>
           </div>

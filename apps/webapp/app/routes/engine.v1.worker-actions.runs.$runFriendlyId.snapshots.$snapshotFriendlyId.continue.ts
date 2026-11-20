@@ -1,6 +1,6 @@
 import type { TypedResponse } from "@remix-run/server-runtime";
 import { json } from "@remix-run/server-runtime";
-import type { WorkerApiContinueRunExecutionRequestBody } from "@trigger.dev/core/v3/workers";
+import type { WorkerApiContinueRunExecutionResponseBody } from "@trigger.dev/core/v3/workers";
 import { z } from "zod";
 import { env } from "~/env.server";
 import { logger } from "~/services/logger.server";
@@ -13,13 +13,16 @@ export const loader = createLoaderWorkerApiRoute(
       runFriendlyId: z.string(),
       snapshotFriendlyId: z.string(),
     }),
+    searchParams: z.object({ supportsSecretProxy: z.literal("1").optional() }),
   },
   async ({
     authenticatedWorker,
     params,
+    searchParams,
     runnerId,
     environmentId,
-  }): Promise<TypedResponse<WorkerApiContinueRunExecutionRequestBody>> => {
+    sandboxRunId,
+  }): Promise<TypedResponse<WorkerApiContinueRunExecutionResponseBody>> => {
     const { runFriendlyId, snapshotFriendlyId } = params;
 
     logger.debug("Continuing run execution", { runFriendlyId, snapshotFriendlyId });
@@ -30,6 +33,8 @@ export const loader = createLoaderWorkerApiRoute(
         snapshotFriendlyId,
         runnerId,
         environmentId,
+        supportsSecretProxy: searchParams.supportsSecretProxy === "1",
+        sandboxRunId,
       });
 
       return json(continuationResult);

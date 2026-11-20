@@ -900,3 +900,37 @@ describe("Edge Cases", () => {
     expect(Object.values(params)).toContain("SELECT * FROM users");
   });
 });
+
+describe("Schema column allowlist", () => {
+  // Catches: a query reaching stored columns that the table schema doesn't list
+  it.each([
+    ["an asterisk inside a function", "SELECT toString(tuple(*)) FROM task_runs"],
+    ["a qualified asterisk inside a function", "SELECT tuple(r.*) FROM task_runs AS r"],
+    ["an asterisk outside the select list", "SELECT id FROM task_runs ORDER BY *"],
+    ["the physical table name as a qualifier", "SELECT task_runs_v2.id FROM task_runs"],
+    ["the database name as a qualifier", "SELECT trigger_dev.task_runs_v2.id FROM task_runs"],
+    ["the physical table name before an asterisk", "SELECT task_runs_v2.* FROM task_runs"],
+    [
+      "the physical table name shadowed by a SELECT alias",
+      "SELECT 1 AS task_runs_v2, task_runs_v2.id FROM task_runs",
+    ],
+    [
+      "the database name shadowed by a SELECT alias",
+      "SELECT 1 AS trigger_dev, trigger_dev.task_runs_v2.id FROM task_runs",
+    ],
+    [
+      "another table's physical name as a table alias",
+      "SELECT event_type FROM task_runs AS r JOIN task_events AS task_runs_v2 ON 1 = 1",
+    ],
+    [
+      "the database name as a table alias",
+      "SELECT event_type FROM task_runs AS r JOIN task_events AS trigger_dev ON 1 = 1",
+    ],
+    [
+      "the physical table name shadowed by a column CTE",
+      "WITH 1 AS task_runs_v2 SELECT task_runs_v2.id FROM task_runs",
+    ],
+  ])("rejects %s", (_, query) => {
+    expect(() => compile(query)).toThrow();
+  });
+});

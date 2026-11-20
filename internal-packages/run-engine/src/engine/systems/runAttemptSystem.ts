@@ -1090,6 +1090,7 @@ export class RunAttemptSystem {
     forceRequeue,
     resetQueueAttempts,
     environmentId,
+    suppressAlerts,
     tx,
   }: {
     runId: string;
@@ -1098,6 +1099,7 @@ export class RunAttemptSystem {
     runnerId?: string;
     completion: TaskRunFailedExecutionResult;
     attemptNumber?: number;
+    suppressAlerts?: boolean;
     forceRequeue?: boolean;
     // Defaults to !forceRequeue, so a forced requeue keeps spending the queue's redelivery budget.
     resetQueueAttempts?: boolean;
@@ -1270,6 +1272,7 @@ export class RunAttemptSystem {
                 runnerId,
                 attemptDurationMs: completion.usage?.durationMs,
                 waitpointStoreEnabled,
+                suppressAlerts,
               });
               // Terminal-first cleanup, AFTER the durable terminal transition and outside the tx.
               if (cleanupObligation) {
@@ -1718,11 +1721,13 @@ export class RunAttemptSystem {
     runId,
     organizationId,
     error,
+    suppressAlerts,
     tx,
   }: {
     runId: string;
     organizationId?: string;
     error: TaskRunInternalError;
+    suppressAlerts?: boolean;
     tx?: PrismaClientOrTransaction;
   }): Promise<CompleteRunAttemptResult> {
     const prisma = tx ?? this.$.prisma;
@@ -1762,6 +1767,7 @@ export class RunAttemptSystem {
             id: runId,
             error,
           },
+          suppressAlerts,
           tx: prisma,
         });
 
@@ -2577,6 +2583,7 @@ export class RunAttemptSystem {
     runnerId,
     attemptDurationMs,
     waitpointStoreEnabled,
+    suppressAlerts,
   }: {
     runId: string;
     latestSnapshot: EnhancedExecutionSnapshot;
@@ -2585,6 +2592,7 @@ export class RunAttemptSystem {
     workerId?: string;
     runnerId?: string;
     attemptDurationMs?: number;
+    suppressAlerts?: boolean;
     // attemptFailed's flag decision, made under the same run lock; #finalizeRun reuses only `false`.
     waitpointStoreEnabled: boolean;
   }): Promise<CompleteRunAttemptResult> {
@@ -2736,6 +2744,7 @@ export class RunAttemptSystem {
         environment: {
           id: env.id,
         },
+        ...(suppressAlerts ? { suppressAlerts } : {}),
       });
 
       await this.#finalizeRun(run, env.organizationId, waitpointStoreEnabled);

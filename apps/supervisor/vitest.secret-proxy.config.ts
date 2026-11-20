@@ -10,6 +10,7 @@ export default defineConfig({
       "src/services/secretProxyValidation.test.ts",
       "src/env.test.ts",
       "src/workloadServer/workloadServer.attemptStart.test.ts",
+      "src/workloadServer/workloadServer.secretProxy.test.ts",
       "src/workloadServer/workloadServer.heartbeat.test.ts",
       "src/workloadServer/workloadServer.auth.test.ts",
     ],

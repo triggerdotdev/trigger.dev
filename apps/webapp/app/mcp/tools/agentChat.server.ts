@@ -50,7 +50,7 @@ import {
   type McpToolContext,
   type McpToolResult,
 } from "../gate/withMcpToolAuth.server";
-import type { McpToolDefinition } from "../registry.server";
+import type { McpApprovalClass, McpToolDefinition } from "../registry.server";
 import { errorResult, resolveToolEnvironment, textResult } from "./define.server";
 import { defineWriteTool, fencedError } from "./defineWrite.server";
 import {
@@ -625,6 +625,7 @@ export function createAgentChatTools(options: AgentChatToolsOptions = {}): McpTo
     title: string;
     description: string;
     shape: S;
+    approval: McpApprovalClass;
     missing: (chatId: string) => McpToolResult;
     run: (
       input: z.output<z.ZodObject<S>>,
@@ -681,6 +682,7 @@ export function createAgentChatTools(options: AgentChatToolsOptions = {}): McpTo
       inputSchema: tool.shape,
       annotations: { title: tool.title, readOnlyHint: false, destructiveHint: true },
       confirm: requiresApproval(auth) !== false,
+      approval: tool.approval,
       auth,
       handler: async (args, identity, request, extra) => {
         const parsed = schema.safeParse(args ?? {});
@@ -700,6 +702,7 @@ export function createAgentChatTools(options: AgentChatToolsOptions = {}): McpTo
       description:
         "Start a conversation with a chat agent. Returns a chatId you can use with send_agent_message. Optionally preloads the agent so it initializes before the first message.",
       shape: StartAgentChatInput.shape,
+      approval: "configurable",
       auth: { action: "write", subject: "sessions" },
       run: async (input, ctx) => {
         const environment = await resolveToolEnvironment(ctx);
@@ -783,6 +786,7 @@ export function createAgentChatTools(options: AgentChatToolsOptions = {}): McpTo
       description:
         "Send a message to an active agent chat and get the full response text back. Use the chatId from start_agent_chat. The agent remembers full context from previous messages in the same chat.",
       shape: SendAgentMessageInput.shape,
+      approval: "none",
       missing: (chatId) => noActiveChat(chatId, " Use start_agent_chat first."),
       run: async (input, handle, ctx) => {
         const environment = await resolveToolEnvironment(ctx);
@@ -816,6 +820,7 @@ export function createAgentChatTools(options: AgentChatToolsOptions = {}): McpTo
       description:
         "Close an agent chat conversation. The agent exits its loop gracefully. Without this, the agent will close on its own when its idle timeout expires.",
       shape: CloseAgentChatInput.shape,
+      approval: "none",
       missing: (chatId) => noActiveChat(chatId),
       run: async (input, handle, ctx) => {
         const environment = await resolveToolEnvironment(ctx);

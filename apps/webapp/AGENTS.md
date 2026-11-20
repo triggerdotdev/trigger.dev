@@ -93,7 +93,7 @@ Background job workers use `@trigger.dev/redis-worker`:
 
 ## Real-time
 
-- Socket.io: `app/v3/handleSocketIo.server.ts`, `app/v3/handleWebsockets.server.ts`
+- Socket.io: `app/v3/handleSocketIo.server.ts` (the only websocket upgrade path `server.ts` accepts)
 - Electric SQL: Powers real-time data sync for the dashboard
 
 ## v3 (engine V1) removed

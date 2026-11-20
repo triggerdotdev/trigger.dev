@@ -305,30 +305,28 @@ describe("deployment checks", () => {
   );
 
   redisTest(
-    "queues one check per deployment, only with a plugin, and never throws",
+    "queues one check per deployment, only where checks can run, and never throws",
     async ({ redisOptions }) => {
-      // Catches: a repeated finalize queuing a second check, a job queued with no plugin to run
-      // it, or a queue outage failing a deploy that already finished.
+      // Catches: a repeated finalize queuing a second check, a job queued where checks are
+      // disabled, or a queue outage failing a deploy that already finished.
       const worker = createDeploymentChecksWorker({
         redisOptions,
         concurrency: { workers: 1, tasksPerWorker: 1, limit: 1 },
         shutdownTimeoutMs: 1_000,
       });
-      const withPlugin = async () => testPlugin().controller;
-      const withoutPlugin = async () => null;
+      const canRun = () => true;
+      const cannotRun = () => false;
       try {
-        await enqueueDeploymentCheck(worker, "deployment_a", withPlugin);
-        await enqueueDeploymentCheck(worker, "deployment_a", withPlugin);
-        await enqueueDeploymentCheck(worker, "deployment_b", withPlugin);
-        await enqueueDeploymentCheck(worker, "deployment_c", withoutPlugin);
+        await enqueueDeploymentCheck(worker, "deployment_a", canRun);
+        await enqueueDeploymentCheck(worker, "deployment_a", canRun);
+        await enqueueDeploymentCheck(worker, "deployment_b", canRun);
+        await enqueueDeploymentCheck(worker, "deployment_c", cannotRun);
         expect(await worker.queue.size()).toBe(2);
       } finally {
         await worker.stop();
       }
 
-      await expect(
-        enqueueDeploymentCheck(worker, "deployment_d", withPlugin)
-      ).resolves.toBeUndefined();
+      await expect(enqueueDeploymentCheck(worker, "deployment_d", canRun)).resolves.toBeUndefined();
     }
   );
 
@@ -347,7 +345,7 @@ describe("deployment checks", () => {
       try {
         const { deployment } = await createDeployment(prisma);
         worker.start();
-        await enqueueDeploymentCheck(worker, deployment.id, async () => plugin.controller);
+        await enqueueDeploymentCheck(worker, deployment.id, () => true);
 
         const deadline = performance.now() + 10_000;
         while (plugin.checks.length === 0 && performance.now() < deadline) await setTimeout(20);
@@ -395,6 +393,25 @@ describe("deployment checks", () => {
       .flatMap((scope) => scope.metrics)
       .find((metric) => metric.descriptor.name === "deployment_checks.plugin_missing_total");
     expect(missing?.dataPoints.map((point) => point.value)).toEqual([1]);
+    await metrics.meterProvider.shutdown();
+  });
+
+  it("counts a queued check the worker cannot run", async () => {
+    // Catches: a queued check dropped with no trace.
+    const metrics = createInMemoryMetrics();
+    const telemetry = deploymentCheckTelemetry(metrics.meter);
+
+    expect(
+      await runDeploymentCheck(
+        { deploymentId: "deployment_no_plugin", attempt: 0 },
+        { controller: null, telemetry }
+      )
+    ).toBe("no_plugin");
+
+    const dropped = ((await latestMetrics(metrics))?.scopeMetrics ?? [])
+      .flatMap((scope) => scope.metrics)
+      .find((metric) => metric.descriptor.name === "deployment_checks.no_plugin_total");
+    expect(dropped?.dataPoints.map((point) => point.value)).toEqual([1]);
     await metrics.meterProvider.shutdown();
   });
 });

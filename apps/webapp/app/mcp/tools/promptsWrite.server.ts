@@ -61,6 +61,7 @@ export const promptsWriteTools: McpToolDefinition[] = [
     description:
       "Promote a prompt version to be the current active version. Only code-sourced versions can be promoted — dashboard overrides must use the override tools instead.",
     shape: PromoteInput.shape,
+    approval: "configurable",
     auth,
     run: (input, ctx) =>
       withVersion(ctx, input.slug, input.version, async (promptId, versionId, service) => {
@@ -74,6 +75,7 @@ export const promptsWriteTools: McpToolDefinition[] = [
     description:
       "Create a dashboard override for a prompt. The override takes precedence over the current code version when resolving the prompt. Provide the full text content for the override.",
     shape: CreateOverrideInput.shape,
+    approval: "configurable",
     auth,
     run: (input, ctx) =>
       withPrompt(ctx, input.slug, async (prompt, service) => {
@@ -92,6 +94,7 @@ export const promptsWriteTools: McpToolDefinition[] = [
     description:
       "Update the active dashboard override for a prompt. Only works if an override is currently active.",
     shape: UpdateOverrideInput.shape,
+    approval: "configurable",
     auth,
     run: (input, ctx) =>
       withPrompt(ctx, input.slug, async (prompt, service) => {
@@ -109,6 +112,7 @@ export const promptsWriteTools: McpToolDefinition[] = [
     description:
       "Remove the active dashboard override for a prompt, reverting to the current code version.",
     shape: PromptSlugInput.shape,
+    approval: "configurable",
     auth,
     run: (input, ctx) =>
       withPrompt(ctx, input.slug, async (prompt, service) => {
@@ -122,6 +126,7 @@ export const promptsWriteTools: McpToolDefinition[] = [
     description:
       "Reactivate a previous dashboard-sourced version as the active override. Use get_prompt_versions to find dashboard versions that can be reactivated.",
     shape: ReactivateOverrideInput.shape,
+    approval: "configurable",
     auth,
     run: (input, ctx) =>
       withVersion(ctx, input.slug, input.version, async (promptId, versionId, service) => {

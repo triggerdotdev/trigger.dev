@@ -76,8 +76,8 @@ describe("storeWaitpointAssociationCompatibility", () => {
             snapshotStore,
             recoveryDelayMs: 1000,
           });
-          // With no caller traffic, the worker repairs the source and child queue. The failed
-          // request never accepted a parent edge, so recovery must leave the parent unblocked.
+          // With no caller traffic, the worker repairs the source. The failed request never
+          // accepted a parent edge, so recovery leaves the parent unblocked and retires the child.
           await vi.waitFor(
             async () => {
               expect(
@@ -88,10 +88,13 @@ describe("storeWaitpointAssociationCompatibility", () => {
                 (await engine.getRunExecutionData({ runId: parent.id }))?.snapshot.executionStatus
               ).toBe("EXECUTING");
               expect((await store.readBlockState(parent.id)).edges).toEqual([]);
-              expect(await engine.runQueue.messageExists(orgId, childId)).toBe(1);
+              expect(
+                (await prisma.taskRun.findUniqueOrThrow({ where: { id: childId } })).status
+              ).toBe("SYSTEM_FAILURE");
             },
             { timeout: 10_000, interval: 100 }
           );
+          expect(await engine.runQueue.messageExists(orgId, childId)).toBeFalsy();
           expect(await prisma.waitpoint.count({ where: { completedByTaskRunId: childId } })).toBe(
             0
           );

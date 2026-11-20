@@ -106,7 +106,18 @@ function toListedEvent(event: AuditLogListedEvent): AuditLogListedEvent {
     // Trigger.dev staff acted: the IP and user agent are theirs, so they stay internal.
     endpoint:
       endpoint && event.actor.type !== "support" && event.source !== "staff"
-        ? { ip: endpoint.ip, userAgent: endpoint.userAgent }
+        ? {
+            ip: endpoint.ip,
+            userAgent: endpoint.userAgent,
+            location:
+              endpoint.ip !== null && endpoint.location
+                ? {
+                    countryCode: endpoint.location.countryCode,
+                    asn: endpoint.location.asn,
+                    asName: endpoint.location.asName,
+                  }
+                : null,
+          }
         : null,
     origin: origin ? { deploymentId: origin.deploymentId } : null,
     requestId: event.requestId,
@@ -128,6 +139,8 @@ export function createAuditLogs(options: {
    * later, e.g. to wait for a credential lookup started during authentication.
    */
   getContext: (occurredAt: Date) => AuditLogContext | Promise<AuditLogContext>;
+  /** Called with an event's context once it has passed the recording gates, before it's recorded. */
+  onRecord?: (context: AuditLogContext) => void;
 }): AuditLogs {
   const pending = new Set<Promise<void>>();
 
@@ -151,7 +164,9 @@ export function createAuditLogs(options: {
     const controller = await options.controller();
     if (!controller) return;
 
-    await controller.record(input, await context);
+    const resolved = await context;
+    options.onRecord?.(resolved);
+    await controller.record(input, resolved);
   }
 
   /** The request context, read now because it lives in the request. */

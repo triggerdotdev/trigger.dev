@@ -57,12 +57,15 @@ const ABANDON_UNREGISTER_CONCURRENCY = 10;
  */
 export class StoreWaitpointBlockRefusedError extends Error {
   readonly runId: string;
-  readonly outcome: "stale" | "terminal" | "cleanupOwed" | "ownerGone";
+  readonly outcome: "stale" | "terminal" | "cleanupOwed" | "ownerGone" | "positionOwned";
   readonly currentBlockId?: string;
+  /** `positionOwned`: the waitpoint holding the batch position. */
+  readonly positionOwnerWaitpointId?: string;
   constructor(params: {
     runId: string;
-    outcome: "stale" | "terminal" | "cleanupOwed" | "ownerGone";
+    outcome: "stale" | "terminal" | "cleanupOwed" | "ownerGone" | "positionOwned";
     currentBlockId?: string;
+    positionOwnerWaitpointId?: string;
   }) {
     super(
       `Store block absorption for run ${params.runId} was refused as ${params.outcome}` +
@@ -72,7 +75,15 @@ export class StoreWaitpointBlockRefusedError extends Error {
     this.runId = params.runId;
     this.outcome = params.outcome;
     this.currentBlockId = params.currentBlockId;
+    this.positionOwnerWaitpointId = params.positionOwnerWaitpointId;
   }
+}
+
+/** The waitpoint holding a native batch position, when `error` refused a second child there. */
+export function batchPositionOwner(error: unknown): string | undefined {
+  return error instanceof StoreWaitpointBlockRefusedError && error.outcome === "positionOwned"
+    ? error.positionOwnerWaitpointId
+    : undefined;
 }
 
 export type StoreWaitpointCoordinatorOptions = {
@@ -123,10 +134,16 @@ export class StoreWaitpointCoordinator implements WaitpointCoordinator {
     }
     const blockId = params.blockId;
     const absorptionId = params.absorptionId;
-    const evidence = registrationEvidence(
-      params.registrationWaitpointIds ?? params.waitpointIds,
-      params.batchIndex
-    );
+    const requested = params.registrationWaitpointIds ?? params.waitpointIds;
+    const evidence = registrationEvidence(requested, params.batchIndex);
+    // A native batch item, store or legacy format, owns its index under the pending header.
+    const batchPosition =
+      params.requirePendingWaitpointId && params.batchIndex != null && requested.length === 1
+        ? {
+            position: `@${params.requirePendingWaitpointId}#${params.batchIndex}`,
+            owner: requested[0]!,
+          }
+        : undefined;
     const edges = this.#buildEdges(params);
     // Read completed results before creating the block. On retry, use retained results first.
     // Save the results with the block in one atomic operation.
@@ -167,6 +184,7 @@ export class StoreWaitpointCoordinator implements WaitpointCoordinator {
         expectedPreviousBlockId: params.expectedPreviousBlockId,
         absorptionId,
         requirePendingWaitpointId: params.requirePendingWaitpointId,
+        batchPosition,
       });
 
       if (absorbed.outcome !== "absorbed") {
@@ -174,6 +192,7 @@ export class StoreWaitpointCoordinator implements WaitpointCoordinator {
           runId: params.runId,
           outcome: absorbed.outcome,
           currentBlockId: absorbed.currentBlockId,
+          positionOwnerWaitpointId: absorbed.positionOwnerWaitpointId,
         });
       }
 

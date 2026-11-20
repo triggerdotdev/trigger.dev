@@ -52,6 +52,10 @@ export default function Page() {
               to: "/admin/data-stores",
             },
             {
+              label: "Environment encryption",
+              to: "/admin/environment-encryption",
+            },
+            {
               label: "OIDC",
               to: "/admin/oidc",
             },

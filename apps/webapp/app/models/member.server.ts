@@ -15,6 +15,7 @@ import { customAlphabet } from "nanoid";
 import { isOrganizationJoinAllowed } from "~/services/accessPolicy.server";
 import { auditLogs } from "~/services/auditLogs/auditLogs.server";
 import { userActor } from "~/services/credentialFingerprints.server";
+import { enqueueAttioMemberSync } from "~/services/attio.server";
 import { logger } from "~/services/logger.server";
 import { getDefaultEnvironmentConcurrencyLimit } from "~/services/platform.v3.server";
 import { rbac } from "~/services/rbac.server";
@@ -37,6 +38,9 @@ export const ENV_SETUP_INCOMPLETE =
 export const MembershipSourceSchema = z.enum(["invite", "sso_jit", "directory_sync", "manual"]);
 
 export type MembershipSource = z.infer<typeof MembershipSourceSchema>;
+
+// Stored on OrgMember.joinMethod. "created" = the member who created the organization.
+export type OrgMemberJoinMethod = "created" | MembershipSource;
 
 /** Thrown when provisioning fails partway through; the membership is still valid. */
 export class DevEnvironmentProvisioningError extends Error {
@@ -586,6 +590,7 @@ async function tryRecoverIncompleteInviteAccept({
     projects: missingProjects,
     maximumConcurrencyLimit,
   });
+  await enqueueAttioMemberSync({ organizationId, userId: user.id });
 
   return {
     remainingInvites: await getUsersInvites({ email: user.email }),
@@ -666,6 +671,8 @@ export async function acceptInvite({
           organizationId: invite.organizationId,
           userId: user.id,
           role: invite.role,
+          invitedById: invite.inviterId,
+          joinMethod: "invite" satisfies OrgMemberJoinMethod,
         },
       });
       membershipCreated = true;
@@ -750,6 +757,9 @@ export async function acceptInvite({
       auditLogs.record(accepted);
     }
   }
+
+  // After the role is applied, also when an earlier attempt already created the membership.
+  await enqueueAttioMemberSync({ organizationId: invite.organizationId, userId: user.id });
 
   const remainingInvites = await getUsersInvites({ email: user.email });
 

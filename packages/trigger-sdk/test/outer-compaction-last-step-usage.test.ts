@@ -101,3 +101,120 @@ describe("outer-loop compaction on a tool-using turn", () => {
     }
   );
 });
+
+describe("outer-loop compaction with a custom stream source", () => {
+  const sdkUsage = (input: number) => ({
+    inputTokens: input,
+    outputTokens: 10,
+    totalTokens: input + 10,
+    inputTokenDetails: {},
+    outputTokenDetails: {},
+  });
+
+  // Catches: a custom `toUIMessageStream()` source that exposes `usage` (the last step's) but no
+  // `steps` losing that usage, so compaction was asked about the turn's sum instead.
+  it(
+    "uses the source's usage as the last step's when it has no steps",
+    { timeout: 30_000 },
+    async () => {
+      const events: ShouldCompactEvent[] = [];
+      let turns = 0;
+      const model = new MockLanguageModelV3({
+        doStream: async () => ({ stream: simulateReadableStream({ chunks: textStep(1_300) }) }),
+      });
+      const agent = chat.agent({
+        id: "outer-compaction-custom-source-usage",
+        compaction: {
+          shouldCompact: (event) => {
+            if (event.source === "outer") events.push(event);
+            return false;
+          },
+          summarize: async () => "unused",
+        },
+        onTurnComplete: async () => {
+          turns++;
+        },
+        run: async ({ messages, signal }) => {
+          const result = streamText({ model, messages, abortSignal: signal });
+          return {
+            toUIMessageStream: (options?: any) => result.toUIMessageStream(options),
+            usage: Promise.resolve(sdkUsage(1_300)),
+            totalUsage: Promise.resolve(sdkUsage(2_300)),
+          } as any;
+        },
+      });
+      const harness = mockChatAgent(agent, { chatId: "outer-compaction-custom-source-usage" });
+      try {
+        await harness.sendMessage(userMessage("what errors?", "u1"));
+        await waitFor(() => turns >= 1 && events.length >= 1, "turn 0 + outer check");
+        const event = events[0]!;
+        expect(event.inputTokens).toBe(1_300);
+        expect(event.turnUsage?.inputTokens).toBe(2_300);
+      } finally {
+        await harness.close();
+      }
+    }
+  );
+});
+
+describe("chat.createSession outer-loop compaction on a tool-using turn", () => {
+  // Catches: a custom-agent session asking about the turn's summed usage instead of the last
+  // step's, which AI SDK 7's `result.usage` returns.
+  it(
+    "is asked about the last step's context, with the turn's sum alongside",
+    { timeout: 30_000 },
+    async () => {
+      const events: ShouldCompactEvent[] = [];
+      let call = 0;
+      const model = new MockLanguageModelV3({
+        doStream: async () => {
+          const chunks = call++ === 0 ? toolStep(1_000) : textStep(1_300);
+          return { stream: simulateReadableStream({ chunks }) };
+        },
+      });
+      const agent = chat.customAgent({
+        id: "createsession-last-step-usage",
+        run: async (payload, { signal }) => {
+          const session = chat.createSession(payload, {
+            signal,
+            idleTimeoutInSeconds: 1,
+            compaction: {
+              shouldCompact: (event) => {
+                if (event.source === "outer") events.push(event);
+                return false;
+              },
+              summarize: async () => "unused",
+            },
+          });
+          for await (const turn of session) {
+            await turn.complete(
+              streamText({
+                model,
+                messages: turn.messages,
+                abortSignal: turn.signal,
+                tools: {
+                  lookup: tool({
+                    description: "lookup",
+                    inputSchema: z.object({}),
+                    execute: async () => ({ ok: true }),
+                  }),
+                },
+                stopWhen: ({ steps }) => steps.length >= 3,
+              })
+            );
+          }
+        },
+      });
+      const harness = mockChatAgent(agent, { chatId: "createsession-last-step-usage" });
+      try {
+        await harness.sendMessage(userMessage("what errors?", "u1"));
+        await waitFor(() => events.length >= 1, "outer check");
+        const event = events[0]!;
+        expect(event.inputTokens).toBe(1_300);
+        expect(event.turnUsage?.inputTokens).toBe(2_300);
+      } finally {
+        await harness.close();
+      }
+    }
+  );
+});

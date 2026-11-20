@@ -118,7 +118,7 @@ export class SessionPresenter {
     // sessions that use `hydrateMessages` have no object to read and fall back
     // to seq=0 SSE (which, post-trim, shows only the most recent turn —
     // accepted, those customers have their own DB-backed dashboards).
-    const transcriptSeed = readTranscript
+    const transcript = readTranscript
       ? await startActiveSpan("SessionPresenter.readTranscript", () =>
           readSessionTranscriptSeed({
             session,
@@ -168,7 +168,8 @@ export class SessionPresenter {
         apiOrigin: env.API_ORIGIN || env.LOGIN_ORIGIN,
         sessionId: addressingKey,
         initialMessages: [],
-        transcriptSeed,
+        transcriptSeed: transcript?.kind === "seed" ? transcript.seed : undefined,
+        transcriptFailed: transcript?.kind === "failed",
       },
     };
   }

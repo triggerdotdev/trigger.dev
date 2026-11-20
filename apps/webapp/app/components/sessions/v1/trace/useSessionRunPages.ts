@@ -33,6 +33,25 @@ type PagesState =
 /** What became of the deep-linked run, if the page opened with one. */
 export type DeepLinkResult = "none" | "loaded" | "notFound" | "failed";
 
+/**
+ * The deep-linked run's page failed and the run isn't loaded some other way (the newest page), while
+ * it's still the selected run: the bar offers a retry.
+ */
+export function deepLinkFailed({
+  deepLink,
+  deepLinkRunId,
+  selectedRunId,
+  runs,
+}: {
+  deepLink: DeepLinkResult;
+  deepLinkRunId: string | undefined;
+  selectedRunId: string | undefined;
+  runs: readonly { friendlyId: string }[] | undefined;
+}): boolean {
+  if (deepLink !== "failed" || !deepLinkRunId || selectedRunId !== deepLinkRunId) return false;
+  return !runs?.some((run) => run.friendlyId === deepLinkRunId);
+}
+
 /** Why the newest page is read; the route labels its metrics with it. */
 export type NewestPageReason = "open" | "focus" | "poll";
 

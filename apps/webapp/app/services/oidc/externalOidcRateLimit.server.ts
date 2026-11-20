@@ -2,7 +2,7 @@ import { Ratelimit } from "@upstash/ratelimit";
 import type { RateLimiterRedisClient } from "~/services/rateLimiterCore.server";
 
 const EXTERNAL_OIDC_RUN_REQUESTS_PER_MINUTE = 30;
-const EXTERNAL_OIDC_ENV_REQUESTS_PER_MINUTE = 2_000;
+const EXTERNAL_OIDC_ENV_REQUESTS_PER_MINUTE = 10_000;
 
 export class ExternalOidcRateLimits {
   private readonly run: Ratelimit;

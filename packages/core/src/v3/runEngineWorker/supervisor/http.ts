@@ -13,7 +13,7 @@ import type {
 } from "./schemas.js";
 import {
   WorkerApiConnectResponseBody,
-  WorkerApiContinueRunExecutionRequestBody,
+  WorkerApiContinueRunExecutionResponseBody,
   WorkerApiDequeueResponseBody,
   WorkerApiHeartbeatResponseBody,
   WorkerApiRunAttemptCompleteResponseBody,
@@ -317,21 +317,27 @@ export class SupervisorHttpClient {
     snapshotId: string,
     runnerId?: string,
     environmentId?: string,
-    options?: { retryBudget?: ContinueRetryBudget }
+    options?: {
+      retryBudget?: ContinueRetryBudget;
+      supportsSecretProxy?: boolean;
+      sandboxRunId?: string;
+    }
   ): Promise<
-    ApiResult<WorkerApiContinueRunExecutionRequestBody> & { retry?: ContinueRetrySummary }
+    ApiResult<WorkerApiContinueRunExecutionResponseBody> & { retry?: ContinueRetrySummary }
   > {
+    const query = options?.supportsSecretProxy ? "?supportsSecretProxy=1" : "";
     const continueRun = (retry: ZodFetchOptions["retry"], signal?: AbortSignal) =>
       this.request(
         "continue_run_execution",
-        WorkerApiContinueRunExecutionRequestBody,
-        `${this.apiUrl}/engine/v1/worker-actions/runs/${encodeURIComponent(runId)}/snapshots/${encodeURIComponent(snapshotId)}/continue`,
+        WorkerApiContinueRunExecutionResponseBody,
+        `${this.apiUrl}/engine/v1/worker-actions/runs/${encodeURIComponent(runId)}/snapshots/${encodeURIComponent(snapshotId)}/continue${query}`,
         {
           method: "GET",
           headers: {
             ...this.defaultHeaders,
             ...this.runnerIdHeader(runnerId),
             ...this.environmentIdHeader(environmentId),
+            ...createHeaders({ [WORKER_HEADERS.SANDBOX_RUN_ID]: options?.sandboxRunId }),
           },
           signal,
         },

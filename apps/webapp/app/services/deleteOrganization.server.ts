@@ -6,6 +6,7 @@ import { DeleteProjectService } from "./deleteProject.server";
 import { cancelSubscription, getCurrentPlanOrThrow } from "./platform.v3.server";
 import { controlPlaneResolver } from "~/v3/runOpsMigration/controlPlaneResolver.server";
 import { commonWorker } from "~/v3/commonWorker.server";
+import { enqueueAttioMemberSync } from "./attio.server";
 import { logger } from "./logger.server";
 
 export class DeleteOrganizationService {
@@ -60,6 +61,11 @@ export class DeleteOrganizationService {
         deletedAt: new Date(),
       },
     });
+
+    // Closes each membership in Attio.
+    for (const member of organization.members) {
+      await enqueueAttioMemberSync({ organizationId: organization.id, userId: member.userId });
+    }
 
     // runsEnabled + the org's projects (project.deletedAt) changed; drop all cached env rows.
     controlPlaneResolver.invalidateOrganization(organization.id);

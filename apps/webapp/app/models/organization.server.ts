@@ -28,9 +28,10 @@ import {
   setBillingAlert,
 } from "~/services/platform.v3.server";
 import { buildDefaultBillingAlerts } from "~/services/billingAlertsDefaults.server";
-import { enqueueAttioWorkspaceSync } from "~/services/attio.server";
+import { enqueueAttioMemberSync, enqueueAttioWorkspaceSync } from "~/services/attio.server";
 import { provisionBillingCustomerForOrg } from "~/services/billingPlugin.server";
 import { saveRootApiKeyFingerprint } from "~/services/credentialFingerprints.server";
+import type { OrgMemberJoinMethod } from "~/models/member.server";
 import { logger } from "~/services/logger.server";
 import { telemetry } from "~/services/telemetry.server";
 import {
@@ -145,6 +146,7 @@ export async function createOrganization(
         create: {
           userId: userId,
           role: "ADMIN",
+          joinMethod: "created" satisfies OrgMemberJoinMethod,
         },
       },
       // Managed-cloud orgs start deactivated so they're routed through
@@ -168,6 +170,7 @@ export async function createOrganization(
     createdAt: organization.createdAt,
     adminUserId: userId,
   });
+  void enqueueAttioMemberSync({ organizationId: organization.id, userId });
 
   telemetry.organization.new({ userId, organization });
 

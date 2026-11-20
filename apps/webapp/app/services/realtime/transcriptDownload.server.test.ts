@@ -162,6 +162,40 @@ minioTest(
   }
 );
 
+// Catches: a session with no saved transcript showing "Couldn't load earlier messages", because
+// the dashboard's ranged and whole reads of a missing object weren't recognized as absent.
+minioTest("ranged and whole reads of a missing object count as absent", async ({ minioConfig }) => {
+  const previous = {
+    AWS_ACCESS_KEY_ID: process.env.AWS_ACCESS_KEY_ID,
+    AWS_SECRET_ACCESS_KEY: process.env.AWS_SECRET_ACCESS_KEY,
+    AWS_SESSION_TOKEN: process.env.AWS_SESSION_TOKEN,
+  };
+  process.env.AWS_ACCESS_KEY_ID = minioConfig.accessKeyId;
+  process.env.AWS_SECRET_ACCESS_KEY = minioConfig.secretAccessKey;
+  delete process.env.AWS_SESSION_TOKEN;
+  try {
+    const clients = [
+      ObjectStoreClient.create({ ...minioConfig, service: "s3" }),
+      ObjectStoreClient.create({
+        baseUrl: minioConfig.baseUrl,
+        bucket: "packets",
+        region: "us-east-1",
+      }),
+    ];
+    for (const client of clients) {
+      await expect(client.getObjectRange(key, { suffixLength: 64 })).rejects.toSatisfy(
+        isTranscriptNotFound
+      );
+      await expect(client.getObject(key)).rejects.toSatisfy(isTranscriptNotFound);
+    }
+  } finally {
+    for (const [name, value] of Object.entries(previous)) {
+      if (value === undefined) delete process.env[name];
+      else process.env[name] = value;
+    }
+  }
+});
+
 async function listen(server: Server) {
   server.listen(0, "127.0.0.1");
   await once(server, "listening");

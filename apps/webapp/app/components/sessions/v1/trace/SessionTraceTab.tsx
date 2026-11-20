@@ -77,10 +77,12 @@ import {
   unavailableReasonText,
   type RunLoadBlock,
 } from "./sessionRunFallback";
+import { traceFilterKey } from "~/components/runs/v3/trace/traceFilterKey";
 import { SessionTimelineRow } from "./SessionTimelineRow";
 import { type RunPanelData, useSessionPanelStore } from "./sessionPanelStore";
 import {
   createSessionRunLoads,
+  isRunReadSettled,
   isRunTraceMounted,
   pageCheck,
   runLoad,
@@ -131,6 +133,7 @@ import {
   RUNS_FILL_MAX,
   RUNS_PAGE_SIZE,
   type LoadedRuns,
+  deepLinkFailed,
   type NewestPageReason,
   useSessionRunPages,
 } from "./useSessionRunPages";
@@ -144,17 +147,26 @@ const SELECTION_URL_DEBOUNCE_MS = 250;
 // Rows' clocks stop while the tab is hidden.
 const TraceTabActiveContext = createContext(true);
 
-/** The session's runs as one tree, newest page first, with earlier pages on request. */
-export function SessionTraceTab({
-  runsPath,
-  treeSnapshot,
-  active,
-}: {
+type SessionTraceTabProps = {
   runsPath: string;
   treeSnapshot: ResizableSnapshot | undefined;
   /** False while the Conversation tab is shown: the tab stays mounted but makes no requests. */
   active: boolean;
-}) {
+};
+
+/** The session's runs as one tree, newest page first, with earlier pages on request. */
+export function SessionTraceTab(props: SessionTraceTabProps) {
+  // The tree captures its deep link once at mount, so retrying a failed one starts it again.
+  const [mount, setMount] = useState(0);
+  return <SessionTraceTabContent key={mount} {...props} onRemount={() => setMount((n) => n + 1)} />;
+}
+
+function SessionTraceTabContent({
+  runsPath,
+  treeSnapshot,
+  active,
+  onRemount,
+}: SessionTraceTabProps & { onRemount: () => void }) {
   // A run in the URL when the tab opens is a deep link: its page is read with the newest one.
   const { selection, setSelection } = useSessionTraceSelection();
   const [deepLinkRunId] = useState(() =>
@@ -172,6 +184,14 @@ export function SessionTraceTab({
     setSelection({ kind: "session" });
   }, [pages.deepLink, setSelection]);
   const showRunNotFound = runNotFound && selection.kind === "session";
+  // A linked run whose page failed: keep it in the URL so Retry can read it again. A run in the
+  // newest page loaded anyway, so it needs no notice.
+  const showRunFailed = deepLinkFailed({
+    deepLink: pages.deepLink,
+    deepLinkRunId,
+    selectedRunId: selection.kind === "session" ? undefined : selection.runFriendlyId,
+    runs: pages.runs,
+  });
 
   // New runs: re-read the newest page while the tab is visible (focus also refreshes it). It
   // lives here, not in the tree, so a session with no runs yet still picks up its first one.
@@ -251,12 +271,20 @@ export function SessionTraceTab({
         onRunDataStale={pages.refreshNewest}
         checkedAtMs={checkedAtMs}
         treeSnapshot={treeSnapshot}
-        notice={showRunNotFound ? "That run isn't in this session." : undefined}
+        notice={
+          showRunFailed
+            ? { text: "Couldn't load that run", onRetry: onRemount }
+            : showRunNotFound
+              ? { text: "That run isn't in this session." }
+              : undefined
+        }
         active={active}
       />
     </TraceTabActiveContext.Provider>
   );
 }
+
+type BarNotice = { text: string; onRetry?: () => void };
 
 type SpanData = TraceEvent["data"];
 type Row = SessionTreeRow<SpanData>;
@@ -294,7 +322,7 @@ function SessionTraceTree({
   /** When the runs were last checked: a run still missing from the run store is judged by it. */
   checkedAtMs: number;
   treeSnapshot: ResizableSnapshot | undefined;
-  notice: string | undefined;
+  notice: BarNotice | undefined;
   active: boolean;
 }) {
   const containerRef = useRef<HTMLDivElement>(null);
@@ -427,6 +455,11 @@ function SessionTraceTree({
     () => new Map(Object.entries(snapshots).map(([id, snapshot]) => [id, snapshot.events])),
     [snapshots]
   );
+  // A span turning into an error, or getting a new message, refilters the same tree.
+  const filterKey = useMemo(
+    () => (filtering ? traceFilterKey(Object.values(snapshots)) : undefined),
+    [filtering, snapshots]
+  );
   const { tree, structureKey } = useMemo(
     () => buildSessionTree<SpanData>({ runs, totalCount, spansByRun }),
     [runs, totalCount, spansByRun]
@@ -468,11 +501,24 @@ function SessionTraceTree({
     panelStore?.setRunLoadNotes(loadNotes);
   }, [panelStore, loadNotes]);
   useEffect(() => () => panelStore?.setRunLoadNotes({}), [panelStore]);
+  // Runs whose read has ended, so the panel can say a linked span never showed up.
+  const settledRuns = useMemo(() => {
+    const settled = new Set(runsUnavailable);
+    for (const run of runs) {
+      if (isRunReadSettled(runLoad(loads, run.friendlyId))) settled.add(run.friendlyId);
+    }
+    return settled;
+  }, [runs, loads, runsUnavailable]);
+  useEffect(() => {
+    panelStore?.setSettledRuns(settledRuns);
+  }, [panelStore, settledRuns]);
+  useEffect(() => () => panelStore?.setSettledRuns(new Set()), [panelStore]);
   const rowCanExpand = (node: { data: Row; hasChildren: boolean }) =>
     node.data.kind === "run" ? !loadBlock(node.data.run) : node.hasChildren;
   // The cap applies to every run, so it's said once instead of on each row.
   const emergencyCap = Object.values(view).some((entry) => entry.unavailable === "emergencyCap");
-  const barNotice = notice ?? (emergencyCap ? EMERGENCY_CAP_NOTICE : undefined);
+  const barNotice: BarNotice | undefined =
+    notice ?? (emergencyCap ? { text: EMERGENCY_CAP_NOTICE } : undefined);
 
   // Only the live run's scale moves with the clock; the rest are fixed at page load.
   const [openedAtMs] = useState(() => Date.now());
@@ -535,6 +581,7 @@ function SessionTraceTree({
       !runOpensExpanded(loadsRef.current, node.data.run.friendlyId, newestRunId),
     canExpand: rowCanExpand,
     structureKey,
+    filterKey,
     // Derived, never set by code: a span not in the tree yet highlights its run.
     selectedId: highlightedId,
     // Changes that match the highlight come from the prop; only the user's become intent.
@@ -1060,7 +1107,19 @@ function SessionTraceTree({
               }}
             />
           ) : (
-            barNotice && <span className="truncate text-xs text-text-dimmed">{barNotice}</span>
+            barNotice && (
+              <>
+                <span className="truncate text-xs text-text-dimmed">{barNotice.text}</span>
+                {barNotice.onRetry && (
+                  <>
+                    <span className="text-xs text-text-dimmed">·</span>
+                    <Button variant="secondary/small" onClick={barNotice.onRetry}>
+                      Retry
+                    </Button>
+                  </>
+                )}
+              </>
+            )
           )}
         </div>
         <Button
@@ -1109,7 +1168,9 @@ function SessionTraceTree({
                     isExpanded={state.expanded}
                     canExpand={node.hasChildren}
                     showRootBadge={false}
-                    onChevronClick={() => toggleExpandNode(node.id, false)}
+                    onChevronClick={() =>
+                      node.hasChildren ? toggleExpandNode(node.id, false) : selectRow(node.id)
+                    }
                   />
                 ) : (
                   <SessionTreeRowView

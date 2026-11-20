@@ -43,6 +43,9 @@ export class GitHubSettingsPresenter extends BasePresenter {
           select: {
             branchTracking: true,
             previewDeploymentsEnabled: true,
+            supersedeProductionBuilds: true,
+            supersedeStagingBuilds: true,
+            supersedePreviewBuilds: true,
             buildFilters: true,
             createdAt: true,
             repository: {

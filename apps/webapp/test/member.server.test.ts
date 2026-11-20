@@ -140,6 +140,49 @@ function devEnvKeys(apiKey: string, pkApiKey: string) {
 }
 
 describe("acceptInvite", () => {
+  postgresTest("records who invited the member and how they joined", async ({ prisma }) => {
+    prismaHolder.client = prisma;
+    const { acceptInvite } = await import("../app/models/member.server");
+
+    const { inviter, invitee, organization, invite } = await seedInviteFixture(prisma, {
+      activeProjectCount: 0,
+    });
+
+    await acceptInvite({
+      inviteId: invite.id,
+      organizationId: organization.id,
+      user: { id: invitee.id, email: invitee.email },
+    });
+
+    const member = await prisma.orgMember.findFirstOrThrow({
+      where: { userId: invitee.id, organizationId: organization.id },
+    });
+    expect(member).toMatchObject({ invitedById: inviter.id, joinMethod: "invite" });
+  });
+
+  postgresTest("leaves an existing membership's join details alone", async ({ prisma }) => {
+    prismaHolder.client = prisma;
+    const { acceptInvite } = await import("../app/models/member.server");
+
+    const { invitee, organization, invite } = await seedInviteFixture(prisma, {
+      activeProjectCount: 0,
+    });
+    await prisma.orgMember.create({
+      data: { userId: invitee.id, organizationId: organization.id, role: "MEMBER" },
+    });
+
+    await acceptInvite({
+      inviteId: invite.id,
+      organizationId: organization.id,
+      user: { id: invitee.id, email: invitee.email },
+    });
+
+    const member = await prisma.orgMember.findFirstOrThrow({
+      where: { userId: invitee.id, organizationId: organization.id },
+    });
+    expect(member).toMatchObject({ invitedById: null, joinMethod: null });
+  });
+
   postgresTest(
     "creates member and dev environments for active projects only (many projects)",
     { timeout: 60_000 },

@@ -409,6 +409,25 @@ export class TaskRunProcess {
     }
   }
 
+  async installUsageJwt(update: {
+    runId: string;
+    attemptNumber: number;
+    token: string;
+  }): Promise<boolean> {
+    if (!this._ipc || !this._child?.connected || this.isBeingKilled) return false;
+    try {
+      const ack = await this._ipc.sendWithAck(
+        "UPDATE_USAGE_JWT",
+        update,
+        RUN_TOKEN_INSTALL_ACK_TIMEOUT_MS
+      );
+      return ack?.installed === true;
+    } catch {
+      // IPC errors can contain the credential payload. Report only installation failure.
+      return false;
+    }
+  }
+
   waitpointCompleted(waitpoint: CompletedWaitpoint) {
     if (!this._child?.connected || this._isBeingKilled || this._child.killed) {
       console.error(

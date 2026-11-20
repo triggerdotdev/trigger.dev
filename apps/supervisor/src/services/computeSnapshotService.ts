@@ -61,6 +61,9 @@ export interface RunnerSnapshotter {
 
 export type ComputeSnapshotServiceOptions = {
   runnerSnapshotter: RunnerSnapshotter;
+  beforeSuspend?: (runFriendlyId: string, snapshotFriendlyId: string) => Promise<void>;
+  /** The platform's answer to a delivered suspend: whether it took the snapshot. */
+  suspendSettled?: (runFriendlyId: string, snapshotFriendlyId: string, accepted: boolean) => void;
   workerClient: SupervisorHttpClient;
   wideEventOpts: WideEventOptions;
   suspendRecoveryIntervalMs?: number;
@@ -76,6 +79,8 @@ export class ComputeSnapshotService {
   private readonly snapshotDelayMs: number;
   private readonly workerClient: SupervisorHttpClient;
   private readonly wideEventOpts: WideEventOptions;
+  private readonly beforeSuspend: ComputeSnapshotServiceOptions["beforeSuspend"];
+  private readonly suspendSettled: ComputeSnapshotServiceOptions["suspendSettled"];
   private readonly suspendsInFlight = new Set<string>();
   private suspendRecoveryTimer?: ReturnType<typeof setInterval>;
   private recoveringSuspends = false;
@@ -85,6 +90,8 @@ export class ComputeSnapshotService {
     this.snapshotDelayMs = opts.runnerSnapshotter.snapshotDelayMs;
     this.workerClient = opts.workerClient;
     this.wideEventOpts = opts.wideEventOpts;
+    this.beforeSuspend = opts.beforeSuspend;
+    this.suspendSettled = opts.suspendSettled;
 
     this.dispatchLimit = pLimit(opts.runnerSnapshotter.snapshotDispatchLimit);
     this.timerWheel = new TimerWheel<DelayedSnapshot>({
@@ -311,6 +318,8 @@ export class ComputeSnapshotService {
       return false;
     }
 
+    this.suspendSettled?.(runId, snapshotFriendlyId, outcome.ok && !result.data.discarded);
+
     if (result.data.discarded) {
       setExtra(state, "submit_completion.discarded", result.data.discarded.error);
       this.logger.warn("Suspend completion discarded by the platform", {
@@ -391,6 +400,7 @@ export class ComputeSnapshotService {
             if (!owner.ok) return owner;
             const earlier = await this.#deliverEarlierSuspend(runnerSnapshotter, target);
             if (!earlier.ok) return earlier;
+            await this.beforeSuspend?.(snapshot.runFriendlyId, snapshot.snapshotFriendlyId);
             return runnerSnapshotter.requestSuspend(request);
           }).catch((error: unknown) => ({
             ok: false as const,

@@ -2143,6 +2143,10 @@ async function resolveBuiltInProdVariables(
         value: env.USAGE_EVENT_URL,
       },
     ]);
+
+    if (env.USAGE_RETRY_AMBIGUOUS_REPORTS === "1") {
+      result = result.concat([{ key: "USAGE_RETRY_AMBIGUOUS_REPORTS", value: "1" }]);
+    }
   }
 
   if (env.PROD_TASK_HEARTBEAT_INTERVAL_MS) {

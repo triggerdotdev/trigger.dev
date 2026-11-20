@@ -3,7 +3,12 @@ import type { UIMessage } from "ai";
 import { logger } from "~/services/logger.server";
 import { chatSnapshotStorageKey } from "~/services/realtime/chatSnapshot.server";
 import { readTranscriptPageRanged } from "~/services/realtime/transcriptPage.server";
-import { downloadPacketFromObjectStore } from "~/v3/objectStore.server";
+import { isTranscriptNotFound } from "~/services/realtime/transcriptDownload.server";
+import {
+  downloadPacketFromObjectStore,
+  getObjectStoreClient,
+  parseStorageUri,
+} from "~/v3/objectStore.server";
 
 /** How many messages the Sessions dashboard seeds before opening the stream. */
 export const DASHBOARD_TRANSCRIPT_PAGE = 200;
@@ -13,6 +18,12 @@ export type TranscriptSeed = {
   lastOutEventId: string | undefined;
   nextCursor: string | undefined;
 };
+
+/** A seed, nothing saved, or a saved transcript that couldn't be read. */
+export type TranscriptSeedRead =
+  | { kind: "seed"; seed: TranscriptSeed }
+  | { kind: "none" }
+  | { kind: "failed" };
 
 type SessionRef = {
   id: string;
@@ -31,8 +42,9 @@ type SessionRef = {
  * stream arrival milliseconds in the present, so anything below `savedAt` sorts
  * before live chunks while preserving the transcript's own order.
  *
- * Never throws: a session with no saved transcript, or an unreadable one, seeds
- * nothing and the dashboard falls back to replaying the stream.
+ * Never throws. A session with no saved transcript is `none`, and the dashboard
+ * replays the stream. A saved transcript that can't be read is `failed`, so the
+ * dashboard can say the earlier messages are missing.
  */
 export async function readSessionTranscriptSeed(input: {
   session: SessionRef;
@@ -41,28 +53,34 @@ export async function readSessionTranscriptSeed(input: {
   limit: number;
   /** Page before this message id, for loading earlier history. */
   before?: string;
-}): Promise<TranscriptSeed | undefined> {
+}): Promise<TranscriptSeedRead> {
   const { session, projectRef, envSlug, limit, before } = input;
   const location = { projectRef, envSlug };
   const snapshotKey = chatSnapshotStorageKey(session);
 
   try {
+    // With no store for this key, nothing can have been saved there. A store that can't be set
+    // up throws here and counts as a failed read.
+    if (!getObjectStoreClient(parseStorageUri(snapshotKey).protocol)) return { kind: "none" };
+
     const paged = await readTranscriptPageRanged(snapshotKey, location, { limit, before });
 
     if (paged !== "unsupported") {
-      return toSeed(paged.messages, {
-        savedAt: paged.savedAt,
-        lastOutEventId: paged.cursors.lastOutEventId,
-        nextCursor: paged.nextCursor,
-        startIndex: paged.startIndex,
-        totalEntries: paged.totalEntries,
-      });
+      return seedRead(
+        toSeed(paged.messages, {
+          savedAt: paged.savedAt,
+          lastOutEventId: paged.cursors.lastOutEventId,
+          nextCursor: paged.nextCursor,
+          startIndex: paged.startIndex,
+          totalEntries: paged.totalEntries,
+        })
+      );
     }
 
     // A transcript written by a released SDK, which cannot be read by range.
     const environment = { project: { externalRef: projectRef }, slug: envSlug } as never;
     const snapshot = await readWholeSnapshot(snapshotKey, environment);
-    if (!snapshot) return undefined;
+    if (!snapshot) return { kind: "none" };
 
     // A cursor the transcript no longer holds yields nothing rather than the
     // newest page, which would present recent messages as older ones.
@@ -71,28 +89,38 @@ export async function readSessionTranscriptSeed(input: {
         ? snapshot.messages.length
         : snapshot.messages.findIndex((entry) => entry.id === before);
     if (cursorIndex === -1) {
-      return { messages: [], lastOutEventId: snapshot.lastOutEventId, nextCursor: undefined };
+      return {
+        kind: "seed",
+        seed: { messages: [], lastOutEventId: snapshot.lastOutEventId, nextCursor: undefined },
+      };
     }
 
     const start = Math.max(0, cursorIndex - limit);
     const tail = snapshot.messages.slice(start, cursorIndex);
-    return toSeed(
-      tail.map((entry) => entry.message),
-      {
-        savedAt: snapshot.savedAt,
-        lastOutEventId: snapshot.lastOutEventId,
-        nextCursor: start > 0 ? tail[0]?.id : undefined,
-        startIndex: start,
-        totalEntries: snapshot.messages.length,
-      }
+    return seedRead(
+      toSeed(
+        tail.map((entry) => entry.message),
+        {
+          savedAt: snapshot.savedAt,
+          lastOutEventId: snapshot.lastOutEventId,
+          nextCursor: start > 0 ? tail[0]?.id : undefined,
+          startIndex: start,
+          totalEntries: snapshot.messages.length,
+        }
+      )
     );
   } catch (error) {
+    if (isTranscriptNotFound(error)) return { kind: "none" };
     logger.warn("SessionPresenter: transcript read failed", {
       sessionId: session.id,
       error: error instanceof Error ? error.message : String(error),
     });
-    return undefined;
+    return { kind: "failed" };
   }
+}
+
+function seedRead(seed: TranscriptSeed | undefined): TranscriptSeedRead {
+  return seed ? { kind: "seed", seed } : { kind: "none" };
 }
 
 /** A whole stored object, in any format this reader understands. */

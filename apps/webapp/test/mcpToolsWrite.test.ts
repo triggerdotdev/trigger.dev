@@ -163,6 +163,7 @@ describe("mcp write tools", () => {
     expect(text).toContain("Task: my-task");
   });
 
+  // Catches: replay_run passing the local CLI source (mcp) instead of mcp-remote to the replay function.
   postgresTest(
     "replay_run replays through the service and reports the new run",
     async ({ prisma }) => {
@@ -324,6 +325,7 @@ describe("mcp write tools", () => {
     }
   );
 
+  // Catches: trigger_task passing the local CLI source (mcp) instead of mcp-remote to the trigger function.
   postgresTest(
     "trigger_task parses a JSON-string payload and returns the run",
     async ({ prisma }) => {

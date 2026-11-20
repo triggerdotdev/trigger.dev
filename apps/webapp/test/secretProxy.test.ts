@@ -980,6 +980,67 @@ describe("secret proxy integration", () => {
     }
   );
 
+  postgresTest(
+    "scopes refusals of a valid run's selections so the relay keeps its other grants",
+    async ({ prisma }) => {
+      const f = await seed(prisma);
+      const secret = await f.variable("API_TOKEN", "secret-one");
+      await enrollProxyOnlyValue(prisma, {
+        environmentId: f.environment.id,
+        variableId: secret.variable.id,
+        allowedHosts: ["api.example.com"],
+      });
+      const token = await f.sign();
+      const own = placeholderForVariable(
+        placeholderKeys,
+        { runId: f.run.friendlyId, attempt: 1 },
+        secret.variable.id
+      );
+      const previousRun = placeholderForVariable(
+        placeholderKeys,
+        { runId: RunId.generate().friendlyId, attempt: 1 },
+        secret.variable.id
+      );
+      const resolveOver = async (
+        resolve: Array<{ handle: string; hostname: string }>,
+        runToken = token
+      ) => {
+        const response = await resolveSecretProxyRequest(
+          f.service,
+          new Request("https://platform.example.com/engine/v1/secret-proxy/resolve", {
+            method: "POST",
+            headers: {
+              "content-type": "application/json",
+              "x-trigger-secret-proxy-token": serviceToken,
+              authorization: `Bearer ${runToken}`,
+            },
+            body: JSON.stringify({
+              bindingId: "allocation-1",
+              resolve: resolve.map((item) => ({ ...item, port: 443 })),
+            }),
+          })
+        );
+        return { status: response.status, body: await response.json() };
+      };
+      const stale = { handle: previousRun, hostname: "api.example.com" };
+      const wrongHost = { handle: own, hostname: "other.example.com" };
+      const valid = { handle: own, hostname: "api.example.com" };
+
+      for (const refused of [stale, wrongHost]) {
+        expect(await resolveOver([valid, refused])).toEqual({
+          status: 403,
+          body: { error: "Resolution denied", scope: "selection", selections: [refused] },
+        });
+      }
+      expect(await resolveOver([valid])).toMatchObject({ status: 200 });
+      // A refused selection must not be reported as selection-scoped when the run itself is invalid.
+      expect(await resolveOver([stale], await f.sign({ attempt: 2 }))).toEqual({
+        status: 403,
+        body: { error: "Resolution denied", scope: "run" },
+      });
+    }
+  );
+
   postgresTest("treats unrecognized proxy config as allowing no hosts", async ({ prisma }) => {
     const f = await seed(prisma);
     const secret = await f.variable("API_TOKEN", "credential");

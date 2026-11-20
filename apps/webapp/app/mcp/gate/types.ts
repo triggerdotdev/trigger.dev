@@ -1,4 +1,5 @@
 import type { RuntimeEnvironmentType } from "@trigger.dev/database";
+import type { RbacScopeAction, RbacScopeResourceType } from "@trigger.dev/plugins";
 import type { RbacAbility } from "@trigger.dev/rbac";
 import type { McpIdentity } from "../types";
 
@@ -11,8 +12,26 @@ export type McpSubject = {
   environmentType?: RuntimeEnvironmentType;
 };
 
+export type McpPreviewRefusal = { refuse: string };
+
+export type McpPrecheckDenial =
+  | "forbidden"
+  | { action: RbacScopeAction; subject: RbacScopeResourceType; id?: string };
+
 export type McpConfirmSpec<A = unknown> = {
-  preview: (args: A, subject: McpSubject | null) => string;
+  /**
+   * The ability is undefined for `user: true` tools; a check that relies on it must deny then.
+   * Return `{ action, subject, id? }` to name the missing permission; `id` narrows the token-scope check only.
+   */
+  precheck?: (
+    args: A,
+    ability: RbacAbility | undefined,
+    subject: McpSubject | null
+  ) => McpPrecheckDenial | void | Promise<McpPrecheckDenial | void>;
+  preview: (
+    args: A,
+    subject: McpSubject | null
+  ) => string | McpPreviewRefusal | Promise<string | McpPreviewRefusal>;
 };
 
 export type McpToolAuth =
@@ -41,5 +60,5 @@ export type McpToolContext = {
   ability?: RbacAbility;
   signal: AbortSignal;
   requestId: string | number;
-  confirmation?: { id: string };
+  confirmation?: { id: string; preview: string };
 };

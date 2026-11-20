@@ -1,6 +1,5 @@
 import { containerTestWithIsolatedRedis } from "@internal/testcontainers";
 import type { PrismaClient, WorkerDeploymentStatus } from "@trigger.dev/database";
-import type { DeploymentChecksController } from "@trigger.dev/plugins";
 import type { RedisOptions } from "ioredis";
 import { describe, expect, vi } from "vitest";
 import {
@@ -81,17 +80,13 @@ describe("finalize and deployment checks", () => {
         concurrency: { workers: 1, tasksPerWorker: 1, limit: 1 },
         shutdownTimeoutMs: 1_000,
       });
-      const plugin: DeploymentChecksController = {
-        decide: async () => ({ plan: "skip", selectedBy: "off" }),
-        check: async () => ({ outcome: "pass", id: "check_1", retryable: false }),
-      };
       const calls: Array<{ deploymentId: string; status?: WorkerDeploymentStatus }> = [];
       const pending: Promise<void>[] = [];
       const service = new loaded.FinalizeDeploymentService(prisma, (deploymentId) => {
         const queued = (async () => {
           const row = await prisma.workerDeployment.findFirst({ where: { id: deploymentId } });
           calls.push({ deploymentId, status: row?.status });
-          await loaded.enqueueDeploymentCheck(queue, deploymentId, async () => plugin);
+          await loaded.enqueueDeploymentCheck(queue, deploymentId, () => true);
         })();
         pending.push(queued);
         return queued;
@@ -118,6 +113,54 @@ describe("finalize and deployment checks", () => {
         await Promise.all(pending);
 
         expect(calls).toEqual([{ deploymentId: finishing.deployment.id, status: "DEPLOYED" }]);
+        expect(await queue.queue.size()).toBe(1);
+      } finally {
+        await queue.stop();
+      }
+    }
+  );
+
+  containerTestWithIsolatedRedis(
+    "queues the check as soon as the deployment is DEPLOYED, before later finalize steps run",
+    async ({ prisma, redisOptions }) => {
+      // Catches: the check queued after the DEPLOYED write instead of immediately after it. A
+      // later step is made to fail on purpose, before finalize publishes to the project pub/sub,
+      // whose Redis was set by the first test in this file (modules are cached per file).
+      const loaded = await load(redisOptions);
+      const queue = loaded.createDeploymentChecksWorker({
+        redisOptions,
+        concurrency: { workers: 1, tasksPerWorker: 1, limit: 1 },
+        shutdownTimeoutMs: 1_000,
+      });
+      const calls: Array<{ deploymentId: string; status?: WorkerDeploymentStatus }> = [];
+      const pending: Promise<void>[] = [];
+      const service = new loaded.FinalizeDeploymentService(prisma, (deploymentId) => {
+        const queued = (async () => {
+          const row = await prisma.workerDeployment.findFirst({ where: { id: deploymentId } });
+          calls.push({ deploymentId, status: row?.status });
+          await loaded.enqueueDeploymentCheck(queue, deploymentId, () => true);
+        })();
+        pending.push(queued);
+        return queued;
+      });
+
+      try {
+        const target = await seed(prisma, loaded, "DEPLOYING");
+        // Promotion refuses a deployment that is already current, so that later step fails.
+        await prisma.workerDeploymentPromotion.create({
+          data: {
+            label: "current",
+            deploymentId: target.deployment.id,
+            environmentId: target.deployment.environmentId,
+          },
+        });
+
+        await expect(
+          service.call(target.authenticated, target.deployment.friendlyId, { imageDigest: DIGEST })
+        ).rejects.toThrow();
+        await Promise.all(pending);
+
+        expect(calls).toEqual([{ deploymentId: target.deployment.id, status: "DEPLOYED" }]);
         expect(await queue.queue.size()).toBe(1);
       } finally {
         await queue.stop();

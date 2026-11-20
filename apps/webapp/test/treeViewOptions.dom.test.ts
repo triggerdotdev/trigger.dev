@@ -12,7 +12,8 @@ import {
   type UseTreeStateOutput,
 } from "~/components/primitives/TreeView/TreeView";
 
-type Data = { kind: "session" | "run" | "span" };
+type Data = { kind: "session" | "run" | "span"; isError?: boolean };
+type ErrorsOnly = { errorsOnly: boolean } | undefined;
 
 let container: HTMLDivElement | undefined;
 let root: Root | undefined;
@@ -34,7 +35,7 @@ const session = (runs: Tree<Data>[]) =>
   flattenTree<Data>({ id: "session", data: { kind: "session" }, children: runs });
 
 type Options = Omit<
-  Parameters<typeof useTree<Data, undefined>>[0],
+  Parameters<typeof useTree<Data, ErrorsOnly>>[0],
   "tree" | "parentRef" | "estimatedRowHeight"
 >;
 
@@ -43,7 +44,7 @@ function render(initialTree: FlatTree<Data>, options: Options = {}) {
   const parentRef = { current: null };
 
   function Harness({ tree, opts }: { tree: FlatTree<Data>; opts: Options }) {
-    output = useTree<Data, undefined>({
+    output = useTree<Data, ErrorsOnly>({
       tree,
       parentRef,
       estimatedRowHeight: () => 32,
@@ -76,6 +77,12 @@ function render(initialTree: FlatTree<Data>, options: Options = {}) {
 }
 
 const isRun = (node: FlatTreeItem<Data>) => node.data.kind === "run";
+
+// The rows the virtualizer shows: expanded and passing the filter.
+const visibleRows = (tree: UseTreeStateOutput) =>
+  Array.from({ length: tree.virtualizer.options.count }, (_, index) =>
+    tree.virtualizer.options.getItemKey(index)
+  );
 
 describe("useTree isCollapsedByDefault", () => {
   it("starts matching nodes collapsed and hides their children", () => {
@@ -164,6 +171,21 @@ describe("useTree canExpand", () => {
     expect(harness.output().selected).toBe("r1");
   });
 
+  // Catches: a leaf's chevron storing it as collapsed, so children from a live tail arrive hidden.
+  it("ignores a toggle on a node that can't expand, so its later children show", () => {
+    const calls: Array<[string, boolean]> = [];
+    const harness = render(session([run("r1", [span("s1")])]), {
+      onExpandedChange: (id, expanded) => calls.push([id, expanded]),
+    });
+
+    harness.act((tree) => tree.toggleExpandNode("s1", false));
+    harness.rerender(session([run("r1", [{ ...span("s1"), children: [span("child")] }])]));
+
+    expect(calls).toEqual([]);
+    expect(harness.output().nodes.s1.expanded).toBe(true);
+    expect(harness.output().nodes.child.visible).toBe(true);
+  });
+
   it("moves to the parent instead when the node can't expand", () => {
     const harness = render(session([run("r1"), run("r2")]));
     harness.act((tree) => tree.selectNode("r1", false));
@@ -225,5 +247,98 @@ describe("useTree structureKey", () => {
 
     expect(nodes.s1?.visible).toBe(true);
     expect(nodes.placeholder).toBeUndefined();
+  });
+});
+
+describe("useTree filterKey", () => {
+  const errorsOnly = {
+    value: { errorsOnly: true },
+    fn: (value: ErrorsOnly, node: FlatTreeItem<Data>) =>
+      !value?.errorsOnly || node.data.isError === true,
+  };
+  // Rebuilt like a live trace: new node objects, same ids in the same order.
+  const withError = (isError: boolean) =>
+    session([
+      run("r1", [
+        { id: "s1", data: { kind: "span", isError: true } },
+        { id: "s2", data: { kind: "span", isError } },
+      ]),
+    ]);
+
+  // Catches: errors only missing a shown span that turns into an error in a live tail.
+  it("refilters the latest tree when the key changes without the shape changing", () => {
+    const harness = render(withError(false), { filter: errorsOnly, filterKey: "1:0" });
+    expect(visibleRows(harness.output())).not.toContain("s2");
+
+    harness.rerender(withError(true), { filter: errorsOnly, filterKey: "2:0" });
+
+    expect(visibleRows(harness.output())).toContain("s2");
+  });
+
+  it("filters the latest tree when the filter value changes", () => {
+    const harness = render(withError(false), { filter: { ...errorsOnly, value: undefined } });
+    harness.rerender(withError(true), { filter: { ...errorsOnly, value: undefined } });
+
+    harness.rerender(withError(true), { filter: errorsOnly });
+
+    expect(visibleRows(harness.output())).toEqual(["session", "r1", "s1", "s2"]);
+  });
+
+  it("keeps the filtered rows when the key stays the same", () => {
+    const harness = render(withError(false), { filter: errorsOnly, filterKey: "1:0" });
+    harness.rerender(withError(true), { filter: errorsOnly, filterKey: "1:0" });
+
+    expect(visibleRows(harness.output())).not.toContain("s2");
+  });
+
+  // Catches: a live tick that adds a failed span filtering twice (once for the new shape, once
+  // for the key), doubling the cost on large traces.
+  it("filters once when the shape and the key change together", () => {
+    let calls = 0;
+    const counted = {
+      ...errorsOnly,
+      fn: (value: ErrorsOnly, node: FlatTreeItem<Data>) => (calls++, errorsOnly.fn(value, node)),
+    };
+    const harness = render(withError(false), { filter: counted, filterKey: "1:0" });
+    const grown = session([
+      run("r1", [
+        { id: "s1", data: { kind: "span", isError: true } },
+        { id: "s2", data: { kind: "span", isError: false } },
+        { id: "s3", data: { kind: "span", isError: true } },
+      ]),
+    ]);
+    calls = 0;
+
+    harness.rerender(grown, { filter: counted, filterKey: "2:0" });
+
+    expect(calls).toBe(grown.length);
+    expect(visibleRows(harness.output())).toContain("s3");
+  });
+
+  // Catches: same-size rows in a new order (no structureKey, like the run page) filtering the
+  // stored tree, losing the change the key reported.
+  it("rebuilds from the latest tree when its rows moved", () => {
+    const harness = render(withError(false), { filter: errorsOnly, filterKey: "a" });
+    const moved = session([
+      run("r1", [
+        { id: "s2", data: { kind: "span", isError: true } },
+        { id: "s1", data: { kind: "span", isError: true } },
+      ]),
+    ]);
+
+    harness.rerender(moved, { filter: errorsOnly, filterKey: "b" });
+
+    expect(visibleRows(harness.output())).toEqual(["session", "r1", "s2", "s1"]);
+  });
+
+  it("keeps the selection and the stored collapsed state when it refilters", () => {
+    const harness = render(withError(false), { filter: errorsOnly, filterKey: "1:0" });
+    harness.act((tree) => tree.selectNode("s1", false));
+    harness.act((tree) => tree.collapseNode("r1"));
+
+    harness.rerender(withError(true), { filter: errorsOnly, filterKey: "2:0" });
+
+    expect(harness.output().selected).toBe("s1");
+    expect(harness.output().nodes.r1.expanded).toBe(false);
   });
 });

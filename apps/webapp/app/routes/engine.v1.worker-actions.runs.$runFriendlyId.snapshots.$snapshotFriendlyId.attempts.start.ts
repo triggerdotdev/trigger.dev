@@ -30,6 +30,7 @@ export const action = createActionWorkerApiRoute(
       workerCell: body.workerCell,
       workerLane: body.workerLane,
       supportsRunTokenRefresh: body.supportsRunTokenRefresh,
+      supportsUsageJwtRefresh: body.supportsUsageJwtRefresh,
       supportsSecretProxy: body.supportsSecretProxy,
       runnerId,
       environmentId,

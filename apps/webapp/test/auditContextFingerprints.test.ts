@@ -1,10 +1,18 @@
 import { postgresTest } from "@internal/testcontainers";
+import { metrics } from "@internal/tracing";
+import {
+  AggregationTemporality,
+  InMemoryMetricExporter,
+  MeterProvider,
+  PeriodicExportingMetricReader,
+} from "@opentelemetry/sdk-metrics";
 import { generateJWT } from "@trigger.dev/core/v3/jwt";
 import type { PrismaClient } from "@trigger.dev/database";
 import plugin from "@trigger.dev/rbac";
 import { createHash } from "node:crypto";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
+  countMissingFingerprint,
   getRequestAuditContext,
   noteLegacyApiKeyAuthentication,
   noteOrganizationAccessTokenAuthentication,
@@ -24,6 +32,28 @@ import {
 } from "./helpers/fingerprintLookupPlugin";
 
 vi.setConfig({ testTimeout: 60_000 });
+
+// A real meter provider, read on demand. It replaces the one the app's tracer setup registers on
+// import, before the counter is first created.
+const exporter = new InMemoryMetricExporter(AggregationTemporality.CUMULATIVE);
+const meterProvider = new MeterProvider({
+  readers: [new PeriodicExportingMetricReader({ exporter, exportIntervalMillis: 3_600_000 })],
+});
+metrics.disable();
+metrics.setGlobalMeterProvider(meterProvider);
+
+/** `audit_logs.events_without_fingerprint` so far (cumulative), for one reason or all of them. */
+async function withoutFingerprint(reason?: string): Promise<number> {
+  await meterProvider.forceFlush();
+  const latest = exporter.getMetrics().at(-1);
+  exporter.reset();
+  return (latest?.scopeMetrics ?? [])
+    .flatMap((scope) => scope.metrics)
+    .filter((metric) => metric.descriptor.name === "audit_logs.events_without_fingerprint")
+    .flatMap((metric) => metric.dataPoints)
+    .filter((point) => reason === undefined || point.attributes.reason === reason)
+    .reduce((sum, point) => sum + (point.value as number), 0);
+}
 
 afterEach(() => {
   uninstallFingerprintLookupPlugin();
@@ -150,10 +180,50 @@ describe("credential fingerprints in the request audit context", () => {
       throw new Error("control plane unavailable");
     });
 
+    const before = await withoutFingerprint("request_not_found");
     const { context } = await inRequest(async () => noteLegacyRootKey(LEGACY_ROOT_KEY));
 
-    expect((await context).credential).toMatchObject({ id: "env_1", fingerprintId: null });
+    const resolved = await context;
+    expect(resolved.credential).toMatchObject({ id: "env_1", fingerprintId: null });
     expect(lookups).toEqual([hashApiKey(LEGACY_ROOT_KEY)]);
+    // The host logs the failure and answers null, so it counts with the keys it didn't find.
+    countMissingFingerprint(resolved);
+    expect((await withoutFingerprint("request_not_found")) - before).toBe(1);
+  });
+
+  /**
+   * Catches: root key events stored without their fingerprint and counted nowhere, because the
+   * lookup that gives them one runs here, not in the plugin's writer.
+   */
+  it("counts the events recorded without a fingerprint, by reason", async () => {
+    const before = {
+      notFound: await withoutFingerprint("request_not_found"),
+      timedOut: await withoutFingerprint("request_lookup_timed_out"),
+      all: await withoutFingerprint(),
+    };
+
+    installFingerprintLookupPlugin(async () => null);
+    const notFound = await inRequest(async () => noteLegacyRootKey(LEGACY_ROOT_KEY), {
+      events: 2,
+    });
+    for (const context of await Promise.all(notFound.contexts)) countMissingFingerprint(context);
+    expect((await withoutFingerprint("request_not_found")) - before.notFound).toBe(2);
+
+    uninstallFingerprintLookupPlugin();
+    installFingerprintLookupPlugin(() => new Promise(() => {}));
+    const slow = await inRequest(async () => noteLegacyRootKey(LEGACY_ROOT_KEY));
+    const slowContext = await slow.context;
+    expect(slowContext.credential?.fingerprintId).toBeNull();
+    countMissingFingerprint(slowContext);
+    expect((await withoutFingerprint("request_lookup_timed_out")) - before.timedOut).toBe(1);
+
+    uninstallFingerprintLookupPlugin();
+    installFingerprintLookupPlugin(async () => ({ fingerprintId: "fp_root" }));
+    const found = await inRequest(async () => noteLegacyRootKey(LEGACY_ROOT_KEY));
+    const foundContext = await found.context;
+    expect(foundContext.credential?.fingerprintId).toBe("fp_root");
+    countMissingFingerprint(foundContext);
+    expect((await withoutFingerprint()) - before.all).toBe(3);
   });
 
   /** Catches: a plugin that failed to load failing the event instead of recording it. */

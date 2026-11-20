@@ -6,9 +6,13 @@ import { env } from "~/env.server";
 import { RunEngineBatchTriggerService } from "~/runEngine/services/batchTrigger.server";
 import { sendEmail } from "~/services/email.server";
 import {
+  AttioMemberSyncSchema,
   AttioUserSyncSchema,
+  AttioWorkspaceMembersSyncSchema,
   AttioWorkspaceSyncSchema,
+  runAttioMemberSync,
   runAttioUserSync,
+  runAttioWorkspaceMembersSync,
   runAttioWorkspaceSync,
 } from "~/services/attio.server";
 import { purgeDashboardAgentChatsForOrganization } from "~/services/dashboardAgentChatRetention.server";
@@ -155,6 +159,20 @@ function initializeWorker() {
       "attio.syncUser": {
         schema: AttioUserSyncSchema,
         visibilityTimeoutMs: 30_000,
+        retry: {
+          maxAttempts: 8,
+        },
+      },
+      "attio.syncMember": {
+        schema: AttioMemberSyncSchema,
+        visibilityTimeoutMs: 30_000,
+        retry: {
+          maxAttempts: 8,
+        },
+      },
+      "attio.syncWorkspaceMembers": {
+        schema: AttioWorkspaceMembersSyncSchema,
+        visibilityTimeoutMs: 60_000,
         retry: {
           maxAttempts: 8,
         },
@@ -365,6 +383,12 @@ function initializeWorker() {
       },
       "attio.syncUser": async ({ payload }) => {
         await runAttioUserSync(payload);
+      },
+      "attio.syncMember": async ({ payload }) => {
+        await runAttioMemberSync(payload);
+      },
+      "attio.syncWorkspaceMembers": async ({ payload }) => {
+        await runAttioWorkspaceMembersSync(payload);
       },
       "membership.provisionDevEnvironments": async ({ payload }) => {
         await provisionDevEnvironmentsForMembership(payload);

@@ -19,7 +19,6 @@ import type { RedisOptions } from "ioredis";
 import type { PrismaClient } from "@trigger.dev/database";
 import { EventEmitter, once } from "node:events";
 import type { AddressInfo } from "node:net";
-import { Registry } from "prom-client";
 import { afterAll, beforeAll, expect, onTestFinished, vi } from "vitest";
 import {
   SecretProxyFixture,
@@ -29,9 +28,7 @@ import {
 import {
   SecretProxyBindings,
   type SecretProxyCaller,
-  reportSecretProxyRestoreRefusal,
 } from "../../supervisor/src/services/secretProxyBindings.js";
-import { RunReleaser } from "../../supervisor/src/services/runReleases.js";
 import { WorkloadServer } from "../../supervisor/src/workloadServer/index.js";
 import { mintDeploymentToken } from "../../supervisor/src/workloadToken.js";
 
@@ -878,112 +875,5 @@ postgresAndRedisTest(
       signals.emit("retire");
       await server.stop();
     }
-  }
-);
-
-postgresAndRedisTest(
-  "failed checkpoint refusal reports requeue while preserving the checkpoint",
-  async ({ prisma, redisOptions }) => {
-    const engine = new RunEngine({
-      prisma,
-      worker: { redis: redisOptions, workers: 1, tasksPerWorker: 10, pollIntervalMs: 100 },
-      queue: { redis: redisOptions, masterQueueConsumersDisabled: true },
-      runLock: { redis: redisOptions },
-      machines,
-      tracer: trace.getTracer("secret-proxy-restore-report"),
-    });
-    onTestFinished(() => engine.quit());
-    const environment = await setupAuthenticatedEnvironment(prisma, "PRODUCTION");
-    await setupBackgroundWorker(engine, environment, "checkpoint-refusal");
-    let reportStatus = 503;
-    const client = await engineBoundary(engine, environment.id, () => reportStatus);
-    const run = await engine.trigger(
-      {
-        number: 1,
-        friendlyId: "run_restorefailure",
-        environment,
-        taskIdentifier: "checkpoint-refusal",
-        payload: "{}",
-        payloadType: "application/json",
-        context: {},
-        traceContext: {},
-        traceId: "restore-failure",
-        spanId: "restore-failure",
-        workerQueue: "restore-failure",
-        queue: "task/checkpoint-refusal",
-        isTest: false,
-        tags: [],
-      },
-      prisma
-    );
-    let dequeued: Awaited<ReturnType<RunEngine["dequeueFromWorkerQueue"]>>[number] | undefined;
-    await expect
-      .poll(
-        async () => {
-          dequeued = (
-            await engine.dequeueFromWorkerQueue({
-              consumerId: "test",
-              workerQueue: "restore-failure",
-            })
-          )[0];
-          return !!dequeued;
-        },
-        { timeout: 10_000, interval: 100 }
-      )
-      .toBe(true);
-    assertNonNullable(dequeued);
-    const checkpoint = await prisma.taskRunCheckpoint.create({
-      data: {
-        friendlyId: "checkpoint_before_enrollment",
-        type: "COMPUTE",
-        location: "saved",
-        projectId: environment.projectId,
-        runtimeEnvironmentId: environment.id,
-      },
-    });
-    await prisma.taskRunExecutionSnapshot.update({
-      where: { id: dequeued.snapshot.id },
-      data: { checkpointId: checkpoint.id },
-    });
-    const releaser = new RunReleaser({
-      client: () => client,
-      register: new Registry(),
-      runsReleasedAMinute: 10,
-    });
-    const options = { interceptorSocket: fixture.socketPath, checkpoint };
-    const deps = {
-      report: (body: Parameters<SupervisorHttpClient["reportRestoreOutcome"]>[2]) =>
-        client.reportRestoreOutcome(run.friendlyId, dequeued!.snapshot.friendlyId, body),
-      release: () =>
-        releaser.release(
-          {
-            runFriendlyId: run.friendlyId,
-            snapshotFriendlyId: dequeued!.snapshot.friendlyId,
-            runnerId: "runner-restorefailure",
-            environmentId: environment.id,
-          },
-          "RestoreRefusalFailed"
-        ),
-    };
-    expect(await reportSecretProxyRestoreRefusal(options, deps)).toMatchObject({
-      result: "error",
-      releaseResult: "released",
-    });
-    const persisted = await engine.getRunExecutionData({ runId: run.id });
-    expect(persisted?.snapshot.executionStatus).toBe("QUEUED");
-    assertNonNullable(persisted);
-    const snapshot = await prisma.taskRunExecutionSnapshot.findUniqueOrThrow({
-      where: { id: persisted.snapshot.id },
-    });
-    expect(snapshot.checkpointId).toBe(checkpoint.id);
-
-    reportStatus = 409;
-    const conflict = await reportSecretProxyRestoreRefusal(options, {
-      ...deps,
-      release: async () => {
-        throw new Error("A stale report must not release a newer snapshot");
-      },
-    });
-    expect(conflict).toEqual({ result: "conflict" });
   }
 );

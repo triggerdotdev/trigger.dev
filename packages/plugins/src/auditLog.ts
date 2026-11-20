@@ -1,4 +1,5 @@
 import type { PluginDatabaseConfig } from "./databaseConfig.js";
+import type { IpLocationLookup } from "./ipLocation.js";
 
 type AuditLogActionsByCategory = {
   credentials:
@@ -83,6 +84,20 @@ export type AuditLogEndpoint = {
   ip: string | null;
   userAgent: string | null;
 };
+
+/** Where a listed event's IP is: its country and the network (AS) that announces it. */
+export type AuditLogIpLocation = {
+  /** ISO 3166-1 alpha-2, e.g. `RO`. */
+  countryCode: string | null;
+  asn: number | null;
+  asName: string | null;
+};
+
+/**
+ * A listed event's endpoint. The location is looked up when the event is stored, and is null when
+ * the lookup found nothing or whenever the IP isn't shown.
+ */
+export type AuditLogListedEndpoint = AuditLogEndpoint & { location: AuditLogIpLocation | null };
 
 /** Set when Trigger.dev infrastructure acted, e.g. the build server for a deployment. */
 export type AuditLogOrigin = {
@@ -202,10 +217,14 @@ type AuditLogListedCategoryAndAction = {
   [C in AuditLogListedCategory]: AuditLogEventFor<C>;
 }[AuditLogListedCategory];
 
-/** An event as `listEvents` returns it: no `onBehalfOf`, no credential `fingerprintId`. */
+/**
+ * An event as `listEvents` returns it: no `onBehalfOf`, no credential `fingerprintId`, and the
+ * IP's location when the IP is shown.
+ */
 export type AuditLogListedEvent = AuditLogListedCategoryAndAction &
-  Omit<AuditLogEventFields, "onBehalfOf" | "credential"> & {
+  Omit<AuditLogEventFields, "onBehalfOf" | "credential" | "endpoint"> & {
     credential: Omit<AuditLogCredential, "fingerprintId"> | null;
+    endpoint: AuditLogListedEndpoint | null;
   };
 
 export type AuditLogEventQuery = {
@@ -221,6 +240,13 @@ export type AuditLogEventQuery = {
   environmentId?: string;
   /** Matches events involving a credential whose last 4 characters are these. */
   keyLast4?: string;
+  /** Matches events whose target has exactly this name, e.g. an env var key. */
+  targetName?: string;
+  /**
+   * Matches events made with this credential, by its fingerprint id. The host resolves the
+   * credential the user picked; events made before the credential had a fingerprint don't match.
+   */
+  credentialFingerprintId?: string;
   /** From the previous page's `nextCursor`. */
   cursor?: string;
   limit: number;
@@ -280,6 +306,11 @@ export type AuditLogCredentialRevokedInput = {
 export type AuditLogPluginConfig = {
   /** The control-plane database, where credential fingerprints live. */
   controlPlane: PluginDatabaseConfig;
+  /**
+   * Country and network of an event's IP, stored with the event. Optional: without it, events are
+   * stored with no location. Called by the plugin off the request path, which caches answers per IP.
+   */
+  lookupIpLocation?: IpLocationLookup;
 };
 
 export interface AuditLogController {

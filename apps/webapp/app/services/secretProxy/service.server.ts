@@ -12,6 +12,7 @@ import {
   isCanonicalProxyHostname,
   placeholderForVariable,
   SecretProxyDeniedError,
+  type SecretProxySelection,
   SECRET_PROXY_MAX_CREDENTIAL_BYTES,
   SECRET_PROXY_MAX_RESPONSE_BYTES,
   serviceTokenMatches,
@@ -236,11 +237,17 @@ export class SecretProxyService {
     `);
     if (identities.length > MAX_PROXY_VARIABLES)
       throw new SecretProxyDeniedError("Too many secret proxy variables", "limit");
+    // The run is verified above, so refusals below depend only on the (handle, hostname) pair.
+    // They name every refused selection so the relay can deny just those and keep the run's
+    // other grants: a warm VM can carry a leftover process still using a previous run's handles.
     const mappings = new Map<string, Map<string, string>>();
-    const selected = request.resolve.map((item) => {
+    const unknown: SecretProxySelection[] = [];
+    const selected = request.resolve.flatMap((item) => {
       const [, , keyId] = item.handle.split("_");
-      if (!keyId || !this.options.keyring!.keys.has(keyId))
-        throw new SecretProxyDeniedError("Unknown placeholder key", "placeholder");
+      if (!keyId || !this.options.keyring!.keys.has(keyId)) {
+        unknown.push({ handle: item.handle, hostname: item.hostname });
+        return [];
+      }
       let byHandle = mappings.get(keyId);
       if (!byHandle) {
         byHandle = new Map(
@@ -257,10 +264,18 @@ export class SecretProxyService {
         mappings.set(keyId, byHandle);
       }
       const variableId = byHandle.get(item.handle);
-      if (!variableId)
-        throw new SecretProxyDeniedError("Handle or destination is not authorized", "placeholder");
-      return { handle: item.handle, hostname: item.hostname, variableId };
+      if (!variableId) {
+        unknown.push({ handle: item.handle, hostname: item.hostname });
+        return [];
+      }
+      return [{ handle: item.handle, hostname: item.hostname, variableId }];
     });
+    if (unknown.length)
+      throw new SecretProxyDeniedError(
+        "Handle or destination is not authorized",
+        "placeholder",
+        unknown
+      );
     const ids = [...new Set(selected.map((item) => item.variableId))];
     const secretKey = Prisma.sql`concat('environmentvariable:', variable."projectId", ':', value."environmentId", ':', variable.key)`;
     const rows = ids.length
@@ -278,11 +293,18 @@ export class SecretProxyService {
         (value) => [value.variableId, value]
       )
     );
-    for (const item of selected) {
-      const value = values.get(item.variableId);
-      if (!value?.isProxyOnly || !value.proxyAllowedHosts.includes(item.hostname))
-        throw new SecretProxyDeniedError("Handle or destination is not authorized", "policy");
-    }
+    const disallowed = selected
+      .filter((item) => {
+        const value = values.get(item.variableId);
+        return !value?.isProxyOnly || !value.proxyAllowedHosts.includes(item.hostname);
+      })
+      .map(({ handle, hostname }) => ({ handle, hostname }));
+    if (disallowed.length)
+      throw new SecretProxyDeniedError(
+        "Handle or destination is not authorized",
+        "policy",
+        disallowed
+      );
     const items = ids.map((id) => {
       const value = values.get(id)!;
       if (value.storeVersion === null)

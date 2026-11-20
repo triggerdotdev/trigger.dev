@@ -171,6 +171,8 @@ type TreeStateHookProps<TData, TFilterValue> = {
   onExpandedChange?: (id: string, expanded: boolean) => void;
   /** Change it when the tree's structure changes without its node count changing. */
   structureKey?: string | number;
+  /** Change it when node data the filter reads changes without the structure changing. */
+  filterKey?: string | number;
 };
 
 //this is so Framer Motion can be used to render the components
@@ -221,6 +223,7 @@ export function useTree<TData, TFilterValue>({
   canExpand = (node) => node.hasChildren,
   onExpandedChange,
   structureKey,
+  filterKey,
 }: TreeStateHookProps<TData, TFilterValue>): UseTreeStateOutput {
   const previousNodeCount = useRef(tree.length);
   const previousSelectedId = useRef<string | undefined>(selectedId);
@@ -289,6 +292,8 @@ export function useTree<TData, TFilterValue>({
 
   const treeNodeCount = tree.length;
   const previousStructureKey = useRef(structureKey);
+  // The tree the last rebuild used; its filter pass already saw that data.
+  const rebuiltFrom = useRef<FlatTree<TData>>();
 
   // Callers may recreate the tree array; preserve reducer state unless its shape changes.
   useEffect(() => {
@@ -308,6 +313,7 @@ export function useTree<TData, TFilterValue>({
           .filter((node) => !(node.id in knownNodes) && collapseByDefault(node))
           .map((node) => node.id)
       : undefined;
+    rebuiltFrom.current = nextTree;
     dispatch({ type: "UPDATE_TREE", payload: { tree: nextTree, collapsedIds: newlyCollapsedIds } });
   }, [treeNodeCount, structureKey]);
 
@@ -315,14 +321,27 @@ export function useTree<TData, TFilterValue>({
   latestFilterRef.current = filter;
   const serializedFilterValue = filter ? JSON.stringify(filter.value) : undefined;
   const previousSerializedFilterValue = useRef(serializedFilterValue);
+  const previousFilterKey = useRef(filterKey);
 
   // Filter behavior is keyed by value; callers may recreate the filter function every render.
+  // Filters the latest tree: rebuilt node data can change while the structure stays the same.
   useEffect(() => {
-    if (serializedFilterValue === previousSerializedFilterValue.current) return;
+    if (
+      serializedFilterValue === previousSerializedFilterValue.current &&
+      filterKey === previousFilterKey.current
+    ) {
+      return;
+    }
 
+    const valueChanged = serializedFilterValue !== previousSerializedFilterValue.current;
     previousSerializedFilterValue.current = serializedFilterValue;
-    dispatch({ type: "UPDATE_FILTER", payload: { filter: latestFilterRef.current } });
-  }, [serializedFilterValue]);
+    previousFilterKey.current = filterKey;
+    if (!valueChanged && rebuiltFrom.current === latestTreeRef.current) return;
+    dispatch({
+      type: "UPDATE_FILTER",
+      payload: { filter: latestFilterRef.current, tree: latestTreeRef.current },
+    });
+  }, [serializedFilterValue, filterKey]);
 
   // A new getItemKey makes the virtualizer re-measure every row, so only
   // change it when the visible rows change.
@@ -403,6 +422,9 @@ export function useTree<TData, TFilterValue>({
   };
 
   const toggleExpandNode = (id: string, scrollToNode = true) => {
+    // A row that can't expand keeps no state, or it would open collapsed once it can.
+    const treeNode = tree[treeIndexById.get(id) ?? -1];
+    if (!treeNode || !canExpand(treeNode)) return;
     const node = state.nodes[id];
     if (node) {
       notifyExpanded(id, !node.expanded);

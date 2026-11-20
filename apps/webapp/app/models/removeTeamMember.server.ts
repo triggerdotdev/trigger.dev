@@ -1,5 +1,6 @@
 import type { PrismaClient } from "@trigger.dev/database";
 import { $transaction } from "~/db.server";
+import { enqueueAttioMemberSync } from "~/services/attio.server";
 import { auditLogs } from "~/services/auditLogs/auditLogs.server";
 import { rbac } from "~/services/rbac.server";
 import {
@@ -95,6 +96,7 @@ export async function removeTeamMember(
     throw new Error("Failed to remove organization member");
   }
   recordMemberRemovalCredentials(result.credentials, actor);
+  await enqueueAttioMemberSync({ organizationId: org.id, userId: result.target.userId });
   auditLogs.record({
     category: "members",
     action: "member.removed",

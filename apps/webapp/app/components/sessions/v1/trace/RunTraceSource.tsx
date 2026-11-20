@@ -24,6 +24,8 @@ export type RunTraceSnapshot = {
   rootStartedAt: Date | string | undefined;
   /** Spans that arrived from the live tail; the rest came from stored reads. */
   liveSpanIds: ReadonlySet<string>;
+  /** Times a span already shown got a new message. */
+  messageChanges: number;
 };
 
 type StartedTrace = { kind: "progressive" | "empty"; trace: RunTraceInput };
@@ -138,6 +140,7 @@ function RunTraceLive({
       duration: trace.duration,
       rootStartedAt: trace.rootStartedAt,
       liveSpanIds: trace.liveSpanIds,
+      messageChanges: trace.messageChanges,
     });
   }, [
     run.friendlyId,
@@ -145,6 +148,7 @@ function RunTraceLive({
     trace.duration,
     trace.rootStartedAt,
     trace.liveSpanIds,
+    trace.messageChanges,
     onSnapshot,
   ]);
 

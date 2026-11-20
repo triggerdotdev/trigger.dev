@@ -20,10 +20,13 @@ const MAX_RETAINED_KEYS = 8;
 const MAX_EXECUTION_HOSTS = 256;
 export const SECRET_PROXY_MAX_RESPONSE_BYTES = 4 * 1024 * 1024;
 export const SECRET_PROXY_MAX_CREDENTIAL_BYTES = 64 * 1024;
+export type SecretProxySelection = { handle: string; hostname: string };
 export class SecretProxyDeniedError extends Error {
   constructor(
     message: string,
-    readonly reason: SecretProxyFailureReason
+    readonly reason: SecretProxyFailureReason,
+    /** Set only when the run is valid and exactly these selections were refused. */
+    readonly selections?: SecretProxySelection[]
   ) {
     super(message);
   }
