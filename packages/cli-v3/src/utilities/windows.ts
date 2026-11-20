@@ -1,5 +1,5 @@
 import { log, spinner as clackSpinner } from "@clack/prompts";
-import { isWindows as stdEnvIsWindows } from "std-env";
+import { isCI, isWindows as stdEnvIsWindows } from "std-env";
 
 const isWindows = stdEnvIsWindows;
 
@@ -82,6 +82,8 @@ const wrappedClackSpinner = () => {
   };
 };
 
+// This will become unecessary with the next clack release, the bug was fixed here:
+// https://github.com/natemoo-re/clack/pull/182
 const ballmerSpinner = () => ({
   start: (msg?: string): void => {
     log.step(msg ?? "");
@@ -106,7 +108,19 @@ const plainSpinner = () => ({
   },
 });
 
-// This will become unecessary with the next clack release, the bug was fixed here:
-// https://github.com/natemoo-re/clack/pull/182
 export const spinner = (options: { plain?: boolean } = { plain: false }) =>
-  options.plain ? plainSpinner() : isWindows ? ballmerSpinner() : wrappedClackSpinner();
+  isPlainOutput(outputEnv(options.plain))
+    ? plainSpinner()
+    : isWindows
+      ? ballmerSpinner()
+      : wrappedClackSpinner();
+
+export type OutputEnv = { plain: boolean; ci: boolean; tty: boolean };
+
+export function outputEnv(plain = false): OutputEnv {
+  return { plain, ci: isCI, tty: Boolean(process.stdout.isTTY) };
+}
+
+export function isPlainOutput(env: OutputEnv): boolean {
+  return env.plain || env.ci || !env.tty;
+}

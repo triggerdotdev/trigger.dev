@@ -83,7 +83,7 @@ import { resolveLocalEnvVars } from "../utilities/localEnvVars.js";
 import { logger } from "../utilities/logger.js";
 import { getProjectClient, upsertBranch } from "../utilities/session.js";
 import { getTmpDir } from "../utilities/tempDirectories.js";
-import { spinner } from "../utilities/windows.js";
+import { outputEnv, spinner } from "../utilities/windows.js";
 import { login } from "./login.js";
 import { updateTriggerPackages } from "./update.js";
 
@@ -1443,7 +1443,7 @@ async function handleNativeBuildServerDeploy({
 
   const archivePath = join(tmpDir, `deploy-${Date.now()}.tar.gz`);
 
-  const $deploymentSpinner = spinner();
+  const $deploymentSpinner = spinner({ plain: options.plain });
   $deploymentSpinner.start("Preparing deployment files");
 
   await createContextArchive(config.workspaceDir, archivePath);
@@ -1761,7 +1761,7 @@ async function handleLocalBundleDeploy({
     );
   }
 
-  const $deploymentSpinner = spinner();
+  const $deploymentSpinner = spinner({ plain: options.plain });
   $deploymentSpinner.start("Preparing deployment files");
 
   await createBundleArchive(bundleOutputPath, archivePath);
@@ -2397,7 +2397,7 @@ async function handleFromBundleDeploy({
 }
 
 function buildLogsEnv(options: DeployCommandOptions) {
-  return { plain: options.plain, ci: isCI, tty: Boolean(process.stdout.isTTY), windows: isWindows };
+  return { ...outputEnv(options.plain), windows: isWindows };
 }
 
 function showFullBuildLogs(options: DeployCommandOptions) {
