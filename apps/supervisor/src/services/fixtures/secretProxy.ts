@@ -213,6 +213,8 @@ export class SecretProxyFixture {
   private readonly placementsByRunner = new Map<string, FixtureAllocation>();
   private readonly allocations = new Map<string, { metadata: FixtureAllocation; listen: string }>();
 
+  constructor(private readonly podStatus: "kubelet" | "manual" = "kubelet") {}
+
   async start() {
     try {
       const results = await Promise.allSettled([this.startKubernetes(), this.startInterceptor()]);
@@ -254,7 +256,9 @@ export class SecretProxyFixture {
         "--disable",
         "coredns",
         "--disable-network-policy",
-        "--kubelet-arg=max-pods=160",
+        ...(this.podStatus === "manual"
+          ? ["--disable-agent", "--egress-selector-mode=disabled"]
+          : ["--kubelet-arg=max-pods=160"]),
       ],
       { timeout: STARTUP_TIMEOUT_MS }
     );
@@ -282,12 +286,20 @@ export class SecretProxyFixture {
       this.custom = this.config.makeApiClient(CustomObjectsApi);
       this.nodeName = await waitFor(async () => {
         const nodes = await this.core.listNode();
+        if (this.podStatus === "manual") {
+          // Register a node so the controller does not garbage-collect its Pods.
+          const name = "secret-proxy-fixture";
+          if (!nodes.items.some((node) => node.metadata?.name === name)) {
+            await this.core.createNode({ body: { metadata: { name } } });
+          }
+          return name;
+        }
         return nodes.items.find((node) =>
           node.status?.conditions?.some(
             (condition) => condition.type === "Ready" && condition.status === "True"
           )
         )?.metadata?.name;
-      }, "ready k3s node");
+      }, "k3s placement node");
       const crds = this.config.makeApiClient(ApiextensionsV1Api);
       const runnerDefinition = loadYaml<V1CustomResourceDefinition>(
         await readFile(runnerCrd, "utf8")
@@ -424,7 +436,11 @@ export class SecretProxyFixture {
     runId: string,
     claims: typeof deploymentClaims,
     image: string,
-    { singleUse, checkpoint }: { singleUse?: boolean; checkpoint?: string } = {}
+    {
+      singleUse,
+      checkpoint,
+      sourceIp,
+    }: { singleUse?: boolean; checkpoint?: string; sourceIp?: string } = {}
   ) {
     const runner = (await this.custom.createNamespacedCustomObject({
       group: "compute.trigger.dev",
@@ -457,6 +473,7 @@ export class SecretProxyFixture {
         },
       },
     })) as { metadata: { uid: string } };
+    const containerName = "run-controller";
     await this.core.createNamespacedPod({
       namespace: this.namespace,
       body: {
@@ -477,9 +494,34 @@ export class SecretProxyFixture {
           terminationGracePeriodSeconds: 0,
           containers: [
             {
-              name: "run-controller",
+              name: containerName,
               image,
               resources: { requests: { cpu: "1m", memory: "2Mi" } },
+            },
+          ],
+        },
+      },
+    });
+    if (this.podStatus !== "manual") return;
+    if (!sourceIp) throw new Error("Manual Pod status requires a source IP");
+    await this.core.replaceNamespacedPodStatus({
+      name,
+      namespace: this.namespace,
+      body: {
+        metadata: { name },
+        status: {
+          phase: "Running",
+          podIP: sourceIp,
+          podIPs: [{ ip: sourceIp }],
+          containerStatuses: [
+            {
+              name: containerName,
+              image,
+              imageID: image,
+              containerID: `containerd://${randomUUID()}`,
+              ready: true,
+              restartCount: 0,
+              state: { running: { startedAt: new Date() } },
             },
           ],
         },
@@ -488,17 +530,32 @@ export class SecretProxyFixture {
   }
 
   async placements(
-    requests: { runId: string; attempt?: number; singleUse?: boolean; checkpoint?: string }[],
+    requests: {
+      runId: string;
+      attempt?: number;
+      singleUse?: boolean;
+      checkpoint?: string;
+      sourceIp?: string;
+    }[],
     claims = deploymentClaims
   ): Promise<SecretProxyCaller[]> {
     for (let offset = 0; offset < requests.length; offset += 8) {
       await Promise.all(
-        requests.slice(offset, offset + 8).map(({ runId, attempt, singleUse, checkpoint }) =>
-          this.createPlacement(runnerName(runId, attempt, checkpoint), runId, claims, PAUSE_IMAGE, {
-            singleUse,
-            checkpoint,
-          })
-        )
+        requests
+          .slice(offset, offset + 8)
+          .map(({ runId, attempt, singleUse, checkpoint, sourceIp }) =>
+            this.createPlacement(
+              runnerName(runId, attempt, checkpoint),
+              runId,
+              claims,
+              PAUSE_IMAGE,
+              {
+                singleUse,
+                checkpoint,
+                sourceIp,
+              }
+            )
+          )
       );
     }
     const pods = await waitFor(async () => {
