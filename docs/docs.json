@@ -75,7 +75,7 @@
               "building-with-ai",
               {
                 "group": "MCP Server",
-                "pages": ["mcp-introduction", "mcp-remote", "mcp-tools"]
+                "pages": ["mcp-introduction", "mcp-tools"]
               },
               "skills",
               "mcp-agent-rules"
