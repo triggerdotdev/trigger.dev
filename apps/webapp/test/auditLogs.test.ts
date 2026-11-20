@@ -582,6 +582,47 @@ describe("audit logs host", () => {
     ]);
   });
 
+  // Catches: our build infrastructure's IP, user agent or deploy key reaching the customer, or a
+  // customer's own key losing them.
+  it("hides the endpoint and credential of events Trigger.dev infrastructure made", async () => {
+    const endpoint = { ip: "203.0.113.7", userAgent: "test" };
+    const credential = { kind: "additional_api_key", id: "apikey_1", last4: "wxyz" } as const;
+    const customerKey: AuditLogEvent = {
+      ...input,
+      id: "evt_key",
+      occurredAt: new Date("2026-11-09T12:00:00Z"),
+      changes: null,
+      actor: { type: "api_key", id: "apikey_1" },
+      credential: { ...credential, fingerprintId: null },
+      onBehalfOf: null,
+      source: "api",
+      endpoint,
+      origin: { deploymentId: "deployment_1" },
+      requestId: null,
+    };
+    const build = {
+      ...customerKey,
+      id: "evt_build",
+      actor: { type: "trigger_infra", id: null },
+    } satisfies AuditLogEvent;
+    const controller = inMemoryController({
+      listEvents: async () => ({ events: [customerKey, build], nextCursor: null }),
+    });
+    const audit = host({ controller: async () => controller });
+
+    const page = await audit.listEvents({
+      organizationId: "org_1",
+      from: new Date(0),
+      to: new Date(),
+      limit: 50,
+    });
+
+    expect(page.events.map((event) => [event.id, event.endpoint, event.credential])).toEqual([
+      ["evt_key", { ...endpoint, location: null }, credential],
+      ["evt_build", null, null],
+    ]);
+  });
+
   // Catches: flush resolving before in-flight records finish, or before the plugin flushes its
   // own buffer, so shutdown drops events.
   it("flush waits for records in flight and then flushes the plugin", async () => {

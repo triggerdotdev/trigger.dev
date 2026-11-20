@@ -58,6 +58,9 @@ export type BearerResolution = {
   // still in its grace window. Never the key itself: `hash()` returns its SHA-256 hex on demand,
   // so callers that don't need it pay nothing.
   jwtSigningKey?: { environmentId: string; last4: string; hash(): string };
+  // Who issued a resolved additional key: `SYSTEM` for keys the platform mints for itself, such as
+  // a build's deploy key; `USER` for keys a member created.
+  apiKeyIssuedBy?: "USER" | "SYSTEM";
 };
 
 export type BearerCredentialResult = BearerAuthResult & {
@@ -392,6 +395,7 @@ export class BearerCredentialResolver {
         lastUsedAt: true,
         scopes: true,
         allowedIpRanges: true,
+        issuedBy: true,
         runtimeEnvironment: { include: environmentInclude(branchName) },
       },
     });
@@ -460,7 +464,7 @@ export class BearerCredentialResolver {
             recordScopeUse
           )
         : buildJwtAbility(match.scopes),
-      resolution,
+      resolution: { ...resolution, apiKeyIssuedBy: match.issuedBy },
     };
   }
 }

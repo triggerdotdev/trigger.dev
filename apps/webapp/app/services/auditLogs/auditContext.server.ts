@@ -160,11 +160,15 @@ export function noteBearerAuthentication(request: Request, result: HostBearerAut
 
     // An additional key has a row id: the audit plugin finds its fingerprint by kind and id.
     if (subject.type === "apiKey") {
-      return apiKeyIdentity(request, {
+      const identity = apiKeyIdentity(request, {
         kind: "additional_api_key",
         id: subject.apiKeyId,
         last4: lastFour(token),
       });
+      // A key the platform minted for itself, such as a build's deploy key: Trigger.dev acted.
+      return resolution.apiKeyIssuedBy === "SYSTEM"
+        ? { ...identity, actor: { type: "trigger_infra", id: null } }
+        : identity;
     }
 
     // Root and legacy environment keys resolve to a user subject, so the key is identified by the
@@ -178,7 +182,10 @@ export function noteBearerAuthentication(request: Request, result: HostBearerAut
   });
 }
 
-/** The pre-RBAC API-key path: root or additional key, or a public JWT. */
+/**
+ * The pre-RBAC API-key path: root or additional key, or a public JWT. It accepts only full-access
+ * additional keys, so a platform-minted deploy key (always scoped) never arrives here.
+ */
 export function noteLegacyApiKeyAuthentication(
   request: Request,
   result:
