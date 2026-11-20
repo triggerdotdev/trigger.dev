@@ -20,11 +20,9 @@ type ModalProps = {
   title: string;
   hasVercelIntegration: boolean;
   isDevelopment: boolean;
-  isRootApiKeyHidden?: boolean;
-  onSwitchToApiKeys: () => void;
+  onSwitchToApiKeys?: () => void;
   canLimitAccess?: boolean;
-  /** "menu" for a row's ⋮ menu, "button" for a footer. */
-  appearance?: "menu" | "button";
+  appearance?: "menu" | "button" | "migration";
 };
 
 type ModalContentProps = ModalProps & {
@@ -37,7 +35,6 @@ export function RegenerateApiKeyModal({
   title,
   hasVercelIntegration,
   isDevelopment,
-  isRootApiKeyHidden = false,
   onSwitchToApiKeys,
   canLimitAccess = false,
   appearance = "button",
@@ -56,10 +53,10 @@ export function RegenerateApiKeyModal({
                 textAlignLeft: true,
                 className: "w-full px-1.5 py-[0.9rem]",
               }
-            : { variant: "secondary/medium" as const })}
+            : { variant: appearance === "migration" ? "secondary/small" : "secondary/medium" })}
           LeadingIcon={ArrowPathIcon}
         >
-          Regenerate…
+          {appearance === "migration" ? "Rotate root key…" : "Regenerate…"}
         </Button>
       </DialogTrigger>
       <DialogContent>
@@ -67,9 +64,9 @@ export function RegenerateApiKeyModal({
         <RegenerateApiKeyModalContent
           id={id}
           title={title}
-          hasVercelIntegration={hasVercelIntegration}
+          // Do not overwrite the API key the user just configured in Vercel during migration.
+          hasVercelIntegration={hasVercelIntegration && appearance !== "migration"}
           isDevelopment={isDevelopment}
-          isRootApiKeyHidden={isRootApiKeyHidden}
           onSwitchToApiKeys={onSwitchToApiKeys}
           canLimitAccess={canLimitAccess}
           randomWord={randomWord}
@@ -86,7 +83,6 @@ const RegenerateApiKeyModalContent = ({
   title,
   hasVercelIntegration,
   isDevelopment,
-  isRootApiKeyHidden,
   onSwitchToApiKeys,
   canLimitAccess,
   closeModal,
@@ -102,7 +98,7 @@ const RegenerateApiKeyModalContent = ({
 
   return (
     <div className="flex flex-col items-center gap-y-4 pt-4">
-      {!isRootApiKeyHidden ? (
+      {onSwitchToApiKeys ? (
         <Callout
           variant="warning"
           cta={
@@ -121,14 +117,13 @@ const RegenerateApiKeyModalContent = ({
         </Callout>
       ) : null}
       <Paragraph variant="small" className="w-full">
-        {`A new API key will be issued for the ${title} environment. Choose what happens to the previous key.`}
+        {`A new root key will be issued for the ${title} environment, but you won't be able to view or copy it from the dashboard. Move apps that use the old key to an API key before it expires.`}
       </Paragraph>
       <fetcher.Form
         method="post"
         action={`/resources/environments/${id}/regenerate-api-key`}
         className="mt-2 w-full"
       >
-        {isRootApiKeyHidden ? <input type="hidden" name="rootApiKeyHidden" value="true" /> : null}
         <Fieldset className="w-full">
           <InputGroup className="max-w-full">
             <RadioGroup name="previousKey" defaultValue="grace" className="flex flex-col gap-2">
@@ -137,22 +132,14 @@ const RegenerateApiKeyModalContent = ({
                 value="grace"
                 variant="description"
                 label="Keep the previous key working for 24 hours"
-                description={
-                  isRootApiKeyHidden
-                    ? "Anything still using the previous key keeps working for 24 hours."
-                    : "Roll out the new key to your environment variables without downtime. The previous key stops working after 24 hours."
-                }
+                description="Anything still using the previous key keeps working for 24 hours."
               />
               <RadioGroupItem
                 id="previousKey-revoke"
                 value="revoke"
                 variant="description"
                 label="Revoke the previous key immediately"
-                description={
-                  isRootApiKeyHidden
-                    ? "Choose this if the key may have leaked. It stops working now, along with any older key still in its 24-hour window."
-                    : "Choose this if the key may have leaked. It stops working now, along with any older key still in its 24-hour window. Deployments and services still using them will fail until they are updated with the new key."
-                }
+                description="Choose this if your apps have switched to new keys or the old key may have leaked. It stops working now, along with any older key still in its 24-hour window."
               />
             </RadioGroup>
           </InputGroup>
