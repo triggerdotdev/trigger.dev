@@ -53,6 +53,14 @@ const REMOTE_ONLY: Record<string, string> = {
   pause_webhook_endpoint: "the CLI has no MCP twin for the public disable route",
   resume_webhook_endpoint: "the CLI has no MCP twin for the public enable route",
   cancel_webhook_waiter: "the CLI has no MCP tool for the public waiter cancel route",
+  get_alert_details: "reads the Dashboard alert presenter, which only the server has",
+  list_alert_channels: "reads the Dashboard channel presenter, which only the server has",
+  update_alert: "edits through the Dashboard alert services, which only the server has",
+  stop_alert: "stops through the Dashboard alert services, which only the server has",
+  activate_alert: "activates through the Dashboard alert services, which only the server has",
+  delete_alert: "deletes through the Dashboard alert services, which only the server has",
+  create_alert_group: "groups through the Dashboard alert services, which only the server has",
+  ungroup_alert: "ungroups through the Dashboard alert services, which only the server has",
 };
 
 const WRITE_TOOL_APPROVAL: Record<string, "required" | "configurable" | { none: string }> = {
@@ -78,6 +86,12 @@ const WRITE_TOOL_APPROVAL: Record<string, "required" | "configurable" | { none: 
   trigger_task: "configurable",
   create_alert: "configurable",
   resolve_alert: "configurable",
+  update_alert: "configurable",
+  stop_alert: "configurable",
+  activate_alert: "configurable",
+  delete_alert: "required",
+  create_alert_group: "configurable",
+  ungroup_alert: "required",
   create_dashboard: "configurable",
   set_dashboard_widgets: "configurable",
   promote_prompt_version: "configurable",

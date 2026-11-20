@@ -546,6 +546,20 @@ export const CreateAlertInput = CommonProjectsInput.extend({
     .min(1)
     .describe("Who to notify when the alert raises, e.g. [{ type: 'chat', chatId: '<id>' }]."),
   name: z.string().describe("An optional display name for the alert.").optional(),
+  query: z
+    .string()
+    .max(8192)
+    .describe("The TRQL query a custom.query alert watches. Only valid with custom.query.")
+    .optional(),
+  signal: z
+    .object({
+      mode: z.enum(["threshold", "absence", "match"]),
+      measure: z.string().max(128).optional(),
+    })
+    .describe(
+      "How a custom.query alert reads its query: threshold on a measure, absence of rows, or any matching row. Only valid with custom.query."
+    )
+    .optional(),
 });
 
 export type CreateAlertInput = z.output<typeof CreateAlertInput>;

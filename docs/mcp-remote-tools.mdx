@@ -52,6 +52,10 @@ Get one log entry in full, including its attributes, using a log ID from `search
 **Example usage:**
 - `"Show me the full details of that error log"`
 
+<Note>
+  Logs and spans contain what your tasks record. For AI SDK calls this includes prompts and model output, unless recording is turned off in the task (for chat agents, `telemetry: { recordUserMessage: false }`, see [Redact chat content from traces](/ai-chat/patterns/redacting-telemetry)). The MCP server returns the same data the dashboard shows.
+</Note>
+
 ### reset_run_idempotency_key
 
 Clear the idempotency key of a run, so the next trigger with the same key starts a new run instead of returning this one. A run without an idempotency key is refused without asking for approval. Only available on the [remote MCP server](/mcp-remote), and you approve each call.
@@ -112,6 +116,73 @@ Stop a bulk action that is still in progress. No new batch of runs starts, but a
 
 **Example usage:**
 - `"Stop bulk action bulk_abc123"`
+
+## Alert Tools
+
+Inspect and manage monitoring alerts. Alert channels are created and configured in the dashboard; these tools list them and choose existing ones as notifiers. These tools are available on the remote MCP server only. Every change asks you to approve it first, listing each field it changes and everything else that goes with it.
+
+### get_alert_details
+
+Get one alert: its status, condition, scope, notifiers and expiry, its 20 most recent activity events and, for a group alert, up to 50 members. For those events it also shows how each notification went: delivered, pending, or failed with the reason, and the number of attempts (up to 10 per event and 50 in total). The metric chart from the alert page is not included.
+
+**Parameters:**
+- `alertId` (required): the alert's id, from `list_alerts`
+
+**Example usage:**
+- `"Why is my queue depth alert firing?"`
+
+### list_alert_channels
+
+List the project's alert channels that deliver for the environment, up to 50: each one's `channelId` (the id to pass as a channel notifier), friendly id, name, type, whether it is enabled, the alert and environment types it takes, and its target. Email channels show the address and Slack channels the channel name. Webhook channels show only the host, never the full URL or signing secret. The list does not show each channel's last delivery.
+
+**Example usage:**
+- `"Which channels can my production alerts notify?"`
+
+### update_alert
+
+Change an alert's name, notifiers or expiry, or an alert group's composite mode. Only the fields you pass change.
+
+**Parameters:**
+- `alertId` (required): the alert's id
+- `name`, `notifiers`, `expiresAt` (an ISO 8601 time, or `"none"`), `compositeMode` (`any` or `all`, groups only)
+
+**Example usage:**
+- `"Send my queue depth alert to the ops channel instead"`
+
+### stop_alert
+
+Stop an active alert so it no longer evaluates or notifies. Stopping a group releases its members, which keep running on their own.
+
+**Example usage:**
+- `"Stop the failure rate alert"`
+
+### activate_alert
+
+Start a stopped, completed or expired alert again, optionally with a new `expiresAt` or `notifiers`.
+
+**Example usage:**
+- `"Turn my queue depth alert back on until Friday"`
+
+### delete_alert
+
+Delete a stopped, completed or expired alert with its activity history. Deleting a group releases its members. A group left with fewer than two members is deleted too. This tool always asks for approval.
+
+**Example usage:**
+- `"Delete the stopped alerts I made for the load test"`
+
+### create_alert_group
+
+Combine 2 to 20 alerts into one group alert that notifies when any or all of them need attention. Pass `memberAlertIds` for existing active alerts, or `members` to define new alerts shaped like `create_alert`.
+
+**Example usage:**
+- `"Group my queue alerts into one that notifies the ops channel"`
+
+### ungroup_alert
+
+Dissolve a group: the group alert and its history are deleted, and every member keeps running on its own. This tool always asks for approval.
+
+**Example usage:**
+- `"Ungroup the checkout alerts"`
 
 ## Webhook Tools
 

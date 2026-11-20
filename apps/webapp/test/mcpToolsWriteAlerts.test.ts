@@ -96,6 +96,7 @@ import { createFeedbackTools } from "~/mcp/tools/feedback.server";
 import { webhooksWriteTools } from "~/mcp/tools/webhooksWrite.server";
 import type { McpIdentity } from "~/mcp/gate/types";
 import {
+  approveAll,
   expectPending,
   getMcpConfirmationStore,
   pending,
@@ -358,19 +359,25 @@ describe("legacy MCP write tools", () => {
         },
       });
 
-      const result = await tool(alertsWriteTools, "create_alert")(
-        {
-          projectRef: a.project.externalRef,
-          environment: "prod",
-          capabilityKey: "queue.depth",
-          params: { scope: { type: "all" } },
-          condition: { kind: "threshold", operator: ">", value: 10, windowSec: 300 },
-          behavior: {},
-          notifiers: [{ type: "channel", channelId: channel.id }],
-        },
-        identity,
-        request
-      );
+      const create = () =>
+        tool(alertsWriteTools, "create_alert")(
+          {
+            projectRef: a.project.externalRef,
+            environment: "prod",
+            capabilityKey: "queue.depth",
+            params: { scope: { type: "all" } },
+            condition: { kind: "threshold", operator: ">", value: 10, windowSec: 300 },
+            behavior: {},
+            notifiers: [{ type: "channel", channelId: channel.id }],
+          },
+          identity,
+          request
+        );
+      resetConfirmations({ autoApprove: false });
+      await expectPending(create());
+      await approveAll();
+
+      const result = await create();
 
       expect(result.isError).toBeUndefined();
       const created = await prisma.alert.findFirstOrThrow({ where: { id: { not: alert.id } } });

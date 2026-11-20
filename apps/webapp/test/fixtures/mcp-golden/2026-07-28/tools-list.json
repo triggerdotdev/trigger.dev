@@ -1240,6 +1240,79 @@
             }
           },
           {
+            "name": "get_alert_details",
+            "title": "Get Monitoring Alert Details",
+            "description": "Get one monitoring alert: status, condition, scope, notifiers, expiry, its recent activity with the delivery state of each notification and, for a group alert, its members.",
+            "inputSchema": {
+              "type": "object",
+              "$schema": "https://json-schema.org/draft/2020-12/schema",
+              "properties": {
+                "projectRef": {
+                  "type": "string",
+                  "description": "The trigger.dev project ref, starts with proj_. We will attempt to automatically detect the project ref if running inside a directory that includes a trigger.config.ts file, or if you pass the --project-ref option to the MCP server."
+                },
+                "configPath": {
+                  "type": "string",
+                  "description": "The path to the trigger.config.ts file. Only used when the trigger.config.ts file is not at the root dir (like in a monorepo setup). If not provided, we will try to find the config file in the current working directory"
+                },
+                "environment": {
+                  "default": "dev",
+                  "type": "string",
+                  "enum": ["dev", "staging", "prod", "preview"],
+                  "description": "The environment to get tasks for"
+                },
+                "branch": {
+                  "type": "string",
+                  "description": "The branch to get tasks for, only used for preview environments and branchable development environments"
+                },
+                "alertId": {
+                  "type": "string",
+                  "description": "The id of the alert. Use list_alerts to find it."
+                }
+              },
+              "required": ["alertId"]
+            },
+            "annotations": {
+              "readOnlyHint": true,
+              "destructiveHint": false,
+              "title": "Get Monitoring Alert Details"
+            }
+          },
+          {
+            "name": "list_alert_channels",
+            "title": "List Alert Channels",
+            "description": "List the project's alert channels that can deliver for an environment: channelId, friendlyId, name, type, whether it is enabled, the alert and environment types it takes, and its target (email address, Slack channel, or webhook host). Pass the channelId (not the friendlyId) as a channel notifier, e.g. { type: 'channel', channelId }.",
+            "inputSchema": {
+              "type": "object",
+              "$schema": "https://json-schema.org/draft/2020-12/schema",
+              "properties": {
+                "projectRef": {
+                  "type": "string",
+                  "description": "The trigger.dev project ref, starts with proj_. We will attempt to automatically detect the project ref if running inside a directory that includes a trigger.config.ts file, or if you pass the --project-ref option to the MCP server."
+                },
+                "configPath": {
+                  "type": "string",
+                  "description": "The path to the trigger.config.ts file. Only used when the trigger.config.ts file is not at the root dir (like in a monorepo setup). If not provided, we will try to find the config file in the current working directory"
+                },
+                "environment": {
+                  "default": "dev",
+                  "type": "string",
+                  "enum": ["dev", "staging", "prod", "preview"],
+                  "description": "The environment to get tasks for"
+                },
+                "branch": {
+                  "type": "string",
+                  "description": "The branch to get tasks for, only used for preview environments and branchable development environments"
+                }
+              }
+            },
+            "annotations": {
+              "readOnlyHint": true,
+              "destructiveHint": false,
+              "title": "List Alert Channels"
+            }
+          },
+          {
             "name": "list_webhook_endpoints",
             "title": "List Webhook Endpoints",
             "description": "List the hosted webhook endpoints in the project environment: each endpoint's id (wh_...), declared id, provider source, status, webhook URL and whether its signing secret is set. Use get_webhook_endpoint_details for an endpoint's subscribers and setup prompt.",
@@ -1947,6 +2020,26 @@
                 "name": {
                   "type": "string",
                   "description": "An optional display name for the alert."
+                },
+                "query": {
+                  "type": "string",
+                  "maxLength": 8192,
+                  "description": "The TRQL query a custom.query alert watches. Only valid with custom.query."
+                },
+                "signal": {
+                  "type": "object",
+                  "properties": {
+                    "mode": {
+                      "type": "string",
+                      "enum": ["threshold", "absence", "match"]
+                    },
+                    "measure": {
+                      "type": "string",
+                      "maxLength": 128
+                    }
+                  },
+                  "required": ["mode"],
+                  "description": "How a custom.query alert reads its query: threshold on a measure, absence of rows, or any matching row. Only valid with custom.query."
                 }
               },
               "required": ["capabilityKey", "params", "condition", "behavior", "notifiers"]
@@ -1992,6 +2085,540 @@
             },
             "annotations": {
               "title": "Resolve Monitoring Alert",
+              "readOnlyHint": false,
+              "destructiveHint": true
+            }
+          },
+          {
+            "name": "update_alert",
+            "title": "Update Monitoring Alert",
+            "description": "Change a monitoring alert's name, notifiers, expiry or, for an alert group, its composite mode. Only the fields you pass change.",
+            "inputSchema": {
+              "type": "object",
+              "$schema": "https://json-schema.org/draft/2020-12/schema",
+              "properties": {
+                "projectRef": {
+                  "type": "string",
+                  "description": "The trigger.dev project ref, starts with proj_. We will attempt to automatically detect the project ref if running inside a directory that includes a trigger.config.ts file, or if you pass the --project-ref option to the MCP server."
+                },
+                "configPath": {
+                  "type": "string",
+                  "description": "The path to the trigger.config.ts file. Only used when the trigger.config.ts file is not at the root dir (like in a monorepo setup). If not provided, we will try to find the config file in the current working directory"
+                },
+                "environment": {
+                  "default": "dev",
+                  "type": "string",
+                  "enum": ["dev", "staging", "prod", "preview"],
+                  "description": "The environment to get tasks for"
+                },
+                "branch": {
+                  "type": "string",
+                  "description": "The branch to get tasks for, only used for preview environments and branchable development environments"
+                },
+                "alertId": {
+                  "type": "string",
+                  "maxLength": 128,
+                  "description": "The id of the alert. Use list_alerts to find it."
+                },
+                "name": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 120,
+                  "description": "A new display name."
+                },
+                "notifiers": {
+                  "minItems": 1,
+                  "maxItems": 50,
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "type": {
+                        "type": "string",
+                        "const": "channel"
+                      },
+                      "channelId": {
+                        "type": "string",
+                        "maxLength": 128
+                      }
+                    },
+                    "required": ["type", "channelId"]
+                  },
+                  "description": "Replaces the alert's notifiers."
+                },
+                "expiresAt": {
+                  "type": "string",
+                  "maxLength": 64,
+                  "description": "ISO 8601 timestamp in the future after which the alert stops, or \"none\" for no expiry."
+                },
+                "compositeMode": {
+                  "type": "string",
+                  "enum": ["any", "all"],
+                  "description": "For an alert group: raise when any member, or all members, need attention."
+                }
+              },
+              "required": ["alertId"]
+            },
+            "annotations": {
+              "title": "Update Monitoring Alert",
+              "readOnlyHint": false,
+              "destructiveHint": true
+            }
+          },
+          {
+            "name": "stop_alert",
+            "title": "Stop Monitoring Alert",
+            "description": "Stop an active monitoring alert so it no longer evaluates or notifies. Stopping a group releases its members.",
+            "inputSchema": {
+              "type": "object",
+              "$schema": "https://json-schema.org/draft/2020-12/schema",
+              "properties": {
+                "projectRef": {
+                  "type": "string",
+                  "description": "The trigger.dev project ref, starts with proj_. We will attempt to automatically detect the project ref if running inside a directory that includes a trigger.config.ts file, or if you pass the --project-ref option to the MCP server."
+                },
+                "configPath": {
+                  "type": "string",
+                  "description": "The path to the trigger.config.ts file. Only used when the trigger.config.ts file is not at the root dir (like in a monorepo setup). If not provided, we will try to find the config file in the current working directory"
+                },
+                "environment": {
+                  "default": "dev",
+                  "type": "string",
+                  "enum": ["dev", "staging", "prod", "preview"],
+                  "description": "The environment to get tasks for"
+                },
+                "branch": {
+                  "type": "string",
+                  "description": "The branch to get tasks for, only used for preview environments and branchable development environments"
+                },
+                "alertId": {
+                  "type": "string",
+                  "maxLength": 128,
+                  "description": "The id of the alert. Use list_alerts to find it."
+                }
+              },
+              "required": ["alertId"]
+            },
+            "annotations": {
+              "title": "Stop Monitoring Alert",
+              "readOnlyHint": false,
+              "destructiveHint": true
+            }
+          },
+          {
+            "name": "activate_alert",
+            "title": "Activate Monitoring Alert",
+            "description": "Activate a stopped, completed or expired monitoring alert, optionally with a new expiry or notifiers.",
+            "inputSchema": {
+              "type": "object",
+              "$schema": "https://json-schema.org/draft/2020-12/schema",
+              "properties": {
+                "projectRef": {
+                  "type": "string",
+                  "description": "The trigger.dev project ref, starts with proj_. We will attempt to automatically detect the project ref if running inside a directory that includes a trigger.config.ts file, or if you pass the --project-ref option to the MCP server."
+                },
+                "configPath": {
+                  "type": "string",
+                  "description": "The path to the trigger.config.ts file. Only used when the trigger.config.ts file is not at the root dir (like in a monorepo setup). If not provided, we will try to find the config file in the current working directory"
+                },
+                "environment": {
+                  "default": "dev",
+                  "type": "string",
+                  "enum": ["dev", "staging", "prod", "preview"],
+                  "description": "The environment to get tasks for"
+                },
+                "branch": {
+                  "type": "string",
+                  "description": "The branch to get tasks for, only used for preview environments and branchable development environments"
+                },
+                "alertId": {
+                  "type": "string",
+                  "maxLength": 128,
+                  "description": "The id of the alert. Use list_alerts to find it."
+                },
+                "notifiers": {
+                  "minItems": 1,
+                  "maxItems": 50,
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "type": {
+                        "type": "string",
+                        "const": "channel"
+                      },
+                      "channelId": {
+                        "type": "string",
+                        "maxLength": 128
+                      }
+                    },
+                    "required": ["type", "channelId"]
+                  },
+                  "description": "Replaces the alert's notifiers."
+                },
+                "expiresAt": {
+                  "type": "string",
+                  "maxLength": 64,
+                  "description": "ISO 8601 timestamp in the future after which the alert stops, or \"none\" for no expiry."
+                }
+              },
+              "required": ["alertId"]
+            },
+            "annotations": {
+              "title": "Activate Monitoring Alert",
+              "readOnlyHint": false,
+              "destructiveHint": true
+            }
+          },
+          {
+            "name": "delete_alert",
+            "title": "Delete Monitoring Alert",
+            "description": "Delete a stopped, completed or expired monitoring alert with its activity history. Deleting a group releases its members. The user approves the deletion in the dashboard before it runs.",
+            "inputSchema": {
+              "type": "object",
+              "$schema": "https://json-schema.org/draft/2020-12/schema",
+              "properties": {
+                "projectRef": {
+                  "type": "string",
+                  "description": "The trigger.dev project ref, starts with proj_. We will attempt to automatically detect the project ref if running inside a directory that includes a trigger.config.ts file, or if you pass the --project-ref option to the MCP server."
+                },
+                "configPath": {
+                  "type": "string",
+                  "description": "The path to the trigger.config.ts file. Only used when the trigger.config.ts file is not at the root dir (like in a monorepo setup). If not provided, we will try to find the config file in the current working directory"
+                },
+                "environment": {
+                  "default": "dev",
+                  "type": "string",
+                  "enum": ["dev", "staging", "prod", "preview"],
+                  "description": "The environment to get tasks for"
+                },
+                "branch": {
+                  "type": "string",
+                  "description": "The branch to get tasks for, only used for preview environments and branchable development environments"
+                },
+                "alertId": {
+                  "type": "string",
+                  "maxLength": 128,
+                  "description": "The id of the alert. Use list_alerts to find it."
+                }
+              },
+              "required": ["alertId"]
+            },
+            "annotations": {
+              "title": "Delete Monitoring Alert",
+              "readOnlyHint": false,
+              "destructiveHint": true
+            }
+          },
+          {
+            "name": "create_alert_group",
+            "title": "Create Monitoring Alert Group",
+            "description": "Combine 2 to 20 alerts into one group alert that notifies on their combined state: either existing active alerts (memberAlertIds) or new alerts defined like create_alert (members).",
+            "inputSchema": {
+              "type": "object",
+              "$schema": "https://json-schema.org/draft/2020-12/schema",
+              "properties": {
+                "projectRef": {
+                  "type": "string",
+                  "description": "The trigger.dev project ref, starts with proj_. We will attempt to automatically detect the project ref if running inside a directory that includes a trigger.config.ts file, or if you pass the --project-ref option to the MCP server."
+                },
+                "configPath": {
+                  "type": "string",
+                  "description": "The path to the trigger.config.ts file. Only used when the trigger.config.ts file is not at the root dir (like in a monorepo setup). If not provided, we will try to find the config file in the current working directory"
+                },
+                "environment": {
+                  "default": "dev",
+                  "type": "string",
+                  "enum": ["dev", "staging", "prod", "preview"],
+                  "description": "The environment to get tasks for"
+                },
+                "branch": {
+                  "type": "string",
+                  "description": "The branch to get tasks for, only used for preview environments and branchable development environments"
+                },
+                "name": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 120,
+                  "description": "The group's display name."
+                },
+                "compositeMode": {
+                  "default": "any",
+                  "description": "Raise when any member, or all members, need attention.",
+                  "type": "string",
+                  "enum": ["any", "all"]
+                },
+                "notifiers": {
+                  "minItems": 1,
+                  "maxItems": 50,
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "type": {
+                        "type": "string",
+                        "const": "channel"
+                      },
+                      "channelId": {
+                        "type": "string",
+                        "maxLength": 128
+                      }
+                    },
+                    "required": ["type", "channelId"]
+                  },
+                  "description": "Channels to notify, e.g. [{ type: 'channel', channelId: '<id>' }]. Pass the channelId from list_alert_channels, not the friendlyId."
+                },
+                "expiresAt": {
+                  "type": "string",
+                  "maxLength": 64,
+                  "format": "date-time",
+                  "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z))$",
+                  "description": "Optional ISO 8601 expiry for the group."
+                },
+                "memberAlertIds": {
+                  "maxItems": 20,
+                  "type": "array",
+                  "items": {
+                    "type": "string",
+                    "maxLength": 128
+                  },
+                  "description": "Existing active alerts to group. Pass this or members, not both."
+                },
+                "members": {
+                  "minItems": 2,
+                  "maxItems": 20,
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "capabilityKey": {
+                        "type": "string",
+                        "maxLength": 128,
+                        "description": "The capability key to monitor. Use list_alert_capabilities to discover available keys."
+                      },
+                      "params": {
+                        "type": "object",
+                        "properties": {
+                          "scope": {
+                            "description": "Defaults to all.",
+                            "type": "object",
+                            "properties": {
+                              "type": {
+                                "type": "string",
+                                "enum": ["queue", "queuePattern", "task", "all", "errorGroup"]
+                              },
+                              "queue": {
+                                "type": "string",
+                                "maxLength": 512
+                              },
+                              "pattern": {
+                                "type": "string",
+                                "maxLength": 512
+                              },
+                              "taskIdentifier": {
+                                "type": "string",
+                                "maxLength": 512
+                              },
+                              "fingerprint": {
+                                "type": "string",
+                                "maxLength": 512
+                              }
+                            },
+                            "required": ["type"]
+                          },
+                          "windowSec": {
+                            "type": "number"
+                          }
+                        }
+                      },
+                      "condition": {
+                        "oneOf": [
+                          {
+                            "type": "object",
+                            "properties": {
+                              "kind": {
+                                "type": "string",
+                                "const": "threshold"
+                              },
+                              "operator": {
+                                "type": "string",
+                                "enum": [">", "<"]
+                              },
+                              "value": {
+                                "type": "number"
+                              },
+                              "windowSec": {
+                                "type": "integer",
+                                "exclusiveMinimum": 0,
+                                "maximum": 9007199254740991
+                              },
+                              "holdSec": {
+                                "type": "integer",
+                                "exclusiveMinimum": 0,
+                                "maximum": 9007199254740991
+                              }
+                            },
+                            "required": ["kind", "operator", "value", "windowSec"]
+                          },
+                          {
+                            "type": "object",
+                            "properties": {
+                              "kind": {
+                                "type": "string",
+                                "const": "state"
+                              },
+                              "stateKey": {
+                                "type": "string",
+                                "maxLength": 128
+                              },
+                              "holdSec": {
+                                "type": "integer",
+                                "exclusiveMinimum": 0,
+                                "maximum": 9007199254740991
+                              },
+                              "params": {
+                                "type": "object",
+                                "propertyNames": {
+                                  "type": "string",
+                                  "maxLength": 128
+                                },
+                                "additionalProperties": {
+                                  "type": "number"
+                                }
+                              }
+                            },
+                            "required": ["kind", "stateKey"]
+                          },
+                          {
+                            "type": "object",
+                            "properties": {
+                              "kind": {
+                                "type": "string",
+                                "const": "occurrence"
+                              }
+                            },
+                            "required": ["kind"]
+                          },
+                          {
+                            "type": "object",
+                            "properties": {
+                              "kind": {
+                                "type": "string",
+                                "const": "absence"
+                              },
+                              "quietWindowSec": {
+                                "type": "integer",
+                                "minimum": 1800,
+                                "maximum": 9007199254740991
+                              }
+                            },
+                            "required": ["kind", "quietWindowSec"]
+                          }
+                        ]
+                      },
+                      "behavior": {
+                        "type": "object",
+                        "properties": {
+                          "expiresAt": {
+                            "type": "string",
+                            "maxLength": 64
+                          }
+                        }
+                      },
+                      "notifiers": {
+                        "minItems": 1,
+                        "maxItems": 50,
+                        "type": "array",
+                        "items": {
+                          "type": "object",
+                          "properties": {
+                            "type": {
+                              "type": "string",
+                              "const": "channel"
+                            },
+                            "channelId": {
+                              "type": "string",
+                              "maxLength": 128
+                            }
+                          },
+                          "required": ["type", "channelId"]
+                        },
+                        "description": "Channels to notify, e.g. [{ type: 'channel', channelId: '<id>' }]. Pass the channelId from list_alert_channels, not the friendlyId."
+                      },
+                      "name": {
+                        "type": "string",
+                        "maxLength": 120
+                      },
+                      "query": {
+                        "type": "string",
+                        "maxLength": 8192,
+                        "description": "The TRQL query a custom.query alert watches. Only valid with custom.query."
+                      },
+                      "signal": {
+                        "type": "object",
+                        "properties": {
+                          "mode": {
+                            "type": "string",
+                            "enum": ["threshold", "absence", "match"]
+                          },
+                          "measure": {
+                            "type": "string",
+                            "maxLength": 128
+                          }
+                        },
+                        "required": ["mode"]
+                      }
+                    },
+                    "required": ["capabilityKey", "params", "condition", "notifiers"],
+                    "additionalProperties": false
+                  },
+                  "description": "New alerts to create and group, each shaped like create_alert. Pass this or memberAlertIds, not both."
+                }
+              },
+              "required": ["name", "notifiers"]
+            },
+            "annotations": {
+              "title": "Create Monitoring Alert Group",
+              "readOnlyHint": false,
+              "destructiveHint": true
+            }
+          },
+          {
+            "name": "ungroup_alert",
+            "title": "Ungroup Monitoring Alert",
+            "description": "Dissolve an alert group: the group alert and its history are deleted and every member keeps running on its own. The user approves this in the dashboard before it runs.",
+            "inputSchema": {
+              "type": "object",
+              "$schema": "https://json-schema.org/draft/2020-12/schema",
+              "properties": {
+                "projectRef": {
+                  "type": "string",
+                  "description": "The trigger.dev project ref, starts with proj_. We will attempt to automatically detect the project ref if running inside a directory that includes a trigger.config.ts file, or if you pass the --project-ref option to the MCP server."
+                },
+                "configPath": {
+                  "type": "string",
+                  "description": "The path to the trigger.config.ts file. Only used when the trigger.config.ts file is not at the root dir (like in a monorepo setup). If not provided, we will try to find the config file in the current working directory"
+                },
+                "environment": {
+                  "default": "dev",
+                  "type": "string",
+                  "enum": ["dev", "staging", "prod", "preview"],
+                  "description": "The environment to get tasks for"
+                },
+                "branch": {
+                  "type": "string",
+                  "description": "The branch to get tasks for, only used for preview environments and branchable development environments"
+                },
+                "alertId": {
+                  "type": "string",
+                  "maxLength": 128,
+                  "description": "The id of the alert. Use list_alerts to find it."
+                }
+              },
+              "required": ["alertId"]
+            },
+            "annotations": {
+              "title": "Ungroup Monitoring Alert",
               "readOnlyHint": false,
               "destructiveHint": true
             }

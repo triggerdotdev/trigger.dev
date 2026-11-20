@@ -32,6 +32,7 @@ import { tasksTools } from "./tools/tasks.server";
 import { webhooksTools } from "./tools/webhooks.server";
 import { webhooksReadTools } from "./tools/webhooksRead.server";
 import { agentChatTools } from "./tools/agentChat.server";
+import { alertsManageTools } from "./tools/alertsManage.server";
 import { alertsWriteTools } from "./tools/alertsWrite.server";
 import { bulkActionsWriteTools } from "./tools/bulkActionsWrite.server";
 import { dashboardsWriteTools } from "./tools/dashboardsWrite.server";
@@ -97,6 +98,7 @@ export const mcpTools: McpToolDefinition[] = assertUniqueToolNames([
   ...docsTools,
   ...agentChatTools,
   ...alertsWriteTools,
+  ...alertsManageTools,
   ...dashboardsWriteTools,
   ...feedbackTools,
   ...orgsWriteTools,
