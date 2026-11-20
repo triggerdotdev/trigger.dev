@@ -123,7 +123,7 @@ export class ApiKeysPresenter {
       }),
     ]);
 
-    const [accessOptions, policyDescriptions] = await Promise.all([
+    const [accessOptions, policyDescriptions, revokedUserKey] = await Promise.all([
       this.#rbac.apiKeyAccessOptions(environment.organizationId),
       Promise.all(
         keyEnvironment.apiKeys.map((apiKey) =>
@@ -133,6 +133,16 @@ export class ApiKeysPresenter {
           })
         )
       ),
+      keyEnvironment.apiKeys.length === 0 && !showRevoked
+        ? this.#prismaClient.apiKey.findFirst({
+            where: {
+              runtimeEnvironmentId: keyEnvironmentId,
+              issuedBy: "USER",
+              revokedAt: { not: null },
+            },
+            select: { id: true },
+          })
+        : null,
     ]);
     const presets = accessOptions?.presets ?? null;
     const capabilityCatalogue = accessOptions?.catalogue ?? null;
@@ -151,6 +161,7 @@ export class ApiKeysPresenter {
       },
       availableTasks: taskIdentifiers.map((task) => task.slug),
       rootApiKey,
+      hasCreatedApiKey: keyEnvironment.apiKeys.length > 0 || revokedUserKey !== null,
       apiKeys: keyEnvironment.apiKeys.map((apiKey, index) => {
         const { presetId, scopes, ...apiKeyData } = apiKey;
         const description = policyDescriptions[index];

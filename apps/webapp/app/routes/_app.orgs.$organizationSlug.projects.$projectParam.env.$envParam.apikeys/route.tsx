@@ -123,6 +123,7 @@ export const loader = dashboardLoader(
       return typedjson({
         ...data,
         rootApiKey: canReadApiKeys ? data.rootApiKey : null,
+        hasCreatedApiKey: canReadApiKeys && data.hasCreatedApiKey,
         apiKeys: canReadApiKeys ? data.apiKeys : [],
         presets: canReadApiKeys ? data.presets : [],
         capabilityCatalogue: canReadApiKeys ? data.capabilityCatalogue : null,
@@ -180,6 +181,7 @@ export default function Page() {
     environment,
     rootApiKey,
     apiKeys,
+    hasCreatedApiKey,
     canReadApiKeys,
     canWriteApiKeys,
     canManagePresets,
@@ -281,7 +283,7 @@ export default function Page() {
             </WhenAgentUnavailable>
           </PageAccessories>
         </NavBar>
-        {rootApiKey ? (
+        {rootApiKey && !hasCreatedApiKey ? (
           // Opaque, so the overlapped line matches the banner's bottom border exactly.
           <div className="relative -mt-px bg-background-dimmed">
             <Callout
