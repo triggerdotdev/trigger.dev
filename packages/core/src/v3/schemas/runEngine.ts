@@ -36,6 +36,8 @@ export const RunAnnotations = z.object({
   workerCell: z.string().optional().catch(undefined),
   workerLane: z.string().optional().catch(undefined),
   executionMode: z.enum(["STANDARD", "SANDBOX"]).optional(),
+  /** Server-owned provisioning requirement, pinned when the run is created. */
+  secretProxyRequired: z.literal(true).optional(),
   /** Set only for runs whose task declares a non-standard policy. Pinned for the run's lifetime. */
   executionPolicy: RunExecutionPolicy.optional(),
   /** The Session that triggered this run. Fills `$session` in policy scopes. */
@@ -43,6 +45,15 @@ export const RunAnnotations = z.object({
 });
 
 export type RunAnnotations = z.infer<typeof RunAnnotations>;
+
+export function requiresSecretProxy(annotations: unknown): boolean {
+  return (
+    typeof annotations === "object" &&
+    annotations !== null &&
+    "secretProxyRequired" in annotations &&
+    annotations.secretProxyRequired === true
+  );
+}
 
 /** Lenient read of the worker stamp: works on blobs that predate or fail RunAnnotations. */
 export const WorkerStampAnnotations = z.object({

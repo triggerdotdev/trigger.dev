@@ -638,6 +638,9 @@ model Project {
   defaultWorkerGroup   WorkerInstanceGroup? @relation("ProjectDefaultWorkerGroup", fields: [defaultWorkerGroupId], references: [id])
   defaultWorkerGroupId String?
 
+  /// Newly triggered deployed runs require the secret proxy (pinned in their annotations).
+  secretProxyEnabled Boolean @default(false)
+
   /// The master queues they are allowed to use (impacts what they can set as default and trigger runs with)
   allowedWorkerQueues String[] @default([]) @map("allowedMasterQueues")
 

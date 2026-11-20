@@ -339,6 +339,7 @@ async function setupProxyRun(
     org_id: environment.organizationId,
     project_id: environment.projectId,
     deployment_version: deployment.version,
+    workload_network: "proxy" as const,
   };
   const proxy = bindings();
   await proxy.start();

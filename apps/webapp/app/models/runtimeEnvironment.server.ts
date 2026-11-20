@@ -80,6 +80,7 @@ export function toAuthenticated(
       engine: env.project.engine,
       deletedAt: env.project.deletedAt,
       defaultWorkerGroupId: env.project.defaultWorkerGroupId,
+      secretProxyEnabled: env.project.secretProxyEnabled,
       organizationId: env.project.organizationId,
       builderProjectId: env.project.builderProjectId,
       defaultRuntime: BuildRuntime.nullable().safeParse(env.project.defaultRuntime).data ?? null,

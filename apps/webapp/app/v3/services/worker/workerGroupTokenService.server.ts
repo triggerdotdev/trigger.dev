@@ -14,7 +14,7 @@ import type {
   TaskRunExecutionResult,
 } from "@trigger.dev/core/v3";
 import { getMeter } from "@internal/tracing";
-import { SemanticInternalAttributes } from "@trigger.dev/core/v3";
+import { requiresSecretProxy, SemanticInternalAttributes } from "@trigger.dev/core/v3";
 import { fromFriendlyId } from "@trigger.dev/core/v3/isomorphic";
 import {
   WORKER_HEADERS,
@@ -80,6 +80,10 @@ const authenticatedWorkerInstanceCache = singleton(
   "authenticatedWorkerInstanceCache",
   createAuthenticatedWorkerInstanceCache
 );
+
+function secretProxyPlacementRequired() {
+  return json({ error: "Run requires secret proxy placement" }, { status: 409 });
+}
 
 // Opt-in suppression of untokened worker actions on runs created after the cutoff. Only the
 // no-header path ever reads a run row, and only when this is on - default off means feature-off is
@@ -714,7 +718,11 @@ export class AuthenticatedWorkerInstance extends WithRunEngine {
     await this.assertCreatedAtGate({ runId, environmentId, action: "start" });
 
     // Resolved before the attempt exists, so an unavailable key leaves the run startable.
-    const { environment, pinned } = await this.findAttemptEnvironment(runId, environmentId);
+    const { environment, pinned, secretProxyRequired } = await this.findAttemptEnvironment(
+      runId,
+      environmentId
+    );
+    if (secretProxyRequired && !supportsSecretProxy) throw secretProxyPlacementRequired();
     const requiresRunToken = rootKeyInjectionDisabled(environment);
 
     const runTokenSupported = supportsRunTokenRefresh === true && environmentId === environment.id;
@@ -922,6 +930,7 @@ export class AuthenticatedWorkerInstance extends WithRunEngine {
     return {
       environment,
       pinned: pinnedRunPolicy(run.annotations),
+      secretProxyRequired: requiresSecretProxy(run.annotations),
     };
   }
 

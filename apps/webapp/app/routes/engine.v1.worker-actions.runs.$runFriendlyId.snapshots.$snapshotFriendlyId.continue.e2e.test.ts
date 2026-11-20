@@ -97,6 +97,52 @@ describe("continue after a restore from a checkpoint", () => {
   }, 60_000);
 });
 
+describe("secret proxy requirement", () => {
+  it("pins the requirement at trigger without changing the queue, and refuses VMs without the proxy", async () => {
+    const trigger = () => api.triggerTask(fixtures.taskIdentifiers[0]!, { payload: {} });
+    const setProjectFlag = (secretProxyEnabled: boolean) =>
+      server.prisma.project.update({
+        where: { id: fixtures.projectId },
+        data: { secretProxyEnabled },
+      });
+
+    const { id: directRunId } = await trigger();
+    const direct = await dequeue();
+    expect(direct.run.annotations?.secretProxyRequired).toBeUndefined();
+    ok(await supervisor.startRunAttempt(directRunId, direct.snapshot.friendlyId, {}));
+    const latest = ok(await supervisor.getLatestSnapshot(directRunId)).execution.snapshot
+      .friendlyId;
+    ok(
+      await supervisor.completeRunAttempt(directRunId, latest, {
+        completion: { ok: true, id: directRunId, outputType: "application/json" },
+      })
+    );
+
+    await setProjectFlag(true);
+    let runId: string;
+    try {
+      ({ id: runId } = await trigger());
+    } finally {
+      await setProjectFlag(false);
+    }
+    const { snapshot, run } = await dequeue();
+    expect(run.friendlyId).toBe(runId);
+    expect(run.masterQueue).toBe(direct.run.masterQueue);
+    expect(run.annotations?.secretProxyRequired).toBe(true);
+
+    const start = (supportsSecretProxy: boolean) =>
+      supervisor.startRunAttempt(
+        runId,
+        snapshot.friendlyId,
+        { supportsSecretProxy },
+        RUNNER_ID,
+        fixtures.environmentId
+      );
+    expect(await start(false)).toMatchObject({ success: false, statusCode: 409 });
+    ok(await start(true));
+  }, 60_000);
+});
+
 function continueRun(
   runId: string,
   snapshotId: string,
@@ -154,6 +200,9 @@ function dequeue() {
 
 /** Closes the webapp's database to new connections and drops the open ones. */
 async function startDatabaseOutage() {
+  // Only the webapp should have stale pooled connections when Postgres comes back.
+  await server.prisma.$disconnect();
+
   const url = new URL(server.databaseUrl);
   const database = url.pathname.slice(1);
   url.pathname = "/postgres";

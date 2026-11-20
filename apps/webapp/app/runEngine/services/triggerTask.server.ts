@@ -594,6 +594,9 @@ export class RunEngineTriggerTaskService {
             externalDeploymentId,
             webhookDeliveryId: options.webhookDeliveryId,
             webhookEndpointId: options.webhookEndpointId,
+            ...(environment.type !== "DEVELOPMENT" && environment.project.secretProxyEnabled
+              ? { secretProxyRequired: true as const }
+              : {}),
             ...(executionPolicy
               ? { executionMode: "SANDBOX" as const, executionPolicy, sessionId: options.sessionId }
               : {}),
@@ -996,6 +999,7 @@ export class RunEngineTriggerTaskService {
       rootScheduleId?: string | undefined;
       externalDeploymentId?: string | undefined;
       executionMode?: "SANDBOX";
+      secretProxyRequired?: true;
       executionPolicy?: RunExecutionPolicy;
       sessionId?: string;
     };
