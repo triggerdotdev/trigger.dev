@@ -148,10 +148,11 @@ function dockerAvailable() {
 }
 
 describe.skipIf(process.platform !== "linux" || !dockerAvailable())("compiled bun worker", () => {
+  // Catches a compiled task seeing NODE_ENV=development even when launched in production.
   // Catches: a Bun upgrade that makes import.meta read-only or changes the embedded paths, so
   // compiled tasks see file:///$bunfs/root/ URLs and can't read files next to them in /app, or
   // fork() and spawn(process.execPath) start the run worker again instead of bun
-  it("points import.meta at the files under /app and relaunches run bun", async () => {
+  it("uses production mode, preserves task paths, and relaunches bun", async () => {
     const dir = await mkdtemp(join(tmpdir(), "trigger-bun-compile-"));
     const out = join(dir, "out");
 
@@ -173,6 +174,7 @@ export async function probe() {
   child.stdout!.on("data", (chunk) => (forked += chunk));
   await new Promise((resolve) => child.on("exit", resolve));
   return {
+    nodeEnv: process.env.NODE_ENV,
     url: import.meta.url,
     dirname: import.meta.dirname,
     data: readFileSync(new URL("./data.json", import.meta.url), "utf8"),
@@ -204,7 +206,7 @@ export async function probe() {
         outfile,
         entryPoints: ["/app/worker.mjs", "/app/src/trigger/task.mjs"],
       });
-      const script = `${args.map((arg) => `'${arg}'`).join(" ")} >/dev/null && ${outfile}`;
+      const script = `unset NODE_ENV && ${args.map((arg) => `'${arg}'`).join(" ")} >/dev/null && NODE_ENV=production ${outfile}`;
 
       const result = spawnSync(
         "docker",
@@ -230,6 +232,7 @@ export async function probe() {
 
       expect(result.status, result.stderr).toBe(0);
       expect(JSON.parse(result.stdout)).toEqual({
+        nodeEnv: "production",
         url: "file:///app/src/trigger/task.mjs",
         dirname: "/app/src/trigger",
         data: '"next to the task"',
