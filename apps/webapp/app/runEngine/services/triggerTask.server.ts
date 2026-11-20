@@ -594,6 +594,10 @@ export class RunEngineTriggerTaskService {
             externalDeploymentId,
             webhookDeliveryId: options.webhookDeliveryId,
             webhookEndpointId: options.webhookEndpointId,
+            ...(options.sessionInSeq !== undefined ? { sessionInSeq: options.sessionInSeq } : {}),
+            ...(options.sessionInFirstSeq !== undefined
+              ? { sessionInFirstSeq: options.sessionInFirstSeq }
+              : {}),
             ...(environment.type !== "DEVELOPMENT" && environment.project.secretProxyEnabled
               ? { secretProxyRequired: true as const }
               : {}),
@@ -1002,6 +1006,8 @@ export class RunEngineTriggerTaskService {
       secretProxyRequired?: true;
       executionPolicy?: RunExecutionPolicy;
       sessionId?: string;
+      sessionInSeq?: number;
+      sessionInFirstSeq?: number;
     };
     parkedOnExternalDeploymentId?: string;
     planType?: string;

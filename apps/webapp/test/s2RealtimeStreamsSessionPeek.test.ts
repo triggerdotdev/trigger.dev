@@ -106,6 +106,7 @@ describe("S2RealtimeStreams session peek", () => {
               headers: [
                 ["trigger-control", "turn-complete"],
                 ["session-in-consumed-id", "4"],
+                ["session-in-event-id", "2"],
               ],
             },
             { seq_num: 8, timestamp: 1235, body: "", headers: [["", "trim"]] },
@@ -119,6 +120,7 @@ describe("S2RealtimeStreams session peek", () => {
       control: "turn-complete",
       timestamp: 1234,
       inConsumedSeq: 4,
+      inEventId: 2,
     });
   });
 

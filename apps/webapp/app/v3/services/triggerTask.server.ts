@@ -40,6 +40,10 @@ export type TriggerTaskServiceOptions = {
   webhookEndpointId?: string;
   /** Friendly id of the Session this run serves. */
   sessionId?: string;
+  /** The session's `.in` tail seq when a session run is triggered (`RunAnnotations.sessionInSeq`). */
+  sessionInSeq?: number;
+  /** The first `.in` seq it is started to answer, if before the tail (`RunAnnotations.sessionInFirstSeq`). */
+  sessionInFirstSeq?: number;
 };
 
 export { OutOfEntitlementError } from "../outOfEntitlementError.server";

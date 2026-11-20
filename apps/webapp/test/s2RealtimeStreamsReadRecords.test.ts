@@ -54,8 +54,8 @@ describe("S2RealtimeStreams.readRecords", () => {
     bodies = [batch(0) + batch(1) + "data: [DONE]\n\n"];
 
     await expect(createReader().readRecords("run_1", "chat")).resolves.toEqual([
-      { data: "d0", id: "r0", seqNum: 0, headers: undefined },
-      { data: "d1", id: "r1", seqNum: 1, headers: undefined },
+      { data: "d0", id: "r0", seqNum: 0, timestamp: 1, headers: undefined },
+      { data: "d1", id: "r1", seqNum: 1, timestamp: 1, headers: undefined },
     ]);
     expect(reads).toBe(1);
   });
