@@ -97,6 +97,21 @@ export function getRequestActor(): AuditLogActor | null {
   return getHttpContext()?.auditIdentity?.actor ?? null;
 }
 
+/**
+ * A request to the OAuth token or revoke endpoint. The client isn't signed in as anyone, so there
+ * is no actor; events name theirs. Noted for the caller's IP and user agent, which matter most
+ * when a code or refresh token is replayed.
+ */
+export function noteOAuthClientRequest(request: Request): void {
+  setAuditIdentity(request, () => ({
+    actor: null,
+    credential: null,
+    onBehalfOf: null,
+    source: "api",
+    origin: null,
+  }));
+}
+
 /** A dashboard session. While staff impersonate a user, the user is the actor. */
 export function noteSessionAuthentication(
   request: Request,
