@@ -446,12 +446,51 @@ Append one record to a named side channel's `in` stream. Sends control input to 
 
 Set up and debug [hosted webhook endpoints](/webhooks/overview). Endpoint ids start with `wh_` and delivery ids with `whd_`; endpoint tools also accept an endpoint's declared id. The same operations are on the [Webhooks API](/management/webhooks/list-endpoints).
 
+On a remote MCP server where the webhook engine is not enabled, `list_webhook_waiters` and the write tools answer that webhooks are not enabled on this server. A pause, resume or secret removal that would change nothing is refused before a confirmation is asked.
+
 ### list_webhook_endpoints
 
 List the environment's webhook endpoints: each one's id, declared id, source, status, URL and whether its signing secret is set.
 
 **Example usage:**
 - `"Which webhook endpoints do I have in dev?"`
+
+### search_webhook_endpoints
+
+Search the environment's endpoints, including per-tenant instances, the way the dashboard's endpoint list filters them. Returns up to 50 endpoints per page and the subscriber and source values you can filter by. Only on the [remote MCP server](/mcp-remote).
+
+**Parameters:**
+- `subscribers` (optional): only endpoints one of these tasks or agents subscribes to
+- `sources` (optional): only these provider sources, such as `["stripe"]`
+- `statuses` (optional, default: `["active"]`): any of `active`, `inactive` and `disabled`
+- `search` (optional): text to find in the declared id, tenant id or external ref
+- `cursor` (optional): the cursor from a previous call, for the next page
+
+**Example usage:**
+- `"Which endpoints does the order task subscribe to?"`
+- `"Find the Shopify endpoint for the acme tenant"`
+
+### get_task_webhook
+
+Get a webhook task (a task defined with `webhook()`) in the environment's current version: its file path, when it was created, and the endpoints it subscribes to, each with the filter that decides which events reach the task. Lists up to 50 endpoints. Header values in filters are hidden: you see which header a filter tests, not the value it expects. Values of body fields a condition compares with a header are hidden too. Only on the [remote MCP server](/mcp-remote).
+
+**Parameters:**
+- `taskId` (required): the webhook task's id
+
+**Example usage:**
+- `"Which endpoints feed the stripe-orders task, and with what filters?"`
+
+### list_webhook_waiters
+
+List the runs waiting on an endpoint for a matching event, soonest expiry first. Each waiter shows the waitpoint id the run waits on, its match, its filter and when it expires. Header values in match and filter conditions are hidden: you see which header is tested, not the value it expects. Values of body fields a condition compares with a header are hidden too. Only on the [remote MCP server](/mcp-remote).
+
+**Parameters:**
+- `endpointId` (required): the endpoint's declared id (such as `payments`) or `wh_` id
+- `limit` (optional, default: `20`): how many to return, up to 50
+- `cursor` (optional): the cursor from a previous call, for the next page
+
+**Example usage:**
+- `"Which runs are waiting on the payments webhook?"`
 
 ### get_webhook_endpoint_details
 
@@ -519,6 +558,51 @@ Store a signing secret or public key the provider issued, such as Stripe's `whse
 - `secret` (required): the secret or public key
 - `previousSecretTtlSeconds` (optional): keep accepting the replaced secret for this many seconds (up to 604800, 7 days) while the provider switches to the new one. Omit it, or pass `0`, to replace the secret immediately, for example when it leaked. The response says when the old secret stops working.
 
+### remove_webhook_secret
+
+Remove an endpoint's signing secret, including a replaced secret still accepted during a rotation. Every delivery is then rejected and not recorded until a new secret is set. A source that sends its own secret, such as Notion, adopts the next one it sends. Only on the [remote MCP server](/mcp-remote).
+
+**Parameters:**
+- `endpointId` (required): the endpoint's declared id (such as `payments`) or `wh_` id
+
+### generate_webhook_verify_token
+
+Generate a new verification token for an endpoint whose source verifies its URL with a GET request, such as Meta's `hub.verify_token`, and return it once. It replaces the current token. Only on the [remote MCP server](/mcp-remote).
+
+**Parameters:**
+- `endpointId` (required): the endpoint's declared id (such as `payments`) or `wh_` id
+
+**Example usage:**
+- `"Set up the WhatsApp webhook's verify token"`
+
+### pause_webhook_endpoint
+
+Pause an endpoint. Its URL answers `404` and records nothing, so events the provider sends while it is paused are lost unless the provider retries them. Deliveries already accepted still run. A deploy does not resume it. Only on the [remote MCP server](/mcp-remote).
+
+**Parameters:**
+- `endpointId` (required): the endpoint's declared id (such as `payments`) or `wh_` id
+
+### resume_webhook_endpoint
+
+Resume a paused endpoint so its URL accepts deliveries again. Events sent while it was paused are not recovered. Only on the [remote MCP server](/mcp-remote).
+
+**Parameters:**
+- `endpointId` (required): the endpoint's declared id (such as `payments`) or `wh_` id
+
+**Example usage:**
+- `"Pause the Stripe webhook while I fix the order task"`
+
+### cancel_webhook_waiter
+
+Cancel a waiter on an endpoint. Its waitpoint is completed with a `WebhookWaiterCancelledError`, so every run waiting on it resumes with that error: `webhooks.waiter.wait` returns `{ ok: false }` and `.unwrap()` throws it. No event is delivered and it cannot be undone. If a delivery matched the waiter first, nothing is cancelled. Needs the `write:waitpoints` scope. Only on the [remote MCP server](/mcp-remote).
+
+**Parameters:**
+- `endpointId` (required): the endpoint's declared id (such as `payments`) or `wh_` id
+- `waiterId` (required): the waiter's `waitpoint_` id, from `list_webhook_waiters`
+
+**Example usage:**
+- `"Cancel the waiter that is holding the order run on the payments webhook"`
+
 <Callout type="warning">
-  `replay_webhook_delivery`, `generate_webhook_secret` and `set_webhook_secret` are write operations and are not available in readonly mode.
+  `replay_webhook_delivery`, `generate_webhook_secret`, `set_webhook_secret`, `remove_webhook_secret`, `generate_webhook_verify_token`, `pause_webhook_endpoint`, `resume_webhook_endpoint` and `cancel_webhook_waiter` are write operations and are not available in readonly mode.
 </Callout>

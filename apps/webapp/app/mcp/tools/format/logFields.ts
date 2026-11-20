@@ -15,7 +15,7 @@ const BASE64 = /^[A-Za-z0-9+/_-]+={0,2}$/;
 
 const isHighSurrogate = (code: number) => code >= 0xd800 && code <= 0xdbff;
 
-function capText(text: string, maxChars: number): string {
+export function capText(text: string, maxChars: number): string {
   if (text.length <= maxChars) return text;
   const end = isHighSurrogate(text.charCodeAt(maxChars - 1)) ? maxChars - 1 : maxChars;
   return `${text.slice(0, end)}\n… (truncated, ${text.length} characters in total)`;

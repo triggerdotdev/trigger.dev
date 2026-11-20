@@ -249,6 +249,16 @@ export type CancelWebhookWaiterResult =
   | { outcome: "too_late"; deliveryId: string }
   | { outcome: "not_found" };
 
+export type ReadWebhookWaiterResult =
+  | {
+      state: "waiting";
+      expiresAt: Date;
+      match?: Record<string, string | number | boolean>;
+      filter?: string;
+    }
+  | { state: "cancelled"; match?: Record<string, string | number | boolean>; filter?: string }
+  | { state: "not_found" };
+
 /** A live waiter as the dashboard lists it. `match` and `filter` are what it was created with. */
 export type ListedWebhookWaiter = {
   id: string;

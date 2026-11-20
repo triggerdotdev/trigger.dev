@@ -1410,6 +1410,166 @@
             }
           },
           {
+            "name": "search_webhook_endpoints",
+            "title": "Search Webhook Endpoints",
+            "description": "Search the project environment's webhook endpoints, including per-tenant instances, by subscriber (task or agent id), provider source, status (active by default, or inactive or disabled) and text in the declared id, tenant id or external ref. Returns up to 50 endpoints per page with a cursor for the next page, and the subscriber and source values you can filter by.",
+            "inputSchema": {
+              "type": "object",
+              "$schema": "https://json-schema.org/draft/2020-12/schema",
+              "properties": {
+                "projectRef": {
+                  "type": "string",
+                  "description": "The trigger.dev project ref, starts with proj_. We will attempt to automatically detect the project ref if running inside a directory that includes a trigger.config.ts file, or if you pass the --project-ref option to the MCP server."
+                },
+                "configPath": {
+                  "type": "string",
+                  "description": "The path to the trigger.config.ts file. Only used when the trigger.config.ts file is not at the root dir (like in a monorepo setup). If not provided, we will try to find the config file in the current working directory"
+                },
+                "environment": {
+                  "default": "dev",
+                  "type": "string",
+                  "enum": ["dev", "staging", "prod", "preview"],
+                  "description": "The environment to get tasks for"
+                },
+                "branch": {
+                  "type": "string",
+                  "description": "The branch to get tasks for, only used for preview environments and branchable development environments"
+                },
+                "subscribers": {
+                  "maxItems": 20,
+                  "type": "array",
+                  "items": {
+                    "type": "string",
+                    "maxLength": 200
+                  },
+                  "description": "Only endpoints one of these subscribers (task or agent ids) subscribes to."
+                },
+                "sources": {
+                  "maxItems": 20,
+                  "type": "array",
+                  "items": {
+                    "type": "string",
+                    "maxLength": 100
+                  },
+                  "description": "Only endpoints from these provider sources, e.g. [\"stripe\"]."
+                },
+                "statuses": {
+                  "type": "array",
+                  "items": {
+                    "type": "string",
+                    "enum": ["active", "inactive", "disabled"]
+                  },
+                  "description": "Only endpoints with these statuses. Defaults to [\"active\"]."
+                },
+                "search": {
+                  "type": "string",
+                  "maxLength": 200,
+                  "description": "Text to find in the declared id, tenant id or external ref."
+                },
+                "cursor": {
+                  "type": "string",
+                  "maxLength": 2000,
+                  "description": "The cursor from a previous call, to get the next page."
+                }
+              }
+            },
+            "annotations": {
+              "readOnlyHint": true,
+              "destructiveHint": false,
+              "title": "Search Webhook Endpoints"
+            }
+          },
+          {
+            "name": "get_task_webhook",
+            "title": "Get Task Webhook",
+            "description": "Get a webhook task (a task defined with webhook()) in the current version of the project environment: its file path, when it was created, and the endpoints it subscribes to, each with its status, source and the filter that decides which events reach the task. Header values in filters are hidden; the header names are shown.",
+            "inputSchema": {
+              "type": "object",
+              "$schema": "https://json-schema.org/draft/2020-12/schema",
+              "properties": {
+                "projectRef": {
+                  "type": "string",
+                  "description": "The trigger.dev project ref, starts with proj_. We will attempt to automatically detect the project ref if running inside a directory that includes a trigger.config.ts file, or if you pass the --project-ref option to the MCP server."
+                },
+                "configPath": {
+                  "type": "string",
+                  "description": "The path to the trigger.config.ts file. Only used when the trigger.config.ts file is not at the root dir (like in a monorepo setup). If not provided, we will try to find the config file in the current working directory"
+                },
+                "environment": {
+                  "default": "dev",
+                  "type": "string",
+                  "enum": ["dev", "staging", "prod", "preview"],
+                  "description": "The environment to get tasks for"
+                },
+                "branch": {
+                  "type": "string",
+                  "description": "The branch to get tasks for, only used for preview environments and branchable development environments"
+                },
+                "taskId": {
+                  "type": "string",
+                  "maxLength": 200,
+                  "description": "The webhook task's id, as passed to webhook() in your code (e.g. stripe-orders)."
+                }
+              },
+              "required": ["taskId"]
+            },
+            "annotations": {
+              "readOnlyHint": true,
+              "destructiveHint": false,
+              "title": "Get Task Webhook"
+            }
+          },
+          {
+            "name": "list_webhook_waiters",
+            "title": "List Webhook Waiters",
+            "description": "List the waiters on a webhook endpoint: runs paused until a matching event arrives, soonest expiry first. Each waiter's id is the waitpoint id the run is waiting on, with its match, filter and expiry. Returns up to 50 per page with a cursor for the next page. Header values in match and filter conditions are hidden; the header names are shown.",
+            "inputSchema": {
+              "type": "object",
+              "$schema": "https://json-schema.org/draft/2020-12/schema",
+              "properties": {
+                "projectRef": {
+                  "type": "string",
+                  "description": "The trigger.dev project ref, starts with proj_. We will attempt to automatically detect the project ref if running inside a directory that includes a trigger.config.ts file, or if you pass the --project-ref option to the MCP server."
+                },
+                "configPath": {
+                  "type": "string",
+                  "description": "The path to the trigger.config.ts file. Only used when the trigger.config.ts file is not at the root dir (like in a monorepo setup). If not provided, we will try to find the config file in the current working directory"
+                },
+                "environment": {
+                  "default": "dev",
+                  "type": "string",
+                  "enum": ["dev", "staging", "prod", "preview"],
+                  "description": "The environment to get tasks for"
+                },
+                "branch": {
+                  "type": "string",
+                  "description": "The branch to get tasks for, only used for preview environments and branchable development environments"
+                },
+                "endpointId": {
+                  "type": "string",
+                  "description": "The webhook endpoint: its declared id (e.g. payments) or wh_ id. Use list_webhook_endpoints to find it."
+                },
+                "limit": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 50,
+                  "description": "How many to return (default 20)."
+                },
+                "cursor": {
+                  "type": "string",
+                  "pattern": "^\\d{1,6}$",
+                  "description": "The cursor from a previous call, to get the next page."
+                }
+              },
+              "required": ["endpointId"]
+            },
+            "annotations": {
+              "readOnlyHint": true,
+              "destructiveHint": false,
+              "title": "List Webhook Waiters"
+            }
+          },
+          {
             "name": "get_report",
             "title": "Get Report",
             "description": "Render an interpreted report (an answered question, not a raw panel) as text + sparklines. The server computes the verdict deterministically. Currently: 'health' — whether work is flowing, whether the runs that start are healthy, and whether the telemetry is fresh, with a headline verdict and a suggested next action.",
@@ -3606,6 +3766,216 @@
             },
             "annotations": {
               "title": "Set Webhook Secret",
+              "readOnlyHint": false,
+              "destructiveHint": true
+            }
+          },
+          {
+            "name": "remove_webhook_secret",
+            "title": "Remove Webhook Secret",
+            "description": "Remove a hosted webhook endpoint's signing secret. Every delivery is then rejected until a new secret is set with set_webhook_secret or generate_webhook_secret; a source that sends its own secret (such as Notion) adopts the next one it sends. Use this when a secret leaked and the provider must be reconnected.",
+            "inputSchema": {
+              "type": "object",
+              "$schema": "https://json-schema.org/draft/2020-12/schema",
+              "properties": {
+                "projectRef": {
+                  "type": "string",
+                  "description": "The trigger.dev project ref, starts with proj_. We will attempt to automatically detect the project ref if running inside a directory that includes a trigger.config.ts file, or if you pass the --project-ref option to the MCP server."
+                },
+                "configPath": {
+                  "type": "string",
+                  "description": "The path to the trigger.config.ts file. Only used when the trigger.config.ts file is not at the root dir (like in a monorepo setup). If not provided, we will try to find the config file in the current working directory"
+                },
+                "environment": {
+                  "default": "dev",
+                  "type": "string",
+                  "enum": ["dev", "staging", "prod", "preview"],
+                  "description": "The environment to get tasks for"
+                },
+                "branch": {
+                  "type": "string",
+                  "description": "The branch to get tasks for, only used for preview environments and branchable development environments"
+                },
+                "endpointId": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 200,
+                  "description": "The webhook endpoint: its declared id (e.g. payments) or wh_ id. Use search_webhook_endpoints to find it."
+                }
+              },
+              "required": ["endpointId"]
+            },
+            "annotations": {
+              "title": "Remove Webhook Secret",
+              "readOnlyHint": false,
+              "destructiveHint": true
+            }
+          },
+          {
+            "name": "generate_webhook_verify_token",
+            "title": "Generate Webhook Verify Token",
+            "description": "Generate a new verification token for a hosted webhook endpoint whose source verifies its URL with a GET request (such as Meta's hub.verify_token), and return it once. It replaces the current token. Give it to the provider and never print, log or commit it.",
+            "inputSchema": {
+              "type": "object",
+              "$schema": "https://json-schema.org/draft/2020-12/schema",
+              "properties": {
+                "projectRef": {
+                  "type": "string",
+                  "description": "The trigger.dev project ref, starts with proj_. We will attempt to automatically detect the project ref if running inside a directory that includes a trigger.config.ts file, or if you pass the --project-ref option to the MCP server."
+                },
+                "configPath": {
+                  "type": "string",
+                  "description": "The path to the trigger.config.ts file. Only used when the trigger.config.ts file is not at the root dir (like in a monorepo setup). If not provided, we will try to find the config file in the current working directory"
+                },
+                "environment": {
+                  "default": "dev",
+                  "type": "string",
+                  "enum": ["dev", "staging", "prod", "preview"],
+                  "description": "The environment to get tasks for"
+                },
+                "branch": {
+                  "type": "string",
+                  "description": "The branch to get tasks for, only used for preview environments and branchable development environments"
+                },
+                "endpointId": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 200,
+                  "description": "The webhook endpoint: its declared id (e.g. payments) or wh_ id. Use search_webhook_endpoints to find it."
+                }
+              },
+              "required": ["endpointId"]
+            },
+            "annotations": {
+              "title": "Generate Webhook Verify Token",
+              "readOnlyHint": false,
+              "destructiveHint": true
+            }
+          },
+          {
+            "name": "pause_webhook_endpoint",
+            "title": "Pause Webhook Endpoint",
+            "description": "Pause a hosted webhook endpoint. Its URL answers 404 and records nothing, so events the provider sends meanwhile are lost unless it retries them; deliveries already accepted still run. A deploy does not resume it; use resume_webhook_endpoint.",
+            "inputSchema": {
+              "type": "object",
+              "$schema": "https://json-schema.org/draft/2020-12/schema",
+              "properties": {
+                "projectRef": {
+                  "type": "string",
+                  "description": "The trigger.dev project ref, starts with proj_. We will attempt to automatically detect the project ref if running inside a directory that includes a trigger.config.ts file, or if you pass the --project-ref option to the MCP server."
+                },
+                "configPath": {
+                  "type": "string",
+                  "description": "The path to the trigger.config.ts file. Only used when the trigger.config.ts file is not at the root dir (like in a monorepo setup). If not provided, we will try to find the config file in the current working directory"
+                },
+                "environment": {
+                  "default": "dev",
+                  "type": "string",
+                  "enum": ["dev", "staging", "prod", "preview"],
+                  "description": "The environment to get tasks for"
+                },
+                "branch": {
+                  "type": "string",
+                  "description": "The branch to get tasks for, only used for preview environments and branchable development environments"
+                },
+                "endpointId": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 200,
+                  "description": "The webhook endpoint: its declared id (e.g. payments) or wh_ id. Use search_webhook_endpoints to find it."
+                }
+              },
+              "required": ["endpointId"]
+            },
+            "annotations": {
+              "title": "Pause Webhook Endpoint",
+              "readOnlyHint": false,
+              "destructiveHint": true
+            }
+          },
+          {
+            "name": "resume_webhook_endpoint",
+            "title": "Resume Webhook Endpoint",
+            "description": "Resume a paused hosted webhook endpoint so its URL accepts deliveries again. Events sent while it was paused are not recovered.",
+            "inputSchema": {
+              "type": "object",
+              "$schema": "https://json-schema.org/draft/2020-12/schema",
+              "properties": {
+                "projectRef": {
+                  "type": "string",
+                  "description": "The trigger.dev project ref, starts with proj_. We will attempt to automatically detect the project ref if running inside a directory that includes a trigger.config.ts file, or if you pass the --project-ref option to the MCP server."
+                },
+                "configPath": {
+                  "type": "string",
+                  "description": "The path to the trigger.config.ts file. Only used when the trigger.config.ts file is not at the root dir (like in a monorepo setup). If not provided, we will try to find the config file in the current working directory"
+                },
+                "environment": {
+                  "default": "dev",
+                  "type": "string",
+                  "enum": ["dev", "staging", "prod", "preview"],
+                  "description": "The environment to get tasks for"
+                },
+                "branch": {
+                  "type": "string",
+                  "description": "The branch to get tasks for, only used for preview environments and branchable development environments"
+                },
+                "endpointId": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 200,
+                  "description": "The webhook endpoint: its declared id (e.g. payments) or wh_ id. Use search_webhook_endpoints to find it."
+                }
+              },
+              "required": ["endpointId"]
+            },
+            "annotations": {
+              "title": "Resume Webhook Endpoint",
+              "readOnlyHint": false,
+              "destructiveHint": true
+            }
+          },
+          {
+            "name": "cancel_webhook_waiter",
+            "title": "Cancel Webhook Waiter",
+            "description": "Cancel a waiter on a webhook endpoint (a waitpoint id from list_webhook_waiters). Its waitpoint is completed with a WebhookWaiterCancelledError, so the runs waiting on it resume with that error; no event is delivered and it cannot be undone.",
+            "inputSchema": {
+              "type": "object",
+              "$schema": "https://json-schema.org/draft/2020-12/schema",
+              "properties": {
+                "projectRef": {
+                  "type": "string",
+                  "description": "The trigger.dev project ref, starts with proj_. We will attempt to automatically detect the project ref if running inside a directory that includes a trigger.config.ts file, or if you pass the --project-ref option to the MCP server."
+                },
+                "configPath": {
+                  "type": "string",
+                  "description": "The path to the trigger.config.ts file. Only used when the trigger.config.ts file is not at the root dir (like in a monorepo setup). If not provided, we will try to find the config file in the current working directory"
+                },
+                "environment": {
+                  "default": "dev",
+                  "type": "string",
+                  "enum": ["dev", "staging", "prod", "preview"],
+                  "description": "The environment to get tasks for"
+                },
+                "branch": {
+                  "type": "string",
+                  "description": "The branch to get tasks for, only used for preview environments and branchable development environments"
+                },
+                "endpointId": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 200,
+                  "description": "The webhook endpoint: its declared id (e.g. payments) or wh_ id. Use search_webhook_endpoints to find it."
+                },
+                "waiterId": {
+                  "type": "string",
+                  "pattern": "^waitpoint_[a-z0-9]{1,64}$",
+                  "description": "The waiter's id (waitpoint_...), as list_webhook_waiters prints it."
+                }
+              },
+              "required": ["endpointId", "waiterId"]
+            },
+            "annotations": {
+              "title": "Cancel Webhook Waiter",
               "readOnlyHint": false,
               "destructiveHint": true
             }

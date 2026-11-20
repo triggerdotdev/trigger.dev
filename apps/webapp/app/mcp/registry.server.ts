@@ -30,6 +30,7 @@ import { runStreamsTools } from "./tools/runStreams.server";
 import { sessionsTools } from "./tools/sessions.server";
 import { tasksTools } from "./tools/tasks.server";
 import { webhooksTools } from "./tools/webhooks.server";
+import { webhooksReadTools } from "./tools/webhooksRead.server";
 import { agentChatTools } from "./tools/agentChat.server";
 import { alertsWriteTools } from "./tools/alertsWrite.server";
 import { bulkActionsWriteTools } from "./tools/bulkActionsWrite.server";
@@ -42,6 +43,8 @@ import { runsWriteTools } from "./tools/runsWrite.server";
 import { sessionsWriteTools } from "./tools/sessionsWrite.server";
 import { tasksWriteTools } from "./tools/tasksWrite.server";
 import { webhooksWriteTools } from "./tools/webhooksWrite.server";
+import { webhooksEndpointWriteTools } from "./tools/webhooksEndpointWrite.server";
+import { webhooksWaiterWriteTools } from "./tools/webhooksWaiterWrite.server";
 
 export type McpApprovalClass = "required" | "configurable" | "none";
 
@@ -89,6 +92,7 @@ export const mcpTools: McpToolDefinition[] = assertUniqueToolNames([
   ...sessionsTools,
   ...alertsTools,
   ...webhooksTools,
+  ...webhooksReadTools,
   ...reportTools,
   ...docsTools,
   ...agentChatTools,
@@ -103,6 +107,8 @@ export const mcpTools: McpToolDefinition[] = assertUniqueToolNames([
   ...sessionsWriteTools,
   ...tasksWriteTools,
   ...webhooksWriteTools,
+  ...webhooksEndpointWriteTools,
+  ...webhooksWaiterWriteTools,
 ]);
 
 export function registerMcpTools(

@@ -44,12 +44,26 @@ const REMOTE_ONLY: Record<string, string> = {
   get_bulk_action: "the CLI has no tool for it yet",
   create_bulk_action: "the CLI has no tool for it yet",
   abort_bulk_action: "the CLI has no tool for it yet",
+  search_webhook_endpoints:
+    "the public endpoints API has no subscriber, source, status or text filters",
+  get_task_webhook: "no public API returns a webhook task's file path and subscribed endpoints",
+  list_webhook_waiters: "no public API lists the waiters on an endpoint",
+  remove_webhook_secret: "the dashboard clears a secret; the public API has no route for it",
+  generate_webhook_verify_token: "verification tokens are only generated in the dashboard",
+  pause_webhook_endpoint: "the CLI has no MCP twin for the public disable route",
+  resume_webhook_endpoint: "the CLI has no MCP twin for the public enable route",
+  cancel_webhook_waiter: "the CLI has no MCP tool for the public waiter cancel route",
 };
 
 const WRITE_TOOL_APPROVAL: Record<string, "required" | "configurable" | { none: string }> = {
   replay_webhook_delivery: "required",
   generate_webhook_secret: "required",
   set_webhook_secret: "required",
+  remove_webhook_secret: "required",
+  generate_webhook_verify_token: "required",
+  pause_webhook_endpoint: "configurable",
+  resume_webhook_endpoint: "configurable",
+  cancel_webhook_waiter: "configurable",
   submit_feedback: { none: "only logs a report about the MCP server, touches no project data" },
   send_agent_message: { none: "covered by the start_agent_chat confirmation for that chat" },
   close_agent_chat: { none: "covered by the start_agent_chat confirmation for that chat" },

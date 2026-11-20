@@ -108,6 +108,9 @@ const TOOLS: Array<{ tool: string; args: Record<string, unknown>; scope: string 
   { tool: "list_alert_capabilities", args: project, scope: "read:alerts" },
   { tool: "list_webhook_endpoints", args: project, scope: "read:webhooks" },
   { tool: "get_webhook_endpoint_details", args: endpoint, scope: "read:webhooks" },
+  { tool: "search_webhook_endpoints", args: project, scope: "read:webhooks" },
+  { tool: "get_task_webhook", args: { ...project, taskId: "orders" }, scope: "read:webhooks" },
+  { tool: "list_webhook_waiters", args: endpoint, scope: "read:webhooks" },
   { tool: "list_webhook_deliveries", args: project, scope: "read:webhooks" },
   {
     tool: "get_webhook_delivery",
@@ -144,6 +147,15 @@ const TOOLS: Array<{ tool: string; args: Record<string, unknown>; scope: string 
   },
   { tool: "generate_webhook_secret", args: endpoint, scope: "write:webhooks" },
   { tool: "set_webhook_secret", args: { ...endpoint, secret: "whsec_x" }, scope: "write:webhooks" },
+  { tool: "remove_webhook_secret", args: endpoint, scope: "write:webhooks" },
+  { tool: "generate_webhook_verify_token", args: endpoint, scope: "write:webhooks" },
+  { tool: "pause_webhook_endpoint", args: endpoint, scope: "write:webhooks" },
+  { tool: "resume_webhook_endpoint", args: endpoint, scope: "write:webhooks" },
+  {
+    tool: "cancel_webhook_waiter",
+    args: { ...endpoint, waiterId: "waitpoint_1" },
+    scope: "write:waitpoints",
+  },
 ];
 
 function call(name: string) {

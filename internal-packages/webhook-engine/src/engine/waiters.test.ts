@@ -463,6 +463,96 @@ containerTestWithIsolatedRedis(
   }
 );
 
+// Catches: a waiter a delivery claimed (still in the live set until acknowledged) or one past its expiry read as waiting.
+containerTestWithIsolatedRedis(
+  "readWaiter reports a claimed or expired waiter as not found",
+  async ({ prisma, redisOptions }) => {
+    const endpoint = await createEndpoint(prisma, []);
+    const engine = buildEngine(prisma, redisOptions, makeWaitpoints().ports);
+    const store = (engine as unknown as { waiterStore: WebhookWaiterStore }).waiterStore;
+
+    try {
+      const claimed = await createdWaiter(engine, { match: MATCH("ord_claimed") });
+      const index = await store.readIndex(claimed.id);
+      await store.claim(endpoint.id, "delivery_claim", [
+        { shape: index!.shape, values: index!.values, ids: [claimed.id] },
+      ]);
+      const expiring = await createdWaiter(engine, {
+        match: MATCH("ord_expiring"),
+        timeoutAt: new Date(Date.now() + 300),
+      });
+      await new Promise((resolve) => setTimeout(resolve, 400));
+
+      const read = (waiterId: string) =>
+        engine.readWaiter({ environmentId: "env_test", waiterId, endpointId: endpoint.id });
+
+      expect((await engine.listWaiters({ endpointId: endpoint.id })).total).toBeGreaterThan(0);
+      expect([await read(claimed.id), await read(expiring.id)]).toEqual([
+        { state: "not_found" },
+        { state: "not_found" },
+      ]);
+    } finally {
+      await engine.quit();
+    }
+  }
+);
+
+// Catches: a read that ignores the environment or endpoint, treats a cancelled waiter as gone, or counts a reservation entry as a waiter.
+containerTestWithIsolatedRedis(
+  "readWaiter reports one waiter's state within its environment and endpoint",
+  async ({ prisma, redisOptions }) => {
+    const endpoint = await createEndpoint(prisma, []);
+    const other = await createEndpoint(prisma, [], "refunds");
+    const engine = buildEngine(prisma, redisOptions, makeWaitpoints().ports);
+    const store = (engine as unknown as { waiterStore: WebhookWaiterStore }).waiterStore;
+
+    try {
+      const waiting = await createdWaiter(engine, {
+        match: MATCH("ord_read"),
+        filter: "event.data.object.amount > 100",
+      });
+      const cancelled = await createdWaiter(engine, { match: MATCH("ord_read_cancel") });
+      await engine.cancelWaiter({ environmentId: "env_test", waiterId: cancelled.id });
+      const { shape, values } = waiterShape(MATCH("ord_read_reserved"));
+      const reservedId = `waitpoint_${randomUUID().replace(/-/g, "")}`;
+      await store.reserve(endpoint.id, shape, values, reservedId);
+      await store.writeIndex(reservedId, {
+        environmentId: "env_test",
+        endpointId: endpoint.id,
+        shape,
+        values,
+        expiresAt: Date.now() + 60_000,
+      });
+
+      const read = (waiterId: string, environmentId = "env_test", endpointId = endpoint.id) =>
+        engine.readWaiter({ environmentId, waiterId, endpointId });
+
+      expect(await read(waiting.id)).toMatchObject({
+        state: "waiting",
+        match: MATCH("ord_read"),
+        filter: "event.data.object.amount > 100",
+      });
+      expect(await read(cancelled.id)).toMatchObject({
+        state: "cancelled",
+        match: MATCH("ord_read_cancel"),
+      });
+      expect([
+        await read("waitpoint_unknown"),
+        await read(waiting.id, "env_other"),
+        await read(waiting.id, "env_test", other.id),
+        await read(reservedId),
+      ]).toEqual([
+        { state: "not_found" },
+        { state: "not_found" },
+        { state: "not_found" },
+        { state: "not_found" },
+      ]);
+    } finally {
+      await engine.quit();
+    }
+  }
+);
+
 containerTestWithIsolatedRedis(
   "a matching delivery resumes the waiter with the event, and the endpoint's task still fires",
   async ({ prisma, redisOptions }) => {
