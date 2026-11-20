@@ -711,7 +711,9 @@ function TimeDropdown({
                     step="1"
                     placeholder="Custom"
                     value={customValue}
-                    autoFocus
+                    // Focusing it picks "in the last": with an exact range set, opening must keep
+                    // the range selected.
+                    autoFocus={!from && !to}
                     onChange={(e) => {
                       setCustomValue(e.target.value);
                       setSelectedPeriod("custom");
