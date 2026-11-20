@@ -738,6 +738,13 @@ describe("runReasonBadge", () => {
 });
 
 describe("mergeSessionRunPage", () => {
+  const openSession: SessionRunsPage["session"] = {
+    closedAt: null,
+    closedReason: null,
+    expiresAt: null,
+    updatedAt: iso(0),
+    currentRunFriendlyId: null,
+  };
   // Inclusive, in the given direction: range(3, 1) is [3, 2, 1].
   const range = (from: number, to: number) => {
     const step = from <= to ? 1 : -1;
@@ -750,12 +757,18 @@ describe("mergeSessionRunPage", () => {
   });
   const page = (
     numbers: number[],
-    extra: { totalCount?: number; next?: string; status?: SessionTraceRun["status"] } = {}
+    extra: {
+      totalCount?: number;
+      next?: string;
+      status?: SessionTraceRun["status"];
+      session?: Partial<SessionRunsPage["session"]>;
+    } = {}
   ): SessionRunsPage => ({
     data: numbers.map((n) => item(n, extra.status)),
     pagination: { next: extra.next },
     totalCount: extra.totalCount ?? Math.max(...numbers),
     view: {},
+    session: { ...openSession, ...extra.session },
   });
   const numbers = (loaded: ReturnType<typeof mergeSessionRunPage>) =>
     [...loaded.runsById.values()].map((r) => r.number).sort((a, b) => a - b);
@@ -784,6 +797,36 @@ describe("mergeSessionRunPage", () => {
       first
     );
     expect(mergeSessionRunPage(first, page([4, 3, 2]), "newest")).not.toBe(first);
+  });
+
+  // Catches: a poll that only sees the session close keeping the old runs object, so the session
+  // details never hear of it.
+  it("a newest page that only changes the session is not a quiet poll", () => {
+    const first = mergeSessionRunPage(undefined, page([3, 2, 1]), "newest");
+    const closed = mergeSessionRunPage(
+      first,
+      page([3, 2, 1], { session: { closedAt: iso(MINUTE), closedReason: "done" } }),
+      "newest"
+    );
+
+    expect(closed).not.toBe(first);
+    expect(closed.session.closedAt).toBe(iso(MINUTE));
+  });
+
+  // Catches: an older page (read before a close) putting back the session's earlier state.
+  it("an older page doesn't overwrite the session", () => {
+    let loaded = mergeSessionRunPage(
+      undefined,
+      page([5, 4], { next: "a", session: { currentRunFriendlyId: "run_5" } }),
+      "newest"
+    );
+    loaded = mergeSessionRunPage(
+      loaded,
+      page([3, 2, 1], { totalCount: 5, session: { currentRunFriendlyId: "run_3" } }),
+      "older"
+    );
+
+    expect(loaded.session.currentRunFriendlyId).toBe("run_5");
   });
 
   it("takes the earlier cursor from the first page, then from each earlier page", () => {

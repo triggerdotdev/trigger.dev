@@ -1,3 +1,4 @@
+import { RunId } from "@trigger.dev/core/v3/isomorphic";
 import { type Span } from "@opentelemetry/api";
 import { type PrismaClientOrTransaction, boundedIn } from "@trigger.dev/database";
 import { env } from "~/env.server";
@@ -158,6 +159,7 @@ export class SessionPresenter {
         const run = runsById.get(r.runId);
         return {
           id: r.id,
+          runFriendlyId: RunId.toFriendlyId(r.runId),
           reason: r.reason,
           triggeredAt: r.triggeredAt.toISOString(),
           run: run ? { friendlyId: run.friendlyId, status: run.status } : null,

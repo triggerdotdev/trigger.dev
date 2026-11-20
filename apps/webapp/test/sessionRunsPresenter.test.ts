@@ -185,11 +185,7 @@ async function seedSessionWithRuns(
   };
 
   const query = {
-    session: {
-      id: session.id,
-      projectId: session.projectId,
-      runtimeEnvironmentId: session.runtimeEnvironmentId,
-    },
+    session,
     pageSize: 20,
     showDeletedLogs: false,
   };
@@ -400,7 +396,56 @@ describe("SessionRunsPresenter", () => {
   postgresTest("an empty session returns no runs", async ({ prisma }) => {
     const { deps, query } = await seedSessionWithRuns(prisma, 0);
     const page = await new SessionRunsPresenter(deps).call(query);
-    expect(page).toEqual({ data: [], pagination: {}, totalCount: 0, view: {} });
+    expect(page).toMatchObject({ data: [], pagination: {}, totalCount: 0, view: {} });
+  });
+
+  // Catches: the session details missing a close or a new run, which only these fields carry.
+  postgresTest("every page carries the session's facts as of the read", async ({ prisma }) => {
+    const ctx = await seedSessionWithRuns(prisma, 2);
+    const presenter = new SessionRunsPresenter(ctx.deps);
+
+    const open = await presenter.call(ctx.query);
+    expect(open?.session).toEqual({
+      closedAt: null,
+      closedReason: null,
+      expiresAt: null,
+      updatedAt: ctx.session.updatedAt.toISOString(),
+      currentRunFriendlyId: null,
+    });
+
+    const closedAt = new Date("2026-10-03T00:00:00.000Z");
+    const expiresAt = new Date("2026-10-04T00:00:00.000Z");
+    const closed = await prisma.session.update({
+      where: { id: ctx.session.id },
+      data: { closedAt, closedReason: "done", expiresAt, currentRunId: `${ctx.suffix}r2` },
+    });
+    const page = await presenter.call({ ...ctx.query, session: closed });
+    expect(page?.session).toEqual({
+      closedAt: closedAt.toISOString(),
+      closedReason: "done",
+      expiresAt: expiresAt.toISOString(),
+      updatedAt: closed.updatedAt.toISOString(),
+      currentRunFriendlyId: `run_${ctx.suffix}r2`,
+    });
+
+    // The empty-page branch returns early, so it builds the facts too.
+    const empty = await seedSessionWithRuns(prisma, 0);
+    const emptyClosed = await prisma.session.update({
+      where: { id: empty.session.id },
+      data: { closedAt, closedReason: "done" },
+    });
+    const emptyPage = await new SessionRunsPresenter(empty.deps).call({
+      ...empty.query,
+      session: emptyClosed,
+    });
+    expect(emptyPage?.data).toEqual([]);
+    expect(emptyPage?.session).toEqual({
+      closedAt: closedAt.toISOString(),
+      closedReason: "done",
+      expiresAt: null,
+      updatedAt: emptyClosed.updatedAt.toISOString(),
+      currentRunFriendlyId: null,
+    });
   });
 });
 

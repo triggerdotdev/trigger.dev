@@ -203,6 +203,12 @@ function SessionTraceTabContent({
     runs: pages.runs,
   });
 
+  // The session details (a sibling) show what the newest read says about the session and its runs.
+  const panelStore = useSessionPanelStore();
+  useEffect(() => {
+    if (pages.session && pages.runs) panelStore?.setSessionRead(pages.session, pages.runs);
+  }, [panelStore, pages.session, pages.runs]);
+
   // New runs: re-read the newest page while the tab is visible (focus also refreshes it). It
   // lives here, not in the tree, so a session with no runs yet still picks up its first one.
   const [checkedAtMs, setCheckedAtMs] = useState(() => Date.now());

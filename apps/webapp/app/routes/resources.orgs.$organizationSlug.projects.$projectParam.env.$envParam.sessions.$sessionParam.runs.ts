@@ -66,11 +66,7 @@ export const loader = dashboardLoader(
     });
 
     const page = await presenter.call({
-      session: {
-        id: session.id,
-        projectId: session.projectId,
-        runtimeEnvironmentId: session.runtimeEnvironmentId,
-      },
+      session,
       pageSize: searchParams["page[size]"],
       after: searchParams["page[after]"],
       runFriendlyId: searchParams.run,

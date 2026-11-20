@@ -93,7 +93,39 @@ export type SessionRunsPage = {
   totalCount: number;
   /** Dashboard only, keyed by run friendlyId. `spanId` is the run's own span (its run panel). */
   view: Record<string, { unavailable?: RunTraceUnavailableReason; spanId: string }>;
+  /** Dashboard only: the session as of this read, for the session details. */
+  session: SessionRunsSessionFacts;
 };
+
+export type SessionRunsSessionFacts = {
+  closedAt: string | null;
+  closedReason: string | null;
+  expiresAt: string | null;
+  updatedAt: string;
+  currentRunFriendlyId: string | null;
+};
+
+/** The session row fields the runs read needs; the route already has the whole row. */
+export type SessionRunsSession = {
+  id: string;
+  projectId: string;
+  runtimeEnvironmentId: string;
+  closedAt: Date | null;
+  closedReason: string | null;
+  expiresAt: Date | null;
+  updatedAt: Date;
+  currentRunId: string | null;
+};
+
+function sessionFacts(session: SessionRunsSession): SessionRunsSessionFacts {
+  return {
+    closedAt: session.closedAt?.toISOString() ?? null,
+    closedReason: session.closedReason,
+    expiresAt: session.expiresAt?.toISOString() ?? null,
+    updatedAt: session.updatedAt.toISOString(),
+    currentRunFriendlyId: session.currentRunId ? RunId.toFriendlyId(session.currentRunId) : null,
+  };
+}
 
 export type SessionRunsPresenterDeps = {
   replica: PrismaClientOrTransaction;
@@ -104,7 +136,7 @@ export type SessionRunsPresenterDeps = {
 };
 
 export type SessionRunsQuery = {
-  session: { id: string; projectId: string; runtimeEnvironmentId: string };
+  session: SessionRunsSession;
   pageSize: number;
   /** Older runs than this cursor. */
   after?: SessionRunCursor;
@@ -161,7 +193,13 @@ export class SessionRunsPresenter {
     const oldestRow = pageRows.at(-1);
 
     if (!oldestRow) {
-      return { data: [], pagination: {}, totalCount: countedTotal ?? 0, view: {} };
+      return {
+        data: [],
+        pagination: {},
+        totalCount: countedTotal ?? 0,
+        view: {},
+        session: sessionFacts(query.session),
+      };
     }
 
     const [oldestNumber, runsById] = await Promise.all([
@@ -184,12 +222,13 @@ export class SessionRunsPresenter {
       pagination: olderRow ? { next: encodeSessionRunCursor(oldestRow) } : {},
       totalCount: countedTotal ?? oldestNumber + pageRows.length - 1,
       view: this.#view(pageRows, runsById, query.showDeletedLogs),
+      session: sessionFacts(query.session),
     };
   }
 
   // Runs outside the session's project and environment are treated as missing.
   async #findSessionRuns(
-    session: SessionRunsQuery["session"],
+    session: Pick<SessionRunsSession, "projectId" | "runtimeEnvironmentId">,
     rows: SessionRunRow[]
   ): Promise<Map<string, SessionRunRecord>> {
     const runs = await this.deps.findRunsByIds(rows.map((row) => row.runId));

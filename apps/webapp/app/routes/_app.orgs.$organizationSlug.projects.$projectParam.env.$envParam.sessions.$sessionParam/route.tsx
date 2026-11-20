@@ -1,11 +1,12 @@
 import { BoltIcon, BoltSlashIcon } from "@heroicons/react/20/solid";
 import { BookOpenIcon, CheckIcon } from "@heroicons/react/24/solid";
-import { useLocation } from "@remix-run/react";
+import { useLoaderData, useLocation, useParams } from "@remix-run/react";
 import { type LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { Clipboard, ClipboardCheck } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
+import { useIsPast } from "~/hooks/useIsPast";
 import simplur from "simplur";
 import { z } from "zod";
 import { AIChatIcon } from "~/assets/icons/AIChatIcon";
@@ -69,7 +70,14 @@ import { canAccessSessionTrace } from "~/v3/canAccessSessionTrace.server";
 import { SessionTraceTab } from "~/components/sessions/v1/trace/SessionTraceTab";
 import { useSessionViewAnalytics } from "~/components/sessions/v1/trace/useSessionViewAnalytics";
 import { SessionRunInspector } from "~/components/sessions/v1/trace/SessionRunInspector";
-import { SessionPanelStoreProvider } from "~/components/sessions/v1/trace/sessionPanelStore";
+import {
+  SessionPanelStoreProvider,
+  useSessionRead,
+} from "~/components/sessions/v1/trace/sessionPanelStore";
+import {
+  currentSessionDetails,
+  type SessionDetailsData,
+} from "~/components/sessions/v1/sessionDetails";
 import { useSessionTraceSelection } from "~/components/sessions/v1/trace/useSessionTraceSelection";
 import {
   SESSION_TREE_AUTOSAVE_ID,
@@ -204,15 +212,28 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
 };
 
 export default function Page() {
+  // The store is shared by the Trace tab and the side panel, so the page reads it below the provider.
+  // A link to another session (a sub-agent's) keeps this route mounted: start a new store for it.
+  const { sessionParam } = useParams();
+  return (
+    <SessionPanelStoreProvider key={sessionParam}>
+      <SessionPage />
+    </SessionPanelStoreProvider>
+  );
+}
+
+function SessionPage() {
   const { session, channels, transcriptRead, sessionTraceEnabled, traceTreeSnapshot, loadedAt } =
     useTypedLoaderData<typeof loader>();
   const organization = useOrganization();
   const project = useProject();
   const environment = useEnvironment();
 
-  const isExpired = session.expiresAt != null && new Date(session.expiresAt).getTime() < loadedAt;
+  // On the Trace tab, its runs polls keep the session details current; the newer read wins.
+  const details = currentSessionDetails(session, useSessionRead(useLoaderData<typeof loader>()));
+  const isExpired = useIsPast(details.expiresAt, loadedAt);
   const status: SessionStatus =
-    session.closedAt != null ? "CLOSED" : isExpired ? "EXPIRED" : "ACTIVE";
+    details.closedAt != null ? "CLOSED" : isExpired ? "EXPIRED" : "ACTIVE";
 
   const displayId = session.externalId ?? session.friendlyId;
   const sessionsPath = v3SessionsPath(organization, project, environment);
@@ -242,37 +263,36 @@ export default function Page() {
         </PageAccessories>
       </NavBar>
       <PageBody scrollable={false}>
-        <SessionPanelStoreProvider>
-          <ResizablePanelGroup orientation="horizontal" className="max-h-full">
-            <ResizablePanel id="session-conversation" min={"300px"}>
-              {sessionTraceEnabled ? (
-                <SessionLeftPane
-                  session={session}
-                  channels={channels}
-                  transcriptRead={transcriptRead}
-                  traceTreeSnapshot={traceTreeSnapshot}
-                  sessionOpen={status === "ACTIVE"}
-                />
-              ) : (
-                <StandaloneConversationPane session={session} channels={channels} />
-              )}
-            </ResizablePanel>
-            <ResizableHandle id="session-handle" />
-            <ResizablePanel
-              id="session-inspector"
-              min="380px"
-              default="420px"
-              className="overflow-hidden"
-            >
-              <InspectorPane
+        <ResizablePanelGroup orientation="horizontal" className="max-h-full">
+          <ResizablePanel id="session-conversation" min={"300px"}>
+            {sessionTraceEnabled ? (
+              <SessionLeftPane
                 session={session}
-                status={status}
-                isExpired={isExpired}
-                sessionTraceEnabled={sessionTraceEnabled}
+                channels={channels}
+                transcriptRead={transcriptRead}
+                traceTreeSnapshot={traceTreeSnapshot}
+                sessionOpen={status === "ACTIVE"}
               />
-            </ResizablePanel>
-          </ResizablePanelGroup>
-        </SessionPanelStoreProvider>
+            ) : (
+              <StandaloneConversationPane session={session} channels={channels} />
+            )}
+          </ResizablePanel>
+          <ResizableHandle id="session-handle" />
+          <ResizablePanel
+            id="session-inspector"
+            min="380px"
+            default="420px"
+            className="overflow-hidden"
+          >
+            <InspectorPane
+              session={session}
+              details={details}
+              status={status}
+              isExpired={isExpired}
+              sessionTraceEnabled={sessionTraceEnabled}
+            />
+          </ResizablePanel>
+        </ResizablePanelGroup>
       </PageBody>
     </>
   );
@@ -1130,11 +1150,13 @@ function useSessionPageView(traceEnabled: boolean) {
 
 function InspectorPane({
   session,
+  details,
   status,
   isExpired,
   sessionTraceEnabled,
 }: {
   session: LoadedSession;
+  details: SessionDetailsData;
   status: SessionStatus;
   isExpired: boolean;
   sessionTraceEnabled: boolean;
@@ -1156,15 +1178,19 @@ function InspectorPane({
     );
   }
 
-  return <SessionDetailsPane session={session} status={status} isExpired={isExpired} />;
+  return (
+    <SessionDetailsPane session={session} details={details} status={status} isExpired={isExpired} />
+  );
 }
 
 function SessionDetailsPane({
   session,
+  details,
   status,
   isExpired,
 }: {
   session: LoadedSession;
+  details: SessionDetailsData;
   status: SessionStatus;
   isExpired: boolean;
 }) {
@@ -1216,9 +1242,9 @@ function SessionDetailsPane({
       </div>
       <div className="overflow-y-auto px-3 py-3 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-surface-control">
         {tab === "overview" ? (
-          <OverviewTab session={session} status={status} isExpired={isExpired} />
+          <OverviewTab session={session} details={details} status={status} isExpired={isExpired} />
         ) : tab === "runs" ? (
-          <RunsTab session={session} status={status} allRunsPath={allRunsPath} />
+          <RunsTab runs={details.runs} status={status} allRunsPath={allRunsPath} />
         ) : (
           <MetadataTab session={session} />
         )}
@@ -1229,10 +1255,12 @@ function SessionDetailsPane({
 
 function OverviewTab({
   session,
+  details,
   status,
   isExpired,
 }: {
   session: LoadedSession;
+  details: SessionDetailsData;
   status: SessionStatus;
   isExpired: boolean;
 }) {
@@ -1310,25 +1338,27 @@ function OverviewTab({
           initiallyAvailable={!!session.agentView.transcriptSeed}
           resourcePath={`/resources/orgs/${organization.slug}/projects/${project.slug}/env/${environment.slug}/sessions/${encodeURIComponent(session.friendlyId)}/transcript-download`}
         />
-        {session.currentRun ? (
+        {details.currentRun ? (
           <Property.Item>
             <Property.Label>Current run</Property.Label>
             <Property.Value>
               <span className="flex flex-col gap-0.5">
                 <TextLink
                   to={v3RunPath(organization, project, environment, {
-                    friendlyId: session.currentRun.friendlyId,
+                    friendlyId: details.currentRun.friendlyId,
                   })}
                   className="font-mono text-sm"
                 >
-                  {session.currentRun.friendlyId}
+                  {details.currentRun.friendlyId}
                 </TextLink>
-                <SimpleTooltip
-                  button={<TaskRunStatusCombo status={session.currentRun.status} />}
-                  content={descriptionForTaskRunStatus(session.currentRun.status)}
-                  disableHoverableContent
-                  buttonClassName="w-fit"
-                />
+                {details.currentRun.status ? (
+                  <SimpleTooltip
+                    button={<TaskRunStatusCombo status={details.currentRun.status} />}
+                    content={descriptionForTaskRunStatus(details.currentRun.status)}
+                    disableHoverableContent
+                    buttonClassName="w-fit"
+                  />
+                ) : null}
               </span>
             </Property.Value>
           </Property.Item>
@@ -1356,30 +1386,30 @@ function OverviewTab({
         <Property.Item>
           <Property.Label>Updated</Property.Label>
           <Property.Value>
-            <DateTime date={session.updatedAt} />
+            <DateTime date={details.updatedAt} />
           </Property.Value>
         </Property.Item>
-        {session.expiresAt ? (
+        {details.expiresAt ? (
           <Property.Item>
             <Property.Label>{isExpired ? "Expired" : "Expires"}</Property.Label>
             <Property.Value>
-              <DateTime date={session.expiresAt} />
+              <DateTime date={details.expiresAt} />
             </Property.Value>
           </Property.Item>
         ) : null}
-        {session.closedAt ? (
+        {details.closedAt ? (
           <Property.Item>
             <Property.Label>Closed</Property.Label>
             <Property.Value>
-              <DateTime date={session.closedAt} />
+              <DateTime date={details.closedAt} />
             </Property.Value>
           </Property.Item>
         ) : null}
-        {session.closedReason ? (
+        {details.closedReason ? (
           <Property.Item>
             <Property.Label>Close reason</Property.Label>
             <Property.Value>
-              <span className="text-xs">{session.closedReason}</span>
+              <span className="text-xs">{details.closedReason}</span>
             </Property.Value>
           </Property.Item>
         ) : null}
@@ -1426,11 +1456,11 @@ function MetadataTab({ session }: { session: LoadedSession }) {
 }
 
 function RunsTab({
-  session,
+  runs,
   status,
   allRunsPath,
 }: {
-  session: LoadedSession;
+  runs: SessionDetailsData["runs"];
   status: SessionStatus;
   allRunsPath: string;
 }) {
@@ -1438,7 +1468,7 @@ function RunsTab({
   const project = useProject();
   const environment = useEnvironment();
 
-  if (session.runs.length === 0) {
+  if (runs.length === 0) {
     return <Paragraph variant="small/dimmed">No runs yet.</Paragraph>;
   }
 
@@ -1454,8 +1484,8 @@ function RunsTab({
           View all runs
         </LinkButton>
       </TimelineRow>
-      {session.runs.map((entry, idx) => {
-        const isLast = idx === session.runs.length - 1;
+      {runs.map((entry, idx) => {
+        const isLast = idx === runs.length - 1;
         const runPath = entry.run
           ? v3RunPath(organization, project, environment, {
               friendlyId: entry.run.friendlyId,
