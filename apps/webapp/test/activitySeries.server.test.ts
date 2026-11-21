@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   chooseBucketSeconds,
+  deliveryActivityBuckets,
   groupRunStatus,
   RUN_STATUS_GROUPS,
   zeroFillGroupedSeries,
@@ -49,6 +50,49 @@ describe("chooseBucketSeconds", () => {
     const wide = chooseBucketSeconds(1 * HOUR, { targetBuckets: 12 });
     const dense = chooseBucketSeconds(1 * HOUR, { targetBuckets: 72 });
     expect(wide).toBeGreaterThan(dense);
+  });
+});
+
+describe("deliveryActivityBuckets", () => {
+  const to = new Date("2026-11-19T12:00:00Z");
+  const count = ({ start, end, bucketMs }: ReturnType<typeof deliveryActivityBuckets>) =>
+    (end - start) / bucketMs;
+
+  it("keeps hours for a day, six hours for a week and days beyond", () => {
+    expect(deliveryActivityBuckets(new Date(to.getTime() - DAY), to).bucketSeconds).toBe(3_600);
+    expect(deliveryActivityBuckets(new Date(to.getTime() - 7 * DAY), to).bucketSeconds).toBe(
+      21_600
+    );
+    expect(deliveryActivityBuckets(new Date(to.getTime() - 30 * DAY), to).bucketSeconds).toBe(
+      86_400
+    );
+    // A year of days still fits.
+    const year = deliveryActivityBuckets(new Date(to.getTime() - 365 * DAY), to);
+    expect(year.bucketSeconds).toBe(86_400);
+    expect(count(year)).toBeLessThanOrEqual(366);
+  });
+
+  // Catches: one chart point per day for whatever `from` and `to` the URL carries, which for the
+  // widest dates a URL can name is a hundred million points built in one go.
+  it("never draws more than a few hundred buckets, whatever the range", () => {
+    const ranges: Array<[Date, Date]> = [
+      [new Date(0), to],
+      [new Date(0), new Date(8_640_000_000_000_000)],
+      [new Date(-8_640_000_000_000_000), new Date(8_640_000_000_000_000)],
+      [new Date(to.getTime() - 3 * 365 * DAY), to],
+    ];
+    for (const [from, end] of ranges) {
+      const buckets = deliveryActivityBuckets(from, end);
+      expect(count(buckets)).toBeLessThanOrEqual(402);
+      // The query's interval parameter is a UInt32 of seconds.
+      expect(buckets.bucketSeconds).toBeLessThan(2 ** 32);
+      // The range read is cut to what could hold deliveries.
+      expect(end.getTime() - buckets.from.getTime()).toBeLessThanOrEqual(5 * 365 * DAY);
+    }
+  });
+
+  it("has no buckets for a range that ends before it starts", () => {
+    expect(count(deliveryActivityBuckets(to, new Date(to.getTime() - DAY)))).toBeLessThanOrEqual(1);
   });
 });
 

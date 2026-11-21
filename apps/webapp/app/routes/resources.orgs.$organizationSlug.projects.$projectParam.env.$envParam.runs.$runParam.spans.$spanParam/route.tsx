@@ -118,7 +118,7 @@ import {
   v3RunRedirectPath,
   v3RunSpanPath,
   v3RunsPath,
-  v3SchedulePath,
+  v3ScheduledTaskSchedulePath,
   v3WebhookDeliveryPath,
   v3WebhookEndpointPath,
   v3SessionPath,
@@ -1073,7 +1073,13 @@ function RunBody({
                         <SimpleTooltip
                           button={
                             <TextLink
-                              to={v3SchedulePath(organization, project, environment, run.schedule)}
+                              to={v3ScheduledTaskSchedulePath(
+                                organization,
+                                project,
+                                environment,
+                                run.taskIdentifier,
+                                run.schedule
+                              )}
                             >
                               {run.schedule.description}
                             </TextLink>

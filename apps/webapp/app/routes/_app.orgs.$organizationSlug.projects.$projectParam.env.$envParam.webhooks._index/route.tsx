@@ -4,7 +4,7 @@ import { type ActionFunctionArgs, type LoaderFunctionArgs } from "@remix-run/ser
 import { typeddefer, useTypedLoaderData } from "remix-typedjson";
 import { WebhookIcon } from "~/assets/icons/WebhookIcon";
 import { CodeBlock } from "~/components/code/CodeBlock";
-import { MainCenteredContainer, PageBody } from "~/components/layout/AppLayout";
+import { MainCenteredContainer, PageBody, PageContainer } from "~/components/layout/AppLayout";
 import { DirectionSchema, ListPagination } from "~/components/ListPagination";
 import { LinkButton } from "~/components/primitives/Buttons";
 import { InfoPanel } from "~/components/primitives/InfoPanel";
@@ -137,18 +137,20 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
 export default function Page() {
   const data = useTypedLoaderData<typeof loader>();
 
-  if ("betaAccess" in data) {
-    return (
-      <WebhooksBetaAccess
-        key={data.organizationId}
-        requested={data.requested}
-        previewEndpoints={data.previewEndpoints}
-        previewActivity={data.previewActivity}
-      />
-    );
-  }
-
-  return <Endpoints data={data} />;
+  return (
+    <PageContainer>
+      {"betaAccess" in data ? (
+        <WebhooksBetaAccess
+          key={data.organizationId}
+          requested={data.requested}
+          previewEndpoints={data.previewEndpoints}
+          previewActivity={data.previewActivity}
+        />
+      ) : (
+        <Endpoints data={data} />
+      )}
+    </PageContainer>
+  );
 }
 
 type EndpointsData = Exclude<

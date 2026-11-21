@@ -19,6 +19,7 @@ import { DeploymentsIcon } from "~/assets/icons/DeploymentsIcon";
 import { ListCheckedIcon } from "~/assets/icons/ListCheckedIcon";
 import { RunsIcon } from "~/assets/icons/RunsIcon";
 import { TasksIcon } from "~/assets/icons/TasksIcon";
+import { WebhookIcon } from "~/assets/icons/WebhookIcon";
 import { BuildLogsViewer } from "~/components/deployments/BuildLogsViewer";
 import { EnvironmentCombo } from "~/components/environments/EnvironmentLabel";
 import { Badge } from "~/components/primitives/Badge";
@@ -69,6 +70,7 @@ import { TaskRunStatusCombo } from "~/components/runs/v3/TaskRunStatus";
 import { EndpointStatusBadge } from "~/components/webhookEndpoints/v1/EndpointStatus";
 import { cn } from "~/utils/cn";
 import { StoryPage, StorySection, StorySubSection } from "../storybook/StoryKit";
+import { ScheduleStory } from "./ScheduleStories";
 
 /* The detail page template (components/primitives/detail) with static data. Each entity has its
    own tabs: no page assumes an Overview or an Activity tab. Tables run edge to edge. */
@@ -120,6 +122,30 @@ export default function Story() {
         </Frame>
       </StorySection>
       <StorySection
+        title="Schedules: schedule page"
+        description="Each schedule has its own page on the detail template, opened from a row on the scheduled task's Schedules tab: Upcoming and Runs tabs, its settings in the rail, Disable, Delete and Edit in the header. Upcoming is a calendar beside a day: six weeks from this week (then a month at a time), each day with when its runs start and end, how many, and a midnight-to-midnight bar; the picked day's runs are the table beside it. Create and Edit are a centered dialog with the next runs previewed beside the form."
+      >
+        <Frame>
+          <ScheduleStory />
+        </Frame>
+      </StorySection>
+      <StorySection
+        title="Schedules: Upcoming, a year of months"
+        description="A schedule that runs on only a few days (monthly, quarterly) opens Upcoming on twelve small months instead of six weeks. A month's name opens that month. On the real page the calendar pages with ?month=, a day is picked with ?day= and Month or Year is forced with ?view=; here the data is static."
+      >
+        <Frame>
+          <ScheduleStory sparse />
+        </Frame>
+      </StorySection>
+      <StorySection
+        title="Schedules: Upcoming, a dense schedule"
+        description="A schedule that runs every day around the clock (every minute up to every six hours) has no calendar: no day differs from the next. Upcoming shows its rhythm instead, as lanes from now at three zoom levels (the next hour, 24 hours and 7 days for this one) over the day's runs. A daylight saving change is a sun on the lane it falls in and in the row under the lanes."
+      >
+        <Frame>
+          <ScheduleStory dense />
+        </Frame>
+      </StorySection>
+      <StorySection
         title="Agent"
         description="An agent is a task with a Sessions tab first, the Playground as its main action, and the models it called in the rail. Sessions sit beside their LLM spend and tokens."
       >
@@ -133,6 +159,22 @@ export default function Story() {
       >
         <Frame>
           <BulkActionPage />
+        </Frame>
+      </StorySection>
+      <StorySection
+        title="Webhook endpoint"
+        description="Tabs: Deliveries, Subscribers, Waiters, Settings."
+      >
+        <Frame>
+          <WebhookPage />
+        </Frame>
+      </StorySection>
+      <StorySection
+        title="Webhook endpoint: Settings"
+        description="Rotate sits on the signing secret row. Disable is unavailable while deliveries are replaying."
+      >
+        <Frame>
+          <WebhookPage initialTab="settings" />
         </Frame>
       </StorySection>
       <StorySection
@@ -1523,7 +1565,158 @@ function BulkActionPage() {
   );
 }
 
+// ---------- webhook endpoint ----------
+
+type WebhookTab = "deliveries" | "subscribers" | "waiters" | "settings";
+
 const ingestUrl = "https://api.trigger.dev/webhooks/v1/ingest/whi_q8m2k7x4p9t3";
+
+function WebhookPage({ initialTab = "deliveries" }: { initialTab?: WebhookTab }) {
+  const [tab, setTab] = useState<WebhookTab>(initialTab);
+  const tabs: DetailTab<WebhookTab>[] = [
+    { id: "deliveries", label: "Deliveries", count: "48,210" },
+    { id: "subscribers", label: "Subscribers", count: "3" },
+    { id: "waiters", label: "Waiters", count: "2" },
+    { id: "settings", label: "Settings" },
+  ];
+
+  return (
+    <>
+      <Nav back="Endpoints" title="stripe-billing" docs="Webhooks docs" />
+      <DetailPage
+        id="story-webhook"
+        header={
+          <DetailHeader
+            icon={WebhookIcon}
+            iconClassName="text-webhooks"
+            title="stripe-billing"
+            mono
+            status={<EndpointStatusBadge status="ACTIVE" />}
+            meta={["Source Stripe", "Default tenant", "Last delivery 14s ago"]}
+            friendlyId="wh_3n8x2k5v7q"
+            secondaryActions={
+              <Button variant="secondary/small" LeadingIcon={ClipboardDocumentIcon}>
+                Copy setup prompt
+              </Button>
+            }
+            primaryAction={
+              <Button variant="primary/small" LeadingIcon={PaperAirplaneIcon}>
+                Send test event
+              </Button>
+            }
+          />
+        }
+        tabs={
+          <DetailTabs
+            tabs={tabs}
+            activeTab={tab}
+            onTabChange={setTab}
+            layoutId={`webhook-${initialTab}`}
+          />
+        }
+        rail={
+          <PropertyRail>
+            <PropertyGroup title="Details">
+              <PropertyPair>
+                <DetailProperty label="ID">
+                  <CopyableText value="wh_3n8x2k5v7q" className="font-mono text-xs" truncate />
+                </DetailProperty>
+                <DetailProperty label="Status">
+                  <EndpointStatusBadge status="ACTIVE" />
+                </DetailProperty>
+                <DetailProperty label="Source">Stripe</DetailProperty>
+                <DetailProperty label="Tenant">None</DetailProperty>
+                <DetailProperty label="Created">Sep 14, 11:02</DetailProperty>
+                <DetailProperty label="External ref">None</DetailProperty>
+              </PropertyPair>
+            </PropertyGroup>
+            <PropertyGroup title="Connect">
+              <DetailProperty label="Webhook URL">
+                <CopyableText value={ingestUrl} className="min-w-0 font-mono text-xs" truncate />
+              </DetailProperty>
+              <PropertyPair>
+                <DetailProperty label="Signing secret">
+                  <EndpointStatusBadge status="ACTIVE" />
+                </DetailProperty>
+                <DetailProperty label="Verify token">Not set</DetailProperty>
+              </PropertyPair>
+            </PropertyGroup>
+            <PropertyGroup title="Signature">
+              <PropertyPair>
+                <DetailProperty label="Scheme">HMAC SHA-256</DetailProperty>
+                <DetailProperty label="Header">Stripe-Signature</DetailProperty>
+              </PropertyPair>
+            </PropertyGroup>
+          </PropertyRail>
+        }
+      >
+        {tab === "deliveries" ? (
+          <DetailTableTab
+            tools={
+              <>
+                <PeriodChip value="24h" />
+                <FilterChip label="Status" value="Any" />
+              </>
+            }
+          >
+            <StoryTable
+              headers={["Delivery", "Status", "External delivery ID", "Created", "Error"]}
+              rows={[
+                ["whd_8k2m4x9q1r", "Processing", "evt_3QyH8sLk2Ab", "Nov 17, 16:42:09", "–"],
+                ["whd_5n7b2v8c3t", "Succeeded", "evt_3QyH7pWm9Cd", "Nov 17, 16:41:55", "–"],
+                [
+                  "whd_2p9w6z1k4m",
+                  "Failed",
+                  "evt_3QyH6rTn4Ef",
+                  "Nov 17, 16:40:31",
+                  <span key="err" className="text-error">
+                    Signature did not match
+                  </span>,
+                ],
+                ["whd_7q3j8d5h2x", "Filtered", "evt_3QyH5kBv1Gh", "Nov 17, 16:39:47", "–"],
+                ["whd_4r6t1y9u3i", "Succeeded", "evt_3QyH4jCx8Ij", "Nov 17, 16:38:02", "–"],
+                ["whd_1m8c3v6b2n", "Succeeded", "evt_3QyH3aDz7Kl", "Nov 17, 16:37:40", "–"],
+                ["whd_9x4z7q2w5e", "Succeeded", "evt_3QyH2bEy6Mn", "Nov 17, 16:36:18", "–"],
+              ]}
+            />
+          </DetailTableTab>
+        ) : tab === "subscribers" ? (
+          <DetailTableTab>
+            <StoryTable
+              headers={["Task", "Filter", "Version", "Deliveries (24h)", "Last delivery"]}
+              rows={[
+                ["handle-invoice-paid", "invoice.paid", "20261117.3", "1,204", "14s ago"],
+                [
+                  "handle-subscription-change",
+                  "customer.subscription.*",
+                  "20261117.3",
+                  "318",
+                  "2m ago",
+                ],
+                ["stripe-webhook-router", "Every delivery", "20261117.3", "1,961", "14s ago"],
+              ]}
+              alignRight={[3]}
+            />
+          </DetailTableTab>
+        ) : tab === "waiters" ? (
+          <DetailTableTab>
+            <StoryTable
+              headers={["Run", "Waiting for", "Since", "Times out"]}
+              rows={[
+                ["run_6p3kx9m2wq", "invoice.paid where id = in_1QyH8s", "Nov 17, 15:02", "In 3h"],
+                ["run_2v8nb4t7zc", "charge.refunded", "Nov 17, 16:20", "In 6d"],
+              ]}
+            />
+          </DetailTableTab>
+        ) : (
+          <DetailMain className="gap-7">
+            <WebhookSettings />
+          </DetailMain>
+        )}
+      </DetailPage>
+    </>
+  );
+}
 
 function WebhookSettings() {
   return (

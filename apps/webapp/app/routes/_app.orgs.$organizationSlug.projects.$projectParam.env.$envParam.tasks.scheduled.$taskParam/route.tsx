@@ -1,8 +1,8 @@
 import { BookOpenIcon, PlusIcon } from "@heroicons/react/20/solid";
-import { type ShouldRevalidateFunction, useFetcher, useRevalidator } from "@remix-run/react";
+import { type ShouldRevalidateFunction } from "@remix-run/react";
 import { type LoaderFunctionArgs, redirect } from "@remix-run/server-runtime";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { typeddefer, useTypedFetcher, useTypedLoaderData } from "remix-typedjson";
+import { useCallback, useMemo } from "react";
+import { typeddefer, useTypedLoaderData } from "remix-typedjson";
 import { ClockIcon } from "~/assets/icons/ClockIcon";
 import { taskAgentPageContext } from "~/components/dashboard-agent/suggested-prompts";
 import { PageBody, PageContainer } from "~/components/layout/AppLayout";
@@ -29,8 +29,6 @@ import { InlineCode } from "~/components/code/InlineCode";
 import { NavBar } from "~/components/primitives/PageHeader";
 import { PaginationControls } from "~/components/primitives/Pagination";
 import { Paragraph } from "~/components/primitives/Paragraph";
-import { Sheet, SheetContent } from "~/components/primitives/SheetV3";
-import { Spinner } from "~/components/primitives/Spinner";
 import {
   Table,
   TableBlankRow,
@@ -40,11 +38,10 @@ import {
   TableHeaderCell,
   TableRow,
 } from "~/components/primitives/Table";
-import { useToast } from "~/components/primitives/Toast";
 import { TruncatedText } from "~/components/primitives/TruncatedText";
 import { EnabledStatus } from "~/components/runs/v3/EnabledStatus";
 import { ScheduleTypeCombo } from "~/components/runs/v3/ScheduleType";
-import { ScheduleInspector } from "~/components/schedules/ScheduleInspector";
+import { ScheduleFormDialog } from "~/components/schedules/ScheduleViews";
 import { ScheduleLimitActions } from "~/components/schedules/ScheduleLimitActions";
 import { SchedulesUsageBar } from "~/components/schedules/SchedulesUsageBar";
 import { TaskDetailView } from "~/components/tasks/TaskDetailView";
@@ -60,18 +57,12 @@ import { formatNumber } from "~/utils/numberFormatter";
 import { pageMeta } from "~/utils/pageTitle";
 import {
   docsPath,
-  v3EditSchedulePath,
   v3EnvironmentPath,
-  v3NewSchedulePath,
-  v3SchedulePath,
+  v3ScheduledTaskSchedulePath,
   v3SchedulesAddOnPath,
 } from "~/utils/pathBuilder";
 import { parseFiniteInt } from "~/utils/searchParams";
-import type { loader as scheduleDetailLoader } from "../_app.orgs.$organizationSlug.projects.$projectParam.env.$envParam.schedules.$scheduleParam/route";
-import type { loader as scheduleEditLoader } from "../_app.orgs.$organizationSlug.projects.$projectParam.env.$envParam.schedules.edit.$scheduleParam/route";
-import type { loader as scheduleNewLoader } from "../_app.orgs.$organizationSlug.projects.$projectParam.env.$envParam.schedules.new/route";
 import { useCurrentPlan } from "../_app.orgs.$organizationSlug/route";
-import { UpsertScheduleForm } from "../resources.orgs.$organizationSlug.projects.$projectParam.env.$envParam.schedules.new/route";
 
 export const handle: Handle = {
   agentPageContext: (data) => taskAgentPageContext(data),
@@ -83,6 +74,20 @@ export const meta = pageMeta<typeof loader>(({ data, params }) => [
 ]);
 
 export const loader = async ({ request, params }: LoaderFunctionArgs) => {
+  // `?schedule=<id>` opened the schedule in a side sheet before it had a page of its own.
+  const linkedSchedule = new URL(request.url).searchParams.get("schedule");
+  if (linkedSchedule && params.organizationSlug && params.projectParam && params.envParam) {
+    throw redirect(
+      v3ScheduledTaskSchedulePath(
+        { slug: params.organizationSlug },
+        { slug: params.projectParam },
+        { slug: params.envParam },
+        params.taskParam ?? "",
+        { friendlyId: linkedSchedule }
+      )
+    );
+  }
+
   const { user, project, environment, page } = await loadTaskDetailPage({
     request,
     params,
@@ -131,13 +136,6 @@ export default function Page() {
   const environment = useEnvironment();
 
   const search = useSearchParams();
-  const openScheduleId = search.value("schedule");
-  const openSchedule = useCallback(
-    (friendlyId: string) => search.replace({ schedule: friendlyId }),
-    [search]
-  );
-  const closeSchedule = useCallback(() => search.del("schedule"), [search]);
-
   const isCreatingSchedule = search.has("createSchedule");
   const openCreateSchedule = useCallback(() => search.replace({ createSchedule: "1" }), [search]);
   const closeCreateSchedule = useCallback(() => search.del("createSchedule"), [search]);
@@ -197,7 +195,12 @@ export default function Page() {
             <NoSchedulesAttachedPanel />
           </DetailMain>
         ) : (
-          <SchedulesTable schedules={sortedSchedules} onSelectSchedule={openSchedule} />
+          <SchedulesTable
+            schedules={sortedSchedules}
+            rowLink={(schedule) =>
+              v3ScheduledTaskSchedulePath(organization, project, environment, task.slug, schedule)
+            }
+          />
         )}
       </DetailTableTab>
       {scheduleList ? (
@@ -237,19 +240,8 @@ export default function Page() {
         />
       </PageBody>
 
-      <ScheduleSheet
-        openScheduleId={openScheduleId}
-        organization={organization}
-        project={project}
-        environment={environment}
-        onClose={closeSchedule}
-      />
-
-      <CreateScheduleSheet
-        open={isCreatingSchedule}
-        organization={organization}
-        project={project}
-        environment={environment}
+      <ScheduleFormDialog
+        mode={isCreatingSchedule ? "new" : undefined}
         defaultTaskIdentifier={task.slug}
         onClose={closeCreateSchedule}
       />
@@ -369,251 +361,6 @@ function CreateScheduleButton({
   );
 }
 
-function CreateScheduleSheet({
-  open,
-  organization,
-  project,
-  environment,
-  defaultTaskIdentifier,
-  onClose,
-}: {
-  open: boolean;
-  organization: ReturnType<typeof useOrganization>;
-  project: ReturnType<typeof useProject>;
-  environment: ReturnType<typeof useEnvironment>;
-  defaultTaskIdentifier: string;
-  onClose: () => void;
-}) {
-  const fetcher = useTypedFetcher<typeof scheduleNewLoader>();
-  const loadScheduleForm = fetcher.load;
-  // Embedded create — stays on this page via `_format=json`.
-  const createFetcher = useFetcher<{ ok: boolean; message?: string }>();
-  const toast = useToast();
-  const revalidator = useRevalidator();
-  // `useRevalidator()` and `onClose` change identity every render — guard
-  // against the dep churn so we only handle each response once.
-  const handledCreateRef = useRef<unknown>(null);
-  const newPath = v3NewSchedulePath(organization, project, environment);
-
-  useEffect(() => {
-    if (open) loadScheduleForm(newPath);
-  }, [open, newPath, loadScheduleForm]);
-
-  // Toast + close + revalidate so the new schedule appears.
-  useEffect(() => {
-    const data = createFetcher.data;
-    if (createFetcher.state !== "idle" || !data) return;
-    if (handledCreateRef.current === data) return;
-    handledCreateRef.current = data;
-    if (data.ok) {
-      toast.success(data.message ?? "Schedule created");
-      revalidator.revalidate();
-      onClose();
-    } else if (data.message) {
-      toast.error(data.message);
-    }
-  }, [createFetcher.state, createFetcher.data, toast, revalidator, onClose]);
-
-  const data = fetcher.data;
-  const isLoading = fetcher.state === "loading" || (open && !data);
-
-  return (
-    <Sheet open={open} onOpenChange={(o) => !o && onClose()}>
-      <SheetContent
-        side="right"
-        className="w-[480px] max-w-none border-l border-grid-dimmed bg-background-bright p-0 sm:max-w-none"
-        onOpenAutoFocus={(e) => e.preventDefault()}
-      >
-        {isLoading || !data ? (
-          <TableLoading />
-        ) : (
-          <UpsertScheduleForm
-            schedule={data.schedule}
-            possibleTasks={data.possibleTasks}
-            possibleEnvironments={data.possibleEnvironments}
-            possibleTimezones={data.possibleTimezones}
-            newSchedulePolicy={data.newSchedulePolicy}
-            showGenerateField={data.showGenerateField}
-            defaultTaskIdentifier={defaultTaskIdentifier}
-            onCancel={onClose}
-            submitFetcher={createFetcher}
-          />
-        )}
-      </SheetContent>
-    </Sheet>
-  );
-}
-
-function ScheduleSheet({
-  openScheduleId,
-  organization,
-  project,
-  environment,
-  onClose,
-}: {
-  openScheduleId: string | undefined;
-  organization: ReturnType<typeof useOrganization>;
-  project: ReturnType<typeof useProject>;
-  environment: ReturnType<typeof useEnvironment>;
-  onClose: () => void;
-}) {
-  const detailFetcher = useTypedFetcher<typeof scheduleDetailLoader>();
-  const loadScheduleDetail = detailFetcher.load;
-  const editFetcher = useTypedFetcher<typeof scheduleEditLoader>();
-  const loadScheduleEditor = editFetcher.load;
-  // Embedded enable/disable — stays in the sheet via `_format=json`.
-  const activeToggleFetcher = useFetcher<{ ok: boolean; active?: boolean; message?: string }>();
-  // Embedded update submission — same idea.
-  const updateFetcher = useFetcher<{ ok: boolean; message?: string }>();
-  // Embedded delete submission — same idea.
-  const deleteFetcher = useFetcher<{ ok: boolean; message?: string }>();
-  const toast = useToast();
-  const revalidator = useRevalidator();
-  // Dedupe response handling against unstable deps (revalidator/onClose).
-  const handledToggleRef = useRef<unknown>(null);
-  const handledUpdateRef = useRef<unknown>(null);
-  const handledDeleteRef = useRef<unknown>(null);
-  const [mode, setMode] = useState<"inspect" | "edit">("inspect");
-
-  const detailPath = openScheduleId
-    ? v3SchedulePath(organization, project, environment, { friendlyId: openScheduleId })
-    : undefined;
-  const editPath = openScheduleId
-    ? v3EditSchedulePath(organization, project, environment, { friendlyId: openScheduleId })
-    : undefined;
-
-  // Always reopen in inspect mode.
-  useEffect(() => {
-    // oxlint-disable-next-line react/set-state-in-effect -- This effect intentionally synchronizes route state after an external or lifecycle change.
-    setMode("inspect");
-  }, [openScheduleId]);
-
-  useEffect(() => {
-    if (detailPath) loadScheduleDetail(detailPath);
-  }, [detailPath, loadScheduleDetail]);
-
-  useEffect(() => {
-    if (mode === "edit" && editPath) loadScheduleEditor(editPath);
-  }, [mode, editPath, loadScheduleEditor]);
-
-  // Reload inspector data so Enable/Disable label flips; revalidate the
-  // route loader so the sidebar's list/Overview stay in sync; toast on error.
-  useEffect(() => {
-    const data = activeToggleFetcher.data;
-    if (activeToggleFetcher.state !== "idle" || !data) return;
-    if (handledToggleRef.current === data) return;
-    handledToggleRef.current = data;
-    if (data.ok) {
-      if (detailPath) loadScheduleDetail(detailPath);
-      revalidator.revalidate();
-    } else if (data.message) {
-      toast.error(data.message);
-    }
-  }, [
-    activeToggleFetcher.state,
-    activeToggleFetcher.data,
-    detailPath,
-    toast,
-    revalidator,
-    loadScheduleDetail,
-  ]);
-
-  // Toast + back to inspect + reload + revalidate so both the inspector
-  // and the sidebar reflect the update.
-  useEffect(() => {
-    const data = updateFetcher.data;
-    if (updateFetcher.state !== "idle" || !data) return;
-    if (handledUpdateRef.current === data) return;
-    handledUpdateRef.current = data;
-    if (data.ok) {
-      toast.success(data.message ?? "Schedule updated");
-      // oxlint-disable-next-line react/set-state-in-effect -- This effect intentionally synchronizes route state after an external or lifecycle change.
-      setMode("inspect");
-      if (detailPath) loadScheduleDetail(detailPath);
-      revalidator.revalidate();
-    } else if (data.message) {
-      toast.error(data.message);
-    }
-  }, [updateFetcher.state, updateFetcher.data, detailPath, toast, revalidator, loadScheduleDetail]);
-
-  // Toast + close + revalidate so the deleted row disappears.
-  useEffect(() => {
-    const data = deleteFetcher.data;
-    if (deleteFetcher.state !== "idle" || !data) return;
-    if (handledDeleteRef.current === data) return;
-    handledDeleteRef.current = data;
-    if (data.ok) {
-      toast.success(data.message ?? "Schedule deleted");
-      revalidator.revalidate();
-      onClose();
-    } else if (data.message) {
-      toast.error(data.message);
-    }
-  }, [deleteFetcher.state, deleteFetcher.data, toast, revalidator, onClose]);
-
-  const schedule = detailFetcher.data?.schedule;
-  // Treat stale data (previous schedule still in fetcher cache after the
-  // user clicked a different row) as loading — otherwise we briefly flash
-  // the previous schedule's content while the new fetch is in flight.
-  const isStaleSchedule = !!schedule && !!openScheduleId && schedule.friendlyId !== openScheduleId;
-  // Only show the loading spinner when we actually lack good data —
-  // background reloads (e.g. after enable/disable) keep the inspector
-  // visible with its current values until the fresh data arrives.
-  const isDetailLoading = isStaleSchedule || (!!openScheduleId && detailFetcher.data === undefined);
-  // Distinct from loading: the loader has resolved and the schedule is
-  // genuinely gone (returned `null`, e.g. deleted externally).
-  const isScheduleMissing =
-    !!openScheduleId && !isDetailLoading && detailFetcher.data?.schedule === null;
-  const editData = editFetcher.data;
-  // Mirror the detail-fetcher staleness check so the edit form doesn't
-  // briefly flash a previously-edited schedule's data on the first render
-  // after switching schedules.
-  const isStaleEditData =
-    !!editData?.schedule && !!openScheduleId && editData.schedule.friendlyId !== openScheduleId;
-  const isEditLoading =
-    mode === "edit" && (editFetcher.state === "loading" || !editData || isStaleEditData);
-
-  return (
-    <Sheet open={!!openScheduleId} onOpenChange={(open) => !open && onClose()}>
-      <SheetContent
-        side="right"
-        className="w-[480px] max-w-none border-l border-grid-dimmed bg-background-bright p-0 sm:max-w-none"
-        onOpenAutoFocus={(e) => e.preventDefault()}
-      >
-        {mode === "edit" ? (
-          isEditLoading || !editData ? (
-            <TableLoading />
-          ) : (
-            <UpsertScheduleForm
-              schedule={editData.schedule}
-              possibleTasks={editData.possibleTasks}
-              possibleEnvironments={editData.possibleEnvironments}
-              possibleTimezones={editData.possibleTimezones}
-              showGenerateField={editData.showGenerateField}
-              onCancel={() => setMode("inspect")}
-              submitFetcher={updateFetcher}
-            />
-          )
-        ) : isDetailLoading ? (
-          <TableLoading />
-        ) : isScheduleMissing ? (
-          <ScheduleMissingPanel onClose={onClose} />
-        ) : schedule ? (
-          <ScheduleInspector
-            schedule={schedule}
-            actionPath={detailPath}
-            onEdit={() => setMode("edit")}
-            activeToggleFetcher={activeToggleFetcher}
-            deleteFetcher={deleteFetcher}
-          />
-        ) : (
-          <TableLoading />
-        )}
-      </SheetContent>
-    </Sheet>
-  );
-}
-
 type LoaderData = ReturnType<typeof useTypedLoaderData<typeof loader>>;
 
 type ScheduleRow = NonNullable<LoaderData["scheduleList"]>["schedules"][number];
@@ -635,10 +382,11 @@ function NextRun({ schedule }: { schedule: Pick<ScheduleRow, "active" | "nextRun
 
 function SchedulesTable({
   schedules,
-  onSelectSchedule,
+  rowLink,
 }: {
   schedules: ScheduleRow[];
-  onSelectSchedule: (friendlyId: string) => void;
+  /** Each row opens this schedule's page. */
+  rowLink: (schedule: ScheduleRow) => string;
 }) {
   if (schedules.length === 0) {
     return (
@@ -669,10 +417,10 @@ function SchedulesTable({
       </TableHeader>
       <TableBody>
         {schedules.map((schedule) => {
-          const open = () => onSelectSchedule(schedule.friendlyId);
+          const link = rowLink(schedule);
           return (
             <TableRow key={schedule.id} className="group">
-              <TableCell onClick={open} isTabbableCell>
+              <TableCell to={link} isTabbableCell>
                 <span className="inline-flex flex-col gap-0.5">
                   <TruncatedText
                     text={schedule.friendlyId}
@@ -681,33 +429,33 @@ function SchedulesTable({
                   <ScheduleTypeCombo type={schedule.type} className="text-xs text-text-dimmed" />
                 </span>
               </TableCell>
-              <TableCell onClick={open}>
+              <TableCell to={link}>
                 <span className="inline-flex flex-col">
                   <span className="font-mono text-xs">{schedule.cron}</span>
                   <span className="text-xs text-text-dimmed">{schedule.timezone}</span>
                 </span>
               </TableCell>
-              <TableCell onClick={open}>
+              <TableCell to={link}>
                 <span className="text-xs">{schedule.window ?? "–"}</span>
               </TableCell>
-              <TableCell onClick={open}>
+              <TableCell to={link}>
                 {schedule.externalId ? (
                   <span className="font-mono text-xs">{schedule.externalId}</span>
                 ) : (
                   <span className="text-text-dimmed">–</span>
                 )}
               </TableCell>
-              <TableCell onClick={open}>
+              <TableCell to={link}>
                 <NextRun schedule={schedule} />
               </TableCell>
-              <TableCell onClick={open}>
+              <TableCell to={link}>
                 {schedule.lastRun ? (
                   <RelativeDateTime date={schedule.lastRun} />
                 ) : (
                   <span className="text-text-dimmed">Never</span>
                 )}
               </TableCell>
-              <TableCell onClick={open}>
+              <TableCell to={link}>
                 <EnabledStatus enabled={schedule.active} />
               </TableCell>
             </TableRow>
@@ -747,26 +495,5 @@ function NoSchedulesAttachedPanel() {
         the dashboard or via the SDK with <InlineCode>schedules.create()</InlineCode>.
       </Paragraph>
     </InfoPanel>
-  );
-}
-
-function TableLoading() {
-  return (
-    <div className="flex h-full items-center justify-center">
-      <Spinner className="size-6" />
-    </div>
-  );
-}
-
-function ScheduleMissingPanel({ onClose }: { onClose: () => void }) {
-  return (
-    <div className="flex h-full flex-col items-center justify-center gap-3 bg-background-bright p-6 text-center">
-      <Paragraph variant="small" className="text-text-bright">
-        This schedule no longer exists.
-      </Paragraph>
-      <Button variant="secondary/small" onClick={onClose}>
-        Close
-      </Button>
-    </div>
   );
 }

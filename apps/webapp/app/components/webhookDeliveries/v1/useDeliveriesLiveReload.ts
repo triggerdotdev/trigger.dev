@@ -8,9 +8,9 @@ import {
   type loader as liveDeliveriesLoader,
 } from "~/routes/resources.orgs.$organizationSlug.projects.$projectParam.env.$envParam.webhooks.deliveries.live";
 import { DELIVERY_FILTER_PARAMS } from "./deliveryListFilters";
+import { isLiveCountTick, liveCountScope } from "./liveCountScope";
 
 const DELIVERIES_POLL_INTERVAL_MS = 3000;
-const NEW_DELIVERIES_EVERY_N_POLL_TICKS = 2;
 
 const IN_FLIGHT_STATUSES = new Set(["PENDING", "PROCESSING"]);
 
@@ -53,16 +53,15 @@ function patchVisibleDeliveriesWithLiveUpdates(
   });
 }
 
-function isNewDeliveriesCheckTick(tick: number) {
-  return tick === 1 || tick % NEW_DELIVERIES_EVERY_N_POLL_TICKS === 0;
-}
-
 function useNewDeliveriesDetection({
   deliveries,
   isLoading,
+  everyTicks,
 }: {
   deliveries: ListedDelivery[];
   isLoading: boolean;
+  /** New deliveries are counted on every nth poll tick. */
+  everyTicks: number;
 }) {
   const pollTickRef = useRef(0);
   const [knownNewestDeliveryMs, setKnownNewestDeliveryMs] = useState(
@@ -86,8 +85,8 @@ function useNewDeliveriesDetection({
 
   const checkNewDeliveriesOnTick = useCallback(() => {
     pollTickRef.current += 1;
-    return shouldPollForNewDeliveries && isNewDeliveriesCheckTick(pollTickRef.current);
-  }, [shouldPollForNewDeliveries]);
+    return shouldPollForNewDeliveries && isLiveCountTick(pollTickRef.current, everyTicks);
+  }, [shouldPollForNewDeliveries, everyTicks]);
 
   return {
     knownNewestDeliveryMs,
@@ -103,7 +102,8 @@ function useNewDeliveriesDetection({
 export function useDeliveriesLiveReload({
   deliveries,
   isLoading,
-  webhookEndpointId,
+  webhookEndpointIds,
+  webhookTaskSlug,
   organizationSlug,
   projectSlug,
   environmentSlug,
@@ -111,12 +111,23 @@ export function useDeliveriesLiveReload({
   deliveries: ListedDelivery[];
   isLoading: boolean;
   /** Omit to poll across every endpoint in the environment (the cross-endpoint deliveries list). */
-  webhookEndpointId?: string;
+  webhookEndpointIds?: string[];
+  /**
+   * On a webhook task's page. Its endpoint ids are sent like any other page's; only when the task
+   * subscribes to more endpoints than fit in a URL does the server look them up.
+   */
+  webhookTaskSlug?: string;
   organizationSlug: string;
   projectSlug: string;
   environmentSlug: string;
 }) {
   const location = useLocation();
+  // Strings and numbers, so a new array with the same ids doesn't rebuild the poll.
+  const scope = liveCountScope({ webhookEndpointIds, webhookTaskSlug });
+  const endpointIdsParam = scope.kind === "endpoints" ? scope.ids : "";
+  const taskSlugParam = scope.kind === "task" ? scope.slug : "";
+  // An empty list is no endpoints, not every endpoint: there is nothing that could arrive.
+  const hasNoEndpoints = scope.kind === "none";
   const deliveriesPollFetcher = useTypedFetcher<typeof liveDeliveriesLoader>();
   const deliveriesPollFetcherStateRef = useRef(deliveriesPollFetcher.state);
   // oxlint-disable-next-line react/refs -- This ref intentionally coordinates an imperative integration outside React state.
@@ -132,7 +143,11 @@ export function useDeliveriesLiveReload({
     dismissNewDeliveries,
     checkNewDeliveriesOnTick,
     resetNewDeliveriesTracking,
-  } = useNewDeliveriesDetection({ deliveries, isLoading });
+  } = useNewDeliveriesDetection({
+    deliveries,
+    isLoading,
+    everyTicks: scope.kind === "none" ? 1 : scope.everyTicks,
+  });
 
   useEffect(() => {
     // oxlint-disable-next-line react/set-state-in-effect -- This effect intentionally synchronizes local state after an external or lifecycle change.
@@ -182,8 +197,10 @@ export function useDeliveriesLiveReload({
       if (!hasActiveDeliveries && !checkForNewDeliveries) return;
 
       const searchParams = new URLSearchParams();
-      if (webhookEndpointId) {
-        searchParams.set("webhookEndpointId", webhookEndpointId);
+      if (taskSlugParam) {
+        searchParams.set("webhookTask", taskSlugParam);
+      } else if (endpointIdsParam) {
+        searchParams.set("webhookEndpointIds", endpointIdsParam);
       }
       if (hasActiveDeliveries) {
         searchParams.set("deliveryIds", activeDeliveryIdsParam);
@@ -208,20 +225,22 @@ export function useDeliveriesLiveReload({
       hasActiveDeliveries,
       location.search,
       knownNewestDeliveryMs,
-      webhookEndpointId,
+      endpointIdsParam,
+      taskSlugParam,
       deliveriesPollFetcher,
       deliveriesResourcesBasePath,
     ]
   );
 
-  const shouldPoll = !isLoading && (hasActiveDeliveries || shouldPollForNewDeliveries);
+  const watchForNewDeliveries = shouldPollForNewDeliveries && !hasNoEndpoints;
+  const shouldPoll = !isLoading && (hasActiveDeliveries || watchForNewDeliveries);
 
   useInterval({
     interval: DELIVERIES_POLL_INTERVAL_MS,
     onLoad: true,
     disabled: !shouldPoll,
     callback: () => {
-      loadDeliveriesPoll(checkNewDeliveriesOnTick());
+      loadDeliveriesPoll(checkNewDeliveriesOnTick() && !hasNoEndpoints);
     },
   });
 

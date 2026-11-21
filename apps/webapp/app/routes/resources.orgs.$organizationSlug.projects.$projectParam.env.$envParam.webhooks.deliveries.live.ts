@@ -2,8 +2,10 @@ import { type LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { typedjson } from "remix-typedjson";
 import { z } from "zod";
 import { parseDeliveryListFilters } from "~/components/webhookDeliveries/v1/deliveryListFilters";
+import { MAX_LIVE_ENDPOINT_IDS } from "~/components/webhookDeliveries/v1/liveCountScope";
 import { $replica, webhookReplica } from "~/db.server";
 import { WebhookDeliveriesListPresenter } from "~/presenters/v3/WebhookDeliveriesListPresenter.server";
+import { WebhookDetailPresenter } from "~/presenters/v3/WebhookDetailPresenter.server";
 import { clickhouseFactory } from "~/services/clickhouse/clickhouseFactoryInstance.server";
 import { loadProjectEnvironmentFromRequest } from "~/services/loadProjectEnvironmentFromRequest.server";
 import { requireUser } from "~/services/session.server";
@@ -27,7 +29,19 @@ const deliveryIdsQueryParam = z
   });
 
 const SearchParamsSchema = z.object({
-  webhookEndpointId: z.string().optional(),
+  /** Comma-separated endpoint ids; omit for every endpoint in the environment. */
+  webhookEndpointIds: z
+    .string()
+    .optional()
+    .transform((value) => {
+      const ids = value?.split(",").filter(Boolean) ?? [];
+      return ids.length > 0 ? [...new Set(ids)].slice(0, MAX_LIVE_ENDPOINT_IDS) : undefined;
+    }),
+  /**
+   * A webhook task's slug: count new deliveries across the endpoints it subscribes to. Its page
+   * sends this only when the task has more endpoints than `webhookEndpointIds` holds.
+   */
+  webhookTask: z.string().min(1).max(256).optional(),
   deliveryIds: deliveryIdsQueryParam,
   includeNewDeliveries: z
     .string()
@@ -55,7 +69,7 @@ function mapDeliveryToLiveFields(delivery: ListedWebhookDelivery): LiveDeliveryF
 
 export async function loader({ request, params }: LoaderFunctionArgs) {
   const url = new URL(request.url);
-  const { webhookEndpointId, deliveryIds, includeNewDeliveries, since, to } =
+  const { webhookEndpointIds, webhookTask, deliveryIds, includeNewDeliveries, since, to } =
     SearchParamsSchema.parse(Object.fromEntries(url.searchParams));
   // The list's own filters, forwarded by the page, so the count matches what a refresh shows.
   const filters = parseDeliveryListFilters(url.searchParams);
@@ -101,6 +115,16 @@ export async function loader({ request, params }: LoaderFunctionArgs) {
       : Promise.resolve([]),
     newDeliveriesSince !== undefined
       ? (async () => {
+          // A task's endpoints are looked up here, all of them, only when its page asks by slug:
+          // the ids of a task with many endpoints don't fit in the request's URL. This reads every
+          // endpoint in the environment, so the page asks less often than it polls.
+          const endpointIds = webhookTask
+            ? await new WebhookDetailPresenter($replica, clickhouse).findTaskEndpointIds({
+                environmentId: environment.id,
+                webhookSlug: webhookTask,
+              })
+            : webhookEndpointIds;
+          if (endpointIds?.length === 0) return { count: 0, since: newDeliveriesSince };
           const count = await new WebhookDeliveriesListPresenter(
             $replica,
             clickhouse
@@ -108,7 +132,7 @@ export async function loader({ request, params }: LoaderFunctionArgs) {
             organizationId: project.organizationId,
             projectId: project.id,
             environmentId: environment.id,
-            webhookEndpointId,
+            webhookEndpointIds: endpointIds,
             filters,
             since: newDeliveriesSince,
             to,

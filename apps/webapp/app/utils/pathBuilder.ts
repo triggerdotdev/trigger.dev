@@ -593,6 +593,18 @@ export function v3ScheduledTaskPath(
   )}`;
 }
 
+export function v3ScheduledTaskSchedulePath(
+  organization: OrgForPath,
+  project: ProjectForPath,
+  environment: EnvironmentForPath,
+  taskSlug: string,
+  schedule: { friendlyId: string }
+) {
+  return `${v3ScheduledTaskPath(organization, project, environment, taskSlug)}/schedules/${encodeURIComponent(
+    schedule.friendlyId
+  )}`;
+}
+
 export function v3RunsPath(
   organization: OrgForPath,
   project: ProjectForPath,
@@ -718,6 +730,18 @@ export function v3SchedulePath(
   return `${v3EnvironmentPath(organization, project, environment)}/schedules/${
     schedule.friendlyId
   }`;
+}
+
+/** The schedule page's Upcoming calendar on its own (it takes `month`, `day` and `view`). */
+export function v3ScheduleCalendarResourcePath(
+  organization: OrgForPath,
+  project: ProjectForPath,
+  environment: EnvironmentForPath,
+  schedule: { friendlyId: string }
+) {
+  return `/resources/orgs/${organizationParam(organization)}/projects/${projectParam(
+    project
+  )}/env/${environmentParam(environment)}/schedules/${schedule.friendlyId}/calendar`;
 }
 
 export function v3EditSchedulePath(

@@ -1,42 +1,46 @@
-import { BookOpenIcon } from "@heroicons/react/24/solid";
-import { type MetaFunction, useRevalidator } from "@remix-run/react";
-import { type LoaderFunctionArgs } from "@remix-run/server-runtime";
-import { type ReactNode, useState } from "react";
+import { ArrowPathIcon, BookOpenIcon } from "@heroicons/react/20/solid";
+import { Form, useNavigation, useRevalidator } from "@remix-run/react";
+import { type ActionFunctionArgs, type LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import { z } from "zod";
 import { AIChatIcon } from "~/assets/icons/AIChatIcon";
 import { RunsIcon } from "~/assets/icons/RunsIcon";
 import { WebhookIcon } from "~/assets/icons/WebhookIcon";
 import { CodeBlock } from "~/components/code/CodeBlock";
-import { PageBody } from "~/components/layout/AppLayout";
-import { LinkButton } from "~/components/primitives/Buttons";
+import { PageBody, PageContainer } from "~/components/layout/AppLayout";
+import { Badge } from "~/components/primitives/Badge";
+import { Button, LinkButton } from "~/components/primitives/Buttons";
 import { Callout } from "~/components/primitives/Callout";
 import { CopyableText } from "~/components/primitives/CopyableText";
-import { TextLink } from "~/components/primitives/TextLink";
 import { DateTime } from "~/components/primitives/DateTime";
-import { Header2 } from "~/components/primitives/Headers";
-import { NavBar, PageAccessories, PageTitle } from "~/components/primitives/PageHeader";
-import { Paragraph } from "~/components/primitives/Paragraph";
-import * as Property from "~/components/primitives/PropertyTable";
-import { cn } from "~/utils/cn";
-import { RunError } from "~/components/runs/v3/RunError";
-import { matchedWaiterCount, routedSubscriberCount } from "~/v3/webhookDeliveryTargets";
-import { TabButton, TabContainer } from "~/components/primitives/Tabs";
 import {
-  ResizableHandle,
-  ResizablePanel,
-  ResizablePanelGroup,
-} from "~/components/primitives/Resizable";
-import { DeliveryStatusBadge } from "~/components/webhookDeliveries/v1/DeliveryStatus";
+  DetailHeader,
+  DetailPage,
+  DetailPageTitle,
+  DetailProperty,
+  DetailTabs,
+  PropertyGroup,
+  PropertyPair,
+  PropertyRail,
+  type DetailTab,
+  useDetailTab,
+} from "~/components/primitives/detail/DetailPage";
+import { DetailTabEmpty, DetailTableTab } from "~/components/primitives/detail/DetailSections";
+import { NavBar, PageAccessories } from "~/components/primitives/PageHeader";
+import { Spinner } from "~/components/primitives/Spinner";
+import { TextLink } from "~/components/primitives/TextLink";
+import { RunError } from "~/components/runs/v3/RunError";
 import { DeliveryHeadersTable } from "~/components/webhookDeliveries/v1/DeliveryHeadersTable";
+import { DeliveryStatusBadge } from "~/components/webhookDeliveries/v1/DeliveryStatus";
 import { DeliveryTargetsTable } from "~/components/webhookDeliveries/v1/DeliveryTargetsTable";
 import { DeliveryTimeline } from "~/components/webhookDeliveries/v1/DeliveryTimeline";
-import { $replica } from "~/db.server";
-import { webhookLimitsForEnvironment } from "~/v3/webhookLimits.server";
+import { $replica, webhookReplica } from "~/db.server";
+import { env as serverEnv } from "~/env.server";
 import { useEnvironment } from "~/hooks/useEnvironment";
 import { useInterval } from "~/hooks/useInterval";
 import { useOrganization } from "~/hooks/useOrganizations";
 import { useProject } from "~/hooks/useProject";
+import { redirectWithErrorMessage, redirectWithSuccessMessage } from "~/models/message.server";
 import { findProjectBySlug } from "~/models/project.server";
 import { findEnvironmentBySlug } from "~/models/runtimeEnvironment.server";
 import {
@@ -44,18 +48,25 @@ import {
   type WebhookDeliveryDetail,
 } from "~/presenters/v3/WebhookDeliveryDetailPresenter.server";
 import { clickhouseFactory } from "~/services/clickhouse/clickhouseFactoryInstance.server";
+import { rbac } from "~/services/rbac.server";
 import { requireUser } from "~/services/session.server";
+import { webhookDeliveriesRepository } from "~/services/webhookDeliveriesRepository/webhookDeliveriesRepository.server";
 import { formatBytes } from "~/utils/columnFormat";
+import { pageMeta } from "~/utils/pageTitle";
 import {
   docsPath,
   EnvironmentParamSchema,
   v3RunPath,
   v3SessionPath,
-  v3WebhooksPath,
+  v3WebhookDeliveryPath,
   v3WebhookEndpointPath,
+  v3WebhooksPath,
 } from "~/utils/pathBuilder";
-import { FEATURE_FLAG } from "~/v3/featureFlags";
-import { flag } from "~/v3/featureFlags.server";
+import { isDeliveryStillBeingRecorded } from "~/v3/webhookDeliveryRecording";
+import { matchedWaiterCount, routedSubscriberCount } from "~/v3/webhookDeliveryTargets";
+import { webhookEngine } from "~/v3/webhookEngine.server";
+import { webhookLimitsForEnvironment } from "~/v3/webhookLimits.server";
+import { requireWebhooksAccess } from "~/v3/webhooksAccess.server";
 
 const DeliveryParamSchema = EnvironmentParamSchema.extend({
   deliveryParam: z.string(),
@@ -63,47 +74,35 @@ const DeliveryParamSchema = EnvironmentParamSchema.extend({
 
 const EVENT_DISPLAY_CAP = 128 * 1024;
 
-export const meta: MetaFunction<typeof loader> = ({ data }) => {
-  const friendlyId = (data as { delivery?: WebhookDeliveryDetail } | undefined)?.delivery
-    ?.friendlyId;
-  return [
-    { title: friendlyId ? `${friendlyId} | Deliveries | Trigger.dev` : "Delivery | Trigger.dev" },
-  ];
-};
+export const meta = pageMeta<typeof loader>(({ data, params }) => [
+  data?.delivery?.friendlyId ?? params.deliveryParam ?? "Delivery",
+  "Deliveries",
+]);
 
-export const loader = async ({ request, params }: LoaderFunctionArgs) => {
+async function requireDeliveryScope(request: Request, params: LoaderFunctionArgs["params"]) {
   const user = await requireUser(request);
-  const userId = user.id;
   const { organizationSlug, projectParam, envParam, deliveryParam } =
     DeliveryParamSchema.parse(params);
 
-  const project = await findProjectBySlug(organizationSlug, projectParam, userId);
+  const project = await findProjectBySlug(organizationSlug, projectParam, user.id);
   if (!project) throw new Response("Project not found", { status: 404 });
-  const environment = await findEnvironmentBySlug(project.id, envParam, userId);
+  const environment = await findEnvironmentBySlug(project.id, envParam, user.id);
   if (!environment) throw new Response("Environment not found", { status: 404 });
 
-  // Feature gate: same as the deliveries list. Global FeatureFlag OR per-org override;
-  // admins/impersonators always pass.
-  if (!user.admin && !user.isImpersonating) {
-    const org = await $replica.organization.findFirst({
-      where: { id: project.organizationId },
-      select: { featureFlags: true },
-    });
-    const enabled = await flag({
-      key: FEATURE_FLAG.hasWebhooksAccess,
-      defaultValue: false,
-      overrides: (org?.featureFlags as Record<string, unknown>) ?? {},
-    });
-    if (!enabled) throw new Response("Not found", { status: 404 });
-  }
+  await requireWebhooksAccess(user, project.organizationId);
+
+  return { user, project, environment, deliveryParam };
+}
+
+export const loader = async ({ request, params }: LoaderFunctionArgs) => {
+  const { user, project, environment, deliveryParam } = await requireDeliveryScope(request, params);
 
   const clickhouse = await clickhouseFactory.getClickhouseForOrganization(
     project.organizationId,
     "standard"
   );
 
-  const presenter = new WebhookDeliveryDetailPresenter($replica, clickhouse);
-  const delivery = await presenter.call({
+  const delivery = await new WebhookDeliveryDetailPresenter($replica, clickhouse).call({
     organizationId: project.organizationId,
     projectId: project.id,
     environmentId: environment.id,
@@ -118,27 +117,129 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
     ? rawEventJson!.slice(0, EVENT_DISPLAY_CAP)
     : rawEventJson;
 
+  const auth = await rbac.authenticateSession(request, {
+    userId: user.id,
+    organizationId: project.organizationId,
+    projectId: project.id,
+  });
+
   // A missing delivery is most often one that aged out of retention (a bookmarked or shared link),
   // so render a friendly retention-aware state rather than a hard 404.
   return typedjson({
     delivery: delivery ? { ...delivery, parsedEvent: null } : delivery,
+    // A replay redirects here before its new delivery is saved, so a missing delivery that was
+    // minted moments ago is on its way: the page waits for it and doesn't say it aged out.
+    isBeingRecorded: !delivery && isDeliveryStillBeingRecorded(deliveryParam, new Date()),
     eventJson,
     eventBytes,
     eventTruncatedForDisplay,
     retentionDays: (await webhookLimitsForEnvironment(environment.id)).deliveryRetentionDays,
+    canReplay:
+      serverEnv.WEBHOOK_ENABLED === "1" &&
+      auth.ok &&
+      auth.ability.can("write", { type: "webhooks", envType: environment.type }),
   });
 };
 
-/** Centred placeholder for a tab whose content was never captured. */
-function EmptyTabMessage({ children }: { children: ReactNode }) {
-  return (
-    <div className="flex h-full items-center justify-center">
-      <Paragraph variant="base" className="text-center text-text-dimmed">
-        {children}
-      </Paragraph>
-    </div>
+/**
+ * Replay: run the delivery again from its stored event, as a new delivery to every current
+ * subscriber (the API's replay). It starts runs, so it needs `trigger` on each subscriber's task.
+ */
+export const action = async ({ request, params }: ActionFunctionArgs) => {
+  const { user, project, environment, deliveryParam } = await requireDeliveryScope(request, params);
+  const url = new URL(request.url);
+  const here = `${url.pathname}${url.search}`;
+
+  if (serverEnv.WEBHOOK_ENABLED !== "1") {
+    return redirectWithErrorMessage(here, request, "Webhooks are turned off on this server");
+  }
+
+  const auth = await rbac.authenticateSession(request, {
+    userId: user.id,
+    organizationId: project.organizationId,
+    projectId: project.id,
+  });
+  if (!auth.ok || !auth.ability.can("write", { type: "webhooks", envType: environment.type })) {
+    return redirectWithErrorMessage(
+      here,
+      request,
+      "You don't have permission to replay webhook deliveries."
+    );
+  }
+  const ability = auth.ability;
+
+  const clickhouse = await clickhouseFactory.getClickhouseForOrganization(
+    project.organizationId,
+    "standard"
   );
-}
+  const original = await webhookDeliveriesRepository({
+    clickhouse,
+    prisma: webhookReplica,
+  }).getDelivery({
+    organizationId: project.organizationId,
+    projectId: project.id,
+    environmentId: environment.id,
+    friendlyId: deliveryParam,
+  });
+  if (!original) return redirectWithErrorMessage(here, request, "Delivery not found");
+
+  const result = await webhookEngine.replayDelivery({
+    id: original.id,
+    createdAt: original.createdAt,
+    authorize: (subscribers) =>
+      subscribers.flatMap((subscriber) => {
+        if (
+          !ability.can("trigger", {
+            type: "tasks",
+            id: subscriber.taskId,
+            envType: environment.type,
+          })
+        ) {
+          return [subscriber.taskId];
+        }
+        if (
+          subscriber.type === "session" &&
+          !ability.can("write", { type: "sessions", envType: environment.type })
+        ) {
+          return [`sessions (for ${subscriber.id})`];
+        }
+        return [];
+      }),
+  });
+
+  switch (result.outcome) {
+    case "replayed": {
+      const path = v3WebhookDeliveryPath(
+        { slug: params.organizationSlug! },
+        project,
+        environment,
+        result.deliveryFriendlyId
+      );
+      return redirectWithSuccessMessage(path, request, `Replayed as ${result.deliveryFriendlyId}`);
+    }
+    case "forbidden":
+      return redirectWithErrorMessage(
+        here,
+        request,
+        `Replaying needs permissions you don't have: ${[...new Set(result.denied)].join(", ")}`
+      );
+    case "queue_full":
+      return redirectWithErrorMessage(
+        here,
+        request,
+        "This environment has too many webhook deliveries waiting. Try again later."
+      );
+    default:
+      return redirectWithErrorMessage(here, request, "This delivery can't be replayed");
+  }
+};
+
+type LoaderData = ReturnType<typeof useTypedLoaderData<typeof loader>>;
+type Delivery = NonNullable<LoaderData["delivery"]>;
+
+/** The page's tabs, in order; the first opens by default. */
+const DELIVERY_TABS = ["event", "headers", "targets"] as const;
+type DeliveryTabId = (typeof DELIVERY_TABS)[number];
 
 function formatDuration(createdAt: Date, processedAt: Date | null): string | null {
   if (!processedAt) return null;
@@ -148,9 +249,18 @@ function formatDuration(createdAt: Date, processedAt: Date | null): string | nul
   return `${(ms / 1000).toFixed(2)}s`;
 }
 
+function deliveryHeaders(delivery: Pick<WebhookDeliveryDetail, "headers">) {
+  return delivery.headers != null &&
+    typeof delivery.headers === "object" &&
+    !Array.isArray(delivery.headers) &&
+    Object.keys(delivery.headers).length > 0
+    ? (delivery.headers as Record<string, string>)
+    : null;
+}
+
 export default function Page() {
-  const { delivery, eventJson, eventBytes, eventTruncatedForDisplay, retentionDays } =
-    useTypedLoaderData<typeof loader>();
+  const data = useTypedLoaderData<typeof loader>();
+  const { delivery } = data;
   const organization = useOrganization();
   const project = useProject();
   const environment = useEnvironment();
@@ -158,38 +268,90 @@ export default function Page() {
 
   const inFlight = delivery?.status === "PENDING" || delivery?.status === "PROCESSING";
   useInterval({
-    interval: 3000,
-    disabled: !inFlight,
+    interval: data.isBeingRecorded ? 1000 : 3000,
+    disabled: !inFlight && !data.isBeingRecorded,
     callback: () => revalidator.revalidate(),
   });
 
   const endpointsPath = v3WebhooksPath(organization, project, environment);
-  const [tab, setTab] = useState<"targets" | "event" | "headers">("event");
 
   if (!delivery) {
     return (
-      <>
+      <PageContainer>
         <NavBar>
-          <PageTitle backButton={{ to: endpointsPath, text: "Endpoints" }} title="Delivery" />
+          <DetailPageTitle title="Delivery" backButton={{ to: endpointsPath, text: "Endpoints" }} />
         </NavBar>
         <PageBody>
-          <div className="mx-auto flex max-w-md flex-col items-center gap-3 py-16 text-center">
-            <WebhookIcon className="size-8 text-text-dimmed" />
-            <Header2>Delivery not available</Header2>
-            <Paragraph variant="small" className="text-text-dimmed">
-              This delivery couldn't be found. Deliveries are retained for {retentionDays} days, so
-              it may have aged out.
-            </Paragraph>
-            <LinkButton variant="secondary/small" to={endpointsPath}>
-              Back to endpoints
-            </LinkButton>
-          </div>
+          {data.isBeingRecorded ? (
+            <DetailTabEmpty
+              title="Saving this delivery"
+              description="It was received moments ago. It shows here as soon as it's saved."
+              action={<Spinner color="muted" className="size-4" />}
+            />
+          ) : (
+            <DetailTabEmpty
+              title="Delivery not available"
+              description={`It couldn't be found. Deliveries are kept for ${data.retentionDays} days, so it may have aged out.`}
+              action={
+                <LinkButton variant="secondary/small" to={endpointsPath}>
+                  Back to endpoints
+                </LinkButton>
+              }
+            />
+          )}
         </PageBody>
-      </>
+      </PageContainer>
     );
   }
 
-  // The inspector names one run or session only when the delivery reached exactly one target;
+  const endpointPath = delivery.webhook
+    ? v3WebhookEndpointPath(organization, project, environment, delivery.webhook.endpointFriendlyId)
+    : undefined;
+
+  return (
+    <PageContainer>
+      <NavBar>
+        <DetailPageTitle
+          title={delivery.friendlyId}
+          crumbs={[
+            { to: endpointsPath, text: "Endpoints" },
+            ...(delivery.webhook && endpointPath
+              ? [{ to: endpointPath, text: delivery.webhook.slug }]
+              : []),
+          ]}
+        />
+        <PageAccessories>
+          <LinkButton
+            variant="docs/small"
+            LeadingIcon={BookOpenIcon}
+            to={docsPath("webhooks/overview")}
+          >
+            Webhooks docs
+          </LinkButton>
+        </PageAccessories>
+      </NavBar>
+      <PageBody scrollable={false}>
+        <DeliveryDetail data={data} delivery={delivery} endpointPath={endpointPath} />
+      </PageBody>
+    </PageContainer>
+  );
+}
+
+function DeliveryDetail({
+  data,
+  delivery,
+  endpointPath,
+}: {
+  data: LoaderData;
+  delivery: Delivery;
+  endpointPath?: string;
+}) {
+  const organization = useOrganization();
+  const project = useProject();
+  const environment = useEnvironment();
+  const [tab, setTab] = useDetailTab<DeliveryTabId>(DELIVERY_TABS);
+
+  // The page names one run or session only when the delivery reached exactly one target;
   // otherwise the Targets tab lists them all.
   const reachedOneTarget =
     routedSubscriberCount(delivery.targets) === 1 && matchedWaiterCount(delivery.targets) === 0;
@@ -203,276 +365,236 @@ export default function Page() {
           friendlyId: delivery.session.friendlyId,
         })
       : undefined;
-  const webhookPath = delivery.webhook
-    ? v3WebhookEndpointPath(organization, project, environment, delivery.webhook.endpointFriendlyId)
-    : undefined;
-
-  const headers =
-    delivery.headers != null &&
-    typeof delivery.headers === "object" &&
-    !Array.isArray(delivery.headers) &&
-    Object.keys(delivery.headers).length > 0
-      ? (delivery.headers as Record<string, string>)
-      : null;
+  const headers = deliveryHeaders(delivery);
   const duration = formatDuration(delivery.createdAt, delivery.processedAt);
 
-  return (
-    <>
-      <NavBar>
-        <PageTitle
-          backButton={
-            webhookPath
-              ? { to: webhookPath, text: delivery.webhook?.slug ?? "Endpoint" }
-              : { to: endpointsPath, text: "Endpoints" }
-          }
-          title={
-            <span className="flex items-center gap-2">
-              <WebhookIcon className="size-4.5 text-webhooks" />
-              <span className="font-mono">{delivery.friendlyId}</span>
-            </span>
-          }
-        />
-        <PageAccessories>
-          <LinkButton
-            variant="docs/small"
-            LeadingIcon={BookOpenIcon}
-            to={docsPath("webhooks/overview")}
-          >
-            Webhooks docs
-          </LinkButton>
-        </PageAccessories>
-      </NavBar>
-      <PageBody scrollable={false}>
-        <ResizablePanelGroup orientation="horizontal" className="max-h-full">
-          <ResizablePanel id="delivery-event" min="300px">
-            <div className="grid h-full grid-rows-[auto_1fr] overflow-hidden">
-              <div className="flex h-10 items-end border-b border-grid-dimmed bg-background-bright pl-3 pr-2">
-                <TabContainer className="-mb-px">
-                  <TabButton
-                    isActive={tab === "event"}
-                    layoutId="delivery-page-tabs"
-                    onClick={() => setTab("event")}
-                  >
-                    Event payload
-                  </TabButton>
-                  <TabButton
-                    isActive={tab === "headers"}
-                    layoutId="delivery-page-tabs"
-                    onClick={() => setTab("headers")}
-                  >
-                    Request headers
-                  </TabButton>
-                  <TabButton
-                    isActive={tab === "targets"}
-                    layoutId="delivery-page-tabs"
-                    onClick={() => setTab("targets")}
-                  >
-                    Targets
-                  </TabButton>
-                </TabContainer>
-              </div>
-              <div
-                className={cn(
-                  "overflow-y-auto scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600",
-                  tab === "event" && "p-3"
-                )}
-              >
-                {tab === "targets" ? (
-                  <DeliveryTargetsTable targets={delivery.targets} />
-                ) : tab === "event" ? (
-                  eventJson ? (
-                    <div className="flex flex-col gap-2">
-                      {eventTruncatedForDisplay ? (
-                        <Callout variant="info">
-                          This event is {formatBytes(eventBytes)}. Showing the first{" "}
-                          {formatBytes(EVENT_DISPLAY_CAP)} for display. The full payload was
-                          delivered to your task.
-                        </Callout>
-                      ) : null}
-                      <CodeBlock code={eventJson} language="json" showLineNumbers maxLines={1000} />
-                    </div>
-                  ) : (
-                    <EmptyTabMessage>
-                      No event payload was captured for this delivery.
-                    </EmptyTabMessage>
-                  )
-                ) : headers ? (
-                  <DeliveryHeadersTable headers={headers} />
-                ) : (
-                  <EmptyTabMessage>
-                    No request headers were captured for this delivery.
-                  </EmptyTabMessage>
-                )}
-              </div>
-            </div>
-          </ResizablePanel>
+  const tabs: DetailTab<DeliveryTabId>[] = [
+    { id: "event", label: "Event" },
+    { id: "headers", label: "Headers", count: headers ? Object.keys(headers).length : 0 },
+    { id: "targets", label: "Targets", count: delivery.targets.length },
+  ];
 
-          <ResizableHandle id="delivery-detail-handle" />
-          <ResizablePanel
-            id="delivery-detail"
-            min="280px"
-            default="380px"
-            max="500px"
-            isStaticAtRest
-          >
-            <div className="grid h-full grid-rows-[auto_1fr] overflow-hidden bg-background-bright">
-              <div className="flex h-10 items-center gap-2 border-b border-grid-dimmed pl-3 pr-2">
-                <Header2 className="truncate">Delivery</Header2>
-              </div>
-              <div className="overflow-y-auto px-3 py-3 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600">
-                <DeliveryTimeline delivery={delivery} runPath={runPath} sessionPath={sessionPath} />
-                {delivery.status === "FAILED" && delivery.errorMessage ? (
-                  <div className="mb-4">
-                    <RunError error={{ type: "STRING_ERROR", raw: delivery.errorMessage }} />
-                  </div>
-                ) : null}
-                <Property.Table>
-                  <Property.Item>
-                    <Property.Label>ID</Property.Label>
-                    <Property.Value>
-                      <CopyableText
-                        value={delivery.friendlyId}
-                        className="font-mono text-sm"
-                        truncate
-                      />
-                    </Property.Value>
-                  </Property.Item>
-                  <Property.Item>
-                    <Property.Label>Status</Property.Label>
-                    <Property.Value>
-                      <DeliveryStatusBadge status={delivery.status} />
-                    </Property.Value>
-                  </Property.Item>
-                  {delivery.filterReason ? (
-                    <Property.Item>
-                      <Property.Label>Filter reason</Property.Label>
-                      <Property.Value>
-                        <span className="text-text-dimmed">{delivery.filterReason}</span>
-                      </Property.Value>
-                    </Property.Item>
-                  ) : null}
-                  <Property.Item>
-                    <Property.Label>Endpoint</Property.Label>
-                    <Property.Value>
-                      {delivery.webhook ? (
-                        webhookPath ? (
-                          <TextLink to={webhookPath} className="inline-flex items-center gap-1">
-                            <WebhookIcon className="size-4 text-webhooks" />
-                            {delivery.webhook.slug}
-                          </TextLink>
-                        ) : (
-                          <span className="inline-flex items-center gap-1">
-                            <WebhookIcon className="size-4 text-webhooks" />
-                            {delivery.webhook.slug}
-                          </span>
-                        )
-                      ) : (
-                        <span className="text-text-dimmed">Unknown</span>
-                      )}
-                    </Property.Value>
-                  </Property.Item>
-                  {delivery.session && sessionPath ? (
-                    <Property.Item>
-                      <Property.Label>Session</Property.Label>
-                      <Property.Value>
-                        <TextLink
-                          to={sessionPath}
-                          className="inline-flex items-center gap-1 font-mono text-sm"
-                        >
-                          <AIChatIcon className="size-4 text-sessions" />
-                          {delivery.session.friendlyId}
-                        </TextLink>
-                      </Property.Value>
-                    </Property.Item>
-                  ) : null}
-                  {reachedOneTarget ? (
-                    <Property.Item>
-                      <Property.Label>Run</Property.Label>
-                      <Property.Value>
-                        {delivery.run && runPath ? (
-                          <TextLink
-                            to={runPath}
-                            className="inline-flex items-center gap-1 font-mono text-sm"
-                          >
-                            <RunsIcon className="size-4 text-runs" />
-                            {delivery.run.friendlyId}
-                          </TextLink>
-                        ) : (
-                          <span className="text-text-dimmed">None</span>
-                        )}
-                      </Property.Value>
-                    </Property.Item>
-                  ) : null}
-                  <Property.Item>
-                    <Property.Label>External delivery ID</Property.Label>
-                    <Property.Value>
-                      {delivery.externalDeliveryId ? (
-                        <CopyableText
-                          value={delivery.externalDeliveryId}
-                          className="font-mono text-sm"
-                          truncate
-                        />
-                      ) : (
-                        <span className="text-text-dimmed">None</span>
-                      )}
-                    </Property.Value>
-                  </Property.Item>
-                  <Property.Item>
-                    <Property.Label>Idempotency key</Property.Label>
-                    <Property.Value>
-                      {delivery.idempotencyKey ? (
-                        <CopyableText
-                          value={delivery.idempotencyKey}
-                          className="font-mono text-sm"
-                          truncate
-                        />
-                      ) : (
-                        <span className="text-text-dimmed">None</span>
-                      )}
-                    </Property.Value>
-                  </Property.Item>
-                  <Property.Item>
-                    <Property.Label>Raw body hash</Property.Label>
-                    <Property.Value>
-                      {delivery.rawBodyHash ? (
-                        <CopyableText
-                          value={delivery.rawBodyHash}
-                          className="font-mono text-sm"
-                          truncate
-                        />
-                      ) : (
-                        <span className="text-text-dimmed">None</span>
-                      )}
-                    </Property.Value>
-                  </Property.Item>
-                  <Property.Item>
-                    <Property.Label>Created</Property.Label>
-                    <Property.Value>
-                      <DateTime date={delivery.createdAt} />
-                    </Property.Value>
-                  </Property.Item>
-                  <Property.Item>
-                    <Property.Label>Processed</Property.Label>
-                    <Property.Value>
-                      {delivery.processedAt ? (
-                        <DateTime date={delivery.processedAt} />
-                      ) : (
-                        <span className="text-text-dimmed">None</span>
-                      )}
-                    </Property.Value>
-                  </Property.Item>
-                  {duration ? (
-                    <Property.Item>
-                      <Property.Label>Duration</Property.Label>
-                      <Property.Value>{duration}</Property.Value>
-                    </Property.Item>
-                  ) : null}
-                </Property.Table>
-              </div>
-            </div>
-          </ResizablePanel>
-        </ResizablePanelGroup>
-      </PageBody>
-    </>
+  return (
+    <DetailPage
+      id="webhook-delivery"
+      header={
+        <DetailHeader
+          icon={WebhookIcon}
+          iconClassName="text-webhooks"
+          title={delivery.friendlyId}
+          mono
+          friendlyId={delivery.friendlyId}
+          badges={delivery.isTest ? <Badge variant="extra-small">Test</Badge> : undefined}
+          status={<DeliveryStatusBadge status={delivery.status} />}
+          meta={[
+            ...(delivery.webhook
+              ? [
+                  <span key="endpoint">
+                    On <span className="font-mono">{delivery.webhook.slug}</span>
+                  </span>,
+                ]
+              : []),
+            <DateTime key="created" date={delivery.createdAt} />,
+            ...(duration ? [`Processed in ${duration}`] : []),
+          ]}
+          secondaryActions={
+            sessionPath ? (
+              <LinkButton
+                variant="secondary/small"
+                to={sessionPath}
+                LeadingIcon={AIChatIcon}
+                leadingIconClassName="text-sessions"
+              >
+                View session
+              </LinkButton>
+            ) : runPath ? (
+              <LinkButton
+                variant="secondary/small"
+                to={runPath}
+                LeadingIcon={RunsIcon}
+                leadingIconClassName="text-runs"
+              >
+                View run
+              </LinkButton>
+            ) : null
+          }
+          primaryAction={<ReplayButton canReplay={data.canReplay} />}
+        />
+      }
+      tabs={<DetailTabs tabs={tabs} activeTab={tab} onTabChange={setTab} layoutId="delivery-tab" />}
+      rail={
+        <DeliveryRail
+          delivery={delivery}
+          endpointPath={endpointPath}
+          runPath={runPath}
+          sessionPath={sessionPath}
+          reachedOneTarget={reachedOneTarget}
+          duration={duration}
+        />
+      }
+    >
+      {tab === "targets" ? (
+        <DetailTableTab>
+          <DeliveryTargetsTable targets={delivery.targets} />
+        </DetailTableTab>
+      ) : tab === "headers" ? (
+        headers ? (
+          <DetailTableTab>
+            <DeliveryHeadersTable headers={headers} />
+          </DetailTableTab>
+        ) : (
+          <DetailTabEmpty
+            title="No headers"
+            description="No request headers were captured for this delivery."
+          />
+        )
+      ) : data.eventJson ? (
+        <div className="flex h-full flex-col gap-2 overflow-y-auto p-3 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-surface-control">
+          {data.eventTruncatedForDisplay ? (
+            <Callout variant="info">
+              This event is {formatBytes(data.eventBytes)}. Showing the first{" "}
+              {formatBytes(EVENT_DISPLAY_CAP)} for display. The full payload was delivered to your
+              task.
+            </Callout>
+          ) : null}
+          <CodeBlock code={data.eventJson} language="json" showLineNumbers maxLines={1000} />
+        </div>
+      ) : (
+        <DetailTabEmpty
+          title="No event"
+          description="No event payload was captured for this delivery."
+        />
+      )}
+    </DetailPage>
+  );
+}
+
+function ReplayButton({ canReplay }: { canReplay: boolean }) {
+  const navigation = useNavigation();
+  const isReplaying = navigation.state === "submitting" && navigation.formMethod === "POST";
+  return (
+    <Form method="post">
+      <Button
+        type="submit"
+        variant="primary/small"
+        LeadingIcon={ArrowPathIcon}
+        disabled={!canReplay || isReplaying}
+        tooltip={
+          canReplay
+            ? "Run it again from the stored event, as a new delivery to every current subscriber"
+            : "You don't have permission to replay webhook deliveries."
+        }
+      >
+        {isReplaying ? "Replaying…" : "Replay"}
+      </Button>
+    </Form>
+  );
+}
+
+function DeliveryRail({
+  delivery,
+  endpointPath,
+  runPath,
+  sessionPath,
+  reachedOneTarget,
+  duration,
+}: {
+  delivery: Delivery;
+  endpointPath?: string;
+  runPath?: string;
+  sessionPath?: string;
+  reachedOneTarget: boolean;
+  duration: string | null;
+}) {
+  return (
+    <PropertyRail>
+      <PropertyGroup title="Timeline">
+        <DeliveryTimeline delivery={delivery} runPath={runPath} sessionPath={sessionPath} />
+        {delivery.status === "FAILED" && delivery.errorMessage ? (
+          <RunError error={{ type: "STRING_ERROR", raw: delivery.errorMessage }} />
+        ) : null}
+      </PropertyGroup>
+      <PropertyGroup title="Details">
+        <PropertyPair>
+          <DetailProperty label="Status">
+            <DeliveryStatusBadge status={delivery.status} />
+          </DetailProperty>
+          {delivery.filterReason ? (
+            <DetailProperty label="Filter reason">
+              <span className="text-text-dimmed">{delivery.filterReason}</span>
+            </DetailProperty>
+          ) : null}
+          <DetailProperty label="Endpoint">
+            {delivery.webhook ? (
+              endpointPath ? (
+                <TextLink to={endpointPath} className="inline-flex items-center gap-1 font-mono">
+                  <WebhookIcon className="size-4 text-webhooks" />
+                  {delivery.webhook.slug}
+                </TextLink>
+              ) : (
+                <span className="inline-flex items-center gap-1 font-mono">
+                  <WebhookIcon className="size-4 text-webhooks" />
+                  {delivery.webhook.slug}
+                </span>
+              )
+            ) : (
+              <span className="text-text-dimmed">Unknown</span>
+            )}
+          </DetailProperty>
+          {delivery.session && sessionPath ? (
+            <DetailProperty label="Session">
+              <TextLink to={sessionPath} className="inline-flex items-center gap-1 font-mono">
+                <AIChatIcon className="size-4 text-sessions" />
+                {delivery.session.friendlyId}
+              </TextLink>
+            </DetailProperty>
+          ) : null}
+          {reachedOneTarget ? (
+            <DetailProperty label="Run">
+              {delivery.run && runPath ? (
+                <TextLink to={runPath} className="inline-flex items-center gap-1 font-mono">
+                  <RunsIcon className="size-4 text-runs" />
+                  {delivery.run.friendlyId}
+                </TextLink>
+              ) : (
+                <span className="text-text-dimmed">None</span>
+              )}
+            </DetailProperty>
+          ) : null}
+        </PropertyPair>
+        <PropertyPair>
+          <DetailProperty label="External delivery ID">
+            <OptionalCopy value={delivery.externalDeliveryId} />
+          </DetailProperty>
+          <DetailProperty label="Idempotency key">
+            <OptionalCopy value={delivery.idempotencyKey} />
+          </DetailProperty>
+          <DetailProperty label="Raw body hash">
+            <OptionalCopy value={delivery.rawBodyHash} />
+          </DetailProperty>
+        </PropertyPair>
+        <PropertyPair>
+          <DetailProperty label="Created">
+            <DateTime date={delivery.createdAt} />
+          </DetailProperty>
+          <DetailProperty label="Processed">
+            {delivery.processedAt ? (
+              <DateTime date={delivery.processedAt} />
+            ) : (
+              <span className="text-text-dimmed">Not yet</span>
+            )}
+          </DetailProperty>
+          {duration ? <DetailProperty label="Duration">{duration}</DetailProperty> : null}
+        </PropertyPair>
+      </PropertyGroup>
+    </PropertyRail>
+  );
+}
+
+function OptionalCopy({ value }: { value: string | null }) {
+  return value ? (
+    <CopyableText value={value} className="min-w-0 font-mono text-xs" truncate />
+  ) : (
+    <span className="text-text-dimmed">None</span>
   );
 }

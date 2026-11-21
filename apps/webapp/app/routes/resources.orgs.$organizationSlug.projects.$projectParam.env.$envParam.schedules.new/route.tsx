@@ -32,14 +32,6 @@ import { Label } from "~/components/primitives/Label";
 import { Paragraph } from "~/components/primitives/Paragraph";
 import { Select, SelectItem } from "~/components/primitives/Select";
 import { Spinner } from "~/components/primitives/Spinner";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHeader,
-  TableHeaderCell,
-  TableRow,
-} from "~/components/primitives/Table";
 import { TextLink } from "~/components/primitives/TextLink";
 import { TimezoneList } from "~/components/scheduled/timezones";
 import { prisma } from "~/db.server";
@@ -173,6 +165,7 @@ export function UpsertScheduleForm({
   defaultTaskIdentifier,
   onCancel,
   submitFetcher,
+  layout = "panel",
 }: Omit<EditableScheduleElements, "newSchedulePolicy"> & {
   newSchedulePolicy?: EditableScheduleElements["newSchedulePolicy"];
   showGenerateField: boolean;
@@ -182,6 +175,11 @@ export function UpsertScheduleForm({
   onCancel?: () => void;
   /** Submits via this fetcher with `_format=json` so the host can toast/close itself. */
   submitFetcher?: FetcherWithComponents<unknown>;
+  /**
+   * `panel` fills a side panel: title row, scrolling fields, footer. `dialog` sits under a
+   * Dialog's own title: fields on the left, the next runs previewed on the right.
+   */
+  layout?: "panel" | "dialog";
 }) {
   const actionData = useActionData();
   // Only feed conform-shaped data (`status`) to `useForm` — `{ ok, message }`
@@ -194,6 +192,8 @@ export function UpsertScheduleForm({
   const [selectedTimezone, setSelectedTimezone] = useState<string>(schedule?.timezone ?? "UTC");
   const isUtc = selectedTimezone === "UTC";
   const [cronPattern, setCronPattern] = useState<string>(schedule?.cron ?? "");
+  // When the form opened: the preview's "in 4d 9h" for the first run counts from here.
+  const [openedAt] = useState(() => Date.now());
   const [scheduleWindowValue, setScheduleWindowValue] = useState<string>(schedule?.window ?? "");
   const navigation = useNavigation();
   const isLoading = submitFetcher ? submitFetcher.state !== "idle" : navigation.state !== "idle";
@@ -300,6 +300,73 @@ export function UpsertScheduleForm({
     });
   }
 
+  // The dialog's right column, and under the fields in a panel: when the next five runs land, in the chosen timezone, with the
+  // gaps between them drawn to scale so a weekday cron shows its weekend.
+  const nextRunsPreview = (
+    <div className="flex flex-col gap-2">
+      <Header3>Next 5 runs</Header3>
+      {nextRuns === undefined ? (
+        <div className="flex h-32 items-center justify-center rounded-sm border border-dashed border-grid-bright px-4 text-center text-xs text-text-dimmed">
+          Enter a CRON pattern to see when it runs.
+        </div>
+      ) : (
+        <ol className="flex flex-col">
+          {nextRuns.map((run, index) => {
+            const gapMs =
+              index === 0
+                ? run.getTime() - openedAt
+                : run.getTime() - nextRuns![index - 1].getTime();
+            return (
+              <li key={index} className="flex items-stretch gap-2.5">
+                <span className="flex w-2 flex-none flex-col items-center">
+                  <span
+                    className={cn(
+                      "mt-1.5 size-2 flex-none rounded-full",
+                      index === 0 ? "bg-schedules" : "bg-text-dimmed"
+                    )}
+                  />
+                  {index < nextRuns!.length - 1 ? (
+                    <span className="w-px flex-1 bg-grid-bright" />
+                  ) : null}
+                </span>
+                <span className="flex min-w-0 flex-col pb-3">
+                  <span className="text-sm text-text-bright">
+                    <DateTime
+                      date={run}
+                      timeZone={selectedTimezone}
+                      includeSeconds={false}
+                      showTooltip={false}
+                    />
+                  </span>
+                  <span className="text-xs text-text-faint">
+                    {isUtc ? (
+                      ""
+                    ) : (
+                      <>
+                        <DateTime
+                          date={run}
+                          timeZone="UTC"
+                          includeSeconds={false}
+                          showTooltip={false}
+                        />{" "}
+                        UTC ·{" "}
+                      </>
+                    )}
+                    {index === 0 ? "in " : "+"}
+                    {formatGap(gapMs)}
+                  </span>
+                </span>
+              </li>
+            );
+          })}
+        </ol>
+      )}
+      {nextRuns !== undefined && scheduleWindowValue !== "" ? (
+        <Hint>Each run gets a fixed offset inside the window once the schedule is saved.</Hint>
+      ) : null}
+    </div>
+  );
+
   const mode = schedule ? "edit" : "new";
   const FormComponent = submitFetcher?.Form ?? Form;
 
@@ -308,19 +375,30 @@ export function UpsertScheduleForm({
       method="post"
       action={`/resources/orgs/${organization.slug}/projects/${project.slug}/env/${environment.slug}/schedules/new`}
       {...getFormProps(form)}
-      className="grid h-full max-h-full grid-rows-[2.5rem_1fr_auto] overflow-hidden bg-background-bright"
+      className={
+        layout === "dialog"
+          ? "flex max-h-[min(44rem,80vh)] flex-col overflow-hidden"
+          : "grid h-full max-h-full grid-rows-[2.5rem_1fr_auto] overflow-hidden bg-background-bright"
+      }
     >
-      <div className="mx-3 flex min-w-0 items-center justify-between gap-2 overflow-hidden border-b border-grid-dimmed">
-        <Header2 className="truncate">
-          {schedule?.friendlyId
-            ? "Edit schedule"
-            : defaultTaskIdentifier
-              ? `New schedule for ${defaultTaskIdentifier}`
-              : "New schedule"}
-        </Header2>
-      </div>
-      <div className="overflow-y-scroll scrollbar-thin scrollbar-track-transparent scrollbar-thumb-surface-control">
-        <div className="p-3">
+      {layout === "panel" ? (
+        <div className="mx-3 flex min-w-0 items-center justify-between gap-2 overflow-hidden border-b border-grid-dimmed">
+          <Header2 className="truncate">
+            {schedule?.friendlyId
+              ? "Edit schedule"
+              : defaultTaskIdentifier
+                ? `New schedule for ${defaultTaskIdentifier}`
+                : "New schedule"}
+          </Header2>
+        </div>
+      ) : null}
+      <div
+        className={cn(
+          "overflow-y-auto scrollbar-thin scrollbar-track-transparent scrollbar-thumb-surface-control",
+          layout === "dialog" && "grid min-h-0 flex-1 grid-cols-[minmax(0,1fr)_16rem]"
+        )}
+      >
+        <div className={layout === "dialog" ? "p-4" : "p-3"}>
           {submitFetcher ? <input type="hidden" name="_format" value="json" /> : null}
           {schedule && <input type="hidden" name="friendlyId" value={schedule.friendlyId} />}
           <Fieldset>
@@ -368,7 +446,7 @@ export function UpsertScheduleForm({
                   </div>
                 }
               >
-                CRON pattern (UTC)
+                CRON pattern ({selectedTimezone})
               </Label>
               <Input
                 {...getInputProps(cron, { type: "text" })}
@@ -467,39 +545,7 @@ export function UpsertScheduleForm({
                 />
               )}
             </InputGroup>
-            {nextRuns !== undefined && (
-              <div className="flex flex-col gap-1">
-                <Header3>Next 5 runs</Header3>
-                {scheduleWindowValue !== "" && (
-                  <Hint>
-                    Actual run times will get a fixed offset based on the window, displayed after
-                    creation.
-                  </Hint>
-                )}
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      {!isUtc && <TableHeaderCell>{selectedTimezone}</TableHeaderCell>}
-                      <TableHeaderCell>UTC</TableHeaderCell>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {nextRuns.map((run, index) => (
-                      <TableRow key={index}>
-                        {!isUtc && (
-                          <TableCell>
-                            <DateTime date={run} timeZone={selectedTimezone} />
-                          </TableCell>
-                        )}
-                        <TableCell>
-                          <DateTime date={run} timeZone="UTC" />
-                        </TableCell>
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
-              </div>
-            )}
+            {layout === "panel" && nextRuns !== undefined ? nextRunsPreview : null}
             <InputGroup>
               <Label>Environment</Label>
               <div className="flex flex-wrap items-center gap-2">
@@ -582,8 +628,18 @@ export function UpsertScheduleForm({
             <FormError>{form.errors}</FormError>
           </Fieldset>
         </div>
+        {layout === "dialog" ? (
+          <div className="sticky top-0 self-start border-l border-grid-dimmed p-4">
+            {nextRunsPreview}
+          </div>
+        ) : null}
       </div>
-      <div className="flex items-center justify-between gap-2 border-t border-grid-dimmed px-2 py-2">
+      <div
+        className={cn(
+          "flex items-center justify-between gap-2 border-t",
+          layout === "dialog" ? "border-grid-bright px-4 py-3" : "border-grid-dimmed px-2 py-2"
+        )}
+      >
         <div className="flex items-center gap-4">
           {onCancel ? (
             <Button variant="secondary/small" onClick={onCancel} type="button">
@@ -663,6 +719,15 @@ function ScheduleWindowHint({
       spread; enter <code>0m</code> for that minimum.
     </Hint>
   );
+}
+
+function formatGap(ms: number) {
+  const minutes = Math.max(0, Math.round(ms / 60_000));
+  if (minutes < 60) return `${minutes}m`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 48) return minutes % 60 ? `${hours}h ${minutes % 60}m` : `${hours}h`;
+  const days = Math.floor(hours / 24);
+  return hours % 24 ? `${days}d ${hours % 24}h` : `${days}d`;
 }
 
 function buttonText(mode: "edit" | "new", isLoading: boolean) {
