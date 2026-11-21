@@ -100,6 +100,11 @@ export const workerCatalog = {
       restartAttempt: z.number().optional(),
     }),
     visibilityTimeoutMs: 30_000,
+    retry: {
+      maxAttempts: 10_000,
+      minTimeoutInMs: 1_000,
+      maxTimeoutInMs: 300_000,
+    },
   },
   repairSnapshot: {
     schema: z.object({
