@@ -20,7 +20,7 @@ import {
   gatePlanTypeFromPlan,
   resolveCardVerificationGate,
 } from "~/v3/cardVerificationGate.server";
-import { isEnvironmentPauseResumeFormSubmission } from "../_app.orgs.$organizationSlug.projects.$projectParam.env.$envParam.concurrency/route";
+import { isEnvironmentPauseResumeFormSubmission } from "../_app.orgs.$organizationSlug.projects.$projectParam.env.$envParam.concurrency/environmentPauseResume";
 import { isBillingLimitSettingsFormSubmission } from "../_app.orgs.$organizationSlug.settings.billing-limits/billingLimitsRevalidation";
 
 const ParamsSchema = z.object({

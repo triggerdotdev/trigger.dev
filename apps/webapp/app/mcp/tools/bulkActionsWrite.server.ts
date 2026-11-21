@@ -171,7 +171,7 @@ const createBulkAction = defineWriteTool({
     const id = renderBulkActionId(bulkActionId);
     const lines = [
       runIds
-        ? `Started bulk action ${id} to ${input.action} the ${runIds.length} distinct run ID${runIds.length === 1 ? "" : "s"} given: ${total} found in this environment within the last ${DEFAULT_RUN_PERIOD} when it was created. Runs not indexed yet may still be included; the others are skipped.`
+        ? `Started bulk action ${id} to ${input.action} the ${runIds.length} distinct run ID${runIds.length === 1 ? "" : "s"} given: ${total} found in this environment when it was created. Runs not indexed yet may still be included; the others are skipped.`
         : `Started bulk action ${id} to ${input.action} about ${total} run${total === 1 ? "" : "s"} (counted when it was created; the filter is checked again as each batch is processed).`,
     ];
     lines.push(

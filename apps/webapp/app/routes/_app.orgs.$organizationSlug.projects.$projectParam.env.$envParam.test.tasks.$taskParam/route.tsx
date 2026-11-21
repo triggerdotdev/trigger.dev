@@ -1,3 +1,4 @@
+import { DEV_VERSION_HINT, versionLabel } from "~/utils/versionLabel";
 import { getFormProps, getInputProps, getSelectProps, useForm } from "@conform-to/react";
 import { parseWithZod } from "~/utils/conform";
 import {
@@ -46,6 +47,7 @@ import {
 import { Select, SelectItem } from "~/components/primitives/Select";
 import { TabButton, TabContainer } from "~/components/primitives/Tabs";
 import { TextLink } from "~/components/primitives/TextLink";
+import { replayVersionChoices } from "~/components/runs/v3/replayVersions";
 import { RunTagInput } from "~/components/runs/v3/RunTagInput";
 import { TaskRunStatusCombo } from "~/components/runs/v3/TaskRunStatus";
 import { TaskTriggerSourceIcon } from "~/components/runs/v3/TaskTriggerSource";
@@ -78,6 +80,7 @@ import { docsPath, v3RunSpanPath, v3TaskParamsSchema, v3TestPath } from "~/utils
 import { DeleteTaskRunTemplateService } from "~/v3/services/deleteTaskRunTemplate.server";
 import { TaskRunTemplateService } from "~/v3/services/taskRunTemplate.server";
 import { TestTaskService } from "~/v3/services/testTask.server";
+import { ServiceValidationError } from "~/v3/services/common.server";
 import { OutOfEntitlementError } from "~/v3/services/triggerTask.server";
 import { DeleteTaskRunTemplateData, RunTemplateData } from "~/v3/taskRunTemplate";
 import { TestTaskData } from "~/v3/testTask";
@@ -282,6 +285,10 @@ export const action: ActionFunction = async ({ request, params }) => {
           );
         }
 
+        if (e instanceof ServiceValidationError) {
+          return redirectBackWithErrorMessage(request, `Unable to start a test run: ${e.message}`);
+        }
+
         logger.error("Failed to start a test run", {
           error: e instanceof Error ? e.message : e,
           organizationSlug,
@@ -335,7 +342,13 @@ export default function Page() {
   }, [queueFetcher.data?.queues, defaultTaskQueue]);
 
   if (!result.foundTask) {
-    return <div />;
+    return (
+      <div className="flex h-full items-center justify-center p-6">
+        <Paragraph variant="small" className="text-text-dimmed">
+          No version in this environment has the task "{params.taskParam}".
+        </Paragraph>
+      </div>
+    );
   }
 
   const { triggerSource } = result;
@@ -347,7 +360,7 @@ export default function Page() {
           task={result.task}
           queues={queues}
           runs={result.runs}
-          versions={result.latestVersions}
+          versions={testVersionOptions(result)}
           templates={result.taskRunTemplates}
           disableVersionSelection={result.disableVersionSelection}
           allowArbitraryQueues={result.allowArbitraryQueues}
@@ -361,7 +374,7 @@ export default function Page() {
           task={result.task}
           queues={queues}
           runs={result.runs}
-          versions={result.latestVersions}
+          versions={testVersionOptions(result)}
           templates={result.taskRunTemplates}
           possibleTimezones={result.possibleTimezones}
           disableVersionSelection={result.disableVersionSelection}
@@ -374,6 +387,56 @@ export default function Page() {
       return triggerSource satisfies never;
     }
   }
+}
+
+type TestVersionOptions = {
+  items: { value: string; label: string }[];
+  defaultValue: string | undefined;
+  hint: string;
+};
+
+/**
+ * Dev: newest version as "latest" (it's the current one). Elsewhere: the promoted version first (value "latest", so the
+ * run follows promotion), then newer unpromoted versions, then older ones. `latestVersions` only
+ * holds versions that contain the task.
+ */
+function testVersionOptions(result: {
+  latestVersions: string[];
+  currentVersion?: string;
+  taskInCurrentVersion: boolean;
+  disableVersionSelection: boolean;
+}): TestVersionOptions {
+  if (result.disableVersionSelection) {
+    return {
+      items: result.latestVersions.map((version, i) => ({
+        value: i === 0 ? "latest" : version,
+        label: i === 0 ? versionLabel(version, version) : version,
+      })),
+      defaultValue: "latest",
+      hint: DEV_VERSION_HINT,
+    };
+  }
+
+  const { currentLabel, others } = replayVersionChoices(
+    result.latestVersions,
+    result.currentVersion
+  );
+
+  if (!result.taskInCurrentVersion || !result.currentVersion) {
+    return {
+      items: others,
+      defaultValue: others[0]?.value,
+      hint: result.currentVersion
+        ? `This task isn't in the current version (${result.currentVersion}). Pick a version that has it.`
+        : "No version is promoted yet. Pick a version to run.",
+    };
+  }
+
+  return {
+    items: [{ value: "latest", label: currentLabel }, ...others],
+    defaultValue: "latest",
+    hint: "Runs task on a specific version.",
+  };
 }
 
 const startingJson = "{\n\n}";
@@ -392,7 +455,7 @@ function StandardTaskForm({
   task: StandardTaskResult["task"];
   queues: Required<StandardTaskResult>["queue"][];
   runs: StandardRun[];
-  versions: string[];
+  versions: TestVersionOptions;
   templates: RunTemplate[];
   disableVersionSelection: boolean;
   allowArbitraryQueues: boolean;
@@ -639,25 +702,20 @@ function StandardTaskForm({
                   </Label>
                   <Select
                     {...getSelectProps(version)}
-                    defaultValue="latest"
+                    defaultValue={versions.defaultValue}
                     variant="tertiary/small"
                     placeholder="Select version"
                     dropdownIcon
                     disabled={disableVersionSelection}
+                    text={(value) => versions.items.find((v) => v.value === value)?.label ?? value}
                   >
-                    {versions.map((version, i) => (
-                      <SelectItem key={version} value={i === 0 ? "latest" : version}>
-                        {version} {i === 0 && "(latest)"}
+                    {versions.items.map((v) => (
+                      <SelectItem key={v.value} value={v.value}>
+                        {v.label}
                       </SelectItem>
                     ))}
                   </Select>
-                  {disableVersionSelection ? (
-                    <Hint>
-                      Only the latest version is available in the development environment.
-                    </Hint>
-                  ) : (
-                    <Hint>Runs task on a specific version.</Hint>
-                  )}
+                  <Hint>{versions.hint}</Hint>
                   <FormError id={version.errorId}>{version.errors}</FormError>
                 </InputGroup>
                 {regionItems.length > 1 && (
@@ -949,7 +1007,7 @@ function ScheduledTaskForm({
   runs: ScheduledRun[];
   possibleTimezones: string[];
   queues: Required<ScheduledTaskResult>["queue"][];
-  versions: string[];
+  versions: TestVersionOptions;
   templates: RunTemplate[];
   disableVersionSelection: boolean;
   allowArbitraryQueues: boolean;
@@ -1191,23 +1249,20 @@ function ScheduledTaskForm({
                 </Label>
                 <Select
                   {...getSelectProps(version)}
-                  defaultValue="latest"
+                  defaultValue={versions.defaultValue}
                   variant="tertiary/small"
                   placeholder="Select version"
                   dropdownIcon
                   disabled={disableVersionSelection}
+                  text={(value) => versions.items.find((v) => v.value === value)?.label ?? value}
                 >
-                  {versions.map((version, i) => (
-                    <SelectItem key={version} value={i === 0 ? "latest" : version}>
-                      {version} {i === 0 && "(latest)"}
+                  {versions.items.map((v) => (
+                    <SelectItem key={v.value} value={v.value}>
+                      {v.label}
                     </SelectItem>
                   ))}
                 </Select>
-                {disableVersionSelection ? (
-                  <Hint>Only the latest version is available in the development environment.</Hint>
-                ) : (
-                  <Hint>Runs task on a specific version.</Hint>
-                )}
+                <Hint>{versions.hint}</Hint>
                 <FormError id={version.errorId}>{version.errors}</FormError>
               </InputGroup>
               {regionItems.length > 1 && (

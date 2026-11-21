@@ -431,6 +431,7 @@ export class SpanPresenter extends BasePresenter {
       executedAt: run.executedAt,
       updatedAt: run.updatedAt,
       delayUntil: run.delayUntil,
+      queuedAt: run.queuedAt,
       expiredAt: run.expiredAt,
       completedAt: run.completedAt,
       logsDeletedAt: run.logsDeletedAt,
@@ -448,7 +449,12 @@ export class SpanPresenter extends BasePresenter {
       idempotencyKeyExpiresAt: run.idempotencyKeyExpiresAt,
       idempotencyKeyScope: extractIdempotencyKeyScope(run),
       idempotencyKeyStatus: this.getIdempotencyKeyStatus(run),
-      debounce: run.debounce as { key: string; delay: string; createdAt: Date } | null,
+      debounce: run.debounce as {
+        key: string;
+        delay: string;
+        maxDelay?: string;
+        createdAt: Date;
+      } | null,
       schedule: await this.resolveSchedule(run.scheduleId ?? undefined),
       webhook: await this.resolveWebhook(run.annotations, environment.id),
       queue: {
@@ -456,6 +462,8 @@ export class SpanPresenter extends BasePresenter {
         isCustomQueue: !run.queue.startsWith("task/"),
         concurrencyKey: run.concurrencyKey,
       },
+      /** The named concurrency limits the run also holds; read for the not-started card. */
+      gates: run.gates,
       tags: run.runTags,
       baseCostInCents: run.baseCostInCents,
       costInCents: run.costInCents,
@@ -649,6 +657,7 @@ export class SpanPresenter extends BasePresenter {
           //queue
           queue: true,
           concurrencyKey: true,
+          gates: true,
           //schedule
           scheduleId: true,
           //usage

@@ -25,10 +25,8 @@ import { useProject } from "~/hooks/useProject";
 import { type MinimumEnvironment } from "~/presenters/SelectBestEnvironmentPresenter.server";
 import { type BranchableEnvironmentToken } from "~/utils/branchableEnvironment";
 import { NewBranchPanel } from "~/components/branches/NewBranchPanel";
-import { GitHubSettingsPanel } from "~/routes/resources.orgs.$organizationSlug.projects.$projectParam.env.$envParam.github";
 import { deployNowPath } from "~/routes/resources.orgs.$organizationSlug.projects.$projectParam.env.$envParam.deploy-now";
 import { VercelAtomicDeploymentNotice } from "~/components/deployments/VercelAtomicDeploymentNotice";
-import { GitHubDeploymentOnboardingPanel } from "~/components/deployments/GitHubDeploymentOnboardingPanel";
 import { type DeploymentEventStream } from "~/hooks/useOnboardingDeploymentLogs";
 import { type WorkerDeploymentStatus } from "@trigger.dev/database";
 import {
@@ -51,7 +49,8 @@ import { ClientTabsContent } from "./primitives/ClientTabs";
 import { Header1 } from "./primitives/Headers";
 import { InfoPanel } from "./primitives/InfoPanel";
 import { Paragraph } from "./primitives/Paragraph";
-import { SpinnerWhite } from "./primitives/Spinner";
+import { LazyLoad, lazyWithRetry } from "./primitives/LazyLoad";
+import { Spinner, SpinnerWhite } from "./primitives/Spinner";
 import { StepNumber } from "./primitives/StepNumber";
 import { TextLink } from "./primitives/TextLink";
 import { useToast } from "./primitives/Toast";
@@ -65,6 +64,19 @@ import {
   TriggerDevStepV3,
 } from "./SetupCommands";
 import { StepContentContainer } from "./StepContentContainer";
+
+// The GitHub panels bring CodeMirror (ignored-paths editor) and the S2 log client. Most pages
+// import this file for a blank state they don't show, so these load only when rendered.
+const GitHubSettingsPanel = lazyWithRetry(() =>
+  import("~/routes/resources.orgs.$organizationSlug.projects.$projectParam.env.$envParam.github").then(
+    (module) => ({ default: module.GitHubSettingsPanel })
+  )
+);
+const GitHubDeploymentOnboardingPanel = lazyWithRetry(() =>
+  import("~/components/deployments/GitHubDeploymentOnboardingPanel").then((module) => ({
+    default: module.GitHubDeploymentOnboardingPanel,
+  }))
+);
 
 /**
  * What the agent is asked when it's opened from a deployment setup panel. The panel is the docs
@@ -708,23 +720,31 @@ function DeploymentOnboardingSteps(props: DeployNowProps = {}) {
         }
       >
         <ClientTabsContent value={"github"}>
-          {githubOnboarding ?? (
-            <>
-              <StepNumber stepNumber="1" title="Connect your GitHub repository" />
-              <StepContentContainer>
-                <Paragraph spacing>
-                  Deploy automatically with every push. Read the{" "}
-                  <TextLink to={docsPath("github-integration")}>full guide</TextLink>.
-                </Paragraph>
-                <GitHubSettingsPanel
-                  organizationSlug={organization.slug}
-                  projectSlug={project.slug}
-                  environmentSlug={environment.slug}
-                  billingPath={v3BillingPath({ slug: organization.slug })}
-                />
-              </StepContentContainer>
-            </>
-          )}
+          <LazyLoad
+            fallback={
+              <div className="flex justify-center py-8">
+                <Spinner className="size-5" />
+              </div>
+            }
+          >
+            {githubOnboarding ?? (
+              <>
+                <StepNumber stepNumber="1" title="Connect your GitHub repository" />
+                <StepContentContainer>
+                  <Paragraph spacing>
+                    Deploy automatically with every push. Read the{" "}
+                    <TextLink to={docsPath("github-integration")}>full guide</TextLink>.
+                  </Paragraph>
+                  <GitHubSettingsPanel
+                    organizationSlug={organization.slug}
+                    projectSlug={project.slug}
+                    environmentSlug={environment.slug}
+                    billingPath={v3BillingPath({ slug: organization.slug })}
+                  />
+                </StepContentContainer>
+              </>
+            )}
+          </LazyLoad>
         </ClientTabsContent>
         <ClientTabsContent value={"cli"}>
           {props.atomicVercelUrl ? (

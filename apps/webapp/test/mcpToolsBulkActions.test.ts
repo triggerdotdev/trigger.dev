@@ -46,6 +46,34 @@ vi.mock("~/db.server", async () => {
     runOpsLegacyReplica: db,
     runOpsLegacyPrismaClient: db,
     sqlDatabaseSchema: Prisma.sql([`public`]),
+    $transaction: (client: any, _name: string, fn: (tx: any) => Promise<unknown>) =>
+      client.$transaction(fn),
+  };
+});
+// The real run store is a process singleton holding the first test's client; each test has its own database.
+vi.mock("~/v3/runStore.server", async () => {
+  const { PostgresRunStore } = await import("@internal/run-store");
+  const stores = new WeakMap<object, InstanceType<typeof PostgresRunStore>>();
+  const current = () => {
+    const db = mocks.db as unknown as PrismaClient;
+    let store = stores.get(db);
+    if (!store) {
+      store = new PostgresRunStore({ prisma: db, readOnlyPrisma: db, schemaVariant: "legacy" });
+      stores.set(db, store);
+    }
+    return store;
+  };
+  return {
+    runStore: new Proxy(
+      {},
+      {
+        get: (_, prop) => {
+          const store = current();
+          const value = Reflect.get(store, prop);
+          return typeof value === "function" ? value.bind(store) : value;
+        },
+      }
+    ),
   };
 });
 vi.mock("~/services/clickhouse/clickhouseFactoryInstance.server", () => ({
@@ -400,20 +428,20 @@ describe("create_bulk_action", () => {
     }
   );
 
-  // Catches: run IDs from another environment, project or organization, or outside the default window, counted or acted on; duplicate IDs counted twice; the IDs approved not shown.
+  // Catches: run IDs from another environment, project or organization counted or acted on; an older run given by ID left out by the default window; duplicate IDs counted twice; the IDs approved not shown.
   containerTestWithClickhouse(
     "skips run IDs that are not in the caller's environment and window, and says so",
     async ({ prisma, clickhouseContainer }) => {
       const s = await seed(prisma, clickhouseContainer.getConnectionUrl());
       const own = await s.createRun(s.prod);
+      const old = await s.createRun(s.prod, { createdAt: new Date(Date.now() - 10 * DAY) });
       const foreign = [
-        await s.createRun(s.prod, { createdAt: new Date(Date.now() - 10 * DAY) }),
         await s.createRun(s.staging),
         await s.createRun(s.siblingProd),
         await s.createRun(s.otherProd),
       ];
-      await s.index([own, ...foreign]);
-      const runIds = [own, own, ...foreign].map((r) => r.friendlyId);
+      await s.index([own, old, ...foreign]);
+      const runIds = [own, own, old, ...foreign].map((r) => r.friendlyId);
 
       const { preview, result } = await s.approved("create_bulk_action", {
         action: "cancel",
@@ -422,16 +450,17 @@ describe("create_bulk_action", () => {
 
       expect(preview).toContain(
         [
-          "Selection: the 5 distinct run IDs given. Every one of them that is in prod and created within the last 7d is targeted; the others are skipped.",
-          ...[own, ...foreign].map((r) => `- ${r.friendlyId}`).sort(),
-          "Runs affected: 1 found now. Runs not indexed yet may be included when the action starts.",
+          "Selection: the 5 distinct run IDs given. Every one of them that is in prod is targeted; the others are skipped.",
+          ...[own, old, ...foreign].map((r) => `- ${r.friendlyId}`).sort(),
+          "Runs affected: 2 found now. Runs not indexed yet may be included when the action starts.",
         ].join("\n")
       );
       expect(textOf(result)).toContain(
-        "to cancel the 5 distinct run IDs given: 1 found in this environment within the last 7d when it was created. Runs not indexed yet may still be included; the others are skipped."
+        "to cancel the 5 distinct run IDs given: 2 found in this environment when it was created. Runs not indexed yet may still be included; the others are skipped."
       );
       await s.processGroup(bulkIdIn(textOf(result)));
       expect(await s.statusOf(own)).toBe("CANCELED");
+      expect(await s.statusOf(old)).toBe("CANCELED");
       for (const run of foreign) expect(await s.statusOf(run)).toBe("EXECUTING");
     }
   );

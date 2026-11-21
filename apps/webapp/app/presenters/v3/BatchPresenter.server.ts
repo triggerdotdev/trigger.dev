@@ -65,7 +65,7 @@ export class BatchPresenter extends BasePresenter {
     }
 
     if (!batch) {
-      throw new Error("Batch not found");
+      return null;
     }
 
     const hasFinished = batch.status !== "PENDING" && batch.status !== "PROCESSING";

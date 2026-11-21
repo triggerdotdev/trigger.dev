@@ -102,7 +102,14 @@ const DEFAULT_PAGE_SIZE = 25;
 
 export type NextRunList = Awaited<ReturnType<NextRunListPresenter["call"]>>;
 export type NextRunListItem = NextRunList["runs"][0];
-export type NextRunListAppliedFilters = NextRunList["filters"];
+// Embedded run tables build these by hand, so the time fields stay optional.
+export type NextRunListAppliedFilters = Omit<
+  NextRunList["filters"],
+  "period" | "isDefaultPeriod"
+> & {
+  period?: string;
+  isDefaultPeriod?: boolean;
+};
 
 export class NextRunListPresenter {
   constructor(
@@ -184,6 +191,9 @@ export class NextRunListPresenter {
       from,
       to,
     });
+
+    // The runs repository applies no default period when explicit run IDs are given.
+    const appliedPeriod = runId?.length && !period && !from && !to ? undefined : time.period;
 
     const hasStatusFilters = statuses && statuses.length > 0;
 
@@ -388,6 +398,8 @@ export class NextRunListPresenter {
         statuses: statuses || [],
         from: time.from,
         to: time.to,
+        period: appliedPeriod,
+        isDefaultPeriod: appliedPeriod !== undefined && !period && !from && !to,
       },
       hasFilters,
       hasAnyRuns,

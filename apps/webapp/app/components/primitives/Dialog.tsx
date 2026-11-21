@@ -48,30 +48,50 @@ const DialogContent = React.forwardRef<
   React.ComponentPropsWithoutRef<typeof DialogPrimitive.Content> & {
     showCloseButton?: boolean;
     fullscreen?: boolean;
+    /** False for forms, so a stray click outside doesn't throw away what was typed. Esc and the
+     * close button still close it. */
+    closeOnOutsideClick?: boolean;
   }
->(({ className, children, showCloseButton = true, fullscreen = false, ...props }, ref) => (
-  <DialogPortal>
-    <DialogOverlay />
-    <DialogPrimitive.Content
-      ref={ref}
-      className={cn(
-        "fixed z-50 grid gap-4 border bg-background-dimmed shadow-lg animate-in data-[state=open]:fade-in-90",
-        fullscreen
-          ? "inset-6 rounded-lg pt-2.5 px-4 pb-4"
-          : "w-full rounded-b-lg px-4 pb-4 pt-2.5 data-[state=open]:slide-in-from-bottom-10 sm:max-w-lg sm:rounded-lg sm:zoom-in-90 sm:data-[state=open]:slide-in-from-bottom-0",
-        className
-      )}
-      {...props}
-    >
-      <hr className="absolute left-0 top-11 w-full" />
-      {children}
-      {/* The default size-7 is the height this button had when it rendered the esc key alongside the
+>(
+  (
+    {
+      className,
+      children,
+      showCloseButton = true,
+      fullscreen = false,
+      closeOnOutsideClick = true,
+      onInteractOutside,
+      ...props
+    },
+    ref
+  ) => (
+    <DialogPortal>
+      <DialogOverlay />
+      <DialogPrimitive.Content
+        ref={ref}
+        className={cn(
+          "fixed z-50 grid gap-4 border bg-background-dimmed shadow-lg animate-in data-[state=open]:fade-in-90",
+          fullscreen
+            ? "inset-6 rounded-lg pt-2.5 px-4 pb-4"
+            : "w-full rounded-b-lg px-4 pb-4 pt-2.5 data-[state=open]:slide-in-from-bottom-10 sm:max-w-lg sm:rounded-lg sm:zoom-in-90 sm:data-[state=open]:slide-in-from-bottom-0",
+          className
+        )}
+        onInteractOutside={(event) => {
+          onInteractOutside?.(event);
+          if (!closeOnOutsideClick) event.preventDefault();
+        }}
+        {...props}
+      >
+        <hr className="absolute left-0 top-11 w-full" />
+        {children}
+        {/* The default size-7 is the height this button had when it rendered the esc key alongside the
           icon, so the vertical geometry dialogs align against (the top-11 divider, absolutely
           positioned titles) is unchanged — it only gets narrower. */}
-      {showCloseButton && <ModalCloseButton className="absolute right-2 top-2.25" />}
-    </DialogPrimitive.Content>
-  </DialogPortal>
-));
+        {showCloseButton && <ModalCloseButton className="absolute right-2 top-2.25" />}
+      </DialogPrimitive.Content>
+    </DialogPortal>
+  )
+);
 DialogContent.displayName = DialogPrimitive.Content.displayName;
 
 const DialogHeader = ({ className, ...props }: React.HTMLAttributes<HTMLDivElement>) => (

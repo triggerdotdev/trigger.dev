@@ -44,7 +44,7 @@ import { TraceFilters } from "~/components/runs/v3/trace/TraceToolbar";
 import type { TraceTimelineScale } from "~/components/runs/v3/trace/timelineScale";
 import type { TraceEvent } from "~/components/runs/v3/trace/types";
 import { useEnvironment } from "~/hooks/useEnvironment";
-import { useInitialDimensions } from "~/hooks/useInitialDimensions";
+import { useDimensions } from "~/hooks/useDimensions";
 import { useInterval } from "~/hooks/useInterval";
 import { useOrganization } from "~/hooks/useOrganizations";
 import { useProject } from "~/hooks/useProject";
@@ -1487,7 +1487,7 @@ function runScale(run: SessionTraceRun, snapshot: RunTraceSnapshot | undefined, 
 // Each run has its own scale, so the column's own range only sets the width the zoom scales.
 function SessionTimelineColumn({ zoom, children }: { zoom: number; children: React.ReactNode }) {
   const containerRef = useRef<HTMLDivElement>(null);
-  const minWidth = useInitialDimensions(containerRef)?.width ?? 300;
+  const minWidth = useDimensions(containerRef)?.width ?? 300;
 
   return (
     <div

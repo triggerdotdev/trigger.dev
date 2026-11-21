@@ -6618,6 +6618,9 @@ components:
       properties:
         createdAt:
           type: object
+          description: >-
+            Without `period`, `from` or `to`, only runs created in the last 7 days are listed. The
+            response's `appliedFilters.createdAt` says which window was used.
           properties:
             from:
               type: string
@@ -7166,6 +7169,29 @@ components:
               type: string
               description: The run ID to start the previous page before. This should be used as the `page[before]` parameter in the next request.
               example: run_5678
+        appliedFilters:
+          type: object
+          description: The filters the list was run with, including defaults the request didn't set.
+          properties:
+            createdAt:
+              type: object
+              description: The creation-time window the list used.
+              properties:
+                period:
+                  type: string
+                  description: The period, when the list used one.
+                  example: 7d
+                from:
+                  type: string
+                  format: date-time
+                  description: The start of the window, when the request set `filter[createdAt][from]`.
+                to:
+                  type: string
+                  format: date-time
+                  description: The end of the window, when the request set `filter[createdAt][to]`.
+                isDefault:
+                  type: boolean
+                  description: True when the request set no period, from or to, so the default 7-day period applied.
     ListRunItem:
       type: object
       required:

@@ -59,17 +59,12 @@ export const bulkActionsTools: McpToolDefinition[] = [
       const environment = await resolveToolEnvironment(ctx);
       if (!environment) return errorResult("Environment not found");
 
-      let detail;
-      try {
-        detail = await new BulkActionPresenter().call({
-          environmentId: environment.id,
-          bulkActionId: input.bulkActionId,
-        });
-      } catch (error) {
-        if (error instanceof Error && error.message === "Bulk action not found") {
-          return errorResult(`Bulk action ${renderBulkActionId(input.bulkActionId)} not found`);
-        }
-        throw error;
+      const detail = await new BulkActionPresenter().call({
+        environmentId: environment.id,
+        bulkActionId: input.bulkActionId,
+      });
+      if (!detail) {
+        return errorResult(`Bulk action ${renderBulkActionId(input.bulkActionId)} not found`);
       }
 
       return textResult(renderBulkActionDetail(detail));

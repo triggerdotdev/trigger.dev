@@ -2,6 +2,7 @@ import type { LinksFunction, LoaderFunctionArgs, MetaFunction } from "@remix-run
 import type { CSSProperties } from "react";
 import type { ShouldRevalidateFunction } from "@remix-run/react";
 import { Links, Meta, Outlet, Scripts, ScrollRestoration } from "@remix-run/react";
+import { onlyDetailTabChanged } from "~/utils/detailTabRevalidation";
 import { type UseDataFunctionReturn, typedjson, useTypedLoaderData } from "remix-typedjson";
 import { ExternalScripts } from "remix-utils/external-scripts";
 import type { ToastMessage } from "~/models/message.server";
@@ -162,6 +163,11 @@ export type LoaderType = typeof loader;
 
 export const shouldRevalidate: ShouldRevalidateFunction = (options) => {
   if (options.formAction === "/resources/environment") {
+    return false;
+  }
+
+  // A detail page tab switch: nothing here reads `?tab=`.
+  if (onlyDetailTabChanged(options)) {
     return false;
   }
 

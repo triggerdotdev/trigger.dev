@@ -56,7 +56,7 @@ import {
 } from "~/components/runs/v3/SpanTitle";
 import { TaskRunStatusIcon, runStatusClassNameColor } from "~/components/runs/v3/TaskRunStatus";
 import { useDebounce } from "~/hooks/useDebounce";
-import { useInitialDimensions } from "~/hooks/useInitialDimensions";
+import { useDimensions } from "~/hooks/useDimensions";
 import { type Shortcut, useShortcutKeys } from "~/hooks/useShortcutKeys";
 import { cn } from "~/utils/cn";
 import { lerp } from "~/utils/lerp";
@@ -638,8 +638,8 @@ function TimelineView({
   queuedDuration,
 }: TimelineViewProps) {
   const timelineContainerRef = useRef<HTMLDivElement>(null);
-  const initialTimelineDimensions = useInitialDimensions(timelineContainerRef);
-  const minTimelineWidth = initialTimelineDimensions?.width ?? 300;
+  const timelineDimensions = useDimensions(timelineContainerRef);
+  const minTimelineWidth = timelineDimensions?.width ?? 300;
   const maxTimelineWidth = minTimelineWidth * 10;
   const disableSpansAnimations = rootSpanStatus !== "executing";
   // The real page ticks this up while the root span is executing; every scenario has finished.

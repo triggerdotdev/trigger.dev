@@ -8,7 +8,7 @@ import * as Timeline from "~/components/primitives/Timeline";
 import { TreeView, type UseTreeStateOutput } from "~/components/primitives/TreeView/TreeView";
 import { type NodesState } from "~/components/primitives/TreeView/reducer";
 import { eventBackgroundClassName, eventBorderClassName } from "~/components/runs/v3/SpanTitle";
-import { useInitialDimensions } from "~/hooks/useInitialDimensions";
+import { useDimensions } from "~/hooks/useDimensions";
 import { cn } from "~/utils/cn";
 import { lerp } from "~/utils/lerp";
 import { type TasksTreeViewProps } from "./TasksTreeView";
@@ -56,8 +56,8 @@ export function TimelineView({
   queuedDuration,
 }: TimelineViewProps) {
   const timelineContainerRef = useRef<HTMLDivElement>(null);
-  const initialTimelineDimensions = useInitialDimensions(timelineContainerRef);
-  const minTimelineWidth = initialTimelineDimensions?.width ?? 300;
+  const timelineDimensions = useDimensions(timelineContainerRef);
+  const minTimelineWidth = timelineDimensions?.width ?? 300;
   const maxTimelineWidth = minTimelineWidth * 10;
   const disableSpansAnimations = rootSpanStatus !== "executing";
 

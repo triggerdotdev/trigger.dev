@@ -6,7 +6,7 @@ import {
   PlayIcon,
 } from "@heroicons/react/20/solid";
 import { DialogClose } from "@radix-ui/react-dialog";
-import { Form, useFetcher, useNavigation } from "@remix-run/react";
+import { Form, useFetcher, useLocation, useNavigation } from "@remix-run/react";
 import { useEffect, useState } from "react";
 import { cn } from "~/utils/cn";
 import type { QueueLimits } from "~/components/queues/queue-limits";
@@ -54,6 +54,7 @@ export function QueuePauseResumeButton({
   withQueueName = false,
   disabled = false,
   noun = "queue",
+  formAction,
 }: {
   /** The "id" here is a friendlyId */
   queue: { id: string; name: string; paused: boolean };
@@ -69,8 +70,11 @@ export function QueuePauseResumeButton({
   /** What the row is called in every user-facing string: named concurrency limits pause through
    * the same actions but their dialogs must say "limit". */
   noun?: "queue" | "limit";
+  /** Post to this route instead of the current one, which redirects back to this page. */
+  formAction?: string;
 }) {
   const [isOpen, setIsOpen] = useState(false);
+  const location = useLocation();
 
   const label = queue.paused
     ? noun === "limit"
@@ -163,12 +167,15 @@ export function QueuePauseResumeButton({
                 ? `This will pause all runs holding the "${queue.name}" limit from being dequeued. Any executing runs will continue to run.`
                 : `This will pause all runs from being dequeued in the "${queue.name}" queue. Any executing runs will continue to run.`}
           </Paragraph>
-          <Form method="post" onSubmit={() => setIsOpen(false)}>
+          <Form method="post" action={formAction} onSubmit={() => setIsOpen(false)}>
             <input
               type="hidden"
               name="action"
               value={queue.paused ? "queue-resume" : "queue-pause"}
             />
+            {formAction ? (
+              <input type="hidden" name="redirectTo" value={location.pathname + location.search} />
+            ) : null}
             <input type="hidden" name="friendlyId" value={queue.id} />
             <input type="hidden" name="noun" value={noun} />
             <FormButtons

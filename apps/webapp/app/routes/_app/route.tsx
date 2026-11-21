@@ -1,4 +1,4 @@
-import { Outlet } from "@remix-run/react";
+import { Outlet, type ShouldRevalidateFunction } from "@remix-run/react";
 import type { LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { redirect, typedjson } from "remix-typedjson";
 import { RouteErrorDisplay } from "~/components/ErrorDisplay";
@@ -6,6 +6,7 @@ import { AppContainer, MainCenteredContainer } from "~/components/layout/AppLayo
 import { clearRedirectTo, commitSession } from "~/services/redirectTo.server";
 import { requireUser } from "~/services/session.server";
 import { tenantContext } from "~/services/tenantContext.server";
+import { onlyDetailTabChanged } from "~/utils/detailTabRevalidation";
 import { confirmBasicDetailsPath } from "~/utils/pathBuilder";
 
 export const loader = async ({ request }: LoaderFunctionArgs) => {
@@ -24,6 +25,10 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     }
   );
 };
+
+// A detail page tab switch: this loader doesn't read `?tab=`.
+export const shouldRevalidate: ShouldRevalidateFunction = (args) =>
+  onlyDetailTabChanged(args) ? false : args.defaultShouldRevalidate;
 
 export default function App() {
   return (

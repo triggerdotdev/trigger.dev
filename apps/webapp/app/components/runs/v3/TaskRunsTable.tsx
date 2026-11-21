@@ -1,3 +1,4 @@
+import { VersionLabel } from "~/components/versions/VersionLabel";
 import {
   ArrowPathIcon,
   ArrowRightIcon,
@@ -23,6 +24,7 @@ import { useSelectedItems } from "~/components/primitives/SelectedItemsProvider"
 import { SimpleTooltip } from "~/components/primitives/Tooltip";
 import { TruncatedCopyableValue } from "~/components/primitives/TruncatedCopyableValue";
 import { useEnvironment } from "~/hooks/useEnvironment";
+import { EnvironmentIcon, environmentFullTitle } from "~/components/environments/EnvironmentLabel";
 import { useRegions } from "~/hooks/useRegions";
 import { useFeatures } from "~/hooks/useFeatures";
 import { useOrganization } from "~/hooks/useOrganizations";
@@ -100,6 +102,11 @@ type RunsTableProps = {
    */
   enableSmartColumns?: boolean;
   /**
+   * Adds a narrow "Env" column first: the run's environment icon, with this verb before the
+   * environment's name on hover (e.g. "Replayed in" gives "Replayed in Staging").
+   */
+  environmentColumnVerb?: string;
+  /**
    * Display-only write:runs flags from the caller's loader. Default true so
    * callers that don't pass them (and OSS, where the ability is permissive)
    * keep the controls enabled. The cancel/replay action routes enforce
@@ -107,6 +114,8 @@ type RunsTableProps = {
    */
   canCancelRuns?: boolean;
   canReplayRuns?: boolean;
+  /** The empty state offers to rerun the filters over a wider period (the main runs list). */
+  canWidenPeriod?: boolean;
 };
 
 type CellRenderContext = {
@@ -153,7 +162,15 @@ const STANDARD_RENDERERS: Record<string, StandardColumnRenderer> = {
   ver: {
     span: 1,
     header: <TableHeaderCell>Version</TableHeaderCell>,
-    cell: ({ run, path }) => <TableCell to={path}>{run.version ?? "–"}</TableCell>,
+    // No row link on this cell: the label opens its own popover.
+    cell: ({ run, path }) =>
+      run.version ? (
+        <TableCell to={path}>
+          <VersionLabel version={run.version} environment={run.environment} openOnHover />
+        </TableCell>
+      ) : (
+        <TableCell to={path}>–</TableCell>
+      ),
   },
   status: {
     span: 1,
@@ -602,8 +619,10 @@ export function TaskRunsTable({
   stickyHeader = false,
   childrenStatusesBasePath,
   enableSmartColumns = true,
+  environmentColumnVerb,
   canCancelRuns = true,
   canReplayRuns = true,
+  canWidenPeriod = false,
 }: RunsTableProps) {
   const disconnected = useLoaderDisconnected();
   const showLoading = isLoading && !disconnected;
@@ -660,7 +679,7 @@ export function TaskRunsTable({
     (sum, col) => sum + (col.kind === "standard" ? (STANDARD_RENDERERS[col.def.id]?.span ?? 1) : 1),
     0
   );
-  const totalColSpan = (allowSelection ? 1 : 0) + dataColSpan + 1;
+  const totalColSpan = (allowSelection ? 1 : 0) + dataColSpan + (environmentColumnVerb ? 1 : 0) + 1;
 
   const navigateCheckboxes = useCallback(
     (event: React.KeyboardEvent<HTMLInputElement>, index: number) => {
@@ -719,6 +738,7 @@ export function TaskRunsTable({
               )}
             </TableHeaderCell>
           )}
+          {environmentColumnVerb ? <TableHeaderCell>Env</TableHeaderCell> : null}
           {visibleColumns.map((col) => (
             <ColumnHeader key={columnKey(col)} column={col} />
           ))}
@@ -728,12 +748,17 @@ export function TaskRunsTable({
         </TableRow>
       </TableHeader>
       <TableBody>
-        {total === 0 && !hasFilters ? (
+        {total === 0 && !hasFilters && !filters.period ? (
           <TableBlankRow colSpan={totalColSpan}>
             {!showLoading && <NoRuns title="No runs found" />}
           </TableBlankRow>
         ) : runs.length === 0 ? (
-          <BlankState isLoading={showLoading} filters={filters} colSpan={totalColSpan} />
+          <BlankState
+            isLoading={showLoading}
+            filters={filters}
+            colSpan={totalColSpan}
+            canWidenPeriod={canWidenPeriod}
+          />
         ) : (
           runs.map((run, index) => {
             const searchParams = new URLSearchParams();
@@ -767,11 +792,31 @@ export function TaskRunsTable({
                     />
                   </TableCell>
                 )}
+                {environmentColumnVerb ? (
+                  <TableCell to={path}>
+                    <SimpleTooltip
+                      asChild
+                      button={
+                        <span className="flex w-fit">
+                          <EnvironmentIcon environment={run.environment} className="size-4" />
+                        </span>
+                      }
+                      content={`${environmentColumnVerb} ${environmentFullTitle(run.environment)}`}
+                      disableHoverableContent
+                    />
+                  </TableCell>
+                ) : null}
                 {visibleColumns.map((col) => (
                   <ColumnCell
                     key={columnKey(col)}
                     column={col}
-                    ctx={{ run, path, regionByMasterQueue, childrenStatusesBasePath, sources }}
+                    ctx={{
+                      run,
+                      path,
+                      regionByMasterQueue,
+                      childrenStatusesBasePath,
+                      sources,
+                    }}
                   />
                 ))}
                 <RunActionsCell

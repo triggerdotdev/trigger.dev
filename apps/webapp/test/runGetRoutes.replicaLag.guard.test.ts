@@ -208,6 +208,7 @@ vi.mock("~/presenters/v3/RegionsPresenter.server", () => ({
 }));
 vi.mock("~/v3/models/workerDeployment.server", () => ({
   findCurrentWorkerDeployment: async () => null,
+  findCurrentVersion: async () => undefined,
 }));
 vi.mock("~/runEngine/concerns/workerQueueSplit.server", () => ({
   regionForDisplay: () => undefined,

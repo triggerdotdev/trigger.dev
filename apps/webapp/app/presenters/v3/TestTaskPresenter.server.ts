@@ -92,6 +92,8 @@ export type TestTaskResult =
       task: Task;
       runs: StandardRun[];
       latestVersions: string[];
+      currentVersion?: string;
+      taskInCurrentVersion: boolean;
       disableVersionSelection: boolean;
       allowArbitraryQueues: boolean;
       taskRunTemplates: TaskRunTemplate[];
@@ -104,6 +106,8 @@ export type TestTaskResult =
       possibleTimezones: string[];
       runs: ScheduledRun[];
       latestVersions: string[];
+      currentVersion?: string;
+      taskInCurrentVersion: boolean;
       disableVersionSelection: boolean;
       allowArbitraryQueues: boolean;
       taskRunTemplates: TaskRunTemplate[];
@@ -173,20 +177,23 @@ export class TestTaskPresenter {
     environment,
     taskIdentifier,
   }: TestTaskOptions): Promise<TestTaskResult> {
+    const isDev = environment.type === "DEVELOPMENT";
+    const currentDeployment = isDev
+      ? undefined
+      : await findCurrentWorkerDeployment({ environmentId: environment.id });
+    const currentTask = currentDeployment?.worker?.tasks.find((t) => t.slug === taskIdentifier);
+    // Outside dev, a task missing from the current version can still be tested on a version that has it.
     const task =
-      environment.type !== "DEVELOPMENT"
-        ? (
-            await findCurrentWorkerDeployment({ environmentId: environment.id })
-          )?.worker?.tasks.find((t) => t.slug === taskIdentifier)
-        : await this.replica.backgroundWorkerTask.findFirst({
-            where: {
-              slug: taskIdentifier,
-              runtimeEnvironmentId: environment.id,
-            },
-            orderBy: {
-              createdAt: "desc",
-            },
-          });
+      currentTask ??
+      (await this.replica.backgroundWorkerTask.findFirst({
+        where: {
+          slug: taskIdentifier,
+          runtimeEnvironmentId: environment.id,
+        },
+        orderBy: {
+          createdAt: "desc",
+        },
+      }));
 
     if (!task) {
       return {
@@ -212,6 +219,7 @@ export class TestTaskPresenter {
     const backgroundWorkers = await this.replica.backgroundWorker.findMany({
       where: {
         runtimeEnvironmentId: environment.id,
+        ...(isDev ? {} : { tasks: { some: { slug: task.slug } } }),
       },
       select: {
         version: true,
@@ -237,7 +245,11 @@ export class TestTaskPresenter {
 
     const latestVersions = backgroundWorkers.map((v) => v.version);
 
-    const disableVersionSelection = environment.type === "DEVELOPMENT";
+    const disableVersionSelection = isDev;
+    const versionInfo = {
+      currentVersion: currentDeployment?.version,
+      taskInCurrentVersion: isDev || currentTask !== undefined,
+    };
     const allowArbitraryQueues = backgroundWorkers[0]?.engine === "V1";
 
     // Get the latest runs, for the payloads
@@ -319,6 +331,7 @@ export class TestTaskPresenter {
             )
           ),
           latestVersions,
+          ...versionInfo,
           disableVersionSelection,
           allowArbitraryQueues,
           taskRunTemplates: await Promise.all(
@@ -366,6 +379,7 @@ export class TestTaskPresenter {
             )
           ).filter(Boolean),
           latestVersions,
+          ...versionInfo,
           disableVersionSelection,
           allowArbitraryQueues,
           taskRunTemplates: await Promise.all(

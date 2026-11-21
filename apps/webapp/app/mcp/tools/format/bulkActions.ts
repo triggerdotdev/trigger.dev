@@ -102,7 +102,7 @@ export function createBulkActionPreview(input: CreatePreviewInput): string | { r
 
   const selection = input.runIds
     ? [
-        `Selection: the ${plural(input.runIds.length, "distinct run ID")} given. Every one of them that is in ${where} and created within the last ${DEFAULT_RUN_PERIOD} is targeted; the others are skipped.`,
+        `Selection: the ${plural(input.runIds.length, "distinct run ID")} given. Every one of them that is in ${where} is targeted; the others are skipped.`,
         ...[...input.runIds].sort().map((id) => `- ${id}`),
         `Runs affected: ${input.count} found now. Runs not indexed yet may be included when the action starts.`,
       ]

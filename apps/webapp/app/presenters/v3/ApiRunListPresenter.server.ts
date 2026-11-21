@@ -5,7 +5,6 @@ import {
   type TaskRunStatus,
   boundedIn,
 } from "@trigger.dev/database";
-import assertNever from "assert-never";
 import { z } from "zod";
 import type { API_VERSIONS } from "~/api/versions";
 import { RunStatusUnspecifiedApiVersion } from "~/api/versions";
@@ -17,6 +16,8 @@ import { ServiceValidationError } from "~/v3/services/baseService.server";
 import { ApiRetrieveRunPresenter } from "./ApiRetrieveRunPresenter.server";
 import { NextRunListPresenter, type RunListOptions } from "./NextRunListPresenter.server";
 import { BasePresenter } from "./basePresenter.server";
+import { apiStatusToRunStatuses } from "~/utils/apiRunStatus";
+import { apiRunListAppliedCreatedAt } from "./apiRunListAppliedFilters";
 
 // Forwarded verbatim into `NextRunListPresenter` for the routed run-ops (TaskRun) reads. When
 // omitted, both clients default to the inherited `_replica` => passthrough single-DB. The
@@ -361,67 +362,20 @@ export class ApiRunListPresenter extends BasePresenter {
           next: results.pagination.next,
           previous: results.pagination.previous,
         },
+        appliedFilters: {
+          createdAt: apiRunListAppliedCreatedAt({
+            period: options.period,
+            from: options.from,
+            to: options.to,
+          }),
+        },
       };
     });
   }
 
   static apiStatusToRunStatuses(
     status: RunStatus | RunStatusUnspecifiedApiVersion
-  ): TaskRunStatus[] | TaskRunStatus {
-    switch (status) {
-      case "DELAYED":
-        return "DELAYED";
-      case "PENDING_VERSION": {
-        return "PENDING_VERSION";
-      }
-      case "WAITING_FOR_DEPLOY": {
-        return "WAITING_FOR_DEPLOY";
-      }
-      case "QUEUED": {
-        return "PENDING";
-      }
-      case "EXECUTING": {
-        return "EXECUTING";
-      }
-      case "REATTEMPTING": {
-        return "RETRYING_AFTER_FAILURE";
-      }
-      case "FROZEN": {
-        return ["PAUSED", "WAITING_TO_RESUME"];
-      }
-      case "CANCELED": {
-        return "CANCELED";
-      }
-      case "COMPLETED": {
-        return "COMPLETED_SUCCESSFULLY";
-      }
-      case "SYSTEM_FAILURE": {
-        return "SYSTEM_FAILURE";
-      }
-      case "INTERRUPTED": {
-        return "INTERRUPTED";
-      }
-      case "CRASHED": {
-        return "CRASHED";
-      }
-      case "FAILED": {
-        return "COMPLETED_WITH_ERRORS";
-      }
-      case "EXPIRED": {
-        return "EXPIRED";
-      }
-      case "TIMED_OUT": {
-        return "TIMED_OUT";
-      }
-      case "DEQUEUED": {
-        return "DEQUEUED";
-      }
-      case "WAITING": {
-        return "WAITING_TO_RESUME";
-      }
-      default: {
-        assertNever(status);
-      }
-    }
+  ): TaskRunStatus[] {
+    return apiStatusToRunStatuses(status);
   }
 }

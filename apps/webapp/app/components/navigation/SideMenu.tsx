@@ -99,7 +99,7 @@ import { FreePlanUsage } from "../billing/FreePlanUsage";
 import { ConnectionIcon, DevPresencePanel, useDevPresence } from "../DevPresence";
 import { BetaBadge } from "../FeatureBadges";
 import { Button, LinkButton } from "../primitives/Buttons";
-import { Dialog, DialogTrigger } from "../primitives/Dialog";
+import { Dialog, DialogContent, DialogTrigger } from "../primitives/Dialog";
 import { type RenderIcon } from "../primitives/Icon";
 import { Paragraph } from "../primitives/Paragraph";
 import { Badge } from "../primitives/Badge";
@@ -112,6 +112,8 @@ import {
   PopoverTrigger,
 } from "../primitives/Popover";
 import { ShortcutKey } from "../primitives/ShortcutKey";
+import { LazyLoad, LazyLoadFailed, lazyWithRetry } from "../primitives/LazyLoad";
+import { Spinner } from "../primitives/Spinner";
 import {
   SimpleTooltip,
   Tooltip,
@@ -123,7 +125,6 @@ import { ShortcutsAutoOpen } from "../Shortcuts";
 import { type FavoritePage } from "~/services/dashboardPreferences.server";
 import { AppearanceMenuItem } from "./AppearanceMenuItem";
 import {
-  CustomizeSidebarDialog,
   type CustomizeSidebarSection,
   type SidebarCustomizationPayload,
 } from "./CustomizeSidebarDialog";
@@ -152,6 +153,11 @@ import {
   SIDE_MENU_POPOVER_ITEM_LABEL,
   type SideMenuSectionId,
 } from "./sideMenuTypes";
+
+// The customize dialog (and the grid library it drags with) loads when it's opened.
+const CustomizeSidebarDialog = lazyWithRetry(() =>
+  import("./CustomizeSidebarDialog").then((module) => ({ default: module.CustomizeSidebarDialog }))
+);
 
 /** Get the collapsed state for a specific side menu section from user preferences */
 function getSectionCollapsed(
@@ -1081,17 +1087,32 @@ export function SideMenu({
       >
         {/* Mounted only while open so the modal state re-seeds from current preferences each time */}
         {isCustomizeOpen && (
-          <CustomizeSidebarDialog
-            sections={customizeSections}
-            prefs={{
-              sectionOrder: sideMenuPrefs?.sectionOrder,
-              hiddenItems: sideMenuPrefs?.hiddenItems,
-              sectionItemOrder: sideMenuPrefs?.sectionItemOrder,
-            }}
-            onConfirm={submitSidebarCustomization}
-            isConfirming={isCustomizeConfirmPending}
-            confirmError={customizeError}
-          />
+          <LazyLoad
+            fallback={
+              <DialogContent>
+                <div className="flex h-40 items-center justify-center">
+                  <Spinner />
+                </div>
+              </DialogContent>
+            }
+            errorFallback={
+              <DialogContent>
+                <LazyLoadFailed />
+              </DialogContent>
+            }
+          >
+            <CustomizeSidebarDialog
+              sections={customizeSections}
+              prefs={{
+                sectionOrder: sideMenuPrefs?.sectionOrder,
+                hiddenItems: sideMenuPrefs?.hiddenItems,
+                sectionItemOrder: sideMenuPrefs?.sectionItemOrder,
+              }}
+              onConfirm={submitSidebarCustomization}
+              isConfirming={isCustomizeConfirmPending}
+              confirmError={customizeError}
+            />
+          </LazyLoad>
         )}
       </Dialog>
     </div>

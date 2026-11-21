@@ -3161,6 +3161,9 @@ model BulkActionItem {
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+
+  /// A bulk action's items in the order they were recorded (its failed runs, a page at a time)
+  @@index([groupId, createdAt])
 }
 
 enum BulkActionItemStatus {

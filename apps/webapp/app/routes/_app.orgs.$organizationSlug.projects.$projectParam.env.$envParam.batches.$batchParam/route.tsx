@@ -1,4 +1,5 @@
-import { ExclamationTriangleIcon } from "@heroicons/react/20/solid";
+import { throwNotFound } from "~/utils/httpErrors";
+import { ArrowPathIcon, ExclamationTriangleIcon } from "@heroicons/react/20/solid";
 import { type LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { tryCatch } from "@trigger.dev/core";
 import { motion } from "framer-motion";
@@ -23,7 +24,17 @@ import { BatchPresenter } from "~/presenters/v3/BatchPresenter.server";
 import { requireUserId } from "~/services/session.server";
 import { cn } from "~/utils/cn";
 import { formatNumber } from "~/utils/numberFormatter";
-import { EnvironmentParamSchema, v3BatchesPath, v3BatchRunsPath } from "~/utils/pathBuilder";
+import {
+  EnvironmentParamSchema,
+  v3BatchesPath,
+  v3CreateBulkActionPath,
+  v3RunsPath,
+} from "~/utils/pathBuilder";
+import type { PrismaClient } from "@trigger.dev/database";
+import { $replica } from "~/db.server";
+import { clickhouseFactory } from "~/services/clickhouse/clickhouseFactoryInstance.server";
+import { RunsRepository } from "~/services/runsRepository/runsRepository.server";
+import { FAILED_RUN_STATUSES } from "~/v3/taskStatus";
 import { batchAgentPageContext } from "~/components/dashboard-agent/suggested-prompts";
 import type { Handle } from "~/utils/handle";
 import { pageMeta } from "~/utils/pageTitle";
@@ -63,8 +74,21 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
       throw new Error(error.message);
     }
 
-    return typedjson({ batch: data });
+    if (!data) {
+      throwNotFound("Batch not found");
+    }
+
+    const childRuns = await countChildRunsByOutcome({
+      organizationId: project.organizationId,
+      projectId: project.id,
+      environmentId: environment.id,
+      batchFriendlyId: data.friendlyId,
+      from: batchRunsFrom(data.createdAt),
+    });
+
+    return typedjson({ batch: data, childRuns });
   } catch (error) {
+    if (error instanceof Response) throw error;
     console.error(error);
     throw new Response(undefined, {
       status: 400,
@@ -73,12 +97,44 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   }
 };
 
+// Runs in a batch are created after the batch, so this lower bound replaces the runs list's
+// 7-day default without dropping older batches' runs.
+function batchRunsFrom(createdAt: string) {
+  return new Date(createdAt).getTime() - 60_000;
+}
+
+async function countChildRunsByOutcome(options: {
+  organizationId: string;
+  projectId: string;
+  environmentId: string;
+  batchFriendlyId: string;
+  from: number;
+}) {
+  const clickhouse = await clickhouseFactory.getClickhouseForOrganization(
+    options.organizationId,
+    "runsList"
+  );
+  const runsRepository = new RunsRepository({ clickhouse, prisma: $replica as PrismaClient });
+  const base = {
+    organizationId: options.organizationId,
+    projectId: options.projectId,
+    environmentId: options.environmentId,
+    batchId: options.batchFriendlyId,
+    from: options.from,
+  };
+  const [failed, canceled] = await Promise.all([
+    runsRepository.countRuns({ ...base, statuses: [...FAILED_RUN_STATUSES] }),
+    runsRepository.countRuns({ ...base, statuses: ["CANCELED"] }),
+  ]);
+  return { failed, canceled };
+}
+
 export const handle: Handle = {
   agentPageContext: (data) => batchAgentPageContext(data),
 };
 
 export default function Page() {
-  const { batch } = useTypedLoaderData<typeof loader>();
+  const { batch, childRuns } = useTypedLoaderData<typeof loader>();
   const organization = useOrganization();
   const project = useProject();
   const environment = useEnvironment();
@@ -89,6 +145,12 @@ export default function Page() {
     onFocus: true,
     disabled: batch.hasFinished,
   });
+
+  const failedRunsFilter = {
+    batchId: batch.friendlyId,
+    statuses: [...FAILED_RUN_STATUSES],
+    from: batchRunsFrom(batch.createdAt),
+  };
 
   const showProgressMeter =
     batch.isV2 && (batch.status === "PROCESSING" || batch.status === "PARTIAL_FAILED");
@@ -171,6 +233,16 @@ export default function Page() {
                   )}
                 </>
               )}
+              <Property.Item>
+                <Property.Label>Failed runs</Property.Label>
+                <Property.Value className={childRuns.failed > 0 ? "text-error" : undefined}>
+                  {formatNumber(childRuns.failed)}
+                </Property.Value>
+              </Property.Item>
+              <Property.Item>
+                <Property.Label>Canceled runs</Property.Label>
+                <Property.Value>{formatNumber(childRuns.canceled)}</Property.Value>
+              </Property.Item>
               {batch.idempotencyKey && (
                 <Property.Item>
                   <Property.Label>Idempotency key</Property.Label>
@@ -246,9 +318,39 @@ export default function Page() {
 
       {/* Footer */}
       <div className="flex items-center justify-end gap-2 border-t border-grid-dimmed px-2">
+        {childRuns.failed > 0 && (
+          <>
+            <LinkButton
+              variant="tertiary/medium"
+              to={v3CreateBulkActionPath(
+                organization,
+                project,
+                environment,
+                failedRunsFilter,
+                "filter",
+                "replay"
+              )}
+              LeadingIcon={ArrowPathIcon}
+              leadingIconClassName="text-indigo-500"
+            >
+              Replay failed runs
+            </LinkButton>
+            <LinkButton
+              variant="tertiary/medium"
+              to={v3RunsPath(organization, project, environment, failedRunsFilter)}
+              LeadingIcon={RunsIcon}
+              leadingIconClassName="text-error"
+            >
+              View failed runs
+            </LinkButton>
+          </>
+        )}
         <LinkButton
           variant="secondary/medium"
-          to={v3BatchRunsPath(organization, project, environment, batch)}
+          to={v3RunsPath(organization, project, environment, {
+            batchId: batch.friendlyId,
+            from: batchRunsFrom(batch.createdAt),
+          })}
           trailingIconClassName="text-runs"
           TrailingIcon={RunsIcon}
           className="text-text-bright"

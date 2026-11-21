@@ -7,6 +7,7 @@ import { ASK_AGENT_LABEL } from "./agent-identity";
 import type { AgentOpenSource } from "./manual-setup-action";
 import type { DraftPrefillParams } from "./alert-creation/flow-state";
 import type { EditAlertPrefill } from "~/components/alerts/EditAlertTranscript";
+import { preloadDashboardAgentPanel } from "./lazyDashboardAgentPanel";
 
 // Registered once, by `DashboardAgent`. The launcher only displays it.
 export const TOGGLE_PANEL_SHORTCUT: Shortcut = {
@@ -56,7 +57,12 @@ export function DashboardAgentLauncher() {
   const hasUnread = unreadWork > 0;
 
   const launcher = (
-    <span className="relative inline-flex shrink-0">
+    // Hover or keyboard focus starts loading the panel's code, so a click rarely waits on it.
+    <span
+      className="relative inline-flex shrink-0"
+      onPointerEnter={preloadDashboardAgentPanel}
+      onFocus={preloadDashboardAgentPanel}
+    >
       <Button
         variant="ask-trigger/small"
         aria-label={hasUnread ? `${ASK_AGENT_LABEL}, unread updates` : ASK_AGENT_LABEL}

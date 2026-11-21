@@ -3,10 +3,16 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import simplur from "simplur";
 import { NotificationIcon } from "~/assets/icons/NotificationIcon";
 import { Button } from "~/components/primitives/Buttons";
+import { LazyLoad, lazyWithRetry } from "~/components/primitives/LazyLoad";
 import { Popover, PopoverContent, PopoverTrigger } from "~/components/primitives/Popover";
 import { SimpleTooltip } from "~/components/primitives/Tooltip";
 import { usePlatformNotifications } from "~/routes/resources.platform-notifications";
-import { NotificationCard } from "./NotificationCard";
+
+// The card renders markdown (react-markdown and its parser). Notifications arrive from a
+// fetch after the page loads, so the card's code can load then too.
+const NotificationCard = lazyWithRetry(() =>
+  import("./NotificationCard").then((module) => ({ default: module.NotificationCard }))
+);
 
 type Notification = {
   id: string;
@@ -113,20 +119,23 @@ export function NotificationPanel({
 
   const { title, description, image, actionUrl, dismissOnAction } = notification.payload.data;
   const card = (
-    <NotificationCard
-      title={title}
-      description={description}
-      image={image}
-      actionUrl={actionUrl}
-      onDismiss={() => handleDismiss(notification.id)}
-      onCardClick={() => {
-        fireClickBeacon(notification.id);
-        if (dismissOnAction) {
-          handleDismiss(notification.id);
-        }
-      }}
-      onLinkClick={() => fireClickBeacon(notification.id)}
-    />
+    // A card that can't load is left out: it isn't worth an error in the side menu.
+    <LazyLoad fallback={null} errorFallback={null}>
+      <NotificationCard
+        title={title}
+        description={description}
+        image={image}
+        actionUrl={actionUrl}
+        onDismiss={() => handleDismiss(notification.id)}
+        onCardClick={() => {
+          fireClickBeacon(notification.id);
+          if (dismissOnAction) {
+            handleDismiss(notification.id);
+          }
+        }}
+        onLinkClick={() => fireClickBeacon(notification.id)}
+      />
+    </LazyLoad>
   );
 
   return (
