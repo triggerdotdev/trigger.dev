@@ -110,7 +110,7 @@ function deploymentStatusClassNameColor(status: DeploymentDisplayStatus): string
   }
 }
 
-function deploymentStatusTitle(status: DeploymentDisplayStatus, isBuilt: boolean): string {
+export function deploymentStatusTitle(status: DeploymentDisplayStatus, isBuilt: boolean): string {
   switch (status) {
     case "PENDING":
       return "Queued…";

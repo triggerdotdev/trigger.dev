@@ -31,7 +31,7 @@ export const BulkActionListFilters = z.object({
 
 export type BulkActionListFilters = z.infer<typeof BulkActionListFilters>;
 
-type Option = { value: string; title: string; render: ReactNode };
+export type Option = { value: string; title: string; render: ReactNode };
 
 const typeOptions: Option[] = [
   { value: "REPLAY", title: "Replay", render: <BulkActionTypeCombo type="REPLAY" /> },
@@ -102,18 +102,24 @@ export function BulkActionFilters({
   );
 }
 
-function PermanentSelectFilter({
+export function PermanentSelectFilter({
   paramKey,
   label,
   icon,
   options,
   shortcut,
+  onOpen,
+  empty,
 }: {
   paramKey: string;
   label: string;
   icon: ReactNode;
   options: Option[];
   shortcut: { key: string };
+  /** Called each time the menu opens, for options that load on demand. */
+  onOpen?: () => void;
+  /** Shown in place of the options when there are none. */
+  empty?: ReactNode;
 }) {
   const { values, replace, del } = useSearchParams();
   const selected = values(paramKey);
@@ -136,6 +142,9 @@ function PermanentSelectFilter({
           setValue={(next: string[]) => {
             setSearch("");
             replace({ [paramKey]: next, page: undefined });
+          }}
+          setOpen={(open) => {
+            if (open) onOpen?.();
           }}
           virtualFocus={true}
         >
@@ -184,6 +193,7 @@ function PermanentSelectFilter({
                   {option.render}
                 </SelectItem>
               ))}
+              {options.length === 0 && empty ? <SelectItem disabled>{empty}</SelectItem> : null}
             </SelectList>
           </SelectPopover>
         </SelectProvider>

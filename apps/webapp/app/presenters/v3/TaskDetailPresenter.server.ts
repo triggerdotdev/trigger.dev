@@ -36,7 +36,10 @@ export type TaskDetail = {
   exportName: string | null;
   description: string | null;
   triggerSource: TaskTriggerSource;
+  /** When this version's task row was written. */
   createdAt: Date;
+  /** When the task first appeared in the project: its earliest worker task row. */
+  firstSeenAt: Date;
   config: unknown;
   workerVersion: string | null;
   queue: TaskDetailQueue | null;
@@ -63,11 +66,13 @@ export class TaskDetailPresenter {
   ) {}
 
   async findTask({
+    projectId,
     environmentId,
     environmentType,
     taskSlug,
     expectedTriggerSource,
   }: {
+    projectId: string;
     environmentId: string;
     environmentType: RuntimeEnvironmentType;
     taskSlug: string;
@@ -112,6 +117,14 @@ export class TaskDetailPresenter {
 
     if (!task) return null;
 
+    // The oldest row for this slug across the project's workers, read off the
+    // [projectId, slug, createdAt] index.
+    const firstSeen = await this.replica.backgroundWorkerTask.findFirst({
+      where: { projectId, slug: taskSlug },
+      orderBy: { createdAt: "asc" },
+      select: { createdAt: true },
+    });
+
     const retryParsed = RetryOptions.safeParse(task.retryConfig ?? undefined);
     const retry: TaskDetailRetry | null = retryParsed.success
       ? {
@@ -130,6 +143,7 @@ export class TaskDetailPresenter {
       description: task.description,
       triggerSource: task.triggerSource,
       createdAt: task.createdAt,
+      firstSeenAt: firstSeen?.createdAt ?? task.createdAt,
       config: task.config,
       workerVersion: currentWorker.version,
       queue: task.queue,

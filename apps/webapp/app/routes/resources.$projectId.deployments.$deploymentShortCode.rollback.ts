@@ -4,9 +4,10 @@ import { z } from "zod";
 import { $replica, prisma } from "~/db.server";
 import { redirectWithErrorMessage, redirectWithSuccessMessage } from "~/models/message.server";
 import { logger } from "~/services/logger.server";
-import { dashboardAction } from "~/services/routeBuilders/dashboardBuilder";
+import { dashboardAction, dashboardLoader } from "~/services/routeBuilders/dashboardBuilder";
 import { sanitizeRedirectPath } from "~/utils";
 import { ChangeCurrentDeploymentService } from "~/v3/services/changeCurrentDeployment.server";
+import { findRollbackTarget, findTasksMissingFromTarget } from "~/v3/rollbackMissingTasks.server";
 
 export const rollbackSchema = z.object({
   redirectUrl: z.string(),
@@ -24,6 +25,30 @@ async function resolveOrgIdFromProjectId(projectId: string): Promise<string | nu
   });
   return project?.organizationId ?? null;
 }
+
+// The rollback dialog loads the tasks this rollback would drop when it opens.
+export const loader = dashboardLoader(
+  {
+    params: ParamSchema,
+    context: async (params) => {
+      const organizationId = await resolveOrgIdFromProjectId(params.projectId);
+      return organizationId ? { organizationId } : {};
+    },
+    authorization: { action: "read", resource: { type: "deployments" } },
+  },
+  async ({ params, user }) => {
+    const deployment = await findRollbackTarget($replica, {
+      projectId: params.projectId,
+      deploymentShortCode: params.deploymentShortCode,
+      userId: user.id,
+    });
+    if (!deployment) {
+      throw new Response("Deployment not found", { status: 404 });
+    }
+
+    return json({ missingTasks: await findTasksMissingFromTarget($replica, deployment) });
+  }
+);
 
 export const action = dashboardAction(
   {

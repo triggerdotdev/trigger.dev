@@ -13,6 +13,8 @@ type DeploymentEventStream = {
     basin: string;
     stream: string;
     accessToken: string;
+    /** A self-hosted S2 to read from instead of s2.dev. */
+    endpoint?: string;
   };
 };
 
@@ -36,6 +38,7 @@ export function useDeploymentLogs({ eventStream, status }: UseDeploymentLogsOpti
   const basin = eventStream?.s2.basin;
   const stream = eventStream?.s2.stream;
   const accessToken = eventStream?.s2.accessToken;
+  const endpoint = eventStream?.s2.endpoint;
 
   useEffect(() => {
     if (!basin || !stream || !accessToken) return;
@@ -99,13 +102,19 @@ export function useDeploymentLogs({ eventStream, status }: UseDeploymentLogsOpti
       let s2: typeof S2Client | undefined;
       try {
         s2 = await import("@s2-dev/streamstore");
-        const s2Stream = new s2.S2({ accessToken }).basin(basin).stream(stream);
+        const s2Stream = new s2.S2({
+          accessToken,
+          ...(endpoint ? { endpoints: { account: endpoint, basin: endpoint } } : {}),
+        })
+          .basin(basin)
+          .stream(stream);
 
         do {
           const readSession = await s2Stream.readSession(
             {
               start: { from: { seqNum: nextSeqNum }, clamp: true },
-              stop: { waitSecs: 60 },
+              // A finished deploy's log is complete: read to its end and stop, don't wait for more.
+              stop: { waitSecs: isFinished ? 0 : 60 },
             },
             { signal: abortController.signal }
           );
@@ -168,7 +177,7 @@ export function useDeploymentLogs({ eventStream, status }: UseDeploymentLogsOpti
       abortController.abort();
       store();
     };
-  }, [basin, stream, accessToken, status]);
+  }, [basin, stream, accessToken, endpoint, status]);
 
   return { logs, isStreaming, streamError };
 }

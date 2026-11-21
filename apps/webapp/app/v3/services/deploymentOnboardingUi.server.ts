@@ -84,13 +84,13 @@ export async function resolveDeploymentOnboardingUi({
     : { eligible: false as const };
   const onboardingDetails =
     selection.eligible && selection.shortCode
-      ? await new DeploymentPresenter().call({
+      ? ((await new DeploymentPresenter().call({
           userId,
           organizationSlug,
           projectSlug,
           environmentSlug,
           deploymentShortCode: selection.shortCode,
-        })
+        })) ?? undefined)
       : undefined;
   const showGitHubOnboarding =
     selection.eligible && onboardingDetails?.deployment.status !== "DEPLOYED";

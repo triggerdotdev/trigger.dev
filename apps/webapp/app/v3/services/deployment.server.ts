@@ -24,7 +24,12 @@ import {
 import { FEATURE_FLAG, type FeatureFlagKey } from "../featureFlags";
 import { flags } from "../featureFlags.server";
 import { globalFlagsRegistry } from "../globalFlagsRegistry.server";
-import { AppendInput, AppendRecord, S2 } from "@s2-dev/streamstore";
+import { AppendInput, AppendRecord } from "@s2-dev/streamstore";
+import {
+  createDeploymentLogsS2Client,
+  skipDeploymentLogsAccessTokens,
+  UNAUTHENTICATED_S2_TOKEN,
+} from "~/v3/deploymentLogsS2.server";
 import { createRedisClient } from "~/redis.server";
 
 const S2_TOKEN_KEY_PREFIX = "s2-token:read:deployment-event-stream:project:";
@@ -36,7 +41,7 @@ const s2TokenRedis = createRedisClient("s2-token-cache", {
   tlsDisabled: env.CACHE_REDIS_TLS_DISABLED === "true",
   clusterMode: env.CACHE_REDIS_CLUSTER_MODE_ENABLED === "1",
 });
-const s2 = env.S2_ENABLED === "1" ? new S2({ accessToken: env.S2_ACCESS_TOKEN }) : undefined;
+const s2 = createDeploymentLogsS2Client();
 
 const DEPLOY_BUILD_PATH_ENV_FLAG: Partial<Record<RuntimeEnvironmentType, FeatureFlagKey>> = {
   PREVIEW: FEATURE_FLAG.deployBuildPathPreview,
@@ -537,6 +542,8 @@ export class DeploymentService extends BaseService {
         }
         return okAsync(cachedToken);
       });
+
+    if (skipDeploymentLogsAccessTokens()) return okAsync(UNAUTHENTICATED_S2_TOKEN);
 
     const issueS2Token = () =>
       fromPromise(

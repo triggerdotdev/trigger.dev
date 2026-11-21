@@ -14,6 +14,8 @@ export type DeploymentEventStream = {
     basin: string;
     stream: string;
     accessToken: string;
+    /** A self-hosted S2 to read from instead of s2.dev. */
+    endpoint?: string;
   };
 };
 
@@ -44,6 +46,7 @@ export function useOnboardingDeploymentLogs(
   const basin = eventStream?.s2.basin;
   const stream = eventStream?.s2.stream;
   const accessToken = eventStream?.s2.accessToken;
+  const endpoint = eventStream?.s2.endpoint;
 
   useEffect(() => {
     if (!basin || !stream || !accessToken) {
@@ -108,7 +111,15 @@ export function useOnboardingDeploymentLogs(
     };
 
     const read = async () => {
-      const s2Stream = (client ?? new S2({ accessToken })).basin(basin).stream(stream);
+      const s2Stream = (
+        client ??
+        new S2({
+          accessToken,
+          ...(endpoint ? { endpoints: { account: endpoint, basin: endpoint } } : {}),
+        })
+      )
+        .basin(basin)
+        .stream(stream);
 
       do {
         const readSession = await s2Stream.readSession(
@@ -183,7 +194,7 @@ export function useOnboardingDeploymentLogs(
       abortController.abort();
       store();
     };
-  }, [basin, stream, accessToken, status, retryCount, client]);
+  }, [basin, stream, accessToken, endpoint, status, retryCount, client]);
 
   return { logs, isStreaming, streamError, retry: () => setRetryCount((count) => count + 1) };
 }

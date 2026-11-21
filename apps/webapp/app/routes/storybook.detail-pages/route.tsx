@@ -1,4 +1,8 @@
 import {
+  type DeploymentResourceItems,
+  DeploymentResources,
+} from "~/components/deployments/DeploymentResources";
+import {
   ArrowPathIcon,
   BeakerIcon,
   BellIcon,
@@ -7,12 +11,15 @@ import {
   KeyIcon,
   NoSymbolIcon,
   PaperAirplaneIcon,
+  PauseIcon,
 } from "@heroicons/react/20/solid";
 import { type ReactNode, useState } from "react";
+import { CubeSparkleIcon } from "~/assets/icons/CubeSparkleIcon";
 import { DeploymentsIcon } from "~/assets/icons/DeploymentsIcon";
 import { ListCheckedIcon } from "~/assets/icons/ListCheckedIcon";
 import { RunsIcon } from "~/assets/icons/RunsIcon";
 import { TasksIcon } from "~/assets/icons/TasksIcon";
+import { BuildLogsViewer } from "~/components/deployments/BuildLogsViewer";
 import { EnvironmentCombo } from "~/components/environments/EnvironmentLabel";
 import { Badge } from "~/components/primitives/Badge";
 import { Button, LinkButton } from "~/components/primitives/Buttons";
@@ -44,7 +51,6 @@ import {
   ProgressMeter,
   SettingGroup,
   SettingRow,
-  SkeletonBone,
 } from "~/components/primitives/detail/DetailSections";
 import { NavBar, PageAccessories } from "~/components/primitives/PageHeader";
 import {
@@ -57,9 +63,11 @@ import {
 } from "~/components/primitives/Table";
 import { BulkActionStatusCombo, BulkActionTypeCombo } from "~/components/runs/v3/BulkAction";
 import { BulkActionFilterList } from "~/components/runs/v3/BulkActionFilterList";
+import type { DeploymentLogEntry } from "~/components/runs/v3/deploymentLogsCache";
 import { DeploymentStatus } from "~/components/runs/v3/DeploymentStatus";
 import { TaskRunStatusCombo } from "~/components/runs/v3/TaskRunStatus";
 import { EndpointStatusBadge } from "~/components/webhookEndpoints/v1/EndpointStatus";
+import { cn } from "~/utils/cn";
 import { StoryPage, StorySection, StorySubSection } from "../storybook/StoryKit";
 
 /* The detail page template (components/primitives/detail) with static data. Each entity has its
@@ -68,9 +76,57 @@ export default function Story() {
   return (
     <StoryPage
       title="Detail pages"
-      componentNames={["DetailPage.tsx", "DetailSections.tsx"]}
-      description="One template for detail pages: a header that owns identity and actions, the entity's own tabs, a main column for the selected tab, and a property rail. Tables in the main column run edge to edge. The bulk action page is the first page built on it."
+      componentNames={["DetailPage.tsx", "DetailSections.tsx", "BuildLogsViewer.tsx"]}
+      description="One detail template for deployments, tasks, bulk actions and webhook endpoints: a header that owns identity and actions, the entity's own tabs, a main column for the selected tab, and a property rail. Tables in the main column run edge to edge."
     >
+      <StorySection
+        title="Deployment"
+        description="Overview: what the deploy contains, the runs on it, and how it's doing against the previous version. Tabs: Overview, Tasks, Runs, Build logs, Activity."
+      >
+        <Frame>
+          <DeploymentPage />
+        </Frame>
+      </StorySection>
+      <StorySection
+        title="Deployment: Build logs"
+        description="A failed deploy. The error count jumps to the first error; search filters lines and highlights matches."
+      >
+        <Frame>
+          <DeploymentPage failed initialTab="logs" />
+        </Frame>
+      </StorySection>
+      <StorySection
+        title="Deployment: Activity"
+        description="Only deployments have an Activity tab. The callout says what went wrong and how to fix it."
+      >
+        <Frame>
+          <DeploymentPage failed initialTab="activity" />
+        </Frame>
+      </StorySection>
+      <StorySection
+        title="Task"
+        description="Tabs: Runs, Queue, Schedules. No Overview or Activity."
+      >
+        <Frame>
+          <TaskPage />
+        </Frame>
+      </StorySection>
+      <StorySection
+        title="Task: Queue"
+        description="Concurrency slots and the queue's backlog, with the queue actions beside them; the queued runs below."
+      >
+        <Frame>
+          <TaskPage initialTab="queue" />
+        </Frame>
+      </StorySection>
+      <StorySection
+        title="Agent"
+        description="An agent is a task with a Sessions tab first, the Playground as its main action, and the models it called in the rail. Sessions sit beside their LLM spend and tokens."
+      >
+        <Frame>
+          <AgentPage />
+        </Frame>
+      </StorySection>
       <StorySection
         title="Bulk action"
         description="In progress. Tabs: Runs and Failed. Progress sits at the top of the rail, above Details."
@@ -84,7 +140,7 @@ export default function Story() {
         description="Below 900px of page width the rail closes and Details opens it as a sheet. Secondary actions fold into the more menu below 1100px."
       >
         <Frame width="w-[768px]" height="h-[560px]">
-          <BulkActionPage />
+          <TaskPage />
         </Frame>
       </StorySection>
 
@@ -115,18 +171,6 @@ export default function Story() {
       <StorySection title="PropertyRail" componentName="DetailPage.tsx">
         <div className="h-[420px] w-[320px] overflow-hidden rounded-sm border border-grid-bright">
           <DeploymentRail />
-        </div>
-      </StorySection>
-
-      <StorySection
-        title="DetailMain and DetailSection"
-        componentName="DetailSections.tsx"
-        description="A tab that isn't a table: sections in the main column, each with a heading and its own actions."
-      >
-        <div className="overflow-hidden rounded-sm border border-grid-bright bg-background-dimmed">
-          <DetailMain>
-            <StatusChart title="Runs" data={runsChartData} config={runsChartConfig} />
-          </DetailMain>
         </div>
       </StorySection>
 
@@ -241,12 +285,6 @@ export default function Story() {
               <ChartSkeleton />
             </div>
           </StorySubSection>
-          <StorySubSection title="A value on its way">
-            <div className="flex w-64 flex-col gap-2">
-              <SkeletonBone className="w-40" />
-              <SkeletonBone className="w-24" />
-            </div>
-          </StorySubSection>
         </div>
       </StorySection>
     </StoryPage>
@@ -295,7 +333,9 @@ function Nav({ back, title, docs }: { back: string; title: string; docs?: string
 
 const prod = { type: "PRODUCTION" as const };
 
-// ---------- headers and rail ----------
+// ---------- deployment ----------
+
+type DeployTab = "overview" | "tasks" | "runs" | "logs" | "activity";
 
 function DeploymentHeader({ failed = false }: { failed?: boolean }) {
   return failed ? (
@@ -492,6 +532,406 @@ const failedDeploySteps = [
   },
 ];
 
+function DeploymentPage({
+  failed = false,
+  initialTab = "overview",
+}: {
+  failed?: boolean;
+  initialTab?: DeployTab;
+}) {
+  const [tab, setTab] = useState<DeployTab>(initialTab);
+  const tabs: DetailTab<DeployTab>[] = [
+    { id: "overview", label: "Overview" },
+    { id: "tasks", label: "Tasks", count: failed ? "0" : "14" },
+    { id: "runs", label: "Runs", count: failed ? "0" : "3,117" },
+    { id: "logs", label: "Build logs" },
+    { id: "activity", label: "Activity" },
+  ];
+
+  return (
+    <>
+      <Nav back="Deploys" title={failed ? "20261117.4" : "20261117.3"} docs="Deploy docs" />
+      <DetailPage
+        id="story-deployment"
+        header={<DeploymentHeader failed={failed} />}
+        tabs={
+          <DetailTabs
+            tabs={tabs}
+            activeTab={tab}
+            onTabChange={setTab}
+            layoutId={`deploy-${failed}-${initialTab}`}
+            tools={tab === "overview" && !failed ? <PeriodChip value="24h" /> : undefined}
+          />
+        }
+        rail={<DeploymentRail failed={failed} />}
+      >
+        {tab === "logs" ? (
+          <BuildLogsViewer
+            logs={failed ? failedBuildLogs : buildLogs}
+            downloadName={`${failed ? "20261117.4" : "20261117.3"}-build.log`}
+          />
+        ) : tab === "activity" ? (
+          <DetailMain>
+            <ActivityTimeline
+              failure={failed ? deployFailure : undefined}
+              steps={failed ? failedDeploySteps : deploySteps}
+            />
+          </DetailMain>
+        ) : failed ? (
+          <DetailTabEmpty
+            title={
+              tab === "overview"
+                ? "This deploy failed while indexing"
+                : tab === "tasks"
+                  ? "No tasks indexed"
+                  : "No runs on this version"
+            }
+            description="Two tasks share the id generate-monthly-statement. 20261117.3 is still current."
+            action={
+              <Button variant="secondary/small" onClick={() => setTab("logs")}>
+                View build logs
+              </Button>
+            }
+          />
+        ) : tab === "overview" ? (
+          <DetailMain>
+            <StatusChart
+              title="Runs on this version"
+              data={deployChartData}
+              config={runsChartConfig}
+            />
+            <DeployCounts />
+          </DetailMain>
+        ) : tab === "tasks" ? (
+          <DetailTableTab
+            tools={<SearchChip placeholder="Search tasks" />}
+            actions={
+              <span className="text-xs text-text-dimmed">1 added, 0 removed since 20261117.2</span>
+            }
+          >
+            <StoryTable
+              headers={["Task", "File", "Queue", "Runs (24h)", "Failure rate", "Avg duration"]}
+              rows={deployTasks.map((task) => [
+                <span key="id" className="flex items-center gap-2">
+                  {task.id}
+                  {task.added ? <Badge variant="extra-small">New</Badge> : null}
+                </span>,
+                task.file,
+                task.queue,
+                task.runs,
+                <span key="rate" className={cn(task.failing && "text-error")}>
+                  {task.rate}
+                </span>,
+                task.duration,
+              ])}
+              alignRight={[3, 4, 5]}
+            />
+          </DetailTableTab>
+        ) : (
+          <DetailTableTab
+            tools={<FilterChip label="Status" value="Any" />}
+            actions={
+              <LinkButton
+                variant="tertiary/small"
+                to="#"
+                LeadingIcon={RunsIcon}
+                leadingIconClassName="text-runs"
+              >
+                Open in runs list
+              </LinkButton>
+            }
+          >
+            <RunsTable />
+          </DetailTableTab>
+        )}
+      </DetailPage>
+    </>
+  );
+}
+
+/** What this version registered, with the change since the previous one. */
+function DeployCounts() {
+  const base = {
+    tasks: 14,
+    scheduled: 3,
+    agents: 1,
+    webhookTasks: 0,
+    queues: 6,
+    concurrencyLimits: 2,
+    declaredSchedules: 2,
+    webhookEndpoints: 2,
+    webhookSubscribers: 3,
+    machinePresets: 2,
+    files: 9,
+  };
+  return (
+    <DeploymentResources
+      counts={base}
+      previous={{ ...base, tasks: 13, agents: 0, queues: 7 }}
+      items={MOCK_RESOURCES}
+      prompts={MOCK_PROMPTS}
+      taskPath={() => "#"}
+    />
+  );
+}
+
+const mockTask = (
+  slug: string,
+  filePath: string,
+  triggerSource: DeploymentResourceItems["tasks"][number]["triggerSource"] = "STANDARD",
+  extra: Partial<DeploymentResourceItems["tasks"][number]> = {}
+): DeploymentResourceItems["tasks"][number] => ({
+  slug,
+  filePath,
+  triggerSource,
+  queue: `task/${slug}`,
+  machine: null,
+  maxDurationSeconds: null,
+  maxAttempts: null,
+  change: null,
+  ...extra,
+});
+
+const MOCK_RESOURCES: DeploymentResourceItems = {
+  tasks: [
+    mockTask("generate-invoice", "src/trigger/billing.ts", "STANDARD", {
+      queue: "billing",
+      machine: "small-2x",
+      maxDurationSeconds: 300,
+      maxAttempts: 5,
+    }),
+    mockTask("send-invoice-email", "src/trigger/billing.ts", "STANDARD", { queue: "billing" }),
+    mockTask("nightly-usage-rollup", "src/trigger/usage.ts", "SCHEDULED", {
+      machine: "medium-1x",
+      maxDurationSeconds: 3600,
+    }),
+    mockTask("hourly-sync", "src/trigger/sync.ts", "SCHEDULED", { maxAttempts: 3 }),
+    mockTask("weekly-digest", "src/trigger/digest.ts", "SCHEDULED"),
+    mockTask("support-agent", "src/trigger/agent.ts", "AGENT", {
+      machine: "small-2x",
+      change: "added",
+    }),
+    mockTask("resize-image", "src/trigger/media.ts", "STANDARD", {
+      queue: "media",
+      machine: "medium-1x",
+      maxDurationSeconds: 120,
+    }),
+    mockTask("transcode-video", "src/trigger/media.ts", "STANDARD", {
+      queue: "media",
+      machine: "medium-1x",
+      maxDurationSeconds: 1800,
+      maxAttempts: 2,
+    }),
+    mockTask("import-csv", "src/trigger/imports.ts", "STANDARD", { change: "added" }),
+    mockTask("parse-row", "src/trigger/imports.ts"),
+    mockTask("enrich-contact", "src/trigger/crm.ts", "STANDARD", { maxAttempts: 10 }),
+    mockTask("sync-hubspot", "src/trigger/crm.ts"),
+    mockTask("cleanup-temp-files", "src/trigger/maintenance.ts"),
+    mockTask("notify-slack", "src/trigger/notify.ts"),
+    mockTask("legacy-export", "src/trigger/export.ts", "STANDARD", { change: "removed" }),
+  ],
+  queues: [
+    {
+      name: "billing",
+      concurrencyLimit: 5,
+      tasks: ["generate-invoice", "send-invoice-email"],
+      change: null,
+    },
+    {
+      name: "media",
+      concurrencyLimit: 10,
+      tasks: ["resize-image", "transcode-video"],
+      change: null,
+    },
+    {
+      name: "task/nightly-usage-rollup",
+      concurrencyLimit: 1,
+      tasks: ["nightly-usage-rollup"],
+      change: null,
+    },
+    { name: "task/import-csv", concurrencyLimit: null, tasks: ["import-csv"], change: "added" },
+    {
+      name: "task/enrich-contact",
+      concurrencyLimit: null,
+      tasks: ["enrich-contact"],
+      change: null,
+    },
+    {
+      name: "task/support-agent",
+      concurrencyLimit: null,
+      tasks: ["support-agent"],
+      change: "added",
+    },
+    { name: "exports", concurrencyLimit: 2, tasks: [], change: "removed" },
+  ],
+  concurrencyLimits: [
+    {
+      name: "openai",
+      concurrencyLimit: 20,
+      tasks: ["support-agent", "enrich-contact"],
+      change: null,
+    },
+    { name: "hubspot-api", concurrencyLimit: 4, tasks: ["sync-hubspot"], change: null },
+  ],
+  schedules: [
+    { taskId: "nightly-usage-rollup", cron: "0 2 * * *", timezone: "Europe/London", change: null },
+    { taskId: "hourly-sync", cron: "0 * * * *", timezone: "UTC", change: null },
+  ],
+  webhookEndpoints: [
+    {
+      id: "stripe",
+      source: "stripe",
+      filePath: "src/trigger/webhooks.ts",
+      subscribers: ["generate-invoice", "send-invoice-email"],
+      change: null,
+    },
+    {
+      id: "github",
+      source: "github",
+      filePath: "src/trigger/webhooks.ts",
+      subscribers: ["notify-slack"],
+      change: null,
+    },
+  ],
+  machines: [
+    { name: null, tasks: 9 },
+    { name: "medium-1x", tasks: 3 },
+    { name: "small-2x", tasks: 2 },
+  ],
+};
+
+/** Already resolved: the Prompts row draws without its placeholder. */
+const MOCK_PROMPTS = Promise.resolve([
+  { slug: "support-agent-system", version: 4, model: "claude-sonnet-5-5" },
+]);
+
+const deployTasks = [
+  {
+    id: "send-invoice-reminder",
+    file: "src/trigger/invoices.ts",
+    queue: "task/send-invoice-reminder",
+    runs: "1,942",
+    rate: "1.8%",
+    duration: "3.1s",
+    failing: true,
+  },
+  {
+    id: "sync-ledger-entries",
+    file: "src/trigger/ledger.ts",
+    queue: "ledger",
+    runs: "864",
+    rate: "0.2%",
+    duration: "12.4s",
+  },
+  {
+    id: "generate-monthly-statement",
+    file: "src/trigger/statements.ts",
+    queue: "statements",
+    runs: "311",
+    rate: "0.0%",
+    duration: "48.0s",
+  },
+  {
+    id: "render-receipt-pdf",
+    file: "src/trigger/pdf.ts",
+    queue: "statements",
+    runs: "0",
+    rate: "–",
+    duration: "–",
+    added: true,
+  },
+  {
+    id: "stripe-webhook-router",
+    file: "src/trigger/stripe.ts",
+    queue: "webhooks",
+    runs: "0",
+    rate: "0.0%",
+    duration: "0.4s",
+  },
+  {
+    id: "nightly-usage-rollup",
+    file: "src/trigger/usage.ts",
+    queue: "task/nightly-usage-rollup",
+    runs: "1",
+    rate: "0.0%",
+    duration: "2m 10s",
+  },
+  {
+    id: "notify-overdue-accounts",
+    file: "src/trigger/invoices.ts",
+    queue: "task/notify-overdue-accounts",
+    runs: "0",
+    rate: "–",
+    duration: "–",
+  },
+  {
+    id: "support-agent",
+    file: "src/trigger/agent.ts",
+    queue: "agents",
+    runs: "0",
+    rate: "–",
+    duration: "–",
+  },
+];
+
+const at = (seconds: number) => new Date(Date.UTC(2026, 10, 17, 14, 2, 11) + seconds * 1000);
+
+const buildLogs: DeploymentLogEntry[] = [
+  ["info", 0, "Deploying project proj_mbxkzt3w to prod"],
+  ["info", 1, "Using trigger.dev CLI 4.3.1, SDK 4.3.1"],
+  ["info", 2, "Building image for linux/amd64"],
+  ["info", 4, "#1 [internal] load build definition from Containerfile"],
+  ["info", 5, "#4 [base 1/4] FROM node:22.12.0-bookworm-slim"],
+  ["info", 9, "#7 [build 2/5] RUN pnpm install --frozen-lockfile"],
+  ["info", 48, "#7 Packages: +812"],
+  ["warn", 49, "#7 WARN deprecated inflight@1.0.6: This module is not supported, and leaks memory"],
+  ["info", 50, "#7 Done in 41.2s"],
+  ["info", 51, "#9 [build 4/5] RUN node build.mjs"],
+  ["info", 86, "#9 Bundled 9 entry points, 14 tasks"],
+  ["info", 104, "#12 exporting layers 208 MB"],
+  ["info", 112, "#12 pushing image to registry done"],
+  ["info", 113, "Image built in 1m 52s"],
+  ["info", 114, "Indexing tasks"],
+  ["info", 136, "Indexed 14 tasks, 6 queues, 3 schedules, 2 webhooks, 1 agent"],
+  ["info", 139, "Deployed 20261117.3"],
+  ["info", 140, "Promoted 20261117.3 to current"],
+].map(([level, seconds, message]) => ({
+  level: level as DeploymentLogEntry["level"],
+  timestamp: at(seconds as number),
+  message: message as string,
+}));
+
+const failedBuildLogs: DeploymentLogEntry[] = [
+  ["info", 0, "Deploying project proj_mbxkzt3w to prod"],
+  ["info", 1, "Using trigger.dev CLI 4.3.1, SDK 4.3.1"],
+  ["info", 2, "Building image for linux/amd64"],
+  ["info", 4, "#1 [internal] load build definition from Containerfile"],
+  ["info", 5, "#4 [base 1/4] FROM node:22.12.0-bookworm-slim"],
+  ["info", 9, "#7 [build 2/5] RUN pnpm install --frozen-lockfile"],
+  ["info", 47, "#7 Packages: +812"],
+  ["warn", 48, "#7 WARN deprecated inflight@1.0.6: This module is not supported, and leaks memory"],
+  ["warn", 48, "#7 WARN 2 peer dependency issues: pdfkit@0.15.0 wants fontkit@^2"],
+  ["info", 50, "#7 Done in 41.0s"],
+  ["info", 51, "#9 [build 4/5] RUN node build.mjs"],
+  ["info", 84, "#9 Bundled 9 entry points, 15 tasks"],
+  ["info", 101, "#12 exporting layers 214 MB"],
+  ["info", 108, "#12 pushing image to registry done"],
+  ["info", 109, "Image built in 1m 48s"],
+  ["info", 153, "Indexing 15 tasks from 9 files"],
+  ["info", 154, "Registered send-invoice-reminder, sync-ledger-entries, +11 more"],
+  ["error", 154, 'Error: Duplicate task id "generate-monthly-statement"'],
+  ["error", 154, "    at src/trigger/statements.ts:12 and src/trigger/pdf.ts:40"],
+  ["info", 154, "Deploy marked as failed. 20261117.3 is still current."],
+].map(([level, seconds, message]) => ({
+  level: level as DeploymentLogEntry["level"],
+  timestamp: at((seconds as number) + 1731),
+  message: message as string,
+}));
+
+// ---------- task ----------
+
+type TaskTab = "runs" | "queue" | "schedules";
+
 function TaskHeader() {
   return (
     <DetailHeader
@@ -528,6 +968,398 @@ function TaskHeader() {
     />
   );
 }
+
+function TaskPage({ initialTab = "runs" }: { initialTab?: TaskTab }) {
+  const [tab, setTab] = useState<TaskTab>(initialTab);
+  const tabs: DetailTab<TaskTab>[] = [
+    { id: "runs", label: "Runs", count: "2,018" },
+    { id: "queue", label: "Queue", count: "12" },
+    { id: "schedules", label: "Schedules", count: "1" },
+  ];
+
+  return (
+    <>
+      <Nav back="Tasks" title="send-invoice-reminder" docs="Task docs" />
+      <DetailPage
+        id="story-task"
+        header={<TaskHeader />}
+        tabs={
+          <DetailTabs
+            tabs={tabs}
+            activeTab={tab}
+            onTabChange={setTab}
+            layoutId={`task-${initialTab}`}
+          />
+        }
+        rail={
+          <PropertyRail>
+            <PropertyGroup title="Details">
+              <DetailProperty label="Identifier">
+                <CopyableText value="send-invoice-reminder" className="font-mono text-xs" />
+              </DetailProperty>
+              <PropertyPair>
+                <DetailProperty label="Type">Standard task</DetailProperty>
+                <DetailProperty label="Created">Oct 2, 09:14</DetailProperty>
+              </PropertyPair>
+              <DetailProperty label="Description">
+                Emails a reminder for invoices that are seven days overdue, then schedules a
+                follow-up
+              </DetailProperty>
+            </PropertyGroup>
+            <PropertyGroup title="Execution">
+              <DetailProperty label="Queue">task/send-invoice-reminder</DetailProperty>
+              <PropertyPair>
+                <DetailProperty label="Concurrency">3 of 10 running</DetailProperty>
+                <DetailProperty label="Machine">small-1x</DetailProperty>
+                <DetailProperty label="Max duration">5m</DetailProperty>
+                <DetailProperty label="TTL">–</DetailProperty>
+              </PropertyPair>
+              <DetailProperty label="Retry">
+                <div className="flex flex-col gap-1.5">
+                  <span>3 attempts</span>
+                  <span className="text-xs text-text-dimmed">
+                    Waits 1s, then 2s. Backoff ×2, 1s to 30s, each wait up to 2× at random
+                  </span>
+                </div>
+              </DetailProperty>
+            </PropertyGroup>
+            <PropertyGroup title="Source">
+              <DetailProperty label="File path">
+                <CopyableText
+                  value="src/trigger/invoices.ts"
+                  className="font-mono text-xs"
+                  truncate
+                />
+              </DetailProperty>
+              <PropertyPair>
+                <DetailProperty label="Version">20261117.3</DetailProperty>
+                <DetailProperty label="Payload schema">Yes</DetailProperty>
+              </PropertyPair>
+            </PropertyGroup>
+          </PropertyRail>
+        }
+      >
+        {tab === "runs" ? (
+          <DetailTableTab
+            tools={
+              <>
+                <PeriodChip value="7d" />
+                <FilterChip label="Status" value="Any" />
+              </>
+            }
+            actions={
+              <LinkButton
+                variant="tertiary/small"
+                to="#"
+                LeadingIcon={RunsIcon}
+                leadingIconClassName="text-runs"
+              >
+                Open in runs list
+              </LinkButton>
+            }
+          >
+            <RunsTable />
+          </DetailTableTab>
+        ) : tab === "queue" ? (
+          <div className="flex h-full flex-col overflow-hidden">
+            <QueueSummary />
+            <div className="min-h-0 flex-1">
+              <DetailTableTab
+                tools={
+                  <span className="text-xs text-text-dimmed">
+                    Waiting to start in task/send-invoice-reminder
+                  </span>
+                }
+              >
+                <StoryTable
+                  headers={["Run ID", "Status", "Queued for", "Priority", "Version"]}
+                  rows={queuedRuns.map(([id, waited, priority]) => [
+                    id,
+                    <TaskRunStatusCombo key="status" status="PENDING" />,
+                    waited,
+                    priority,
+                    "20261117.3",
+                  ])}
+                />
+              </DetailTableTab>
+            </div>
+          </div>
+        ) : (
+          <DetailTableTab
+            actions={
+              <Button variant="secondary/small" LeadingIcon={PauseIcon}>
+                Pause all
+              </Button>
+            }
+          >
+            <StoryTable
+              headers={["Schedule", "Cron", "Runs", "Next run", "Last run", "Environments"]}
+              rows={[
+                [
+                  "sched_4k8m2x9qwt",
+                  <span key="cron" className="flex flex-col">
+                    <code className="font-mono text-xs text-text-bright">0 9 * * 1-5</code>
+                    <span className="text-xs text-text-dimmed">09:00 on weekdays, UTC</span>
+                  </span>,
+                  "Declarative",
+                  "Tomorrow, 09:00",
+                  "Today, 09:00",
+                  <EnvironmentCombo key="env" environment={prod} />,
+                ],
+              ]}
+            />
+          </DetailTableTab>
+        )}
+      </DetailPage>
+    </>
+  );
+}
+
+const sessionsChartConfig = {
+  active: { label: "Active", color: "var(--color-pending)" },
+  closed: { label: "Closed", color: "var(--color-success)" },
+} satisfies ChartConfig;
+
+const agentSessionsData = Array.from({ length: 24 }, (_, i) => ({
+  bucket: `${String((14 + i) % 24).padStart(2, "0")}:00`,
+  closed: [4, 6, 3, 8, 9, 12, 7, 5, 10, 14, 11, 9][i % 12],
+  active: i > 20 ? [2, 3, 1][i % 3] : 0,
+}));
+const agentSpendData = agentSessionsData.map((point) => ({
+  bucket: point.bucket,
+  spend: (point.closed + point.active) * 0.004,
+}));
+const agentTokenData = agentSessionsData.map((point) => ({
+  bucket: point.bucket,
+  tokens: (point.closed + point.active) * 1_850,
+}));
+
+function AgentBandPanel({
+  label,
+  total,
+  data,
+  config,
+  className,
+}: {
+  label: string;
+  total: string;
+  data: Record<string, string | number>[];
+  config: ChartConfig;
+  className?: string;
+}) {
+  return (
+    <div className={cn("flex min-w-0 flex-col gap-1.5 px-3 pb-2 pt-2.5", className)}>
+      <div className="flex h-5 items-baseline gap-2">
+        <span className="text-xs text-text-dimmed">{label}</span>
+        <span className="text-sm font-medium tabular-nums text-text-bright">{total}</span>
+      </div>
+      <div className="min-h-0 flex-1">
+        <Chart.Root config={config} data={data} dataKey="bucket" fillContainer>
+          <Chart.Bar stackId="a" barRadius={0} />
+        </Chart.Root>
+      </div>
+    </div>
+  );
+}
+
+function AgentPage() {
+  const [tab, setTab] = useState<"sessions" | "runs" | "queue">("sessions");
+  const tabs: DetailTab<"sessions" | "runs" | "queue">[] = [
+    { id: "sessions", label: "Sessions" },
+    { id: "runs", label: "Runs" },
+    { id: "queue", label: "Queue", count: "0" },
+  ];
+
+  return (
+    <>
+      <Nav back="Tasks" title="support-agent" />
+      <DetailPage
+        id="story-agent"
+        header={
+          <DetailHeader
+            icon={CubeSparkleIcon}
+            iconClassName="text-agents"
+            title="support-agent"
+            mono
+            meta={["Agent task", "Version 20261118.3", "2 running, 0 queued"]}
+            friendlyId="support-agent"
+            secondaryActions={
+              <LinkButton
+                variant="secondary/small"
+                to="#"
+                LeadingIcon={RunsIcon}
+                leadingIconClassName="text-runs"
+              >
+                View runs
+              </LinkButton>
+            }
+            primaryAction={
+              <Button variant="primary/small" LeadingIcon={BeakerIcon}>
+                Playground
+              </Button>
+            }
+          />
+        }
+        tabs={
+          <DetailTabs tabs={tabs} activeTab={tab} onTabChange={setTab} layoutId="agent-story" />
+        }
+        rail={
+          <PropertyRail>
+            <PropertyGroup title="Details">
+              <DetailProperty label="Identifier">
+                <CopyableText value="support-agent" className="font-mono text-xs" />
+              </DetailProperty>
+              <PropertyPair>
+                <DetailProperty label="Type">Agent task</DetailProperty>
+                <DetailProperty label="Created">Nov 18, 05:11</DetailProperty>
+              </PropertyPair>
+              <DetailProperty label="Agent type">
+                <span className="font-mono text-xs">ai-sdk-chat</span>
+              </DetailProperty>
+              <DetailProperty label="Model">
+                <ul className="flex flex-col gap-1">
+                  {[
+                    ["claude-haiku-4-5", "212 calls"],
+                    ["gpt-4o-mini", "64 calls"],
+                  ].map(([model, calls]) => (
+                    <li key={model} className="flex items-baseline justify-between gap-2">
+                      <span className="font-mono text-xs">{model}</span>
+                      <span className="text-xs tabular-nums text-text-dimmed">{calls}</span>
+                    </li>
+                  ))}
+                </ul>
+              </DetailProperty>
+            </PropertyGroup>
+            <PropertyGroup title="Execution">
+              <DetailProperty label="Queue">support-agent</DetailProperty>
+              <PropertyPair>
+                <DetailProperty label="Concurrency">2 of 300 running</DetailProperty>
+                <DetailProperty label="Machine">small-1x</DetailProperty>
+              </PropertyPair>
+            </PropertyGroup>
+            <PropertyGroup title="Source">
+              <DetailProperty label="File path">
+                <CopyableText value="src/trigger/ai.ts" className="font-mono text-xs" truncate />
+              </DetailProperty>
+            </PropertyGroup>
+          </PropertyRail>
+        }
+      >
+        {tab === "sessions" ? (
+          <DetailTableTab
+            tools={<PeriodChip value="7d" />}
+            actions={
+              <LinkButton variant="tertiary/small" to="#">
+                Open in sessions list
+              </LinkButton>
+            }
+            above={
+              <div className="grid h-40 flex-none grid-cols-3 border-b border-grid-bright">
+                <AgentBandPanel
+                  label="Sessions"
+                  total="187"
+                  data={agentSessionsData}
+                  config={sessionsChartConfig}
+                />
+                <AgentBandPanel
+                  label="LLM spend"
+                  total="$0.75"
+                  data={agentSpendData}
+                  config={{ spend: { label: "Spend", color: "var(--color-agents)" } }}
+                  className="border-l border-grid-bright"
+                />
+                <AgentBandPanel
+                  label="Tokens"
+                  total="346.0k"
+                  data={agentTokenData}
+                  config={{ tokens: { label: "Tokens", color: "#14B8A6" } }}
+                  className="border-l border-grid-bright"
+                />
+              </div>
+            }
+          >
+            <StoryTable
+              headers={["ID", "Status", "Type", "Created", "Duration"]}
+              rows={[
+                ["2ef19f04-6c02-4b8e", "Active", "chat.agent", "Today, 19:29", "42s"],
+                ["667e82fd-24e4-4a1b", "Active", "chat.agent", "Today, 19:26", "3m 37s"],
+                ["b8b2042e-71f0-49af", "Closed", "chat.agent", "Today, 19:24", "5m 3s"],
+              ]}
+            />
+          </DetailTableTab>
+        ) : tab === "runs" ? (
+          <DetailTableTab tools={<PeriodChip value="7d" />}>
+            <RunsTable />
+          </DetailTableTab>
+        ) : (
+          <QueueSummary />
+        )}
+      </DetailPage>
+    </>
+  );
+}
+
+/** The task queue's slots and backlog, with the queue actions beside them. */
+function QueueSummary() {
+  const limit = 10;
+  const running = 3;
+  const queued = 12;
+  return (
+    <div className="flex flex-none flex-wrap items-center justify-between gap-x-8 gap-y-3 border-b border-grid-bright px-4 py-3.5">
+      <div className="flex flex-wrap items-center gap-x-8 gap-y-3">
+        <div className="flex flex-col gap-1.5">
+          <span className="text-xs text-text-dimmed">
+            <span className="tabular-nums text-text-bright">{running}</span> of {limit} slots
+            running
+          </span>
+          <div className="flex gap-1" aria-label={`${running} of ${limit} concurrency slots used`}>
+            {Array.from({ length: limit }).map((_, slot) => (
+              <span
+                key={slot}
+                className={cn(
+                  "h-5 w-3.5 rounded-sm",
+                  slot < running ? "bg-pending" : "border border-grid-bright bg-background-deep"
+                )}
+              />
+            ))}
+          </div>
+        </div>
+        <div className="flex flex-col gap-1.5">
+          <span className="text-xs text-text-dimmed">
+            <span className="tabular-nums text-text-bright">{queued}</span> queued, oldest waiting
+            2m 14s
+          </span>
+          <div className="flex h-5 items-end gap-0.5">
+            {Array.from({ length: queued }).map((_, run) => (
+              <span key={run} className="h-full w-1.5 rounded-[1px] bg-text-faint" />
+            ))}
+          </div>
+        </div>
+      </div>
+      <div className="flex items-center gap-2">
+        <Button variant="secondary/small">Override limit…</Button>
+        <Button variant="secondary/small" LeadingIcon={PauseIcon}>
+          Pause queue
+        </Button>
+      </div>
+    </div>
+  );
+}
+
+const queuedRuns = [
+  ["run_5c2nq8x1vt", "2m 14s", "–"],
+  ["run_9b4kd7w2zm", "2m 02s", "–"],
+  ["run_3x8hr1m6qp", "1m 41s", "10s"],
+  ["run_7q1jt5c9wn", "1m 33s", "–"],
+  ["run_2m6vk8b4xs", "1m 08s", "–"],
+  ["run_8d3wz2n7rc", "54s", "–"],
+  ["run_4t9pb6h1ky", "41s", "–"],
+  ["run_6n2xq4r8jm", "30s", "–"],
+  ["run_1k7cm3w9vd", "22s", "–"],
+  ["run_9r5ty2p6bq", "15s", "–"],
+  ["run_3h8ks1x4nz", "9s", "–"],
+  ["run_7w2bn6d3tc", "3s", "–"],
+];
 
 // ---------- bulk action ----------
 
@@ -809,6 +1641,22 @@ function PeriodChip({ value }: { value: string }) {
   );
 }
 
+function FilterChip({ label, value }: { label: string; value: string }) {
+  return (
+    <span className="flex h-6 items-center gap-1.5 rounded bg-background-hover px-2 text-xs text-text-dimmed">
+      {label} <span className="font-medium text-text-bright">{value}</span>
+    </span>
+  );
+}
+
+function SearchChip({ placeholder }: { placeholder: string }) {
+  return (
+    <span className="flex h-6 w-48 items-center rounded border border-grid-bright px-2 text-xs text-text-faint">
+      {placeholder}
+    </span>
+  );
+}
+
 /** A house table, edge to edge: no wrapper padding, sticky header, first column mono. */
 function StoryTable({
   headers,
@@ -886,7 +1734,7 @@ const runsChartConfig = {
 } satisfies ChartConfig;
 
 const hourLabel = (index: number) => `${String((14 + index) % 24).padStart(2, "0")}:00`;
-const runsChartData = Array.from({ length: 24 }, (_, i) => ({
+const deployChartData = Array.from({ length: 24 }, (_, i) => ({
   bucket: hourLabel(i),
   completed: [22, 30, 28, 41, 52, 60, 58, 49, 44, 63, 70, 66, 59, 72, 80, 68, 61, 57, 74, 79, 70][
     i % 21
