@@ -2,7 +2,6 @@ import { mintWorkloadDeploymentToken } from "@trigger.dev/core/v3";
 import { WORKLOAD_HEADERS } from "@trigger.dev/core/v3/workers";
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import type { SecretProxyBindings } from "../services/secretProxyBindings.js";
-import type { register as metricsRegister } from "../metrics.js";
 import type { WorkloadServer } from "./index.js";
 
 const SECRET = "secret-proxy-workload-test-secret";
@@ -45,8 +44,6 @@ describe.each([
   const originalEnv = { ...process.env };
   let server: WorkloadServer;
   let token: string;
-  let pendingPlacement: Error;
-  let register: typeof metricsRegister;
 
   beforeAll(async () => {
     Object.assign(process.env, {
@@ -59,9 +56,6 @@ describe.each([
     });
     vi.resetModules();
     const { WorkloadServer } = await import("./index.js");
-    const { SecretProxyPlacementPendingError } = await import("../services/secretProxyBindings.js");
-    ({ register } = await import("../metrics.js"));
-    pendingPlacement = new SecretProxyPlacementPendingError(() => true);
     token = await mintWorkloadDeploymentToken(
       { ...claims, workload_network: "proxy" },
       SECRET,
@@ -174,48 +168,11 @@ describe.each([
     }
   );
 
-  it.runIf(proxy)(
-    "forwards and counts starts when Pod status stays pending",
-    { timeout: 10_000 },
-    async () => {
-      async function unavailableStarts() {
-        const metric = register.getSingleMetric(
-          "supervisor_secret_proxy_unsupported_starts_total"
-        )!;
-        const { values } = await metric.get();
-        return values.find(({ labels }) => labels.reason === "unavailable")?.value ?? 0;
-      }
-
-      const before = await unavailableStarts();
-      prepareStart.mockRejectedValue(pendingPlacement);
-      const res = await post("attempts/start", {});
-      expect(res.status).toBe(200);
-      expect(startRunAttempt).toHaveBeenCalledOnce();
-      expect((startRunAttempt.mock.calls[0] as unknown[])[2]).toMatchObject({
-        supportsSecretProxy: false,
-      });
-      expect(await unavailableStarts()).toBe(before + 1);
-      const wait = register.getSingleMetric("supervisor_secret_proxy_placement_wait_seconds")!;
-      expect((await wait.get()).values).toContainEqual(
-        expect.objectContaining({
-          metricName: "supervisor_secret_proxy_placement_wait_seconds_count",
-          labels: { route: "start", outcome: "timeout" },
-          value: 1,
-        })
-      );
-    }
-  );
-
-  it.runIf(proxy)("waits for a placement before forwarding a start", async () => {
-    prepareStart
-      .mockRejectedValueOnce(pendingPlacement)
-      .mockResolvedValueOnce({ bindingId: "binding_1" });
+  it.runIf(proxy)("advertises a first-call start placement", async () => {
+    prepareStart.mockResolvedValueOnce({ bindingId: "binding_1" });
     const res = await post("attempts/start", {});
     expect(res.status).toBe(200);
-    expect(prepareStart.mock.calls.map((call) => (call as unknown[])[1])).toEqual([
-      { continuing: false, retrying: false },
-      { continuing: false, retrying: true },
-    ]);
+    expect(prepareStart).toHaveBeenCalledOnce();
     expect(startRunAttempt).toHaveBeenCalledOnce();
     expect((startRunAttempt.mock.calls[0] as unknown[])[2]).toMatchObject({
       supportsSecretProxy: true,
@@ -233,10 +190,8 @@ describe.each([
     expect(continueRunExecution).not.toHaveBeenCalled();
   });
 
-  it.runIf(proxy)("waits for a placement before forwarding a continue", async () => {
-    prepareStart
-      .mockRejectedValueOnce(pendingPlacement)
-      .mockResolvedValueOnce({ bindingId: "binding_1" });
+  it.runIf(proxy)("advertises a first-call continue placement", async () => {
+    prepareStart.mockResolvedValueOnce({ bindingId: "binding_1" });
     const res = await fetch(`${base}/continue`, {
       headers: {
         [WORKLOAD_HEADERS.DEPLOYMENT_ID]: token,
@@ -244,7 +199,7 @@ describe.each([
       },
     });
     expect(res.status).toBe(200);
-    expect(prepareStart).toHaveBeenCalledTimes(2);
+    expect(prepareStart).toHaveBeenCalledOnce();
     expect((continueRunExecution.mock.calls[0] as unknown[])[4]).toMatchObject({
       supportsSecretProxy: true,
     });

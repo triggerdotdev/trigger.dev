@@ -1,9 +1,5 @@
 import { describe, expect, it } from "vitest";
-import {
-  isSecretProxyHostname,
-  SecretProxyPlacementPendingError,
-  trustedSecretProxyIdentity,
-} from "./secretProxyBindings.js";
+import { isSecretProxyHostname, trustedSecretProxyIdentity } from "./secretProxyBindings.js";
 import { deploymentClaims } from "./fixtures/secretProxy.js";
 
 describe("secret proxy warm placement", () => {
@@ -31,7 +27,25 @@ describe("secret proxy warm placement", () => {
         },
       ],
     },
-    spec: { nodeName: "node-1", containers: [{ name: "runner" }] },
+    spec: {
+      nodeName: "node-1",
+      restartPolicy: "Never",
+      containers: [
+        {
+          name: "runner",
+          env: [
+            {
+              name: "TRIGGER_POD_IP",
+              valueFrom: { fieldRef: { fieldPath: "status.podIP" } },
+            },
+            {
+              name: "TRIGGER_POD_UID",
+              valueFrom: { fieldRef: { fieldPath: "metadata.uid" } },
+            },
+          ],
+        },
+      ],
+    },
     status: {
       podIP: "10.0.0.1",
       containerStatuses: [
@@ -54,27 +68,33 @@ describe("secret proxy warm placement", () => {
     claims: deploymentClaims,
   };
 
-  it("only treats missing Pod status as pending after validating identity", () => {
+  it("accepts absent status but refuses missing, literal or duplicated placement fields", () => {
+    const container = pod.spec.containers[0]!;
     const verify = (
-      status: Omit<typeof pod.status, "podIP"> & { podIP?: string },
-      input = caller
-    ) => trustedSecretProxyIdentity(runner, { ...pod, status }, input, "node-1", "runners");
-    const noPodIP = { ...pod.status, podIP: undefined };
-    const noContainerID = {
-      ...pod.status,
-      containerStatuses: [{ ...pod.status.containerStatuses[0]!, containerID: "" }],
-    };
-    expect(() => verify(noPodIP)).toThrow(SecretProxyPlacementPendingError);
-    expect(() => verify(noContainerID)).toThrow(SecretProxyPlacementPendingError);
-    expect(() => verify(noContainerID, { ...caller, sourceIp: "10.0.0.2" })).toThrow(
-      "Secret proxy execution unavailable"
-    );
-    expect(() =>
-      verify(noPodIP, {
-        ...caller,
-        claims: { ...deploymentClaims, deployment: "deployment_other" },
-      })
-    ).toThrow("Secret proxy execution unavailable");
+      env: {
+        name: string;
+        value?: string;
+        valueFrom?: { fieldRef: { fieldPath: string } };
+      }[]
+    ) =>
+      trustedSecretProxyIdentity(
+        runner,
+        {
+          ...pod,
+          status: {},
+          spec: { ...pod.spec, containers: [{ ...container, env }] },
+        },
+        caller,
+        "node-1",
+        "runners"
+      );
+    expect(verify(container.env)).toMatchObject({ podUid: "pod-uid" });
+    for (const field of container.env) {
+      const others = container.env.filter((e) => e.name !== field.name);
+      expect(() => verify(others)).toThrow();
+      expect(() => verify([...others, { name: field.name, value: "fake" }])).toThrow();
+      expect(() => verify([...container.env, field])).toThrow();
+    }
   });
 
   it("admits another run only inside the VM's environment and deployment", () => {
@@ -82,7 +102,7 @@ describe("secret proxy warm placement", () => {
       trustedSecretProxyIdentity(vm, pod, input, "node-1", "runners");
     expect(verify()).toMatchObject({
       bootstrapRunId: "run_bootstrap",
-      guestId: "guest-1",
+      publishedGuestId: "guest-1",
     });
     for (const claims of [
       { ...deploymentClaims, environment_id: "env_other" },

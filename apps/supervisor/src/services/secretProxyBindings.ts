@@ -8,6 +8,7 @@ import { randomUUID } from "node:crypto";
 import { lstat } from "node:fs/promises";
 import { request } from "node:http";
 import { isIP } from "node:net";
+import pLimit from "p-limit";
 import { z } from "zod";
 import { Counter, Gauge } from "prom-client";
 import { register } from "../metrics.js";
@@ -91,6 +92,8 @@ const Allocation = z.object({
     .max(128)
     .regex(/^[a-zA-Z0-9_-]+$/),
   guestId: z.string().min(1),
+  attached: z.boolean(),
+  pod: z.object({ uid: z.string(), ip: z.string() }).nullish(),
   runId: z.string().min(1),
   attempt: z.number().int().nonnegative().safe(),
   bindingId: z.string().min(1),
@@ -194,19 +197,6 @@ export class SecretProxyAllocationBusyError extends Error {
   }
 }
 
-export class SecretProxyPlacementPendingError extends Error {
-  constructor(readonly matches: (caller: SecretProxyCaller) => boolean) {
-    super("Secret proxy placement waiting for Pod status");
-  }
-}
-
-/** A caller already waiting for Pod status found every lookup slot in use; it keeps waiting. */
-export class SecretProxyPlacementSaturatedError extends SecretProxyPlacementPendingError {
-  constructor() {
-    super(() => true);
-  }
-}
-
 type CompletionResponse = Awaited<ReturnType<SupervisorHttpClient["completeRunAttempt"]>>;
 function denied(): never {
   // Do not propagate API or token parsing errors into request logs.
@@ -244,28 +234,13 @@ function matchesCaller(identity: Identity, caller: SecretProxyCaller): boolean {
   return identity.runId === caller.runId && matchesPlacementCaller(identity, caller);
 }
 
-/** Whether kubelet has published the Pod status placement needs, and whether it matches the caller. */
-function publishedPodStatus(
-  pod: V1Pod,
-  ip: string | undefined
-): "denied" | "pending" | { guestId: string } {
-  const container = pod.spec?.containers[0]?.name;
-  const status = pod.status?.containerStatuses?.find((s) => s.name === container);
-  const guestId = status?.containerID?.match(/^containerd:\/\/([a-zA-Z0-9_-]+)$/)?.[1];
-  const podIP = pod.status?.podIP;
-  if (
-    (podIP && sourceIp(podIP) !== ip) ||
-    (status?.containerID && !guestId) ||
-    status?.state?.terminated ||
-    pod.status?.phase === "Failed" ||
-    pod.status?.phase === "Succeeded"
-  )
-    return "denied";
-  if (!podIP || !guestId || !status?.state?.running) return "pending";
-  return { guestId };
+function hasPodField(pod: V1Pod, name: string, path: string): boolean {
+  const entries = pod.spec?.containers[0]?.env?.filter((e) => e.name === name);
+  return entries?.length === 1 && entries[0]?.valueFrom?.fieldRef?.fieldPath === path;
 }
 
-type CachedPlacement = ReturnType<typeof trustedSecretProxyIdentity> & {
+type CachedPlacement = Omit<ReturnType<typeof trustedSecretProxyIdentity>, "publishedGuestId"> & {
+  guestId: string;
   allocationId: string;
   hasBeenBound: boolean;
   bindingId?: string;
@@ -278,7 +253,8 @@ export function trustedSecretProxyIdentity(
   caller: SecretProxyCaller,
   nodeName: string,
   namespace: string
-): Omit<Identity, "allocationId" | "bindingId" | "runId" | "attempt"> & {
+): Omit<Identity, "allocationId" | "bindingId" | "runId" | "attempt" | "guestId"> & {
+  publishedGuestId?: string;
   bootstrapRunId: string;
   bootstrapAttempt: number;
 } {
@@ -297,6 +273,10 @@ export function trustedSecretProxyIdentity(
     !ip ||
     attempt === undefined ||
     !container ||
+    pod.spec?.containers.length !== 1 ||
+    pod.spec.restartPolicy !== "Never" ||
+    !hasPodField(pod, "TRIGGER_POD_UID", "metadata.uid") ||
+    !hasPodField(pod, "TRIGGER_POD_IP", "status.podIP") ||
     !pod.metadata?.uid ||
     runner.metadata.deletionTimestamp ||
     pod.metadata.deletionTimestamp ||
@@ -320,24 +300,18 @@ export function trustedSecretProxyIdentity(
     pod.spec.hostNetwork
   )
     return denied();
-  const published = publishedPodStatus(pod, ip);
-  if (published === "denied") return denied();
-  if (published === "pending") {
-    const scope = {
-      runnerId: runner.metadata.name,
-      sourceIp: ip,
-      environmentId: runner.spec.owner.envID,
-      deploymentId: runner.spec.deployment.friendlyID,
-    };
-    // A coalesced lookup must not make another caller with different claims wait.
-    throw new SecretProxyPlacementPendingError(
-      (other) =>
-        matchesPlacementCaller(scope, other) &&
-        (!runner.spec.singleUse || other.runId === runner.spec.bootstrap.runFriendlyID)
-    );
-  }
+  const status = pod.status?.containerStatuses?.find((s) => s.name === container);
+  const publishedGuestId = status?.containerID?.match(/^containerd:\/\/([a-zA-Z0-9_-]+)$/)?.[1];
+  if (
+    (pod.status?.podIP && sourceIp(pod.status.podIP) !== ip) ||
+    (status?.containerID && !publishedGuestId) ||
+    status?.state?.terminated ||
+    pod.status?.phase === "Failed" ||
+    pod.status?.phase === "Succeeded"
+  )
+    return denied();
   return {
-    guestId: published.guestId,
+    publishedGuestId,
     podUid: pod.metadata.uid,
     sourceIp: ip,
     bootstrapRunId: runner.spec.bootstrap.runFriendlyID,
@@ -462,12 +436,10 @@ export async function interceptorControl(
   );
 }
 
-async function allocationForGuest(socketPath: string, guestId: string) {
+async function lookupAllocation(socketPath: string, path: string) {
   try {
     return Allocation.parse(
-      JSON.parse(
-        await interceptorRequest(socketPath, `/allocations/${encodeURIComponent(guestId)}`, "GET")
-      )
+      JSON.parse(await interceptorRequest(socketPath, `/allocations/${path}`, "GET"))
     );
   } catch {
     return denied();
@@ -494,13 +466,13 @@ export class SecretProxyBindings {
   private readonly runnerPlacements = new Map<string, string>();
   private readonly placementLookups = new Map<
     string,
-    { promise: Promise<CachedPlacement | undefined> }
+    { owner: SecretProxyCaller; promise: Promise<CachedPlacement | undefined> }
   >();
   private readonly recoverable = new Map<string, Set<string>>();
   private readonly pendingRevocations = new Map<string, Set<string>>();
   private readonly rebinds = new Map<string, PendingRebind>();
   private discovery?: Promise<void>;
-  private verifying = 0;
+  private readonly lookups = pLimit(MAX_IN_FLIGHT);
   private controlling = 0;
   private readonly controls = new Set<Promise<void>>();
   private stopped = false;
@@ -631,23 +603,30 @@ export class SecretProxyBindings {
     ]);
     if (runner.status === "rejected") throw runner.reason;
     if (pod.status === "rejected") throw pod.reason;
-    const placement = trustedSecretProxyIdentity(
+    const { publishedGuestId, ...placement } = trustedSecretProxyIdentity(
       runner.value,
       pod.value,
       caller,
       this.opts.nodeName,
       this.opts.namespace
     );
-    const allocation = await allocationForGuest(this.opts.socketPath, placement.guestId);
+    const allocation = await lookupAllocation(
+      this.opts.socketPath,
+      `by-pod/${encodeURIComponent(placement.podUid)}`
+    );
     if (
       allocation.runId !== placement.bootstrapRunId ||
       allocation.attempt !== placement.bootstrapAttempt ||
-      allocation.guestId !== placement.guestId
+      !allocation.attached ||
+      allocation.pod?.uid !== placement.podUid ||
+      sourceIp(allocation.pod.ip) !== placement.sourceIp ||
+      (publishedGuestId && allocation.guestId !== publishedGuestId)
     )
       return denied();
     if (!recovering) await this.requireEmpty(allocation, placement);
     return {
       ...placement,
+      guestId: allocation.guestId,
       allocationId: allocation.allocationId,
       hasBeenBound: allocation.hasBeenBound,
       ...(recovering ? { binding: allocation.binding, bindingId: allocation.bindingId } : {}),
@@ -666,10 +645,8 @@ export class SecretProxyBindings {
   private async recover(caller: SecretProxyCaller): Promise<void> {
     const guests = this.recoverable.get(caller.runId);
     if (!guests || this.bindings.has(caller.runId)) return;
-    if (this.stopped || !caller.runnerId || this.verifying >= MAX_IN_FLIGHT) return denied();
-    this.verifying++;
-    const read = this.readPlacement(caller, true).finally(() => this.verifying--);
-    const found = await withTimeout(read, KUBERNETES_TIMEOUT_MS, "Secret proxy recovery");
+    if (this.stopped || !caller.runnerId) return denied();
+    const found = await this.lookupWithSlot(caller, true);
     if (this.stopped || !guests.has(found.guestId)) return denied();
     const { binding: recovered, ...placement } = found;
     if (recovered && recovered.runId === caller.runId) {
@@ -700,13 +677,20 @@ export class SecretProxyBindings {
     if (guests.size === 0) this.recoverable.delete(caller.runId);
   }
 
-  /**
-   * `retrying` marks a caller already told its Pod status is pending: a saturated lookup then
-   * reports pending too, so a burst doesn't end its wait early.
-   */
+  private async lookupWithSlot(caller: SecretProxyCaller, recovering = false) {
+    if (this.lookups.pendingCount >= MAX_PLACEMENTS) return denied();
+    const deadline = performance.now() + KUBERNETES_TIMEOUT_MS;
+    const read = this.lookups(() =>
+      this.stopped || performance.now() >= deadline
+        ? denied()
+        : this.readPlacement(caller, recovering)
+    );
+    return withTimeout(read, KUBERNETES_TIMEOUT_MS, "Secret proxy identity");
+  }
+
   async prepareStart(
     caller: SecretProxyCaller,
-    { continuing = false, retrying = false } = {}
+    { continuing = false } = {}
   ): Promise<SecretProxyPlacement | undefined> {
     if (
       !this.ready ||
@@ -737,14 +721,9 @@ export class SecretProxyBindings {
     if (!cached) {
       let pending = this.placementLookups.get(caller.runnerId);
       if (!pending) {
-        if (this.verifying >= MAX_IN_FLIGHT) {
-          if (retrying) throw new SecretProxyPlacementSaturatedError();
-          return;
-        }
-        this.verifying++;
-        const read = this.readPlacement(caller).finally(() => this.verifying--);
         pending = {
-          promise: withTimeout(read, KUBERNETES_TIMEOUT_MS, "Secret proxy identity")
+          owner: caller,
+          promise: this.lookupWithSlot(caller)
             .then((placement) => {
               if (
                 this.stopped ||
@@ -756,14 +735,7 @@ export class SecretProxyBindings {
               return placement;
             })
             .catch((error) => {
-              if (
-                error instanceof SecretProxyAllocationBusyError ||
-                (error instanceof SecretProxyPlacementPendingError &&
-                  !this.stopped &&
-                  this.ready &&
-                  this.placementLookups.get(caller.runnerId!) === pending)
-              )
-                throw error;
+              if (error instanceof SecretProxyAllocationBusyError) throw error;
               return undefined;
             })
             .finally(() => {
@@ -776,7 +748,14 @@ export class SecretProxyBindings {
       try {
         cached = await pending.promise;
       } catch (error) {
-        if (error instanceof SecretProxyPlacementPendingError && !error.matches(caller)) return;
+        const owner = pending.owner;
+        if (
+          owner.runId !== caller.runId ||
+          sourceIp(owner.sourceIp) !== sourceIp(caller.sourceIp) ||
+          owner.claims?.environment_id !== caller.claims.environment_id ||
+          owner.claims?.deployment !== caller.claims.deployment
+        )
+          return;
         throw error;
       }
     }
@@ -805,8 +784,12 @@ export class SecretProxyBindings {
     cached: CachedPlacement
   ): Promise<z.infer<typeof Allocation> | undefined> {
     try {
-      const allocation = await allocationForGuest(this.opts.socketPath, cached.guestId);
+      const allocation = await lookupAllocation(
+        this.opts.socketPath,
+        encodeURIComponent(cached.guestId)
+      );
       if (
+        !allocation.attached ||
         allocation.allocationId !== cached.allocationId ||
         allocation.runId !== cached.bootstrapRunId ||
         allocation.attempt !== cached.bootstrapAttempt
@@ -840,7 +823,10 @@ export class SecretProxyBindings {
         });
     }
     await this.control(allocation.bindingId);
-    const current = await allocationForGuest(this.opts.socketPath, allocation.guestId);
+    const current = await lookupAllocation(
+      this.opts.socketPath,
+      encodeURIComponent(allocation.guestId)
+    );
     if (current.allocationId !== allocation.allocationId || !current.empty)
       throw new SecretProxyAllocationBusyError(placement);
   }
@@ -1135,7 +1121,7 @@ export class SecretProxyBindings {
     await this.finishRevocations(runId);
     const guests = this.recoverable.get(runId);
     for (const guestId of guests ?? []) {
-      const allocation = await allocationForGuest(this.opts.socketPath, guestId);
+      const allocation = await lookupAllocation(this.opts.socketPath, encodeURIComponent(guestId));
       if (allocation.binding?.runId === runId) await this.control(allocation.bindingId);
       guests!.delete(guestId);
     }

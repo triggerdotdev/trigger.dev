@@ -5,8 +5,6 @@ import { forwardKubernetes } from "./fixtures/forwardKubernetes.js";
 import { SecretProxyFixture, deploymentClaims } from "./fixtures/secretProxy.js";
 import {
   SecretProxyBindings,
-  SecretProxyPlacementPendingError,
-  SecretProxyPlacementSaturatedError,
   type SecretProxyCaller,
   type SecretProxyStartResult,
 } from "./secretProxyBindings.js";
@@ -212,7 +210,11 @@ describe("trusted placement with real k3s and native interceptor", () => {
       /^containerd:\/\//,
       ""
     );
-    await fixture.registerAllocation(caller, { guestId });
+    await fixture.registerAllocation(caller, {
+      guestId,
+      podUid: currentPod.metadata!.uid!,
+      podIp: currentPod.status!.podIP!,
+    });
     caller = { ...caller, sourceIp: currentPod.status!.podIP! };
     const current = await start();
     expect(current.podUid).not.toBe(old.podUid);
@@ -223,11 +225,12 @@ describe("trusted placement with real k3s and native interceptor", () => {
     let pending: SecretProxyCaller;
     beforeEach(async () => {
       pending = await fixture.pendingPlacement(`run_${randomUUID().replaceAll("-", "")}`);
+      await fixture.registerAllocation(pending);
     }, 60_000);
     const reads = (kind: "pods") =>
       probe.requests.filter((entry) => entry.path.includes(`/${kind}/${pending.runnerId}`)).length;
 
-    it("does not make a coalesced caller with other claims wait", async () => {
+    it("places the first call without running status, but not its coalesced caller with other claims", async () => {
       const release = probe.holdResponses((path) => path.includes("/pods/"));
       const owner = bindings.prepareStart(pending);
       const other = bindings.prepareStart({
@@ -236,25 +239,36 @@ describe("trusted placement with real k3s and native interceptor", () => {
       });
       await expect.poll(() => reads("pods")).toBe(1);
       release();
-      await expect(owner).rejects.toThrow(SecretProxyPlacementPendingError);
+      expect(await owner).toBeDefined();
       expect(await other).toBeUndefined();
       expect(reads("pods")).toBe(1);
     }, 20_000);
 
-    it("keeps a retrying caller waiting when lookups are saturated", async () => {
+    it("rejects a different socket peer before kubelet publishes the Pod IP", async () => {
+      const pod = await fixture.core.readNamespacedPod({
+        namespace: fixture.namespace,
+        name: pending.runnerId!,
+      });
+      expect(pod.status?.podIP).toBeFalsy();
+      expect(await bindings.prepareStart({ ...pending, sourceIp: "192.0.2.99" })).toBeUndefined();
+      expect(await bindings.prepareStart(pending)).toBeDefined();
+    });
+
+    it("places a first-time caller queued behind saturated lookups", async () => {
       const release = probe.holdResponses((path) => path.includes("runner-saturating-"));
       const saturating = Array.from({ length: LOOKUP_LIMIT }, (_, index) =>
-        bindings.prepareStart({ ...caller, runnerId: `runner-saturating-${index}` })
+        bindings.prepareStart({
+          ...caller,
+          runnerId: `runner-saturating-${index}`,
+        })
       );
       await expect
         .poll(() => probe.requests.filter((e) => e.path.includes("runner-saturating-")).length)
         .toBe(2 * LOOKUP_LIMIT);
-      expect(await bindings.prepareStart(pending)).toBeUndefined();
-      await expect(bindings.prepareStart(pending, { retrying: true })).rejects.toThrow(
-        SecretProxyPlacementSaturatedError
-      );
+      const queued = bindings.prepareStart(pending);
       expect(reads("pods")).toBe(0);
       release();
+      expect(await queued).toBeDefined();
       await Promise.all(saturating);
     }, 20_000);
   });
