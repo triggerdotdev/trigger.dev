@@ -1,12 +1,16 @@
-import { XMarkIcon } from "@heroicons/react/20/solid";
+import { CalendarIcon, Squares2X2Icon, XMarkIcon } from "@heroicons/react/20/solid";
 import { Form } from "@remix-run/react";
 import { GitBranchIcon } from "lucide-react";
 import { useRef, useState } from "react";
 import { z } from "zod";
 import { StatusIcon } from "~/assets/icons/StatusIcon";
+import { isCalendarDay } from "~/components/deployments/deployActivityDays";
+import { AppliedFilter } from "~/components/primitives/AppliedFilter";
 import { Button } from "~/components/primitives/Buttons";
+import { useLocales } from "~/components/primitives/LocaleProvider";
 import { SearchInput } from "~/components/primitives/SearchInput";
 import { Spinner } from "~/components/primitives/Spinner";
+import { Switch } from "~/components/primitives/Switch";
 import { useEnvironment } from "~/hooks/useEnvironment";
 import { useOptimisticLocation } from "~/hooks/useOptimisticLocation";
 import { useOrganization } from "~/hooks/useOrganizations";
@@ -32,6 +36,8 @@ export const DeploymentListSearchParams = z.object({
   ),
   branches: multi(z.string()),
   search: z.string().optional(),
+  /** Set by a click on the activity grid. A value that isn't a day is ignored on its own. */
+  day: z.string().refine(isCalendarDay).optional().catch(undefined),
 });
 
 /** What resources/…/deployments/branches returns. */
@@ -96,11 +102,26 @@ function BranchFilter() {
   );
 }
 
-export function DeploymentFilters() {
+const activityShortcut = { key: "a" };
+
+export function DeploymentFilters({
+  showActivity,
+  onShowActivity,
+}: {
+  /** Whether the activity grid is shown above the list, and the switch that changes it. */
+  showActivity: boolean;
+  onShowActivity: (show: boolean) => void;
+}) {
   const location = useOptimisticLocation();
   const searchParams = new URLSearchParams(location.search);
+  const day = searchParams.get("day");
+  const { del } = useSearchParams();
+  const locales = useLocales();
   const hasFilters =
-    searchParams.has("statuses") || searchParams.has("branches") || searchParams.has("search");
+    searchParams.has("statuses") ||
+    searchParams.has("branches") ||
+    searchParams.has("search") ||
+    searchParams.has("day");
 
   return (
     <div className="flex flex-row flex-wrap items-center gap-1.5">
@@ -113,6 +134,32 @@ export function DeploymentFilters() {
         shortcut={{ key: "s" }}
       />
       <BranchFilter />
+      <Switch
+        variant="secondary/small"
+        label={
+          <span className="flex items-center gap-1">
+            <Squares2X2Icon className="size-3.5 text-text-dimmed" />
+            Activity
+          </span>
+        }
+        checked={showActivity}
+        shortcut={activityShortcut}
+        onCheckedChange={onShowActivity}
+      />
+      {day && isCalendarDay(day) ? (
+        <AppliedFilter
+          icon={<CalendarIcon className="size-3.5" />}
+          label="Day"
+          value={new Date(`${day}T00:00:00Z`).toLocaleDateString(locales, {
+            timeZone: "UTC",
+            month: "short",
+            day: "numeric",
+            year: "numeric",
+          })}
+          removeLabel="Remove the day filter"
+          onRemove={() => del(["day", "page"])}
+        />
+      ) : null}
       {hasFilters && (
         <Form className="-ml-1 h-6">
           <Button

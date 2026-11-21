@@ -52,7 +52,7 @@ function DeploymentStatusLabel({
   );
 }
 
-function DeploymentStatusIcon({
+export function DeploymentStatusIcon({
   status,
   className,
 }: {

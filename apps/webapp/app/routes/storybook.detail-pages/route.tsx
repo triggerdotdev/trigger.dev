@@ -70,6 +70,7 @@ import { TaskRunStatusCombo } from "~/components/runs/v3/TaskRunStatus";
 import { EndpointStatusBadge } from "~/components/webhookEndpoints/v1/EndpointStatus";
 import { cn } from "~/utils/cn";
 import { StoryPage, StorySection, StorySubSection } from "../storybook/StoryKit";
+import { DeployGridStory } from "./DeployGridStories";
 import { ScheduleStory } from "./ScheduleStories";
 
 /* The detail page template (components/primitives/detail) with static data. Each entity has its
@@ -104,6 +105,13 @@ export default function Story() {
         <Frame>
           <DeploymentPage failed initialTab="activity" />
         </Frame>
+      </StorySection>
+      <StorySection
+        title="Deployments: activity grid"
+        componentName="DeployActivityGrid.tsx"
+        description="One square per day, filled by how many deploys went live, with a red corner where one failed. It sits above the deployments list, hidden until the toolbar's Activity switch turns it on."
+      >
+        <DeployGridStory />
       </StorySection>
       <StorySection
         title="Task"

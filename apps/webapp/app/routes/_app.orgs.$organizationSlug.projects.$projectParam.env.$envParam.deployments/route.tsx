@@ -8,7 +8,7 @@ import {
   BookOpenIcon,
   NoSymbolIcon,
 } from "@heroicons/react/20/solid";
-import { Form, useLocation, useNavigate, useNavigation } from "@remix-run/react";
+import { Form, useFetcher, useLocation, useNavigate, useNavigation } from "@remix-run/react";
 
 import { type LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { CogIcon, GitBranchIcon } from "lucide-react";
@@ -70,6 +70,7 @@ import {
   EnvironmentParamSchema,
   docsPath,
   v3DeploymentPath,
+  v3EnvironmentPath,
   v3ProjectSettingsIntegrationsPath,
 } from "~/utils/pathBuilder";
 import { createSearchParams } from "~/utils/searchParams";
@@ -97,6 +98,11 @@ export const handle: Handle = {
 import { pageMeta } from "~/utils/pageTitle";
 import { TextLink } from "~/components/primitives/TextLink";
 import { useLatchedDeploymentOnboarding } from "~/hooks/useLatchedDeploymentOnboarding";
+import {
+  getDeployActivityPreference,
+  getTimezonePreference,
+} from "~/services/preferences/uiPreferences.server";
+import { DeploymentsActivityBand } from "~/components/deployments/DeployActivityViews";
 
 export const meta = pageMeta("Deployments");
 
@@ -119,7 +125,12 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
     statuses: url.searchParams.getAll("statuses"),
     branches: url.searchParams.getAll("branches"),
     search: url.searchParams.get("search") ?? undefined,
+    day: url.searchParams.get("day") ?? undefined,
   });
+  const [timeZone, showActivity] = await Promise.all([
+    getTimezonePreference(request),
+    getDeployActivityPreference(request),
+  ]);
 
   const presenter = new DeploymentListPresenter();
 
@@ -147,7 +158,7 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
       environmentSlug: envParam,
       page,
       // The version jump finds the page in the unfiltered list.
-      filters: !version && parsedFilters.success ? parsedFilters.data : undefined,
+      filters: !version && parsedFilters.success ? { ...parsedFilters.data, timeZone } : undefined,
     });
 
     // If we have a version, find the deployment
@@ -192,6 +203,8 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
       redeployCutoff,
       selectedDeployment,
       autoReloadPollIntervalMs,
+      showActivity,
+      timeZone,
     });
   } catch (error) {
     console.error(error);
@@ -227,11 +240,28 @@ export default function Page() {
     hasAnyDeployments,
     hasFilters,
     currentDeployment,
+    showActivity: savedShowActivity,
+    timeZone,
   } = useTypedLoaderData<typeof loader>();
   const hasDeployments = hasAnyDeployments;
 
   const location = useLocation();
   const navigate = useNavigate();
+
+  // The activity grid is hidden until asked for; the choice is saved in the UI preferences cookie.
+  // While the save is on its way the switch shows what was asked for.
+  const activityFetcher = useFetcher();
+  const requestedActivity = activityFetcher.formData?.get("show");
+  const showActivity =
+    typeof requestedActivity === "string" ? requestedActivity === "true" : savedShowActivity;
+  const setShowActivity = (show: boolean) =>
+    activityFetcher.submit(
+      { show: String(show) },
+      {
+        method: "post",
+        action: `/resources${v3EnvironmentPath(organization, project, environment)}/deployments/activity`,
+      }
+    );
 
   useAutoRevalidate({ interval: autoReloadPollIntervalMs, onFocus: true });
 
@@ -282,13 +312,14 @@ export default function Page() {
           {hasDeployments && !showGitHubOnboarding ? (
             <div className="flex h-full max-h-full flex-col">
               <div className="flex items-center justify-between gap-x-2 p-2">
-                <DeploymentFilters />
+                <DeploymentFilters showActivity={showActivity} onShowActivity={setShowActivity} />
                 <PaginationControls
                   currentPage={currentPage}
                   totalPages={totalPages}
                   showPageNumbers={false}
                 />
               </div>
+              {showActivity ? <DeploymentsActivityBand timeZone={timeZone} /> : null}
               <Table containerClassName="grow">
                 <TableHeader>
                   <TableRow>

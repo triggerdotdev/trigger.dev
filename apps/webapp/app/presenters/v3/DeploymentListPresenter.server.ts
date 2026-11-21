@@ -17,6 +17,7 @@ import {
 } from "~/v3/vercel/vercelProjectIntegrationSchema";
 import { resolveRedeploySource } from "~/v3/redeploy";
 import { deploymentStatusFilterSql } from "./deploymentStatusFilter";
+import { deploymentDaySql, safeTimeZone } from "~/v3/deploymentActivity.server";
 
 const pageSize = 20;
 
@@ -24,6 +25,9 @@ export type DeploymentListFilters = {
   statuses?: DeploymentDisplayStatus[];
   branches?: string[];
   search?: string;
+  /** YYYY-MM-DD: only deployments made that day, in `timeZone`. */
+  day?: string;
+  timeZone?: string;
 };
 
 function escapeLike(value: string) {
@@ -92,13 +96,14 @@ export class DeploymentListPresenter {
     const statuses = filters.statuses?.length ? filters.statuses : undefined;
     const branches = filters.branches?.length ? filters.branches : undefined;
     const search = filters.search?.trim() || undefined;
-    const hasFilters = !!(statuses || branches || search);
+    const day = filters.day;
+    const hasFilters = !!(statuses || branches || search || day);
 
     // Served by @@index([environmentId, status, id]) when filtering by status, otherwise by
     // @@unique([environmentId, version]). Branch and version search filter the env's rows.
     const filterSql = Prisma.sql`${statuses ? deploymentStatusFilterSql(statuses) : Prisma.empty} ${branches ? Prisma.sql`AND wd."git"->>'commitRef' = ANY(${branches})` : Prisma.empty} ${
       search ? Prisma.sql`AND wd."version" ILIKE ${`%${escapeLike(search)}%`}` : Prisma.empty
-    }`;
+    } ${day ? Prisma.sql`AND ${deploymentDaySql(day, safeTimeZone(filters.timeZone))}` : Prisma.empty}`;
 
     const [countRows, anyDeployment, labeledDeployments] = await Promise.all([
       this.#prismaClient.$queryRaw<{ count: bigint }[]>`
