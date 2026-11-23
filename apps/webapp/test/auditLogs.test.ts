@@ -654,6 +654,50 @@ describe("audit logs host", () => {
     ]);
   });
 
+  // Catches: fields the plugin adds to a summary (internal ids, raw rows) reaching customers; or a
+  // summary call failing without the plugin, or with a plugin built before summaries.
+  it("summarizes events with only the summary's fields, and nothing without a plugin that can", async () => {
+    const query = { organizationId: "org_1", from: new Date(0), to: new Date() };
+    const location = { countryCode: "GB", asn: 64500, asName: "Example ISP" };
+    const summary = {
+      eventCount: 2,
+      firstSeenAt: new Date("2026-11-04T10:00:00Z"),
+      lastSeenAt: new Date("2026-11-19T14:02:00Z"),
+      ipCount: 1,
+      countryCodes: ["GB"],
+      countryCount: 1,
+      recentIps: [{ ip: "203.0.113.7", lastSeenAt: new Date("2026-11-19T14:02:00Z"), location }],
+
+      approximate: false,
+    };
+    const queries: unknown[] = [];
+    const controller = inMemoryController({
+      summarizeEvents: async (received) => {
+        queries.push(received);
+        return {
+          ...summary,
+          fingerprintIds: ["fp_1"],
+          recentIps: [
+            {
+              ...summary.recentIps[0]!,
+              fingerprintId: "fp_1",
+              location: { ...location, raw: "x" },
+            },
+          ],
+        } as never;
+      },
+    });
+
+    expect(await host({ controller: async () => controller }).summarizeEvents(query)).toEqual(
+      summary
+    );
+    expect(queries).toEqual([query]);
+    expect(await host({ controller: async () => null }).summarizeEvents(query)).toBeNull();
+    expect(
+      await host({ controller: async () => inMemoryController() }).summarizeEvents(query)
+    ).toBeNull();
+  });
+
   // Catches: flush resolving before in-flight records finish, or before the plugin flushes its
   // own buffer, so shutdown drops events.
   it("flush waits for records in flight and then flushes the plugin", async () => {

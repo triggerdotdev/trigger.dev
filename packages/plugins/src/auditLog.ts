@@ -263,6 +263,45 @@ export type AuditLogEventPage = {
   nextCursor: string | null;
 };
 
+/** The events `listEvents` would return for the same filters, all pages at once. */
+export type AuditLogEventSummaryQuery = Omit<AuditLogEventQuery, "cursor" | "limit">;
+
+/** An IP the summarized events came from, as `listEvents` shows it. */
+export type AuditLogSummaryIp = {
+  ip: string;
+  /** The newest event from this IP. */
+  lastSeenAt: Date;
+  /** Where the IP was when its newest event was stored. */
+  location: AuditLogIpLocation | null;
+};
+
+/**
+ * What the events matching a query add up to, e.g. when and from where a key was used. Counts only
+ * IPs `listEvents` shows: never one it hides (a run's or our infrastructure's, a private address,
+ * or Trigger.dev staff's), nor where such an IP is.
+ */
+export type AuditLogEventSummary = {
+  eventCount: number;
+  /** Null when no event matches. */
+  firstSeenAt: Date | null;
+  lastSeenAt: Date | null;
+  ipCount: number;
+  /** ISO 3166-1 alpha-2 codes of the shown IPs, a few at most. */
+  countryCodes: string[];
+  /** How many countries the shown IPs are in, including any left out of `countryCodes`. */
+  countryCount: number;
+  /**
+   * The most recently seen IPs, newest first, a few at most: those of the newest events, so fewer
+   * when a few IPs made most of them.
+   */
+  recentIps: AuditLogSummaryIp[];
+  /**
+   * `eventCount` and `ipCount` are estimates, within about 0.1%: the summary covers too many events
+   * to count them exactly. False for small summaries, whose counts are exact.
+   */
+  approximate: boolean;
+};
+
 /** Credentials that get a fingerprint. Public JWTs and run tokens are attributed to the key behind them. */
 export type AuditLogFingerprintedCredentialKind = Exclude<
   AuditLogCredentialKind,
@@ -349,6 +388,11 @@ export interface AuditLogController {
    * copies only the listed fields out of each event before returning it.
    */
   listEvents(query: AuditLogEventQuery): Promise<AuditLogEventPage>;
+  /**
+   * Sums up the events `listEvents` returns for the same filters. Optional: a plugin built before
+   * it has none.
+   */
+  summarizeEvents?(query: AuditLogEventSummaryQuery): Promise<AuditLogEventSummary>;
 }
 
 export interface AuditLogPlugin {

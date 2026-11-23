@@ -120,6 +120,8 @@ export type {
   AuditLogEvent,
   AuditLogEventPage,
   AuditLogEventQuery,
+  AuditLogEventSummary,
+  AuditLogEventSummaryQuery,
   AuditLogFingerprintedCredentialKind,
   AuditLogInput,
   AuditLogIpLocation,
@@ -131,6 +133,7 @@ export type {
   AuditLogPlugin,
   AuditLogPluginConfig,
   AuditLogSource,
+  AuditLogSummaryIp,
   AuditLogTarget,
 } from "./auditLog.js";
 export { resolveAuditEventAttribution } from "./auditLog.js";

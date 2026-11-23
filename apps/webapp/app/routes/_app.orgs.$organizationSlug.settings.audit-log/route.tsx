@@ -1,7 +1,9 @@
-import { useLocation, useNavigation } from "@remix-run/react";
+import { useLocation, useNavigation, useParams } from "@remix-run/react";
 import { useEffect, useRef, useState } from "react";
 import { redirect, typedjson, useTypedFetcher, useTypedLoaderData } from "remix-typedjson";
 import { z } from "zod";
+import { AuditLogCredentialSummaryLoader } from "~/components/auditLogs/AuditLogCredentialSummary";
+import { auditLogSummarySearch } from "~/components/auditLogs/auditLogSummarySearch";
 import { AuditLogDetail } from "~/components/auditLogs/AuditLogDetail";
 import { AuditLogFilterBar } from "~/components/auditLogs/AuditLogFilters";
 import { AuditLogTable } from "~/components/auditLogs/AuditLogTable";
@@ -170,6 +172,8 @@ function AuditLogList({
 }) {
   const location = useLocation();
   const navigation = useNavigation();
+  const { organizationSlug = "" } = useParams();
+  const summarySearch = auditLogSummarySearch(new URLSearchParams(location.search));
   const [events, setEvents] = useState<AuditLogEventView[]>(page.events);
   // The next page's cursor, and why the last "Load more" failed. A failed page keeps its cursor, so
   // "Load more" can try again.
@@ -238,6 +242,15 @@ function AuditLogList({
               <div className="p-2">
                 <Callout variant="error">{error}</Callout>
               </div>
+            ) : null}
+            {(page.filters.credential || page.filters.keyLast4) && !error ? (
+              <AuditLogCredentialSummaryLoader
+                // A new set of filters starts a new fetcher: an answer for the old ones is dropped.
+                key={summarySearch}
+                organizationSlug={organizationSlug}
+                search={summarySearch}
+                range={page.range}
+              />
             ) : null}
             <AuditLogTable
               events={events}

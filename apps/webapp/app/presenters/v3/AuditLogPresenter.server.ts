@@ -140,6 +140,11 @@ export type AuditLogEventView = {
 
 export type AuditLogPageData = {
   filters: AuditLogFilters;
+  /**
+   * The time range the events were read for, in milliseconds: a relative range ("7 days") resolved
+   * when the page loaded. The key summary reads this exact range, so it covers the same events.
+   */
+  range: { from: number; to: number };
   events: AuditLogEventView[];
   nextCursor: string | null;
   /** Set when the store couldn't answer, or rejected the query. */
@@ -239,10 +244,12 @@ export class AuditLogPresenter {
   ): Promise<AuditLogPageData> {
     const filters = auditLogFilters(searchParams);
     const query = auditLogQuery(organizationId, filters, searchParams);
+    const range = { from: query.from.getTime(), to: query.to.getTime() };
     const { from, to } = await clampToVisibilityWindow(organizationId, query);
     if (from >= to) {
       return {
         filters,
+        range,
         events: [],
         nextCursor: null,
         error: "The start of the time range must be before its end.",
@@ -258,11 +265,18 @@ export class AuditLogPresenter {
     } catch (error) {
       const kind = auditLogErrorKind(error);
       if (kind === "invalid_query") {
-        return { filters, events: [], nextCursor: null, error: "These filters aren't valid." };
+        return {
+          filters,
+          range,
+          events: [],
+          nextCursor: null,
+          error: "These filters aren't valid.",
+        };
       }
       if (kind === "unavailable") {
         return {
           filters,
+          range,
           events: [],
           nextCursor: null,
           error: "The audit log is temporarily unavailable. Please try again.",
@@ -273,6 +287,7 @@ export class AuditLogPresenter {
 
     return {
       filters,
+      range,
       events: await this.#toViews(organizationId, page.events),
       nextCursor: page.nextCursor,
       error: null,
