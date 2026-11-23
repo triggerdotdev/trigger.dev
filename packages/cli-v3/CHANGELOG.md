@@ -1,5 +1,16 @@
 # trigger.dev
 
+## 4.8.10
+
+### Patch Changes
+
+- `trigger deploy` with GitHub OIDC authentication now also warns when deploys from your CLI version will soon stop being supported, with the last day they still work and the command to upgrade. The warning never blocks a deploy. ([`1da6293b9`](https://github.com/triggerdotdev/trigger.dev/commit/1da6293b924c569a390325fa7cf87850288a6290))
+- `trigger deploy` warns when deploys from your CLI version will soon stop being supported, with the last day they still work and the command to upgrade. The warning never blocks a deploy and shows on every build path, including `--native-build`, `--local-build` and `--depot-build`. Deploys that authenticate with GitHub OIDC don't show it. ([`1b3b19c31`](https://github.com/triggerdotdev/trigger.dev/commit/1b3b19c310153a44aec4852303b6728a35a5cc9a))
+- Updated dependencies:
+  - `@trigger.dev/core@4.8.10`
+  - `@trigger.dev/build@4.8.10`
+  - `@trigger.dev/schema-to-json@4.8.10`
+
 ## 4.8.9
 
 ### Patch Changes
