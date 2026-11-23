@@ -231,7 +231,7 @@ export const myChat = chat.agent({
     }
   },
   run: async ({ messages, signal, streamText }) =>
-    streamText({ model: anthropic("claude-sonnet-4-5"), messages, abortSignal: signal }),
+    streamText({ model: anthropic("claude-sonnet-5-5"), messages, abortSignal: signal }),
 });
 ```
 
