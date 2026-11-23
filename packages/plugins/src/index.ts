@@ -232,6 +232,7 @@ export type {
 
 export type {
   AccessPolicyController,
+  AccessPolicyBanCredentialChanges,
   AccessPolicyPlugin,
   AccessPolicyPluginConfig,
   AdminAction,
