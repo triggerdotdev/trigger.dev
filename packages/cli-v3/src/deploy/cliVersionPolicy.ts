@@ -1,6 +1,8 @@
+import { log } from "@clack/prompts";
 import { tryCatch } from "@trigger.dev/core/v3";
 import type { CliVersionPolicy } from "@trigger.dev/core/v3/schemas";
 import * as semver from "semver";
+import { VERSION } from "../version.js";
 import type { DeploySettingsResult } from "./buildPath.js";
 
 const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
@@ -16,6 +18,13 @@ export async function readCliVersionPolicy(
 
   const [error, result] = await tryCatch(fetchSettings());
   return !error && result.success ? result.data.cli_version_policy : undefined;
+}
+
+export function warnAboutCliVersionPolicy(policy: CliVersionPolicy | undefined) {
+  const warning = cliVersionPolicyWarning(policy, VERSION);
+  if (warning) {
+    log.warn(warning);
+  }
 }
 
 export function cliVersionPolicyWarning(

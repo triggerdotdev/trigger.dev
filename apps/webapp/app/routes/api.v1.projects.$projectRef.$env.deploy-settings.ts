@@ -2,6 +2,7 @@ import { json, type LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { type GetDeploySettingsResponseBody } from "@trigger.dev/core/v3";
 import { z } from "zod";
 import { authenticateApiKeyWithScope } from "~/services/apiAuth.server";
+import { cliVersionPolicyBody } from "~/v3/cliVersionPolicy.server";
 import { logger } from "~/services/logger.server";
 import { DeploymentService } from "~/v3/services/deployment.server";
 
@@ -47,10 +48,7 @@ export async function loader({ request, params }: LoaderFunctionArgs) {
 
           return json({
             build_path: buildPath,
-            cli_version_policy: cliVersionPolicy && {
-              minimum: cliVersionPolicy.minimum,
-              enforced_from: cliVersionPolicy.enforcedFrom.toISOString(),
-            },
+            cli_version_policy: cliVersionPolicyBody(cliVersionPolicy),
           } satisfies GetDeploySettingsResponseBody);
         },
         (error) => {

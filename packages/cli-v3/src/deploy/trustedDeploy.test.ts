@@ -42,6 +42,8 @@ async function withTempProject(run: (project: string) => Promise<void>) {
   }
 }
 
+const cliVersionPolicy = { minimum: "4.5.20", enforced_from: "2027-01-16T00:00:00.000Z" };
+
 describe("trusted deployment CLI authentication", () => {
   const requests: { path: string; authorization?: string; body: unknown }[] = [];
   let apiUrl: string;
@@ -60,6 +62,16 @@ describe("trusted deployment CLI authentication", () => {
     } else if (request.url?.endsWith("/archive") && body?.branch === "denied") {
       response.writeHead(403);
       response.end(JSON.stringify({ error: "Archive denied" }));
+    } else if (request.url === "/api/v1/trusted-deploys/prepare") {
+      response.end(
+        JSON.stringify({
+          artifactKey: "artifact_key",
+          uploadUrl: `${apiUrl}/upload`,
+          uploadFields: {},
+          expiresAt: "2027-01-01T00:00:00.000Z",
+          cliVersionPolicy,
+        })
+      );
     } else if (request.url === "/api/v1/trusted-deploys/archive") {
       response.end(JSON.stringify({ success: true }));
     } else if (request.url === "/api/v1/trusted-deploys/promote") {
@@ -151,6 +163,37 @@ describe("trusted deployment CLI authentication", () => {
       });
     }
   );
+
+  // Catches: a trusted deploy dropping the CLI version policy from its prepare response, so OIDC deploys never warn.
+  it("hands the prepare response's CLI version policy to the deploy", async () => {
+    await withTempProject(async (project) => {
+      for (const [name, value] of Object.entries({
+        ...github,
+        ACTIONS_ID_TOKEN_REQUEST_URL: `${apiUrl}/token`,
+        TRIGGER_API_URL: apiUrl,
+        GITHUB_SHA: "a".repeat(40),
+        GITHUB_REF: "refs/heads/main",
+        GITHUB_EVENT_NAME: "push",
+        TRIGGER_GITHUB_APP: "false",
+        TRIGGER_EXISTING_DEPLOYMENT_ID: undefined,
+      }))
+        vi.stubEnv(name, value);
+      let received: unknown;
+      await runTrustedDeploy(
+        project,
+        { env: "prod", apiUrl: "https://example.invalid" } as DeployCommandOptions,
+        async ({ apiClient }) => {
+          const prepared = await apiClient.createArtifact({
+            type: "deployment_context",
+            contentType: "application/gzip",
+            contentLength: 1,
+          });
+          received = prepared.success && prepared.data.cliVersionPolicy;
+        }
+      );
+      expect(received).toEqual(cliVersionPolicy);
+    });
+  });
 
   // Catches: archive requiring a PAT login despite an API key, or lifecycle commands ignoring explicit/automatic OIDC.
   it.each([

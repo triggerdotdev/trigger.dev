@@ -2,6 +2,7 @@ import { getMeter } from "@internal/tracing";
 import { type ActionFunctionArgs, json } from "@remix-run/server-runtime";
 import {
   PrepareTrustedDeployRequest,
+  type PrepareTrustedDeployResponse,
   SubmitTrustedDeployRequest,
   ArchiveTrustedPreviewRequest,
   PromoteTrustedDeploymentRequest,
@@ -25,6 +26,8 @@ import { ChangeCurrentDeploymentService } from "~/v3/services/changeCurrentDeplo
 import { ArtifactsService, isArtifactKeyOwnedBy } from "~/v3/services/artifacts.server";
 import { InitializeDeploymentService } from "~/v3/services/initializeDeployment.server";
 import { ServiceValidationError } from "~/v3/services/baseService.server";
+import { cliVersionPolicyBody } from "~/v3/cliVersionPolicy.server";
+import { deployCliVersionPolicy } from "~/v3/cliVersionPolicyInstance.server";
 import { logger } from "../logger.server";
 import { verifyGithubDeployToken } from "./github.server";
 import { findTrustedPreviewBranch } from "./findPreviewBranch.server";
@@ -238,7 +241,8 @@ export const prepareAction = trustedDeployRoute(
       {
         ...artifact.value,
         expiresAt: artifact.value.expiresAt.toISOString(),
-      },
+        cliVersionPolicy: cliVersionPolicyBody(deployCliVersionPolicy(root.organization)),
+      } satisfies PrepareTrustedDeployResponse,
       { headers: responseHeaders }
     );
   },

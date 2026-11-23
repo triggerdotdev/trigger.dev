@@ -1,3 +1,4 @@
+import type { CliVersionPolicy } from "@trigger.dev/core/v3/schemas";
 import * as semver from "semver";
 import { logger } from "~/services/logger.server";
 import { FEATURE_FLAG, FeatureFlagCatalog, isPlainFlagObject } from "./featureFlags";
@@ -8,6 +9,12 @@ export type DeployCliVersionPolicy = {
 };
 
 export const UNSUPPORTED_CLI_VERSION_ERROR = "Unsupported trigger.dev version";
+
+export function cliVersionPolicyBody(
+  policy: DeployCliVersionPolicy | undefined
+): CliVersionPolicy | undefined {
+  return policy && { minimum: policy.minimum, enforced_from: policy.enforcedFrom.toISOString() };
+}
 
 export type CliVersionVerdict = "ok" | "warn" | "reject" | "unknown";
 

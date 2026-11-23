@@ -7,7 +7,6 @@ import {
   tryCatch,
 } from "@trigger.dev/core/v3";
 import type {
-  CliVersionPolicy,
   DeployBuildPath,
   InitializeDeploymentRequestBody,
   InitializeDeploymentResponseBody,
@@ -39,7 +38,7 @@ import {
   nativeOnlyFlagError,
   resolveBuildPath,
 } from "../deploy/buildPath.js";
-import { cliVersionPolicyWarning, readCliVersionPolicy } from "../deploy/cliVersionPolicy.js";
+import { readCliVersionPolicy, warnAboutCliVersionPolicy } from "../deploy/cliVersionPolicy.js";
 import { S2 } from "@s2-dev/streamstore";
 import { mkdir, readFile, unlink } from "node:fs/promises";
 import {
@@ -51,7 +50,6 @@ import {
   wrapCommandAction,
 } from "../cli/common.js";
 import { loadConfig } from "../config.js";
-import { VERSION } from "../version.js";
 import { authenticateForDeploy, userIdForDeploy } from "../deploy/auth.js";
 import {
   archivePreviewBranch,
@@ -1411,13 +1409,6 @@ function deploySettingsReader(apiClient: CliApiClient, projectRef: string, env: 
     ));
 }
 
-function warnAboutCliVersionPolicy(policy: CliVersionPolicy | undefined) {
-  const warning = cliVersionPolicyWarning(policy, VERSION);
-  if (warning) {
-    log.warn(warning);
-  }
-}
-
 async function resolveServerBuildPath(
   options: DeployCommandOptions,
   fetchSettings: ReturnType<typeof deploySettingsReader>
@@ -1572,6 +1563,7 @@ async function handleNativeBuildServerDeploy({
 
   if (deployment.outcome === "existing") {
     $deploymentSpinner.stop(`Version ${deployment.version} was already deployed`);
+    warnAboutCliVersionPolicy(artifactResult.data.cliVersionPolicy);
 
     setDeploymentGithubActionsOutput({
       version: deployment.version,
@@ -1596,6 +1588,7 @@ async function handleNativeBuildServerDeploy({
     ? cliLink(chalk.bold(rawDeploymentLink), rawDeploymentLink)
     : chalk.bold(rawDeploymentLink);
   $deploymentSpinner.stop("Deployment initialized");
+  warnAboutCliVersionPolicy(artifactResult.data.cliVersionPolicy);
   log.info(`View deployment: ${exposedDeploymentLink}`);
 
   warnAboutCanceledDeployments(deployment.canceledDeployments, options.externalId);
