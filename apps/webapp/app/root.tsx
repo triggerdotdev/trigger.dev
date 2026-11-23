@@ -78,7 +78,8 @@ export const meta: MetaFunction = ({ data }) => {
 export const loader = async ({ request }: LoaderFunctionArgs) => {
   const session = await getSession(request.headers.get("cookie"));
   const toastMessage = session.get("toastMessage") as ToastMessage;
-  const posthogProjectKey = env.POSTHOG_PROJECT_KEY;
+  const posthogProjectKey =
+    env.TRIGGER_TELEMETRY_DISABLED === undefined ? env.POSTHOG_PROJECT_KEY : undefined;
   const posthogUiHost = env.POSTHOG_HOST;
   const features = featuresForRequest(request);
   const timezone = await getTimezonePreference(request);
