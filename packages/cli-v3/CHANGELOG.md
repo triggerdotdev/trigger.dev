@@ -1,5 +1,16 @@
 # trigger.dev
 
+## 4.8.9
+
+### Patch Changes
+
+- CLI spinners now print plain text lines in CI and when stdout is piped or redirected. Progress lines such as "Uploading deployment files" no longer start with a spinner frame or carry cursor escape codes, so `trigger deploy` logs in GitHub Actions and other CI systems read cleanly. Output in an interactive terminal is unchanged. ([`c7ec55dc8`](https://github.com/triggerdotdev/trigger.dev/commit/c7ec55dc862dc4cafad558ca3e69308b423d8421))
+- The MCP server's `create_alert` tool can now create alerts on your own TRQL query: pass the `custom.query` capability with a `query` and a `signal`. ([`db49c6169`](https://github.com/triggerdotdev/trigger.dev/commit/db49c61694d2dd45386cfb67a3238a3542552612))
+- Updated dependencies:
+  - `@trigger.dev/core@4.8.9`
+  - `@trigger.dev/build@4.8.9`
+  - `@trigger.dev/schema-to-json@4.8.9`
+
 ## 4.8.8
 
 ### Patch Changes
