@@ -544,7 +544,7 @@ export default function Page() {
                       {auditLog ? (
                         auditLog.canView ? (
                           <LinkButton
-                            to={`${organizationAuditLogPath(organization)}?${new URLSearchParams({ actor: member.user.id })}`}
+                            to={organizationAuditLogPath(organization, { actor: member.user.id })}
                             variant="minimal/small"
                           >
                             View activity

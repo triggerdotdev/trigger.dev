@@ -91,8 +91,31 @@ export function organizationSupportAccessPath(organization: OrgForPath) {
   return `${organizationSettingsPath(organization)}/support-access`;
 }
 
-export function organizationAuditLogPath(organization: OrgForPath) {
-  return `${organizationSettingsPath(organization)}/audit-log`;
+/** Filters the audit log page reads from its URL: ids, and a credential reference for `credential`. */
+export type AuditLogPathFilters = {
+  category?: string;
+  actor?: string;
+  project?: string;
+  environment?: string;
+  credential?: string;
+};
+
+export function organizationAuditLogPath(organization: OrgForPath, filters?: AuditLogPathFilters) {
+  const path = `${organizationSettingsPath(organization)}/audit-log`;
+  const search = new URLSearchParams();
+  for (const [name, value] of Object.entries(filters ?? {})) {
+    if (value) search.set(name, value);
+  }
+  const query = search.toString();
+  return query ? `${path}?${query}` : path;
+}
+
+/**
+ * Everything done with one credential, in any category, project or environment. The reference
+ * (`key:<apiKeyId>`, `root:<environmentId>:<last4>`, ...) already names the key and where it lives.
+ */
+export function organizationAuditLogCredentialPath(organization: OrgForPath, credential: string) {
+  return organizationAuditLogPath(organization, { credential });
 }
 
 export function organizationAuditLogFilterOptionsPath(organization: OrgForPath) {

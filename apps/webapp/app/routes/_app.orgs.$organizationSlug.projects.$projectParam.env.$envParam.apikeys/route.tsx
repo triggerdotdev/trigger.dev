@@ -53,10 +53,20 @@ import { useEnvironment } from "~/hooks/useEnvironment";
 import { useOrganization } from "~/hooks/useOrganizations";
 import { useProject } from "~/hooks/useProject";
 import { ApiKeysPresenter } from "~/presenters/v3/ApiKeysPresenter.server";
+import { rootKeyReference } from "~/presenters/v3/auditLogCredentials.server";
+import { hasAuditLogsAccess } from "~/services/auditLogs/auditLogsAccess.server";
+import { getImpersonationState } from "~/services/impersonation.server";
 import { resolveProjectAuthScope } from "~/services/projectAuthScope.server";
 import { rbac } from "~/services/rbac.server";
 import { dashboardLoader } from "~/services/routeBuilders/dashboardBuilder";
-import { docsPath, EnvironmentParamSchema, v3ApiKeyPath, v3ApiKeysPath } from "~/utils/pathBuilder";
+import {
+  docsPath,
+  EnvironmentParamSchema,
+  organizationAuditLogCredentialPath,
+  organizationAuditLogPath,
+  v3ApiKeyPath,
+  v3ApiKeysPath,
+} from "~/utils/pathBuilder";
 import { sectionAgentPageContext } from "~/components/dashboard-agent/suggested-prompts";
 import { WhenAgentUnavailable } from "~/components/dashboard-agent/WhenAgentUnavailable";
 import type { Handle } from "~/utils/handle";
@@ -64,6 +74,7 @@ import { uneditableApiKeyMessage } from "~/utils/apiKeyAccess";
 import { apiKeyExpiryEndDay } from "~/utils/apiKeyExpiry";
 import { secretKeyPlaceholder } from "~/utils/apiKeyPrefix";
 import { ApiKeyAccessCell } from "./ApiKeyAccessCell";
+import { ViewApiKeyActivityMenuItem, ViewApiKeysHistoryButton } from "./ApiKeyAuditLog";
 import {
   apiKeyCreator,
   editableApiKey,
@@ -100,7 +111,7 @@ export const loader = dashboardLoader(
   async ({ request, params, searchParams, user, ability, context }) => {
     try {
       const presenter = new ApiKeysPresenter();
-      const [data, isRbacPluginAvailable] = await Promise.all([
+      const [data, isRbacPluginAvailable, { isImpersonating }] = await Promise.all([
         presenter.call({
           userId: user.id,
           organizationSlug: params.organizationSlug,
@@ -109,6 +120,7 @@ export const loader = dashboardLoader(
           showRevoked: searchParams.showRevoked,
         }),
         rbac.isUsingPlugin(),
+        getImpersonationState(request, user.id),
       ]);
 
       const canReadApiKeys = ability.can("read", {
@@ -120,9 +132,23 @@ export const loader = dashboardLoader(
         envType: data.environment.type,
       });
 
+      // "View history" and each key's "View activity": shown where the org has the audit log,
+      // enabled for roles that can read it.
+      const auditLog =
+        context.organizationId &&
+        (await hasAuditLogsAccess({ admin: user.admin, isImpersonating }, context.organizationId))
+          ? { canView: ability.can("manage", { type: "audit-logs" }) }
+          : null;
+
       return typedjson({
         ...data,
-        rootApiKey: canReadApiKeys ? data.rootApiKey : null,
+        rootApiKey: canReadApiKeys
+          ? {
+              ...data.rootApiKey,
+              // The audit log's reference for this root key. The masked key ends with its last 4.
+              auditLogCredential: rootKeyReference(data.rootApiKey.id, data.rootApiKey.obfuscated),
+            }
+          : null,
         hasCreatedApiKey: canReadApiKeys && data.hasCreatedApiKey,
         apiKeys: canReadApiKeys ? data.apiKeys : [],
         presets: canReadApiKeys ? data.presets : [],
@@ -136,6 +162,7 @@ export const loader = dashboardLoader(
         // The dashboard checks IP ranges with the same rule the server applies on save.
         allowPrivateIpRanges: env.API_KEY_ALLOW_PRIVATE_IP_RANGES,
         showRevoked: searchParams.showRevoked ?? false,
+        auditLog,
         loadedAt: Date.now(),
       });
     } catch (error) {
@@ -192,6 +219,7 @@ export default function Page() {
     availableTasks,
     presets,
     capabilityCatalogue,
+    auditLog,
     loadedAt,
   } = data;
   const revalidator = useRevalidator();
@@ -206,6 +234,15 @@ export default function Page() {
   const isRootSelected = apiKeyParam === ROOT_API_KEY_PARAM;
   const rowPath = (apiKeyId: string) =>
     `${v3ApiKeyPath(organization, project, currentEnvironment, apiKeyId)}${location.search}`;
+  // Keys belong to the key environment (a preview branch's parent), which their events record.
+  const historyPath = organizationAuditLogPath(organization, {
+    category: "credentials",
+    project: project.id,
+    environment: environment.keyEnvironmentId,
+  });
+  // A key's activity is everything done with it, so only the key is filtered.
+  const activityPath = (credential: string) =>
+    organizationAuditLogCredentialPath(organization, credential);
 
   const apiKeyEnvironmentLabel = {
     ...environment,
@@ -275,6 +312,8 @@ export default function Page() {
                 </Property.Item>
               </Property.Table>
             </AdminDebugTooltip>
+
+            <ViewApiKeysHistoryButton auditLog={auditLog} to={historyPath} />
 
             <WhenAgentUnavailable>
               <LinkButton variant="docs/small" LeadingIcon={BookOpenIcon} to={docsPath("/apikeys")}>
@@ -435,16 +474,24 @@ export default function Page() {
                                 isSticky
                                 className="w-32"
                                 popoverContent={
-                                  canWriteApiKeys ? (
-                                    <RegenerateApiKeyModal
-                                      id={environment.keyEnvironmentId}
-                                      title={environmentFullTitle(apiKeyEnvironmentLabel)}
-                                      hasVercelIntegration={hasVercelIntegration}
-                                      isDevelopment={environment.type === "DEVELOPMENT"}
-                                      onSwitchToApiKeys={() => setMigrationOpen(true)}
-                                      canLimitAccess={canLimitAccess}
-                                      appearance="menu"
-                                    />
+                                  canWriteApiKeys || auditLog ? (
+                                    <>
+                                      <ViewApiKeyActivityMenuItem
+                                        auditLog={auditLog}
+                                        to={activityPath(rootApiKey.auditLogCredential)}
+                                      />
+                                      {canWriteApiKeys ? (
+                                        <RegenerateApiKeyModal
+                                          id={environment.keyEnvironmentId}
+                                          title={environmentFullTitle(apiKeyEnvironmentLabel)}
+                                          hasVercelIntegration={hasVercelIntegration}
+                                          isDevelopment={environment.type === "DEVELOPMENT"}
+                                          onSwitchToApiKeys={() => setMigrationOpen(true)}
+                                          canLimitAccess={canLimitAccess}
+                                          appearance="menu"
+                                        />
+                                      ) : null}
+                                    </>
                                   ) : null
                                 }
                               />
@@ -555,6 +602,10 @@ export default function Page() {
                                   popoverContent={
                                     isActive ? (
                                       <>
+                                        <ViewApiKeyActivityMenuItem
+                                          auditLog={auditLog}
+                                          to={activityPath(`key:${apiKey.id}`)}
+                                        />
                                         {canEditAccess ? (
                                           <Button
                                             variant="small-menu-item"
@@ -590,10 +641,21 @@ export default function Page() {
                                       </>
                                     ) : status === "EXPIRED" ? (
                                       // Expired keys can't be changed, but revoking takes them off the list.
-                                      <RevokeApiKeyButton
-                                        id={apiKey.id}
-                                        name={apiKey.name}
-                                        canWrite={canWriteApiKeys}
+                                      <>
+                                        <ViewApiKeyActivityMenuItem
+                                          auditLog={auditLog}
+                                          to={activityPath(`key:${apiKey.id}`)}
+                                        />
+                                        <RevokeApiKeyButton
+                                          id={apiKey.id}
+                                          name={apiKey.name}
+                                          canWrite={canWriteApiKeys}
+                                        />
+                                      </>
+                                    ) : auditLog ? (
+                                      <ViewApiKeyActivityMenuItem
+                                        auditLog={auditLog}
+                                        to={activityPath(`key:${apiKey.id}`)}
                                       />
                                     ) : null
                                   }
