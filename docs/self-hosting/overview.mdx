@@ -66,12 +66,14 @@ Most of the [limits](/limits) are configurable when self-hosting, with some hard
 | Log size          | ✅           | —               |
 | Machines          | ✅           | —               |
 | OTel limits       | ✅           | —               |
-| Log retention     | —            | Never deleted   |
+| Log retention     | ✅           | —               |
 | I/O packet length | ❌           | 128KB           |
 | Alerts            | ❌           | 100M            |
 | Schedules         | ❌           | 100M            |
 | Team members      | ❌           | 100M            |
 | Preview branches  | ❌           | 100M            |
+
+Logs and traces stored in ClickHouse are kept for 30 days by default. Change it with [`EVENTS_CLICKHOUSE_RETENTION_DAYS`](/self-hosting/env/webapp).
 
 ### Machine overrides
 

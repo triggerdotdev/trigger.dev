@@ -12,6 +12,7 @@ import { parseDeployBaseImages } from "~/v3/deployBaseImages.server";
 import { parseRunOpsShards, validateShardListAgainstNewUrl } from "~/v3/runOpsShards.server";
 import { isValidRegex } from "./utils/regex";
 import { isValidCronExpression } from "./utils/cron";
+import { DEFAULT_EVENT_RETENTION_DAYS } from "~/v3/eventRepository/eventRetention";
 import { isValidDuration } from "./services/realtime/duration.server";
 import { WorkerQueueSubscriptionPolicyEnv } from "./runEngine/concerns/workerQueueSubscriptions.server";
 
@@ -2803,6 +2804,11 @@ const EnvironmentSchema = z
     EVENTS_CLICKHOUSE_MAX_LIVE_RELOADING_SETTING: z.coerce.number().int().default(2000),
     EVENTS_CLICKHOUSE_TRACE_CHUNK_SIZE: z.coerce.number().int().positive().default(1_000),
     EVENTS_CLICKHOUSE_MAX_TRACE_VIEW_COUNT: z.coerce.number().int().positive().default(150_000),
+    EVENTS_CLICKHOUSE_RETENTION_DAYS: z.coerce
+      .number()
+      .int()
+      .positive()
+      .default(DEFAULT_EVENT_RETENTION_DAYS),
 
     // OTLP ingest transform worker pool (opt-in). When enabled, decode/convert/enrich run in a
     // worker_threads pool instead of the request event loop; the single consolidated insert path
