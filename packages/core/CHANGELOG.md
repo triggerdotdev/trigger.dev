@@ -1,5 +1,11 @@
 # internal-platform
 
+## 4.8.9
+
+### Patch Changes
+
+- The `ListRunResponse` schema accepts an optional `appliedFilters` field. The runs list API returns it with the `createdAt` window the list used, so you can see when the default 7-day period applied. ([`e614f357e`](https://github.com/triggerdotdev/trigger.dev/commit/e614f357e2c4819c45445de15ec279205efb3d9f))
+
 ## 4.8.8
 
 ### Patch Changes
