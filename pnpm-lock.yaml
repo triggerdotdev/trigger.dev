@@ -62,8 +62,8 @@ overrides:
   brace-expansion@>=2 <2.1.7: ^2.1.7
   brace-expansion@>=5 <5.0.12: ^5.0.12
   mermaid@>=11 <11.16.1: ^11.16.1
-  '@jsonhero/json-infer-types>ip-address': ^10.3.1
-  express-rate-limit>ip-address: ^10.3.1
+  '@jsonhero/json-infer-types>ip-address': ^10.7.4
+  express-rate-limit>ip-address: ^10.7.4
   find-my-way@>=9 <9.7.0: ^9.7.0
   '@modelcontextprotocol/sdk@>=1.26.0>express-rate-limit': ^8.6.0
   zod: 4.5.4
@@ -11853,8 +11853,8 @@ packages:
     resolution: {integrity: sha512-UxC0Yv1Y4WRJiGQxQkP0hfdL0/5/6YvdfOOClRgJ0qppSarkhneSa6UvkMkms0AkdGimSH3Ikqm+6mkMmX7vGA==}
     engines: {node: '>=12.22.0'}
 
-  ip-address@10.5.0:
-    resolution: {integrity: sha512-R5SnVLJmgYYvf2F2ZgwSBnelz5G4q5AxIC277GDfUaNbrZKNANcBC7RHqYYePlszf4kBolVkJauG0ZjHHFh55g==}
+  ip-address@10.7.6:
+    resolution: {integrity: sha512-00LYkM6byILa9eQIx6qoaXCM40xTLd56AZ4vyaPW3YTyb49VZYPo5xsiAq4tuQ54GH4R7gVdYScJ1B7B77PuTg==}
     engines: {node: '>= 12'}
 
   ipaddr.js@1.9.1:
@@ -19764,7 +19764,7 @@ snapshots:
 
   '@jsonhero/json-infer-types@1.2.11':
     dependencies:
-      ip-address: 10.5.0
+      ip-address: 10.7.6
       json5: 2.2.3
       jwt-decode: 3.1.2
       uuid: 8.3.2
@@ -26255,7 +26255,7 @@ snapshots:
     dependencies:
       debug: 4.4.3(supports-color@10.0.0)
       express: 5.2.1(supports-color@10.0.0)
-      ip-address: 10.5.0
+      ip-address: 10.7.6
     transitivePeerDependencies:
       - supports-color
 
@@ -27124,7 +27124,7 @@ snapshots:
     transitivePeerDependencies:
       - supports-color
 
-  ip-address@10.5.0: {}
+  ip-address@10.7.6: {}
 
   ipaddr.js@1.9.1: {}
 
