@@ -80,6 +80,7 @@ import {
 } from "~/components/runs/v3/DeploymentFilters";
 import { compareDeploymentVersions } from "~/v3/utils/deploymentVersions";
 import { useAutoRevalidate } from "~/hooks/useAutoRevalidate";
+import { CliVersionWarningCallout } from "~/components/deployments/CliVersionWarning";
 import { env } from "~/env.server";
 import { DialogClose } from "@radix-ui/react-dialog";
 import { deploymentsAgentPageContext } from "~/components/dashboard-agent/suggested-prompts";
@@ -251,6 +252,7 @@ export default function Page() {
     currentDeployment,
     showActivity: savedShowActivity,
     timeZone,
+    cliVersionWarning,
   } = useTypedLoaderData<typeof loader>();
   const hasDeployments = hasAnyDeployments;
 
@@ -320,6 +322,7 @@ export default function Page() {
         <div className="h-full max-h-full">
           {hasDeployments && !showGitHubOnboarding ? (
             <div className="flex h-full max-h-full flex-col">
+              {cliVersionWarning && <CliVersionWarningCallout warning={cliVersionWarning} />}
               <div className="flex items-center justify-between gap-x-2 p-2">
                 <DeploymentFilters showActivity={showActivity} onShowActivity={setShowActivity} />
                 <PaginationControls

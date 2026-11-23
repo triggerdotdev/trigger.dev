@@ -5,6 +5,8 @@ import {
   NoSymbolIcon,
 } from "@heroicons/react/20/solid";
 import { InfoPanel } from "~/components/primitives/InfoPanel";
+import { CliVersionWarningBadge } from "~/components/deployments/CliVersionWarning";
+import { TruncatedText } from "~/components/primitives/TruncatedText";
 import { Paragraph } from "~/components/primitives/Paragraph";
 import { ClientOnly } from "remix-utils/client-only";
 import { type ShouldRevalidateFunction, useLocation } from "@remix-run/react";
@@ -1270,7 +1272,16 @@ function DeploymentRail({ deployment }: { deployment: Deployment }) {
       <PropertyGroup title="Runtime">
         <PropertyPair>
           <DetailProperty label="SDK version">{deployment.sdkVersion ?? "–"}</DetailProperty>
-          <DetailProperty label="CLI version">{deployment.cliVersion ?? "–"}</DetailProperty>
+          <DetailProperty label="CLI version">
+            {deployment.cliVersionWarning ? (
+              <>
+                <TruncatedText text={deployment.cliVersion ?? "–"} />
+                <CliVersionWarningBadge warning={deployment.cliVersionWarning} />
+              </>
+            ) : (
+              (deployment.cliVersion ?? "–")
+            )}
+          </DetailProperty>
         </PropertyPair>
         <DetailProperty label="Runtime">
           <RuntimeIcon

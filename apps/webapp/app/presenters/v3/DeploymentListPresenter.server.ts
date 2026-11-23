@@ -18,6 +18,11 @@ import {
 import { resolveRedeploySource } from "~/v3/redeploy";
 import { deploymentStatusFilterSql } from "./deploymentStatusFilter";
 import { deploymentDaySql, safeTimeZone } from "~/v3/deploymentActivity.server";
+import { tryCatch } from "@trigger.dev/core/utils";
+import { env } from "~/env.server";
+import { logger } from "~/services/logger.server";
+import { deployCliVersionPolicy } from "~/v3/cliVersionPolicyInstance.server";
+import { environmentCliVersionWarning } from "./cliVersionWarning.server";
 
 const pageSize = 20;
 
@@ -62,6 +67,7 @@ export class DeploymentListPresenter {
     const project = await this.#prismaClient.project.findFirstOrThrow({
       select: {
         id: true,
+        organization: { select: { featureFlags: true } },
         connectedGithubRepository: {
           select: {
             branchTracking: true,
@@ -241,6 +247,22 @@ ORDER BY
   string_to_array(wd."version", '.')::int[] DESC
 LIMIT ${pageSize} OFFSET ${pageSize * (page - 1)};`;
 
+    const [cliVersionWarningError, cliVersionWarning] = await tryCatch(
+      environmentCliVersionWarning(this.#prismaClient, {
+        environmentId: environment.id,
+        policy: deployCliVersionPolicy(project.organization),
+        since: new Date(
+          Date.now() - env.DEPLOY_CLI_VERSION_WARNING_LOOKBACK_DAYS * 24 * 60 * 60 * 1000
+        ),
+      })
+    );
+    if (cliVersionWarningError) {
+      logger.error("Failed to load the CLI version warning", {
+        environmentId: environment.id,
+        error: cliVersionWarningError,
+      });
+    }
+
     const { connectedGithubRepository } = project;
 
     const branchTrackingOrError =
@@ -270,6 +292,7 @@ LIMIT ${pageSize} OFFSET ${pageSize * (page - 1)};`;
       // The current deploy can be on another page or filtered out; rollback and promote need it.
       currentDeployment: currentPromotion?.deployment,
       hasVercelIntegration,
+      cliVersionWarning: cliVersionWarning ?? undefined,
       connectedGithubRepository: project.connectedGithubRepository ?? undefined,
       environmentGitHubBranch,
       deployments: deployments.map((deployment, index) => {

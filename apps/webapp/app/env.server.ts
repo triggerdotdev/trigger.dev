@@ -1062,6 +1062,7 @@ const EnvironmentSchema = z
     // Parsed in cliVersionPolicy.server.ts, where a bad value is logged instead of failing boot.
     DEPLOY_MIN_CLI_VERSION: z.string().optional(),
     DEPLOY_MIN_CLI_VERSION_ENFORCED_FROM: z.string().optional(),
+    DEPLOY_CLI_VERSION_WARNING_LOOKBACK_DAYS: z.coerce.number().int().positive().max(365).catch(30),
 
     // Verify the deploy image exists before promoting. Disable for out-of-band/air-gapped push. ECR only.
     DEPLOY_IMAGE_VERIFICATION_ENABLED: BoolEnv.default(true),
