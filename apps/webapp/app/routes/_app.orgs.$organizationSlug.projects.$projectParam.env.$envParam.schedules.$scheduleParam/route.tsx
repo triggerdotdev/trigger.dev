@@ -1,11 +1,6 @@
 import { parseWithZod } from "~/utils/conform";
 import { useLocation } from "@remix-run/react";
-import {
-  type ActionFunctionArgs,
-  type LoaderFunctionArgs,
-  json,
-  redirect,
-} from "@remix-run/server-runtime";
+import { type LoaderFunctionArgs, json, redirect } from "@remix-run/server-runtime";
 import { typedjson } from "remix-typedjson";
 import { z } from "zod";
 import { LinkButton } from "~/components/primitives/Buttons";
@@ -16,6 +11,8 @@ import { redirectWithErrorMessage, redirectWithSuccessMessage } from "~/models/m
 import { findProjectBySlug } from "~/models/project.server";
 import { findEnvironmentBySlug } from "~/models/runtimeEnvironment.server";
 import { ViewSchedulePresenter } from "~/presenters/v3/ViewSchedulePresenter.server";
+import { resolveProjectAuthScope } from "~/services/projectAuthScope.server";
+import { dashboardAction } from "~/services/routeBuilders/dashboardBuilder";
 import { requireUserId } from "~/services/session.server";
 import {
   v3EnvironmentPath,
@@ -88,119 +85,133 @@ const schema = z.discriminatedUnion("action", [
   }),
 ]);
 
-export const action = async ({ request, params }: ActionFunctionArgs) => {
-  const userId = await requireUserId(request);
-  const { organizationSlug, projectParam, envParam, scheduleParam } =
-    v3ScheduleParams.parse(params);
+export const action = dashboardAction(
+  {
+    params: v3ScheduleParams,
+    context: (params) => resolveProjectAuthScope(params.organizationSlug, params.projectParam),
+    authorization: {
+      action: "write",
+      resource: { type: "tasks" },
+      message: "With your current role, you can't manage schedules.",
+    },
+  },
+  async ({ request, params, user }) => {
+    const userId = user.id;
+    const { organizationSlug, projectParam, envParam, scheduleParam } = params;
 
-  const formData = await request.formData();
-  const submission = parseWithZod(formData, { schema });
+    const formData = await request.formData();
+    const submission = parseWithZod(formData, { schema });
 
-  if (submission.status !== "success") {
-    return json(submission.reply());
-  }
-
-  // `_format=json` → return JSON instead of redirecting; caller stays put.
-  const wantsJson = formData.get("_format") === "json";
-
-  const project = await findProjectBySlug(organizationSlug, projectParam, userId);
-
-  if (!project) {
-    const message = `No project found with slug ${projectParam}`;
-    if (wantsJson) {
-      return json({ ok: false as const, message }, { status: 404 });
+    if (submission.status !== "success") {
+      return json(submission.reply());
     }
-    return redirectWithErrorMessage(
-      v3SchedulePath(
-        { slug: organizationSlug },
-        { slug: projectParam },
-        { slug: envParam },
-        { friendlyId: scheduleParam }
-      ),
-      request,
-      message
-    );
-  }
 
-  switch (submission.value.action) {
-    case "delete": {
-      const deleteService = new DeleteTaskScheduleService();
-      try {
-        await deleteService.call({
-          projectId: project.id,
-          userId,
-          friendlyId: scheduleParam,
-        });
-        if (wantsJson) {
-          return json({ ok: true as const, message: `${scheduleParam} deleted` });
+    // `_format=json` → return JSON instead of redirecting; caller stays put.
+    const wantsJson = formData.get("_format") === "json";
+
+    const project = await findProjectBySlug(organizationSlug, projectParam, userId);
+
+    if (!project) {
+      const message = `No project found with slug ${projectParam}`;
+      if (wantsJson) {
+        return json({ ok: false as const, message }, { status: 404 });
+      }
+      return redirectWithErrorMessage(
+        v3SchedulePath(
+          { slug: organizationSlug },
+          { slug: projectParam },
+          { slug: envParam },
+          { friendlyId: scheduleParam }
+        ),
+        request,
+        message
+      );
+    }
+
+    switch (submission.value.action) {
+      case "delete": {
+        const deleteService = new DeleteTaskScheduleService();
+        try {
+          await deleteService.call({
+            projectId: project.id,
+            userId,
+            friendlyId: scheduleParam,
+          });
+          if (wantsJson) {
+            return json({ ok: true as const, message: `${scheduleParam} deleted` });
+          }
+          return redirectWithSuccessMessage(
+            v3EnvironmentPath(
+              { slug: organizationSlug },
+              { slug: projectParam },
+              { slug: envParam }
+            ),
+            request,
+            `${scheduleParam} deleted`
+          );
+        } catch (e) {
+          const message = `${scheduleParam} could not be deleted: ${
+            e instanceof Error ? e.message : JSON.stringify(e)
+          }`;
+          if (wantsJson) {
+            return json({ ok: false as const, message }, { status: 500 });
+          }
+          return redirectWithErrorMessage(
+            v3SchedulePath(
+              { slug: organizationSlug },
+              { slug: projectParam },
+              { slug: envParam },
+              { friendlyId: scheduleParam }
+            ),
+            request,
+            message
+          );
         }
-        return redirectWithSuccessMessage(
-          v3EnvironmentPath({ slug: organizationSlug }, { slug: projectParam }, { slug: envParam }),
-          request,
-          `${scheduleParam} deleted`
-        );
-      } catch (e) {
-        const message = `${scheduleParam} could not be deleted: ${
-          e instanceof Error ? e.message : JSON.stringify(e)
-        }`;
-        if (wantsJson) {
-          return json({ ok: false as const, message }, { status: 500 });
+      }
+      case "enable":
+      case "disable": {
+        const service = new SetActiveOnTaskScheduleService();
+        const active = submission.value.action === "enable";
+        try {
+          await service.call({
+            projectId: project.id,
+            userId,
+            friendlyId: scheduleParam,
+            active,
+          });
+          if (wantsJson) {
+            return json({ ok: true as const, active });
+          }
+          return redirectWithSuccessMessage(
+            v3SchedulePath(
+              { slug: organizationSlug },
+              { slug: projectParam },
+              { slug: envParam },
+              { friendlyId: scheduleParam }
+            ),
+            request,
+            `${scheduleParam} ${active ? "enabled" : "disabled"}`
+          );
+        } catch (e) {
+          const message = e instanceof Error ? e.message : JSON.stringify(e);
+          if (wantsJson) {
+            return json({ ok: false as const, message }, { status: 500 });
+          }
+          return redirectWithErrorMessage(
+            v3SchedulePath(
+              { slug: organizationSlug },
+              { slug: projectParam },
+              { slug: envParam },
+              { friendlyId: scheduleParam }
+            ),
+            request,
+            `${scheduleParam} could not be ${active ? "enabled" : "disabled"}: ${message}`
+          );
         }
-        return redirectWithErrorMessage(
-          v3SchedulePath(
-            { slug: organizationSlug },
-            { slug: projectParam },
-            { slug: envParam },
-            { friendlyId: scheduleParam }
-          ),
-          request,
-          message
-        );
       }
     }
-    case "enable":
-    case "disable": {
-      const service = new SetActiveOnTaskScheduleService();
-      const active = submission.value.action === "enable";
-      try {
-        await service.call({
-          projectId: project.id,
-          userId,
-          friendlyId: scheduleParam,
-          active,
-        });
-        if (wantsJson) {
-          return json({ ok: true as const, active });
-        }
-        return redirectWithSuccessMessage(
-          v3SchedulePath(
-            { slug: organizationSlug },
-            { slug: projectParam },
-            { slug: envParam },
-            { friendlyId: scheduleParam }
-          ),
-          request,
-          `${scheduleParam} ${active ? "enabled" : "disabled"}`
-        );
-      } catch (e) {
-        const message = e instanceof Error ? e.message : JSON.stringify(e);
-        if (wantsJson) {
-          return json({ ok: false as const, message }, { status: 500 });
-        }
-        return redirectWithErrorMessage(
-          v3SchedulePath(
-            { slug: organizationSlug },
-            { slug: projectParam },
-            { slug: envParam },
-            { friendlyId: scheduleParam }
-          ),
-          request,
-          `${scheduleParam} could not be ${active ? "enabled" : "disabled"}: ${message}`
-        );
-      }
-    }
   }
-};
+);
 
 export default function Page() {
   const location = useLocation();

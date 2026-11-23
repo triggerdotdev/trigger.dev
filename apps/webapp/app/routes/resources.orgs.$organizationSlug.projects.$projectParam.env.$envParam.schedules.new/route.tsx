@@ -9,7 +9,6 @@ import {
   useLocation,
   useNavigation,
 } from "@remix-run/react";
-import type { ActionFunctionArgs } from "@remix-run/server-runtime";
 import { json } from "@remix-run/server-runtime";
 import { parseExpression } from "cron-parser";
 import cronstrue from "cronstrue";
@@ -41,7 +40,8 @@ import { useProject } from "~/hooks/useProject";
 import { redirectWithErrorMessage, redirectWithSuccessMessage } from "~/models/message.server";
 import type { EditableScheduleElements } from "~/presenters/v3/EditSchedulePresenter.server";
 import { logger } from "~/services/logger.server";
-import { requireUserId } from "~/services/session.server";
+import { resolveProjectAuthScope } from "~/services/projectAuthScope.server";
+import { dashboardAction } from "~/services/routeBuilders/dashboardBuilder";
 import { cn } from "~/utils/cn";
 import { EnvironmentParamSchema, docsPath, v3EnvironmentPath } from "~/utils/pathBuilder";
 import { CronPattern, UpsertSchedule } from "~/v3/schedules";
@@ -60,80 +60,91 @@ const cronFormat = `*    *    *    *    *
 │    └─────────────── hour (0 - 23)
 └──────────────────── minute (0 - 59)`;
 
-export const action = async ({ request, params }: ActionFunctionArgs) => {
-  const userId = await requireUserId(request);
-  const { organizationSlug, projectParam, envParam } = EnvironmentParamSchema.parse(params);
+export const action = dashboardAction(
+  {
+    params: EnvironmentParamSchema,
+    context: (params) => resolveProjectAuthScope(params.organizationSlug, params.projectParam),
+    authorization: {
+      action: "write",
+      resource: { type: "tasks" },
+      message: "With your current role, you can't manage schedules.",
+    },
+  },
+  async ({ request, params, user }) => {
+    const userId = user.id;
+    const { organizationSlug, projectParam, envParam } = params;
 
-  const formData = await request.formData();
-  const submission = parseWithZod(formData, { schema: UpsertSchedule });
+    const formData = await request.formData();
+    const submission = parseWithZod(formData, { schema: UpsertSchedule });
 
-  if (submission.status !== "success") {
-    return json(submission.reply());
-  }
+    if (submission.status !== "success") {
+      return json(submission.reply());
+    }
 
-  // `_format=json` → return JSON instead of redirecting; caller toasts.
-  const wantsJson = formData.get("_format") === "json";
+    // `_format=json` → return JSON instead of redirecting; caller toasts.
+    const wantsJson = formData.get("_format") === "json";
 
-  try {
-    //first check that the user has access to the project
-    const project = await prisma.project.findUnique({
-      where: {
-        slug: projectParam,
-        organization: {
-          members: {
-            some: {
-              userId,
+    try {
+      //first check that the user has access to the project
+      const project = await prisma.project.findUnique({
+        where: {
+          slug: projectParam,
+          organization: {
+            members: {
+              some: {
+                userId,
+              },
             },
           },
         },
-      },
-      select: { id: true },
-    });
+        select: { id: true },
+      });
 
-    if (!project) {
-      throw new Error("Project not found");
-    }
-
-    const createSchedule = new UpsertTaskScheduleService();
-    const result = await createSchedule.call(project.id, submission.value);
-
-    const message =
-      submission.value?.friendlyId === result.id ? "Schedule updated" : "Schedule created";
-
-    if (wantsJson) {
-      return json({ ok: true as const, message });
-    }
-
-    return redirectWithSuccessMessage(
-      v3EnvironmentPath({ slug: organizationSlug }, { slug: projectParam }, { slug: envParam }),
-      request,
-      message
-    );
-  } catch (error: any) {
-    if (!(error instanceof ServiceValidationError)) {
-      logger.error("Failed to create schedule", { error, organizationSlug });
-    }
-
-    const errorMessage =
-      error instanceof ServiceValidationError
-        ? error.message
-        : `Something went wrong. Please try again.`;
-    if (wantsJson) {
-      if (error instanceof ServiceValidationError) {
-        return json(submission.reply({ formErrors: [error.message] }), {
-          status: error.status ?? 422,
-        });
+      if (!project) {
+        throw new Error("Project not found");
       }
 
-      return json({ ok: false as const, message: errorMessage }, { status: 500 });
+      const createSchedule = new UpsertTaskScheduleService();
+      const result = await createSchedule.call(project.id, submission.value);
+
+      const message =
+        submission.value?.friendlyId === result.id ? "Schedule updated" : "Schedule created";
+
+      if (wantsJson) {
+        return json({ ok: true as const, message });
+      }
+
+      return redirectWithSuccessMessage(
+        v3EnvironmentPath({ slug: organizationSlug }, { slug: projectParam }, { slug: envParam }),
+        request,
+        message
+      );
+    } catch (error: any) {
+      if (!(error instanceof ServiceValidationError)) {
+        logger.error("Failed to create schedule", { error, organizationSlug });
+      }
+
+      const errorMessage =
+        error instanceof ServiceValidationError
+          ? error.message
+          : `Something went wrong. Please try again.`;
+      if (wantsJson) {
+        if (error instanceof ServiceValidationError) {
+          return json(submission.reply({ formErrors: [error.message] }), {
+            status: error.status ?? 422,
+          });
+        }
+
+        return json({ ok: false as const, message: errorMessage }, { status: 500 });
+      }
+      return redirectWithErrorMessage(
+        v3EnvironmentPath({ slug: organizationSlug }, { slug: projectParam }, { slug: envParam }),
+        request,
+        errorMessage
+      );
     }
-    return redirectWithErrorMessage(
-      v3EnvironmentPath({ slug: organizationSlug }, { slug: projectParam }, { slug: envParam }),
-      request,
-      errorMessage
-    );
   }
-};
+);
 
 type CronPatternResult =
   | {

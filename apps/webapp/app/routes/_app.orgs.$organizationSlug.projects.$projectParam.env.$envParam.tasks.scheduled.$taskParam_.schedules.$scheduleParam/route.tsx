@@ -37,6 +37,7 @@ import { findEnvironmentBySlug } from "~/models/runtimeEnvironment.server";
 import { NextRunListPresenter } from "~/presenters/v3/NextRunListPresenter.server";
 import { ViewSchedulePresenter } from "~/presenters/v3/ViewSchedulePresenter.server";
 import { clickhouseFactory } from "~/services/clickhouse/clickhouseFactoryInstance.server";
+import { rbac } from "~/services/rbac.server";
 import { requireUserId } from "~/services/session.server";
 import type { Handle } from "~/utils/handle";
 import { pageMeta } from "~/utils/pageTitle";
@@ -89,10 +90,14 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   }
 
   // The Runs tab: a page of this schedule's runs from the last 31 days.
-  const clickhouse = await clickhouseFactory.getClickhouseForOrganization(
-    project.organizationId,
-    "standard"
-  );
+  const [clickhouse, auth] = await Promise.all([
+    clickhouseFactory.getClickhouseForOrganization(project.organizationId, "standard"),
+    rbac.authenticateSession(request, {
+      userId,
+      organizationId: project.organizationId,
+      projectId: project.id,
+    }),
+  ]);
   const { runs } = await new NextRunListPresenter($replica, clickhouse).call(
     project.organizationId,
     environment.id,
@@ -117,6 +122,8 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
     calendar,
     calendarKey: scheduleCalendarKey(searchParams),
     loadedAt: Date.now(),
+    // Edit, Delete, Enable and Disable are disabled without it, as on the task's Queue tab.
+    canWriteTasks: auth.ok && auth.ability.can("write", { type: "tasks" }),
   });
 };
 
@@ -243,6 +250,7 @@ export default function Page() {
     calendar: loadedCalendar,
     calendarKey,
     loadedAt,
+    canWriteTasks,
   } = useTypedLoaderData<typeof loader>();
   const organization = useOrganization();
   const project = useProject();
@@ -314,11 +322,13 @@ export default function Page() {
                   schedule={schedule}
                   actionPath={actionPath}
                   fetcher={activeToggleFetcher}
+                  disabled={!canWriteTasks}
                 />
                 <ScheduleDeleteButton
                   schedule={schedule}
                   actionPath={actionPath}
                   fetcher={deleteFetcher}
+                  disabled={!canWriteTasks}
                 />
               </>
             ) : undefined
@@ -329,12 +339,17 @@ export default function Page() {
                 schedule={schedule}
                 actionPath={actionPath}
                 fetcher={activeToggleFetcher}
+                disabled={!canWriteTasks}
               />
             ) : undefined
           }
           primaryAction={
             isImperative ? (
-              <ScheduleEditButton variant="primary/small" onEdit={() => setEditing(true)} />
+              <ScheduleEditButton
+                variant="primary/small"
+                onEdit={() => setEditing(true)}
+                disabled={!canWriteTasks}
+              />
             ) : undefined
           }
         />

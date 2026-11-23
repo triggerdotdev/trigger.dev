@@ -1,5 +1,6 @@
 import { GitPullRequestIcon, GitCommitIcon, GitBranchIcon } from "lucide-react";
 import { type GitMetaLinks } from "~/presenters/v3/BranchesPresenter.server";
+import { isHttpUrl } from "~/utils/gitRemoteUrl";
 import { LinkButton } from "./primitives/Buttons";
 import { SimpleTooltip } from "./primitives/Tooltip";
 
@@ -7,9 +8,11 @@ export function GitMetadata({ git }: { git?: GitMetaLinks | null }) {
   if (!git) return null;
   return (
     <>
-      {git.pullRequestUrl && git.pullRequestNumber && <GitMetadataPullRequest git={git} />}
-      {git.branchUrl && <GitMetadataBranch git={git} />}
-      {git.shortSha && <GitMetadataCommit git={git} />}
+      {isHttpUrl(git.pullRequestUrl) && git.pullRequestNumber && (
+        <GitMetadataPullRequest git={git} />
+      )}
+      {isHttpUrl(git.branchUrl) && <GitMetadataBranch git={git} />}
+      {git.shortSha && isHttpUrl(git.commitUrl) && <GitMetadataCommit git={git} />}
     </>
   );
 }

@@ -12,6 +12,7 @@ import { getCurrentPlan, getPlans } from "~/services/platform.v3.server";
 import { checkBranchLimit } from "~/services/upsertBranch.server";
 import { devPresence } from "./DevPresence.server";
 import { sortEnvironments } from "~/utils/environmentSort";
+import { gitRemoteToHttpsUrl } from "~/utils/gitRemoteUrl";
 import {
   type BranchableEnvironmentToken,
   type BranchableEnvironmentType,
@@ -332,25 +333,9 @@ export function processGitMetadata(data: Prisma.JsonValue): GitMetaLinks | null 
     return null;
   }
 
-  // Clean the remote URL by removing any username/password and ensuring it's a proper GitHub URL
-  const cleanRemoteUrl = (() => {
-    try {
-      const url = new URL(parsed.data.remoteUrl);
-      // Remove any username/password from the URL
-      url.username = "";
-      url.password = "";
-      // Ensure we're using https
-      url.protocol = "https:";
-      // Remove any trailing .git
-      return url.toString().replace(/\.git$/, "");
-    } catch (_e) {
-      // If URL parsing fails, try to clean it manually
-      return parsed.data.remoteUrl
-        .replace(/^git@github\.com:/, "https://github.com/")
-        .replace(/^https?:\/\/[^@]+@/, "https://")
-        .replace(/\.git$/, "");
-    }
-  })();
+  // The repository's https URL, without credentials or a trailing .git
+  const cleanRemoteUrl = gitRemoteToHttpsUrl(parsed.data.remoteUrl);
+  if (!cleanRemoteUrl) return null;
 
   if (!parsed.data.commitRef || !parsed.data.commitSha) return null;
 

@@ -130,13 +130,13 @@ export const shouldRevalidate: ShouldRevalidateFunction = (args) =>
 
 export default function Page() {
   const data = useTypedLoaderData<typeof loader>();
-  const { task, scheduleList, canManageBilling } = data;
+  const { task, scheduleList, canManageBilling, canWriteTasks } = data;
   const organization = useOrganization();
   const project = useProject();
   const environment = useEnvironment();
 
   const search = useSearchParams();
-  const isCreatingSchedule = search.has("createSchedule");
+  const isCreatingSchedule = canWriteTasks && search.has("createSchedule");
   const openCreateSchedule = useCallback(() => search.replace({ createSchedule: "1" }), [search]);
   const closeCreateSchedule = useCallback(() => search.del("createSchedule"), [search]);
 
@@ -186,7 +186,7 @@ export default function Page() {
             planScheduleLimit={scheduleList?.planScheduleLimit ?? 0}
             schedulePricing={scheduleList?.schedulePricing ?? null}
             onCreate={openCreateSchedule}
-            disabled={isCreatingSchedule}
+            disabled={isCreatingSchedule || !canWriteTasks}
           />
         }
       >

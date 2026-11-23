@@ -1,4 +1,4 @@
-import { resolveOrgIdFromSlug } from "~/models/organization.server";
+import { throwPermissionDenied } from "~/utils/permissionDenied";
 import { rbac } from "~/services/rbac.server";
 import { checkPermissions } from "~/services/routeBuilders/permissions.server";
 import { resolveDeploymentOnboardingUi } from "~/v3/services/deploymentOnboardingUi.server";
@@ -168,17 +168,25 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
 
     const autoReloadPollIntervalMs = env.DEPLOYMENTS_AUTORELOAD_POLL_INTERVAL_MS;
 
-    // Preserve the existing org-scoped display checks for rollback/promote/cancel.
-    const orgId = await resolveOrgIdFromSlug(organizationSlug);
-    const deploymentAuth = orgId
-      ? await rbac.authenticateSession(request, { userId, organizationId: orgId })
-      : null;
-    const canWriteDeployments =
-      deploymentAuth && deploymentAuth.ok
-        ? checkPermissions(deploymentAuth.ability, {
-            canWriteDeployments: { action: "write", resource: { type: "deployments" } },
-          }).canWriteDeployments
-        : true;
+    // Read access is decided in the project's scope, so a role held on this project counts, as
+    // on the deployment page. The write flag stays in the organization's scope, which is how the
+    // promote, rollback and cancel actions authenticate. It only decides what is shown.
+    const [readAuth, writeAuth] = await Promise.all([
+      rbac.authenticateSession(request, {
+        userId,
+        organizationId: result.organizationId,
+        projectId: result.projectId,
+      }),
+      rbac.authenticateSession(request, { userId, organizationId: result.organizationId }),
+    ]);
+    if (!readAuth.ok || !readAuth.ability.can("read", { type: "deployments" })) {
+      throwPermissionDenied();
+    }
+    const canWriteDeployments = writeAuth.ok
+      ? checkPermissions(writeAuth.ability, {
+          canWriteDeployments: { action: "write", resource: { type: "deployments" } },
+        }).canWriteDeployments
+      : true;
     const redeployCutoff = new Date(
       Date.now() - env.DEPLOYMENTS_REDEPLOY_WINDOW_DAYS * 24 * 60 * 60 * 1000
     );
@@ -207,6 +215,7 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
       timeZone,
     });
   } catch (error) {
+    if (error instanceof Response) throw error;
     console.error(error);
     throw new Response(undefined, {
       status: 400,
