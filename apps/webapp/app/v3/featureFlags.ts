@@ -57,6 +57,7 @@ export const FEATURE_FLAG = {
   deployBuildPathPreview: "deployBuildPathPreview",
   deployBuildPathStaging: "deployBuildPathStaging",
   deployBuildPathProduction: "deployBuildPathProduction",
+  deployCliVersionEnforcedFrom: "deployCliVersionEnforcedFrom",
   scheduleDefaultWindowEnabled: "scheduleDefaultWindowEnabled",
   deployNowEnabled: "deployNowEnabled",
   apiRateLimitMetricsEnabled: "apiRateLimitMetricsEnabled",
@@ -235,6 +236,8 @@ export const FeatureFlagCatalog = {
   [FEATURE_FLAG.deployBuildPathPreview]: DeployBuildPath,
   [FEATURE_FLAG.deployBuildPathStaging]: DeployBuildPath,
   [FEATURE_FLAG.deployBuildPathProduction]: DeployBuildPath,
+  // Moves DEPLOY_MIN_CLI_VERSION_ENFORCED_FROM later for one org; an earlier date is ignored.
+  [FEATURE_FLAG.deployCliVersionEnforcedFrom]: z.string().datetime({ offset: true }),
   [FEATURE_FLAG.scheduleDefaultWindowEnabled]: z.boolean(),
   // Strict z.boolean() (not z.coerce.boolean()): coercion reads the string
   // "false" as true, which would enable an off-by-default gate.
@@ -284,6 +287,7 @@ export const GLOBAL_LOCKED_FLAGS: FeatureFlagKey[] = [
   FEATURE_FLAG.runOpsMintShardSetPrev,
   FEATURE_FLAG.runOpsMintShardSetFlippedAt,
   FEATURE_FLAG.sandboxTasks,
+  FEATURE_FLAG.deployCliVersionEnforcedFrom,
 ];
 
 // Flags that are read-only on the org-level dialog.

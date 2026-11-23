@@ -1059,6 +1059,10 @@ const EnvironmentSchema = z
     // log-only mode before enforcement.
     DEPRECATE_V3_CLI_DEPLOYS_ENABLED: z.string().default("0"),
 
+    // Parsed in cliVersionPolicy.server.ts, where a bad value is logged instead of failing boot.
+    DEPLOY_MIN_CLI_VERSION: z.string().optional(),
+    DEPLOY_MIN_CLI_VERSION_ENFORCED_FROM: z.string().optional(),
+
     // Verify the deploy image exists before promoting. Disable for out-of-band/air-gapped push. ECR only.
     DEPLOY_IMAGE_VERIFICATION_ENABLED: BoolEnv.default(true),
 

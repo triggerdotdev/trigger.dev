@@ -36,7 +36,7 @@ export async function loader({ request, params }: LoaderFunctionArgs) {
     return await deploymentService
       .getDeploySettings(authenticatedEnv, { projectRef, envSlug: env })
       .match(
-        ({ buildPath, buildPathSource }) => {
+        ({ buildPath, buildPathSource, cliVersionPolicy }) => {
           logger.info("Resolved deploy build path", {
             environmentId: authenticatedEnv.id,
             projectRef,
@@ -45,7 +45,13 @@ export async function loader({ request, params }: LoaderFunctionArgs) {
             buildPathSource,
           });
 
-          return json({ build_path: buildPath } satisfies GetDeploySettingsResponseBody);
+          return json({
+            build_path: buildPath,
+            cli_version_policy: cliVersionPolicy && {
+              minimum: cliVersionPolicy.minimum,
+              enforced_from: cliVersionPolicy.enforcedFrom.toISOString(),
+            },
+          } satisfies GetDeploySettingsResponseBody);
         },
         (error) => {
           switch (error.type) {

@@ -65,6 +65,7 @@ export async function loader({ request, params }: LoaderFunctionArgs) {
       imagePlatform: deployment.imagePlatform,
       commitSHA: deployment.commitSHA,
       externalId: deployment.externalId ?? undefined,
+      createdAt: deployment.createdAt.toISOString(),
       externalBuildData:
         deployment.externalBuildData as GetDeploymentResponseBody["externalBuildData"],
       baseImages: resolveDeployBaseImages(deployment.runtime, {

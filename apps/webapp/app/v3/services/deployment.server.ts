@@ -24,6 +24,8 @@ import {
 import { FEATURE_FLAG, type FeatureFlagKey } from "../featureFlags";
 import { flags } from "../featureFlags.server";
 import { globalFlagsRegistry } from "../globalFlagsRegistry.server";
+import { type DeployCliVersionPolicy } from "../cliVersionPolicy.server";
+import { deployCliVersionPolicy } from "../cliVersionPolicyInstance.server";
 import { AppendInput, AppendRecord } from "@s2-dev/streamstore";
 import {
   createDeploymentLogsS2Client,
@@ -66,7 +68,9 @@ type DeployBuildPathSource =
   | "global"
   | "default";
 
-type DeploySettings = { buildPath: DeployBuildPath; buildPathSource: DeployBuildPathSource };
+type BuildPathSettings = { buildPath: DeployBuildPath; buildPathSource: DeployBuildPathSource };
+
+type DeploySettings = BuildPathSettings & { cliVersionPolicy?: DeployCliVersionPolicy };
 
 export class DeploymentService extends BaseService {
   /**
@@ -341,7 +345,7 @@ export class DeploymentService extends BaseService {
         cause: error,
       }));
 
-    const pickBuildPath = (globalFlagSet: Record<string, unknown>): DeploySettings => {
+    const pickBuildPath = (globalFlagSet: Record<string, unknown>): BuildPathSettings => {
       const envKey = DEPLOY_BUILD_PATH_ENV_FLAG[authenticatedEnv.type];
       const orgFlags = authenticatedEnv.organization.featureFlags;
       const orgFlagSet: Record<string, unknown> =
@@ -370,7 +374,7 @@ export class DeploymentService extends BaseService {
     };
 
     const resolveBuildPath = (): ResultAsync<
-      DeploySettings,
+      BuildPathSettings,
       { type: "failed_to_load_global_flags"; cause: unknown }
     > => {
       if (!isBillingConfigured()) {
@@ -379,7 +383,12 @@ export class DeploymentService extends BaseService {
       return loadGlobalFlags().map(pickBuildPath);
     };
 
-    return validateTarget().andThen(resolveBuildPath);
+    return validateTarget()
+      .andThen(resolveBuildPath)
+      .map((settings): DeploySettings => ({
+        ...settings,
+        cliVersionPolicy: deployCliVersionPolicy(authenticatedEnv.organization),
+      }));
   }
 
   /**

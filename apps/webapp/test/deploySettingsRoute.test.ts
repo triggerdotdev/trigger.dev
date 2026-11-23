@@ -1,3 +1,4 @@
+import { GetDeploySettingsResponseBody } from "@trigger.dev/core/v3";
 import { errAsync, okAsync } from "neverthrow";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -101,6 +102,23 @@ describe("deploy settings route", () => {
     expect(mocks.authenticateApiKeyWithScope).toHaveBeenCalledWith(expect.any(Request), {
       action: "read",
       resource: { type: "deployments" },
+    });
+  });
+
+  // Catches: the policy serialised in a shape the clients' schema drops without an error.
+  it("returns the CLI version policy in the shape clients parse", async () => {
+    mocks.getDeploySettings.mockReturnValue(
+      okAsync({
+        buildPath: "native",
+        buildPathSource: "global",
+        cliVersionPolicy: { minimum: "4.5.20", enforcedFrom: new Date("2027-01-15T00:00:00Z") },
+      })
+    );
+
+    const response = await load();
+    expect(GetDeploySettingsResponseBody.parse(await response.json())).toEqual({
+      build_path: "native",
+      cli_version_policy: { minimum: "4.5.20", enforced_from: "2027-01-15T00:00:00.000Z" },
     });
   });
 
