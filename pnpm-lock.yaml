@@ -102,6 +102,7 @@ overrides:
   cross-spawn@>=7 <7.0.5: ^7.0.5
   '@modelcontextprotocol/sdk@>=1.26.0 <1.31.0': ^1.31.0
   engine.io@>=6 <6.6.10: ^6.6.10
+  fast-uri@>=4 <4.2.3: ^4.2.3
 
 patchedDependencies:
   '@ai-sdk/anthropic@3.0.125':
@@ -11240,8 +11241,8 @@ packages:
   fast-uri@3.1.8:
     resolution: {integrity: sha512-GZMtZUTNRpOVIECoXwLNZS5xUGE+mVNbTB8h/7Rwh2TFWcBQiPzTgyZi05BF9UMZKkLJv8XBRJTlU7zg8+ZfMg==}
 
-  fast-uri@4.2.1:
-    resolution: {integrity: sha512-TmHQgewjHtMq1E5QKA0tOE0yeYGQs25KZC/ziJpubRtWI15W92e6vPFydWOeZBVROSHBYw/QhD9d5OefdD6LDg==}
+  fast-uri@4.2.3:
+    resolution: {integrity: sha512-I1PXwP5eAhlNlcdpjt9CgB59op2ZvZfxw+BkqGFVIUOgNpCVTcTqp3HhTX7brxj5vsip+nSY4nTvff+eIA76hg==}
 
   fast-xml-builder@1.2.0:
     resolution: {integrity: sha512-00aAWieqff+ZJhsXA4g1g7M8k+7AYoMUUHF+/zFb5U6Uv/P0Vl4QZo84/IcufzYalLuEj9928bXN9PbbFzMF0Q==}
@@ -26375,7 +26376,7 @@ snapshots:
       '@fastify/merge-json-schemas': 0.2.1
       ajv: 8.20.0
       ajv-formats: 3.0.1(ajv@8.20.0)
-      fast-uri: 4.2.1
+      fast-uri: 4.2.3
       json-schema-ref-resolver: 3.0.0
       rfdc: 1.4.1
 
@@ -26391,7 +26392,7 @@ snapshots:
 
   fast-uri@3.1.8: {}
 
-  fast-uri@4.2.1: {}
+  fast-uri@4.2.3: {}
 
   fast-xml-builder@1.2.0:
     dependencies:
