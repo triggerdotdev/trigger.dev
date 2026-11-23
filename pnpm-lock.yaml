@@ -72,7 +72,7 @@ overrides:
   body-parser@>=2 <2.4.0: ^2.4.0
   fflate@>=0.4.0 <0.4.9: ^0.4.9
   glob@>=10 <10.5.0: ^10.5.0
-  '@hono/node-server@>=1 <1.19.15': ^1.19.15
+  '@hono/node-server@>=1 <1.19.18': 1.19.18
   mdast-util-to-hast@>=13 <13.2.1: ^13.2.1
   path-to-regexp@>=8 <8.4.0: ^8.4.0
   tar-fs@>=2.0.0 <2.1.4: ^2.1.4
@@ -4999,8 +4999,8 @@ packages:
     peerDependencies:
       react: 18.3.1
 
-  '@hono/node-server@1.19.17':
-    resolution: {integrity: sha512-dSneS5qhiauZWGDCeK4o695Xd9nUNjviSZCMQrj10eetr8Uln1ucn6bbphOM6UynAMMtNIzZNSpL9vnASJwrPQ==}
+  '@hono/node-server@1.19.18':
+    resolution: {integrity: sha512-609kppIP9GITS+EwPyB6Kiq8z2yXONaYD1VHpo7MMP9celRJYbkFr9KakJncHwK0EK/XYtlogqmrLchDv5HX5w==}
     engines: {node: '>=18.14.1'}
     peerDependencies:
       hono: 4.13.16
@@ -5010,7 +5010,7 @@ packages:
     engines: {node: '>=18.14.1'}
     deprecated: Package no longer supported. Contact Support at https://www.npmjs.com/support for more info.
     peerDependencies:
-      '@hono/node-server': ^1.19.15
+      '@hono/node-server': 1.19.18
 
   '@iconify/types@2.0.0':
     resolution: {integrity: sha512-+wluvCrRhXrhyOmRDJ3q8mux9JkKy5SJ/v8ol2tu4FVjyYvtEzkc/3pK15ET6RKg4b4w4BmTk1+gsCUhf21Ykg==}
@@ -18696,8 +18696,8 @@ snapshots:
 
   '@epic-web/test-server@0.1.0(bufferutil@4.0.9)':
     dependencies:
-      '@hono/node-server': 1.19.17(hono@4.13.16)
-      '@hono/node-ws': 1.0.4(@hono/node-server@1.19.17(hono@4.13.16))(bufferutil@4.0.9)
+      '@hono/node-server': 1.19.18(hono@4.13.16)
+      '@hono/node-ws': 1.0.4(@hono/node-server@1.19.18(hono@4.13.16))(bufferutil@4.0.9)
       '@open-draft/deferred-promise': 2.2.0
       '@types/ws': 8.5.12
       hono: 4.13.16
@@ -19544,13 +19544,13 @@ snapshots:
     dependencies:
       react: 18.3.1
 
-  '@hono/node-server@1.19.17(hono@4.13.16)':
+  '@hono/node-server@1.19.18(hono@4.13.16)':
     dependencies:
       hono: 4.13.16
 
-  '@hono/node-ws@1.0.4(@hono/node-server@1.19.17(hono@4.13.16))(bufferutil@4.0.9)':
+  '@hono/node-ws@1.0.4(@hono/node-server@1.19.18(hono@4.13.16))(bufferutil@4.0.9)':
     dependencies:
-      '@hono/node-server': 1.19.17(hono@4.13.16)
+      '@hono/node-server': 1.19.18(hono@4.13.16)
       ws: 8.21.0(bufferutil@4.0.9)
     transitivePeerDependencies:
       - bufferutil
@@ -19893,7 +19893,7 @@ snapshots:
 
   '@modelcontextprotocol/sdk@1.32.1(supports-color@10.0.0)(zod@4.5.4)':
     dependencies:
-      '@hono/node-server': 1.19.17(hono@4.13.16)
+      '@hono/node-server': 1.19.18(hono@4.13.16)
       ajv: 8.20.0
       ajv-formats: 3.0.1(ajv@8.20.0)
       content-type: 1.0.5
@@ -19915,7 +19915,7 @@ snapshots:
 
   '@modelcontextprotocol/sdk@1.32.2(zod@4.5.4)':
     dependencies:
-      '@hono/node-server': 1.19.17(hono@4.13.16)
+      '@hono/node-server': 1.19.18(hono@4.13.16)
       ajv: 8.20.0
       ajv-formats: 3.0.1(ajv@8.20.0)
       content-type: 1.0.5
