@@ -180,6 +180,10 @@ describe("templateCreateRequest", () => {
         { cpus: 0.5, memory_mb: 512 },
         { cpus: 1, memory_mb: 2048 },
       ],
+      machines: [
+        { name: "small-1x", cpu: "0.5", memory: "0.5G" },
+        { name: "medium-1x", cpu: "1", memory: "2G" },
+      ],
       no_snap: true,
       deployment_id: "deployment_abc",
     });
@@ -191,15 +195,16 @@ describe("templateCreateRequest", () => {
     expect(templateCreateRequest(IMAGE, ["small-1x"], "deployment_abc", undefined, true)).toEqual({
       image: IMAGE,
       machine_configs: [{ cpus: 0.5, memory_mb: 512 }],
+      machines: [{ name: "small-1x", cpu: "0.5", memory: "0.5G" }],
       deployment_id: "deployment_abc",
     });
     expect(templateCreateRequest(IMAGE, ["small-1x"], "deployment_abc").no_snap).toBe(true);
   });
 
-  it("sends each distinct shape once", () => {
-    expect(
-      templateCreateRequest(IMAGE, ["small-1x", "small-1x"], "deployment_abc").machine_configs
-    ).toEqual([{ cpus: 0.5, memory_mb: 512 }]);
+  it("sends each distinct shape and machine once", () => {
+    const request = templateCreateRequest(IMAGE, ["small-1x", "small-1x"], "deployment_abc");
+    expect(request.machine_configs).toEqual([{ cpus: 0.5, memory_mb: 512 }]);
+    expect(request.machines).toEqual([{ name: "small-1x", cpu: "0.5", memory: "0.5G" }]);
   });
 });
 
@@ -334,6 +339,7 @@ describe("prebuild", () => {
       expect(JSON.parse(server.requests[0].body)).toEqual({
         image: `${IMAGE}@${DIGEST}`,
         machine_configs: [{ cpus: 0.5, memory_mb: 512 }],
+        machines: [{ name: "small-1x", cpu: "0.5", memory: "0.5G" }],
         no_snap: true,
         deployment_id: row.friendlyId,
       });

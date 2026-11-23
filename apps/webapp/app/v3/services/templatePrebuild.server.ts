@@ -101,6 +101,9 @@ const BUSY_RETRY_MS = 30_000;
 export type TemplateCreateRequest = {
   image: string;
   machine_configs: { cpus: number; memory_mb: number }[];
+  /** The presets as Runner machines; node-proxy sizes these as runner guests and replaces
+   * machine_configs, which stays for a proxy that predates it. */
+  machines: { name: string; cpu: string; memory: string }[];
   no_snap?: true;
   deployment_id: string;
   warmup?: string[][];
@@ -173,14 +176,22 @@ export function templateCreateRequest(
   deploySnapshots = false
 ): TemplateCreateRequest {
   const shapes = new Map<string, { cpus: number; memory_mb: number }>();
+  const machines = new Map<string, { name: string; cpu: string; memory: string }>();
   for (const name of presets) {
     const machine = machinePresetFromName(name);
     const shape = { cpus: machine.cpu, memory_mb: Math.round(machine.memory * 1024) };
     shapes.set(`${shape.cpus}/${shape.memory_mb}`, shape);
+    // As the supervisor writes a Runner's machine (runCrd.ts machineOf).
+    machines.set(machine.name, {
+      name: machine.name,
+      cpu: `${machine.cpu}`,
+      memory: `${machine.memory}G`,
+    });
   }
   return {
     image,
     machine_configs: [...shapes.values()],
+    machines: [...machines.values()],
     ...(deploySnapshots ? {} : { no_snap: true as const }),
     deployment_id: deploymentFriendlyId,
     ...(warmupCommand ? { warmup: [warmupCommand] } : {}),
