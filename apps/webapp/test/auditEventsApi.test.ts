@@ -273,8 +273,15 @@ describe("GET /api/v1/orgs/:orgParam/audit-events", () => {
     ctx.prisma = prisma;
     const { user, organization, token } = await seedOrgWithMember(prisma);
     ctx.auditReaders.add(`${user.id}:${organization.id}`);
+    // The in-memory plugin only records what the route asks for; the real reader's filtering is
+    // tested on ClickHouse in the plugin's eventReader.integration.test.ts. Its answer matches every
+    // filter below, so the response stays consistent with the request.
+    const matching = {
+      ...storedEvent(organization.id),
+      target: { type: "api_key", id: "key_1", name: "API_KEY" },
+    } satisfies AuditLogEvent;
     const queries = installListing(async (query) => ({
-      events: [storedEvent(organization.id)],
+      events: [matching],
       nextCursor: query.cursor ? null : "opaque-cursor-1",
     }));
 
@@ -287,6 +294,8 @@ describe("GET /api/v1/orgs/:orgParam/audit-events", () => {
       "filter[projectId]": "proj_1",
       "filter[environmentId]": "env_1",
       "filter[keyLast4]": "k9Qz",
+      "filter[source]": "api,cli",
+      "filter[targetName]": "API_KEY",
       "page[size]": "5",
     });
     const first = await get(organization.slug, `?${filters}`, token);
@@ -308,6 +317,8 @@ describe("GET /api/v1/orgs/:orgParam/audit-events", () => {
       projectId: "proj_1",
       environmentId: "env_1",
       keyLast4: "k9Qz",
+      sources: ["api", "cli"],
+      targetName: "API_KEY",
       cursor: undefined,
       limit: 5,
     };
@@ -342,6 +353,9 @@ describe("GET /api/v1/orgs/:orgParam/audit-events", () => {
       "?filter[category]=auth",
       "?filter[action]=auth.credential_rejected",
       "?filter[keyLast4]=abc",
+      "?filter[source]=email",
+      "?filter[source]=",
+      "?filter[targetName]=",
       "?filter[occurredAt][from]=yesterday",
       "?filter[occurredAt][from]=2026-02-30",
       "?filter[occurredAt][from]=2026-02-29T00:00:00Z",
