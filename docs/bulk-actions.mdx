@@ -39,6 +39,11 @@ Use bulk actions when you need to retry failed runs after deploying a fix, or st
   <Step title="Configure the action">
     Choose **Replay** or **Cancel**, add an optional name, then confirm the action.
 
+    When you replay, you can also choose:
+
+    - **Version**: "Current version" runs each replay on the environment's [current version](/deployment/overview#current-version), the promoted one (the default). "Same as original run" keeps each run on the version it first ran on, and is only offered when you replay into the same environment (version numbers are per environment). You can also pick a specific version.
+    - **Environment**: replay the runs into another environment of the same project, for example to retry production runs in staging.
+
     ![Configure and create a bulk action](/images/bulk-action-create.png)
   </Step>
 
@@ -53,6 +58,13 @@ Use bulk actions when you need to retry failed runs after deploying a fix, or st
   You can only cancel runs that are still cancelable, such as queued or executing runs. Runs that have already reached a final state cannot be canceled.
 </Note>
 
+## Which runs are included
+
+When you select runs by ID, the bulk action includes every selected run, however old it is. The 7-day default only applies when you use filters.
+
+Both the dashboard's status names and the SDK's status names work in a runs list URL: `statuses=FAILED` matches the same runs as the dashboard's "Failed" filter.
+
+If a filter in the page's URL can't be read (for example a status name that doesn't exist), the dashboard ignores only that filter and tells you which one. A bulk action using **matching your filters** can't be created while a filter is ignored. Fix or remove the filter first, so the action never covers more runs than you meant.
 
 ## Create a bulk action from the SDK
 

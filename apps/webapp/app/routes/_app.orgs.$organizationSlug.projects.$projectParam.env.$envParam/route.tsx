@@ -1,5 +1,5 @@
 import { countChatsWithUnreadWork } from "@internal/dashboard-agent-db";
-import { Outlet, useLoaderData } from "@remix-run/react";
+import { Outlet, type ShouldRevalidateFunction, useLoaderData } from "@remix-run/react";
 import { redirect, type LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { RouteErrorDisplay } from "~/components/ErrorDisplay";
 import { DashboardAgent } from "~/components/dashboard-agent/DashboardAgent";
@@ -15,9 +15,14 @@ import {
 } from "~/services/session.server";
 import { tenantContext } from "~/services/tenantContext.server";
 import { selectAccessibleEnvironment } from "~/utils/environmentAccess";
+import { onlyDetailTabChanged } from "~/utils/detailTabRevalidation";
 import { EnvironmentParamSchema, v3ProjectPath } from "~/utils/pathBuilder";
 import { getPromotedDashboardAgentPrompt } from "~/components/dashboard-agent/suggested-prompts/promotedPrompt.server";
 import { canAccessDashboardAgent } from "~/v3/canAccessDashboardAgent.server";
+
+// A detail page tab switch: this loader doesn't read `?tab=`.
+export const shouldRevalidate: ShouldRevalidateFunction = (args) =>
+  onlyDetailTabChanged(args) ? false : args.defaultShouldRevalidate;
 
 export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   const user = await requireUser(request);

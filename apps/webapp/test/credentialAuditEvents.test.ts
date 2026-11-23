@@ -682,6 +682,26 @@ describe("credential change audit events", () => {
     })
   );
 
+  // Catches: a second revoke of the same token recording another event and moving the time its
+  // fingerprint says it was revoked.
+  postgresTest("a PAT is revoked once", async ({ prisma }) =>
+    inAuditedRequest(async () => {
+      const { user } = await setup(prisma);
+      // Installed again for its fingerprint marks, which `setup` doesn't return.
+      const plugin = installAuditLogPlugin();
+      const token = await createPersonalAccessToken({ name: "laptop", userId: user.id });
+
+      await revokePersonalAccessToken(token.id, user.id);
+      await expect(revokePersonalAccessToken(token.id, user.id)).rejects.toThrow(
+        "PAT not found or already revoked"
+      );
+
+      const inputs = await recordedInputs(plugin.recorded);
+      expect(inputs.filter((input) => input.action === "pat.revoked")).toHaveLength(1);
+      expect(plugin.revoked).toHaveLength(1);
+    })
+  );
+
   // Catches: the keys a member removal rotates and revokes leaving no event, or a directory sync
   // removal attributed to whoever made the request.
   postgresTest(

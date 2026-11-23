@@ -1,4 +1,5 @@
 import { decodeJwt, decodeProtectedHeader } from "jose";
+import { RUN_TOKEN_EXPIRY_BUFFER_SECONDS } from "./runEngineWorker/runTokenRefresh.js";
 import { supportsRunToken } from "./runTokenOperations.js";
 import { recordRunTokenSelection, type RunTokenSelectionReason } from "./runTokenTelemetry.js";
 import { taskContext } from "./task-context-api.js";
@@ -8,8 +9,6 @@ const RUN_TOKEN_TYPE = "run+jwt";
 const RUN_TOKEN_AUDIENCE = "trigger:api";
 const RUN_TOKEN_USE = "run";
 const JWT_SEGMENT = /^[A-Za-z0-9_-]+$/;
-// Fall back before expiry so a token can't expire between selection and server verification.
-const RUN_TOKEN_EXPIRY_BUFFER_SECONDS = 5 * 60;
 
 /** Format classifier only. The server, not this helper, verifies the signature and authorizes use. */
 export function isRunToken(token: string): boolean {

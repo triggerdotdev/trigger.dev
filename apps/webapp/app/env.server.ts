@@ -131,6 +131,12 @@ const S2EnvSchema = z.preprocess(
         S2_ACCESS_TOKEN: z.string(),
         S2_DEPLOYMENT_LOGS_BASIN_NAME: z.string(),
         S2_DEPLOYMENT_STREAMS_LOCAL: z.string().default("0"),
+        // A self-hosted S2 (e.g. s2-lite), instead of s2.dev. The public endpoint is the one
+        // browsers read build logs from, when it differs from the server's.
+        S2_DEPLOYMENT_LOGS_ENDPOINT: z.string().url().optional(),
+        S2_DEPLOYMENT_LOGS_PUBLIC_ENDPOINT: z.string().url().optional(),
+        // s2-lite has no access tokens: read the logs without a scoped token.
+        S2_DEPLOYMENT_LOGS_SKIP_ACCESS_TOKENS: z.enum(["0", "1"]).default("0"),
         S2_DEPLOYMENT_LOGS_TOKEN_VALIDITY_MS: z.coerce
           .number()
           .int()
@@ -1818,6 +1824,15 @@ const EnvironmentSchema = z
     TRIGGER_WORKER_QUEUE_SCHEDULED_SPLIT_ENABLED: z.string().default("0"),
     // Controls new assignments only; existing v2 runs retain their routing.
     TRIGGER_WORKER_QUEUE_V2_ENABLED: z.string().default("0"),
+    TRIGGER_WORKER_QUEUE_LEGACY_ON_V2: z
+      .string()
+      .default("")
+      .transform((raw) =>
+        raw
+          .split(",")
+          .map((queue) => queue.trim())
+          .filter(Boolean)
+      ),
 
     TRIGGER_MOLLIFIER_ENABLED: z.string().default("0"),
     // Separate switch for the drainer (consumer side) so it can be split

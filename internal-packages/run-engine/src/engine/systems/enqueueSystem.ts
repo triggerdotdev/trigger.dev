@@ -167,7 +167,7 @@ export class EnqueueSystem {
     /** See `enqueueRun`. */
     enableFastPath?: boolean;
   }) {
-    const workerQueue = workerQueueForPublish(run, env, checkpoint);
+    const workerQueue = workerQueueForPublish(run, env, checkpoint, this.$.legacyToV2WorkerQueues);
 
     const queuePositionMs = (run.queueTimestamp ?? run.createdAt).getTime();
     const timestamp = queuePositionMs - run.priorityMs;

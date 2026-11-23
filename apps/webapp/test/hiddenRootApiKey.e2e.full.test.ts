@@ -29,7 +29,7 @@ function apiKeysPageData({
   return `/orgs/${organization.slug}/projects/${project.slug}/env/dev/apikeys?_data=${encodeURIComponent(API_KEYS_ROUTE_ID)}`;
 }
 
-describe("hidden root API keys on the dashboard", () => {
+describe("masked root API keys on the dashboard", () => {
   it("returns a hidden root key masked to its last four characters only", async () => {
     const { server, environment, organization, project, cookie } =
       await seedHiddenRootApiKeyProject();
@@ -46,7 +46,7 @@ describe("hidden root API keys on the dashboard", () => {
     expect(body).not.toContain(environment.apiKey.slice("tr_dev_".length, -4));
   });
 
-  it("returns a visible root key in full", async () => {
+  it("masks a legacy root key without a visibility timestamp", async () => {
     const server = getTestServer();
     const { environment, organization, project, user } = await seedTestUserProject(server.prisma);
     const cookie = await seedTestSession({ userId: user.id });
@@ -57,7 +57,10 @@ describe("hidden root API keys on the dashboard", () => {
     });
 
     expect(response.status).toBe(200);
-    expect(await response.text()).toContain(environment.apiKey);
+    const body = await response.text();
+    expect(body).toContain(`tr_dev_••••••••${environment.apiKey.slice(-4)}`);
+    expect(body).not.toContain(environment.apiKey);
+    expect(body).not.toContain(environment.apiKey.slice("tr_dev_".length, -4));
   });
 
   it("rotates a hidden root key without returning the new key", async () => {
@@ -69,7 +72,7 @@ describe("hidden root API keys on the dashboard", () => {
       {
         method: "POST",
         headers: { Cookie: cookie, "Content-Type": "application/x-www-form-urlencoded" },
-        body: new URLSearchParams({ previousKey: "revoke", rootApiKeyHidden: "true" }).toString(),
+        body: new URLSearchParams({ previousKey: "revoke" }).toString(),
         redirect: "manual",
       }
     );
@@ -96,26 +99,5 @@ describe("hidden root API keys on the dashboard", () => {
     const pageBody = await pageResponse.text();
     expect(pageBody).toContain(`tr_dev_••••••••${stored.apiKey.slice(-4)}`);
     expect(pageBody).not.toContain(stored.apiKey);
-  });
-
-  it("does not rotate a hidden root key from a regenerate form that expected a visible key", async () => {
-    const { server, environment, cookie } = await seedHiddenRootApiKeyProject();
-
-    const response = await server.webapp.fetch(
-      `/resources/environments/${environment.id}/regenerate-api-key`,
-      {
-        method: "POST",
-        headers: { Cookie: cookie, "Content-Type": "application/x-www-form-urlencoded" },
-        body: new URLSearchParams({ previousKey: "revoke" }).toString(),
-        redirect: "manual",
-      }
-    );
-
-    expect(await response.json()).toEqual({ ok: false });
-    const stored = await server.prisma.runtimeEnvironment.findUniqueOrThrow({
-      where: { id: environment.id },
-      select: { apiKey: true },
-    });
-    expect(stored.apiKey).toBe(environment.apiKey);
   });
 });

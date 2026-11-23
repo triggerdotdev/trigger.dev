@@ -81,7 +81,7 @@ const SCOPE_LABEL_OVERRIDES: Record<string, string> = {
   "read:query": "Run read-only queries",
   "trigger:tasks": "Trigger tasks",
   "update:prompts": "Update prompts",
-  "write:alerts": "Create and resolve alerts",
+  "write:alerts": "Create, change, stop, resolve, group and delete alerts",
   "write:batch": "Manage batches",
   "write:branches": "Manage preview branches",
   "write:deployments": "Manage deployments",

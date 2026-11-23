@@ -152,8 +152,8 @@ export async function insertTaskRunV2Rows(clickhouse: ClickHouse, runs: TaskRun[
     engine: run.engine,
     task_identifier: run.taskIdentifier,
     queue: run.queue,
-    schedule_id: "",
-    batch_id: "",
+    schedule_id: run.scheduleId ?? "",
+    batch_id: run.batchId ?? "",
     task_version: run.taskVersion ?? "",
     sdk_version: run.sdkVersion ?? "",
     cli_version: run.cliVersion ?? "",
@@ -169,6 +169,7 @@ export async function insertTaskRunV2Rows(clickhouse: ClickHouse, runs: TaskRun[
     tags: run.runTags,
     worker_queue: run.workerQueue,
     region: run.region ?? "",
+    bulk_action_group_ids: run.bulkActionGroupIds,
     _version: String(run.updatedAt.getTime()),
     _is_deleted: 0,
   }));

@@ -135,6 +135,14 @@ const stream = await agentChat.sendAction({ type: "rollback", targetMessageId: "
 
 The action payload is validated against `actionSchema` on the backend; invalid actions throw and surface as a stream error. The `action` parameter in `onAction` is fully typed from the schema.
 
+When `onAction` returns nothing, no turn runs and the stream completes once the action has been applied. From a server, `await stream.text()` waits for that:
+
+```ts Your backend code
+// e.g. reset the session before a new meeting starts
+const stream = await agentChat.sendAction({ type: "reset" });
+await stream.text(); // resolves once onAction has run
+```
+
 <Note>
   For silent state changes that should never appear as a turn (e.g. injecting background context), use [`chat.inject()`](/ai-chat/background-injection) instead. Actions are explicit user-driven mutations; injections are agent-side context updates.
 </Note>

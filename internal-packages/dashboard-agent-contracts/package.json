@@ -6,7 +6,8 @@
   "types": "./src/index.ts",
   "type": "module",
   "exports": {
-    ".": "./src/index.ts"
+    ".": "./src/index.ts",
+    "./run-filters": "./src/run-filters.ts"
   },
   "dependencies": {
     "@internal/alert-contracts": "workspace:*",

@@ -1,0 +1,275 @@
+---
+title: "Remote MCP server tools"
+sidebarTitle: "Remote server tools"
+description: "Tools of the remote MCP server"
+hidden: true
+---
+
+## Tools shared with the CLI server
+
+### get_run_details
+
+On the remote MCP server, the details include the run's metadata values, cut off after 4,000 characters.
+
+**Example usage:**
+- `"What progress did run run_abc123 report in its metadata?"`
+
+### list_runs
+
+On the remote MCP server, a batch, schedule or bulk action ID that does not start with lowercase `batch_`, `sched_` or `bulk_` is refused.
+
+## Run Monitoring Tools
+
+### list_run_tags
+
+List the tags used on runs in an environment, in alphabetical order. Search by part of a tag name, choose how far back to look (the last 7 days by default), and set how many tags to return (up to 100). Only available on the [remote MCP server](/mcp-remote).
+
+**Example usage:**
+- `"Which run tags did we use this week?"`
+- `"List tags that contain user: from the last 30 days"`
+
+### read_run_stream
+
+Read what a run streamed (`output`), or what was sent to one of its input streams (`input`), like the streams on the run page in the dashboard. Without a stream key, lists the run's output stream keys. Returns up to 200 records per call (50 by default) with a cursor for the next ones, and can wait up to 50 seconds for a record. Each record is cut off after 4,000 characters, and one call returns at most 40,000 characters of records. Chat input streams can't be read through the MCP server (open the run in the dashboard to see them), and runs on the first-generation stream store aren't supported. Only available on the [remote MCP server](/mcp-remote).
+
+**Example usage:**
+- `"What did run run_abc123 stream?"`
+- `"Show the progress stream of that run"`
+
+### search_logs
+
+Search the logs of an environment, newest first, like the Logs page in the dashboard. Filter by text, level (`TRACE`, `DEBUG`, `INFO`, `WARN`, `ERROR`), task (up to 50), run, and time period (the last day by default, never past your plan's log retention). Pass either `period` or `from` and `to`, not both. Returns up to 100 logs per page. One call keeps searching older logs until the page is full, starts no new read after 10 seconds, and says which part of the time range it searched; when more logs may exist it returns a cursor for the rest. A cursor that does not match the filters is not used, and the reply says the search started again from the newest logs. Messages longer than 500 characters are cut off in the list. Only available on the [remote MCP server](/mcp-remote), for organizations that have the Logs page.
+
+**Example usage:**
+- `"Show me error logs from the last hour"`
+- `"Search the logs for payment declined"`
+- `"What did run run_abc123 log?"`
+
+### get_log
+
+Get one log entry in full, including its attributes, using a log ID from `search_logs`. The message and the attributes are each cut off after 4,000 characters. Only available on the [remote MCP server](/mcp-remote), for organizations that have the Logs page.
+
+**Example usage:**
+- `"Show me the full details of that error log"`
+
+<Note>
+  Logs and spans contain what your tasks record. For AI SDK calls this includes prompts and model output, unless recording is turned off in the task (for chat agents, `telemetry: { recordUserMessage: false }`, see [Redact chat content from traces](/ai-chat/patterns/redacting-telemetry)). The MCP server returns the same data the dashboard shows.
+</Note>
+
+### reset_run_idempotency_key
+
+Clear the idempotency key of a run, so the next trigger with the same key starts a new run instead of returning this one. A run without an idempotency key is refused without asking for approval. Only available on the [remote MCP server](/mcp-remote), and you approve each call.
+
+**Example usage:**
+- `"Reset the idempotency key on run run_abc123 so I can trigger it again"`
+
+### update_run_metadata
+
+Update the metadata of a run that has not finished. Pass `metadata` to replace it all, or `operations` to change single keys (`set`, `delete`, `append`, `remove`, `increment`), applied in order. An `update` operation replaces all metadata with the object you pass. The approval page lists every operation in order with the new value it writes, so a change too large to show in full (about 64 KB) is refused; the API's own size limit applies too. A change that would leave the metadata as it is is refused without asking for approval. Only available on the [remote MCP server](/mcp-remote), and you approve each call.
+
+**Example usage:**
+- `"Set progress to 50 in the metadata of run run_abc123"`
+
+### add_run_tags
+
+Add tags to a run. A run can have up to 10 tags of up to 128 characters each. The reply names the tags added, the tags skipped because the run already had them, and any duplicate or blank entries ignored; if the run already has every tag, the call is refused without asking for approval. Only available on the [remote MCP server](/mcp-remote), and you approve each call.
+
+**Example usage:**
+- `"Tag run run_abc123 with needs-review"`
+
+### reschedule_run
+
+Change when a delayed run starts, as a duration like `1h30m` or an ISO 8601 date. A duration is counted from when the approved call runs, not from when it was requested. Runs that are not delayed can't be rescheduled, and are refused without asking for approval. Only available on the [remote MCP server](/mcp-remote), and you approve each call.
+
+**Example usage:**
+- `"Push run run_abc123 back by two hours"`
+
+## Bulk Action Tools
+
+A bulk action cancels or replays many runs at once, like the bulk actions in the dashboard. These tools are only available on the [remote MCP server](/mcp-remote).
+
+### list_bulk_actions
+
+List the bulk actions of an environment, newest first, up to 100 per page with a cursor for older ones.
+
+**Example usage:**
+- `"Show me recent bulk actions"`
+
+### get_bulk_action
+
+Get one bulk action: its type, status, how many runs it selected, succeeded and failed, the filter or run IDs it selected, and when it was created and completed.
+
+**Example usage:**
+- `"How far along is bulk action bulk_abc123?"`
+
+### create_bulk_action
+
+Cancel or replay runs, selected by up to 500 run IDs or by a filter (status, task, version, tag, queue, machine, region, batch, schedule, bulk action, error, root runs only, and a time range). Root runs only can't be combined with batch or schedule, which always include child runs. A filter field with several values matches runs that have any of them, and every field you set must match. Without a time range, only runs created in the last 7 days are selected; pass `period`, or `from` and `to`, to reach older runs. The filter is checked again as each batch of runs is processed. Run IDs that are not in the environment, or that are older than 7 days, are skipped. You approve every bulk action, whatever its size: the approval page shows the action, the environment, every filter value and the time window or every run ID, and how many runs match now. The number may differ by the time the action starts, because runs change status and new runs are indexed. Replaying creates a new run for every selected run, and the new runs consume compute.
+
+**Example usage:**
+- `"Cancel the queued runs of my-task in prod from the last 7 days"`
+- `"Replay every run that failed in the last day"`
+
+### abort_bulk_action
+
+Stop a bulk action that is still in progress. No new batch of runs starts, but a batch already being processed may finish. Runs it already cancelled stay cancelled, and runs it already replayed keep running. A bulk action that has already finished, or that is not in the environment, is refused without asking for approval. You approve each call.
+
+**Example usage:**
+- `"Stop bulk action bulk_abc123"`
+
+## Alert Tools
+
+Inspect and manage monitoring alerts. Alert channels are created and configured in the dashboard; these tools list them and choose existing ones as notifiers. These tools are available on the remote MCP server only. Every change asks you to approve it first, listing each field it changes and everything else that goes with it.
+
+### get_alert_details
+
+Get one alert: its status, condition, scope, notifiers and expiry, its 20 most recent activity events and, for a group alert, up to 50 members. For those events it also shows how each notification went: delivered, pending, or failed with the reason, and the number of attempts (up to 10 per event and 50 in total). The metric chart from the alert page is not included.
+
+**Parameters:**
+- `alertId` (required): the alert's id, from `list_alerts`
+
+**Example usage:**
+- `"Why is my queue depth alert firing?"`
+
+### list_alert_channels
+
+List the project's alert channels that deliver for the environment, up to 50: each one's `channelId` (the id to pass as a channel notifier), friendly id, name, type, whether it is enabled, the alert and environment types it takes, and its target. Email channels show the address and Slack channels the channel name. Webhook channels show only the host, never the full URL or signing secret. The list does not show each channel's last delivery.
+
+**Example usage:**
+- `"Which channels can my production alerts notify?"`
+
+### update_alert
+
+Change an alert's name, notifiers or expiry, or an alert group's composite mode. Only the fields you pass change.
+
+**Parameters:**
+- `alertId` (required): the alert's id
+- `name`, `notifiers`, `expiresAt` (an ISO 8601 time, or `"none"`), `compositeMode` (`any` or `all`, groups only)
+
+**Example usage:**
+- `"Send my queue depth alert to the ops channel instead"`
+
+### stop_alert
+
+Stop an active alert so it no longer evaluates or notifies. Stopping a group releases its members, which keep running on their own.
+
+**Example usage:**
+- `"Stop the failure rate alert"`
+
+### activate_alert
+
+Start a stopped, completed or expired alert again, optionally with a new `expiresAt` or `notifiers`.
+
+**Example usage:**
+- `"Turn my queue depth alert back on until Friday"`
+
+### delete_alert
+
+Delete a stopped, completed or expired alert with its activity history. Deleting a group releases its members. A group left with fewer than two members is deleted too. This tool always asks for approval.
+
+**Example usage:**
+- `"Delete the stopped alerts I made for the load test"`
+
+### create_alert_group
+
+Combine 2 to 20 alerts into one group alert that notifies when any or all of them need attention. Pass `memberAlertIds` for existing active alerts, or `members` to define new alerts shaped like `create_alert`.
+
+**Example usage:**
+- `"Group my queue alerts into one that notifies the ops channel"`
+
+### ungroup_alert
+
+Dissolve a group: the group alert and its history are deleted, and every member keeps running on its own. This tool always asks for approval.
+
+**Example usage:**
+- `"Ungroup the checkout alerts"`
+
+## Webhook Tools
+
+On a remote MCP server where the webhook engine is not enabled, `list_webhook_waiters` and the write tools answer that webhooks are not enabled on this server. A pause, resume or secret removal that would change nothing is refused before a confirmation is asked.
+
+### search_webhook_endpoints
+
+Search the environment's endpoints, including per-tenant instances, the way the dashboard's endpoint list filters them. Returns up to 50 endpoints per page and the subscriber and source values you can filter by. Only on the [remote MCP server](/mcp-remote).
+
+**Parameters:**
+- `subscribers` (optional): only endpoints one of these tasks or agents subscribes to
+- `sources` (optional): only these provider sources, such as `["stripe"]`
+- `statuses` (optional, default: `["active"]`): any of `active`, `inactive` and `disabled`
+- `search` (optional): text to find in the declared id, tenant id or external ref
+- `cursor` (optional): the cursor from a previous call, for the next page
+
+**Example usage:**
+- `"Which endpoints does the order task subscribe to?"`
+- `"Find the Shopify endpoint for the acme tenant"`
+
+### get_task_webhook
+
+Get a webhook task (a task defined with `webhook()`) in the environment's current version: its file path, when it was created, and the endpoints it subscribes to, each with the filter that decides which events reach the task. Lists up to 50 endpoints. Header values in filters are hidden: you see which header a filter tests, not the value it expects. Values of body fields a condition compares with a header are hidden too. Only on the [remote MCP server](/mcp-remote).
+
+**Parameters:**
+- `taskId` (required): the webhook task's id
+
+**Example usage:**
+- `"Which endpoints feed the stripe-orders task, and with what filters?"`
+
+### list_webhook_waiters
+
+List the runs waiting on an endpoint for a matching event, soonest expiry first. Each waiter shows the waitpoint id the run waits on, its match, its filter and when it expires. Header values in match and filter conditions are hidden: you see which header is tested, not the value it expects. Values of body fields a condition compares with a header are hidden too. Only on the [remote MCP server](/mcp-remote).
+
+**Parameters:**
+- `endpointId` (required): the endpoint's declared id (such as `payments`) or `wh_` id
+- `limit` (optional, default: `20`): how many to return, up to 50
+- `cursor` (optional): the cursor from a previous call, for the next page
+
+**Example usage:**
+- `"Which runs are waiting on the payments webhook?"`
+
+### remove_webhook_secret
+
+Remove an endpoint's signing secret, including a replaced secret still accepted during a rotation. Every delivery is then rejected and not recorded until a new secret is set. A source that sends its own secret, such as Notion, adopts the next one it sends. Only on the [remote MCP server](/mcp-remote).
+
+**Parameters:**
+- `endpointId` (required): the endpoint's declared id (such as `payments`) or `wh_` id
+
+### generate_webhook_verify_token
+
+Generate a new verification token for an endpoint whose source verifies its URL with a GET request, such as Meta's `hub.verify_token`, and return it once. It replaces the current token. Only on the [remote MCP server](/mcp-remote).
+
+**Parameters:**
+- `endpointId` (required): the endpoint's declared id (such as `payments`) or `wh_` id
+
+**Example usage:**
+- `"Set up the WhatsApp webhook's verify token"`
+
+### pause_webhook_endpoint
+
+Pause an endpoint. Its URL answers `404` and records nothing, so events the provider sends while it is paused are lost unless the provider retries them. Deliveries already accepted still run. A deploy does not resume it. Only on the [remote MCP server](/mcp-remote).
+
+**Parameters:**
+- `endpointId` (required): the endpoint's declared id (such as `payments`) or `wh_` id
+
+### resume_webhook_endpoint
+
+Resume a paused endpoint so its URL accepts deliveries again. Events sent while it was paused are not recovered. Only on the [remote MCP server](/mcp-remote).
+
+**Parameters:**
+- `endpointId` (required): the endpoint's declared id (such as `payments`) or `wh_` id
+
+**Example usage:**
+- `"Pause the Stripe webhook while I fix the order task"`
+
+### cancel_webhook_waiter
+
+Cancel a waiter on an endpoint. Its waitpoint is completed with a `WebhookWaiterCancelledError`, so every run waiting on it resumes with that error: `webhooks.waiter.wait` returns `{ ok: false }` and `.unwrap()` throws it. No event is delivered and it cannot be undone. If a delivery matched the waiter first, nothing is cancelled. Needs the `write:waitpoints` scope. Only on the [remote MCP server](/mcp-remote).
+
+**Parameters:**
+- `endpointId` (required): the endpoint's declared id (such as `payments`) or `wh_` id
+- `waiterId` (required): the waiter's `waitpoint_` id, from `list_webhook_waiters`
+
+**Example usage:**
+- `"Cancel the waiter that is holding the order run on the payments webhook"`
+
+<Callout type="warning">
+  `remove_webhook_secret`, `generate_webhook_verify_token`, `pause_webhook_endpoint`, `resume_webhook_endpoint` and `cancel_webhook_waiter` are write operations and are not available in readonly mode.
+</Callout>

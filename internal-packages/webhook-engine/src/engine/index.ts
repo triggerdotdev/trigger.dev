@@ -45,6 +45,7 @@ import { deriveIdempotencyKey, parseEventBody } from "./verification/derive.js";
 import { createHmac, randomUUID, timingSafeEqual } from "node:crypto";
 import type {
   CancelWebhookWaiterResult,
+  ReadWebhookWaiterResult,
   ListedWebhookWaiter,
   CreateWebhookWaiterInput,
   CreateWebhookWaiterResult,
@@ -1221,6 +1222,36 @@ export class WebhookEngine {
       }
       return result;
     });
+  }
+
+  /**
+   * One waiter by id, scoped like `cancelWaiter`: `waiting` while it is live, `cancelled` once a
+   * cancel marked it, otherwise `not_found` (claimed, expired, never registered or out of scope).
+   */
+  async readWaiter(input: {
+    environmentId: string;
+    waiterId: string;
+    endpointId?: string;
+  }): Promise<ReadWebhookWaiterResult> {
+    this.#assertEnabled();
+    const index = await this.waiterStore.readIndex(input.waiterId);
+    if (
+      !index ||
+      index.environmentId !== input.environmentId ||
+      (input.endpointId !== undefined && index.endpointId !== input.endpointId)
+    ) {
+      return { state: "not_found" };
+    }
+    const { state, expiresAt } = await this.waiterStore.waiterState(
+      index.endpointId,
+      input.waiterId
+    );
+    const waiter = { match: index.match, filter: index.filter };
+    if (state === "x") return { state: "cancelled", ...waiter };
+    if (state === "r" && expiresAt !== null && expiresAt >= Date.now()) {
+      return { state: "waiting", expiresAt: new Date(expiresAt), ...waiter };
+    }
+    return { state: "not_found" };
   }
 
   /** A page of an endpoint's live waiters, soonest expiry first, for the dashboard. */

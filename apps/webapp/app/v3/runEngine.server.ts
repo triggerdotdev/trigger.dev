@@ -213,6 +213,7 @@ function createRunEngine() {
     duplicateAttemptStartCheck: env.RUN_ENGINE_DUPLICATE_ATTEMPT_START_CHECK,
     staleCompletionMode: env.RUN_ENGINE_STALE_COMPLETION_MODE,
     pendingVersionRunIdLookup: runEnginePendingVersionLookup,
+    legacyWorkerQueuesOnV2: env.TRIGGER_WORKER_QUEUE_LEGACY_ON_V2,
     externalDeploymentParkDeadlineMs: env.EXTERNAL_DEPLOYMENT_PARK_DEADLINE_MS,
     billing: {
       getCurrentPlan: async (orgId: string) => {

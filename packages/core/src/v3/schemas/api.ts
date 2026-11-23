@@ -1636,6 +1636,23 @@ export const ListRunResponse = z.object({
     next: z.string().optional(),
     previous: z.string().optional(),
   }),
+  /**
+   * The filters the list was run with, including defaults the request didn't set. With no
+   * `filter[createdAt]` period, from or to, runs created in the last 7 days are listed and
+   * `createdAt.isDefault` is true.
+   */
+  appliedFilters: z
+    .object({
+      createdAt: z
+        .object({
+          period: z.string().optional(),
+          from: z.coerce.date().optional(),
+          to: z.coerce.date().optional(),
+          isDefault: z.boolean(),
+        })
+        .optional(),
+    })
+    .optional(),
 });
 
 export type ListRunResponse = z.infer<typeof ListRunResponse>;

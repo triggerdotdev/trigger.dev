@@ -18,6 +18,7 @@ export const WorkloadDeploymentTokenClaims = z.object({
   org_id: z.string(),
   project_id: z.string(),
   execution_mode: z.literal("SANDBOX").optional(),
+  workload_network: z.literal("proxy").optional(),
   run: z.string().optional(),
   exp: z.number(),
 });
@@ -48,7 +49,11 @@ export async function mintWorkloadDeploymentToken(
 
 export type WorkloadDeploymentTokenVerification =
   | { ok: true; claims: WorkloadDeploymentTokenClaims }
-  | { ok: false; reason: "invalid_signature" | "malformed_claims"; error: string };
+  | {
+      ok: false;
+      reason: "invalid_signature" | "malformed_claims";
+      error: string;
+    };
 
 export async function verifyWorkloadDeploymentToken(
   token: string,
@@ -87,7 +92,10 @@ export type DeploymentIdHeaderOutcome = "jwt_valid" | "jwt_invalid" | "legacy_ba
 export async function classifyDeploymentIdHeader(
   value: string,
   secret: string
-): Promise<{ outcome: DeploymentIdHeaderOutcome; claims?: WorkloadDeploymentTokenClaims }> {
+): Promise<{
+  outcome: DeploymentIdHeaderOutcome;
+  claims?: WorkloadDeploymentTokenClaims;
+}> {
   if (!looksLikeWorkloadDeploymentToken(value)) {
     return { outcome: "legacy_bare" };
   }

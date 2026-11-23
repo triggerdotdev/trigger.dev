@@ -1073,6 +1073,49 @@ export async function listPendingDeliveriesForEvent(
   return rows.map(toAlertDelivery);
 }
 
+export type AlertDeliverySummary = Pick<
+  AlertDelivery,
+  | "id"
+  | "alertEventId"
+  | "eventAt"
+  | "notifierId"
+  | "status"
+  | "failureReason"
+  | "deliveredAt"
+  | "createdAt"
+  | "attempts"
+>;
+
+export async function listDeliveriesForEvents(
+  db: PrismaClientOrTransaction,
+  events: Array<Pick<AlertEvent, "id" | "at">>,
+  params: { take: number }
+): Promise<AlertDeliverySummary[]> {
+  if (events.length === 0) return [];
+  const rows = await db.alertDelivery.findMany({
+    where: {
+      OR: events.map((event) => ({
+        alertEventId: event.id,
+        eventAt: { gte: event.at, lt: new Date(event.at.getTime() + 1) },
+      })),
+    },
+    select: {
+      id: true,
+      alertEventId: true,
+      eventAt: true,
+      notifierId: true,
+      status: true,
+      failureReason: true,
+      deliveredAt: true,
+      createdAt: true,
+      attempts: true,
+    },
+    orderBy: [{ eventAt: "desc" }, { alertEventId: "asc" }, { createdAt: "asc" }, { id: "asc" }],
+    take: params.take,
+  });
+  return rows.map((row) => ({ ...row, status: row.status as AlertDeliveryStatus }));
+}
+
 export async function listClaimableDeliveriesForEvent(
   db: PrismaClientOrTransaction,
   alertEventId: string,

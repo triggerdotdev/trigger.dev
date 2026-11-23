@@ -75,7 +75,7 @@
               "building-with-ai",
               {
                 "group": "MCP Server",
-                "pages": ["mcp-introduction", "mcp-remote", "mcp-tools"]
+                "pages": ["mcp-introduction", "mcp-tools"]
               },
               "skills",
               "mcp-agent-rules"
@@ -698,6 +698,7 @@
               "guides/example-projects/clickhouse-chat-agent",
               "guides/example-projects/cursor-background-agent",
               "guides/example-projects/elevenlabs-voice-agent",
+              "guides/example-projects/granola-meeting-agent",
               "guides/example-projects/grok-ai-teammates",
               "guides/example-projects/human-in-the-loop-workflow",
               "guides/example-projects/mastra-agents-with-memory",
@@ -706,6 +707,7 @@
               "guides/example-projects/product-image-generator",
               "guides/example-projects/realtime-csv-importer",
               "guides/example-projects/realtime-fal-ai",
+              "guides/example-projects/recall-meeting-agent",
               "guides/example-projects/resend-email-agent",
               "guides/example-projects/smart-spreadsheet",
               "guides/example-projects/turborepo-monorepo-prisma",

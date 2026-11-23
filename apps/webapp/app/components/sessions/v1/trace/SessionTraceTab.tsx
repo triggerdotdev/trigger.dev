@@ -22,6 +22,8 @@ import {
 import { Button } from "~/components/primitives/Buttons";
 import { DateTime } from "~/components/primitives/DateTime";
 import { Paragraph } from "~/components/primitives/Paragraph";
+import { ShortcutKey } from "~/components/primitives/ShortcutKey";
+import { useShortcutKeys } from "~/hooks/useShortcutKeys";
 import {
   ResizableHandle,
   ResizablePanel,
@@ -37,11 +39,12 @@ import { RunIcon } from "~/components/runs/v3/RunIcon";
 import { TaskRunStatusCombo } from "~/components/runs/v3/TaskRunStatus";
 import { SpanTreeRow } from "~/components/runs/v3/trace/TasksTreeView";
 import { KeyboardShortcuts } from "~/components/runs/v3/trace/TraceShortcuts";
+import { PulsingDot } from "~/components/runs/v3/trace/TraceStatusIndicator";
 import { TraceFilters } from "~/components/runs/v3/trace/TraceToolbar";
 import type { TraceTimelineScale } from "~/components/runs/v3/trace/timelineScale";
 import type { TraceEvent } from "~/components/runs/v3/trace/types";
 import { useEnvironment } from "~/hooks/useEnvironment";
-import { useInitialDimensions } from "~/hooks/useInitialDimensions";
+import { useDimensions } from "~/hooks/useDimensions";
 import { useInterval } from "~/hooks/useInterval";
 import { useOrganization } from "~/hooks/useOrganizations";
 import { useProject } from "~/hooks/useProject";
@@ -70,7 +73,8 @@ import {
 } from "./sessionTraceScroll";
 import { RunTraceSource, type RunTraceSnapshot } from "./RunTraceSource";
 import {
-  EMERGENCY_CAP_NOTICE,
+  sessionBarNotice,
+  type BarNotice,
   isRunStarting,
   runLoadBlock,
   runsUnavailableBeforeRead,
@@ -100,9 +104,12 @@ import {
   newestRunFriendlyId,
   newRunsPollIntervalMs,
   runDuration,
+  runMessageWait,
   runTimelineScale,
+  type MessageWait,
 } from "./sessionRunTiming";
 import {
+  adjacentRunNodeId,
   highlightedNodeId,
   isSameSelection,
   rowSelection,
@@ -152,6 +159,8 @@ type SessionTraceTabProps = {
   treeSnapshot: ResizableSnapshot | undefined;
   /** False while the Conversation tab is shown: the tab stays mounted but makes no requests. */
   active: boolean;
+  /** Closed and expired sessions start no more runs, so their empty state promises nothing. */
+  sessionOpen: boolean;
 };
 
 /** The session's runs as one tree, newest page first, with earlier pages on request. */
@@ -165,6 +174,7 @@ function SessionTraceTabContent({
   runsPath,
   treeSnapshot,
   active,
+  sessionOpen,
   onRemount,
 }: SessionTraceTabProps & { onRemount: () => void }) {
   // A run in the URL when the tab opens is a deep link: its page is read with the newest one.
@@ -192,6 +202,12 @@ function SessionTraceTabContent({
     selectedRunId: selection.kind === "session" ? undefined : selection.runFriendlyId,
     runs: pages.runs,
   });
+
+  // The session details (a sibling) show what the newest read says about the session and its runs.
+  const panelStore = useSessionPanelStore();
+  useEffect(() => {
+    if (pages.session && pages.runs) panelStore?.setSessionRead(pages.session, pages.runs);
+  }, [panelStore, pages.session, pages.runs]);
 
   // New runs: re-read the newest page while the tab is visible (focus also refreshes it). It
   // lives here, not in the tree, so a session with no runs yet still picks up its first one.
@@ -249,7 +265,9 @@ function SessionTraceTabContent({
   if (pages.runs.length === 0) {
     return (
       <div className="flex h-full items-center justify-center bg-background-bright">
-        <Paragraph variant="small/dimmed">No runs yet.</Paragraph>
+        <Paragraph variant="small/dimmed">
+          {sessionOpen ? "No runs yet. This page updates when one starts." : "No runs yet."}
+        </Paragraph>
       </div>
     );
   }
@@ -284,7 +302,8 @@ function SessionTraceTabContent({
   );
 }
 
-type BarNotice = { text: string; onRetry?: () => void };
+/** The live run, and whether it's a chat run waiting for the next message. */
+type LiveRun = { wait: MessageWait | undefined };
 
 type SpanData = TraceEvent["data"];
 type Row = SessionTreeRow<SpanData>;
@@ -515,17 +534,18 @@ function SessionTraceTree({
   useEffect(() => () => panelStore?.setSettledRuns(new Set()), [panelStore]);
   const rowCanExpand = (node: { data: Row; hasChildren: boolean }) =>
     node.data.kind === "run" ? !loadBlock(node.data.run) : node.hasChildren;
-  // The cap applies to every run, so it's said once instead of on each row.
-  const emergencyCap = Object.values(view).some((entry) => entry.unavailable === "emergencyCap");
-  const barNotice: BarNotice | undefined =
-    notice ?? (emergencyCap ? { text: EMERGENCY_CAP_NOTICE } : undefined);
+  // The cap and the session limit apply across runs, so they're said once in the bar.
+  const barNotice = sessionBarNotice({ deepLink: notice, view, loads: loads.loads });
 
   // Only the live run's scale moves with the clock; the rest are fixed at page load.
   const [openedAtMs] = useState(() => Date.now());
+  // A chat run waiting for a message has nothing moving, so the clock stops until it resumes.
+  const liveSnapshot = liveRunId ? snapshots[liveRunId] : undefined;
+  const liveWait = useMemo(() => runMessageWait(liveSnapshot), [liveSnapshot]);
   const [nowMs, setNowMs] = useState(openedAtMs);
   useInterval({
     interval: 1_000,
-    disabled: !liveRunId || !active,
+    disabled: !liveRunId || !active || !!liveWait,
     callback: () => setNowMs(Date.now()),
   });
   const settledScales = useMemo(() => {
@@ -1046,6 +1066,10 @@ function SessionTraceTree({
     }
     selectNode(id);
   };
+  const selectAdjacentRun = (direction: "previous" | "next") => {
+    const id = adjacentRunNodeId(tree, (id) => !!nodes[id]?.visible, selected, direction);
+    if (id) selectRow(id);
+  };
   const scaleForRow = (row: Row) =>
     row.kind === "run"
       ? scaleOfRun(row.run.friendlyId)
@@ -1109,7 +1133,17 @@ function SessionTraceTree({
           ) : (
             barNotice && (
               <>
-                <span className="truncate text-xs text-text-dimmed">{barNotice.text}</span>
+                {barNotice.hint ? (
+                  <SimpleTooltip
+                    button={
+                      <span className="truncate text-xs text-text-dimmed">{barNotice.text}</span>
+                    }
+                    content={barNotice.hint}
+                    disableHoverableContent
+                  />
+                ) : (
+                  <span className="truncate text-xs text-text-dimmed">{barNotice.text}</span>
+                )}
                 {barNotice.onRetry && (
                   <>
                     <span className="text-xs text-text-dimmed">·</span>
@@ -1187,7 +1221,11 @@ function SessionTraceTree({
                       }
                       toggleExpandNode(node.id, false);
                     }}
-                    isLive={node.data.kind === "run" && node.data.run.friendlyId === liveRunId}
+                    live={
+                      node.data.kind === "run" && node.data.run.friendlyId === liveRunId
+                        ? { wait: liveWait }
+                        : undefined
+                    }
                     load={
                       node.data.kind === "run"
                         ? runLoad(loads, node.data.run.friendlyId)
@@ -1270,6 +1308,13 @@ function SessionTraceTree({
             onExpandAll={expandAll}
             onCollapseAll={collapseAll}
             onToggleLevel={toggleLevel}
+            afterNavigation={
+              <SessionRunShortcuts
+                enabled={active}
+                onPrevious={() => selectAdjacentRun("previous")}
+                onNext={() => selectAdjacentRun("next")}
+              />
+            }
           />
         </div>
         <Slider
@@ -1442,7 +1487,7 @@ function runScale(run: SessionTraceRun, snapshot: RunTraceSnapshot | undefined, 
 // Each run has its own scale, so the column's own range only sets the width the zoom scales.
 function SessionTimelineColumn({ zoom, children }: { zoom: number; children: React.ReactNode }) {
   const containerRef = useRef<HTMLDivElement>(null);
-  const minWidth = useInitialDimensions(containerRef)?.width ?? 300;
+  const minWidth = useDimensions(containerRef)?.width ?? 300;
 
   return (
     <div
@@ -1474,7 +1519,7 @@ function SessionTreeRowView({
   isExpanded,
   canExpand,
   onToggle,
-  isLive,
+  live,
   load,
   spanCount,
   loadBlock,
@@ -1496,7 +1541,7 @@ function SessionTreeRowView({
   isExpanded: boolean;
   canExpand: boolean;
   onToggle: () => void;
-  isLive: boolean;
+  live: LiveRun | undefined;
   load: SessionRunLoad | undefined;
   spanCount: number;
   loadBlock: RunLoadBlock | undefined;
@@ -1533,7 +1578,10 @@ function SessionTreeRowView({
           {earlierError ? (
             <span className="text-xs text-error">Couldn't load earlier runs. Try again.</span>
           ) : (
-            <span className="text-xs text-text-faint">{row.count} not shown</span>
+            // "Load 5 earlier runs · 5 not shown" says the same number twice.
+            row.count > count && (
+              <span className="text-xs text-text-faint">{row.count} not shown</span>
+            )
           )}
         </RowFrame>
       );
@@ -1604,7 +1652,7 @@ function SessionTreeRowView({
         >
           <RunRowContent
             run={row.run}
-            isLive={isLive}
+            live={live}
             isSelected={isSelected}
             load={load}
             spanCount={spanCount}
@@ -1622,7 +1670,7 @@ function SessionTreeRowView({
 
 function RunRowContent({
   run,
-  isLive,
+  live,
   isSelected,
   load,
   spanCount,
@@ -1632,7 +1680,7 @@ function RunRowContent({
   onRetry,
 }: {
   run: SessionTraceRun;
-  isLive: boolean;
+  live: LiveRun | undefined;
   isSelected: boolean;
   load: SessionRunLoad | undefined;
   spanCount: number;
@@ -1657,12 +1705,11 @@ function RunRowContent({
       {run.status ? (
         <TaskRunStatusCombo status={run.status} className="shrink-0 text-xs" />
       ) : (
-        <span className="shrink-0 text-xs text-text-faint">
-          {isRunStarting(run, checkedAtMs) ? "Starting…" : "Unavailable"}
-        </span>
+        <NotInRunStoreLabel starting={isRunStarting(run, checkedAtMs)} />
       )}
       {badge && <RunReasonBadgeView badge={badge} />}
       <span className="ml-auto flex shrink-0 items-center gap-1.5 pr-2 text-xs tabular-nums text-text-dimmed">
+        {live && <SimpleTooltip button={<PulsingDot />} content="Live" disableHoverableContent />}
         {loadBlock ? (
           <RunFallback run={run} block={loadBlock} isSelected={isSelected} />
         ) : searchMark?.kind === "noMatches" ? null : searchMark && load ? (
@@ -1676,10 +1723,55 @@ function RunRowContent({
             onRetry={onRetry}
           />
         ) : (
-          <RunDurationLabel run={run} isLive={isLive} />
+          <RunDurationLabel run={run} live={live} />
         )}
       </span>
     </>
+  );
+}
+
+/** j / k move between runs, as on the run page; Esc goes back to the session (tree handler). */
+function SessionRunShortcuts({
+  enabled,
+  onPrevious,
+  onNext,
+}: {
+  enabled: boolean;
+  onPrevious: () => void;
+  onNext: () => void;
+}) {
+  useShortcutKeys({ shortcut: { key: "j" }, action: onPrevious, disabled: !enabled });
+  useShortcutKeys({ shortcut: { key: "k" }, action: onNext, disabled: !enabled });
+  return (
+    <>
+      <div className="flex items-center gap-0.5">
+        <ShortcutKey shortcut={{ key: "j" }} variant="medium" className="ml-0 mr-0" />
+        <ShortcutKey shortcut={{ key: "k" }} variant="medium" className="ml-0 mr-0" />
+        <Paragraph variant="extra-small" className="ml-1.5 whitespace-nowrap">
+          Previous/next run
+        </Paragraph>
+      </div>
+      <div className="flex items-center gap-0.5">
+        <ShortcutKey shortcut={{ key: "esc" }} variant="medium" className="ml-0 mr-0" />
+        <Paragraph variant="extra-small" className="ml-1.5 whitespace-nowrap">
+          Session
+        </Paragraph>
+      </div>
+    </>
+  );
+}
+
+function NotInRunStoreLabel({ starting }: { starting: boolean }) {
+  return (
+    <SimpleTooltip
+      button={
+        <span className="shrink-0 text-xs text-text-faint">
+          {starting ? "Starting…" : "Unavailable"}
+        </span>
+      }
+      content={notShownText({ kind: starting ? "starting" : "neverStarted" })}
+      disableHoverableContent
+    />
   );
 }
 
@@ -1888,19 +1980,36 @@ function RunLoadStatus({
 }
 
 // Only the live run counts up; an older unfinished run shows when it started instead.
-function RunDurationLabel({ run, isLive }: { run: SessionTraceRun; isLive: boolean }) {
+function RunDurationLabel({ run, live }: { run: SessionTraceRun; live: LiveRun | undefined }) {
   const active = useContext(TraceTabActiveContext);
   const [nowMs, setNowMs] = useState(() => Date.now());
   useInterval({
     interval: 1_000,
-    disabled: !isLive || !active,
+    disabled: !live || !!live.wait || !active,
     callback: () => setNowMs(Date.now()),
   });
 
   const duration = runDuration(run, nowMs);
   if (!duration) return run.status && !isFinalRunStatus(run.status) ? <>Queued</> : null;
   if (duration.finished) return <>{formatDurationMilliseconds(duration.ms, { style: "short" })}</>;
-  if (isLive) return <>{formatDurationMilliseconds(duration.ms, { style: "short" })} so far</>;
+  if (live?.wait) {
+    // A fixed label: a counter changing every minute would pull the eye for nothing.
+    const sinceMs = live.wait.sinceMs;
+    return sinceMs === undefined ? (
+      <>Waiting for message</>
+    ) : (
+      <SimpleTooltip
+        button={<span>Waiting for message</span>}
+        content={
+          <>
+            Idle since <DateTime date={new Date(sinceMs)} />
+          </>
+        }
+        disableHoverableContent
+      />
+    );
+  }
+  if (live) return <>{formatDurationMilliseconds(duration.ms, { style: "short" })} so far</>;
   return run.startedAt ? (
     <>
       Started <DateTime date={run.startedAt} />

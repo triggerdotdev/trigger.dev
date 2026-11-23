@@ -81,7 +81,6 @@ export class ApiKeysPresenter {
         select: {
           id: true,
           apiKey: true,
-          rootApiKeyHiddenAt: true,
           type: true,
           apiKeys: {
             where: {
@@ -124,7 +123,7 @@ export class ApiKeysPresenter {
       }),
     ]);
 
-    const [accessOptions, policyDescriptions] = await Promise.all([
+    const [accessOptions, policyDescriptions, revokedUserKey] = await Promise.all([
       this.#rbac.apiKeyAccessOptions(environment.organizationId),
       Promise.all(
         keyEnvironment.apiKeys.map((apiKey) =>
@@ -134,28 +133,35 @@ export class ApiKeysPresenter {
           })
         )
       ),
+      keyEnvironment.apiKeys.length === 0 && !showRevoked
+        ? this.#prismaClient.apiKey.findFirst({
+            where: {
+              runtimeEnvironmentId: keyEnvironmentId,
+              issuedBy: "USER",
+              revokedAt: { not: null },
+            },
+            select: { id: true },
+          })
+        : null,
     ]);
     const presets = accessOptions?.presets ?? null;
     const capabilityCatalogue = accessOptions?.catalogue ?? null;
     const presetsById = new Map(presets?.map((preset) => [preset.id, preset]));
     const { taskIdentifiers, organizationId: _organizationId, ...environmentData } = environment;
-    const isRootApiKeyHidden = keyEnvironment.rootApiKeyHiddenAt !== null;
     const rootApiKey = {
       id: keyEnvironment.id,
       name: "Root API key",
-      value: isRootApiKeyHidden ? null : keyEnvironment.apiKey,
       obfuscated: obfuscateApiKey(keyEnvironment.type, keyEnvironment.apiKey.slice(-4)),
-      isHidden: isRootApiKeyHidden,
     };
 
     return {
       environment: {
         ...environmentData,
-        apiKey: rootApiKey.value,
         keyEnvironmentId,
       },
       availableTasks: taskIdentifiers.map((task) => task.slug),
       rootApiKey,
+      hasCreatedApiKey: keyEnvironment.apiKeys.length > 0 || revokedUserKey !== null,
       apiKeys: keyEnvironment.apiKeys.map((apiKey, index) => {
         const { presetId, scopes, ...apiKeyData } = apiKey;
         const description = policyDescriptions[index];

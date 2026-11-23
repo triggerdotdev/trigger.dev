@@ -1,4 +1,4 @@
-import { XMarkIcon } from "@heroicons/react/20/solid";
+import { ExclamationTriangleIcon, XMarkIcon } from "@heroicons/react/20/solid";
 import { type ReactNode } from "react";
 import { cn } from "~/utils/cn";
 
@@ -30,6 +30,8 @@ type AppliedFilterProps = {
   variant?: Variant;
   className?: string;
   valueClassName?: string;
+  /** Marks the filter as not applied: a warning icon and this text as the tooltip. */
+  warning?: string;
 };
 
 export function AppliedFilter({
@@ -42,6 +44,7 @@ export function AppliedFilter({
   variant = "secondary/small",
   className,
   valueClassName,
+  warning,
 }: AppliedFilterProps) {
   const variantClassName = variants[variant];
   return (
@@ -52,12 +55,17 @@ export function AppliedFilter({
         !removable && "pr-2",
         className
       )}
+      title={warning}
     >
       <div
         className={cn("flex items-start leading-4", label === undefined ? "gap-1.5" : "gap-0.5")}
       >
         <div className="mt-[-0.5px] flex items-center gap-1.5">
-          {icon}
+          {warning ? (
+            <ExclamationTriangleIcon className="size-3.5 text-warning" aria-label={warning} />
+          ) : (
+            icon
+          )}
           {label && (
             <div className="text-text-bright">
               <span>{label}</span>:

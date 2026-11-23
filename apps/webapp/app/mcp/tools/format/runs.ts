@@ -8,6 +8,8 @@ import type {
 } from "@trigger.dev/core/v3/schemas";
 import { fenceUntrusted } from "../../gate/fence.server";
 
+const METADATA_CHARS = 4_000;
+
 type RunShape = {
   id: string;
   taskIdentifier: string;
@@ -110,7 +112,12 @@ export function formatRun(run: RetrieveRunResponse): string {
   }
 
   if (run.metadata && Object.keys(run.metadata).length > 0) {
-    lines.push(`Metadata: ${Object.keys(run.metadata).length} fields`);
+    const json = JSON.stringify(run.metadata, null, 2);
+    const body =
+      json.length > METADATA_CHARS
+        ? `${json.slice(0, METADATA_CHARS)}\n… (truncated, ${json.length} characters in total)`
+        : json;
+    lines.push(`Metadata: ${fenceUntrusted(body, "run-metadata")}`);
   }
 
   return lines.join("\n");

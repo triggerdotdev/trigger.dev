@@ -106,6 +106,7 @@ export class WebhookDeliveriesListPresenter {
     const items: EnvironmentDeliveryListItem[] = deliveries.map((d) => ({
       id: d.id,
       friendlyId: d.friendlyId,
+      webhookEndpointId: d.webhookEndpointId,
       externalDeliveryId: d.externalDeliveryId,
       status: d.status,
       isTest: d.isTest,
@@ -125,14 +126,14 @@ export class WebhookDeliveriesListPresenter {
   }
 
   /**
-   * Count one endpoint's deliveries newer than `since` that match the list's filters, for the live
+   * Count some endpoints' deliveries newer than `since` that match the list's filters, for the live
    * "N new deliveries" pill.
    */
   async countNewDeliveries({
     organizationId,
     projectId,
     environmentId,
-    webhookEndpointId,
+    webhookEndpointIds,
     filters = {},
     since,
     to,
@@ -140,7 +141,8 @@ export class WebhookDeliveriesListPresenter {
     organizationId: string;
     projectId: string;
     environmentId: string;
-    webhookEndpointId?: string;
+    /** Omit for every endpoint in the environment. */
+    webhookEndpointIds?: string[];
     filters?: DeliveryListFilters;
     since: number;
     to?: number;
@@ -156,7 +158,7 @@ export class WebhookDeliveriesListPresenter {
       organizationId,
       projectId,
       environmentId,
-      webhookEndpointId,
+      webhookEndpointIds,
       statuses: filters.statuses,
       isTest: filters.isTest,
       deliveryId: filters.deliveryId,

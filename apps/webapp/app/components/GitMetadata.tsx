@@ -26,10 +26,10 @@ function GitMetadataBranch({ git }: { git: Pick<GitMetaLinks, "branchUrl" | "bra
           to={git.branchUrl}
           className="pl-1 duration-0 [&_span]:duration-0 group-hover/table-row:[&_span]:text-text-bright"
         >
-          {git.branchName}
+          <span className="inline-block max-w-40 truncate align-bottom">{git.branchName}</span>
         </LinkButton>
       }
-      content="Jump to GitHub branch"
+      content={git.branchName}
     />
   );
 }
@@ -50,10 +50,10 @@ function GitMetadataCommit({
           iconSpacing="gap-x-1"
           className="pl-1 duration-0 [&_span]:duration-0 group-hover/table-row:[&_span]:text-text-bright"
         >
-          {`${git.shortSha} / ${git.commitMessage}`}
+          <span className="inline-block max-w-64 truncate align-bottom">{`${git.shortSha} / ${git.commitMessage}`}</span>
         </LinkButton>
       }
-      content="Jump to GitHub commit"
+      content={git.commitMessage ?? git.shortSha}
     />
   );
 }
@@ -76,10 +76,12 @@ function GitMetadataPullRequest({
           iconSpacing="gap-x-1"
           className="pl-1 duration-0 [&_span]:duration-0 group-hover/table-row:[&_span]:text-text-bright"
         >
-          #{git.pullRequestNumber} {git.pullRequestTitle}
+          <span className="inline-block max-w-56 truncate align-bottom">
+            #{git.pullRequestNumber} {git.pullRequestTitle}
+          </span>
         </LinkButton>
       }
-      content="Jump to GitHub pull request"
+      content={`#${git.pullRequestNumber} ${git.pullRequestTitle ?? ""}`}
     />
   );
 }

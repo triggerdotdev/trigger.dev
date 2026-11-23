@@ -417,6 +417,19 @@ export class WebhookWaiterStore {
     }
   }
 
+  /** A waiter's state on its endpoint (`r`, `x` or `c:<deliveryId>`) and its live-set score. */
+  async waiterState(
+    endpointId: string,
+    waiterId: string
+  ): Promise<{ state: string | null; expiresAt: number | null }> {
+    const e = this.#endpointKeys(endpointId);
+    const [state, score] = await Promise.all([
+      this.client.hget(e.wwst, waiterId),
+      this.client.zscore(e.wwe, waiterId),
+    ]);
+    return { state, expiresAt: score === null ? null : Number(score) };
+  }
+
   /** Live match shapes on the endpoint at `now`, with their paths. */
   async liveShapes(
     endpointId: string,

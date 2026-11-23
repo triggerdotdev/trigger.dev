@@ -27,12 +27,12 @@ import { measureExecutionMetrics } from "./executionMetrics.js";
 import type { SupervisorSocket } from "./controller.js";
 import { RunNotifier } from "./notifier.js";
 import { forkEnvFromRunEnv, type TaskRunProcessProvider } from "./taskRunProcessProvider.js";
-import { RunTokenRefresher, type RunTokenUpdate } from "./runTokenRefresh.js";
+import { hasUsableRunToken, RunTokenRefresher, type RunTokenUpdate } from "./runTokenRefresh.js";
 import { SecretEnv } from "./secretEnv.js";
 import { UsageJwtRefresher } from "./usageJwtRefresh.js";
 import { redactSecrets } from "./redact.js";
 
-const USAGE_JWT_RESUME_RETRY_DELAYS_MS = [0, 1_000, 3_000];
+const CREDENTIAL_RESUME_RETRY_DELAYS_MS = [0, 1_000, 3_000];
 
 class ExecutionAbortError extends Error {
   constructor(message: string) {
@@ -86,6 +86,7 @@ export class RunExecution {
 
   private taskRunProcess?: TaskRunProcess;
   private runToken?: RunTokenRefresher;
+  private requiresRunToken = false;
   private usageJwt?: UsageJwtRefresher;
   private heartbeatInFlight?: ReturnType<RunExecution["performHeartbeat"]>;
   private snapshotPoller?: RunExecutionSnapshotPoller;
@@ -385,6 +386,11 @@ export class RunExecution {
         }
 
         await this.refreshBeforeResume();
+        if (!(await this.ensureRunTokenBeforeResume())) {
+          this.sendDebugLog("Cannot resume: no usable run token installed");
+          this.abortExecution();
+          return;
+        }
         for (const waitpoint of completedWaitpoints) {
           this.taskRunProcess.waitpointCompleted(waitpoint);
         }
@@ -431,7 +437,12 @@ export class RunExecution {
     const start = await this.httpClient.startRunAttempt(
       this.runFriendlyId,
       this.snapshotManager.snapshotId,
-      { isWarmStart, supportsRunTokenRefresh: true, supportsUsageJwtRefresh: true }
+      {
+        isWarmStart,
+        supportsRunTokenRefresh: true,
+        supportsUsageJwtRefresh: true,
+        supportsRootKeyFreeExecution: true,
+      }
     );
 
     if (!start.success && start.shouldRetry === false) this.requiresRunnerExit = true;
@@ -452,6 +463,7 @@ export class RunExecution {
 
     // Also set or update the attempt number - we do this to detect illegal attempt number changes, e.g. from stalled runners coming back online
     const attemptNumber = start.data.run.attemptNumber;
+    this.requiresRunToken = start.data.requiresRunToken === true;
     if (attemptNumber && attemptNumber > 0) {
       this.currentAttemptNumber = attemptNumber;
       // Replaced per attempt, so late refreshes for an earlier attempt can't reach this one.
@@ -666,11 +678,16 @@ export class RunExecution {
 
     const taskRunEnv = this.currentTaskRunEnv;
 
+    if (this.requiresRunToken && this.taskRunProcess?.hasReceivedRootKey) {
+      await this.taskRunProcess.kill("SIGKILL");
+      this.taskRunProcess = undefined;
+    }
     if (!this.taskRunProcess || this.taskRunProcess.isBeingKilled) {
       this.sendDebugLog("getting new task run process", { runId: execution.run.id });
       this.taskRunProcess = await this.taskRunProcessProvider.getProcess({
         taskRunEnv: { ...taskRunEnv, TRIGGER_PROJECT_REF: execution.project.ref },
         isWarmStart,
+        requiresRunToken: this.requiresRunToken,
       });
     } else {
       this.sendDebugLog("using prepared task run process", { runId: execution.run.id });
@@ -696,6 +713,14 @@ export class RunExecution {
     const env = this.attemptEnv.toRecord();
     this.attemptEnv.zero();
 
+    if (
+      this.requiresRunToken &&
+      (Object.hasOwn(env, "TRIGGER_SECRET_KEY") ||
+        !hasUsableRunToken(env.TRIGGER_RUN_TOKEN, execution.run.id, execution.attempt.number))
+    ) {
+      throw new Error("Cannot start execution: required run token is missing or invalid");
+    }
+
     const completion = await this.taskRunProcess.execute(
       {
         payload: {
@@ -705,6 +730,7 @@ export class RunExecution {
         },
         messageId: run.friendlyId,
         env,
+        requiresRunToken: this.requiresRunToken,
       },
       isWarmStart
     );
@@ -1027,9 +1053,20 @@ export class RunExecution {
     this.lastHeartbeat = new Date();
   }
 
+  private async ensureRunTokenBeforeResume() {
+    if (!this.requiresRunToken || (this.runToken?.hasUsableToken && !this.runToken.isDue))
+      return true;
+    for (const delayMs of CREDENTIAL_RESUME_RETRY_DELAYS_MS) {
+      if (delayMs) await sleep(delayMs);
+      await this.sendHeartbeat("restore");
+      if (this.runToken?.hasUsableToken && !this.runToken.isDue) return true;
+    }
+    return this.runToken?.hasUsableToken === true;
+  }
+
   private async refreshBeforeResume() {
     if (!this.usageJwt?.isDue) return;
-    for (const delayMs of USAGE_JWT_RESUME_RETRY_DELAYS_MS) {
+    for (const delayMs of CREDENTIAL_RESUME_RETRY_DELAYS_MS) {
       if (delayMs) await sleep(delayMs);
       await this.sendHeartbeat("restore");
       if (!this.usageJwt.isDue) return;

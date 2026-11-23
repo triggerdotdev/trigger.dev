@@ -1,6 +1,9 @@
 import { tryCatch } from "@trigger.dev/core/utils";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import type { SessionRunsPage } from "~/presenters/v3/SessionRunsPresenter.server";
+import type {
+  SessionRunsPage,
+  SessionRunsSessionFacts,
+} from "~/presenters/v3/SessionRunsPresenter.server";
 
 export const RUNS_PAGE_SIZE = 20;
 /** The most runs one click on a "not loaded" row reads (the route's page size limit). */
@@ -15,6 +18,8 @@ export type LoadedRuns = {
   totalCount: number;
   /** Each page's `next`, keyed by that page's oldest run: reads the runs just below it. */
   cursorBelow: ReadonlyMap<string, string>;
+  /** The session as of the last newest page. */
+  session: SessionRunsSessionFacts;
 };
 
 /** A read of older runs: Load earlier, or filling the hole above a run. */
@@ -89,7 +94,7 @@ export async function fetchRunsPage(
 
 /**
  * Adds a page to the runs loaded so far. A newer read of a run replaces the older one. Only the
- * newest page moves `totalCount`; every page records its `next` under its oldest run.
+ * newest page moves `totalCount` and `session`; every page records its `next` under its oldest run.
  */
 export function mergeSessionRunPage(
   loaded: LoadedRuns | undefined,
@@ -110,12 +115,14 @@ export function mergeSessionRunPage(
     view: { ...loaded?.view, ...page.view },
     totalCount: kind === "newest" || !loaded ? page.totalCount : loaded.totalCount,
     cursorBelow,
+    session: kind === "newest" || !loaded ? page.session : loaded.session,
   };
 }
 
 // A quiet poll returns the same runs; keeping the same object avoids rebuilding the tree.
 function pageChangesNothing(loaded: LoadedRuns, page: SessionRunsPage) {
   if (page.totalCount !== loaded.totalCount) return false;
+  if (JSON.stringify(page.session) !== JSON.stringify(loaded.session)) return false;
   const oldest = page.data.at(-1);
   if (oldest && page.pagination.next && !loaded.cursorBelow.has(oldest.friendlyId)) return false;
   return page.data.every((run) => {
@@ -268,6 +275,7 @@ export function useSessionRunPages(runsPath: string, deepLinkRunFriendlyId?: str
     runs,
     totalCount: loaded?.totalCount ?? 0,
     view: loaded?.view ?? {},
+    session: loaded?.session,
     deepLink,
     /** There are earlier runs and no other read of older runs is running. */
     canLoadEarlier: earlierCursor !== undefined && !olderLoad,

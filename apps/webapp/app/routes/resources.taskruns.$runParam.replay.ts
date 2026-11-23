@@ -22,7 +22,10 @@ import {
 } from "~/v3/mollifier/syntheticReplayTaskRun.server";
 import parseDuration from "parse-duration";
 import { regionForDisplay } from "~/runEngine/concerns/workerQueueSplit.server";
-import { findCurrentWorkerDeployment } from "~/v3/models/workerDeployment.server";
+import {
+  findCurrentVersion,
+  findCurrentWorkerDeployment,
+} from "~/v3/models/workerDeployment.server";
 import { queueTypeFromType } from "~/presenters/v3/QueueRetrievePresenter.server";
 import { ReplayRunData } from "~/v3/replayTask";
 import { RegionsPresenter } from "~/presenters/v3/RegionsPresenter.server";
@@ -156,12 +159,26 @@ export async function loader({ request, params }: LoaderFunctionArgs) {
     throw new Response("Environment not found", { status: 404 });
   }
 
-  const [taskQueue, backgroundWorkers] = await Promise.all([
+  const [taskQueue, backgroundWorkers, currentVersion] = await Promise.all([
     findTaskQueue(environment, run.taskIdentifier),
-    listLatestBackgroundWorkers(environment),
+    listLatestBackgroundWorkers(environment, run.taskIdentifier),
+    findCurrentVersion(environment, $replica),
   ]);
 
   const latestVersions = backgroundWorkers.map((v) => v.version);
+  // The Current choice only makes sense when the current version has this task.
+  const taskInCurrentVersion =
+    environment.type === "DEVELOPMENT" ||
+    (currentVersion !== undefined &&
+      (latestVersions.includes(currentVersion) ||
+        (await $replica.backgroundWorkerTask.findFirst({
+          where: {
+            runtimeEnvironmentId: environment.id,
+            slug: run.taskIdentifier,
+            worker: { version: currentVersion },
+          },
+          select: { id: true },
+        })) !== null));
   const disableVersionSelection = environment.type === "DEVELOPMENT";
   const allowArbitraryQueues = backgroundWorkers.at(0)?.engine === "V1";
 
@@ -207,6 +224,8 @@ export async function loader({ request, params }: LoaderFunctionArgs) {
         }
       : undefined,
     latestVersions,
+    currentVersion,
+    taskInCurrentVersion,
     disableVersionSelection,
     allowArbitraryQueues,
     environment: {
@@ -536,10 +555,15 @@ async function findTaskQueue(
   });
 }
 
-function listLatestBackgroundWorkers(environment: { id: string }, limit = 20) {
+function listLatestBackgroundWorkers(
+  environment: { id: string },
+  taskIdentifier: string,
+  limit = 20
+) {
   return $replica.backgroundWorker.findMany({
     where: {
       runtimeEnvironmentId: environment.id,
+      tasks: { some: { slug: taskIdentifier } },
     },
     select: {
       version: true,

@@ -1,6 +1,6 @@
 import { useFetcher } from "@remix-run/react";
 import { type Ref, useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { type Layout, useContainerWidth } from "react-grid-layout";
+import type { Layout } from "react-grid-layout";
 
 /**
  * Generic hook for managing a reorderable list in the side menu.
@@ -68,11 +68,7 @@ export function useReorderableList<T>({
   );
 
   // Width measurement for ReactGridLayout
-  const {
-    width: gridWidth,
-    containerRef,
-    mounted: gridMounted,
-  } = useContainerWidth({ initialWidth: 216 });
+  const { width: gridWidth, containerRef } = useContainerWidth({ initialWidth: 216 });
 
   const canReorder = orderedItems.length >= 2;
 
@@ -123,10 +119,31 @@ export function useReorderableList<T>({
     layout,
     containerRef: containerRef as Ref<HTMLDivElement>,
     gridWidth,
-    gridMounted,
     canReorder,
     handleDrag,
     handleDragStop,
     getIsLast,
   };
+}
+
+// Same behaviour as react-grid-layout's useContainerWidth, kept here so the side menu doesn't load
+// the grid library before it's needed (see lazyGridLayout.ts).
+function useContainerWidth({ initialWidth }: { initialWidth: number }) {
+  const [width, setWidth] = useState(initialWidth);
+  const containerRef = useRef<HTMLElement | null>(null);
+
+  useEffect(() => {
+    const node = containerRef.current;
+    if (!node) return;
+    setWidth(node.offsetWidth);
+    if (typeof ResizeObserver === "undefined") return;
+    const observer = new ResizeObserver((entries) => {
+      const entry = entries[0];
+      if (entry) setWidth(entry.contentRect.width);
+    });
+    observer.observe(node);
+    return () => observer.disconnect();
+  }, []);
+
+  return { width, containerRef };
 }

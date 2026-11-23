@@ -88,6 +88,11 @@ function errorMessage(error: unknown): string {
  */
 function toListedEvent(event: AuditLogListedEvent): AuditLogListedEvent {
   const { credential, endpoint, origin } = event;
+  // Trigger.dev staff acted: the IP and user agent are theirs, so they stay internal.
+  const byStaff = event.actor.type === "support" || event.source === "staff";
+  // A platform-minted key (a build's deploy key, Vercel promote, preview archive): its IP and key
+  // are our infrastructure's, so they stay internal too.
+  const infraActed = event.actor.type === "trigger_infra";
   return {
     category: event.category,
     action: event.action,
@@ -99,13 +104,13 @@ function toListedEvent(event: AuditLogListedEvent): AuditLogListedEvent {
     environmentType: event.environmentType,
     target: { type: event.target.type, id: event.target.id, name: event.target.name },
     actor: { type: event.actor.type, id: event.actor.id },
-    credential: credential
-      ? { kind: credential.kind, id: credential.id, last4: credential.last4 }
-      : null,
+    credential:
+      credential && !infraActed
+        ? { kind: credential.kind, id: credential.id, last4: credential.last4 }
+        : null,
     source: event.source,
-    // Trigger.dev staff acted: the IP and user agent are theirs, so they stay internal.
     endpoint:
-      endpoint && event.actor.type !== "support" && event.source !== "staff"
+      endpoint && !byStaff && !infraActed
         ? {
             ip: endpoint.ip,
             userAgent: endpoint.userAgent,

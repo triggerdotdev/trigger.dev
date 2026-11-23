@@ -2,7 +2,6 @@ import { mintWorkloadDeploymentToken } from "@trigger.dev/core/v3";
 import { WORKLOAD_HEADERS } from "@trigger.dev/core/v3/workers";
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import type { SecretProxyBindings } from "../services/secretProxyBindings.js";
-import type { register as metricsRegister } from "../metrics.js";
 import type { WorkloadServer } from "./index.js";
 
 const SECRET = "secret-proxy-workload-test-secret";
@@ -28,6 +27,16 @@ describe.each([
     data: { run: { friendlyId: "run_1" }, snapshot: { friendlyId: "snapshot_2" } },
   }));
   const prepareStart = vi.fn(async (): Promise<unknown> => undefined);
+  const completeProxy = vi.fn(async (_caller: unknown, operation: () => Promise<unknown>) =>
+    operation()
+  );
+  const heartbeatRun = vi.fn(async () => ({
+    success: true as const,
+    data: { runToken: "refreshed" },
+  }));
+  const refresh = vi.fn(async () => {});
+  const exclusive = vi.fn(async (_runId: string, operation: () => Promise<unknown>) => operation());
+  const rebindContinued = vi.fn(async () => {});
   const completeRunAttempt = vi.fn(async () => ({
     success: true as const,
     data: { result: { attemptStatus: "RUN_FINISHED" } },
@@ -35,8 +44,6 @@ describe.each([
   const originalEnv = { ...process.env };
   let server: WorkloadServer;
   let token: string;
-  let pendingPlacement: Error;
-  let register: typeof metricsRegister;
 
   beforeAll(async () => {
     Object.assign(process.env, {
@@ -49,10 +56,11 @@ describe.each([
     });
     vi.resetModules();
     const { WorkloadServer } = await import("./index.js");
-    const { SecretProxyPlacementPendingError } = await import("../services/secretProxyBindings.js");
-    ({ register } = await import("../metrics.js"));
-    pendingPlacement = new SecretProxyPlacementPendingError(() => true);
-    token = await mintWorkloadDeploymentToken(claims, SECRET, EXP);
+    token = await mintWorkloadDeploymentToken(
+      { ...claims, workload_network: "proxy" },
+      SECRET,
+      EXP
+    );
     const secretProxy = proxy
       ? ({
           start: async () => {},
@@ -61,13 +69,21 @@ describe.each([
           withStart: async (_placement: unknown, operation: () => Promise<unknown>) => operation(),
           activateStart: async () => {},
           tracks: () => false,
-          complete: async (_caller: unknown, operation: () => Promise<unknown>) => operation(),
+          complete: completeProxy,
+          refresh,
+          exclusive,
+          rebindContinued,
         } as unknown as SecretProxyBindings)
       : undefined;
     server = new WorkloadServer({
       port,
       host: "127.0.0.1",
-      workerClient: { startRunAttempt, completeRunAttempt, continueRunExecution } as any,
+      workerClient: {
+        startRunAttempt,
+        completeRunAttempt,
+        continueRunExecution,
+        heartbeatRun,
+      } as any,
       secretProxy,
       wideEventOpts: { service: "supervisor", env: { nodeId: "test" }, enabled: false },
       wideEventsNoisyRoutes: false,
@@ -81,6 +97,11 @@ describe.each([
     continueRunExecution.mockClear();
     prepareStart.mockReset();
     prepareStart.mockResolvedValue(undefined);
+    completeProxy.mockClear();
+    heartbeatRun.mockClear();
+    refresh.mockClear();
+    exclusive.mockClear();
+    rebindContinued.mockClear();
   });
 
   afterAll(async () => {
@@ -91,17 +112,46 @@ describe.each([
     Object.assign(process.env, originalEnv);
   });
 
-  function post(path: string, body: unknown) {
+  function post(path: string, body: unknown, deploymentToken = token) {
     return fetch(`${base}/${path}`, {
       method: "POST",
       headers: {
         "content-type": "application/json",
-        [WORKLOAD_HEADERS.DEPLOYMENT_ID]: token,
+        [WORKLOAD_HEADERS.DEPLOYMENT_ID]: deploymentToken,
         [WORKLOAD_HEADERS.RUNNER_ID]: "runner_1",
       },
       body: JSON.stringify(body),
     });
   }
+
+  it.runIf(proxy)("does not use proxy lifecycle hooks for a VM without proxy mode", async () => {
+    const directToken = await mintWorkloadDeploymentToken(claims, SECRET, EXP);
+    expect((await post("attempts/start", {}, directToken)).status).toBe(200);
+    expect(
+      (
+        await fetch(`${base}/continue`, {
+          headers: {
+            [WORKLOAD_HEADERS.DEPLOYMENT_ID]: directToken,
+            [WORKLOAD_HEADERS.RUNNER_ID]: "runner_1",
+          },
+        })
+      ).status
+    ).toBe(200);
+    expect((await post("heartbeat", {}, directToken)).status).toBe(200);
+    expect((await post("attempts/complete", { completion }, directToken)).status).toBe(200);
+
+    expect(prepareStart).not.toHaveBeenCalled();
+    expect(completeProxy).not.toHaveBeenCalled();
+    expect(exclusive).not.toHaveBeenCalled();
+    expect(refresh).not.toHaveBeenCalled();
+    expect(rebindContinued).not.toHaveBeenCalled();
+    expect((startRunAttempt.mock.calls[0] as unknown[])[2]).toMatchObject({
+      supportsSecretProxy: false,
+    });
+    expect((continueRunExecution.mock.calls[0] as unknown[])[4]).toMatchObject({
+      supportsSecretProxy: false,
+    });
+  });
 
   it(
     "forwards starts without proxy capability when there is no placement",
@@ -118,58 +168,30 @@ describe.each([
     }
   );
 
-  it.runIf(proxy)(
-    "forwards and counts starts when Pod status stays pending",
-    { timeout: 10_000 },
-    async () => {
-      async function unavailableStarts() {
-        const metric = register.getSingleMetric(
-          "supervisor_secret_proxy_unsupported_starts_total"
-        )!;
-        const { values } = await metric.get();
-        return values.find(({ labels }) => labels.reason === "unavailable")?.value ?? 0;
-      }
-
-      const before = await unavailableStarts();
-      prepareStart.mockRejectedValue(pendingPlacement);
-      const res = await post("attempts/start", {});
-      expect(res.status).toBe(200);
-      expect(startRunAttempt).toHaveBeenCalledOnce();
-      expect((startRunAttempt.mock.calls[0] as unknown[])[2]).toMatchObject({
-        supportsSecretProxy: false,
-      });
-      expect(await unavailableStarts()).toBe(before + 1);
-      const wait = register.getSingleMetric("supervisor_secret_proxy_placement_wait_seconds")!;
-      expect((await wait.get()).values).toContainEqual(
-        expect.objectContaining({
-          metricName: "supervisor_secret_proxy_placement_wait_seconds_count",
-          labels: { route: "start", outcome: "timeout" },
-          value: 1,
-        })
-      );
-    }
-  );
-
-  it.runIf(proxy)("waits for a placement before forwarding a start", async () => {
-    prepareStart
-      .mockRejectedValueOnce(pendingPlacement)
-      .mockResolvedValueOnce({ bindingId: "binding_1" });
+  it.runIf(proxy)("advertises a first-call start placement", async () => {
+    prepareStart.mockResolvedValueOnce({ bindingId: "binding_1" });
     const res = await post("attempts/start", {});
     expect(res.status).toBe(200);
-    expect(prepareStart.mock.calls.map((call) => (call as unknown[])[1])).toEqual([
-      { continuing: false, retrying: false },
-      { continuing: false, retrying: true },
-    ]);
+    expect(prepareStart).toHaveBeenCalledOnce();
     expect(startRunAttempt).toHaveBeenCalledOnce();
     expect((startRunAttempt.mock.calls[0] as unknown[])[2]).toMatchObject({
       supportsSecretProxy: true,
     });
   });
 
-  it.runIf(proxy)("waits for a placement before forwarding a continue", async () => {
-    prepareStart
-      .mockRejectedValueOnce(pendingPlacement)
-      .mockResolvedValueOnce({ bindingId: "binding_1" });
+  it("refuses to continue a proxy VM without placement", { timeout: 3_000 }, async () => {
+    const res = await fetch(`${base}/continue`, {
+      headers: {
+        [WORKLOAD_HEADERS.DEPLOYMENT_ID]: token,
+        [WORKLOAD_HEADERS.RUNNER_ID]: "runner_1",
+      },
+    });
+    expect(res.status).toBe(503);
+    expect(continueRunExecution).not.toHaveBeenCalled();
+  });
+
+  it.runIf(proxy)("advertises a first-call continue placement", async () => {
+    prepareStart.mockResolvedValueOnce({ bindingId: "binding_1" });
     const res = await fetch(`${base}/continue`, {
       headers: {
         [WORKLOAD_HEADERS.DEPLOYMENT_ID]: token,
@@ -177,7 +199,7 @@ describe.each([
       },
     });
     expect(res.status).toBe(200);
-    expect(prepareStart).toHaveBeenCalledTimes(2);
+    expect(prepareStart).toHaveBeenCalledOnce();
     expect((continueRunExecution.mock.calls[0] as unknown[])[4]).toMatchObject({
       supportsSecretProxy: true,
     });

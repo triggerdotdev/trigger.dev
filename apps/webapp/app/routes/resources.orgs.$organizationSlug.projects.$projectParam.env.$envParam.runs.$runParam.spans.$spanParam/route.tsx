@@ -7,19 +7,18 @@ import {
   ClipboardDocumentIcon,
   ClockIcon,
   CloudArrowDownIcon,
-  ExclamationTriangleIcon,
   KeyIcon,
   QueueListIcon,
   SignalIcon,
 } from "@heroicons/react/20/solid";
+import { useParams } from "@remix-run/react";
 import { type LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { formatDurationMilliseconds, type RunExecutionPolicy } from "@trigger.dev/core/v3";
 import { assertNever } from "assert-never";
-import { type ReactNode, useEffect } from "react";
+import { useEffect } from "react";
 import { typedjson, useTypedFetcher } from "remix-typedjson";
 import { toast } from "sonner";
 import { ExitIcon } from "~/assets/icons/ExitIcon";
-import { QueuesIcon } from "~/assets/icons/QueuesIcon";
 import { AdminDebugRun } from "~/components/admin/debugRun";
 import { CodeBlock } from "~/components/code/CodeBlock";
 import { RunError } from "~/components/runs/v3/RunError";
@@ -33,7 +32,6 @@ import {
   isFailedRunStatus,
   isInProgressRunStatus,
   runningRunPrompt,
-  waitingRunPrompt,
 } from "~/components/dashboard-agent/investigate-prompts";
 import { Callout } from "~/components/primitives/Callout";
 import { CopyableText } from "~/components/primitives/CopyableText";
@@ -81,28 +79,24 @@ import {
 import { WaitpointDetailTable } from "~/components/runs/v3/WaitpointDetails";
 import { RuntimeIcon } from "~/components/RuntimeIcon";
 import { SessionStatusCombo } from "~/components/sessions/v1/SessionStatus";
+import { SESSION_RUN_PARAM } from "~/components/sessions/v1/trace/sessionTraceSelection";
+import type { SessionStatus } from "~/services/sessionsRepository/sessionsRepository.server";
 import { WarmStartCombo } from "~/components/WarmStarts";
 import { useEnvironment } from "~/hooks/useEnvironment";
 import { useOrganization } from "~/hooks/useOrganizations";
 import { useProject } from "~/hooks/useProject";
 import { useSearchParams } from "~/hooks/useSearchParam";
-import { useIsMetricResponseFresh } from "~/hooks/useMetricResourceQuery";
 import { useHasAdminAccess } from "~/hooks/useUser";
 import { redirectWithErrorMessage } from "~/models/message.server";
 import {
-  clickhouseTimeToMs,
-  formatWaitMs,
-  QueueMetricChart,
-  QUEUE_METRIC_COLORS,
-  toNumber,
-  useQueueMetric,
-} from "~/components/queues/QueueMetricCards";
-import {
   resolveRunQueueMetrics,
   type RunQueueMetrics,
-  type RunQueueWaiting,
 } from "~/presenters/v3/RunQueueMetricsPresenter.server";
+import { resolvePendingVersion } from "~/presenters/v3/PendingVersionPresenter.server";
 import { type Span, SpanPresenter, type SpanRun } from "~/presenters/v3/SpanPresenter.server";
+import { buildRunWaitingView } from "~/presenters/v3/RunWaitingPresenter.server";
+import { isExplainedExpiry, type RunWaitingView } from "~/presenters/v3/runWaiting";
+import { NotStartedCard, NotStartedStatus } from "~/components/runs/v3/NotStarted";
 import { type StartedSession } from "~/presenters/v3/startedSession.server";
 import { findProjectWithOrgFlagsBySlug } from "~/models/project.server";
 import { logger } from "~/services/logger.server";
@@ -110,11 +104,13 @@ import { rbac } from "~/services/rbac.server";
 import { hasAdminDisplayAccess, requireUser } from "~/services/session.server";
 import { canUseAlertsList } from "~/v3/canUseAlertsList.server";
 import { cn } from "~/utils/cn";
+import { $replica } from "~/db.server";
+import { VersionLabel } from "~/components/versions/VersionLabel";
+import { findCurrentVersion } from "~/v3/models/workerDeployment.server";
 import { formatCurrencyAccurate } from "~/utils/numberFormatter";
 import {
   docsPath,
   v3BatchPath,
-  v3DeploymentVersionPath,
   concurrencyQueuePath,
   v3RunDownloadLogsPath,
   v3RunIdempotencyKeyResetPath,
@@ -122,7 +118,7 @@ import {
   v3RunRedirectPath,
   v3RunSpanPath,
   v3RunsPath,
-  v3SchedulePath,
+  v3ScheduledTaskSchedulePath,
   v3WebhookDeliveryPath,
   v3WebhookEndpointPath,
   v3SessionPath,
@@ -192,6 +188,48 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
         envParam,
         run: result.run,
       });
+      const pendingVersion =
+        result.run.status === "PENDING_VERSION" ||
+        result.run.status === "WAITING_FOR_DEPLOY" ||
+        isExplainedExpiry(result.run.status, result.run.statusReason)
+          ? await resolvePendingVersion({
+              environmentId: result.run.environmentId,
+              taskIdentifier: result.run.taskIdentifier,
+              queueName: result.run.queue.name,
+              statusReason: result.run.statusReason,
+              lockedVersion: result.run.version,
+              externalDeploymentId: result.run.externalDeploymentId,
+            })
+          : null;
+      const waitingView = await buildRunWaitingView({
+        run: {
+          status: result.run.status,
+          createdAt: result.run.createdAt,
+          queuedAt: result.run.queuedAt,
+          delayUntil: result.run.delayUntil,
+          ttl: result.run.ttl,
+          debounce: result.run.debounce,
+          statusReason: result.run.statusReason,
+          expiredAt: result.run.expiredAt,
+          environmentId: result.run.environmentId,
+          taskIdentifier: result.run.taskIdentifier,
+          queueName: result.run.queue.name,
+          lockedVersion: result.run.version,
+        },
+        queueMetrics,
+        pendingVersion,
+        canManageQueues: auth.ok && auth.ability.can("write", { type: "tasks" }),
+      });
+      // Tags the run's version as Current or Not promoted on the Version row.
+      const runEnvironment = result.run.version
+        ? await $replica.runtimeEnvironment.findFirst({
+            where: { id: result.run.environmentId },
+            select: { id: true, type: true },
+          })
+        : null;
+      const currentVersion = runEnvironment
+        ? await findCurrentVersion(runEnvironment, $replica)
+        : undefined;
       const alertsEnabled = await canUseAlertsList({
         orgFeatureFlags: (project.organization.featureFlags as Record<string, unknown>) ?? {},
         userId,
@@ -202,9 +240,10 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
           ? result.run
           : { ...result.run, workerCell: undefined, workerLane: undefined },
         queueMetrics,
+        waitingView,
         canWriteRuns,
         alertsEnabled,
-        loadedAt: Date.now(),
+        currentVersion,
       });
     }
     return typedjson({ type: "span" as const, span: result.span });
@@ -319,9 +358,10 @@ export function SpanView({
         <RunBody
           run={fetcher.data.run}
           queueMetrics={fetcher.data.queueMetrics}
-          loadedAt={fetcher.data.loadedAt}
+          waitingView={fetcher.data.waitingView}
           canWriteRuns={fetcher.data.canWriteRuns}
           alertsEnabled={fetcher.data.alertsEnabled}
+          currentVersion={fetcher.data.currentVersion}
           runParam={runParam}
           spanId={spanId}
           closePanel={closePanel}
@@ -471,9 +511,10 @@ function applySpanOverrides(span: Span, spanOverrides?: SpanOverride): Span {
 function RunBody({
   run,
   queueMetrics,
-  loadedAt,
+  waitingView,
   canWriteRuns,
   alertsEnabled,
+  currentVersion,
   runParam,
   spanId,
   closePanel,
@@ -483,9 +524,10 @@ function RunBody({
 }: {
   run: SpanRun;
   queueMetrics: RunQueueMetrics | null;
-  loadedAt: number;
+  waitingView: RunWaitingView | null;
   canWriteRuns: boolean;
   alertsEnabled: boolean;
+  currentVersion: string | undefined;
   runParam: string;
   spanId: string;
   closePanel?: () => void;
@@ -616,11 +658,15 @@ function RunBody({
                 <Property.Item>
                   <Property.Label>Status</Property.Label>
                   <Property.Value>
-                    <SimpleTooltip
-                      button={<TaskRunStatusCombo status={run.status} />}
-                      content={descriptionForTaskRunStatus(run.status)}
-                      disableHoverableContent
-                    />
+                    {waitingView && waitingView.notStarted.cause !== "externalExpired" ? (
+                      <NotStartedStatus notStarted={waitingView.notStarted} />
+                    ) : (
+                      <SimpleTooltip
+                        button={<TaskRunStatusCombo status={run.status} />}
+                        content={descriptionForTaskRunStatus(run.status)}
+                        disableHoverableContent
+                      />
+                    )}
                   </Property.Value>
                 </Property.Item>
                 <Property.Item>
@@ -789,30 +835,7 @@ function RunBody({
                   </Property.Item>
                 )}
                 {run.session && (
-                  <Property.Item>
-                    <Property.Label>Session</Property.Label>
-                    <Property.Value>
-                      <SimpleTooltip
-                        button={
-                          <TextLink
-                            to={v3SessionPath(organization, project, environment, {
-                              friendlyId: run.session.friendlyId,
-                            })}
-                            className="group flex flex-wrap items-center gap-x-2 gap-y-0"
-                          >
-                            <CopyableText
-                              value={run.session.externalId ?? run.session.friendlyId}
-                              copyValue={run.session.externalId ?? run.session.friendlyId}
-                              asChild
-                            />
-                            <SessionStatusCombo status={run.session.status} />
-                          </TextLink>
-                        }
-                        content={`Jump to session (${run.session.reason})`}
-                        disableHoverableContent
-                      />
-                    </Property.Value>
-                  </Property.Item>
+                  <RunSessionProperty session={run.session} runFriendlyId={run.friendlyId} />
                 )}
                 <Property.Item>
                   <Property.Label>
@@ -949,31 +972,12 @@ function RunBody({
                   <Property.Label>Version</Property.Label>
                   <Property.Value>
                     {run.version ? (
-                      environment.type === "DEVELOPMENT" ? (
-                        <CopyableText value={run.version} copyValue={run.version} asChild />
-                      ) : (
-                        <SimpleTooltip
-                          button={
-                            <TextLink
-                              to={v3DeploymentVersionPath(
-                                organization,
-                                project,
-                                environment,
-                                run.version
-                              )}
-                              className="group flex flex-wrap items-center gap-x-1 gap-y-0"
-                            >
-                              <CopyableText value={run.version} copyValue={run.version} asChild />
-                            </TextLink>
-                          }
-                          content={"Jump to deployment"}
-                        />
-                      )
+                      <VersionLabel version={run.version} currentVersion={currentVersion} />
                     ) : (
                       <span className="flex items-center gap-1">
                         <span>Never started</span>
                         <InfoIconTooltip
-                          content={"Runs get locked to the latest version when they start."}
+                          content={"Runs get locked to the current version when they start."}
                           contentClassName="normal-case tracking-normal"
                         />
                       </span>
@@ -995,7 +999,7 @@ function RunBody({
                       <span className="flex items-center gap-1">
                         <span>Never started</span>
                         <InfoIconTooltip
-                          content={"Runs get locked to the latest version when they start."}
+                          content={"Runs get locked to the current version when they start."}
                           contentClassName="normal-case tracking-normal"
                         />
                       </span>
@@ -1069,7 +1073,13 @@ function RunBody({
                         <SimpleTooltip
                           button={
                             <TextLink
-                              to={v3SchedulePath(organization, project, environment, run.schedule)}
+                              to={v3ScheduledTaskSchedulePath(
+                                organization,
+                                project,
+                                environment,
+                                run.taskIdentifier,
+                                run.schedule
+                              )}
                             >
                               {run.schedule.description}
                             </TextLink>
@@ -1293,9 +1303,10 @@ function RunBody({
             </div>
           ) : (
             <div className="flex flex-col gap-4 pt-3">
-              {/* The waiting-queue block carries its own Status tile, so drop the duplicate
-                  status combo here; other runs still get it. */}
-              {queueMetrics?.waiting ? null : (
+              {/* A run that hasn't started shows why in place of its status. */}
+              {waitingView ? (
+                <NotStartedCard initial={waitingView} runFriendlyId={run.friendlyId} />
+              ) : (
                 <div className="border-b border-grid-bright pb-3">
                   <SimpleTooltip
                     button={<TaskRunStatusCombo status={run.status} className="text-sm" />}
@@ -1303,23 +1314,11 @@ function RunBody({
                   />
                 </div>
               )}
-              {queueMetrics?.waiting ? (
-                <WaitingInQueueBlock
-                  queueName={queueMetrics.queueName}
-                  queuePath={queuePath}
-                  paused={queueMetrics.paused}
-                  waiting={queueMetrics.waiting}
-                  status={run.status}
-                  createdAt={run.createdAt}
-                  loadedAt={loadedAt}
-                  runFriendlyId={run.friendlyId}
-                />
-              ) : null}
               <RunTimeline run={run} />
 
               {/* Offer Investigate for runs that are actively in progress. Failed runs get
-                  their own prompt below, and waiting/queued runs already have one in
-                  WaitingInQueueBlock. */}
+                  their own prompt below, and runs that haven't started have one with their
+                  status. */}
               {isInProgressRunStatus(run.status) ? (
                 <InvestigateButton
                   prompt={runningRunPrompt(run.friendlyId)}
@@ -1394,51 +1393,6 @@ function RunBody({
   );
 }
 
-// Trust a ClickHouse gauge only while its newest bucket is recent (10s bucket + pipeline lag);
-// once it ages out, fall back to the loader's live Redis value instead of a stale count.
-const LIVE_GAUGE_FRESH_MS = 90_000;
-
-const WAITING_STATUS_LABELS: Partial<Record<SpanRun["status"], string>> = {
-  PENDING: "Queued",
-  DELAYED: "Delayed",
-  PENDING_VERSION: "Pending version",
-};
-
-// A mini version of the queue page's stat block: same chrome, title font and alignment, smaller value.
-function MiniStat({
-  title,
-  value,
-  valueClassName,
-  suffix,
-  accessory,
-}: {
-  title: ReactNode;
-  value: ReactNode;
-  valueClassName?: string;
-  suffix?: ReactNode;
-  accessory?: ReactNode;
-}) {
-  return (
-    <div className="flex min-h-[5.5rem] flex-col justify-between gap-3 rounded-sm border border-grid-dimmed bg-background-bright p-3">
-      <div className="flex items-center justify-between gap-1">
-        <Header3 className="leading-6">{title}</Header3>
-        {accessory ? <div className="-my-1 shrink-0">{accessory}</div> : null}
-      </div>
-      <div className="flex flex-wrap items-baseline gap-1">
-        <span
-          className={cn(
-            "text-2xl font-normal leading-none tabular-nums text-text-bright",
-            valueClassName
-          )}
-        >
-          {value}
-        </span>
-        {suffix ? <span className="text-xs tabular-nums text-text-dimmed">{suffix}</span> : null}
-      </div>
-    </div>
-  );
-}
-
 const EXTERNAL_DEPLOYMENT_ID_DISPLAY_LENGTH = 24;
 
 function ExecutionPolicyProperties({
@@ -1495,160 +1449,6 @@ function ExternalDeploymentIdValue({
   );
 }
 
-// A compact "mini queue" for a waiting run: the queue page's stat blocks + charts, scaled down.
-function WaitingInQueueBlock({
-  queueName,
-  queuePath,
-  paused,
-  waiting,
-  status,
-  createdAt,
-  loadedAt,
-  runFriendlyId,
-}: {
-  queueName: string;
-  queuePath: string | undefined;
-  paused: boolean;
-  waiting: RunQueueWaiting;
-  status: SpanRun["status"];
-  createdAt: Date;
-  loadedAt: number;
-  runFriendlyId: string;
-}) {
-  // Latest gauges from ClickHouse (as on the queue page), polled so the blocks keep ticking. Trust
-  // the newest bucket only while fresh; otherwise fall back to the loader's live values.
-  const {
-    rows: liveRows,
-    responseReceivedAt,
-    lastSuccessfulResponseAt,
-  } = useQueueMetric(
-    `SELECT timeBucket() AS t, max(max_running) AS running, max(max_queued) AS queued, max(max_limit) AS q_limit\nFROM concurrency_metrics\nGROUP BY t\nORDER BY t`,
-    {
-      ids: waiting.ids,
-      timeRange: { period: "15m", from: null, to: null },
-      defaultPeriod: "15m",
-      queueName,
-      refreshIntervalMs: 15_000,
-    }
-  );
-  const latest = liveRows.length > 0 ? liveRows[liveRows.length - 1] : undefined;
-  const latestBucketMs = latest ? clickhouseTimeToMs(latest.t) : NaN;
-  const now = Math.max(loadedAt, lastSuccessfulResponseAt ?? loadedAt);
-  const liveFresh = useIsMetricResponseFresh(
-    responseReceivedAt,
-    latestBucketMs,
-    LIVE_GAUGE_FRESH_MS
-  );
-  const fresh = latest && liveFresh ? latest : undefined;
-
-  const key = waiting.concurrencyKey;
-  const running = fresh ? toNumber(fresh.running) : waiting.running;
-  const limit = waiting.concurrencyLimit ?? (fresh ? toNumber(fresh.q_limit) || null : null);
-
-  // The concurrency limit applies per key on keyed queues, so the tile has to compare like with
-  // like: the key's own running count against the per-key limit. `running` above is queue-wide,
-  // which would render "8 / 2 · 100%" while this run's key sits at 1 of 2. PENDING renders as
-  // "Queued".
-  const runningAgainstLimit = key ? key.running : running;
-  const atLimit = limit !== null && runningAgainstLimit >= limit;
-  const showAtLimit = status === "PENDING" && atLimit && !paused;
-  const pct =
-    limit && limit > 0 ? Math.min(100, Math.round((runningAgainstLimit / limit) * 100)) : null;
-  const waitedMs = Math.max(0, now - new Date(createdAt).getTime());
-
-  // Why the run is held, surfaced as a warning icon on the Status tile (queue-page style) rather
-  // than a separate sentence.
-  const warningMessage = paused
-    ? "Queue is paused. Runs will not start until it is resumed."
-    : showAtLimit
-      ? "At the concurrency limit. This run starts when a running one finishes."
-      : null;
-
-  return (
-    <div className="@container flex flex-col gap-3 border-b border-grid-bright pb-4">
-      {/* Responsive to the side panel width (container query, not viewport): 3-up while there's
-          room, stacking to a single column only once the panel gets narrow. */}
-      <div className="grid grid-cols-1 gap-2 @[22rem]:grid-cols-3">
-        <MiniStat
-          title={
-            <span className="flex items-center gap-1.5">
-              Status
-              {warningMessage ? (
-                <SimpleTooltip
-                  button={<ExclamationTriangleIcon className="size-4 text-warning" />}
-                  content={warningMessage}
-                />
-              ) : null}
-            </span>
-          }
-          value={WAITING_STATUS_LABELS[status] ?? "Waiting"}
-          valueClassName="tracking-tight"
-        />
-        <MiniStat
-          title="Concurrency"
-          value={runningAgainstLimit.toLocaleString()}
-          valueClassName={cn(atLimit && "text-warning")}
-          suffix={
-            limit !== null
-              ? `/ ${limit.toLocaleString()}${pct !== null ? ` · ${pct}%` : ""}`
-              : "of ∞"
-          }
-        />
-        <MiniStat
-          title="Waiting for"
-          value={formatDurationMilliseconds(waitedMs, { style: "short", maxDecimalPoints: 0 })}
-        />
-      </div>
-
-      <div className="rounded-sm border border-grid-dimmed bg-background-bright p-3">
-        <div className="mb-2 flex items-center justify-between gap-1.5">
-          <div className="flex items-center gap-1.5">
-            <Header3 className="leading-6">Scheduling delay</Header3>
-            <InfoIconTooltip
-              content="Wait from eligible to dequeued (p50/p95)."
-              contentClassName="max-w-xs"
-            />
-          </div>
-          {queuePath ? (
-            <LinkButton
-              variant="secondary/small-icon"
-              LeadingIcon={QueuesIcon}
-              leadingIconClassName="text-queues"
-              to={queuePath}
-              tooltip="View queue"
-            />
-          ) : null}
-        </div>
-        <div className="h-40">
-          <QueueMetricChart
-            query={`SELECT timeBucket() AS t,\n  round(quantilesMerge(0.5, 0.9, 0.95, 0.99)(wait_quantiles)[1]) AS p50,\n  round(quantilesMerge(0.5, 0.9, 0.95, 0.99)(wait_quantiles)[3]) AS p95\nFROM concurrency_metrics\nGROUP BY t\nORDER BY t`}
-            series={[
-              { key: "p50", label: "p50", color: QUEUE_METRIC_COLORS.p50 },
-              { key: "p95", label: "p95", color: QUEUE_METRIC_COLORS.p95 },
-            ]}
-            ids={waiting.ids}
-            timeRange={{ period: "30m", from: null, to: null }}
-            defaultPeriod="30m"
-            queueName={queueName}
-            valueFormat={formatWaitMs}
-            fillGaps
-          />
-        </div>
-      </div>
-
-      {/* This block only exists while the run is still waiting, so the ask is always apt: hand the
-          stuck run to the agent. Hidden when the agent isn't available. */}
-      <InvestigateButton
-        prompt={waitingRunPrompt(runFriendlyId, queueName)}
-        className="self-start"
-      />
-    </div>
-  );
-}
-
-// Trace export menu items: copy the trace as Markdown (for pasting into an AI
-// assistant) plus a download per format. The export route streams `?format=`
-// server-side.
 function TraceExportMenuItems({ runParam }: { runParam: string }) {
   const downloadPath = v3RunDownloadLogsPath({ friendlyId: runParam });
 
@@ -1709,6 +1509,58 @@ function TraceExportMenuItems({ runParam }: { runParam: string }) {
         openInNewTab
       />
     </>
+  );
+}
+
+function RunSessionProperty({
+  session,
+  runFriendlyId,
+}: {
+  session: { friendlyId: string; externalId: string | null; status: SessionStatus; reason: string };
+  runFriendlyId: string;
+}) {
+  const organization = useOrganization();
+  const project = useProject();
+  const environment = useEnvironment();
+  // On this session's own page a link would only reload it and drop the selection.
+  const { sessionParam } = useParams();
+  const onSessionPage = sessionParam === session.friendlyId || sessionParam === session.externalId;
+
+  const id = (
+    <CopyableText
+      value={session.externalId ?? session.friendlyId}
+      copyValue={session.externalId ?? session.friendlyId}
+      asChild
+    />
+  );
+  const status = <SessionStatusCombo status={session.status} />;
+
+  return (
+    <Property.Item>
+      <Property.Label>Session</Property.Label>
+      <Property.Value>
+        {onSessionPage ? (
+          <span className="flex flex-wrap items-center gap-x-2 gap-y-0">
+            {id}
+            {status}
+          </span>
+        ) : (
+          <SimpleTooltip
+            button={
+              <TextLink
+                to={`${v3SessionPath(organization, project, environment, session)}?${SESSION_RUN_PARAM}=${runFriendlyId}`}
+                className="group flex flex-wrap items-center gap-x-2 gap-y-0"
+              >
+                {id}
+                {status}
+              </TextLink>
+            }
+            content={`Jump to session (${session.reason})`}
+            disableHoverableContent
+          />
+        )}
+      </Property.Value>
+    </Property.Item>
   );
 }
 

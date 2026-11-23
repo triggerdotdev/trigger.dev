@@ -153,7 +153,10 @@ export async function findSessionByExternalId(
  *     Friendlyid-form callers without a matching row are rejected by
  *     the route handler before this is reached.
  */
-export function canonicalSessionAddressingKey(row: Session | null, paramSession: string): string {
+export function canonicalSessionAddressingKey(
+  row: Pick<Session, "externalId" | "friendlyId"> | null,
+  paramSession: string
+): string {
   if (row) {
     return row.externalId ?? row.friendlyId;
   }

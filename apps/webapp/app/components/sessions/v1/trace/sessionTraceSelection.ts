@@ -79,3 +79,31 @@ export function highlightedNodeId(
   const runNode = runNodeId(selection.runFriendlyId);
   return inTree(runNode) ? runNode : undefined;
 }
+
+/**
+ * The shown run before or after the one holding `selectedId` (a run or one of its spans), in tree
+ * order: oldest first. Runs a search hides are skipped. From the session row, or with nothing
+ * selected, both directions go to the newest run, where the tab opens.
+ */
+export function adjacentRunNodeId(
+  rows: ReadonlyArray<{ id: string; data: SessionTreeRow<unknown> }>,
+  isShown: (id: string) => boolean,
+  selectedId: string | undefined,
+  direction: "previous" | "next"
+): string | undefined {
+  const runs = rows.filter((row) => row.data.kind === "run" && isShown(row.id));
+  if (runs.length === 0) return undefined;
+
+  const selected = selectedId ? rows.find((row) => row.id === selectedId)?.data : undefined;
+  const runFriendlyId =
+    selected?.kind === "run"
+      ? selected.run.friendlyId
+      : selected?.kind === "span"
+        ? selected.runFriendlyId
+        : undefined;
+  const index = runFriendlyId ? runs.findIndex((row) => row.id === runNodeId(runFriendlyId)) : -1;
+  if (index === -1) return runs[runs.length - 1].id;
+
+  const next = runs[direction === "previous" ? index - 1 : index + 1];
+  return next?.id;
+}

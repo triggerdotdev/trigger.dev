@@ -26,17 +26,24 @@ import { v3WebhookDeliveryPath } from "~/utils/pathBuilder";
 import { cn } from "~/utils/cn";
 import { DeliveryStatusBadge } from "./DeliveryStatus";
 
+/** The endpoint a delivery arrived on, for the Endpoint column. */
+export type DeliveryEndpointLabel = { label: string; path: string };
+
 export function DeliveriesTable({
   deliveries,
   hasFilters,
   showTopBorder = true,
   stickyHeader = false,
+  endpoints,
 }: {
   deliveries: EndpointDeliveryListItem[];
   hasFilters?: boolean;
   showTopBorder?: boolean;
   stickyHeader?: boolean;
+  /** By endpoint id. Adds an Endpoint column, for a list that spans endpoints. */
+  endpoints?: Record<string, DeliveryEndpointLabel>;
 }) {
+  const colSpan = endpoints ? 7 : 6;
   const navigation = useNavigation();
   const location = useLocation();
   const isLoading =
@@ -56,6 +63,7 @@ export function DeliveriesTable({
         <TableRow>
           <TableHeaderCell>Delivery</TableHeaderCell>
           <TableHeaderCell>Status</TableHeaderCell>
+          {endpoints ? <TableHeaderCell>Endpoint</TableHeaderCell> : null}
           <TableHeaderCell>External delivery ID</TableHeaderCell>
           <TableHeaderCell>Created</TableHeaderCell>
           <TableHeaderCell>Error</TableHeaderCell>
@@ -66,7 +74,7 @@ export function DeliveriesTable({
       </TableHeader>
       <TableBody>
         {deliveries.length === 0 ? (
-          <TableBlankRow colSpan={6}>
+          <TableBlankRow colSpan={colSpan}>
             <div className="flex items-center justify-center">
               <Paragraph className="w-auto">
                 {hasFilters ? "No deliveries match these filters" : "No deliveries yet"}
@@ -93,6 +101,13 @@ export function DeliveriesTable({
                 <TableCell to={deliveryPath}>
                   <DeliveryStatusBadge status={delivery.status} />
                 </TableCell>
+                {endpoints ? (
+                  <TableCell to={endpoints[delivery.webhookEndpointId]?.path ?? deliveryPath}>
+                    <span className="font-mono text-xs">
+                      {endpoints[delivery.webhookEndpointId]?.label ?? "–"}
+                    </span>
+                  </TableCell>
+                ) : null}
                 <TableCell to={deliveryPath}>
                   {delivery.externalDeliveryId ? (
                     <div className="w-[24ch]">
@@ -133,7 +148,7 @@ export function DeliveriesTable({
         )}
         {isLoading && (
           <TableBlankRow
-            colSpan={6}
+            colSpan={colSpan}
             className={cn(
               "absolute left-0 top-0 flex h-full w-full items-center justify-center gap-2 bg-charcoal-900/90"
             )}

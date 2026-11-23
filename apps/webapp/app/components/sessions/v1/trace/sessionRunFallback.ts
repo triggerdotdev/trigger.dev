@@ -54,3 +54,36 @@ export function unavailableReasonText(reason: UnavailableReason) {
 
 export const EMERGENCY_CAP_NOTICE =
   "Traces can't load here right now. Open a run's page to see its trace.";
+
+/** One line in the tab's bar; the reason or what to do goes in `hint`, shown on hover. */
+export type BarNotice = { text: string; hint?: string; onRetry?: () => void };
+
+export const SESSION_LIMIT_NOTICE: BarNotice = {
+  text: "Session span limit reached",
+  hint: "Collapse runs to load more.",
+};
+
+/**
+ * The bar has room for one notice, so the most specific wins: a deep link that didn't load, then
+ * the emergency cap (from the runs route or any run's first chunk), then the session span limit.
+ */
+export function sessionBarNotice({
+  deepLink,
+  view,
+  loads,
+}: {
+  deepLink: BarNotice | undefined;
+  view: Readonly<Record<string, { unavailable?: string }>>;
+  loads: Readonly<Record<string, SessionRunLoad>>;
+}): BarNotice | undefined {
+  if (deepLink) return deepLink;
+  const runLoads = Object.values(loads);
+  const capped =
+    Object.values(view).some((entry) => entry.unavailable === "emergencyCap") ||
+    runLoads.some((load) => load.state === "unavailable" && load.reason === "emergencyCap");
+  if (capped) return { text: EMERGENCY_CAP_NOTICE };
+  if (runLoads.some((load) => load.state === "cutOff" && load.limit === "session")) {
+    return SESSION_LIMIT_NOTICE;
+  }
+  return undefined;
+}

@@ -1776,6 +1776,7 @@ export function runnerBodyFor(
       ...(isScheduledRun(opts) ? { isScheduledRun: true } : {}),
       ...(opts.hasPrivateLink ? { hasPrivateLink: true } : {}),
       ...(isSandboxRun(opts.annotations) ? { singleUse: true } : {}),
+      ...(opts.workloadNetwork === "proxy" ? { networkPlugin: true } : {}),
       ...(meta.restore ? { restore: meta.restore } : {}),
     },
   };

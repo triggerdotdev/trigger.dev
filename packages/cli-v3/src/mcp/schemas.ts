@@ -245,14 +245,24 @@ export const ListRunsInput = CommonProjectsInput.extend({
   taskIdentifier: z.string().describe("Filter for runs that match this task identifier").optional(),
   version: z
     .string()
-    .describe("Filter for runs that match this version, e.g. 20250808.3")
+    .describe(
+      "Filter for runs that match this version, e.g. 20250808.3. Separate several versions with commas, e.g. 20250808.3,20250809.1"
+    )
     .optional(),
   tag: z.string().describe("Filter for runs that include this tag").optional(),
-  from: z.string().describe("Filter for runs created after this ISO 8601 timestamp").optional(),
-  to: z.string().describe("Filter for runs created before this ISO 8601 timestamp").optional(),
+  from: z
+    .string()
+    .describe("Filter for runs created after this ISO 8601 timestamp. Ignored when period is set")
+    .optional(),
+  to: z
+    .string()
+    .describe("Filter for runs created before this ISO 8601 timestamp. Ignored when period is set")
+    .optional(),
   period: z
     .string()
-    .describe("Filter for runs created in the last N time period. e.g. 7d, 30d, 365d")
+    .describe(
+      "Filter for runs created in the last N time period. e.g. 7d, 30d, 365d. Takes precedence: when period is set, from and to are ignored"
+    )
     .optional(),
   machine: MachinePresetName.describe("Filter for runs that match this machine preset").optional(),
   region: z
@@ -260,6 +270,19 @@ export const ListRunsInput = CommonProjectsInput.extend({
     .describe(
       "Filter for runs that executed in this region (the worker instance group masterQueue identifier, e.g. 'us-east-1' or 'main')"
     )
+    .optional(),
+  queue: z
+    .string()
+    .describe("Filter for runs in this queue, e.g. task/my-task or a custom queue name")
+    .optional(),
+  batch: z.string().describe("Filter for runs in this batch, starts with batch_").optional(),
+  schedule: z
+    .string()
+    .describe("Filter for runs triggered by this schedule, starts with sched_")
+    .optional(),
+  bulkAction: z
+    .string()
+    .describe("Filter for runs in this bulk action, starts with bulk_")
     .optional(),
 });
 
@@ -523,6 +546,20 @@ export const CreateAlertInput = CommonProjectsInput.extend({
     .min(1)
     .describe("Who to notify when the alert raises, e.g. [{ type: 'chat', chatId: '<id>' }]."),
   name: z.string().describe("An optional display name for the alert.").optional(),
+  query: z
+    .string()
+    .max(8192)
+    .describe("The TRQL query a custom.query alert watches. Only valid with custom.query.")
+    .optional(),
+  signal: z
+    .object({
+      mode: z.enum(["threshold", "absence", "match"]),
+      measure: z.string().max(128).optional(),
+    })
+    .describe(
+      "How a custom.query alert reads its query: threshold on a measure, absence of rows, or any matching row. Only valid with custom.query."
+    )
+    .optional(),
 });
 
 export type CreateAlertInput = z.output<typeof CreateAlertInput>;

@@ -8,17 +8,16 @@ import chalk from "chalk";
 import { z } from "zod";
 import { chalkError, chalkGrey, chalkWarning } from "../utilities/cliOutput.js";
 import { logger } from "../utilities/logger.js";
-import { spinner } from "../utilities/windows.js";
+import { isPlainOutput, spinner, type OutputEnv } from "../utilities/windows.js";
 
 export const BuildLogsMode = z.enum(["compact", "full"]);
 export type BuildLogsMode = z.infer<typeof BuildLogsMode>;
 
 export function resolveBuildLogsMode(
   requested: BuildLogsMode,
-  env: { plain: boolean; ci: boolean; tty: boolean; windows: boolean }
+  env: OutputEnv & { windows: boolean }
 ): BuildLogsMode {
-  // No redrawable spinner in CI, piped output, or the Windows fallback spinner.
-  if (env.plain || env.ci || !env.tty || env.windows) {
+  if (isPlainOutput(env) || env.windows) {
     return "full";
   }
   return requested;

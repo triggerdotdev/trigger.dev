@@ -5,6 +5,7 @@ import {
   stringifyIO,
 } from "@trigger.dev/core/v3";
 import { EngineServiceValidationError } from "@internal/run-engine";
+import { tryCatch } from "@trigger.dev/core";
 import { type TaskRun } from "@trigger.dev/database";
 import { findEnvironmentById } from "~/models/runtimeEnvironment.server";
 import { baseWorkerQueue } from "~/runEngine/concerns/workerQueueSplit.server";
@@ -33,6 +34,16 @@ type OverrideOptions = {
   // zod v4 types `.optional().transform()` fields as required-with-undefined in the
   // output; Partial keeps them omittable for callers passing a subset of overrides.
 } & Partial<RunOptionsData>;
+
+const REGION_UNAVAILABLE_MESSAGES = [
+  "The region you specified doesn't exist",
+  "The region you specified isn't available to you",
+  "You don't have access to this region",
+];
+
+function isRegionUnavailableError(error: Error) {
+  return REGION_UNAVAILABLE_MESSAGES.some((message) => error.message.startsWith(message));
+}
 
 export class ReplayTaskRunService extends BaseService {
   public async call(existingTaskRun: TaskRun, overrideOptions: OverrideOptions = {}) {
@@ -136,72 +147,93 @@ export class ReplayTaskRunService extends BaseService {
       }
 
       const triggerTaskService = new TriggerTaskService();
-      const result = await triggerTaskService.call(
-        existingTaskRun.taskIdentifier,
-        authenticatedEnvironment,
-        {
-          payload: parsedPayload,
-          options: {
-            payloadType,
-            queue: taskQueue
-              ? {
-                  name: taskQueue.name,
-                }
-              : undefined,
-            test: existingTaskRun.isTest,
-            tags,
-            metadata: metadata,
-            delay:
-              overrideOptions.delay ??
-              (overrideOptions.delaySeconds
-                ? new Date(Date.now() + overrideOptions.delaySeconds * 1000)
-                : undefined),
-            ttl: overrideOptions.ttl ?? overrideOptions.ttlSeconds,
-            idempotencyKey: overrideOptions.idempotencyKey,
-            idempotencyKeyTTL:
-              overrideOptions.idempotencyKeyTTL ??
-              (overrideOptions.idempotencyKeyTTLSeconds
-                ? `${overrideOptions.idempotencyKeyTTLSeconds}s`
-                : undefined),
-            concurrencyKey:
-              overrideOptions.concurrencyKey ?? existingTaskRun.concurrencyKey ?? undefined,
-            /**
-             * A run that held gates replays with those same gates. A run with none
-             * stored passes undefined (never a fabricated empty array, which reads
-             * as "clear the named limits") so the replay honors whatever limits the
-             * task declares now, like it honors the current queue and retry config.
-             */
-            gates: Array.isArray(existingTaskRun.gates)
-              ? (existingTaskRun.gates as Array<{ queue: string; concurrencyKey?: string }>)
-              : undefined,
-            maxAttempts: overrideOptions.maxAttempts,
-            maxDuration: overrideOptions.maxDurationSeconds,
-            machine:
-              overrideOptions.machine ??
-              (existingTaskRun.machinePreset as MachinePresetName) ??
-              undefined,
-            lockToVersion:
-              overrideOptions.version === "latest" ? undefined : overrideOptions.version,
-            bulkActionId: overrideOptions?.bulkActionId,
+      const triggerInRegion = (region: string | undefined) =>
+        triggerTaskService.call(
+          existingTaskRun.taskIdentifier,
+          authenticatedEnvironment,
+          {
+            payload: parsedPayload,
+            options: {
+              payloadType,
+              queue: taskQueue
+                ? {
+                    name: taskQueue.name,
+                  }
+                : undefined,
+              test: existingTaskRun.isTest,
+              tags,
+              metadata: metadata,
+              delay:
+                overrideOptions.delay ??
+                (overrideOptions.delaySeconds
+                  ? new Date(Date.now() + overrideOptions.delaySeconds * 1000)
+                  : undefined),
+              ttl: overrideOptions.ttl ?? overrideOptions.ttlSeconds,
+              idempotencyKey: overrideOptions.idempotencyKey,
+              idempotencyKeyTTL:
+                overrideOptions.idempotencyKeyTTL ??
+                (overrideOptions.idempotencyKeyTTLSeconds
+                  ? `${overrideOptions.idempotencyKeyTTLSeconds}s`
+                  : undefined),
+              concurrencyKey:
+                overrideOptions.concurrencyKey ?? existingTaskRun.concurrencyKey ?? undefined,
+              /**
+               * A run that held gates replays with those same gates. A run with none
+               * stored passes undefined (never a fabricated empty array, which reads
+               * as "clear the named limits") so the replay honors whatever limits the
+               * task declares now, like it honors the current queue and retry config.
+               */
+              gates: Array.isArray(existingTaskRun.gates)
+                ? (existingTaskRun.gates as Array<{ queue: string; concurrencyKey?: string }>)
+                : undefined,
+              maxAttempts: overrideOptions.maxAttempts,
+              maxDuration: overrideOptions.maxDurationSeconds,
+              machine:
+                overrideOptions.machine ??
+                (existingTaskRun.machinePreset as MachinePresetName) ??
+                undefined,
+              lockToVersion:
+                overrideOptions.version === "latest" ? undefined : overrideOptions.version,
+              bulkActionId: overrideOptions?.bulkActionId,
+              region,
+              priority: overrideOptions.prioritySeconds,
+            },
+          },
+          {
+            spanParentAsLink: true,
+            parentAsLinkType: "replay",
+            replayedFromTaskRunFriendlyId: existingTaskRun.friendlyId,
+            traceContext: {
+              traceparent: `00-${existingTaskRun.traceId}-${existingTaskRun.spanId}-01`,
+            },
+            realtimeStreamsVersion: determineRealtimeStreamsVersion(
+              existingTaskRun.realtimeStreamsVersion,
+              authenticatedEnvironment.organization.streamBasinName
+            ),
+            triggerSource: overrideOptions.triggerSource ?? "api",
+            triggerAction: "replay",
+          }
+        );
+
+      const [triggerError, result] = await tryCatch(triggerInRegion(region));
+      if (triggerError) {
+        // The original run's region was removed or is no longer available to the project:
+        // replay on the project's default region instead. An explicit region still fails.
+        if (
+          region &&
+          !overrideOptions.region &&
+          triggerError instanceof ServiceValidationError &&
+          isRegionUnavailableError(triggerError)
+        ) {
+          logger.warn("Replay region unavailable, using the project's default region", {
+            taskRunId: existingTaskRun.id,
             region,
-            priority: overrideOptions.prioritySeconds,
-          },
-        },
-        {
-          spanParentAsLink: true,
-          parentAsLinkType: "replay",
-          replayedFromTaskRunFriendlyId: existingTaskRun.friendlyId,
-          traceContext: {
-            traceparent: `00-${existingTaskRun.traceId}-${existingTaskRun.spanId}-01`,
-          },
-          realtimeStreamsVersion: determineRealtimeStreamsVersion(
-            existingTaskRun.realtimeStreamsVersion,
-            authenticatedEnvironment.organization.streamBasinName
-          ),
-          triggerSource: overrideOptions.triggerSource ?? "api",
-          triggerAction: "replay",
+            reason: triggerError.message,
+          });
+          return (await triggerInRegion(undefined))?.run;
         }
-      );
+        throw triggerError;
+      }
 
       return result?.run;
     } catch (error) {

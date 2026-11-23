@@ -14,7 +14,12 @@ import { useShortcutKeys } from "~/hooks/useShortcutKeys";
 import { useUser } from "~/hooks/useUser";
 import { agentDeepLinkParams } from "./ask-ai-channels";
 import { createDockedWidthController, type DockedWidthAction } from "./docked-width";
-import { DashboardAgentPanel } from "./DashboardAgentPanel";
+import { LazyLoad } from "~/components/primitives/LazyLoad";
+import {
+  DashboardAgentPanelFallback,
+  DashboardAgentPanelLoadFailed,
+  LazyDashboardAgentPanel,
+} from "./lazyDashboardAgentPanel";
 import { DashboardAgentProvider, TOGGLE_PANEL_SHORTCUT } from "./dashboardAgentLauncher";
 import { useDashboardAgentOpenRequests } from "./dashboardAgentOpenRequest";
 import type { AgentOpenSource } from "./manual-setup-action";
@@ -406,26 +411,31 @@ export function DashboardAgent({
                 onRequestModeChange={changeMode}
               >
                 {({ dragHandleProps, dragHandleClassName }) => (
-                  <DashboardAgentPanel
-                    onClose={() => setPanelOpen(false)}
-                    requestedMessage={requestedMessage}
-                    prefillRequest={prefillRequest}
-                    openSource={openSource}
-                    createAlertPrefill={createAlertPrefill}
-                    editAlertRequest={editAlertRequest}
-                    groupAlertsRequest={groupAlertsRequest}
-                    openChatRequest={openChatRequest}
-                    newChatSeq={newChatSeq}
-                    promotedPrompt={promotedPrompt}
-                    onChatRead={markChatRead}
-                    // The panel's own count, off the chat list it has already marked read.
-                    onUnreadWorkChange={setUnreadWork}
-                    onTurnActivityChange={handleTurnActivityChange}
-                    mode={mode}
-                    onModeChange={changeMode}
-                    dragHandleProps={dragHandleProps}
-                    dragHandleClassName={dragHandleClassName}
-                  />
+                  <LazyLoad
+                    fallback={<DashboardAgentPanelFallback />}
+                    errorFallback={<DashboardAgentPanelLoadFailed />}
+                  >
+                    <LazyDashboardAgentPanel
+                      onClose={() => setPanelOpen(false)}
+                      requestedMessage={requestedMessage}
+                      prefillRequest={prefillRequest}
+                      openSource={openSource}
+                      createAlertPrefill={createAlertPrefill}
+                      editAlertRequest={editAlertRequest}
+                      groupAlertsRequest={groupAlertsRequest}
+                      openChatRequest={openChatRequest}
+                      newChatSeq={newChatSeq}
+                      promotedPrompt={promotedPrompt}
+                      onChatRead={markChatRead}
+                      // The panel's own count, off the chat list it has already marked read.
+                      onUnreadWorkChange={setUnreadWork}
+                      onTurnActivityChange={handleTurnActivityChange}
+                      mode={mode}
+                      onModeChange={changeMode}
+                      dragHandleProps={dragHandleProps}
+                      dragHandleClassName={dragHandleClassName}
+                    />
+                  </LazyLoad>
                 )}
               </FloatingAgentWindow>
             </ResizablePanel>

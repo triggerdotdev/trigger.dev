@@ -213,6 +213,7 @@ describe("session runs route", () => {
     const body = await response.json();
     expect(body.totalCount).toBe(1);
     expect(body.data[0]).toMatchObject({ number: 1, friendlyId: `run_${ctx.runId}` });
+    expect(body.session).toMatchObject({ closedAt: null, currentRunFriendlyId: null });
   });
 
   postgresTest("a bad cursor is a 400", async ({ prisma }) => {

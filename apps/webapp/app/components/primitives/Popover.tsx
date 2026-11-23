@@ -13,6 +13,7 @@ import { Paragraph, type ParagraphVariant } from "./Paragraph";
 
 const Popover = PopoverPrimitive.Root;
 const PopoverTrigger = PopoverPrimitive.Trigger;
+const PopoverAnchor = PopoverPrimitive.Anchor;
 
 const PopoverContent = React.forwardRef<
   React.ElementRef<typeof PopoverPrimitive.Content>,
@@ -289,6 +290,7 @@ const PopoverVerticalEllipseTrigger = PopoverEllipseTrigger;
 
 export {
   Popover,
+  PopoverAnchor,
   PopoverArrowTrigger,
   PopoverContent,
   PopoverCustomTrigger,

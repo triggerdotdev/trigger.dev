@@ -9,7 +9,7 @@ import type { Waitpoint } from "@trigger.dev/database";
 import { useRef } from "react";
 import { z } from "zod";
 import { AnimatedHourglassIcon } from "~/assets/icons/AnimatedHourglassIcon";
-import { JSONEditor } from "~/components/code/JSONEditor";
+import { LazyJSONEditor } from "~/components/code/LazyJSONEditor";
 import { Button } from "~/components/primitives/Buttons";
 import { DateTime } from "~/components/primitives/DateTime";
 import { Paragraph } from "~/components/primitives/Paragraph";
@@ -401,7 +401,7 @@ function CompleteManualWaitpointForm({ waitpoint }: { waitpoint: { id: string } 
       </div>
       <div className="overflow-y-auto bg-background-deep scrollbar-thin scrollbar-track-transparent scrollbar-thumb-surface-control">
         <div className="max-h-[70vh] min-h-40 overflow-y-auto bg-background-deep scrollbar-thin scrollbar-track-transparent scrollbar-thumb-surface-control">
-          <JSONEditor
+          <LazyJSONEditor
             autoFocus
             // oxlint-disable-next-line react/refs -- This ref intentionally coordinates an imperative route integration outside React state.
             defaultValue={currentJson.current}

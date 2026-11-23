@@ -5,15 +5,18 @@ import {
   signUserActorToken,
   verifyUserActorToken,
 } from "@trigger.dev/rbac";
-import type { AdminAuditSourceEndpoint } from "@trigger.dev/plugins";
+import type { AdminAuditSourceEndpoint, AuditLogActor } from "@trigger.dev/plugins";
 import { randomBytes } from "node:crypto";
 import { $transaction, prisma } from "~/db.server";
 import { recordAdminPatCreated } from "~/services/adminAudit/adminAuditContext.server";
+import { SYSTEM_ACTOR, userActor } from "~/services/credentialFingerprints.server";
 import { env } from "~/env.server";
 import {
   AUTHORIZATION_CODE_TTL_MS,
   codeChallengeFor,
   createPersonalAccessToken,
+  recordPersonalAccessTokenCreated,
+  recordPersonalAccessTokenRevoked,
   safeEqual,
   updateLastAccessedAtIfStale,
 } from "~/services/personalAccessToken.server";
@@ -172,7 +175,7 @@ export async function exchangeAuthorizationCode(
     return { ok: false, body: oauthError("invalid_target", "resource does not match the code") };
   }
   if (code.personalAccessTokenId) {
-    await revokeGrant(code.personalAccessTokenId);
+    await revokeGrant(code.personalAccessTokenId, "code_replay");
     return invalidGrant("Code already used");
   }
 
@@ -189,9 +192,10 @@ export async function exchangeAuthorizationCode(
     if (!current) return { replayedPatId: null };
     if (current.personalAccessTokenId) return { replayedPatId: current.personalAccessTokenId };
 
-    if (client.kind === "PREREGISTERED") {
-      await revokeGrants(tx, { userId, oauthClientId: client.id });
-    }
+    const replaced =
+      client.kind === "PREREGISTERED"
+        ? await revokeGrants(tx, { userId, oauthClientId: client.id })
+        : [];
 
     const pat = await createPersonalAccessToken(
       {
@@ -209,7 +213,7 @@ export async function exchangeAuthorizationCode(
       where: { id: code.id },
       data: { personalAccessTokenId: pat.id },
     });
-    await revokeGrantsBeyondCap(tx, userId, client.id);
+    const beyondCap = await revokeGrantsBeyondCap(tx, userId, client.id);
 
     const issued = await issueTokens(tx, sign, {
       userId,
@@ -220,23 +224,51 @@ export async function exchangeAuthorizationCode(
       scope: code.scope,
       resource: codeResource,
     });
-    return { body: issued.body, patId: pat.id, patName: pat.name };
+    // Not the token itself: only what its events need leaves the transaction.
+    const created = {
+      id: pat.id,
+      name: pat.name,
+      obfuscatedToken: pat.obfuscatedToken,
+      expiresAt: pat.expiresAt,
+      oauthClientId: client.id,
+    };
+    return { body: issued.body, pat: created, replaced, beyondCap };
   });
 
   if (!result) return invalidGrant("Code already used");
   if ("replayedPatId" in result) {
-    if (result.replayedPatId) await revokeGrant(result.replayedPatId);
+    if (result.replayedPatId) await revokeGrant(result.replayedPatId, "code_replay");
     return invalidGrant("Code already used");
   }
   void recordAdminPatCreated({
     userId,
-    tokenId: result.patId,
-    name: result.patName,
+    tokenId: result.pat.id,
+    name: result.pat.name,
     source: auditSource,
   });
+  // Recorded once the exchange commits: `skipAudit` kept them out of the transaction.
+  recordPersonalAccessTokenCreated(result.pat, userActor(userId), "api");
+  recordGrantsRevoked(result.replaced, "replaced");
+  recordGrantsRevoked(result.beyondCap, "grant_cap");
   return { ok: true, body: result.body };
 }
 
+/** Why a grant's token was revoked, as its `pat.revoked` event says. */
+type GrantRevocationReason =
+  /** The user authorized a pre-registered client again, which replaces its earlier grants. */
+  | "replaced"
+  /** The user has more live grants for the client than the cap: the oldest go. */
+  | "grant_cap"
+  /** An authorization code was presented twice. */
+  | "code_replay"
+  /** A used refresh token was presented again. */
+  | "refresh_reuse"
+  /** The client asked to revoke the token (RFC 7009). */
+  | "client_revoked";
+
+type RevokedGrant = Awaited<ReturnType<typeof revokeGrants>>[number];
+
+/** Revokes grant tokens. Inside a transaction, record the result once it commits. */
 function revokeGrants(
   tx: PrismaClientOrTransaction,
   where: {
@@ -245,14 +277,40 @@ function revokeGrants(
     oauthClientId?: string | { not: null };
   }
 ) {
-  return tx.personalAccessToken.updateMany({
+  return tx.personalAccessToken.updateManyAndReturn({
     where: { ...where, revokedAt: null },
     data: { revokedAt: new Date() },
+    select: {
+      id: true,
+      name: true,
+      userId: true,
+      obfuscatedToken: true,
+      hashedToken: true,
+      revokedAt: true,
+      oauthClientId: true,
+    },
   });
 }
 
-function revokeGrant(personalAccessTokenId: string) {
-  return revokeGrants(prisma, { id: personalAccessTokenId });
+async function revokeGrant(personalAccessTokenId: string, reason: GrantRevocationReason) {
+  recordGrantsRevoked(await revokeGrants(prisma, { id: personalAccessTokenId }), reason);
+}
+
+/**
+ * Marks each token's fingerprint revoked and records `pat.revoked`. A replayed code or refresh
+ * token is our response to a possible attack, not the user's doing, so `system` revokes those.
+ */
+function recordGrantsRevoked(tokens: RevokedGrant[], reason: GrantRevocationReason) {
+  const bySystem = reason === "code_replay" || reason === "refresh_reuse";
+  for (const token of tokens) {
+    const revokedBy: AuditLogActor = bySystem ? SYSTEM_ACTOR : userActor(token.userId);
+    recordPersonalAccessTokenRevoked(token, {
+      reason: "revoked",
+      revokedBy,
+      auditReason: reason,
+      source: "api",
+    });
+  }
 }
 
 /** Keeps at most MAX_LIVE_GRANTS grant PATs per user and client, revoking the oldest. */
@@ -272,9 +330,8 @@ async function revokeGrantsBeyondCap(
     skip: MAX_LIVE_GRANTS,
     select: { id: true },
   });
-  if (stale.length > 0) {
-    await revokeGrants(tx, { id: { in: stale.map((pat) => pat.id) } });
-  }
+  if (stale.length === 0) return [];
+  return revokeGrants(tx, { id: { in: stale.map((pat) => pat.id) } });
 }
 
 /** Rotates a refresh handle. Presenting a used handle revokes the whole grant. */
@@ -301,7 +358,7 @@ export async function exchangeRefreshToken(
 
   const now = new Date();
   if (row.usedAt) {
-    await revokeGrant(row.personalAccessTokenId);
+    await revokeGrant(row.personalAccessTokenId, "refresh_reuse");
     return invalidGrant("Refresh token already used");
   }
 
@@ -342,7 +399,7 @@ export async function exchangeRefreshToken(
   });
 
   if (!body) {
-    await revokeGrant(row.personalAccessTokenId);
+    await revokeGrant(row.personalAccessTokenId, "refresh_reuse");
     return invalidGrant("Refresh token already used");
   }
   return { ok: true, body };
@@ -359,7 +416,10 @@ export async function revokeToken(params: URLSearchParams): Promise<void> {
       audience: mcpResource(),
     });
     if (!claims?.pat || (clientId && clientId !== claims.client)) return;
-    await revokeGrants(prisma, { id: claims.pat, oauthClientId: { not: null } });
+    recordGrantsRevoked(
+      await revokeGrants(prisma, { id: claims.pat, oauthClientId: { not: null } }),
+      "client_revoked"
+    );
     return;
   }
 
@@ -369,5 +429,5 @@ export async function revokeToken(params: URLSearchParams): Promise<void> {
   });
   if (!row) return;
   if (clientId && clientId !== row.oauthClient.clientId) return;
-  await revokeGrant(row.personalAccessTokenId);
+  await revokeGrant(row.personalAccessTokenId, "client_revoked");
 }

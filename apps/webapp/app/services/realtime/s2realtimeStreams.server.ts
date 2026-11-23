@@ -3,7 +3,11 @@ import type { UnkeyCache } from "@internal/cache";
 import type { StreamIngestor, StreamRecord, StreamResponder, StreamResponseOptions } from "./types";
 import type { LogLevel } from "@trigger.dev/core/logger";
 import { Logger } from "@trigger.dev/core/logger";
-import { headerValue, SESSION_IN_CONSUMED_ID_HEADER } from "@trigger.dev/core/v3";
+import {
+  headerValue,
+  SESSION_IN_CONSUMED_ID_HEADER,
+  SESSION_IN_EVENT_ID_HEADER,
+} from "@trigger.dev/core/v3";
 import { randomUUID } from "node:crypto";
 import { setTimeout as sleep } from "node:timers/promises";
 import { ServiceValidationError } from "~/v3/services/common.server";
@@ -32,6 +36,11 @@ export type SessionOutTail =
       control: string | undefined;
       timestamp: number;
       inConsumedSeq: number | undefined;
+      /**
+       * The `.in` cursor the run committed at this turn boundary: every record at or below it was
+       * handled, anything past it is unread. Present on every SDK that writes the cursor at all.
+       */
+      inEventId?: number;
     };
 
 /**
@@ -283,9 +292,16 @@ export class S2RealtimeStreams implements StreamResponder, StreamIngestor {
   async readRecords(
     runId: string,
     streamId: string,
-    afterSeqNum?: number
+    afterSeqNum?: number,
+    limit?: number
   ): Promise<StreamRecord[]> {
-    return this.#readRecordsByName(this.toStreamName(runId, streamId), afterSeqNum);
+    return this.#readRecordsByName(this.toStreamName(runId, streamId), afterSeqNum, limit);
+  }
+
+  async listRunStreams(runId: string): Promise<string[]> {
+    const prefix = this.toStreamName(runId, "");
+    const names = await this.#s2ListStreamNames(prefix);
+    return names.map((name) => name.slice(prefix.length)).filter((streamId) => streamId);
   }
 
   /**
@@ -509,6 +525,7 @@ export class S2RealtimeStreams implements StreamResponder, StreamIngestor {
               data: parsedBody?.data ?? "",
               id: parsedBody?.id ?? "",
               seqNum: record.seq_num,
+              timestamp: record.timestamp,
               headers: record.headers,
             });
           }
@@ -699,11 +716,14 @@ export class S2RealtimeStreams implements StreamResponder, StreamIngestor {
       const headers = record.headers ?? undefined;
       const consumed = headerValue(headers, SESSION_IN_CONSUMED_ID_HEADER);
       const inConsumedSeq = consumed !== undefined && consumed !== "" ? Number(consumed) : NaN;
+      const eventId = headerValue(headers, SESSION_IN_EVENT_ID_HEADER);
+      const inEventId = eventId !== undefined && eventId !== "" ? Number(eventId) : NaN;
       return {
         kind: "record",
         control: headerValue(headers, "trigger-control"),
         timestamp: record.timestamp,
         inConsumedSeq: Number.isInteger(inConsumedSeq) ? inConsumedSeq : undefined,
+        inEventId: Number.isInteger(inEventId) ? inEventId : undefined,
       };
     }
     return { kind: "unknown" };

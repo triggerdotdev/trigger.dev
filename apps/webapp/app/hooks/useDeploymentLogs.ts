@@ -1,4 +1,4 @@
-import { S2, S2Error } from "@s2-dev/streamstore";
+import type * as S2Client from "@s2-dev/streamstore";
 import { DeploymentEventFromString } from "@trigger.dev/core/v3/schemas";
 import type { WorkerDeploymentStatus } from "@trigger.dev/database";
 import { useEffect, useState } from "react";
@@ -13,6 +13,8 @@ type DeploymentEventStream = {
     basin: string;
     stream: string;
     accessToken: string;
+    /** A self-hosted S2 to read from instead of s2.dev. */
+    endpoint?: string;
   };
 };
 
@@ -36,6 +38,7 @@ export function useDeploymentLogs({ eventStream, status }: UseDeploymentLogsOpti
   const basin = eventStream?.s2.basin;
   const stream = eventStream?.s2.stream;
   const accessToken = eventStream?.s2.accessToken;
+  const endpoint = eventStream?.s2.endpoint;
 
   useEffect(() => {
     if (!basin || !stream || !accessToken) return;
@@ -94,14 +97,24 @@ export function useDeploymentLogs({ eventStream, status }: UseDeploymentLogsOpti
     };
 
     const streamLogs = async () => {
+      // Loaded here rather than at module scope: the S2 client is only needed once logs stream,
+      // and leaving it out of the page's initial JavaScript gets the page interactive sooner.
+      let s2: typeof S2Client | undefined;
       try {
-        const s2Stream = new S2({ accessToken }).basin(basin).stream(stream);
+        s2 = await import("@s2-dev/streamstore");
+        const s2Stream = new s2.S2({
+          accessToken,
+          ...(endpoint ? { endpoints: { account: endpoint, basin: endpoint } } : {}),
+        })
+          .basin(basin)
+          .stream(stream);
 
         do {
           const readSession = await s2Stream.readSession(
             {
               start: { from: { seqNum: nextSeqNum }, clamp: true },
-              stop: { waitSecs: 60 },
+              // A finished deploy's log is complete: read to its end and stop, don't wait for more.
+              stop: { waitSecs: isFinished ? 0 : 60 },
             },
             { signal: abortController.signal }
           );
@@ -141,11 +154,11 @@ export function useDeploymentLogs({ eventStream, status }: UseDeploymentLogsOpti
       } catch (error) {
         if (abortController.signal.aborted) return;
 
-        if (error instanceof S2Error && error.code === "stream_not_found") {
+        if (s2 && error instanceof s2.S2Error && error.code === "stream_not_found") {
           finalized = isFinished;
           return;
         }
-        if (error instanceof S2Error && error.code === "permission_denied") return;
+        if (s2 && error instanceof s2.S2Error && error.code === "permission_denied") return;
 
         console.error("Failed to stream logs:", error);
         setStreamError("Failed to stream logs");
@@ -164,7 +177,7 @@ export function useDeploymentLogs({ eventStream, status }: UseDeploymentLogsOpti
       abortController.abort();
       store();
     };
-  }, [basin, stream, accessToken, status]);
+  }, [basin, stream, accessToken, endpoint, status]);
 
   return { logs, isStreaming, streamError };
 }

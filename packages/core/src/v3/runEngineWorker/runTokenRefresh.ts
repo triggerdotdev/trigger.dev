@@ -1,6 +1,9 @@
 import { z } from "zod/v4";
 import { discriminatedUnion } from "../utils/zod.js";
 
+// The SDK stops selecting run tokens this long before their actual expiry.
+export const RUN_TOKEN_EXPIRY_BUFFER_SECONDS = 5 * 60;
+
 /**
  * Refresh-capable runners ask for a replacement once their installed run token has this long left.
  * It must stay well above the SDK's own expiry buffer so a refresh lands before the SDK falls back.

@@ -32,10 +32,26 @@ export const RunAnnotations = z.object({
   webhookDeliveryId: z.string().optional(),
   /** The endpoint (friendly id) that delivery arrived on. */
   webhookEndpointId: z.string().optional(),
+  /**
+   * For a session run: the session's `.in` tail seq (the next seq) read just before the run was
+   * triggered. `.in` messages at or after it arrived after the run started. Where the run-end check
+   * starts reading when the run wrote no turn of its own.
+   */
+  sessionInSeq: z.number().int().nonnegative().optional(),
+  /**
+   * For a session run started for messages already on `.in` (a revive after an append, or the
+   * continuation the run-end check starts): the first `.in` seq it was started to answer, which is
+   * below `sessionInSeq`. A `turn-complete` on `.out` whose `.in` cursor is at or past it is this
+   * run's own. Absent when the run was started before its messages landed: `sessionInSeq` is then
+   * the first one.
+   */
+  sessionInFirstSeq: z.number().int().nonnegative().optional(),
   /** Where the most recently stamped attempt executed. Set by the supervisor at attempt start. */
   workerCell: z.string().optional().catch(undefined),
   workerLane: z.string().optional().catch(undefined),
   executionMode: z.enum(["STANDARD", "SANDBOX"]).optional(),
+  /** Server-owned provisioning requirement, pinned when the run is created. */
+  secretProxyRequired: z.literal(true).optional(),
   /** Set only for runs whose task declares a non-standard policy. Pinned for the run's lifetime. */
   executionPolicy: RunExecutionPolicy.optional(),
   /** The Session that triggered this run. Fills `$session` in policy scopes. */
@@ -43,6 +59,15 @@ export const RunAnnotations = z.object({
 });
 
 export type RunAnnotations = z.infer<typeof RunAnnotations>;
+
+export function requiresSecretProxy(annotations: unknown): boolean {
+  return (
+    typeof annotations === "object" &&
+    annotations !== null &&
+    "secretProxyRequired" in annotations &&
+    annotations.secretProxyRequired === true
+  );
+}
 
 /** Lenient read of the worker stamp: works on blobs that predate or fail RunAnnotations. */
 export const WorkerStampAnnotations = z.object({

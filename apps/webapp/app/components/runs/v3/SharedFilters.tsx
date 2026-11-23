@@ -276,6 +276,7 @@ export function timeFilterRenderValues({
   let valueLabel: ReactNode;
   switch (rangeType) {
     case "period": {
+      period = period ?? defaultPeriod;
       // First check if it's a preset period
       const preset = timePeriods.find((t) => t.value === period);
       if (preset) {
@@ -360,6 +361,8 @@ export interface TimeFilterProps {
   valueClassName?: string;
   /** Extra URL params to clear when the range changes, in addition to the default cursor/direction (e.g. a page's namespaced pagination params). */
   clearParams?: string[];
+  /** Marks the chip as ignored, with this text as its tooltip. */
+  warning?: string;
 }
 
 export function TimeFilter({
@@ -375,6 +378,7 @@ export function TimeFilter({
   maxPeriodDays,
   valueClassName,
   clearParams,
+  warning,
 }: TimeFilterProps = {}) {
   const { value } = useSearchParams();
   // In controlled mode (onValueChange provided) the caller owns all three values via local
@@ -424,6 +428,7 @@ export function TimeFilter({
                   removable={false}
                   variant="secondary/small"
                   valueClassName={valueClassName}
+                  warning={warning}
                 />
               </Ariakit.TooltipAnchor>
               {shortcut && (
@@ -711,7 +716,9 @@ function TimeDropdown({
                     step="1"
                     placeholder="Custom"
                     value={customValue}
-                    autoFocus
+                    // Focusing it picks "in the last": with an exact range set, opening must keep
+                    // the range selected.
+                    autoFocus={!from && !to}
                     onChange={(e) => {
                       setCustomValue(e.target.value);
                       setSelectedPeriod("custom");

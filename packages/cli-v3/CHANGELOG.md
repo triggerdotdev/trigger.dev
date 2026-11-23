@@ -1,5 +1,15 @@
 # trigger.dev
 
+## 4.8.8
+
+### Patch Changes
+
+- The MCP `list_runs` tool can now filter runs by queue, batch, schedule and bulk action, and its descriptions now say that `period` takes precedence over `from` and `to`. ([`25c9430e7`](https://github.com/triggerdotdev/trigger.dev/commit/25c9430e775daabc370dab45199a8d21814e3743))
+- Updated dependencies:
+  - `@trigger.dev/core@4.8.8`
+  - `@trigger.dev/build@4.8.8`
+  - `@trigger.dev/schema-to-json@4.8.8`
+
 ## 4.8.7
 
 ### Patch Changes

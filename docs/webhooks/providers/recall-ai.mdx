@@ -40,6 +40,28 @@ To run a subscriber only for some events, add a [filter](/webhooks/filters) on `
 3. Create a workspace verification secret under **Developers > API Keys & Secrets > Create Workspace Secret**, then choose **Set signing secret** on the Trigger.dev endpoint and paste it. Recall.ai sends no signature headers until a workspace secret exists.
 4. Send a test event from Recall.ai, or use the endpoint's **Test** tab, and check the endpoint's **Deliveries** tab. See [Verify the connection](/webhooks/connect#verify-the-connection) if nothing arrives.
 
+## Real-time events
+
+The webhooks dashboard covers bot status events such as `bot.joining_call` and `bot.done`. Real-time events, such as `transcript.data`, `transcript.partial_data` and `participant_events.*`, are set on each bot when you create it, in `recording_config.realtime_endpoints`. Point one at the endpoint's **Webhook URL**:
+
+```ts Your backend code
+await fetch("https://us-west-2.recall.ai/api/v1/bot/", {
+  method: "POST",
+  headers: { Authorization: `Token ${process.env.RECALL_API_KEY}`, "Content-Type": "application/json" },
+  body: JSON.stringify({
+    meeting_url: "https://meet.google.com/abc-defg-hij",
+    recording_config: {
+      transcript: { provider: { recallai_streaming: {} } },
+      realtime_endpoints: [
+        { type: "webhook", url: "<the endpoint's Webhook URL>", events: ["transcript.data"] },
+      ],
+    },
+  }),
+});
+```
+
+Real-time events are signed with the workspace secret in `webhook-*` headers, on every account, so the same `webhooks.recallai()` endpoint verifies them. Filter on `event.event`, for example `event.event == 'transcript.data'`. The [Recall.ai meeting agent](/guides/example-projects/recall-meeting-agent) routes each transcript sentence into an agent session this way.
+
 ## Accounts created before 15 December 2025
 
 Older Recall.ai accounts sign webhooks-dashboard deliveries with `svix-*` headers and a separate secret for each endpoint. For those accounts, declare the endpoint with `webhooks.svix()` instead, and set the endpoint's signing secret from the Recall.ai webhooks dashboard:
@@ -52,3 +74,7 @@ export const recall = webhooks.endpoint.define({
   source: webhooks.svix(),
 });
 ```
+
+## Example project
+
+The [Recall.ai meeting agent example](/guides/example-projects/recall-meeting-agent) puts an AI agent in your video call. It routes Recall.ai's real-time transcript into one agent session on Trigger.dev, and the agent speaks and screenshares through a web page the meeting agent uses as its video feed.

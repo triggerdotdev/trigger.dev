@@ -1,0 +1,1 @@
+ALTER TABLE "Project" ADD COLUMN IF NOT EXISTS "secretProxyEnabled" BOOLEAN NOT NULL DEFAULT false;

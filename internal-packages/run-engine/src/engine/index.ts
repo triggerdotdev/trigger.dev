@@ -79,6 +79,7 @@ import {
   StaleCompletionNotes,
 } from "./staleCompletions.js";
 import { getFinalRunStatuses } from "./statuses.js";
+import { legacyToV2WorkerQueues } from "./workerQueueRouting.js";
 import { BatchSystem } from "./systems/batchSystem.js";
 import { CheckpointSystem } from "./systems/checkpointSystem.js";
 import { DebounceSystem } from "./systems/debounceSystem.js";
@@ -678,6 +679,7 @@ export class RunEngine {
       raceSimulationSystem: this.raceSimulationSystem,
       pendingVersionRunIdLookup:
         options.pendingVersionRunIdLookup ?? new NoopPendingVersionRunIdLookup(),
+      legacyToV2WorkerQueues: legacyToV2WorkerQueues(options.legacyWorkerQueuesOnV2 ?? []),
     };
     this.#resources = resources;
 

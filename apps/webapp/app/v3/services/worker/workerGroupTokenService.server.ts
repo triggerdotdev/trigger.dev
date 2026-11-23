@@ -14,7 +14,7 @@ import type {
   TaskRunExecutionResult,
 } from "@trigger.dev/core/v3";
 import { getMeter } from "@internal/tracing";
-import { SemanticInternalAttributes } from "@trigger.dev/core/v3";
+import { requiresSecretProxy, SemanticInternalAttributes } from "@trigger.dev/core/v3";
 import { fromFriendlyId } from "@trigger.dev/core/v3/isomorphic";
 import {
   WORKER_HEADERS,
@@ -56,7 +56,8 @@ import { singleton } from "~/utils/singleton";
 import { resolveAttemptVariables } from "~/services/environmentEncryption/attemptVariables.server";
 import { secretProxy } from "~/services/secretProxy/instance.server";
 import type { SecretProxyExecutionMetadata } from "~/services/secretProxy/service.server";
-import { failAttemptForSecretProxySigning } from "~/services/secretProxy/attemptFailure.server";
+import { failAttemptForRunTokenSigning } from "~/services/secretProxy/attemptFailure.server";
+import { rootKeyInjectionDisabled } from "./rootKeyInjectionPolicy.server";
 import {
   pinnedRunPolicy,
   runTokenScopes,
@@ -79,6 +80,10 @@ const authenticatedWorkerInstanceCache = singleton(
   "authenticatedWorkerInstanceCache",
   createAuthenticatedWorkerInstanceCache
 );
+
+function secretProxyPlacementRequired() {
+  return json({ error: "Run requires secret proxy placement" }, { status: 409 });
+}
 
 // Opt-in suppression of untokened worker actions on runs created after the cutoff. Only the
 // no-header path ever reads a run row, and only when this is on - default off means feature-off is
@@ -686,6 +691,7 @@ export class AuthenticatedWorkerInstance extends WithRunEngine {
     sandboxRunId,
     supportsRunTokenRefresh,
     supportsUsageJwtRefresh,
+    supportsRootKeyFreeExecution,
     supportsSecretProxy,
   }: {
     runFriendlyId: string;
@@ -698,10 +704,12 @@ export class AuthenticatedWorkerInstance extends WithRunEngine {
     sandboxRunId?: string;
     supportsRunTokenRefresh?: boolean;
     supportsUsageJwtRefresh?: boolean;
+    supportsRootKeyFreeExecution?: boolean;
     supportsSecretProxy?: boolean;
   }): Promise<
     StartRunAttemptResult & {
       envVars: Record<string, string>;
+      requiresRunToken?: boolean;
       secretProxy?: SecretProxyExecutionMetadata;
     }
   > {
@@ -710,15 +718,40 @@ export class AuthenticatedWorkerInstance extends WithRunEngine {
     await this.assertCreatedAtGate({ runId, environmentId, action: "start" });
 
     // Resolved before the attempt exists, so an unavailable key leaves the run startable.
-    const { environment, pinned } = await this.findAttemptEnvironment(runId, environmentId);
+    const { environment, pinned, secretProxyRequired } = await this.findAttemptEnvironment(
+      runId,
+      environmentId
+    );
+    if (secretProxyRequired && !supportsSecretProxy) throw secretProxyPlacementRequired();
+    const requiresRunToken = rootKeyInjectionDisabled(environment);
+
+    const runTokenSupported = supportsRunTokenRefresh === true && environmentId === environment.id;
+    if (
+      requiresRunToken &&
+      (!runTokenSupported ||
+        !supportsUsageJwtRefresh ||
+        !supportsRootKeyFreeExecution ||
+        !env.RUN_TOKEN_ISSUER_URL)
+    ) {
+      throw json(
+        {
+          error:
+            "This deployment requires run tokens, but the runner or platform does not support root-key-free execution.",
+        },
+        { status: 503 }
+      );
+    }
     const resolved = await resolveAttemptVariables(
       environment,
       environment.parentEnvironment ?? undefined,
       { grant: pinned?.policy.envVars }
     );
-    const prepared = { ...resolved, variables: withoutRootKey(pinned, resolved.variables) };
-
-    const runTokenSupported = supportsRunTokenRefresh === true && environmentId === environment.id;
+    const prepared = {
+      ...resolved,
+      variables: requiresRunToken
+        ? resolved.variables.filter(({ key }) => key !== "TRIGGER_SECRET_KEY")
+        : withoutRootKey(pinned, resolved.variables),
+    };
     if (pinned && !runTokenSupported) {
       throw json(
         { error: "This run's execution policy needs a worker that supports run tokens" },
@@ -736,7 +769,9 @@ export class AuthenticatedWorkerInstance extends WithRunEngine {
     // Policy runs have no root key to fall back to, so they always get a run token.
     const runTokenAvailable =
       runTokenSupported &&
-      (pinned !== undefined || runTokenInjectionEnabled(environment.organization?.featureFlags));
+      (requiresRunToken ||
+        pinned !== undefined ||
+        runTokenInjectionEnabled(environment.organization?.featureFlags));
     const proxy = prepared.proxyValues.length
       ? secretProxy(
           env.CONTROL_PLANE_DEQUEUE_READS_FROM_REPLICA === "1" ? this._replica : this._prisma
@@ -758,7 +793,8 @@ export class AuthenticatedWorkerInstance extends WithRunEngine {
       isWarmStart,
       workerCell: stamped ? workerCell : undefined,
       workerLane: stamped ? workerLane : undefined,
-      enforceDuplicateAttemptStart: supportsSecretProxy === true || proxy !== undefined,
+      enforceDuplicateAttemptStart:
+        requiresRunToken || supportsSecretProxy === true || proxy !== undefined,
       workerId: this.workerInstanceId,
       runnerId,
       environmentId,
@@ -767,22 +803,26 @@ export class AuthenticatedWorkerInstance extends WithRunEngine {
     const defaultMachinePreset = machinePresetFromName(defaultMachine);
 
     const runToken = runTokenAvailable
-      ? await this.mintRunTokenOrSkip(environment, engineResult, pinned)
+      ? await this.mintRunTokenOrSkip(
+          environment,
+          engineResult,
+          pinned,
+          requiresRunToken || !!proxy || !!pinned
+        )
       : undefined;
 
     let secretProxyMetadata: SecretProxyExecutionMetadata | undefined;
     let variables = prepared.variables;
-    if (proxy || pinned) {
-      if (!runToken) {
-        return failAttemptForSecretProxySigning({
-          engine: this._engine,
-          run: engineResult.run,
-          snapshotId: engineResult.snapshot.id,
-          environmentId: environment.id,
-          workerId: this.workerInstanceId,
-          runnerId,
-        });
-      }
+    if (!runToken && (requiresRunToken || proxy || pinned)) {
+      return failAttemptForRunTokenSigning({
+        secretProxy: !!proxy || !!pinned,
+        engine: this._engine,
+        run: engineResult.run,
+        snapshotId: engineResult.snapshot.id,
+        environmentId: environment.id,
+        workerId: this.workerInstanceId,
+        runnerId,
+      });
     }
     if (proxy && runToken) {
       const delivery = proxy.finalizeRuntime(prepared.proxyValues, proxyHosts!, {
@@ -827,6 +867,7 @@ export class AuthenticatedWorkerInstance extends WithRunEngine {
     return {
       ...engineResult,
       envVars,
+      ...(requiresRunToken ? { requiresRunToken } : {}),
       ...(secretProxyMetadata ? { secretProxy: secretProxyMetadata } : {}),
     };
   }
@@ -889,6 +930,7 @@ export class AuthenticatedWorkerInstance extends WithRunEngine {
     return {
       environment,
       pinned: pinnedRunPolicy(run.annotations),
+      secretProxyRequired: requiresSecretProxy(run.annotations),
     };
   }
 
@@ -896,7 +938,8 @@ export class AuthenticatedWorkerInstance extends WithRunEngine {
   private async mintRunTokenOrSkip(
     environment: RuntimeEnvironment,
     engineResult: StartRunAttemptResult,
-    pinned: PinnedRunPolicy | undefined
+    pinned: PinnedRunPolicy | undefined,
+    required: boolean
   ): Promise<string | undefined> {
     const { execution } = engineResult;
     try {
@@ -912,10 +955,15 @@ export class AuthenticatedWorkerInstance extends WithRunEngine {
         scopes: runTokenScopes(pinned, execution.run.id),
       });
     } catch (error) {
-      logger.warn("Failed to mint run token, continuing without it", {
-        runId: execution.run.id,
-        error: error instanceof Error ? error.message : String(error),
-      });
+      logger.warn(
+        required
+          ? "Required run token mint failed"
+          : "Failed to mint run token, continuing without it",
+        {
+          runId: execution.run.id,
+          error: error instanceof Error ? error.message : String(error),
+        }
+      );
       return undefined;
     }
   }

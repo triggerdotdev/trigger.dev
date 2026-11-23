@@ -50,6 +50,7 @@ export interface WorkloadManagerCreateOptions {
   runtime?: string;
   // When set, overrides the TRIGGER_DEPLOYMENT_ID value the runner forwards as its identity header.
   deploymentToken?: string;
+  workloadNetwork?: "proxy";
   runId: string;
   runFriendlyId: string;
   snapshotId: string;

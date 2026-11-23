@@ -7,6 +7,7 @@ import {
   type WebhookDeliveryStatus,
   type WebhookEndpointStatus,
 } from "@trigger.dev/database";
+import { deliveryActivityBuckets } from "./activitySeries.server";
 import parseDuration from "parse-duration";
 import { z } from "zod";
 import { type Direction } from "~/components/ListPagination";
@@ -37,27 +38,36 @@ type WebhookEndpointSummary = {
   filter: string | null;
 };
 
+/** An endpoint a webhook() task subscribes to, with the task's filter on it. */
+type WebhookTaskEndpoint = WebhookEndpointSummary;
+
 /** A task that subscribes to webhook endpoints (a webhook() task), and those endpoints. */
 export type WebhookDetail = {
   slug: string;
   filePath: string;
   createdAt: Date;
-  endpoints: WebhookEndpointSummary[];
+  endpoints: WebhookTaskEndpoint[];
 };
 
-type WebhookActivityPoint = {
+type DeliveryActivityPoint = {
   bucket: number; // epoch ms
 } & Record<string, number>;
 
-export type WebhookActivity = {
-  data: WebhookActivityPoint[];
-  statuses: string[];
+/** Deliveries per time bucket by their current status, for the Deliveries tab's chart. */
+export type DeliveryActivity = {
+  data: DeliveryActivityPoint[];
+  /** Every delivery status, in the order the chart stacks them. */
+  statuses: WebhookDeliveryStatus[];
+  /** Deliveries in the period by status. */
+  totals: Partial<Record<WebhookDeliveryStatus, number>>;
+  lastDeliveryAt: Date | null;
 };
 
 /** A row on an endpoint's Deliveries tab: which runs it reached is on the delivery page. */
 export type EndpointDeliveryListItem = {
   id: string;
   friendlyId: string;
+  webhookEndpointId: string;
   externalDeliveryId: string;
   status: WebhookDeliveryStatus;
   isTest: boolean;
@@ -127,35 +137,26 @@ export type WebhookEndpointDetail = {
   updatedAt: Date;
 };
 
-// Run-status group order, shared with getRunActivity. Mirrors AgentDetailPresenter.
-const TERMINAL_GROUPS = {
-  COMPLETED: ["COMPLETED_SUCCESSFULLY"],
-  FAILED: ["COMPLETED_WITH_ERRORS", "SYSTEM_FAILURE", "CRASHED", "INTERRUPTED", "TIMED_OUT"],
-  CANCELED: ["CANCELED", "EXPIRED"],
-  RUNNING: [
-    "EXECUTING",
-    "DEQUEUED",
-    "PENDING_EXECUTING",
-    "WAITING_TO_RESUME",
-    "QUEUED_EXECUTING",
-    "PENDING",
-    "PENDING_VERSION",
-    "DELAYED",
-    "WAITING_FOR_DEPLOY",
-  ],
-} as const;
-
-const GROUP_LABEL = ["COMPLETED", "FAILED", "CANCELED", "RUNNING"] as const;
-type GroupLabel = (typeof GROUP_LABEL)[number];
-
-function groupForStatus(status: string): GroupLabel | undefined {
-  for (const label of GROUP_LABEL) {
-    if ((TERMINAL_GROUPS[label] as readonly string[]).includes(status)) return label;
-  }
-  return undefined;
-}
+/** The order the deliveries chart stacks statuses, bottom first. */
+const DELIVERY_STATUS_ORDER: WebhookDeliveryStatus[] = [
+  "SUCCEEDED",
+  "FAILED",
+  "PROCESSING",
+  "PENDING",
+  "FILTERED",
+  "UNMATCHED",
+];
 
 const DELIVERIES_PAGE_SIZE = 25;
+
+/** The endpoints in an environment that route to a webhook() task. */
+function taskEndpointsWhere(environmentId: string, webhookSlug: string) {
+  return {
+    runtimeEnvironmentId: environmentId,
+    routingTargets: { array_contains: [{ type: "task", taskId: webhookSlug }] },
+    status: { not: "DELETING" },
+  } satisfies Prisma.WebhookEndpointWhereInput;
+}
 
 export class WebhookDetailPresenter {
   constructor(
@@ -163,6 +164,7 @@ export class WebhookDetailPresenter {
     private readonly clickhouse: ClickHouse
   ) {}
 
+  /** A webhook() task on the environment's current worker, with the endpoints it subscribes to. */
   async findWebhook({
     environmentId,
     environmentType,
@@ -176,29 +178,27 @@ export class WebhookDetailPresenter {
       { id: environmentId, type: environmentType },
       this.replica
     );
-
     if (!currentWorker) return null;
 
     const task = await this.replica.backgroundWorkerTask.findFirst({
-      where: {
-        workerId: currentWorker.id,
-        slug: webhookSlug,
-      },
-      select: {
-        slug: true,
-        filePath: true,
-        createdAt: true,
-      },
+      where: { workerId: currentWorker.id, slug: webhookSlug },
+      select: { slug: true, filePath: true, createdAt: true },
     });
-
     if (!task) return null;
 
+    return { ...task, endpoints: await this.findTaskEndpoints({ environmentId, webhookSlug }) };
+  }
+
+  /** The endpoints a webhook() task subscribes to in this environment. */
+  async findTaskEndpoints({
+    environmentId,
+    webhookSlug,
+  }: {
+    environmentId: string;
+    webhookSlug: string;
+  }): Promise<WebhookTaskEndpoint[]> {
     const endpoints = await webhookReplica.webhookEndpoint.findMany({
-      where: {
-        runtimeEnvironmentId: environmentId,
-        routingTargets: { array_contains: [{ type: "task", taskId: webhookSlug }] },
-        status: { not: "DELETING" },
-      },
+      where: taskEndpointsWhere(environmentId, webhookSlug),
       select: {
         id: true,
         friendlyId: true,
@@ -216,26 +216,36 @@ export class WebhookDetailPresenter {
       orderBy: [{ declaredId: "asc" }, { endpointTenantId: "asc" }, { createdAt: "desc" }],
     });
 
-    return {
-      slug: task.slug,
-      filePath: task.filePath,
-      createdAt: task.createdAt,
-      endpoints: endpoints.map((endpoint) => ({
-        id: endpoint.id,
-        friendlyId: endpoint.friendlyId,
-        opaqueId: endpoint.opaqueId,
-        declaredId: endpoint.declaredId,
-        source: endpoint.source,
-        status: endpoint.status,
-        isDefault: endpoint.endpointTenantId === "" && endpoint.endpointExternalRef === "",
-        tenantId: endpoint.endpointTenantId || null,
-        hasSigningSecret: endpoint.signingSecretKey != null && endpoint.signingSecretKey !== "",
-        filter:
-          webhookEndpointSubscribers(endpoint.routingTargets).find(
-            (subscriber) => subscriber.type === "task" && subscriber.taskId === webhookSlug
-          )?.filter ?? null,
-      })),
-    };
+    return endpoints.map((endpoint) => ({
+      id: endpoint.id,
+      friendlyId: endpoint.friendlyId,
+      opaqueId: endpoint.opaqueId,
+      declaredId: endpoint.declaredId,
+      source: endpoint.source,
+      status: endpoint.status,
+      isDefault: endpoint.endpointTenantId === "" && endpoint.endpointExternalRef === "",
+      tenantId: endpoint.endpointTenantId || null,
+      hasSigningSecret: endpoint.signingSecretKey != null && endpoint.signingSecretKey !== "",
+      filter:
+        webhookEndpointSubscribers(endpoint.routingTargets).find(
+          (subscriber) => subscriber.type === "task" && subscriber.taskId === webhookSlug
+        )?.filter ?? null,
+    }));
+  }
+
+  /** Only the ids of those endpoints, for the live count of a task's new deliveries. */
+  async findTaskEndpointIds({
+    environmentId,
+    webhookSlug,
+  }: {
+    environmentId: string;
+    webhookSlug: string;
+  }): Promise<string[]> {
+    const endpoints = await webhookReplica.webhookEndpoint.findMany({
+      where: taskEndpointsWhere(environmentId, webhookSlug),
+      select: { id: true },
+    });
+    return endpoints.map((endpoint) => endpoint.id);
   }
 
   async listComposerEndpoints({
@@ -312,110 +322,119 @@ export class WebhookDetailPresenter {
     };
   }
 
-  async getRunActivity({
+  /**
+   * Deliveries to some endpoints per time bucket, by current status. A delivery has one row per
+   * status it passed through, so its current status is `argMax(status, _version)` before counting
+   * (as the endpoints list's activity does).
+   */
+  async getDeliveryActivity({
     organizationId,
     projectId,
     environmentId,
-    webhookSlug,
+    webhookEndpointIds,
     from,
     to,
   }: {
     organizationId: string;
     projectId: string;
     environmentId: string;
-    webhookSlug: string;
+    webhookEndpointIds: string[];
     from: Date;
     to: Date;
-  }): Promise<WebhookActivity> {
-    const rangeMs = Math.max(1, to.getTime() - from.getTime());
-    const oneHour = 60 * 60 * 1000;
-    const oneDay = 24 * oneHour;
-
-    const bucketSeconds =
-      rangeMs <= oneDay ? 60 * 60 : rangeMs <= 7 * oneDay ? 6 * 60 * 60 : 24 * 60 * 60;
-
-    // FINAL + _is_deleted = 0 because task_runs_v2 is a ReplacingMergeTree;
-    // org/project filters engage the sort-key prefix for partition pruning.
-    const queryFn = this.clickhouse.reader.query({
-      name: "webhookRunStatusActivity",
-      query: `SELECT
-          toUnixTimestamp(toStartOfInterval(created_at, INTERVAL {bucketSeconds: UInt32} SECOND)) AS bucket,
-          status,
-          count() AS val
-        FROM trigger_dev.task_runs_v2 FINAL
-        WHERE organization_id = {organizationId: String}
-          AND project_id = {projectId: String}
-          AND environment_id = {environmentId: String}
-          AND task_identifier = {webhookSlug: String}
-          AND created_at >= {fromTime: DateTime64(3, 'UTC')}
-          AND created_at < {toTime: DateTime64(3, 'UTC')}
-          AND _is_deleted = 0
-        GROUP BY bucket, status
-        ORDER BY bucket`,
-      params: z.object({
-        organizationId: z.string(),
-        projectId: z.string(),
-        environmentId: z.string(),
-        webhookSlug: z.string(),
-        bucketSeconds: z.number(),
-        fromTime: z.string(),
-        toTime: z.string(),
-      }),
-      schema: z.object({
-        bucket: z.coerce.number(),
-        status: z.string(),
-        val: z.coerce.number(),
-      }),
-    });
-
-    const [error, rows] = await queryFn({
-      organizationId,
-      projectId,
-      environmentId,
-      webhookSlug,
+  }): Promise<DeliveryActivity> {
+    const {
       bucketSeconds,
-      // ClickHouse's DateTime64(3, 'UTC') parser rejects the trailing `Z` from
-      // JS toISOString(). Strip it.
-      fromTime: from.toISOString().slice(0, -1),
-      toTime: to.toISOString().slice(0, -1),
-    });
+      bucketMs,
+      start,
+      end,
+      from: rangeFrom,
+    } = deliveryActivityBuckets(from, to);
+    const buckets = new Map<number, Record<string, number>>();
+    const totals: DeliveryActivity["totals"] = {};
+    let lastDeliveryMs = 0;
 
-    if (error) {
-      console.error("Webhook run activity query failed:", error);
-      return { data: [], statuses: [] };
-    }
+    if (webhookEndpointIds.length > 0) {
+      const queryFn = this.clickhouse.reader.query({
+        name: "webhookDeliveryStatusActivity",
+        query: `SELECT
+            toUnixTimestamp(toStartOfInterval(delivery_created_at, INTERVAL {bucketSeconds: UInt32} SECOND)) AS bucket,
+            current_status AS status,
+            count() AS val,
+            toUnixTimestamp64Milli(max(delivery_created_at)) AS last_ms
+          FROM (
+            SELECT delivery_id, argMax(status, _version) AS current_status, max(created_at) AS delivery_created_at
+            FROM trigger_dev.webhook_deliveries_v2
+            WHERE organization_id = {organizationId: String}
+              AND project_id = {projectId: String}
+              AND environment_id = {environmentId: String}
+              AND webhook_endpoint_id IN {webhookEndpointIds: Array(String)}
+              AND created_at >= fromUnixTimestamp64Milli({fromMs: Int64})
+              AND created_at < fromUnixTimestamp64Milli({toMs: Int64})
+            GROUP BY delivery_id
+            HAVING argMax(_is_deleted, _version) = 0
+          )
+          GROUP BY bucket, status
+          ORDER BY bucket`,
+        params: z.object({
+          organizationId: z.string(),
+          projectId: z.string(),
+          environmentId: z.string(),
+          webhookEndpointIds: z.array(z.string()),
+          bucketSeconds: z.number(),
+          fromMs: z.number(),
+          toMs: z.number(),
+        }),
+        schema: z.object({
+          bucket: z.coerce.number(),
+          status: z.string(),
+          val: z.coerce.number(),
+          last_ms: z.coerce.number(),
+        }),
+      });
 
-    const bucketMap = new Map<number, Record<string, number>>();
-    for (const row of rows) {
-      const group = groupForStatus(row.status) ?? "RUNNING";
-      const ts = row.bucket * 1000;
-      const existing = bucketMap.get(ts) ?? {};
-      existing[group] = (existing[group] ?? 0) + row.val;
-      bucketMap.set(ts, existing);
-    }
+      const [error, rows] = await queryFn({
+        organizationId,
+        projectId,
+        environmentId,
+        webhookEndpointIds,
+        bucketSeconds,
+        fromMs: rangeFrom.getTime(),
+        toMs: to.getTime(),
+      });
+      if (error) throw error;
 
-    const bucketMs = bucketSeconds * 1000;
-    const start = Math.floor(from.getTime() / bucketMs) * bucketMs;
-    const end = Math.ceil(to.getTime() / bucketMs) * bucketMs;
-    const points: WebhookActivityPoint[] = [];
-    const orderedStatuses = [...GROUP_LABEL];
-    for (let ts = start; ts < end; ts += bucketMs) {
-      const existing = bucketMap.get(ts) ?? {};
-      const point: WebhookActivityPoint = { bucket: ts };
-      for (const g of orderedStatuses) {
-        point[g] = existing[g] ?? 0;
+      for (const row of rows) {
+        const status = row.status as WebhookDeliveryStatus;
+        const ts = row.bucket * 1000;
+        const existing = buckets.get(ts) ?? {};
+        existing[status] = (existing[status] ?? 0) + row.val;
+        buckets.set(ts, existing);
+        totals[status] = (totals[status] ?? 0) + row.val;
+        lastDeliveryMs = Math.max(lastDeliveryMs, row.last_ms);
       }
-      points.push(point);
     }
 
-    return { data: points, statuses: orderedStatuses };
+    const data: DeliveryActivityPoint[] = [];
+    for (let ts = start; ts < end; ts += bucketMs) {
+      const existing = buckets.get(ts) ?? {};
+      const point: DeliveryActivityPoint = { bucket: ts };
+      for (const status of DELIVERY_STATUS_ORDER) point[status] = existing[status] ?? 0;
+      data.push(point);
+    }
+
+    return {
+      data,
+      statuses: DELIVERY_STATUS_ORDER,
+      totals,
+      lastDeliveryAt: lastDeliveryMs > 0 ? new Date(lastDeliveryMs) : null,
+    };
   }
 
   async listDeliveries({
     organizationId,
     projectId,
     environmentId,
-    webhookEndpointId,
+    webhookEndpointIds,
     period,
     from,
     to,
@@ -427,7 +446,8 @@ export class WebhookDetailPresenter {
     organizationId: string;
     projectId: string;
     environmentId: string;
-    webhookEndpointId?: string;
+    /** The endpoints to list; an empty list returns nothing. */
+    webhookEndpointIds: string[];
     period?: string;
     from?: number;
     to?: number;
@@ -448,7 +468,8 @@ export class WebhookDetailPresenter {
       organizationId,
       projectId,
       environmentId,
-      webhookEndpointId,
+      // A sentinel that never matches, so no endpoints means no deliveries rather than all of them.
+      webhookEndpointIds: webhookEndpointIds.length > 0 ? webhookEndpointIds : ["__none__"],
       statuses: filters.statuses,
       isTest: filters.isTest,
       deliveryId: filters.deliveryId,
@@ -461,6 +482,7 @@ export class WebhookDetailPresenter {
     const items: EndpointDeliveryListItem[] = deliveries.map((d) => ({
       id: d.id,
       friendlyId: d.friendlyId,
+      webhookEndpointId: d.webhookEndpointId,
       externalDeliveryId: d.externalDeliveryId,
       status: d.status,
       isTest: d.isTest,

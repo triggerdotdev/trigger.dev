@@ -61,6 +61,7 @@ export type AuthenticatedEnvironment = {
     engine: RunEngineVersion;
     deletedAt: Date | null;
     defaultWorkerGroupId: string | null;
+    secretProxyEnabled?: boolean;
     // Same id as env.organizationId — present on Prisma's Project row
     // and read by deployment services that operate on the project alone.
     organizationId: string;

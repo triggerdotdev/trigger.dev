@@ -7,7 +7,6 @@ import {
   useMetricResourceQuery,
   type MetricResourceTimeRange,
 } from "~/hooks/useMetricResourceQuery";
-import { Paragraph } from "~/components/primitives/Paragraph";
 import { InfoIconTooltip } from "~/components/primitives/Tooltip";
 import { useSearchParams } from "~/hooks/useSearchParam";
 import { QUEUE_METRICS_DEFAULT_PERIOD } from "~/components/queues/queueMetricsPeriod";
@@ -224,17 +223,15 @@ export function QueueMetricChartCard({
   );
 }
 
-export type QueueLiveCounts = { queued: number; running: number };
-
-// Compact two-line stat block for task detail sidebars: live counts from the loader,
-// then delay p95 + peak backlog over the page's TimeFilter range.
-export function QueueSidebarStats({
-  live,
+/**
+ * Scheduling delay p95 and peak backlog over the page's time filter, for the task page's Queue
+ * tab (the live counts sit beside it, from the loader).
+ */
+export function QueuePeriodStats({
   ids,
   queueName,
   defaultPeriod,
 }: {
-  live: QueueLiveCounts;
   ids: QueueMetricIds;
   queueName: string;
   defaultPeriod?: string;
@@ -255,16 +252,11 @@ export function QueueSidebarStats({
   const peakQueued = row ? toNumber(row.peak_queued) : 0;
 
   return (
-    <>
-      <Paragraph variant="extra-small" className="tabular-nums text-text-dimmed">
-        Queued now {live.queued.toLocaleString()} · Running now {live.running.toLocaleString()}
-      </Paragraph>
-      <Paragraph variant="extra-small" className="tabular-nums text-text-dimmed">
-        {showLoading || !row
-          ? "…"
-          : `Delay p95 ${worstP95 > 0 ? formatWaitMs(worstP95) : "–"} · Peak backlog ${peakQueued.toLocaleString()}`}
-      </Paragraph>
-    </>
+    <span className="tabular-nums">
+      {showLoading || !row
+        ? "…"
+        : `Wait p95 ${worstP95 > 0 ? formatWaitMs(worstP95) : "–"}, peak ${peakQueued.toLocaleString()} queued`}
+    </span>
   );
 }
 

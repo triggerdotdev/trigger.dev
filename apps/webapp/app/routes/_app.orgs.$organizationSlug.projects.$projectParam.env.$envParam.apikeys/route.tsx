@@ -21,7 +21,6 @@ import { PermissionDenied } from "~/components/PermissionDenied";
 import { StepContentContainer } from "~/components/StepContentContainer";
 import { Button, LinkButton } from "~/components/primitives/Buttons";
 import { Callout } from "~/components/primitives/Callout";
-import { CopyButton } from "~/components/primitives/CopyButton";
 import { DateTime } from "~/components/primitives/DateTime";
 import { Dialog, DialogContent, DialogHeader, DialogTrigger } from "~/components/primitives/Dialog";
 import { FormButtons } from "~/components/primitives/FormButtons";
@@ -67,7 +66,6 @@ import { secretKeyPlaceholder } from "~/utils/apiKeyPrefix";
 import { ApiKeyAccessCell } from "./ApiKeyAccessCell";
 import {
   apiKeyCreator,
-  DisableRootApiKeyButton,
   editableApiKey,
   RevokeApiKeyButton,
   ROOT_API_KEY_PARAM,
@@ -124,11 +122,8 @@ export const loader = dashboardLoader(
 
       return typedjson({
         ...data,
-        environment: {
-          ...data.environment,
-          apiKey: canReadApiKeys ? data.environment.apiKey : null,
-        },
         rootApiKey: canReadApiKeys ? data.rootApiKey : null,
+        hasCreatedApiKey: canReadApiKeys && data.hasCreatedApiKey,
         apiKeys: canReadApiKeys ? data.apiKeys : [],
         presets: canReadApiKeys ? data.presets : [],
         capabilityCatalogue: canReadApiKeys ? data.capabilityCatalogue : null,
@@ -168,7 +163,6 @@ export type ApiKeysOutletContext = {
   canWriteApiKeys: boolean;
   canManagePresets: boolean;
   canEditAccess: boolean;
-  canManageRootApiKey: boolean;
   hasVercelIntegration: boolean;
   loadedAt: number;
   listPath: string;
@@ -187,6 +181,7 @@ export default function Page() {
     environment,
     rootApiKey,
     apiKeys,
+    hasCreatedApiKey,
     canReadApiKeys,
     canWriteApiKeys,
     canManagePresets,
@@ -233,8 +228,7 @@ export default function Page() {
     (apiKey) =>
       !apiKey.revokedAt && !(apiKey.expiresAt && new Date(apiKey.expiresAt).getTime() <= loadedAt)
   );
-  const showCreateApiKeyPrompt = rootApiKey?.isHidden === true && !hasUsableApiKey;
-  const canManageRootApiKey = canWriteApiKeys || rootApiKey?.isHidden === false;
+  const showCreateApiKeyPrompt = !!rootApiKey && !hasUsableApiKey;
   const canLimitAccess = isRbacPluginAvailable && presets !== null;
   const chooseAccessHint = canLimitAccess ? ", and choose what it can access" : "";
   const canEditAccess =
@@ -258,7 +252,6 @@ export default function Page() {
     canWriteApiKeys,
     canManagePresets,
     canEditAccess,
-    canManageRootApiKey,
     hasVercelIntegration,
     loadedAt,
     listPath: `${listPath}${location.search}`,
@@ -290,7 +283,7 @@ export default function Page() {
             </WhenAgentUnavailable>
           </PageAccessories>
         </NavBar>
-        {rootApiKey && !rootApiKey.isHidden ? (
+        {rootApiKey && !hasCreatedApiKey ? (
           // Opaque, so the overlapped line matches the banner's bottom border exactly.
           <div className="relative -mt-px bg-background-dimmed">
             <Callout
@@ -377,23 +370,13 @@ export default function Page() {
                               </TableCell>
                               {isShowingInspector ? null : (
                                 <TableCell isSelected={isRootSelected}>
-                                  {/* -my-1: the copy button is taller than a line of text, so this
-                                      keeps the row the same height as the others. */}
-                                  <div className="-my-1 flex items-center gap-1">
+                                  <div className="flex items-center gap-1">
                                     <span className="font-mono">{rootApiKey.obfuscated}</span>
-                                    {rootApiKey.value ? (
-                                      <CopyButton
-                                        value={rootApiKey.value}
-                                        variant="icon"
-                                        size="small"
-                                      />
-                                    ) : (
-                                      <InfoIconTooltip
-                                        disableHoverableContent
-                                        content={`Root keys are being phased out. Create a new API key instead${chooseAccessHint}.`}
-                                        contentClassName="max-w-xs"
-                                      />
-                                    )}
+                                    <InfoIconTooltip
+                                      disableHoverableContent
+                                      content={`Root keys are masked but still work. Create a new API key instead${chooseAccessHint}.`}
+                                      contentClassName="max-w-xs"
+                                    />
                                   </div>
                                 </TableCell>
                               )}
@@ -452,27 +435,16 @@ export default function Page() {
                                 isSticky
                                 className="w-32"
                                 popoverContent={
-                                  canManageRootApiKey ? (
-                                    <>
-                                      {canWriteApiKeys ? (
-                                        <RegenerateApiKeyModal
-                                          id={environment.keyEnvironmentId}
-                                          title={environmentFullTitle(apiKeyEnvironmentLabel)}
-                                          hasVercelIntegration={hasVercelIntegration}
-                                          isDevelopment={environment.type === "DEVELOPMENT"}
-                                          isRootApiKeyHidden={rootApiKey.isHidden}
-                                          onSwitchToApiKeys={() => setMigrationOpen(true)}
-                                          canLimitAccess={canLimitAccess}
-                                          appearance="menu"
-                                        />
-                                      ) : null}
-                                      {rootApiKey.isHidden ? null : (
-                                        <DisableRootApiKeyButton
-                                          canWrite={canWriteApiKeys}
-                                          appearance="menu"
-                                        />
-                                      )}
-                                    </>
+                                  canWriteApiKeys ? (
+                                    <RegenerateApiKeyModal
+                                      id={environment.keyEnvironmentId}
+                                      title={environmentFullTitle(apiKeyEnvironmentLabel)}
+                                      hasVercelIntegration={hasVercelIntegration}
+                                      isDevelopment={environment.type === "DEVELOPMENT"}
+                                      onSwitchToApiKeys={() => setMigrationOpen(true)}
+                                      canLimitAccess={canLimitAccess}
+                                      appearance="menu"
+                                    />
                                   ) : null
                                 }
                               />
@@ -672,10 +644,20 @@ export default function Page() {
                         />
                       ) : null}
                       <RootApiKeyMigrationDialog
-                        open={migrationOpen && rootApiKey?.isHidden === false}
+                        open={migrationOpen && !!rootApiKey}
                         onOpenChange={setMigrationOpen}
                         canWrite={canWriteApiKeys}
-                        hasUsableApiKey={hasUsableApiKey}
+                        rotateRootKey={
+                          canWriteApiKeys ? (
+                            <RegenerateApiKeyModal
+                              id={environment.keyEnvironmentId}
+                              title={environmentFullTitle(apiKeyEnvironmentLabel)}
+                              hasVercelIntegration={hasVercelIntegration}
+                              isDevelopment={environment.type === "DEVELOPMENT"}
+                              appearance="migration"
+                            />
+                          ) : null
+                        }
                         onCreateApiKey={() => {
                           setMigrationOpen(false);
                           setReturnToMigration(true);
@@ -869,13 +851,13 @@ function RootApiKeyMigrationDialog({
   open,
   onOpenChange,
   canWrite,
-  hasUsableApiKey,
+  rotateRootKey,
   onCreateApiKey,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   canWrite: boolean;
-  hasUsableApiKey: boolean;
+  rotateRootKey: React.ReactNode;
   onCreateApiKey: () => void;
 }) {
   return (
@@ -885,7 +867,7 @@ function RootApiKeyMigrationDialog({
         <div className="flex flex-col gap-4 pt-4">
           <Paragraph variant="base/bright">
             Use a separate API key for each app that triggers your tasks, so you can revoke each one
-            on its own. Your root key keeps working until you hide it.
+            on its own. Your root key is masked in the dashboard but continues to work.
           </Paragraph>
           <div>
             <StepNumber stepNumber="1" title="Create an API key" />
@@ -907,21 +889,16 @@ function RootApiKeyMigrationDialog({
             />
             <StepContentContainer>
               <Paragraph variant="small">
-                Set it to the new key, then check everything works.
+                Set it to the new key in each app, then verify that each app works.
               </Paragraph>
             </StepContentContainer>
-            <StepNumber stepNumber="3" title="Hide the root key" />
+            <StepNumber stepNumber="3" title="Rotate the root key" />
             <StepContentContainer className="mb-0">
               <Paragraph variant="small" spacing>
-                It stops working 24 hours later.
+                Once every app works with its new key, rotate the root key and revoke the old one
+                immediately. If you need more time, you can keep it working for 24 hours.
               </Paragraph>
-              {hasUsableApiKey ? (
-                <DisableRootApiKeyButton canWrite={canWrite} />
-              ) : (
-                <Paragraph variant="small">
-                  Create an API key before completing this step.
-                </Paragraph>
-              )}
+              {rotateRootKey}
             </StepContentContainer>
           </div>
           <FormButtons
