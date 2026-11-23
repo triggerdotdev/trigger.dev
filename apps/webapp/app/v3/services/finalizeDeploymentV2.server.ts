@@ -204,6 +204,7 @@ export class FinalizeDeploymentV2Service extends BaseService {
       workerMetadata: deployment.worker.metadata,
       writer,
       requireTemplate: sandboxTask !== null,
+      workerId: deployment.worker.id,
     });
   }
 

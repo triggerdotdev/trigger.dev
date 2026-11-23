@@ -6,6 +6,7 @@ import { describe, expect, it, vi } from "vitest";
 import { $transaction } from "~/db.server";
 import { FEATURE_FLAG } from "~/v3/featureFlags";
 import {
+  deploymentPresets,
   pinnedImageReference,
   type TemplateBuilderConfig,
   TemplatePrebuildService,
@@ -134,6 +135,40 @@ async function createDeployment(
   });
 }
 
+async function createWorker(
+  prisma: any,
+  deployment: { id: string; projectId: string; environmentId: string },
+  tasks: { machineConfig: unknown; retryConfig: unknown }[]
+) {
+  const id = randomUUID();
+  const worker = await prisma.backgroundWorker.create({
+    data: {
+      friendlyId: `worker_${id}`,
+      contentHash: id,
+      version: id,
+      metadata: {},
+      projectId: deployment.projectId,
+      runtimeEnvironmentId: deployment.environmentId,
+    },
+  });
+  for (const [index, task] of tasks.entries()) {
+    await prisma.backgroundWorkerTask.create({
+      data: {
+        friendlyId: `task_${id}_${index}`,
+        slug: `task-${index}`,
+        filePath: "src/trigger/task.ts",
+        exportName: `task${index}`,
+        workerId: worker.id,
+        projectId: deployment.projectId,
+        runtimeEnvironmentId: deployment.environmentId,
+        machineConfig: task.machineConfig ?? undefined,
+        retryConfig: task.retryConfig ?? undefined,
+      },
+    });
+  }
+  return worker.id as string;
+}
+
 /** The fields every found deployment's result carries. */
 function described(
   row: { friendlyId: string; shortCode: string },
@@ -167,6 +202,32 @@ describe("pinnedImageReference", () => {
   it("returns undefined without a valid digest", () => {
     expect(pinnedImageReference(IMAGE, undefined)).toBeUndefined();
     expect(pinnedImageReference(IMAGE, "sha256:nothex")).toBeUndefined();
+  });
+});
+
+describe("deploymentPresets", () => {
+  // Catches: a task's own machine or its OOM retry machine left out, so a run on it starts cold.
+  it("collects each task's machine and OOM retry machine once", () => {
+    expect(
+      deploymentPresets([
+        {
+          machineConfig: { preset: "medium-1x" },
+          retryConfig: { outOfMemory: { machine: "large-1x" } },
+        },
+        { machineConfig: { preset: "medium-1x" }, retryConfig: { maxAttempts: 3 } },
+        {
+          machineConfig: { preset: "medium-1x" },
+          retryConfig: { outOfMemory: { machine: "huge" } },
+        },
+      ])
+    ).toEqual(["medium-1x", "large-1x"]);
+  });
+
+  // Catches: a task with no machine left cold when the configured presets lack the default.
+  it("counts an unset machine as the default machine", () => {
+    expect(deploymentPresets([{ machineConfig: null, retryConfig: { maxAttempts: 2 } }])).toEqual([
+      "small-1x",
+    ]);
   });
 });
 
@@ -407,6 +468,48 @@ describe("prebuild", () => {
         expect(JSON.parse(server.requests[0].body)).not.toHaveProperty("no_snap");
         const stored = await prisma.workerDeployment.findFirst({ where: { id: row.id } });
         expect(stored?.templateKey).toBe(TEMPLATE_KEY);
+      } finally {
+        await server.close();
+      }
+    }
+  );
+
+  // Catches: task presets sent on the request whose key a deploy waits for, so an extra shape
+  // can hold finalisation past its timeout.
+  postgresTest(
+    "builds each task preset in a request of its own after the configured one",
+    async ({ prisma }) => {
+      const server = await builder(
+        reply(201, { template_id: TEMPLATE_KEY, template_source: "built" })
+      );
+      try {
+        const project = await createProject(prisma, {
+          workloadType: "MICROVM",
+          orgFlags: { [FEATURE_FLAG.computeTemplatePrebuildWait]: true },
+        });
+        const row = await createDeployment(prisma, project);
+        const workerId = await createWorker(prisma, row, [
+          { machineConfig: null, retryConfig: { outOfMemory: { machine: "medium-1x" } } },
+          { machineConfig: { preset: "large-1x" }, retryConfig: null },
+        ]);
+        const result = await new TemplatePrebuildService(
+          prisma,
+          config({ url: server.url, deploySnapshots: true })
+        ).prebuild({
+          projectId: project.id,
+          deploymentId: row.id,
+          deploymentFriendlyId: row.friendlyId,
+          imageReference: IMAGE,
+          imageDigest: DIGEST,
+          workerId,
+        });
+
+        expect(result).toEqual({ mode: "wait", reason: "microvm-native", outcome: "built" });
+        await vi.waitFor(() => expect(server.requests).toHaveLength(3));
+        const machines = server.requests.map((request) =>
+          JSON.parse(request.body).machines.map((machine: { name: string }) => machine.name)
+        );
+        expect(machines).toEqual([["small-1x"], ["medium-1x"], ["large-1x"]]);
       } finally {
         await server.close();
       }

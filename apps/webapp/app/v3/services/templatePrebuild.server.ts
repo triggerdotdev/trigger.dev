@@ -1,7 +1,7 @@
 import { setTimeout as sleep } from "node:timers/promises";
 import { z } from "zod";
 import { getMeter, type Meter } from "@internal/tracing";
-import type { MachinePresetName } from "@trigger.dev/core/v3";
+import { RetryOptions, type MachinePresetName } from "@trigger.dev/core/v3";
 import type { Prisma, RuntimeEnvironmentType } from "@trigger.dev/database";
 import { prisma as defaultPrisma, type PrismaClientOrTransaction } from "~/db.server";
 import { env } from "~/env.server";
@@ -9,12 +9,12 @@ import { isOrgMigrated } from "~/runEngine/concerns/computeMigration.server";
 import { logger } from "~/services/logger.server";
 import type { TaskMetadataCache } from "~/services/taskMetadataCache.server";
 import { taskMetadataCacheInstance } from "~/services/taskMetadataCacheInstance.server";
-import { getEntitlement } from "~/services/platform.v3.server";
+import { defaultMachine, getEntitlement } from "~/services/platform.v3.server";
 import { singleton } from "~/utils/singleton";
 import { FEATURE_FLAG } from "~/v3/featureFlags";
 import { makeFlag } from "~/v3/featureFlags.server";
 import { globalFlagsRegistry } from "~/v3/globalFlagsRegistry.server";
-import { machinePresetFromName } from "~/v3/machinePresets.server";
+import { machinePresetFromConfig, machinePresetFromName } from "~/v3/machinePresets.server";
 import { resolveComputeAccess } from "~/v3/regionAccess.server";
 import { WorkerGroupService } from "~/v3/services/worker/workerGroupService.server";
 import {
@@ -167,6 +167,28 @@ export function warmupCommandFromMetadata(metadata: unknown): string[] | undefin
   return parsed.success ? parsed.data : undefined;
 }
 
+/**
+ * The presets a deployment's tasks run on: each task's own machine, and the
+ * machine it retries on after an OOM (`retry.outOfMemory.machine`), so both
+ * restore from a snapshot built at deploy time.
+ */
+export function deploymentPresets(
+  tasks: { machineConfig: unknown; retryConfig: unknown }[]
+): MachinePresetName[] {
+  const presets = new Set<MachinePresetName>();
+  for (const task of tasks) {
+    // An unset machine runs on the default, which the configured presets may not hold.
+    presets.add(
+      task.machineConfig == null ? defaultMachine : machinePresetFromConfig(task.machineConfig).name
+    );
+    const oom = RetryOptions.safeParse(task.retryConfig).data?.outOfMemory?.machine;
+    if (oom) {
+      presets.add(oom);
+    }
+  }
+  return [...presets];
+}
+
 /** One request per deploy, carrying each distinct preset shape. */
 export function templateCreateRequest(
   image: string,
@@ -239,6 +261,8 @@ export class TemplatePrebuildService {
     writer?: WritableStreamDefaultWriter;
     /** Wait for the build whatever the wait flag says, for deployments that cannot run without it. */
     requireTemplate?: boolean;
+    /** The deployed worker, whose tasks' presets are built after the configured ones. */
+    workerId?: string;
   }): Promise<{
     mode: TemplatePrebuildMode;
     reason?: TemplatePrebuildReason;
@@ -271,11 +295,13 @@ export class TemplatePrebuildService {
         return { mode: "skip", reason };
       }
 
-      const build = this.build(image, mode, {
+      const deployment = {
         id: options.deploymentId,
         friendlyId: options.deploymentFriendlyId,
         warmupCommand: warmupCommandFromMetadata(options.workerMetadata),
-      });
+      };
+      const build = this.build(image, mode, deployment);
+      void build.then(() => this.buildTaskPresets(image, deployment, options.workerId));
       if (mode === "shadow") {
         return { mode, reason };
       }
@@ -463,7 +489,7 @@ export class TemplatePrebuildService {
       shortCode: true,
       imageReference: true,
       templateKey: true,
-      worker: { select: { metadata: true } },
+      worker: { select: { id: true, metadata: true } },
       project: { select: { externalRef: true } },
       environment: { select: { type: true } },
     } satisfies Prisma.WorkerDeploymentSelect;
@@ -508,6 +534,8 @@ export class TemplatePrebuildService {
     if (!image) {
       return { ...base, outcome: "skipped", reason: "no_pinned_image" };
     }
+    // One budget for the deployment, the task presets included.
+    const deadline = performance.now() + (timeoutMs ?? this.config.timeoutMs);
     const result = await this.build(
       image,
       "shadow",
@@ -518,7 +546,64 @@ export class TemplatePrebuildService {
       },
       timeoutMs
     );
+    // Awaited so a caller that waits for rebuilds to settle (compute migration) waits for these
+    // too, inside the batch's concurrency limit. Their failures leave shapes cold, so the
+    // outcome stays the configured build's.
+    await this.buildTaskPresets(
+      image,
+      {
+        id: deployment.id,
+        friendlyId: deployment.friendlyId,
+        warmupCommand: warmupCommandFromMetadata(deployment.worker?.metadata),
+      },
+      deployment.worker?.id,
+      deadline
+    );
     return { ...base, ...result };
+  }
+
+  /**
+   * Builds the presets the worker's tasks run on that the configured ones do not cover, after the
+   * configured build: a deploy that waits for its template key never waits on them, and a failure
+   * here only leaves those shapes cold. One preset per request, one after another, because fcrun
+   * holds a node-wide lock across a request's shapes, so a key-critical build on that node waits
+   * at most one shape. Without deploy snapshots fcrun builds no shape, so nothing is sent.
+   * Never rejects.
+   */
+  private async buildTaskPresets(
+    image: string,
+    deployment: { id: string; friendlyId: string; warmupCommand?: string[] },
+    workerId: string | undefined,
+    /** A `performance.now()` time no preset starts after, each getting what is left of it. */
+    deadline?: number
+  ): Promise<void> {
+    const remaining = () => (deadline === undefined ? undefined : deadline - performance.now());
+    const spent = () => (remaining() ?? 1) <= 0;
+    if (!workerId || !this.config.deploySnapshots || spent()) {
+      return;
+    }
+    try {
+      const tasks = await this.prisma.backgroundWorkerTask.findMany({
+        where: { workerId },
+        select: { machineConfig: true, retryConfig: true },
+      });
+      const presets = deploymentPresets(tasks).filter((p) => !this.config.presets.includes(p));
+      for (const [index, preset] of presets.entries()) {
+        if (spent()) {
+          logger.info("Template prebuild ran out of time for task presets", {
+            deploymentId: deployment.friendlyId,
+            skipped: presets.slice(index),
+          });
+          break;
+        }
+        await this.build(image, "shadow", { ...deployment, presets: [preset] }, remaining());
+      }
+    } catch (error) {
+      logger.warn("Template prebuild of task presets failed", {
+        deploymentId: deployment.friendlyId,
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
   }
 
   /**
@@ -528,13 +613,18 @@ export class TemplatePrebuildService {
   async build(
     image: string,
     mode: Exclude<TemplatePrebuildMode, "skip">,
-    deployment: { id: string; friendlyId: string; warmupCommand?: string[] },
+    deployment: {
+      id: string;
+      friendlyId: string;
+      warmupCommand?: string[];
+      presets?: MachinePresetName[];
+    },
     timeoutMs: number = this.config.timeoutMs
   ): Promise<TemplateBuildResult> {
     const startedAt = performance.now();
     const body = templateCreateRequest(
       image,
-      this.config.presets,
+      deployment.presets ?? this.config.presets,
       deployment.friendlyId,
       deployment.warmupCommand,
       this.config.deploySnapshots
