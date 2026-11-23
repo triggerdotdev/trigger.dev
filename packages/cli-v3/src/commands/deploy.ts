@@ -7,6 +7,7 @@ import {
   tryCatch,
 } from "@trigger.dev/core/v3";
 import type {
+  CliVersionPolicy,
   DeployBuildPath,
   InitializeDeploymentRequestBody,
   InitializeDeploymentResponseBody,
@@ -38,6 +39,7 @@ import {
   nativeOnlyFlagError,
   resolveBuildPath,
 } from "../deploy/buildPath.js";
+import { cliVersionPolicyWarning, readCliVersionPolicy } from "../deploy/cliVersionPolicy.js";
 import { S2 } from "@s2-dev/streamstore";
 import { mkdir, readFile, unlink } from "node:fs/promises";
 import {
@@ -49,6 +51,7 @@ import {
   wrapCommandAction,
 } from "../cli/common.js";
 import { loadConfig } from "../config.js";
+import { VERSION } from "../version.js";
 import { authenticateForDeploy, userIdForDeploy } from "../deploy/auth.js";
 import {
   archivePreviewBranch,
@@ -528,11 +531,19 @@ async function _deployCommand(dir: string, options: DeployCommandOptions) {
     );
   }
 
-  const resolvedBuildPath = await resolveServerBuildPath(
+  const fetchSettings = deploySettingsReader(
     projectClient.client,
     resolvedConfig.project,
-    options
+    options.env
   );
+  const resolvedBuildPath = await resolveServerBuildPath(options, fetchSettings);
+
+  warnAboutCliVersionPolicy(
+    await readCliVersionPolicy(fetchSettings, {
+      attachedToDeployment: isAttachingToExistingDeployment,
+    })
+  );
+
   const buildPath = applyBuildPathOptions(resolvedBuildPath, options);
 
   if (options.dryRun && resolvedBuildPath === "native" && buildPath === "depot") {
@@ -1390,18 +1401,28 @@ function getTriggeredVia(): DeploymentTriggeredVia {
 
 const DEPLOY_SETTINGS_TIMEOUT_MS = 5_000;
 
-async function resolveServerBuildPath(
-  apiClient: CliApiClient,
-  projectRef: string,
-  options: DeployCommandOptions
-): Promise<DeployBuildPath> {
-  const resolved = await resolveBuildPath(options, () =>
-    apiClient.getDeploySettings(
+function deploySettingsReader(apiClient: CliApiClient, projectRef: string, env: string) {
+  let settings: ReturnType<CliApiClient["getDeploySettings"]> | undefined;
+  return () =>
+    (settings ??= apiClient.getDeploySettings(
       projectRef,
-      options.env,
+      env,
       AbortSignal.timeout(DEPLOY_SETTINGS_TIMEOUT_MS)
-    )
-  );
+    ));
+}
+
+function warnAboutCliVersionPolicy(policy: CliVersionPolicy | undefined) {
+  const warning = cliVersionPolicyWarning(policy, VERSION);
+  if (warning) {
+    log.warn(warning);
+  }
+}
+
+async function resolveServerBuildPath(
+  options: DeployCommandOptions,
+  fetchSettings: ReturnType<typeof deploySettingsReader>
+): Promise<DeployBuildPath> {
+  const resolved = await resolveBuildPath(options, fetchSettings);
 
   switch (resolved.from) {
     case "flag":
@@ -2316,6 +2337,15 @@ async function handleFromBundleDeploy({
   if (!projectClient) {
     throw new Error("Failed to get project client");
   }
+
+  warnAboutCliVersionPolicy(
+    await readCliVersionPolicy(
+      deploySettingsReader(projectClient.client, projectRef, options.env),
+      {
+        attachedToDeployment: Boolean(existingDeploymentId),
+      }
+    )
+  );
 
   // In attach mode the build-arg values are stored encrypted on the deployment
   let buildEnvVars: Record<string, string> | undefined;
