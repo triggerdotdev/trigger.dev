@@ -1992,8 +1992,10 @@ model WorkerInstanceGroup {
   description String?
   hidden      Boolean @default(false)
 
-  token   WorkerGroupToken @relation(fields: [tokenId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  token   WorkerGroupToken @relation("WorkerGroupPrimaryToken", fields: [tokenId], references: [id], onDelete: Cascade, onUpdate: Cascade)
   tokenId String           @unique
+
+  childTokens WorkerGroupToken[] @relation("WorkerGroupChildTokens")
 
   workers           WorkerInstance[]
   backgroundWorkers BackgroundWorker[]
@@ -2035,7 +2037,12 @@ model WorkerGroupToken {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  workerGroup WorkerInstanceGroup?
+  workerGroup WorkerInstanceGroup? @relation("WorkerGroupPrimaryToken")
+
+  childOf       WorkerInstanceGroup? @relation("WorkerGroupChildTokens", fields: [workerGroupId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  workerGroupId String?
+
+  @@index([workerGroupId])
 }
 
 model TaskRunTag {
