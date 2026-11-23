@@ -3,7 +3,11 @@ import type { PrismaClient } from "@trigger.dev/database";
 import { postgresTest } from "@internal/testcontainers";
 import { randomBytes } from "node:crypto";
 import { describe, expect, it } from "vitest";
-import { auditLogActions, auditLogMenuSearch } from "~/components/auditLogs/auditLogEvents";
+import {
+  auditLogActions,
+  auditLogMenuSearch,
+  parseAuditLogActions,
+} from "~/components/auditLogs/auditLogEvents";
 import { keyEndingSearch } from "~/components/auditLogs/AuditLogDetail";
 import { targetLabel } from "~/components/auditLogs/AuditLogParts";
 import { userAgentLabel } from "~/components/auditLogs/userAgentLabel";
@@ -150,19 +154,57 @@ describe("audit log page query", () => {
   // Catches: an event filter that silently empties the list when it's outside the category, or a
   // read that can't be picked.
   it("narrows to one event within the category, and drops one that can't match", () => {
-    expect(auditLogFilters({ action: "envvar.deleted" }).action).toBe("envvar.deleted");
+    expect(auditLogFilters({ action: "envvar.deleted" }).actions).toEqual(["envvar.deleted"]);
     expect(
       auditLogQuery("org_1", auditLogFilters({ action: "envvar.deleted" }), {}).actions
     ).toEqual(["envvar.deleted"]);
-    expect(auditLogFilters({ action: "envvar.read" }).action).toBe("envvar.read");
-    expect(auditLogFilters({ category: "envvars", action: "envvar.read" }).action).toBe(
-      "envvar.read"
-    );
-    expect(auditLogFilters({ category: "members", action: "envvar.read" }).action).toBeUndefined();
+    expect(auditLogFilters({ action: "envvar.read" }).actions).toEqual(["envvar.read"]);
+    expect(auditLogFilters({ category: "envvars", action: "envvar.read" }).actions).toEqual([
+      "envvar.read",
+    ]);
+    expect(auditLogFilters({ category: "members", action: "envvar.read" }).actions).toBeUndefined();
     expect(
-      auditLogFilters({ category: "members", action: "envvar.deleted" }).action
+      auditLogFilters({ category: "members", action: "envvar.deleted" }).actions
     ).toBeUndefined();
-    expect(auditLogFilters({ action: "auth.credential_rejected" }).action).toBeUndefined();
+    expect(auditLogFilters({ action: "auth.credential_rejected" }).actions).toBeUndefined();
+  });
+
+  // Catches: several picked events losing some, a read that can't be added to the changes, or one
+  // link listing the same events in another order.
+  it("narrows to several events, in the filter's order, keeping those that can match", () => {
+    const actions = (params: Record<string, string>) =>
+      auditLogQuery("org_1", auditLogFilters(params), {}).actions;
+    expect(actions({ action: "envvar.listed,api_key.created" })).toEqual([
+      "api_key.created",
+      "envvar.listed",
+    ]);
+    expect(actions({ action: " envvar.read , envvar.read,nope" })).toEqual(["envvar.read"]);
+    expect(actions({ category: "envvars", action: "api_key.created,envvar.listed" })).toEqual([
+      "envvar.listed",
+    ]);
+    // `all` is the default filter cleared: every event the category has, reads included.
+    expect(actions({ action: "all" })).toEqual(auditLogActions("all", true));
+    expect(actions({ category: "envvars", action: "all" })).toEqual(
+      auditLogActions("envvars", true)
+    );
+    expect(actions({ action: "all" })).toContain("envvar.listed");
+    // Too long a param is ignored by the loader's URL schema and by the menu alike, so the chip
+    // and the list agree.
+    const tooLong = ["envvar.deleted", ...Array(80).fill("api_key.created")].join(",");
+    expect(tooLong.length).toBeGreaterThan(1024);
+    const loaded = AuditLogSearchParams.parse({ action: tooLong });
+    expect(loaded.action).toBeUndefined();
+    expect(auditLogQuery("org_1", auditLogFilters(loaded), loaded).actions).toEqual(actions({}));
+    expect(parseAuditLogActions(tooLong, "all")).toBeUndefined();
+    // Just under the limit, both read it.
+    const atLimit = ["envvar.deleted", ...Array(63).fill("api_key.created")].join(",");
+    expect(atLimit.length).toBeLessThanOrEqual(1024);
+    expect(AuditLogSearchParams.parse({ action: atLimit }).action).toBe(atLimit);
+    expect(parseAuditLogActions(atLimit, "all")).toEqual(["api_key.created", "envvar.deleted"]);
+    // None that can match shows the category's events, reads left out.
+    expect(actions({ category: "envvars", action: "api_key.created" })).toEqual(
+      actions({ category: "envvars" })
+    );
   });
 
   // Catches: a filter on the page that never reaches the plugin.

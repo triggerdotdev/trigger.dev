@@ -2,7 +2,7 @@ import { XMarkIcon } from "@heroicons/react/20/solid";
 import { Form } from "@remix-run/react";
 import { Button } from "~/components/primitives/Buttons";
 import { SearchInput } from "~/components/primitives/SearchInput";
-import { Select, SelectItem } from "~/components/primitives/Select";
+import { Select, SelectGroup, SelectGroupLabel, SelectItem } from "~/components/primitives/Select";
 import { TimeFilter } from "~/components/runs/v3/SharedFilters";
 import { useSearchParams } from "~/hooks/useSearchParam";
 import type { AuditLogFilters } from "~/presenters/v3/AuditLogPresenter.server";
@@ -21,7 +21,11 @@ import {
   AUDIT_LOG_FILTER_CATEGORY_LABELS,
   AUDIT_LOG_VIA_LABELS,
   auditLogActions,
+  ALL_AUDIT_LOG_ACTIONS,
+  auditLogEventSections,
+  type AuditLogEventChoice,
   DEFAULT_AUDIT_LOG_FILTER_CATEGORY,
+  parseAuditLogActions,
 } from "./auditLogEvents";
 
 /** Params a new filter makes stale: the next page and the selected event. */
@@ -48,21 +52,61 @@ export function AuditLogFilterBar({
     credential?: string;
   };
 }) {
-  const { replace, has } = useSearchParams();
+  const { replace, has, values } = useSearchParams();
 
   const viaItems = [
     { value: ANY, label: "All" },
     ...Object.entries(AUDIT_LOG_VIA_LABELS).map(([value, label]) => ({ value, label })),
   ];
 
-  const actionItems = [
-    { value: ANY, label: "All events" },
-    // Reads can always be picked: they're left out only when no event is.
-    ...auditLogActions(filters.category, true).map((action) => ({
-      value: action,
-      label: AUDIT_LOG_ACTION_LABELS[action],
-    })),
-  ];
+  // Nothing picked is the category's events, reads only for one key or token, as runs list every
+  // status when none is picked. Picking narrows the list to exactly what's picked.
+  const eventSections = auditLogEventSections(filters.category);
+  const eventChoices = eventSections.flatMap((section) => section.items);
+  // From the URL being navigated to, not the last loaded page, so a pick made while the previous
+  // one loads adds to it.
+  // The last `action` wins, as in the loader, for a link that repeats it.
+  const pickedActions = parseAuditLogActions(values("action").at(-1), filters.category);
+  // A choice is checked when any of its events is picked, e.g. a link to listings only.
+  const pickedChoices = eventChoices.filter((choice) =>
+    choice.actions.some((action) => pickedActions?.includes(action))
+  );
+  const offeredActions = auditLogActions(filters.category, true);
+  const defaultActions = auditLogActions(filters.category, filters.includeReads);
+  const pickChoices = (values: string[]) => {
+    const actions = offeredActions.filter((action) =>
+      eventChoices.some(
+        (choice) =>
+          values.includes(choice.value) &&
+          choice.actions.includes(action) &&
+          // A choice left as it was keeps the events it had, e.g. listings only from a link.
+          (!pickedChoices.includes(choice) || (pickedActions?.includes(action) ?? false))
+      )
+    );
+    // Picking exactly the default, e.g. every change after unticking reads, is the default.
+    const isDefault =
+      actions.length === defaultActions.length &&
+      actions.every((action) => defaultActions.includes(action));
+    replace({
+      ...RESET_PARAMS,
+      action:
+        actions.length === 0 || isDefault
+          ? undefined
+          : actions.length === offeredActions.length
+            ? ALL_AUDIT_LOG_ACTIONS
+            : actions.join(","),
+    });
+  };
+  // Shown like a set filter, as CloudTrail shows its default "Read-only: false": its ✕ clears it,
+  // and every event is listed, reads included.
+  const hidesReads =
+    !pickedActions &&
+    !filters.includeReads &&
+    offeredActions.length > auditLogActions(filters.category, false).length;
+  // Every event picked is no filter at all. Counted in events, not choices: listings without
+  // value reads still checks the reads choice.
+  const narrowed = pickedActions !== undefined && pickedActions.length < offeredActions.length;
+  const eventsSet = hidesReads || narrowed;
 
   const isFiltered = [
     "category",
@@ -138,37 +182,52 @@ export function AuditLogFilterBar({
         </Select>
       </FilterChip>
       <FilterChip
-        isSet={Boolean(filters.action)}
-        onClear={() => replace({ ...RESET_PARAMS, action: undefined })}
-        clearLabel="Clear event filter"
+        isSet={eventsSet}
+        onClear={() =>
+          replace({ ...RESET_PARAMS, action: hidesReads ? ALL_AUDIT_LOG_ACTIONS : undefined })
+        }
+        clearLabel={hidesReads ? "Show environment variable reads" : "Clear event filter"}
       >
-        <Select
-          value={filters.action ?? ANY}
+        <Select<string[], (typeof eventSections)[number]>
+          value={pickedChoices.map((choice) => choice.value)}
           shortcut={{ key: "e" }}
           tooltipTitle="Filter by event"
-          setValue={(value) =>
-            replace({ ...RESET_PARAMS, action: value === ANY ? undefined : value })
-          }
-          items={actionItems}
-          filter={{ keys: [(item) => item.label] }}
-          text={(value) =>
-            chipText(
-              "Event",
-              value === ANY ? undefined : actionItems.find((item) => item.value === value)?.label
+          setValue={pickChoices}
+          items={eventSections}
+          // The merged reads choice is found by either event's name, as the list shows them.
+          filter={(item, search) =>
+            [item.label, ...item.actions.map((action) => AUDIT_LOG_ACTION_LABELS[action])].some(
+              (label) => label.toLowerCase().includes(search.toLowerCase())
             )
           }
-          dropdownIcon={!filters.action}
-          variant={filters.action ? "minimal/small" : "secondary/small"}
-          className={filters.action ? CHIP_TRIGGER_CLASS : undefined}
+          heading="Filter by event…"
+          // Kept while the menu is open: several events are often picked from one search.
+          clearSearchOnSelection={false}
+          text={() =>
+            chipText(
+              "Event",
+              hidesReads
+                ? "All except reads"
+                : narrowed
+                  ? eventsChipValue(pickedChoices)
+                  : undefined
+            )
+          }
+          dropdownIcon={!eventsSet}
+          variant={eventsSet ? "minimal/small" : "secondary/small"}
+          className={eventsSet ? CHIP_TRIGGER_CLASS : undefined}
           empty={<SelectItem disabled>No matches</SelectItem>}
         >
-          {(items) =>
-            items.map((item) => (
-              <SelectItem key={item.value} value={item.value}>
-                {item.label}
-              </SelectItem>
-            ))
-          }
+          {(items, { section }) => (
+            <SelectGroup>
+              {section?.title ? <SelectGroupLabel>{section.title}</SelectGroupLabel> : null}
+              {items.map((item) => (
+                <SelectItem key={item.value} value={item.value}>
+                  {item.label}
+                </SelectItem>
+              ))}
+            </SelectGroup>
+          )}
         </Select>
       </FilterChip>
       <AuditLogSearchMenu
@@ -291,4 +350,9 @@ export function AuditLogFilterBar({
       ) : null}
     </div>
   );
+}
+
+/** The event chip's value for picked events: one by name, several by count. */
+function eventsChipValue(picked: AuditLogEventChoice[]): string {
+  return picked.length === 1 ? picked[0]!.label : `${picked.length} events`;
 }

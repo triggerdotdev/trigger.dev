@@ -130,6 +130,68 @@ export function auditLogActions(
   );
 }
 
+/** Whether an action is a read: frequent, so the log leaves it out unless it's picked. */
+function isAuditLogReadAction(action: AuditLogListedAction): boolean {
+  return READ_ACTIONS.includes(action);
+}
+
+/** The `action` param for every event, reads included: the default filter cleared. */
+export const ALL_AUDIT_LOG_ACTIONS = "all";
+
+/** The longest `action` param the page reads: a longer one is ignored, by the loader and the menu. */
+export const AUDIT_LOG_ACTION_PARAM_MAX = 1024;
+
+/**
+ * The events picked in the URL's `action` param, comma separated, or every one as `all`: those
+ * that can match the category, in the order the event filter offers them. Undefined when none
+ * can, so a bad link shows the category's default events.
+ */
+export function parseAuditLogActions(
+  value: string | undefined,
+  category: AuditLogFilterCategory
+): AuditLogListedAction[] | undefined {
+  const trimmed = value?.trim();
+  if (!trimmed || trimmed.length > AUDIT_LOG_ACTION_PARAM_MAX) return undefined;
+  const offered = auditLogActions(category, true);
+  if (trimmed === ALL_AUDIT_LOG_ACTIONS) return offered;
+  const picked = new Set(trimmed.split(",").map((action) => action.trim()));
+  const actions = offered.filter((action) => picked.has(action));
+  return actions.length > 0 ? actions : undefined;
+}
+
+/** One choice in the event filter: an event, or the events it stands for. */
+export type AuditLogEventChoice = { value: string; label: string; actions: AuditLogListedAction[] };
+
+/** Listing environment variables and reading a value are one choice: both read them. */
+const READS_CHOICE: AuditLogEventChoice = {
+  value: "envvar.reads",
+  label: "Environment variables read",
+  actions: READ_ACTIONS,
+};
+
+function categoryChoices(category: AuditLogListedCategory): AuditLogEventChoice[] {
+  const choices: AuditLogEventChoice[] = [];
+  for (const action of auditLogActions(category, true)) {
+    if (!isAuditLogReadAction(action)) {
+      choices.push({ value: action, label: AUDIT_LOG_ACTION_LABELS[action], actions: [action] });
+    } else if (!choices.includes(READS_CHOICE)) {
+      choices.push(READS_CHOICE);
+    }
+  }
+  return choices;
+}
+
+/** The event filter's choices for a category: one section per category, reads included. */
+export function auditLogEventSections(category: AuditLogFilterCategory) {
+  return (Object.keys(AUDIT_LOG_CATEGORY_LABELS) as AuditLogListedCategory[])
+    .filter((listed) => category === "all" || listed === category)
+    .map((listed) => ({
+      type: "section" as const,
+      title: AUDIT_LOG_CATEGORY_LABELS[listed],
+      items: categoryChoices(listed),
+    }));
+}
+
 /** Each category's name in the detail panel. */
 export const AUDIT_LOG_CATEGORY_LABELS: Record<AuditLogListedCategory, string> = {
   credentials: "Credentials",
@@ -150,8 +212,4 @@ export function isAuditLogFilterCategory(
   value: string | undefined
 ): value is AuditLogFilterCategory {
   return (AUDIT_LOG_FILTER_CATEGORIES as readonly string[]).includes(value ?? "");
-}
-
-export function isListedAuditLogAction(value: string | undefined): value is AuditLogListedAction {
-  return value !== undefined && value in AUDIT_LOG_ACTION_LABELS;
 }

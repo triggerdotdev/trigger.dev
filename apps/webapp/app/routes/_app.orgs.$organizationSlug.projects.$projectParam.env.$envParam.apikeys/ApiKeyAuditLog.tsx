@@ -1,3 +1,4 @@
+import { ListCheckedIcon } from "~/assets/icons/ListCheckedIcon";
 import { Button, LinkButton } from "~/components/primitives/Buttons";
 import { actionButtonProps } from "./ApiKeyActions";
 
@@ -36,11 +37,16 @@ export function ViewApiKeyActivityMenuItem({
 }) {
   if (!auditLog) return null;
   return auditLog.canView ? (
-    <LinkButton to={to} {...actionButtonProps("menu")}>
+    <LinkButton to={to} {...actionButtonProps("menu")} LeadingIcon={ListCheckedIcon}>
       View activity
     </LinkButton>
   ) : (
-    <Button {...actionButtonProps("menu")} disabled tooltip={NO_PERMISSION}>
+    <Button
+      {...actionButtonProps("menu")}
+      LeadingIcon={ListCheckedIcon}
+      disabled
+      tooltip={NO_PERMISSION}
+    >
       View activity
     </Button>
   );

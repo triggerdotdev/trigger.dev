@@ -147,13 +147,18 @@ function AuditLog() {
 
   return (
     <AuditLogList
-      // A new search starts a new list.
-      key={location.search}
       page={data.page}
+      search={location.search}
       selectedLabels={data.selectedLabels ?? {}}
       fetcher={fetcher}
     />
   );
+}
+
+/** The event a URL selects, when it's on the page: a shared link to another opens nothing. */
+function selectedEventId(page: LoaderData["page"], search: string): string | undefined {
+  const id = new URLSearchParams(search).get("event");
+  return page.events.some((event) => event.id === id) ? (id ?? undefined) : undefined;
 }
 
 type LoaderData = Extract<
@@ -163,10 +168,13 @@ type LoaderData = Extract<
 
 function AuditLogList({
   page,
+  search,
   selectedLabels,
   fetcher,
 }: {
   page: LoaderData["page"];
+  /** The search `page` is for: a new one starts a new list, without remounting the page. */
+  search: string;
   selectedLabels: NonNullable<LoaderData["selectedLabels"]>;
   fetcher: ReturnType<typeof useTypedFetcher<typeof loader>>;
 }) {
@@ -184,19 +192,34 @@ function AuditLogList({
   const { nextCursor, error: loadMoreError } = more;
   const error = page.error;
   // A shared link to an event that isn't on this page opens nothing: the URL drops it below.
-  const [selectedId, setSelectedId] = useState<string | undefined>(() => {
-    const id = new URLSearchParams(location.search).get("event");
-    return page.events.some((event) => event.id === id) ? (id ?? undefined) : undefined;
-  });
+  const [selectedId, setSelectedId] = useState(() => selectedEventId(page, search));
 
-  // Set while this list waits for its next page: the fetcher outlives the list, and its last data
-  // may belong to an earlier search.
-  const loadingMore = useRef(false);
+  // A new search starts a new list. Reset here rather than by remounting, so the filter bar and
+  // its open menu stay put while the next results load.
+  const [listSearch, setListSearch] = useState(search);
+  if (listSearch !== search) {
+    setListSearch(search);
+    setEvents(page.events);
+    setMore({ nextCursor: page.nextCursor, error: null });
+    setSelectedId(selectedEventId(page, search));
+  }
+
+  // The search this list is waiting on a next page for: the fetcher's last data may belong to an
+  // earlier search.
+  const loadingMoreFor = useRef<string | null>(null);
+
+  // A new search's results start at the top, as they did when the page remounted.
+  const scroller = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    scroller.current?.scrollTo({ top: 0 });
+  }, [search]);
 
   useEffect(() => {
     const data = fetcher.data;
-    if (!loadingMore.current || fetcher.state !== "idle" || !data?.available) return;
-    loadingMore.current = false;
+    if (loadingMoreFor.current === null || fetcher.state !== "idle" || !data?.available) return;
+    const pageSearch = loadingMoreFor.current;
+    loadingMoreFor.current = null;
+    if (pageSearch !== search) return;
     // The fetcher is the external system here: the page it loaded arrives after the click.
     setEvents((current) => {
       const seen = new Set(current.map((event) => event.id));
@@ -207,15 +230,15 @@ function AuditLogList({
       nextCursor: data.page.error ? current.nextCursor : data.page.nextCursor,
       error: data.page.error,
     }));
-  }, [fetcher.state, fetcher.data]);
+  }, [fetcher.state, fetcher.data, search]);
 
   const loadMore = () => {
     if (!nextCursor) return;
-    const search = new URLSearchParams(location.search);
-    search.set("cursor", nextCursor);
-    search.delete("event");
-    loadingMore.current = true;
-    fetcher.load(`${location.pathname}?${search.toString()}`);
+    const nextPage = new URLSearchParams(location.search);
+    nextPage.set("cursor", nextCursor);
+    nextPage.delete("event");
+    loadingMoreFor.current = search;
+    fetcher.load(`${location.pathname}?${nextPage.toString()}`);
   };
 
   // The selected event is kept in the URL without a navigation, so the list isn't reloaded.
@@ -237,7 +260,10 @@ function AuditLogList({
       </div>
       <ResizablePanelGroup orientation="horizontal" className="min-h-0">
         <ResizablePanel id="audit-log-events" min="300px">
-          <div className="h-full overflow-y-auto scrollbar-thin scrollbar-track-transparent scrollbar-thumb-surface-control">
+          <div
+            ref={scroller}
+            className="h-full overflow-y-auto scrollbar-thin scrollbar-track-transparent scrollbar-thumb-surface-control"
+          >
             {error ? (
               <div className="p-2">
                 <Callout variant="error">{error}</Callout>
@@ -265,15 +291,6 @@ function AuditLogList({
                 navigation.state === "loading" && navigation.location.pathname === location.pathname
               }
             />
-            {!page.filters.includeReads &&
-            !page.filters.action &&
-            page.filters.category === "envvars" &&
-            !error ? (
-              <Paragraph variant="extra-small" className="px-3 py-2 text-text-dimmed">
-                Reads are left out. Pick a read as the event, or filter by a key, to see who listed
-                or read environment variables.
-              </Paragraph>
-            ) : null}
           </div>
         </ResizablePanel>
         <ResizableHandle

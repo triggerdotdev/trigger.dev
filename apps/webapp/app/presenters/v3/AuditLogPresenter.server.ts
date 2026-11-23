@@ -9,6 +9,7 @@ import { boundedIn, type RuntimeEnvironmentType } from "@trigger.dev/database";
 import { z } from "zod";
 import {
   AUDIT_LOG_ACTION_LABELS,
+  AUDIT_LOG_ACTION_PARAM_MAX,
   auditLogActions,
   AUDIT_LOG_DEFAULT_PERIOD,
   AUDIT_LOG_VIA_LABELS,
@@ -16,7 +17,7 @@ import {
   DEFAULT_AUDIT_LOG_FILTER_CATEGORY,
   isAuditLogFilterCategory,
   isAuditLogVia,
-  isListedAuditLogAction,
+  parseAuditLogActions,
 } from "~/components/auditLogs/auditLogEvents";
 import { dateFromString, timeFilterFromTo } from "~/components/runs/v3/SharedFilters";
 import type { PrismaReplicaClient } from "~/db.server";
@@ -37,7 +38,8 @@ const param = (max: number) => z.string().trim().max(max).optional().catch(undef
 /** The page's URL. Values the page doesn't know are ignored rather than rejected. */
 export const AuditLogSearchParams = z.object({
   category: param(32),
-  action: param(64),
+  // Comma separated: one event, or several.
+  action: param(AUDIT_LOG_ACTION_PARAM_MAX),
   actor: param(128),
   project: param(128),
   environment: param(128),
@@ -63,7 +65,8 @@ export function invalidTimeParams(params: URLSearchParams): Array<"from" | "to">
 export type AuditLogFilters = {
   category: AuditLogFilterCategory;
   includeReads: boolean;
-  action?: AuditLogListedAction;
+  /** The picked events. Unset, the category's events, with reads only for one key or token. */
+  actions?: AuditLogListedAction[];
   actorId?: string;
   projectId?: string;
   environmentId?: string;
@@ -162,12 +165,8 @@ export function auditLogFilters(searchParams: AuditLogSearchParams): AuditLogFil
   const category = isAuditLogFilterCategory(searchParams.category)
     ? searchParams.category
     : DEFAULT_AUDIT_LOG_FILTER_CATEGORY;
-  // An event outside the category would never match. A read can always be picked as the event.
-  const action =
-    isListedAuditLogAction(searchParams.action) &&
-    auditLogActions(category, true).includes(searchParams.action)
-      ? searchParams.action
-      : undefined;
+  // An event outside the category would never match. A read can always be picked.
+  const actions = parseAuditLogActions(searchParams.action, category);
   // A pasted key works too: the last 4 characters are what's stored.
   const keyLast4 =
     searchParams.key && searchParams.key.length >= 4 ? searchParams.key.slice(-4) : undefined;
@@ -180,7 +179,7 @@ export function auditLogFilters(searchParams: AuditLogSearchParams): AuditLogFil
   return {
     category,
     includeReads,
-    action,
+    actions,
     actorId: searchParams.actor || undefined,
     projectId: searchParams.project || undefined,
     environmentId: searchParams.environment || undefined,
@@ -212,8 +211,8 @@ export function auditLogQuery(
     from,
     to,
     // `all` lists every action, so it needs no action filter.
-    actions: filters.action
-      ? [filters.action]
+    actions: filters.actions
+      ? filters.actions
       : auditLogActions(filters.category, filters.includeReads),
     actorId: filters.actorId,
     projectId: filters.projectId,

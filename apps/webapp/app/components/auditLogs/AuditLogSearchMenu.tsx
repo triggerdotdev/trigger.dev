@@ -48,18 +48,27 @@ export function FilterChip({
   clearLabel: string;
   children: ReactNode;
 }): ReactNode {
-  if (!isSet) return children;
+  // The same element either way, so setting the filter doesn't remount its menu: an open menu
+  // stays open, with its search, while several values are picked.
   return (
-    <div className="flex h-6 items-center rounded border border-border-bright/50 bg-secondary text-xs shadow-xs divide-x divide-black/15 hover:bg-background-raised">
+    <div
+      className={
+        isSet
+          ? "flex h-6 items-center rounded border border-border-bright/50 bg-secondary text-xs shadow-xs divide-x divide-black/15 hover:bg-background-raised"
+          : "contents"
+      }
+    >
       {children}
-      <button
-        type="button"
-        aria-label={clearLabel}
-        onClick={onClear}
-        className="flex size-6 items-center justify-center text-text-bright focus-custom"
-      >
-        <XMarkIcon className="size-3.5" />
-      </button>
+      {isSet ? (
+        <button
+          type="button"
+          aria-label={clearLabel}
+          onClick={onClear}
+          className="flex size-6 items-center justify-center text-text-bright focus-custom"
+        >
+          <XMarkIcon className="size-3.5" />
+        </button>
+      ) : null}
     </div>
   );
 }
