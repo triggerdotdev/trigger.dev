@@ -1,4 +1,5 @@
 import { confirm, intro, isCancel, log, outro } from "@clack/prompts";
+import { readFile } from "node:fs/promises";
 import type { Command } from "commander";
 import { detectPackageManager, installDependencies } from "nypm";
 import { dirname, join, resolve } from "path";
@@ -269,9 +270,12 @@ Set them to ${cliVersion} in package.json and reinstall, or run the CLI version 
   const installSpinner = spinner();
   installSpinner.start("Updating dependencies in package.json");
 
+  // Preserve the existing end-of-file newline when rewriting package.json
+  const hasTrailingNewline = (await readFile(packageJsonPath, "utf8")).endsWith("\n");
+
   // Backup package.json
   const packageJsonBackupPath = `${packageJsonPath}.bak`;
-  await writeJSONFilePreserveOrder(packageJsonBackupPath, readonlyPackageJson, true);
+  await writeJSONFilePreserveOrder(packageJsonBackupPath, readonlyPackageJson, true, hasTrailingNewline);
 
   const exitHandler = async (sig: any) => {
     log.warn(
@@ -285,10 +289,10 @@ Set them to ${cliVersion} in package.json and reinstall, or run the CLI version 
 
   // Update package.json
   mutatePackageJsonWithUpdatedPackages(packageJson, mismatches, cliVersion);
-  await writeJSONFilePreserveOrder(packageJsonPath, packageJson, true);
+  await writeJSONFilePreserveOrder(packageJsonPath, packageJson, true, hasTrailingNewline);
 
   async function revertPackageJsonChanges() {
-    await writeJSONFilePreserveOrder(packageJsonPath, readonlyPackageJson, true);
+    await writeJSONFilePreserveOrder(packageJsonPath, readonlyPackageJson, true, hasTrailingNewline);
     await removeFile(packageJsonBackupPath);
   }
 

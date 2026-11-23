@@ -160,9 +160,18 @@ export async function writeJSONFile(path: string, json: any, pretty = false) {
  * @param path - The path to the file to write
  * @param json - The JSON object to write
  * @param pretty - Whether to pretty print the JSON
+ * @param trailingNewline - Whether to end the file with a newline
  */
-export async function writeJSONFilePreserveOrder(path: string, json: any, pretty = false) {
-  await safeWriteFile(path, JSON.stringify(json, undefined, pretty ? 2 : undefined));
+export async function writeJSONFilePreserveOrder(
+  path: string,
+  json: any,
+  pretty = false,
+  trailingNewline = false
+) {
+  await safeWriteFile(
+    path,
+    JSON.stringify(json, undefined, pretty ? 2 : undefined) + (trailingNewline ? "\n" : "")
+  );
 }
 
 // Will create the directory if it doesn't exist
