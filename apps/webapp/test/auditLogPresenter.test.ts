@@ -4,6 +4,7 @@ import { postgresTest } from "@internal/testcontainers";
 import { randomBytes } from "node:crypto";
 import { describe, expect, it } from "vitest";
 import { auditLogActions, auditLogMenuSearch } from "~/components/auditLogs/auditLogEvents";
+import { keyEndingSearch } from "~/components/auditLogs/AuditLogDetail";
 import { targetLabel } from "~/components/auditLogs/AuditLogParts";
 import { userAgentLabel } from "~/components/auditLogs/userAgentLabel";
 import {
@@ -21,6 +22,7 @@ import {
   AuditLogSearchParams,
   invalidTimeParams,
 } from "~/presenters/v3/AuditLogPresenter.server";
+import { EARLIEST_EVENT } from "~/services/auditLogs/auditEventsApi.server";
 import { obfuscateApiKey } from "~/utils/apiKeys";
 import { seedTestUser } from "./helpers/seedTestPAT";
 import { seedTestUserProject } from "./helpers/seedTestUserProject";
@@ -193,6 +195,27 @@ describe("audit log page query", () => {
     const days = (query.to.getTime() - query.from.getTime()) / 86_400_000;
     expect(days).toBeCloseTo(7, 2);
     expect(query.to.getTime()).toBeGreaterThanOrEqual(before);
+  });
+
+  // Catches: "Occurred before" searching only the 7 days before now, which drops older events or,
+  // for an end older than that, starts after it ends.
+  it("searches everything before an end with no start", () => {
+    const to = Date.UTC(2026, 0, 10);
+    const query = auditLogQuery("org_1", auditLogFilters({}), { to: String(to) });
+
+    expect(query.from).toEqual(EARLIEST_EVENT);
+    expect(query.to.getTime()).toBe(to);
+  });
+
+  // Catches: "All events for keys ending" keeping the event, Via or other filters of the page it
+  // was clicked on, so it shows fewer than all of them.
+  it("links a key's last 4 to all its events in the same time range", () => {
+    const search = keyEndingSearch(
+      "?category=credentials&action=api_key.revoked&via=api&actor=user_1&project=proj_1&from=1&to=2&cursor=c1",
+      "k9Qz"
+    );
+
+    expect(Object.fromEntries(search)).toEqual({ from: "1", to: "2", key: "k9Qz" });
   });
 
   // Catches: a partial key reaching the plugin, which only matches whole last-4s, or a pasted

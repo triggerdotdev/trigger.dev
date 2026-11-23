@@ -122,6 +122,8 @@ export function AuditLogSearchMenu({
   const { load } = fetcher;
   const [open, setOpen] = useState(false);
   const [search, setSearch] = useState("");
+  // The search the last request was sent for. Until the typed search is sent, results are stale.
+  const [requested, setRequested] = useState<string | null>(null);
 
   useEffect(() => {
     if (!open) return;
@@ -130,6 +132,7 @@ export function AuditLogSearchMenu({
         const params = new URLSearchParams({ menu });
         if (search) params.set("q", auditLogMenuSearch(search));
         if (project) params.set("project", project);
+        setRequested(search);
         load(`${organizationAuditLogFilterOptionsPath(organization)}?${params}`);
       },
       search ? SEARCH_DELAY_MS : 0
@@ -145,7 +148,7 @@ export function AuditLogSearchMenu({
   const items: AuditLogMenuItem[] = search
     ? fetched
     : [{ value: ANY, label: anyLabel }, ...picked, ...fetched];
-  const loading = fetcher.state !== "idle";
+  const loading = fetcher.state !== "idle" || requested !== search;
   const pickedItem = fetched.find((item) => item.value === value);
   const selectedText = chipText(
     label,
@@ -181,6 +184,8 @@ export function AuditLogSearchMenu({
         dropdownIcon={!value}
         variant={value ? "minimal/small" : "secondary/small"}
         className={value ? CHIP_TRIGGER_CLASS : undefined}
+        // A search with no results renders this instead of the list below.
+        empty={<SelectItem disabled>{loading ? "Loading…" : "No matches"}</SelectItem>}
       >
         {(matches) => (
           <>
@@ -195,9 +200,6 @@ export function AuditLogSearchMenu({
               </SelectItem>
             ))}
             {loading && fetched.length === 0 ? <SelectItem disabled>Loading…</SelectItem> : null}
-            {!loading && search && fetched.length === 0 ? (
-              <SelectItem disabled>No matches</SelectItem>
-            ) : null}
             {fetcher.data?.more ? (
               <SelectItem disabled>
                 {search ? "Keep typing to narrow" : "Type to search more"}

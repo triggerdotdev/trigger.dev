@@ -83,18 +83,29 @@ export function AuditLogDetail({
 
 /**
  * Every event involving a key or token ending in these 4 characters, made with it or changing it,
- * in the same time range: the actor menu's "Any key ending" filter.
+ * in the same time range: the actor menu's "Any key ending" filter. Every other filter is dropped,
+ * or the link would show fewer than all of them.
  */
 function KeyEndingLink({ last4 }: { last4: string }) {
   const location = useLocation();
-  const search = new URLSearchParams(location.search);
-  for (const name of ["actor", "credential", "cursor", "event"]) search.delete(name);
-  search.set("key", last4);
+  const search = keyEndingSearch(location.search, last4);
   return (
     <TextLink to={`${location.pathname}?${search.toString()}`} className="text-xs">
       All events for keys ending {last4}
     </TextLink>
   );
+}
+
+/** The page's search for every event of keys ending `last4`: its time range, and nothing else. */
+export function keyEndingSearch(currentSearch: string, last4: string): URLSearchParams {
+  const current = new URLSearchParams(currentSearch);
+  const search = new URLSearchParams();
+  for (const name of ["period", "from", "to"]) {
+    const value = current.get(name);
+    if (value !== null) search.set(name, value);
+  }
+  search.set("key", last4);
+  return search;
 }
 
 /** The deployment a build's request was for, linked to its page. */

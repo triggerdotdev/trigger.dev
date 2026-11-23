@@ -160,6 +160,7 @@ export function AuditLogFilterBar({
           dropdownIcon={!filters.action}
           variant={filters.action ? "minimal/small" : "secondary/small"}
           className={filters.action ? CHIP_TRIGGER_CLASS : undefined}
+          empty={<SelectItem disabled>No matches</SelectItem>}
         >
           {(items) =>
             items.map((item) => (

@@ -197,9 +197,12 @@ export function auditLogQuery(
   filters: AuditLogFilters,
   searchParams: AuditLogSearchParams
 ): AuditLogEventQuery {
+  // "Occurred before" has no start: search from the earliest event, not the default period before
+  // now, which would end up after an older end. The visibility window still clamps it.
+  const endOnly = !searchParams.period && !searchParams.from && searchParams.to;
   const { from, to } = timeFilterFromTo({
     period: searchParams.period,
-    from: searchParams.from,
+    from: endOnly ? EARLIEST_EVENT.getTime() : searchParams.from,
     to: searchParams.to,
     defaultPeriod: AUDIT_LOG_DEFAULT_PERIOD,
   });
