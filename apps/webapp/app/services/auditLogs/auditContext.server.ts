@@ -276,15 +276,21 @@ export function notePersonalAccessTokenAuthentication(
   });
 }
 
-/** An organization access token. It has no user, so the token is the actor. */
+/**
+ * An organization access token. It has no user, so the token is the actor, unless the platform
+ * minted it for itself, such as for a build: then Trigger.dev acted.
+ */
 export function noteOrganizationAccessTokenAuthentication(
   request: Request,
-  auth: { tokenId: string }
+  auth: { tokenId: string; type: "USER" | "SYSTEM" }
 ): void {
   setAuditIdentity(request, () => {
     const token = bearerToken(request) ?? "";
     return {
-      actor: { type: "oat", id: auth.tokenId },
+      actor:
+        auth.type === "SYSTEM"
+          ? { type: "trigger_infra", id: null }
+          : { type: "oat", id: auth.tokenId },
       credential: { kind: "oat", id: auth.tokenId, last4: lastFour(token), fingerprintId: null },
       onBehalfOf: null,
       source: sourceFromHeaders(request),
