@@ -109,19 +109,19 @@ export const AuditEventsSearchParams = z
 
 export type AuditEventsSearchParams = z.infer<typeof AuditEventsSearchParams>;
 
-type TimeRange = { from: Date; to: Date };
+export type TimeRange = { from: Date; to: Date };
 
 /** Before any audit event: an unbounded start until a visibility window applies. */
-const EARLIEST_EVENT = new Date("2000-01-01T00:00:00.000Z");
+export const EARLIEST_EVENT = new Date("2000-01-01T00:00:00.000Z");
 
 /**
- * The single place the plan's visibility window is enforced on the public API. Returns the part of
- * the requested range the organization may see.
+ * The single place the plan's visibility window is enforced, for the public API and the audit log
+ * page. Returns the part of the requested range the organization may see.
  *
  * TODO(TRI-15844): no window is decided yet, so this passes the range through unchanged. When one
  * is, move `from` forward to the start of the organization's window here.
  */
-async function clampToVisibilityWindow(
+export async function clampToVisibilityWindow(
   _organizationId: string,
   requested: TimeRange
 ): Promise<TimeRange> {

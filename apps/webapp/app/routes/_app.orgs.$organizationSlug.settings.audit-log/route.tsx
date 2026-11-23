@@ -1,0 +1,291 @@
+import { useLocation, useNavigation } from "@remix-run/react";
+import { useEffect, useRef, useState } from "react";
+import { redirect, typedjson, useTypedFetcher, useTypedLoaderData } from "remix-typedjson";
+import { z } from "zod";
+import { AuditLogDetail } from "~/components/auditLogs/AuditLogDetail";
+import { AuditLogFilterBar } from "~/components/auditLogs/AuditLogFilters";
+import { AuditLogTable } from "~/components/auditLogs/AuditLogTable";
+import { PageBody, PageContainer } from "~/components/layout/AppLayout";
+import { Callout } from "~/components/primitives/Callout";
+import { Button } from "~/components/primitives/Buttons";
+import { NavBar, PageAccessories, PageTitle } from "~/components/primitives/PageHeader";
+import { Header3 } from "~/components/primitives/Headers";
+import { Paragraph } from "~/components/primitives/Paragraph";
+import {
+  collapsibleHandleClassName,
+  RESIZABLE_PANEL_ANIMATION,
+  ResizableHandle,
+  ResizablePanel,
+  ResizablePanelGroup,
+} from "~/components/primitives/Resizable";
+import { $replica } from "~/db.server";
+import {
+  auditLogFilters,
+  AuditLogPresenter,
+  AuditLogSearchParams,
+  type AuditLogEventView,
+  invalidTimeParams,
+} from "~/presenters/v3/AuditLogPresenter.server";
+import { parseCredentialReference } from "~/presenters/v3/auditLogCredentials.server";
+import { auditLogSelectedLabels } from "~/presenters/v3/auditLogMenus.server";
+import {
+  AUDIT_LOG_PAGE_AUTHORIZATION,
+  auditLogPageContext,
+} from "~/services/auditLogs/auditLogPageAccess.server";
+import { auditLogs, getAuditLogController } from "~/services/auditLogs/auditLogs.server";
+import { dashboardLoader } from "~/services/routeBuilders/dashboardBuilder";
+import { pageMeta } from "~/utils/pageTitle";
+
+export const meta = pageMeta("Audit log");
+
+const Params = z.object({ organizationSlug: z.string() });
+
+export const loader = dashboardLoader(
+  {
+    params: Params,
+    context: auditLogPageContext,
+    authorization: AUDIT_LOG_PAGE_AUTHORIZATION,
+  },
+  async ({ request, context }) => {
+    const organizationId = context.organizationId;
+    if (!organizationId) {
+      throw new Response("Not Found", { status: 404 });
+    }
+
+    // Without the audit log plugin (self-hosted) nothing is ever recorded.
+    if (!(await getAuditLogController())) {
+      return typedjson({ available: false as const });
+    }
+
+    const url = new URL(request.url);
+    // A start or end that isn't a date would break the time filter: drop it, as other bad values are.
+    const invalidDates = invalidTimeParams(url.searchParams);
+    if (invalidDates.length > 0) {
+      for (const name of invalidDates) url.searchParams.delete(name);
+      return redirect(`${url.pathname}${url.search}`);
+    }
+    const searchParams = AuditLogSearchParams.parse(Object.fromEntries(url.searchParams));
+    const presenter = new AuditLogPresenter($replica, (query) => auditLogs.listEvents(query));
+
+    // The filter options load once per page view, from their own route.
+    // What the filters show for the values picked, which a menu's first page may not include. A
+    // later page only appends events.
+    if (searchParams.cursor) {
+      const page = await presenter.call(organizationId, searchParams);
+      return typedjson({ available: true as const, page, selectedLabels: null });
+    }
+    // A personal access token is named only once its events show it acted here, so its label waits
+    // for the events. Everything else is looked up alongside them.
+    const filters = auditLogFilters(searchParams);
+    if (parseCredentialReference(filters.credential)?.kind === "pat") {
+      const page = await presenter.call(organizationId, searchParams);
+      const selectedLabels = await auditLogSelectedLabels($replica, organizationId, {
+        ...page.filters,
+        patActedHere: page.patActedHere,
+      });
+      return typedjson({ available: true as const, page, selectedLabels });
+    }
+    const [page, selectedLabels] = await Promise.all([
+      presenter.call(organizationId, searchParams),
+      auditLogSelectedLabels($replica, organizationId, filters),
+    ]);
+
+    return typedjson({ available: true as const, page, selectedLabels });
+  }
+);
+
+function AuditLogNavBar({ canExport }: { canExport: boolean }) {
+  return (
+    <NavBar>
+      <PageTitle
+        title="Audit log"
+        accessory="Who changed credentials, environment variables and members in your organization, and from where."
+      />
+      {canExport ? (
+        <PageAccessories>
+          <Button variant="secondary/small" disabled tooltip="Coming later">
+            Export CSV
+          </Button>
+        </PageAccessories>
+      ) : null}
+    </NavBar>
+  );
+}
+
+export default function Page() {
+  const data = useTypedLoaderData<typeof loader>();
+
+  return (
+    <PageContainer>
+      <AuditLogNavBar canExport={data.available} />
+      <PageBody scrollable={false}>
+        {data.available ? (
+          <AuditLog />
+        ) : (
+          // As the Roles page says it for a self-hosted deployment without the plugin.
+          <div className="flex flex-col items-center gap-2 p-8 text-center">
+            <Header3>Audit logs aren't available in this self-hosted deployment.</Header3>
+            <Paragraph variant="small" className="text-text-dimmed">
+              Audit logs are available in Trigger.dev Cloud or with an enterprise self-hosted
+              license.
+            </Paragraph>
+          </div>
+        )}
+      </PageBody>
+    </PageContainer>
+  );
+}
+
+function AuditLog() {
+  const data = useTypedLoaderData<typeof loader>();
+  const location = useLocation();
+  const fetcher = useTypedFetcher<typeof loader>();
+
+  if (!data.available) return null;
+
+  return (
+    <AuditLogList
+      // A new search starts a new list.
+      key={location.search}
+      page={data.page}
+      selectedLabels={data.selectedLabels ?? {}}
+      fetcher={fetcher}
+    />
+  );
+}
+
+type LoaderData = Extract<
+  ReturnType<typeof useTypedLoaderData<typeof loader>>,
+  { available: true }
+>;
+
+function AuditLogList({
+  page,
+  selectedLabels,
+  fetcher,
+}: {
+  page: LoaderData["page"];
+  selectedLabels: NonNullable<LoaderData["selectedLabels"]>;
+  fetcher: ReturnType<typeof useTypedFetcher<typeof loader>>;
+}) {
+  const location = useLocation();
+  const navigation = useNavigation();
+  const [events, setEvents] = useState<AuditLogEventView[]>(page.events);
+  // The next page's cursor, and why the last "Load more" failed. A failed page keeps its cursor, so
+  // "Load more" can try again.
+  const [more, setMore] = useState<{ nextCursor: string | null; error: string | null }>({
+    nextCursor: page.nextCursor,
+    error: null,
+  });
+  const { nextCursor, error: loadMoreError } = more;
+  const error = page.error;
+  // A shared link to an event that isn't on this page opens nothing: the URL drops it below.
+  const [selectedId, setSelectedId] = useState<string | undefined>(() => {
+    const id = new URLSearchParams(location.search).get("event");
+    return page.events.some((event) => event.id === id) ? (id ?? undefined) : undefined;
+  });
+
+  // Set while this list waits for its next page: the fetcher outlives the list, and its last data
+  // may belong to an earlier search.
+  const loadingMore = useRef(false);
+
+  useEffect(() => {
+    const data = fetcher.data;
+    if (!loadingMore.current || fetcher.state !== "idle" || !data?.available) return;
+    loadingMore.current = false;
+    // The fetcher is the external system here: the page it loaded arrives after the click.
+    setEvents((current) => {
+      const seen = new Set(current.map((event) => event.id));
+      return [...current, ...data.page.events.filter((event) => !seen.has(event.id))];
+    });
+    // oxlint-disable-next-line react/set-state-in-effect -- Takes in the page a fetcher loaded, as above.
+    setMore((current) => ({
+      nextCursor: data.page.error ? current.nextCursor : data.page.nextCursor,
+      error: data.page.error,
+    }));
+  }, [fetcher.state, fetcher.data]);
+
+  const loadMore = () => {
+    if (!nextCursor) return;
+    const search = new URLSearchParams(location.search);
+    search.set("cursor", nextCursor);
+    search.delete("event");
+    loadingMore.current = true;
+    fetcher.load(`${location.pathname}?${search.toString()}`);
+  };
+
+  // The selected event is kept in the URL without a navigation, so the list isn't reloaded.
+  useEffect(() => {
+    const url = new URL(window.location.href);
+    if (selectedId) url.searchParams.set("event", selectedId);
+    else url.searchParams.delete("event");
+    if (url.href === window.location.href) return;
+    // Keeps the router's own history state.
+    window.history.replaceState(window.history.state, "", url.toString());
+  }, [selectedId]);
+
+  const selected = selectedId ? events.find((event) => event.id === selectedId) : undefined;
+
+  return (
+    <div className="grid h-full grid-rows-[auto_1fr] overflow-hidden">
+      <div className="border-b border-grid-bright p-2">
+        <AuditLogFilterBar filters={page.filters} selectedLabels={selectedLabels} />
+      </div>
+      <ResizablePanelGroup orientation="horizontal" className="min-h-0">
+        <ResizablePanel id="audit-log-events" min="300px">
+          <div className="h-full overflow-y-auto scrollbar-thin scrollbar-track-transparent scrollbar-thumb-surface-control">
+            {error ? (
+              <div className="p-2">
+                <Callout variant="error">{error}</Callout>
+              </div>
+            ) : null}
+            <AuditLogTable
+              events={events}
+              selectedId={selected?.id}
+              onSelect={setSelectedId}
+              hasMore={Boolean(nextCursor)}
+              isLoadingMore={fetcher.state !== "idle"}
+              loadMoreError={loadMoreError}
+              onLoadMore={loadMore}
+              isFiltered={location.search.replace(/[?&]event=[^&]*/, "").length > 1}
+              isLoading={
+                navigation.state === "loading" && navigation.location.pathname === location.pathname
+              }
+            />
+            {!page.filters.includeReads &&
+            !page.filters.action &&
+            page.filters.category === "envvars" &&
+            !error ? (
+              <Paragraph variant="extra-small" className="px-3 py-2 text-text-dimmed">
+                Reads are left out. Pick a read as the event, or filter by a key, to see who listed
+                or read environment variables.
+              </Paragraph>
+            ) : null}
+          </div>
+        </ResizablePanel>
+        <ResizableHandle
+          id="audit-log-detail-handle"
+          className={collapsibleHandleClassName(Boolean(selected))}
+        />
+        <ResizablePanel
+          id="audit-log-detail"
+          default="420px"
+          min="360px"
+          max="640px"
+          className="overflow-hidden"
+          collapsible
+          collapsed={!selected}
+          onCollapseChange={() => {}}
+          collapsedSize="0px"
+          collapseAnimation={RESIZABLE_PANEL_ANIMATION}
+        >
+          <div className="h-full" style={{ minWidth: 360 }}>
+            {selected ? (
+              <AuditLogDetail event={selected} onClose={() => setSelectedId(undefined)} />
+            ) : null}
+          </div>
+        </ResizablePanel>
+      </ResizablePanelGroup>
+    </div>
+  );
+}

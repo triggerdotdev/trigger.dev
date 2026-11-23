@@ -242,11 +242,16 @@ export type AuditLogEventQuery = {
   keyLast4?: string;
   /** Matches events whose target has exactly this name, e.g. an env var key. */
   targetName?: string;
+  /** Matches events that came in one of these ways: the dashboard, the API, the CLI… */
+  sources?: AuditLogSource[];
   /**
-   * Matches events made with this credential, by its fingerprint id. The host resolves the
-   * credential the user picked; events made before the credential had a fingerprint don't match.
+   * Matches events made with this credential, by what each event recorded: one of its kinds, its
+   * row id (the environment's id for a root key), and its last 4 when given, which tells a root
+   * key's rotations apart. A root key's filter also lists `public_jwt`: a public JWT is recorded
+   * with the root key that signed it. Matches events whatever their fingerprint, and credentials
+   * deleted since.
    */
-  credentialFingerprintId?: string;
+  credential?: { kinds: AuditLogCredentialKind[]; id: string; last4?: string };
   /** From the previous page's `nextCursor`. */
   cursor?: string;
   limit: number;

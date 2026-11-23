@@ -87,12 +87,13 @@ function errorMessage(error: unknown): string {
  * e.g. staff identity or fingerprint ids, and those must never reach a customer.
  */
 function toListedEvent(event: AuditLogListedEvent): AuditLogListedEvent {
-  const { credential, endpoint, origin } = event;
-  // Trigger.dev staff acted: the IP and user agent are theirs, so they stay internal.
+  const { endpoint, origin } = event;
+  // Trigger.dev staff acted: their IP, user agent and credential stay internal.
   const byStaff = event.actor.type === "support" || event.source === "staff";
   // A platform-minted key (a build's deploy key, Vercel promote, preview archive): its IP and key
   // are our infrastructure's, so they stay internal too.
   const infraActed = event.actor.type === "trigger_infra";
+  const credential = byStaff || infraActed ? null : event.credential;
   return {
     category: event.category,
     action: event.action,
@@ -103,11 +104,11 @@ function toListedEvent(event: AuditLogListedEvent): AuditLogListedEvent {
     environmentId: event.environmentId,
     environmentType: event.environmentType,
     target: { type: event.target.type, id: event.target.id, name: event.target.name },
-    actor: { type: event.actor.type, id: event.actor.id },
-    credential:
-      credential && !infraActed
-        ? { kind: credential.kind, id: credential.id, last4: credential.last4 }
-        : null,
+    // Which staff member acted as Trigger.dev support stays internal, whatever the plugin stored.
+    actor: { type: event.actor.type, id: event.actor.type === "support" ? null : event.actor.id },
+    credential: credential
+      ? { kind: credential.kind, id: credential.id, last4: credential.last4 }
+      : null,
     source: event.source,
     endpoint:
       endpoint && !byStaff && !infraActed

@@ -46,6 +46,8 @@ import { removeTeamMember } from "~/models/removeTeamMember.server";
 import { redirectWithSuccessMessage } from "~/models/message.server";
 import { resolveOrgIdFromSlugForUser } from "~/models/organization.server";
 import { getUserId } from "~/services/session.server";
+import { hasAuditLogsAccess } from "~/services/auditLogs/auditLogsAccess.server";
+import { getImpersonationState } from "~/services/impersonation.server";
 import { TeamPresenter } from "~/presenters/TeamPresenter.server";
 import { getCurrentPlan, getSelfServePurchaseBlockReason } from "~/services/platform.v3.server";
 import { ssoController } from "~/services/sso.server";
@@ -54,6 +56,7 @@ import { cn } from "~/utils/cn";
 import { formatCurrency, formatNumber } from "~/utils/numberFormatter";
 import {
   inviteTeamMemberPath,
+  organizationAuditLogPath,
   organizationRolesPath,
   organizationTeamPath,
   resendInvitePath,
@@ -82,7 +85,7 @@ export const loader = dashboardLoader(
     },
     authorization: { action: "read", resource: { type: "members" } },
   },
-  async ({ user, ability, context }) => {
+  async ({ request, user, ability, context }) => {
     const orgId = context.organizationId;
     if (!orgId) {
       throw new Response("Not Found", { status: 404 });
@@ -110,7 +113,20 @@ export const loader = dashboardLoader(
     const policy = await ssoController.getMembershipPolicy(orgId);
     const manualMembershipAllowed = policy.isOk() ? policy.value.manualMembershipAllowed : true;
 
-    return typedjson({ ...result, canManageMembers, canManageBilling, manualMembershipAllowed });
+    // Each member's "View activity" link: shown where the org has the audit log, enabled for roles
+    // that can read it. The page checks both again.
+    const { isImpersonating } = await getImpersonationState(request, user.id);
+    const auditLog = (await hasAuditLogsAccess({ admin: user.admin, isImpersonating }, orgId))
+      ? { canView: ability.can("manage", { type: "audit-logs" }) }
+      : null;
+
+    return typedjson({
+      ...result,
+      canManageMembers,
+      canManageBilling,
+      manualMembershipAllowed,
+      auditLog,
+    });
   }
 );
 
@@ -352,6 +368,7 @@ export default function Page() {
     canManageMembers,
     canManageBilling,
     manualMembershipAllowed,
+    auditLog,
   } = useTypedLoaderData<typeof loader>();
   // Build a userId → roleId map so the dropdown's defaultValue matches
   // each member's current assignment without re-querying.
@@ -523,7 +540,25 @@ export default function Page() {
                       assignableRoleIds={assignableRoleIds}
                       canManageMembers={canManageMembers}
                     />
-                    <div className="justify-self-end">
+                    <div className="flex items-center gap-2 justify-self-end">
+                      {auditLog ? (
+                        auditLog.canView ? (
+                          <LinkButton
+                            to={`${organizationAuditLogPath(organization)}?${new URLSearchParams({ actor: member.user.id })}`}
+                            variant="minimal/small"
+                          >
+                            View activity
+                          </LinkButton>
+                        ) : (
+                          <Button
+                            variant="minimal/small"
+                            disabled
+                            tooltip="You don't have permission to view the audit log"
+                          >
+                            View activity
+                          </Button>
+                        )
+                      ) : null}
                       <LeaveRemoveButton
                         userId={user.id}
                         member={member}

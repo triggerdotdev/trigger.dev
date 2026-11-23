@@ -582,6 +582,37 @@ describe("audit logs host", () => {
     ]);
   });
 
+  // Catches: a staff member's id, or the credential they used, reaching the customer.
+  it("never lists who at Trigger.dev acted as support, or with what", async () => {
+    const support: AuditLogEvent = {
+      ...input,
+      id: "evt_support",
+      occurredAt: new Date("2026-11-09T12:00:00Z"),
+      changes: null,
+      actor: { type: "support", id: "staff_1" },
+      credential: { kind: "pat", id: "pat_staff", last4: "st4f", fingerprintId: null },
+      onBehalfOf: null,
+      source: "staff",
+      endpoint: null,
+      origin: null,
+      requestId: null,
+    };
+    const controller = inMemoryController({
+      listEvents: async () => ({ events: [support], nextCursor: null }),
+    });
+    const audit = host({ controller: async () => controller });
+
+    const page = await audit.listEvents({
+      organizationId: "org_1",
+      from: new Date(0),
+      to: new Date(),
+      limit: 50,
+    });
+
+    expect(page.events.map((event) => event.actor)).toEqual([{ type: "support", id: null }]);
+    expect(page.events.map((event) => event.credential)).toEqual([null]);
+  });
+
   // Catches: our build infrastructure's IP, user agent or deploy key reaching the customer, or a
   // customer's own key losing them.
   it("hides the endpoint and credential of events Trigger.dev infrastructure made", async () => {

@@ -91,6 +91,14 @@ export function organizationSupportAccessPath(organization: OrgForPath) {
   return `${organizationSettingsPath(organization)}/support-access`;
 }
 
+export function organizationAuditLogPath(organization: OrgForPath) {
+  return `${organizationSettingsPath(organization)}/audit-log`;
+}
+
+export function organizationAuditLogFilterOptionsPath(organization: OrgForPath) {
+  return `/resources/orgs/${organizationParam(organization)}/audit-log/filter-options`;
+}
+
 export function organizationSecurityPath(organization: OrgForPath) {
   return `${organizationSettingsPath(organization)}/security`;
 }
