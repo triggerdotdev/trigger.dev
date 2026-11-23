@@ -72,7 +72,7 @@ export const FEATURE_FLAG = {
 
 // Mirrors the core worker-queue enums; defined here because this module is imported client-side.
 const WorkerQueueCompatibilityFlag = z.enum(["any", "container", "compute"]);
-const WorkerQueueChannelFlag = z.enum(["stable", "canary", "proxy"]);
+const WorkerQueueChannelFlag = z.enum(["stable", "canary"]);
 
 export const WORKER_QUEUE_OVERRIDE_ENVIRONMENT_TYPES = [
   "PRODUCTION",
