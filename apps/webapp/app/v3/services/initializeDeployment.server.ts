@@ -22,6 +22,9 @@ import {
 } from "../deploymentAccess.server";
 import { cardVerificationDeployRefusal } from "../cardVerificationDeployGate.server";
 import { TimeoutDeploymentService } from "./timeoutDeployment.server";
+import { announceDeploymentFailure } from "./failDeployment.server";
+import { checkCliVersion, UNSUPPORTED_CLI_VERSION_ERROR } from "../cliVersionPolicy.server";
+import { deployCliVersionPolicy } from "../cliVersionPolicyInstance.server";
 import { resolveDeployBaseImages } from "../deployBaseImages.server";
 import { getDeploymentImageRef } from "../getDeploymentImageRef.server";
 import { tryCatch } from "@trigger.dev/core";
@@ -71,17 +74,20 @@ export type InitializeDeploymentResult =
 export class InitializeDeploymentService extends BaseService {
   private readonly _deploymentAccess: DeploymentAccessController | null | undefined;
   private readonly _cardRefusal: typeof cardVerificationDeployRefusal;
+  private readonly _cliVersionPolicy: typeof deployCliVersionPolicy;
 
   constructor(
     prisma?: PrismaClientOrTransaction,
     replica?: PrismaClientOrTransaction,
     // Tests inject these; production loads the access plugin and asks billing about the card.
     deploymentAccess?: DeploymentAccessController | null,
-    cardRefusal: typeof cardVerificationDeployRefusal = cardVerificationDeployRefusal
+    cardRefusal: typeof cardVerificationDeployRefusal = cardVerificationDeployRefusal,
+    cliVersionPolicy: typeof deployCliVersionPolicy = deployCliVersionPolicy
   ) {
     super(prisma, replica);
     this._deploymentAccess = deploymentAccess;
     this._cardRefusal = cardRefusal;
+    this._cliVersionPolicy = cliVersionPolicy;
   }
 
   public async call(
@@ -282,7 +288,13 @@ export class InitializeDeploymentService extends BaseService {
       const cardRefusal = await this._cardRefusal(environment.organization);
       if (cardRefusal) throw new DeploymentAccessError(cardRefusal);
 
-      span.setAttribute("outcome", "created");
+      const { rejection: cliVersionRejection } = checkCliVersion(
+        this._cliVersionPolicy(environment.organization),
+        options.cliVersion,
+        new Date()
+      );
+
+      span.setAttribute("outcome", cliVersionRejection ? "cli_version_rejected" : "created");
 
       const deploymentId = cuid();
       const encryption = environmentEncryption(this._prisma);
@@ -321,7 +333,7 @@ export class InitializeDeploymentService extends BaseService {
       });
 
       const canceledDeployments =
-        reuse.action === "cancel-then-build"
+        reuse.action === "cancel-then-build" && !cliVersionRejection
           ? await cancelSupersededDeployments({
               deploymentService,
               environmentId: environment.id,
@@ -337,13 +349,14 @@ export class InitializeDeploymentService extends BaseService {
       const generateExternalBuildToken =
         payload.initialStatus === "PENDING" || payload.isNativeBuild || payload.isLocalBuild;
 
-      const externalBuildData = generateExternalBuildToken
-        ? ({
-            projectId: "-",
-            buildToken: "-",
-            buildId: "-",
-          } satisfies ExternalBuildData)
-        : await createRemoteImageBuild(environment.project);
+      const externalBuildData =
+        generateExternalBuildToken || cliVersionRejection
+          ? ({
+              projectId: "-",
+              buildToken: "-",
+              buildId: "-",
+            } satisfies ExternalBuildData)
+          : await createRemoteImageBuild(environment.project);
 
       const triggeredBy = payload.userId
         ? await this._prisma.user.findFirst({
@@ -480,7 +493,7 @@ export class InitializeDeploymentService extends BaseService {
             friendlyId: generateFriendlyId("deployment"),
             contentHash: payload.contentHash,
             shortCode: deploymentShortCode,
-            status: initialStatus,
+            status: cliVersionRejection ? "FAILED" : initialStatus,
             projectId: environment.projectId,
             externalBuildData,
             buildServerMetadata,
@@ -496,7 +509,12 @@ export class InitializeDeploymentService extends BaseService {
             cliVersion: options.cliVersion,
             triggeredVia: payload.triggeredVia ?? undefined,
             initiatedByCredential: options.initiatedByCredential,
-            startedAt: initialStatus === "BUILDING" ? new Date() : undefined,
+            ...(cliVersionRejection
+              ? {
+                  failedAt: new Date(),
+                  errorData: { name: UNSUPPORTED_CLI_VERSION_ERROR, message: cliVersionRejection },
+                }
+              : { startedAt: initialStatus === "BUILDING" ? new Date() : undefined }),
           };
         },
         {
@@ -521,6 +539,11 @@ export class InitializeDeploymentService extends BaseService {
           environmentType: environment.type,
         },
       });
+
+      if (cliVersionRejection) {
+        await announceDeploymentFailure(environment, deployment, cliVersionRejection);
+        throw new ServiceValidationError(cliVersionRejection, 400);
+      }
 
       const timeoutMs =
         deployment.status === "PENDING" ? env.DEPLOY_QUEUE_TIMEOUT_MS : env.DEPLOY_TIMEOUT_MS;

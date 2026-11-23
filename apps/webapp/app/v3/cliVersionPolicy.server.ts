@@ -7,6 +7,8 @@ export type DeployCliVersionPolicy = {
   enforcedFrom: Date;
 };
 
+export const UNSUPPORTED_CLI_VERSION_ERROR = "Unsupported trigger.dev version";
+
 export type CliVersionVerdict = "ok" | "warn" | "reject" | "unknown";
 
 function parseDate(value: unknown): Date | undefined {
@@ -74,4 +76,18 @@ export function evaluateCliVersion(
   if (parsed.version.startsWith("0.0.0-") || semver.gte(parsed, policy.minimum)) return "ok";
 
   return createdAt >= policy.enforcedFrom ? "reject" : "warn";
+}
+
+export function checkCliVersion(
+  policy: DeployCliVersionPolicy | undefined,
+  version: string | null | undefined,
+  createdAt: Date
+): { verdict: CliVersionVerdict; rejection?: string } {
+  const verdict = evaluateCliVersion(policy, version, createdAt);
+  if (verdict !== "reject" || !policy || !version) return { verdict };
+
+  return {
+    verdict,
+    rejection: `trigger.dev v${semver.clean(version) ?? version} is no longer supported for new deploys. Please upgrade to v${policy.minimum} or higher by running \`npx trigger.dev@latest update\`.`,
+  };
 }

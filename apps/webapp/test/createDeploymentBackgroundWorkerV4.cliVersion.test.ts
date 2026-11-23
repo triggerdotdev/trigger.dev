@@ -4,12 +4,14 @@ import type { CreateBackgroundWorkerRequestBody, TaskResource } from "@trigger.d
 import type { PrismaClient } from "@trigger.dev/database";
 import { describe, expect, vi } from "vitest";
 import { NoopTaskMetadataCache } from "~/services/taskMetadataCache.server";
+import { alertsWorker } from "~/v3/alertsWorker.server";
+import type { DeployCliVersionPolicy } from "~/v3/cliVersionPolicy.server";
 import { ServiceValidationError } from "~/v3/services/baseService.server";
 import { CreateDeploymentBackgroundWorkerServiceV4 } from "~/v3/services/createDeploymentBackgroundWorkerV4.server";
 
 vi.setConfig({ testTimeout: 30_000 });
 
-async function seedDeployment(prisma: PrismaClient, cliVersion: string | null) {
+async function seedDeployment(prisma: PrismaClient, cliVersion: string | null, createdAt?: Date) {
   const environment = await setupAuthenticatedEnvironment(prisma, "PRODUCTION");
   const suffix = Math.random().toString(36).slice(2, 10);
 
@@ -23,6 +25,7 @@ async function seedDeployment(prisma: PrismaClient, cliVersion: string | null) {
       projectId: environment.projectId,
       environmentId: environment.id,
       cliVersion,
+      createdAt,
     },
   });
 
@@ -50,13 +53,14 @@ function manifest(
   };
 }
 
-function service(prisma: PrismaClient) {
+function service(prisma: PrismaClient, policy?: DeployCliVersionPolicy) {
   return new CreateDeploymentBackgroundWorkerServiceV4(
     prisma,
     prisma,
     new NoopTaskMetadataCache(),
     undefined,
-    null
+    null,
+    () => policy
   );
 }
 
@@ -131,4 +135,54 @@ describe("CreateDeploymentBackgroundWorkerServiceV4 cliVersion", () => {
       expect(failed.cliVersion).toBe("4.8.2");
     }
   );
+
+  describe("against a minimum CLI version", () => {
+    const enforcedFrom = new Date("2026-01-01T00:00:00Z");
+    const policy = { minimum: "4.5.20", enforcedFrom };
+
+    async function uploadOldCli(prisma: PrismaClient, createdAt: Date) {
+      const { environment, deployment } = await seedDeployment(prisma, null, createdAt);
+      const error = await service(prisma, policy)
+        .call(environment, deployment.friendlyId, manifest("4.5.10"))
+        .then(
+          () => undefined,
+          (thrown) => thrown
+        );
+      const after = await prisma.workerDeployment.findFirstOrThrow({
+        where: { id: deployment.id },
+      });
+      return { error, deployment: after };
+    }
+
+    // Catches: an old CLI's upload getting through, or failing without the deploy-failed alert.
+    containerTest("fails an upload built by an old CLI and alerts", async ({ prisma }) => {
+      const { error, deployment } = await uploadOldCli(prisma, enforcedFrom);
+
+      expect(error).toBeInstanceOf(ServiceValidationError);
+      expect(deployment).toMatchObject({
+        status: "FAILED",
+        errorData: { name: "Unsupported trigger.dev version" },
+      });
+      expect(alertsWorker.enqueue).toHaveBeenCalledWith(
+        expect.objectContaining({
+          job: "v3.performDeploymentAlerts",
+          payload: { deploymentId: deployment.id },
+        })
+      );
+    });
+
+    // Catches: the gate using the upload time, which fails a deploy that started before enforcement.
+    containerTest(
+      "lets an old CLI through when the deployment predates enforcement",
+      async ({ prisma }) => {
+        const { error, deployment } = await uploadOldCli(
+          prisma,
+          new Date(enforcedFrom.getTime() - 1000)
+        );
+
+        expect(error).toBeUndefined();
+        expect(deployment.status).toBe("DEPLOYING");
+      }
+    );
+  });
 });
