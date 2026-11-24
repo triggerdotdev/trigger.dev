@@ -882,7 +882,7 @@ export const myChat = chat.agent({
   run: async ({ messages, signal }) => {
     return streamText({
       ...chat.toStreamTextOptions(),
-      model: anthropic("claude-sonnet-4-5"),
+      model: anthropic("claude-sonnet-5-5"),
       messages,
       abortSignal: signal,
       stopWhen: stepCountIs(15),
