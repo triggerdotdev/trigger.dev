@@ -26,7 +26,7 @@ export type DashboardLimits = {
 };
 
 /** The org's plan limits for custom dashboards, with the defaults the dashboard has always used. */
-async function getDashboardLimits(organizationId: string): Promise<DashboardLimits> {
+export async function getDashboardLimits(organizationId: string): Promise<DashboardLimits> {
   const plan = await getCurrentPlan(organizationId);
   const limits = plan?.v3Subscription?.plan?.limits as Record<string, unknown> | undefined;
 
@@ -191,11 +191,23 @@ export class MetricDashboardService {
     );
   }
 
-  async delete({ organizationId, friendlyId }: DashboardRef) {
+  async delete({ organizationId, friendlyId, revision }: DashboardRef & { revision?: string }) {
     const dashboard = await this.get({ organizationId, friendlyId });
+    assertRevision(dashboard, revision);
 
-    await this._prisma.metricsDashboard.delete({ where: { id: dashboard.id } });
-
+    if (revision === undefined) {
+      await this._prisma.metricsDashboard.delete({ where: { id: dashboard.id } });
+      return dashboard;
+    }
+    const result = await this._prisma.metricsDashboard.deleteMany({
+      where: { id: dashboard.id, updatedAt: dashboard.updatedAt },
+    });
+    if (result.count === 0) {
+      throw new ServiceValidationError(
+        "Dashboard was modified by another request. Please refresh and try again.",
+        409
+      );
+    }
     return dashboard;
   }
 

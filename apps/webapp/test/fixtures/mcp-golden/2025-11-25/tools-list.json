@@ -986,6 +986,225 @@
             }
           },
           {
+            "name": "get_dashboard",
+            "title": "Get Dashboard",
+            "description": "Get one custom dashboard in full: its title, description, revision and every widget with its title, display settings, grid position and TRQL query. Use list_dashboards to find the dashboard id.",
+            "inputSchema": {
+              "type": "object",
+              "$schema": "https://json-schema.org/draft/2020-12/schema",
+              "properties": {
+                "projectRef": {
+                  "type": "string",
+                  "description": "The trigger.dev project ref, starts with proj_. We will attempt to automatically detect the project ref if running inside a directory that includes a trigger.config.ts file, or if you pass the --project-ref option to the MCP server."
+                },
+                "configPath": {
+                  "type": "string",
+                  "description": "The path to the trigger.config.ts file. Only used when the trigger.config.ts file is not at the root dir (like in a monorepo setup). If not provided, we will try to find the config file in the current working directory"
+                },
+                "environment": {
+                  "default": "dev",
+                  "type": "string",
+                  "enum": ["dev", "staging", "prod", "preview"],
+                  "description": "The environment to get tasks for"
+                },
+                "branch": {
+                  "type": "string",
+                  "description": "The branch to get tasks for, only used for preview environments and branchable development environments"
+                },
+                "dashboardId": {
+                  "type": "string",
+                  "pattern": "^dashboard_[A-Za-z0-9]{1,64}$",
+                  "description": "The custom dashboard id, starting with dashboard_. Use list_dashboards to find it."
+                },
+                "widgetOffset": {
+                  "default": 0,
+                  "description": "How many widgets to skip, to see the rest of a large dashboard",
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 10000
+                }
+              },
+              "required": ["dashboardId"]
+            },
+            "annotations": {
+              "readOnlyHint": true,
+              "destructiveHint": false,
+              "title": "Get Dashboard"
+            }
+          },
+          {
+            "name": "list_query_history",
+            "title": "List Query History",
+            "description": "List the 20 most recent queries run in the organization, newest first, as the Query page's history shows them: title, who ran it and when, scope, time range and the TRQL text. Use the query tool to run one again.",
+            "inputSchema": {
+              "type": "object",
+              "$schema": "https://json-schema.org/draft/2020-12/schema",
+              "properties": {
+                "projectRef": {
+                  "type": "string",
+                  "description": "The trigger.dev project ref, starts with proj_. We will attempt to automatically detect the project ref if running inside a directory that includes a trigger.config.ts file, or if you pass the --project-ref option to the MCP server."
+                },
+                "configPath": {
+                  "type": "string",
+                  "description": "The path to the trigger.config.ts file. Only used when the trigger.config.ts file is not at the root dir (like in a monorepo setup). If not provided, we will try to find the config file in the current working directory"
+                },
+                "environment": {
+                  "default": "dev",
+                  "type": "string",
+                  "enum": ["dev", "staging", "prod", "preview"],
+                  "description": "The environment to get tasks for"
+                },
+                "branch": {
+                  "type": "string",
+                  "description": "The branch to get tasks for, only used for preview environments and branchable development environments"
+                }
+              }
+            },
+            "annotations": {
+              "readOnlyHint": true,
+              "destructiveHint": false,
+              "title": "List Query History"
+            }
+          },
+          {
+            "name": "list_models",
+            "title": "List Models",
+            "description": "List the public LLM model catalogue, as the Models page shows it (models defined only in your project are not listed; get_model reads those by id): each model's id, provider, context window, prices per 1M tokens, release date, features and dated variants. Filter by provider or name; use get_model for one model's pricing tiers and your usage of it.",
+            "inputSchema": {
+              "type": "object",
+              "$schema": "https://json-schema.org/draft/2020-12/schema",
+              "properties": {
+                "projectRef": {
+                  "type": "string",
+                  "description": "The trigger.dev project ref, starts with proj_. We will attempt to automatically detect the project ref if running inside a directory that includes a trigger.config.ts file, or if you pass the --project-ref option to the MCP server."
+                },
+                "configPath": {
+                  "type": "string",
+                  "description": "The path to the trigger.config.ts file. Only used when the trigger.config.ts file is not at the root dir (like in a monorepo setup). If not provided, we will try to find the config file in the current working directory"
+                },
+                "environment": {
+                  "default": "dev",
+                  "type": "string",
+                  "enum": ["dev", "staging", "prod", "preview"],
+                  "description": "The environment to get tasks for"
+                },
+                "branch": {
+                  "type": "string",
+                  "description": "The branch to get tasks for, only used for preview environments and branchable development environments"
+                },
+                "provider": {
+                  "description": "Only this provider's models, e.g. openai or anthropic",
+                  "type": "string",
+                  "maxLength": 64
+                },
+                "search": {
+                  "description": "Only models whose name contains this text (case-insensitive)",
+                  "type": "string",
+                  "maxLength": 100
+                },
+                "limit": {
+                  "default": 50,
+                  "description": "How many to return (default 50)",
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 200
+                },
+                "offset": {
+                  "default": 0,
+                  "description": "How many to skip, to get the next page",
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 10000
+                }
+              }
+            },
+            "annotations": {
+              "readOnlyHint": true,
+              "destructiveHint": false,
+              "title": "List Models"
+            }
+          },
+          {
+            "name": "get_model",
+            "title": "Get Model",
+            "description": "Get one LLM model from the catalogue: its description, context window, pricing tiers and response-model pattern, plus this environment's usage of it over the last 7 days (calls, cost, tokens, latency and the tasks that called it).",
+            "inputSchema": {
+              "type": "object",
+              "$schema": "https://json-schema.org/draft/2020-12/schema",
+              "properties": {
+                "projectRef": {
+                  "type": "string",
+                  "description": "The trigger.dev project ref, starts with proj_. We will attempt to automatically detect the project ref if running inside a directory that includes a trigger.config.ts file, or if you pass the --project-ref option to the MCP server."
+                },
+                "configPath": {
+                  "type": "string",
+                  "description": "The path to the trigger.config.ts file. Only used when the trigger.config.ts file is not at the root dir (like in a monorepo setup). If not provided, we will try to find the config file in the current working directory"
+                },
+                "environment": {
+                  "default": "dev",
+                  "type": "string",
+                  "enum": ["dev", "staging", "prod", "preview"],
+                  "description": "The environment to get tasks for"
+                },
+                "branch": {
+                  "type": "string",
+                  "description": "The branch to get tasks for, only used for preview environments and branchable development environments"
+                },
+                "modelId": {
+                  "type": "string",
+                  "pattern": "^llm_model_[A-Za-z0-9]{1,64}$",
+                  "description": "The model id, starting with llm_model_. Use list_models to find it."
+                }
+              },
+              "required": ["modelId"]
+            },
+            "annotations": {
+              "readOnlyHint": true,
+              "destructiveHint": false,
+              "title": "Get Model"
+            }
+          },
+          {
+            "name": "get_model_usage",
+            "title": "Get Model Usage",
+            "description": "List the LLM models this environment called over a period, most calls first, as the Models page's Your models tab shows them: calls, cost, tokens, average latency, tokens per second and cache read rate per model.",
+            "inputSchema": {
+              "type": "object",
+              "$schema": "https://json-schema.org/draft/2020-12/schema",
+              "properties": {
+                "projectRef": {
+                  "type": "string",
+                  "description": "The trigger.dev project ref, starts with proj_. We will attempt to automatically detect the project ref if running inside a directory that includes a trigger.config.ts file, or if you pass the --project-ref option to the MCP server."
+                },
+                "configPath": {
+                  "type": "string",
+                  "description": "The path to the trigger.config.ts file. Only used when the trigger.config.ts file is not at the root dir (like in a monorepo setup). If not provided, we will try to find the config file in the current working directory"
+                },
+                "environment": {
+                  "default": "dev",
+                  "type": "string",
+                  "enum": ["dev", "staging", "prod", "preview"],
+                  "description": "The environment to get tasks for"
+                },
+                "branch": {
+                  "type": "string",
+                  "description": "The branch to get tasks for, only used for preview environments and branchable development environments"
+                },
+                "period": {
+                  "default": "7d",
+                  "description": "How far back to look, e.g. \"1h\", \"1d\" or \"30d\". Defaults to 7d.",
+                  "type": "string",
+                  "pattern": "^\\d{1,4}[mhdw]$"
+                }
+              }
+            },
+            "annotations": {
+              "readOnlyHint": true,
+              "destructiveHint": false,
+              "title": "Get Model Usage"
+            }
+          },
+          {
             "name": "list_prompts",
             "title": "List Prompts",
             "description": "List all managed prompts in the project environment. Shows slug, current version, override status, and version count.",
@@ -1056,6 +1275,129 @@
               "readOnlyHint": true,
               "destructiveHint": false,
               "title": "Get Prompt Versions"
+            }
+          },
+          {
+            "name": "get_prompt",
+            "title": "Get Prompt",
+            "description": "Get a prompt's details (description, type, tags, default model and config, variables, source file, version counts) and resolve one version with its full template. By default it resolves the \"current\" label; pass a label or a version number to resolve another. An active dashboard override always wins over a label, as it does when your code resolves the prompt.",
+            "inputSchema": {
+              "type": "object",
+              "$schema": "https://json-schema.org/draft/2020-12/schema",
+              "properties": {
+                "projectRef": {
+                  "type": "string",
+                  "description": "The trigger.dev project ref, starts with proj_. We will attempt to automatically detect the project ref if running inside a directory that includes a trigger.config.ts file, or if you pass the --project-ref option to the MCP server."
+                },
+                "configPath": {
+                  "type": "string",
+                  "description": "The path to the trigger.config.ts file. Only used when the trigger.config.ts file is not at the root dir (like in a monorepo setup). If not provided, we will try to find the config file in the current working directory"
+                },
+                "environment": {
+                  "default": "dev",
+                  "type": "string",
+                  "enum": ["dev", "staging", "prod", "preview"],
+                  "description": "The environment to get tasks for"
+                },
+                "branch": {
+                  "type": "string",
+                  "description": "The branch to get tasks for, only used for preview environments and branchable development environments"
+                },
+                "slug": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 256,
+                  "description": "The prompt slug"
+                },
+                "label": {
+                  "description": "Resolve the version this label points to, e.g. \"current\" (the default). An active dashboard override always wins over a label.",
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 64
+                },
+                "version": {
+                  "description": "Resolve this exact version number instead of a label",
+                  "type": "integer",
+                  "exclusiveMinimum": 0,
+                  "maximum": 9007199254740991
+                }
+              },
+              "required": ["slug"]
+            },
+            "annotations": {
+              "readOnlyHint": true,
+              "destructiveHint": false,
+              "title": "Get Prompt"
+            }
+          },
+          {
+            "name": "list_prompt_generations",
+            "title": "List Prompt Generations",
+            "description": "List the LLM generations that used a prompt, newest first, as the prompt's Generations tab shows them: time, run, span, task, model, prompt version, operation, tokens, cost and duration. It does not return the generated text; open the run to see that. Returns a cursor when there are more.",
+            "inputSchema": {
+              "type": "object",
+              "$schema": "https://json-schema.org/draft/2020-12/schema",
+              "properties": {
+                "projectRef": {
+                  "type": "string",
+                  "description": "The trigger.dev project ref, starts with proj_. We will attempt to automatically detect the project ref if running inside a directory that includes a trigger.config.ts file, or if you pass the --project-ref option to the MCP server."
+                },
+                "configPath": {
+                  "type": "string",
+                  "description": "The path to the trigger.config.ts file. Only used when the trigger.config.ts file is not at the root dir (like in a monorepo setup). If not provided, we will try to find the config file in the current working directory"
+                },
+                "environment": {
+                  "default": "dev",
+                  "type": "string",
+                  "enum": ["dev", "staging", "prod", "preview"],
+                  "description": "The environment to get tasks for"
+                },
+                "branch": {
+                  "type": "string",
+                  "description": "The branch to get tasks for, only used for preview environments and branchable development environments"
+                },
+                "slug": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 256,
+                  "description": "The prompt slug"
+                },
+                "period": {
+                  "default": "7d",
+                  "description": "How far back to look, e.g. \"1h\", \"1d\" or \"30d\". Defaults to 7d.",
+                  "type": "string",
+                  "pattern": "^\\d{1,4}[mhdw]$"
+                },
+                "versions": {
+                  "description": "Only generations from these prompt versions",
+                  "maxItems": 20,
+                  "type": "array",
+                  "items": {
+                    "type": "integer",
+                    "exclusiveMinimum": 0,
+                    "maximum": 9007199254740991
+                  }
+                },
+                "limit": {
+                  "default": 25,
+                  "description": "How many to return (default 25)",
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 100
+                },
+                "cursor": {
+                  "description": "The cursor from a previous call, to get the next page of older generations",
+                  "type": "string",
+                  "maxLength": 1024,
+                  "pattern": "^[A-Za-z0-9+/]+={0,2}$"
+                }
+              },
+              "required": ["slug"]
+            },
+            "annotations": {
+              "readOnlyHint": true,
+              "destructiveHint": false,
+              "title": "List Prompt Generations"
             }
           },
           {
@@ -3324,6 +3666,319 @@
             },
             "annotations": {
               "title": "Set Dashboard Widgets",
+              "readOnlyHint": false,
+              "destructiveHint": true
+            }
+          },
+          {
+            "name": "update_dashboard_widget",
+            "title": "Update Dashboard Widget",
+            "description": "Change one widget of a custom dashboard: its title, TRQL query, display, gap filling or grid position. Fields you leave out keep their current values; a new query replaces the whole query and is checked before saving. Use get_dashboard to see the widgets.",
+            "inputSchema": {
+              "type": "object",
+              "$schema": "https://json-schema.org/draft/2020-12/schema",
+              "properties": {
+                "projectRef": {
+                  "type": "string",
+                  "description": "The trigger.dev project ref, starts with proj_. We will attempt to automatically detect the project ref if running inside a directory that includes a trigger.config.ts file, or if you pass the --project-ref option to the MCP server."
+                },
+                "configPath": {
+                  "type": "string",
+                  "description": "The path to the trigger.config.ts file. Only used when the trigger.config.ts file is not at the root dir (like in a monorepo setup). If not provided, we will try to find the config file in the current working directory"
+                },
+                "environment": {
+                  "default": "dev",
+                  "type": "string",
+                  "enum": ["dev", "staging", "prod", "preview"],
+                  "description": "The environment to get tasks for"
+                },
+                "branch": {
+                  "type": "string",
+                  "description": "The branch to get tasks for, only used for preview environments and branchable development environments"
+                },
+                "dashboardId": {
+                  "type": "string",
+                  "pattern": "^dashboard_[A-Za-z0-9]{1,64}$",
+                  "description": "The custom dashboard id, starting with dashboard_. Use list_dashboards to find it."
+                },
+                "widgetId": {
+                  "type": "string",
+                  "pattern": "^[A-Za-z0-9_-]{1,64}$",
+                  "description": "The widget id, as listed by get_dashboard"
+                },
+                "title": {
+                  "description": "A new widget title",
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 200
+                },
+                "query": {
+                  "description": "A new TRQL query; it replaces the widget's whole query",
+                  "type": "string",
+                  "maxLength": 20000
+                },
+                "display": {
+                  "description": "A new display: a table, a chart, a big number or a title section header",
+                  "oneOf": [
+                    {
+                      "type": "object",
+                      "properties": {
+                        "type": {
+                          "type": "string",
+                          "const": "table"
+                        },
+                        "prettyFormatting": {
+                          "default": true,
+                          "type": "boolean"
+                        },
+                        "sorting": {
+                          "default": [],
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "properties": {
+                              "desc": {
+                                "type": "boolean"
+                              },
+                              "id": {
+                                "type": "string"
+                              }
+                            },
+                            "required": ["desc", "id"]
+                          }
+                        }
+                      },
+                      "required": ["type"]
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "chartType": {
+                          "type": "string",
+                          "enum": ["bar", "line"]
+                        },
+                        "xAxisColumn": {
+                          "type": ["string", "null"]
+                        },
+                        "yAxisColumns": {
+                          "type": "array",
+                          "items": {
+                            "type": "string"
+                          }
+                        },
+                        "groupByColumn": {
+                          "type": ["string", "null"]
+                        },
+                        "stacked": {
+                          "type": "boolean"
+                        },
+                        "sortByColumn": {
+                          "type": ["string", "null"]
+                        },
+                        "sortDirection": {
+                          "type": "string",
+                          "enum": ["asc", "desc"]
+                        },
+                        "aggregation": {
+                          "type": "string",
+                          "enum": ["sum", "avg", "count", "min", "max"]
+                        },
+                        "seriesColors": {
+                          "type": "object",
+                          "propertyNames": {
+                            "type": "string"
+                          },
+                          "additionalProperties": {
+                            "type": "string"
+                          }
+                        },
+                        "type": {
+                          "type": "string",
+                          "const": "chart"
+                        }
+                      },
+                      "required": [
+                        "chartType",
+                        "xAxisColumn",
+                        "yAxisColumns",
+                        "groupByColumn",
+                        "stacked",
+                        "sortByColumn",
+                        "sortDirection",
+                        "aggregation",
+                        "type"
+                      ]
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "column": {
+                          "type": "string"
+                        },
+                        "aggregation": {
+                          "type": "string",
+                          "enum": ["sum", "avg", "count", "min", "max", "first", "last"]
+                        },
+                        "sortDirection": {
+                          "type": "string",
+                          "enum": ["asc", "desc"]
+                        },
+                        "abbreviate": {
+                          "default": false,
+                          "type": "boolean"
+                        },
+                        "prefix": {
+                          "type": "string"
+                        },
+                        "suffix": {
+                          "type": "string"
+                        },
+                        "type": {
+                          "type": "string",
+                          "const": "bignumber"
+                        }
+                      },
+                      "required": ["column", "aggregation", "type"]
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "type": {
+                          "type": "string",
+                          "const": "title"
+                        }
+                      },
+                      "required": ["type"]
+                    }
+                  ]
+                },
+                "fillGaps": {
+                  "description": "Fill time buckets that have no data",
+                  "type": "boolean"
+                },
+                "position": {
+                  "description": "A new position on the 12-column grid: x 0-11, w 1-12, y 0-10000, h 1-1000",
+                  "type": "object",
+                  "properties": {
+                    "x": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 11
+                    },
+                    "y": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 10000
+                    },
+                    "w": {
+                      "type": "integer",
+                      "minimum": 1,
+                      "maximum": 12
+                    },
+                    "h": {
+                      "type": "integer",
+                      "minimum": 1,
+                      "maximum": 1000
+                    }
+                  },
+                  "required": ["x", "y", "w", "h"]
+                }
+              },
+              "required": ["dashboardId", "widgetId"]
+            },
+            "annotations": {
+              "title": "Update Dashboard Widget",
+              "readOnlyHint": false,
+              "destructiveHint": true
+            }
+          },
+          {
+            "name": "update_dashboard",
+            "title": "Update Dashboard",
+            "description": "Rename a custom dashboard or change its description. Its widgets are not changed; use update_dashboard_widget or set_dashboard_widgets for those.",
+            "inputSchema": {
+              "type": "object",
+              "$schema": "https://json-schema.org/draft/2020-12/schema",
+              "properties": {
+                "projectRef": {
+                  "type": "string",
+                  "description": "The trigger.dev project ref, starts with proj_. We will attempt to automatically detect the project ref if running inside a directory that includes a trigger.config.ts file, or if you pass the --project-ref option to the MCP server."
+                },
+                "configPath": {
+                  "type": "string",
+                  "description": "The path to the trigger.config.ts file. Only used when the trigger.config.ts file is not at the root dir (like in a monorepo setup). If not provided, we will try to find the config file in the current working directory"
+                },
+                "environment": {
+                  "default": "dev",
+                  "type": "string",
+                  "enum": ["dev", "staging", "prod", "preview"],
+                  "description": "The environment to get tasks for"
+                },
+                "branch": {
+                  "type": "string",
+                  "description": "The branch to get tasks for, only used for preview environments and branchable development environments"
+                },
+                "dashboardId": {
+                  "type": "string",
+                  "pattern": "^dashboard_[A-Za-z0-9]{1,64}$",
+                  "description": "The custom dashboard id, starting with dashboard_. Use list_dashboards to find it."
+                },
+                "title": {
+                  "description": "A new title for the dashboard",
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 200
+                },
+                "description": {
+                  "description": "A new description; an empty string clears it",
+                  "type": "string",
+                  "maxLength": 2000
+                }
+              },
+              "required": ["dashboardId"]
+            },
+            "annotations": {
+              "title": "Update Dashboard",
+              "readOnlyHint": false,
+              "destructiveHint": true
+            }
+          },
+          {
+            "name": "delete_dashboard",
+            "title": "Delete Dashboard",
+            "description": "Delete a custom dashboard and all its widgets for everyone in the organization. The user approves the deletion in the Trigger.dev dashboard before it runs. It cannot be undone.",
+            "inputSchema": {
+              "type": "object",
+              "$schema": "https://json-schema.org/draft/2020-12/schema",
+              "properties": {
+                "projectRef": {
+                  "type": "string",
+                  "description": "The trigger.dev project ref, starts with proj_. We will attempt to automatically detect the project ref if running inside a directory that includes a trigger.config.ts file, or if you pass the --project-ref option to the MCP server."
+                },
+                "configPath": {
+                  "type": "string",
+                  "description": "The path to the trigger.config.ts file. Only used when the trigger.config.ts file is not at the root dir (like in a monorepo setup). If not provided, we will try to find the config file in the current working directory"
+                },
+                "environment": {
+                  "default": "dev",
+                  "type": "string",
+                  "enum": ["dev", "staging", "prod", "preview"],
+                  "description": "The environment to get tasks for"
+                },
+                "branch": {
+                  "type": "string",
+                  "description": "The branch to get tasks for, only used for preview environments and branchable development environments"
+                },
+                "dashboardId": {
+                  "type": "string",
+                  "pattern": "^dashboard_[A-Za-z0-9]{1,64}$",
+                  "description": "The custom dashboard id, starting with dashboard_. Use list_dashboards to find it."
+                }
+              },
+              "required": ["dashboardId"]
+            },
+            "annotations": {
+              "title": "Delete Dashboard",
               "readOnlyHint": false,
               "destructiveHint": true
             }

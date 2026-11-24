@@ -32,11 +32,18 @@ export function defineWriteTool<S extends z.ZodRawShape>(tool: {
 export const fencedError = (message: string, source: string) =>
   errorResult(fenceUntrusted(message, source));
 
-export function staleApproval(ctx: McpToolContext, rebuilt: string): McpToolResult | undefined {
-  if (!ctx.confirmation || ctx.confirmation.preview === rebuilt) return undefined;
-  return markStale(
-    errorResult(
+export const staleAnswer = (toError: (text: string) => McpToolResult = errorResult) =>
+  markStale(
+    toError(
       "What this change would do has changed since it was approved. Call the tool again to get a new confirmation."
     )
   );
+
+export function staleApproval(
+  ctx: McpToolContext,
+  rebuilt: string,
+  toError: (text: string) => McpToolResult = errorResult
+): McpToolResult | undefined {
+  if (!ctx.confirmation || ctx.confirmation.preview === rebuilt) return undefined;
+  return staleAnswer(toError);
 }

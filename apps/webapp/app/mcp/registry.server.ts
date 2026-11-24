@@ -18,10 +18,14 @@ import { agentsTools } from "./tools/agents.server";
 import { alertsTools } from "./tools/alerts.server";
 import { bulkActionsTools } from "./tools/bulkActions.server";
 import { dashboardsTools } from "./tools/dashboards.server";
+import { dashboardsEditTools } from "./tools/dashboardsEdit.server";
+import { dashboardsReadTools } from "./tools/dashboardsRead.server";
 import { deploysTools } from "./tools/deploys.server";
 import { docsTools } from "./tools/docs.server";
+import { modelsTools } from "./tools/models.server";
 import { orgsTools } from "./tools/orgs.server";
 import { promptsTools } from "./tools/prompts.server";
+import { promptsReadTools } from "./tools/promptsRead.server";
 import { queryTools } from "./tools/query.server";
 import { reportTools } from "./tools/report.server";
 import { logsTools } from "./tools/logs.server";
@@ -89,7 +93,10 @@ export const mcpTools: McpToolDefinition[] = assertUniqueToolNames([
   ...deploysTools,
   ...queryTools,
   ...dashboardsTools,
+  ...dashboardsReadTools,
+  ...modelsTools,
   ...promptsTools,
+  ...promptsReadTools,
   ...agentsTools,
   ...sessionsTools,
   ...sessionsReadTools,
@@ -102,6 +109,7 @@ export const mcpTools: McpToolDefinition[] = assertUniqueToolNames([
   ...alertsWriteTools,
   ...alertsManageTools,
   ...dashboardsWriteTools,
+  ...dashboardsEditTools,
   ...feedbackTools,
   ...orgsWriteTools,
   ...promptsWriteTools,

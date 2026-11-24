@@ -43,6 +43,13 @@ vi.mock("~/db.server", () => {
   };
 });
 vi.mock("~/v3/webhookEngine.server", () => ({ webhookEngine: {} }));
+vi.mock("~/services/clickhouse/clickhouseFactoryInstance.server", () => ({
+  clickhouseFactory: {
+    getClickhouseForOrganization: async () => {
+      throw new Error("no ClickHouse in this test");
+    },
+  },
+}));
 vi.mock("~/services/rbac.server", () => ({
   rbac: new Proxy(
     {},
@@ -98,7 +105,29 @@ const TOOLS: Array<{ tool: string; args: Record<string, unknown>; scope: string 
   { tool: "abort_bulk_action", args: { ...project, bulkActionId: "bulk_1" }, scope: "write:runs" },
   { tool: "get_query_schema", args: { ...project, table: "runs" }, scope: "read:query" },
   { tool: "list_dashboards", args: project, scope: "read:query" },
+  { tool: "get_dashboard", args: { ...project, dashboardId: "dashboard_1" }, scope: "read:query" },
+  { tool: "list_query_history", args: project, scope: "read:query" },
+  { tool: "list_models", args: project, scope: "read:query" },
+  { tool: "get_model", args: { ...project, modelId: "llm_model_1" }, scope: "read:query" },
+  { tool: "get_model_usage", args: project, scope: "read:query" },
+  {
+    tool: "update_dashboard_widget",
+    args: { ...project, dashboardId: "dashboard_1", widgetId: "w1", title: "x" },
+    scope: "write:query",
+  },
+  {
+    tool: "update_dashboard",
+    args: { ...project, dashboardId: "dashboard_1", title: "x" },
+    scope: "write:query",
+  },
+  {
+    tool: "delete_dashboard",
+    args: { ...project, dashboardId: "dashboard_1" },
+    scope: "write:query",
+  },
   { tool: "get_prompt_versions", args: prompt, scope: "read:prompts" },
+  { tool: "get_prompt", args: prompt, scope: "read:prompts" },
+  { tool: "list_prompt_generations", args: prompt, scope: "read:prompts" },
   { tool: "list_agents", args: project, scope: "read:deployments" },
   {
     tool: "read_session_channel",
