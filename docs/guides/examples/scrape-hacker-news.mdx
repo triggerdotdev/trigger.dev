@@ -1,7 +1,7 @@
 ---
 title: "Scrape the top 3 articles from Hacker News and email yourself a summary every weekday"
 sidebarTitle: "Browserbase & Puppeteer"
-description: "This example demonstrates how to scrape the top 3 articles from Hacker News using BrowserBase and Puppeteer, summarize them with ChatGPT and send a nicely formatted email summary to yourself every weekday using Resend."
+description: "This example demonstrates how to scrape the top 3 articles from Hacker News using BrowserBase and Puppeteer, summarize them with OpenAI and send a nicely formatted email summary to yourself every weekday using Resend."
 ---
 
 import LocalDevelopment from "/snippets/local-development-extensions.mdx";
@@ -188,7 +188,7 @@ export const scrapeAndSummarizeArticle = task({
 
     logger.info(`Extracted content for article: ${title}`, { content });
 
-    // Summarize the content using ChatGPT
+    // Summarize the content using OpenAI
     const response = await openai.chat.completions.create({
       model: "gpt-6-luna",
       messages: [
