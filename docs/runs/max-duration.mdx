@@ -50,7 +50,7 @@ export const maxDurationTask = task({
   run: async (payload: any, { ctx }) => {
     let currentUsage = usage.getCurrent();
 
-    currentUsage.attempt.durationMs; // The CPU time in milliseconds since the start of the run
+    currentUsage.compute.attempt.durationMs; // The CPU time in milliseconds since the start of this attempt
   },
 });
 ```

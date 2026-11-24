@@ -194,7 +194,7 @@ export const childTask = task({
     console.log("Starting child task with data:", payload.data);
 
     // Simulate some work
-    await sleep(5);
+    await wait.for({ seconds: 5 });
 
     return "Child task result";
   },
@@ -452,5 +452,6 @@ import { AwsInstrumentation } from "@opentelemetry/instrumentation-aws-sdk";
 export default defineConfig({
   project: "<your-project-ref>",
   instrumentations: [new PrismaInstrumentation(), new AwsInstrumentation()],
+  maxDuration: 3600,
 });
 ```

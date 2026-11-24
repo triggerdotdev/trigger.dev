@@ -310,14 +310,14 @@ In v4, you now need to use the `batch.retrieve()` method to get the batch with i
 
 ```ts
 // In v4
-const batchHandle = await tasks.batchTrigger([
-  [myTask, { foo: "bar" }],
-  [myOtherTask, { baz: "qux" }],
+const batchHandle = await batch.triggerByTask([
+  { task: myTask, payload: { foo: "bar" } },
+  { task: myOtherTask, payload: { baz: "qux" } },
 ]);
 
 // Now you need to retrieve the batch to get the runs
-const batch = await batch.retrieve(batchHandle.batchId);
-console.log(batch.runs);
+const batchRun = await batch.retrieve(batchHandle.batchId);
+console.log(batchRun.runs);
 ```
 
 ### OpenTelemetry

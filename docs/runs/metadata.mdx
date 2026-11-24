@@ -301,11 +301,11 @@ export const myTask = task({
 `metadata.stream` accepts any `AsyncIterable` or `ReadableStream` object. The stream will be captured and made available in the Realtime API. So for example, you could pass the body of a fetch response to `metadata.stream` to capture the response body and make it available in Realtime:
 
 ```ts
-import { task, metadata } from "@trigger.dev/sdk";
+import { task, metadata, logger } from "@trigger.dev/sdk";
 
 export const myTask = task({
   id: "my-task",
-  run: async (payload: { url: string }) => {
+  run: async ({ url }: { url: string }) => {
     logger.info("Streaming response", { url });
 
     const response = await fetch(url);
@@ -335,7 +335,7 @@ export const myTask = task({
 Or the results of a streaming call to the OpenAI SDK:
 
 ```ts
-import { task, metadata } from "@trigger.dev/sdk";
+import { task, metadata, logger } from "@trigger.dev/sdk";
 import OpenAI from "openai";
 
 const openai = new OpenAI({

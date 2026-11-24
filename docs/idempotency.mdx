@@ -359,8 +359,9 @@ When a run with an idempotency key **fails**, the key is automatically cleared. 
 ```ts
 import { idempotencyKeys } from "@trigger.dev/sdk";
 
-// Clear the idempotency key to allow re-triggering
-await idempotencyKeys.reset("my-task", "my-idempotency-key");
+// From your backend: clear the idempotency key to allow re-triggering.
+// Inside a task, omit `scope` to reset a key that the same run created.
+await idempotencyKeys.reset("my-task", "my-idempotency-key", { scope: "global" });
 
 // Now you can trigger the task again
 await myTask.trigger(payload, { idempotencyKey: "my-idempotency-key" });
