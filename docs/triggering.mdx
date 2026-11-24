@@ -585,7 +585,7 @@ export const childTask2 = task({
 You can batch trigger multiple different tasks by passing in the task instances. This function is especially useful when you have a static set of tasks you want to trigger:
 
 ```ts /trigger/batch.ts
-import { batch, task, runs } from "@trigger.dev/sdk";
+import { batch, task } from "@trigger.dev/sdk";
 
 export const parentTask = task({
   id: "parent-task",
@@ -595,9 +595,13 @@ export const parentTask = task({
       { task: childTask2, payload: { bar: 42 } }, // 👈 The payload is typed correctly based on the task instance
     ]);
 
-    // 👇 results.runs is a tuple, allowing you to get type safety without needing to narrow
-    const run1 = await runs.retrieve(results.runs[0]); // 👈 run1 is typed as the output of childTask1
-    const run2 = await runs.retrieve(results.runs[1]); // 👈 run2 is typed as the output of childTask2
+    // 👇 The runs are created after this call returns, so the handle has the batch ID and run count, not the run IDs
+    console.log(results.batchId, results.runCount);
+
+    // 👇 batch.retrieve() returns the batch as it is right now, so its runs can still be empty or partial.
+    // Poll it until processing.completedAt is set (then check processing.errors) if you need every run ID,
+    // or use batch.triggerByTaskAndWait() to get typed outputs.
+    const batchDetails = await batch.retrieve(results.batchId);
   },
 });
 

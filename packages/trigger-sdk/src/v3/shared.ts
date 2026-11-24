@@ -739,7 +739,7 @@ export async function batchTrigger<TTask extends AnyTask>(
  * @param {TriggerApiRequestOptions} [requestOptions] - Optional API request configuration
  *
  * @returns {Promise<BatchRunHandleFromTypes<InferRunTypes<TTask>>>} A promise that resolves with the batch run handle
- * containing batch ID, cached status, idempotency info, runs, and public access token
+ * containing the batch ID, run count, and public access token
  *
  * @example
  * ```ts
@@ -1433,7 +1433,7 @@ export async function batchTriggerTasks<TTasks extends readonly AnyTask[]>(
       publicAccessToken: response.publicAccessToken,
     };
 
-    return handle as unknown as BatchTasksRunHandleFromTypes<TTasks>;
+    return handle as BatchTasksRunHandleFromTypes<TTasks>;
   } else {
     // Stream path: convert to AsyncIterable and transform
     const streamItems = items as
@@ -1476,7 +1476,7 @@ export async function batchTriggerTasks<TTasks extends readonly AnyTask[]>(
       publicAccessToken: response.publicAccessToken,
     };
 
-    return handle as unknown as BatchTasksRunHandleFromTypes<TTasks>;
+    return handle as BatchTasksRunHandleFromTypes<TTasks>;
   }
 }
 
