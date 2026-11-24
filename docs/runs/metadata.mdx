@@ -368,7 +368,7 @@ export const myTask = task({
 
 ### flush
 
-Flush the metadata to the database. The SDK will automatically flush the metadata periodically, so you don't need to call this method unless you need to ensure that the metadata is persisted immediately.
+Send pending metadata changes to the database now instead of waiting for the next automatic flush. The SDK flushes metadata automatically about once a second, so you only need this when you want changes sent sooner. If a flush is already in progress, `flush()` returns without waiting for it. Your changes stay queued and go out with a later automatic flush once that request finishes, or with the run's completion if the run finishes first.
 
 ```ts
 import { task, metadata } from "@trigger.dev/sdk";
