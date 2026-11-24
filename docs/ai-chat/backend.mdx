@@ -195,6 +195,8 @@ await waitUntilComplete();
 | `chat.stream.append(value, options?)` | Append raw data |
 | `chat.stream.read(runId, options?)` | Read the stream by run ID |
 
+The first write a turn makes to the stream also marks where the turn starts, so an `await chat.stream.append()` in `onTurnStart` or `onChatStart` takes one extra append to return (it writes that marker first).
+
 For piping streams from subtasks to the parent chat (via `target: "root"`), see the [Sub-agents pattern](/ai-chat/patterns/sub-agents).
 
 ### Backed by a Session

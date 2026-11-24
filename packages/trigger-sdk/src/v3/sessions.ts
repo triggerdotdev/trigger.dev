@@ -394,6 +394,43 @@ export class SessionOutputChannel<TOut = unknown> {
     this.#initPromise = undefined;
   }
 
+  /** Runs a one-shot append on the shared credentials, dropping them if it fails. */
+  async #withSharedInit<T>(
+    apiClient: ReturnType<typeof apiClientManager.clientOrThrow>,
+    use: (init: Promise<InitializeSessionStreamResponseLike>) => Promise<T>
+  ): Promise<T> {
+    const init = this.#sharedInit(apiClient);
+    try {
+      return await use(init);
+    } catch (error) {
+      if (this.#initPromise === init) this.#initPromise = undefined;
+      throw error;
+    }
+  }
+
+  /**
+   * The channel's cached S2 credentials (minting them on first use), shared with
+   * the streaming writers, so a one-shot control or trim append reuses them
+   * instead of asking the server again. A failed initialization evicts the
+   * entry, and so does a one-shot append that fails with it (see
+   * `#withSharedInit`), so stale credentials are not reused.
+   */
+  #sharedInit(apiClient: ReturnType<typeof apiClientManager.clientOrThrow>) {
+    if (!this.#initPromise) {
+      const fresh = apiClient.initializeSessionStream(
+        this.sessionId,
+        "out",
+        undefined,
+        this.channel
+      );
+      this.#initPromise = fresh;
+      fresh.catch(() => {
+        if (this.#initPromise === fresh) this.#initPromise = undefined;
+      });
+    }
+    return this.#initPromise;
+  }
+
   /**
    * Append a single record. Routes through {@link writer} internally so
    * subscribers receive the same parsed-object shape as multi-record
@@ -678,13 +715,16 @@ export class SessionOutputChannel<TOut = unknown> {
     extraHeaders?: ReadonlyArray<readonly [string, string]>
   ): Promise<StreamWriteResult> {
     const apiClient = apiClientManager.clientOrThrow();
-    return writeSessionControlRecord(
-      apiClient,
-      this.sessionId,
-      "out",
-      subtype,
-      extraHeaders,
-      this.channel
+    return this.#withSharedInit(apiClient, (init) =>
+      writeSessionControlRecord(
+        apiClient,
+        this.sessionId,
+        "out",
+        subtype,
+        extraHeaders,
+        this.channel,
+        init
+      )
     );
   }
 
@@ -699,7 +739,9 @@ export class SessionOutputChannel<TOut = unknown> {
    */
   async trimTo(earliestSeqNum: number): Promise<void> {
     const apiClient = apiClientManager.clientOrThrow();
-    await trimSessionStream(apiClient, this.sessionId, earliestSeqNum, this.channel);
+    await this.#withSharedInit(apiClient, (init) =>
+      trimSessionStream(apiClient, this.sessionId, earliestSeqNum, this.channel, init)
+    );
   }
 }
 

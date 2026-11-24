@@ -150,6 +150,38 @@ export async function POST(req: Request) {
 }
 ```
 
+<Note>
+  The stream a send returns carries exactly that send's reply, streamed live, and `onTurnComplete`
+  fires once when it ends. Replies to other messages (another client's message just before yours, an
+  earlier send from the same instance, or messages a replacement run answers first) are not in it.
+  A message that [pending-message steering](/ai-chat/pending-messages) folds into a running turn gets
+  the rest of that turn. That needs an agent deployed on a recent SDK version.
+
+  Persist and restore `lastEventId` when you continue an existing chat: without it, `AgentChat` reads
+  the chat's retained output once to find where to start, which costs one extra request per send.
+
+  With an older agent, a reply streams live only when `AgentChat` can tell it is yours: on a send that
+  follows one of this instance's own completed sends, or on the first send of a chat this instance
+  just created, with nothing unanswered ahead of it. A `lastEventId` you restore from storage doesn't
+  show that on its own, because a replacement run may have answered other messages after it. In
+  every other case the reply arrives all at once when the turn completes, rather than as it is
+  written, and so does a second send made while an earlier send from the same instance is still
+  unread. If the run ends mid-turn while a reply is held back, you receive the part that was
+  written, then the error. With an older agent, a custom `fetch` override takes this held path too
+  (an agent on a recent version streams live through it).
+
+  `reconnect()` from a new process with no saved `lastEventId` can still start at an earlier turn
+  that is still retained on the stream.
+
+  If the server, or a proxy in front of it, can't serve that read of the retained output, the stream
+  starts from the beginning of it and `AgentChat` logs one warning per instance. An agent on a recent
+  version still streams only its own reply live; with an older agent the reply is held until the turn
+  completes.
+
+  If the `abortSignal` you pass to a send is aborted before its stream has started, `AgentChat` still
+  asks the agent to stop, so a turn nobody is reading isn't run.
+</Note>
+
 <Info>
   The Session row is the run manager — a chat that was active yesterday
   resumes against the same chatId today, even if the original run has

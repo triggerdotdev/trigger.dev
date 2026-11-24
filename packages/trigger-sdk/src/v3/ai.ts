@@ -26,6 +26,9 @@ import {
   SemanticInternalAttributes,
   SESSION_IN_CONSUMED_ID_HEADER,
   SESSION_IN_EVENT_ID_HEADER,
+  TURN_JOIN_INJECTION_ID_HEADER,
+  TURN_START_IN_SEQ_HEADER,
+  TRIGGER_TURN_MARKER_SUBTYPE,
   sessionStreams,
   SessionChannelRouter,
   InputStreamTimeoutError,
@@ -1289,7 +1292,17 @@ function partialStillUnfinished(
   return new Set([partial.id]);
 }
 
+/**
+ * Waits out the turn's `.out` gate, then makes sure the turn's `turn-start`
+ * marker is written, so it is the first thing a turn puts on `.out` and nothing
+ * is visible to a reader before the turn's start work has landed.
+ */
 async function awaitChatOutGate(): Promise<void> {
+  await awaitChatOutGateOpen();
+  await locals.get(chatTurnStartKey)?.();
+}
+
+async function awaitChatOutGateOpen(): Promise<void> {
   const gate = locals.get(chatOutGateKey);
   if (!gate || gate.open) return;
   const deadline = Date.now() + CHAT_OUT_GATE_TIMEOUT_MS;
@@ -2292,10 +2305,12 @@ const messagesInput: ChatMessages = {
 
       const chunk = record.data as Extract<ChatInputChunk, { kind: "message" }>;
       if (!shouldValidateChatCustomAgentPayload(chunk.payload)) {
+        chatPayloadArrived(chunk.payload, record.seqNum);
         return { id: record.id, seqNum: record.seqNum, payload: chunk.payload };
       }
       const validated = await validateChatCustomAgentPayload(chunk.payload);
       if (validated.ok) {
+        chatPayloadArrived(validated.payload, record.seqNum);
         return { id: record.id, seqNum: record.seqNum, payload: validated.payload };
       }
     }
@@ -2322,11 +2337,13 @@ const messagesInput: ChatMessages = {
           }
           const payload = result.output.payload;
           if (!shouldValidateChatCustomAgentPayload(payload)) {
+            chatPayloadArrived(payload, result.record.seqNum);
             resolve({ ok: true, output: payload });
             return;
           }
           const validated = await validateChatCustomAgentPayload(payload);
           if (validated.ok) {
+            chatPayloadArrived(validated.payload, result.record.seqNum);
             resolve({ ok: true, output: validated.payload });
             return;
           }
@@ -2358,10 +2375,12 @@ const messagesInput: ChatMessages = {
       }
       const payload = result.output.payload;
       if (!shouldValidateChatCustomAgentPayload(payload)) {
+        chatPayloadArrived(payload, result.record.seqNum);
         return { ok: true, output: payload };
       }
       const validated = await validateChatCustomAgentPayload(payload);
       if (validated.ok) {
+        chatPayloadArrived(validated.payload, result.record.seqNum);
         return { ok: true, output: validated.payload };
       }
     }
@@ -4531,9 +4550,9 @@ function markInjection(
   messageIds: string[],
   messages: ModelMessage[],
   markerMessages: Array<{ id: string; text: string }>,
-  kind?: "background"
+  kind?: "background",
+  id: string = generateMessageId()
 ): void {
-  const id = generateMessageId();
   const injections = locals.get(chatSteeringInjectionsKey) ?? new Map();
   injections.set(id, { id, messageIds, messages, ...(kind ? { kind } : {}) });
   locals.set(chatSteeringInjectionsKey, injections);
@@ -4667,6 +4686,23 @@ async function drainSteeringQueue(
         throw err;
       }
 
+      // These messages get no turn of their own: what the turn writes from here
+      // answers them. Say so on `.out`, so a reader waiting on one of them takes
+      // the rest of this turn rather than finding it belongs to someone else.
+      // The join record is appended directly, so the previous step's batched tail
+      // can land after it; the injection chunk written below is ordered with that
+      // tail, so the record names it for a reader to start after. Only when the
+      // managed response carries the step output: with a raw pipe (`chat.pipe`) or
+      // a surface that pipes the model itself, the chunk goes out on a pipe of its
+      // own and can land after the step it should precede, so the record names none
+      // and the reader starts at the next `start-step`.
+      const injectionId =
+        injected.length > 0 && managedResponse().ordersStepOutput ? generateMessageId() : undefined;
+      const joinedSeqs = claimed.flatMap((e) => (e.seqNum === undefined ? [] : [e.seqNum]));
+      if (joinedSeqs.length > 0) {
+        await writeTurnJoinChunk(joinedSeqs, injectionId);
+      }
+
       const injectedIds = locals.get(chatInjectedMessageIdsKey);
       if (injectedIds) {
         for (const m of claimedUIMessages) injectedIds.add(m.id);
@@ -4709,7 +4745,9 @@ async function drainSteeringQueue(
           steps,
           claimedUIMessages.map((m) => m.id),
           injected,
-          claimedUIMessages.map((m) => ({ id: m.id, text: textOfUIMessage(m) }))
+          claimedUIMessages.map((m) => ({ id: m.id, text: textOfUIMessage(m) })),
+          undefined,
+          injectionId
         );
       }
 
@@ -10088,6 +10126,7 @@ function chatAgent<
           bootInjectedQueue.push(injectedPayload);
           if (seqNum !== undefined) {
             recoveredSeqByPayload.set(injectedPayload, seqNum);
+            chatPayloadArrived(injectedPayload, seqNum);
             dispatchedRecoveredSeqs.add(seqNum);
           }
         }
@@ -10645,6 +10684,7 @@ function chatAgent<
         }
 
         for (let turn = 0; turn < maxTurns; turn++) {
+          armTurnStartMarker(currentWirePayload);
           let turnClientData: unknown = payload.metadata;
           // Declared here so the finally can detach it — a handler leaked past
           // its turn duplicates every mid-stream message into the shared buffer.
@@ -12056,6 +12096,11 @@ function chatAgent<
                     await writeUpgradeRequiredChunk();
                     return "exit";
                   }
+
+                  // The turn's start work is done and the gate's pending set is known:
+                  // append the turn-start marker behind the gate while run() sets up the
+                  // model call, so it has normally landed when the first chunk is ready.
+                  warmTurnStartMarker();
 
                   // Captured by the onFinish callback below — works even on abort/stop.
                   let capturedResponseMessage: TUIMessage | undefined;
@@ -17235,6 +17280,107 @@ export const chat = {
 };
 
 /**
+ * The `.in` seq of the record a turn's message arrived in, keyed by the payload
+ * object the turn loop dispatches. Weakly held, so it frees with the payload.
+ * Absent for a turn started from the run's start payload.
+ */
+const chatPayloadInSeq = new WeakMap<object, number>();
+
+/**
+ * A message payload was handed to the run to answer: remember its `.in` seq and
+ * arm the turn's marker, so every agent that reads its messages through
+ * `chat.messages` (`chat.agent`, `chat.customAgent`, `chat.createSession`)
+ * marks its turns, not only `chat.agent`'s own loop.
+ */
+function chatPayloadArrived(payload: object, seqNum: number): void {
+  chatPayloadInSeq.set(payload, seqNum);
+  armTurnStartMarker(payload);
+}
+
+/**
+ * Marks the start of a turn on `.out` with the `.in` seq of the message it
+ * answers (nothing when it answers none), so a reader that streams `.out` live
+ * can tell this turn's records from another message's without waiting for the
+ * boundary. A separate control record rather than a header on the turn's first
+ * record: a turn writes through several independent writers (the model stream,
+ * data parts, the managed response), none of which is ordered against another,
+ * so there is no single "first record" to carry it. One extra append per turn,
+ * written lazily, by the turn's first `.out` write (after its `.out` gate) or
+ * its boundary, so it precedes everything else the turn writes and adds no
+ * wait of its own to a turn whose start work is still running. A failed write is logged
+ * and swallowed: readers fall back to the boundary, as they do for an agent
+ * that doesn't write the marker.
+ *
+ * @internal
+ */
+const chatTurnStartKey = locals.create<() => Promise<void>>("chat.turnStartMarker");
+
+/**
+ * Starts the marker's append as soon as the turn's `.out` gate opens, without
+ * making the caller wait. The first write of the turn awaits the same append
+ * (`awaitChatOutGate`), so ordering is unchanged and only the wait shrinks.
+ */
+function warmTurnStartMarker(): void {
+  const gate = locals.get(chatOutGateKey);
+  const write = locals.get(chatTurnStartKey);
+  void (async () => {
+    // Wait for the gate's pending work without starting its deadline or failing
+    // it open: that budget belongs to the first `.out` write, which keeps
+    // waiting as long as it did before the marker existed.
+    while (gate && !gate.open && gate.pending.size > 0) {
+      const waitingOn = [...gate.pending];
+      await Promise.race([Promise.allSettled(waitingOn), gate.opened]);
+      for (const settled of waitingOn) gate.pending.delete(settled);
+    }
+    await write?.();
+  })().catch(() => {});
+}
+
+/** Arms the current turn's marker: written once, by whichever `.out` write comes first. */
+function armTurnStartMarker(payload: object): void {
+  let written: Promise<void> | undefined;
+  locals.set(chatTurnStartKey, () => (written ??= writeTurnStartChunk(payload)));
+}
+
+/**
+ * Marks that the messages at `.in` seqs `seqs` were folded into the running
+ * turn (see {@link TRIGGER_TURN_MARKER_SUBTYPE.TURN_JOIN}). Awaited, so it lands
+ * before the next step's records. Failure is logged and swallowed: a reader then
+ * falls back to the turn's boundary.
+ *
+ * @internal
+ */
+async function writeTurnJoinChunk(seqs: number[], injectionId?: string): Promise<void> {
+  try {
+    await locals.get(chatTurnStartKey)?.();
+    await getChatSession().out.writeControl(TRIGGER_TURN_MARKER_SUBTYPE.TURN_JOIN, [
+      [TURN_START_IN_SEQ_HEADER, seqs.join(",")],
+      ...(injectionId !== undefined
+        ? ([[TURN_JOIN_INJECTION_ID_HEADER, injectionId]] as Array<[string, string]>)
+        : []),
+    ]);
+  } catch (err) {
+    logger.warn("chat.agent: could not write the turn-join marker", {
+      error: err instanceof Error ? err.message : String(err),
+    });
+  }
+}
+
+async function writeTurnStartChunk(payload: object): Promise<void> {
+  const inSeq = chatPayloadInSeq.get(payload);
+  try {
+    await getChatSession().out.writeControl(
+      TRIGGER_TURN_MARKER_SUBTYPE.TURN_START,
+      inSeq !== undefined ? [[TURN_START_IN_SEQ_HEADER, String(inSeq)]] : undefined
+    );
+  } catch (err) {
+    logger.warn("chat.agent: could not write the turn-start marker", {
+      error: err instanceof Error ? err.message : String(err),
+    });
+  }
+}
+
+/**
  * Writes a `turn-complete` control record to the chat output stream and,
  * if we have a prior turn-complete's seq_num, appends an S2 `trim` command
  * record back to it — keeping `session.out` bounded to roughly one turn
@@ -17259,6 +17405,8 @@ async function writeTurnCompleteChunk(
   const response = locals.get(chatManagedResponseKey);
   if (response) await response.close();
   const session = getChatSession();
+  // A turn that wrote nothing else still gets its marker, ahead of its boundary.
+  await locals.get(chatTurnStartKey)?.();
 
   // A handover-prepare boot claims the handover kinds so a signal arriving
   // before `waitForHandover` attaches is not drained. Released here rather than

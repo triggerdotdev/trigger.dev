@@ -431,6 +431,25 @@ async function pushTurnComplete(
   ]);
 }
 
+/**
+ * A `turn-start` marker on `.out`, written ahead of a turn's first chunk: what a run leaves when it
+ * dies after starting a turn and before writing anything of the answer.
+ */
+async function pushTurnStart(ctx: Ctx, inSeq: number | undefined) {
+  await appendRecords(ctx, "out", [
+    {
+      body: "",
+      headers: [
+        ["trigger-control", "turn-start"],
+        ...(inSeq !== undefined
+          ? ([["turn-start-in-seq", String(inSeq)]] as Array<[string, string]>)
+          : []),
+      ],
+      timestamp: Date.now(),
+    },
+  ]);
+}
+
 /** A partial chunk of an answer on `.out`: what a run leaves when it dies mid-turn. */
 async function pushChunk(ctx: Ctx, timestamp: number = Date.now()) {
   await appendRecords(ctx, "out", [
@@ -1119,6 +1138,49 @@ describe("a run that failed", () => {
 
       expect(await runEnded(ctx, { ...run, sessionInSeq: 1 }, "failed")).toBe("failed-mid-turn");
       expect(triggerState.calls).toHaveLength(0);
+    }
+  );
+
+  // Catches: a run that died right after it began a turn (its `turn-start` marker is the last record
+  // on `.out`, no chunk written yet) being continued as if it had finished, so the message it was
+  // answering is re-run and can crash the same way. The marker leaves the tail a record that is not a
+  // turn-complete, which is how every mid-turn death is told apart.
+  postgresTest(
+    "starts nothing when it died right after its turn-start marker",
+    async ({ prisma }) => {
+      const ctx = await setup(prisma as unknown as PrismaClient);
+      const { run } = await sessionWithLiveRun(prisma as unknown as PrismaClient, ctx);
+      await pushIn(ctx, message("previous"));
+      await pushTurnComplete(ctx, 0);
+      await pushIn(ctx, message("answering"));
+      await pushTurnStart(ctx, 1);
+      await finish(prisma as unknown as PrismaClient, run.id, "CRASHED");
+
+      expect(await runEnded(ctx, { ...run, sessionInSeq: 1 }, "failed")).toBe("failed-mid-turn");
+      expect(triggerState.calls).toHaveLength(0);
+    }
+  );
+
+  // Catches: a replacement run's first `.in` seq being taken from the marker's seq. The marker names
+  // the message the dead turn was answering, but an earlier message can still be unanswered (the
+  // turn-complete cursor is held behind it), so the marker's seq would start the new run past it and
+  // that message would be lost. The first seq stays the earliest message known to be unread. Also: a
+  // succeeded run is continued whatever its `.out` ends on, a turn-start marker included.
+  postgresTest(
+    "continues a succeeded run whose `.out` ends on a turn-start marker, from the earliest unread message",
+    async ({ prisma }) => {
+      const ctx = await setup(prisma as unknown as PrismaClient);
+      const { run } = await sessionWithLiveRun(prisma as unknown as PrismaClient, ctx);
+      await pushIn(ctx, message("m0"));
+      await pushTurnComplete(ctx, 0);
+      await pushIn(ctx, message("m1, never answered"));
+      await pushIn(ctx, message("m2, the turn that was started"));
+      await pushTurnStart(ctx, 2);
+      await finish(prisma as unknown as PrismaClient, run.id);
+
+      expect(await runEnded(ctx, { ...run, sessionInSeq: 1 }, "succeeded")).toBe("continued");
+      expect(triggerState.calls).toHaveLength(1);
+      expect(triggerState.calls[0]!.options.sessionInFirstSeq).toBe(1);
     }
   );
 
