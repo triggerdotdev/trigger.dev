@@ -392,8 +392,9 @@ describe("eagerConnect", () => {
     const observer = buildWriterClient({ url, clientType: "observer", connectionLimit: 1 });
     const clients = [observer];
     const backends = async () => {
+      // Match our own application_name: the container's pg_isready health check probes every 250ms.
       const [row] = await observer.$queryRawUnsafe<{ n: number }[]>(
-        `SELECT count(*)::int AS n FROM pg_stat_activity WHERE backend_type = 'client backend' AND pid <> pg_backend_pid()`
+        `SELECT count(*)::int AS n FROM pg_stat_activity WHERE backend_type = 'client backend' AND pid <> pg_backend_pid() AND application_name = current_setting('application_name')`
       );
       return row.n;
     };
