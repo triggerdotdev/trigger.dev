@@ -197,7 +197,10 @@ vi.mock("~/v3/services/resolveExternalDeployment.server", () => ({
   resolveExternalDeployment: async () => ({ outcome: "park" }),
 }));
 
-import { S2RealtimeStreams } from "~/services/realtime/s2realtimeStreams.server";
+import {
+  S2RealtimeStreams,
+  type SessionOutTail,
+} from "~/services/realtime/s2realtimeStreams.server";
 import { PostgresRunStore } from "@internal/run-store";
 import type { CreateRunInput } from "@internal/run-store";
 import type { AuthenticatedEnvironment } from "~/services/apiAuth.server";
@@ -207,6 +210,7 @@ import { deliverPartToSession } from "~/v3/webhookSessionDelivery.server";
 import {
   continueSessionIfInputUnread,
   runSessionRunCompletionJob,
+  SESSION_RUN_COMPLETION_MAX_ATTEMPTS,
   SessionRunCompletionPayloadSchema,
 } from "~/services/realtime/sessionRunCompletion.server";
 
@@ -335,24 +339,56 @@ async function sessionWithLiveRun(prisma: PrismaClient, ctx: Ctx, closed = false
 }
 
 /** Appends records to one of the session's channels, as S2 stores them at `timestamp`. */
-async function appendRecords(
-  ctx: Ctx,
-  io: "in" | "out",
-  records: Array<{ body: string; headers?: Array<[string, string]>; timestamp: number }>
-) {
+function sessionStream(ctx: Ctx, io: "in" | "out") {
   const name = new S2RealtimeStreams({
     endpoint: s2.endpoint,
     basin: s2.basin,
     accessToken: "unused",
     streamPrefix: STREAM_PREFIX,
   }).toSessionStreamName(ctx.key, io);
-  const stream = new S2({
+  return new S2({
     accessToken: "unused",
     endpoints: { account: s2.host, basin: s2.host },
   })
     .basin(s2.basin)
     .stream(name);
-  await stream.append(AppendInput.create(records.map((record) => AppendRecord.string(record))));
+}
+
+async function appendRecords(
+  ctx: Ctx,
+  io: "in" | "out",
+  records: Array<{ body: string; headers?: Array<[string, string]>; timestamp: number }>
+) {
+  await sessionStream(ctx, io).append(
+    AppendInput.create(records.map((record) => AppendRecord.string(record)))
+  );
+}
+
+/** The S2 `trim` command record the agent appends to `.out` after a turn-complete. */
+async function pushTrim(ctx: Ctx, trimTo: number) {
+  await sessionStream(ctx, "out").append(AppendInput.create([AppendRecord.trim(trimTo)]));
+}
+
+/**
+ * S2 applies a trim shortly after its command record lands: wait until the `.out` peek reads
+ * `expected`. Only that kind ends the wait, so a read that fails ("unknown") does not.
+ */
+async function waitForOutTail(ctx: Ctx, expected: SessionOutTail["kind"]) {
+  const streams = new S2RealtimeStreams({
+    endpoint: s2.endpoint,
+    basin: s2.basin,
+    accessToken: "unused",
+    skipAccessTokens: true,
+    streamPrefix: STREAM_PREFIX,
+  });
+  const deadline = Date.now() + 10_000;
+  let kind: SessionOutTail["kind"] | undefined;
+  while (Date.now() < deadline) {
+    kind = (await streams.peekSessionOutTail(ctx.key)).kind;
+    if (kind === expected) return;
+    await new Promise((resolve) => setTimeout(resolve, 50));
+  }
+  throw new Error(`.out never read as "${expected}" (last read: "${kind}")`);
 }
 
 let partCounter = 0;
@@ -898,6 +934,143 @@ describe("a session's input that no run read", () => {
         { findEnvironment: async () => ctx.environment }
       );
       expect(triggerState.calls).toHaveLength(1);
+    }
+  );
+
+  // Catches: a tail of several trim commands after the turn-complete reading as "unreadable", so
+  // the queued job throws on every attempt for a run that ended cleanly with nothing unread.
+  postgresTest(
+    "reads a run's turn-complete past two trims on .out: nothing unread",
+    async ({ prisma }) => {
+      const ctx = await setup(prisma as unknown as PrismaClient);
+      const { run } = await sessionWithLiveRun(prisma as unknown as PrismaClient, ctx);
+      await pushIn(ctx, message("m1"));
+      await pushChunk(ctx);
+      await pushTurnComplete(ctx, 0);
+      await pushTrim(ctx, 1);
+      await pushTrim(ctx, 1);
+      await finish(prisma as unknown as PrismaClient, run.id);
+
+      expect(await runEnded(ctx, run)).toBe("nothing-unread");
+      await runSessionRunCompletionJob(
+        { runId: run.id, runCreatedAt: run.createdAt.toISOString(), environmentId: ctx.seed.envId },
+        { findEnvironment: async () => ctx.environment }
+      );
+      expect(triggerState.calls).toHaveLength(0);
+    }
+  );
+
+  // Catches: the wider tail read answering "nothing unread" for a run whose `.out` ends in trims,
+  // so a message the run never read is left unanswered.
+  postgresTest(
+    "still continues for an unread message when .out ends with two trims",
+    async ({ prisma }) => {
+      const ctx = await setup(prisma as unknown as PrismaClient);
+      const { run } = await sessionWithLiveRun(prisma as unknown as PrismaClient, ctx);
+      await pushIn(ctx, message("m1"));
+      await pushChunk(ctx);
+      await pushTurnComplete(ctx, 0);
+      await pushTrim(ctx, 1);
+      await pushTrim(ctx, 1);
+      await pushIn(ctx, message("m2"));
+      await finish(prisma as unknown as PrismaClient, run.id);
+
+      expect(await runEnded(ctx, run)).toBe("continued");
+      expect(triggerState.calls).toHaveLength(1);
+    }
+  );
+
+  // Catches: a `.out` that holds only command records (a trim deleted the turn-complete) being
+  // treated as empty, which scans `.in` from the run's start and starts a run that re-answers
+  // messages the run already answered, or as unreadable, which retries a stream that cannot change.
+  postgresTest(
+    "a .out holding only command records is a final answer: nothing continued, no retry",
+    async ({ prisma }) => {
+      const ctx = await setup(prisma as unknown as PrismaClient);
+      const { run } = await sessionWithLiveRun(prisma as unknown as PrismaClient, ctx);
+      await pushIn(ctx, message("m1"));
+      await pushChunk(ctx);
+      await pushTurnComplete(ctx, 0);
+      // The trim is seq 2: it deletes the turn-complete at seq 1 and everything below.
+      await pushTrim(ctx, 2);
+      await pushIn(ctx, message("m2"));
+      await finish(prisma as unknown as PrismaClient, run.id);
+      await waitForOutTail(ctx, "commands-only");
+
+      expect(await runEnded(ctx, run)).toBe("out-commands-only");
+      expect(triggerState.calls).toHaveLength(0);
+
+      // The queue's first attempt and its last both end without throwing: nothing to retry.
+      for (const attempt of [0, SESSION_RUN_COMPLETION_MAX_ATTEMPTS - 1]) {
+        await expect(
+          runSessionRunCompletionJob(
+            {
+              runId: run.id,
+              runCreatedAt: run.createdAt.toISOString(),
+              environmentId: ctx.seed.envId,
+            },
+            { findEnvironment: async () => ctx.environment },
+            attempt
+          )
+        ).resolves.toBeUndefined();
+      }
+      expect(triggerState.calls).toHaveLength(0);
+    }
+  );
+
+  // Catches: a trim far past the tail, which leaves `.out` with no records at all, being read as
+  // an empty stream: the run-end check then scans `.in` from the run's start and starts a run that
+  // re-answers messages the run already answered.
+  postgresTest(
+    "a fully trimmed .out with an unread .in message is out-commands-only and starts no run",
+    async ({ prisma }) => {
+      const ctx = await setup(prisma as unknown as PrismaClient);
+      const { run } = await sessionWithLiveRun(prisma as unknown as PrismaClient, ctx);
+      await pushIn(ctx, message("m1"));
+      await pushChunk(ctx);
+      await pushTurnComplete(ctx, 0);
+      await pushTrim(ctx, 99);
+      await pushIn(ctx, message("m2"));
+      await finish(prisma as unknown as PrismaClient, run.id);
+      await waitForOutTail(ctx, "commands-only");
+
+      expect(await runEnded(ctx, run)).toBe("out-commands-only");
+      expect(triggerState.calls).toHaveLength(0);
+    }
+  );
+
+  // Catches: the queued job returning on its last attempt, which makes the worker acknowledge and
+  // delete a check that never read the streams, so it can't be replayed from the dead-letter
+  // queue; or throwing without the warn level, which reports every attempt as an error.
+  postgresTest(
+    "the queued job fails every unreadable attempt at warn level, the last one included, so the check reaches the dead-letter queue",
+    async ({ prisma }) => {
+      const ctx = await setup(prisma as unknown as PrismaClient);
+      const { run } = await sessionWithLiveRun(prisma as unknown as PrismaClient, ctx);
+      await pushIn(ctx, message("m1"), Date.now() - 1_000);
+      await finish(prisma as unknown as PrismaClient, run.id);
+      s2.outUnreadable = true;
+      const attempt = (n: number) =>
+        runSessionRunCompletionJob(
+          {
+            runId: run.id,
+            runCreatedAt: run.createdAt.toISOString(),
+            environmentId: ctx.seed.envId,
+          },
+          { findEnvironment: async () => ctx.environment },
+          n
+        );
+
+      // The worker logs a thrown error at the level it carries: warn on every attempt. The last
+      // attempt throws too, so the worker moves the check to its dead-letter queue (at warn) where
+      // it can be replayed once the streams can be read; returning would acknowledge and drop it.
+      for (let n = 0; n < SESSION_RUN_COMPLETION_MAX_ATTEMPTS; n++) {
+        await expect(attempt(n)).rejects.toMatchObject({
+          message: expect.stringContaining("Could not read the session streams"),
+          logLevel: "warn",
+        });
+      }
+      expect(triggerState.calls).toHaveLength(0);
     }
   );
 

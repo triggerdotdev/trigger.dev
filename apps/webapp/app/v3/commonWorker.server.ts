@@ -24,6 +24,7 @@ import {
 import { findEnvironmentById } from "~/models/runtimeEnvironment.server";
 import {
   runSessionRunCompletionJob,
+  SESSION_RUN_COMPLETION_MAX_ATTEMPTS,
   SESSION_RUN_COMPLETION_JOB,
   SessionRunCompletionPayloadSchema,
 } from "~/services/realtime/sessionRunCompletion.server";
@@ -322,7 +323,7 @@ function initializeWorker() {
         schema: SessionRunCompletionPayloadSchema,
         visibilityTimeoutMs: 60_000,
         retry: {
-          maxAttempts: 8,
+          maxAttempts: SESSION_RUN_COMPLETION_MAX_ATTEMPTS,
         },
       },
       "org.convergeRunsEnabled": {
@@ -399,8 +400,12 @@ function initializeWorker() {
       "attio.syncUser": async ({ payload }) => {
         await runAttioUserSync(payload);
       },
-      [SESSION_RUN_COMPLETION_JOB]: async ({ payload }) => {
-        await runSessionRunCompletionJob(payload, { findEnvironment: findEnvironmentById });
+      [SESSION_RUN_COMPLETION_JOB]: async ({ payload, attempt }) => {
+        await runSessionRunCompletionJob(
+          payload,
+          { findEnvironment: findEnvironmentById },
+          attempt
+        );
       },
       "attio.syncMember": async ({ payload }) => {
         await runAttioMemberSync(payload);
