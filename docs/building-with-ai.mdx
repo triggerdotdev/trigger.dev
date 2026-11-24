@@ -86,7 +86,7 @@ export const myTask = task({
     maxTimeoutInMs: 30_000,
   },
   run: async (payload: { url: string }) => {
-    // No timeouts — runs can take as long as needed
+    // Runs can take as long as needed, up to the maxDuration you set
     return { success: true };
   },
 });
@@ -197,6 +197,7 @@ import { defineConfig } from "@trigger.dev/sdk";
 export default defineConfig({
   project: "<your-project-ref>",
   dirs: ["./trigger"],
+  maxDuration: 3600, // Required: default max compute time, in seconds
 });
 ```
 
@@ -208,7 +209,7 @@ export default defineConfig({
 4. **Calling `task.trigger()` directly** — use `tasks.trigger<typeof myTask>("task-id", payload)` from your backend
 5. **Using `triggerAndWait` result as output** — it returns a `Result` object; check `result.ok` then access `result.output`, or use `.unwrap()`
 6. **Wrapping waits/triggerAndWait in `Promise.all`** — not supported in Trigger.dev tasks
-7. **Adding timeouts to tasks** — tasks have no built-in timeout; use `maxDuration` in config if needed
+7. **Leaving out `maxDuration`** — `trigger.config.ts` must set a default `maxDuration` in seconds (minimum 5). Override it per task with the `maxDuration` option, or use `timeout.None` from `@trigger.dev/sdk` for no limit
 ````
 
 </Accordion>
