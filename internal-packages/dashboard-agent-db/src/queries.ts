@@ -394,6 +394,37 @@ export async function createChat(
 
 export const ensureChat = createChat;
 
+type EvalChatScope = { chatId: string; organizationId: string; userId: string };
+
+function evalChatScope({ chatId, organizationId, userId }: EvalChatScope) {
+  return and(
+    eq(chats.id, chatId),
+    eq(chats.organizationId, organizationId),
+    eq(chats.userId, userId),
+    isNull(chats.deletedAt)
+  );
+}
+
+export async function markChatReadLogs(
+  db: DashboardAgentDb,
+  scope: EvalChatScope
+): Promise<boolean> {
+  const rows = await db
+    .update(chats)
+    .set({ metadata: sql`${chats.metadata} || '{"readLogs":true}'::jsonb` })
+    .where(evalChatScope(scope))
+    .returning({ id: chats.id });
+  return rows.length > 0;
+}
+
+export async function chatAllowsEval(db: DashboardAgentDb, scope: EvalChatScope): Promise<boolean> {
+  const [chat] = await db
+    .select({ readLogs: sql<string | null>`${chats.metadata} ->> 'readLogs'` })
+    .from(chats)
+    .where(evalChatScope(scope));
+  return !!chat && chat.readLogs !== "true";
+}
+
 export async function renameChat(
   db: DashboardAgentDb,
   params: ChatViewer & { chatId: string; title: string }

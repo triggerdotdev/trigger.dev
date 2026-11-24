@@ -1,12 +1,10 @@
 import { parseDate } from "@trigger.dev/core/v3/isomorphic";
 import { $replica } from "~/db.server";
 import { LogDetailPresenter } from "~/presenters/v3/LogDetailPresenter.server";
-import { LogsListPresenter } from "~/presenters/v3/LogsListPresenter.server";
 import { clickhouseFactory } from "~/services/clickhouse/clickhouseFactoryInstance.server";
 import { hasLogsPageAccess } from "~/services/logsAccess.server";
-import { getCurrentPlan } from "~/services/platform.v3.server";
+import { LOGS_SEARCH_BUDGET_MS, searchLogsInEnvironment } from "~/services/logsSearch.server";
 import type { AuthenticatedEnvironment } from "~/services/apiAuth.server";
-import { decodeLogsSearchCursor } from "~/utils/logSearchCursor.server";
 import { ServiceValidationError } from "~/v3/services/common.server";
 import type { McpToolContext } from "../gate/types";
 import type { McpToolDefinition } from "../registry.server";
@@ -37,9 +35,6 @@ function parseTime(value: string | undefined): number | undefined | null {
   return parseDate(value)?.getTime() ?? null;
 }
 
-const SEARCH_BUDGET_MS = 10_000;
-const DEFAULT_PERIOD = "1d";
-
 function createSearchLogs(searchBudgetMs: number, now: () => number) {
   return defineReadTool({
     name: "search_logs",
@@ -57,76 +52,24 @@ function createSearchLogs(searchBudgetMs: number, now: () => number) {
       const to = parseTime(input.to);
       if (to === null) return errorResult(`Invalid arguments: to=${input.to}`);
 
-      const plan = await getCurrentPlan(environment.organizationId);
-      const retentionLimitDays = plan?.v3Subscription?.plan?.limits.logRetentionDays.number ?? 30;
-
-      const logsClickhouse = await clickhouseFactory.getClickhouseForOrganization(
-        environment.organizationId,
-        "logs"
-      );
-      const presenter = new LogsListPresenter($replica, logsClickhouse);
-      const filters = {
-        projectId: environment.projectId,
-        tasks: input.tasks?.length ? input.tasks : undefined,
-        runId: input.runId,
-        search: input.search,
-        period: input.period,
-        from,
-        to,
-        levels: input.levels?.length ? input.levels : undefined,
-        retentionLimitDays,
-      };
-
       try {
-        const startedAt = now();
-        const read = (cursor: string | undefined, pageSize: number) =>
-          presenter.call(
-            environment.organizationId,
-            environment.id,
-            {
-              ...filters,
-              userId: ctx.identity.userId,
-              cursor,
-              defaultPeriod: DEFAULT_PERIOD,
-              pageSize,
-            },
-            ctx.signal
-          );
-
-        const first = await read(input.cursor, input.limit);
-        const logs = [...first.logs];
-        let page = first;
-        let searchedTo = first.searchProgress.searchedTo;
-        while (
-          page.pagination.next &&
-          logs.length < input.limit &&
-          now() - startedAt < searchBudgetMs &&
-          !ctx.signal.aborted
-        ) {
-          page = await read(page.pagination.next, input.limit - logs.length);
-          logs.push(...page.logs);
-          searchedTo = page.searchProgress.searchedTo ?? searchedTo;
-        }
-
-        const applied =
-          first.pagination.cursorApplied && input.cursor
-            ? decodeLogsSearchCursor(input.cursor)
-            : null;
-        return textResult(
-          formatLogsPage(
-            {
-              ...page,
-              logs,
-              filters: first.filters,
-              searchProgress: { ...page.searchProgress, searchedTo },
-            },
-            {
-              searchedFrom: new Date(applied?.slice.remainingUpper ?? first.filters.to.getTime()),
-              cursorIgnored: first.pagination.cursorApplied === false,
-              budgetSpent: page.pagination.next !== undefined && logs.length < input.limit,
-            }
-          )
+        const { page, ...coverage } = await searchLogsInEnvironment(
+          environment,
+          ctx.identity.userId,
+          {
+            tasks: input.tasks?.length ? input.tasks : undefined,
+            runId: input.runId,
+            search: input.search,
+            period: input.period,
+            from,
+            to,
+            levels: input.levels?.length ? input.levels : undefined,
+            cursor: input.cursor,
+            pageSize: input.limit,
+          },
+          { signal: ctx.signal, budgetMs: searchBudgetMs, now }
         );
+        return textResult(formatLogsPage(page, coverage));
       } catch (error) {
         if (error instanceof ServiceValidationError) return errorResult(error.message);
         throw error;
@@ -178,7 +121,7 @@ const getLog = defineReadTool({
 const PERIOD_WITH_RANGE = "Invalid arguments: Pass either period or from/to, not both";
 
 export function createLogsTools({
-  searchBudgetMs = SEARCH_BUDGET_MS,
+  searchBudgetMs = LOGS_SEARCH_BUDGET_MS,
   now = () => performance.now(),
 }: { searchBudgetMs?: number; now?: () => number } = {}): McpToolDefinition[] {
   const searchLogs = createSearchLogs(searchBudgetMs, now);

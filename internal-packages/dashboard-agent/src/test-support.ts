@@ -129,8 +129,14 @@ export function fakeStore(options: { investigations?: Map<string, FakeInvestigat
     if (row) row.state = state as FakeInvestigation["state"];
   };
   const transcript = memoryTranscriptStorage();
+  const chatsWithLogs = new Set<string>();
   const store: DashboardAgentStore = {
     ensureChat: async (args) => record("ensureChat", args),
+    markChatReadLogs: async ({ chatId }) => {
+      chatsWithLogs.add(chatId);
+      return true;
+    },
+    chatAllowsEval: async ({ chatId }) => !chatsWithLogs.has(chatId),
     transcript,
     // Mirrors the real query: the settlements commit with their closing cards, written
     // straight into the transcript rows. The hook then puts the same cards into

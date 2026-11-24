@@ -86,12 +86,15 @@ export async function apiGet(
   }
 }
 
-/** Same shape and timeout as `apiGet`, for a delegated-token POST with a JSON body. */
+type ApiPostOptions = { timeoutMs?: number; signal?: AbortSignal };
+
+/** A bearer-authenticated POST with a JSON body. */
 export async function apiPost(
   origin: string,
   path: string,
   token: string,
-  body?: unknown
+  body?: unknown,
+  { timeoutMs = GET_TIMEOUT_MS, signal }: ApiPostOptions = {}
 ): Promise<FetchResult> {
   const headers: Record<string, string> = {
     Authorization: `Bearer ${token}`,
@@ -104,7 +107,9 @@ export async function apiPost(
       method: "POST",
       headers,
       ...(body === undefined ? {} : { body: JSON.stringify(body) }),
-      signal: AbortSignal.timeout(GET_TIMEOUT_MS),
+      signal: signal
+        ? AbortSignal.any([signal, AbortSignal.timeout(timeoutMs)])
+        : AbortSignal.timeout(timeoutMs),
     });
   } catch (error) {
     return { ok: false, transport: (error as Error).message };
@@ -165,6 +170,12 @@ export type DashboardAgentApiClient = {
   hasAuth: boolean;
   /** A GET as the target's environment JWT, or why no environment JWT could be made. */
   envApiGet(path: string, target: EnvTarget): Promise<EnvFetchResult>;
+  envApiPost(
+    path: string,
+    target: EnvTarget,
+    body: unknown,
+    options?: ApiPostOptions
+  ): Promise<EnvFetchResult>;
   postQuery(
     query: string,
     period: string | undefined,
@@ -252,11 +263,15 @@ export function createApiClient(ctx: ApiClientContext): DashboardAgentApiClient 
     return call(fresh.token);
   }
 
-  const unauthorizedGet = (result: FetchResult) =>
+  const unauthorized = (result: FetchResult) =>
     !result.ok && "status" in result && result.status === 401;
 
   function envApiGet(path: string, target: EnvTarget): Promise<EnvFetchResult> {
-    return withEnvJwt(target, (jwt) => apiGet(origin, path, jwt), unauthorizedGet);
+    return withEnvJwt(target, (jwt) => apiGet(origin, path, jwt), unauthorized);
+  }
+
+  function envApiPost(path: string, target: EnvTarget, body: unknown, options?: ApiPostOptions) {
+    return withEnvJwt(target, (jwt) => apiPost(origin, path, jwt, body, options), unauthorized);
   }
 
   async function environmentIdFor(target: EnvTarget): Promise<string | undefined> {
@@ -336,5 +351,13 @@ export function createApiClient(ctx: ApiClientContext): DashboardAgentApiClient 
     return result.error;
   }
 
-  return { origin, hasAuth, envApiGet, postQuery, validateChartQuery, environmentIdFor };
+  return {
+    origin,
+    hasAuth,
+    envApiGet,
+    envApiPost,
+    postQuery,
+    validateChartQuery,
+    environmentIdFor,
+  };
 }

@@ -1,20 +1,30 @@
 // @vitest-environment jsdom
-import { createS2Container } from "@internal/testcontainers/webapp";
+import { createS2Container, type StartedS2Container } from "@internal/testcontainers/webapp";
 import { AppendInput, AppendRecord, S2 } from "@s2-dev/streamstore";
-import { createElement, useEffect } from "react";
+import { act, createElement, useEffect } from "react";
 import { createRoot } from "react-dom/client";
-import { act } from "react-dom/test-utils";
-import { expect, it } from "vitest";
+import { afterAll, beforeAll, expect, it } from "vitest";
 import { deploymentLogsCache } from "~/components/runs/v3/deploymentLogsCache";
 import { useOnboardingDeploymentLogs } from "./useOnboardingDeploymentLogs";
 
-it("recovers late terminal logs without reading or evicting legacy inspector cache entries", async () => {
-  const server = await createS2Container();
-  const client = new S2({
+let server: StartedS2Container;
+let client: S2;
+
+beforeAll(async () => {
+  server = await createS2Container();
+  client = new S2({
     accessToken: "local-test",
     endpoints: { account: `${server.endpoint}/v1`, basin: `${server.endpoint}/v1` },
     retry: { maxAttempts: 1 },
   });
+  await client.basins.reconfigure({ basin: server.basin, createStreamOnRead: false });
+}, 120_000);
+
+afterAll(async () => {
+  await server?.container.stop();
+}, 30_000);
+
+it("recovers late terminal logs without reading or evicting legacy inspector cache entries", async () => {
   const element = document.createElement("div");
   const root = createRoot(element);
   const stream = `late-terminal-${Date.now()}`;
@@ -47,7 +57,6 @@ it("recovers late terminal logs without reading or evicting legacy inspector cac
     }
   }
   try {
-    await client.basins.reconfigure({ basin: server.basin, createStreamOnRead: false });
     // The legacy inspector can cache a missing terminal stream as complete.
     // Its cache entry must not suppress onboarding's late-stream recovery.
     deploymentLogsCache.set(`${server.basin}/${stream}`, {
@@ -93,19 +102,12 @@ it("recovers late terminal logs without reading or evicting legacy inspector cac
     await act(async () => {
       root.unmount();
     });
-    await server.container.stop();
   }
   expect(deploymentLogsCache.get(`${server.basin}/${stream}`)?.complete).toBe(true);
   expect(deploymentLogsCache.get(`onboarding:${server.basin}/${stream}`)).toBeUndefined();
 }, 60_000);
 
 it("keeps BuildKit's first-build registry cache miss in the logs without flagging it as an error", async () => {
-  const server = await createS2Container();
-  const client = new S2({
-    accessToken: "local-test",
-    endpoints: { account: `${server.endpoint}/v1`, basin: `${server.endpoint}/v1` },
-    retry: { maxAttempts: 1 },
-  });
   const element = document.createElement("div");
   const root = createRoot(element);
   const stream = `cache-miss-${Date.now()}`;
@@ -169,6 +171,5 @@ it("keeps BuildKit's first-build registry cache miss in the logs without flaggin
     await act(async () => {
       root.unmount();
     });
-    await server.container.stop();
   }
 }, 60_000);

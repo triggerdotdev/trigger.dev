@@ -152,9 +152,10 @@ describe("the head-start and agent prefixes are the same prefix", () => {
 // update_alert_draft only in creation scope: -1 chat tool (~2.3k chars), +~55 prompt chars.
 // list_alert_channels: +1 tool (~600 chars), +~140 prompt chars.
 // Resolve is current-environment only: +~220 prompt and tool chars.
+// search_logs: +1 tool and ~1.8k chars across schema and prompt.
 const PREFIX_BUDGET = {
-  assistant: { chars: 83_660, estimatedTokens: 20_920, tools: 29, promptChars: 36_300 },
-  code: { chars: 90_620, estimatedTokens: 22_660, tools: 33, promptChars: 39_050 },
+  assistant: { chars: 85_540, estimatedTokens: 21_390, tools: 30, promptChars: 36_460 },
+  code: { chars: 92_500, estimatedTokens: 23_130, tools: 34, promptChars: 39_220 },
 } as const;
 
 // Measured with alerts on: the biggest prefix a turn can hand the provider.

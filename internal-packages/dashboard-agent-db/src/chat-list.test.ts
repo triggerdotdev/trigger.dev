@@ -2,7 +2,7 @@ import { PostgreSqlContainer, type StartedPostgreSqlContainer } from "@testconta
 import { drizzle, type PostgresJsDatabase } from "drizzle-orm/postgres-js";
 import postgres from "postgres";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { createChat, listChats } from "./queries.js";
+import { chatAllowsEval, createChat, listChats, markChatReadLogs } from "./queries.js";
 import * as schema from "./schema.js";
 import { applyDashboardAgentMigrations, type MigrationExecutor } from "./testing.js";
 
@@ -32,4 +32,16 @@ describe("listChats withMessagesOnly", () => {
     expect(await listChats(db, { ...viewer, withMessagesOnly: true })).toEqual([]);
     expect((await listChats(db, viewer)).map((chat) => chat.id)).toEqual(["chat_empty"]);
   });
+});
+
+it("persists log-related eval exclusion without replacing chat metadata", async () => {
+  const scope = { chatId: "chat_logs", organizationId: "org_logs", userId: "user_logs" };
+  await createChat(db, { ...scope, id: scope.chatId, metadata: { context: { projectId: "p" } } });
+  expect(await chatAllowsEval(db, scope)).toBe(true);
+  expect(await markChatReadLogs(db, { ...scope, userId: "other_user" })).toBe(false);
+  expect(await markChatReadLogs(db, scope)).toBe(true);
+
+  expect(await chatAllowsEval(db, scope)).toBe(false);
+  const [chat] = await listChats(db, scope);
+  expect(chat?.metadata).toMatchObject({ context: { projectId: "p" } });
 });
