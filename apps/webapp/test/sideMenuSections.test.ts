@@ -104,4 +104,37 @@ describe("buildSideMenuSections alerts placement", () => {
     const ids = sections.find((s) => s.id === "manage")!.items.map((i) => i.id);
     expect(ids.indexOf("alerts")).toBe(ids.indexOf("bulk-actions") + 1);
   });
+
+  it("enables matchPrefix on detail-bearing sections", () => {
+    const sections = buildSideMenuSections({
+      organization: { slug: "org" },
+      project: { slug: "proj" },
+      environment: { slug: "dev" },
+      isAdmin: true,
+      alertsConfigured: true,
+      featureFlags: { hasAiAccess: true, hasQueryAccess: true, hasLogsPageAccess: true },
+      isManagedCloud: true,
+    });
+    const allItems = sections.flatMap((s) => s.items);
+
+    const matchPrefixIds = [
+      "prompts",
+      "models",
+      "errors",
+      "queues",
+      "dashboards",
+      "deployments",
+      "api-keys",
+      "environment-variables",
+      "waitpoint-tokens",
+      "batches",
+      "bulk-actions",
+    ];
+
+    for (const id of matchPrefixIds) {
+      const item = allItems.find((i) => i.id === id);
+      expect(item, `expected item with id '${id}' to exist`).toBeDefined();
+      expect(item?.matchPrefix, `expected item '${id}' to have matchPrefix: true`).toBe(true);
+    }
+  });
 });

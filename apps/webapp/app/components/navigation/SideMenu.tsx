@@ -950,6 +950,10 @@ export function SideMenu({
                 to={v3EnvironmentPath(organization, project, environment)}
                 data-action="tasks"
                 isCollapsed={isCollapsed}
+                matchPrefix={[
+                  `${v3EnvironmentPath(organization, project, environment)}/tasks`,
+                  `${v3EnvironmentPath(organization, project, environment)}/agents`,
+                ]}
                 yieldActiveToFavorite
               />
               <SideMenuItem
@@ -960,6 +964,7 @@ export function SideMenu({
                 to={v3RunsPath(organization, project, environment)}
                 data-action="runs"
                 isCollapsed={isCollapsed}
+                matchPrefix
                 yieldActiveToFavorite
               />
               <SideMenuItem
@@ -970,6 +975,7 @@ export function SideMenu({
                 to={v3SessionsPath(organization, project, environment)}
                 data-action="sessions"
                 isCollapsed={isCollapsed}
+                matchPrefix
                 yieldActiveToFavorite
               />
               {(isManagedCloud ||
@@ -985,6 +991,7 @@ export function SideMenu({
                   data-action="webhooks"
                   badge={<BetaBadge />}
                   isCollapsed={isCollapsed}
+                  matchPrefix
                   yieldActiveToFavorite
                 />
               )}

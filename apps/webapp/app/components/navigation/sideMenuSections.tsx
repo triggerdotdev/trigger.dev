@@ -62,7 +62,7 @@ type SideMenuItemConfig = {
   activeIconColor: string;
   inactiveIconColor?: string;
   to: string;
-  matchPrefix?: boolean;
+  matchPrefix?: boolean | string | string[];
   dataAction?: string;
   badge?: ReactNode;
   trailingIconClassName?: string;
@@ -122,6 +122,7 @@ export function buildSideMenuSections({
           activeIconColor: "text-aiPrompts",
           to: v3PromptsPath(organization, project, environment),
           dataAction: "prompts",
+          matchPrefix: true,
         },
         {
           id: "models",
@@ -130,6 +131,7 @@ export function buildSideMenuSections({
           activeIconColor: "text-models",
           to: v3ModelsPath(organization, project, environment),
           dataAction: "models",
+          matchPrefix: true,
         },
       ],
     });
@@ -179,6 +181,7 @@ export function buildSideMenuSections({
                 activeIconColor: "text-errors",
                 to: v3ErrorsPath(organization, project, environment),
                 dataAction: "errors",
+                matchPrefix: true,
               } satisfies SideMenuItemConfig,
             ]
           : []),
@@ -199,6 +202,7 @@ export function buildSideMenuSections({
                 activeIconColor: "text-queues",
                 to: concurrencyPath(organization, project, environment),
                 dataAction: "queues",
+                matchPrefix: true,
               } satisfies SideMenuItemConfig,
               {
                 id: "dashboards",
@@ -207,6 +211,7 @@ export function buildSideMenuSections({
                 activeIconColor: "text-metrics",
                 to: v3DashboardsLandingPath(organization, project, environment),
                 dataAction: "dashboards-landing",
+                matchPrefix: true,
                 action: dashboards?.action,
                 after: dashboards?.after,
               } satisfies SideMenuItemConfig,
@@ -227,6 +232,7 @@ export function buildSideMenuSections({
         activeIconColor: "text-deployments",
         to: v3DeploymentsPath(organization, project, environment),
         dataAction: "deployments",
+        matchPrefix: true,
       },
       {
         id: "preview-branches",
@@ -258,6 +264,7 @@ export function buildSideMenuSections({
         activeIconColor: "text-text-bright",
         to: v3ApiKeysPath(organization, project, environment),
         dataAction: "api keys",
+        matchPrefix: true,
       },
       {
         id: "environment-variables",
@@ -266,6 +273,7 @@ export function buildSideMenuSections({
         activeIconColor: "text-environmentVariables",
         to: v3EnvironmentVariablesPath(organization, project, environment),
         dataAction: "environment variables",
+        matchPrefix: true,
       },
       ...(featureFlags.trustedDeploysEnabled
         ? [
@@ -306,6 +314,7 @@ export function buildSideMenuSections({
         activeIconColor: "text-sky-500",
         to: v3WaitpointTokensPath(organization, project, environment),
         dataAction: "waitpoint-tokens",
+        matchPrefix: true,
       },
       {
         id: "batches",
@@ -314,6 +323,7 @@ export function buildSideMenuSections({
         activeIconColor: "text-batches",
         to: v3BatchesPath(organization, project, environment),
         dataAction: "batches",
+        matchPrefix: true,
       },
       {
         id: "bulk-actions",
@@ -322,6 +332,7 @@ export function buildSideMenuSections({
         activeIconColor: "text-text-bright",
         to: v3BulkActionsPath(organization, project, environment),
         dataAction: "bulk actions",
+        matchPrefix: true,
       },
       ...(alertsInObservability ? [] : [alertsItem]),
       ...(isManagedCloud
