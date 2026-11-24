@@ -46,8 +46,8 @@ vi.mock("~/db.server", async () => {
 // or read roles call `useRoleStandIn()`. The stand-in replaces only the role methods, with the
 // contract of enterprise/packages/plugins/src/rbac/controller.ts: a role read is null for a user who
 // isn't a member, else their assigned role, else the legacy OrgMember.role mapping (ADMIN -> Owner,
-// MEMBER -> Admin). `setUserRole` writes the assignment whether or not the user is a member, and
-// refuses to demote the org's last Owner. Session authentication stays the real fallback's.
+// MEMBER -> Admin). `setUserRole` writes the assignment whether or not the user is a member, refuses
+// to demote the org's last Owner, and returns the role it replaced and whether the role changed. Session authentication stays the real fallback's.
 type FakeRole = { id: string; name: string; isSystem: boolean };
 const rbacHolder = vi.hoisted(() => ({
   /** Whether the role methods come from the stand-in instead of the fallback. */
@@ -58,8 +58,6 @@ const rbacHolder = vi.hoisted(() => ({
     developer: { id: "role_developer", name: "Developer", isSystem: true },
   } as Record<string, { id: string; name: string; isSystem: boolean }>,
   assignments: new Map<string, { id: string; name: string; isSystem: boolean }>(),
-  /** Makes the next `getUserRole` throw, like a failed database read. */
-  failNextGetUserRole: false,
   /** How many times each read ran, to tell which reads a change made. */
   reads: { getUserRole: 0, allRoles: 0 },
   /** While set, `allRoles` waits for it, like a slow database read. */
@@ -88,10 +86,6 @@ vi.mock("~/services/rbac.server", async () => {
   const roleStandIn: Record<string, unknown> = {
     async getUserRole({ userId, organizationId }: { userId: string; organizationId: string }) {
       rbacHolder.reads.getUserRole++;
-      if (rbacHolder.failNextGetUserRole) {
-        rbacHolder.failNextGetUserRole = false;
-        throw new Error("role read failed");
-      }
       return effectiveRole(userId, organizationId);
     },
     async getUserRoles(userIds: string[], organizationId: string) {
@@ -111,6 +105,7 @@ vi.mock("~/services/rbac.server", async () => {
     async setUserRole(params: { userId: string; organizationId: string; roleId: string }) {
       const role = Object.values(rbacHolder.roles).find((r) => r.id === params.roleId);
       if (!role) return { ok: false, error: "Role not found" };
+      const previousRole = await effectiveRole(params.userId, params.organizationId);
       const members = await prismaHolder.client!.orgMember.findMany({
         where: { organizationId: params.organizationId },
         select: { userId: true },
@@ -127,7 +122,7 @@ vi.mock("~/services/rbac.server", async () => {
         };
       }
       rbacHolder.assignments.set(key(params.userId, params.organizationId), role);
-      return { ok: true };
+      return { ok: true, previousRole, changed: previousRole?.id !== role.id };
     },
     async removeUserRole({ userId, organizationId }: { userId: string; organizationId: string }) {
       rbacHolder.assignments.delete(key(userId, organizationId));
@@ -211,7 +206,6 @@ let disableRecording: (() => void) | undefined;
 beforeEach(() => {
   rbacHolder.roleStandIn = false;
   rbacHolder.assignments.clear();
-  rbacHolder.failNextGetUserRole = false;
   rbacHolder.reads = { getUserRole: 0, allRoles: 0 };
   rbacHolder.allRolesGate = null;
   ssoHolder.overrides = {};
@@ -816,7 +810,7 @@ describe("reads made only for audit events", () => {
       });
       await flushAuditEvents();
 
-      expect(roleChange).toEqual({ ok: true });
+      expect(roleChange).toMatchObject({ ok: true, changed: true });
       expect(added.created).toBe(true);
       expect(rbacHolder.assignments.get(`${organization.id}:${member.id}`)).toEqual(
         rbacHolder.roles.admin
@@ -834,7 +828,8 @@ describe("reads made only for audit events", () => {
         roleId: rbacHolder.roles.developer.id,
       });
       await flushAuditEvents();
-      expect(rbacHolder.reads).toEqual({ getUserRole: 1, allRoles: 1 });
+      // The role it replaced comes from the plugin's write, so only the role names are read.
+      expect(rbacHolder.reads).toEqual({ getUserRole: 0, allRoles: 1 });
       expect(recorded).toHaveLength(1);
     })
   );
@@ -861,7 +856,7 @@ describe("reads made only for audit events", () => {
       const recordedBeforeRelease = recorded.length;
       releaseRoleNames();
 
-      expect(outcome).toEqual({ ok: true });
+      expect(outcome).toMatchObject({ ok: true, changed: true });
       expect(recordedBeforeRelease).toBe(0);
       expect(await recordedEvents(recorded)).toEqual([
         {
@@ -926,7 +921,11 @@ describe("role change audit events", () => {
         roleId: rbacHolder.roles.admin.id,
       });
 
-      expect(result).toEqual({ ok: true });
+      expect(result).toMatchObject({
+        ok: true,
+        changed: true,
+        previousRole: { name: "Developer" },
+      });
       expect(await recordedEvents(recorded)).toEqual([
         {
           category: "members",
@@ -987,7 +986,7 @@ describe("role change audit events", () => {
         );
         releaseMemberReads();
 
-        expect(result).toEqual({ ok: true });
+        expect(result).toMatchObject({ ok: true, changed: true });
         expect(await recordedEvents(recorded)).toEqual([
           {
             category: "members",
@@ -1045,44 +1044,10 @@ describe("role change audit events", () => {
         code: "last_owner",
       });
       expect(unknownRole).toEqual({ ok: false, error: "Role not found" });
-      expect(sameRole).toEqual({ ok: true });
-      expect(nonMember).toEqual({ ok: true });
+      expect(sameRole).toMatchObject({ ok: true, changed: false });
+      expect(nonMember).toMatchObject({ ok: true });
       expect(await recordedEvents(recorded)).toEqual([]);
     }
-  );
-
-  // Catches: a failed "before" read blocking the role change, or dropping its event.
-  postgresTest(
-    "changes the role and records it without a before when the pre-read fails",
-    async ({ prisma }) =>
-      inAuditedRequest(async () => {
-        prismaHolder.client = prisma;
-        useRoleStandIn();
-        const { setOrgMemberRole } = await import("~/models/orgMember.server");
-        const { organization, member, regularMember } = await seedOrg(prisma);
-        rbacHolder.failNextGetUserRole = true;
-
-        const recorded = await startRecording();
-        const result = await setOrgMemberRole({
-          userId: member.id,
-          organizationId: organization.id,
-          roleId: rbacHolder.roles.admin.id,
-        });
-
-        expect(result).toEqual({ ok: true });
-        expect(rbacHolder.assignments.get(`${organization.id}:${member.id}`)).toEqual(
-          rbacHolder.roles.admin
-        );
-        expect(await recordedEvents(recorded)).toEqual([
-          {
-            category: "members",
-            action: "member.role_changed",
-            organizationId: organization.id,
-            target: { type: "member", id: regularMember.id, name: member.email },
-            changes: { role: { before: null, after: "Admin" } },
-          },
-        ]);
-      })
   );
 
   // Catches: a failed member read before the write blocking the role change, or dropping its event.
@@ -1119,7 +1084,7 @@ describe("role change audit events", () => {
         });
 
         expect(failNextMemberRead).toBe(false);
-        expect(result).toEqual({ ok: true });
+        expect(result).toMatchObject({ ok: true, changed: true });
         expect(rbacHolder.assignments.get(`${organization.id}:${member.id}`)).toEqual(
           rbacHolder.roles.admin
         );
@@ -1180,7 +1145,7 @@ describe("role change audit events", () => {
         });
 
         expect(removeAfterNextMemberRead).toBe(false);
-        expect(result).toEqual({ ok: true });
+        expect(result).toMatchObject({ ok: true, changed: true });
         expect(
           await prisma.orgMember.count({
             where: { userId: member.id, organizationId: organization.id },
