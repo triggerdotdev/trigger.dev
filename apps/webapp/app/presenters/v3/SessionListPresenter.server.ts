@@ -34,6 +34,8 @@ export type SessionListOptions = {
   direction?: Direction;
   cursor?: string;
   pageSize?: number;
+  /** Runs before each query after the first; throwing stops the call. */
+  beforeRead?: () => void;
 };
 
 const DEFAULT_PAGE_SIZE = 25;
@@ -78,6 +80,7 @@ export class SessionListPresenter {
       direction = "forward",
       cursor,
       pageSize = DEFAULT_PAGE_SIZE,
+      beforeRead,
     }: SessionListOptions,
     rootSpan: Span
   ) {
@@ -113,6 +116,7 @@ export class SessionListPresenter {
       return date > now ? now : date;
     }
 
+    beforeRead?.();
     // Sessions are produced by chat.agent() tasks. The TaskIdentifier
     // registry has historically misclassified agent slugs as STANDARD (the
     // toTriggerSource helper didn't know about "agent" until recently), so
@@ -126,6 +130,7 @@ export class SessionListPresenter {
           this.replica
         );
         if (!currentWorker) return [];
+        beforeRead?.();
         const agents = await this.replica.backgroundWorkerTask.findMany({
           where: { workerId: currentWorker.id, triggerSource: "AGENT" },
           select: { slug: true },
@@ -134,6 +139,8 @@ export class SessionListPresenter {
         return agents.map((a) => ({ slug: a.slug, isInLatestDeployment: true }));
       }
     );
+    // Not awaited when a later step throws first.
+    possibleTasksAsync.catch(() => {});
 
     const { sessions, pagination } = await sessionsRepository.listSessions({
       organizationId,
@@ -158,6 +165,7 @@ export class SessionListPresenter {
 
     let hasAnySessions = sessions.length > 0;
     if (!hasAnySessions) {
+      beforeRead?.();
       const firstSession = await startActiveSpan("SessionListPresenter.hasAnySessions", () =>
         this.replica.session.findFirst({
           where: { runtimeEnvironmentId: environmentId },
@@ -178,6 +186,7 @@ export class SessionListPresenter {
       .filter((id): id is string => Boolean(id));
 
     const possibleTasks = await possibleTasksAsync;
+    beforeRead?.();
 
     const currentRuns = await startActiveSpan(
       "SessionListPresenter.findCurrentRuns",

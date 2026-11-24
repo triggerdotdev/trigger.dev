@@ -950,7 +950,7 @@ describe("remote alert management tools", () => {
     {
       state: ["active", "attention"],
       tool: "stop_alert",
-      says: "needs attention; resolve it with resolve_alert first, then stop it",
+      says: "needs attention and cannot be stopped until its attention is cleared (the dashboard has the same rule). resolve_alert clears it; stop it right away after that, because it can need attention again before it is stopped. If you get this answer again after resolving, do not repeat the steps; tell the user",
       steps: [["resolve_alert"], ["stop_alert"]],
     },
     {
@@ -1028,6 +1028,30 @@ describe("remote alert management tools", () => {
           `Alert ${ref} ${then[1]}; nothing changed.`
         );
       }
+    }
+  );
+
+  // Catches: a refusal after approval returned in a different form (JSON) from the same refusal before approval.
+  postgresTest(
+    "stop_alert refuses an alert raised after approval in the same plain form",
+    async ({ prisma }) => {
+      const s = await seed(prisma);
+      const alert = await createAlert(prisma, s.prod, {
+        name: "hot",
+        notifiers: [{ type: "channel", channelId: s.email.id }],
+      });
+      await expectPending(s.call("stop_alert", { alertId: alert.id }));
+      await approveAll();
+      await raise(prisma, alert.id);
+
+      const afterApproval = await s.call("stop_alert", { alertId: alert.id });
+      const beforeApproval = await s.call("stop_alert", { alertId: alert.id });
+
+      expect({
+        isError: [afterApproval.isError, beforeApproval.isError],
+        sameText: outsideFences(textOf(afterApproval)) === outsideFences(textOf(beforeApproval)),
+        refusal: outsideFences(textOf(afterApproval)).includes("needs attention"),
+      }).toEqual({ isError: [true, true], sameText: true, refusal: true });
     }
   );
 
@@ -1349,10 +1373,7 @@ describe("remote alert management tools", () => {
 
       expect(texts).toEqual(
         Array(3).fill(
-          JSON.stringify({
-            error:
-              "One or more notifier channels are not available in this environment; list_alert_channels shows the channels you can pass as notifiers; nothing changed.",
-          })
+          "One or more notifier channels are not available in this environment; list_alert_channels shows the channels you can pass as notifiers; nothing changed."
         )
       );
       expect((await prisma.alert.findFirstOrThrow({ where: { id: live.id } })).name).toBe("live");
@@ -1478,7 +1499,7 @@ describe("remote alert management tools", () => {
       );
 
       expect(text).toContain("has the shape of a channel friendlyId");
-      expect(text).toMatch(/; nothing changed\."\}$/);
+      expect(text).toMatch(/; nothing changed\.$/);
     }
   );
 

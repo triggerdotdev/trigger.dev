@@ -105,6 +105,22 @@ const TOOLS: Array<{ tool: string; args: Record<string, unknown>; scope: string 
     args: { ...project, sessionId: "session_1" },
     scope: "read:sessions",
   },
+  { tool: "list_sessions", args: project, scope: "read:sessions" },
+  {
+    tool: "get_session_details",
+    args: { ...project, sessionId: "session_1" },
+    scope: "read:sessions",
+  },
+  {
+    tool: "read_session_transcript",
+    args: { ...project, sessionId: "session_1" },
+    scope: "read:sessions",
+  },
+  {
+    tool: "list_playground_conversations",
+    args: { ...project, agentSlug: "my-agent" },
+    scope: "read:sessions",
+  },
   { tool: "list_alert_capabilities", args: project, scope: "read:alerts" },
   { tool: "get_alert_details", args: { ...project, alertId: "alert_1" }, scope: "read:alerts" },
   { tool: "list_alert_channels", args: project, scope: "read:alerts" },

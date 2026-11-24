@@ -61,6 +61,10 @@ const REMOTE_ONLY: Record<string, string> = {
   delete_alert: "deletes through the Dashboard alert services, which only the server has",
   create_alert_group: "groups through the Dashboard alert services, which only the server has",
   ungroup_alert: "ungroups through the Dashboard alert services, which only the server has",
+  list_sessions: "the CLI has no tool for it yet",
+  get_session_details: "no public API returns a session's runs and channel names",
+  read_session_transcript: "the CLI has no tool for it yet",
+  list_playground_conversations: "playground conversations are only listed in the dashboard",
 };
 
 const WRITE_TOOL_APPROVAL: Record<string, "required" | "configurable" | { none: string }> = {

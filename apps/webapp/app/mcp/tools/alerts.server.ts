@@ -20,15 +20,17 @@ import {
   listDeliveriesForEvents,
 } from "~/v3/services/alerts/storage/alertStore.server";
 import type { McpToolDefinition } from "../registry.server";
-import { defineReadTool, errorResult, resolveToolEnvironment, textResult } from "./define.server";
+import { defineReadTool, resolveToolEnvironment, textResult } from "./define.server";
 import {
   DELIVERY_FETCH_LIMIT,
   MAX_ALERT_CHANNELS,
   MAX_ALERT_EVENTS,
   MAX_ALERT_MEMBERS,
+  alertError,
   formatAlertChannelLine,
   formatAlertDetail,
   formatAlertLine,
+  formatAlertList,
   formatCapabilityLine,
   formatDeliveries,
 } from "./format/alerts";
@@ -38,6 +40,8 @@ import {
   ListAlertChannelsInput,
   ListAlertsInput,
 } from "./schemas/alerts";
+
+const LIST_ALERTS_LIMIT = 200;
 
 const NOT_ENABLED = "Monitoring alerts are not enabled for this project";
 
@@ -51,9 +55,9 @@ export const alertsTools: McpToolDefinition[] = [
     auth: { action: "read", subject: "alerts" },
     run: async (input, { identity }) => {
       const project = await findMonitoringAlertsProject(input.projectRef!, identity.userId);
-      if (!project) return errorResult("Project not found");
+      if (!project) return alertError("Project not found");
       if (!(await canUseMonitoringAlerts(project, identity.userId))) {
-        return errorResult(NOT_ENABLED);
+        return alertError(NOT_ENABLED);
       }
 
       const capabilities = offeredCapabilities(
@@ -76,25 +80,27 @@ export const alertsTools: McpToolDefinition[] = [
     auth: { action: "read", subject: "alerts" },
     run: async (input, ctx) => {
       const project = await findMonitoringAlertsProject(input.projectRef!, ctx.identity.userId);
-      if (!project) return errorResult("Project not found");
+      if (!project) return alertError("Project not found");
       if (!(await canUseMonitoringAlerts(project, ctx.identity.userId))) {
-        return errorResult(NOT_ENABLED);
+        return alertError(NOT_ENABLED);
       }
 
       const environment = await resolveToolEnvironment(ctx);
-      if (!environment) return errorResult("Not authorized");
+      if (!environment) return alertError("Not authorized");
 
       const alerts = await listAlerts(prisma, {
         environmentId: environment.id,
         projectId: project.id,
         lifecycle: input.lifecycle,
         attention: input.attention,
+        limit: LIST_ALERTS_LIMIT,
       });
 
       return textResult(
-        alerts.length > 0
-          ? alerts.map((a) => formatAlertLine({ ...a, name: alertDisplayName(a) })).join("\n")
-          : "No monitoring alerts found."
+        formatAlertList(
+          alerts.map((a) => formatAlertLine({ ...a, name: alertDisplayName(a) })),
+          LIST_ALERTS_LIMIT
+        )
       );
     },
   }),
@@ -107,22 +113,22 @@ export const alertsTools: McpToolDefinition[] = [
     auth: { action: "read", subject: "alerts" },
     run: async (input, ctx) => {
       const project = await findMonitoringAlertsProject(input.projectRef!, ctx.identity.userId);
-      if (!project) return errorResult("Project not found");
+      if (!project) return alertError("Project not found");
       if (!(await canUseMonitoringAlerts(project, ctx.identity.userId))) {
-        return errorResult(NOT_ENABLED);
+        return alertError(NOT_ENABLED);
       }
 
       const environment = await resolveToolEnvironment(ctx);
-      if (!environment) return errorResult("Not authorized");
+      if (!environment) return alertError("Not authorized");
 
       const where = { id: input.alertId, projectId: project.id, environmentId: environment.id };
       const rawAlert = await getAlert(prisma, where);
-      if (!rawAlert) return errorResult("Alert not found");
+      if (!rawAlert) return alertError("Alert not found");
       const presented = await new AlertDetailPresenter().call({
         ...where,
         skipCurrentReading: true,
       });
-      if (!presented) return errorResult("Alert not found");
+      if (!presented) return alertError("Alert not found");
       const alert = {
         ...presented,
         chatNotifierCount: (rawAlert.notifiers as NotifierRef[]).filter((n) => n.type === "chat")
@@ -163,13 +169,13 @@ export const alertsTools: McpToolDefinition[] = [
     auth: { action: "read", subject: "alerts" },
     run: async (input, ctx) => {
       const project = await findMonitoringAlertsProject(input.projectRef!, ctx.identity.userId);
-      if (!project) return errorResult("Project not found");
+      if (!project) return alertError("Project not found");
       if (!(await canUseMonitoringAlerts(project, ctx.identity.userId))) {
-        return errorResult(NOT_ENABLED);
+        return alertError(NOT_ENABLED);
       }
 
       const environment = await resolveToolEnvironment(ctx);
-      if (!environment) return errorResult("Not authorized");
+      if (!environment) return alertError("Not authorized");
 
       const { alertChannels } = await new AlertChannelListPresenter().call(
         project.id,

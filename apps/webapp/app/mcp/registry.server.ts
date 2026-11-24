@@ -28,6 +28,7 @@ import { logsTools } from "./tools/logs.server";
 import { runsTools } from "./tools/runs.server";
 import { runStreamsTools } from "./tools/runStreams.server";
 import { sessionsTools } from "./tools/sessions.server";
+import { sessionsReadTools } from "./tools/sessionsRead.server";
 import { tasksTools } from "./tools/tasks.server";
 import { webhooksTools } from "./tools/webhooks.server";
 import { webhooksReadTools } from "./tools/webhooksRead.server";
@@ -91,6 +92,7 @@ export const mcpTools: McpToolDefinition[] = assertUniqueToolNames([
   ...promptsTools,
   ...agentsTools,
   ...sessionsTools,
+  ...sessionsReadTools,
   ...alertsTools,
   ...webhooksTools,
   ...webhooksReadTools,

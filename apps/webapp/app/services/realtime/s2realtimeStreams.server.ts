@@ -351,9 +351,12 @@ export class S2RealtimeStreams implements StreamResponder, StreamIngestor {
     );
   }
 
-  async listSessionChannels(friendlyId: string): Promise<string[]> {
+  async listSessionChannels(
+    friendlyId: string,
+    opts?: { beforeRead?: () => void }
+  ): Promise<string[]> {
     const prefix = `${this.streamPrefix}/sessions/${friendlyId}/channels/`;
-    const names = await this.#s2ListStreamNames(prefix);
+    const names = await this.#s2ListStreamNames(prefix, opts?.beforeRead);
     const channels = new Set<string>();
     for (const name of names) {
       const rest = name.slice(prefix.length);
@@ -363,11 +366,12 @@ export class S2RealtimeStreams implements StreamResponder, StreamIngestor {
     return [...channels];
   }
 
-  async #s2ListStreamNames(prefix: string): Promise<string[]> {
+  async #s2ListStreamNames(prefix: string, beforeRead?: () => void): Promise<string[]> {
     const names: string[] = [];
     let startAfter: string | undefined;
 
     for (let page = 0; page < 100; page++) {
+      if (page > 0) beforeRead?.();
       const qs = new URLSearchParams();
       qs.set("prefix", prefix);
       if (startAfter) qs.set("start_after", startAfter);

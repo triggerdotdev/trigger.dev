@@ -67,10 +67,13 @@ export class PlaygroundPresenter {
     environmentId,
     environmentType,
     agentSlug,
+    beforeRead,
   }: {
     environmentId: string;
     environmentType: RuntimeEnvironmentType;
     agentSlug: string;
+    /** Runs before each query after the first; throwing stops the call. */
+    beforeRead?: () => void;
   }): Promise<PlaygroundAgent | null> {
     const currentWorker = await findCurrentWorkerFromEnvironment(
       { id: environmentId, type: environmentType },
@@ -79,6 +82,7 @@ export class PlaygroundPresenter {
 
     if (!currentWorker) return null;
 
+    beforeRead?.();
     return $replica.backgroundWorkerTask.findFirst({
       where: {
         workerId: currentWorker.id,
@@ -100,11 +104,14 @@ export class PlaygroundPresenter {
     agentSlug,
     userId,
     limit = 10,
+    beforeRead,
   }: {
     environmentId: string;
     agentSlug: string;
     userId: string;
     limit?: number;
+    /** Runs before each query after the first; throwing stops the call. */
+    beforeRead?: () => void;
   }): Promise<PlaygroundConversation[]> {
     const conversations = await $replica.playgroundConversation.findMany({
       where: {
@@ -135,6 +142,7 @@ export class PlaygroundPresenter {
 
     const runsById = new Map<string, { friendlyId: string; status: TaskRunStatus }>();
     if (runIds.length > 0) {
+      beforeRead?.();
       const runs = await runStore.findRuns({
         where: { id: { in: boundedIn(runIds) } },
         select: { id: true, friendlyId: true, status: true },

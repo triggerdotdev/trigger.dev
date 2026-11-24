@@ -1,4 +1,5 @@
 import { fenceUntrusted } from "../../gate/fence.server";
+import type { McpToolResult } from "../../gate/withMcpToolAuth.server";
 import { capText } from "./logFields";
 
 type AlertCapabilityParam = {
@@ -46,6 +47,21 @@ export function formatAlertLine(alert: {
 }): string {
   const name = alert.name ? fenceCapped(alert.name, "alert-name") : "(unnamed)";
   return `- ${name} (id=${alert.id}) capability=${alert.capabilityKey} lifecycle=${alert.lifecycle} attention=${alert.attention}`;
+}
+
+/** Alert tool errors as plain text, the same form the confirmation gate uses for a refusal. */
+export const alertError = (text: string): McpToolResult => ({
+  content: [{ type: "text", text }],
+  isError: true,
+});
+
+export function formatAlertList(lines: string[], limit: number): string {
+  if (lines.length === 0) return "No monitoring alerts found.";
+  return [
+    `Showing ${lines.length} monitoring alert${lines.length === 1 ? "" : "s"}, those needing attention first, then newest first.`,
+    ...(lines.length >= limit ? [`Stopped at the limit of ${limit}; more alerts may exist.`] : []),
+    ...lines,
+  ].join("\n");
 }
 
 const TOKEN = /^[A-Za-z0-9_.:-]{1,128}$/;
@@ -110,7 +126,7 @@ export function formatAlertDetail(
     lines.push(`Query: ${fenceCapped(alert.compiledQuery, "alert-query", MAX_QUERY)}`);
   }
   lines.push(`Expires: ${alert.expiresAt ? alert.expiresAt.toISOString() : "never"}`);
-  if (alert.resolvedByLabel) {
+  if (alert.resolvedByLabel && alert.status.status !== "needs_attention") {
     lines.push(`Resolved by: ${fenceCapped(alert.resolvedByLabel, "alert-member")}`);
   }
   if (alert.stoppedByLabel) {
