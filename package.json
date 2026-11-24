@@ -189,7 +189,8 @@
       "engine.io@>=6 <6.6.10": "^6.6.10",
       "fast-uri@>=4 <4.2.3": "^4.2.3",
       "@remix-run/dev@2.17.5>@vanilla-extract/integration": "8.0.11",
-      "turbo-stream@>=2 <3.0.0": "^3.0.0"
+      "turbo-stream@>=2 <3.0.0": "^3.0.0",
+      "lodash.omit@>=4 <4.18.0": "^4.18.0"
     },
     "onlyBuiltDependencies": [
       "@depot/cli",

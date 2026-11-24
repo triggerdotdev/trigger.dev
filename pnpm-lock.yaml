@@ -105,6 +105,7 @@ overrides:
   fast-uri@>=4 <4.2.3: ^4.2.3
   '@remix-run/dev@2.17.5>@vanilla-extract/integration': 8.0.11
   turbo-stream@>=2 <3.0.0: ^3.0.0
+  lodash.omit@>=4 <4.18.0: ^4.18.0
 
 patchedDependencies:
   '@ai-sdk/anthropic@3.0.125':
@@ -12518,9 +12519,8 @@ packages:
   lodash.isstring@4.0.1:
     resolution: {integrity: sha512-0wJxfxH1wgO3GrbuP+dTTk7op+6L41QCXbGINEmD+ny/G/eCqGzxyCsh7159S+mgDDcoarnBw6PC1PS5+wUGgw==}
 
-  lodash.omit@4.5.0:
-    resolution: {integrity: sha512-XeqSp49hNGmlkj2EJlfrQFIzQ6lXdNro9sddtQzcJY8QaoC2GO0DT7xaIokHeyM+mIT0mPMlPvkYzg2xCuHdZg==}
-    deprecated: This package is deprecated. Use destructuring assignment syntax instead.
+  lodash.omit@4.18.0:
+    resolution: {integrity: sha512-hZXIupXdHtocTnvIJ2aCd2vxKYtxex6gbiGuPvgBRnFQO9yu3AtmDAbVuCXcSsQx3INo/1g71OktlFFA/ES8Xg==}
 
   lodash.once@4.1.1:
     resolution: {integrity: sha512-Sb487aTOCr9drQVL8pIxOzVhafOjZN9UU54hiN8PU3uAiSV7lx1yYNpbNmex2PK6dSJoNTSJUUswT651yww3Mg==}
@@ -19784,7 +19784,7 @@ snapshots:
   '@jsonhero/json-schema-fns@0.0.1':
     dependencies:
       deepmerge: 4.3.1
-      lodash.omit: 4.5.0
+      lodash.omit: 4.18.0
       ts-pattern: 3.3.5
 
   '@jsonhero/path@1.0.21': {}
@@ -19793,7 +19793,7 @@ snapshots:
     dependencies:
       '@jsonhero/json-infer-types': 1.2.11
       '@jsonhero/json-schema-fns': 0.0.1
-      lodash.omit: 4.5.0
+      lodash.omit: 4.18.0
       ts-pattern: 3.3.5
 
   '@jspm/core@2.0.1': {}
@@ -27710,7 +27710,7 @@ snapshots:
 
   lodash.isstring@4.0.1: {}
 
-  lodash.omit@4.5.0: {}
+  lodash.omit@4.18.0: {}
 
   lodash.once@4.1.1: {}
 
