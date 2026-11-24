@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import { postgresTest } from "@internal/testcontainers";
 import type { DeploymentAccessController, DeploymentIntegrationAccess } from "@trigger.dev/plugins";
 import { describe, expect, it, vi } from "vitest";
+import type { PrismaClientOrTransaction } from "~/db.server";
 import {
   checkDeployAccess,
   integrationAccess,
@@ -46,6 +47,47 @@ describe("checkDeployAccess", () => {
     expect(await checkDeployAccess(check, { controller: failing })).toEqual({
       allowed: false,
       kind: "denied",
+    });
+  });
+
+  // Catches: the global computeOnlyDeploys switch not reaching the plugin, or a cold flag snapshot
+  // reading as on and letting an otherwise denied organization deploy.
+  it("sends the computeOnlyDeploys switch with each check, off when the snapshot is cold", async () => {
+    const seen: boolean[] = [];
+    const recording = controllerWith({
+      async checkDeploy(sent) {
+        seen.push(sent.computeOnlyDeploys);
+        return { allowed: false, kind: "denied" };
+      },
+    });
+    await checkDeployAccess(check, { controller: recording, computeOnlyDeploys: true });
+    await checkDeployAccess(check, { controller: recording });
+    expect(seen).toEqual([true, false]);
+  });
+
+  // Catches: a database error while writing the computeOnly flag refusing the deploy with the
+  // permanent "not available" message instead of asking for a retry, or letting it through.
+  it("refuses with a retry message when the computeOnly flag can't be written", async () => {
+    const microvm = controllerWith({
+      async checkDeploy() {
+        return { allowed: true, placement: "microvm" };
+      },
+    });
+    const broken = {
+      $executeRaw: async () => {
+        throw new Error("connection reset");
+      },
+    } as unknown as PrismaClientOrTransaction;
+    expect(
+      await checkDeployAccess(check, {
+        controller: microvm,
+        client: broken,
+        organizationFeatureFlags: {},
+      })
+    ).toEqual({
+      allowed: false,
+      kind: "denied",
+      message: "We couldn't prepare this deploy. Try deploying again.",
     });
   });
 });
@@ -154,5 +196,100 @@ postgresTest(
       data: { deletedAt: new Date() },
     });
     expect(await access(connected.id, none)).toEqual(none);
+  }
+);
+
+// Catches: a stage other than initialize rewriting `computeOnly`, e.g. register_worker's plain
+// allow clearing it from an org already on compute so its runs move to containers.
+postgresTest(
+  "only an allowed initialize decision syncs the computeOnly flag",
+  async ({ prisma }) => {
+    const org = await prisma.organization.create({
+      data: { title: "Org", slug: randomUUID(), featureFlags: {} },
+    });
+    const flags = async () =>
+      (await prisma.organization.findUniqueOrThrow({ where: { id: org.id } })).featureFlags;
+    const microvm = controllerWith({
+      async checkDeploy() {
+        return { allowed: true, placement: "microvm" };
+      },
+    });
+    const plainAllow = controllerWith();
+    const deny = controllerWith({
+      async checkDeploy() {
+        return { allowed: false, kind: "denied" };
+      },
+    });
+    const at = (stage: "preflight" | "initialize" | "register_worker") => ({
+      stage,
+      organizationId: org.id,
+    });
+
+    await checkDeployAccess(at("preflight"), { client: prisma, controller: microvm });
+    expect(await flags()).toEqual({});
+    await checkDeployAccess(at("initialize"), { client: prisma, controller: microvm });
+    expect(await flags()).toEqual({ computeOnly: true });
+
+    await checkDeployAccess(at("register_worker"), { client: prisma, controller: plainAllow });
+    await checkDeployAccess(at("initialize"), { client: prisma, controller: deny });
+    expect(await flags()).toEqual({ computeOnly: true });
+
+    await checkDeployAccess(at("initialize"), { client: prisma, controller: plainAllow });
+    expect(await flags()).toEqual({});
+  }
+);
+
+// Catches: initialize sending an UPDATE to the primary on every plain deploy, though the org's
+// loaded flags already show there is no computeOnly to clear.
+postgresTest(
+  "initialize writes computeOnly except for a plain deploy of an org without the flag",
+  async ({ prisma }) => {
+    const org = await prisma.organization.create({
+      data: { title: "Org", slug: randomUUID(), featureFlags: {} },
+    });
+    let writes = 0;
+    const client = new Proxy(prisma, {
+      get(target, prop, receiver) {
+        if (prop !== "$executeRaw") return Reflect.get(target, prop, receiver);
+        return (...args: Parameters<typeof prisma.$executeRaw>) => {
+          writes++;
+          return target.$executeRaw(...args);
+        };
+      },
+    });
+    const loaded = async () =>
+      (await prisma.organization.findUniqueOrThrow({ where: { id: org.id } })).featureFlags;
+    const initialize = async (controller: DeploymentAccessController) =>
+      checkDeployAccess(
+        { stage: "initialize", organizationId: org.id },
+        { client, controller, organizationFeatureFlags: await loaded() }
+      );
+    const microvm = controllerWith({
+      async checkDeploy() {
+        return { allowed: true, placement: "microvm" };
+      },
+    });
+
+    await initialize(controllerWith());
+    expect(writes).toBe(0);
+
+    await initialize(microvm);
+    expect(writes).toBe(1);
+    expect(await loaded()).toEqual({ computeOnly: true });
+    // A compute-only deploy always sends its statement; the WHERE leaves the row as it is.
+    await initialize(microvm);
+    expect(writes).toBe(2);
+
+    await initialize(controllerWith());
+    expect(writes).toBe(3);
+    expect(await loaded()).toEqual({});
+
+    // Catches: a stale replica read that still shows computeOnly (cleared on the primary moments
+    // before) skipping the write, so the org deploys without the flag.
+    await checkDeployAccess(
+      { stage: "initialize", organizationId: org.id },
+      { client, controller: microvm, organizationFeatureFlags: { computeOnly: true } }
+    );
+    expect(await loaded()).toEqual({ computeOnly: true });
   }
 );

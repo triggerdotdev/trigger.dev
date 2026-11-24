@@ -218,6 +218,7 @@ export type {
   DeploymentAccessPluginConfig,
   DeploymentAccessStage,
   DeploymentIntegrationAccess,
+  DeploymentPlacement,
   SlidingWindowHitResult,
 } from "./deploymentAccess.js";
 

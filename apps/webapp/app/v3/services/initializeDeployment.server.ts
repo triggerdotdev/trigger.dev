@@ -118,7 +118,11 @@ export class InitializeDeploymentService extends BaseService {
           triggeredVia: payload.triggeredVia,
           cliVersion: options.cliVersion,
         },
-        { controller: this._deploymentAccess }
+        {
+          controller: this._deploymentAccess,
+          client: this._prisma,
+          organizationFeatureFlags: environment.organization.featureFlags,
+        }
       );
       if (!access.allowed && access.kind === "denied") {
         throw new DeploymentAccessError(deniedMessage(access));

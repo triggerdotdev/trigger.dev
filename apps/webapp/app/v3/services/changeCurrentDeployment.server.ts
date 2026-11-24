@@ -14,6 +14,7 @@ import { taskMetadataCacheInstance } from "~/services/taskMetadataCacheInstance.
 import { BaseService, ServiceValidationError } from "./baseService.server";
 import { syncDeclarativeSchedules, syncDeclarativeWebhooks } from "./createBackgroundWorker.server";
 import { compareDeploymentVersions } from "../utils/deploymentVersions";
+import { computeOnlyEnabled } from "../computeOnlyFlag.server";
 
 export type ChangeCurrentDeploymentDirection = "promote" | "rollback";
 
@@ -32,7 +33,12 @@ export class ChangeCurrentDeploymentService extends BaseService {
   public async call(
     deployment: WorkerDeployment,
     direction: ChangeCurrentDeploymentDirection,
-    disableVersionCheck?: boolean
+    disableVersionCheck?: boolean,
+    /**
+     * The organization's `featureFlags` when the caller already loaded them. Without them, a
+     * deployment with no compute template costs one read to check the organization.
+     */
+    organizationFeatureFlags?: unknown
   ) {
     if (!deployment.workerId) {
       throw new ServiceValidationError(
@@ -48,6 +54,10 @@ export class ChangeCurrentDeploymentService extends BaseService {
           ? "Deployment must be in the DEPLOYED state to be promoted."
           : "Deployment must be in the DEPLOYED state to be rolled back."
       );
+    }
+
+    if (!deployment.templateKey) {
+      await this.#assertServesComputeOnly(deployment, organizationFeatureFlags);
     }
 
     const currentPromotion = await this._prisma.workerDeploymentPromotion.findFirst({
@@ -180,6 +190,30 @@ export class ChangeCurrentDeploymentService extends BaseService {
       logger.error("Error syncing declarative resources on deployment change", {
         error: declarativeSyncError,
       });
+    }
+  }
+
+  // A compute-only organization's runs can't start on a deployment without a compute template,
+  // so making one current would leave every trigger of the environment failing.
+  async #assertServesComputeOnly(deployment: WorkerDeployment, organizationFeatureFlags: unknown) {
+    const flags =
+      organizationFeatureFlags !== undefined
+        ? organizationFeatureFlags
+        : (
+            await this._prisma.runtimeEnvironment.findFirst({
+              where: { id: deployment.environmentId },
+              select: { organization: { select: { featureFlags: true } } },
+            })
+          )?.organization.featureFlags;
+    if (computeOnlyEnabled(flags)) {
+      logger.warn("Refused to make a deployment without a template current (compute-only org)", {
+        deploymentId: deployment.id,
+        environmentId: deployment.environmentId,
+        version: deployment.version,
+      });
+      throw new ServiceValidationError(
+        `Version ${deployment.version} can't be made current. Deploy a new version instead.`
+      );
     }
   }
 

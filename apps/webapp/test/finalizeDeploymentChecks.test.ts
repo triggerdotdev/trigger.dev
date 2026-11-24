@@ -167,4 +167,36 @@ describe("finalize and deployment checks", () => {
       }
     }
   );
+
+  containerTestWithIsolatedRedis(
+    "refuses a keyless deployment when the primary shows computeOnly and the env's flags don't",
+    async ({ prisma, redisOptions }) => {
+      // Catches: finalize trusting replica-loaded flags, so an org's first compute-only deploy
+      // finalizes and promotes a deployment with no compute template.
+      const loaded = await load(redisOptions);
+      const queued: string[] = [];
+      const service = new loaded.FinalizeDeploymentService(prisma, async (deploymentId) => {
+        queued.push(deploymentId);
+      });
+
+      const target = await seed(prisma, loaded, "DEPLOYING");
+      expect(target.authenticated.organization.featureFlags ?? null).toBeNull();
+      await prisma.organization.update({
+        where: { id: target.authenticated.organizationId },
+        data: { featureFlags: { computeOnly: true } },
+      });
+
+      await expect(
+        service.call(target.authenticated, target.deployment.friendlyId, { imageDigest: DIGEST })
+      ).rejects.toThrow("This deploy couldn't be completed. Try deploying again");
+
+      const row = await prisma.workerDeployment.findFirstOrThrow({
+        where: { id: target.deployment.id },
+        include: { promotions: true },
+      });
+      expect(row.status).toBe("FAILED");
+      expect(row.promotions).toEqual([]);
+      expect(queued).toEqual([]);
+    }
+  );
 });

@@ -16,6 +16,7 @@ import { getEcrAuthToken, isEcrRegistry } from "../getDeploymentImageRef.server"
 import { tryCatch } from "@trigger.dev/core";
 import { getRegistryConfig, type RegistryConfig } from "../registryConfig.server";
 import { ecrImageExists } from "./verifyDeploymentImage.server";
+import { computeOnlyEnabled, loadOrgFeatureFlags } from "~/v3/computeOnlyFlag.server";
 import { TemplatePrebuildService } from "./templatePrebuild.server";
 
 export class FinalizeDeploymentV2Service extends BaseService {
@@ -68,6 +69,13 @@ export class FinalizeDeploymentV2Service extends BaseService {
       throw new ServiceValidationError("Worker deployment is not in DEPLOYING status");
     }
 
+    // From the primary: initialize may have just set computeOnly, and the authenticated env's
+    // flags come from a replica that can still miss it.
+    const orgFeatureFlags = await loadOrgFeatureFlags(
+      this._prisma,
+      authenticatedEnv.organizationId
+    );
+
     const deploymentDiagnostics = {
       id: deployment.id,
       friendlyId: id,
@@ -97,9 +105,15 @@ export class FinalizeDeploymentV2Service extends BaseService {
       // self-hosted setup). Verify before promoting so we never mark a
       // deployment DEPLOYED when nothing was actually pushed.
       await this.#assertImagePullable(deployment, body);
-      await this.#prebuildTemplate(deployment, id, body, writer);
+      await this.#prebuildTemplate(
+        deployment,
+        id,
+        body,
+        computeOnlyEnabled(orgFeatureFlags),
+        writer
+      );
 
-      return finalizeService.call(authenticatedEnv, id, body);
+      return finalizeService.call(authenticatedEnv, id, body, orgFeatureFlags);
     }
 
     const externalBuildData = deployment.externalBuildData
@@ -169,13 +183,13 @@ export class FinalizeDeploymentV2Service extends BaseService {
 
     // Belt and suspenders: confirm the push actually landed before promoting.
     await this.#assertImagePullable(deployment, body);
-    await this.#prebuildTemplate(deployment, id, body, writer);
+    await this.#prebuildTemplate(deployment, id, body, computeOnlyEnabled(orgFeatureFlags), writer);
 
-    return finalizeService.call(authenticatedEnv, id, body);
+    return finalizeService.call(authenticatedEnv, id, body, orgFeatureFlags);
   }
 
-  // Waits for the build when the deployment contains sandbox tasks; the finalizer rejects it
-  // if no template was stored.
+  // Waits for the build when the deployment contains sandbox tasks or the org is compute-only;
+  // the finalizer rejects it if no template was stored.
   async #prebuildTemplate(
     deployment: {
       id: string;
@@ -184,6 +198,7 @@ export class FinalizeDeploymentV2Service extends BaseService {
     },
     deploymentFriendlyId: string,
     body: FinalizeDeploymentRequestBody,
+    computeOnly: boolean,
     writer?: WritableStreamDefaultWriter
   ): Promise<void> {
     if (!deployment.imageReference || !deployment.worker) {
@@ -203,7 +218,7 @@ export class FinalizeDeploymentV2Service extends BaseService {
       imageDigest: body.imageDigest,
       workerMetadata: deployment.worker.metadata,
       writer,
-      requireTemplate: sandboxTask !== null,
+      requireTemplate: sandboxTask !== null || computeOnly,
       workerId: deployment.worker.id,
     });
   }

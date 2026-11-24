@@ -50,6 +50,8 @@ export const RunAnnotations = z.object({
   workerCell: z.string().optional().catch(undefined),
   workerLane: z.string().optional().catch(undefined),
   executionMode: z.enum(["STANDARD", "SANDBOX"]).optional(),
+  /** The run's organization runs deployed work only on microVM compute. Pinned at trigger. */
+  computeOnly: z.literal(true).optional(),
   /** Server-owned provisioning requirement, pinned when the run is created. */
   secretProxyRequired: z.literal(true).optional(),
   /** Set only for runs whose task declares a non-standard policy. Pinned for the run's lifetime. */

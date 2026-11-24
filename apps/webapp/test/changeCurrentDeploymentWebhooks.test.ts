@@ -218,3 +218,46 @@ describe("ChangeCurrentDeploymentService webhook endpoints", () => {
     }
   );
 });
+
+describe("ChangeCurrentDeploymentService for compute-only organizations", () => {
+  // Catches: a compute-only organization rolling back to a version deployed without a compute
+  // template, after which every trigger of the environment fails.
+  containerTest(
+    "refuses a version without a compute template and still allows one with a template",
+    async ({ prisma }) => {
+      const environment = await seedEnvironment(prisma);
+      const none: Webhooks = { webhookEndpoints: [], webhookSubscribers: [] };
+      const keyless = await seedDeployment(prisma, environment, "20260101.1", ["a"], none);
+      const keyed = await prisma.workerDeployment.update({
+        where: { id: (await seedDeployment(prisma, environment, "20260101.2", ["a"], none)).id },
+        data: { templateKey: "a".repeat(64) },
+      });
+      await prisma.organization.update({
+        where: { id: environment.organizationId },
+        data: { featureFlags: { computeOnly: true } },
+      });
+
+      await service(prisma).call(keyed, "promote");
+      await expect(service(prisma).call(keyless, "rollback")).rejects.toThrow(
+        "Version 20260101.1 can't be made current. Deploy a new version instead."
+      );
+      // The flags a caller passes are used instead of a read.
+      await expect(
+        service(prisma).call(keyless, "rollback", undefined, { computeOnly: true })
+      ).rejects.toThrow("Deploy a new version instead.");
+
+      const current = await prisma.workerDeploymentPromotion.findFirst({
+        where: { environmentId: environment.id },
+        select: { deploymentId: true },
+      });
+      expect(current?.deploymentId).toBe(keyed.id);
+
+      // Once the organization isn't compute-only, the same rollback goes through.
+      await prisma.organization.update({
+        where: { id: environment.organizationId },
+        data: { featureFlags: {} },
+      });
+      await service(prisma).call(keyless, "rollback");
+    }
+  );
+});

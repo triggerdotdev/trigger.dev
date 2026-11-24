@@ -27,7 +27,7 @@ import {
   settleRestoreFailure,
   type RunnerStartFailure,
 } from "./workloadManager/runCrd.js";
-import { workerLaneFor, type WorkloadManagerBackend } from "./workerLane.js";
+import { mayWarmStart, workerLaneFor, type WorkloadManagerBackend } from "./workerLane.js";
 import { RestoreWatcher, type RestoreFailure } from "./services/restoreWatcher.js";
 import {
   ColdStartHeartbeats,
@@ -1179,8 +1179,7 @@ class ManagedSupervisor {
     dequeuedMessage: DequeuedMessage,
     traceparent: string | undefined
   ): Promise<boolean> {
-    // A sandbox never reuses a process or VM another run has used.
-    if (!this.warmStartUrl || dequeuedMessage.run.annotations?.executionMode === "SANDBOX") {
+    if (!this.warmStartUrl || !mayWarmStart(dequeuedMessage.run.annotations)) {
       return false;
     }
 
