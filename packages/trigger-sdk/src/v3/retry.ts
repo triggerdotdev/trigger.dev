@@ -215,6 +215,8 @@ async function retryFetch(
             return response;
           }
 
+          await response.body?.cancel().catch(() => {});
+
           if (nextRetry.type === "delay") {
             const continueDate = new Date(Date.now() + nextRetry.value);
             span.setAttribute(SemanticInternalAttributes.RETRY_AT, continueDate.toISOString());
@@ -432,7 +434,8 @@ const getRetryStrategyForResponse = async (
   retry: FetchRetryByStatusOptions
 ): Promise<FetchRetryStrategy | undefined> => {
   const statusCodes = Object.keys(retry);
-  const clonedResponse = response.clone();
+  let bodyRead = false;
+  let parsedBody: unknown = null;
 
   for (const statusRange of statusCodes) {
     if (!statusRange) {
@@ -447,13 +450,17 @@ const getRetryStrategyForResponse = async (
 
     if (isStatusCodeInRange(response.status, statusRange)) {
       if (strategy.bodyFilter) {
-        const body = safeJsonParse(await clonedResponse.text());
+        if (!bodyRead) {
+          bodyRead = true;
+          const clonedResponse = response.clone();
+          parsedBody = safeJsonParse(await clonedResponse.text());
+        }
 
-        if (!body) {
+        if (!parsedBody) {
           continue;
         }
 
-        if (eventFilterMatches(body, strategy.bodyFilter)) {
+        if (eventFilterMatches(parsedBody, strategy.bodyFilter)) {
           return strategy;
         } else {
           continue;
