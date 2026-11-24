@@ -11,7 +11,7 @@ export function AuditLogActor({ actor }: { actor: AuditLogActorView }) {
   return (
     <span className="flex items-center gap-1.5">
       <AuditLogActorBadge actor={actor} />
-      {/* Colour comes from where it's shown: dim in a table row until hovered, bright in the panel. */}
+      {/* Colour comes from where it's shown: dim in a table row until hovered, and in the panel. */}
       <span
         className={cn(actor.kind === "credential" && actor.credential === "key" && "font-mono")}
       >

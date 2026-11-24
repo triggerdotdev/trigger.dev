@@ -34,9 +34,11 @@ export function AuditLogDetail({
   const [tab, setTab] = useState<"details" | "json">("details");
 
   return (
-    <div className="grid h-full grid-rows-[auto_auto_1fr] overflow-hidden bg-background-bright">
-      <div className="flex items-center justify-between gap-2 border-b border-grid-dimmed py-2 pl-3 pr-2">
-        <Header2 className="truncate">{event.actionLabel}</Header2>
+    <div className="grid h-full max-h-full grid-rows-[2.5rem_2rem_1fr] overflow-hidden bg-background-bright">
+      <div className="flex items-center justify-between gap-2 overflow-x-hidden px-3 pr-2">
+        <Header2 className="overflow-x-hidden">
+          <span className="truncate">{event.actionLabel}</span>
+        </Header2>
         <Button
           variant="minimal/small"
           TrailingIcon={ExitIcon}
@@ -47,7 +49,7 @@ export function AuditLogDetail({
           aria-label="Close event details"
         />
       </div>
-      <div className="px-3">
+      <div className="h-fit overflow-x-auto px-3 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-surface-control">
         <TabContainer>
           <TabButton
             isActive={tab === "details"}
@@ -65,16 +67,18 @@ export function AuditLogDetail({
           </TabButton>
         </TabContainer>
       </div>
-      <div className="overflow-y-auto p-3 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-surface-control">
+      <div className="overflow-y-auto px-3 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-surface-control">
         {tab === "details" ? (
           <AuditLogProperties event={event} />
         ) : (
-          <CodeBlock
-            code={JSON.stringify(event.raw, null, 2)}
-            language="json"
-            showLineNumbers={false}
-            showOpenInModal={false}
-          />
+          <div className="py-3">
+            <CodeBlock
+              code={JSON.stringify(event.raw, null, 2)}
+              language="json"
+              showLineNumbers={false}
+              showOpenInModal={false}
+            />
+          </div>
         )}
       </div>
     </div>
@@ -137,8 +141,8 @@ function AuditLogProperties({ event }: { event: AuditLogEventView }) {
   const rows = auditLogChangeRows(event, changes);
 
   return (
-    <div className="flex flex-col">
-      <Fields className="border-b border-grid-dimmed pt-1">
+    <div className="flex flex-col gap-4 py-3">
+      <dl className="flex flex-col gap-y-3">
         <Field label="Who">
           <AuditLogActor actor={event.actor} />
           {event.actor.kind === "user" && event.actor.email ? (
@@ -174,9 +178,9 @@ function AuditLogProperties({ event }: { event: AuditLogEventView }) {
         <Field label="When">
           <DateTime date={event.occurredAt} timeZone="UTC" hour12={false} showTimezone />
         </Field>
-      </Fields>
+      </dl>
 
-      <Fields className="border-b border-grid-dimmed">
+      <dl className="flex flex-col gap-y-3">
         <Field label="Category">
           <AuditLogAction
             category={event.category}
@@ -212,9 +216,9 @@ function AuditLogProperties({ event }: { event: AuditLogEventView }) {
             <DeploymentLink deployment={event.deployment} />
           </Field>
         ) : null}
-      </Fields>
+      </dl>
 
-      <Fields>
+      <dl className="flex flex-col gap-y-3">
         <Field label="Event ID">
           <TruncatedCopyableValue value={event.id} className="font-mono" />
         </Field>
@@ -223,28 +227,14 @@ function AuditLogProperties({ event }: { event: AuditLogEventView }) {
             <CopyableText value={event.requestId} className="font-mono" />
           </Field>
         ) : null}
-      </Fields>
+      </dl>
 
       {event.category === "envvars" ? (
-        <Paragraph variant="small" className="border-t border-grid-dimmed pt-3 text-text-dimmed">
+        <Paragraph variant="small" className="text-text-dimmed">
           Environment variable values are never stored.
         </Paragraph>
       ) : null}
     </div>
-  );
-}
-
-/** Labels on the left, values on the right, as in the mockup. */
-function Fields({ children, className }: { children: ReactNode; className?: string }) {
-  return (
-    <dl
-      className={cn(
-        "grid grid-cols-[6rem_minmax(0,1fr)] gap-x-4 gap-y-2.5 py-3 text-sm",
-        className
-      )}
-    >
-      {children}
-    </dl>
   );
 }
 
@@ -258,10 +248,10 @@ function Field({
   className?: string;
 }) {
   return (
-    <>
-      <dt className="text-text-dimmed">{label}</dt>
-      <dd className={cn("min-w-0 text-text-bright", className)}>{children}</dd>
-    </>
+    <div className="flex flex-col gap-0 text-sm">
+      <dt className="font-medium text-text-bright">{label}</dt>
+      <dd className={cn("min-w-0 text-text-dimmed", className)}>{children}</dd>
+    </div>
   );
 }
 
