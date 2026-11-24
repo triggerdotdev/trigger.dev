@@ -449,6 +449,24 @@ const EnvironmentSchema = z
       (value) => (value === "" ? undefined : value),
       z.string().min(32).optional()
     ),
+    // The relay's ServiceAccount, checked when WORKLOAD_IDENTITY_ISSUERS is set.
+    SECRET_PROXY_RELAY_SUBJECT: z
+      .string()
+      .min(1)
+      .default("system:serviceaccount:v4-infra:secret-proxy-relay"),
+    // Comma-separated Kubernetes ServiceAccount token issuers (cluster OIDC issuer URLs) whose
+    // workloads may authenticate to internal platform services. When set, those services accept
+    // only workload identity tokens, never their shared tokens.
+    WORKLOAD_IDENTITY_ISSUERS: z
+      .string()
+      .default("")
+      .transform((raw) =>
+        raw
+          .split(",")
+          .map((issuer) => issuer.trim())
+          .filter(Boolean)
+      )
+      .pipe(z.array(z.string().url().startsWith("https://"))),
     ENVIRONMENT_ENCRYPTION_ENABLED: BoolEnv.default(false),
     ENVIRONMENT_ENCRYPTION_KMS_KEY_ARN: z.preprocess(
       (value) => (value === "" ? undefined : value),
