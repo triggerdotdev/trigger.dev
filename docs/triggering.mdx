@@ -13,7 +13,7 @@ Trigger tasks **from your backend**:
 | `tasks.batchTrigger()` | Triggers a single task in a batch and returns a handle you can use to fetch and manage the runs. | [Docs](#tasks-batchtrigger) |
 | `batch.trigger()`      | Similar to `tasks.batchTrigger` but allows running multiple different tasks                      | [Docs](#batch-trigger)      |
 
-Trigger tasks **from inside a another task**:
+Trigger tasks **from inside another task**:
 
 | Function                         | What it does                                                                                                                       |                                       |
 | :------------------------------- | :--------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------- |
@@ -23,7 +23,7 @@ Trigger tasks **from inside a another task**:
 | `yourTask.batchTriggerAndWait()` | Triggers a task multiple times in parallel and then waits until they're all complete. You get the resulting data to continue with. | [Docs](#yourtask-batchtriggerandwait) |
 | `batch.triggerAndWait()`         | Similar to `batch.trigger` but will wait on the triggered tasks to finish and return the results.                                  | [Docs](#batch-triggerandwait)         |
 | `batch.triggerByTask()`          | Similar to `batch.trigger` but allows passing in task instances instead of task IDs.                                               | [Docs](#batch-triggerbytask)          |
-| `batch.triggerByTaskAndWait()`   | Similar to `batch.triggerbyTask` but will wait on the triggered tasks to finish and return the results.                            | [Docs](#batch-triggerbytaskandwait)   |
+| `batch.triggerByTaskAndWait()`   | Similar to `batch.triggerByTask` but will wait on the triggered tasks to finish and return the results.                            | [Docs](#batch-triggerbytaskandwait)   |
 
 ## Triggering from your backend
 
@@ -204,7 +204,7 @@ Triggers a single run of a task with the payload you pass in, and any options yo
 
 <Note>
   If you need to call `trigger()` on a task in a loop, use
-  [`batchTrigger()`](#yourTask-batchtrigger) instead which will trigger up to 1,000 runs in a single
+  [`batchTrigger()`](#yourtask-batchtrigger) instead which will trigger up to 1,000 runs in a single
   call with SDK 4.3.1+ (500 runs in prior versions).
 </Note>
 
@@ -700,11 +700,11 @@ await myTask.trigger({ some: "data" }, { delay: "88s" });
 // Delay the task run by 1 hour and 52 minutes and 18 seconds
 await myTask.trigger({ some: "data" }, { delay: "1h52m18s" });
 // Delay until a specific time
-await myTask.trigger({ some: "data" }, { delay: "2024-12-01T00:00:00" });
+await myTask.trigger({ some: "data" }, { delay: "2030-12-01T00:00:00" });
 // Delay using a Date object
 await myTask.trigger({ some: "data" }, { delay: new Date(Date.now() + 1000 * 60 * 60) });
 // Delay using a timezone
-await myTask.trigger({ some: "data" }, { delay: new Date("2024-07-23T11:50:00+02:00") });
+await myTask.trigger({ some: "data" }, { delay: new Date("2030-07-23T11:50:00+02:00") });
 ```
 
 Runs that are delayed and have not been enqueued yet will display in the dashboard with a "Delayed" status:
@@ -1128,7 +1128,7 @@ await yourTask.trigger(payload, { region: "eu-central-1" });
 
 If you don't specify a region it will use the default for your project. Go to the "Regions" page in the dashboard to see available regions or switch your default. Static IP addresses are also available on the Regions page for paid plans.
 
-The region is where your runs are executed, it does not change where the run payload, output, tags, logs, or are any other data is stored.
+The region is where your runs are executed, it does not change where the run payload, output, tags, logs, or any other data is stored.
 
 ### `machine`
 
@@ -1186,9 +1186,10 @@ When batch triggering fails, the SDK throws a `BatchTriggerError` with propertie
 | :--- | :--- | :--- |
 | `isRateLimited` | `boolean` | `true` if the error was caused by rate limiting |
 | `retryAfterMs` | `number \| undefined` | Milliseconds until the rate limit resets |
-| `phase` | `"create" \| "stream"` | Which phase of batch creation failed |
+| `phase` | `"offload" \| "create" \| "stream"` | Which phase of batch creation failed |
 | `batchId` | `string \| undefined` | The batch ID if it was created before failure |
 | `itemCount` | `number` | Number of items attempted in the batch |
+| `apiError` | `ApiError \| undefined` | The underlying API error, if the cause was an `ApiError` |
 | `cause` | `unknown` | The underlying error |
 
 ### Detecting and handling rate limits
@@ -1262,7 +1263,7 @@ export const parentTask = task({
 
 ## Large Payloads
 
-We recommend keeping your task payloads as small as possible. We currently have a hard limit on task payloads above 10MB.
+We recommend keeping your task payloads as small as possible. See [Limits](/limits#task-payloads-and-outputs) for payload size limits and how large payloads are handled.
 
 If your payload size is larger than 512KB, instead of saving the payload to the database, we will upload it to an S3-compatible object store and store the URL in the database.
 
@@ -1286,7 +1287,7 @@ if (run.payloadPresignedUrl) {
   corresponding `outputPresignedUrl`. Task outputs are limited to 100MB.
 </Note>
 
-If you need to pass larger payloads, you'll need to upload the payload to your own storage and pass a URL to the file in the payload instead. For example, uploading to S3 and then sending a presigned URL that expires in URL:
+If you need to pass larger payloads, you'll need to upload the payload to your own storage and pass a URL to the file in the payload instead. For example, uploading to S3 and then sending a presigned URL that expires in 1 hour:
 
 <CodeGroup>
 
@@ -1299,7 +1300,7 @@ import { createReadStream } from "node:fs";
 await s3Client.send(
   new PutObjectCommand({
     Bucket: "my-bucket",
-    Key: "myfile.json",
+    Key: "my-file.json",
     Body: createReadStream("large-payload.json"),
   })
 );
