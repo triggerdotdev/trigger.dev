@@ -187,7 +187,9 @@
       "cross-spawn@>=7 <7.0.5": "^7.0.5",
       "@modelcontextprotocol/sdk@>=1.26.0 <1.31.0": "^1.31.0",
       "engine.io@>=6 <6.6.10": "^6.6.10",
-      "fast-uri@>=4 <4.2.3": "^4.2.3"
+      "fast-uri@>=4 <4.2.3": "^4.2.3",
+      "@remix-run/dev@2.17.5>@vanilla-extract/integration": "8.0.11",
+      "turbo-stream@>=2 <3.0.0": "^3.0.0"
     },
     "onlyBuiltDependencies": [
       "@depot/cli",
