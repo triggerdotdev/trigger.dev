@@ -642,7 +642,11 @@ describe("dashboard service revision guard", () => {
         await prisma.$transaction(async (tx) => {
           await tx.metricsDashboard.update({
             where: { id: row.id },
-            data: { description: "Edited meanwhile" },
+            // The revision is updatedAt (ms resolution); an edit in the same millisecond as the create would not change it.
+            data: {
+              description: "Edited meanwhile",
+              updatedAt: new Date(row.updatedAt.getTime() + 1_000),
+            },
           });
           outcome = write(ref, revision).then(
             () => "written",
