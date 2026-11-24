@@ -14,6 +14,7 @@ import {
   RUN_STATUS_GROUPS,
   zeroFillGroupedSeries,
 } from "./activitySeries.server";
+import { readLimitOptions, type ReadLimit } from "./clickhouseReadLimit";
 
 type TaskDetailQueue = {
   friendlyId: string;
@@ -162,6 +163,7 @@ export class TaskDetailPresenter {
     taskSlug,
     from,
     to,
+    limit,
   }: {
     organizationId: string;
     projectId: string;
@@ -169,6 +171,7 @@ export class TaskDetailPresenter {
     taskSlug: string;
     from: Date;
     to: Date;
+    limit?: ReadLimit;
   }): Promise<TaskActivity> {
     const rangeMs = Math.max(1, to.getTime() - from.getTime());
     const bucketSeconds = chooseBucketSeconds(rangeMs);
@@ -207,17 +210,20 @@ export class TaskDetailPresenter {
       }),
     });
 
-    const [error, rows] = await queryFn({
-      organizationId,
-      projectId,
-      environmentId,
-      taskSlug,
-      bucketSeconds,
-      // ClickHouse's DateTime64(3, 'UTC') parser rejects the trailing `Z` from
-      // JS toISOString() ("only 23 of 24 bytes was parsed"). Strip it.
-      fromTime: from.toISOString().slice(0, -1),
-      toTime: to.toISOString().slice(0, -1),
-    });
+    const [error, rows] = await queryFn(
+      {
+        organizationId,
+        projectId,
+        environmentId,
+        taskSlug,
+        bucketSeconds,
+        // ClickHouse's DateTime64(3, 'UTC') parser rejects the trailing `Z` from
+        // JS toISOString() ("only 23 of 24 bytes was parsed"). Strip it.
+        fromTime: from.toISOString().slice(0, -1),
+        toTime: to.toISOString().slice(0, -1),
+      },
+      readLimitOptions(limit)
+    );
 
     if (error) {
       console.error("Task activity query failed:", error);

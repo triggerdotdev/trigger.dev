@@ -20,6 +20,7 @@ import { bulkActionsTools } from "./tools/bulkActions.server";
 import { dashboardsTools } from "./tools/dashboards.server";
 import { dashboardsEditTools } from "./tools/dashboardsEdit.server";
 import { dashboardsReadTools } from "./tools/dashboardsRead.server";
+import { deploymentDetailsTools } from "./tools/deploymentDetails.server";
 import { deploysTools } from "./tools/deploys.server";
 import { docsTools } from "./tools/docs.server";
 import { modelsTools } from "./tools/models.server";
@@ -91,6 +92,7 @@ export const mcpTools: McpToolDefinition[] = assertUniqueToolNames([
   ...logsTools,
   ...bulkActionsTools,
   ...deploysTools,
+  ...deploymentDetailsTools,
   ...queryTools,
   ...dashboardsTools,
   ...dashboardsReadTools,

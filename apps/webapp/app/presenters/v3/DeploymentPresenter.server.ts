@@ -60,12 +60,15 @@ export class DeploymentPresenter {
     organizationSlug,
     environmentSlug,
     deploymentShortCode,
+    withEventStream = true,
   }: {
     userId: User["id"];
     projectSlug: Project["slug"];
     organizationSlug: Organization["slug"];
     environmentSlug: RuntimeEnvironment["slug"];
     deploymentShortCode: WorkerDeployment["shortCode"];
+    /** Off for callers that do not stream build logs, so no log access token is issued. */
+    withEventStream?: boolean;
   }) {
     const project = await this.#prismaClient.project.findFirst({
       select: {
@@ -247,6 +250,7 @@ export class DeploymentPresenter {
 
     let eventStream = undefined;
     if (
+      withEventStream &&
       env.S2_ENABLED === "1" &&
       (buildServerMetadata ||
         gitMetadata?.source === "trigger_github_app" ||

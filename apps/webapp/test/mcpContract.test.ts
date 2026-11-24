@@ -53,6 +53,8 @@ const REMOTE_ONLY: Record<string, string> = {
   pause_webhook_endpoint: "the CLI has no MCP twin for the public disable route",
   resume_webhook_endpoint: "the CLI has no MCP twin for the public enable route",
   cancel_webhook_waiter: "the CLI has no MCP tool for the public waiter cancel route",
+  get_deployment_details: "the CLI has no tool for it yet",
+  get_agent_details: "the public API has no endpoint for an agent's details and activity",
   get_alert_details: "reads the Dashboard alert presenter, which only the server has",
   list_alert_channels: "reads the Dashboard channel presenter, which only the server has",
   update_alert: "edits through the Dashboard alert services, which only the server has",

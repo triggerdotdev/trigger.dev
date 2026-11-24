@@ -39,7 +39,10 @@ function fencedError(error: NonNullable<RunShape["error"]>, extra: string[] = []
   return fenceUntrusted(text.join("\n"), "run-error");
 }
 
-export function formatRun(run: RetrieveRunResponse): string {
+export function formatRun(
+  run: RetrieveRunResponse,
+  queueing: { priorityMs?: number; concurrencyKey?: string | null } = {}
+): string {
   const lines: string[] = [];
 
   lines.push(`Run ${run.id}`);
@@ -97,6 +100,16 @@ export function formatRun(run: RetrieveRunResponse): string {
 
   if (run.ttl) {
     lines.push(`TTL: ${run.ttl}`);
+  }
+
+  if (queueing.priorityMs) {
+    lines.push(`Priority: ${queueing.priorityMs / 1000}s`);
+  }
+
+  if (queueing.concurrencyKey) {
+    lines.push(
+      `Concurrency key: ${fenceUntrusted(queueing.concurrencyKey, "run-concurrency-key")}`
+    );
   }
 
   if (run.payload) {

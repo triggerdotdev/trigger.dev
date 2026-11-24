@@ -5,6 +5,7 @@ import {
   zeroFillGroupedSeries,
   zeroFillScalarSeries,
 } from "./activitySeries.server";
+import { readLimitOptions, type ReadLimit } from "./clickhouseReadLimit";
 
 type AgentActivityPoint = {
   bucket: number; // epoch ms
@@ -34,6 +35,7 @@ export class AgentDetailPresenter {
     agentSlug,
     from,
     to,
+    limit,
   }: {
     organizationId: string;
     projectId: string;
@@ -41,6 +43,7 @@ export class AgentDetailPresenter {
     agentSlug: string;
     from: Date;
     to: Date;
+    limit?: ReadLimit;
   }): Promise<AgentActivity> {
     const rangeMs = Math.max(1, to.getTime() - from.getTime());
     const bucketSeconds = chooseBucketSeconds(rangeMs);
@@ -84,15 +87,18 @@ export class AgentDetailPresenter {
       }),
     });
 
-    const [error, rows] = await queryFn({
-      organizationId,
-      projectId,
-      environmentId,
-      agentSlug,
-      bucketSeconds,
-      fromTime: from.toISOString().slice(0, -1),
-      toTime: to.toISOString().slice(0, -1),
-    });
+    const [error, rows] = await queryFn(
+      {
+        organizationId,
+        projectId,
+        environmentId,
+        agentSlug,
+        bucketSeconds,
+        fromTime: from.toISOString().slice(0, -1),
+        toTime: to.toISOString().slice(0, -1),
+      },
+      readLimitOptions(limit)
+    );
 
     if (error) {
       console.error("Agent session activity query failed:", error);
@@ -118,6 +124,7 @@ export class AgentDetailPresenter {
     agentSlug: string;
     from: Date;
     to: Date;
+    limit?: ReadLimit;
   }): Promise<AgentActivity> {
     return this.#llmActivity({ ...input, metric: "cost" });
   }
@@ -129,6 +136,7 @@ export class AgentDetailPresenter {
     agentSlug: string;
     from: Date;
     to: Date;
+    limit?: ReadLimit;
   }): Promise<AgentActivity> {
     return this.#llmActivity({ ...input, metric: "tokens" });
   }
@@ -206,6 +214,7 @@ export class AgentDetailPresenter {
     from,
     to,
     metric,
+    limit,
   }: {
     organizationId: string;
     projectId: string;
@@ -214,6 +223,7 @@ export class AgentDetailPresenter {
     from: Date;
     to: Date;
     metric: "cost" | "tokens";
+    limit?: ReadLimit;
   }): Promise<AgentActivity> {
     const rangeMs = Math.max(1, to.getTime() - from.getTime());
     const bucketSeconds = chooseBucketSeconds(rangeMs);
@@ -258,15 +268,18 @@ export class AgentDetailPresenter {
       }),
     });
 
-    const [error, rows] = await queryFn({
-      organizationId,
-      projectId,
-      environmentId,
-      agentSlug,
-      bucketSeconds,
-      fromTime: from.toISOString().slice(0, -1),
-      toTime: to.toISOString().slice(0, -1),
-    });
+    const [error, rows] = await queryFn(
+      {
+        organizationId,
+        projectId,
+        environmentId,
+        agentSlug,
+        bucketSeconds,
+        fromTime: from.toISOString().slice(0, -1),
+        toTime: to.toISOString().slice(0, -1),
+      },
+      readLimitOptions(limit)
+    );
 
     if (error) {
       console.error(`Agent LLM ${metric} activity query failed:`, error);

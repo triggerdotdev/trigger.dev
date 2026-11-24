@@ -18,6 +18,9 @@ export function resolveRunWaitpointIdempotencyKey(
     .digest("hex")}`;
 }
 
+/** The latest expiry the database stores: Prisma sends dates with a four-digit year. */
+const LATEST_STORABLE_EXPIRY_MS = Date.UTC(9999, 11, 31, 23, 59, 59, 999);
+
 /**
  * Resolve the TTL for an idempotency key.
  *
@@ -57,5 +60,6 @@ export function resolveIdempotencyKeyTTL(ttl: string | undefined | null): Date |
       break;
   }
 
-  return now;
+  // A ttl whose expiry the database can't store is treated like one that can't be parsed.
+  return now.getTime() <= LATEST_STORABLE_EXPIRY_MS ? now : undefined;
 }

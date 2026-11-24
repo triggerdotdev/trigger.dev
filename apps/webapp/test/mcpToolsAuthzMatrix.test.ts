@@ -83,6 +83,11 @@ const TOOLS: Array<{ tool: string; args: Record<string, unknown>; scope: string 
   { tool: "search_logs", args: project, scope: "read:runs" },
   { tool: "get_log", args: { ...project, logId: "t::s::run_1::0" }, scope: "read:runs" },
   { tool: "list_deploys", args: project, scope: "read:deployments" },
+  {
+    tool: "get_deployment_details",
+    args: { ...project, deploymentId: "abcd1234" },
+    scope: "read:deployments",
+  },
   { tool: "reset_run_idempotency_key", args: { ...project, runId: "run_1" }, scope: "write:runs" },
   {
     tool: "update_run_metadata",
@@ -129,6 +134,11 @@ const TOOLS: Array<{ tool: string; args: Record<string, unknown>; scope: string 
   { tool: "get_prompt", args: prompt, scope: "read:prompts" },
   { tool: "list_prompt_generations", args: prompt, scope: "read:prompts" },
   { tool: "list_agents", args: project, scope: "read:deployments" },
+  {
+    tool: "get_agent_details",
+    args: { ...project, agentSlug: "my-agent" },
+    scope: "read:deployments",
+  },
   {
     tool: "read_session_channel",
     args: { ...project, sessionId: "session_1" },

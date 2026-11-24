@@ -804,6 +804,94 @@
             }
           },
           {
+            "name": "get_deployment_details",
+            "title": "Get Deployment Details",
+            "description": "Get one deployment as the dashboard's deployment page shows it: status, version, timings, error, git metadata, who deployed it and the tasks it contains. Pass the deployment_ id or the short code from list_deploys.",
+            "inputSchema": {
+              "type": "object",
+              "$schema": "https://json-schema.org/draft/2020-12/schema",
+              "properties": {
+                "projectRef": {
+                  "type": "string",
+                  "description": "The trigger.dev project ref, starts with proj_. We will attempt to automatically detect the project ref if running inside a directory that includes a trigger.config.ts file, or if you pass the --project-ref option to the MCP server."
+                },
+                "configPath": {
+                  "type": "string",
+                  "description": "The path to the trigger.config.ts file. Only used when the trigger.config.ts file is not at the root dir (like in a monorepo setup). If not provided, we will try to find the config file in the current working directory"
+                },
+                "branch": {
+                  "type": "string",
+                  "description": "The branch to get tasks for, only used for preview environments and branchable development environments"
+                },
+                "environment": {
+                  "default": "prod",
+                  "type": "string",
+                  "enum": ["staging", "prod", "preview"],
+                  "description": "The environment of the deployment"
+                },
+                "deploymentId": {
+                  "type": "string",
+                  "maxLength": 75,
+                  "pattern": "^(deployment_[0-9A-Za-z]{1,64}|[0-9A-Za-z_-]{8})$",
+                  "description": "The deployment: its deployment_ id or its short code, as list_deploys shows them"
+                }
+              },
+              "required": ["deploymentId"]
+            },
+            "annotations": {
+              "readOnlyHint": true,
+              "destructiveHint": false,
+              "title": "Get Deployment Details"
+            }
+          },
+          {
+            "name": "get_agent_details",
+            "title": "Get Agent Details",
+            "description": "Get one chat agent as the dashboard's agent page shows it: its file, config, and its activity over a period (runs and sessions by status, LLM cost and tokens). Use list_agents to find the slug.",
+            "inputSchema": {
+              "type": "object",
+              "$schema": "https://json-schema.org/draft/2020-12/schema",
+              "properties": {
+                "projectRef": {
+                  "type": "string",
+                  "description": "The trigger.dev project ref, starts with proj_. We will attempt to automatically detect the project ref if running inside a directory that includes a trigger.config.ts file, or if you pass the --project-ref option to the MCP server."
+                },
+                "configPath": {
+                  "type": "string",
+                  "description": "The path to the trigger.config.ts file. Only used when the trigger.config.ts file is not at the root dir (like in a monorepo setup). If not provided, we will try to find the config file in the current working directory"
+                },
+                "environment": {
+                  "default": "dev",
+                  "type": "string",
+                  "enum": ["dev", "staging", "prod", "preview"],
+                  "description": "The environment to get tasks for"
+                },
+                "branch": {
+                  "type": "string",
+                  "description": "The branch to get tasks for, only used for preview environments and branchable development environments"
+                },
+                "agentSlug": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 128,
+                  "description": "The agent's slug, as list_agents shows it"
+                },
+                "period": {
+                  "default": "7d",
+                  "type": "string",
+                  "pattern": "^[1-9]\\d{0,5}[mhdw]$",
+                  "description": "How far back to count activity, like 1h, 7d or 30d, up to 365d. Defaults to 7d."
+                }
+              },
+              "required": ["agentSlug"]
+            },
+            "annotations": {
+              "readOnlyHint": true,
+              "destructiveHint": false,
+              "title": "Get Agent Details"
+            }
+          },
+          {
             "name": "get_query_schema",
             "title": "Get Query Schema",
             "description": "Get the column schema for a specific TRQL table. Available tables: 'runs' (task execution data), 'metrics' (CPU, memory, custom metrics), 'llm_metrics' (LLM token usage, costs, latency). Returns columns, types, descriptions, and allowed values for the specified table.",
@@ -5118,6 +5206,59 @@
                       "type": "string",
                       "description": "The idempotency key to use for the task run"
                     },
+                    "idempotencyKeyTTL": {
+                      "type": "string",
+                      "pattern": "^\\d+[smhd]$",
+                      "description": "How long the idempotency key returns the same run instead of a new one: a number followed by s, m, h or d, like 30m or 1d. Defaults to 30 days. Only used with idempotencyKey"
+                    },
+                    "concurrencyKey": {
+                      "type": "string",
+                      "maxLength": 1024,
+                      "description": "Gives each value of this key its own copy of the run's queue, so the queue's concurrency limit applies per key, e.g. per user id. It also keys the run's named concurrency limits"
+                    },
+                    "concurrency": {
+                      "maxItems": 2,
+                      "type": "array",
+                      "items": {
+                        "type": "string",
+                        "pattern": "^[a-zA-Z0-9_-]{1,122}$"
+                      },
+                      "description": "Replaces the task's declared named concurrency limits for this run with these limit names, up to 2. An empty array removes all of them. The task's own inline concurrency limit still applies"
+                    },
+                    "debounce": {
+                      "type": "object",
+                      "properties": {
+                        "key": {
+                          "type": "string",
+                          "maxLength": 512,
+                          "description": "Triggers of this task with the same key are collapsed into one run"
+                        },
+                        "delay": {
+                          "type": "string",
+                          "maxLength": 64,
+                          "pattern": "^(\\d+(w|d|hr|h|m|s))+$",
+                          "description": "How long the run waits before it starts, as a duration like 5s, 1m or 2h30m. Each new trigger with the same key moves the start to that trigger's time plus this delay"
+                        },
+                        "mode": {
+                          "type": "string",
+                          "enum": ["leading", "trailing"],
+                          "description": "leading (the default) runs with the first trigger's data. trailing updates the run from each later trigger: payload, metadata, tags, maxAttempts, maxDuration and machine"
+                        },
+                        "maxDelay": {
+                          "type": "string",
+                          "maxLength": 64,
+                          "pattern": "^(\\d+(w|d|hr|h|m|s))+$",
+                          "description": "The longest the start can be pushed back from the first trigger, as a duration longer than delay, like 5m. Without it, steady triggers keep pushing the run back"
+                        }
+                      },
+                      "required": ["key", "delay"],
+                      "description": "Debounce triggers of this task that share a key into one run"
+                    },
+                    "lockToVersion": {
+                      "type": "string",
+                      "pattern": "^\\d{8}\\.\\d{1,9}$",
+                      "description": "Run on this deployed version, e.g. 20250101.1, instead of the version that is current when the run starts"
+                    },
                     "machine": {
                       "type": "string",
                       "enum": [
@@ -5141,6 +5282,18 @@
                       "type": "number",
                       "description": "The maximum duration in seconds of the task run"
                     },
+                    "metadata": {
+                      "type": "object",
+                      "propertyNames": {
+                        "type": "string"
+                      },
+                      "additionalProperties": {},
+                      "description": "Metadata to attach to the task run, as a JSON object"
+                    },
+                    "priority": {
+                      "type": "number",
+                      "description": "Priority as a time offset in seconds: the run is dequeued as if triggered this many seconds earlier, so higher values run sooner. The server clamps very large values"
+                    },
                     "region": {
                       "type": "string",
                       "description": "The region to run the task in, overriding the default region set for the project. Available regions are listed on the Regions page in the dashboard, and this has no effect in the dev environment"
@@ -5153,7 +5306,6 @@
                       "description": "Tags to add to the task run. Must be less than 128 characters and cannot have more than 5"
                     },
                     "ttl": {
-                      "default": "10m",
                       "anyOf": [
                         {
                           "type": "string"
@@ -5164,7 +5316,7 @@
                           "maximum": 9007199254740991
                         }
                       ],
-                      "description": "The time to live of the task run. If the run doesn't start executing within this time, it will be automatically cancelled."
+                      "description": "The time to live of the task run. If the run doesn't start executing within this time, it will be automatically cancelled. When omitted, the task's own ttl applies, otherwise 10 minutes in dev. If the server sets a maximum ttl (14 days on Trigger.dev Cloud), a run without a ttl gets that maximum and longer ttls are capped at it; without a maximum it never expires."
                     }
                   }
                 }
