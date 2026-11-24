@@ -151,7 +151,7 @@
       "express-rate-limit>ip-address": "^10.7.4",
       "find-my-way@>=9 <9.7.0": "^9.7.0",
       "@modelcontextprotocol/sdk@>=1.26.0>express-rate-limit": "^8.6.0",
-      "zod": "4.5.4",
+      "zod": "4.6.7",
       "undici@>=8 <8.12.2": "^8.12.2",
       "@smithy/config-resolver@>=4 <4.4.0": "^4.4.0",
       "body-parser@>=2 <2.4.0": "^2.4.0",

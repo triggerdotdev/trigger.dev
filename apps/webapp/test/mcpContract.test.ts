@@ -166,6 +166,41 @@ function classifyHostedTools(hosted: string[], cli: string[], remoteOnly: string
 
 const toJson = (shape: z.ZodRawShape) => z.toJSONSchema(z.object(shape), { io: "input" });
 
+// The formats JSON Schema 2020-12 defines. Anything else is a custom format a client may not know.
+const STANDARD_FORMATS = new Set([
+  "date-time",
+  "date",
+  "time",
+  "duration",
+  "email",
+  "idn-email",
+  "hostname",
+  "idn-hostname",
+  "ipv4",
+  "ipv6",
+  "uri",
+  "uri-reference",
+  "iri",
+  "iri-reference",
+  "uuid",
+  "uri-template",
+  "json-pointer",
+  "relative-json-pointer",
+  "regex",
+]);
+
+function formatsIn(node: unknown, found: string[] = []): string[] {
+  if (Array.isArray(node)) {
+    for (const item of node) formatsIn(item, found);
+  } else if (node && typeof node === "object") {
+    for (const [key, value] of Object.entries(node)) {
+      if (key === "format" && typeof value === "string") found.push(value);
+      else formatsIn(value, found);
+    }
+  }
+  return found;
+}
+
 describe("MCP remote/CLI contract", () => {
   // Catches: a hosted tool with no CLI twin slipping in undeclared, a REMOTE_ONLY entry with a CLI twin, or a stale REMOTE_ONLY entry.
   it("registers exactly the CLI read and write tools plus declared remote-only tools, each once, and nothing outside toolsMetadata", () => {
@@ -232,5 +267,20 @@ describe("MCP remote/CLI contract", () => {
     );
     const registered = mcpTools.map((t) => t.name);
     for (const name of pendingWriteTools) expect(registered).not.toContain(name);
+  });
+
+  // Catches: a string check (startsWith, endsWith, includes, lowercase, ...) that zod prints as a
+  // custom `format`, which JSON Schema validators in strict mode refuse to compile.
+  it("advertises only standard JSON Schema formats in input schemas", () => {
+    const tools = [
+      ...mcpTools.map((t) => ({ name: `remote ${t.name}`, shape: t.inputSchema })),
+      ...[...cliAll].map(([name, t]) => ({ name: `cli ${name}`, shape: t.inputSchema })),
+    ];
+    const custom = tools.flatMap(({ name, shape }) =>
+      formatsIn(toJson(shape))
+        .filter((format) => !STANDARD_FORMATS.has(format))
+        .map((format) => `${name}: ${format}`)
+    );
+    expect(custom).toEqual([]);
   });
 });
