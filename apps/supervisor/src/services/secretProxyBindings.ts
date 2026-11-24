@@ -8,6 +8,7 @@ import { randomUUID } from "node:crypto";
 import { lstat } from "node:fs/promises";
 import { request } from "node:http";
 import { isIP } from "node:net";
+import { setTimeout as sleep } from "node:timers/promises";
 import pLimit from "p-limit";
 import { z } from "zod";
 import { Counter, Gauge } from "prom-client";
@@ -28,6 +29,12 @@ const INITIAL_CONTROL_RETRY_MS = CLEANUP_INTERVAL_MS;
 const MAX_CONTROL_RETRY_MS = 60_000;
 const INITIAL_START_FAILURE_RETRY_MS = 1_000;
 const MAX_START_FAILURE_RETRY_MS = 60_000;
+/** How long a control call waits for a restarting interceptor (measured gap: about 2s). */
+const INTERCEPTOR_RESTART_BUDGET_MS = 15_000;
+const INITIAL_RESTART_RETRY_MS = 100;
+const MAX_RESTART_RETRY_MS = 1_000;
+/** Connect errors: the request never reached an interceptor, so repeating it cannot apply it twice. */
+const NOT_LISTENING_CODES = new Set(["ENOENT", "ECONNREFUSED"]);
 
 const RESTORED_ATTEMPT = 0;
 
@@ -195,6 +202,25 @@ export class SecretProxyAllocationBusyError extends Error {
   ) {
     super("Secret proxy allocation is busy");
   }
+}
+
+class InterceptorUnavailableError extends Error {
+  constructor(readonly notListening: boolean) {
+    super("Secret proxy control unavailable");
+  }
+}
+
+function controlUnavailable(error?: unknown): InterceptorUnavailableError {
+  const code = (error as NodeJS.ErrnoException | undefined)?.code;
+  return new InterceptorUnavailableError(code !== undefined && NOT_LISTENING_CODES.has(code));
+}
+
+function interceptorNotListening(error: unknown): boolean {
+  return error instanceof InterceptorUnavailableError && error.notListening;
+}
+
+function pinnedKey(placement: Pick<Identity, "allocationId" | "runnerUid">): string {
+  return `${placement.allocationId}/${placement.runnerUid}`;
 }
 
 type CompletionResponse = Awaited<ReturnType<SupervisorHttpClient["completeRunAttempt"]>>;
@@ -365,7 +391,9 @@ async function interceptorRequest(
           : "revoke";
   let outcome: "success" | "error" = "error";
   try {
-    const socket = await lstat(socketPath);
+    const socket = await lstat(socketPath).catch((error) => {
+      throw controlUnavailable(error);
+    });
     if (
       !socket.isSocket() ||
       (socket.mode & 0o077) !== 0 ||
@@ -373,7 +401,7 @@ async function interceptorRequest(
     )
       return denied();
     const result = await new Promise<string>((resolve, reject) => {
-      const fail = () => reject(new Error("Secret proxy control unavailable"));
+      const fail = (error?: Error) => reject(controlUnavailable(error));
       const data = body === undefined ? undefined : JSON.stringify(body);
       const req = request(
         {
@@ -397,7 +425,7 @@ async function interceptorRequest(
               req.destroy(new Error("Control response too large"));
             else chunks.push(chunk);
           });
-          res.on("error", fail);
+          res.on("error", () => fail());
           res.on("end", () => {
             const status = res.statusCode ?? 0;
             const accepted =
@@ -441,7 +469,8 @@ async function lookupAllocation(socketPath: string, path: string) {
     return Allocation.parse(
       JSON.parse(await interceptorRequest(socketPath, `/allocations/${path}`, "GET"))
     );
-  } catch {
+  } catch (error) {
+    if (interceptorNotListening(error)) throw error;
     return denied();
   }
 }
@@ -464,6 +493,11 @@ export class SecretProxyBindings {
   private readonly retiredStarts = new WeakSet<SecretProxyPlacement | Binding>();
   private readonly placements = new Map<string, CachedPlacement>();
   private readonly runnerPlacements = new Map<string, string>();
+  /**
+   * The attempt a pinned VM was bound to, by allocation ID and runner UID. The interceptor keeps a
+   * VM's binding history but not its attempt, so a placement re-read after a failed start needs it.
+   */
+  private readonly pinnedAttempts = new Map<string, number>();
   private readonly placementLookups = new Map<
     string,
     { owner: SecretProxyCaller; promise: Promise<CachedPlacement | undefined> }
@@ -475,6 +509,7 @@ export class SecretProxyBindings {
   private readonly lookups = pLimit(MAX_IN_FLIGHT);
   private controlling = 0;
   private readonly controls = new Set<Promise<void>>();
+  private sweeping = false;
   private stopped = false;
   private ready = false;
   private nextControlRetryAt = 0;
@@ -542,11 +577,11 @@ export class SecretProxyBindings {
     return this.bindings.has(runId) || this.recoverable.has(runId);
   }
 
-  private async finishRevocations(runId: string): Promise<void> {
+  private async finishRevocations(runId: string, waitForRestart = true): Promise<void> {
     const bindingIds = this.pendingRevocations.get(runId);
     if (!bindingIds) return;
     for (const bindingId of bindingIds) {
-      await this.control(bindingId);
+      await this.control(bindingId, undefined, waitForRestart);
       bindingIds.delete(bindingId);
     }
     this.pendingRevocations.delete(runId);
@@ -567,6 +602,11 @@ export class SecretProxyBindings {
 
   private forgetPlacement(placement: CachedPlacement): void {
     if (this.placements.get(placement.podUid) !== placement) return;
+    if (placement.pinned && placement.boundAttempt !== undefined) {
+      if (this.pinnedAttempts.size >= MAX_PLACEMENTS)
+        this.pinnedAttempts.delete(this.pinnedAttempts.keys().next().value!);
+      this.pinnedAttempts.set(pinnedKey(placement), placement.boundAttempt);
+    }
     this.placements.delete(placement.podUid);
     if (this.runnerPlacements.get(placement.runnerId) === placement.podUid)
       this.runnerPlacements.delete(placement.runnerId);
@@ -638,6 +678,9 @@ export class SecretProxyBindings {
     if (previous) this.forgetPlacement(previous);
     if (this.placements.size >= MAX_PLACEMENTS)
       this.forgetPlacement(this.placements.values().next().value!);
+    if (placement.pinned && placement.hasBeenBound)
+      placement.boundAttempt ??= this.pinnedAttempts.get(pinnedKey(placement));
+    this.pinnedAttempts.delete(pinnedKey(placement));
     this.placements.set(placement.podUid, placement);
     this.runnerPlacements.set(placement.runnerId, placement.podUid);
   }
@@ -677,15 +720,35 @@ export class SecretProxyBindings {
     if (guests.size === 0) this.recoverable.delete(caller.runId);
   }
 
-  private async lookupWithSlot(caller: SecretProxyCaller, recovering = false) {
-    if (this.lookups.pendingCount >= MAX_PLACEMENTS) return denied();
-    const deadline = performance.now() + KUBERNETES_TIMEOUT_MS;
-    const read = this.lookups(() =>
-      this.stopped || performance.now() >= deadline
-        ? denied()
-        : this.readPlacement(caller, recovering)
-    );
-    return withTimeout(read, KUBERNETES_TIMEOUT_MS, "Secret proxy identity");
+  /**
+   * Repeats `operation` while the interceptor is not listening, as between an old process exiting
+   * and its replacement binding the control socket. Waits outside any slot the operation takes.
+   */
+  private async whileInterceptorRestarts<T>(operation: () => Promise<T>): Promise<T> {
+    const deadline = performance.now() + INTERCEPTOR_RESTART_BUDGET_MS;
+    for (let delayMs = INITIAL_RESTART_RETRY_MS; ;) {
+      try {
+        return await operation();
+      } catch (error) {
+        if (!interceptorNotListening(error) || performance.now() + delayMs >= deadline) throw error;
+        await sleep(delayMs);
+        if (this.stopped) throw error;
+        delayMs = Math.min(delayMs * 2, MAX_RESTART_RETRY_MS);
+      }
+    }
+  }
+
+  private lookupWithSlot(caller: SecretProxyCaller, recovering = false) {
+    return this.whileInterceptorRestarts(() => {
+      if (this.lookups.pendingCount >= MAX_PLACEMENTS) return denied();
+      const deadline = performance.now() + KUBERNETES_TIMEOUT_MS;
+      const read = this.lookups(() =>
+        this.stopped || performance.now() >= deadline
+          ? denied()
+          : this.readPlacement(caller, recovering)
+      );
+      return withTimeout(read, KUBERNETES_TIMEOUT_MS, "Secret proxy identity");
+    });
   }
 
   async prepareStart(
@@ -701,7 +764,14 @@ export class SecretProxyBindings {
     )
       return;
     let cached = this.placements.get(this.runnerPlacements.get(caller.runnerId) ?? "");
-    const allocation = cached && (await this.cachedAllocation(cached));
+    let allocation: z.infer<typeof Allocation> | undefined;
+    try {
+      allocation = cached && (await this.cachedAllocation(cached));
+    } catch {
+      // The interceptor stayed down for the whole restart budget: keep the cached placement and
+      // don't wait a second budget on a fresh lookup.
+      return;
+    }
     if (cached && !allocation) {
       this.forgetPlacement(cached);
       cached = undefined;
@@ -784,9 +854,8 @@ export class SecretProxyBindings {
     cached: CachedPlacement
   ): Promise<z.infer<typeof Allocation> | undefined> {
     try {
-      const allocation = await lookupAllocation(
-        this.opts.socketPath,
-        encodeURIComponent(cached.guestId)
+      const allocation = await this.whileInterceptorRestarts(() =>
+        lookupAllocation(this.opts.socketPath, encodeURIComponent(cached.guestId))
       );
       if (
         !allocation.attached ||
@@ -797,7 +866,8 @@ export class SecretProxyBindings {
         return;
       cached.hasBeenBound ||= allocation.hasBeenBound;
       return allocation;
-    } catch {
+    } catch (error) {
+      if (interceptorNotListening(error)) throw error;
       return;
     }
   }
@@ -822,7 +892,8 @@ export class SecretProxyBindings {
           bindingId: allocation.bindingId,
         });
     }
-    await this.control(allocation.bindingId);
+    // Runs inside a placement lookup slot: an interceptor restart is waited out around that slot.
+    await this.control(allocation.bindingId, undefined, false);
     const current = await lookupAllocation(
       this.opts.socketPath,
       encodeURIComponent(allocation.guestId)
@@ -909,11 +980,13 @@ export class SecretProxyBindings {
     binding.busy = true;
     cached.bindingId = binding.bindingId;
     try {
-      await interceptorRequest(
-        this.opts.socketPath,
-        `/allocations/${encodeURIComponent(binding.allocationId)}/binding`,
-        "PUT",
-        { bindingId: binding.bindingId }
+      await this.whileInterceptorRestarts(() =>
+        interceptorRequest(
+          this.opts.socketPath,
+          `/allocations/${encodeURIComponent(binding.allocationId)}/binding`,
+          "PUT",
+          { bindingId: binding.bindingId }
+        )
       );
       cached.hasBeenBound = true;
       if (cached.pinned) cached.boundAttempt = execution.attempt.number;
@@ -986,14 +1059,14 @@ export class SecretProxyBindings {
     });
   }
 
-  async retryFailedStart(bindingId: string): Promise<void> {
+  async retryFailedStart(bindingId: string, waitForRestart = true): Promise<void> {
     const failure = this.failedStarts.get(bindingId);
     if (!failure || failure.busy || this.stopped || Date.now() < failure.nextRetryAtMs) return;
     failure.busy = true;
     const binding = this.bindings.get(failure.runId);
     const recover = async () => {
-      if (binding?.bindingId === bindingId) await this.revokeBinding(binding);
-      else if (failure.revoke) await this.control(bindingId);
+      if (binding?.bindingId === bindingId) await this.revokeBinding(binding, waitForRestart);
+      else if (failure.revoke) await this.control(bindingId, undefined, waitForRestart);
 
       let settled = Date.now() >= failure.expiresAtMs;
       if (!settled) {
@@ -1026,20 +1099,20 @@ export class SecretProxyBindings {
     }
   }
 
-  private async closeBinding(binding: Binding): Promise<void> {
-    await this.control(binding.bindingId);
+  private async closeBinding(binding: Binding, waitForRestart = true): Promise<void> {
+    await this.control(binding.bindingId, undefined, waitForRestart);
     const cached = this.placements.get(binding.podUid);
     if (cached?.bindingId === binding.bindingId) cached.bindingId = undefined;
   }
 
-  private async revokeBinding(binding: Binding): Promise<void> {
+  private async revokeBinding(binding: Binding, waitForRestart = true): Promise<void> {
     if (!binding.completed)
       binding.expiresAtMs = Math.max(
         binding.expiresAtMs,
         Date.now() + (this.opts.completionGraceMs ?? COMPLETION_RETRY_MS)
       );
     binding.completed = true;
-    await this.closeBinding(binding);
+    await this.closeBinding(binding, waitForRestart);
     binding.proxy = undefined;
   }
 
@@ -1385,27 +1458,45 @@ export class SecretProxyBindings {
     });
   }
 
-  private async control(bindingId: string, body?: object): Promise<void> {
-    if (this.controlling >= MAX_IN_FLIGHT) {
-      controlRequests.inc({ operation: body === undefined ? "revoke" : "bind", outcome: "error" });
-      return denied();
-    }
-    this.controlling++;
-    const pending = interceptorControl(this.opts.socketPath, bindingId, body);
-    this.controls.add(pending);
-    try {
-      await pending;
-    } finally {
-      this.controlling--;
-      this.controls.delete(pending);
-    }
+  private control(bindingId: string, body?: object, waitForRestart = true): Promise<void> {
+    const attempt = async () => {
+      if (this.controlling >= MAX_IN_FLIGHT) {
+        controlRequests.inc({
+          operation: body === undefined ? "revoke" : "bind",
+          outcome: "error",
+        });
+        return denied();
+      }
+      this.controlling++;
+      const pending = interceptorControl(this.opts.socketPath, bindingId, body);
+      this.controls.add(pending);
+      try {
+        await pending;
+      } finally {
+        this.controlling--;
+        this.controls.delete(pending);
+      }
+    };
+    return waitForRestart ? this.whileInterceptorRestarts(attempt) : attempt();
   }
 
   private async expire(): Promise<void> {
+    // Control calls can now wait out an interceptor restart, so a sweep may outlast its interval.
+    if (this.sweeping) return;
+    this.sweeping = true;
+    try {
+      await this.sweep();
+    } finally {
+      this.sweeping = false;
+    }
+  }
+
+  // Single attempts only: the sweep reruns every interval, so it never waits out a restart.
+  private async sweep(): Promise<void> {
     if (!this.ready && !this.stopped && Date.now() >= this.nextControlRetryAt) await this.start();
     for (const runId of this.pendingRevocations.keys())
-      await this.finishRevocations(runId).catch(() => {});
-    for (const bindingId of this.failedStarts.keys()) await this.retryFailedStart(bindingId);
+      await this.finishRevocations(runId, false).catch(() => {});
+    for (const bindingId of this.failedStarts.keys()) await this.retryFailedStart(bindingId, false);
     for (const [runId, pending] of this.rebinds)
       if (pending.proxy.expiresAtMs <= Date.now()) this.dropRebind(runId);
     for (const [runId, binding] of this.bindings) {
@@ -1418,7 +1509,7 @@ export class SecretProxyBindings {
       if (binding.expiresAtMs > Date.now()) continue;
       binding.busy = true;
       try {
-        if (binding.proxy) await this.closeBinding(binding);
+        if (binding.proxy) await this.closeBinding(binding, false);
       } catch {
         const cached = this.placements.get(binding.podUid);
         if (cached?.bindingId === binding.bindingId) this.forgetPlacement(cached);
