@@ -1333,7 +1333,7 @@ function EnvironmentVariablesListPage({
                           Key
                         </TableHeaderCell>
                         <TableHeaderCell
-                          className={vercelIntegration?.enabled ? "w-[32%]" : "w-[37%]"}
+                          className={cn("pl-0", vercelIntegration?.enabled ? "w-[32%]" : "w-[37%]")}
                         >
                           Value
                         </TableHeaderCell>
@@ -1723,7 +1723,7 @@ function EnvironmentVariableTableRow({
                   {variable.selectable && variable.canSeal && (
                     <VaultValueDialog
                       variable={variable}
-                      trigger={<Button variant="secondary/small">To Vault</Button>}
+                      trigger={<Button variant="secondary/small">To Agent Vault…</Button>}
                     />
                   )}
                   <EditEnvironmentVariablePanel variable={variable} revealAll={revealAll} />

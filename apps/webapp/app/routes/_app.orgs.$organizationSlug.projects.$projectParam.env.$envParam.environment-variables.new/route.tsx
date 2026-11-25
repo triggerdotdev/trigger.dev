@@ -702,7 +702,7 @@ export default function Page() {
                 </Hint>
               </InputGroup>
             )}
-            <InputGroup className="w-auto">
+            <InputGroup fullWidth>
               {vault && <input type="hidden" name="isSecret" value="true" />}
               <Switch
                 name={vault ? undefined : "isSecret"}
@@ -740,7 +740,7 @@ export default function Page() {
                 variablesFields={variables}
                 vault={vault}
                 vaultFields={
-                  <InputGroup fullWidth>
+                  <InputGroup fullWidth className="pt-3.5">
                     <DomainInput domains={domains} onChange={setDomains} />
                     <FormError id={domainsField.errorId}>{domainsField.errors}</FormError>
                   </InputGroup>

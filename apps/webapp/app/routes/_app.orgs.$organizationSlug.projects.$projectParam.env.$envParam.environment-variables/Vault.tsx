@@ -1,4 +1,5 @@
-import { LockClosedIcon, PencilSquareIcon, XMarkIcon } from "@heroicons/react/20/solid";
+import { PencilSquareIcon, XMarkIcon } from "@heroicons/react/20/solid";
+import { AgentVaultIcon } from "~/assets/icons/AgentVaultIcon";
 import { DialogClose } from "@radix-ui/react-dialog";
 import { useFetcher } from "@remix-run/react";
 import { useEnvironment } from "~/hooks/useEnvironment";
@@ -11,6 +12,7 @@ import { Input } from "~/components/primitives/Input";
 import { Label } from "~/components/primitives/Label";
 import { Paragraph } from "~/components/primitives/Paragraph";
 import { ShortcutKey } from "~/components/primitives/ShortcutKey";
+import { TextLink } from "~/components/primitives/TextLink";
 import { SimpleTooltip } from "~/components/primitives/Tooltip";
 import {
   Dialog,
@@ -40,7 +42,8 @@ export function VaultBanner({
   return (
     <Callout
       variant="docs"
-      className="mx-2 mt-2 w-auto items-center"
+      icon={<AgentVaultIcon className="mt-0.5 size-5 shrink-0 text-callout-docs" />}
+      className="mx-2 mt-2 w-auto items-end"
       cta={
         enabled ? (
           disable && <DisableVaultButton blocked={disable.blocked} />
@@ -53,9 +56,9 @@ export function VaultBanner({
         <strong>Agent Vault{enabled && " is enabled"}</strong>
         <p className="text-text-dimmed">
           Restrict secrets to specific domains at runtime.{" "}
-          <a className="underline" href={docsPath("vault")} target="_blank" rel="noreferrer">
+          <TextLink href={docsPath("vault")} target="_blank" rel="noreferrer">
             Read the docs
-          </a>
+          </TextLink>
         </p>
       </div>
     </Callout>
@@ -78,7 +81,7 @@ function EnableVaultButton() {
     <Dialog open={isOpen} onOpenChange={setIsOpen}>
       <DialogTrigger asChild>
         <Button variant="secondary/small" className="shrink-0">
-          Enable Vault
+          Enable Agent Vault
         </Button>
       </DialogTrigger>
       <DialogContent>
@@ -109,7 +112,7 @@ function EnableVaultButton() {
               variant="primary/small"
               disabled={fetcher.state !== "idle"}
             >
-              Enable Vault
+              Enable Agent Vault
             </Button>
           </fetcher.Form>
         </DialogFooter>
@@ -120,12 +123,12 @@ function EnableVaultButton() {
 
 const MAX_DOMAINS = 64;
 const vaultPillClassName =
-  "inline-flex h-6 items-center gap-1 rounded-full border border-callout-pricing/40 bg-callout-pricing-bg/40 px-2 font-mono text-xs text-callout-pricing-text";
+  "inline-flex h-6 items-center gap-1 rounded-full border border-indigo-500/40 bg-indigo-500/10 px-2 font-mono text-xs text-indigo-300";
 
 export function VaultDomain({ host }: { host: string }) {
   return (
     <span className={cn(vaultPillClassName, "max-w-full")}>
-      <LockClosedIcon className="size-3 shrink-0" />
+      <AgentVaultIcon className="size-3 shrink-0" />
       <span className="truncate">{host}</span>
     </span>
   );
@@ -136,9 +139,9 @@ export function VaultDomains({ hosts }: { hosts: string[] }) {
   if (!first) return null;
   const pill = (
     <span className={cn(vaultPillClassName, "ml-2 max-w-full align-middle")}>
-      <LockClosedIcon className="size-3 shrink-0" />
+      <AgentVaultIcon className="size-3 shrink-0" />
       <span className="truncate">{first}</span>
-      {rest.length > 0 && <span className="text-callout-pricing">+{rest.length}</span>}
+      {rest.length > 0 && <span className="text-indigo-400">+{rest.length}</span>}
     </span>
   );
   return rest.length ? (
@@ -159,10 +162,10 @@ export function VaultDomains({ hosts }: { hosts: string[] }) {
 
 export function SealedInVault() {
   return (
-    <span className="flex h-6 w-full items-center gap-1.5 rounded border border-callout-pricing/30 bg-callout-pricing-bg/30 px-2 font-mono text-xs text-callout-pricing-text">
-      <LockClosedIcon className="size-3 shrink-0" />
-      Sealed in Vault
-    </span>
+    <div className="flex items-center gap-x-1">
+      <AgentVaultIcon className="size-3 shrink-0 text-indigo-500" />
+      <span className="text-xs text-text-dimmed">Sealed in Agent Vault</span>
+    </div>
   );
 }
 
@@ -234,7 +237,7 @@ export function DomainInput({
                 onChange(domains.filter((item) => item !== domain));
                 inputRef.current?.focus();
               }}
-              className="flex size-6 flex-none items-center justify-center rounded-full outline-none transition hover:bg-callout-pricing/20 focus-visible:ring-1 focus-visible:ring-callout-pricing"
+              className="flex size-6 flex-none items-center justify-center rounded-full outline-none transition hover:bg-indigo-500/20 focus-visible:ring-1 focus-visible:ring-indigo-500"
             >
               <XMarkIcon className="size-4" />
             </button>
@@ -291,11 +294,11 @@ function DisableVaultButton({ blocked }: { blocked: boolean }) {
         tooltip={
           fetcher.data?.error ??
           (blocked
-            ? "Delete this project's Agent Vault values before disabling Vault."
+            ? "Delete this project's Agent Vault values before disabling Agent Vault."
             : "Admin only. Turns Agent Vault off for this project.")
         }
       >
-        Disable Vault
+        Disable Agent Vault
       </Button>
     </fetcher.Form>
   );
@@ -345,7 +348,7 @@ function RemoveFromVaultButton({
     <Dialog open={isOpen} onOpenChange={setIsOpen}>
       <DialogTrigger asChild>
         <Button type="button" variant="tertiary/small">
-          Remove from Vault
+          Remove from Agent Vault
         </Button>
       </DialogTrigger>
       <DialogContent>
@@ -372,7 +375,7 @@ function RemoveFromVaultButton({
         </div>
         <DialogFooter>
           <DialogClose asChild>
-            <Button variant="primary/small">Keep in Vault</Button>
+            <Button variant="primary/small">Keep in Agent Vault</Button>
           </DialogClose>
           <Button
             variant="danger/small"
@@ -388,7 +391,7 @@ function RemoveFromVaultButton({
               )
             }
           >
-            Remove from Vault
+            Remove from Agent Vault
           </Button>
         </DialogFooter>
       </DialogContent>
@@ -465,19 +468,27 @@ export function VaultValueDialog({
             </p>
           )}
           <DialogFooter>
-            {/* Only a value in Vault itself, and not also through its Preview value: that one
-                has to leave first. */}
-            {variable.vaultConfiguredHosts && !variable.vaultInherited ? (
-              <RemoveFromVaultButton variable={variable} onRemoved={() => setIsOpen(false)} />
+            {isVault ? (
+              // Only a value in Vault itself, and not also through its Preview value: that one
+              // has to leave first.
+              variable.vaultConfiguredHosts && !variable.vaultInherited ? (
+                <RemoveFromVaultButton variable={variable} onRemoved={() => setIsOpen(false)} />
+              ) : (
+                <span />
+              )
             ) : (
-              <span />
+              <DialogClose asChild>
+                <Button type="button" variant="tertiary/medium">
+                  Cancel
+                </Button>
+              </DialogClose>
             )}
             <Button
               type="submit"
-              variant="primary/small"
+              variant={isVault ? "primary/small" : "primary/medium"}
               disabled={!domains.length || fetcher.state !== "idle"}
             >
-              {isVault ? "Save" : "Move to Vault"}
+              {isVault ? "Save" : "Move to Agent Vault"}
             </Button>
           </DialogFooter>
         </fetcher.Form>
