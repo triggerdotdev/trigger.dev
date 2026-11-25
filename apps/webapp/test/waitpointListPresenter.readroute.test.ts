@@ -30,13 +30,23 @@ import {
 import { Prisma, type PrismaClient, type WaitpointStatus } from "@trigger.dev/database";
 import type { RunOpsPrismaClient } from "@internal/run-ops-database";
 import { keyedWaitpointTest } from "../../../internal-packages/run-engine/src/engine/tests/utils/keyedWaitpointTest";
-import { WaitpointStoreCoordinator } from "../../../internal-packages/run-engine/src/engine/waitpointCoordinator/storeCoordinator";
+import {
+  WaitpointStoreCoordinator,
+  type WaitpointRecordInput,
+} from "../../../internal-packages/run-engine/src/engine/waitpointCoordinator/storeCoordinator";
 import {
   makeEngine,
   triggerRun,
 } from "../../../internal-packages/run-engine/src/engine/tests/utils/storeRunWaitpointLifecycleFixtures";
 import { setupAuthenticatedEnvironment, setupBackgroundWorker } from "@internal/run-engine/tests";
-import { generateRunOpsIdV2, RunId } from "@trigger.dev/core/v3/isomorphic";
+import {
+  generateRunOpsIdV2,
+  generateWaitpointId,
+  RunId,
+  WaitpointId,
+} from "@trigger.dev/core/v3/isomorphic";
+import { randomUUID } from "node:crypto";
+import Redis, { type RedisOptions } from "ioredis";
 import { PostgresRunStore, RoutingRunStore, RedisSnapshotStore } from "@internal/run-store";
 import {
   WaitpointListPresenter,
@@ -862,6 +872,320 @@ describe("native MANUAL token list", () => {
       });
     }
   );
+
+  // Catches: a list request whose MemoryDB work grows with its filters or with the environment, and
+  // a mixed Postgres and MemoryDB list that skips, repeats or misorders tokens where MemoryDB stopped.
+  keyedWaitpointTest(
+    "issues at most 100 store commands per list call for every filter, both ways",
+    { timeout: 300_000 },
+    async ({ prisma: fixturePrisma, redisOptions }) => {
+      const prisma = fixturePrisma as PrismaClient;
+      await withStandaloneList(
+        prisma,
+        redisOptions,
+        async ({ engine, coordinator, scope, list }) => {
+          const now = Date.now();
+          const seeds = corpus(3_000, now);
+          const legacySeeds = corpus(50, now - 500, "old-key");
+          const legacyIds = await seedLegacy(prisma, scope, "cmbound", legacySeeds);
+          const storeIds = await seedStore(coordinator, scope, seeds.slice(0, 500));
+          // An unflagged twin holds the same 550 tokens in Postgres, ids in creation order.
+          const twin = await unflaggedEnvironment(prisma, engine, "bound-twin");
+          const mixed = [
+            ...legacySeeds.map((seed, i) => ({ seed, id: legacyIds[i]! })),
+            ...seeds.slice(0, 500).map((seed, i) => ({ seed, id: storeIds[i]! })),
+          ].sort((a, b) => a.seed.createdAt.getTime() - b.seed.createdAt.getTime());
+          const twinIds = await seedLegacy(
+            prisma,
+            twin.ctx,
+            "cmbtwin",
+            mixed.map(({ seed }) => seed)
+          );
+          const twinOf = (id: string) => twinIds[mixed.findIndex((token) => token.id === id)]!;
+          const counter = await commandCounter(redisOptions);
+          try {
+            for (const size of [500, 3_000]) {
+              if (size === 3_000)
+                storeIds.push(...(await seedStore(coordinator, scope, seeds.slice(500))));
+              const ids: [string, string] = [storeIds[size - 1]!, legacyIds[0]!];
+              const filters = filterSet(seeds.slice(0, size), ids, now);
+              let largest = 0;
+              for (const [name, filter] of filters)
+                for (const pageSize of [25, 100])
+                  for (const direction of ["forward", "backward"] as const) {
+                    const options = { ...filter, pageSize, direction };
+                    const first = await counter.count(() => list(options));
+                    const cursor =
+                      direction === "forward"
+                        ? first.result.pagination.next
+                        : first.result.pagination.previous;
+                    const second = cursor
+                      ? await counter.count(() => list({ ...options, cursor }))
+                      : undefined;
+                    for (const call of [first, second]) {
+                      if (!call) continue;
+                      expect(
+                        call.commands,
+                        `${size} ${name} ${pageSize} ${direction}`
+                      ).toBeLessThanOrEqual(LIST_BOUND);
+                      largest = Math.max(largest, call.commands);
+                    }
+                  }
+              console.log(`largest store command count with ${size} MemoryDB tokens: ${largest}`);
+              expect(largest).toBeGreaterThan(0);
+              if (size !== 500) continue;
+              const twinFilters = filterSet(
+                seeds.slice(0, size),
+                [twinOf(ids[0]), twinOf(ids[1])],
+                now
+              );
+              for (const [k, [name, filter]] of filters.entries()) {
+                const walk = await walkPages(list, { ...filter, pageSize: 25 });
+                const expected = await walkPages(twin.list, {
+                  ...twinFilters[k]![1],
+                  pageSize: 25,
+                });
+                expect(walk.forward.flatMap(view), name).toEqual(expected.forward.flatMap(view));
+                expect(walk.backward.flatMap(tokenIds), name).toEqual(
+                  walk.forward.flatMap(tokenIds)
+                );
+              }
+            }
+          } finally {
+            counter.quit();
+          }
+        }
+      );
+    }
+  );
+
+  // Catches: a command ceiling, or the short pages it makes, reaching an organisation without the
+  // standalone tokens flag, whose lists must stay as they were.
+  keyedWaitpointTest(
+    "lists without a command ceiling while the standalone tokens flag is off",
+    { timeout: 300_000 },
+    async ({ prisma: fixturePrisma, redisOptions }) => {
+      const prisma = fixturePrisma as PrismaClient;
+      await withNativeList(
+        prisma,
+        redisOptions,
+        async ({ coordinator, scope, list, storeLists }) => {
+          const now = Date.now();
+          const seeds = corpus(300, now);
+          const storeIds = await seedStore(coordinator, scope, seeds);
+          for (const [name, filter] of filterSet(seeds, [storeIds[1]!, storeIds[299]!], now)) {
+            const walk = await walkPages(list, { ...filter, pageSize: 25 });
+            expect(
+              walk.forward.slice(0, -1).every((page) => page.tokens.length === 25),
+              name
+            ).toBe(true);
+          }
+          expect(storeLists.length).toBeGreaterThan(0);
+          expect(storeLists.every((params) => params.commandCeiling === undefined)).toBe(true);
+        }
+      );
+    }
+  );
+
+  // Catches: a flagged walk that skips, repeats or reorders tokens when MemoryDB pages stop short,
+  // or a list path that issues MemoryDB commands for an organisation without the store.
+  keyedWaitpointTest(
+    "walks every filter as an unflagged environment does, both ways",
+    { timeout: 300_000 },
+    async ({ prisma: fixturePrisma, redisOptions }) => {
+      const prisma = fixturePrisma as PrismaClient;
+      await withStandaloneList(
+        prisma,
+        redisOptions,
+        async ({ engine, coordinator, scope, list }) => {
+          const now = Date.now();
+          const seeds = corpus(300, now);
+          const storeIds = await seedStore(coordinator, scope, seeds);
+          const twin = await unflaggedEnvironment(prisma, engine, "twins");
+          const twinIds = await seedLegacy(prisma, twin.ctx, "cmtwin", seeds);
+          const filters = filterSet(seeds, [storeIds[1]!, storeIds[299]!], now);
+          const twinFilters = filterSet(seeds, [twinIds[1]!, twinIds[299]!], now);
+          const counter = await commandCounter(redisOptions);
+          try {
+            for (const [k, [name, filter]] of filters.entries())
+              for (const pageSize of [2, 25]) {
+                const options = { ...filter, pageSize };
+                const flagged = await walkPages(list, options);
+                const { result: unflagged, commands } = await counter.count(() =>
+                  walkPages(twin.list, { ...twinFilters[k]![1], pageSize })
+                );
+                expect(commands, `${name} ${pageSize}`).toBe(0);
+                const tokens = flagged.forward.flatMap(view);
+                expect(tokens, `${name} ${pageSize}`).toEqual(unflagged.forward.flatMap(view));
+                if (k !== filters.length - 2) expect(tokens.length, name).toBeGreaterThan(0);
+                for (const walk of [flagged, unflagged])
+                  expect(walk.backward.flatMap(tokenIds), name).toEqual(
+                    walk.forward.flatMap(tokenIds)
+                  );
+                expect(
+                  unflagged.forward.slice(0, -1).every((page) => page.tokens.length === pageSize),
+                  name
+                ).toBe(true);
+                await expectWayBack(list, options, flagged);
+              }
+          } finally {
+            counter.quit();
+          }
+        }
+      );
+    }
+  );
+
+  // Catches: the dashboard showing the empty state, or no next page, when MemoryDB stops a page short.
+  keyedWaitpointTest(
+    "keeps the next page and the token list when a dashboard page stops short",
+    async ({ prisma, redisOptions }) => {
+      await withStandaloneList(
+        prisma as PrismaClient,
+        redisOptions,
+        async ({ coordinator, scope, list }) => {
+          const now = Date.now();
+          // The 3 oldest "rare" tokens are completed, the 300 newer ones wait; 300 completed without it.
+          const seeds: Seed[] = Array.from({ length: 603 }, (_, i) => ({
+            createdAt: new Date(now - (603 - i) * 1000),
+            ...(i < 303 ? { tags: ["rare"] } : {}),
+            outputIsError: i < 3 || i >= 303 ? false : undefined,
+          }));
+          const ids = await seedStore(coordinator, scope, seeds);
+          const options = { tags: ["rare"], statuses: ["COMPLETED" as const] };
+          const walk = await walkPages(list, options);
+          const first = walk.forward[0]!;
+          expect(first.tokens.length).toBeLessThan(25);
+          expect(first.pagination.next).toBeDefined();
+          expect(first.success && first.hasAnyTokens).toBe(true);
+          expect(walk.forward.flatMap(tokenIds)).toEqual(ids.slice(0, 3).reverse());
+          expect(walk.forward.at(-1)!.pagination.next).toBeUndefined();
+          expect(walk.backward.flatMap(tokenIds)).toEqual(ids.slice(0, 3).reverse());
+          await expectWayBack(list, options, walk);
+        }
+      );
+    }
+  );
+
+  // Catches: a date-filtered list under the ceiling walking every MemoryDB id outside its window.
+  keyedWaitpointTest(
+    "starts and stops a date-filtered MemoryDB walk at the window's edges",
+    async ({ prisma, redisOptions }) => {
+      await withStandaloneList(
+        prisma as PrismaClient,
+        redisOptions,
+        async ({ coordinator, scope, list }) => {
+          const now = Date.now();
+          // Ten seconds apart, so 300 s of creation window holds 30 tokens of 300.
+          const seeds = Array.from({ length: 300 }, (_, i) => ({
+            createdAt: new Date(now - (300 - i) * 10_000),
+          }));
+          const ids = await seedStore(coordinator, scope, seeds);
+          const time = (i: number) => seeds[i]!.createdAt.getTime();
+          for (const [filter, expected] of [
+            [{ to: time(4) }, ids.slice(0, 5)],
+            [{ from: time(295) }, ids.slice(295)],
+          ] as const) {
+            const walk = await walkPages(list, filter);
+            expect(walk.forward[0]!.tokens.map((t) => t.id)).toEqual([...expected].reverse());
+            expect(walk.forward.length).toBeLessThanOrEqual(2);
+            expect(walk.backward.length).toBeLessThanOrEqual(2);
+            expect(walk.backward.flatMap(tokenIds)).toEqual([...expected].reverse());
+          }
+        }
+      );
+    }
+  );
+
+  // Catches: Postgres tokens listed among or before newer MemoryDB tokens, or a token listed twice.
+  keyedWaitpointTest(
+    "lists newer MemoryDB tokens before older Postgres tokens, each once, both ways",
+    async ({ prisma: fixturePrisma, redisOptions }) => {
+      const prisma = fixturePrisma as PrismaClient;
+      await withStandaloneList(prisma, redisOptions, async ({ coordinator, scope, list }) => {
+        const now = Date.now();
+        const tagged = (every: number) => (i: number) => (i % every === 0 ? ["five"] : []);
+        const old = Array.from({ length: 40 }, (_, i) => ({
+          createdAt: new Date(now - 1_000_000 + i * 1000),
+          tags: tagged(8)(i),
+        }));
+        const recent = Array.from({ length: 300 }, (_, i) => ({
+          createdAt: new Date(now - 300_000 + i * 1000),
+          tags: tagged(60)(i),
+        }));
+        const legacyIds = await seedLegacy(prisma, scope, "cmsix", old);
+        const storeIds = await seedStore(coordinator, scope, recent);
+        for (const tags of [undefined, ["five"]])
+          for (const pageSize of [10, 25]) {
+            const options = { pageSize, ...(tags ? { tags } : {}) };
+            const keep = (every: number) => (_: string, i: number) => !tags || i % every === 0;
+            const expected = [...legacyIds.filter(keep(8)), ...storeIds.filter(keep(60))].reverse();
+            expect(expected).toHaveLength(tags ? 10 : 340);
+            const walk = await walkPages(list, options);
+            expect(walk.forward.flatMap(tokenIds)).toEqual(expected);
+            expect(walk.backward.flatMap(tokenIds)).toEqual(expected);
+            await expectWayBack(list, options, walk);
+          }
+      });
+    }
+  );
+
+  // Catches: the empty state shown for an environment whose tokens are all in MemoryDB, or hidden
+  // for one with no tokens at all.
+  keyedWaitpointTest(
+    "says whether an environment has tokens as an unflagged environment does",
+    async ({ prisma: fixturePrisma, redisOptions }) => {
+      const prisma = fixturePrisma as PrismaClient;
+      await withStandaloneList(
+        prisma,
+        redisOptions,
+        async ({ engine, coordinator, scope, list }) => {
+          const twin = await unflaggedEnvironment(prisma, engine, "has-tokens");
+          const hasAnyTokens = (page: ListPage) => {
+            expect(page.success).toBe(true);
+            return page.success && page.hasAnyTokens;
+          };
+          expect(hasAnyTokens(await list({}))).toBe(false);
+          expect(hasAnyTokens(await twin.list({}))).toBe(false);
+          const seeds = corpus(3, Date.now());
+          const storeIds = await seedStore(coordinator, scope, seeds);
+          await seedLegacy(prisma, twin.ctx, "cmhas", seeds);
+          const listed = await list({});
+          expect(tokenIds(listed)).toEqual([...storeIds].reverse());
+          expect(hasAnyTokens(listed)).toBe(true);
+          expect(hasAnyTokens(await list({ tags: ["missing"] }))).toBe(true);
+          expect(hasAnyTokens(await twin.list({ tags: ["missing"] }))).toBe(true);
+        }
+      );
+    }
+  );
+
+  // Catches: a forward page that stops short listing a Postgres token before an unseen MemoryDB
+  // token created after it, because that token's id was minted before the stop.
+  keyedWaitpointTest(
+    "orders a MemoryDB token created after its id time past a short page's stop",
+    async ({ prisma: fixturePrisma, redisOptions }) => {
+      const prisma = fixturePrisma as PrismaClient;
+      await withStandaloneList(prisma, redisOptions, async ({ coordinator, scope, list }) => {
+        const base = Date.now() - 2_000_000;
+        // Newer tokens that are tagged or completed, not both, so either index walk stops among them.
+        const filler = Array.from({ length: 600 }, (_, i) => ({
+          createdAt: new Date(base + 60_000 + i * 100),
+          ...(i % 2 ? { tags: ["x"] } : { outputIsError: false }),
+        }));
+        const done = { tags: ["x"], outputIsError: false };
+        const late = { ...done, mintedAt: new Date(base), createdAt: new Date(base + 299_000) };
+        const [storeId] = await seedStore(coordinator, scope, [late, ...filler]);
+        const [legacyId] = await seedLegacy(prisma, scope, "cmlate", [
+          { ...done, createdAt: new Date(base + 298_000) },
+        ]);
+        const walk = await walkPages(list, { tags: ["x"], statuses: ["COMPLETED"] });
+        expect(walk.forward[0]!.pagination.next).toBeDefined();
+        expect(walk.forward.flatMap(tokenIds)).toEqual([storeId, legacyId]);
+        expect(walk.backward.flatMap(tokenIds)).toEqual([storeId, legacyId]);
+      });
+    }
+  );
 });
 
 type ListPage = Awaited<ReturnType<WaitpointListPresenter["call"]>>;
@@ -898,10 +1222,14 @@ async function withNativeList(
   redisOptions: Parameters<typeof makeEngine>[1],
   body: (harness: {
     engine: ReturnType<typeof makeEngine>;
+    coordinator: WaitpointStoreCoordinator;
+    scope: StoreScope;
     store: (tags?: string[]) => Promise<Token>;
     legacy: (id: string, createdAt: Date, tags?: string[]) => Promise<Token>;
     list: ListCall;
-  }) => Promise<void>
+    storeLists: Parameters<ReturnType<typeof makeEngine>["listStoreManualWaitpoints"]>[0][];
+  }) => Promise<void>,
+  standaloneTokens = false
 ) {
   setDbClient(prisma);
   const coordinator = new WaitpointStoreCoordinator({ redisOptions });
@@ -922,19 +1250,33 @@ async function withNativeList(
       taskIdentifier: "manual-order",
     });
     const ctx = { projectId: environment.projectId, environmentId: environment.id };
+    const storeLists: Parameters<typeof engine.listStoreManualWaitpoints>[0][] = [];
     const presenter = new WaitpointListPresenter(
       prisma,
       prisma,
       undefined,
       new PostgresRunStore({ prisma, readOnlyPrisma: prisma }),
-      engine
+      {
+        listStoreManualWaitpoints: (params) => {
+          storeLists.push(params);
+          return engine.listStoreManualWaitpoints(params);
+        },
+        canReadStoreManualWaitpoints: (organizationId) =>
+          engine.canReadStoreManualWaitpoints(organizationId),
+      }
     );
     const environmentOption = {
       ...environment,
       project: { ...environment.project, engine: "V2" as const },
+      organization: {
+        ...environment.organization,
+        featureFlags: { waitpointStoreStandaloneTokens: standaloneTokens },
+      },
     };
     await body({
       engine,
+      coordinator,
+      scope: { ...ctx, organizationId: environment.organizationId },
       store: async (tags) => {
         await nextMillisecond(2);
         const { waitpoint } = await engine.createManualWaitpoint({
@@ -950,10 +1292,286 @@ async function withNativeList(
         return { id, friendlyId: `wp_${id}`, createdAt };
       },
       list: (overrides) => presenter.call({ environment: environmentOption, ...overrides }),
+      storeLists,
     });
   } finally {
     await engine.quit();
     await coordinator.quit();
     await snapshots.quit();
+  }
+}
+
+// The same, with the standalone tokens flag on for that organisation: lists get a command ceiling.
+const withStandaloneList: typeof withNativeList = (prisma, redisOptions, body) =>
+  withNativeList(prisma, redisOptions, body, true);
+
+type StoreScope = { organizationId: string; projectId: string; environmentId: string };
+// A token to seed; outputIsError set means completed (true: timed out).
+type Seed = {
+  createdAt: Date;
+  mintedAt?: Date;
+  tags?: string[];
+  idempotencyKey?: string;
+  outputIsError?: boolean;
+};
+type FilterSet = [name: string, filter: Partial<WaitpointListOptions>][];
+
+const DAY = 86_400_000;
+const LIST_BOUND = 100;
+const view = (page: ListPage) =>
+  page.tokens.map((t) => [t.createdAt.toISOString(), t.status, t.tags, t.idempotencyKey]);
+const tokenIds = (page: ListPage) => page.tokens.map((token) => token.id);
+
+// Token i is the i-th oldest, one second apart; the five oldest are three days old, so a one-day
+// period leaves them out. The three oldest hold "rare" and are completed; ids follow creation order.
+function corpus(size: number, now: number, key = "key"): Seed[] {
+  return Array.from({ length: size }, (_, i) => ({
+    createdAt: new Date(i < 5 ? now - 3 * DAY + i * 1000 : now - (size - i) * 1000),
+    tags: [`t${i % 200}`, ...(i < 3 ? ["rare"] : [])],
+    idempotencyKey: i % 10 === 0 ? `${key}-${i}` : undefined,
+    outputIsError: i < 3 || i % 4 === 1 ? false : i % 4 === 2 ? true : undefined,
+  }));
+}
+
+// Section (b) of the filter set takes each environment's own ids.
+function filterSet(seeds: Seed[], ids: [string, string], now: number): FilterSet {
+  const time = (i: number) => seeds[i]!.createdAt.getTime();
+  const last = seeds.length - 1;
+  return [
+    ["no filter", {}],
+    ["first id", { id: ids[0] }],
+    ["second id", { id: ids[1] }],
+    ["waiting", { statuses: ["WAITING"] }],
+    ["completed", { statuses: ["COMPLETED"] }],
+    ["timed out", { statuses: ["TIMED_OUT"] }],
+    ["waiting or timed out", { statuses: ["WAITING", "TIMED_OUT"] }],
+    ["idempotency key", { idempotencyKey: "key-0" }],
+    ["one tag", { tags: ["rare"] }],
+    ["three tags", { tags: ["rare", "t7", "t8"] }],
+    ["150 tags", { tags: Array.from({ length: 150 }, (_, k) => `t${k}`) }],
+    ["period", { period: "1d" }],
+    ["from", { from: time(last - 19) }],
+    ["to", { to: time(10) }],
+    ["from and to", { from: time(5), to: time(15) }],
+    ["every token's window", { from: time(0) - 1, to: now + DAY }],
+    ["tag with a status it never has", { tags: ["rare"], statuses: ["TIMED_OUT"] }],
+    [
+      "every filter",
+      {
+        idempotencyKey: "key-0",
+        tags: ["rare"],
+        statuses: ["COMPLETED"],
+        from: time(0),
+        to: time(10),
+      },
+    ],
+  ];
+}
+
+// Mints a store id at `time`, so id order is creation order, as for a token made then.
+function storeIdAt(time: Date) {
+  vi.useFakeTimers({ toFake: ["Date"], now: time });
+  try {
+    return generateWaitpointId("MANUAL");
+  } finally {
+    vi.useRealTimers();
+  }
+}
+
+// Writes MemoryDB tokens the way the catalogue does, completing those with outputIsError set.
+// Ids are minted at mintedAt, else at createdAt, so id order is creation order.
+async function seedStore(coordinator: WaitpointStoreCoordinator, scope: StoreScope, seeds: Seed[]) {
+  const ids = seeds.map((seed) => storeIdAt(seed.mintedAt ?? seed.createdAt));
+  for (let offset = 0; offset < seeds.length; offset += 100)
+    await Promise.all(
+      seeds.slice(offset, offset + 100).map(async (seed, i) => {
+        const id = ids[offset + i]!;
+        const createdAt = seed.createdAt.toISOString();
+        const record: WaitpointRecordInput = {
+          id,
+          friendlyId: WaitpointId.toFriendlyId(id),
+          type: "MANUAL",
+          ...scope,
+          createdAt,
+          updatedAt: createdAt,
+          userProvidedIdempotencyKey: seed.idempotencyKey !== undefined,
+          idempotencyKey: seed.idempotencyKey,
+          tags: seed.tags ?? [],
+        };
+        await coordinator.manualCatalog.publish(record, Date.now() + 60_000);
+        await coordinator.createIfAbsent({ record, status: "PENDING" });
+        if (seed.outputIsError === undefined) return;
+        await coordinator.manualCatalog.publishCompletedCandidate(record, seed.outputIsError);
+        await coordinator.complete({
+          waitpointId: id,
+          completion: {
+            completedAt: createdAt,
+            outputType: "application/json",
+            outputIsError: seed.outputIsError,
+            output: null,
+          },
+        });
+      })
+    );
+  return ids.map((id) => WaitpointId.toFriendlyId(id));
+}
+
+// Writes Postgres tokens with ids in creation order; returns their friendly ids.
+async function seedLegacy(prisma: PrismaClient, ctx: SeedContext, prefix: string, seeds: Seed[]) {
+  const ids = seeds.map((_, i) => `${prefix}${String(i).padStart(25 - prefix.length, "0")}`);
+  for (let offset = 0; offset < seeds.length; offset += 50)
+    await Promise.all(
+      seeds.slice(offset, offset + 50).map((seed, i) =>
+        seedWaitpoint(prisma, ctx, {
+          id: ids[offset + i]!,
+          createdAt: seed.createdAt,
+          tags: seed.tags,
+          status: seed.outputIsError === undefined ? "PENDING" : "COMPLETED",
+          outputIsError: seed.outputIsError ?? false,
+          idempotencyKey: seed.idempotencyKey,
+          userProvidedIdempotencyKey: seed.idempotencyKey !== undefined,
+        })
+      )
+    );
+  return ids.map((id) => `wp_${id}`);
+}
+
+// A second organisation, made by hand, that the waitpoint store is not enabled for.
+async function unflaggedEnvironment(
+  prisma: PrismaClient,
+  engine: ReturnType<typeof makeEngine>,
+  slug: string
+) {
+  const ctx = await seedParents(prisma, slug);
+  const { organizationId } = await prisma.runtimeEnvironment.findUniqueOrThrow({
+    where: { id: ctx.environmentId },
+  });
+  const presenter = new WaitpointListPresenter(
+    prisma,
+    prisma,
+    undefined,
+    new PostgresRunStore({ prisma, readOnlyPrisma: prisma }),
+    engine
+  );
+  const environment = {
+    id: ctx.environmentId,
+    type: "PRODUCTION" as const,
+    project: { id: ctx.projectId, engine: "V2" as const },
+    apiKey: `tr_prod_${slug}`,
+    organizationId,
+  };
+  const list: ListCall = (overrides) => presenter.call({ environment, ...overrides });
+  return { ctx, list };
+}
+
+// Counts the commands on waitpoint store keys (wp:v1) that the server runs while a call is made.
+async function commandCounter(redisOptions: RedisOptions) {
+  const client = new Redis(redisOptions);
+  const monitor = await client.monitor();
+  const marker = new Redis(redisOptions);
+  let count = 0;
+  let pending: { token: string; seen: () => void } | undefined;
+  monitor.on("monitor", (_time: string, args: string[]) => {
+    if (pending && args[0]?.toLowerCase() === "echo" && args[1] === pending.token) pending.seen();
+    else if (args[1]?.startsWith("wp:v1")) count++;
+  });
+  // MONITOR reports commands in the order the server ran them: once the marker shows, every
+  // command before it has been counted.
+  const settle = async () => {
+    const token = randomUUID();
+    const seen = new Promise<void>((resolve) => (pending = { token, seen: resolve }));
+    await marker.echo(token);
+    await seen;
+  };
+  return {
+    async count<T>(call: () => Promise<T>) {
+      await settle();
+      count = 0;
+      const result = await call();
+      await settle();
+      return { result, commands: count };
+    },
+    quit() {
+      monitor.disconnect();
+      client.disconnect();
+      marker.disconnect();
+    },
+  };
+}
+
+// Pages forward from the start to the end, and backward from the end to the start.
+async function walkPages(list: ListCall, options: Partial<WaitpointListOptions>) {
+  const forward = [await list(options)];
+  while (forward.at(-1)!.pagination.next) {
+    expect(forward.length).toBeLessThan(1000);
+    forward.push(await list({ ...options, cursor: forward.at(-1)!.pagination.next }));
+  }
+  const back = { ...options, direction: "backward" as const };
+  const backward = [await list(back)];
+  while (backward.at(-1)!.pagination.previous) {
+    expect(backward.length).toBeLessThan(1000);
+    backward.push(await list({ ...back, cursor: backward.at(-1)!.pagination.previous }));
+  }
+  return { forward, backward: backward.reverse() };
+}
+
+// Follows a cursor to the end of the list in one direction; returns the tokens in list order.
+// Walks that reach a cursor already followed reuse its result, so every page is listed once.
+async function follow(
+  list: ListCall,
+  options: Partial<WaitpointListOptions>,
+  direction: "forward" | "backward",
+  cursor: string,
+  memo: Map<string, string[]>
+) {
+  const visited: { key: string; tokens: string[] }[] = [];
+  let tail: string[] = [];
+  for (let at: string | undefined = cursor; at;) {
+    const key = `${direction}:${at}`;
+    const known = memo.get(key);
+    if (known) {
+      tail = known;
+      break;
+    }
+    expect(visited.length).toBeLessThan(1000);
+    const page = await list({ ...options, direction, cursor: at });
+    visited.push({ key, tokens: tokenIds(page) });
+    at = direction === "forward" ? page.pagination.next : page.pagination.previous;
+  }
+  for (const { key, tokens } of visited.reverse()) {
+    tail = direction === "forward" ? [...tokens, ...tail] : [...tail, ...tokens];
+    memo.set(key, tail);
+  }
+  return tail;
+}
+
+// From every page of a walk, its way back reaches exactly the tokens on the other side, each once.
+async function expectWayBack(
+  list: ListCall,
+  options: Partial<WaitpointListOptions>,
+  { forward, backward }: Awaited<ReturnType<typeof walkPages>>
+) {
+  const all = forward.flatMap(tokenIds);
+  expect(new Set(all).size).toBe(all.length);
+  const memo = new Map<string, string[]>();
+  let offset = 0;
+  for (const [k, page] of forward.entries()) {
+    if (k > 0) {
+      expect(page.pagination.previous).toBeDefined();
+      expect(await follow(list, options, "backward", page.pagination.previous!, memo)).toEqual(
+        all.slice(0, offset)
+      );
+    }
+    offset += page.tokens.length;
+  }
+  offset = 0;
+  for (const [k, page] of backward.entries()) {
+    offset += page.tokens.length;
+    // Only the oldest page is listed without a cursor; with no token it has nothing after it.
+    if (k < backward.length - 1 || page.tokens.length) expect(page.pagination.next).toBeDefined();
+    const after = page.pagination.next
+      ? await follow(list, options, "forward", page.pagination.next, memo)
+      : [];
+    expect(after).toEqual(all.slice(offset));
   }
 }

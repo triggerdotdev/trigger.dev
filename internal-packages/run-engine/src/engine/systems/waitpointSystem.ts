@@ -754,14 +754,16 @@ export class WaitpointSystem {
 
   public async listStoreManualWaitpoints(
     params: ManualWaitpointCatalogListInput
-  ): Promise<Waitpoint[]> {
+  ): Promise<{ waitpoints: Waitpoint[]; continueCursor?: string }> {
     if (!this.#storeWired || !(await this.isWaitpointStoreEnabled(params.organizationId)))
-      return [];
-    if (params.id && classifyWaitpointCoordinator(params.id) !== "store") return [];
+      return { waitpoints: [] };
+    if (params.id && classifyWaitpointCoordinator(params.id) !== "store") return { waitpoints: [] };
     if (!this.#waitpointStore?.manualCatalog) throw new Error("MANUAL catalog is not wired");
-    return (await this.#waitpointStore.manualCatalog.list(params)).records.map((stored) =>
-      waitpointFromStoredRecord(stored.record.id, stored)
-    );
+    const { records, continueCursor } = await this.#waitpointStore.manualCatalog.list(params);
+    return {
+      waitpoints: records.map((stored) => waitpointFromStoredRecord(stored.record.id, stored)),
+      continueCursor,
+    };
   }
 
   /** Native DATETIME, MANUAL and BATCH producers serialize with final delivery acknowledgement. */

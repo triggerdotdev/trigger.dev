@@ -1,7 +1,7 @@
 import parse from "parse-duration";
 import { engine as defaultEngine } from "~/v3/runEngine.server";
 import type { RunEngine } from "@internal/run-engine";
-import { parseWaitpointId } from "@trigger.dev/core/v3/isomorphic";
+import { base32hexEncode, parseWaitpointId } from "@trigger.dev/core/v3/isomorphic";
 import {
   type RunEngineVersion,
   type RuntimeEnvironmentType,
@@ -16,8 +16,16 @@ import { determineEngineVersion } from "~/v3/engineVersion.server";
 import { type WaitpointTokenStatus, type WaitpointTokenItem } from "@trigger.dev/core/v3";
 import { generateHttpCallbackUrl } from "~/services/httpCallback.server";
 import { runStore as defaultRunStore } from "~/v3/runStore.server";
+import { globalFlagsRegistry } from "~/v3/globalFlagsRegistry.server";
+import { waitpointStoreStandaloneTokensEnabled } from "~/v3/utils/waitpointStoreEnabled.server";
 
 const DEFAULT_PAGE_SIZE = 25;
+// One list request issues at most 100 MemoryDB commands: the page list, then the empty-state probe.
+// Connection upkeep (an eviction-policy check per primary, at most every 30 s) is not counted.
+const STORE_LIST_COMMAND_CEILING = 90;
+const STORE_PROBE_COMMAND_CEILING = 10;
+// An unkeyed store token's createdAt is at most this long after its id time, and never before it.
+const STORE_CREATION_WINDOW_MS = 300_000;
 
 // Row shape returned by the raw MANUAL-waitpoint keyset scan. Named so both the
 // scan closure and the #scanWaitpoints store-selection helper reference one type.
@@ -46,6 +54,7 @@ export type WaitpointListOptions = {
     };
     apiKey: string;
     organizationId?: string;
+    organization?: { featureFlags: unknown };
   };
   // filters
   id?: string;
@@ -198,9 +207,26 @@ export class WaitpointListPresenter extends BasePresenter {
             projectId: environment.project.id,
           }
         : undefined;
+    // The command ceiling, and the short pages it can return, come with standalone store tokens.
+    // Cursors keep one format either way, so a toggle between pages continues where it left off.
+    const standaloneTokens =
+      nativeScope !== undefined &&
+      waitpointStoreStandaloneTokensEnabled(
+        environment.organization?.featureFlags,
+        globalFlagsRegistry.current()
+      );
     // With the store enabled the cursor holds a separate position in each source.
     const cut = nativeScope ? decodeMergedCursor(cursor) : undefined;
     const legacyCursor = cut ? cut.legacy : cursor;
+    const forward = direction === "forward";
+    // Under the ceiling the store walks ids in order, so a date filter starts it at the window edge.
+    const storeCursor =
+      cut?.store ??
+      (!standaloneTokens
+        ? undefined
+        : forward
+          ? createdAtLte && storeIdCore(createdAtLte.getTime() + 1)
+          : createdAtGte && storeIdCore(createdAtGte.getTime() - STORE_CREATION_WINDOW_MS));
     const native = nativeScope
       ? await this.waitpointEngine.listStoreManualWaitpoints({
           ...nativeScope,
@@ -211,9 +237,10 @@ export class WaitpointListPresenter extends BasePresenter {
           outputIsError: filterOutputIsError,
           createdAtGte: createdAtGte?.toISOString(),
           createdAtLte: createdAtLte?.toISOString(),
-          cursor: cut?.store,
+          cursor: storeCursor,
           direction,
           limit: pageSize + 1,
+          ...(standaloneTokens ? { commandCeiling: STORE_LIST_COMMAND_CEILING } : {}),
         })
       : undefined;
     const tokens = await this.#scanWaitpoints(
@@ -262,6 +289,18 @@ export class WaitpointListPresenter extends BasePresenter {
       direction
     );
 
+    // ...and ends the walk once its next id is past the other edge.
+    let storeStop = native?.continueCursor;
+    if (storeStop && standaloneTokens) {
+      const idTime = storeIdTime(storeStop).getTime();
+      if (
+        forward
+          ? createdAtGte && idTime < createdAtGte.getTime() - STORE_CREATION_WINDOW_MS
+          : createdAtLte && idTime > createdAtLte.getTime()
+      )
+        storeStop = undefined;
+    }
+
     let next: string | undefined;
     let previous: string | undefined;
     let tokensToReturn: WaitpointRow[];
@@ -270,7 +309,16 @@ export class WaitpointListPresenter extends BasePresenter {
         tokens: tokensToReturn,
         next,
         previous,
-      } = mergeStorePage(tokens, native, pageSize, direction, cut, cursor));
+      } = mergeStorePage(
+        tokens,
+        native.waitpoints,
+        pageSize,
+        direction,
+        cut,
+        cursor,
+        storeStop,
+        standaloneTokens
+      ));
     } else {
       const hasMore = tokens.length > pageSize;
 
@@ -299,18 +347,19 @@ export class WaitpointListPresenter extends BasePresenter {
           : tokens.slice(0, pageSize);
     }
 
-    let hasAnyTokens = tokensToReturn.length > 0;
+    // A merged page that stopped short of the page size still has a cursor to the tokens it leads to.
+    let hasAnyTokens = tokensToReturn.length > 0 || (standaloneTokens && (!!next || !!previous));
     if (!hasAnyTokens) {
       hasAnyTokens = await this.#probeAnyToken(environment.id);
-      if (!hasAnyTokens && nativeScope)
-        hasAnyTokens =
-          (
-            await this.waitpointEngine.listStoreManualWaitpoints({
-              ...nativeScope,
-              direction: "forward",
-              limit: 1,
-            })
-          ).length > 0;
+      if (!hasAnyTokens && nativeScope) {
+        const probe = await this.waitpointEngine.listStoreManualWaitpoints({
+          ...nativeScope,
+          direction: "forward",
+          limit: 1,
+          ...(standaloneTokens ? { commandCeiling: STORE_PROBE_COMMAND_CEILING } : {}),
+        });
+        hasAnyTokens = probe.waitpoints.length > 0 || probe.continueCursor !== undefined;
+      }
     }
 
     return {
@@ -416,38 +465,79 @@ function mergeStorePage(
   pageSize: number,
   direction: Direction,
   cut: MergedCut,
-  cursor: string | undefined
+  cursor: string | undefined,
+  // Where the store list stopped at its command ceiling; store tokens past it are not yet known.
+  storeStop: string | undefined,
+  // A command ceiling is in force, so a page, or the page after it, can be short or empty.
+  shortPages: boolean
 ) {
   const forward = direction === "forward";
+  // The latest createdAt an unseen store token can have: going forward, one minted before the stop
+  // can be created up to the creation window after it; going backward, none before its id time.
+  const stop = storeStop
+    ? {
+        id: storeStop,
+        createdAt: new Date(
+          storeIdTime(storeStop).getTime() + (forward ? STORE_CREATION_WINDOW_MS : 0)
+        ),
+      }
+    : undefined;
   const picked: WaitpointRow[] = [];
   let l = 0;
   let s = 0;
   while (picked.length < pageSize && (l < legacy.length || s < store.length)) {
     const a = legacy[l];
-    const b = store[s];
+    const b = store[s] ?? stop;
     if (a && (!b || isNewer(a, b) === forward)) picked.push(legacy[l++]);
-    else picked.push(store[s++]);
+    else if (s < store.length) picked.push(store[s++]);
+    else break;
   }
-  const hasMore = l < legacy.length || s < store.length;
-  // Cut after the last row taken from each source, else the incoming cut.
-  const far = encodeMergedCursor(legacy[l - 1]?.id ?? cut.legacy, store[s - 1]?.id ?? cut.store);
-  // Cut at the incoming side of each source: its first fetched row, else nothing on that side.
-  const near = encodeMergedCursor(legacy[0]?.id, store[0]?.id);
+  const hasMore = l < legacy.length || s < store.length || stop !== undefined;
+  // Cut after the last row taken from each source, else the incoming cut. A store list that stopped
+  // resumes from its stop once every store row it returned is on the page.
+  const far = encodeMergedCursor(
+    legacy[l - 1]?.id ?? cut.legacy,
+    stop && s === store.length ? stop.id : (store[s - 1]?.id ?? cut.store)
+  );
+  // Cut at the incoming side of each source: its first fetched row, else its stop, else nothing.
+  const near = encodeMergedCursor(legacy[0]?.id, store[0]?.id ?? stop?.id);
   // shortcut: where one source's id order disagrees with createdAt (cuid and gen-2 ids in one environment, or clock skew), the list follows that source's id order and backward pages can group those tokens differently from forward, each still listed once; carry page-start cuts in the cursor if customers notice.
   return forward
     ? {
         tokens: picked,
         next: hasMore ? far : undefined,
-        previous: cursor && picked.length ? near : undefined,
+        // Under a ceiling an empty page still links back.
+        previous: cursor && (picked.length || shortPages) ? near : undefined,
       }
     : {
         tokens: picked.reverse(),
-        next: picked.length ? near : undefined,
+        next: picked.length || (cursor && shortPages) ? near : undefined,
         previous: hasMore ? far : undefined,
       };
 }
 
-function isNewer(a: WaitpointRow, b: WaitpointRow): boolean {
+function storeIdTime(id: string): Date {
+  const parsed = parseWaitpointId(id);
+  if (parsed.format !== "b32hexW")
+    throw new Error("Waitpoint store list stopped at a non-store id");
+  return parsed.timestamp;
+}
+
+// The 24-character id core for a millisecond time with zero random bytes: below every id minted after it.
+function storeIdCore(ms: number): string {
+  const core = new Uint8Array(15);
+  let time = Math.min(Math.max(ms, 0), 2 ** 48 - 1);
+  for (let i = 5; i >= 0; i--) {
+    core[i] = time % 256;
+    time = Math.floor(time / 256);
+  }
+  return base32hexEncode(core);
+}
+
+function isNewer(
+  a: Pick<WaitpointRow, "id" | "createdAt">,
+  b: Pick<WaitpointRow, "id" | "createdAt">
+): boolean {
   const diff = a.createdAt.getTime() - b.createdAt.getTime();
   return diff !== 0 ? diff > 0 : a.id > b.id;
 }

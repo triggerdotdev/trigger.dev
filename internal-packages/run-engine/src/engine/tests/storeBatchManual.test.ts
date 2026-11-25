@@ -1520,7 +1520,7 @@ describe("native batch and run-bound manual lifecycle", () => {
         expect(
           await engine.getStoreDateTimeWaitpoint({ ...scope, waitpointId: timed.waitpoint.id })
         ).toMatchObject(values);
-        const listed = await engine.listStoreManualWaitpoints({
+        const { waitpoints: listed } = await engine.listStoreManualWaitpoints({
           organizationId: env.organization.id,
           environmentId: env.id,
           tags: ["tag-3"],
@@ -1757,7 +1757,7 @@ describe("native batch and run-bound manual lifecycle", () => {
         expect(
           await engine.getStoreDateTimeWaitpoint({ ...scope, waitpointId: old.waitpoint.id })
         ).toMatchObject({ id: old.waitpoint.id, status: "PENDING" });
-        const listed = await engine.listStoreManualWaitpoints({
+        const { waitpoints: listed } = await engine.listStoreManualWaitpoints({
           organizationId: env.organization.id,
           environmentId: env.id,
           idempotencyKey: "second",
@@ -2519,7 +2519,7 @@ describe("native batch and run-bound manual lifecycle", () => {
         });
 
         expect(await engine.getStoreDateTimeWaitpoint({ ...scope, waitpointId: id })).toBeNull();
-        const listed = await engine.listStoreManualWaitpoints({
+        const { waitpoints: listed } = await engine.listStoreManualWaitpoints({
           organizationId: env.organization.id,
           environmentId: env.id,
           direction: "forward",
@@ -2561,6 +2561,184 @@ describe("native batch and run-bound manual lifecycle", () => {
         await store.quit();
         await snapshots.quit();
         await redis.quit();
+      }
+    }
+  );
+
+  containerTest(
+    "standalone MANUAL token completes once, times out and resumes its waiting runs once",
+    async ({ prisma, redisOptions }) => {
+      const snapshots = new RedisSnapshotStore({ redisOptions, completedTtlMs: 60000 });
+      const store = new WaitpointStoreCoordinator({ redisOptions });
+      const engine = makeEngine(prisma, redisOptions, {
+        store,
+        snapshotStore: snapshots,
+        isWaitpointStoreEnabled: () => true,
+      });
+      try {
+        const env = await setupAuthenticatedEnvironment(prisma, "PRODUCTION");
+        const organizationId = env.organization.id;
+        const scope = { environmentId: env.id, projectId: env.project.id, organizationId };
+        await setupBackgroundWorker(engine, env, ["standalone-waiter"]);
+        const startRun = async () => {
+          const run = await triggerRun(engine, env, prisma, {
+            friendlyId: RunId.generate().friendlyId,
+            taskIdentifier: "standalone-waiter",
+          });
+          await dequeueAndStart(engine, `standalone-${run.id}`);
+          return run;
+        };
+        const block = (runId: string, waitpointId: string) =>
+          engine.blockRunWithWaitpoint({
+            runId,
+            waitpoints: waitpointId,
+            projectId: env.project.id,
+            organizationId,
+          });
+        const resumedWith = (runId: string, waitpointId: string) =>
+          expect.poll(
+            async () => {
+              const data = await engine.getRunExecutionData({ runId });
+              return {
+                status: data?.snapshot.executionStatus,
+                completed: data?.completedWaitpoints.filter((w) => w.id === waitpointId),
+              };
+            },
+            { timeout: 10000, interval: 50, message: "the standalone token never resumed the run" }
+          );
+        const latestSnapshotId = async (runId: string) =>
+          (await engine.getRunExecutionData({ runId }))?.snapshot.id;
+        const fanoutDrained = (waitpointId: string) =>
+          expect
+            .poll(() => engine["worker"].getJob(`deliverWaitpointFanout:${waitpointId}`), {
+              timeout: 10000,
+              interval: 50,
+              message: "the completion fan-out never ran",
+            })
+            .toBeNull();
+
+        // Two runs wait on token A; one completion resumes each exactly once with its output.
+        const a = (await engine.createManualWaitpoint({ ...scope, standaloneStoreEligible: true }))
+          .waitpoint;
+        expect(parseWaitpointId(a.id)).toMatchObject({ format: "b32hexW", type: "MANUAL" });
+        const waiters = [await startRun(), await startRun()];
+        for (const run of waiters) await block(run.id, a.id);
+        const output = '{"value":"O"}';
+        await engine.completeWaitpoint({
+          id: a.id,
+          organizationId,
+          onlyIfPending: true,
+          output: { value: output, type: "application/json", isError: false },
+        });
+        for (const run of waiters)
+          await resumedWith(run.id, a.id).toMatchObject({
+            status: "EXECUTING",
+            completed: [{ id: a.id, output, outputIsError: false }],
+          });
+        await fanoutDrained(a.id);
+
+        // A repeat completion changes neither the output nor the resumed runs.
+        const resumedSnapshots = await Promise.all(waiters.map((run) => latestSnapshotId(run.id)));
+        await engine.completeWaitpoint({
+          id: a.id,
+          organizationId,
+          onlyIfPending: true,
+          output: { value: '{"value":"other"}', type: "application/json", isError: false },
+        });
+        await fanoutDrained(a.id);
+        expect(
+          (await engine.getStoreDateTimeWaitpoint({ ...scope, waitpointId: a.id }))?.output
+        ).toBe(output);
+        expect(await Promise.all(waiters.map((run) => latestSnapshotId(run.id)))).toEqual(
+          resumedSnapshots
+        );
+
+        // A run that blocks on the completed token continues with its output.
+        const late = await startRun();
+        await block(late.id, a.id);
+        await resumedWith(late.id, a.id).toMatchObject({
+          status: "EXECUTING",
+          completed: [{ id: a.id, output, outputIsError: false }],
+        });
+
+        // Token B times out by itself and resumes its run with the timeout error. The run starts
+        // first and blocks while B is pending, so the timeout must reach an existing waiter.
+        const timedRun = await startRun();
+        const timeout = new Date(Date.now() + 1000);
+        const b = (
+          await engine.createManualWaitpoint({ ...scope, timeout, standaloneStoreEligible: true })
+        ).waitpoint;
+        await block(timedRun.id, b.id);
+        expect(
+          (await engine.getStoreDateTimeWaitpoint({ ...scope, waitpointId: b.id }))?.status
+        ).toBe("PENDING");
+        const timeoutOutput = JSON.stringify(timeoutError(timeout));
+        await resumedWith(timedRun.id, b.id).toMatchObject({
+          status: "EXECUTING",
+          completed: [{ id: b.id, output: timeoutOutput, outputIsError: true }],
+        });
+        expect(
+          await engine.getStoreDateTimeWaitpoint({ ...scope, waitpointId: b.id })
+        ).toMatchObject({ status: "COMPLETED", outputIsError: true, output: timeoutOutput });
+
+        // Another environment, another project and another organisation do not see token A.
+        const otherEnvironment = await prisma.runtimeEnvironment.create({
+          data: {
+            type: "DEVELOPMENT",
+            slug: "other-env",
+            projectId: env.project.id,
+            organizationId,
+            apiKey: "other_env_api_key",
+            pkApiKey: "other_env_pk_api_key",
+            shortcode: "other_env",
+          },
+        });
+        const otherProject = await prisma.project.create({
+          data: {
+            name: "Other Project",
+            slug: "other-project",
+            externalRef: "proj_other",
+            organizationId,
+          },
+        });
+        const otherOrg = await prisma.organization.create({
+          data: { title: "Other Organization", slug: "other-organization" },
+        });
+        const otherOrgProject = await prisma.project.create({
+          data: {
+            name: "Other Org Project",
+            slug: "other-org-project",
+            externalRef: "proj_other_org",
+            organizationId: otherOrg.id,
+          },
+        });
+        const otherOrgEnvironment = await prisma.runtimeEnvironment.create({
+          data: {
+            type: "PRODUCTION",
+            slug: "other-org-env",
+            projectId: otherOrgProject.id,
+            organizationId: otherOrg.id,
+            apiKey: "other_org_api_key",
+            pkApiKey: "other_org_pk_api_key",
+            shortcode: "other_org",
+          },
+        });
+        for (const foreign of [
+          { ...scope, environmentId: otherEnvironment.id },
+          { ...scope, projectId: otherProject.id },
+          {
+            environmentId: otherOrgEnvironment.id,
+            projectId: otherOrgProject.id,
+            organizationId: otherOrg.id,
+          },
+        ])
+          expect(
+            await engine.getStoreDateTimeWaitpoint({ ...foreign, waitpointId: a.id })
+          ).toBeNull();
+      } finally {
+        await engine.quit();
+        await store.quit();
+        await snapshots.quit();
       }
     }
   );

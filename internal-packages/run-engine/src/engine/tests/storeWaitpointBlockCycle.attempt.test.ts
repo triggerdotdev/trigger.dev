@@ -12,6 +12,7 @@ import {
   captureAnchor,
   blockStore,
 } from "./utils/storeWaitpointBlockCycle.setup.js";
+import { makeEngine as makeFanoutEngine } from "./utils/storeRunWaitpointLifecycleFixtures.js";
 
 describe("Store waitpoint block cycle: attempt", () => {
   containerTestWithIsolatedRedis(
@@ -445,6 +446,170 @@ describe("Store waitpoint block cycle: attempt", () => {
         expect(state.terminal).toBe(true);
         expect(state.blockId).toBeUndefined();
         expect(await describeLiveWatchers(store, wp)).toBe(0);
+      } finally {
+        await engine.quit();
+        await quitTestStore(store);
+        await snapshotStore.quit();
+      }
+    }
+  );
+
+  containerTestWithIsolatedRedis(
+    "standalone MANUAL token: cancel, final failure and retry withdraw only that run's wait and keep it in the history",
+    async ({ prisma, redisOptions }) => {
+      const snapshotStore = new RedisSnapshotStore({ redisOptions, completedTtlMs: 60_000 });
+      const store = await createTestStore(redisOptions);
+      // A standalone token resumes its waiting runs through the fan-out, so the engine wires the fan-out store.
+      const engine = makeFanoutEngine(prisma, redisOptions, { store, snapshotStore });
+      try {
+        const env = await setupAuthenticatedEnvironment(prisma, "PRODUCTION");
+        const taskIdentifier = "test-task";
+        await setupBackgroundWorker(engine, env, taskIdentifier);
+        const orgId = env.organization.id;
+        const scope = { environmentId: env.id, projectId: env.project.id, organizationId: orgId };
+        const { waitpoint } = await engine.createManualWaitpoint({
+          ...scope,
+          standaloneStoreEligible: true,
+        });
+        const token = waitpoint.id;
+        const block = async (runId: string, opId: string) =>
+          blockStore(engine, {
+            runId,
+            projectId: env.project.id,
+            organizationId: orgId,
+            waitpoints: [token],
+            blockOperation: { id: opId, cycleAnchor: await captureAnchor(engine, runId) },
+          });
+        const fail = (
+          runId: string,
+          snapshotId: string,
+          retry?: { timestamp: number; delay: number }
+        ) =>
+          engine.completeRunAttempt({
+            runId,
+            snapshotId,
+            completion: {
+              ok: false,
+              id: runId,
+              error: {
+                type: "BUILT_IN_ERROR" as const,
+                name: "Error",
+                message: "boom",
+                stackTrace: "",
+              },
+              retry,
+            },
+          });
+        // The API shows a PENDING token as WAITING.
+        const expectPending = async () =>
+          expect(
+            (await engine.getStoreDateTimeWaitpoint({ ...scope, waitpointId: token }))?.status
+          ).toBe("PENDING");
+
+        const r1 = await runToExecuting(
+          engine,
+          env,
+          taskIdentifier,
+          prisma,
+          "run_standalonecancel"
+        );
+        await block(r1.id, "standalone_cancel");
+        await engine.cancelRun({ runId: r1.id, finalizeRun: true });
+        await vi.waitFor(
+          async () =>
+            expect(
+              (await engine.getRunExecutionData({ runId: r1.id }))?.snapshot.executionStatus
+            ).toBe("FINISHED"),
+          { timeout: 10_000, interval: 100 }
+        );
+        await expectPending();
+
+        const r2 = await runToExecuting(engine, env, taskIdentifier, prisma, "run_standalonefail");
+        const r2Blocked = await block(r2.id, "standalone_fail");
+        expect((await fail(r2.id, r2Blocked.id)).attemptStatus).toBe("RUN_FINISHED");
+        await expectPending();
+
+        const r3 = await runToExecuting(engine, env, taskIdentifier, prisma, "run_standaloneretry");
+        const r3Blocked = await block(r3.id, "standalone_retry_1");
+        expect(["RETRY_IMMEDIATELY", "RETRY_QUEUED"]).toContain(
+          (await fail(r3.id, r3Blocked.id, { timestamp: Date.now() + 50, delay: 50 })).attemptStatus
+        );
+        await expectPending();
+        await vi.waitFor(
+          async () => {
+            const dequeued = await engine.dequeueFromWorkerQueue({
+              consumerId: "c_standalone_retry",
+              workerQueue: "main",
+              blockingPopTimeoutSeconds: 1,
+            });
+            if (dequeued.length === 1) {
+              await engine.startRunAttempt({
+                runId: dequeued[0]!.run.id,
+                snapshotId: dequeued[0]!.snapshot.id,
+              });
+            }
+            expect(
+              (await engine.getRunExecutionData({ runId: r3.id }))?.snapshot.executionStatus,
+              "the retried run never started its next attempt"
+            ).toBe("EXECUTING");
+          },
+          { timeout: 15_000, interval: 200 }
+        );
+        const reblocked = await block(r3.id, "standalone_retry_2");
+        expect(reblocked.executionStatus).toBe("EXECUTING_WITH_WAITPOINTS");
+        await expectPending();
+
+        const endedRuns = () =>
+          Promise.all(
+            [r1, r2].map(async (run) => ({
+              snapshotId: (await engine.getRunExecutionData({ runId: run.id }))?.snapshot.id,
+              status: (await prisma.taskRun.findUniqueOrThrow({ where: { id: run.id } })).status,
+            }))
+          );
+        const ended = await endedRuns();
+        expect(ended.map((run) => run.status)).toEqual(["CANCELED", "COMPLETED_WITH_ERRORS"]);
+        const executingSince = async () =>
+          (await engine.getSnapshotsSince({ runId: r3.id, snapshotId: reblocked.id }))?.filter(
+            (snapshot) => snapshot.snapshot.executionStatus === "EXECUTING"
+          ).length;
+        const complete = (value: string) =>
+          engine.completeWaitpoint({
+            id: token,
+            organizationId: orgId,
+            onlyIfPending: true,
+            output: { value, type: "application/json", isError: false },
+          });
+        const fanoutDrained = () =>
+          vi.waitFor(
+            async () =>
+              expect(await engine["worker"].getJob(`deliverWaitpointFanout:${token}`)).toBeNull(),
+            { timeout: 10_000, interval: 50 }
+          );
+
+        await complete('{"done":true}');
+        await vi.waitFor(
+          async () => {
+            const data = await engine.getRunExecutionData({ runId: r3.id });
+            expect(data?.snapshot.executionStatus).toBe("EXECUTING");
+            expect(data?.completedWaitpoints).toMatchObject([
+              { id: token, output: '{"done":true}' },
+            ]);
+          },
+          { timeout: 10_000, interval: 50 }
+        );
+        await fanoutDrained();
+        expect(await executingSince()).toBe(1);
+
+        await complete('{"done":"again"}');
+        await fanoutDrained();
+        expect(await executingSince()).toBe(1);
+        expect(await endedRuns()).toEqual(ended);
+
+        const { runIds } = await engine.waitpointSystem.readStoreWaitpointRelatedRunIds({
+          ...scope,
+          waitpointId: token,
+        });
+        expect(runIds).toEqual(expect.arrayContaining([r1.id, r2.id, r3.id]));
       } finally {
         await engine.quit();
         await quitTestStore(store);
