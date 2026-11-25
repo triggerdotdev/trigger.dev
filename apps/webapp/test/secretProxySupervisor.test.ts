@@ -15,7 +15,6 @@ import {
   WORKLOAD_HEADERS,
 } from "@trigger.dev/core/v3/workers";
 import { createServer, request, type Server } from "node:http";
-import type { RedisOptions } from "ioredis";
 import type { PrismaClient } from "@trigger.dev/database";
 import { EventEmitter, once } from "node:events";
 import type { AddressInfo } from "node:net";
@@ -54,6 +53,23 @@ const machines = {
 const fixture = new SecretProxyFixture("manual");
 beforeAll(() => fixture.start(), 600_000);
 afterAll(() => fixture.stop(), 60_000);
+
+// The engine is a fixture so it quits before the per-test Redis container stops.
+// onTestFinished runs after fixture teardown, leaving quit() retrying a dead Redis for ~40s.
+const engineTest = postgresAndRedisTest.extend<{ engine: RunEngine }>({
+  engine: async ({ prisma, redisOptions }, use) => {
+    const engine = new RunEngine({
+      prisma,
+      worker: { redis: redisOptions, workers: 1, tasksPerWorker: 10, pollIntervalMs: 100 },
+      queue: { redis: redisOptions, masterQueueConsumersDisabled: true },
+      runLock: { redis: redisOptions },
+      machines,
+      tracer: trace.getTracer("secret-proxy-retries"),
+    });
+    await use(engine);
+    await engine.quit();
+  },
+});
 
 async function listen(server: Server): Promise<number> {
   server.listen(0, "127.0.0.1");
@@ -151,18 +167,9 @@ function bindings() {
   return value;
 }
 
-postgresAndRedisTest(
+engineTest(
   "ordinary retries remain immediate on proxy-enabled supervisors",
-  async ({ prisma, redisOptions }) => {
-    const engine = new RunEngine({
-      prisma,
-      worker: { redis: redisOptions, workers: 1, tasksPerWorker: 10, pollIntervalMs: 100 },
-      queue: { redis: redisOptions, masterQueueConsumersDisabled: true },
-      runLock: { redis: redisOptions },
-      machines,
-      tracer: trace.getTracer("secret-proxy-retries"),
-    });
-    onTestFinished(() => engine.quit());
+  async ({ prisma, engine }) => {
     const environment = await setupAuthenticatedEnvironment(prisma, "PRODUCTION");
     await setupBackgroundWorker(engine, environment, "cold-retry");
     const client = await engineBoundary(engine, environment.id);
@@ -274,21 +281,12 @@ postgresAndRedisTest(
 
 async function setupProxyRun(
   prisma: PrismaClient,
-  redisOptions: RedisOptions,
+  engine: RunEngine,
   options: {
     annotations?: Parameters<RunEngine["trigger"]>[0]["annotations"];
     singleUse?: boolean;
   } = {}
 ) {
-  const engine = new RunEngine({
-    prisma,
-    worker: { redis: redisOptions, workers: 1, tasksPerWorker: 10, pollIntervalMs: 100 },
-    queue: { redis: redisOptions, masterQueueConsumersDisabled: true },
-    runLock: { redis: redisOptions },
-    machines,
-    tracer: trace.getTracer("secret-proxy-retries"),
-  });
-  onTestFinished(() => engine.quit());
   const environment = await setupAuthenticatedEnvironment(prisma, "PRODUCTION");
   const { deployment } = await setupBackgroundWorker(engine, environment, "proxy-retry");
   assertNonNullable(deployment);
@@ -397,10 +395,10 @@ async function currentBindingId(caller: SecretProxyCaller): Promise<string> {
   });
 }
 
-postgresAndRedisTest(
+engineTest(
   "a second placement cannot bind an already executing run",
-  async ({ prisma, redisOptions }) => {
-    const f = await setupProxyRun(prisma, redisOptions);
+  async ({ prisma, engine }) => {
+    const f = await setupProxyRun(prisma, engine);
     const first = f.callers[0]!;
     const second = { ...f.callers[1]!, runId: f.run.friendlyId };
     const secondProxy = bindings();
@@ -420,9 +418,9 @@ postgresAndRedisTest(
   }
 );
 
-postgresAndRedisTest(
+engineTest(
   "sandbox proxy delivery is bootstrap-only and reused allocations cannot claim cold starts",
-  async ({ prisma, redisOptions, postgresContainer }) => {
+  async ({ prisma, engine, postgresContainer }) => {
     const encryptionKey = "0123456789abcdef0123456789abcdef";
     Object.assign(process.env, {
       DATABASE_URL: postgresContainer.getConnectionUri(),
@@ -447,7 +445,7 @@ postgresAndRedisTest(
     const { FEATURE_FLAG } = await import("~/v3/featureFlags");
     const { AuthenticatedWorkerInstance } =
       await import("~/v3/services/worker/workerGroupTokenService.server");
-    const f = await setupProxyRun(prisma, redisOptions, {
+    const f = await setupProxyRun(prisma, engine, {
       annotations: {
         triggerSource: "sdk",
         triggerAction: "trigger",
@@ -602,10 +600,10 @@ postgresAndRedisTest(
   }
 );
 
-postgresAndRedisTest(
+engineTest(
   "a later-snapshot completion after supervisor restart revokes before retry and only its owner can complete",
-  async ({ prisma, redisOptions }) => {
-    const f = await setupProxyRun(prisma, redisOptions);
+  async ({ prisma, engine }) => {
+    const f = await setupProxyRun(prisma, engine);
     const caller = f.callers[0]!;
     const started = await f.start(caller, f.dequeued.snapshot.id);
     const previousBinding = await currentBindingId(caller);
@@ -713,10 +711,10 @@ postgresAndRedisTest(
   }
 );
 
-postgresAndRedisTest(
+engineTest(
   "busy retirement fences a pending platform start and retries its forced settlement",
-  async ({ prisma, redisOptions }) => {
-    const f = await setupProxyRun(prisma, redisOptions);
+  async ({ prisma, engine }) => {
+    const f = await setupProxyRun(prisma, engine);
     const caller = f.callers[0]!;
     const signals = new EventEmitter();
     const accepted = once(signals, "accepted");
