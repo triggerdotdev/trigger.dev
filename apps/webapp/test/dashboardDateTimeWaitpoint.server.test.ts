@@ -3,7 +3,10 @@ import { trace } from "@internal/tracing";
 import { describe, expect } from "vitest";
 import { RunEngine } from "../../../internal-packages/run-engine/src/engine/index.js";
 import { WaitpointStoreCoordinator } from "../../../internal-packages/run-engine/src/engine/waitpointCoordinator/storeCoordinator.js";
-import { StoreWaitpointCoordinator } from "../../../internal-packages/run-engine/src/engine/waitpointCoordinator/storeWaitpointCoordinator.js";
+import {
+  StoreWaitpointCoordinator,
+  isStandaloneStoreWaitpoint,
+} from "../../../internal-packages/run-engine/src/engine/waitpointCoordinator/storeWaitpointCoordinator.js";
 import { createRedisClient } from "@internal/redis";
 import { generateRunOpsId } from "@trigger.dev/core/v3/isomorphic";
 import { PostgresRunStore } from "@internal/run-store";
@@ -11,7 +14,10 @@ import {
   waitpointRelatedRunsKey,
   waitpointKeys,
 } from "../../../internal-packages/run-engine/src/engine/waitpointCoordinator/keys.js";
-import { triggerRun } from "../../../internal-packages/run-engine/src/engine/tests/utils/storeRunWaitpointLifecycleFixtures.js";
+import {
+  dequeueAndStart,
+  triggerRun,
+} from "../../../internal-packages/run-engine/src/engine/tests/utils/storeRunWaitpointLifecycleFixtures.js";
 import {
   setupAuthenticatedEnvironment,
   setupBackgroundWorker,
@@ -225,6 +231,190 @@ describe("dashboardDateTimeWaitpoint.server", () => {
         await store.quit();
         await shortStore.quit();
         await redis.quit();
+      }
+    }
+  );
+
+  // Catches: the detail page of a standalone MemoryDB token losing the runs that waited on it once they end or the token completes.
+  containerTest(
+    "standalone MemoryDB token page lists the runs that waited after they ended",
+    async ({ prisma, redisOptions }) => {
+      const store = new WaitpointStoreCoordinator({ redisOptions });
+      const adapter = new StoreWaitpointCoordinator({ store });
+      const flagged = new Set<string>();
+      const engine = new RunEngine({
+        prisma,
+        worker: { redis: redisOptions, workers: 1, tasksPerWorker: 10, pollIntervalMs: 100 },
+        queue: { redis: redisOptions, masterQueueConsumersDisabled: true },
+        runLock: { redis: redisOptions },
+        machines: {
+          defaultMachine: "small-1x",
+          machines: { "small-1x": { name: "small-1x", cpu: 0.5, memory: 0.5, centsPerMs: 0.0001 } },
+          baseCostInCents: 0.0001,
+        },
+        tracer: trace.getTracer("dashboard-waitpoint-test"),
+        waitpointStore: store,
+        waitpointRouting: { store: adapter },
+        waitpointStoreEnabled: (organizationId) => flagged.has(organizationId),
+      });
+      try {
+        const env = await setupAuthenticatedEnvironment(prisma, "PRODUCTION");
+        flagged.add(env.organization.id);
+        await setupBackgroundWorker(engine, env, ["token-waiter"]);
+        const { waitpoint } = await adapter.createManualWaitpoint({
+          projectId: env.project.id,
+          environmentId: env.id,
+          mintContext: { organizationId: env.organization.id },
+        });
+        expect(isStoreDateTimeWaitpoint(waitpoint.id)).toBe(true);
+        expect(await prisma.waitpoint.count({ where: { id: waitpoint.id } })).toBe(0);
+
+        const waited: string[] = [];
+        for (let i = 0; i < 3; i++) {
+          const run = await triggerRun(engine, env, prisma, {
+            friendlyId: `run_${generateRunOpsId()}`,
+            taskIdentifier: "token-waiter",
+          });
+          await dequeueAndStart(engine, "token-waiter");
+          // As the token wait route blocks a run.
+          const blockOperation = await engine.waitpointSystem.buildStoreBlockOperation({
+            runId: run.id,
+            waitpointId: waitpoint.id,
+            organizationId: env.organization.id,
+          });
+          expect(blockOperation).toBeDefined();
+          await engine.blockRunWithWaitpoint({
+            runId: run.id,
+            waitpoints: [waitpoint.id],
+            projectId: env.project.id,
+            organizationId: env.organization.id,
+            blockOperation,
+            expectedEnvironmentId: env.id,
+          });
+          await engine.cancelRun({ runId: run.id, organizationId: env.organization.id });
+          expect(await prisma.taskRun.findFirst({ where: { id: run.id } })).toMatchObject({
+            status: "CANCELED",
+          });
+          waited.push(run.friendlyId);
+        }
+
+        const scope = {
+          waitpointId: waitpoint.id,
+          environmentId: env.id,
+          projectId: env.project.id,
+          organizationId: env.organization.id,
+        };
+        const runStore = new PostgresRunStore({ prisma, readOnlyPrisma: prisma });
+        expect(
+          (await resolveDashboardWaitpointRelatedRuns(scope, engine, runStore)).sort()
+        ).toEqual([...waited].sort());
+        await engine.completeWaitpoint({ id: waitpoint.id, organizationId: env.organization.id });
+        expect(
+          await engine.getStoreDateTimeWaitpoint({ ...scope, waitpointId: waitpoint.id })
+        ).toMatchObject({ status: "COMPLETED" });
+        expect(
+          (await resolveDashboardWaitpointRelatedRuns(scope, engine, runStore)).sort()
+        ).toEqual([...waited].sort());
+      } finally {
+        await engine.quit();
+        await store.quit();
+      }
+    }
+  );
+
+  // Catches: a manual token's dashboard showing older or capped-out runs instead of the newest, repeating a run, or crossing tenants.
+  containerTest(
+    "dashboard related runs of a standalone token are the most recently registered existing runs",
+    async ({ prisma, redisOptions }) => {
+      let now = Date.now();
+      const store = new WaitpointStoreCoordinator({
+        redisOptions,
+        clock: () => (now = Math.max(now + 1, Date.now())),
+      });
+      const adapter = new StoreWaitpointCoordinator({ store });
+      const enabledOrganizations = new Set<string>();
+      const engine = new RunEngine({
+        prisma,
+        worker: { redis: redisOptions, workers: 1, tasksPerWorker: 10, pollIntervalMs: 100 },
+        queue: { redis: redisOptions, masterQueueConsumersDisabled: true },
+        runLock: { redis: redisOptions },
+        machines: {
+          defaultMachine: "small-1x",
+          machines: { "small-1x": { name: "small-1x", cpu: 0.5, memory: 0.5, centsPerMs: 0.0001 } },
+          baseCostInCents: 0.0001,
+        },
+        tracer: trace.getTracer("dashboard-waitpoint-test"),
+        waitpointStore: store,
+        waitpointRouting: {
+          store: adapter,
+          mintPolicy: { resolveMintMode: () => "redis", isCapabilityReady: () => true },
+        },
+        waitpointStoreEnabled: (organizationId) => enabledOrganizations.has(organizationId),
+      });
+      try {
+        const env = await setupAuthenticatedEnvironment(prisma, "PRODUCTION");
+        enabledOrganizations.add(env.organization.id);
+        await setupBackgroundWorker(engine, env, ["related-run"]);
+        const trigger = () =>
+          triggerRun(engine, env, prisma, {
+            friendlyId: `run_${generateRunOpsId()}`,
+            taskIdentifier: "related-run",
+          });
+        const scope = {
+          environmentId: env.id,
+          projectId: env.project.id,
+          organizationId: env.organization.id,
+        };
+        const token = await engine.createManualWaitpoint({
+          ...scope,
+          standaloneStoreEligible: true,
+        });
+        expect(isStoreDateTimeWaitpoint(token.waitpoint.id)).toBe(true);
+        expect(isStandaloneStoreWaitpoint(token.waitpoint)).toBe(true);
+
+        // 2 existing runs among the first 50 registered, which the cap drops, and 6 among the last 100.
+        const existingAt = [10, 30, 60, 80, 100, 120, 140, 149];
+        const existing = new Map<number, { id: string; friendlyId: string }>();
+        for (const index of existingAt) existing.set(index, await trigger());
+        const registered = Array.from(
+          { length: 150 },
+          (_, i) => existing.get(i)?.id ?? generateRunOpsId()
+        );
+        for (const runId of registered) {
+          await store.registerOrReport({
+            waitpointId: token.waitpoint.id,
+            runId,
+            blockId: "manual-history",
+            createdAt: new Date().toISOString(),
+          });
+          await store.unregisterWatcher({
+            waitpointId: token.waitpoint.id,
+            runId,
+            blockId: "manual-history",
+          });
+        }
+
+        const runStore = new PostgresRunStore({ prisma, readOnlyPrisma: prisma });
+        const relationScope = { ...scope, waitpointId: token.waitpoint.id };
+        const shown = await resolveDashboardWaitpointRelatedRuns(
+          relationScope,
+          engine,
+          runStore,
+          true
+        );
+        expect(shown).toEqual([149, 140, 120, 100, 80].map((i) => existing.get(i)!.friendlyId));
+        expect(new Set(shown).size).toBe(shown.length);
+        expect(
+          await resolveDashboardWaitpointRelatedRuns(
+            { ...relationScope, environmentId: "foreign-env" },
+            engine,
+            runStore,
+            true
+          )
+        ).toEqual([]);
+      } finally {
+        await engine.quit();
+        await store.quit();
       }
     }
   );

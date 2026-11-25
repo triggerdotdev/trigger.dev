@@ -41,6 +41,7 @@ import { LegacyPostgresWaitpointCoordinator } from "../waitpointCoordinator/lega
 import {
   batchPositionOwner,
   StoreWaitpointBlockRefusedError,
+  isStandaloneStoreWaitpoint,
   waitpointFromStoredRecord,
 } from "../waitpointCoordinator/storeWaitpointCoordinator.js";
 import type { WaitpointStoreCoordinator } from "../waitpointCoordinator/storeCoordinator.js";
@@ -1101,7 +1102,11 @@ export class WaitpointSystem {
     const source = await this.readExistingStoreDateTimeWaitpoint(params);
     if (!source) return { runIds: [] };
     return (
-      this.#waitpointStore?.readRelatedRunIds?.(params.waitpointId, params.cursor) ?? { runIds: [] }
+      this.#waitpointStore?.readRelatedRunIds?.(
+        params.waitpointId,
+        params.cursor,
+        isStandaloneStoreWaitpoint(source)
+      ) ?? { runIds: [] }
     );
   }
 
@@ -1343,6 +1348,7 @@ export class WaitpointSystem {
     tags,
     standaloneResidency,
     standaloneShardKey,
+    standaloneStoreEligible,
   }: {
     runId?: string;
     environmentId: string;
@@ -1356,6 +1362,9 @@ export class WaitpointSystem {
     // to LEGACY by its cuid id shape. Ignored when `runId` is set.
     standaloneResidency?: "NEW" | "LEGACY";
     standaloneShardKey?: ShardKey;
+    // Standalone token only (no `runId`): eligible for the waitpoint store when the flag is on.
+    // Ignored when `runId` is set. The caller sets it from the organization's standalone tokens flag.
+    standaloneStoreEligible?: boolean;
   }): Promise<{ waitpoint: Waitpoint; isCached: boolean }> {
     const enabled = !!(
       this.#storeWired &&
@@ -1377,7 +1386,7 @@ export class WaitpointSystem {
       });
     } else {
       const mintContext =
-        runId && organizationId
+        (runId || standaloneStoreEligible) && organizationId
           ? { organizationId, eligibleTypes: new Set(["MANUAL"] as const) }
           : undefined;
       const creationCoordinator =

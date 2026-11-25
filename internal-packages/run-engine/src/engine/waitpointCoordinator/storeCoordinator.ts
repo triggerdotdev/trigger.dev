@@ -113,6 +113,8 @@ export type WaitpointRecordInput = {
   completedAfter?: string;
   completedByTaskRunId?: string;
   completedByBatchId?: string;
+  /** Set only on a MANUAL token minted with no run. Absent on every run-bound record. */
+  standalone?: true;
 };
 
 function keyRetainUntil(record: WaitpointRecordInput): string {
@@ -999,21 +1001,37 @@ export class WaitpointStoreCoordinator {
   /** Stable source-lifetime history; callers authorize the source before reading a page. */
   async readRelatedRunIds(
     waitpointId: string,
-    cursor?: string
+    cursor?: string,
+    standalone?: boolean
   ): Promise<{ runIds: string[]; nextCursor?: string }> {
     const pageSize = 25;
+    if (!standalone) {
+      await this.beforeCommand?.();
+      const runIds = await this.redis.zrangebylex(
+        waitpointRelatedRunsKey(waitpointId),
+        cursor ? `(${cursor}` : "-",
+        "+",
+        "LIMIT",
+        0,
+        pageSize
+      );
+      return {
+        runIds,
+        nextCursor: runIds.length === pageSize ? runIds[runIds.length - 1] : undefined,
+      };
+    }
+    // A standalone token's history is newest first. The cursor is the next page's start offset;
+    // it only passes between pages of one dashboard read.
+    const start = cursor ? Number(cursor) : 0;
     await this.beforeCommand?.();
-    const runIds = await this.redis.zrangebylex(
+    const runIds = await this.redis.zrange(
       waitpointRelatedRunsKey(waitpointId),
-      cursor ? `(${cursor}` : "-",
-      "+",
-      "LIMIT",
-      0,
-      pageSize
+      start,
+      start + pageSize - 1
     );
     return {
       runIds,
-      nextCursor: runIds.length === pageSize ? runIds[runIds.length - 1] : undefined,
+      nextCursor: runIds.length === pageSize ? String(start + pageSize) : undefined,
     };
   }
 

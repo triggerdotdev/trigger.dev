@@ -1,12 +1,28 @@
-import { describe, expect } from "vitest";
+import { describe, expect, test } from "vitest";
 import { PrismaClient } from "@trigger.dev/database";
 import { waitpointKeyTransactionLaneForClient } from "@internal/run-store";
 import { signalsEmitter } from "~/services/signals.server";
 import { registerWaitpointKeyWriter } from "~/v3/waitpointKeyTransactionLane.server";
 import { postgresTest } from "@internal/testcontainers";
-import { createWaitpointStoreEnabledResolver } from "~/v3/utils/waitpointStoreEnabled.server";
+import {
+  createWaitpointStoreEnabledResolver,
+  waitpointStoreStandaloneTokensEnabled,
+} from "~/v3/utils/waitpointStoreEnabled.server";
 
 describe("waitpoint rollout", () => {
+  // Catches: standalone tokens following the store flag instead of their own.
+  test("standalone tokens use their own flag: org override, then global, then off", () => {
+    const enabled = waitpointStoreStandaloneTokensEnabled;
+    expect(enabled({ waitpointStoreEnabled: true }, undefined)).toBe(false);
+    expect(enabled({}, { waitpointStoreStandaloneTokens: true })).toBe(true);
+    expect(
+      enabled({ waitpointStoreStandaloneTokens: false }, { waitpointStoreStandaloneTokens: true })
+    ).toBe(false);
+    expect(enabled({ waitpointStoreStandaloneTokens: true }, undefined)).toBe(true);
+    expect(enabled({ waitpointStoreStandaloneTokens: "true" }, undefined)).toBe(false);
+    expect(enabled(null, undefined)).toBe(false);
+  });
+
   postgresTest(
     "waitpoint enrollment uses ordinary org flags, global fallback, and immediate rollback",
     async ({ prisma }) => {

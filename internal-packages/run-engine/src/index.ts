@@ -98,7 +98,10 @@ export type {
   WaitpointStoreCoordinatorOptions,
   WatcherEntry,
 } from "./engine/waitpointCoordinator/storeCoordinator.js";
-export { StoreWaitpointCoordinator } from "./engine/waitpointCoordinator/storeWaitpointCoordinator.js";
+export {
+  StoreWaitpointCoordinator,
+  isStandaloneStoreWaitpoint,
+} from "./engine/waitpointCoordinator/storeWaitpointCoordinator.js";
 export { WaitpointFanoutWorker } from "./engine/waitpointCoordinator/fanoutWorker.js";
 export type {
   FanoutTickSummary,

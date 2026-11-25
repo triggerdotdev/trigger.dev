@@ -39,7 +39,9 @@ export async function skipDashboardDateTimeWaitpoint(
 export async function resolveDashboardWaitpointRelatedRuns(
   scope: { waitpointId: string; environmentId: string; projectId: string; organizationId: string },
   engine: Pick<RunEngine, "getStoreWaitpointRelatedRunIds">,
-  runStore: Pick<RunStore, "findRuns">
+  runStore: Pick<RunStore, "findRuns">,
+  // A standalone token's history comes newest first, in offset pages.
+  standalone = false
 ): Promise<string[]> {
   const friendlyIds: string[] = [];
   let cursor: string | undefined;
@@ -49,6 +51,22 @@ export async function resolveDashboardWaitpointRelatedRuns(
       cursor,
     });
     if (!ids.length) return friendlyIds;
+    if (!standalone) {
+      const runs = await runStore.findRuns({
+        where: {
+          id: { in: boundedIn(ids) },
+          runtimeEnvironmentId: scope.environmentId,
+          projectId: scope.projectId,
+          organizationId: scope.organizationId,
+        },
+        select: { friendlyId: true },
+        take: 5 - friendlyIds.length,
+      });
+      friendlyIds.push(...runs.map((run) => run.friendlyId));
+      if (friendlyIds.length === 5 || !nextCursor) return friendlyIds;
+      cursor = nextCursor;
+      continue;
+    }
     const runs = await runStore.findRuns({
       where: {
         id: { in: boundedIn(ids) },
@@ -56,11 +74,17 @@ export async function resolveDashboardWaitpointRelatedRuns(
         projectId: scope.projectId,
         organizationId: scope.organizationId,
       },
-      select: { friendlyId: true },
-      take: 5 - friendlyIds.length,
+      select: { id: true, friendlyId: true },
     });
-    friendlyIds.push(...runs.map((run) => run.friendlyId));
-    if (friendlyIds.length === 5 || !nextCursor) return friendlyIds;
+    const found = new Map(runs.map((run) => [run.id, run.friendlyId]));
+    for (const id of ids) {
+      const friendlyId = found.get(id);
+      // A registration between pages shifts the offset cursor, so a run can come back next page.
+      if (!friendlyId || friendlyIds.includes(friendlyId)) continue;
+      friendlyIds.push(friendlyId);
+      if (friendlyIds.length === 5) return friendlyIds;
+    }
+    if (!nextCursor) return friendlyIds;
     cursor = nextCursor;
   }
 }

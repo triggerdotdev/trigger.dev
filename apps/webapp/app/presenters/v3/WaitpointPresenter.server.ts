@@ -1,3 +1,4 @@
+import { isStandaloneStoreWaitpoint } from "@internal/run-engine";
 import {
   isStoreDateTimeWaitpoint,
   resolveDashboardDateTimeWaitpoint,
@@ -168,7 +169,8 @@ export class WaitpointPresenter extends BasePresenter {
             organizationId: environment.organizationId,
           },
           this.engine,
-          this.runStore
+          this.runStore,
+          isStandaloneStoreWaitpoint(waitpoint)
         )
       : await this.#connectedRunFriendlyIds(waitpoint.id);
     const connectedRuns: NextRunListItem[] = [];

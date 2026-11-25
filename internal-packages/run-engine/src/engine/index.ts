@@ -2749,6 +2749,7 @@ export class RunEngine {
     tags,
     standaloneResidency,
     standaloneShardKey,
+    standaloneStoreEligible,
   }: {
     /** The run that blocks on this waitpoint. The waitpoint goes on that run's database. */
     runId?: string;
@@ -2762,6 +2763,8 @@ export class RunEngine {
     /** Database for a token with no owning run. Ignored when `runId` is set. */
     standaloneResidency?: "NEW" | "LEGACY";
     standaloneShardKey?: ShardKey;
+    /** Standalone token only (no `runId`): eligible for the waitpoint store when the flag is on. Ignored when `runId` is set. The caller sets it from the organization's standalone tokens flag. */
+    standaloneStoreEligible?: boolean;
   }): Promise<{ waitpoint: Waitpoint; isCached: boolean }> {
     return this.waitpointSystem.createManualWaitpoint({
       runId,
@@ -2774,6 +2777,7 @@ export class RunEngine {
       tags,
       standaloneResidency,
       standaloneShardKey,
+      standaloneStoreEligible,
     });
   }
 

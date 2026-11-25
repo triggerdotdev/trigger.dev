@@ -24,3 +24,21 @@ export function createWaitpointStoreEnabledResolver(
     return parsed.success ? parsed.data : (readFlags()?.waitpointStoreEnabled ?? false);
   };
 }
+
+/**
+ * Whether new standalone wait tokens may go to the waitpoint store (the store flag must be on as
+ * well): the organization override from its loaded flags, then the global value, then off. No query.
+ */
+export function waitpointStoreStandaloneTokensEnabled(
+  organizationFlags: unknown,
+  globalFlags: { waitpointStoreStandaloneTokens?: boolean } | undefined
+): boolean {
+  const value =
+    typeof organizationFlags === "object" &&
+    organizationFlags !== null &&
+    FEATURE_FLAG.waitpointStoreStandaloneTokens in organizationFlags
+      ? (organizationFlags as Record<string, unknown>)[FEATURE_FLAG.waitpointStoreStandaloneTokens]
+      : undefined;
+  const parsed = FeatureFlagCatalog[FEATURE_FLAG.waitpointStoreStandaloneTokens].safeParse(value);
+  return parsed.success ? parsed.data : (globalFlags?.waitpointStoreStandaloneTokens ?? false);
+}

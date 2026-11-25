@@ -23,6 +23,7 @@ import {
   runWithdrawalKey,
   runWithdrawalTargetsKey,
   waitpointKeys,
+  waitpointRelatedRunsKey,
   watcherField,
   WaitpointKeyTagError,
 } from "./keys.js";
@@ -401,6 +402,202 @@ describe("registerOrReport", () => {
       await store.quit();
     }
   });
+
+  // The history is ordered by the server's clock in microseconds, so no clock is injected.
+  function historyStore(redisOptions: RedisOptions) {
+    return new WaitpointStoreCoordinator({ redisOptions });
+  }
+
+  async function readWholeHistory(
+    store: WaitpointStoreCoordinator,
+    waitpointId: string,
+    standalone = true
+  ) {
+    const pages: string[][] = [];
+    let cursor: string | undefined;
+    do {
+      const page = await store.readRelatedRunIds(waitpointId, cursor, standalone);
+      pages.push(page.runIds);
+      cursor = page.nextCursor;
+    } while (cursor);
+    return pages;
+  }
+
+  const standaloneRecord = record("w_a", { standalone: true });
+
+  const runIds = (count: number, prefix = "run") =>
+    Array.from({ length: count }, (_, i) => `${prefix}_${String(i).padStart(3, "0")}`);
+
+  // Catches: a standalone history keeping more than 100 runs, trimming the newest, or reading oldest first.
+  redisTest(
+    "a standalone manual history keeps the 100 most recently registered runs, read newest first",
+    async ({ redisOptions }) => {
+      const store = historyStore(redisOptions);
+      const probe = createRedisClient(redisOptions);
+      try {
+        await store.createIfAbsent({ record: standaloneRecord, status: "PENDING" });
+        const registered = runIds(150);
+        for (const runId of registered) {
+          await store.registerOrReport({
+            waitpointId: "w_a",
+            runId,
+            blockId: BLOCK_ID,
+            createdAt: NOW,
+          });
+          await store.unregisterWatcher({ waitpointId: "w_a", runId, blockId: BLOCK_ID });
+        }
+        const newestFirst = registered.slice(50).reverse();
+
+        expect((await probe.zrange(waitpointRelatedRunsKey("w_a"), 0, -1)).sort()).toEqual(
+          registered.slice(50)
+        );
+        const pages = await readWholeHistory(store, "w_a");
+        expect(pages.map((page) => page.length)).toEqual([25, 25, 25, 25, 0]);
+        expect(pages.flat()).toEqual(newestFirst);
+      } finally {
+        probe.disconnect();
+        await store.quit();
+      }
+    }
+  );
+
+  // Catches: a run that registers again keeping its old position or taking a second entry in a full history.
+  redisTest(
+    "a run that registers again moves to the front of a full standalone history",
+    async ({ redisOptions }) => {
+      const store = historyStore(redisOptions);
+      const probe = createRedisClient(redisOptions);
+      try {
+        await store.createIfAbsent({ record: standaloneRecord, status: "PENDING" });
+        const registered = runIds(100);
+        for (const runId of registered)
+          await store.registerOrReport({
+            waitpointId: "w_a",
+            runId,
+            blockId: BLOCK_ID,
+            createdAt: NOW,
+          });
+        expect((await store.readRelatedRunIds("w_a", undefined, true)).runIds[0]).toBe("run_099");
+
+        await store.registerOrReport({
+          waitpointId: "w_a",
+          runId: "run_005",
+          blockId: "blk_retry",
+          createdAt: NOW,
+        });
+
+        expect((await store.readRelatedRunIds("w_a", undefined, true)).runIds[0]).toBe("run_005");
+        expect(await probe.zcard(waitpointRelatedRunsKey("w_a"))).toBe(100);
+        expect((await readWholeHistory(store, "w_a")).flat().sort()).toEqual(registered);
+      } finally {
+        probe.disconnect();
+        await store.quit();
+      }
+    }
+  );
+
+  // Catches: score-0 entries reading before new registrations, or new registrations being trimmed before them.
+  redisTest(
+    "new standalone registrations read before entries written with score 0, which are cut first",
+    async ({ redisOptions }) => {
+      const store = historyStore(redisOptions);
+      const probe = createRedisClient(redisOptions);
+      try {
+        await store.createIfAbsent({ record: standaloneRecord, status: "PENDING" });
+        const seeded = runIds(30, "old");
+        for (const runId of seeded) await probe.zadd(waitpointRelatedRunsKey("w_a"), 0, runId);
+        const fresh = runIds(80, "new");
+        for (const runId of fresh)
+          await store.registerOrReport({
+            waitpointId: "w_a",
+            runId,
+            blockId: BLOCK_ID,
+            createdAt: NOW,
+          });
+
+        const history = (await readWholeHistory(store, "w_a")).flat();
+        expect(history).toHaveLength(100);
+        expect(await probe.zcard(waitpointRelatedRunsKey("w_a"))).toBe(100);
+        expect(history.slice(0, 80)).toEqual([...fresh].reverse());
+        const keptSeeded = history.slice(80);
+        expect(new Set(keptSeeded).size).toBe(20);
+        expect(keptSeeded.every((runId) => seeded.includes(runId))).toBe(true);
+      } finally {
+        probe.disconnect();
+        await store.quit();
+      }
+    }
+  );
+
+  // Catches: registrations after completion skipping the 100 cap or leaving the history without the record's expiry.
+  redisTest(
+    "registrations after completion keep the cap and the record's expiry on the history",
+    async ({ redisOptions }) => {
+      const store = historyStore(redisOptions);
+      const probe = createRedisClient(redisOptions);
+      try {
+        await store.createIfAbsent({ record: standaloneRecord, status: "PENDING" });
+        await store.complete({ waitpointId: "w_a", completion: completion() });
+        const registered = runIds(101);
+        for (const runId of registered) {
+          const result = await store.registerOrReport({
+            waitpointId: "w_a",
+            runId,
+            blockId: BLOCK_ID,
+            createdAt: NOW,
+          });
+          expect(result.outcome).toBe("completed");
+        }
+
+        expect((await readWholeHistory(store, "w_a")).flat()).toEqual(
+          registered.slice(1).reverse()
+        );
+        const [recordTtl, historyTtl] = await Promise.all([
+          probe.pttl(waitpointKeys("w_a").record),
+          probe.pttl(waitpointRelatedRunsKey("w_a")),
+        ]);
+        expect(recordTtl).toBeGreaterThan(0);
+        expect(Math.abs(recordTtl - historyTtl)).toBeLessThanOrEqual(100);
+      } finally {
+        probe.disconnect();
+        await store.quit();
+      }
+    }
+  );
+
+  // Catches: the standalone history cap or order reaching a run-bound token.
+  for (const type of ["DATETIME", "MANUAL"] as const)
+    redisTest(
+      `a ${type === "MANUAL" ? "run-bound MANUAL" : type} history keeps every run with score 0, read in run id order`,
+      async ({ redisOptions }) => {
+        const store = historyStore(redisOptions);
+        const probe = createRedisClient(redisOptions);
+        try {
+          await store.createIfAbsent({
+            record: record("w_a", { type }),
+            status: "PENDING",
+          });
+          const registered = runIds(150);
+          for (const runId of [...registered].reverse())
+            await store.registerOrReport({
+              waitpointId: "w_a",
+              runId,
+              blockId: BLOCK_ID,
+              createdAt: NOW,
+            });
+
+          const scored = await probe.zrange(waitpointRelatedRunsKey("w_a"), 0, -1, "WITHSCORES");
+          expect(scored).toHaveLength(300);
+          expect(scored.filter((_, i) => i % 2 === 1).every((score) => score === "0")).toBe(true);
+          const pages = await readWholeHistory(store, "w_a", false);
+          expect(pages.map((page) => page.length)).toEqual([25, 25, 25, 25, 25, 25, 0]);
+          expect(pages.flat()).toEqual(registered);
+        } finally {
+          probe.disconnect();
+          await store.quit();
+        }
+      }
+    );
 });
 
 describe("complete", () => {

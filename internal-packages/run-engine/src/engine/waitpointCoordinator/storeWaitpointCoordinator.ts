@@ -582,6 +582,7 @@ export class StoreWaitpointCoordinator implements WaitpointCoordinator {
       idempotencyKey: params.idempotencyKey,
       idempotencyKeyExpiresAt: params.idempotencyKeyExpiresAt?.toISOString(),
       userProvidedIdempotencyKey: !!params.idempotencyKey,
+      standalone: type === "MANUAL" && !params.runId ? true : undefined,
     });
 
     if (type === "MANUAL") await this.#store.manualCatalog.publish(record, acceptUntil);
@@ -754,6 +755,7 @@ export class StoreWaitpointCoordinator implements WaitpointCoordinator {
     completedByTaskRunId?: string;
     completedByBatchId?: string;
     tags?: string[];
+    standalone?: true;
   }): WaitpointRecordInput {
     const nowIso = new Date(this.#clock()).toISOString();
     return {
@@ -772,6 +774,8 @@ export class StoreWaitpointCoordinator implements WaitpointCoordinator {
       completedAfter: fields.completedAfter,
       completedByTaskRunId: fields.completedByTaskRunId,
       completedByBatchId: fields.completedByBatchId,
+      // JSON drops undefined, so a run-bound record is written exactly as before.
+      standalone: fields.standalone,
     };
   }
 
@@ -790,6 +794,14 @@ export class StoreWaitpointCoordinator implements WaitpointCoordinator {
   }
 }
 
+// Kept off the Waitpoint's own fields, so nothing that serializes a waitpoint changes.
+const standaloneWaitpoints = new WeakSet<object>();
+
+/** Whether this waitpoint, as returned by the engine's store reads, is a standalone token. */
+export function isStandaloneStoreWaitpoint(waitpoint: object): boolean {
+  return standaloneWaitpoints.has(waitpoint);
+}
+
 /**
  * Convert a store record to the existing Waitpoint return type.
  * Fill the fields callers read. Set the remaining fields to null.
@@ -800,7 +812,7 @@ export function waitpointFromStoredRecord(
 ): Waitpoint {
   const record = stored.record;
   const completion = stored.completion;
-  return {
+  const waitpoint = {
     id: waitpointId,
     friendlyId: record.friendlyId ?? WaitpointId.toFriendlyId(waitpointId),
     type: record.type,
@@ -828,4 +840,6 @@ export function waitpointFromStoredRecord(
     updatedAt: record.updatedAt ? new Date(record.updatedAt) : new Date(),
     tags: record.tags ?? [],
   } as unknown as Waitpoint;
+  if (record.standalone) standaloneWaitpoints.add(waitpoint);
+  return waitpoint;
 }

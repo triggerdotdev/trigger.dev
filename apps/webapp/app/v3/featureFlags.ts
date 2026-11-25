@@ -8,6 +8,7 @@ export function hasAgentVault(flags: unknown) {
 
 export const FEATURE_FLAG = {
   waitpointStoreEnabled: "waitpointStoreEnabled",
+  waitpointStoreStandaloneTokens: "waitpointStoreStandaloneTokens",
   snapshotStoreMode: "snapshotStoreMode",
   allowEmptyEnvironmentVariableValues: "allowEmptyEnvironmentVariableValues",
   agentVault: "agentVault",
@@ -115,6 +116,8 @@ export type SessionVersionFloor = z.infer<typeof SessionVersionFloor>;
 
 export const FeatureFlagCatalog = {
   [FEATURE_FLAG.waitpointStoreEnabled]: z.boolean(),
+  // Standalone wait tokens go to the waitpoint store only when waitpointStoreEnabled is on too.
+  [FEATURE_FLAG.waitpointStoreStandaloneTokens]: z.boolean(),
   // Organization override, then global default, then off.
   [FEATURE_FLAG.snapshotStoreMode]: z.enum(["off", "dual-write", "redis-read", "redis-only"]),
   [FEATURE_FLAG.allowEmptyEnvironmentVariableValues]: z.boolean(),

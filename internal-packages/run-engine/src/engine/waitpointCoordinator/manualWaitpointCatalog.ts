@@ -16,6 +16,8 @@ export type ManualWaitpointCatalogManifest = {
   tags: string[];
   createdAt: string;
   acceptUntil: number;
+  /** Copied from the record: a MANUAL token minted with no run. Absent otherwise. */
+  standalone?: true;
 };
 
 /** A hash field per source, in the SAME slot as its existing organization discovery owner. */
@@ -34,7 +36,8 @@ export function parseManualWaitpointCatalogManifest(raw: string): ManualWaitpoin
     !Array.isArray(value.tags) ||
     !value.tags.every((tag) => typeof tag === "string") ||
     !Number.isFinite(Date.parse(value.createdAt)) ||
-    !Number.isFinite(value.acceptUntil)
+    !Number.isFinite(value.acceptUntil) ||
+    (value.standalone !== undefined && value.standalone !== true)
   )
     throw new Error("Invalid MANUAL waitpoint catalog manifest");
   return value;
@@ -138,6 +141,8 @@ export class ManualWaitpointCatalog {
       tags: [...new Set(record.tags)].sort(),
       createdAt: record.createdAt,
       acceptUntil,
+      // JSON drops undefined, so a run-bound manifest is written exactly as before.
+      standalone: record.standalone,
     };
     const serialized = JSON.stringify(manifest);
     parseManualWaitpointCatalogManifest(serialized);

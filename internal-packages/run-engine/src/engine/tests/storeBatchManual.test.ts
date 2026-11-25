@@ -6,7 +6,10 @@ import { keyedWaitpointTest as containerTest } from "./utils/keyedWaitpointTest.
 import { PostgresRunStore, RedisSnapshotStore, batchStoreWaitpointId } from "@internal/run-store";
 import { createRedisClient } from "@internal/redis";
 import { ManualWaitpointRollbackRecovery } from "../waitpointCoordinator/manualRollbackRecovery.js";
-import { StoreWaitpointCoordinator } from "../waitpointCoordinator/storeWaitpointCoordinator.js";
+import {
+  StoreWaitpointCoordinator,
+  isStandaloneStoreWaitpoint,
+} from "../waitpointCoordinator/storeWaitpointCoordinator.js";
 import {
   idempotencyReceiptKey,
   organizationSourceReceiptKey,
@@ -26,6 +29,7 @@ import {
   triggerRun,
   dequeueAndStart,
 } from "./utils/storeRunWaitpointLifecycleFixtures.js";
+import { keys } from "./utils/waitpointRouting.js";
 import { generateScopedHttpCallbackHash } from "../../../../../apps/webapp/app/services/httpCallbackHash.server.js";
 import { resolveScopedWaitpointCallback } from "../../../../../apps/webapp/app/services/scopedWaitpointCallback.server.js";
 
@@ -1396,6 +1400,175 @@ describe("native batch and run-bound manual lifecycle", () => {
           state.pendingIds,
           "accepted child remained pending after its completion and recovery"
         ).not.toContain(wp.id);
+      } finally {
+        await engine.quit();
+        await store.quit();
+        await snapshots.quit();
+      }
+    }
+  );
+
+  containerTest(
+    "standalone MANUAL token is created in the store on the internal input",
+    async ({ prisma, redisOptions }) => {
+      const snapshots = new RedisSnapshotStore({ redisOptions, completedTtlMs: 60000 });
+      const store = new WaitpointStoreCoordinator({ redisOptions });
+      // The worker stays on so the run can be dequeued; the jobs checked are delayed by minutes.
+      const engine = makeEngine(prisma, redisOptions, {
+        store,
+        snapshotStore: snapshots,
+        isWaitpointStoreEnabled: () => true,
+      });
+      const redis = createRedisClient(redisOptions);
+      try {
+        const env = await setupAuthenticatedEnvironment(prisma, "PRODUCTION");
+        const scope = {
+          environmentId: env.id,
+          projectId: env.project.id,
+          organizationId: env.organization.id,
+        };
+        const jobAt = async (id: string) =>
+          (await engine["worker"].getJob(`recoverDateTimeWaitpoint:${id}`))?.timestamp.getTime();
+
+        const before = Date.now();
+        const created = await engine.createManualWaitpoint({
+          ...scope,
+          standaloneStoreEligible: true,
+        });
+        const after = Date.now();
+        const id = created.waitpoint.id;
+        expect(created.isCached).toBe(false);
+        expect(parseWaitpointId(id)).toMatchObject({ format: "b32hexW", type: "MANUAL" });
+        expect(await prisma.waitpoint.count({ where: { id } })).toBe(0);
+        const read = await engine.getStoreDateTimeWaitpoint({ ...scope, waitpointId: id });
+        expect(read).toMatchObject({
+          id,
+          status: "PENDING",
+          completedAt: null,
+          completedAfter: null,
+          tags: [],
+        });
+        expect(isStandaloneStoreWaitpoint(read!)).toBe(true);
+        expect(await store.manualCatalog.getManifest(env.organization.id, id)).toMatchObject({
+          standalone: true,
+        });
+        expect(
+          await redis.zscore(
+            organizationPendingSourceIndexKey(env.organization.id, fanoutPartition(id)),
+            id
+          )
+        ).not.toBeNull();
+        const due = await jobAt(id);
+        expect(due).toBeGreaterThanOrEqual(before + 300_000);
+        expect(due).toBeLessThanOrEqual(after + 300_000);
+        expect(await engine["worker"].getJob(`finishWaitpoint.${id}`)).toBeNull();
+
+        const timeout = new Date(Date.now() + 3_600_000);
+        const idempotencyKeyExpiresAt = new Date(Date.now() + 86_400_000);
+        const tags = Array.from({ length: 10 }, (_, n) => `tag-${n}`);
+        const timed = await engine.createManualWaitpoint({
+          ...scope,
+          timeout,
+          tags,
+          idempotencyKeyExpiresAt,
+          standaloneStoreEligible: true,
+        });
+        const values = { completedAfter: timeout, tags, idempotencyKeyExpiresAt };
+        expect(
+          await engine.getStoreDateTimeWaitpoint({ ...scope, waitpointId: timed.waitpoint.id })
+        ).toMatchObject(values);
+        const listed = await engine.listStoreManualWaitpoints({
+          organizationId: env.organization.id,
+          environmentId: env.id,
+          tags: ["tag-3"],
+          direction: "forward",
+          limit: 10,
+        });
+        expect(listed).toHaveLength(1);
+        expect(listed[0]).toMatchObject({ id: timed.waitpoint.id, ...values });
+        expect(await jobAt(timed.waitpoint.id)).toBe(timeout.getTime());
+
+        await setupBackgroundWorker(engine, env, ["standalone-waiter"]);
+        const run = await triggerRun(engine, env, prisma, {
+          friendlyId: RunId.generate().friendlyId,
+          taskIdentifier: "standalone-waiter",
+        });
+        await dequeueAndStart(engine, "standalone-waiter");
+        // Catches: a run-bound token carrying the standalone marker, which would change its behaviour.
+        const runBound = await engine.createManualWaitpoint({ ...scope, runId: run.id });
+        const runBoundId = runBound.waitpoint.id;
+        expect(parseWaitpointId(runBoundId)).toMatchObject({ format: "b32hexW", type: "MANUAL" });
+        expect(
+          isStandaloneStoreWaitpoint(
+            (await engine.getStoreDateTimeWaitpoint({ ...scope, waitpointId: runBoundId }))!
+          )
+        ).toBe(false);
+        expect(
+          await store.manualCatalog.getManifest(env.organization.id, runBoundId)
+        ).not.toHaveProperty("standalone");
+        expect(
+          JSON.parse((await redis.hget(waitpointKeys(runBoundId).record, "r"))!)
+        ).not.toHaveProperty("standalone");
+        await engine.blockRunWithWaitpoint({
+          runId: run.id,
+          waitpoints: id,
+          projectId: env.project.id,
+          organizationId: env.organization.id,
+        });
+        expect(
+          (await engine.getRunExecutionData({ runId: run.id }))?.snapshot.executionStatus
+        ).toBe("EXECUTING_WITH_WAITPOINTS");
+        expect(await prisma.taskRunWaitpoint.count({ where: { taskRunId: run.id } })).toBe(0);
+        const connected = await prisma.taskRun.findUniqueOrThrow({
+          where: { id: run.id },
+          select: { connectedWaitpoints: { select: { id: true } } },
+        });
+        expect(connected.connectedWaitpoints).toEqual([]);
+      } finally {
+        await engine.quit();
+        await store.quit();
+        await snapshots.quit();
+        await redis.quit();
+      }
+    }
+  );
+
+  containerTest(
+    "standalone MANUAL token stays in Postgres with the flag off on the internal input",
+    async ({ prisma, redisOptions }) => {
+      const snapshots = new RedisSnapshotStore({ redisOptions, completedTtlMs: 60000 });
+      const store = new WaitpointStoreCoordinator({ redisOptions });
+      let flagCalls = 0;
+      const engine = makeEngine(prisma, redisOptions, {
+        store,
+        snapshotStore: snapshots,
+        workerDisabled: true,
+        isWaitpointStoreEnabled: () => {
+          flagCalls++;
+          return false;
+        },
+      });
+      try {
+        const env = await setupAuthenticatedEnvironment(prisma, "PRODUCTION");
+        const scope = {
+          environmentId: env.id,
+          projectId: env.project.id,
+          organizationId: env.organization.id,
+        };
+        const calls: number[] = [];
+        for (const standaloneStoreEligible of [undefined, true]) {
+          flagCalls = 0;
+          const { waitpoint } = await engine.createManualWaitpoint({
+            ...scope,
+            standaloneStoreEligible,
+          });
+          calls.push(flagCalls);
+          expect(parseWaitpointId(waitpoint.id).format).not.toBe("b32hexW");
+          expect(await prisma.waitpoint.count({ where: { id: waitpoint.id } })).toBe(1);
+        }
+        expect(calls[0]).toBeGreaterThan(0);
+        expect(calls[1]).toBe(calls[0]);
+        expect(await keys(redisOptions)).toEqual([]);
       } finally {
         await engine.quit();
         await store.quit();
