@@ -28,10 +28,8 @@ export type QueryFormat = "json" | "csv";
  */
 export type QueryOptions = {
   /**
-   * The scope of the query - determines what data is accessible
-   * - "environment": Current environment only (default)
-   * - "project": All environments in the project
-   * - "organization": All projects in the organization
+   * The scope of the query. With an API key, every scope reads the key's own environment.
+   * Project and organization wide queries are available on the dashboard's Query page.
    *
    * @default "environment"
    */

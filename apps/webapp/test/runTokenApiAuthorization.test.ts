@@ -609,7 +609,7 @@ describe("run-token API authorization", () => {
     expect(await (await call(key)).json()).toMatchObject({
       credentialKind: "additional_api_key",
       environmentScoped: true,
-      scope: { ok: true, scope: "organization" },
+      scope: { ok: true, scope: "environment" },
     });
     expect(await (await call(await tokenFor(environment))).json()).toMatchObject({
       credentialKind: "run_token",

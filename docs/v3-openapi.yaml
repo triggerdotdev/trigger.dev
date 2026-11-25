@@ -1480,7 +1480,6 @@ paths:
             const result = await query.execute(
               "SELECT COUNT(*) as count FROM runs WHERE status = 'Failed'",
               {
-                scope: "project",       // Query across all environments
                 period: "7d",           // Last 7 days
                 format: "json"
               }
@@ -8500,7 +8499,7 @@ components:
           type: string
           enum: ["environment", "project", "organization"]
           default: "environment"
-          description: The scope of data to query - environment (default), project, or organization
+          description: The scope of data to query. With an API key, every scope reads the key's own environment. Project and organization wide queries are available on the dashboard's Query page.
         period:
           type: string
           nullable: true

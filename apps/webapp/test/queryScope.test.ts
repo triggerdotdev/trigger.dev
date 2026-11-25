@@ -16,7 +16,7 @@ describe("the query scope ceiling", () => {
     expect(queryScopeCeilingFor({ type: "PUBLIC" })).toBe("environment");
   });
 
-  it("leaves the secret key uncapped", () => {
+  it("gives the secret key the unbounded ceiling", () => {
     expect(queryScopeCeilingFor({ type: "PRIVATE" })).toBe("unbounded");
   });
 
@@ -27,7 +27,7 @@ describe("the query scope ceiling", () => {
     expect(resolveQueryScope({ ceiling, requested: "environment" }).ok).toBe(true);
   });
 
-  it("preserves restricted additional-key project and organization query scope", () => {
+  it("answers additional-key project and organization queries", () => {
     const ceiling = queryScopeCeilingFor({ type: "PRIVATE", credentialKind: "additional_api_key" });
     expect(resolveQueryScope({ ceiling, requested: "organization" }).ok).toBe(true);
     expect(resolveQueryScope({ ceiling, requested: "project" }).ok).toBe(true);
@@ -64,12 +64,18 @@ describe("resolveQueryScope", () => {
     });
   });
 
-  // A secret key, a PAT-exchanged session or the Query page still query at org
-  // scope: they are not environment-bound credentials.
-  it("leaves an uncapped caller's organization scope alone", () => {
-    expect(resolveQueryScope({ ceiling: "unbounded", requested: "organization" })).toEqual({
-      ok: true,
-      scope: "organization",
-    });
-  });
+  // Every API key reads its own environment, whichever environment type it belongs to:
+  // the key's type does not reach this decision.
+  it.each(["environment", "project", "organization"] as const)(
+    "runs a secret key's %s-scoped query in its own environment",
+    (requested) => {
+      for (const credentialKind of [undefined, "additional_api_key"] as const) {
+        const ceiling = queryScopeCeilingFor({ type: "PRIVATE", credentialKind });
+        expect(resolveQueryScope({ ceiling, requested })).toEqual({
+          ok: true,
+          scope: "environment",
+        });
+      }
+    }
+  );
 });
