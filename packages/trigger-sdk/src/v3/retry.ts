@@ -152,101 +152,195 @@ class FetchErrorWithSpan extends Error {
 
 const MAX_ATTEMPTS = 10;
 
+const resolveCallerSignal = (
+  input: RequestInfo | URL,
+  init?: RetryFetchRequestInit
+): AbortSignal | undefined => {
+  if (init?.signal !== undefined) {
+    return init.signal ?? undefined;
+  }
+
+  return input instanceof Request ? input.signal : undefined;
+};
+
+const createAbortError = (): DOMException =>
+  new DOMException("This operation was aborted.", "AbortError");
+
+const throwIfAborted = (signal: AbortSignal | undefined): void => {
+  if (!signal?.aborted) {
+    return;
+  }
+
+  if (typeof signal.throwIfAborted === "function") {
+    signal.throwIfAborted();
+  }
+
+  throw signal.reason ?? createAbortError();
+};
+
+const waitUntilWithAbort = async (date: Date, signal?: AbortSignal): Promise<void> => {
+  throwIfAborted(signal);
+
+  if (!signal) {
+    await wait.until({ date });
+    return;
+  }
+
+  const waitPromise = wait.until({ date });
+  // Prevent an unhandled rejection if the abort signal wins the race and wait.until rejects later.
+  waitPromise.catch(() => {});
+
+  let onAbort: (() => void) | undefined;
+
+  try {
+    await Promise.race([
+      waitPromise,
+      new Promise<never>((_, reject) => {
+        onAbort = () => reject(signal.reason ?? createAbortError());
+        signal.addEventListener("abort", onAbort, { once: true });
+      }),
+    ]);
+  } finally {
+    if (onAbort) {
+      signal.removeEventListener("abort", onAbort);
+    }
+  }
+};
+
 async function retryFetch(
   input: RequestInfo | URL,
   init?: RetryFetchRequestInit | undefined
 ): Promise<Response> {
+  const callerSignal = resolveCallerSignal(input, init);
+
   return tracer.startActiveSpan(
     "retry.fetch()",
-    async (span) => {
+    async (_span) => {
+      throwIfAborted(callerSignal);
+
       let attempt = 1;
 
       while (true) {
+        let abortedByCaller = false;
+
         try {
+          throwIfAborted(callerSignal);
+
           const abortController = new AbortController();
+
+          const onCallerAbort = () => {
+            abortedByCaller = true;
+            abortController.abort(callerSignal?.reason);
+          };
+
+          callerSignal?.addEventListener("abort", onCallerAbort, { once: true });
 
           const timeoutId = init?.timeoutInMs
             ? setTimeout(() => {
                 abortController.abort();
-              }, init?.timeoutInMs)
+              }, init.timeoutInMs)
             : undefined;
 
-          init?.signal?.addEventListener("abort", () => {
-            abortController.abort();
-          });
+          let response: Response;
+          let attemptSpan: Span;
+          let nextRetry:
+            | { type: "delay"; value: number }
+            | { type: "timestamp"; value: number }
+            | undefined;
 
-          const [response, span] = await doFetchRequest(
-            input,
-            { ...(init ?? {}), signal: abortController.signal },
-            attempt
-          );
+          try {
+            try {
+              [response, attemptSpan] = await doFetchRequest(
+                input,
+                { ...(init ?? {}), signal: abortController.signal },
+                attempt
+              );
+            } finally {
+              if (timeoutId) {
+                clearTimeout(timeoutId);
+              }
+            }
 
-          if (timeoutId) {
-            clearTimeout(timeoutId);
+            if (response.ok) {
+              attemptSpan.setAttributes(createFetchResponseAttributes(response));
+
+              attemptSpan.end();
+
+              return response;
+            }
+
+            nextRetry = await calculateRetryDelayForResponse(
+              resolveDefaults(init?.retry, "byStatus", defaultFetchRetryOptions.byStatus),
+              response,
+              attempt
+            );
+          } finally {
+            callerSignal?.removeEventListener("abort", onCallerAbort);
           }
-
-          if (response.ok) {
-            span.setAttributes(createFetchResponseAttributes(response));
-
-            span.end();
-
-            return response;
-          }
-
-          const nextRetry = await calculateRetryDelayForResponse(
-            resolveDefaults(init?.retry, "byStatus", defaultFetchRetryOptions.byStatus),
-            response,
-            attempt
-          );
 
           if (!nextRetry) {
-            span.setAttributes(createFetchResponseAttributes(response));
+            attemptSpan.setAttributes(createFetchResponseAttributes(response));
 
-            span.end();
+            attemptSpan.end();
 
             return response;
           }
 
           if (attempt >= MAX_ATTEMPTS) {
-            span.setAttributes(createFetchResponseAttributes(response));
+            attemptSpan.setAttributes(createFetchResponseAttributes(response));
 
-            span.end();
+            attemptSpan.end();
 
             return response;
           }
 
           if (nextRetry.type === "delay") {
             const continueDate = new Date(Date.now() + nextRetry.value);
-            span.setAttribute(SemanticInternalAttributes.RETRY_AT, continueDate.toISOString());
-            span.setAttribute(SemanticInternalAttributes.RETRY_COUNT, attempt);
-            span.setAttribute(SemanticInternalAttributes.RETRY_DELAY, `${nextRetry.value}ms`);
+            attemptSpan.setAttribute(
+              SemanticInternalAttributes.RETRY_AT,
+              continueDate.toISOString()
+            );
+            attemptSpan.setAttribute(SemanticInternalAttributes.RETRY_COUNT, attempt);
+            attemptSpan.setAttribute(
+              SemanticInternalAttributes.RETRY_DELAY,
+              `${nextRetry.value}ms`
+            );
 
-            span.end();
+            attemptSpan.end();
 
-            await wait.until({ date: continueDate });
+            await waitUntilWithAbort(continueDate, callerSignal);
           } else {
             const now = Date.now();
             const nextRetryDate = new Date(nextRetry.value);
             const isInFuture = nextRetryDate.getTime() > now;
 
-            span.setAttribute(
+            attemptSpan.setAttribute(
               SemanticInternalAttributes.RETRY_AT,
               new Date(nextRetry.value).toISOString()
             );
-            span.setAttribute(SemanticInternalAttributes.RETRY_COUNT, attempt);
+            attemptSpan.setAttribute(SemanticInternalAttributes.RETRY_COUNT, attempt);
 
             if (isInFuture) {
-              span.setAttribute(
+              attemptSpan.setAttribute(
                 SemanticInternalAttributes.RETRY_DELAY,
                 `${nextRetry.value - now}ms`
               );
             }
 
-            span.end();
+            attemptSpan.end();
 
-            await wait.until({ date: new Date(nextRetry.value) });
+            await waitUntilWithAbort(new Date(nextRetry.value), callerSignal);
           }
         } catch (e) {
+          if (abortedByCaller || callerSignal?.aborted) {
+            if (e instanceof FetchErrorWithSpan) {
+              e.span.end();
+            }
+
+            throwIfAborted(callerSignal);
+            throw e instanceof FetchErrorWithSpan ? e.originalError : e;
+          }
+
           if (e instanceof FetchErrorWithSpan && e.originalError instanceof Error) {
             if (e.originalError.name === "AbortError") {
               const nextRetryDelay = calculateNextRetryDelay(
@@ -271,7 +365,7 @@ async function retryFetch(
 
               e.span.end();
 
-              await wait.until({ date: continueDate });
+              await waitUntilWithAbort(continueDate, callerSignal);
 
               continue; // Move to the next attempt
             } else if (
@@ -307,7 +401,7 @@ async function retryFetch(
 
               e.span.end();
 
-              await wait.until({ date: new Date(Date.now() + nextRetryDelay) });
+              await waitUntilWithAbort(new Date(Date.now() + nextRetryDelay), callerSignal);
 
               continue; // Move to the next attempt
             }
