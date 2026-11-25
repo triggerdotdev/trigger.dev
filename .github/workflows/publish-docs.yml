@@ -1,11 +1,18 @@
 name: 📚 Publish docs
 
+# Docs-only commits on main publish on merge. Anything else waits for a
+# docs-release-* tag. See .github/scripts/publish-docs.sh.
 on:
   push:
+    branches:
+      - main
+    paths:
+      - "docs/**"
     tags:
       - "docs-release-*"
+  workflow_dispatch:
 
-# Only needs to move the docs-live ref; Mintlify's GitHub app deploys from it.
+# Writes docs-live (Mintlify's GitHub app deploys from it) and comments on waiting commits.
 permissions:
   contents: write
 
@@ -16,21 +23,76 @@ concurrency:
 jobs:
   publish:
     runs-on: warp-ubuntu-latest-x64-2x
+    env:
+      GIT_AUTHOR_NAME: github-actions[bot]
+      GIT_AUTHOR_EMAIL: 41898282+github-actions[bot]@users.noreply.github.com
+      GIT_COMMITTER_NAME: github-actions[bot]
+      GIT_COMMITTER_EMAIL: 41898282+github-actions[bot]@users.noreply.github.com
     steps:
-      - name: 📥 Checkout tagged commit
+      - name: 📥 Checkout main
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
+          ref: main
+          fetch-depth: 0
           persist-credentials: false
 
-      - name: 🔗 Check for broken links
-        working-directory: ./docs
-        run: npx mintlify@4.0.393 broken-links
+      - name: 📦 Install Mintlify
+        working-directory: ${{ runner.temp }}
+        env:
+          COREPACK_HOME: ${{ runner.temp }}/mintlify-corepack
+          NPM_CONFIG_CACHE: ${{ runner.temp }}/mintlify-npm-cache
+          NPM_CONFIG_GLOBALCONFIG: /dev/null
+          NPM_CONFIG_USERCONFIG: /dev/null
+          PNPM_HOME: ${{ runner.temp }}/mintlify-pnpm
+        run: |
+          mkdir -p "$RUNNER_TEMP/mintlify-tool"
+          printf '{"private":true}\n' >"$RUNNER_TEMP/mintlify-tool/package.json"
+          corepack pnpm@10.33.2 --dir "$RUNNER_TEMP/mintlify-tool" add \
+            --save-exact \
+            --store-dir "$RUNNER_TEMP/mintlify-pnpm-store" \
+            --registry=https://registry.npmjs.org/ \
+            mintlify@4.0.393
 
-      - name: 🚀 Fast-forward docs-live to the tagged commit
+      - name: 🏗️ Build the docs to publish
+        id: build
+        run: |
+          export LINK_CHECK_CMD="\"$RUNNER_TEMP/mintlify-tool/node_modules/.bin/mintlify\" broken-links"
+          export RESULT_FILE="$GITHUB_OUTPUT"
+          export REPORT_FILE="$GITHUB_STEP_SUMMARY"
+          export NEW_WAITING_FILE="$RUNNER_TEMP/new-waiting"
+          if [[ "$GITHUB_REF" != refs/tags/* ]]; then
+            .github/scripts/publish-docs.sh auto
+            exit 0
+          fi
+          .github/scripts/publish-docs.sh check-tag "$GITHUB_SHA"
+          release=$(.github/scripts/publish-docs.sh release)
+          .github/scripts/publish-docs.sh build "$release"
+
+      - name: 🚀 Push docs-live
+        if: steps.build.outputs.publish_sha != ''
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PUBLISH_SHA: ${{ steps.build.outputs.publish_sha }}
+        run: |
+          auth=$(printf 'x-access-token:%s' "$GH_TOKEN" | base64 -w0)
+          echo "::add-mask::$auth"
+          git -c "http.https://github.com/.extraheader=AUTHORIZATION: basic $auth" \
+            push origin "$PUBLISH_SHA:refs/heads/docs-live"
+
+      - name: 💬 Comment on docs-only commits that are waiting
+        if: steps.build.outputs.publish_sha != ''
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          gh api -X PATCH \
-            "repos/${{ github.repository }}/git/refs/heads/docs-live" \
-            -f sha="${{ github.sha }}" \
-            -F force=false
+          [[ -s "$RUNNER_TEMP/new-waiting" ]] || exit 0
+          while IFS=$'\t' read -r sha reason; do
+            [[ -n "$sha" ]] || continue
+            if [[ "$reason" == conflict:* ]]; then
+              why="it conflicts with unpublished changes to ${reason#conflict: }"
+            else
+              why="it would leave a broken link until other unpublished docs go live"
+            fi
+            gh api "repos/$GITHUB_REPOSITORY/commits/$sha/comments" \
+              -f body="This docs-only change is waiting for the next docs release: $why. It will go live with the next \`docs-release-*\` tag that includes it." \
+              >/dev/null
+          done <"$RUNNER_TEMP/new-waiting"

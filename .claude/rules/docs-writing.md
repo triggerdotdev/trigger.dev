@@ -12,6 +12,7 @@ paths:
 - Always import from `@trigger.dev/sdk`, never `@trigger.dev/sdk/v3`.
 - Keep paragraphs short. Use headers to break up content.
 - Link to related pages using relative paths (e.g., `[Tasks](/tasks/overview)`).
+- Merging a PR that only changes `docs/` publishes it within minutes. Merge it once what it describes is live. Docs in a PR that also changes code go live with the next `docs-release-*` tag.
 - Features behind a flag that isn't fully on:
   - Dark (nobody outside the team has it): don't write docs yet.
   - Private beta or rolling out: put the docs in the feature PR with `<PrivateBeta flag="<key>" />` or `<RollingOut flag="<key>" />` (import from `/snippets/feature-status.jsx`), at the top of the page or the section. Use `flag="env:<NAME>"` for env-var gates. Keep the opening tag on one line with string values. To add page-specific text (how to get access, say), put it inside the tag: `<PrivateBeta flag="<key>">...</PrivateBeta>`; it renders after the fixed line.

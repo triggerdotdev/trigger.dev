@@ -19,6 +19,12 @@ sidebarTitle: "Short Title"  # Optional, shown in sidebar if different from titl
 ---
 ```
 
+## Publishing
+
+- A PR that only changes `docs/` goes live within minutes of merging. Merge it once what it describes is live.
+- Docs in a PR that also changes code go live with the next `docs-release-*` tag.
+- A docs-only change that conflicts with unpublished docs, or links to an unpublished page, waits for the next tag. The publish run comments on the commit when that happens.
+
 ## Adding a New Page
 
 1. Create the MDX file in the appropriate directory
