@@ -42,6 +42,7 @@ export async function loader({ params, request }: LoaderFunctionArgs) {
       runStore.findRun(
         {
           friendlyId: validatedParams.runParam,
+          projectId: project.id,
         },
         {
           select: {
