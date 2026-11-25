@@ -102,8 +102,11 @@ export const loader = dashboardLoader(
     }
 
     // Pre-compute manage authority server-side so the UI gating matches
-    // the action gating (the action enforces it independently). Seat
-    // purchases are a billing operation, so they gate on manage:billing.
+    // the action gating (the action enforces it independently). Inviting
+    // (write:members) is separate from removing members and changing roles
+    // (manage:members). Seat purchases are a billing operation, so they gate
+    // on manage:billing.
+    const canInviteMembers = ability.can("write", { type: "members" });
     const canManageMembers = ability.can("manage", { type: "members" });
     const canManageBilling = ability.can("manage", { type: "billing" });
 
@@ -122,6 +125,7 @@ export const loader = dashboardLoader(
 
     return typedjson({
       ...result,
+      canInviteMembers,
       canManageMembers,
       canManageBilling,
       manualMembershipAllowed,
@@ -365,6 +369,7 @@ export default function Page() {
     assignableRoleIds,
     memberRoles,
     soleOwnerUserId,
+    canInviteMembers,
     canManageMembers,
     canManageBilling,
     manualMembershipAllowed,
@@ -430,9 +435,9 @@ export default function Page() {
               content="Membership is managed by Directory Sync"
               disableHoverableContent
             />
-          ) : !canManageMembers ? (
-            // Gate the invite affordance on manage:members. The action
-            // route enforces this independently — hiding it here just
+          ) : !canInviteMembers ? (
+            // Gate the invite affordance on write:members. The action
+            // route enforces this independently — disabling it here just
             // avoids dead UI for non-managers.
             <SimpleTooltip
               button={
@@ -492,8 +497,13 @@ export default function Page() {
                           </Paragraph>
                         </div>
                         <div className="flex grow items-center justify-end gap-x-2">
-                          <ResendButton invite={invite} canManageMembers={canManageMembers} />
-                          <RevokeButton invite={invite} canManageMembers={canManageMembers} />
+                          <ResendButton
+                            key={new Date(invite.updatedAt).getTime()}
+                            invite={invite}
+                            canInviteMembers={canInviteMembers}
+                            isOwnInvite={invite.inviter.id === user.id}
+                          />
+                          <RevokeButton invite={invite} canInviteMembers={canInviteMembers} />
                         </div>
                       </li>
                     ))}
@@ -970,22 +980,26 @@ function initialCooldown(updatedAt: Date | string): number {
   return remaining > 0 ? remaining : 0;
 }
 
-function ResendButton({ invite, canManageMembers }: { invite: Invite; canManageMembers: boolean }) {
+function ResendButton({
+  invite,
+  canInviteMembers,
+  isOwnInvite,
+}: {
+  invite: Invite;
+  canInviteMembers: boolean;
+  // resendInvite only resends invites the current user sent.
+  isOwnInvite: boolean;
+}) {
   const navigation = useNavigation();
+  // Pending through the redirect too, until the Team page reloads with the invite's new updatedAt.
   const isSubmitting =
-    navigation.state === "submitting" &&
+    navigation.state !== "idle" &&
     navigation.formAction === resendInvitePath() &&
     navigation.formData?.get("inviteId") === invite.id;
-  const prevSubmitting = useRef(false);
+  // Starts from the invite's updatedAt, which only a resend moves; the caller keys this on it, so a
+  // resend restarts the countdown and a refused one doesn't.
   const [cooldown, setCooldown] = useState(() => initialCooldown(invite.updatedAt));
   const intervalRef = useRef<ReturnType<typeof setInterval>>();
-
-  useEffect(() => {
-    if (prevSubmitting.current && !isSubmitting) {
-      setCooldown(RESEND_COOLDOWN_SECONDS);
-    }
-    prevSubmitting.current = isSubmitting;
-  }, [isSubmitting]);
 
   const cooldownActive = cooldown > 0;
   useEffect(() => {
@@ -1004,7 +1018,7 @@ function ResendButton({ invite, canManageMembers }: { invite: Invite; canManageM
     return () => clearInterval(intervalRef.current);
   }, [cooldownActive]);
 
-  const isDisabled = isSubmitting || cooldown > 0 || !canManageMembers;
+  const isDisabled = isSubmitting || cooldown > 0 || !canInviteMembers || !isOwnInvite;
 
   return (
     <Form method="post" action={resendInvitePath()} className="flex">
@@ -1013,7 +1027,13 @@ function ResendButton({ invite, canManageMembers }: { invite: Invite; canManageM
         type="submit"
         variant="secondary/small"
         disabled={isDisabled}
-        tooltip={canManageMembers ? undefined : "You don't have permission to manage team members"}
+        tooltip={
+          !canInviteMembers
+            ? "You don't have permission to resend invites"
+            : !isOwnInvite
+              ? "Only the person who sent this invite can resend it"
+              : undefined
+        }
       >
         {isSubmitting ? (
           "Sending…"
@@ -1027,7 +1047,7 @@ function ResendButton({ invite, canManageMembers }: { invite: Invite; canManageM
   );
 }
 
-function RevokeButton({ invite, canManageMembers }: { invite: Invite; canManageMembers: boolean }) {
+function RevokeButton({ invite, canInviteMembers }: { invite: Invite; canInviteMembers: boolean }) {
   const organization = useOrganization();
 
   return (
@@ -1042,12 +1062,10 @@ function RevokeButton({ invite, canManageMembers }: { invite: Invite; canManageM
             LeadingIcon={NoSymbolIcon}
             leadingIconClassName="text-white"
             aria-label="Revoke invite"
-            disabled={!canManageMembers}
+            disabled={!canInviteMembers}
           />
         }
-        content={
-          canManageMembers ? "Revoke invite" : "You don't have permission to manage team members"
-        }
+        content={canInviteMembers ? "Revoke invite" : "You don't have permission to revoke invites"}
         disableHoverableContent
         asChild
       />

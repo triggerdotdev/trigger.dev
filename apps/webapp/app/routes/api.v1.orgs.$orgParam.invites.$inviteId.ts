@@ -15,7 +15,7 @@ export const action = createActionPATApiRoute(
     method: "DELETE",
     params: ParamsSchema,
     // Resolve the org (id only, no membership) so the plugin can compute the
-    // caller's role floor for the manage:members gate below.
+    // caller's role floor for the write:members gate below.
     context: async ({ orgParam }) => {
       const org = await prisma.organization.findFirst({
         where: { OR: [{ id: orgParam }, { slug: orgParam }], deletedAt: null },
@@ -23,7 +23,7 @@ export const action = createActionPATApiRoute(
       });
       return org ? { organizationId: org.id } : {};
     },
-    authorization: { action: "manage", resource: () => ({ type: "members" }) },
+    authorization: { action: "write", resource: () => ({ type: "members" }) },
   },
   async ({ params, authentication }) => {
     // Membership floor: a non-member gets a 404.
