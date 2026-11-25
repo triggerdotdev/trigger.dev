@@ -6,6 +6,7 @@ import { useEnvironment } from "~/hooks/useEnvironment";
 import { useOrganization } from "~/hooks/useOrganizations";
 import { useProject } from "~/hooks/useProject";
 import { useEffect, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
+import { useDocsLink } from "~/components/DocsPanel";
 import { Button } from "~/components/primitives/Buttons";
 import { Callout } from "~/components/primitives/Callout";
 import { Input } from "~/components/primitives/Input";
@@ -21,7 +22,6 @@ import {
   DialogHeader,
   DialogTrigger,
 } from "~/components/primitives/Dialog";
-import { docsPath } from "~/utils/pathBuilder";
 import { cn } from "~/utils/cn";
 import {
   useEnvironmentVariablesActionPath,
@@ -39,6 +39,7 @@ export function VaultBanner({
   enabled: boolean;
   disable?: { blocked: boolean } | null;
 }) {
+  const vaultDocs = useDocsLink()("vault");
   return (
     <Callout
       variant="docs"
@@ -56,7 +57,7 @@ export function VaultBanner({
         <strong>Agent Vault{enabled && " is enabled"}</strong>
         <p className="text-text-dimmed">
           Restrict secrets to specific domains at runtime.{" "}
-          <TextLink href={docsPath("vault")} target="_blank" rel="noreferrer">
+          <TextLink {...vaultDocs} target="_blank" rel="noreferrer">
             Read the docs
           </TextLink>
         </p>

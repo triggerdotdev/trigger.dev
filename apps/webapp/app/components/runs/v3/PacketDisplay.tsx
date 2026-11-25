@@ -1,11 +1,11 @@
 import { CloudArrowDownIcon } from "@heroicons/react/20/solid";
+import { useDocsLink } from "~/components/DocsPanel";
 import { CodeBlock } from "~/components/code/CodeBlock";
 import { InlineCode } from "~/components/code/InlineCode";
 import { LinkButton } from "~/components/primitives/Buttons";
 import { Header3 } from "~/components/primitives/Headers";
 import { Paragraph } from "~/components/primitives/Paragraph";
 import { TextLink } from "~/components/primitives/TextLink";
-import { docsPath } from "~/utils/pathBuilder";
 
 export function PacketDisplay({
   data,
@@ -20,6 +20,7 @@ export function PacketDisplay({
   searchTerm?: string;
   wrap?: boolean;
 }) {
+  const docsLink = useDocsLink();
   switch (dataType) {
     case "application/store": {
       return (
@@ -29,7 +30,7 @@ export function PacketDisplay({
             This {title.toLowerCase()} exceeded the size limit and was automatically offloaded to
             object storage. You can retrieve it using{" "}
             <InlineCode variant="extra-small">runs.retrieve</InlineCode> or download it directly
-            below. <TextLink to={docsPath("limits#task-payloads-and-outputs")}>Learn more</TextLink>
+            below. <TextLink {...docsLink("limits#task-payloads-and-outputs")}>Learn more</TextLink>
             .
           </Paragraph>
           <div>

@@ -1,4 +1,4 @@
-import { BookOpenIcon, PaperAirplaneIcon } from "@heroicons/react/20/solid";
+import { PaperAirplaneIcon } from "@heroicons/react/20/solid";
 import {
   KeyIcon,
   NoSymbolIcon,
@@ -20,10 +20,11 @@ import { typeddefer, useTypedLoaderData } from "remix-typedjson";
 import { z } from "zod";
 import type { RuntimeEnvironmentType } from "@trigger.dev/database";
 import { WebhookIcon } from "~/assets/icons/WebhookIcon";
+import { DocsHeaderButton } from "~/components/DocsPanel";
 import { CodeBlock } from "~/components/code/CodeBlock";
 import { PageBody, PageContainer } from "~/components/layout/AppLayout";
 import { DirectionSchema } from "~/components/ListPagination";
-import { Button, LinkButton } from "~/components/primitives/Buttons";
+import { Button } from "~/components/primitives/Buttons";
 import { ClipboardField } from "~/components/primitives/ClipboardField";
 import { CopyableText } from "~/components/primitives/CopyableText";
 import { DateTime, RelativeDateTime } from "~/components/primitives/DateTime";
@@ -86,7 +87,7 @@ import { getSecretStore } from "~/services/secrets/secretStore.server";
 import { requireUser } from "~/services/session.server";
 import { onlyDetailTabChanged } from "~/utils/detailTabRevalidation";
 import { pageMeta } from "~/utils/pageTitle";
-import { docsPath, EnvironmentParamSchema, v3WebhooksPath } from "~/utils/pathBuilder";
+import { EnvironmentParamSchema, v3WebhooksPath } from "~/utils/pathBuilder";
 import { throwPermissionDenied } from "~/utils/permissionDenied";
 import { parseFiniteInt } from "~/utils/searchParams";
 import { webhookEngine, webhookVerifyTokenKey } from "~/v3/webhookEngine.server";
@@ -475,13 +476,7 @@ export default function Page() {
           }}
         />
         <PageAccessories>
-          <LinkButton
-            variant="docs/small"
-            LeadingIcon={BookOpenIcon}
-            to={docsPath("webhooks/overview")}
-          >
-            Webhooks docs
-          </LinkButton>
+          <DocsHeaderButton path="webhooks/overview">Webhooks docs</DocsHeaderButton>
         </PageAccessories>
       </NavBar>
       <PageBody scrollable={false}>

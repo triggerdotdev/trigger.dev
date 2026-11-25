@@ -1,10 +1,11 @@
-import { BookOpenIcon, PencilSquareIcon, PlusIcon } from "@heroicons/react/20/solid";
+import { PencilSquareIcon, PlusIcon } from "@heroicons/react/20/solid";
 import { DialogClose } from "@radix-ui/react-dialog";
 import { Outlet, useLocation, useParams, useRevalidator, useSearchParams } from "@remix-run/react";
 import { useState } from "react";
 import { type UseDataFunctionReturn, typedjson, useTypedLoaderData } from "remix-typedjson";
 import { z } from "zod";
 import { env } from "~/env.server";
+import { DocsHeaderButton } from "~/components/DocsPanel";
 import { AdminDebugTooltip } from "~/components/admin/debugTooltip";
 import { CopyableText } from "~/components/primitives/CopyableText";
 import { CodeBlock } from "~/components/code/CodeBlock";
@@ -19,7 +20,7 @@ import {
 } from "~/components/layout/AppLayout";
 import { PermissionDenied } from "~/components/PermissionDenied";
 import { StepContentContainer } from "~/components/StepContentContainer";
-import { Button, LinkButton } from "~/components/primitives/Buttons";
+import { Button } from "~/components/primitives/Buttons";
 import { Callout } from "~/components/primitives/Callout";
 import { DateTime } from "~/components/primitives/DateTime";
 import { Dialog, DialogContent, DialogHeader, DialogTrigger } from "~/components/primitives/Dialog";
@@ -60,7 +61,6 @@ import { resolveProjectAuthScope } from "~/services/projectAuthScope.server";
 import { rbac } from "~/services/rbac.server";
 import { dashboardLoader } from "~/services/routeBuilders/dashboardBuilder";
 import {
-  docsPath,
   EnvironmentParamSchema,
   organizationAuditLogCredentialPath,
   organizationAuditLogPath,
@@ -316,9 +316,7 @@ export default function Page() {
             <ViewApiKeysHistoryButton auditLog={auditLog} to={historyPath} />
 
             <WhenAgentUnavailable>
-              <LinkButton variant="docs/small" LeadingIcon={BookOpenIcon} to={docsPath("/apikeys")}>
-                API keys docs
-              </LinkButton>
+              <DocsHeaderButton path="/apikeys">API keys docs</DocsHeaderButton>
             </WhenAgentUnavailable>
           </PageAccessories>
         </NavBar>

@@ -519,6 +519,24 @@ const EnvironmentSchema = z
     MAGIC_LINK_SAME_BROWSER_REQUIRED: BoolEnv.default(true),
     APP_ORIGIN: z.string().default("http://localhost:3030"),
     PUBLIC_APP_ORIGIN: z.url().optional(),
+    // Comma-separated origins of the docs site, the only origins that may read the signed-in
+    // reader (/resources/docs/*) with credentials and that the docs sign-in returns to.
+    DOCS_ORIGINS: z
+      .string()
+      .default("https://trigger.dev")
+      .transform((raw) =>
+        raw
+          .split(",")
+          .map((origin) => origin.trim())
+          .filter(Boolean)
+      )
+      // Each entry is an origin like https://trigger.dev; a bad one fails at startup, not per request.
+      // Normalized to the origin, since browsers send Origin without a trailing slash or path.
+      .pipe(
+        z
+          .array(z.url({ protocol: /^https?$/ }))
+          .transform((origins) => origins.map((o) => new URL(o).origin))
+      ),
     OIDC_ISSUER_URL: z.preprocess(
       (value) => (value === "" ? undefined : value),
       OidcIssuerSchema.optional()

@@ -1,3 +1,4 @@
+import { DocsHeaderButton, useDocsLink } from "~/components/DocsPanel";
 import { CurrentVersionProvider } from "~/components/versions/VersionLabel";
 import { findCurrentVersion } from "~/v3/models/workerDeployment.server";
 import { BeakerIcon, BookOpenIcon } from "@heroicons/react/24/solid";
@@ -68,7 +69,6 @@ import { checkPermissions } from "~/services/routeBuilders/permissions.server";
 import { cn } from "~/utils/cn";
 import type { Handle } from "~/utils/handle";
 import {
-  docsPath,
   EnvironmentParamSchema,
   v3ProjectPath,
   v3TestPath,
@@ -186,13 +186,7 @@ export default function Page() {
         <PageAccessories>
           <AdminDebugTooltip />
           <WhenAgentUnavailable>
-            <LinkButton
-              variant={"docs/small"}
-              LeadingIcon={BookOpenIcon}
-              to={docsPath("/runs-and-attempts")}
-            >
-              Runs docs
-            </LinkButton>
+            <DocsHeaderButton path="/runs-and-attempts">Runs docs</DocsHeaderButton>
           </WhenAgentUnavailable>
         </PageAccessories>
       </NavBar>
@@ -482,6 +476,7 @@ function CreateFirstTaskInstructions() {
 }
 
 function RunTaskInstructions({ task }: { task?: { slug: string } }) {
+  const docsLink = useDocsLink();
   const organization = useOrganization();
   const project = useProject();
   const environment = useEnvironment();
@@ -519,7 +514,7 @@ function RunTaskInstructions({ task }: { task?: { slug: string } }) {
           Performing a real run depends on the type of trigger your task is using.
         </Paragraph>
         <LinkButton
-          to={docsPath("/triggering")}
+          {...docsLink("/triggering")}
           variant="docs/medium"
           LeadingIcon={BookOpenIcon}
           className="inline-flex"

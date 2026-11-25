@@ -1,10 +1,10 @@
-import { BookOpenIcon } from "@heroicons/react/20/solid";
 import { type ShouldRevalidateFunction, useLocation } from "@remix-run/react";
 import { type LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { useMemo, useState } from "react";
 import { typeddefer, useTypedLoaderData } from "remix-typedjson";
 import { AIChatIcon } from "~/assets/icons/AIChatIcon";
 import { BeakerIcon } from "~/assets/icons/BeakerIcon";
+import { DocsHeaderButton } from "~/components/DocsPanel";
 import { agentsAgentPageContext } from "~/components/dashboard-agent/suggested-prompts";
 import { WhenAgentUnavailable } from "~/components/dashboard-agent/WhenAgentUnavailable";
 import { PageBody, PageContainer } from "~/components/layout/AppLayout";
@@ -52,12 +52,7 @@ import { onlyDetailTabChanged } from "~/utils/detailTabRevalidation";
 import type { Handle } from "~/utils/handle";
 import { formatNumber } from "~/utils/numberFormatter";
 import { pageMeta } from "~/utils/pageTitle";
-import {
-  docsPath,
-  v3EnvironmentPath,
-  v3PlaygroundAgentPath,
-  v3SessionsPath,
-} from "~/utils/pathBuilder";
+import { v3EnvironmentPath, v3PlaygroundAgentPath, v3SessionsPath } from "~/utils/pathBuilder";
 import { parseFiniteInt } from "~/utils/searchParams";
 
 export const handle: Handle = {
@@ -162,13 +157,7 @@ export default function Page() {
         />
         <PageAccessories>
           <WhenAgentUnavailable>
-            <LinkButton
-              variant="docs/small"
-              LeadingIcon={BookOpenIcon}
-              to={docsPath("ai-chat/overview")}
-            >
-              Agents docs
-            </LinkButton>
+            <DocsHeaderButton path="ai-chat/overview">Agents docs</DocsHeaderButton>
           </WhenAgentUnavailable>
         </PageAccessories>
       </NavBar>

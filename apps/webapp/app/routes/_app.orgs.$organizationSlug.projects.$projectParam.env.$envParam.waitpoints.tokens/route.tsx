@@ -1,13 +1,12 @@
-import { BookOpenIcon } from "@heroicons/react/20/solid";
 import { Outlet, useParams } from "@remix-run/react";
 
 import { type LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
+import { DocsHeaderButton } from "~/components/DocsPanel";
 import { AdminDebugTooltip } from "~/components/admin/debugTooltip";
 import { NoWaitpointTokens } from "~/components/BlankStatePanels";
 import { MainCenteredContainer, PageBody, PageContainer } from "~/components/layout/AppLayout";
 import { ListPagination } from "~/components/ListPagination";
-import { LinkButton } from "~/components/primitives/Buttons";
 import { ClipboardField } from "~/components/primitives/ClipboardField";
 import { CopyableText } from "~/components/primitives/CopyableText";
 import { DateTime } from "~/components/primitives/DateTime";
@@ -48,7 +47,7 @@ import {
   runOpsSplitReadEnabled,
   type PrismaClientOrTransaction,
 } from "~/db.server";
-import { docsPath, EnvironmentParamSchema, v3WaitpointTokenPath } from "~/utils/pathBuilder";
+import { EnvironmentParamSchema, v3WaitpointTokenPath } from "~/utils/pathBuilder";
 import { waitpointsAgentPageContext } from "~/components/dashboard-agent/suggested-prompts";
 import { WhenAgentUnavailable } from "~/components/dashboard-agent/WhenAgentUnavailable";
 import type { Handle } from "~/utils/handle";
@@ -141,9 +140,7 @@ export default function Page() {
         <PageAccessories>
           <AdminDebugTooltip />
           <WhenAgentUnavailable>
-            <LinkButton variant={"docs/small"} LeadingIcon={BookOpenIcon} to={docsPath("/wait")}>
-              Waitpoints docs
-            </LinkButton>
+            <DocsHeaderButton path="/wait">Waitpoints docs</DocsHeaderButton>
           </WhenAgentUnavailable>
         </PageAccessories>
       </NavBar>

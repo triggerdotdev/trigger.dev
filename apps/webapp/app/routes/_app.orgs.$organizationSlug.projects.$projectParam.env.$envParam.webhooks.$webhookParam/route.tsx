@@ -1,8 +1,9 @@
-import { BookOpenIcon, PaperAirplaneIcon } from "@heroicons/react/20/solid";
+import { PaperAirplaneIcon } from "@heroicons/react/20/solid";
 import { type ShouldRevalidateFunction } from "@remix-run/react";
 import { type LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { typeddefer, useTypedLoaderData } from "remix-typedjson";
 import { WebhookIcon } from "~/assets/icons/WebhookIcon";
+import { DocsHeaderButton } from "~/components/DocsPanel";
 import { PageBody, PageContainer } from "~/components/layout/AppLayout";
 import { DirectionSchema } from "~/components/ListPagination";
 import { LinkButton } from "~/components/primitives/Buttons";
@@ -40,7 +41,7 @@ import {
 import { clickhouseFactory } from "~/services/clickhouse/clickhouseFactoryInstance.server";
 import { onlyDetailTabChanged } from "~/utils/detailTabRevalidation";
 import { pageMeta } from "~/utils/pageTitle";
-import { docsPath, v3EnvironmentPath, v3WebhookEndpointPath } from "~/utils/pathBuilder";
+import { v3EnvironmentPath, v3WebhookEndpointPath } from "~/utils/pathBuilder";
 import { parseFiniteInt } from "~/utils/searchParams";
 import { webhookIngressUrl } from "~/utils/webhookIngressUrl.server";
 import { requireWebhooksAccess } from "~/v3/webhooksAccess.server";
@@ -223,13 +224,7 @@ function NavTitle({ slug }: { slug: string }) {
         backButton={{ to: v3EnvironmentPath(organization, project, environment), text: "Tasks" }}
       />
       <PageAccessories>
-        <LinkButton
-          variant="docs/small"
-          LeadingIcon={BookOpenIcon}
-          to={docsPath("webhooks/overview")}
-        >
-          Webhooks docs
-        </LinkButton>
+        <DocsHeaderButton path="webhooks/overview">Webhooks docs</DocsHeaderButton>
       </PageAccessories>
     </NavBar>
   );

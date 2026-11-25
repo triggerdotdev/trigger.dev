@@ -1,11 +1,11 @@
 import { ExclamationCircleIcon } from "@heroicons/react/20/solid";
-import { BookOpenIcon } from "@heroicons/react/24/solid";
 import { Outlet, useLocation, useNavigation, useParams } from "@remix-run/react";
 
 import { type LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { formatDuration } from "@trigger.dev/core/v3/utils/durations";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import { RunsIcon } from "~/assets/icons/RunsIcon";
+import { DocsHeaderButton } from "~/components/DocsPanel";
 import { BatchesNone } from "~/components/BlankStatePanels";
 import { ListPagination } from "~/components/ListPagination";
 import { AdminDebugTooltip } from "~/components/admin/debugTooltip";
@@ -57,12 +57,7 @@ import {
   type PrismaClientOrTransaction,
 } from "~/db.server";
 import { runOpsNonAliasedShardReplicas } from "~/v3/runOpsMigration/shardHandles.server";
-import {
-  docsPath,
-  EnvironmentParamSchema,
-  v3BatchPath,
-  v3BatchRunsPath,
-} from "~/utils/pathBuilder";
+import { EnvironmentParamSchema, v3BatchPath, v3BatchRunsPath } from "~/utils/pathBuilder";
 import { throwNotFound } from "~/utils/httpErrors";
 import { batchesAgentPageContext } from "~/components/dashboard-agent/suggested-prompts";
 import { WhenAgentUnavailable } from "~/components/dashboard-agent/WhenAgentUnavailable";
@@ -132,13 +127,7 @@ export default function Page() {
         <PageAccessories>
           <AdminDebugTooltip />
           <WhenAgentUnavailable>
-            <LinkButton
-              variant={"docs/small"}
-              LeadingIcon={BookOpenIcon}
-              to={docsPath("/triggering")}
-            >
-              Batches docs
-            </LinkButton>
+            <DocsHeaderButton path="/triggering">Batches docs</DocsHeaderButton>
           </WhenAgentUnavailable>
         </PageAccessories>
       </NavBar>

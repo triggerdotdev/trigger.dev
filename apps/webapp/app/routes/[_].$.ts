@@ -20,7 +20,15 @@ import {
 export const loader = async ({ request }: LoaderFunctionArgs) => {
   const user = await requireUser(request);
 
-  const { pathname, search } = new URL(request.url);
+  const url = new URL(request.url);
+  const { pathname } = url;
+  // `?project=<ref>` picks the project (the docs send the one the reader picked there).
+  const projectRef = url.searchParams.get("project") ?? undefined;
+  url.searchParams.delete("project");
+  // `?env=dev` lands in the user's own dev environment (docs keys live there), not the last one used.
+  const devEnvironment = url.searchParams.get("env") === "dev";
+  url.searchParams.delete("env");
+  const query = url.search;
   const suffix = deeplinkSuffix(pathname);
   const page = resolveDeeplinkPage(suffix);
   const organizationPage = resolveOrganizationDeeplinkPage(suffix);
@@ -32,10 +40,16 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
 
   const presenter = new SelectBestEnvironmentPresenter();
   try {
-    const { project, organization, environment } = await presenter.call({ user });
+    const { project, organization, environment, projectRefMatched } = await presenter.call({
+      user,
+      projectRef,
+      devEnvironment,
+    });
     if (organizationPage) {
-      return redirect(`${organizationSettingsPath(organization)}/${organizationPage}${search}`);
+      return redirect(`${organizationSettingsPath(organization)}/${organizationPage}${query}`);
     }
+    // A link meant for another project keeps its page but not its query (e.g. an example payload).
+    const search = projectRefMatched ? query : "";
 
     const environmentPath = v3EnvironmentPath(organization, project, environment);
     const pageSuffix = page ? `/${page}` : "";
@@ -58,7 +72,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
 
     if (organization) {
       if (organizationPage) {
-        return redirect(`${organizationSettingsPath(organization)}/${organizationPage}${search}`);
+        return redirect(`${organizationSettingsPath(organization)}/${organizationPage}${query}`);
       }
 
       return redirect(newProjectPath(organization));

@@ -1,6 +1,6 @@
 import { env } from "~/env.server";
 import { OnboardingAutoRefresh } from "~/components/deployments/OnboardingAutoRefresh";
-import { BookOpenIcon, ExclamationTriangleIcon } from "@heroicons/react/20/solid";
+import { ExclamationTriangleIcon } from "@heroicons/react/20/solid";
 import { json } from "@remix-run/node";
 
 import { useFetcher, useRevalidator } from "@remix-run/react";
@@ -94,7 +94,6 @@ import { requireUserId } from "~/services/session.server";
 import { cn } from "~/utils/cn";
 import { useLatchedDeploymentOnboarding } from "~/hooks/useLatchedDeploymentOnboarding";
 import {
-  docsPath,
   EnvironmentParamSchema,
   v3AgentTaskPath,
   v3DeploymentPath,
@@ -108,6 +107,7 @@ import {
 } from "~/utils/pathBuilder";
 import { sectionAgentPageContext } from "~/components/dashboard-agent/suggested-prompts";
 import { WhenAgentUnavailable } from "~/components/dashboard-agent/WhenAgentUnavailable";
+import { DocsHeaderButton } from "~/components/DocsPanel";
 import type { Handle } from "~/utils/handle";
 
 export const handle: Handle = {
@@ -387,13 +387,7 @@ export default function Page() {
         <PageAccessories>
           <AdminDebugTooltip />
           <WhenAgentUnavailable>
-            <LinkButton
-              variant={"docs/small"}
-              LeadingIcon={BookOpenIcon}
-              to={docsPath("/tasks/overview")}
-            >
-              Task docs
-            </LinkButton>
+            <DocsHeaderButton path="/tasks/overview">Task docs</DocsHeaderButton>
           </WhenAgentUnavailable>
         </PageAccessories>
       </NavBar>

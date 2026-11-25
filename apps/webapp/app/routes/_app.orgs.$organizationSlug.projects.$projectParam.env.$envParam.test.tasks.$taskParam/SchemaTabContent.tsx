@@ -1,10 +1,10 @@
 import { BookOpenIcon } from "@heroicons/react/20/solid";
+import { useDocsLink } from "~/components/DocsPanel";
 import { CodeBlock } from "~/components/code/CodeBlock";
 import { LinkButton } from "~/components/primitives/Buttons";
 import { Header3 } from "~/components/primitives/Headers";
 import { Paragraph } from "~/components/primitives/Paragraph";
 import { TextLink } from "~/components/primitives/TextLink";
-import { docsPath } from "~/utils/pathBuilder";
 
 export function SchemaTabContent({
   schema,
@@ -19,6 +19,7 @@ export function SchemaTabContent({
   description?: string;
   showDocsLink?: boolean;
 }) {
+  const docsLink = useDocsLink();
   if (schema) {
     return (
       <div className="space-y-2">
@@ -29,7 +30,7 @@ export function SchemaTabContent({
               {description ?? (
                 <>
                   JSON Schema defined by this task via{" "}
-                  <TextLink to={docsPath("tasks/schemaTask")}>schemaTask</TextLink>.
+                  <TextLink {...docsLink("tasks/schemaTask")}>schemaTask</TextLink>.
                 </>
               )}
             </Paragraph>
@@ -59,7 +60,7 @@ export function SchemaTabContent({
         <LinkButton
           variant="docs/small"
           LeadingIcon={BookOpenIcon}
-          to={docsPath("tasks/schemaTask")}
+          {...docsLink("tasks/schemaTask")}
         >
           schemaTask docs
         </LinkButton>
@@ -80,7 +81,7 @@ export function SchemaTabContent({
         Use <code className="text-text-bright">schemaTask</code> to define a payload schema for this
         task. The schema will appear here and can be used by AI to generate example payloads.
       </Paragraph>
-      <LinkButton variant="docs/small" LeadingIcon={BookOpenIcon} to={docsPath("tasks/schemaTask")}>
+      <LinkButton variant="docs/small" LeadingIcon={BookOpenIcon} {...docsLink("tasks/schemaTask")}>
         schemaTask docs
       </LinkButton>
       <CodeBlock

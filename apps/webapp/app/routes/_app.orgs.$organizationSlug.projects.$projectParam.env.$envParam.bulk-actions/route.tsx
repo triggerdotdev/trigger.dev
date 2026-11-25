@@ -1,9 +1,10 @@
-import { BookOpenIcon, PlusIcon } from "@heroicons/react/20/solid";
+import { PlusIcon } from "@heroicons/react/20/solid";
 import { NoSymbolIcon } from "@heroicons/react/24/solid";
 import { type LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { tryCatch } from "@trigger.dev/core";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import { z } from "zod";
+import { DocsHeaderButton } from "~/components/DocsPanel";
 import { AdminDebugTooltip } from "~/components/admin/debugTooltip";
 import { BulkActionsNone } from "~/components/BlankStatePanels";
 import { MainCenteredContainer, PageBody, PageContainer } from "~/components/layout/AppLayout";
@@ -42,7 +43,6 @@ import { checkPermissions } from "~/services/routeBuilders/permissions.server";
 import { requireUserId } from "~/services/session.server";
 import { cn } from "~/utils/cn";
 import {
-  docsPath,
   EnvironmentParamSchema,
   v3BulkActionPath,
   v3CreateBulkActionPath,
@@ -144,13 +144,7 @@ export default function Page() {
         <PageAccessories>
           <AdminDebugTooltip />
           <WhenAgentUnavailable>
-            <LinkButton
-              variant={"docs/small"}
-              LeadingIcon={BookOpenIcon}
-              to={docsPath("/bulk-actions")}
-            >
-              Bulk actions docs
-            </LinkButton>
+            <DocsHeaderButton path="/bulk-actions">Bulk actions docs</DocsHeaderButton>
           </WhenAgentUnavailable>
           <LinkButton
             variant="primary/small"

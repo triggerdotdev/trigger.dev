@@ -2,12 +2,7 @@ import { throwPermissionDenied } from "~/utils/permissionDenied";
 import { rbac } from "~/services/rbac.server";
 import { checkPermissions } from "~/services/routeBuilders/permissions.server";
 import { resolveDeploymentOnboardingUi } from "~/v3/services/deploymentOnboardingUi.server";
-import {
-  ArrowPathIcon,
-  ArrowUturnLeftIcon,
-  BookOpenIcon,
-  NoSymbolIcon,
-} from "@heroicons/react/20/solid";
+import { ArrowPathIcon, ArrowUturnLeftIcon, NoSymbolIcon } from "@heroicons/react/20/solid";
 import { Form, useFetcher, useLocation, useNavigate, useNavigation } from "@remix-run/react";
 
 import { type LoaderFunctionArgs } from "@remix-run/server-runtime";
@@ -16,6 +11,7 @@ import { useEffect, useRef, useState } from "react";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import { z } from "zod";
 import { PromoteIcon } from "~/assets/icons/PromoteIcon";
+import { DocsHeaderButton } from "~/components/DocsPanel";
 import { InlineCode } from "~/components/code/InlineCode";
 import { VercelLink } from "~/components/integrations/VercelLink";
 import { DeploymentsNone, DeploymentsNoneDev } from "~/components/BlankStatePanels";
@@ -68,7 +64,6 @@ import { titleCase } from "~/utils";
 import { cn } from "~/utils/cn";
 import {
   EnvironmentParamSchema,
-  docsPath,
   v3DeploymentPath,
   v3EnvironmentPath,
   v3ProjectSettingsIntegrationsPath,
@@ -308,13 +303,7 @@ export default function Page() {
         <PageTitle title="Deployments" />
         <PageAccessories>
           <WhenAgentUnavailable>
-            <LinkButton
-              variant={"docs/small"}
-              LeadingIcon={BookOpenIcon}
-              to={docsPath("/cli-deploy")}
-            >
-              Deployments docs
-            </LinkButton>
+            <DocsHeaderButton path="/cli-deploy">Deployments docs</DocsHeaderButton>
           </WhenAgentUnavailable>
         </PageAccessories>
       </NavBar>

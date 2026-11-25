@@ -3,6 +3,7 @@ import { json } from "@remix-run/node";
 import { Outlet, useLoaderData, useNavigate, useParams } from "@remix-run/react";
 import { type LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { CubeSparkleIcon } from "~/assets/icons/CubeSparkleIcon";
+import { useDocsLink } from "~/components/DocsPanel";
 import { CodeBlock } from "~/components/code/CodeBlock";
 import { InlineCode } from "~/components/code/InlineCode";
 import { MainCenteredContainer, PageBody, PageContainer } from "~/components/layout/AppLayout";
@@ -23,7 +24,7 @@ import { findEnvironmentBySlug } from "~/models/runtimeEnvironment.server";
 import { playgroundPresenter } from "~/presenters/v3/PlaygroundPresenter.server";
 import { RegionsPresenter } from "~/presenters/v3/RegionsPresenter.server";
 import { requireUser } from "~/services/session.server";
-import { docsPath, EnvironmentParamSchema, v3PlaygroundAgentPath } from "~/utils/pathBuilder";
+import { EnvironmentParamSchema, v3PlaygroundAgentPath } from "~/utils/pathBuilder";
 import { playgroundAgentPageContext } from "~/components/dashboard-agent/suggested-prompts";
 import type { Handle } from "~/utils/handle";
 
@@ -78,6 +79,7 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
 };
 
 export default function PlaygroundPage() {
+  const docsLink = useDocsLink();
   const { agents } = useLoaderData<typeof loader>();
   const organization = useOrganization();
   const project = useProject();
@@ -107,7 +109,7 @@ export default function PlaygroundPage() {
               panelClassName="max-w-2xl"
               accessory={
                 <LinkButton
-                  to={docsPath("ai-chat/overview")}
+                  {...docsLink("ai-chat/overview")}
                   variant="docs/small"
                   LeadingIcon={BookOpenIcon}
                 >

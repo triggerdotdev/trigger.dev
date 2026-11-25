@@ -3,8 +3,10 @@ import { Outlet, type ShouldRevalidateFunction, useLoaderData } from "@remix-run
 import { redirect, type LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { RouteErrorDisplay } from "~/components/ErrorDisplay";
 import { DashboardAgent } from "~/components/dashboard-agent/DashboardAgent";
+import { DocsPanel } from "~/components/DocsPanel";
 import { prisma } from "~/db.server";
 import { dashboardAgentDb } from "~/services/dashboardAgentDb.server";
+import { docsOrigin } from "~/services/docsReader.server";
 import { getSecurityNoticeBanner } from "~/services/securityNotices.server";
 import { updateCurrentProjectEnvironmentId } from "~/services/dashboardPreferences.server";
 import { logger } from "~/services/logger.server";
@@ -140,20 +142,27 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
     hasDashboardAgentAccess,
     promotedDashboardAgentPrompt,
     dashboardAgentUnreadWork,
+    docsOrigin: docsOrigin(),
   };
 };
 
 export default function Page() {
-  const { hasDashboardAgentAccess, promotedDashboardAgentPrompt, dashboardAgentUnreadWork } =
-    useLoaderData<typeof loader>();
+  const {
+    hasDashboardAgentAccess,
+    promotedDashboardAgentPrompt,
+    dashboardAgentUnreadWork,
+    docsOrigin,
+  } = useLoaderData<typeof loader>();
   return (
-    <DashboardAgent
-      hasAccess={hasDashboardAgentAccess}
-      promotedPrompt={promotedDashboardAgentPrompt ?? undefined}
-      initialUnreadWork={dashboardAgentUnreadWork}
-    >
-      <Outlet />
-    </DashboardAgent>
+    <DocsPanel docsOrigin={docsOrigin}>
+      <DashboardAgent
+        hasAccess={hasDashboardAgentAccess}
+        promotedPrompt={promotedDashboardAgentPrompt ?? undefined}
+        initialUnreadWork={dashboardAgentUnreadWork}
+      >
+        <Outlet />
+      </DashboardAgent>
+    </DocsPanel>
   );
 }
 

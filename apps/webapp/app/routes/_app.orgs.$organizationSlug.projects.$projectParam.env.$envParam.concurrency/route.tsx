@@ -1,7 +1,6 @@
 import {
   ArrowUpCircleIcon,
   BellAlertIcon,
-  BookOpenIcon,
   ExclamationTriangleIcon,
   PauseIcon,
   PlayIcon,
@@ -17,6 +16,7 @@ import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import { z } from "zod";
 import { ConcurrencyIcon } from "~/assets/icons/ConcurrencyIcon";
 import { RunsIcon } from "~/assets/icons/RunsIcon";
+import { DocsHeaderButton } from "~/components/DocsPanel";
 import { AdminDebugTooltip } from "~/components/admin/debugTooltip";
 import { environmentFullTitle } from "~/components/environments/EnvironmentLabel";
 import { PageBody, PageContainer } from "~/components/layout/AppLayout";
@@ -88,7 +88,6 @@ import { ChartTileTitle } from "~/components/queues/ChartTileTitle";
 import { ENVIRONMENT_PAUSE_SOURCE_BILLING_LIMIT } from "~/utils/environmentPauseSource";
 import {
   concurrencyLimitsPath,
-  docsPath,
   EnvironmentParamSchema,
   v3BillingPath,
   v3AlertCreatePath,
@@ -549,13 +548,7 @@ function QueuesWithMetricsView() {
         <PageAccessories>
           <AdminDebugTooltip />
           <WhenAgentUnavailable>
-            <LinkButton
-              variant={"docs/small"}
-              LeadingIcon={BookOpenIcon}
-              to={docsPath("/queue-concurrency")}
-            >
-              Queues docs
-            </LinkButton>
+            <DocsHeaderButton path="/queue-concurrency">Queues docs</DocsHeaderButton>
           </WhenAgentUnavailable>
         </PageAccessories>
       </NavBar>
@@ -1907,13 +1900,7 @@ function ClassicQueuesView() {
         <PageAccessories>
           <AdminDebugTooltip />
           <WhenAgentUnavailable>
-            <LinkButton
-              variant={"docs/small"}
-              LeadingIcon={BookOpenIcon}
-              to={docsPath("/queue-concurrency")}
-            >
-              Queues docs
-            </LinkButton>
+            <DocsHeaderButton path="/queue-concurrency">Queues docs</DocsHeaderButton>
           </WhenAgentUnavailable>
         </PageAccessories>
       </NavBar>

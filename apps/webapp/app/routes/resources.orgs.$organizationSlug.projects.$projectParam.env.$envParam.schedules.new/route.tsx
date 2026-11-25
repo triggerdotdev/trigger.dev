@@ -13,6 +13,7 @@ import { json } from "@remix-run/server-runtime";
 import { parseExpression } from "cron-parser";
 import cronstrue from "cronstrue";
 import { useState } from "react";
+import { useDocsLink } from "~/components/DocsPanel";
 import {
   EnvironmentCombo,
   environmentTextClassName,
@@ -43,7 +44,7 @@ import { logger } from "~/services/logger.server";
 import { resolveProjectAuthScope } from "~/services/projectAuthScope.server";
 import { dashboardAction } from "~/services/routeBuilders/dashboardBuilder";
 import { cn } from "~/utils/cn";
-import { EnvironmentParamSchema, docsPath, v3EnvironmentPath } from "~/utils/pathBuilder";
+import { EnvironmentParamSchema, v3EnvironmentPath } from "~/utils/pathBuilder";
 import { CronPattern, UpsertSchedule } from "~/v3/schedules";
 import { validateMinimumCronInterval } from "~/v3/validateMinimumCronInterval";
 import { explicitWindowBelowMinimum } from "~/v3/explicitWindowBelowMinimum";
@@ -192,6 +193,7 @@ export function UpsertScheduleForm({
    */
   layout?: "panel" | "dialog";
 }) {
+  const docsLink = useDocsLink();
   const actionData = useActionData();
   // Only feed conform-shaped data (`status`) to `useForm` — `{ ok, message }`
   // envelopes lack it and crash conform.
@@ -609,7 +611,7 @@ export function UpsertScheduleForm({
               <Hint>
                 Optionally, you can specify your own IDs (like a user ID) and then use it inside the
                 run function of your task. This allows you to have per-user CRON tasks.{" "}
-                <TextLink to={docsPath("v3/tasks-scheduled")}>Read the docs.</TextLink>
+                <TextLink {...docsLink("v3/tasks-scheduled")}>Read the docs.</TextLink>
               </Hint>
               <FormError id={externalId.errorId}>{externalId.errors}</FormError>
             </InputGroup>

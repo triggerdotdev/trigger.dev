@@ -1,4 +1,4 @@
-import { CheckIcon, BookOpenIcon } from "@heroicons/react/20/solid";
+import { CheckIcon } from "@heroicons/react/20/solid";
 
 import { type LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { IconCardsFilled, IconDiamondFilled, IconTallymark4 } from "@tabler/icons-react";
@@ -6,6 +6,7 @@ import { tryCatch } from "@trigger.dev/core";
 import { Gauge } from "lucide-react";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import { ConcurrencyIcon } from "~/assets/icons/ConcurrencyIcon";
+import { DocsHeaderButton } from "~/components/DocsPanel";
 import { AdminDebugTooltip } from "~/components/admin/debugTooltip";
 import { CopyableText } from "~/components/primitives/CopyableText";
 import { Feedback } from "~/components/Feedback";
@@ -47,7 +48,6 @@ import { cn } from "~/utils/cn";
 import { formatNumber } from "~/utils/numberFormatter";
 import {
   concurrencyLimitsPath,
-  docsPath,
   EnvironmentParamSchema,
   organizationBillingPath,
   v3SchedulesAddOnPath,
@@ -146,9 +146,7 @@ export default function Page() {
             </Property.Table>
           </AdminDebugTooltip>
           <WhenAgentUnavailable>
-            <LinkButton variant={"docs/small"} LeadingIcon={BookOpenIcon} to={docsPath("/limits")}>
-              Limits docs
-            </LinkButton>
+            <DocsHeaderButton path="/limits">Limits docs</DocsHeaderButton>
           </WhenAgentUnavailable>
         </PageAccessories>
       </NavBar>

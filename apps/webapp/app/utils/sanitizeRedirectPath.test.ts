@@ -27,4 +27,11 @@ describe("sanitizeRedirectPath", () => {
   it("uses the fallback for non-navigable resource routes", () => {
     expect(sanitizeRedirectPath("/resources/feedback", "/dashboard")).toBe("/dashboard");
   });
+
+  // Catches: "Sign in" from the docs landing on the dashboard instead of back on the docs page.
+  it("keeps the docs sign-in route, which sends the reader back to the docs", () => {
+    const path = "/resources/docs/signin?to=https%3A%2F%2Ftrigger.dev%2Fdocs%2Fapikeys";
+    expect(sanitizeRedirectPath(path)).toBe(path);
+    expect(sanitizeRedirectPath("/resources/docs/me")).toBe("/");
+  });
 });

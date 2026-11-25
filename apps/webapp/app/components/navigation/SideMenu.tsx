@@ -1,5 +1,9 @@
-import { ArrowTopRightOnSquareIcon, ExclamationTriangleIcon } from "@heroicons/react/24/outline";
-import { EllipsisHorizontalIcon } from "@heroicons/react/20/solid";
+import {
+  ArrowTopRightOnSquareIcon,
+  ClipboardDocumentIcon,
+  ExclamationTriangleIcon,
+} from "@heroicons/react/24/outline";
+import { CheckIcon, EllipsisHorizontalIcon } from "@heroicons/react/20/solid";
 import {
   Form,
   useFetcher,
@@ -51,6 +55,7 @@ import { SlackIcon } from "~/assets/icons/SlackIcon";
 import { VercelLogo } from "~/components/integrations/VercelLogo";
 import { Avatar } from "~/components/primitives/Avatar";
 import { UserProfilePhoto } from "~/components/UserProfilePhoto";
+import { useCopy } from "~/hooks/useCopy";
 import { useCopyPublicUrl } from "~/hooks/useCopyPublicUrl";
 import { type MatchedEnvironment } from "~/hooks/useEnvironment";
 import { usePageSwitcher } from "~/hooks/useEnvironmentSwitcher";
@@ -1863,6 +1868,7 @@ function ProjectSelector({
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const navigation = useNavigation();
   const { urlForProject } = usePageSwitcher();
+  const selectedRef = organization.projects.find((p) => p.id === project.id)?.externalRef;
 
   useEffect(() => {
     // oxlint-disable-next-line react/set-state-in-effect -- This effect intentionally synchronizes local state after an external or lifecycle change.
@@ -1933,6 +1939,7 @@ function ProjectSelector({
             leadingIconClassName={SIDE_MENU_POPOVER_ITEM_ICON}
             className={SIDE_MENU_POPOVER_ITEM_LABEL}
           />
+          {selectedRef && <CopyProjectRefMenuItem projectRef={selectedRef} />}
         </div>
         <div className="flex flex-col gap-1 border-t border-grid-bright p-1">
           {organization.projects.map((p) => {
@@ -2297,5 +2304,24 @@ function ResizeHandle({
         </TooltipContent>
       </Tooltip>
     </TooltipProvider>
+  );
+}
+
+/** Shows the project ref (used by the CLI, SDK config and docs samples) and copies it on click. */
+function CopyProjectRefMenuItem({ projectRef }: { projectRef: string }) {
+  const { copy, copied } = useCopy(projectRef);
+  return (
+    <PopoverMenuItem
+      onClick={copy}
+      title={
+        <span className="flex w-full items-center justify-between gap-3">
+          <span>{copied ? "Copied" : "Copy project ref"}</span>
+          <span className="font-mono text-xs text-text-dimmed">{projectRef}</span>
+        </span>
+      }
+      icon={copied ? CheckIcon : ClipboardDocumentIcon}
+      leadingIconClassName={SIDE_MENU_POPOVER_ITEM_ICON}
+      className={SIDE_MENU_POPOVER_ITEM_LABEL}
+    />
   );
 }

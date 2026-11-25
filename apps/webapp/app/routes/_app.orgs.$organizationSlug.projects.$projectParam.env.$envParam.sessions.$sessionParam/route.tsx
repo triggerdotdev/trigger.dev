@@ -1,5 +1,5 @@
 import { BoltIcon, BoltSlashIcon } from "@heroicons/react/20/solid";
-import { BookOpenIcon, CheckIcon } from "@heroicons/react/24/solid";
+import { CheckIcon } from "@heroicons/react/24/solid";
 import { useLoaderData, useLocation, useParams } from "@remix-run/react";
 import { type LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { useVirtualizer } from "@tanstack/react-virtual";
@@ -16,6 +16,7 @@ import { MoveToBottomIcon } from "~/assets/icons/MoveToBottomIcon";
 import { MoveToTopIcon } from "~/assets/icons/MoveToTopIcon";
 import { TextInlineIcon } from "~/assets/icons/TextInlineIcon";
 import { TextWrapIcon } from "~/assets/icons/TextWrapIcon";
+import { DocsHeaderButton } from "~/components/DocsPanel";
 import { CodeBlock } from "~/components/code/CodeBlock";
 import { PageBody } from "~/components/layout/AppLayout";
 import { Button, LinkButton } from "~/components/primitives/Buttons";
@@ -102,7 +103,6 @@ import { type SessionStatus } from "~/services/sessionsRepository/sessionsReposi
 import { cn } from "~/utils/cn";
 import { throwNotFound } from "~/utils/httpErrors";
 import {
-  docsPath,
   EnvironmentParamSchema,
   v3RunPath,
   v3RunsPath,
@@ -252,13 +252,7 @@ function SessionPage() {
         />
         <PageAccessories>
           <WhenAgentUnavailable>
-            <LinkButton
-              variant={"docs/small"}
-              LeadingIcon={BookOpenIcon}
-              to={docsPath("/ai-chat/sessions")}
-            >
-              Sessions docs
-            </LinkButton>
+            <DocsHeaderButton path="/ai-chat/sessions">Sessions docs</DocsHeaderButton>
           </WhenAgentUnavailable>
         </PageAccessories>
       </NavBar>

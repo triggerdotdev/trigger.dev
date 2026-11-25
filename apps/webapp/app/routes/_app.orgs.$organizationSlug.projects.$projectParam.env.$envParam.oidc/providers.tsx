@@ -14,6 +14,7 @@ import {
   VaultIcon,
 } from "~/assets/icons/OidcProviderIcons";
 import { GoogleLogo } from "~/assets/logos/GoogleLogo";
+import { useDocsLink } from "~/components/DocsPanel";
 import { EnvironmentCombo } from "~/components/environments/EnvironmentLabel";
 import { LinkButton } from "~/components/primitives/Buttons";
 import { Callout } from "~/components/primitives/Callout";
@@ -26,7 +27,7 @@ import { useEnvironment } from "~/hooks/useEnvironment";
 import { useOrganization } from "~/hooks/useOrganizations";
 import { useProject } from "~/hooks/useProject";
 import { cn } from "~/utils/cn";
-import { docsPath, v3EnvironmentVariableKeyPath } from "~/utils/pathBuilder";
+import { v3EnvironmentVariableKeyPath } from "~/utils/pathBuilder";
 import type {
   OidcReplaceableKey,
   OidcReplaceableService,
@@ -383,6 +384,7 @@ export function ProviderSetup({
   /** Off where the issuer and subject are already on screen. */
   showTokenValues?: boolean;
 }) {
+  const docsLink = useDocsLink();
   const keyPath = useKeyPath();
   return (
     <div className="space-y-6">
@@ -418,7 +420,7 @@ export function ProviderSetup({
       )}
 
       <LinkButton
-        to={docsPath(provider.guide)}
+        {...docsLink(provider.guide)}
         variant={keys.length > 0 ? "primary/medium" : "secondary/medium"}
         target="_blank"
       >

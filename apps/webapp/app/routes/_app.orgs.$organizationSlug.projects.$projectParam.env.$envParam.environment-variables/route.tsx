@@ -17,7 +17,6 @@ import * as Ariakit from "@ariakit/react";
 import { parseEnvironmentVariableForm } from "~/v3/environmentVariables/forms";
 import {
   ArrowsRightLeftIcon,
-  BookOpenIcon,
   ExclamationCircleIcon,
   InformationCircleIcon,
   PlusIcon,
@@ -48,6 +47,7 @@ import {
 } from "react";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import { z } from "zod";
+import { DocsHeaderButton } from "~/components/DocsPanel";
 import {
   EnvironmentCombo,
   EnvironmentIcon,
@@ -108,7 +108,6 @@ import { VercelIntegrationService } from "~/services/vercelIntegration.server";
 import { cn } from "~/utils/cn";
 import {
   EnvironmentParamSchema,
-  docsPath,
   organizationAuditLogPath,
   v3EnvironmentVariableKeyPath,
   v3EnvironmentVariablesAttentionPath,
@@ -1144,13 +1143,9 @@ function EnvironmentVariablesListPage({
             )
           ) : null}
           <WhenAgentUnavailable>
-            <LinkButton
-              LeadingIcon={BookOpenIcon}
-              to={docsPath("v3/deploy-environment-variables")}
-              variant="docs/small"
-            >
+            <DocsHeaderButton path="v3/deploy-environment-variables">
               Environment variables docs
-            </LinkButton>
+            </DocsHeaderButton>
           </WhenAgentUnavailable>
         </PageAccessories>
       </NavBar>

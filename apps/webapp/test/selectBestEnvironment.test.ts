@@ -87,4 +87,16 @@ describe("SelectBestEnvironmentPresenter.selectBestEnvironment", () => {
 
     expect(result).toBe(myDev);
   });
+
+  // Catches: a docs "Manage" link for a dev docs key opening the reader's production API keys.
+  it("asked for dev, picks the user's own dev environment over a stored production preference", async () => {
+    const result = await presenter.selectBestEnvironment(
+      PROJECT_ID,
+      userWithPreference(prod.id),
+      [theirDev, myDev, prod],
+      true
+    );
+
+    expect(result).toBe(myDev);
+  });
 });

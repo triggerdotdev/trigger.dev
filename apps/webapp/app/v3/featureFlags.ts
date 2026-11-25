@@ -28,6 +28,7 @@ export const FEATURE_FLAG = {
   hasPrivateConnections: "hasPrivateConnections",
   hasSso: "hasSso",
   hasThemeSwitcher: "hasThemeSwitcher",
+  hasDocsPanel: "hasDocsPanel",
   mollifierEnabled: "mollifierEnabled",
   workerQueueCompatibility: "workerQueueCompatibility",
   workerQueueChannel: "workerQueueChannel",
@@ -158,6 +159,8 @@ export const FeatureFlagCatalog = {
   [FEATURE_FLAG.hasSso]: z.coerce.boolean(),
   // Gates the Interface theme setting in /account. Off by default.
   [FEATURE_FLAG.hasThemeSwitcher]: z.coerce.boolean(),
+  // Docs links that opt in open the docs in a panel beside the page instead of a new tab.
+  [FEATURE_FLAG.hasDocsPanel]: z.coerce.boolean(),
   [FEATURE_FLAG.mollifierEnabled]: z.coerce.boolean(),
   [FEATURE_FLAG.workerQueueCompatibility]: WorkerQueueCompatibilityFlag,
   [FEATURE_FLAG.workerQueueChannel]: WorkerQueueChannelFlag,

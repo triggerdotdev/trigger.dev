@@ -27,6 +27,7 @@ import { clearImpersonation } from "./models/admin.server";
 import { getImpersonationState, getRawImpersonationId } from "./services/impersonation.server";
 import { getUser } from "./services/session.server";
 import { adminOriginForRequest } from "./services/adminOrigin.server";
+import { docsHintCookie } from "./services/docsReader.server";
 import {
   normalizeIconContrast,
   normalizeSystemDarkTheme,
@@ -128,6 +129,9 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
 
   const headers = new Headers();
   headers.append("Set-Cookie", await commitSession(session));
+  // Every login, logout and ended session passes through a dashboard page.
+  const docsHint = docsHintCookie(request, !!user);
+  if (docsHint) headers.append("Set-Cookie", docsHint);
   const appOrigin = adminOriginForRequest(request) ?? env.APP_ORIGIN;
 
   return typedjson(

@@ -4,6 +4,7 @@ import { type LoaderFunctionArgs, redirect } from "@remix-run/server-runtime";
 import { useCallback, useMemo } from "react";
 import { typeddefer, useTypedLoaderData } from "remix-typedjson";
 import { ClockIcon } from "~/assets/icons/ClockIcon";
+import { useDocsLink } from "~/components/DocsPanel";
 import { taskAgentPageContext } from "~/components/dashboard-agent/suggested-prompts";
 import { PageBody, PageContainer } from "~/components/layout/AppLayout";
 import { Button, LinkButton } from "~/components/primitives/Buttons";
@@ -56,7 +57,6 @@ import type { Handle } from "~/utils/handle";
 import { formatNumber } from "~/utils/numberFormatter";
 import { pageMeta } from "~/utils/pageTitle";
 import {
-  docsPath,
   v3EnvironmentPath,
   v3ScheduledTaskSchedulePath,
   v3SchedulesAddOnPath,
@@ -467,6 +467,7 @@ function SchedulesTable({
 }
 
 function NoSchedulesAttachedPanel() {
+  const docsLink = useDocsLink();
   return (
     <InfoPanel
       title="No schedules attached"
@@ -475,7 +476,7 @@ function NoSchedulesAttachedPanel() {
       panelClassName="max-w-full"
       accessory={
         <LinkButton
-          to={docsPath("v3/tasks-scheduled")}
+          {...docsLink("v3/tasks-scheduled")}
           variant="docs/small"
           LeadingIcon={BookOpenIcon}
         >

@@ -9,6 +9,7 @@ import {
   type TooltipProps,
 } from "recharts";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
+import { DocsHeaderButton } from "~/components/DocsPanel";
 import { PromptsNone } from "~/components/BlankStatePanels";
 import { MainCenteredContainer, PageBody, PageContainer } from "~/components/layout/AppLayout";
 import { TruncatedCopyableValue } from "~/components/primitives/TruncatedCopyableValue";
@@ -35,9 +36,7 @@ import { findEnvironmentBySlug } from "~/models/runtimeEnvironment.server";
 import { PromptPresenter } from "~/presenters/v3/PromptPresenter.server";
 import { clickhouseFactory } from "~/services/clickhouse/clickhouseFactoryInstance.server";
 import { requireUserId } from "~/services/session.server";
-import { docsPath, EnvironmentParamSchema, v3PromptsPath } from "~/utils/pathBuilder";
-import { LinkButton } from "~/components/primitives/Buttons";
-import { BookOpenIcon } from "@heroicons/react/24/solid";
+import { EnvironmentParamSchema, v3PromptsPath } from "~/utils/pathBuilder";
 import { WhenAgentUnavailable } from "~/components/dashboard-agent/WhenAgentUnavailable";
 import { promptsAgentPageContext } from "~/components/dashboard-agent/suggested-prompts";
 import type { Handle } from "~/utils/handle";
@@ -106,9 +105,7 @@ export default function PromptsPage() {
         <PageTitle title="Prompts" />
         <PageAccessories>
           <WhenAgentUnavailable>
-            <LinkButton variant="docs/small" LeadingIcon={BookOpenIcon} to={docsPath("ai/prompts")}>
-              Prompts docs
-            </LinkButton>
+            <DocsHeaderButton path="ai/prompts">Prompts docs</DocsHeaderButton>
           </WhenAgentUnavailable>
         </PageAccessories>
       </NavBar>

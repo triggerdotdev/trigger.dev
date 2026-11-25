@@ -4,7 +4,6 @@ import { parseWithZod } from "~/utils/conform";
 import {
   BellAlertIcon,
   BellSlashIcon,
-  BookOpenIcon,
   EnvelopeIcon,
   LockClosedIcon,
   PlusIcon,
@@ -15,6 +14,7 @@ import { SlackIcon } from "@trigger.dev/companyicons";
 import type { ProjectAlertChannelType } from "@trigger.dev/database";
 import assertNever from "assert-never";
 import { z } from "zod";
+import { DocsHeaderButton } from "~/components/DocsPanel";
 import { alertTypeTitle } from "~/components/alerts/AlertChannelsBody";
 import { AlertsNoneDev, AlertsNoneDeployed } from "~/components/alerts/AlertsBlankStates";
 import { Feedback } from "~/components/Feedback";
@@ -49,7 +49,7 @@ import { useOrganization } from "~/hooks/useOrganizations";
 import { useProject } from "~/hooks/useProject";
 import type { AlertChannelListPresenterRecord } from "~/presenters/v3/AlertChannelListPresenter.server";
 import { cn } from "~/utils/cn";
-import { docsPath, v3BillingPath, v3NewProjectAlertPath } from "~/utils/pathBuilder";
+import { v3BillingPath, v3NewProjectAlertPath } from "~/utils/pathBuilder";
 import { WhenAgentUnavailable } from "~/components/dashboard-agent/WhenAgentUnavailable";
 
 const schema = z.discriminatedUnion("action", [
@@ -78,13 +78,7 @@ export function LegacyAlertChannelsPage({
         <PageTitle title="Alerts" />
         <PageAccessories>
           <WhenAgentUnavailable>
-            <LinkButton
-              LeadingIcon={BookOpenIcon}
-              to={docsPath("v3/troubleshooting-alerts")}
-              variant="docs/small"
-            >
-              Alerts docs
-            </LinkButton>
+            <DocsHeaderButton path="v3/troubleshooting-alerts">Alerts docs</DocsHeaderButton>
           </WhenAgentUnavailable>
         </PageAccessories>
       </NavBar>

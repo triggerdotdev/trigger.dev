@@ -22,6 +22,7 @@ import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import { BeakerIcon } from "~/assets/icons/BeakerIcon";
 import { ClockRotateLeftIcon } from "~/assets/icons/ClockRotateLeftIcon";
 import { TaskIcon } from "~/assets/icons/TaskIcon";
+import { useDocsLink } from "~/components/DocsPanel";
 import { JSONEditor } from "~/components/code/JSONEditor";
 import { EnvironmentCombo } from "~/components/environments/EnvironmentLabel";
 import { Badge } from "~/components/primitives/Badge";
@@ -75,8 +76,9 @@ import { type loader as queuesLoader } from "~/routes/resources.orgs.$organizati
 import { clickhouseFactory } from "~/services/clickhouse/clickhouseFactoryInstance.server";
 import { logger } from "~/services/logger.server";
 import { requireUser } from "~/services/session.server";
+import { testPayloadPrefill } from "~/utils/testPayloadPrefill.server";
 import { cn } from "~/utils/cn";
-import { docsPath, v3RunSpanPath, v3TaskParamsSchema, v3TestPath } from "~/utils/pathBuilder";
+import { v3RunSpanPath, v3TaskParamsSchema, v3TestPath } from "~/utils/pathBuilder";
 import { DeleteTaskRunTemplateService } from "~/v3/services/deleteTaskRunTemplate.server";
 import { TaskRunTemplateService } from "~/v3/services/taskRunTemplate.server";
 import { TestTaskService } from "~/v3/services/testTask.server";
@@ -84,6 +86,8 @@ import { ServiceValidationError } from "~/v3/services/common.server";
 import { OutOfEntitlementError } from "~/v3/services/triggerTask.server";
 import { DeleteTaskRunTemplateData, RunTemplateData } from "~/v3/taskRunTemplate";
 import { TestTaskData } from "~/v3/testTask";
+import { TestTaskNotFound } from "~/components/BlankStatePanels";
+import { MainCenteredContainer } from "~/components/layout/AppLayout";
 import { AIPayloadTabContent } from "./AIPayloadTabContent";
 import { SchemaTabContent } from "./SchemaTabContent";
 import { TestSidebarTabs } from "./TestSidebarTabs";
@@ -148,7 +152,11 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
       );
     }
 
-    return typedjson({ ...result, regions: regionsResult.regions });
+    return typedjson({
+      ...result,
+      regions: regionsResult.regions,
+      prefillPayload: testPayloadPrefill(new URL(request.url)),
+    });
   } catch (error) {
     if (error instanceof Response) throw error;
 
@@ -343,11 +351,9 @@ export default function Page() {
 
   if (!result.foundTask) {
     return (
-      <div className="flex h-full items-center justify-center p-6">
-        <Paragraph variant="small" className="text-text-dimmed">
-          No version in this environment has the task "{params.taskParam}".
-        </Paragraph>
-      </div>
+      <MainCenteredContainer className="max-w-md">
+        <TestTaskNotFound taskIdentifier={params.taskParam ?? ""} />
+      </MainCenteredContainer>
     );
   }
 
@@ -365,6 +371,7 @@ export default function Page() {
           disableVersionSelection={result.disableVersionSelection}
           allowArbitraryQueues={result.allowArbitraryQueues}
           regions={result.regions}
+          prefillPayload={result.prefillPayload}
         />
       );
     }
@@ -451,6 +458,7 @@ function StandardTaskForm({
   disableVersionSelection,
   allowArbitraryQueues,
   regions,
+  prefillPayload,
 }: {
   task: StandardTaskResult["task"];
   queues: Required<StandardTaskResult>["queue"][];
@@ -460,7 +468,10 @@ function StandardTaskForm({
   disableVersionSelection: boolean;
   allowArbitraryQueues: boolean;
   regions: Region[];
+  /** From a "Test in dashboard" link; wins over the last run's payload. */
+  prefillPayload?: string;
 }) {
+  const docsLink = useDocsLink();
   const environment = useEnvironment();
   const { value, replace } = useSearchParams();
   const tab = value("tab");
@@ -478,7 +489,7 @@ function StandardTaskForm({
   const lastRun = runs.at(0);
 
   const [defaultPayloadJson, setDefaultPayloadJson] = useState<string>(
-    lastRun?.payload ?? startingJson
+    prefillPayload ?? lastRun?.payload ?? startingJson
   );
   const setPayload = useCallback((code: string) => {
     setDefaultPayloadJson(code);
@@ -668,7 +679,7 @@ function StandardTaskForm({
               <Fieldset className="px-3 py-3">
                 <Hint>
                   Options enable you to control the execution behavior of your task.{" "}
-                  <TextLink to={docsPath("triggering#options")}>Read the docs.</TextLink>
+                  <TextLink {...docsLink("triggering#options")}>Read the docs.</TextLink>
                 </Hint>
                 <InputGroup>
                   <Label htmlFor={machine.id} variant="small">
@@ -1013,6 +1024,7 @@ function ScheduledTaskForm({
   allowArbitraryQueues: boolean;
   regions: Region[];
 }) {
+  const docsLink = useDocsLink();
   const environment = useEnvironment();
 
   const lastRun = runs.at(0);
@@ -1208,14 +1220,14 @@ function ScheduledTaskForm({
                 <Hint>
                   Optionally, you can specify your own IDs (like a user ID) and then use it inside
                   the run function of your task.{" "}
-                  <TextLink to={docsPath("v3/tasks-scheduled")}>Read the docs.</TextLink>
+                  <TextLink {...docsLink("v3/tasks-scheduled")}>Read the docs.</TextLink>
                 </Hint>
                 <FormError id={externalId.errorId}>{externalId.errors}</FormError>
               </InputGroup>
               <div className="w-full border-b border-grid-bright" />
               <Hint>
                 Options enable you to control the execution behavior of your task.{" "}
-                <TextLink to={docsPath("triggering#options")}>Read the docs.</TextLink>
+                <TextLink {...docsLink("triggering#options")}>Read the docs.</TextLink>
               </Hint>
               <InputGroup>
                 <Label htmlFor={machine.id} variant="small">

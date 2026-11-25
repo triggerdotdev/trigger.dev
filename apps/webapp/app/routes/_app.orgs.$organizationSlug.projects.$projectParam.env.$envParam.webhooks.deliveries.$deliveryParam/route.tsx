@@ -1,4 +1,4 @@
-import { ArrowPathIcon, BookOpenIcon } from "@heroicons/react/20/solid";
+import { ArrowPathIcon } from "@heroicons/react/20/solid";
 import { Form, useNavigation, useRevalidator } from "@remix-run/react";
 import { type ActionFunctionArgs, type LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
@@ -6,6 +6,7 @@ import { z } from "zod";
 import { AIChatIcon } from "~/assets/icons/AIChatIcon";
 import { RunsIcon } from "~/assets/icons/RunsIcon";
 import { WebhookIcon } from "~/assets/icons/WebhookIcon";
+import { DocsHeaderButton } from "~/components/DocsPanel";
 import { CodeBlock } from "~/components/code/CodeBlock";
 import { PageBody, PageContainer } from "~/components/layout/AppLayout";
 import { Badge } from "~/components/primitives/Badge";
@@ -54,7 +55,6 @@ import { webhookDeliveriesRepository } from "~/services/webhookDeliveriesReposit
 import { formatBytes } from "~/utils/columnFormat";
 import { pageMeta } from "~/utils/pageTitle";
 import {
-  docsPath,
   EnvironmentParamSchema,
   v3RunPath,
   v3SessionPath,
@@ -321,13 +321,7 @@ export default function Page() {
           ]}
         />
         <PageAccessories>
-          <LinkButton
-            variant="docs/small"
-            LeadingIcon={BookOpenIcon}
-            to={docsPath("webhooks/overview")}
-          >
-            Webhooks docs
-          </LinkButton>
+          <DocsHeaderButton path="webhooks/overview">Webhooks docs</DocsHeaderButton>
         </PageAccessories>
       </NavBar>
       <PageBody scrollable={false}>

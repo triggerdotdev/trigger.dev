@@ -19,6 +19,7 @@ import { useEffect } from "react";
 import { typedjson, useTypedFetcher } from "remix-typedjson";
 import { toast } from "sonner";
 import { ExitIcon } from "~/assets/icons/ExitIcon";
+import { useDocsLink } from "~/components/DocsPanel";
 import { AdminDebugRun } from "~/components/admin/debugRun";
 import { CodeBlock } from "~/components/code/CodeBlock";
 import { RunError } from "~/components/runs/v3/RunError";
@@ -1619,6 +1620,7 @@ function StartedSessionProperty({ session }: { session: StartedSession }) {
 }
 
 function SpanEntity({ span, statusAccessory }: { span: Span; statusAccessory?: React.ReactNode }) {
+  const docsLink = useDocsLink();
   const isAdmin = useHasAdminAccess();
 
   const organization = useOrganization();
@@ -1804,7 +1806,7 @@ function SpanEntity({ span, statusAccessory }: { span: Span; statusAccessory?: R
               <Header2>Waitpoint</Header2>
               <Paragraph variant="small">
                 A waitpoint pauses your code from continuing until the conditions are met.{" "}
-                <TextLink to={docsPath("wait")}>View docs</TextLink>.
+                <TextLink {...docsLink("wait")}>View docs</TextLink>.
               </Paragraph>
             </div>
             <WaitpointDetailTable waitpoint={span.entity.object} linkToList />

@@ -3,6 +3,7 @@ import { type MetaFunction } from "@remix-run/react";
 import { type ActionFunctionArgs, type LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { typeddefer, useTypedLoaderData } from "remix-typedjson";
 import { WebhookIcon } from "~/assets/icons/WebhookIcon";
+import { DocsHeaderButton, useDocsLink } from "~/components/DocsPanel";
 import { CodeBlock } from "~/components/code/CodeBlock";
 import { MainCenteredContainer, PageBody, PageContainer } from "~/components/layout/AppLayout";
 import { DirectionSchema, ListPagination } from "~/components/ListPagination";
@@ -31,7 +32,7 @@ import {
 } from "~/services/dashboardPreferences.server";
 import { requireUser } from "~/services/session.server";
 import { telemetry } from "~/services/telemetry.server";
-import { docsPath, EnvironmentParamSchema } from "~/utils/pathBuilder";
+import { EnvironmentParamSchema } from "~/utils/pathBuilder";
 import { webhookIngressUrl } from "~/utils/webhookIngressUrl.server";
 import { hasWebhooksAccess } from "~/v3/webhooksAccess.server";
 
@@ -166,13 +167,7 @@ function Endpoints({ data }: { data: EndpointsData }) {
       <NavBar>
         <PageTitle title="Webhooks" />
         <PageAccessories>
-          <LinkButton
-            variant="docs/small"
-            LeadingIcon={BookOpenIcon}
-            to={docsPath("webhooks/overview")}
-          >
-            Webhooks docs
-          </LinkButton>
+          <DocsHeaderButton path="webhooks/overview">Webhooks docs</DocsHeaderButton>
         </PageAccessories>
       </NavBar>
       <PageBody scrollable={false}>
@@ -206,6 +201,7 @@ function Endpoints({ data }: { data: EndpointsData }) {
 }
 
 function NoEndpoints() {
+  const docsLink = useDocsLink();
   return (
     <MainCenteredContainer className="max-w-2xl">
       <InfoPanel
@@ -215,7 +211,7 @@ function NoEndpoints() {
         panelClassName="max-w-2xl"
         accessory={
           <LinkButton
-            to={docsPath("webhooks/overview")}
+            {...docsLink("webhooks/overview")}
             variant="docs/small"
             LeadingIcon={BookOpenIcon}
           >

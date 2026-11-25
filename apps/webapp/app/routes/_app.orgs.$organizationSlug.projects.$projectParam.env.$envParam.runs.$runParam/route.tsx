@@ -1,6 +1,5 @@
 import {
   ArrowUturnLeftIcon,
-  BookOpenIcon,
   InformationCircleIcon,
   LockOpenIcon,
   StopCircleIcon,
@@ -13,6 +12,7 @@ import { useState } from "react";
 import { redirect } from "remix-typedjson";
 import { ChevronExtraSmallDown } from "~/assets/icons/ChevronExtraSmallDown";
 import { ChevronExtraSmallUp } from "~/assets/icons/ChevronExtraSmallUp";
+import { DocsHeaderButton } from "~/components/DocsPanel";
 import { DevDisconnectedBanner, useCrossEngineIsConnected } from "~/components/DevPresence";
 import { AdminDebugTooltip } from "~/components/admin/debugTooltip";
 import { PageBody } from "~/components/layout/AppLayout";
@@ -76,7 +76,6 @@ import { WhenAgentUnavailable } from "~/components/dashboard-agent/WhenAgentUnav
 import { cn } from "~/utils/cn";
 import type { Handle } from "~/utils/handle";
 import {
-  docsPath,
   v3BillingPath,
   v3RunParamsSchema,
   v3RunPath,
@@ -522,9 +521,7 @@ export default function Page() {
             </Property.Table>
           </AdminDebugTooltip>
           <WhenAgentUnavailable>
-            <LinkButton variant={"docs/small"} LeadingIcon={BookOpenIcon} to={docsPath("/runs")}>
-              Run docs
-            </LinkButton>
+            <DocsHeaderButton path="/runs">Run docs</DocsHeaderButton>
           </WhenAgentUnavailable>
           {alertsEnabled && !isFinalRunStatus(run.status) ? (
             <RunCreateAlertButton
