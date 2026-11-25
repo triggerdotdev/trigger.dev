@@ -20,7 +20,13 @@ const DIGEST = `sha256:${"a".repeat(64)}`;
 const OTHER = `sha256:${"b".repeat(64)}`;
 const OCI = "application/vnd.oci.image.manifest.v1+json";
 const GATE: DeploymentCheckDecision = { plan: "gate", selectedBy: "org_override" };
-const IMAGE = { manifest: "{}", mediaType: OCI, blobUrls: {} };
+const IMAGE = {
+  manifest: '{"schemaVersion":2}',
+  mediaType: OCI,
+  blobUrls: { [DIGEST]: "https://layers.s3.us-east-1.amazonaws.com/a" },
+};
+const READ = { kind: "read", image: IMAGE } as const;
+const READ_RETRY = { kind: "retry", reason: "timed out after 20000 ms" } as const;
 const PASS: DeploymentCheckResult = { outcome: "pass", id: "check_1", retryable: false };
 const REFUSED = {
   kind: "refuse",
@@ -79,7 +85,7 @@ function deps(
       controller,
       canRun: () => true,
       resolveImage: async () => resolved,
-      readImage: async () => IMAGE,
+      readImage: async () => READ,
       extendTimeout: async (deploymentId: string) => {
         extended.push(deploymentId);
       },
@@ -337,14 +343,72 @@ describe("gateDeployment", () => {
     }
   });
 
-  it("checks without the image when it can't be read", async () => {
+  it("never checks without the image: reads once more, then says deploy again", async () => {
+    // Catches: a check sent without the image, or a read that may work next time refusing for good
+    // or retried without end.
     const p = plugin();
-    await gateDeployment(
-      deployment,
-      DIGEST,
-      deps(p.controller, { readImage: async () => null }).value
-    );
-    expect(p.checks[0]).not.toHaveProperty("image");
+    const reads: unknown[] = [];
+    const d = deps(p.controller, {
+      readImage: async (input) => {
+        reads.push(input);
+        return READ_RETRY;
+      },
+    });
+    expect(await gateDeployment(deployment, DIGEST, d.value)).toEqual(TRY_AGAIN);
+    // Read twice, each time for the digest the gate resolved, in the project's own repository.
+    const input = {
+      imageReference: deployment.imageReference,
+      imageDigest: DIGEST,
+      projectRef: deployment.projectRef,
+      isV4Deployment: true,
+    };
+    expect(reads).toEqual([input, input]);
+    expect(p.checks).toHaveLength(0);
+    expect(
+      await decisions(d.metrics, { mode: "gate", outcome: "unavailable", stage: "finalize" })
+    ).toBe(1);
+
+    // A read that works the second time is checked as usual.
+    const q = plugin();
+    let second = 0;
+    const e = deps(q.controller, { readImage: async () => (second++ === 0 ? READ_RETRY : READ) });
+    expect(await gateDeployment(deployment, DIGEST, e.value)).toMatchObject({ kind: "proceed" });
+    expect(q.checks).toHaveLength(1);
+    expect(q.checks[0]?.image).toEqual(IMAGE);
+
+    // A check with no answer worth retrying whose second read fails is still "deploy again".
+    const r = plugin(GATE, { outcome: "unavailable", id: "check_1", retryable: true });
+    let third = 0;
+    const f = deps(r.controller, { readImage: async () => (third++ === 0 ? READ : READ_RETRY) });
+    expect(await gateDeployment(deployment, DIGEST, f.value)).toEqual(TRY_AGAIN);
+    expect(third).toBe(2);
+    expect(r.checks).toHaveLength(1);
+    expect(
+      await decisions(f.metrics, { mode: "gate", outcome: "unavailable", stage: "finalize" })
+    ).toBe(1);
+  });
+
+  it("refuses without a check when the image can't be read here, with the right message", async () => {
+    // Catches: a deploy told to try again when it never can (an image over the caps, not the
+    // project's own), one told to contact support when another host could read it, or a read
+    // repeated for nothing.
+    for (const [kind, outcome, refusal] of [
+      ["unreadable", "fail", REFUSED],
+      ["not_configured", "unavailable", TRY_AGAIN],
+    ] as const) {
+      const p = plugin();
+      let reads = 0;
+      const d = deps(p.controller, {
+        readImage: async () => {
+          reads++;
+          return { kind, reason: "test" };
+        },
+      });
+      expect(await gateDeployment(deployment, DIGEST, d.value)).toEqual(refusal);
+      expect(reads).toBe(1);
+      expect(p.checks).toHaveLength(0);
+      expect(await decisions(d.metrics, { mode: "gate", outcome, stage: "finalize" })).toBe(1);
+    }
   });
 
   it("does nothing off Cloud, and records a missing plugin", async () => {

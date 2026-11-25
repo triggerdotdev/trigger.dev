@@ -28,6 +28,23 @@ const DIGEST = `sha256:${"c".repeat(64)}`;
 const IMAGE = "registry.example.com/deployments/proj_test:20260101.1.prod";
 const SHADOW: DeploymentCheckDecision = { plan: "shadow", selectedBy: "sampled" };
 const LAST_ATTEMPT = deploymentCheckJob.retry.maxAttempts - 1;
+/** An image as the registry read gives it; the job only checks with one. */
+const SUPPLIED_IMAGE = {
+  manifest: '{"schemaVersion":2}',
+  mediaType: "application/vnd.oci.image.manifest.v1+json",
+  blobUrls: { [DIGEST]: "https://layers.s3.us-east-1.amazonaws.com/x" },
+};
+
+const READ = { kind: "read", image: SUPPLIED_IMAGE } as const;
+const READ_RETRY = { kind: "retry", reason: "timed out after 20000 ms" } as const;
+
+/** The job with an image read that works, unless a test says otherwise. */
+function runCheck(
+  job: Parameters<typeof runDeploymentCheck>[0],
+  dependencies: NonNullable<Parameters<typeof runDeploymentCheck>[1]>
+) {
+  return runDeploymentCheck(job, { readImage: async () => READ, ...dependencies });
+}
 
 /**
  * Stands in for the deployment checks plugin, which this repository doesn't ship. It answers with a
@@ -103,14 +120,9 @@ describe("deployment checks", () => {
   postgresTest(
     "hands the plugin the image the registry gave, read per attempt",
     async ({ prisma }) => {
-      // Catches: the supplied image dropped on the way to the plugin (so the check keeps needing
-      // ECR credentials), a stale image reused across attempts (its URLs expire), or a failed read
-      // sending an empty image instead of none.
-      const image = {
-        manifest: '{"schemaVersion":2}',
-        mediaType: "application/vnd.oci.image.manifest.v1+json",
-        blobUrls: { [DIGEST]: "https://layers.s3.us-east-1.amazonaws.com/x" },
-      };
+      // Catches: the supplied image dropped on the way to the plugin, the image not read again on
+      // each attempt, or a check run without the image when the read failed.
+      const image = SUPPLIED_IMAGE;
       const reads: Array<{
         imageReference: string;
         imageDigest: string;
@@ -123,29 +135,31 @@ describe("deployment checks", () => {
       });
 
       const supplied = testPlugin();
-      await runDeploymentCheck(
+      await runCheck(
         { deploymentId: deployment.id, attempt: 0 },
         {
           prisma,
           controller: supplied.controller,
           readImage: async (input) => {
             reads.push(input);
-            return image;
+            return READ;
           },
         }
       );
       const unread = testPlugin();
-      await runDeploymentCheck(
-        { deploymentId: deployment.id, attempt: 1 },
-        {
-          prisma,
-          controller: unread.controller,
-          readImage: async (input) => {
-            reads.push(input);
-            return null;
-          },
-        }
-      );
+      await expect(
+        runCheck(
+          { deploymentId: deployment.id, attempt: 1 },
+          {
+            prisma,
+            controller: unread.controller,
+            readImage: async (input) => {
+              reads.push(input);
+              return READ_RETRY;
+            },
+          }
+        )
+      ).rejects.toThrow("image not read");
 
       expect(reads).toEqual([
         {
@@ -162,8 +176,68 @@ describe("deployment checks", () => {
         },
       ]);
       expect(supplied.checks).toEqual([expect.objectContaining({ imageDigest: DIGEST, image })]);
-      expect(unread.checks).toHaveLength(1);
-      expect(unread.checks[0]).not.toHaveProperty("image");
+      expect(unread.checks).toHaveLength(0);
+
+      // The attempt before the last still asks again; the last records no answer, counted once,
+      // still without asking the checker.
+      const metrics = createInMemoryMetrics();
+      const telemetry = deploymentCheckTelemetry(metrics.meter);
+      await expect(
+        runCheck(
+          { deploymentId: deployment.id, attempt: LAST_ATTEMPT - 1 },
+          { prisma, controller: unread.controller, telemetry, readImage: async () => READ_RETRY }
+        )
+      ).rejects.toThrow("image not read");
+      expect(
+        await runCheck(
+          { deploymentId: deployment.id, attempt: LAST_ATTEMPT },
+          { prisma, controller: unread.controller, telemetry, readImage: async () => READ_RETRY }
+        )
+      ).toBe("unavailable");
+      expect(unread.checks).toHaveLength(0);
+      expect(
+        metricSum(await latestMetrics(metrics), "deployment_checks.decisions_total", {
+          outcome: "unavailable",
+          stage: "job",
+        })
+      ).toBe(1);
+    }
+  );
+
+  postgresTest(
+    "fails an image no read will ever give at once, and asks again on a host that can't read",
+    async ({ prisma }) => {
+      // Catches: retries spent on an image over the caps or not the project's own, such an image
+      // counted as a pass, or a worker without the read role giving up where another may read it.
+      const { deployment } = await createDeployment(prisma);
+      const unreadable = testPlugin();
+      expect(
+        await runCheck(
+          { deploymentId: deployment.id, attempt: 0 },
+          {
+            prisma,
+            controller: unreadable.controller,
+            readImage: async () => ({ kind: "unreadable", reason: "test" }),
+          }
+        )
+      ).toBe("fail");
+      expect(unreadable.checks).toHaveLength(0);
+
+      const hostCant = testPlugin();
+      const notConfigured = async () => ({ kind: "not_configured", reason: "test" }) as const;
+      await expect(
+        runCheck(
+          { deploymentId: deployment.id, attempt: 0 },
+          { prisma, controller: hostCant.controller, readImage: notConfigured }
+        )
+      ).rejects.toThrow("image not read");
+      expect(
+        await runCheck(
+          { deploymentId: deployment.id, attempt: LAST_ATTEMPT },
+          { prisma, controller: hostCant.controller, readImage: notConfigured }
+        )
+      ).toBe("unavailable");
+      expect(hostCant.checks).toHaveLength(0);
     }
   );
 
@@ -183,7 +257,7 @@ describe("deployment checks", () => {
       });
 
       const { controller } = testPlugin({ result });
-      await runDeploymentCheck({ deploymentId: deployment.id, attempt: 0 }, { prisma, controller })
+      await runCheck({ deploymentId: deployment.id, attempt: 0 }, { prisma, controller })
         // A retryable answer throws so the worker retries.
         .catch(() => {});
 
@@ -209,7 +283,7 @@ describe("deployment checks", () => {
       const { deployment, organization, project } = await createDeployment(prisma, {
         imageReference,
       });
-      const outcome = await runDeploymentCheck(
+      const outcome = await runCheck(
         { deploymentId: deployment.id, attempt: 0 },
         { prisma, controller: plugin.controller, telemetry }
       );
@@ -243,6 +317,7 @@ describe("deployment checks", () => {
           projectRef: checked.project.externalRef,
           deploymentId: checked.deployment.id,
           imageDigest: DIGEST,
+          image: SUPPLIED_IMAGE,
           decision,
         },
       ]);
@@ -288,10 +363,10 @@ describe("deployment checks", () => {
       });
 
       await expect(
-        runDeploymentCheck({ deploymentId: deployment.id, attempt: 0 }, { prisma, controller })
+        runCheck({ deploymentId: deployment.id, attempt: 0 }, { prisma, controller })
       ).rejects.toThrow();
       expect(
-        await runDeploymentCheck(
+        await runCheck(
           { deploymentId: deployment.id, attempt: LAST_ATTEMPT },
           { prisma, controller }
         )
@@ -301,7 +376,7 @@ describe("deployment checks", () => {
         result: { outcome: "unavailable", id: "check_2", retryable: false },
       });
       expect(
-        await runDeploymentCheck(
+        await runCheck(
           { deploymentId: deployment.id, attempt: 0 },
           { prisma, controller: final.controller }
         )
@@ -326,13 +401,10 @@ describe("deployment checks", () => {
       };
 
       await expect(
-        runDeploymentCheck(
-          { deploymentId: deployment.id, attempt: 0 },
-          { prisma, controller, telemetry }
-        )
+        runCheck({ deploymentId: deployment.id, attempt: 0 }, { prisma, controller, telemetry })
       ).rejects.toThrow("decide broke");
       expect(
-        await runDeploymentCheck(
+        await runCheck(
           { deploymentId: deployment.id, attempt: LAST_ATTEMPT },
           { prisma, controller, telemetry }
         )
@@ -347,7 +419,7 @@ describe("deployment checks", () => {
 
       // One before the last still retries, and a decision the host can't act on counts the same.
       await expect(
-        runDeploymentCheck(
+        runCheck(
           { deploymentId: deployment.id, attempt: LAST_ATTEMPT - 1 },
           { prisma, controller, telemetry }
         )
@@ -359,7 +431,7 @@ describe("deployment checks", () => {
         },
       };
       expect(
-        await runDeploymentCheck(
+        await runCheck(
           { deploymentId: deployment.id, attempt: LAST_ATTEMPT },
           { prisma, controller: malformed, telemetry }
         )
@@ -371,7 +443,7 @@ describe("deployment checks", () => {
         },
       };
       expect(
-        await runDeploymentCheck(
+        await runCheck(
           { deploymentId: deployment.id, attempt: LAST_ATTEMPT },
           { prisma, controller: unlabelled, telemetry }
         )
@@ -423,7 +495,11 @@ describe("deployment checks", () => {
         concurrency: { workers: 1, tasksPerWorker: 1, limit: 1 },
         shutdownTimeoutMs: 1_000,
         pollIntervalMs: 50,
-        dependencies: { prisma, controller: plugin.controller },
+        dependencies: {
+          prisma,
+          controller: plugin.controller,
+          readImage: async () => READ,
+        },
       });
       try {
         const { deployment } = await createDeployment(prisma);
@@ -485,7 +561,7 @@ describe("deployment checks", () => {
     const telemetry = deploymentCheckTelemetry(metrics.meter);
 
     expect(
-      await runDeploymentCheck(
+      await runCheck(
         { deploymentId: "deployment_no_plugin", attempt: 0 },
         { controller: null, telemetry }
       )

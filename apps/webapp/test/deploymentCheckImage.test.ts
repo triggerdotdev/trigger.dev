@@ -82,11 +82,13 @@ async function startAws({
     layerDigest: digest,
     downloadUrl: `https://layers.s3.us-east-1.amazonaws.com/${digest}?X-Amz-Signature=s`,
   }),
+  failures = [],
   ecrError,
   stsDenied = false,
   hang,
 }: {
   entries?: Entry[];
+  failures?: Array<{ failureCode: string }>;
   url?: (digest: string) => { layerDigest?: string; downloadUrl?: string };
   ecrError?: string;
   stsDenied?: boolean;
@@ -124,7 +126,7 @@ async function startAws({
     };
     if (operation === "BatchGetImage") {
       if (ecrError) return json(400, { __type: ecrError, message: "made up" });
-      return json(200, { images: entries, failures: [] });
+      return json(200, { images: entries, failures });
     }
     if (operation === "GetDownloadUrlForLayer") {
       return json(200, url(String(input.layerDigest ?? "")));
@@ -199,7 +201,9 @@ describe("readDeploymentCheckImage", () => {
       entries: [{ imageManifest: manifest, imageManifestMediaType: OCI }],
     });
 
-    const image = await read(manifest, aws);
+    const result = await read(manifest, aws);
+    expect(result.kind).toBe("read");
+    const image = result.kind === "read" ? result.image : undefined;
 
     expect(image?.manifest).toBe(manifest);
     expect(image?.mediaType).toBe(OCI);
@@ -211,8 +215,8 @@ describe("readDeploymentCheckImage", () => {
     expect(batch.input).toEqual({
       registryId: "123456789012",
       repositoryName: REPO,
+      // No acceptedMediaTypes: ECR returns the manifest as stored, so an index reads as one.
       imageIds: [{ imageDigest: digestOf(manifest) }],
-      acceptedMediaTypes: [OCI, "application/vnd.docker.distribution.manifest.v2+json"],
     });
     expect(urls.map((call) => call.operation)).toEqual(Array(3).fill("GetDownloadUrlForLayer"));
     expect(urls.map((call) => call.input.repositoryName)).toEqual(Array(3).fill(REPO));
@@ -231,7 +235,7 @@ describe("readDeploymentCheckImage", () => {
       entries: [{ imageManifest: manifest, imageManifestMediaType: OCI }],
     });
 
-    expect(await read(manifest, aws)).not.toBeNull();
+    expect(await read(manifest, aws)).toMatchObject({ kind: "read" });
 
     const [assume] = calls;
     expect(assume.operation).toBe("AssumeRole");
@@ -261,21 +265,49 @@ describe("readDeploymentCheckImage", () => {
         { imageManifest: manifest, imageManifestMediaType: OCI },
       ],
     });
-    expect(await read(manifest, same.aws)).not.toBeNull();
+    expect(await read(manifest, same.aws)).toMatchObject({ kind: "read" });
     const different = await startAws({
       entries: [
         { imageManifest: manifest, imageManifestMediaType: OCI },
         { imageManifest: manifestWith([blob(2)]), imageManifestMediaType: OCI },
       ],
     });
-    expect(await read(manifest, different.aws)).toBeNull();
+    expect(await read(manifest, different.aws)).toMatchObject({ kind: "unreadable" });
   });
 
-  it("returns null for an image over the caps or not a single image, without asking for URLs", async () => {
-    // Catches: URLs minted (and sent) for an image the check can't take anyway.
+  it("says why it can't read an image, without asking for URLs", async () => {
+    // Catches: URLs minted (and sent) for an image the check can't take anyway, or such an image
+    // retried as if a later read could give it.
     const manifest = manifestWith([blob(1)]);
-    const cases: Array<{ entries: Entry[]; digest?: string }> = [
-      { entries: [] },
+    const cases: Array<{
+      entries: Entry[];
+      failures?: Array<{ failureCode: string }>;
+      digest?: string;
+      kind?: string;
+      reason?: string;
+    }> = [
+      // No manifest and no reason may be ECR answering late: worth another read.
+      { entries: [], kind: "retry", reason: "no manifest" },
+      // An image ECR can't find may be one it can't see yet: worth another read, and ECR's code
+      // says which it was.
+      {
+        entries: [],
+        failures: [{ failureCode: "ImageNotFound" }],
+        kind: "retry",
+        reason: "no manifest (ImageNotFound)",
+      },
+      // A manifest over 1 MiB.
+      {
+        entries: [
+          {
+            imageManifest: JSON.stringify({
+              ...JSON.parse(manifestWith([blob(1)])),
+              annotations: { pad: "x".repeat(1024 * 1024) },
+            }),
+            imageManifestMediaType: OCI,
+          },
+        ],
+      },
       {
         entries: [
           {
@@ -296,22 +328,87 @@ describe("readDeploymentCheckImage", () => {
       { entries: [{ imageManifest: manifestWith([]), imageManifestMediaType: OCI }] },
       { entries: [{ imageManifest: manifestWith(["latest"]), imageManifestMediaType: OCI }] },
       { entries: [{ imageManifest: "not json", imageManifestMediaType: OCI }] },
+      // No media type from ECR, and none of its own.
+      {
+        entries: [
+          { imageManifest: JSON.stringify({ ...JSON.parse(manifest), mediaType: undefined }) },
+        ],
+      },
+      // No media type from ECR, and an index, even one that claims to be an image.
+      {
+        entries: [
+          {
+            imageManifest: JSON.stringify({
+              schemaVersion: 2,
+              mediaType: "application/vnd.oci.image.index.v1+json",
+              manifests: [],
+            }),
+          },
+        ],
+      },
+      { entries: [{ imageManifest: JSON.stringify({ ...JSON.parse(manifest), manifests: [] }) }] },
     ];
-    for (const { entries, digest } of cases) {
+    for (const { entries, failures, digest, kind = "unreadable", reason } of cases) {
       const m = entries[0]?.imageManifest ?? manifest;
-      const { aws, ecrCalls } = await startAws({ entries });
-      expect(await read(m, aws, { digest: digest ?? digestOf(m) })).toBeNull();
+      const { aws, ecrCalls } = await startAws({ entries, failures });
+      expect(await read(m, aws, { digest: digest ?? digestOf(m) })).toMatchObject({
+        kind,
+        ...(reason ? { reason } : {}),
+      });
       expect(ecrCalls().some((call) => call.operation === "GetDownloadUrlForLayer")).toBe(false);
     }
   });
 
-  it("returns null when ECR fails or hands back an unusable URL", async () => {
+  it("takes the manifest's own media type when ECR leaves it out", async () => {
+    // Catches: an image refused, or read again for good, because ECR's answer had no media type.
+    const manifest = manifestWith([blob(1)]);
+    const { aws } = await startAws({ entries: [{ imageManifest: manifest }] });
+    expect(await read(manifest, aws)).toMatchObject({ kind: "read", image: { mediaType: OCI } });
+    // The type the manifest declares, not a fixed one.
+    const DOCKER = "application/vnd.docker.distribution.manifest.v2+json";
+    const docker = JSON.stringify({ ...JSON.parse(manifest), mediaType: DOCKER });
+    const fromDocker = await startAws({ entries: [{ imageManifest: docker }] });
+    expect(await read(docker, fromDocker.aws)).toMatchObject({
+      kind: "read",
+      image: { mediaType: DOCKER },
+    });
+  });
+
+  it("reads an image with as many layers as the cap allows", async () => {
+    // Catches: the layer cap moved by one, so an image the checker takes is refused (or the
+    // reverse), out of step with the checker's own cap of 128 layers plus the config.
+    const manifest = manifestWith(Array.from({ length: 128 }, (_, i) => blob(i + 1)));
+    const { aws, ecrCalls } = await startAws({
+      entries: [{ imageManifest: manifest, imageManifestMediaType: OCI }],
+    });
+    const result = await read(manifest, aws);
+    expect(result.kind).toBe("read");
+    expect(Object.keys(result.kind === "read" ? result.image.blobUrls : {})).toHaveLength(129);
+    expect(ecrCalls().filter((call) => call.operation === "GetDownloadUrlForLayer")).toHaveLength(
+      129
+    );
+  });
+
+  it("reads again later when ECR fails or hands back an unusable URL, but not when access is refused", async () => {
     // Catches: an ECR error thrown into the check job, or a URL for another blob, a plain http URL
     // or a missing one passed on to the check.
     const manifest = manifestWith([blob(1)]);
     const entries = [{ imageManifest: manifest, imageManifestMediaType: OCI }];
     const failing = await startAws({ entries, ecrError: "RepositoryNotFoundException" });
-    expect(await read(manifest, failing.aws)).toBeNull();
+    expect(await read(manifest, failing.aws)).toMatchObject({ kind: "retry" });
+    // Access refused is the read role's setup: not worth reading again at once.
+    // The ECR client hands this back as a plain Error with the code on __type, in any of its forms.
+    for (const ecrError of [
+      "AccessDeniedException",
+      "com.amazonaws.ecr#AccessDeniedException",
+      "AccessDeniedException:http://internal.amazon.com/coral/com.amazon.coral.service/",
+    ]) {
+      const refused = await startAws({ entries, ecrError });
+      expect(await read(manifest, refused.aws)).toMatchObject({
+        kind: "not_configured",
+        reason: "AccessDeniedException: made up",
+      });
+    }
     for (const url of [
       (d: string) => ({
         layerDigest: blob(77),
@@ -322,7 +419,7 @@ describe("readDeploymentCheckImage", () => {
       (d: string) => ({ layerDigest: d, downloadUrl: `https://x/${"y".repeat(8 * 1024)}` }),
     ]) {
       const { aws } = await startAws({ entries, url });
-      expect(await read(manifest, aws)).toBeNull();
+      expect(await read(manifest, aws)).toMatchObject({ kind: "retry" });
     }
   });
 
@@ -333,14 +430,14 @@ describe("readDeploymentCheckImage", () => {
     const entries = [{ imageManifest: manifest, imageManifestMediaType: OCI }];
 
     const ecrHangs = await startAws({ entries, hang: "BatchGetImage" });
-    expect(await read(manifest, ecrHangs.aws, { timeoutMs: 200 })).toBeNull();
+    expect(await read(manifest, ecrHangs.aws, { timeoutMs: 200 })).toMatchObject({ kind: "retry" });
     expect(
       await eventually(() => ecrHangs.cut.includes("BatchGetImage")),
       "the hung ECR request was never cut off"
     ).toBe(true);
 
     const stsHangs = await startAws({ entries, hang: "AssumeRole" });
-    expect(await read(manifest, stsHangs.aws, { timeoutMs: 200 })).toBeNull();
+    expect(await read(manifest, stsHangs.aws, { timeoutMs: 200 })).toMatchObject({ kind: "retry" });
     expect(
       await eventually(() => stsHangs.cut.includes("AssumeRole")),
       "the hung STS request was never cut off"
@@ -355,15 +452,16 @@ describe("readDeploymentCheckImage", () => {
       entries: [{ imageManifest: manifest, imageManifestMediaType: OCI }],
     });
     const digest = digestOf(manifest);
+    // A reference for another registry is a settings mismatch: another host may read it.
     expect(
       await read(manifest, aws, { imageReference: `other.example.com/${REPO}:t@${digest}` })
-    ).toBeNull();
+    ).toMatchObject({ kind: "not_configured" });
     expect(
       await read(manifest, aws, {
         imageReference: `registry.example.com/${REPO}:t@${digest}`,
         registryConfig: { host: "registry.example.com", namespace: "x" },
       })
-    ).toBeNull();
+    ).toMatchObject({ kind: "not_configured" });
     expect(calls).toEqual([]);
   });
 
@@ -375,7 +473,7 @@ describe("readDeploymentCheckImage", () => {
       entries: [{ imageManifest: manifest, imageManifestMediaType: OCI }],
     });
     for (const projectRef of ["proj_other", "proj_abc", "proj_abc1234", ""]) {
-      expect(await read(manifest, aws, { projectRef })).toBeNull();
+      expect(await read(manifest, aws, { projectRef })).toMatchObject({ kind: "unreadable" });
     }
     expect(calls).toEqual([]);
   });
@@ -396,7 +494,7 @@ describe("readDeploymentCheckImage", () => {
           ecrAssumeRoleExternalId: "x",
         },
       })
-    ).toBeNull();
+    ).toMatchObject({ kind: "not_configured" });
     expect(calls).toEqual([]);
   });
 
@@ -407,7 +505,7 @@ describe("readDeploymentCheckImage", () => {
       entries: [{ imageManifest: manifest, imageManifestMediaType: OCI }],
       stsDenied: true,
     });
-    expect(await read(manifest, aws)).toBeNull();
+    expect(await read(manifest, aws)).toMatchObject({ kind: "not_configured" });
     expect(calls.map((call) => call.operation)).toEqual(["AssumeRole"]);
     expect(ecrCalls()).toEqual([]);
   });

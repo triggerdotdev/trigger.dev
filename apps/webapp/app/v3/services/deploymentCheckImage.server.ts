@@ -9,7 +9,7 @@ import type { DeploymentCheckImage } from "@trigger.dev/plugins";
 import { logger } from "~/services/logger.server";
 import { isEcrRegistry, parseEcrRegistryDomain } from "../getDeploymentImageRef.server";
 import { type RegistryConfig } from "../registryConfig.server";
-import { parseEcrImageReference } from "./verifyDeploymentImage.server";
+import { manifestMediaType, parseEcrImageReference } from "./verifyDeploymentImage.server";
 
 const SHA256_DIGEST = /^sha256:[a-f0-9]{64}$/;
 
@@ -24,10 +24,13 @@ const MAX_MANIFEST_BYTES = 1024 * 1024;
 const MAX_LAYERS = 128;
 const MAX_URL_BYTES = 8 * 1024;
 
+/** Error names STS and ECR give when the read role may not do what it asked. */
+const ACCESS_DENIED: ReadonlySet<string> = new Set(["AccessDenied", "AccessDeniedException"]);
+
 /** Download URLs asked for at once. */
 const URL_CONCURRENCY = 8;
 
-/** The whole read, assume-role included; past it the check goes ahead without the image. */
+/** The whole read, assume-role included. Past it the read counts as one worth trying again. */
 const READ_TIMEOUT_MS = 20_000;
 
 /** Credentials for the read role's session. */
@@ -54,9 +57,22 @@ type ReadInput = {
   imageDigest: string;
   projectRef: string;
   registryConfig: RegistryConfig;
-  /** Without one, nothing is read: the check runs without the image. */
+  /** Without one, nothing is read: the read is `not_configured`. */
   readRole?: DeploymentCheckReadRole;
 };
+
+/**
+ * What a read gave. Only `read` has an image. The rest say whether asking again can help:
+ * - `retry`: it may work next time (a timeout, another STS or ECR error, an unusable URL, an image
+ *   ECR can't find).
+ * - `unreadable`: this image never will (not a single image, over the caps, a manifest that
+ *   doesn't match its digest, or another project's repository).
+ * - `not_configured`: this host can't read it (no read role, access refused, not an ECR registry,
+ *   or a reference for another registry). Another host may, so it is worth asking again.
+ */
+export type DeploymentCheckImageRead =
+  | { kind: "read"; image: DeploymentCheckImage }
+  | { kind: "retry" | "unreadable" | "not_configured"; reason: string };
 
 /**
  * Reads a deployment's image for a deployment check: the manifest by digest, and a fresh download
@@ -64,26 +80,26 @@ type ReadInput = {
  * access of its own. Reads as the read role, scoped to the project's own repository. Call it per
  * attempt: ECR doesn't say how long the URLs last.
  *
- * Returns null when the image can't be read this way. Silently when this isn't configured: no read
- * role, or not an ECR registry. With a warning when it should have worked: a reference it can't
- * parse, another project's repository, an STS or ECR error (its message names roles or the
- * repository at most), a timeout, or an image over the caps. Never throws, and never logs a URL.
+ * Every read that gives no image logs a warning with the reason: an STS or ECR error names roles or
+ * the repository at most. Never throws, and never logs a URL.
  */
 export async function readDeploymentCheckImage(
   input: ReadInput,
   { timeoutMs = READ_TIMEOUT_MS, ...seams }: Seams & { timeoutMs?: number } = {}
-): Promise<DeploymentCheckImage | null> {
+): Promise<DeploymentCheckImageRead> {
   // Aborting stops the STS and ECR calls still in flight, so a timed-out read doesn't keep going.
   const abort = new AbortController();
   let timer: ReturnType<typeof setTimeout> | undefined;
-  const timedOut = new Promise<null>((resolve) => {
+  const timedOut = new Promise<DeploymentCheckImageRead>((resolve) => {
     timer = setTimeout(() => {
       abort.abort();
+      const reason = `timed out after ${timeoutMs} ms`;
       logger.warn("Deployment check image not read", {
         imageDigest: input.imageDigest,
-        reason: `timed out after ${timeoutMs} ms`,
+        kind: "retry",
+        reason,
       });
-      resolve(null);
+      resolve({ kind: "retry", reason });
     }, timeoutMs);
   });
   try {
@@ -97,28 +113,29 @@ async function readImage(
   { imageReference, imageDigest, projectRef, registryConfig, readRole }: ReadInput,
   { aws }: Seams,
   abortSignal: AbortSignal
-): Promise<DeploymentCheckImage | null> {
-  if (!readRole || !SHA256_DIGEST.test(imageDigest) || !isEcrRegistry(registryConfig.host)) {
-    return null;
-  }
+): Promise<DeploymentCheckImageRead> {
+  const notRead = (
+    kind: Exclude<DeploymentCheckImageRead["kind"], "read">,
+    reason: string,
+    repositoryName?: string
+  ): DeploymentCheckImageRead => {
+    logger.warn("Deployment check image not read", { repositoryName, imageDigest, kind, reason });
+    return { kind, reason };
+  };
+  if (!readRole) return notRead("not_configured", "no read role");
+  if (!isEcrRegistry(registryConfig.host)) return notRead("not_configured", "not an ECR registry");
+  if (!SHA256_DIGEST.test(imageDigest)) return notRead("unreadable", "not a sha256 digest");
   const parsed = parseEcrImageReference(imageReference, registryConfig.host);
-  if (!parsed) {
-    logger.warn("Deployment check image not read", {
-      imageDigest,
-      reason: "unparseable reference",
-    });
-    return null;
-  }
+  // A reference this host's registry settings can't parse is a mismatch of settings.
+  if (!parsed) return notRead("not_configured", "reference not in the configured registry");
   const { repositoryName } = parsed;
   const { accountId: registryId, region } = parseEcrRegistryDomain(registryConfig.host);
-  const fail = (reason: string) => {
-    logger.warn("Deployment check image not read", { repositoryName, imageDigest, reason });
-    return null;
-  };
+  const unreadable = (reason: string) => notRead("unreadable", reason, repositoryName);
+  const retry = (reason: string) => notRead("retry", reason, repositoryName);
   // The image must be the project's own: the read role is scoped to that project's repository,
   // and nothing else should be read on its behalf.
   if (repositoryName.split("/").pop() !== projectRef)
-    return fail("repository is not the project's");
+    return unreadable("repository is not the project's");
 
   // Both clients live for this read only, and are closed at the end.
   const sts = new STSClient({
@@ -135,18 +152,23 @@ async function readImage(
     });
     ownEcr = ecr;
 
+    // No acceptedMediaTypes, as in ecrImageExists: ECR then returns the manifest as stored, so an
+    // index comes back as an index (refused below) instead of as a failure.
     const out = await ecr.send(
-      new BatchGetImageCommand({
-        registryId,
-        repositoryName,
-        imageIds: [{ imageDigest }],
-        acceptedMediaTypes: SINGLE_IMAGE_MANIFESTS,
-      }),
+      new BatchGetImageCommand({ registryId, repositoryName, imageIds: [{ imageDigest }] }),
       { abortSignal }
     );
     const images = out.images ?? [];
     const first = images[0];
-    if (!first?.imageManifest || !first.imageManifestMediaType) return fail("no manifest");
+    // An image ECR can't find may be one it can't see yet (a later read finds it) or one deleted
+    // since (a new deploy is the answer). ECR's failure codes go in the reason, so the logs tell
+    // these apart from an ECR or KMS fault.
+    if (!first?.imageManifest) {
+      const codes = new Set(
+        (out.failures ?? []).flatMap((f) => (f.failureCode ? [f.failureCode] : []))
+      );
+      return retry(codes.size > 0 ? `no manifest (${[...codes].join(", ")})` : "no manifest");
+    }
     // ECR returns one entry per tag when a digest has several; they must all be the same image.
     if (
       images.some(
@@ -155,18 +177,25 @@ async function readImage(
           im.imageManifestMediaType !== first.imageManifestMediaType
       )
     ) {
-      return fail("different manifests for one digest");
+      return unreadable("different manifests for one digest");
     }
     const manifest = first.imageManifest;
-    const mediaType = first.imageManifestMediaType;
-    if (!SINGLE_IMAGE_MANIFESTS.includes(mediaType)) return fail("not a single-image manifest");
-    if (Buffer.byteLength(manifest, "utf8") > MAX_MANIFEST_BYTES) return fail("manifest too large");
+    // Before the manifest is parsed for its media type.
+    if (Buffer.byteLength(manifest, "utf8") > MAX_MANIFEST_BYTES) {
+      return unreadable("manifest too large");
+    }
+    // The manifest's own media type when ECR leaves it out, as the digest lookup does; the digest
+    // check below pins the bytes either way.
+    const mediaType = first.imageManifestMediaType ?? manifestMediaType(manifest);
+    if (!mediaType || !SINGLE_IMAGE_MANIFESTS.includes(mediaType)) {
+      return unreadable("not a single-image manifest");
+    }
     if (`sha256:${createHash("sha256").update(manifest, "utf8").digest("hex")}` !== imageDigest) {
-      return fail("manifest digest does not match");
+      return unreadable("manifest digest does not match");
     }
 
     const blobs = blobDigests(manifest);
-    if (!blobs) return fail("manifest blobs unreadable or over the cap");
+    if (!blobs) return unreadable("manifest blobs unreadable or over the cap");
 
     const blobUrls: Record<string, string> = {};
     for (let i = 0; i < blobs.length; i += URL_CONCURRENCY) {
@@ -189,12 +218,18 @@ async function readImage(
         })
       );
     }
-    return { manifest, mediaType, blobUrls };
+    return { kind: "read", image: { manifest, mediaType, blobUrls } };
   } catch (error) {
-    // Aborted on the time limit, which has already said so.
-    if (abortSignal.aborted) return null;
-    // STS and ECR errors name roles, the repository or the digest at most, never a URL.
-    return fail(error instanceof BlobUrlError ? error.message : errorName(error));
+    // Aborted on the time limit, which has already logged and answered; this value is never used.
+    if (abortSignal.aborted) return { kind: "retry", reason: "aborted" };
+    // STS and ECR errors name roles, the repository or the digest at most, never a URL. Access
+    // refused is this host's setup (the read role or its trust): reading again at once won't
+    // change it, though another host may manage.
+    const detail = error instanceof BlobUrlError ? error.message : errorName(error);
+    if (error instanceof Error && ACCESS_DENIED.has(awsErrorCode(error))) {
+      return notRead("not_configured", detail, repositoryName);
+    }
+    return retry(detail);
   } finally {
     sts.destroy();
     ownEcr?.destroy();
@@ -257,5 +292,16 @@ function blobDigests(manifest: string): string[] | null {
 }
 
 function errorName(error: unknown): string {
-  return error instanceof Error ? `${error.name}: ${error.message}` : String(error);
+  return error instanceof Error ? `${awsErrorCode(error)}: ${error.message}` : String(error);
+}
+
+/**
+ * The AWS error code. The ECR client can deserialise its errors to a plain Error named "Error",
+ * with the code only on `__type` (see isRepositoryAlreadyExistsError); STS errors carry it as the
+ * name.
+ */
+function awsErrorCode(error: Error): string {
+  const type = (error as { __type?: unknown }).__type;
+  if (typeof type !== "string") return error.name;
+  return type.split(":")[0].split("#").pop() || error.name;
 }

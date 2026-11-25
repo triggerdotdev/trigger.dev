@@ -33,8 +33,8 @@ export type DeploymentCheckInput = {
   projectRef: string;
   deploymentId: string;
   imageDigest: string;
-  /** Left out when the host couldn't read the image; the check then has to get it another way. */
-  image?: DeploymentCheckImage;
+  /** The image to check, as the host read it. A host that can't read it doesn't ask for a check. */
+  image: DeploymentCheckImage;
   decision: DeploymentCheckDecision & { plan: Exclude<DeploymentCheckPlan, "skip"> };
 };
 

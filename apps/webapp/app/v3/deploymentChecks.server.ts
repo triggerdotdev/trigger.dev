@@ -3,8 +3,8 @@ import { Logger, type LogLevel } from "@trigger.dev/core/logger";
 import type {
   DeploymentAccessBillingStatus,
   DeploymentCheckDecision,
-  DeploymentCheckImage,
   DeploymentCheckOutcome,
+  DeploymentCheckResult,
   DeploymentChecksController,
   DeploymentChecksPlugin,
   DeploymentChecksPluginConfig,
@@ -19,7 +19,10 @@ import { isCloud } from "~/services/platform.v3.server";
 import { singleton } from "~/utils/singleton";
 import { resolvePlanState } from "~/v3/freeSchedulePolicy.server";
 import { getRegistryConfig } from "~/v3/registryConfig.server";
-import { readDeploymentCheckImage } from "~/v3/services/deploymentCheckImage.server";
+import {
+  readDeploymentCheckImage,
+  type DeploymentCheckImageRead,
+} from "~/v3/services/deploymentCheckImage.server";
 import {
   resolveEcrImageDigest,
   type ResolvedImage,
@@ -30,7 +33,8 @@ const JOB = "deployments.check";
 const MAX_ATTEMPTS = 5;
 // A missing or unconfigured plugin is looked for again after this long.
 const RELOAD_AFTER_MS = 5 * 60_000;
-// Window in which a check with a retryable no-answer is tried once more.
+// Window in which a check with a retryable no-answer, or an image read worth retrying, is tried
+// once more.
 const GATE_RECHECK_WITHIN_MS = 60_000;
 // Histogram buckets for check durations.
 const DURATION_BUCKETS_MS = [
@@ -265,7 +269,7 @@ export type DeploymentCheckJobDependencies = {
   controller?: DeploymentChecksController | null;
   telemetry?: DeploymentCheckTelemetry;
   /** Reads the image for the check; the registry by default. See `readDeploymentCheckImage`. */
-  readImage?: (input: DeploymentCheckImageInput) => Promise<DeploymentCheckImage | null>;
+  readImage?: (input: DeploymentCheckImageInput) => Promise<DeploymentCheckImageRead>;
 };
 
 type DeploymentCheckImageInput = {
@@ -282,7 +286,7 @@ function readImageFromRegistry({
   imageDigest,
   projectRef,
   isV4Deployment,
-}: DeploymentCheckImageInput): Promise<DeploymentCheckImage | null> {
+}: DeploymentCheckImageInput): Promise<DeploymentCheckImageRead> {
   const roleArn = env.DEPLOYMENT_CHECKS_ECR_ROLE_ARN;
   const externalId = env.DEPLOYMENT_CHECKS_ECR_ROLE_EXTERNAL_ID;
   if (!roleArn !== !externalId && !warnedHalfReadRole) {
@@ -302,8 +306,8 @@ function readImageFromRegistry({
 
 /**
  * Runs the check for one deployment. It reads the deployment and never writes it: the outcome goes
- * to a log line and a metric. An unavailable answer that may change, or a failed decision, throws,
- * so the worker retries later; the last attempt records it instead.
+ * to a log line and a metric. An unavailable answer that may change, an image read worth retrying,
+ * or a failed decision, throws, so the worker retries later; the last attempt records it instead.
  */
 export async function runDeploymentCheck(
   { deploymentId, attempt }: { deploymentId: string; attempt: number },
@@ -400,14 +404,28 @@ export async function runDeploymentCheck(
   const imageDigest = deployment.imageReference?.match(/@(sha256:[a-f0-9]{64})$/)?.[1];
   if (!deployment.imageReference || !imageDigest) return finish("skipped");
 
-  // Read fresh on every attempt: the download URLs are short-lived. Without it the check has to
-  // get the image another way, as it did before the host supplied it.
-  const image = await readImage({
+  // Read fresh on every attempt: the download URLs are short-lived. A check is only asked for with
+  // the image.
+  const read = await readImage({
     imageReference: deployment.imageReference,
     imageDigest,
     projectRef: deployment.project.externalRef,
     isV4Deployment: deployment.type === "MANAGED",
   });
+  const lastAttempt = attempt >= MAX_ATTEMPTS - 1;
+  // Another host or a later read may manage, so only an image that can never be read is final.
+  if (read.kind !== "read" && read.kind !== "unreadable" && !lastAttempt) {
+    logger.info("Deployment check image not read, retrying later", {
+      ...log,
+      attempt,
+      imageDigest,
+      kind: read.kind,
+      detail: read.reason,
+    });
+    throw new DeploymentCheckRetryError("Deployment check image not read, retrying later");
+  }
+  if (read.kind !== "read") return finish(...imageNotRead(read));
+  const { image } = read;
   // Timed from here, so the duration stays the check's own and not the image read's.
   const startedAt = performance.now();
   const result = await controller.check({
@@ -415,13 +433,12 @@ export async function runDeploymentCheck(
     projectRef: deployment.project.externalRef,
     deploymentId: deployment.id,
     imageDigest,
-    ...(image ? { image } : {}),
+    image,
     decision: { plan: decision.plan, selectedBy: decision.selectedBy },
   });
   const durationMs = Math.round(performance.now() - startedAt);
   telemetry.duration.record(durationMs, { mode: decision.plan, outcome: result.outcome });
 
-  const lastAttempt = attempt >= MAX_ATTEMPTS - 1;
   if (result.outcome === "unavailable" && result.retryable && !lastAttempt) {
     logger.info("Deployment check unavailable, retrying later", {
       ...log,
@@ -433,6 +450,26 @@ export async function runDeploymentCheck(
   }
 
   return finish(result.outcome, { checkId: result.id, durationMs });
+}
+
+type ImageNotRead = Exclude<DeploymentCheckImageRead, { kind: "read" }>;
+
+const IMAGE_NOT_READ_REASONS: Record<ImageNotRead["kind"], string> = {
+  retry: "image_not_read",
+  unreadable: "image_unreadable",
+  not_configured: "image_read_not_configured",
+};
+
+/**
+ * What an image that wasn't read counts as. One that can never be read (not a single image, over
+ * the caps, not the project's own) fails, like an image the checker can't read. One that a later
+ * read or another host may manage has no answer.
+ */
+function imageNotRead(read: ImageNotRead): ["fail" | "unavailable", Record<string, unknown>] {
+  return [
+    read.kind === "unreadable" ? "fail" : "unavailable",
+    { reason: IMAGE_NOT_READ_REASONS[read.kind], detail: read.reason },
+  ];
 }
 
 /** What a deploy the check refused says. The reason stays in the logs. */
@@ -463,7 +500,7 @@ export type DeploymentGateDependencies = {
     imageReference: string;
     isV4Deployment: boolean;
   }) => Promise<ResolvedImage>;
-  readImage?: (input: DeploymentCheckImageInput) => Promise<DeploymentCheckImage | null>;
+  readImage?: (input: DeploymentCheckImageInput) => Promise<DeploymentCheckImageRead>;
   /** Moves the deployment's DEPLOYING timeout out once. */
   extendTimeout?: (deploymentId: string) => Promise<void>;
   telemetry?: DeploymentCheckTelemetry;
@@ -660,35 +697,55 @@ export async function gateDeployment(
       });
     }
 
-    const check = async () => {
-      // Read fresh for every check: the download URLs are short-lived.
-      const image = await readImage({
+    // A check is only asked for with the image. Read fresh for every check: the download URLs are
+    // short-lived.
+    const check = async (): Promise<DeploymentCheckResult | ImageNotRead> => {
+      const read = await readImage({
         imageReference,
         imageDigest: resolved.digest,
         projectRef: deployment.projectRef,
         isV4Deployment,
       });
+      if (read.kind !== "read") return read;
       return checks.check({
         organizationId: deployment.organizationId,
         projectRef: deployment.projectRef,
         deploymentId: deployment.id,
         imageDigest: resolved.digest,
-        ...(image ? { image } : {}),
+        image: read.image,
         decision: { plan: "gate", selectedBy: decision.selectedBy },
       });
     };
+    const worthAnotherTry = (answer: DeploymentCheckResult | ImageNotRead) =>
+      "outcome" in answer
+        ? answer.outcome === "unavailable" && answer.retryable
+        : answer.kind === "retry";
 
     const startedAt = performance.now();
-    let result = await check();
-    if (
-      result.outcome === "unavailable" &&
-      result.retryable &&
-      performance.now() - startedAt < GATE_RECHECK_WITHIN_MS
-    ) {
-      logger.info("deploymentChecks.gateRecheck", { ...gateLog, checkId: result.id });
-      result = await check();
+    let answer = await check();
+    // A check that ran before a second read failed, kept for the log line.
+    let earlierCheckId: string | undefined;
+    if (worthAnotherTry(answer) && performance.now() - startedAt < GATE_RECHECK_WITHIN_MS) {
+      logger.info("deploymentChecks.gateRecheck", {
+        ...gateLog,
+        ...("outcome" in answer
+          ? { checkId: answer.id }
+          : { reason: IMAGE_NOT_READ_REASONS[answer.kind], detail: answer.reason }),
+      });
+      if ("outcome" in answer) earlierCheckId = answer.id;
+      answer = await check();
     }
     const durationMs = Math.round(performance.now() - startedAt);
+    // The last answer is an image read, not a check, so no check duration is recorded.
+    if (!("outcome" in answer)) {
+      const [outcome, details] = imageNotRead(answer);
+      return refuse(outcome, answer.kind !== "unreadable", {
+        ...details,
+        durationMs,
+        ...(earlierCheckId ? { checkId: earlierCheckId } : {}),
+      });
+    }
+    const result = answer;
     telemetry.duration.record(durationMs, { mode: "gate", outcome: result.outcome });
 
     if (result.outcome === "pass" || result.outcome === "flagged") {

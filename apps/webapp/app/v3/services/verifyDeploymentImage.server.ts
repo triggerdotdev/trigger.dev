@@ -410,7 +410,7 @@ export async function resolveEcrImageDigest(
  * The mediaType a manifest declares, when ECR didn't report one. Undefined unless it is a plain
  * image manifest.
  */
-function manifestMediaType(manifest: string | undefined): string | undefined {
+export function manifestMediaType(manifest: string | undefined): string | undefined {
   if (!manifest) return undefined;
   try {
     const parsed = JSON.parse(manifest) as {
