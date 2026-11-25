@@ -17,6 +17,17 @@ export default {
       ignoreDependencies: process.env.CI ? ["eslint"] : ["eslint", "lefthook"],
       ignoreBinaries: ["infisical", "prisma"],
     },
+    "apps/docs": {
+      entry: [
+        // MDX imports these by name: the provider through providerImportSource, the rest as globals.
+        "components/mdx.tsx",
+        "components/mintlify.tsx",
+        // Read by path by the <SdkType> table generator.
+        "lib/sdk-types/index.ts",
+      ],
+      // Resolved by path for Twoslash hovers.
+      ignoreDependencies: ["@trigger.dev/build", "@trigger.dev/react-hooks"],
+    },
     "apps/supervisor": {
       entry: ["vitest.*.config.ts"],
     },
@@ -104,7 +115,8 @@ export default {
     },
     docs: {
       entry: ["snippets/**/*.jsx"],
-      ignoreFiles: ["style.css"],
+      // Pages are content the docs app loads, not modules; their code samples aren't this repo's imports.
+      ignoreFiles: ["style.css", "**/*.mdx"],
     },
   },
 } satisfies KnipConfig;

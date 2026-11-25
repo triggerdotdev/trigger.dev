@@ -5,9 +5,11 @@ paths:
 
 # Documentation Writing Rules
 
-- Use Mintlify MDX format. Frontmatter: `title`, `description`, `sidebarTitle` (optional).
+- MDX rendered by the docs site in `apps/docs`; `docs/AGENTS.md` has the full guide, including what each CI check failure means. Frontmatter: `title`, `description`, `sidebarTitle` (optional).
 - After creating a new page, add it to `docs.json` navigation under the correct group.
-- Use Mintlify components: `<Note>`, `<Warning>`, `<Info>`, `<Tip>`, `<CodeGroup>`, `<Expandable>`, `<Steps>`/`<Step>`.
+- Components: `<Note>`, `<Warning>`, `<Info>`, `<Tip>`, `<CodeGroup>`, `<Expandable>`, `<Steps>`/`<Step>` (Mintlify's names and props).
+- Moving or deleting a page: add a `redirects` entry in `docs.json`.
+- Check with `pnpm --filter docs-site check --links` (fast), or build and run `check` for everything CI runs.
 - Code examples should be complete and runnable where possible.
 - Always import from `@trigger.dev/sdk`, never `@trigger.dev/sdk/v3`.
 - Keep paragraphs short. Use headers to break up content.

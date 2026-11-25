@@ -82,7 +82,7 @@ This is what makes a Session the durable identity for a conversation: runs are a
 - **Server-to-server bi-directional streaming** where an external service produces records the task consumes (and vice-versa) over the same durable channel.
 - **A custom turn loop** where the agent abstraction doesn't fit but you still want session-survival across runs.
 
-For chat use cases, prefer [`chat.agent`](/ai-chat/backend#chat-agent) or [`chat.createSession`](/ai-chat/backend#chat-createsession).
+For chat use cases, prefer [`chat.agent`](/ai-chat/backend#chat-agent) or [`chat.createSession`](/ai-chat/custom-agents#managed-loop-chat-createsession).
 
 ## `sessions` namespace
 

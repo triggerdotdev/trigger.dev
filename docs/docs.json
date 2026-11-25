@@ -1080,7 +1080,7 @@
     },
     {
       "source": "/frontend/react-hooks/realtime",
-      "destination": "/realtime/react-hooks/realtime"
+      "destination": "/realtime/react-hooks/subscribe"
     },
     {
       "source": "/frontend/react-hooks/triggering",

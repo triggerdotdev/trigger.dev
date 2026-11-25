@@ -64,7 +64,7 @@ Reasons to:
 - **Your database is the source of truth.** History lives next to the rest of your data, queryable, backed up, and deletable on your terms.
 - **Cheaper writes on long chats.** A row-per-message store writes only what changed on a turn instead of rewriting the whole conversation.
 - **Render history in one query** from your own tables, the same `load` the runtime uses.
-- **Own the model's context** for branching, trust boundaries, or rollback (see [Owning the model's context](#owning-the-models-context)).
+- **Own the model's context** for branching, trust boundaries, or rollback (see [Owning the model's context](#owning-the-model’s-context)).
 
 The runtime drives the storage. You never decide when to write, what a regenerate means for your rows, or how a crash mid-answer is recovered. Those decisions are the same for every backend, so they live in the runtime; your job is to store what it hands you and give it back.
 
@@ -112,7 +112,7 @@ type TranscriptChange =
   | { op: "state"; value: unknown | null };
 ```
 
-`load` returns the conversation. `save` records a change to it. `loadContext` is optional and covered [below](#owning-the-models-context). All the types are exported from `@trigger.dev/sdk/ai`.
+`load` returns the conversation. `save` records a change to it. `loadContext` is optional and covered [below](#owning-the-model’s-context). All the types are exported from `@trigger.dev/sdk/ai`.
 
 `scope` is the tenant of a read: the `chatId` and the `clientData` your app passed. `ctx` on a save is the same plus the run it happened in. `clientData` is how the runtime hands you the tenant; use it to scope or authorize where your backend needs to.
 

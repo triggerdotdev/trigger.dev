@@ -16,7 +16,7 @@ A plain `task()` works with the same primitives but stays invisible to the agent
 
 Inside the wrapper, pick one of two loop styles:
 
-- **[Managed loop](#managed-loop-chatcreatesession)** — `chat.createSession()` yields turns; the SDK handles stop signals, accumulation, idle suspend/resume, and turn-complete signaling. You write the turn body.
+- **[Managed loop](#managed-loop-chat-createsession)** — `chat.createSession()` yields turns; the SDK handles stop signals, accumulation, idle suspend/resume, and turn-complete signaling. You write the turn body.
 - **[Hand-rolled loop](#hand-rolled-loop-with-primitives)** — you write the loop itself with `chat.messages`, `MessageAccumulator`, `pipeAndCapture`, and `writeTurnComplete`. The right choice when you need complete control over `.toUIMessageStream()` (e.g. `onFinish`, `originalMessages`) beyond what `chat.setUIMessageStreamOptions()` provides, or you're implementing a custom protocol.
 
 ### Validating client data

@@ -1,0 +1,52 @@
+{
+  "name": "docs-site",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "node scripts/build-search-index.mjs && next dev --port 43000",
+    "build": "node scripts/build-search-index.mjs && next build --experimental-build-mode=compile && tsc --noEmit && next build --experimental-build-mode=generate",
+    "build:sdk": "cd ../.. && pnpm exec turbo run generate --filter=@trigger.dev/sdk... --filter=@trigger.dev/react-hooks... --filter=@trigger.dev/build... && pnpm exec turbo run build --filter=@trigger.dev/sdk... --filter=@trigger.dev/react-hooks... --filter=@trigger.dev/build...",
+    "start": "next start --port 43000",
+    "postinstall": "fumadocs-mdx",
+    "check": "node scripts/check.mjs",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "fumadocs-core": "16.19.6",
+    "fumadocs-mdx": "15.6.4",
+    "fumadocs-openapi": "12.6.7",
+    "fumadocs-twoslash": "4.0.5",
+    "fumadocs-typescript": "5.6.2",
+    "fumadocs-ui": "16.19.6",
+    "hast-util-to-html": "9.0.7",
+    "lucide-react": "1.77.0",
+    "mermaid": "12.3.0",
+    "next": "16.4.6",
+    "next-themes": "0.4.6",
+    "non.geist": "1.0.2",
+    "npm-to-yarn": "3.2.0",
+    "posthog-js": "1.407.3",
+    "react": "19.2.9",
+    "react-dom": "19.2.9",
+    "unist-util-visit": "5.2.0",
+    "zod": "4.6.7"
+  },
+  "devDependencies": {
+    "@tailwindcss/postcss": "4.3.5",
+    "@trigger.dev/build": "workspace:*",
+    "@trigger.dev/react-hooks": "workspace:*",
+    "@trigger.dev/sdk": "workspace:*",
+    "@types/hast": "3.0.5",
+    "@types/mdast": "4.0.4",
+    "@types/mdx": "2.0.14",
+    "@types/node": "24.13.3",
+    "@types/react": "19.2.14",
+    "@types/react-dom": "19.2.3",
+    "postcss": "8.5.33",
+    "tailwindcss": "4.3.5",
+    "typescript": "catalog:",
+    "vfile": "6.0.3",
+    "vitest": "4.1.12"
+  }
+}

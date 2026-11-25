@@ -171,7 +171,7 @@ for await (const turn of session) {
 }
 ```
 
-See [chat.createSession](/ai-chat/backend#chat-createsession).
+See [chat.createSession](/ai-chat/custom-agents#managed-loop-chat-createsession).
 
 ## trigger skills: agent skills for your coding assistant
 
@@ -260,7 +260,7 @@ chat.agent({
 });
 ```
 
-The helper pushes fresh user messages, no-ops on HITL continuations (so the runtime can overlay the new tool-state advance), and skips on non-`submit-message` triggers. Returns `true` if it mutated `stored`. The examples in [lifecycle hooks](/ai-chat/lifecycle-hooks#hydratemessages), [Database persistence](/ai-chat/patterns/database-persistence#alternative-hydratemessages), and [Persistence and replay](/ai-chat/patterns/persistence-and-replay) have all been updated. Custom hydrate logic (branching, rollback, etc.) can still write the upsert by hand — the helper is a convenience for the common shape.
+The helper pushes fresh user messages, no-ops on HITL continuations (so the runtime can overlay the new tool-state advance), and skips on non-`submit-message` triggers. Returns `true` if it mutated `stored`. The examples in [lifecycle hooks](/ai-chat/lifecycle-hooks#hydratemessages), [Database persistence](/ai-chat/patterns/database-persistence#alternative-hydratemessages-deprecated), and [Persistence and replay](/ai-chat/patterns/persistence-and-replay) have all been updated. Custom hydrate logic (branching, rollback, etc.) can still write the upsert by hand — the helper is a convenience for the common shape.
 
 ### `onValidateMessages` slim wire caveat
 
@@ -472,7 +472,7 @@ Hard cutover — there is no compat shim. v4.5 is prerelease.
 - Rewritten [Client Protocol](/ai-chat/client-protocol) — slim payload, new `headStartMessages` field, new "How history is rebuilt" and "Head-start protocol caveat" sections.
 - New [Persistence and replay](/ai-chat/patterns/persistence-and-replay) — end-to-end walkthrough of the snapshot model, OOM-retry interaction, crash semantics, `hydrateMessages` short-circuit.
 - New [Tool result auditing](/ai-chat/patterns/tool-result-auditing) — the `extractNewToolResults` + `onTurnComplete` / `hydrateMessages` pattern for HITL audit logging.
-- [v4.5 section of the upgrade guide](/ai-chat/upgrade-guide#v45-wire-format-change) — migration steps for custom transports and `hydrateMessages` consumers.
+- [v4.5 section of the upgrade guide](/ai-chat/upgrade-guide#v4-5-wire-format-change) — migration steps for custom transports and `hydrateMessages` consumers.
 - [`hydrateMessages`](/ai-chat/lifecycle-hooks#hydratemessages), [`onChatStart`](/ai-chat/lifecycle-hooks#onchatstart) — clarifications on the new `incomingMessages` and `messages` shapes.
 
 </Update>

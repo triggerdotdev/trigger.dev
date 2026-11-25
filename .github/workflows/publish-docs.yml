@@ -2,6 +2,11 @@ name: 📚 Publish docs
 
 # Docs-only commits on main publish on merge. Anything else waits for a
 # docs-release-* tag. See .github/scripts/publish-docs.sh.
+#
+# Every new docs-live commit is also deployed as the docs site's (apps/docs) production
+# deployment, checked before it takes the production domain. That job skips with a notice
+# until its secrets exist: VERCEL_TOKEN, VERCEL_ORG_ID, VERCEL_DOCS_PROJECT_ID and
+# VERCEL_AUTOMATION_BYPASS_SECRET.
 on:
   push:
     branches:
@@ -23,6 +28,9 @@ concurrency:
 jobs:
   publish:
     runs-on: warp-ubuntu-latest-x64-2x
+    outputs:
+      publish_sha: ${{ steps.build.outputs.publish_sha }}
+      deploy_sha: ${{ steps.target.outputs.deploy_sha }}
     env:
       GIT_AUTHOR_NAME: github-actions[bot]
       GIT_AUTHOR_EMAIL: 41898282+github-actions[bot]@users.noreply.github.com
@@ -79,8 +87,23 @@ jobs:
           git -c "http.https://github.com/.extraheader=AUTHORIZATION: basic $auth" \
             push origin "$PUBLISH_SHA:refs/heads/docs-live"
 
+      # A manual run with nothing new to publish redeploys docs-live as it is: the way to recover
+      # a production deploy that a failed or skipped run left behind.
+      - name: 🎯 Pick the tree to deploy
+        id: target
+        env:
+          PUBLISH_SHA: ${{ steps.build.outputs.publish_sha }}
+        run: |
+          sha="$PUBLISH_SHA"
+          if [ -z "$sha" ] && [ "$GITHUB_EVENT_NAME" = workflow_dispatch ]; then
+            sha=$(git ls-remote "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY" refs/heads/docs-live | cut -f1)
+          fi
+          echo "deploy_sha=$sha" >> "$GITHUB_OUTPUT"
+
+      # Comments are a courtesy: a failed one must not stop the deploy of what was just pushed.
       - name: 💬 Comment on docs-only commits that are waiting
         if: steps.build.outputs.publish_sha != ''
+        continue-on-error: true
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
@@ -96,3 +119,125 @@ jobs:
               -f body="This docs-only change is waiting for the next docs release: $why. It will go live with the next \`docs-release-*\` tag that includes it." \
               >/dev/null
           done <"$RUNNER_TEMP/new-waiting"
+
+  # Builds the tree just pushed to docs-live, deploys it without the production domain, checks
+  # the deployment, then promotes it. A failed step leaves the previous deployment serving.
+  deploy-site:
+    name: deploy-site
+    needs: publish
+    # Pushes, tags and manual runs only: never on a pull request, which can't reach these secrets anyway.
+    if: (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && needs.publish.outputs.deploy_sha != ''
+    runs-on: warp-ubuntu-latest-x64-4x
+    timeout-minutes: 20
+    permissions:
+      contents: read
+    # One production deploy at a time, in order, so an older tree never promotes last.
+    concurrency:
+      group: docs-production
+      cancel-in-progress: false
+    env:
+      VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+      VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+      VERCEL_PROJECT_ID: ${{ secrets.VERCEL_DOCS_PROJECT_ID }}
+      VERCEL_CLI: vercel@65.14.0
+      NEXT_TELEMETRY_DISABLED: "1"
+    steps:
+      - name: 🔑 Check deploy settings
+        id: config
+        run: |
+          if [ -z "$VERCEL_TOKEN" ] || [ -z "$VERCEL_ORG_ID" ] || [ -z "$VERCEL_PROJECT_ID" ]; then
+            echo "::notice title=Docs site deploy skipped::VERCEL_TOKEN, VERCEL_ORG_ID or VERCEL_DOCS_PROJECT_ID is not set."
+            echo "enabled=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "enabled=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: 📥 Checkout docs-live
+        if: steps.config.outputs.enabled == 'true'
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ needs.publish.outputs.deploy_sha }}
+          # History (without old file contents) gives each page its last-modified date in the
+          # sitemap, JSON-LD and .md; a shallow clone builds without them.
+          fetch-depth: 0
+          filter: blob:none
+          persist-credentials: false
+
+      - name: ⎔ Setup pnpm
+        if: steps.config.outputs.enabled == 'true'
+        uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6.0.10
+        with:
+          version: 10.33.2
+
+      - name: ⎔ Setup node
+        if: steps.config.outputs.enabled == 'true'
+        uses: WarpBuilds/setup-node@2867cf8f859d73439e1ad18b542617e5a29f0f10 # v7.0.0
+        with:
+          node-version: 24.22.1
+          cache: "pnpm"
+
+      - name: 💾 Restore the docs build cache
+        if: steps.config.outputs.enabled == 'true'
+        uses: WarpBuilds/cache@dad44e2487e9dc889ad6e6bd198e77bb2d828eee # v2.0.0
+        with:
+          path: apps/docs/.next/cache
+          key: docs-next-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml') }}-${{ hashFiles('apps/docs/**', 'docs/**') }}
+          restore-keys: |
+            docs-next-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml') }}-
+
+      # The project's root directory is apps/docs; its vercel.json installs only the docs site.
+      - name: ⚙️ Pull project settings
+        if: steps.config.outputs.enabled == 'true'
+        run: pnpm dlx "$VERCEL_CLI" pull --yes --environment=production --token="$VERCEL_TOKEN"
+
+      # The build stops if a production setting (analytics) is missing.
+      - name: 🏗️ Build
+        if: steps.config.outputs.enabled == 'true'
+        env:
+          VERCEL_ENV: production
+        run: pnpm dlx "$VERCEL_CLI" build --prod --token="$VERCEL_TOKEN"
+
+      - name: 🚀 Deploy without the production domain
+        id: deploy
+        if: steps.config.outputs.enabled == 'true'
+        run: |
+          url=$(pnpm dlx "$VERCEL_CLI" deploy --prebuilt --prod --skip-domain --token="$VERCEL_TOKEN")
+          echo "url=$url" >> "$GITHUB_OUTPUT"
+
+      - name: 🔗 Check URLs and headers on the deployment
+        if: steps.config.outputs.enabled == 'true'
+        working-directory: apps/docs
+        env:
+          URL: ${{ steps.deploy.outputs.url }}
+          # Deployment URLs sit behind the project's Vercel Authentication until promoted.
+          VERCEL_AUTOMATION_BYPASS_SECRET: ${{ secrets.VERCEL_AUTOMATION_BYPASS_SECRET }}
+        run: |
+          node scripts/check-urls.mjs "$URL/docs" --live
+          node scripts/check-headers.mjs "$URL/docs"
+
+      - name: ✅ Promote to production
+        if: steps.config.outputs.enabled == 'true'
+        env:
+          URL: ${{ steps.deploy.outputs.url }}
+          PUBLISH_SHA: ${{ needs.publish.outputs.deploy_sha }}
+        run: |
+          # A rerun of an older run must not put an older tree back over a newer one.
+          head=$(git ls-remote "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY" refs/heads/docs-live | cut -f1)
+          if [ "$head" != "$PUBLISH_SHA" ]; then
+            msg="docs-live is at $head now, not $PUBLISH_SHA. Re-run the workflow run for $head instead."
+            echo "::notice title=Docs site not promoted::$msg"
+            echo "### Docs site not promoted: $msg" >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+          pnpm dlx "$VERCEL_CLI" promote "$URL" --yes --token="$VERCEL_TOKEN"
+          echo "### Docs site live: $PUBLISH_SHA ($URL)" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: 📣 Report a failed deploy
+        if: failure()
+        env:
+          PUBLISH_SHA: ${{ needs.publish.outputs.deploy_sha }}
+        run: |
+          msg="The docs site production deploy of $PUBLISH_SHA failed. The previous deployment is still serving; Mintlify publishing from docs-live is unaffected."
+          echo "::error title=Docs site deploy failed::$msg"
+          echo "### Docs site deploy failed" >> "$GITHUB_STEP_SUMMARY"
+          echo "$msg Re-run this job once the cause is fixed." >> "$GITHUB_STEP_SUMMARY"

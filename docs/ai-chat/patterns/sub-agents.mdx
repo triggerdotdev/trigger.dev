@@ -311,7 +311,7 @@ export const myAgent = chat.agent({
 });
 ```
 
-For `chat.customAgent()`, define the tool and sub-agent Map inside the `run` closure so they survive across turns. Since you own the turn loop there, convert history with your tools in scope so `toModelOutput` is re-applied each turn: `convertToModelMessages(uiMessages, { tools })`. See [Tools: manual turn loops](/ai-chat/tools#manual-turn-loops-chatcustomagent).
+For `chat.customAgent()`, define the tool and sub-agent Map inside the `run` closure so they survive across turns. Since you own the turn loop there, convert history with your tools in scope so `toModelOutput` is re-applied each turn: `convertToModelMessages(uiMessages, { tools })`. See [Tools: manual turn loops](/ai-chat/tools#manual-turn-loops-chat-customagent).
 
 ## Streaming progress from a subtask to the parent chat
 

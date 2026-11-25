@@ -11,7 +11,7 @@ For subscribing to **run state changes** (status, metadata, tags) instead, see [
 <Note>
   Streams require SDK version **4.1.0 or later** (`@trigger.dev/sdk` and `@trigger.dev/react-hooks`).
   This doc describes the current streams behavior (v2 is the default). For pre-4.1.0 streams, see
-  [Pre-4.1.0 streams (legacy)](#pre-410-streams-legacy) below.
+  [Pre-4.1.0 streams (legacy)](#pre-4-1-0-streams-legacy) below.
 </Note>
 
 ## Overview
@@ -507,7 +507,7 @@ const { parts, error } = useRealtimeStream(streamDef, runId, {
 Input Streams let you send data **into** a running task from your backend or frontend. While output streams (above) send data out of tasks, input streams complete the loop — enabling bidirectional communication.
 
 <Note>
-  Input Streams require SDK version **4.4.2 or later** and use the same streams infrastructure (v2 is the default). If you're on an older SDK, calling `.on()` or `.once()` will throw with instructions to enable v2 streams. See [Pre-4.1.0 streams (legacy)](#pre-410-streams-legacy) for the older metadata-based API.
+  Input Streams require SDK version **4.4.2 or later** and use the same streams infrastructure (v2 is the default). If you're on an older SDK, calling `.on()` or `.once()` will throw with instructions to enable v2 streams. See [Pre-4.1.0 streams (legacy)](#pre-4-1-0-streams-legacy) for the older metadata-based API.
 </Note>
 
 ### Input Streams overview

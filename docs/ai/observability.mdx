@@ -116,7 +116,7 @@ const result = await generateText({
 Custom attributes are stored on the span's `metadata`, so you can filter or group by them in TRQL, for example `metadata['task.type']`.
 
 <Note>
-  When you build an agent with `chat.agent()` and store a prompt with `chat.prompt.set()`, `chat.toStreamTextOptions()` sets `experimental_telemetry` for you, so those generations are captured without adding the flag by hand. Without a stored prompt, set `experimental_telemetry` on the call yourself. See [Prompts](/ai/prompts#using-with-chatagent).
+  When you build an agent with `chat.agent()` and store a prompt with `chat.prompt.set()`, `chat.toStreamTextOptions()` sets `experimental_telemetry` for you, so those generations are captured without adding the flag by hand. Without a stored prompt, set `experimental_telemetry` on the call yourself. See [Prompts](/ai/prompts#using-with-chat-agent).
 </Note>
 
 ## Query usage across runs

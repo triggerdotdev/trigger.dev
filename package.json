@@ -61,6 +61,7 @@
     "@playwright/test": "^1.36.2",
     "@trigger.dev/database": "workspace:*",
     "@types/node": "24.13.3",
+    "@types/react": "18.2.69",
     "@vitest/coverage-v8": "4.1.12",
     "knip": "6.25.0",
     "lefthook": "^2.1.10",
@@ -97,6 +98,7 @@
     },
     "overrides": {
       "@types/node": "24.13.3",
+      "@types/react-dom@18>@types/react": "18.2.69",
       "react@^18": "18.3.1",
       "react-dom@^18": "18.3.1",
       "ai@^6": "6.0.116",

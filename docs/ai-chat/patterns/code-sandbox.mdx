@@ -17,7 +17,7 @@ This page describes a **durable chat** pattern that fits `chat.agent()`:
 
 After a turn finishes, the chat runtime still goes through an **idle** window and only then suspends. During that window the run is still executing — useful for `chat.defer()` work — and the run hasn't suspended yet.
 
-The boundary you want for “turn done, about to sleep” is **`onChatSuspend`**, which fires right before the run transitions from idle to suspended. It provides the `phase` (`”preload”` or `”turn”`) and full chat context. See [onChatSuspend / onChatResume](/ai-chat/lifecycle-hooks#onchatsuspend--onchatresume).
+The boundary you want for “turn done, about to sleep” is **`onChatSuspend`**, which fires right before the run transitions from idle to suspended. It provides the `phase` (`”preload”` or `”turn”`) and full chat context. See [onChatSuspend / onChatResume](/ai-chat/lifecycle-hooks#onchatsuspend-/-onchatresume).
 
 ```mermaid
 sequenceDiagram

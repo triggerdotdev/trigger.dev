@@ -69,7 +69,7 @@ Options for `chat.agent()`.
 | `preloadIdleTimeoutInSeconds` | `number`                                                    | Same as `idleTimeoutInSeconds` | Idle timeout after `onPreload` fires                                                                |
 | `preloadTimeout`              | `string`                                                    | Same as `turnTimeout`          | Suspend timeout for preloaded runs                                                                  |
 | `uiMessageStreamOptions`      | `ChatUIMessageStreamOptions`                                | —                              | Default options for `toUIMessageStream()`. Per-turn override via `chat.setUIMessageStreamOptions()` |
-| `onChatSuspend`               | `(event: ChatSuspendEvent) => Promise<void> \| void`        | —                              | Fires right before the run suspends. See [onChatSuspend](/ai-chat/lifecycle-hooks#onchatsuspend--onchatresume) |
+| `onChatSuspend`               | `(event: ChatSuspendEvent) => Promise<void> \| void`        | —                              | Fires right before the run suspends. See [onChatSuspend](/ai-chat/lifecycle-hooks#onchatsuspend-/-onchatresume) |
 | `onChatResume`                | `(event: ChatResumeEvent) => Promise<void> \| void`         | —                              | Fires right after the run resumes from suspension                                                   |
 | `exitAfterPreloadIdle`        | `boolean`                                                   | `false`                        | Exit run after preload idle timeout instead of suspending. See [exitAfterPreloadIdle](/ai-chat/lifecycle-hooks#exitafterpreloadidle) |
 | `oomMachine`                  | `MachinePresetName`                                         | —                              | Fallback machine when an attempt fails with OOM. Setting it enables a single OOM retry on the larger machine. See [OOM resilience](/ai-chat/patterns/oom-resilience) |
@@ -575,7 +575,7 @@ All methods available on the `chat` object from `@trigger.dev/sdk/ai`.
 | `chat.history.slice(start, end?)`           | Keep only messages in the given range                                                                                        |
 | `chat.MessageAccumulator`                   | Class that accumulates conversation messages across turns                                                                    |
 | `chat.withUIMessage(config?)`               | Returns a [ChatBuilder](/ai-chat/types#chatbuilder) with a fixed `UIMessage` subtype. See [Types](/ai-chat/types)            |
-| `chat.withClientData({ schema })`           | Returns a [ChatBuilder](/ai-chat/types#chatbuilder) with a fixed client data schema. See [Types](/ai-chat/types#typed-client-data-with-chatwithclientdata) |
+| `chat.withClientData({ schema })`           | Returns a [ChatBuilder](/ai-chat/types#chatbuilder) with a fixed client data schema. See [Types](/ai-chat/types#typed-client-data-with-chat-withclientdata) |
 
 ## `chat.event`
 
@@ -663,7 +663,7 @@ For `chat.customAgent()`, invalid client data is skipped. Async reads emit an er
 
 Passing options directly to `chat.customAgent()` instead of through the builder uses the flat equivalents: `clientDataSchema`, `clientDataReportErrorAt`, and `onClientDataValidationError`.
 
-Full guide: [Typed client data](/ai-chat/types#typed-client-data-with-chatwithclientdata).
+Full guide: [Typed client data](/ai-chat/types#typed-client-data-with-chat-withclientdata).
 
 ## `ChatWithUIMessageConfig`
 
@@ -1054,7 +1054,7 @@ Persistable session state for the frontend `TriggerChatTransport` and the server
 | --- | --- | --- |
 | `publicAccessToken` | `string` | Session-scoped JWT (`read:sessions:{chatId} + write:sessions:{chatId}`). Refreshed automatically on 401/403 via the transport's `accessToken` callback. |
 | `lastEventId` | `string \| undefined` | Last SSE event received on `.out`. Used to resume mid-stream after a disconnect. |
-| `isStreaming` | `boolean \| undefined` | Optional. If persisted, `reconnectToStream` uses it as a fast-path short-circuit. If omitted, the server decides via the session's [`X-Session-Settled`](/ai-chat/client-protocol#x-session-settled-fast-close-on-idle-reconnects) response header. |
+| `isStreaming` | `boolean \| undefined` | Optional. If persisted, `reconnectToStream` uses it as a fast-path short-circuit. If omitted, the server decides via the session's [`X-Session-Settled`](/ai-chat/client-protocol#x-peek-settled-/-x-session-settled-—-opt-in-fast-close-on-idle-reconnects) response header. |
 
 ## ChatInputChunk
 

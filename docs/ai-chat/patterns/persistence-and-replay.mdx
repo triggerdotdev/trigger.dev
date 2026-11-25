@@ -128,7 +128,7 @@ If no snapshot exists (first turn, or `hydrateMessages` registered), the path fa
 
 ## When your app owns the model's context
 
-A storage with [`loadContext`](/ai-chat/transcript-storage#owning-the-models-context), or the deprecated [`hydrateMessages`](/ai-chat/lifecycle-hooks#hydratemessages) hook, decides what the model sees on every turn instead of the runtime's accumulated transcript. That changes the boot sequence in one place: with `hydrateMessages` the storage read is skipped, because the hook is the source of truth. Everything else still runs. The `session.out` and `session.in` tails are replayed, a partial answer and unacknowledged messages are recovered, and `onRecoveryBoot` fires. The hook then receives the recovered tail in `previousMessages`, so it can persist an answer a crashed run had already started.
+A storage with [`loadContext`](/ai-chat/transcript-storage#owning-the-model’s-context), or the deprecated [`hydrateMessages`](/ai-chat/lifecycle-hooks#hydratemessages) hook, decides what the model sees on every turn instead of the runtime's accumulated transcript. That changes the boot sequence in one place: with `hydrateMessages` the storage read is skipped, because the hook is the source of truth. Everything else still runs. The `session.out` and `session.in` tails are replayed, a partial answer and unacknowledged messages are recovered, and `onRecoveryBoot` fires. The hook then receives the recovered tail in `previousMessages`, so it can persist an answer a crashed run had already started.
 
 With `loadContext` on a storage, the storage is still read and written: `load` restores the cursors and the runtime's `state` (a compaction summary survives), `save` still receives every change, and only the model's context comes from `loadContext`.
 
@@ -215,4 +215,4 @@ For local development against `pnpm run docker`, the bundled MinIO container is 
 - [`hydrateMessages`](/ai-chat/lifecycle-hooks#hydratemessages) — the deprecated context hook
 - [OOM resilience](/ai-chat/patterns/oom-resilience) — how `session.in` cutoffs interact with snapshots
 - [Database persistence](/ai-chat/patterns/database-persistence) — the canonical persistence pattern using `onTurnComplete`
-- [v4.5 upgrade guide](/ai-chat/upgrade-guide#v45-wire-format-change) — when this model landed and what changed
+- [v4.5 upgrade guide](/ai-chat/upgrade-guide#v4-5-wire-format-change) — when this model landed and what changed

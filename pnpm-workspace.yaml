@@ -22,6 +22,20 @@ minimumReleaseAgeExclude:
 preferOffline: true
 
 linkWorkspacePackages: false
+# Keep React types out of the hidden hoist so packages without an @types/react peer
+# (framer-motion, lucide-react) fall back to the root React 18 types, not the docs app's React 19 types.
+hoistPattern:
+  - "*"
+  - "!@types/react"
+  - "!@types/react-dom"
+# next has no @types/react peer, so without the hoist it would fall back to the root React 18 types.
+packageExtensions:
+  next:
+    peerDependencies:
+      "@types/react": "*"
+    peerDependenciesMeta:
+      "@types/react":
+        optional: true
 publicHoistPattern:
   - "*prisma*"
 preferWorkspacePackages: true
