@@ -6,17 +6,25 @@ const prismaHolder = vi.hoisted(() => ({
   client: null as PrismaClient | null,
 }));
 
-type SetUserRoleResult = { ok: true } | { ok: false; error: string; code?: "last_owner" };
+type SetUserRoleResult =
+  | { ok: true }
+  | { ok: false; error: string; code?: "last_owner" | "not_a_member" };
 
 const rbacHolder = vi.hoisted(() => ({
   setUserRoleResult: { ok: true } as SetUserRoleResult,
+  /**
+   * Runs while `setUserRole` writes, like a removal committing at that moment, and answers in its
+   * place when it returns a result.
+   */
+  duringSetUserRole: null as (() => Promise<SetUserRoleResult>) | null,
   currentRole: null as { id: string } | null,
 }));
 
 vi.mock("~/services/rbac.server", () => ({
   rbac: {
     getUserRole: async () => rbacHolder.currentRole,
-    setUserRole: async () => rbacHolder.setUserRoleResult,
+    setUserRole: async () =>
+      (await rbacHolder.duringSetUserRole?.()) ?? rbacHolder.setUserRoleResult,
     getUserRoles: async () => new Map(),
     removeUserRole: async () => ({ ok: true }),
   },
@@ -74,6 +82,7 @@ beforeEach(() => {
   enqueueCalls.length = 0;
   enqueueHolder.enqueued = true;
   rbacHolder.setUserRoleResult = { ok: true };
+  rbacHolder.duringSetUserRole = null;
   rbacHolder.currentRole = null;
 });
 
@@ -173,6 +182,42 @@ describe("ensureOrgMember development environment provisioning", () => {
         where: { userId: user.id, organizationId: organization.id },
       });
       expect(member).toBeNull();
+      expect(enqueueCalls).toEqual([]);
+    }
+  );
+
+  // Catches: a membership removed before its role applied being "rolled back" a second time, which
+  // throws a generic error, so directory sync retries the event and provisions the member again.
+  postgresTest(
+    "stops without a rollback when the membership is removed before its role applies",
+    async ({ prisma }) => {
+      prismaHolder.client = prisma;
+      const { ensureOrgMember, MemberRemovedDuringProvisionError } =
+        await import("../app/models/orgMember.server");
+
+      const { user, organization } = await seedUserAndOrg(prisma);
+      // The new membership is removed while its role is written, so the plugin refuses the role
+      // (the enterprise integration tests cover how the real plugin reaches that result).
+      rbacHolder.duringSetUserRole = async () => {
+        const { count } = await prisma.orgMember.deleteMany({
+          where: { userId: user.id, organizationId: organization.id },
+        });
+        expect(count, "the membership ensureOrgMember created was not there to remove").toBe(1);
+        return {
+          ok: false,
+          error: "This user isn't a member of the organisation",
+          code: "not_a_member",
+        };
+      };
+
+      await expect(
+        ensureOrgMember({
+          userId: user.id,
+          organizationId: organization.id,
+          roleId: "role_restricted",
+          source: "directory_sync",
+        })
+      ).rejects.toBeInstanceOf(MemberRemovedDuringProvisionError);
       expect(enqueueCalls).toEqual([]);
     }
   );

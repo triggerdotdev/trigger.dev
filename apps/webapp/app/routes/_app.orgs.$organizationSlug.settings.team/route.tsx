@@ -188,7 +188,7 @@ export const action = dashboardAction(
       if (submission.status !== "success") {
         return json(submission.reply());
       }
-      // The RBAC plugin would assign a role to any user id, member or not.
+      // The RBAC plugin refuses a non-member too; this answers with a clear 400 before calling it.
       const targetMember = await prisma.orgMember.findFirst({
         where: { userId: submission.value.userId, organizationId: orgId },
         select: { id: true },

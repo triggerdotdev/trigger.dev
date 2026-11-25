@@ -46,8 +46,8 @@ vi.mock("~/db.server", async () => {
 // or read roles call `useRoleStandIn()`. The stand-in replaces only the role methods, with the
 // contract of enterprise/packages/plugins/src/rbac/controller.ts: a role read is null for a user who
 // isn't a member, else their assigned role, else the legacy OrgMember.role mapping (ADMIN -> Owner,
-// MEMBER -> Admin). `setUserRole` writes the assignment whether or not the user is a member, refuses
-// to demote the org's last Owner, and returns the role it replaced and whether the role changed. Session authentication stays the real fallback's.
+// MEMBER -> Admin). `setUserRole` refuses a user who isn't a member and a demotion of the org's last
+// Owner, and returns the role it replaced and whether the role changed. Session authentication stays the real fallback's.
 type FakeRole = { id: string; name: string; isSystem: boolean };
 const rbacHolder = vi.hoisted(() => ({
   /** Whether the role methods come from the stand-in instead of the fallback. */
@@ -106,6 +106,13 @@ vi.mock("~/services/rbac.server", async () => {
       const role = Object.values(rbacHolder.roles).find((r) => r.id === params.roleId);
       if (!role) return { ok: false, error: "Role not found" };
       const previousRole = await effectiveRole(params.userId, params.organizationId);
+      if (!previousRole) {
+        return {
+          ok: false,
+          error: "This user isn't a member of the organisation",
+          code: "not_a_member",
+        };
+      }
       const members = await prismaHolder.client!.orgMember.findMany({
         where: { organizationId: params.organizationId },
         select: { userId: true },
@@ -122,7 +129,7 @@ vi.mock("~/services/rbac.server", async () => {
         };
       }
       rbacHolder.assignments.set(key(params.userId, params.organizationId), role);
-      return { ok: true, previousRole, changed: previousRole?.id !== role.id };
+      return { ok: true, previousRole, changed: previousRole.id !== role.id };
     },
     async removeUserRole({ userId, organizationId }: { userId: string; organizationId: string }) {
       rbacHolder.assignments.delete(key(userId, organizationId));
@@ -1006,7 +1013,7 @@ describe("role change audit events", () => {
   );
 
   // Catches: an event for a change the plugin refused, for a role the member already had, or for a
-  // user who isn't a member (the plugin still writes their role).
+  // user who isn't a member.
   postgresTest(
     "records nothing for a failed or unchanged role, or a non-member",
     async ({ prisma }) => {
@@ -1045,7 +1052,8 @@ describe("role change audit events", () => {
       });
       expect(unknownRole).toEqual({ ok: false, error: "Role not found" });
       expect(sameRole).toMatchObject({ ok: true, changed: false });
-      expect(nonMember).toMatchObject({ ok: true });
+      expect(nonMember).toMatchObject({ ok: false, code: "not_a_member" });
+      expect(rbacHolder.assignments.has(`${organization.id}:${outsider.id}`)).toBe(false);
       expect(await recordedEvents(recorded)).toEqual([]);
     }
   );
@@ -1100,12 +1108,11 @@ describe("role change audit events", () => {
       })
   );
 
-  // Catches: a member.role_changed for a membership removed between the member read and the write.
-  // The plugin still writes the role for the non-member
-  // (https://linear.app/triggerdotdev/issue/TRI-16185). The client below removes the member as soon
-  // as the member read before the write returns.
+  // Catches: a role written, or a member.role_changed recorded, for a membership removed between the
+  // member read and the write. The client below removes the member as soon as the member read before
+  // the write returns.
   postgresTest(
-    "records nothing for a member removed between the member read and the write",
+    "refuses the role and records nothing for a member removed before the write",
     async ({ prisma }) =>
       inAuditedRequest(async () => {
         prismaHolder.client = prisma;
@@ -1145,14 +1152,15 @@ describe("role change audit events", () => {
         });
 
         expect(removeAfterNextMemberRead).toBe(false);
-        expect(result).toMatchObject({ ok: true, changed: true });
+        expect(result).toMatchObject({ ok: false, code: "not_a_member" });
         expect(
           await prisma.orgMember.count({
             where: { userId: member.id, organizationId: organization.id },
           })
         ).toBe(0);
+        // Still the seeded role: the refused change wrote nothing.
         expect(rbacHolder.assignments.get(`${organization.id}:${member.id}`)).toEqual(
-          rbacHolder.roles.admin
+          rbacHolder.roles.developer
         );
         expect(await recordedEvents(recorded)).toEqual([
           {

@@ -6,6 +6,7 @@ import {
   ensureOrgMember,
   type EnsureOrgMemberResult,
   ensureUserForDirectory,
+  MemberRemovedDuringProvisionError,
   OrganizationNotAcceptingMembersError,
   removeOrgMemberForDirectory,
   setOrgMemberRole,
@@ -106,6 +107,14 @@ async function applyEffect(
           });
           return null;
         }
+        // Removed before its role applied: provisioning it again would undo the removal.
+        if (error instanceof MemberRemovedDuringProvisionError) {
+          logger.info("directorySync: member removed during provision, skipped", {
+            userId,
+            organizationId: effect.organizationId,
+          });
+          return null;
+        }
         throw error;
       }
 
@@ -123,6 +132,14 @@ async function applyEffect(
               userId,
               organizationId: effect.organizationId,
             });
+          } else if (result.code === "not_a_member") {
+            // Removed since ensureOrgMember: a retry would refuse it again, and reporting it as
+            // unqueued would retry the event and provision it again.
+            logger.info("directorySync: member removed, skipped provision role overwrite", {
+              userId,
+              organizationId: effect.organizationId,
+            });
+            return null;
           } else {
             throw retryableEffectError(
               `directorySync provision setUserRole failed: ${result.error}`
@@ -143,6 +160,14 @@ async function applyEffect(
         // one member and let the rest of the remap apply (no server error).
         if (result.code === "last_owner") {
           logger.info("directorySync: kept last Owner, skipped set_role", {
+            userId: effect.userId,
+            organizationId: effect.organizationId,
+          });
+          return null;
+        }
+        // Removed before the role was set: a retry would refuse it again.
+        if (result.code === "not_a_member") {
+          logger.info("directorySync: member removed, skipped set_role", {
             userId: effect.userId,
             organizationId: effect.organizationId,
           });

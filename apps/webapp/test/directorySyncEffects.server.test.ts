@@ -17,7 +17,12 @@ const ensureOrgMember = vi.fn();
 const ensureUserForDirectory = vi.fn();
 const removeOrgMemberForDirectory = vi.fn();
 const setOrgMemberRole = vi.fn();
+const orgMemberErrors = vi.hoisted(() => ({
+  OrganizationNotAcceptingMembersError: class extends Error {},
+  MemberRemovedDuringProvisionError: class extends Error {},
+}));
 vi.mock("~/models/orgMember.server", () => ({
+  ...orgMemberErrors,
   ensureOrgMember: (...args: unknown[]) => ensureOrgMember(...args),
   ensureUserForDirectory: (...args: unknown[]) => ensureUserForDirectory(...args),
   removeOrgMemberForDirectory: (...args: unknown[]) => removeOrgMemberForDirectory(...args),
@@ -209,6 +214,71 @@ describe("applyDirectorySyncEffects — SSO entitlement gate", () => {
       expect.objectContaining({ roleId: "role_restricted", organizationId: ENTITLED_ORG }),
       SYSTEM
     );
+    expect(setOrgMemberRole).not.toHaveBeenCalled();
+  });
+
+  // Catches: a member removed before their directory role was set failing the batch, so the worker
+  // retries a change the RBAC plugin will refuse every time.
+  it("skips the role for a member removed before it was set, instead of retrying", async () => {
+    getSsoEntitlement.mockResolvedValue("entitled");
+    setOrgMemberRole.mockResolvedValue({
+      ok: false,
+      error: "This user isn't a member of the organisation",
+      code: "not_a_member",
+    });
+
+    await expect(
+      applyDirectorySyncEffects(
+        [
+          { ...provision(ENTITLED_ORG), roleId: "role_restricted", roleAuthoritative: true },
+          {
+            kind: "set_role",
+            userId: "user_1",
+            organizationId: ENTITLED_ORG,
+            roleId: "role_admin",
+          },
+        ],
+        SYSTEM
+      )
+    ).resolves.toEqual({ unqueuedUserIds: [] });
+    expect(setOrgMemberRole).toHaveBeenCalledTimes(2);
+  });
+
+  // Catches: a removed member reported as still needing provisioning, so the worker retries the
+  // event and provisions them again.
+  it("doesn't report a member removed before the role overwrite as unqueued", async () => {
+    getSsoEntitlement.mockResolvedValue("entitled");
+    ensureOrgMember.mockResolvedValue({
+      created: true,
+      orgMemberId: "member_1",
+      devEnvironmentsQueued: false,
+    });
+    setOrgMemberRole.mockResolvedValue({
+      ok: false,
+      error: "This user isn't a member of the organisation",
+      code: "not_a_member",
+    });
+
+    await expect(
+      applyDirectorySyncEffects(
+        [{ ...provision(ENTITLED_ORG), roleId: "role_restricted", roleAuthoritative: true }],
+        SYSTEM
+      )
+    ).resolves.toEqual({ unqueuedUserIds: [] });
+  });
+
+  // Catches: a membership removed before its initial role applied failing the batch, so the worker
+  // retries the event and provisions the member again.
+  it("skips a provision whose membership was removed before its role applied", async () => {
+    getSsoEntitlement.mockResolvedValue("entitled");
+    ensureOrgMember.mockRejectedValue(new orgMemberErrors.MemberRemovedDuringProvisionError());
+
+    await expect(
+      applyDirectorySyncEffects(
+        [{ ...provision(ENTITLED_ORG), roleId: "role_restricted", roleAuthoritative: true }],
+        SYSTEM
+      )
+    ).resolves.toEqual({ unqueuedUserIds: [] });
     expect(setOrgMemberRole).not.toHaveBeenCalled();
   });
 

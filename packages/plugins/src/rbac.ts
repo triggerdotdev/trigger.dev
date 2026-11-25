@@ -895,14 +895,14 @@ export type RoleMutationResult = { ok: true; role: Role } | { ok: false; error: 
 // `code` is an optional machine-readable reason so callers can branch on
 // expected outcomes (e.g. `last_owner`, the guard that keeps an org from
 // losing its final Owner) instead of matching the free-text `error`.
-type RoleAssignmentErrorCode = "last_owner";
+type RoleAssignmentErrorCode = "last_owner" | "not_a_member";
 export type RoleAssignmentResult =
   | { ok: true }
   | { ok: false; error: string; code?: RoleAssignmentErrorCode };
 
 // `setUserRole`'s result. On success, `previousRole` is the user's effective role in that scope
 // before the write (null if they had none) and `changed` is whether the write changed it, both read
-// in the write's transaction.
+// in the write's transaction. Refuses a user who isn't a member of the organization (`not_a_member`).
 export type UserRoleAssignmentResult =
   | { ok: true; previousRole: Role | null; changed: boolean }
   | Extract<RoleAssignmentResult, { ok: false }>;
