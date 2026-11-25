@@ -26,6 +26,10 @@ import type { RuntimeEnvironmentType } from "@trigger.dev/database";
 
 import { boundedIn, Prisma } from "@trigger.dev/database";
 type Result = Awaited<ReturnType<EnvironmentVariablesPresenter["call"]>>;
+import { hasAgentVault } from "~/v3/featureFlags";
+import { effectiveVaultHosts } from "~/services/secretProxy/variables.server";
+import { proxyConfigHosts } from "~/services/secretProxy/placeholder.server";
+
 export type EnvironmentVariableWithSetValues = Result["environmentVariables"][number];
 
 export const DEFAULT_ENV_VARS_PAGE_SIZE = 50;
@@ -79,6 +83,7 @@ export class EnvironmentVariablesPresenter {
     const project = await this.#replicaClient.project.findFirst({
       select: {
         id: true,
+        secretProxyEnabled: true,
         organization: { select: { featureFlags: true } },
       },
       where: {
@@ -215,6 +220,8 @@ export class EnvironmentVariablesPresenter {
             lastUpdatedBy: true,
             updatedAt: true,
             isSecret: true,
+            isProxyOnly: true,
+            proxyConfig: true,
           },
           where: {
             environmentId: {
@@ -275,11 +282,21 @@ export class EnvironmentVariablesPresenter {
 
     const repository = new EnvironmentVariablesRepository(this.#prismaClient, this.#replicaClient);
 
+    const vaultHosts = await effectiveVaultHosts(
+      this.#replicaClient,
+      environmentVariables.flatMap((variable) =>
+        variable.values.map((value) => ({ ...value, variableId: variable.id }))
+      ),
+      listedEnvironments
+    );
+    const vaultOf = (variableId: string, environmentId: string) =>
+      vaultHosts.get(`${variableId}:${environmentId}`);
+
     const nonSecretItems: Array<{ environmentId: string; key: string }> = [];
     for (const environmentVariable of environmentVariables) {
       for (const env of listedEnvironments) {
         const valueRecord = environmentVariable.values.find((v) => v.environmentId === env.id);
-        if (valueRecord && !valueRecord.isSecret) {
+        if (valueRecord && !valueRecord.isSecret && !vaultOf(environmentVariable.id, env.id)) {
           nonSecretItems.push({ environmentId: env.id, key: environmentVariable.key });
         }
       }
@@ -302,6 +319,8 @@ export class EnvironmentVariablesPresenter {
     }
 
     return {
+      vaultEnabled: project.secretProxyEnabled,
+      vaultAvailable: hasAgentVault(project.organization.featureFlags),
       allowEmptyEnvironmentVariableValues: await emptyEnvironmentVariableValuesEnabled(
         project.organization.featureFlags,
         this.#prismaClient
@@ -309,7 +328,8 @@ export class EnvironmentVariablesPresenter {
       environmentVariables: environmentVariables.flatMap((environmentVariable) => {
         const rows = listedEnvironments.flatMap((env) => {
           const valueRecord = environmentVariable.values.find((v) => v.environmentId === env.id);
-          const isSecret = valueRecord?.isSecret ?? false;
+          const vault = vaultOf(environmentVariable.id, env.id);
+          const isSecret = (valueRecord?.isSecret ?? false) || vault !== undefined;
 
           if (!valueRecord) {
             return [];
@@ -348,6 +368,10 @@ export class EnvironmentVariablesPresenter {
               value: isSecret || valueUnavailable ? "" : val!,
               ...(valueUnavailable ? { valueUnavailable: true } : {}),
               isSecret,
+              ...(vault ? { vaultHosts: vault.hosts, vaultInherited: vault.inherited } : {}),
+              ...(valueRecord.isProxyOnly
+                ? { vaultConfiguredHosts: proxyConfigHosts(valueRecord.proxyConfig) }
+                : {}),
               version: valueRecord.version,
               lastUpdatedBy,
               updatedByUser,

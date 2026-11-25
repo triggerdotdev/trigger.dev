@@ -47,6 +47,10 @@ import {
   useEnvironmentVariablesPageData,
   type MaskedEnvironmentVariable,
 } from "~/routes/_app.orgs.$organizationSlug.projects.$projectParam.env.$envParam.environment-variables/EnvironmentVariableControls";
+import {
+  EditVaultValueButton,
+  VaultDomain,
+} from "~/routes/_app.orgs.$organizationSlug.projects.$projectParam.env.$envParam.environment-variables/Vault";
 import type { EnvironmentVariablesOutletContext } from "~/routes/_app.orgs.$organizationSlug.projects.$projectParam.env.$envParam.environment-variables/route";
 import { recordDashboardEnvironmentVariableKeyRead } from "~/services/auditLogs/envVarReadAudit.server";
 import { resolveProjectAuthScope } from "~/services/projectAuthScope.server";
@@ -349,6 +353,10 @@ export default function Page() {
   const oidcEnvironment =
     project.environments.find((e) => e.id === oidcEnvironmentId) ?? environment;
   const { pagination } = detail.branches;
+  const vaultRows = [
+    ...detail.environments.flatMap((row) => (row.variable ? [row.variable] : [])),
+    ...detail.branches.variables,
+  ].filter((variable) => variable.vaultHosts);
   const branchPagePath = (page: number) => {
     const params = new URLSearchParams(location.search);
     if (page > 1) {
@@ -564,6 +572,29 @@ export default function Page() {
                     />
                   </nav>
                 )}
+              </Section>
+            )}
+
+            {vaultRows.length > 0 && (
+              <Section title="Agent Vault">
+                <Property.Table className="px-3">
+                  {vaultRows.map((variable) => (
+                    <Property.Item key={variable.environment.id}>
+                      <Property.Label className="flex min-w-0 items-center gap-1">
+                        <EnvironmentCombo environment={variable.environment} className="text-sm" />
+                      </Property.Label>
+                      <Property.Value>
+                        <ul className="flex flex-wrap gap-1 py-1">
+                          {variable.vaultHosts?.map((host) => (
+                            <li key={host}>
+                              <VaultDomain host={host} />
+                            </li>
+                          ))}
+                        </ul>
+                      </Property.Value>
+                    </Property.Item>
+                  ))}
+                </Property.Table>
               </Section>
             )}
           </>
@@ -828,14 +859,18 @@ function PanelValue({
       <div className={"flex shrink-0 items-center"}>
         {!variable.permissionDenied && !isReadOnly && (
           <>
-            <Button
-              ref={editButtonRef}
-              type="button"
-              variant="small-menu-item"
-              LeadingIcon={PencilSquareIcon}
-              aria-label={`Edit ${variable.key} in ${environmentFullTitle(variable.environment)}`}
-              onClick={() => editing.setEditingEnvironmentId(variable.environment.id)}
-            />
+            {variable.vaultHosts ? (
+              <EditVaultValueButton variable={variable} />
+            ) : (
+              <Button
+                ref={editButtonRef}
+                type="button"
+                variant="small-menu-item"
+                LeadingIcon={PencilSquareIcon}
+                aria-label={`Edit ${variable.key} in ${environmentFullTitle(variable.environment)}`}
+                onClick={() => editing.setEditingEnvironmentId(variable.environment.id)}
+              />
+            )}
             <DeleteEnvironmentVariableButton
               variable={variable}
               previewBase={counts.previewBase === "set" ? "set" : "unset"}

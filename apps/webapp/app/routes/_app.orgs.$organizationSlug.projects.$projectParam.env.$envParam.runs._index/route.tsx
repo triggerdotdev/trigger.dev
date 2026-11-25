@@ -532,6 +532,7 @@ function RunTaskInstructions({ task }: { task?: { slug: string } }) {
 }
 
 function RunsHelpTooltip() {
+  const project = useProject();
   return (
     <SimpleTooltip
       button={
@@ -554,6 +555,15 @@ function RunsHelpTooltip() {
               automatically retry on failure.
             </Paragraph>
           </div>
+          {project.secretProxyEnabled && (
+            <div>
+              <Paragraph variant="small/bright">Agent Vault</Paragraph>
+              <Paragraph variant="small" className="mt-1">
+                For sealed variables, task code gets a placeholder instead of the secret. Only
+                runtime requests to allowed domains receive the real value.
+              </Paragraph>
+            </div>
+          )}
           <div className="flex flex-col gap-2.5 border-t border-grid-dimmed pt-3">
             <div>
               <Paragraph variant="small/bright">

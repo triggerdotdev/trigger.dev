@@ -5,7 +5,7 @@ import { postgresTest } from "@internal/testcontainers";
 import { PostgresRunStore } from "@internal/run-store";
 import { sandboxExecutionPolicy } from "@trigger.dev/core/v3";
 import { RunId } from "@trigger.dev/core/v3/isomorphic";
-import type { PrismaClient } from "@trigger.dev/database";
+import { Prisma, type PrismaClient } from "@trigger.dev/database";
 import { $transaction } from "~/db.server";
 import { afterAll, beforeAll, describe, expect, vi } from "vitest";
 import { metrics } from "@opentelemetry/api";
@@ -26,10 +26,11 @@ import {
 } from "~/services/secretProxy/placeholder.server";
 import { resolveSecretProxyRequest } from "~/services/secretProxy/resolveAction.server";
 import { SecretProxyService, SecretProxyDeniedError } from "~/services/secretProxy/service.server";
+import { effectiveEnvironmentVariables, isInVault } from "~/services/secretProxy/variables.server";
 import {
-  assertVariablesNotProxyOnly,
-  effectiveEnvironmentVariables,
-} from "~/services/secretProxy/variables.server";
+  disableProjectVault,
+  projectHasVaultValues,
+} from "~/services/secretProxy/projectVault.server";
 import { resolveEncryptionKeyring } from "~/utils/encryptionKeyring.server";
 import { EnvironmentVariablesRepository } from "~/v3/environmentVariables/environmentVariablesRepository.server";
 import { FEATURE_FLAG } from "~/v3/featureFlags";
@@ -62,6 +63,7 @@ const placeholderKeys = parsePlaceholderKeyring(
 
 async function seed(db: PrismaClient) {
   const data = await createTestOrgProjectWithMember(db);
+  await db.project.update({ where: { id: data.project.id }, data: { secretProxyEnabled: true } });
   await db.organization.update({
     where: { id: data.organization.id },
     data: {
@@ -191,6 +193,324 @@ const requestFor = (handle: string, hostname = "api.example.com") => ({
 });
 
 describe("secret proxy integration", () => {
+  postgresTest(
+    "moves a value into Vault and edits it without taking it out",
+    async ({ prisma }) => {
+      const f = await seed(prisma);
+      const { variable } = await f.variable("PAYMENTS_KEY", "existing-value");
+      const repository = new EnvironmentVariablesRepository(prisma, prisma, f.encryption);
+      const save = (allowedHosts: string[], value?: string) =>
+        repository.saveVaultValue(f.project.id, {
+          id: variable.id,
+          environmentId: f.environment.id,
+          allowedHosts,
+          value,
+          userId: f.user.id,
+        });
+      const handle = placeholderForVariable(
+        placeholderKeys,
+        { runId: f.run.friendlyId, attempt: 1 },
+        variable.id
+      );
+      const token = await f.sign();
+
+      expect(await save(["api.example.com"])).toMatchObject({ success: true });
+      expect((await f.service.resolve(token, requestFor(handle))).credentials[0]?.value).toBe(
+        "existing-value"
+      );
+      await expect(
+        f.service.resolve(token, requestFor(handle, "other.example.com"))
+      ).rejects.toThrow();
+
+      expect(await save(["other.example.com"], "replacement")).toMatchObject({ success: true });
+      expect(
+        (await f.service.resolve(token, requestFor(handle, "other.example.com"))).credentials[0]
+          ?.value
+      ).toBe("replacement");
+      await expect(f.service.resolve(token, requestFor(handle))).rejects.toThrow();
+    }
+  );
+
+  postgresTest(
+    "refuses a Vault save that leaves a Preview branch with no domains",
+    async ({ prisma }) => {
+      const f = await seed(prisma);
+      const branch = await createRuntimeEnvironment(prisma, {
+        projectId: f.project.id,
+        organizationId: f.organization.id,
+        type: "PREVIEW",
+      });
+      await prisma.runtimeEnvironment.update({
+        where: { id: branch.id },
+        data: { parentEnvironmentId: f.environment.id },
+      });
+      const { variable } = await f.variable("PAYMENTS_KEY", "base");
+      await f.variable("PAYMENTS_KEY", "branch", branch.id);
+      const repository = new EnvironmentVariablesRepository(prisma, prisma, f.encryption);
+      const save = (environmentId: string, allowedHosts: string[]) =>
+        repository.saveVaultValue(f.project.id, {
+          id: variable.id,
+          environmentId,
+          allowedHosts,
+          userId: f.user.id,
+        });
+
+      expect(await save(branch.id, ["sandbox.example.com"])).toMatchObject({ success: true });
+      expect(await save(f.environment.id, ["api.example.com"])).toMatchObject({
+        success: false,
+        error: expect.stringContaining("no allowed domains"),
+      });
+      expect(
+        await prisma.environmentVariableValue.findFirst({
+          where: { variableId: variable.id, environmentId: f.environment.id },
+        })
+      ).toMatchObject({ isProxyOnly: false });
+      expect(
+        await save(f.environment.id, ["api.example.com", "sandbox.example.com"])
+      ).toMatchObject({ success: true });
+    }
+  );
+
+  postgresTest(
+    "keeps Preview branch overrides in Vault through deletes, rotations and copies",
+    async ({ prisma }) => {
+      const f = await seed(prisma);
+      const branch = await createRuntimeEnvironment(prisma, {
+        projectId: f.project.id,
+        organizationId: f.organization.id,
+        type: "PREVIEW",
+      });
+      await prisma.runtimeEnvironment.update({
+        where: { id: branch.id },
+        data: { parentEnvironmentId: f.environment.id },
+      });
+      const other = await createRuntimeEnvironment(prisma, {
+        projectId: f.project.id,
+        organizationId: f.organization.id,
+        type: "STAGING",
+      });
+      const { variable } = await f.variable("API_TOKEN", "base");
+      await f.variable("API_TOKEN", "branch", branch.id);
+      const repository = new EnvironmentVariablesRepository(prisma, prisma, f.encryption);
+      expect(
+        await repository.saveVaultValue(f.project.id, {
+          id: variable.id,
+          environmentId: f.environment.id,
+          allowedHosts: ["api.example.com"],
+          userId: f.user.id,
+        })
+      ).toMatchObject({ success: true });
+      const branchValue = () =>
+        prisma.environmentVariableValue.findFirst({
+          where: { variableId: variable.id, environmentId: branch.id },
+        });
+
+      // A branch in Vault only through its parent counts as in Vault, which is what lets the
+      // dashboard's Vault edit replace its value, and the replacement is stored.
+      expect(await isInVault(prisma, f.project.id, variable.id, [branch.id])).toBe(true);
+      expect(
+        await repository.saveVaultValue(f.project.id, {
+          id: variable.id,
+          environmentId: branch.id,
+          allowedHosts: ["api.example.com"],
+          value: "rotated",
+          userId: f.user.id,
+        })
+      ).toMatchObject({ success: true });
+      const branchSecretKey = `${environmentSecretPrefix(f.project.id, branch.id)}API_TOKEN`;
+      expect(
+        await new EnvironmentSecretStore(
+          prisma,
+          f.encryption,
+          f.project.id,
+          [branch.id],
+          undefined,
+          new Set()
+        ).getSecretsByKeys(z.object({ secret: z.string() }), [branchSecretKey])
+      ).toEqual([{ key: branchSecretKey, value: { secret: "rotated" } }]);
+
+      // Copying it out keeps it in Vault with the domains its runs get.
+      await prisma.environmentVariableValue.update({
+        where: { variableId_environmentId: { variableId: variable.id, environmentId: branch.id } },
+        data: { isProxyOnly: false, proxyConfig: Prisma.DbNull },
+      });
+      expect(
+        await repository.copyValues(f.project.id, {
+          sourceEnvironmentId: branch.id,
+          targetEnvironmentId: other.id,
+          variableIds: [variable.id],
+        })
+      ).toMatchObject({ success: true });
+      expect(
+        await prisma.environmentVariableValue.findFirst({
+          where: { variableId: variable.id, environmentId: other.id },
+        })
+      ).toMatchObject({ isProxyOnly: true, proxyConfig: { allowedHosts: ["api.example.com"] } });
+
+      // Deleting the parent leaves the branch override in Vault with the same domains.
+      expect(
+        await repository.deleteValue(f.project.id, {
+          id: variable.id,
+          environmentId: f.environment.id,
+        })
+      ).toMatchObject({ success: true });
+      expect(await branchValue()).toMatchObject({
+        isProxyOnly: true,
+        isSecret: true,
+        proxyConfig: { allowedHosts: ["api.example.com"] },
+      });
+
+      // A Vault value over the proxy's limit is refused on every write path.
+      expect(
+        await repository.edit(f.project.id, {
+          id: variable.id,
+          values: [
+            {
+              environmentId: branch.id,
+              value: "x".repeat(SECRET_PROXY_MAX_CREDENTIAL_BYTES + 1),
+            },
+          ],
+        })
+      ).toMatchObject({ success: false, error: expect.stringContaining("too large") });
+    }
+  );
+
+  postgresTest(
+    "an oversized override blocks a move only on an active branch",
+    async ({ prisma }) => {
+      const f = await seed(prisma);
+      const branch = await createRuntimeEnvironment(prisma, {
+        projectId: f.project.id,
+        organizationId: f.organization.id,
+        type: "PREVIEW",
+      });
+      await prisma.runtimeEnvironment.update({
+        where: { id: branch.id },
+        data: { parentEnvironmentId: f.environment.id },
+      });
+      const { variable } = await f.variable("API_TOKEN", "base");
+      await f.variable("API_TOKEN", "x".repeat(SECRET_PROXY_MAX_CREDENTIAL_BYTES + 1), branch.id);
+      const repository = new EnvironmentVariablesRepository(prisma, prisma, f.encryption);
+      const move = () =>
+        repository.saveVaultValue(f.project.id, {
+          id: variable.id,
+          environmentId: f.environment.id,
+          allowedHosts: ["api.example.com"],
+          userId: f.user.id,
+        });
+      const base = () =>
+        prisma.environmentVariableValue.findFirst({
+          where: { variableId: variable.id, environmentId: f.environment.id },
+        });
+
+      expect(await move()).toMatchObject({
+        success: false,
+        error: expect.stringContaining("too large"),
+      });
+      expect(await base()).toMatchObject({ isProxyOnly: false });
+
+      await prisma.runtimeEnvironment.update({
+        where: { id: branch.id },
+        data: { archivedAt: new Date() },
+      });
+      expect(await move()).toMatchObject({ success: true });
+      expect(await base()).toMatchObject({ isProxyOnly: true });
+    }
+  );
+
+  postgresTest(
+    "removing a value from Vault keeps it secret and leaves branch overrides in Vault",
+    async ({ prisma }) => {
+      const f = await seed(prisma);
+      const branch = await createRuntimeEnvironment(prisma, {
+        projectId: f.project.id,
+        organizationId: f.organization.id,
+        type: "PREVIEW",
+      });
+      await prisma.runtimeEnvironment.update({
+        where: { id: branch.id },
+        data: { parentEnvironmentId: f.environment.id },
+      });
+      const { variable } = await f.variable("API_TOKEN", "base");
+      await f.variable("API_TOKEN", "branch", branch.id);
+      const repository = new EnvironmentVariablesRepository(prisma, prisma, f.encryption);
+      await repository.saveVaultValue(f.project.id, {
+        id: variable.id,
+        environmentId: f.environment.id,
+        allowedHosts: ["api.example.com"],
+        userId: f.user.id,
+      });
+      const remove = (environmentId: string) =>
+        repository.removeFromVault(f.project.id, {
+          id: variable.id,
+          environmentId,
+          userId: f.user.id,
+        });
+      const valueIn = (environmentId: string) =>
+        prisma.environmentVariableValue.findFirstOrThrow({
+          where: { variableId: variable.id, environmentId },
+        });
+
+      // A branch in Vault only through its parent can't leave on its own.
+      expect(await remove(branch.id)).toMatchObject({
+        success: false,
+        error: expect.stringContaining("Preview value"),
+      });
+
+      expect(await remove(f.environment.id)).toMatchObject({ success: true });
+      expect(await valueIn(f.environment.id)).toMatchObject({
+        isProxyOnly: false,
+        isSecret: true,
+        proxyConfig: null,
+      });
+      expect(await valueIn(branch.id)).toMatchObject({
+        isProxyOnly: true,
+        proxyConfig: { allowedHosts: ["api.example.com"] },
+      });
+      const prepared = await repository.resolveEnvironmentVariables(f.project.id, f.environment.id);
+      expect(prepared.variables).toContainEqual({ key: "API_TOKEN", value: "base" });
+    }
+  );
+
+  postgresTest(
+    "disabling Vault is refused while values are in it, and races with a move",
+    async ({ prisma }) => {
+      const f = await seed(prisma);
+      const { variable } = await f.variable("API_TOKEN", "value");
+      const repository = new EnvironmentVariablesRepository(prisma, prisma, f.encryption);
+      const move = () =>
+        repository.saveVaultValue(f.project.id, {
+          id: variable.id,
+          environmentId: f.environment.id,
+          allowedHosts: ["api.example.com"],
+          userId: f.user.id,
+        });
+
+      // Run together, exactly one wins: either the move and Vault stays on, or the disable and
+      // the move is refused. Never Vault off with a value in it.
+      const [moved, disabled] = await Promise.all([
+        move(),
+        disableProjectVault(f.project.id, prisma),
+      ]);
+      expect(moved.success).not.toBe(disabled.success);
+      const project = await prisma.project.findUniqueOrThrow({ where: { id: f.project.id } });
+      const inVault = await projectHasVaultValues(prisma, f.project.id);
+      expect(project.secretProxyEnabled || !inVault).toBe(true);
+
+      if (inVault) {
+        expect(await disableProjectVault(f.project.id, prisma)).toMatchObject({ success: false });
+        expect(
+          await repository.deleteValue(f.project.id, {
+            id: variable.id,
+            environmentId: f.environment.id,
+          })
+        ).toMatchObject({ success: true });
+      }
+      expect(await disableProjectVault(f.project.id, prisma)).toMatchObject({ success: true });
+      expect(await move()).toMatchObject({ success: false });
+    }
+  );
+
   postgresTest("restricts policy runs to their granted variables", async ({ prisma }) => {
     const f = await seed(prisma);
     const granted = await f.variable("GRANTED", "granted-value");
@@ -688,99 +1008,6 @@ describe("secret proxy integration", () => {
   );
 
   postgresTest(
-    "value deletion captures concurrent enrollment after taking the identity lock",
-    { timeout: 60_000 },
-    async ({ prisma }) => {
-      const f = await seed(prisma);
-      const original = await f.variable("TOKEN", "ordinary");
-      const other = await createRuntimeEnvironment(prisma, {
-        projectId: f.project.id,
-        organizationId: f.organization.id,
-        type: "STAGING",
-      });
-      const key = `${environmentSecretPrefix(f.project.id, other.id)}TOKEN`;
-      const prepared = await f.encryption.prepareWrite({
-        projectId: f.project.id,
-        environmentId: other.id,
-      });
-      const store = new EnvironmentSecretStore(prisma, f.encryption, f.project.id, [other.id]);
-      await new EnvironmentSecretStore(
-        prisma,
-        f.encryption,
-        f.project.id,
-        [other.id],
-        new Map([[other.id, prepared]])
-      ).setSecret(key, { secret: "protected" });
-      const reference = await prisma.secretReference.create({
-        data: { key, provider: "DATABASE" },
-      });
-      let ready!: () => void;
-      const enrolled = new Promise<void>((resolve) => (ready = resolve));
-      let release!: () => void;
-      const released = new Promise<void>((resolve) => (release = resolve));
-      const enrolling = $transaction(
-        prisma,
-        async (tx) => {
-          await tx.$queryRaw`SELECT id FROM "EnvironmentVariable" WHERE id = ${original.variable.id} FOR UPDATE`;
-          await tx.environmentVariableValue.create({
-            data: {
-              variableId: original.variable.id,
-              environmentId: other.id,
-              valueReferenceId: reference.id,
-            },
-          });
-          await enrollProxyOnlyValue(tx, {
-            environmentId: other.id,
-            variableId: original.variable.id,
-            allowedHosts: ["api.example.com"],
-          });
-          ready();
-          await released;
-        },
-        { timeout: 30_000 }
-      );
-      await Promise.race([enrolled, enrolling]);
-      const repository = new EnvironmentVariablesRepository(prisma, prisma, f.encryption);
-      const deleting = repository.deleteValue(f.project.id, {
-        id: original.variable.id,
-        environmentId: other.id,
-      });
-      try {
-        await vi.waitFor(
-          async () => {
-            const waiting = await prisma.$queryRaw<unknown[]>`
-            SELECT pid FROM pg_stat_activity
-            WHERE datname = current_database() AND wait_event_type = 'Lock'
-              AND query LIKE '%"EnvironmentVariable"%' AND query LIKE '%FOR UPDATE%'
-          `;
-            expect(waiting.length).toBeGreaterThan(0);
-          },
-          { timeout: 10_000 }
-        );
-      } finally {
-        release();
-        await enrolling;
-      }
-      expect(await deleting).toMatchObject({
-        success: false,
-        error: expect.stringContaining("Proxy-only"),
-      });
-      expect(
-        await prisma.environmentVariableValue.findFirst({
-          where: { variableId: original.variable.id, environmentId: other.id },
-        })
-      ).toMatchObject({ isProxyOnly: true });
-      expect(await prisma.secretStore.findFirst({ where: { key } })).not.toBeNull();
-      expect(
-        await store.getSecrets(
-          z.object({ secret: z.string() }),
-          environmentSecretPrefix(f.project.id, other.id)
-        )
-      ).toEqual([]);
-    }
-  );
-
-  postgresTest(
     "filters before decryption, inherits policy, and delivers only stateless runtime handles",
     async ({ prisma }) => {
       const f = await seed(prisma);
@@ -812,9 +1039,6 @@ describe("secret proxy integration", () => {
         variableId: protectedValue.variable.id,
         allowedHosts: ["api.example.com"],
       });
-      await expect(
-        assertVariablesNotProxyOnly(prisma, f.project.id, [child.id], ["API_TOKEN"])
-      ).rejects.toThrow("operator");
       const metadata = await effectiveEnvironmentVariables(prisma, f.project.id, f.environment.id);
       const token = await f.sign();
       const proxyValues = metadata.filter((value) => value.isProxyOnly);
@@ -910,6 +1134,7 @@ describe("secret proxy integration", () => {
           { environmentId: f.environment.id, key: "PLAIN" },
         ])
       ).toEqual(new Map([[`${f.environment.id}:PLAIN`, "normal-value"]]));
+      // Ordinary writes replace a Vault value's value and leave it in Vault.
       for (const mutate of [
         () =>
           repository.create(f.project.id, {
@@ -929,29 +1154,14 @@ describe("secret proxy integration", () => {
             environmentId: child.id,
             value: "replacement",
           }),
-        () =>
-          repository.deleteValue(f.project.id, {
-            id: protectedValue.variable.id,
-            environmentId: child.id,
-          }),
       ]) {
-        expect((await mutate()).success).toBe(false);
+        expect((await mutate()).success).toBe(true);
+        expect(
+          await prisma.environmentVariableValue.findFirst({
+            where: { variableId: protectedValue.variable.id, environmentId: child.id },
+          })
+        ).toMatchObject({ isProxyOnly: true, isSecret: true });
       }
-      const prepared = await f.encryption.prepareWrite({
-        projectId: f.project.id,
-        environmentId: f.environment.id,
-      });
-      const writer = new EnvironmentSecretStore(
-        prisma,
-        f.encryption,
-        f.project.id,
-        [f.environment.id],
-        new Map([[f.environment.id, prepared]])
-      );
-      await expect(
-        writer.setSecret(protectedValue.secretKey, { secret: "replacement" })
-      ).rejects.toThrow("operator");
-      await expect(writer.deleteSecret(protectedValue.secretKey)).rejects.toThrow("operator");
       await f.variable("CHILD_TOKEN", "ordinary-parent");
       const childOnly = await f.variable("CHILD_TOKEN", "protected-child", child.id);
       await enrollProxyOnlyValue(prisma, {

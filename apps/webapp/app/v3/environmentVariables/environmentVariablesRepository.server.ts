@@ -25,9 +25,15 @@ import {
 import { env } from "~/env.server";
 import { auditLogs } from "~/services/auditLogs/auditLogs.server";
 import { logger } from "~/services/logger.server";
+import { proxyConfigHosts } from "~/services/secretProxy/placeholder.server";
+import { assertProjectVaultEnabled } from "~/services/secretProxy/projectVault.server";
 import {
+  assertVaultPoliciesValid,
+  assertVaultValueSize,
   effectiveEnvironmentVariables,
-  assertVariablesNotProxyOnly,
+  effectiveVaultHosts,
+  isInVault,
+  lockVariableKeys,
 } from "~/services/secretProxy/variables.server";
 import { environmentEncryption } from "~/services/environmentEncryption/instance.server";
 import {
@@ -183,6 +189,106 @@ type WrittenValue = {
  * text (it names tables, constraints and source lines): it is logged here and replaced with a
  * sentence. Errors raised by this app keep their own message.
  */
+const POLICY_UPDATE_BATCH_SIZE = 1000;
+
+/**
+ * Before these values are deleted or removed from Vault: a Preview branch's own value under one
+ * of them keeps the policy it had through it, so a parent leaving Vault never unseals a branch or
+ * widens its domains. Returns the environments whose Vault policy changes, to check once it's done.
+ */
+async function keepBranchVaultPolicies(
+  tx: PrismaClientOrTransaction,
+  projectId: string,
+  deleting: Array<{ variableId: string; environmentId: string }>
+): Promise<string[]> {
+  const deletingKeys = new Set(deleting.map((v) => `${v.variableId}:${v.environmentId}`));
+  const environments = await tx.runtimeEnvironment.findMany({
+    where: { projectId, id: { in: boundedIn([...new Set(deleting.map((v) => v.environmentId))]) } },
+    select: { id: true, parentEnvironmentId: true },
+  });
+  const scope = [
+    ...new Set(environments.flatMap((env) => [env.id, env.parentEnvironmentId ?? env.id])),
+  ];
+  const vaultValues = await tx.environmentVariableValue.findMany({
+    where: {
+      isProxyOnly: true,
+      variableId: { in: boundedIn([...new Set(deleting.map((v) => v.variableId))]) },
+      environmentId: { in: boundedIn(scope) },
+    },
+    select: { variableId: true, environmentId: true, proxyConfig: true },
+  });
+  const parentOf = new Map(environments.map((env) => [env.id, env.parentEnvironmentId]));
+  const affected = new Set(
+    deleting
+      .filter((v) =>
+        vaultValues.some(
+          (vault) =>
+            vault.variableId === v.variableId &&
+            (vault.environmentId === v.environmentId ||
+              vault.environmentId === parentOf.get(v.environmentId))
+        )
+      )
+      .map((v) => v.environmentId)
+  );
+
+  const deletedParents = vaultValues.filter((vault) =>
+    deletingKeys.has(`${vault.variableId}:${vault.environmentId}`)
+  );
+  if (deletedParents.length) {
+    const children = await tx.environmentVariableValue.findMany({
+      where: {
+        OR: deletedParents.map((parent) => ({
+          variableId: parent.variableId,
+          environment: { parentEnvironmentId: parent.environmentId },
+        })),
+      },
+      select: {
+        id: true,
+        variableId: true,
+        environmentId: true,
+        isProxyOnly: true,
+        proxyConfig: true,
+        environment: { select: { parentEnvironmentId: true } },
+      },
+    });
+    // Grouped by the policy each override ends up with, so an override that only inherited
+    // protection (the common case) is one statement per deleted parent, however many branches
+    // there are. Archived branches are included: one can be restored, and must stay sealed.
+    const byPolicy = new Map<string, { allowedHosts: string[]; ids: string[] }>();
+    for (const child of children) {
+      if (deletingKeys.has(`${child.variableId}:${child.environmentId}`)) continue;
+      const parentHosts = proxyConfigHosts(
+        deletedParents.find(
+          (parent) =>
+            parent.variableId === child.variableId &&
+            parent.environmentId === child.environment.parentEnvironmentId
+        )!.proxyConfig
+      );
+      const allowedHosts = child.isProxyOnly
+        ? proxyConfigHosts(child.proxyConfig).filter((host) => parentHosts.includes(host))
+        : parentHosts;
+      const policy = JSON.stringify(allowedHosts);
+      const group = byPolicy.get(policy) ?? { allowedHosts, ids: [] };
+      group.ids.push(child.id);
+      byPolicy.set(policy, group);
+    }
+    for (const { allowedHosts, ids } of byPolicy.values()) {
+      for (let start = 0; start < ids.length; start += POLICY_UPDATE_BATCH_SIZE) {
+        await tx.environmentVariableValue.updateMany({
+          where: { id: { in: boundedIn(ids.slice(start, start + POLICY_UPDATE_BATCH_SIZE)) } },
+          data: {
+            isProxyOnly: true,
+            isSecret: true,
+            proxyConfig: { allowedHosts },
+            version: { increment: 1 },
+          },
+        });
+      }
+    }
+  }
+  return [...affected];
+}
+
 function writeFailure(error: unknown, operation: string, projectId: string) {
   if (!(error instanceof Error) || !error.name.startsWith("PrismaClient")) {
     return {
@@ -349,6 +455,7 @@ export class EnvironmentVariablesRepository implements Repository {
       value,
       environmentIds,
       isSecret,
+      vaultHosts,
       parentEnvironmentId,
       lastUpdatedBy,
       prepared,
@@ -359,6 +466,7 @@ export class EnvironmentVariablesRepository implements Repository {
       value: string;
       environmentIds: string[];
       isSecret?: boolean;
+      vaultHosts?: string[];
       parentEnvironmentId?: string;
       lastUpdatedBy?: EnvironmentVariableUpdater;
       prepared: Map<string, PreparedEnvironmentWrite>;
@@ -412,6 +520,9 @@ export class EnvironmentVariablesRepository implements Repository {
     }
 
     const effectiveIsSecret = isSecret ?? inheritedIsSecret;
+    const vaultFields = vaultHosts
+      ? { isProxyOnly: true, proxyConfig: { allowedHosts: vaultHosts } }
+      : {};
 
     //set the secret values and references
     for (const environmentId of environmentIds) {
@@ -456,7 +567,9 @@ export class EnvironmentVariablesRepository implements Repository {
             },
             ...(lastUpdatedBy ? { lastUpdatedBy } : {}),
             valueReferenceId: secretReference.id,
-            ...(isSecret !== undefined ? { isSecret } : {}),
+            // A Vault value stays a secret: it is never readable.
+            ...(isSecret !== undefined && !existingValueRecord.isProxyOnly ? { isSecret } : {}),
+            ...vaultFields,
           },
         });
         previous = {
@@ -471,6 +584,7 @@ export class EnvironmentVariablesRepository implements Repository {
             environmentId: environmentId,
             valueReferenceId: secretReference.id,
             isSecret: effectiveIsSecret,
+            ...vaultFields,
             version: 1,
             lastUpdatedBy: lastUpdatedBy ? lastUpdatedBy : Prisma.JsonNull,
           },
@@ -482,9 +596,18 @@ export class EnvironmentVariablesRepository implements Repository {
         created: !existingValueRecord,
         previous,
         isSecret: existingValueRecord
-          ? (isSecret ?? existingValueRecord.isSecret)
+          ? existingValueRecord.isProxyOnly || (isSecret ?? existingValueRecord.isSecret)
           : (effectiveIsSecret ?? false),
       });
+    }
+
+    if (vaultHosts) {
+      await assertProjectVaultEnabled(tx, projectId, environmentIds);
+    }
+    // A write under a Vault parent (or into Vault) changes what runs in its branches get.
+    if (vaultHosts || (await isInVault(tx, projectId, environmentVariable.id, environmentIds))) {
+      assertVaultValueSize(value);
+      await assertVaultPoliciesValid(tx, projectId, environmentIds);
     }
 
     if (clearsIgnoredEmpty && written.size > 0) {
@@ -662,18 +785,20 @@ export class EnvironmentVariablesRepository implements Repository {
           );
         };
         const committed = await $transaction(this.prismaClient, "create env var", async (tx) => {
-          await assertVariablesNotProxyOnly(tx, projectId, options.environmentIds, [variable.key]);
+          await lockVariableKeys(tx, projectId, [variable.key]);
           await this.encryption.assertWrite(tx, [...prepared.values()]);
           return this.#writeVariable(tx, projectId, {
             key: variable.key,
             value: variable.value,
             environmentIds: options.environmentIds,
             isSecret: options.isSecret,
+            vaultHosts: options.vaultHosts,
             parentEnvironmentId: options.parentEnvironmentId,
             lastUpdatedBy: options.lastUpdatedBy,
             prepared,
             // Left as it is when it already holds this value, unchanged since it was read above.
             unchanged: (environmentId, existingValueRecord) =>
+              !options.vaultHosts &&
               holdsSentValue(environmentId, existingValueRecord) &&
               (options.isSecret === undefined || existingValueRecord.isSecret === options.isSecret),
           });
@@ -789,12 +914,12 @@ export class EnvironmentVariablesRepository implements Repository {
         : new Map<string, StoredValue>();
       const committed = await $transaction(this.prismaClient, "edit env var", async (tx) => {
         const changes: EnvironmentVariableChange[] = [];
-        await assertVariablesNotProxyOnly(
-          tx,
-          projectId,
-          values.map((value) => value.environmentId),
-          [environmentVariable.key]
-        );
+        await lockVariableKeys(tx, projectId, [environmentVariable.key]);
+        for (const value of values) {
+          if (await isInVault(tx, projectId, environmentVariable.id, [value.environmentId])) {
+            assertVaultValueSize(value.value);
+          }
+        }
         await this.encryption.assertWrite(tx, [...prepared.values()]);
         const secretStore = this.#secretStore(
           tx,
@@ -991,12 +1116,10 @@ export class EnvironmentVariablesRepository implements Repository {
         this.prismaClient,
         "edit env var value",
         async (tx) => {
-          await assertVariablesNotProxyOnly(
-            tx,
-            projectId,
-            [options.environmentId],
-            [environmentVariable.key]
-          );
+          await lockVariableKeys(tx, projectId, [environmentVariable.key]);
+          if (await isInVault(tx, projectId, environmentVariable.id, [options.environmentId])) {
+            assertVaultValueSize(value);
+          }
           await this.encryption.assertWrite(tx, [...prepared.values()]);
           const secretStore = this.#secretStore(
             tx,
@@ -1051,6 +1174,194 @@ export class EnvironmentVariablesRepository implements Repository {
       };
     } catch (error) {
       return writeFailure(error, "editValue", projectId);
+    }
+  }
+
+  /**
+   * Stores a value in Agent Vault, sent only to these hosts. Moves an ordinary value in, or
+   * changes a Vault value's hosts and, when `value` is set, its value. Never takes a value out.
+   */
+  async saveVaultValue(
+    projectId: string,
+    options: {
+      id: string;
+      environmentId: string;
+      allowedHosts: string[];
+      value?: string;
+      userId: string;
+    }
+  ): Promise<Result> {
+    const project = await this.prismaClient.project.findFirst({
+      where: { id: projectId, deletedAt: null },
+      select: {
+        organizationId: true,
+        environments: {
+          where: { id: options.environmentId },
+          select: {
+            id: true,
+            type: true,
+            encryptionPolicy: { select: { activeKeyId: true, revision: true } },
+          },
+        },
+      },
+    });
+    const variable = await this.prismaClient.environmentVariable.findFirst({
+      where: { id: options.id, projectId },
+      select: { id: true, key: true },
+    });
+    if (!project?.environments.length || !variable) {
+      return { success: false as const, error: "Environment variable not found" };
+    }
+
+    try {
+      const prepared =
+        options.value === undefined
+          ? undefined
+          : await this.#prepareWrites(projectId, project.environments);
+      await $transaction(this.prismaClient, "save env var value in vault", async (tx) => {
+        await lockVariableKeys(tx, projectId, [variable.key]);
+        await assertProjectVaultEnabled(tx, projectId, [options.environmentId]);
+        if (prepared && options.value !== undefined) {
+          assertVaultValueSize(options.value);
+          await this.encryption.assertWrite(tx, [...prepared.values()]);
+          await this.#secretStore(
+            tx,
+            projectId,
+            [options.environmentId],
+            prepared,
+            new Set()
+          ).setSecret<{ secret: string }>(
+            secretKey(projectId, options.environmentId, variable.key),
+            { secret: options.value }
+          );
+        } else {
+          // Moving a value in keeps the stored credential, and the proxy refuses large ones.
+          // Read only to measure it, inside the transaction, along with any branch overrides the
+          // move newly brings into Vault.
+          const covered = await tx.environmentVariableValue.findMany({
+            where: {
+              variableId: variable.id,
+              isProxyOnly: false,
+              OR: [
+                { environmentId: options.environmentId },
+                { environment: { parentEnvironmentId: options.environmentId, archivedAt: null } },
+              ],
+            },
+            select: { environmentId: true },
+          });
+          const stored = await this.#secretStore(
+            tx,
+            projectId,
+            covered.map((value) => value.environmentId),
+            undefined,
+            new Set()
+          ).getSecretsByKeys(
+            SecretValue,
+            covered.map((value) => secretKey(projectId, value.environmentId, variable.key))
+          );
+          stored.forEach((secret) => assertVaultValueSize(secret.value.secret));
+        }
+        await tx.environmentVariableValue.update({
+          where: {
+            variableId_environmentId: {
+              variableId: variable.id,
+              environmentId: options.environmentId,
+            },
+          },
+          data: {
+            isProxyOnly: true,
+            isSecret: true,
+            proxyConfig: { allowedHosts: options.allowedHosts },
+            version: { increment: 1 },
+            lastUpdatedBy: { type: "user", userId: options.userId },
+          },
+        });
+        await assertVaultPoliciesValid(tx, projectId, [options.environmentId]);
+      });
+      recordEnvironmentVariableChanges(projectId, project, [
+        {
+          action: options.value === undefined ? "envvar.updated" : "envvar.value_updated",
+          variable,
+          environmentId: options.environmentId,
+        },
+      ]);
+      return { success: true as const };
+    } catch (error) {
+      return writeFailure(error, "saveVaultValue", projectId);
+    }
+  }
+
+  /**
+   * Takes a value out of Agent Vault and keeps it secret, so runs get it as an ordinary secret
+   * environment variable. Branch overrides under it stay in Vault with the domains they had.
+   */
+  async removeFromVault(
+    projectId: string,
+    options: { id: string; environmentId: string; userId: string }
+  ): Promise<Result> {
+    const project = await this.prismaClient.project.findFirst({
+      where: { id: projectId, deletedAt: null },
+      select: {
+        organizationId: true,
+        environments: {
+          where: { id: options.environmentId },
+          select: { id: true, type: true, parentEnvironmentId: true },
+        },
+      },
+    });
+    const variable = await this.prismaClient.environmentVariable.findFirst({
+      where: { id: options.id, projectId },
+      select: { id: true, key: true },
+    });
+    const environment = project?.environments[0];
+    if (!project || !environment || !variable) {
+      return { success: false as const, error: "Environment variable not found" };
+    }
+
+    try {
+      await $transaction(this.prismaClient, "remove env var value from vault", async (tx) => {
+        await lockVariableKeys(tx, projectId, [variable.key]);
+        const value = await tx.environmentVariableValue.findFirst({
+          where: { variableId: variable.id, environmentId: environment.id },
+          select: { isProxyOnly: true },
+        });
+        if (
+          environment.parentEnvironmentId &&
+          (await isInVault(tx, projectId, variable.id, [environment.parentEnvironmentId]))
+        ) {
+          throw new Error(
+            "This value is in Agent Vault through its Preview value. Remove that one first."
+          );
+        }
+        if (!value?.isProxyOnly) {
+          throw new Error("This value isn't in Agent Vault.");
+        }
+        const affected = await keepBranchVaultPolicies(tx, projectId, [
+          { variableId: variable.id, environmentId: environment.id },
+        ]);
+        await tx.environmentVariableValue.update({
+          where: {
+            variableId_environmentId: {
+              variableId: variable.id,
+              environmentId: environment.id,
+            },
+          },
+          data: {
+            isProxyOnly: false,
+            proxyConfig: Prisma.DbNull,
+            isSecret: true,
+            version: { increment: 1 },
+            lastUpdatedBy: { type: "user", userId: options.userId },
+          },
+        });
+        await assertVaultPoliciesValid(tx, projectId, affected);
+      });
+      recordEnvironmentVariableChanges(projectId, project, [
+        { action: "envvar.updated", variable, environmentId: environment.id },
+      ]);
+      return { success: true as const };
+    } catch (error) {
+      return writeFailure(error, "removeFromVault", projectId);
     }
   }
 
@@ -1385,19 +1696,14 @@ export class EnvironmentVariablesRepository implements Repository {
           return [];
         }
 
-        // One proxy-only value refuses the whole batch. Checked per environment, so a key is only
-        // looked up where it is being deleted: the same key may be proxy-only somewhere else.
-        // It locks the same variable rows, which this transaction already holds.
-        for (const environmentId of new Set(found.map(({ value }) => value.environmentId))) {
-          await assertVariablesNotProxyOnly(
-            tx,
-            projectId,
-            [environmentId],
-            found
-              .filter(({ value }) => value.environmentId === environmentId)
-              .map(({ variable }) => variable.key)
-          );
-        }
+        const vaultEnvironmentIds = await keepBranchVaultPolicies(
+          tx,
+          projectId,
+          found.map(({ variable, value }) => ({
+            variableId: variable.id,
+            environmentId: value.environmentId,
+          }))
+        );
 
         // By set, so a batch is four statements however many values it holds, and a row another
         // request removed in the meantime doesn't fail the rest.
@@ -1422,6 +1728,9 @@ export class EnvironmentVariablesRepository implements Repository {
         await tx.environmentVariableValue.deleteMany({
           where: { id: { in: boundedIn(found.map(({ value }) => value.id)) } },
         });
+        // A branch that falls back to its parent's Vault value may now exceed the run limits.
+        await assertVaultPoliciesValid(tx, projectId, vaultEnvironmentIds);
+
         // Checked after the values are gone, so a variable that gained a value first stays.
         await tx.environmentVariable.deleteMany({
           where: {
@@ -1557,7 +1866,12 @@ export class EnvironmentVariablesRepository implements Repository {
             key: true,
             values: {
               where: { environmentId: { in: [source.id, target.id] } },
-              select: { environmentId: true, isSecret: true },
+              select: {
+                environmentId: true,
+                isSecret: true,
+                isProxyOnly: true,
+                proxyConfig: true,
+              },
             },
           },
           orderBy: { key: "asc" },
@@ -1582,21 +1896,28 @@ export class EnvironmentVariablesRepository implements Repository {
           throw refuse(`${named(reserved)} can't be set.`);
         }
 
-        // Refuses a proxy-only target value (its lock is the one already held).
-        await assertVariablesNotProxyOnly(tx, projectId, [target.id], keys).catch(
-          (error: unknown) => {
-            throw error instanceof Error && error.message.startsWith("Proxy-only")
-              ? refuse(`${error.message}.`)
-              : error;
-          }
+        const sourceValue = (variable: (typeof variables)[number]) =>
+          variable.values.find((v) => v.environmentId === source.id)!;
+        // A value in Vault, directly or through its parent, copies into Vault with the domains
+        // its runs get. A target already in Vault stays there.
+        const sourceVaultHosts = await effectiveVaultHosts(
+          tx,
+          variables.map((variable) => ({ ...sourceValue(variable), variableId: variable.id })),
+          [{ id: source.id, parentEnvironmentId: source.parentEnvironmentId }]
         );
         await this.encryption.assertWrite(tx, [...prepared.values()]);
 
-        // Read after the lock, so what is copied is the value as it is now. A proxy-only value
-        // isn't readable, so it isn't returned.
+        // Read after the lock, so what is copied is the value as it is now. Vault values are
+        // read too: they are written straight back into Vault, never returned.
         const sourceValues = new Map(
           (
-            await this.#secretStore(tx, projectId, [source.id]).getSecretsByKeys(
+            await this.#secretStore(
+              tx,
+              projectId,
+              [source.id],
+              undefined,
+              new Set()
+            ).getSecretsByKeys(
               SecretValue,
               keys.map((key) => secretKey(projectId, source.id, key))
             )
@@ -1604,9 +1925,7 @@ export class EnvironmentVariablesRepository implements Repository {
         );
         const unreadable = keys.filter((key) => !sourceValues.has(key));
         if (unreadable.length > 0) {
-          throw refuse(
-            `${named(unreadable)} can't be read in ${environmentFullTitle(source)}. Proxy-only variables can only be changed by the secret proxy operator.`
-          );
+          throw refuse(`${named(unreadable)} can't be read in ${environmentFullTitle(source)}.`);
         }
         const empty = keys.filter((key) => sourceValues.get(key)!.trim() === "");
         if (empty.length > 0 && !emptyAllowed) {
@@ -1618,16 +1937,16 @@ export class EnvironmentVariablesRepository implements Repository {
         const result: Array<{ id: string; key: string; created: boolean }> = [];
         const changes: EnvironmentVariableChange[] = [];
         for (const variable of variables) {
-          const sourceIsSecret = variable.values.find(
-            (v) => v.environmentId === source.id
-          )!.isSecret;
+          const { isSecret: sourceIsSecret } = sourceValue(variable);
+          const vaultHosts = sourceVaultHosts.get(`${variable.id}:${source.id}`)?.hosts;
           const value = sourceValues.get(variable.key)!;
           const { written } = await this.#writeVariable(tx, projectId, {
             key: variable.key,
             value,
             environmentIds: [target.id],
             // Only ever made a secret: a plain value copied onto a secret leaves it a secret.
-            isSecret: sourceIsSecret ? true : undefined,
+            isSecret: sourceIsSecret || vaultHosts ? true : undefined,
+            vaultHosts,
             parentEnvironmentId: target.parentEnvironmentId ?? undefined,
             lastUpdatedBy,
             prepared,

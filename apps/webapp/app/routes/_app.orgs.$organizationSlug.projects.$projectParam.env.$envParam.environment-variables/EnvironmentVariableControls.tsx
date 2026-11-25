@@ -70,6 +70,10 @@ export type MaskedEnvironmentVariable = EnvironmentVariableWithSetValues & {
 };
 
 export type EnvironmentVariablesPageLoaderData = {
+  vaultEnabled?: boolean;
+  canEnableVault?: boolean;
+  /** Set for platform admins while Vault is on. `blocked` when the project has Vault values. */
+  vaultDisable?: { blocked: boolean } | null;
   allowEmptyEnvironmentVariableValues: boolean;
   environmentVariables: MaskedEnvironmentVariable[];
   environments: EnvironmentVariablesEnvironment[];
@@ -120,6 +124,7 @@ export type EnvironmentVariablesControlsData = Pick<
   | "hasStaging"
   | "writableEnvironmentIds"
   | "allowEmptyEnvironmentVariableValues"
+  | "vaultEnabled"
 >;
 
 /**
@@ -133,6 +138,9 @@ export function maskEnvironmentVariable(
     ...variable,
     value: "",
     isSecret: false,
+    vaultHosts: undefined,
+    vaultConfiguredHosts: undefined,
+    vaultInherited: undefined,
     permissionDenied: true,
     lastUpdatedBy: null,
     updatedByUser: null,

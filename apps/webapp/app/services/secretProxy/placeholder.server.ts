@@ -74,7 +74,9 @@ export function isCanonicalProxyHostname(hostname: string): boolean {
   );
 }
 
-export function secretProxyExecutionHosts(values: EffectiveEnvironmentVariable[]) {
+export function secretProxyExecutionHosts(
+  values: Array<Pick<EffectiveEnvironmentVariable, "proxyAllowedHosts">>
+) {
   const destinations = new Set<string>();
   for (const value of values) {
     const hosts = ProxyAllowedHosts.safeParse(value.proxyAllowedHosts);

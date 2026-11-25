@@ -1,3 +1,5 @@
+import { effectiveVaultHosts } from "~/services/secretProxy/variables.server";
+import { proxyConfigHosts } from "~/services/secretProxy/placeholder.server";
 import { boundedIn } from "@trigger.dev/database";
 import type { PrismaClient, PrismaReplicaClient } from "~/db.server";
 import { $replica, prisma } from "~/db.server";
@@ -25,6 +27,8 @@ const valueSelect = {
   lastUpdatedBy: true,
   updatedAt: true,
   isSecret: true,
+  isProxyOnly: true,
+  proxyConfig: true,
 } as const;
 
 type ValueRecord = {
@@ -34,6 +38,8 @@ type ValueRecord = {
   lastUpdatedBy: unknown;
   updatedAt: Date;
   isSecret: boolean;
+  isProxyOnly: boolean;
+  proxyConfig: unknown;
 };
 
 type EnvironmentVariableKeyEnvironment = Pick<
@@ -196,7 +202,18 @@ export class EnvironmentVariableKeyPresenter {
             take: branchPageSize,
           });
 
-    const values: ValueRecord[] = [...environmentValues, ...branchValues];
+    const vaultHosts = await effectiveVaultHosts(
+      this.#replicaClient,
+      [...environmentValues, ...branchValues].map((value) => ({
+        ...value,
+        variableId: variable.id,
+      })),
+      environments
+    );
+    // A value in Vault through its parent is as unreadable as one in Vault itself.
+    const values: ValueRecord[] = [...environmentValues, ...branchValues].map((value) =>
+      vaultHosts.has(`${variable.id}:${value.environmentId}`) ? { ...value, isSecret: true } : value
+    );
 
     const repository = new EnvironmentVariablesRepository(this.#prismaClient, this.#replicaClient);
     const [{ values: plainValues, unavailableEnvironments }, usersById] = await Promise.all([
@@ -239,6 +256,13 @@ export class EnvironmentVariableKeyPresenter {
         value: plainValue,
         ...(valueUnavailable ? { valueUnavailable: true } : {}),
         isSecret: value.isSecret,
+        ...(vaultHosts.has(`${variable.id}:${value.environmentId}`)
+          ? {
+              vaultHosts: vaultHosts.get(`${variable.id}:${value.environmentId}`)!.hosts,
+              vaultInherited: vaultHosts.get(`${variable.id}:${value.environmentId}`)!.inherited,
+            }
+          : {}),
+        ...(value.isProxyOnly ? { vaultConfiguredHosts: proxyConfigHosts(value.proxyConfig) } : {}),
         version: value.version,
         lastUpdatedBy,
         updatedByUser: user

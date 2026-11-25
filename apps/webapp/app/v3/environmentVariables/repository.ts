@@ -22,6 +22,8 @@ export const CreateEnvironmentVariables = z.object({
   override: z.boolean(),
   environmentIds: z.array(z.string()),
   isSecret: z.boolean().optional(),
+  /** Set to store the values in Agent Vault, only sent to these hosts. */
+  vaultHosts: z.array(z.string()).optional(),
   parentEnvironmentId: z.string().optional(),
   variables: z.array(z.object({ key: EnvironmentVariableKey, value: z.string() })),
   lastUpdatedBy: EnvironmentVariableUpdaterSchema.optional(),

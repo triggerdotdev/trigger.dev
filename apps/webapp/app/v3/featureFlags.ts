@@ -2,10 +2,15 @@ import stableStringify from "json-stable-stringify";
 import { z } from "zod";
 import { DeployBuildPath } from "@trigger.dev/core/v3";
 
+export function hasAgentVault(flags: unknown) {
+  return !!flags && typeof flags === "object" && "agentVault" in flags && flags.agentVault === true;
+}
+
 export const FEATURE_FLAG = {
   waitpointStoreEnabled: "waitpointStoreEnabled",
   snapshotStoreMode: "snapshotStoreMode",
   allowEmptyEnvironmentVariableValues: "allowEmptyEnvironmentVariableValues",
+  agentVault: "agentVault",
   environmentEncryptionEnabled: "environmentEncryptionEnabled",
   defaultWorkerInstanceGroupId: "defaultWorkerInstanceGroupId",
   taskEventRepository: "taskEventRepository",
@@ -113,6 +118,7 @@ export const FeatureFlagCatalog = {
   // Organization override, then global default, then off.
   [FEATURE_FLAG.snapshotStoreMode]: z.enum(["off", "dual-write", "redis-read", "redis-only"]),
   [FEATURE_FLAG.allowEmptyEnvironmentVariableValues]: z.boolean(),
+  [FEATURE_FLAG.agentVault]: z.boolean(),
   [FEATURE_FLAG.environmentEncryptionEnabled]: z.boolean(),
   [FEATURE_FLAG.defaultWorkerInstanceGroupId]: z.string(),
   [FEATURE_FLAG.taskEventRepository]: z.enum(["clickhouse", "clickhouse_v2", "postgres"]),
