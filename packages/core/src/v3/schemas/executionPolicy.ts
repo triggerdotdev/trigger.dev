@@ -1,15 +1,16 @@
 import { z } from "zod/v4";
 
 export const RUN_SCOPE_PLACEHOLDER = "$run";
-/**
- * `triggerSource` sent for sandbox tasks. Older CLIs drop the `sandbox` field when indexing but
- * keep `triggerSource`, so the server can reject a sandbox whose config was lost.
- */
+/** Internal trigger source marker for sandbox task registration. */
 export const SANDBOX_TRIGGER_SOURCE = "sandbox";
 export const SESSION_SCOPE_PLACEHOLDER = "$session";
 
 const MAX_GRANTED_ENV_VARS = 256;
 const MAX_POLICY_SCOPES = 64;
+const SANDBOX_BASELINE_SCOPES = [
+  `read:runPayloads:${RUN_SCOPE_PLACEHOLDER}`,
+  `write:runOutputs:${RUN_SCOPE_PLACEHOLDER}`,
+];
 
 /** Environment variables a run may receive. Delivery mode follows each variable's own proxy setting. */
 export const EnvVarGrant = z.union([
@@ -30,9 +31,15 @@ export const RunExecutionPolicy = z.object({
 });
 export type RunExecutionPolicy = z.infer<typeof RunExecutionPolicy>;
 
-/** Task declaration for `sandbox.define()`, sent in the worker manifest. */
+/** Normalized sandbox declaration sent in the worker manifest. */
 export const SandboxTaskConfig = z.object({
   envVars: EnvVarGrant.optional(),
+  scopes: z
+    .array(z.string().min(1))
+    .max(MAX_POLICY_SCOPES - SANDBOX_BASELINE_SCOPES.length)
+    .optional(),
+  // Preserves the task's original trigger source.
+  triggerSource: z.string().optional(),
 });
 export type SandboxTaskConfig = z.infer<typeof SandboxTaskConfig>;
 
@@ -40,13 +47,7 @@ export function sandboxExecutionPolicy(config: SandboxTaskConfig): RunExecutionP
   return {
     version: 1,
     rootKey: false,
-    scopes: [
-      `read:runs:${RUN_SCOPE_PLACEHOLDER}`,
-      `write:runs:${RUN_SCOPE_PLACEHOLDER}`,
-      `read:sessions:${SESSION_SCOPE_PLACEHOLDER}:in`,
-      `write:sessions:${SESSION_SCOPE_PLACEHOLDER}:out`,
-      "write:oidc",
-    ],
+    scopes: [...SANDBOX_BASELINE_SCOPES, ...(config.scopes ?? [])],
     envVars: config.envVars ?? [],
   };
 }

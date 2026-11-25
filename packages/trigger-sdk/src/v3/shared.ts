@@ -28,6 +28,9 @@ import {
   RateLimitError,
   resourceCatalog,
   runtime,
+  RUN_SCOPE_PLACEHOLDER,
+  SANDBOX_TRIGGER_SOURCE,
+  SESSION_SCOPE_PLACEHOLDER,
   SemanticInternalAttributes,
   stringifyIO,
   SubtaskUnwrapError,
@@ -74,6 +77,7 @@ import {
   type SchemaParseFn,
   type Task,
   type TaskIdentifier,
+  type TaskMetadata,
   type TaskOptions,
   type TaskOptionsWithSchema,
   type TaskOutput,
@@ -239,6 +243,41 @@ export function concurrencyLimit(options: ConcurrencyLimitOptions): ConcurrencyL
   return options;
 }
 
+function sandboxTaskMetadata({
+  sandbox,
+  triggerSource,
+}: Pick<TaskOptions<string>, "sandbox" | "triggerSource">): Pick<
+  TaskMetadata,
+  "sandbox" | "triggerSource"
+> {
+  if (sandbox === undefined || sandbox === false) return { triggerSource };
+
+  const { envVars, scopes } = sandbox === true ? {} : sandbox;
+  const requestedScopes = typeof scopes === "string" ? [scopes] : (scopes ?? []);
+  return {
+    triggerSource: SANDBOX_TRIGGER_SOURCE,
+    sandbox: {
+      triggerSource,
+      envVars,
+      scopes: requestedScopes.flatMap((scope) => {
+        switch (scope) {
+          case "basic":
+            return [
+              `read:runs:${RUN_SCOPE_PLACEHOLDER}`,
+              `write:runs:${RUN_SCOPE_PLACEHOLDER}`,
+              `read:sessions:${SESSION_SCOPE_PLACEHOLDER}:in`,
+              `write:sessions:${SESSION_SCOPE_PLACEHOLDER}:out`,
+            ];
+          case "oidc":
+            return ["write:oidc"];
+          default:
+            return [scope];
+        }
+      }),
+    },
+  };
+}
+
 // Overload: when payloadSchema is provided, payload type should be any
 export function createTask<
   TIdentifier extends string,
@@ -360,7 +399,7 @@ export function createTask<
     concurrency: normalizeTaskConcurrency(params.id, params.concurrency),
     retry: params.retry ? { ...defaultRetryOptions, ...params.retry } : undefined,
     machine: typeof params.machine === "string" ? { preset: params.machine } : params.machine,
-    triggerSource: params.triggerSource,
+    ...sandboxTaskMetadata(params),
     agentConfig: params.agentConfig,
     maxDuration: params.maxDuration,
     ttl: params.ttl,
@@ -524,7 +563,7 @@ export function createSchemaTask<
     concurrency: normalizeTaskConcurrency(params.id, params.concurrency),
     retry: params.retry ? { ...defaultRetryOptions, ...params.retry } : undefined,
     machine: typeof params.machine === "string" ? { preset: params.machine } : params.machine,
-    triggerSource: params.triggerSource,
+    ...sandboxTaskMetadata(params),
     agentConfig: params.agentConfig,
     maxDuration: params.maxDuration,
     ttl: params.ttl,

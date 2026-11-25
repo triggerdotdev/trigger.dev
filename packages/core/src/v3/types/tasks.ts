@@ -16,6 +16,7 @@ import type {
   OnStartAttemptHookFunction,
 } from "../lifecycleHooks/types.js";
 import type { RunTags } from "../schemas/api.js";
+import type { EnvVarGrant } from "../schemas/executionPolicy.js";
 import type {
   MachineCpu,
   MachineMemory,
@@ -180,6 +181,19 @@ type CommonTaskOptions<
   id: TIdentifier;
 
   description?: string;
+
+  /**
+   * Run deployed tasks in a sandbox with access to only their own payload and output by default.
+   * `trigger dev` still runs locally with development credentials and is not an isolation boundary.
+   */
+  sandbox?:
+    | boolean
+    | {
+        /** Environment variables to grant. Defaults to none. */
+        envVars?: EnvVarGrant;
+        /** Additional API scopes. Use `basic` to inspect/manage this run and exchange messages with its session, `oidc` for OIDC tokens, or explicit scope strings. */
+        scopes?: string | string[];
+      };
 
   /** The retry settings when an uncaught error is thrown.
        *
