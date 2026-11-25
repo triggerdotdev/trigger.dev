@@ -5,7 +5,7 @@ import { isTransientRedisClientError } from "@internal/run-store";
 
 const CONNECT_TIMEOUT_MS = 1_000;
 const COMMAND_TIMEOUT_MS = 2_000;
-const SLOTS_REFRESH_INTERVAL_MS = 2_000;
+const SLOTS_REFRESH_INTERVAL_MS = 5_000;
 const SLOT_REFRESH_SETTLE_MS = 2_000;
 const POLICY_CHECK_INTERVAL_MS = 30_000;
 

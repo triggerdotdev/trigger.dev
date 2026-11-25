@@ -25,7 +25,7 @@ test("snapshot metrics ignore raw organization IDs; the endpoint creates no eage
   expect(plainOptions.clusterOptions).toEqual({
     lazyConnect: true,
     scaleReads: "master",
-    slotsRefreshInterval: 2_000,
+    slotsRefreshInterval: 5_000,
   });
   expect(plainOptions.redisOptions.tls).toBeUndefined();
   expect(options.redisOptions.commandTimeout).toBe(1000);
