@@ -3,6 +3,7 @@ import { redirect } from "remix-typedjson";
 import { z } from "zod";
 import { prisma } from "~/db.server";
 import { redirectWithSuccessMessage } from "~/models/message.server";
+import { requireUserId } from "~/services/session.server";
 import { newProjectPath, v3BillingPath } from "~/utils/pathBuilder";
 
 const ParamsSchema = z.object({
@@ -10,6 +11,7 @@ const ParamsSchema = z.object({
 });
 
 export const loader = async ({ request, params }: LoaderFunctionArgs) => {
+  const userId = await requireUserId(request);
   const { organizationId } = ParamsSchema.parse(params);
 
   const org = await prisma.organization.findFirst({
@@ -23,6 +25,8 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
     },
     where: {
       id: organizationId,
+      deletedAt: null,
+      members: { some: { userId } },
     },
   });
 
