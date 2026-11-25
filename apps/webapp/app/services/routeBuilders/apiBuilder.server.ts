@@ -330,7 +330,8 @@ type ApiKeyRouteBuilderOptions<
       | z.ZodFirstPartySchemaTypes
       | z.ZodDiscriminatedUnion<any, any>
       ? z.infer<TSearchParamsSchema>
-      : undefined
+      : undefined,
+    subject: RbacSubject
   ) => Promise<TResource | undefined>;
   shouldRetryNotFound?: boolean;
   // Opt-in metrics label for the request and its ClickHouse queries.
@@ -474,7 +475,12 @@ export function createLoaderApiRoute<
       }
 
       // Find the resource
-      const resource = await findResource(parsedParams, authenticationResult, parsedSearchParams);
+      const resource = await findResource(
+        parsedParams,
+        authenticationResult,
+        parsedSearchParams,
+        authResult.subject
+      );
 
       if (!resource) {
         return await wrapResponse(
@@ -1215,7 +1221,8 @@ type ApiKeyActionRouteBuilderOptions<
       | z.ZodFirstPartySchemaTypes
       | z.ZodDiscriminatedUnion<any, any>
       ? z.infer<TSearchParamsSchema>
-      : undefined
+      : undefined,
+    subject: RbacSubject
   ) => Promise<TResource | undefined>;
   authorization?: {
     action: string;
@@ -1454,7 +1461,12 @@ export function createActionApiRoute<
       // for either form should authorize both URL forms). Mirrors the
       // ordering in `createLoaderApiRoute`.
       const resource = findResource
-        ? await findResource(parsedParams, authenticationResult, parsedSearchParams)
+        ? await findResource(
+            parsedParams,
+            authenticationResult,
+            parsedSearchParams,
+            authResult.subject
+          )
         : undefined;
 
       // Run authorization first — but with the resolved resource available

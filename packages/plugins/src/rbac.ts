@@ -96,6 +96,7 @@ export type RbacSubject =
   | {
       type: "runToken";
       runId: string;
+      attemptNumber: number;
       environmentId: string;
       organizationId: string;
       projectId?: string;
@@ -227,6 +228,8 @@ export type RbacScopeAction = "read" | "write" | "trigger" | "batchTrigger" | "a
 
 export type RbacScopeResourceType =
   | "runs"
+  | "runPayloads"
+  | "runOutputs"
   | "tasks"
   | "batch"
   | "queues"

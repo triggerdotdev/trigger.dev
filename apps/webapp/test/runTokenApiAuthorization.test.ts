@@ -137,21 +137,22 @@ afterAll(async () => {
 
 async function tokenFor(
   environment: { id: string; organizationId: string; projectId: string },
-  scopes = ["admin"]
+  scopes = ["admin"],
+  { runId = "run_packet_test", attempt = 1 } = {}
 ) {
   return new SignJWT({
     token_use: "run",
     org_id: environment.organizationId,
     project_id: environment.projectId,
     environment_id: environment.id,
-    run_id: "run_packet_test",
-    attempt: 1,
+    run_id: runId,
+    attempt,
     scopes,
   })
     .setProtectedHeader({ alg: "RS256", kid: KEY_ID, typ: "run+jwt" })
     .setIssuer(ISSUER)
     .setAudience("trigger:api")
-    .setSubject("run:run_packet_test")
+    .setSubject(`run:${runId}`)
     .setIssuedAt()
     .setExpirationTime("1h")
     .sign(privateKey);
@@ -222,7 +223,6 @@ describe("run-token API authorization", () => {
         organizationId: organization.id,
       },
     });
-    // The scopes a sandbox run token carries for its own run and session.
     const scopes = [
       `read:runs:${run.friendlyId}`,
       `write:runs:${run.friendlyId}`,
@@ -1090,6 +1090,84 @@ describe("run-token API authorization", () => {
     expect(downloaded.status).toBe(200);
     const download = await downloaded.json();
     expect(await (await fetch(download.presignedUrl)).text()).toBe('{"ok":true}');
+  });
+
+  it("limits sandbox packet access to the recorded input and its own attempt's result", async () => {
+    const { environment, project } = await seedDeployedEnvironment();
+    const seedRun = async () => {
+      const { run } = await seedTestRun(database.prisma, {
+        environmentId: environment.id,
+        projectId: project.id,
+      });
+      return run;
+    };
+    const run = await seedRun();
+    const other = await seedRun();
+    const attempt = 2;
+    const scopes = [`read:runPayloads:${run.friendlyId}`, `write:runOutputs:${run.friendlyId}`];
+    const token = await tokenFor(environment, scopes, { runId: run.friendlyId, attempt });
+    const output = `${run.friendlyId}-${attempt}/output.json`;
+    const payloadUpload = await v2.action(
+      args("PUT", "some-trigger/payload.json", environment.apiKey)
+    );
+    expect(payloadUpload.status).toBe(200);
+    const { presignedUrl, storagePath } = await payloadUpload.json();
+    expect((await fetch(presignedUrl, { method: "PUT", body: '{"input":true}' })).status).toBe(200);
+    for (const record of [run, other]) {
+      await database.prisma.taskRun.update({
+        where: { id: record.id },
+        data: { payload: storagePath, payloadType: "application/store" },
+      });
+    }
+
+    const { loader } = await import("~/routes/api.v1.runs.$runId.packets.$field");
+    const load = (runId: string, field: "payload" | "output") =>
+      loader({ ...args("GET", storagePath, token), params: { runId, field } });
+
+    const input = await load(run.friendlyId, "payload");
+    expect(input.status).toBe(200);
+    expect(await (await fetch((await input.json()).presignedUrl)).text()).toBe('{"input":true}');
+    expect((await load(other.friendlyId, "payload")).status).toBe(403);
+    expect((await v1.loader(args("GET", storagePath, token))).status).toBe(403);
+
+    const result = await v2.action(args("PUT", output, token));
+    expect(result.status).toBe(200);
+    const upload = await result.json();
+    expect(upload.storagePath).toBe(`s3://uploads/run/${run.friendlyId}/${output}`);
+    expect(
+      (await fetch(upload.presignedUrl, { method: "PUT", body: '{"result":true}' })).status
+    ).toBe(200);
+    await database.prisma.taskRun.update({
+      where: { id: run.id },
+      data: { output: upload.storagePath, outputType: "application/store" },
+    });
+    expect((await load(run.friendlyId, "output")).status).toBe(403);
+    expect((await v1.loader(args("GET", upload.storagePath, token))).status).toBe(403);
+    expect((await v1.action(args("PUT", output, token))).status).toBe(403);
+    const textOutput = `${run.friendlyId}-${attempt}/output.txt`;
+    expect((await v2.action(args("PUT", textOutput, token))).status).toBe(200);
+
+    for (const path of [
+      `${other.friendlyId}-${attempt}/output.json`,
+      `${run.friendlyId}-1/output.json`,
+      `${run.friendlyId}-3/output.json`,
+      `${run.friendlyId}-${attempt}/anything.json`,
+      `${run.friendlyId}-${attempt}/output.csv`,
+      `s3://${output}`,
+      `tmp/../${output}`,
+    ]) {
+      expect((await v2.action(args("PUT", path, token))).status, path).toBe(403);
+    }
+
+    const { handlePublicTokenRequest } = await import("~/services/publicTokens.server");
+    const delegated = await handlePublicTokenRequest(
+      new Request("https://api.example.com/api/v1/auth/public-tokens", {
+        method: "POST",
+        headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+        body: JSON.stringify({ scopes: [] }),
+      })
+    );
+    expect(delegated.status).toBe(403);
   });
 
   it("requires packet capabilities rather than treating every run token as unrestricted", async () => {

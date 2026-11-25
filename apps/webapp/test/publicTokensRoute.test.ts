@@ -54,6 +54,7 @@ function controllerWithAbility(
               ? {
                   type: "runToken" as const,
                   runId: "run_test",
+                  attemptNumber: 1,
                   environmentId: environment.id,
                   organizationId: "org_test",
                 }

@@ -1,4 +1,5 @@
 import { json } from "@remix-run/server-runtime";
+import { attemptKey } from "@trigger.dev/core/v3";
 import type { RbacResource, RbacSubject } from "@trigger.dev/plugins";
 import { z } from "zod";
 import type { ApiAuthenticationResultSuccess } from "~/services/apiAuth.server";
@@ -70,9 +71,24 @@ export function createPacketUploadRoute({ forceNoPrefix = false } = {}) {
     {
       params: PacketParamsSchema,
       method: "PUT",
+      findResource: async (params, _authentication, _searchParams, subject) => {
+        const filename = params["*"];
+        const resources = packetUploadResources(filename);
+        if (!forceNoPrefix && subject.type === "runToken") {
+          const attempt = attemptKey({
+            run: { id: subject.runId },
+            attempt: { number: subject.attemptNumber },
+          });
+          // Match the SDK's result filenames exactly, without accepting storage URI or path aliases.
+          if (filename === `${attempt}/output.json` || filename === `${attempt}/output.txt`) {
+            resources.push({ type: "runOutputs", id: subject.runId });
+          }
+        }
+        return resources;
+      },
       authorization: {
         action: "write",
-        resource: (params) => anyResource(packetUploadResources(params["*"])),
+        resource: (_params, _query, _headers, _body, resources) => anyResource(resources ?? []),
       },
     },
     async ({ params, authentication, subject }) => {
