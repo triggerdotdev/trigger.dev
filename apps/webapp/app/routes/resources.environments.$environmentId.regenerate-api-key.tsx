@@ -17,9 +17,11 @@ export const action = dashboardAction(
     context: async (params) => {
       const environment = await $replica.runtimeEnvironment.findFirst({
         where: { id: params.environmentId },
-        select: { organizationId: true },
+        select: { organizationId: true, projectId: true },
       });
-      return environment ? { organizationId: environment.organizationId } : {};
+      return environment
+        ? { organizationId: environment.organizationId, projectId: environment.projectId }
+        : {};
     },
     // Env-tier write:apiKeys is enforced in the handler — the target
     // environment's tier isn't known until we resolve it from the id.

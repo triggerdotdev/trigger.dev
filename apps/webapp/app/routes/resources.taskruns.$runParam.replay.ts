@@ -283,10 +283,12 @@ function loadProjectEnvironments(where: Prisma.ProjectWhereInput, userId: string
   });
 }
 
-// Resolve the run's organization so the RBAC auth scope can resolve the
-// user's role in it. The run may not be in Postgres yet (buffered during a
-// burst), so fall back to the buffer entry's org.
-async function resolveRunOrganizationId(runParam: string): Promise<string | null> {
+type RunAuthScope = { organizationId: string; projectId: string };
+
+// Resolve the run's organization and project so the RBAC auth scope can resolve
+// the user's role for it. The run may not be in Postgres yet (buffered during a
+// burst), so fall back to the buffer entry's environment.
+async function resolveRunAuthScope(runParam: string): Promise<RunAuthScope | null> {
   // Run-ops read keyed by friendlyId only; the store routes to the owning DB by
   // residency off its own replica. Forwarding a control-plane client here would
   // override that routing and miss any run that lives in the run-ops DB.
@@ -297,14 +299,22 @@ async function resolveRunOrganizationId(runParam: string): Promise<string | null
   if (run) {
     const env = await controlPlaneResolver.resolveEnv(run.runtimeEnvironmentId);
     if (env?.organizationId) {
-      return env.organizationId;
+      return { organizationId: env.organizationId, projectId: env.projectId };
     }
   }
 
   const buffer = getMollifierBuffer();
   const entry = buffer ? await buffer.getEntry(runParam) : null;
   if (entry?.orgId) {
-    return entry.orgId;
+    const entryEnv =
+      (await controlPlaneResolver.resolveEnv(entry.envId)) ??
+      (await prisma.runtimeEnvironment.findFirst({
+        where: { id: entry.envId },
+        select: { organizationId: true, projectId: true },
+      }));
+    return entryEnv
+      ? { organizationId: entryEnv.organizationId, projectId: entryEnv.projectId }
+      : null;
   }
 
   // Replica lag with the buffer entry already drained: the run can exist in the
@@ -320,16 +330,15 @@ async function resolveRunOrganizationId(runParam: string): Promise<string | null
     return null;
   }
   const primaryEnv = await controlPlaneResolver.resolveEnv(primaryRun.runtimeEnvironmentId);
-  return primaryEnv?.organizationId ?? null;
+  return primaryEnv
+    ? { organizationId: primaryEnv.organizationId, projectId: primaryEnv.projectId }
+    : null;
 }
 
 export const action = dashboardAction(
   {
     params: ParamSchema,
-    context: async (params) => {
-      const organizationId = await resolveRunOrganizationId(params.runParam);
-      return organizationId ? { organizationId } : {};
-    },
+    context: async (params) => (await resolveRunAuthScope(params.runParam)) ?? {},
     authorization: { action: "write", resource: { type: "runs" } },
   },
   // The PG findFirst below keeps the org-membership filter so a user can't
@@ -353,7 +362,7 @@ export const action = dashboardAction(
       let pgRun = await runStore.findRun({ friendlyId: runParam });
       if (!pgRun) {
         // Read-your-writes: a just-created run may not have replicated. Re-read the owning primary
-        // before falling back to the mollifier buffer (mirrors resolveRunOrganizationId above).
+        // before falling back to the mollifier buffer (mirrors resolveRunAuthScope above).
         pgRun = await runStore.findRun({ friendlyId: runParam }, prisma);
       }
 

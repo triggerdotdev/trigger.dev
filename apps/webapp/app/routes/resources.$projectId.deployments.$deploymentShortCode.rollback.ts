@@ -32,7 +32,7 @@ export const loader = dashboardLoader(
     params: ParamSchema,
     context: async (params) => {
       const organizationId = await resolveOrgIdFromProjectId(params.projectId);
-      return organizationId ? { organizationId } : {};
+      return organizationId ? { organizationId, projectId: params.projectId } : {};
     },
     authorization: { action: "read", resource: { type: "deployments" } },
   },
@@ -55,7 +55,7 @@ export const action = dashboardAction(
     params: ParamSchema,
     context: async (params) => {
       const organizationId = await resolveOrgIdFromProjectId(params.projectId);
-      return organizationId ? { organizationId } : {};
+      return organizationId ? { organizationId, projectId: params.projectId } : {};
     },
     authorization: { action: "write", resource: { type: "deployments" } },
   },
