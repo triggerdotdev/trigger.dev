@@ -44,7 +44,8 @@ function initalizeIoServer() {
     authenticate: async (request) => {
       const tokenService = new WorkerGroupTokenService();
       const authenticatedInstance = await tokenService.authenticate(request);
-      if (!authenticatedInstance) {
+      // MANAGED groups are shared infrastructure, so their subscriptions are unscoped.
+      if (authenticatedInstance?.type !== "MANAGED") {
         return false;
       }
       return {};
