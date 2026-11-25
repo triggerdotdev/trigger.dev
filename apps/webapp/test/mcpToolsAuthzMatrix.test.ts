@@ -69,6 +69,7 @@ import { mcpResource } from "~/services/oauth/metadata.server";
 const project = { environment: "prod" };
 const endpoint = { ...project, endpointId: "payments" };
 const prompt = { ...project, slug: "my-prompt" };
+const errorGroup = { ...project, errorId: "error_abc123" };
 
 const TOOLS: Array<{ tool: string; args: Record<string, unknown>; scope: string }> = [
   { tool: "get_current_worker", args: project, scope: "read:deployments" },
@@ -163,6 +164,11 @@ const TOOLS: Array<{ tool: string; args: Record<string, unknown>; scope: string 
   { tool: "list_alert_capabilities", args: project, scope: "read:alerts" },
   { tool: "get_alert_details", args: { ...project, alertId: "alert_1" }, scope: "read:alerts" },
   { tool: "list_alert_channels", args: project, scope: "read:alerts" },
+  { tool: "list_errors", args: project, scope: "read:errors" },
+  { tool: "get_error_details", args: errorGroup, scope: "read:errors" },
+  { tool: "resolve_error", args: errorGroup, scope: "write:errors" },
+  { tool: "ignore_error", args: errorGroup, scope: "write:errors" },
+  { tool: "unresolve_error", args: errorGroup, scope: "write:errors" },
   { tool: "list_webhook_endpoints", args: project, scope: "read:webhooks" },
   { tool: "get_webhook_endpoint_details", args: endpoint, scope: "read:webhooks" },
   { tool: "search_webhook_endpoints", args: project, scope: "read:webhooks" },

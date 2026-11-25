@@ -32,6 +32,7 @@ export type ErrorGroupOptions = {
   userId?: string;
   projectId: string;
   fingerprint: string;
+  taskIdentifier?: string;
   versions?: string[];
   runsPageSize?: number;
   period?: string;
@@ -100,6 +101,7 @@ export class ErrorGroupPresenter extends BasePresenter {
       userId,
       projectId,
       fingerprint,
+      taskIdentifier,
       versions,
       runsPageSize = DEFAULT_RUNS_PAGE_SIZE,
       period,
@@ -123,14 +125,27 @@ export class ErrorGroupPresenter extends BasePresenter {
       defaultPeriod: "7d",
     });
 
-    const summary = await this.getSummary(organizationId, projectId, environmentId, fingerprint);
+    const summary = await this.getSummary(
+      organizationId,
+      projectId,
+      environmentId,
+      fingerprint,
+      taskIdentifier
+    );
 
     const [affectedVersions, runList, stateRow] = await Promise.all([
-      this.getAffectedVersions(organizationId, projectId, environmentId, fingerprint),
+      this.getAffectedVersions(
+        organizationId,
+        projectId,
+        environmentId,
+        fingerprint,
+        taskIdentifier
+      ),
       this.getRunList(organizationId, environmentId, {
         userId,
         projectId,
         fingerprint,
+        taskIdentifier,
         versions,
         pageSize: runsPageSize,
         from: time.from.getTime(),
@@ -259,7 +274,8 @@ export class ErrorGroupPresenter extends BasePresenter {
     organizationId: string,
     projectId: string,
     environmentId: string,
-    fingerprint: string
+    fingerprint: string,
+    taskIdentifier?: string
   ): Promise<ErrorGroupSummary | undefined> {
     const queryBuilder = this.logsClickhouse.errors.listQueryBuilder();
 
@@ -267,6 +283,9 @@ export class ErrorGroupPresenter extends BasePresenter {
     queryBuilder.where("project_id = {projectId: String}", { projectId });
     queryBuilder.where("environment_id = {environmentId: String}", { environmentId });
     queryBuilder.where("error_fingerprint = {fingerprint: String}", { fingerprint });
+    if (taskIdentifier !== undefined) {
+      queryBuilder.where("task_identifier = {taskIdentifier: String}", { taskIdentifier });
+    }
 
     queryBuilder.groupBy("error_fingerprint, task_identifier");
     queryBuilder.limit(1);
@@ -317,7 +336,8 @@ export class ErrorGroupPresenter extends BasePresenter {
     organizationId: string,
     projectId: string,
     environmentId: string,
-    fingerprint: string
+    fingerprint: string,
+    taskIdentifier?: string
   ): Promise<string[]> {
     const queryBuilder = this.logsClickhouse.errors.affectedVersionsQueryBuilder();
 
@@ -325,6 +345,9 @@ export class ErrorGroupPresenter extends BasePresenter {
     queryBuilder.where("project_id = {projectId: String}", { projectId });
     queryBuilder.where("environment_id = {environmentId: String}", { environmentId });
     queryBuilder.where("error_fingerprint = {fingerprint: String}", { fingerprint });
+    if (taskIdentifier !== undefined) {
+      queryBuilder.where("task_identifier = {taskIdentifier: String}", { taskIdentifier });
+    }
     queryBuilder.where("task_version != ''");
     queryBuilder.limit(100);
 
@@ -404,6 +427,7 @@ export class ErrorGroupPresenter extends BasePresenter {
       userId?: string;
       projectId: string;
       fingerprint: string;
+      taskIdentifier?: string;
       versions?: string[];
       pageSize: number;
       from?: number;
@@ -420,6 +444,7 @@ export class ErrorGroupPresenter extends BasePresenter {
       projectId: options.projectId,
       rootOnly: false,
       errorId: ErrorId.toFriendlyId(options.fingerprint),
+      ...(options.taskIdentifier !== undefined ? { tasks: [options.taskIdentifier] } : {}),
       versions: options.versions,
       pageSize: options.pageSize,
       from: options.from,

@@ -618,6 +618,177 @@
             }
           },
           {
+            "name": "list_errors",
+            "title": "List Errors",
+            "description": "List an environment's error groups, most occurrences first, like the Errors page in the dashboard. Filter by status, task, version, text and time period (default the last 1d); occurrence counts are for that period. Returns cursors for the next and previous pages. Use get_error_details with a returned error id for one group.",
+            "inputSchema": {
+              "type": "object",
+              "$schema": "https://json-schema.org/draft/2020-12/schema",
+              "properties": {
+                "projectRef": {
+                  "type": "string",
+                  "description": "The trigger.dev project ref, starts with proj_. We will attempt to automatically detect the project ref if running inside a directory that includes a trigger.config.ts file, or if you pass the --project-ref option to the MCP server."
+                },
+                "configPath": {
+                  "type": "string",
+                  "description": "The path to the trigger.config.ts file. Only used when the trigger.config.ts file is not at the root dir (like in a monorepo setup). If not provided, we will try to find the config file in the current working directory"
+                },
+                "environment": {
+                  "default": "dev",
+                  "type": "string",
+                  "enum": ["dev", "staging", "prod", "preview"],
+                  "description": "The environment to get tasks for"
+                },
+                "branch": {
+                  "type": "string",
+                  "description": "The branch to get tasks for, only used for preview environments and branchable development environments"
+                },
+                "status": {
+                  "maxItems": 3,
+                  "type": "array",
+                  "items": {
+                    "type": "string",
+                    "enum": ["unresolved", "resolved", "ignored"]
+                  },
+                  "description": "Only return error groups with these statuses"
+                },
+                "tasks": {
+                  "maxItems": 50,
+                  "type": "array",
+                  "items": {
+                    "type": "string",
+                    "maxLength": 128
+                  },
+                  "description": "Only return errors from these task identifiers. Up to 50, each up to 128 characters"
+                },
+                "versions": {
+                  "maxItems": 50,
+                  "type": "array",
+                  "items": {
+                    "type": "string",
+                    "maxLength": 128
+                  },
+                  "description": "Only count occurrences in these task versions, e.g. 20250101.1"
+                },
+                "search": {
+                  "type": "string",
+                  "maxLength": 1000,
+                  "description": "Only return errors whose type or message contains this text"
+                },
+                "period": {
+                  "type": "string",
+                  "maxLength": 20,
+                  "description": "Only count the last N time period, e.g. 1h, 1d, 7d. Overrides from/to when given."
+                },
+                "from": {
+                  "type": "string",
+                  "maxLength": 40,
+                  "description": "Only count occurrences after this ISO 8601 timestamp"
+                },
+                "to": {
+                  "type": "string",
+                  "maxLength": 40,
+                  "description": "Only count occurrences before this ISO 8601 timestamp"
+                },
+                "limit": {
+                  "default": 25,
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 100,
+                  "description": "The number of error groups per page. Up to 100, defaults to 25"
+                },
+                "after": {
+                  "type": "string",
+                  "pattern": "^[A-Za-z0-9+/_-]{1,4000}={0,2}$",
+                  "description": "The next cursor from a previous list_errors call with the same filters"
+                },
+                "before": {
+                  "type": "string",
+                  "pattern": "^[A-Za-z0-9+/_-]{1,4000}={0,2}$",
+                  "description": "The previous cursor from a previous list_errors call with the same filters"
+                }
+              }
+            },
+            "annotations": {
+              "readOnlyHint": true,
+              "destructiveHint": false,
+              "title": "List Errors"
+            }
+          },
+          {
+            "name": "get_error_details",
+            "title": "Get Error Details",
+            "description": "Get one error group like its page in the dashboard: type, message, task, status with its resolve or ignore details, total occurrences, first and last seen, the affected versions, and recent runs that failed with it (default the last 7d).",
+            "inputSchema": {
+              "type": "object",
+              "$schema": "https://json-schema.org/draft/2020-12/schema",
+              "properties": {
+                "projectRef": {
+                  "type": "string",
+                  "description": "The trigger.dev project ref, starts with proj_. We will attempt to automatically detect the project ref if running inside a directory that includes a trigger.config.ts file, or if you pass the --project-ref option to the MCP server."
+                },
+                "configPath": {
+                  "type": "string",
+                  "description": "The path to the trigger.config.ts file. Only used when the trigger.config.ts file is not at the root dir (like in a monorepo setup). If not provided, we will try to find the config file in the current working directory"
+                },
+                "environment": {
+                  "default": "dev",
+                  "type": "string",
+                  "enum": ["dev", "staging", "prod", "preview"],
+                  "description": "The environment to get tasks for"
+                },
+                "branch": {
+                  "type": "string",
+                  "description": "The branch to get tasks for, only used for preview environments and branchable development environments"
+                },
+                "errorId": {
+                  "type": "string",
+                  "maxLength": 80,
+                  "pattern": "^error_[A-Za-z0-9]{1,64}$",
+                  "description": "The error group id, starts with error_. Use list_errors to find it."
+                },
+                "taskIdentifier": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 128,
+                  "description": "The task the error group belongs to. Needed only when the same error id occurs in more than one task."
+                },
+                "versions": {
+                  "maxItems": 50,
+                  "type": "array",
+                  "items": {
+                    "type": "string",
+                    "maxLength": 128
+                  },
+                  "description": "Only list runs from these task versions"
+                },
+                "period": {
+                  "type": "string",
+                  "maxLength": 20,
+                  "description": "Only list runs from the last N time period, e.g. 1h, 1d, 7d. Defaults to 7d"
+                },
+                "runsLimit": {
+                  "default": 10,
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 25,
+                  "description": "How many recent runs with this error to list. Up to 25, defaults to 10"
+                },
+                "runsCursor": {
+                  "type": "string",
+                  "pattern": "^[A-Za-z0-9+/_-]{1,4000}={0,2}$",
+                  "description": "The runs cursor from a previous get_error_details call"
+                }
+              },
+              "required": ["errorId"]
+            },
+            "annotations": {
+              "readOnlyHint": true,
+              "destructiveHint": false,
+              "title": "Get Error Details"
+            }
+          },
+          {
             "name": "list_bulk_actions",
             "title": "List Bulk Actions",
             "description": "List the bulk actions (cancel or replay many runs at once) of an environment, newest first. Pass the returned cursor to list older ones.",
@@ -3754,6 +3925,176 @@
             },
             "annotations": {
               "title": "Set Dashboard Widgets",
+              "readOnlyHint": false,
+              "destructiveHint": true
+            }
+          },
+          {
+            "name": "resolve_error",
+            "title": "Resolve Error",
+            "description": "Mark an error group resolved, like Resolve on the Errors page. Optionally record the version the fix ships in. If the error occurs again, the project's error alerts report it as a regression and it becomes unresolved.",
+            "inputSchema": {
+              "type": "object",
+              "$schema": "https://json-schema.org/draft/2020-12/schema",
+              "properties": {
+                "projectRef": {
+                  "type": "string",
+                  "description": "The trigger.dev project ref, starts with proj_. We will attempt to automatically detect the project ref if running inside a directory that includes a trigger.config.ts file, or if you pass the --project-ref option to the MCP server."
+                },
+                "configPath": {
+                  "type": "string",
+                  "description": "The path to the trigger.config.ts file. Only used when the trigger.config.ts file is not at the root dir (like in a monorepo setup). If not provided, we will try to find the config file in the current working directory"
+                },
+                "environment": {
+                  "default": "dev",
+                  "type": "string",
+                  "enum": ["dev", "staging", "prod", "preview"],
+                  "description": "The environment to get tasks for"
+                },
+                "branch": {
+                  "type": "string",
+                  "description": "The branch to get tasks for, only used for preview environments and branchable development environments"
+                },
+                "errorId": {
+                  "type": "string",
+                  "maxLength": 80,
+                  "pattern": "^error_[A-Za-z0-9]{1,64}$",
+                  "description": "The error group id, starts with error_. Use list_errors to find it."
+                },
+                "taskIdentifier": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 128,
+                  "description": "The task the error group belongs to. Needed only when the same error id occurs in more than one task."
+                },
+                "resolvedInVersion": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 128,
+                  "description": "The version the fix ships in, recorded on the error group"
+                }
+              },
+              "required": ["errorId"]
+            },
+            "annotations": {
+              "title": "Resolve Error",
+              "readOnlyHint": false,
+              "destructiveHint": true
+            }
+          },
+          {
+            "name": "ignore_error",
+            "title": "Ignore Error",
+            "description": "Ignore an error group, like Ignore on the Errors page, so it sends no error alerts. Optionally stop ignoring after a duration in milliseconds, once it occurs more than a rate per minute, or after a number of further occurrences, whichever comes first; with none it is ignored until changed.",
+            "inputSchema": {
+              "type": "object",
+              "$schema": "https://json-schema.org/draft/2020-12/schema",
+              "properties": {
+                "projectRef": {
+                  "type": "string",
+                  "description": "The trigger.dev project ref, starts with proj_. We will attempt to automatically detect the project ref if running inside a directory that includes a trigger.config.ts file, or if you pass the --project-ref option to the MCP server."
+                },
+                "configPath": {
+                  "type": "string",
+                  "description": "The path to the trigger.config.ts file. Only used when the trigger.config.ts file is not at the root dir (like in a monorepo setup). If not provided, we will try to find the config file in the current working directory"
+                },
+                "environment": {
+                  "default": "dev",
+                  "type": "string",
+                  "enum": ["dev", "staging", "prod", "preview"],
+                  "description": "The environment to get tasks for"
+                },
+                "branch": {
+                  "type": "string",
+                  "description": "The branch to get tasks for, only used for preview environments and branchable development environments"
+                },
+                "errorId": {
+                  "type": "string",
+                  "maxLength": 80,
+                  "pattern": "^error_[A-Za-z0-9]{1,64}$",
+                  "description": "The error group id, starts with error_. Use list_errors to find it."
+                },
+                "taskIdentifier": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 128,
+                  "description": "The task the error group belongs to. Needed only when the same error id occurs in more than one task."
+                },
+                "duration": {
+                  "type": "integer",
+                  "exclusiveMinimum": 0,
+                  "maximum": 3153600000000,
+                  "description": "Ignore for this many milliseconds, e.g. 3600000 for one hour"
+                },
+                "occurrenceRate": {
+                  "type": "integer",
+                  "exclusiveMinimum": 0,
+                  "maximum": 1000000000,
+                  "description": "Stop ignoring once it occurs more than this many times per minute"
+                },
+                "totalOccurrences": {
+                  "type": "integer",
+                  "exclusiveMinimum": 0,
+                  "maximum": 1000000000,
+                  "description": "Stop ignoring once it occurs this many more times"
+                },
+                "reason": {
+                  "type": "string",
+                  "maxLength": 1000,
+                  "description": "Why the error is ignored"
+                }
+              },
+              "required": ["errorId"]
+            },
+            "annotations": {
+              "title": "Ignore Error",
+              "readOnlyHint": false,
+              "destructiveHint": true
+            }
+          },
+          {
+            "name": "unresolve_error",
+            "title": "Unresolve Error",
+            "description": "Mark a resolved or ignored error group unresolved again, like Unresolve on the Errors page. This removes its resolution or ignore setting.",
+            "inputSchema": {
+              "type": "object",
+              "$schema": "https://json-schema.org/draft/2020-12/schema",
+              "properties": {
+                "projectRef": {
+                  "type": "string",
+                  "description": "The trigger.dev project ref, starts with proj_. We will attempt to automatically detect the project ref if running inside a directory that includes a trigger.config.ts file, or if you pass the --project-ref option to the MCP server."
+                },
+                "configPath": {
+                  "type": "string",
+                  "description": "The path to the trigger.config.ts file. Only used when the trigger.config.ts file is not at the root dir (like in a monorepo setup). If not provided, we will try to find the config file in the current working directory"
+                },
+                "environment": {
+                  "default": "dev",
+                  "type": "string",
+                  "enum": ["dev", "staging", "prod", "preview"],
+                  "description": "The environment to get tasks for"
+                },
+                "branch": {
+                  "type": "string",
+                  "description": "The branch to get tasks for, only used for preview environments and branchable development environments"
+                },
+                "errorId": {
+                  "type": "string",
+                  "maxLength": 80,
+                  "pattern": "^error_[A-Za-z0-9]{1,64}$",
+                  "description": "The error group id, starts with error_. Use list_errors to find it."
+                },
+                "taskIdentifier": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 128,
+                  "description": "The task the error group belongs to. Needed only when the same error id occurs in more than one task."
+                }
+              },
+              "required": ["errorId"]
+            },
+            "annotations": {
+              "title": "Unresolve Error",
               "readOnlyHint": false,
               "destructiveHint": true
             }

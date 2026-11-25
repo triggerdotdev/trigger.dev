@@ -70,6 +70,19 @@ export const ApiErrorListSearchParams = z.object({
 
 type ApiErrorListSearchParams = z.infer<typeof ApiErrorListSearchParams>;
 
+const MINUTE_MS = 60_000;
+
+/**
+ * The time window a list counted, after the plan's retention cut it: the presenter counts whole
+ * minute buckets, from the minute `from` falls in through the end of the minute `to` falls in.
+ */
+export type ErrorListWindow = {
+  from: Date;
+  to: Date;
+  retentionDays: number;
+  clampedByRetention: boolean;
+};
+
 export class ApiErrorListPresenter extends BasePresenter {
   public async call(
     project: Pick<Project, "id" | "organizationId">,
@@ -78,6 +91,20 @@ export class ApiErrorListPresenter extends BasePresenter {
   ): Promise<{
     data: ErrorGroupListItem[];
     pagination: { next?: string; previous?: string };
+  }> {
+    const { data, pagination } = await this.callWithWindow(project, environment, searchParams);
+    return { data, pagination };
+  }
+
+  /** Like `call`, plus the window that was applied; the public API response stays `call`'s. */
+  public async callWithWindow(
+    project: Pick<Project, "id" | "organizationId">,
+    environment: Pick<RuntimeEnvironment, "id" | "organizationId">,
+    searchParams: ApiErrorListSearchParams
+  ): Promise<{
+    data: ErrorGroupListItem[];
+    pagination: { next?: string; previous?: string };
+    window: ErrorListWindow;
   }> {
     return this.trace("call", async () => {
       const options: ErrorsListOptions = {
@@ -130,7 +157,8 @@ export class ApiErrorListPresenter extends BasePresenter {
       const organizationId = environment.organizationId;
 
       const plan = await getCurrentPlan(organizationId);
-      options.retentionLimitDays = plan?.v3Subscription?.plan?.limits.logRetentionDays.number ?? 30;
+      const retentionDays = plan?.v3Subscription?.plan?.limits.logRetentionDays.number ?? 30;
+      options.retentionLimitDays = retentionDays;
 
       // The errors data lives in the "logs" ClickHouse client, matching the
       // dashboard list loader.
@@ -157,6 +185,14 @@ export class ApiErrorListPresenter extends BasePresenter {
           ignoredUntil: group.ignoredUntil,
         })),
         pagination: result.pagination,
+        window: {
+          from: new Date(Math.floor(result.filters.from.getTime() / MINUTE_MS) * MINUTE_MS),
+          to: new Date(
+            Math.floor(result.filters.to.getTime() / MINUTE_MS) * MINUTE_MS + MINUTE_MS - 1
+          ),
+          retentionDays,
+          clampedByRetention: result.filters.wasClampedByRetention,
+        },
       };
     });
   }

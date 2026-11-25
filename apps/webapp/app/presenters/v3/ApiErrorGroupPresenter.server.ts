@@ -38,6 +38,20 @@ function parseClickHouseDateTime(value: string): Date {
   return new Date(value.replace(" ", "T") + "Z");
 }
 
+/** The stored state fields an error group's detail shows. */
+export type ErrorGroupStateFields = {
+  status: ErrorGroupStatus;
+  resolvedAt: Date | null;
+  resolvedInVersion: string | null;
+  resolvedBy: string | null;
+  ignoredAt: Date | null;
+  ignoredUntil: Date | null;
+  ignoredReason: string | null;
+  ignoredByUserId: string | null;
+  ignoredUntilOccurrenceRate: number | null;
+  ignoredUntilTotalOccurrences: number | null;
+};
+
 export class ApiErrorGroupPresenter extends BasePresenter {
   /**
    * Resolves a single error group to its API detail shape, or `undefined` if no
@@ -49,7 +63,10 @@ export class ApiErrorGroupPresenter extends BasePresenter {
     organizationId: string,
     projectId: string,
     environmentId: string,
-    fingerprint: string
+    fingerprint: string,
+    taskIdentifier?: string,
+    /** A state row the caller already read for `taskIdentifier`; it is shown instead of reading one. */
+    knownState?: { state: ErrorGroupStateFields | null }
   ): Promise<ErrorGroupDetail | undefined> {
     return this.trace("call", async () => {
       const clickhouse = await clickhouseFactory.getClickhouseForOrganization(
@@ -62,7 +79,8 @@ export class ApiErrorGroupPresenter extends BasePresenter {
         organizationId,
         projectId,
         environmentId,
-        fingerprint
+        fingerprint,
+        taskIdentifier
       );
 
       if (!summary) {
@@ -70,8 +88,17 @@ export class ApiErrorGroupPresenter extends BasePresenter {
       }
 
       const [affectedVersions, state] = await Promise.all([
-        this.getAffectedVersions(clickhouse, organizationId, projectId, environmentId, fingerprint),
-        this.getState(environmentId, summary.taskIdentifier, fingerprint),
+        this.getAffectedVersions(
+          clickhouse,
+          organizationId,
+          projectId,
+          environmentId,
+          fingerprint,
+          taskIdentifier
+        ),
+        knownState
+          ? knownState.state
+          : this.getState(environmentId, summary.taskIdentifier, fingerprint),
       ]);
 
       return {
@@ -103,7 +130,8 @@ export class ApiErrorGroupPresenter extends BasePresenter {
     organizationId: string,
     projectId: string,
     environmentId: string,
-    fingerprint: string
+    fingerprint: string,
+    taskIdentifier?: string
   ): Promise<
     | {
         taskIdentifier: string;
@@ -121,6 +149,9 @@ export class ApiErrorGroupPresenter extends BasePresenter {
     queryBuilder.where("project_id = {projectId: String}", { projectId });
     queryBuilder.where("environment_id = {environmentId: String}", { environmentId });
     queryBuilder.where("error_fingerprint = {fingerprint: String}", { fingerprint });
+    if (taskIdentifier !== undefined) {
+      queryBuilder.where("task_identifier = {taskIdentifier: String}", { taskIdentifier });
+    }
     queryBuilder.groupBy("error_fingerprint, task_identifier");
     queryBuilder.limit(1);
 
@@ -150,7 +181,8 @@ export class ApiErrorGroupPresenter extends BasePresenter {
     organizationId: string,
     projectId: string,
     environmentId: string,
-    fingerprint: string
+    fingerprint: string,
+    taskIdentifier?: string
   ): Promise<string[]> {
     const queryBuilder = clickhouse.errors.affectedVersionsQueryBuilder();
 
@@ -158,6 +190,9 @@ export class ApiErrorGroupPresenter extends BasePresenter {
     queryBuilder.where("project_id = {projectId: String}", { projectId });
     queryBuilder.where("environment_id = {environmentId: String}", { environmentId });
     queryBuilder.where("error_fingerprint = {fingerprint: String}", { fingerprint });
+    if (taskIdentifier !== undefined) {
+      queryBuilder.where("task_identifier = {taskIdentifier: String}", { taskIdentifier });
+    }
     queryBuilder.where("task_version != ''");
     queryBuilder.limit(100);
 
@@ -175,18 +210,7 @@ export class ApiErrorGroupPresenter extends BasePresenter {
     environmentId: string,
     taskIdentifier: string,
     fingerprint: string
-  ): Promise<{
-    status: ErrorGroupStatus;
-    resolvedAt: Date | null;
-    resolvedInVersion: string | null;
-    resolvedBy: string | null;
-    ignoredAt: Date | null;
-    ignoredUntil: Date | null;
-    ignoredReason: string | null;
-    ignoredByUserId: string | null;
-    ignoredUntilOccurrenceRate: number | null;
-    ignoredUntilTotalOccurrences: number | null;
-  } | null> {
+  ): Promise<ErrorGroupStateFields | null> {
     const row = await this._replica.errorGroupState.findFirst({
       where: {
         environmentId,

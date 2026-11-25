@@ -63,6 +63,11 @@ const REMOTE_ONLY: Record<string, string> = {
   delete_alert: "deletes through the Dashboard alert services, which only the server has",
   create_alert_group: "groups through the Dashboard alert services, which only the server has",
   ungroup_alert: "ungroups through the Dashboard alert services, which only the server has",
+  list_errors: "the CLI has no tool for it yet",
+  get_error_details: "the CLI has no tool for it yet",
+  resolve_error: "the CLI has no tool for it yet",
+  ignore_error: "the CLI has no tool for it yet",
+  unresolve_error: "the CLI has no tool for it yet",
   get_dashboard: "the CLI has no tool for it yet",
   list_query_history: "the public API has no endpoint for the Query page history",
   list_models: "the public API has no endpoint for the model catalogue",
@@ -121,6 +126,9 @@ const WRITE_TOOL_APPROVAL: Record<string, "required" | "configurable" | { none: 
   start_agent_chat: "configurable",
   write_session_channel: "configurable",
   create_project_in_org: "configurable",
+  resolve_error: "configurable",
+  ignore_error: "configurable",
+  unresolve_error: "configurable",
 };
 
 type CliTool = {
