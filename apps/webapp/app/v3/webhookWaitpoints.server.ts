@@ -87,6 +87,7 @@ export const webhookWaitpoints: WebhookWaitpointPorts = {
           idempotencyKey,
           standaloneResidency: residency,
           standaloneShardKey: shardKey,
+          standaloneStoreEligible: standaloneTokens(environment),
         });
       }
       if (!waitpoint) return undefined;
@@ -125,6 +126,7 @@ export const webhookWaitpoints: WebhookWaitpointPorts = {
         tags,
         standaloneResidency: residency,
         standaloneShardKey: shardKey,
+        standaloneStoreEligible: standaloneTokens(environment),
       });
       return { id: WaitpointId.toFriendlyId(result.waitpoint.id), isCached: result.isCached };
     });

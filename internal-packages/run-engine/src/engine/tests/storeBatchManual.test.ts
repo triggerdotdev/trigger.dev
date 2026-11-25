@@ -2137,6 +2137,54 @@ describe("native batch and run-bound manual lifecycle", () => {
     }
   );
 
+  // Catches: the engine placing a standalone token in the store with the store flag on when the
+  // caller passes standaloneStoreEligible false. The call sites that set it are not exercised.
+  containerTest(
+    "standalone MANUAL token stays in Postgres with the store flag on and the standalone tokens flag off",
+    async ({ prisma, redisOptions }) => {
+      const snapshots = new RedisSnapshotStore({ redisOptions, completedTtlMs: 60000 });
+      const store = new WaitpointStoreCoordinator({ redisOptions });
+      const engine = makeEngine(prisma, redisOptions, {
+        store,
+        snapshotStore: snapshots,
+        workerDisabled: true,
+        isWaitpointStoreEnabled: () => true,
+      });
+      try {
+        const env = await setupAuthenticatedEnvironment(prisma, "PRODUCTION");
+        const scope = {
+          environmentId: env.id,
+          projectId: env.project.id,
+          organizationId: env.organization.id,
+        };
+        const standaloneStoreEligible = false;
+        // As wait.createToken, then as a webhook waiter (key, lifetime, timeout and tag).
+        for (const options of [
+          {},
+          {
+            idempotencyKey: "webhook-waiter:off",
+            idempotencyKeyExpiresAt: new Date(Date.now() + 3_600_000),
+            timeout: new Date(Date.now() + 3_600_000),
+            tags: ["webhook:off"],
+          },
+        ]) {
+          const { waitpoint } = await engine.createManualWaitpoint({
+            ...scope,
+            ...options,
+            standaloneResidency: "LEGACY",
+            standaloneStoreEligible,
+          });
+          expect(parseWaitpointId(waitpoint.id).format).not.toBe("b32hexW");
+          expect(await prisma.waitpoint.count({ where: { id: waitpoint.id } })).toBe(1);
+        }
+      } finally {
+        await engine.quit();
+        await store.quit();
+        await snapshots.quit();
+      }
+    }
+  );
+
   containerTest(
     "standalone MANUAL token stays in Postgres with the flag off on the internal input",
     async ({ prisma, redisOptions }) => {

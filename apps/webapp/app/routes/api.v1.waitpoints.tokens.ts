@@ -28,6 +28,8 @@ import { keyedWaitpointBudgetResponse } from "~/services/routeBuilders/keyedWait
 import { parseDelay } from "~/utils/delays";
 import { resolveIdempotencyKeyTTL } from "~/utils/idempotencyKeys.server";
 import { engine } from "~/v3/runEngine.server";
+import { globalFlagsRegistry } from "~/v3/globalFlagsRegistry.server";
+import { waitpointStoreStandaloneTokensEnabled } from "~/v3/utils/waitpointStoreEnabled.server";
 import { ServiceValidationError } from "~/v3/services/baseService.server";
 
 export const loader = createLoaderApiRoute(
@@ -123,6 +125,10 @@ const { action } = createActionApiRoute(
         tags: bodyTags,
         standaloneResidency: residency,
         standaloneShardKey,
+        standaloneStoreEligible: waitpointStoreStandaloneTokensEnabled(
+          authentication.environment.organization.featureFlags,
+          globalFlagsRegistry.current()
+        ),
       });
 
       const waitpointId = WaitpointId.toFriendlyId(result.waitpoint.id);
