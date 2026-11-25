@@ -1,6 +1,12 @@
+import { connect } from "node:net";
 import { describe, expect, test, vi } from "vitest";
 import { hasLocalRedisServer, startLocalRedisCluster } from "@internal/testcontainers";
 import { StoreWaitpointCoordinator } from "@internal/run-engine";
+import { isInfrastructureError, WebhookInfrastructureError } from "@internal/webhook-engine";
+import {
+  completionFailureIsInfrastructure,
+  retryingStoreOutage,
+} from "~/v3/webhookPortErrors.server";
 import {
   createWaitpointStoreConnection,
   waitpointClusterOptions,
@@ -61,6 +67,97 @@ describe("waitpointStoreConnection.server", () => {
     },
     30_000
   );
+
+  // Catches: a whole-cluster outage reaching the webhook engine as an ordinary error with standalone
+  // tokens on, which fails deliveries, or any change to how it is reported with them off.
+  test.skipIf(!hasLocalRedisServer())(
+    "the webhook ports report a whole-cluster store outage as infrastructure only with standalone tokens on",
+    async () => {
+      const cluster = await startLocalRedisCluster();
+      const connection = createWaitpointStoreConnection(
+        `redis://127.0.0.1:${cluster.nodes[0]!.port}`
+      );
+      try {
+        const adapter = new StoreWaitpointCoordinator({ store: connection.store });
+        const create = () =>
+          adapter.createManualWaitpoint({
+            runId: "run_outage",
+            environmentId: "env_outage",
+            projectId: "proj_outage",
+            mintContext: { organizationId: "org_outage" },
+          });
+        expect((await create()).kind).toBe("created");
+
+        const rejection = () =>
+          create().then(
+            () => undefined,
+            (error: unknown) => error
+          );
+
+        for (const node of cluster.nodes) cluster.kill(node.port);
+        // Sent before the client sees the outage, so it is already on a socket when the nodes die.
+        const atOnset = await rejection();
+
+        const refuses = (port: number) =>
+          new Promise<boolean>((resolve) => {
+            const socket = connect(port, "127.0.0.1");
+            socket.once("connect", () => {
+              socket.destroy();
+              resolve(false);
+            });
+            socket.once("error", () => resolve(true));
+          });
+        await vi.waitFor(
+          async () => {
+            for (const node of cluster.nodes) expect(await refuses(node.port)).toBe(true);
+          },
+          { timeout: 10_000, interval: 50 }
+        );
+        // Sent once the client has seen the outage, so it waits for the connection and gives up.
+        const later = await rejection();
+
+        const bug = new Error("not an outage");
+        for (const error of [atOnset, later]) {
+          expect(error).toBeInstanceOf(Error);
+          const fail = () => Promise.reject(error);
+          // Off: the port call fails and is classified exactly as before.
+          await expect(retryingStoreOutage(false, fail)).rejects.toBe(error);
+          expect(completionFailureIsInfrastructure(error, false)).toBe(
+            isInfrastructureError(error)
+          );
+          // On: an infrastructure failure, which the webhook engine retries.
+          const translated = await retryingStoreOutage(true, fail).catch((e: unknown) => e);
+          expect(translated).toBeInstanceOf(WebhookInfrastructureError);
+          expect(isInfrastructureError(translated)).toBe(true);
+          expect(completionFailureIsInfrastructure(error, true)).toBe(true);
+        }
+        await expect(retryingStoreOutage(true, () => Promise.reject(bug))).rejects.toBe(bug);
+        expect(completionFailureIsInfrastructure(bug, true)).toBe(false);
+      } finally {
+        await connection.close();
+        await cluster.stop();
+      }
+    },
+    30_000
+  );
+
+  // Catches: the outage missed when ioredis wraps it after exhausting its redirections, which fails a
+  // final-attempt completion instead of retrying it.
+  test("a store outage wrapped by ioredis's redirection limit is still an outage", async () => {
+    // Built as ioredis 5.6 Cluster#handleError builds it: a new Error, with no cause.
+    const wrapped = new Error(
+      "Too many Cluster redirections. Last error: " +
+        new Error("Cluster isn't ready and enableOfflineQueue options is false")
+    );
+    expect(completionFailureIsInfrastructure(wrapped, false)).toBe(false);
+    expect(completionFailureIsInfrastructure(wrapped, true)).toBe(true);
+    await expect(retryingStoreOutage(true, () => Promise.reject(wrapped))).rejects.toBeInstanceOf(
+      WebhookInfrastructureError
+    );
+    const unrelated = new Error("Too many Cluster redirections. Last error: Error: not an outage");
+    expect(completionFailureIsInfrastructure(unrelated, true)).toBe(false);
+  });
+
   // Catches: MemoryDB cluster options losing the TLS servername, credentials, fail-fast, lazy-connect or timeout settings.
   test("waitpoint MemoryDB configuration preserves the TLS hostname after slot discovery", () => {
     const options = waitpointClusterOptions("rediss://user:p%40ss@waitpoints.example:6380");

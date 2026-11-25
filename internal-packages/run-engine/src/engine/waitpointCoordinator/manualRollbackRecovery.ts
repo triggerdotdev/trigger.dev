@@ -291,6 +291,11 @@ const RETIRE_SOURCE = `
     end
     return 'held'
   end
+  if ARGV[9] == '1' then
+    -- A catalogued standalone MANUAL token, waiting or completed, is removed with all its slot keys.
+    redis.call('UNLINK',record,watchers,queue,fanout,KEYS[6])
+    return 'absent'
+  end
   if status == 'PENDING' then
     if ARGV[5] == 'discard-candidate' then
       local time = redis.call('TIME')
@@ -335,6 +340,13 @@ const RETIRE_SOURCE = `
   redis.call('UNLINK', watchers, queue, fanout)
   return 'retained'
 `;
+
+/** A catalogued standalone MANUAL token: rollback removes it. Run-bound tokens keep their retention. */
+function isCatalogedManual(source: z.infer<typeof sourceSchema>) {
+  if (!source.catalogMetadata || !source.record) return false;
+  const record = JSON.parse(source.record);
+  return record.type === "MANUAL" && record.standalone === true;
+}
 
 /** Only explicit invocations construct this service; no production lifecycle caller imports it. */
 export class ManualWaitpointRollbackRecovery {
@@ -466,7 +478,9 @@ export class ManualWaitpointRollbackRecovery {
     plan.sources = sources;
     plan.coverage = "bounded organization registry and completed-source discovery page";
     plan.unhandled = [
-      "Only this discovery page is covered; continue all sixteen run, pending-sources and due/quarantine partitions to exhaustion. Future pending sources and live watchers are retained; permanent keyed record retention is preserved.",
+      sources.some(isCatalogedManual)
+        ? "Only this discovery page is covered; continue all sixteen run, pending-sources and due/quarantine partitions to exhaustion. Future pending sources and live watchers are retained; permanent keyed record retention is preserved, except that standalone MANUAL tokens with a catalog entry, waiting or completed, are removed with all their records."
+        : "Only this discovery page is covered; continue all sixteen run, pending-sources and due/quarantine partitions to exhaustion. Future pending sources and live watchers are retained; permanent keyed record retention is preserved.",
       ...unknown,
     ];
     return {
@@ -969,7 +983,13 @@ export class ManualWaitpointRollbackRecovery {
           }
         }
       }
-      if (source.catalogMetadata && source.record && action !== "discard-candidate") {
+      // A removed standalone token keeps no finite catalog, so it needs no retirement job.
+      if (
+        source.catalogMetadata &&
+        source.record &&
+        action !== "discard-candidate" &&
+        !isCatalogedManual(source)
+      ) {
         const keyUntil = await this.deps.redis.hget(waitpointKeys(source.waitpointId).record, "ku");
         const ttl = await this.deps.redis.pttl(waitpointKeys(source.waitpointId).record);
         const pendingPreserved =
@@ -989,8 +1009,15 @@ export class ManualWaitpointRollbackRecovery {
           );
         }
       }
+      // Only a standalone source sends ARGV[9]; every other source sends the arguments it did before.
+      const removeManual = isCatalogedManual(source) && action !== "discard-candidate" ? ["1"] : [];
       const completion = this.naturalCompletion(plan, source);
-      if (source.catalogMetadata && action === "datetime")
+      // A rerun can find the record already removed with its catalog; there is nothing to publish.
+      if (
+        source.catalogMetadata &&
+        action === "datetime" &&
+        (await this.deps.redis.exists(waitpointKeys(source.waitpointId).record))
+      )
         await this.deps.store.manualCatalog.publishCompletedCandidate(
           JSON.parse(source.record),
           JSON.parse(completion).outputIsError
@@ -1012,7 +1039,8 @@ export class ManualWaitpointRollbackRecovery {
         action,
         completion,
         String(Date.parse(plan.inspectedAt)),
-        receipt ? String(receipt.acceptUntil) : ""
+        receipt ? String(receipt.acceptUntil) : "",
+        ...removeManual
       );
       if (outcome === "pending" || outcome === "live-watchers" || outcome === "held") continue;
       if (outcome !== "retained" && outcome !== "absent")
@@ -1237,6 +1265,7 @@ export class ManualWaitpointRollbackRecovery {
           if (
             !source.catalogMetadata ||
             !source.record ||
+            isCatalogedManual(source) ||
             (await this.deps.redis.pttl(waitpointKeys(source.waitpointId).record)) === -2
           )
             continue;
@@ -1407,7 +1436,8 @@ export class ManualWaitpointRollbackRecovery {
       const intentionalPending = Boolean(
         catalog && status === "PENDING" && record && JSON.parse(record).type === "MANUAL"
       );
-      if (catalog && ttl >= 0 && !this.deps.catalogMaintenance)
+      const removed = isCatalogedManual(source);
+      if (catalog && ttl >= 0 && !removed && !this.deps.catalogMaintenance)
         throw new Error(
           "Finite MANUAL catalog retention requires workerQueue scheduler configuration for verification"
         );
@@ -1426,6 +1456,7 @@ export class ManualWaitpointRollbackRecovery {
             Boolean(maintenanceAvailableAt && maintenanceAvailableAt.getTime() > Date.now())));
 
       const retained =
+        !removed &&
         record === source.record &&
         (status === source.status ||
           (source.pendingRegistryOwned &&
@@ -1442,8 +1473,7 @@ export class ManualWaitpointRollbackRecovery {
             }
           : {}),
         verified:
-          (absent === 1 || retained) &&
-          catalogVerified &&
+          (removed ? absent === 1 && !catalog : (absent === 1 || retained) && catalogVerified) &&
           (await this.deps.redis.zscore(index.due, source.waitpointId)) === null &&
           (await this.deps.redis.zscore(index.quarantine, source.waitpointId)) === null &&
           (await this.deps.redis.zscore(

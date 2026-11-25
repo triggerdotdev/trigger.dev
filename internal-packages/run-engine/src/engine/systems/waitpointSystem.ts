@@ -1506,7 +1506,12 @@ export class WaitpointSystem {
                 }
               : {}),
           },
-          availableAt: timeout ?? new Date(keyedCreation?.acceptUntil ?? creationAcceptUntil!),
+          // A standalone keyed job runs by the window end at the latest, so an interrupted
+          // creation clears early; a pending token then gets the same job id at its timeout.
+          availableAt:
+            keyedCreation && !runId
+              ? new Date(Math.min(timeout?.getTime() ?? Infinity, keyedCreation.acceptUntil))
+              : (timeout ?? new Date(keyedCreation?.acceptUntil ?? creationAcceptUntil!)),
         });
       };
       result = await this.#createUnderKeyClaim(
