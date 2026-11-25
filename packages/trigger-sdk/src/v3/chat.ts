@@ -1361,6 +1361,11 @@ export class TriggerChatTransport implements ChatTransport<UIMessage> {
       ? AbortSignal.any([options.abortSignal, abortController.signal])
       : abortController.signal;
 
+    // A resume is a fresh consumer: replay the in-flight turn from its first
+    // record, as a reload does (`toPersisted`), not from the last one a
+    // previous reader consumed.
+    if (state.turnStart) state.lastEventId = state.turnStart.lastEventId;
+
     return this.subscribeToSessionStream(state, abortSignal, options.chatId, {
       resumed: true,
       sendStopOnAbort: options.stopOnAbort ?? false,
@@ -2065,6 +2070,7 @@ export class TriggerChatTransport implements ChatTransport<UIMessage> {
   ): ReadableStream<UIMessageChunk> {
     const internalAbort = new AbortController();
     let didSettle = false;
+    let stoppedTurn = false;
     this.activeStreams.set(chatId, internalAbort);
     const combinedSignal = abortSignal
       ? AbortSignal.any([abortSignal, internalAbort.signal])
@@ -2080,6 +2086,7 @@ export class TriggerChatTransport implements ChatTransport<UIMessage> {
             !state.outstandingTurnAbandoned &&
             (state.isStreaming || state.activeInputSeq !== undefined);
           if (options?.sendStopOnAbort !== false && outstanding && !internalAbort.signal.aborted) {
+            stoppedTurn = true;
             state.skipToTurnComplete = true;
             state.supersededInputSeq = state.activeInputSeq;
             this.appendInputChunk(
@@ -2089,6 +2096,16 @@ export class TriggerChatTransport implements ChatTransport<UIMessage> {
             ).catch(() => {});
           }
           internalAbort.abort();
+          // An abort that wrote no stop means "stop reading", not "the turn
+          // ended". Free the slot now so a remount's resume gets a stream
+          // instead of null, and so this stream's unwinding end-of-stream
+          // block, which only settles the turn for the entry's owner, leaves
+          // a turn that is still running alone. A stop keeps the entry: that
+          // block then ends the turn.
+          if (!stoppedTurn && this.activeStreams.get(chatId) === internalAbort) {
+            this.activeStreams.delete(chatId);
+            this.coordinator?.release(chatId);
+          }
         },
         { once: true }
       );
@@ -2372,6 +2389,12 @@ export class TriggerChatTransport implements ChatTransport<UIMessage> {
               }
               state.skipToTurnComplete = false;
               state.supersededInputSeq = undefined;
+              // The stopped turn ends here: start the turn after its boundary so
+              // a rewind or reload doesn't replay the tail the gate dropped.
+              if (value.id) {
+                state.turnStart = { lastEventId: state.lastEventId };
+                this.notifySessionChange(chatId, state);
+              }
               // This boundary is the new turn's own, so the gate swallowed its
               // output: fail the turn instead of completing an empty answer, and
               // leave nothing armed for the retry.

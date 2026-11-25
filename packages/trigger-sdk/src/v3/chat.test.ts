@@ -1,4 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { readUIMessageStream } from "ai";
 import type { UIMessage, UIMessageChunk } from "ai";
 import {
   TriggerChatTransport,
@@ -1789,6 +1790,101 @@ describe("TriggerChatTransport", () => {
       expect(sessions["chat-persist"]).not.toHaveProperty("skipToTurnComplete");
     });
 
+    it("starts a retried turn after the stopped one once the stopped turn's boundary is read", async () => {
+      // Catches: the retry's turnStart staying inside the stopped turn, so a rewind
+      // or a reload after the gate cleared replayed the stopped turn's tail (a
+      // text-delta with no text-start) ahead of the retried reply, with nothing
+      // left to gate it.
+      const sseHeaders = { "content-type": "text/event-stream", "X-Stream-Version": "v2" };
+      const cursors: Array<string | null> = [];
+      // Records 1..4: the stopped turn's tail, its boundary, then the new turn,
+      // which is still running (record 4). Records 5 and 6 (its text and its
+      // turn-complete) are written only after the first send was read, so the
+      // reloaded tab sees the finished retry.
+      const records = JSON.parse(
+        sseEncode([
+          { type: "text-delta", id: "old", delta: "stale" },
+          { type: "text-end", id: "old" },
+          { type: "trigger:turn-complete", sessionInEventId: RETRY_SEQ - 1 },
+          { type: "text-start", id: "new" },
+          { type: "text-delta", id: "new", delta: "retried" },
+          { type: "trigger:turn-complete", sessionInEventId: RETRY_SEQ },
+        ]).match(/^data: (.*)$/m)![1]!
+      ).records as Array<{ seq_num: number }>;
+      let available = 4;
+      global.fetch = vi.fn().mockImplementation(async (url: string | URL, init?: RequestInit) => {
+        const urlStr = typeof url === "string" ? url : url.toString();
+        if (isSessionStreamAppendUrl(urlStr)) {
+          return new Response(JSON.stringify({ ok: true, seq: RETRY_SEQ }), { status: 200 });
+        }
+        if (!isSessionOutSubscribeUrl(urlStr)) throw new Error(`Unexpected URL: ${urlStr}`);
+        const cursor = new Headers(init?.headers).get("Last-Event-ID");
+        cursors.push(cursor);
+        const signal = init?.signal;
+        const served = records.filter(
+          (r) => r.seq_num > Number(cursor ?? 0) && r.seq_num <= available
+        );
+        const batch = `event: batch\ndata: ${JSON.stringify({ records: served })}\n\n`;
+        const body = new ReadableStream<Uint8Array>({
+          start(controller) {
+            controller.enqueue(new TextEncoder().encode(batch));
+            const onAbort = () => {
+              const err = new Error("aborted");
+              err.name = "AbortError";
+              try {
+                controller.error(err);
+              } catch {
+                /* already errored */
+              }
+            };
+            if (signal?.aborted) onAbort();
+            else signal?.addEventListener("abort", onAbort, { once: true });
+          },
+        });
+        return new Response(body, { status: 200, headers: sseHeaders });
+      });
+
+      const persisted: ChatSessionPersistedState[] = [];
+      const transport = await armedGate(
+        "chat-retry-persist",
+        { publicAccessToken: "p", lastEventId: "0", isStreaming: true },
+        { onSessionChange: (_chatId, session) => session && persisted.push(session) }
+      );
+
+      const stream = await send(transport, "chat-retry-persist");
+      const reader = stream.getReader();
+      // The first chunk delivered is the new turn's: the stopped tail is gone.
+      expect((await reader.read()).value).toEqual({ type: "text-start", id: "new" });
+
+      // The boundary of the stopped turn is record 3.
+      expect(transport.getSession("chat-retry-persist")?.lastEventId).toBe("3");
+      expect(persisted.at(-1)?.lastEventId).toBe("3");
+
+      const reloaded = new TriggerChatTransport({
+        task: "my-chat-task",
+        accessToken: () => "pat",
+        sessions: { "chat-retry-persist": transport.getSession("chat-retry-persist")! },
+      });
+      available = 6;
+      const resumed = await reloaded.reconnectToStream({ chatId: "chat-retry-persist" });
+      expect(resumed).not.toBeNull();
+      expect(cursors.at(-1)).toBe("3");
+
+      // The reload gets the retried reply from its start, and none of the stopped
+      // turn's tail.
+      const [forMessage, forChunks] = resumed!.tee();
+      let message: UIMessage | undefined;
+      for await (const m of readUIMessageStream({ stream: forMessage })) message = m;
+      expect(await drainChunks(forChunks)).toEqual([
+        { type: "text-start", id: "new" },
+        { type: "text-delta", id: "new", delta: "retried" },
+      ]);
+      expect(message?.parts.find((p) => p.type === "text")).toMatchObject({ text: "retried" });
+
+      transport.dispose();
+      reloaded.dispose();
+    });
+
     it("clears on the first turn-complete after two consecutive stops", async () => {
       mockFetch([
         () =>
@@ -2521,6 +2617,369 @@ describe("TriggerChatTransport", () => {
     });
   });
 
+  describe("reconnectToStream after the consumer aborted a resume", () => {
+    // One record, then a connection that stays open until it is aborted: a
+    // turn that is still running on the server when the consumer lets go.
+    function openAfterChunk(signal?: AbortSignal | null): Response {
+      const encoder = new TextEncoder();
+      const body = new ReadableStream<Uint8Array>({
+        start(controller) {
+          controller.enqueue(
+            encoder.encode(sseEncode([{ type: "text-delta", id: "p1", delta: "hi" }]))
+          );
+          const onAbort = () => {
+            const err = new Error("aborted");
+            err.name = "AbortError";
+            try {
+              controller.error(err);
+            } catch {
+              /* already errored */
+            }
+          };
+          if (signal?.aborted) onAbort();
+          else signal?.addEventListener("abort", onAbort, { once: true });
+        },
+      });
+      return new Response(body, {
+        status: 200,
+        headers: { "content-type": "text/event-stream", "X-Stream-Version": "v2" },
+      });
+    }
+
+    function runningTurnTransport(chatId: string, options: { multiTab?: boolean } = {}) {
+      let appendCount = 0;
+      global.fetch = vi.fn().mockImplementation(async (url: string | URL, init?: RequestInit) => {
+        const urlStr = typeof url === "string" ? url : url.toString();
+        if (isSessionStreamAppendUrl(urlStr)) {
+          appendCount++;
+          return defaultAppendResponse();
+        }
+        if (isSessionOutSubscribeUrl(urlStr)) return openAfterChunk(init?.signal);
+        throw new Error(`Unexpected URL: ${urlStr}`);
+      });
+      const onSessionChange = vi.fn();
+      const transport = new TriggerChatTransport({
+        task: "my-chat-task",
+        accessToken: () => "pat",
+        onSessionChange,
+        multiTab: options.multiTab,
+        sessions: { [chatId]: { publicAccessToken: "p", lastEventId: "5", isStreaming: true } },
+      });
+      return { transport, onSessionChange, appends: () => appendCount };
+    }
+
+    // Reads the first chunk so the subscription is connected, then returns a
+    // function that finishes draining once the consumer has aborted.
+    async function startReading(stream: ReadableStream<UIMessageChunk>) {
+      const reader = stream.getReader();
+      expect((await reader.read()).done).toBe(false);
+      return async () => {
+        while (!(await reader.read()).done) {
+          /* drain */
+        }
+      };
+    }
+
+    it("hands out a new stream right after the consumer aborts the previous one", async () => {
+      // Catches: the aborted stream still holds its activeStreams slot until its
+      // fetch unwinds, so a remount's immediate resume got null.
+      const { transport } = runningTurnTransport("chat-remount");
+      const abort = new AbortController();
+      const first = await transport.reconnectToStream({
+        chatId: "chat-remount",
+        abortSignal: abort.signal,
+      });
+      expect(first).not.toBeNull();
+      const finish = await startReading(first!);
+
+      abort.abort();
+      const second = await transport.reconnectToStream({ chatId: "chat-remount" });
+      expect(second).not.toBeNull();
+
+      await finish();
+      transport.dispose();
+    });
+
+    it("keeps the turn running after the aborted stream unwinds", async () => {
+      // Catches: the abort was treated as the end of the turn, so isStreaming
+      // and turnStart were cleared and persisted, and no later resume could
+      // rejoin a turn that is still running.
+      const { transport, onSessionChange } = runningTurnTransport("chat-keep");
+      const abort = new AbortController();
+      const first = await transport.reconnectToStream({
+        chatId: "chat-keep",
+        abortSignal: abort.signal,
+      });
+      const finish = await startReading(first!);
+      onSessionChange.mockClear();
+
+      abort.abort();
+      await finish();
+      await new Promise((resolve) => setTimeout(resolve, 20));
+
+      const persisted = transport.getSession("chat-keep");
+      expect(persisted?.isStreaming).toBe(true);
+      // The persisted cursor is the turn's start, not the chunk read since.
+      expect(persisted?.lastEventId).toBe("5");
+      expect(onSessionChange).not.toHaveBeenCalled();
+
+      const resumed = await transport.reconnectToStream({ chatId: "chat-keep" });
+      expect(resumed).not.toBeNull();
+      transport.dispose();
+    });
+
+    it("still sends the stop and ends the turn when the owner aborts", async () => {
+      // Catches: freeing the slot on abort must not stop an owning abort
+      // (stopOnAbort) from writing its stop or from ending the turn.
+      const { transport, onSessionChange, appends } = runningTurnTransport("chat-owner");
+      const abort = new AbortController();
+      const first = await transport.reconnectToStream({
+        chatId: "chat-owner",
+        abortSignal: abort.signal,
+        stopOnAbort: true,
+      });
+      const finish = await startReading(first!);
+
+      abort.abort();
+      await finish();
+      await new Promise((resolve) => setTimeout(resolve, 20));
+
+      expect(appends()).toBe(1);
+      expect(transport.getSession("chat-owner")?.isStreaming).toBe(false);
+      expect(onSessionChange).toHaveBeenCalledWith(
+        "chat-owner",
+        expect.objectContaining({ isStreaming: false })
+      );
+      transport.dispose();
+    });
+
+    it("replays a rejoined turn from its start after a consumer abort", async () => {
+      // Catches: the abort left state.lastEventId at the last record the gone
+      // reader consumed, so the next reader on the same transport resumed
+      // mid-turn and got text-delta chunks with no text-start to attach to.
+      const reply: UIMessageChunk[] = [
+        { type: "start" },
+        { type: "text-start", id: "t1" },
+        { type: "text-delta", id: "t1", delta: "Hel" },
+        { type: "text-delta", id: "t1", delta: "lo" },
+        { type: "text-delta", id: "t1", delta: " world" },
+        { type: "text-end", id: "t1" },
+      ];
+      // Records 11..16, then the turn-complete control record as 17.
+      const records = [
+        ...reply.map((chunk, i) => ({
+          body: JSON.stringify({ data: chunk, id: `p-${i}` }),
+          seq_num: 11 + i,
+          timestamp: 1700000000000 + i,
+          headers: [] as Array<[string, string]>,
+        })),
+        {
+          body: "",
+          seq_num: 17,
+          timestamp: 1700000000100,
+          headers: [["trigger-control", "turn-complete"]] as Array<[string, string]>,
+        },
+      ];
+      let available = 14; // the server has written up to "lo" so far
+      const cursors: Array<string | null> = [];
+      global.fetch = vi.fn().mockImplementation(async (url: string | URL, init?: RequestInit) => {
+        const urlStr = typeof url === "string" ? url : url.toString();
+        if (!isSessionOutSubscribeUrl(urlStr)) throw new Error(`Unexpected URL: ${urlStr}`);
+        const cursor = new Headers(init?.headers).get("Last-Event-ID");
+        cursors.push(cursor);
+        const served = records.filter(
+          (r) => r.seq_num > Number(cursor ?? 0) && r.seq_num <= available
+        );
+        const signal = init?.signal;
+        const body = new ReadableStream<Uint8Array>({
+          start(controller) {
+            controller.enqueue(
+              new TextEncoder().encode(
+                `event: batch\ndata: ${JSON.stringify({ records: served })}\n\n`
+              )
+            );
+            const onAbort = () => {
+              const err = new Error("aborted");
+              err.name = "AbortError";
+              try {
+                controller.error(err);
+              } catch {
+                /* already errored */
+              }
+            };
+            if (signal?.aborted) onAbort();
+            else signal?.addEventListener("abort", onAbort, { once: true });
+          },
+        });
+        return new Response(body, {
+          status: 200,
+          headers: { "content-type": "text/event-stream", "X-Stream-Version": "v2" },
+        });
+      });
+      const transport = new TriggerChatTransport({
+        task: "my-chat-task",
+        accessToken: () => "pat",
+        sessions: {
+          "chat-replay": { publicAccessToken: "p", lastEventId: "10", isStreaming: true },
+        },
+      });
+
+      const abort = new AbortController();
+      const first = await transport.reconnectToStream({
+        chatId: "chat-replay",
+        abortSignal: abort.signal,
+      });
+      const reader = first!.getReader();
+      for (let i = 0; i < 4; i++) expect((await reader.read()).done).toBe(false);
+      abort.abort();
+      while (!(await reader.read()).done) {
+        /* drain */
+      }
+
+      available = 17;
+      const second = await transport.reconnectToStream({ chatId: "chat-replay" });
+      expect(second).not.toBeNull();
+      const [forMessage, forChunks] = second!.tee();
+      let message: UIMessage | undefined;
+      for await (const m of readUIMessageStream({ stream: forMessage })) message = m;
+      const replayed = await drainChunks(forChunks);
+
+      // The replacement asked for the turn start, not the last record read.
+      expect(cursors).toEqual(["10", "10"]);
+      expect(replayed.map((c) => c.type)).toEqual([
+        "start",
+        "text-start",
+        "text-delta",
+        "text-delta",
+        "text-delta",
+        "text-end",
+      ]);
+      expect(message?.parts.find((p) => p.type === "text")).toMatchObject({
+        text: "Hello world",
+      });
+      transport.dispose();
+    });
+
+    it("starts a send after an aborted resume from the live cursor, not the turn start", async () => {
+      // Catches: rewinding the cursor to the turn start when the consumer aborts, so
+      // a send that follows (no stop written, no gate armed) subscribed from the
+      // start of the old turn and rendered its whole reply into the new answer.
+      const reply: UIMessageChunk[] = [
+        { type: "start" },
+        { type: "text-start", id: "t1" },
+        { type: "text-delta", id: "t1", delta: "Hel" },
+        { type: "text-delta", id: "t1", delta: "lo" },
+      ];
+      // Records 11..14: the turn is still running on the server.
+      const records = reply.map((chunk, i) => ({
+        body: JSON.stringify({ data: chunk, id: `p-${i}` }),
+        seq_num: 11 + i,
+        timestamp: 1700000000000 + i,
+        headers: [] as Array<[string, string]>,
+      }));
+      const cursors: Array<string | null> = [];
+      global.fetch = vi.fn().mockImplementation(async (url: string | URL, init?: RequestInit) => {
+        const urlStr = typeof url === "string" ? url : url.toString();
+        if (isSessionStreamAppendUrl(urlStr)) return defaultAppendResponse();
+        if (!isSessionOutSubscribeUrl(urlStr)) throw new Error(`Unexpected URL: ${urlStr}`);
+        const cursor = new Headers(init?.headers).get("Last-Event-ID");
+        cursors.push(cursor);
+        const served = records.filter((r) => r.seq_num > Number(cursor ?? 0));
+        const signal = init?.signal;
+        const body = new ReadableStream<Uint8Array>({
+          start(controller) {
+            controller.enqueue(
+              new TextEncoder().encode(
+                `event: batch\ndata: ${JSON.stringify({ records: served })}\n\n`
+              )
+            );
+            const onAbort = () => {
+              const err = new Error("aborted");
+              err.name = "AbortError";
+              try {
+                controller.error(err);
+              } catch {
+                /* already errored */
+              }
+            };
+            if (signal?.aborted) onAbort();
+            else signal?.addEventListener("abort", onAbort, { once: true });
+          },
+        });
+        return new Response(body, {
+          status: 200,
+          headers: { "content-type": "text/event-stream", "X-Stream-Version": "v2" },
+        });
+      });
+      const transport = new TriggerChatTransport({
+        task: "my-chat-task",
+        accessToken: () => "pat",
+        sessions: {
+          "chat-send-after-abort": { publicAccessToken: "p", lastEventId: "10", isStreaming: true },
+        },
+      });
+
+      const abort = new AbortController();
+      const resumed = await transport.reconnectToStream({
+        chatId: "chat-send-after-abort",
+        abortSignal: abort.signal,
+      });
+      const reader = resumed!.getReader();
+      for (let i = 0; i < 4; i++) expect((await reader.read()).done).toBe(false);
+      abort.abort();
+      while (!(await reader.read()).done) {
+        /* drain */
+      }
+
+      await transport.sendMessages({
+        trigger: "submit-message" as const,
+        chatId: "chat-send-after-abort",
+        messageId: undefined,
+        messages: [createUserMessage("next")],
+        abortSignal: undefined,
+      });
+
+      expect(cursors).toEqual(["10", "14"]);
+      transport.dispose();
+    });
+
+    it("does not let an aborted resume free the slot or claim of the send that superseded it", async () => {
+      // Catches: the consumer-abort listener freeing the activeStreams entry and
+      // the tab claim without checking they are still its own, so a late abort of
+      // a resume that a send already superseded would drop the send's slot (a
+      // second resume would open a duplicate) and let another tab take the chat.
+      const { transport, appends } = runningTurnTransport("chat-late-abort", { multiTab: true });
+
+      const abort = new AbortController();
+      const resumed = await transport.reconnectToStream({
+        chatId: "chat-late-abort",
+        abortSignal: abort.signal,
+      });
+      const finishResumed = await startReading(resumed!);
+
+      const sent = await transport.sendMessages({
+        trigger: "submit-message" as const,
+        chatId: "chat-late-abort",
+        messageId: undefined,
+        messages: [createUserMessage("hi")],
+        abortSignal: undefined,
+      });
+      const finishSent = await startReading(sent);
+      await finishResumed();
+      expect(transport.hasClaim("chat-late-abort")).toBe(true);
+
+      abort.abort();
+      await new Promise((resolve) => setTimeout(resolve, 20));
+
+      expect(appends()).toBe(1);
+      expect(transport.hasClaim("chat-late-abort")).toBe(true);
+      expect(await transport.reconnectToStream({ chatId: "chat-late-abort" })).toBeNull();
+
+      transport.dispose();
+      await finishSent();
+    });
+  });
+
   describe("superseded stream teardown", () => {
     it("keeps the successor's controller registered when the aborted stream tears down", async () => {
       vi.useFakeTimers();
@@ -2661,6 +3120,56 @@ describe("TriggerChatTransport", () => {
         // The turn ends here with no successor stream, so the claim must be
         // freed or other tabs stay read-only until this one closes.
         expect(transport.hasClaim("chat-stop-tab")).toBe(false);
+
+        transport.dispose();
+        await drain;
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
+    it("releases the tab claim when the consumer aborts a turn that writes no stop (multi-tab)", async () => {
+      // Catches: an abort that writes no stop deletes the stream's activeStreams
+      // entry, so the stream's own unwinding no longer frees the tab claim and
+      // other tabs stay read-only until this one closes.
+      vi.useFakeTimers();
+      try {
+        global.fetch = vi.fn().mockImplementation(async (url: string | URL, init?: RequestInit) => {
+          const urlStr = typeof url === "string" ? url : url.toString();
+          if (isSessionStreamAppendUrl(urlStr)) return defaultAppendResponse();
+          if (isSessionOutSubscribeUrl(urlStr)) return openSseResponse(init?.signal);
+          throw new Error(`Unexpected URL: ${urlStr}`);
+        });
+
+        const transport = new TriggerChatTransport({
+          task: "my-chat-task",
+          accessToken: () => "pat",
+          multiTab: true,
+          sessions: { "chat-abort-tab": { publicAccessToken: "p", isStreaming: true } },
+        });
+
+        const abort = new AbortController();
+        const drain = drainChunks(
+          await transport.sendMessages({
+            trigger: "submit-message" as const,
+            chatId: "chat-abort-tab",
+            messageId: undefined,
+            messages: [createUserMessage("hi")],
+            abortSignal: abort.signal,
+          })
+        );
+        await vi.advanceTimersByTimeAsync(1_000);
+        expect(transport.hasClaim("chat-abort-tab")).toBe(true);
+
+        // The outstanding turn is abandoned, so the abort has no stop to write.
+        transport.clearSupersedeGate("chat-abort-tab");
+        abort.abort();
+        // Checked synchronously: the abort listener's release is the only one
+        // on this path, before anything has had a chance to unwind.
+        expect(transport.hasClaim("chat-abort-tab")).toBe(false);
+
+        await vi.advanceTimersByTimeAsync(1_000);
+        expect(transport.hasClaim("chat-abort-tab")).toBe(false);
 
         transport.dispose();
         await drain;
