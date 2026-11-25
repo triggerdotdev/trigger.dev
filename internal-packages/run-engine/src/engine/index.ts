@@ -3005,6 +3005,7 @@ export class RunEngine {
     idempotencyKey: string;
     standaloneResidency?: "NEW" | "LEGACY";
     standaloneShardKey?: ShardKey;
+    standaloneStoreEligible?: boolean;
   }): Promise<Waitpoint | null> {
     return this.waitpointSystem.readExistingStoreDateTimeWaitpointByKey(params);
   }

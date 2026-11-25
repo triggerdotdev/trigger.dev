@@ -73,6 +73,7 @@ type ScriptName =
   | "wpAckIdemReceipt"
   | "wpCompleteIdemReceipt"
   | "wpReleaseKeyedCandidate"
+  | "wpReleaseKeyedCandidateTimedManual"
   | "wpDiscard"
   | "wpFanoutIndex"
   | "runAbsorbBlockers"
@@ -1410,7 +1411,7 @@ export class WaitpointStoreCoordinator {
         expected = (await this.#call("wpCompleteIdemReceipt", [receipt], args.candidateId))[0]!;
       const keys = waitpointKeys(args.candidateId);
       await this.#call(
-        "wpReleaseKeyedCandidate",
+        "wpReleaseKeyedCandidateTimedManual",
         [keys.record, keys.fanout, waitpointRelatedRunsKey(args.candidateId)],
         String(this.terminalRetentionMs),
         args.pendingManual ? "pending-manual" : ""

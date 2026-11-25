@@ -535,6 +535,17 @@ export class RoutingRunStore implements RunStore {
     return canonical === NEW_SHARD || canonical === LEGACY_SHARD ? canonical : `shard:${canonical}`;
   }
 
+  getWaitpointKeyScopes(): string[] {
+    const scopes = this.#probeOrder.map((key) => {
+      const canonical =
+        this.#waitpointKeyAliasShards.find((shard) => shard.key === key)?.aliasOf ?? key;
+      return canonical === NEW_SHARD || canonical === LEGACY_SHARD
+        ? canonical
+        : `shard:${canonical}`;
+    });
+    return [...new Set(scopes)];
+  }
+
   runInWaitpointKeyTransaction<R>(
     ownerId: string | undefined,
     organizationId: string,

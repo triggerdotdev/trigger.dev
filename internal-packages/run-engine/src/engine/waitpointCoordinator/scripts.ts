@@ -823,16 +823,24 @@ export function registerWaitpointCommands(redis: RedisClient): void {
     `,
   });
 
-  redis.defineCommand("wpReleaseKeyedCandidate", {
-    numberOfKeys: 3,
-    lua: `
+  // wpReleaseKeyedCandidate keeps main's contract for old images: a pending MANUAL record with a
+  // timeout is rejected. wpReleaseKeyedCandidateTimedManual also releases that record.
+  for (const [name, timedManual] of [
+    ["wpReleaseKeyedCandidate", false],
+    ["wpReleaseKeyedCandidateTimedManual", true],
+  ] as const) {
+    const rejectTimed = timedManual
+      ? ""
+      : "or (token.completedAfter ~= nil and token.completedAfter ~= cjson.null)";
+    redis.defineCommand(name, {
+      numberOfKeys: 3,
+      lua: `
       local record = KEYS[1]
       if redis.call('EXISTS', record) == 0 then return { 'released' } end
       if redis.call('HGET', record, 'status') ~= '${STORED_COMPLETED}' then
         local token = cjson.decode(redis.call('HGET', record, 'r'))
-        if ARGV[2] ~= 'pending-manual' or token.type ~= 'MANUAL' or
-            (token.completedAfter ~= nil and token.completedAfter ~= cjson.null) then
-          return redis.error_reply('wpReleaseKeyedCandidate: winner is not completed')
+        if ARGV[2] ~= 'pending-manual' or token.type ~= 'MANUAL' ${rejectTimed} then
+          return redis.error_reply('${name}: winner is not completed')
         end
         redis.call('HDEL', record, 'ka')
         return { 'released' }
@@ -845,7 +853,8 @@ export function registerWaitpointCommands(redis: RedisClient): void {
       end
       return { 'released' }
     `,
-  });
+    });
+  }
 
   redis.defineCommand("wpAckIdemReceipt", {
     numberOfKeys: 1,
@@ -1904,6 +1913,13 @@ declare module "@internal/redis" {
     wpReadIdemReceipt(receiptKey: string): Result<string[], Context>;
     wpCompleteIdemReceipt(receiptKey: string, winnerId: string): Result<string[], Context>;
     wpReleaseKeyedCandidate(
+      recordKey: string,
+      fanoutKey: string,
+      relatedRunsKey: string,
+      retentionMs: string,
+      pendingManual?: string
+    ): Result<string[], Context>;
+    wpReleaseKeyedCandidateTimedManual(
       recordKey: string,
       fanoutKey: string,
       relatedRunsKey: string,

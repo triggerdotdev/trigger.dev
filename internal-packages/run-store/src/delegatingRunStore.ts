@@ -56,6 +56,10 @@ export class DelegatingRunStore implements RunStore {
     return this.delegate.getWaitpointKeyScope(ownerId);
   }
 
+  getWaitpointKeyScopes(): string[] {
+    return this.delegate.getWaitpointKeyScopes();
+  }
+
   runInWaitpointKeyTransaction<R>(
     ownerId: string | undefined,
     organizationId: string,

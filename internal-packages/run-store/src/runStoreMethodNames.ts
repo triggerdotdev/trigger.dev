@@ -11,6 +11,7 @@ import type { RunStore } from "./types.js";
 // file and by `implements RunStore` on the generated class.
 export const RUN_STORE_METHOD_NAMES = [
   "getWaitpointKeyScope",
+  "getWaitpointKeyScopes",
   "runInWaitpointKeyTransaction",
   "runInTransaction",
   "createRun",

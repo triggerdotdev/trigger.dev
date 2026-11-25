@@ -602,6 +602,10 @@ export class PostgresRunStore implements RunStore {
     return "legacy";
   }
 
+  getWaitpointKeyScopes(): string[] {
+    return ["legacy"];
+  }
+
   /** Enabled keyed creation uses its isolated writer, retaining this leaf’s schema semantics. */
   runInWaitpointKeyTransaction<R>(
     _ownerId: string | undefined,

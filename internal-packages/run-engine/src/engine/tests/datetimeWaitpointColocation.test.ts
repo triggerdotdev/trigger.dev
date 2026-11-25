@@ -20,11 +20,24 @@ import {
   redisOptions,
 } from "@internal/testcontainers";
 import { trace } from "@internal/tracing";
-import { PostgresRunStore, RoutingRunStore, type CreateRunInput } from "@internal/run-store";
+import {
+  PostgresRunStore,
+  RedisSnapshotStore,
+  RoutingRunStore,
+  WAITPOINT_KEY_TRANSACTION_POOL_SIZE,
+  WaitpointKeyTransactionLane,
+  registerWaitpointKeyTransactionLane,
+  type CreateRunInput,
+} from "@internal/run-store";
 import type { PrismaClient } from "@trigger.dev/database";
-import type { RunOpsPrismaClient } from "@internal/run-ops-database";
+import { RunOpsPrismaClient } from "@internal/run-ops-database";
+import { parseWaitpointId } from "@trigger.dev/core/v3/isomorphic";
 import { expect, vi } from "vitest";
 import { RunEngine } from "../index.js";
+import { workerCatalog } from "../workerCatalog.js";
+import { WaitpointStoreCoordinator } from "../waitpointCoordinator/storeCoordinator.js";
+import { registerTestKeyLane } from "./utils/keyedWaitpointTest.js";
+import { makeEngine } from "./utils/storeRunWaitpointLifecycleFixtures.js";
 
 const twoDbEngineTest = heteroRunOpsPostgresTest.extend<{
   redisContainer: any;
@@ -396,6 +409,223 @@ describe("DATETIME/MANUAL waitpoint co-location with the owning run (two physica
         ).toBe(1);
       } finally {
         await engine.quit();
+      }
+    }
+  );
+
+  twoDbEngineTest(
+    "standalone keyed MANUAL token follows the idempotency key namespace of its placement",
+    async ({ prisma14, prisma17, uri14, uri17, redisOptions }) => {
+      const p14 = prisma14 as unknown as PrismaClient;
+      // PostgresRunStore looks its key lane up when it is built, so register both first.
+      const legacyLane = registerTestKeyLane(p14, uri14);
+      const runOpsUrl = new URL(uri17);
+      runOpsUrl.searchParams.set("connection_limit", String(WAITPOINT_KEY_TRANSACTION_POOL_SIZE));
+      const runOpsLane = new WaitpointKeyTransactionLane(
+        () =>
+          new RunOpsPrismaClient({ datasources: { db: { url: runOpsUrl.toString() } } }) as never
+      );
+      registerWaitpointKeyTransactionLane(prisma17, runOpsLane);
+      const router = makeRouter(p14, prisma17);
+      const snapshots = new RedisSnapshotStore({ redisOptions, completedTtlMs: 60000 });
+      const store = new WaitpointStoreCoordinator({ redisOptions, terminalRetentionMs: 2000 });
+      const flagged = await seedControlPlaneEnv(p14, "kflag");
+      const unflagged = await seedControlPlaneEnv(p14, "kplain");
+      let enabled = true;
+      const engine = makeEngine(p14, redisOptions, {
+        runStore: router,
+        store,
+        snapshotStore: snapshots,
+        workerDisabled: true,
+        isWaitpointStoreEnabled: (organizationId) =>
+          organizationId === flagged.organization.id && enabled,
+      });
+      try {
+        for (const env of [flagged, unflagged]) {
+          const create = (idempotencyKey: string, standaloneResidency: "LEGACY" | "NEW") =>
+            engine.createManualWaitpoint({
+              environmentId: env.environment.id,
+              projectId: env.project.id,
+              organizationId: env.organization.id,
+              idempotencyKey,
+              standaloneResidency,
+              standaloneStoreEligible: true,
+            });
+          const rows = async (id: string) => [
+            await p14.waitpoint.count({ where: { id } }),
+            await prisma17.waitpoint.count({ where: { id } }),
+          ];
+          for (const key of ["k1", "k2"]) {
+            enabled = key === "k1";
+            const first = await create(key, "LEGACY");
+            enabled = true;
+            for (const again of [await create(key, "NEW"), await create(key, "NEW")])
+              expect(again).toMatchObject({
+                isCached: true,
+                waitpoint: { id: first.waitpoint.id },
+              });
+            if (env === flagged && key === "k1") {
+              expect(parseWaitpointId(first.waitpoint.id)).toMatchObject({
+                format: "b32hexW",
+                type: "MANUAL",
+              });
+              expect(await rows(first.waitpoint.id)).toEqual([0, 0]);
+            } else {
+              expect(await rows(first.waitpoint.id)).toEqual([1, 0]);
+            }
+          }
+        }
+
+        // A token removed at retention does not lend its key to the other placement.
+        const scope = {
+          environmentId: flagged.environment.id,
+          projectId: flagged.project.id,
+          organizationId: flagged.organization.id,
+        };
+        const create = (standaloneResidency: "LEGACY" | "NEW") =>
+          engine.createManualWaitpoint({
+            ...scope,
+            idempotencyKey: "k3",
+            standaloneResidency,
+            standaloneStoreEligible: true,
+          });
+        const removed = (await create("LEGACY")).waitpoint.id;
+        await engine.completeWaitpoint({
+          id: removed,
+          organizationId: scope.organizationId,
+          onlyIfPending: true,
+          output: { value: "done", isError: false },
+        });
+        const job = await engine["worker"].getJob(`recoverDateTimeWaitpoint:${removed}`);
+        const payload = workerCatalog.recoverDateTimeWaitpoint.schema.parse(job!.item);
+        await vi.waitFor(() => engine.waitpointSystem.recoverDateTimeWaitpoint(payload), {
+          timeout: 30_000,
+          interval: 250,
+        });
+        await expect
+          .poll(() => engine.getStoreDateTimeWaitpoint({ ...scope, waitpointId: removed }), {
+            timeout: 30_000,
+            interval: 100,
+          })
+          .toBeNull();
+        // Its reservation outlives the record until the retirement job, which is not run here.
+        expect(await store.readIdempotencyKey(`${scope.environmentId}:legacy`, "k3")).toBe(removed);
+        const fresh = await create("NEW");
+        expect(fresh.isCached).toBe(false);
+        expect(fresh.waitpoint.id).not.toBe(removed);
+      } finally {
+        await engine.quit();
+        await store.quit();
+        await snapshots.quit();
+        await legacyLane.close();
+        await runOpsLane.close();
+      }
+    }
+  );
+
+  twoDbEngineTest(
+    "the keyed store read finds a waiter under another placement only when W1 is on",
+    async ({ prisma14, prisma17, uri14, uri17, redisOptions }) => {
+      const p14 = prisma14 as unknown as PrismaClient;
+      const legacyLane = registerTestKeyLane(p14, uri14);
+      const runOpsUrl = new URL(uri17);
+      runOpsUrl.searchParams.set("connection_limit", String(WAITPOINT_KEY_TRANSACTION_POOL_SIZE));
+      const runOpsLane = new WaitpointKeyTransactionLane(
+        () =>
+          new RunOpsPrismaClient({ datasources: { db: { url: runOpsUrl.toString() } } }) as never
+      );
+      registerWaitpointKeyTransactionLane(prisma17, runOpsLane);
+      const router = makeRouter(p14, prisma17);
+      const snapshots = new RedisSnapshotStore({ redisOptions, completedTtlMs: 60000 });
+      const store = new WaitpointStoreCoordinator({ redisOptions });
+      const flagged = await seedControlPlaneEnv(p14, "rflag");
+      const unflagged = await seedControlPlaneEnv(p14, "rplain");
+      const engine = makeEngine(p14, redisOptions, {
+        runStore: router,
+        store,
+        snapshotStore: snapshots,
+        workerDisabled: true,
+        isWaitpointStoreEnabled: (organizationId) => organizationId === flagged.organization.id,
+      });
+      const out: Record<string, unknown> = {};
+      try {
+        for (const [name, env, eligible] of [
+          ["flagged", flagged, true],
+          ["unflagged", unflagged, false],
+        ] as const) {
+          const scope = {
+            environmentId: env.environment.id,
+            projectId: env.project.id,
+            organizationId: env.organization.id,
+          };
+          const idempotencyKey = "webhook-waiter:review-key";
+          // Waiter created while the env's placement is LEGACY.
+          const first = await engine.createManualWaitpoint({
+            ...scope,
+            idempotencyKey,
+            tags: ["webhook:endpoint-a"],
+            timeout: new Date(Date.now() + 3_600_000),
+            standaloneResidency: "LEGACY",
+            standaloneStoreEligible: eligible,
+          });
+          // The port's find after the placement changes to NEW: Postgres leg, then store leg.
+          const pg = await router.findWaitpoint(
+            { where: { environmentId: scope.environmentId, idempotencyKey } },
+            undefined,
+            { residency: "NEW" }
+          );
+          const storeNew = await engine.readExistingStoreDateTimeWaitpointByKey({
+            ...scope,
+            idempotencyKey,
+            standaloneResidency: "NEW",
+          });
+          const storeNewEligible = await engine.readExistingStoreDateTimeWaitpointByKey({
+            ...scope,
+            idempotencyKey,
+            standaloneResidency: "NEW",
+            standaloneStoreEligible: eligible,
+          });
+          const storeLegacy = await engine.readExistingStoreDateTimeWaitpointByKey({
+            ...scope,
+            idempotencyKey,
+            standaloneResidency: "LEGACY",
+          });
+          // The port's create after the placement change.
+          const again = await engine.createManualWaitpoint({
+            ...scope,
+            idempotencyKey,
+            tags: ["webhook:endpoint-b"],
+            timeout: new Date(Date.now() + 3_600_000),
+            standaloneResidency: "NEW",
+            standaloneStoreEligible: eligible,
+          });
+          out[name] = {
+            firstId: first.waitpoint.id,
+            format: parseWaitpointId(first.waitpoint.id).format,
+            pgFindAfterChange: pg?.id ?? null,
+            storeFindAfterChange: storeNew?.id ?? null,
+            eligibleFindAfterChange: storeNewEligible
+              ? { id: storeNewEligible.id, tags: storeNewEligible.tags }
+              : null,
+            storeFindSamePlacement: storeLegacy?.id ?? null,
+            createAfterChange: { id: again.waitpoint.id, isCached: again.isCached },
+          };
+        }
+        const f = out.flagged as any;
+        const u = out.unflagged as any;
+        expect(f.format).toBe("b32hexW");
+        expect(f.pgFindAfterChange).toBeNull();
+        expect(f.storeFindSamePlacement).toBe(f.firstId);
+        expect(f.storeFindAfterChange).toBeNull();
+        expect(f.eligibleFindAfterChange).toEqual({ id: f.firstId, tags: ["webhook:endpoint-a"] });
+        expect(f.createAfterChange).toEqual({ id: f.firstId, isCached: true });
+        expect(u.pgFindAfterChange).toBe(u.firstId);
+      } finally {
+        await engine.quit();
+        await store.quit();
+        await snapshots.quit();
+        await legacyLane.close();
+        await runOpsLane.close();
       }
     }
   );

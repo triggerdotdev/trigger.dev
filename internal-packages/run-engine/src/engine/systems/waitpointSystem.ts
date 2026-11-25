@@ -1023,6 +1023,11 @@ export class WaitpointSystem {
         (!cached.idempotencyKeyExpiresAt || cached.idempotencyKeyExpiresAt.getTime() >= Date.now())
       )
         return { kind: "cached", waitpoint: cached };
+      // The same lookup in MemoryDB: a live reservation under another placement's namespace.
+      if (params.standaloneStoreEligible) {
+        const waitpoint = await this.#readKeyUnderOtherPlacements(params, key, owner);
+        if (waitpoint) return { kind: "cached", waitpoint };
+      }
     }
     await lowLevel.prepareForKeyedCreation?.();
     // Prearm candidate recovery before taking the PG mutex. Even a cached PG winner can
@@ -1117,6 +1122,7 @@ export class WaitpointSystem {
     idempotencyKey: string;
     standaloneResidency?: "NEW" | "LEGACY";
     standaloneShardKey?: ShardKey;
+    standaloneStoreEligible?: boolean;
   }): Promise<Waitpoint | null> {
     if (
       !this.#storeWired ||
@@ -1125,9 +1131,38 @@ export class WaitpointSystem {
       !(await this.isWaitpointStoreEnabled(params.organizationId))
     )
       return null;
-    const scope = `${params.environmentId}:${this.$.runStore.getWaitpointKeyScope(this.#keyClaimOwner(params))}`;
+    const owner = this.#keyClaimOwner(params);
+    const scope = `${params.environmentId}:${this.$.runStore.getWaitpointKeyScope(owner)}`;
     const id = await this.#waitpointStore.readIdempotencyKey(scope, params.idempotencyKey);
-    return id ? this.readExistingStoreDateTimeWaitpoint({ ...params, waitpointId: id }) : null;
+    const waitpoint = id
+      ? await this.readExistingStoreDateTimeWaitpoint({ ...params, waitpointId: id })
+      : null;
+    if (waitpoint || !params.standaloneStoreEligible) return waitpoint;
+    return this.#readKeyUnderOtherPlacements(params, params.idempotencyKey, owner);
+  }
+
+  /** A live MemoryDB reservation for the key under another placement's namespace. */
+  async #readKeyUnderOtherPlacements(
+    params: { environmentId: string; projectId: string },
+    key: string,
+    owner: string
+  ): Promise<Waitpoint | null> {
+    const lowLevel = this.#waitpointStore;
+    if (!lowLevel?.readIdempotencyKey) return null;
+    const own = this.$.runStore.getWaitpointKeyScope(owner);
+    for (const scope of this.$.runStore.getWaitpointKeyScopes()) {
+      if (scope === own) continue;
+      const id = await lowLevel.readIdempotencyKey(`${params.environmentId}:${scope}`, key);
+      const waitpoint = id
+        ? await this.#readStoreDateTimeWaitpoint({
+            waitpointId: id,
+            environmentId: params.environmentId,
+            projectId: params.projectId,
+          })
+        : null;
+      if (waitpoint) return waitpoint;
+    }
+    return null;
   }
 
   /** The run's current block edges from both stores, as continuation reads them. */
@@ -2857,7 +2892,12 @@ export class WaitpointSystem {
         } else await acknowledge();
       };
       const manual = payload.manual ? await this.#readStoreDateTimeWaitpoint(payload) : undefined;
-      if (manual && !manual.completedAfter) {
+      // Only a standalone token's job can run before its timeout; a run-bound one runs at it.
+      if (
+        manual &&
+        (!manual.completedAfter ||
+          (isStandaloneStoreWaitpoint(manual) && Date.now() < manual.completedAfter.getTime()))
+      ) {
         // Allocation may finish independently of an untimed token. Fence every foreground
         // publication first, then serialize receipt retirement with completion/final fanout ACK.
         if (Date.now() <= candidate.acceptUntil)
@@ -2865,6 +2905,24 @@ export class WaitpointSystem {
         await this.withWaitpointCompletionLock(payload.waitpointId, async () => {
           if (!(await this.isWaitpointStoreEnabled(payload.organizationId))) return;
           await recover(true);
+          // Settled before its timeout: the same job id, now unkeyed, times the token out on time.
+          // Only a standalone token gets here before its timeout; a run-bound one reads nothing more.
+          const settled = isStandaloneStoreWaitpoint(manual)
+            ? await this.#readStoreDateTimeWaitpoint(payload)
+            : undefined;
+          if (settled?.status === "PENDING" && settled.completedAfter) {
+            const { keyedCreation: _, ...unkeyed } = payload;
+            await this.$.worker.enqueue({
+              id: `recoverDateTimeWaitpoint:${payload.waitpointId}`,
+              job: "recoverDateTimeWaitpoint",
+              payload: {
+                ...unkeyed,
+                completedAfter: settled.completedAfter,
+                creationAcceptUntil: candidate.acceptUntil,
+              },
+              availableAt: settled.completedAfter,
+            });
+          }
         });
       } else await recover();
       return;

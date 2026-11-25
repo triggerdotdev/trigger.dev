@@ -480,6 +480,9 @@ export interface RunStore {
   /** Canonical configured owning database, including declared shard aliases. No I/O. */
   getWaitpointKeyScope(ownerId?: string): string;
 
+  /** Every scope `getWaitpointKeyScope` can return, once each. No I/O. */
+  getWaitpointKeyScopes(): string[];
+
   /** Isolated writer lane for enabled keyed creation; never borrows the ordinary pool. */
   runInWaitpointKeyTransaction<R>(
     ownerId: string | undefined,
