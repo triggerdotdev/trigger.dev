@@ -10,7 +10,8 @@ import { tmpdir } from "node:os";
 import { mkdtemp, writeFile } from "node:fs/promises";
 import { env } from "~/env.server";
 import { depot as execDepot } from "@depot/cli";
-import { FinalizeDeploymentService } from "./finalizeDeployment.server";
+import { FinalizeDeploymentService, failRefusedDeployment } from "./finalizeDeployment.server";
+import { gateDeployment, type DeploymentGateResult } from "../deploymentChecks.server";
 import { remoteBuildsEnabled } from "../remoteImageBuilder.server";
 import { getEcrAuthToken, isEcrRegistry } from "../getDeploymentImageRef.server";
 import { tryCatch } from "@trigger.dev/core";
@@ -105,15 +106,18 @@ export class FinalizeDeploymentV2Service extends BaseService {
       // self-hosted setup). Verify before promoting so we never mark a
       // deployment DEPLOYED when nothing was actually pushed.
       await this.#assertImagePullable(deployment, body);
+      // Runs before the template build.
+      const gate = await this.#gate(authenticatedEnv, deployment, id, body);
+      const checkedBody = withCheckedDigest(body, gate);
       await this.#prebuildTemplate(
         deployment,
         id,
-        body,
+        checkedBody,
         computeOnlyEnabled(orgFeatureFlags),
         writer
       );
 
-      return finalizeService.call(authenticatedEnv, id, body, orgFeatureFlags);
+      return finalizeService.call(authenticatedEnv, id, checkedBody, orgFeatureFlags, gate);
     }
 
     const externalBuildData = deployment.externalBuildData
@@ -183,9 +187,42 @@ export class FinalizeDeploymentV2Service extends BaseService {
 
     // Belt and suspenders: confirm the push actually landed before promoting.
     await this.#assertImagePullable(deployment, body);
-    await this.#prebuildTemplate(deployment, id, body, computeOnlyEnabled(orgFeatureFlags), writer);
+    // Runs before the template build.
+    const gate = await this.#gate(authenticatedEnv, deployment, id, body);
+    const checkedBody = withCheckedDigest(body, gate);
+    await this.#prebuildTemplate(
+      deployment,
+      id,
+      checkedBody,
+      computeOnlyEnabled(orgFeatureFlags),
+      writer
+    );
 
-    return finalizeService.call(authenticatedEnv, id, body, orgFeatureFlags);
+    return finalizeService.call(authenticatedEnv, id, checkedBody, orgFeatureFlags, gate);
+  }
+
+  /** Runs the finalize step; a refused deploy is failed here and the error thrown for the client. */
+  async #gate(
+    authenticatedEnv: AuthenticatedEnvironment,
+    deployment: { id: string; imageReference: string | null; type: string | null },
+    deploymentFriendlyId: string,
+    body: FinalizeDeploymentRequestBody
+  ): Promise<DeploymentGateResult> {
+    const gate = await gateDeployment(
+      {
+        id: deployment.id,
+        friendlyId: deploymentFriendlyId,
+        imageReference: deployment.imageReference,
+        type: deployment.type,
+        organizationId: authenticatedEnv.organizationId,
+        projectRef: authenticatedEnv.project.externalRef,
+      },
+      body.imageDigest
+    );
+    if (gate.kind === "refuse") {
+      await failRefusedDeployment(this._prisma, authenticatedEnv, deploymentFriendlyId, gate.error);
+    }
+    return gate;
   }
 
   // Waits for the build when the deployment contains sandbox tasks or the org is compute-only;
@@ -441,4 +478,14 @@ function extractLogs(outputs: string[]) {
   const cleanedOutputs = outputs.map((line) => line.trim()).filter((line) => line !== "");
 
   return cleanedOutputs.map((line) => line.trim()).join("\n");
+}
+
+/** The request with the resolved digest in place of the client's, when there is one. */
+function withCheckedDigest(
+  body: FinalizeDeploymentRequestBody,
+  gate: DeploymentGateResult
+): FinalizeDeploymentRequestBody {
+  return gate.kind === "proceed" && gate.checked
+    ? { ...body, imageDigest: gate.imageDigest }
+    : body;
 }

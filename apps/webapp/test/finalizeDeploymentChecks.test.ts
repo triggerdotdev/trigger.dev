@@ -199,4 +199,60 @@ describe("finalize and deployment checks", () => {
       expect(queued).toEqual([]);
     }
   );
+
+  containerTestWithIsolatedRedis(
+    "fails a refused deployment, and keeps the resolved digest when it goes on",
+    async ({ prisma, redisOptions }) => {
+      // Catches: a refused deployment marked DEPLOYED or given a follow-up check, the client's
+      // digest stored in place of the resolved one, or a follow-up queued when it already ran.
+      const loaded = await load(redisOptions);
+      const CHECKED = `sha256:${"e".repeat(64)}`;
+      const message = "This deployment could not be completed.";
+      const queued: string[] = [];
+      const serviceWith = (gate: Loaded["gateDeployment"]) =>
+        new loaded.FinalizeDeploymentService(
+          prisma,
+          async (deploymentId) => {
+            queued.push(deploymentId);
+          },
+          gate
+        );
+
+      const refused = await seed(prisma, loaded, "DEPLOYING");
+      await expect(
+        serviceWith(async () => ({
+          kind: "refuse",
+          error: { name: "DeploymentFailed", message },
+        })).call(refused.authenticated, refused.deployment.friendlyId, {
+          imageDigest: DIGEST,
+        })
+      ).rejects.toThrow(message);
+      const failedRow = await prisma.workerDeployment.findFirstOrThrow({
+        where: { id: refused.deployment.id },
+        include: { promotions: true },
+      });
+      expect(failedRow.status).toBe("FAILED");
+      expect(failedRow.errorData).toMatchObject({ name: "DeploymentFailed", message });
+      expect(failedRow.promotions).toEqual([]);
+
+      const checked = await seed(prisma, loaded, "DEPLOYING");
+      await serviceWith(async () => ({
+        kind: "proceed",
+        checked: true,
+        imageDigest: CHECKED,
+      })).call(checked.authenticated, checked.deployment.friendlyId, {
+        skipPromotion: true,
+        imageDigest: DIGEST,
+      });
+      const deployedRow = await prisma.workerDeployment.findFirstOrThrow({
+        where: { id: checked.deployment.id },
+      });
+      expect(deployedRow.status).toBe("DEPLOYED");
+      expect(deployedRow.imageReference).toBe(
+        `registry.example.com/deployments/proj_test:20260101.1.prod@${CHECKED}`
+      );
+
+      expect(queued).toEqual([]);
+    }
+  );
 });

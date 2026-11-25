@@ -88,7 +88,8 @@ function createRunEngine() {
     },
     queue: {
       // A deploying deployment reaches DEPLOYED or TIMED_OUT within DEPLOY_TIMEOUT_MS of
-      // entering DEPLOYING, so twice that only catches deployments whose timeout never fired.
+      // entering DEPLOYING, or of finalize extending the timeout once, so twice
+      // that only catches deployments whose timeout never fired.
       deploymentWaitMaxMs: env.DEPLOY_TIMEOUT_MS * 2,
       // Global flag first so the mode can change without a deploy; it's read from the in-memory
       // flag snapshot, so this adds no query per dequeue. Per-org overrides would need the org's

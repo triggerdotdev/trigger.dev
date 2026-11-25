@@ -19,7 +19,7 @@ import {
   loadDeploymentChecksController,
   runDeploymentCheck,
 } from "~/v3/deploymentChecks.server";
-import { latestMetrics } from "./otlpMetrics.helpers";
+import { latestMetrics, metricSum } from "./otlpMetrics.helpers";
 import { createInMemoryMetrics } from "./utils/tracing";
 
 vi.setConfig({ testTimeout: 60_000 });
@@ -197,7 +197,7 @@ describe("deployment checks", () => {
     // Catches: a gate or shadow deploy not checked, a skipped one checked, an image reference
     // the checker can't use sent, the plugin asked about the wrong org or deployment, an org id
     // in the metric attributes, or a flagged answer missing from the counter the deploy scan
-    // alert reads.
+    // alerts read.
     const metrics = createInMemoryMetrics();
     const telemetry = deploymentCheckTelemetry(metrics.meter);
     const run = async (
@@ -262,13 +262,18 @@ describe("deployment checks", () => {
       .find((metric) => metric.descriptor.name === "deployment_checks.decisions_total")?.dataPoints;
     expect(points?.map((point) => point.attributes)).toEqual(
       expect.arrayContaining([
-        { mode: "shadow", selected_by: "sampled", outcome: "pass" },
-        { mode: "gate", selected_by: "always", outcome: "pass" },
-        { mode: "shadow", selected_by: "sampled", outcome: "flagged" },
+        { mode: "shadow", selected_by: "sampled", outcome: "pass", stage: "job" },
+        { mode: "gate", selected_by: "always", outcome: "pass", stage: "job" },
+        { mode: "shadow", selected_by: "sampled", outcome: "flagged", stage: "job" },
       ])
     );
     for (const point of points ?? []) {
-      expect(Object.keys(point.attributes).sort()).toEqual(["mode", "outcome", "selected_by"]);
+      expect(Object.keys(point.attributes).sort()).toEqual([
+        "mode",
+        "outcome",
+        "selected_by",
+        "stage",
+      ]);
     }
     await metrics.meterProvider.shutdown();
   });
@@ -301,6 +306,84 @@ describe("deployment checks", () => {
           { prisma, controller: final.controller }
         )
       ).toBe("unavailable");
+    }
+  );
+
+  postgresTest(
+    "retries a failed decision, and records it on the last attempt",
+    async ({ prisma }) => {
+      // Catches: a failed decision dropped without a record once its retries run out, or a check
+      // run without a decision.
+      const metrics = createInMemoryMetrics();
+      const telemetry = deploymentCheckTelemetry(metrics.meter);
+      const { deployment } = await createDeployment(prisma);
+      const plugin = testPlugin();
+      const controller: DeploymentChecksController = {
+        ...plugin.controller,
+        async decide() {
+          throw new Error("decide broke");
+        },
+      };
+
+      await expect(
+        runDeploymentCheck(
+          { deploymentId: deployment.id, attempt: 0 },
+          { prisma, controller, telemetry }
+        )
+      ).rejects.toThrow("decide broke");
+      expect(
+        await runDeploymentCheck(
+          { deploymentId: deployment.id, attempt: LAST_ATTEMPT },
+          { prisma, controller, telemetry }
+        )
+      ).toBe("skipped");
+      expect(plugin.checks).toHaveLength(0);
+      expect(
+        metricSum(await latestMetrics(metrics), "deployment_checks.decisions_total", {
+          selected_by: "decision_failed",
+          stage: "job",
+        })
+      ).toBe(1);
+
+      // One before the last still retries, and a decision the host can't act on counts the same.
+      await expect(
+        runDeploymentCheck(
+          { deploymentId: deployment.id, attempt: LAST_ATTEMPT - 1 },
+          { prisma, controller, telemetry }
+        )
+      ).rejects.toThrow("decide broke");
+      const malformed: DeploymentChecksController = {
+        ...plugin.controller,
+        async decide() {
+          return { plan: "unknown" } as never;
+        },
+      };
+      expect(
+        await runDeploymentCheck(
+          { deploymentId: deployment.id, attempt: LAST_ATTEMPT },
+          { prisma, controller: malformed, telemetry }
+        )
+      ).toBe("skipped");
+      const unlabelled: DeploymentChecksController = {
+        ...plugin.controller,
+        async decide() {
+          return { plan: "shadow" } as never;
+        },
+      };
+      expect(
+        await runDeploymentCheck(
+          { deploymentId: deployment.id, attempt: LAST_ATTEMPT },
+          { prisma, controller: unlabelled, telemetry }
+        )
+      ).toBe("skipped");
+      expect(plugin.checks).toHaveLength(0);
+      expect(
+        metricSum(await latestMetrics(metrics), "deployment_checks.decisions_total", {
+          selected_by: "decision_failed",
+          stage: "job",
+        })
+      ).toBe(3);
+      await metrics.meterProvider.shutdown();
     }
   );
 

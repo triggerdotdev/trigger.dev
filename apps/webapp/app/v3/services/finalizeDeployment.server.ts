@@ -15,6 +15,7 @@ import { tryCatch } from "@trigger.dev/core";
 import { externalDeploymentCacheInstance } from "~/services/externalDeploymentCacheInstance.server";
 import type { PrismaClientOrTransaction } from "~/db.server";
 import { queueDeploymentCheck } from "../deploymentChecksWorker.server";
+import { gateDeployment, type DeploymentGateResult } from "../deploymentChecks.server";
 import { computeOnlyEnabled, loadOrgFeatureFlags } from "~/v3/computeOnlyFlag.server";
 
 const COMPUTE_ONLY_MISSING_TEMPLATE_MESSAGE =
@@ -23,7 +24,8 @@ const COMPUTE_ONLY_MISSING_TEMPLATE_MESSAGE =
 export class FinalizeDeploymentService extends BaseService {
   constructor(
     prisma?: PrismaClientOrTransaction,
-    private readonly queueCheck: (deploymentId: string) => Promise<void> = queueDeploymentCheck
+    private readonly queueCheck: (deploymentId: string) => Promise<void> = queueDeploymentCheck,
+    private readonly gate: typeof gateDeployment = gateDeployment
   ) {
     super(prisma);
   }
@@ -36,7 +38,11 @@ export class FinalizeDeploymentService extends BaseService {
      * The org's `featureFlags` read from the primary, when the caller already did. Not the
      * authenticated env's copy, which comes from a replica that can miss a just-set `computeOnly`.
      */
-    primaryOrgFeatureFlags?: unknown
+    primaryOrgFeatureFlags?: unknown,
+    /**
+     * The finalize-time result, when the caller already ran it. Left out, it runs here.
+     */
+    gated?: DeploymentGateResult
   ) {
     const deployment = await this._prisma.workerDeployment.findFirst({
       where: {
@@ -110,7 +116,34 @@ export class FinalizeDeploymentService extends BaseService {
       throw new ServiceValidationError(error.message);
     }
 
-    const imageDigest = validatedImageDigest(body.imageDigest);
+    // The finalize-time step, on every route.
+    const gate =
+      gated ??
+      (await this.gate(
+        {
+          id: deployment.id,
+          friendlyId: deployment.friendlyId,
+          imageReference: deployment.imageReference,
+          type: deployment.type,
+          organizationId: authenticatedEnv.organizationId,
+          projectRef: authenticatedEnv.project.externalRef,
+        },
+        body.imageDigest
+      ));
+    if (gate.kind === "refuse") {
+      await failRefusedDeployment(
+        this._prisma,
+        authenticatedEnv,
+        deployment.friendlyId,
+        gate.error
+      );
+    }
+
+    // Use the resolved digest when there is one.
+    const imageDigest =
+      gate.kind === "proceed" && gate.checked
+        ? gate.imageDigest
+        : validatedImageDigest(body.imageDigest);
     const deployedAt = new Date();
     const imageReference = imageDigest
       ? `${deployment.imageReference}@${imageDigest}`
@@ -137,8 +170,8 @@ export class FinalizeDeploymentService extends BaseService {
       throw new ServiceValidationError("Worker deployment is not in DEPLOYING status");
     }
 
-    // Queue the check as soon as the deployment is marked DEPLOYED.
-    void this.queueCheck(deployment.id);
+    // Queue the follow-up check unless it already ran.
+    if (!(gate.kind === "proceed" && gate.checked)) void this.queueCheck(deployment.id);
 
     const finalizedDeployment = {
       ...deployment,
@@ -233,6 +266,17 @@ export class FinalizeDeploymentService extends BaseService {
 
     return finalizedDeployment;
   }
+}
+
+/** Fails a refused deployment with its generic message, and throws it for the client. */
+export async function failRefusedDeployment(
+  prisma: PrismaClientOrTransaction,
+  authenticatedEnv: AuthenticatedEnvironment,
+  deploymentFriendlyId: string,
+  error: { name: string; message: string }
+): Promise<never> {
+  await new FailDeploymentService(prisma).call(authenticatedEnv, deploymentFriendlyId, { error });
+  throw new ServiceValidationError(error.message);
 }
 
 function validatedImageDigest(imageDigest?: string): string | undefined {

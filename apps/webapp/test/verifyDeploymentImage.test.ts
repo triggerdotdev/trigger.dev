@@ -5,6 +5,7 @@ import {
   inspectManifest,
   interpretBatchGetImageResponse,
   parseEcrImageReference,
+  resolveEcrImageDigest,
   treeHasUnpullableLayer,
 } from "~/v3/services/verifyDeploymentImage.server";
 import { type RegistryConfig } from "~/v3/registryConfig.server";
@@ -313,5 +314,99 @@ describe("ecrImageExists", () => {
       })
     );
     expect(result).toBe("found");
+  });
+});
+
+describe("resolveEcrImageDigest", () => {
+  const TAGGED = `${ECR_HOST}/deployments-test/proj_abc:v1.prod.a1b2c3d4`;
+  const OCI = "application/vnd.oci.image.manifest.v1+json";
+  const resolve = (send: Parameters<typeof resolveEcrImageDigest>[1], imageReference = TAGGED) =>
+    resolveEcrImageDigest({ imageReference, registryConfig: ecrConfig }, send, { min: 1, max: 1 });
+  const found = (image: Record<string, unknown>) => ({ images: [image] }) as any;
+
+  it("returns the digest and manifest type the tag points to, asking by tag", async () => {
+    // Catches: a lookup by anything but the tag, or the registry's media type ignored.
+    let seen: any;
+    const result = await resolve(async (input) => {
+      seen = input;
+      return found({ imageId: { imageDigest: DIGEST_A }, imageManifestMediaType: OCI });
+    });
+    expect(result).toEqual({ kind: "found", digest: DIGEST_A, mediaType: OCI });
+    expect(seen.imageIds).toEqual([{ imageTag: "v1.prod.a1b2c3d4" }]);
+  });
+
+  it("reads the manifest type when the registry gives none, for a plain image manifest only", async () => {
+    // Catches: an index manifest passing as a plain image manifest.
+    const single = await resolve(async () =>
+      found({ imageId: { imageDigest: DIGEST_A }, imageManifest: imageManifest([]) })
+    );
+    expect(single).toMatchObject({
+      kind: "found",
+      mediaType: "application/vnd.docker.distribution.manifest.v2+json",
+    });
+
+    const claimed = JSON.stringify({ mediaType: OCI, manifests: [{ digest: DIGEST_B }] });
+    const index = await resolve(async () =>
+      found({ imageId: { imageDigest: DIGEST_A }, imageManifest: claimed })
+    );
+    expect(index).toEqual({ kind: "found", digest: DIGEST_A, mediaType: undefined });
+  });
+
+  it("asks again while a just-pushed tag is missing, then reports it missing", async () => {
+    // Catches: a tag read a moment after its push refusing the deploy, or a lookup that never ends.
+    let calls = 0;
+    const appears = await resolve(async () => {
+      calls++;
+      return calls < 2
+        ? ({ failures: [{ failureCode: "ImageNotFound" }] } as any)
+        : found({ imageId: { imageDigest: DIGEST_A }, imageManifestMediaType: OCI });
+    });
+    expect(appears).toMatchObject({ kind: "found", digest: DIGEST_A });
+
+    calls = 0;
+    const never = await resolve(async () => {
+      calls++;
+      return { failures: [{ failureCode: "ImageNotFound" }] } as any;
+    });
+    expect(never).toEqual({ kind: "missing" });
+    expect(calls).toBe(5);
+  });
+
+  it("reports a missing repository at once, and anything else it can't read as unknown", async () => {
+    let calls = 0;
+    const noRepository = await resolve(async () => {
+      calls++;
+      throw new RepositoryNotFoundException({ message: "not found", $metadata: {} });
+    });
+    expect(noRepository).toEqual({ kind: "missing" });
+    expect(calls).toBe(1);
+
+    const denied = await resolve(async () => {
+      throw new Error("AccessDenied");
+    });
+    expect(denied).toEqual({ kind: "unknown" });
+
+    const badDigest = await resolve(async () => found({ imageId: { imageDigest: "sha256:x" } }));
+    expect(badDigest).toEqual({ kind: "unknown" });
+  });
+
+  it("returns unknown for a non-ECR registry or an unparseable reference without asking", async () => {
+    let called = false;
+    const send = async () => {
+      called = true;
+      return {} as any;
+    };
+    const other = await resolveEcrImageDigest(
+      {
+        imageReference: "registry.digitalocean.com/trigger-deployments/proj_abc:v1",
+        registryConfig: { host: "registry.digitalocean.com", namespace: "trigger-deployments" },
+      },
+      send
+    );
+    expect(other).toEqual({ kind: "unknown" });
+    expect(await resolve(send, `${ECR_HOST}/deployments-test/proj_abc`)).toEqual({
+      kind: "unknown",
+    });
+    expect(called).toBe(false);
   });
 });

@@ -66,6 +66,6 @@ export interface DeploymentChecksController {
 }
 
 export interface DeploymentChecksPlugin {
-  /** Null when the plugin isn't configured. */
+  /** Null when the plugin can't run checks on this host. */
   create(config: DeploymentChecksPluginConfig): DeploymentChecksController | null;
 }
