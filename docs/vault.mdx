@@ -1,0 +1,34 @@
+---
+title: "Agent Vault"
+description: "Authenticate outbound requests without exposing secrets to your builds or task code."
+---
+
+import ComingSoon from "/snippets/coming-soon-generic.mdx";
+
+<ComingSoon />
+
+Agent Vault is a secure way to keep sensitive secrets out of task runs. Instead of inserting them as environment variables, they are inserted at request-time to configured destinations. This lets your tasks and agents reach configured services without having direct access to credentials.
+
+## How it works
+
+Your task runs get a dummy value in place of the real secret. When you make a request with that value to a configured host, Agent Vault proxies the request, adding the real credentials.
+
+## Builds
+
+Vault secrets are not available at build time. Top-level code in your task files runs during the build, so anything there that needs the secret to have a value will fail. Move that code inside `run`.
+
+```ts
+import { task } from "@trigger.dev/sdk";
+import OpenAI from "openai";
+
+// ❌ Throws during the build: OPENAI_API_KEY is undefined
+const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+
+export const myTask = task({
+  id: "my-task",
+  run: async () => {
+    // ✅ Works: the client is created when the task runs
+    const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+  },
+});
+```

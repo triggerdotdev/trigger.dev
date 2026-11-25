@@ -298,6 +298,7 @@
             "pages": [
               "deployment/overview",
               "deploy-environment-variables",
+              "vault",
               "github-actions",
               "deployment/trusted-publishing",
               "deployment/preview-branches",
