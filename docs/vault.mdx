@@ -9,6 +9,27 @@ import ComingSoon from "/snippets/coming-soon-generic.mdx";
 
 Agent Vault is a secure way to keep sensitive secrets out of task runs. Instead of inserting them as environment variables, they are inserted at request-time to configured destinations. This lets your tasks and agents reach configured services without having direct access to credentials.
 
+## Using Agent Vault
+
+Go to the [Environment Variables](https://cloud.trigger.dev/_/environment-variables) page for your project. If you're in the private beta, you'll see a banner prompting you to enable Agent Vault.
+
+<Note>
+  Agent Vault only works in deployed environments (Staging, Production and Preview), not in
+  Development.
+</Note>
+
+To add a new Vault secret:
+
+1. Click **Add new**.
+2. Enter the key and value, then toggle **Agent Vault** on for the value.
+3. Enter the domains the secret can be sent to.
+
+To move an existing environment variable into the Vault:
+
+1. Hover over its row and click **To Vault**.
+2. Enter the domains the secret can be sent to, pressing Enter or Tab after each one.
+3. Click **Move to Vault**.
+
 ## How it works
 
 Your task runs get a dummy value in place of the real secret. When you make a request with that value to a configured host, Agent Vault proxies the request, adding the real credentials.
@@ -18,17 +39,14 @@ Your task runs get a dummy value in place of the real secret. When you make a re
 Vault secrets are not available at build time. Top-level code in your task files runs during the build, so anything there that needs the secret to have a value will fail. Move that code inside `run`.
 
 ```ts
-import { task } from "@trigger.dev/sdk";
-import OpenAI from "openai";
-
-// ❌ Throws during the build: OPENAI_API_KEY is undefined
-const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+// ❌ Throws during the build: API_KEY is undefined
+const client = new Client(process.env.API_KEY);
 
 export const myTask = task({
   id: "my-task",
   run: async () => {
     // ✅ Works: the client is created when the task runs
-    const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+    const client = new Client(process.env.API_KEY);
   },
 });
 ```
