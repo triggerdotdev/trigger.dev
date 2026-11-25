@@ -289,7 +289,7 @@ export function SpanView({
   refreshKey,
   tabParam = "tab",
   hideFocusOnRun = false,
-  headerAccessory,
+  statusAccessory,
 }: {
   runParam: string;
   spanId: string | undefined;
@@ -301,8 +301,11 @@ export function SpanView({
   /** The search param that holds the panel's tab, so a page can keep `tab` for its own tabs. */
   tabParam?: string;
   hideFocusOnRun?: boolean;
-  /** Shown in the panel header, before the close button. */
-  headerAccessory?: React.ReactNode;
+  /**
+   * Shown at the end of the status line, e.g. a link to the run page. A panel without a status
+   * line (a log, a not-started run) shows it in the header instead.
+   */
+  statusAccessory?: React.ReactNode;
 }) {
   const organization = useOrganization();
   const project = useProject();
@@ -367,7 +370,7 @@ export function SpanView({
           closePanel={closePanel}
           tabParam={tabParam}
           hideFocusOnRun={hideFocusOnRun}
-          headerAccessory={headerAccessory}
+          statusAccessory={statusAccessory}
         />
       );
     }
@@ -379,7 +382,7 @@ export function SpanView({
           runParam={runParam}
           closePanel={closePanel}
           tabParam={tabParam}
-          headerAccessory={headerAccessory}
+          statusAccessory={statusAccessory}
         />
       );
     }
@@ -392,14 +395,14 @@ function SpanBody({
   runParam,
   closePanel,
   tabParam,
-  headerAccessory,
+  statusAccessory,
 }: {
   span: Span;
   spanOverrides?: SpanOverride;
   runParam?: string;
   closePanel?: () => void;
   tabParam: string;
-  headerAccessory?: React.ReactNode;
+  statusAccessory?: React.ReactNode;
 }) {
   const _organization = useOrganization();
   const _project = useProject();
@@ -440,7 +443,7 @@ function SpanBody({
             </Header2>
           </div>
           {panelHeaderActions(
-            headerAccessory,
+            spanHasStatusLine(span) ? undefined : statusAccessory,
             runParam && closePanel && (
               <Button
                 onClick={closePanel}
@@ -455,15 +458,20 @@ function SpanBody({
         </div>
       </div>
       {isAiInspector ? (
-        <SpanEntity span={span} />
+        <SpanEntity span={span} statusAccessory={statusAccessory} />
       ) : (
         <div className="scrollbar-gutter-stable overflow-y-auto scrollbar-thin scrollbar-track-transparent scrollbar-thumb-surface-control">
-          <SpanEntity span={span} />
+          <SpanEntity span={span} statusAccessory={statusAccessory} />
         </div>
       )}
     </div>
   );
 }
+/** A normal traced span shows its status first; logs and entity spans don't. */
+function spanHasStatusLine(span: Span) {
+  return !span.entity && span.level === "TRACE";
+}
+
 /** The header's right side: an optional accessory, then the close button. */
 function panelHeaderActions(accessory: React.ReactNode, closeButton: React.ReactNode) {
   if (!accessory) return closeButton;
@@ -520,7 +528,7 @@ function RunBody({
   closePanel,
   tabParam,
   hideFocusOnRun,
-  headerAccessory,
+  statusAccessory,
 }: {
   run: SpanRun;
   queueMetrics: RunQueueMetrics | null;
@@ -533,7 +541,7 @@ function RunBody({
   closePanel?: () => void;
   tabParam: string;
   hideFocusOnRun: boolean;
-  headerAccessory?: React.ReactNode;
+  statusAccessory?: React.ReactNode;
 }) {
   const organization = useOrganization();
   const project = useProject();
@@ -592,7 +600,8 @@ function RunBody({
           {run.executionPolicy && <Badge variant="extra-small">Sandbox</Badge>}
         </div>
         {panelHeaderActions(
-          headerAccessory,
+          // The status line is on Overview only; elsewhere (and for a not-started run) it's here.
+          waitingView || (tab && tab !== "overview") ? statusAccessory : undefined,
           runParam && closePanel && (
             <Button
               onClick={closePanel}
@@ -1307,11 +1316,17 @@ function RunBody({
               {waitingView ? (
                 <NotStartedCard initial={waitingView} runFriendlyId={run.friendlyId} />
               ) : (
-                <div className="border-b border-grid-bright pb-3">
+                <div
+                  className={cn(
+                    "border-b border-grid-bright pb-3",
+                    statusAccessory && "flex items-center justify-between gap-2"
+                  )}
+                >
                   <SimpleTooltip
                     button={<TaskRunStatusCombo status={run.status} className="text-sm" />}
                     content={descriptionForTaskRunStatus(run.status)}
                   />
+                  {statusAccessory}
                 </div>
               )}
               <RunTimeline run={run} />
@@ -1603,7 +1618,7 @@ function StartedSessionProperty({ session }: { session: StartedSession }) {
   );
 }
 
-function SpanEntity({ span }: { span: Span }) {
+function SpanEntity({ span, statusAccessory }: { span: Span; statusAccessory?: React.ReactNode }) {
   const isAdmin = useHasAdminAccess();
 
   const organization = useOrganization();
@@ -1616,7 +1631,12 @@ function SpanEntity({ span }: { span: Span }) {
       <div className="flex flex-col gap-4 p-3">
         {span.level === "TRACE" ? (
           <>
-            <div className="border-b border-grid-bright pb-3">
+            <div
+              className={cn(
+                "border-b border-grid-bright pb-3",
+                statusAccessory && "flex items-center justify-between gap-2"
+              )}
+            >
               <TaskRunAttemptStatusCombo
                 status={
                   span.isCancelled
@@ -1629,6 +1649,7 @@ function SpanEntity({ span }: { span: Span }) {
                 }
                 className="text-sm"
               />
+              {statusAccessory}
             </div>
             <SpanTimeline
               startTime={new Date(span.startTime)}

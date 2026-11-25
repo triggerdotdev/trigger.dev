@@ -3,9 +3,13 @@ import { createElement } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { act } from "react-dom/test-utils";
 import { afterEach, describe, expect, it } from "vitest";
+import * as Timeline from "~/components/primitives/Timeline";
 import type { TraceEvent } from "~/components/runs/v3/trace/types";
 import type { SessionTreeRow } from "~/components/sessions/v1/trace/buildSessionTree";
-import { SessionTimelineRow } from "~/components/sessions/v1/trace/SessionTimelineRow";
+import {
+  SessionTimelineRow,
+  type RowPlacement,
+} from "~/components/sessions/v1/trace/SessionTimelineRow";
 
 let container: HTMLDivElement | undefined;
 let root: Root | undefined;
@@ -29,20 +33,30 @@ const spanData = {
   style: {},
 } as unknown as TraceEvent["data"];
 
-function renderRow(row: SessionTreeRow<TraceEvent["data"]>, onClick: () => void) {
+function renderRow(
+  row: SessionTreeRow<TraceEvent["data"]>,
+  placement: RowPlacement,
+  onClick: () => void
+) {
   container = document.createElement("div");
   document.body.appendChild(container);
   root = createRoot(container);
   act(() => {
+    // Rows draw inside the timeline column's root, on the session axis.
     root!.render(
-      createElement(SessionTimelineRow, {
-        node: { id: "node", level: 1, hasChildren: false, data: row },
-        row,
-        isSelected: false,
-        scale: { durationNs: 1_000_000_000, queuedDurationNs: undefined },
-        isLiveRun: false,
-        onClick,
-      })
+      createElement(
+        Timeline.Root,
+        { startMs: 0, durationMs: 1000, scale: 0, minWidth: 300, maxWidth: 300 },
+        createElement(SessionTimelineRow, {
+          node: { id: "node", level: 1, hasChildren: false, data: row },
+          row,
+          isSelected: false,
+          placement,
+          axisWindow: { startMs: 0, endMs: 1000 },
+          isLiveRun: false,
+          onClick,
+        })
+      )
     );
   });
 }
@@ -53,6 +67,11 @@ describe("SessionTimelineRow", () => {
     let clicks = 0;
     renderRow(
       { kind: "span", runFriendlyId: "run_1", spanId: "s1", span: spanData },
+      {
+        kind: "span",
+        scale: { durationNs: 1_000_000_000, queuedDurationNs: undefined },
+        originMs: 0,
+      },
       () => clicks++
     );
 
@@ -67,10 +86,12 @@ describe("SessionTimelineRow", () => {
     let clicks = 0;
     renderRow(
       { kind: "run", run: { friendlyId: "run_1", status: "COMPLETED_SUCCESSFULLY" } } as never,
+      { kind: "bar", startMs: 0, endMs: 500 },
       () => clicks++
     );
 
-    act(() => (container!.firstElementChild as HTMLElement).click());
+    const innermost = [...container!.querySelectorAll("*")].at(-1) as HTMLElement;
+    act(() => innermost.click());
 
     expect(clicks).toBe(1);
   });

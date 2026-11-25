@@ -27,19 +27,6 @@ export function resolveSessionPageView({
 }
 
 // Maps, not objects: a custom reason can be any string, "toString" included.
-const REASON_LABELS = new Map<string, string>([
-  ["initial", "first run"],
-  ["continuation", "continued after the previous run ended"],
-  ["upgrade", "moved to a new version"],
-  ["manual", "started manually"],
-]);
-
-/** Why the run started, for "Started because: …". Custom reasons from end-and-continue show as sent. */
-export function runStartedBecause(run: Pick<SessionTraceRun, "reason" | "afterCrash">) {
-  if (run.afterCrash) return "restarted after the previous run crashed";
-  return REASON_LABELS.get(run.reason) ?? run.reason;
-}
-
 export type RunReasonBadge = { label: string; tone: "warning" | "neutral"; tooltip?: string };
 
 const BADGE_LABELS = new Map<string, string | undefined>([

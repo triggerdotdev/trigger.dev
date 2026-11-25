@@ -7,9 +7,11 @@ import {
   PILL_UPDATE_MS,
   pillLabel,
   pillUpdateDelayMs,
+  rowGeometry,
 } from "~/components/sessions/v1/trace/sessionTraceScroll";
 
 const ROW = 32;
+const uniform = (ids: string[]) => rowGeometry(ids.map(() => ROW));
 const keysOf = (ids: string[]) => (index: number) => ids[index];
 const rows = (prefix: string, n: number) => Array.from({ length: n }, (_, i) => `${prefix}${i}`);
 
@@ -17,27 +19,33 @@ describe("scroll anchoring", () => {
   // Catches: live spans landing above the view sliding the rows the user is reading.
   it("keeps the top row in place when rows are added above it", () => {
     const before = rows("r", 100);
-    const anchor = anchorAt(40 * ROW + 7, ROW, keysOf(before))!;
+    const anchor = anchorAt(40 * ROW + 7, uniform(before), keysOf(before))!;
     const after = [...before.slice(0, 20), ...rows("new", 12), ...before.slice(20)];
-    expect(anchoredScrollTop(anchor, after.length, ROW, keysOf(after))).toBe(52 * ROW + 7);
+    expect(anchoredScrollTop(anchor, after.length, uniform(after), keysOf(after))).toBe(
+      52 * ROW + 7
+    );
   });
 
   // Catches: a collapse above the view jumping the view down by the removed rows.
   it("moves up when rows above are removed", () => {
     const before = rows("r", 100);
-    const anchor = anchorAt(40 * ROW, ROW, keysOf(before))!;
+    const anchor = anchorAt(40 * ROW, uniform(before), keysOf(before))!;
     const after = [...before.slice(0, 10), ...before.slice(30)];
-    expect(anchoredScrollTop(anchor, after.length, ROW, keysOf(after))).toBe(20 * ROW);
+    expect(anchoredScrollTop(anchor, after.length, uniform(after), keysOf(after))).toBe(20 * ROW);
   });
 
   // Catches: anchoring scrolling when only rows below changed, or after its row disappeared.
   it("leaves the view alone when the top row didn't move or is gone", () => {
     const before = rows("r", 100);
-    const anchor = anchorAt(40 * ROW, ROW, keysOf(before))!;
+    const anchor = anchorAt(40 * ROW, uniform(before), keysOf(before))!;
     const grownBelow = [...before, ...rows("new", 50)];
-    expect(anchoredScrollTop(anchor, grownBelow.length, ROW, keysOf(grownBelow))).toBeUndefined();
+    expect(
+      anchoredScrollTop(anchor, grownBelow.length, uniform(grownBelow), keysOf(grownBelow))
+    ).toBeUndefined();
     const withoutTop = before.filter((id) => id !== "r40");
-    expect(anchoredScrollTop(anchor, withoutTop.length, ROW, keysOf(withoutTop))).toBeUndefined();
+    expect(
+      anchoredScrollTop(anchor, withoutTop.length, uniform(withoutTop), keysOf(withoutTop))
+    ).toBeUndefined();
   });
 
   // Catches: the outward search missing rows on either side of the hint or past the ends.
@@ -130,5 +138,30 @@ describe("the new-below pill", () => {
     expect(pillUpdateDelayMs(undefined, 5_000)).toBe(0);
     expect(pillUpdateDelayMs(5_000, 5_200)).toBe(PILL_UPDATE_MS - 200);
     expect(pillUpdateDelayMs(5_000, 7_000)).toBe(0);
+  });
+});
+
+describe("row geometry with mixed heights", () => {
+  const WAIT = 24;
+  const heights = (ids: string[]) =>
+    rowGeometry(ids.map((id) => (id.startsWith("wait") ? WAIT : ROW)));
+
+  // Catches: anchoring assuming every row is 32px, so a shorter wait row above the view shifts it.
+  it("keeps the anchored row in place when a shorter row lands above it", () => {
+    const before = rows("r", 60);
+    const anchor = anchorAt(40 * ROW + 7, heights(before), keysOf(before))!;
+    const after = ["wait0", ...before];
+    expect(anchoredScrollTop(anchor, after.length, heights(after), keysOf(after))).toBe(
+      40 * ROW + 7 + WAIT
+    );
+  });
+
+  it("finds the row under a position across rows of different heights", () => {
+    const geometry = heights(["r0", "wait0", "r1", "r2"]);
+    expect(geometry.indexAt(0)).toBe(0);
+    expect(geometry.indexAt(ROW)).toBe(1);
+    expect(geometry.indexAt(ROW + WAIT - 1)).toBe(1);
+    expect(geometry.indexAt(ROW + WAIT)).toBe(2);
+    expect(geometry.totalPx).toBe(3 * ROW + WAIT);
   });
 });

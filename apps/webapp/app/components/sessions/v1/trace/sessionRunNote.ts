@@ -3,12 +3,10 @@ import {
   EMERGENCY_CAP_NOTICE,
   isRunStarting,
   RUN_STARTING_WINDOW_MS,
-  unavailableReasonText,
   type RunLoadBlock,
 } from "./sessionRunFallback";
 import type { SessionRunLoad } from "./sessionRunLoads";
 import type { SessionTraceRun } from "./sessionTraceTypes";
-import { runStartedBecause } from "./sessionTraceView";
 
 type UnavailableReason = Extract<RunLoadBlock, { kind: "unavailable" }>["reason"];
 
@@ -16,19 +14,16 @@ type UnavailableReason = Extract<RunLoadBlock, { kind: "unavailable" }>["reason"
  * What the runs route says about a run. The panel works out its note from these facts and the
  * clock, so nothing it shows can go stale: no "starting" is ever stored.
  */
-export type RunFacts = Pick<SessionTraceRun, "number" | "reason" | "afterCrash" | "triggeredAt"> & {
+export type RunFacts = Pick<SessionTraceRun, "triggeredAt"> & {
   /** Why it can't load here, known before any read (the runs route's `view.unavailable`). */
   unavailable: UnavailableReason | "logsDeleted" | undefined;
 };
 
 export function runFactsOf(
-  run: Pick<SessionTraceRun, "number" | "reason" | "afterCrash" | "triggeredAt">,
+  run: Pick<SessionTraceRun, "triggeredAt">,
   view: { unavailable?: RunFacts["unavailable"] } | undefined
 ): RunFacts {
   return {
-    number: run.number,
-    reason: run.reason,
-    afterCrash: run.afterCrash,
     triggeredAt: run.triggeredAt,
     unavailable: view?.unavailable,
   };
@@ -121,10 +116,6 @@ export function panelLinksToRunPage(notShown: RunNotShown | undefined) {
   return notShown?.kind !== "neverStarted";
 }
 
-export function startedBecauseText(info: Pick<RunFacts, "number" | "reason" | "afterCrash">) {
-  return `Run ${info.number} · Started because: ${runStartedBecause(info)}`;
-}
-
 export function notShownText(notShown: RunNotShown): string {
   switch (notShown.kind) {
     case "starting":
@@ -132,11 +123,14 @@ export function notShownText(notShown: RunNotShown): string {
     case "neverStarted":
       return "This run never started, so it has no run page or spans.";
     case "logsDeleted":
-      return "Logs deleted under this plan's retention, so its spans can't be shown.";
+      return "Logs were deleted after your plan's retention period.";
     case "unavailable":
-      return notShown.reason === "emergencyCap"
-        ? EMERGENCY_CAP_NOTICE
-        : `Can't show its spans here. ${unavailableReasonText(notShown.reason)}`;
+      if (notShown.reason === "emergencyCap") return EMERGENCY_CAP_NOTICE;
+      if (notShown.reason === "noSpans") return "This run didn't record any spans.";
+      // The run page can't rebuild it either, so don't send people there for it.
+      if (notShown.reason === "anchorMissing") return "This run's trace can't be shown.";
+      // Why this view can't read it is ours to know; the customer only needs where to look.
+      return "This run's trace shows on its run page.";
     case "cutOff": {
       const limit = formatNumber(notShown.spanLimit);
       if (notShown.limit === "run")

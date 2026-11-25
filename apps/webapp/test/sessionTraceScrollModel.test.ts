@@ -1,7 +1,14 @@
 import { describe, expect, it } from "vitest";
-import { TraceScrollModel, type RowsView } from "~/components/sessions/v1/trace/sessionTraceScroll";
+import {
+  rowGeometry,
+  TraceScrollModel,
+  type RowsView,
+} from "~/components/sessions/v1/trace/sessionTraceScroll";
 
 const ROW = 32;
+/** Wait rows are shorter than the rest, like the real tree. */
+const WAIT_ROW = 24;
+const heightOf = (id: string) => (id.startsWith("wait:") ? WAIT_ROW : ROW);
 const VIEWPORT = 10 * ROW;
 const SKIP = new Set(["session", "loadEarlier"]);
 
@@ -15,7 +22,6 @@ class FakeTab {
   scrollTop = 0;
   active = true;
   newestRunId = "run_3";
-  openRunDone = true;
   /** Spans that arrived from the live tail; every other span came from a stored read. */
   live = new Set<string>();
   filterSettled = true;
@@ -25,7 +31,6 @@ class FakeTab {
     this.rows = rows;
     this.newestRunId = newestRunId;
     this.model = new TraceScrollModel({
-      rowHeightPx: ROW,
       holdAtLatest,
       skipAnchor: (id) => SKIP.has(id),
     });
@@ -34,6 +39,7 @@ class FakeTab {
   view(): RowsView {
     const rows = this.rows;
     return {
+      ...rowGeometry(rows.map(heightOf)),
       count: rows.length,
       keyAt: (index) => rows[index],
       visibleIndexOf: (id) => rows.indexOf(id),
@@ -58,7 +64,6 @@ class FakeTab {
       newestRunId: this.newestRunId,
       newestSpanIds: this.newestSpans(),
       isLiveSpan: (id) => this.live.has(id),
-      openRunDone: this.openRunDone,
       filterSettled: () => this.filterSettled,
       visibleTargetOf: (id) => (this.rows.includes(id) ? id : undefined),
     });
@@ -77,7 +82,7 @@ class FakeTab {
   }
 
   topRow() {
-    return this.rows[Math.floor(this.scrollTop / ROW)];
+    return this.rows[rowGeometry(this.rows.map(heightOf)).indexAt(this.scrollTop)];
   }
 }
 
@@ -95,6 +100,26 @@ const runsWithSpans = (newest: string, count: number) => [
 ];
 
 describe("the session trace scroll model", () => {
+  // Catches: the opening hold stopping short of (or past) the bottom when wait rows are 24px.
+  it("holds at the exact bottom when some rows are shorter", () => {
+    const rows = ["session", "run:run_1", "wait:run_2", "run:run_2", "wait:run_3", "run:run_3"];
+    const tab = new FakeTab([...rows, ...spans("run_3", 1, 20)], { holdAtLatest: true });
+    tab.change(tab.rows);
+    const total = (tab.rows.length - 2) * ROW + 2 * WAIT_ROW;
+    expect(tab.scrollTop).toBe(total - VIEWPORT);
+  });
+
+  // Catches: a wait row landing above the view moving the rows on screen.
+  it("keeps the top row in place when a wait row lands above it", () => {
+    const tab = new FakeTab(runsWithSpans("run_3", 20));
+    tab.change(tab.rows);
+    tab.scrollTo(20 * ROW + 5);
+    const top = tab.topRow();
+    tab.change(["wait:run_1", ...tab.rows]);
+    expect(tab.topRow()).toBe(top);
+    expect(tab.scrollTop).toBe(20 * ROW + 5 + WAIT_ROW);
+  });
+
   // Catches: the view sliding as live spans land above it.
   it("keeps the top row in place when rows land above it", () => {
     const tab = new FakeTab(runsWithSpans("run_3", 20));
@@ -171,32 +196,12 @@ describe("the session trace scroll model", () => {
       newestRunId: "run_3",
       newestSpanIds: spansWithLate,
       isLiveSpan: () => true,
-      openRunDone: true,
       filterSettled: () => true,
       visibleTargetOf: (id) => id,
     });
     expect(tab.model.waitingForSpans).toBe(true);
     tab.change([...tab.rows, ...tab.tail([late])]);
     expect(tab.model.pill.rows).toBe(1);
-  });
-
-  // Catches: opening with a pill for spans the user never saw, or (round 5) a live run's first
-  // spans landing off screen with no pill.
-  it("holds at the latest run until the opened run's first spans are in", () => {
-    const tab = new FakeTab(runsWithSpans("run_3", 0), { holdAtLatest: true });
-    tab.openRunDone = false;
-    tab.change(tab.rows);
-    // Spans arrive later; the hold follows them, then ends.
-    tab.openRunDone = true;
-    tab.change([...tab.rows, ...spans("run_3", 1, 30)]);
-    expect(tab.scrollTop).toBe(tab.rows.length * ROW - VIEWPORT);
-    expect(tab.model.pill.rows).toBe(0);
-    expect(tab.model.holdingAtLatest).toBe(false);
-    // From now on the view stays and the pill counts.
-    const at = tab.scrollTop;
-    tab.change([...tab.rows, ...tab.tail(spans("run_3", 31, 32))]);
-    expect(tab.scrollTop).toBe(at);
-    expect(tab.model.pill.rows).toBe(2);
   });
 
   // Catches: a deep link (no hold) opening with a pill for the spans already there, found by these
@@ -253,10 +258,8 @@ describe("the session trace scroll model", () => {
   // live spans, since no render saw it loading (PR review, Pullfrog).
   it("counts the first live spans of a run whose stored read had no span rows", () => {
     const tab = new FakeTab(runsWithSpans("run_3", 0), { holdAtLatest: true });
-    tab.openRunDone = false;
     tab.change(tab.rows);
-    // Snapshot and settle land in one render: the hold ends with no span rows.
-    tab.openRunDone = true;
+    // The hold ends after the first pass with no span rows.
     tab.change([...tab.rows]);
     tab.model.interacted();
     tab.scrollTo(0);
@@ -280,12 +283,24 @@ describe("the session trace scroll model", () => {
   // Catches: the hold scrolling after the user took over.
   it("stops holding as soon as the user interacts", () => {
     const tab = new FakeTab(runsWithSpans("run_3", 30), { holdAtLatest: true });
-    tab.openRunDone = false;
-    tab.change(tab.rows);
+    // A click or scroll before the first pass: the hold never moves the view.
     tab.model.interacted();
     tab.scrollTo(4 * ROW);
-    tab.change([...tab.rows, ...spans("run_3", 31, 35)]);
+    tab.change(tab.rows);
     expect(tab.scrollTop).toBe(4 * ROW);
+  });
+
+  // Catches: the Live run button doing nothing when its row is already open and selected, since
+  // no row changes to run a pass (PR review).
+  it("scrolls to a row on the list at once when asked with the view", () => {
+    const tab = new FakeTab(runsWithSpans("run_3", 30));
+    tab.change(tab.rows);
+    tab.scrollTo(0);
+    const scrollTop = tab.model.reveal(
+      { id: "run:run_3", align: "start", cancelOnInteraction: true, waitForFilter: false },
+      tab.view()
+    );
+    expect(scrollTop).toBe(tab.rows.indexOf("run:run_3") * ROW);
   });
 
   // Catches: a new run below losing to a span count, or its click not landing on the run.

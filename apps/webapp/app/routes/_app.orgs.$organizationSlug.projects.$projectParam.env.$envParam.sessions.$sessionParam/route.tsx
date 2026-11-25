@@ -380,6 +380,7 @@ function SessionLeftPane({
             <SessionTraceTab
               key={session.friendlyId}
               runsPath={v3SessionRunsPath(organization, project, environment, session)}
+              taskIdentifier={session.taskIdentifier}
               treeSnapshot={traceTreeSnapshot}
               active={view === "trace"}
               sessionOpen={sessionOpen}

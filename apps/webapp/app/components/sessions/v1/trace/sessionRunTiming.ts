@@ -70,14 +70,6 @@ export function newestRunFriendlyId(
   return newest.friendlyId;
 }
 
-/** The run expanded when the tab opens: the live run, else the newest loaded. */
-export function initiallyExpandedRunFriendlyId(
-  runs: SessionTraceRun[],
-  totalCount: number
-): string | undefined {
-  return liveRunFriendlyId(runs, totalCount) ?? newestRun(runs)?.friendlyId;
-}
-
 /** Span names chat.agent opens while it waits for the user's next message. */
 const MESSAGE_WAIT_SPAN_NAMES = new Set([
   "first message",

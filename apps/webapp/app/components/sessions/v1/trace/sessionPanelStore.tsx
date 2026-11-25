@@ -222,14 +222,7 @@ export function useRunNote(runFriendlyId: string) {
 }
 
 function sameFacts(a: RunFacts | undefined, b: RunFacts) {
-  return (
-    a !== undefined &&
-    a.number === b.number &&
-    a.reason === b.reason &&
-    a.afterCrash === b.afterCrash &&
-    a.triggeredAt === b.triggeredAt &&
-    a.unavailable === b.unavailable
-  );
+  return a !== undefined && a.triggeredAt === b.triggeredAt && a.unavailable === b.unavailable;
 }
 
 // Field by field: the tab sends these on every chunk.

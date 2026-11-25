@@ -146,35 +146,7 @@ export function isRunTraceMounted(load: SessionRunLoad): boolean {
   }
 }
 
-/**
- * A run that just became the newest, replacing a known one, opens expanded, unless the user has
- * already expanded or collapsed it. Several new runs at once open only the newest.
- */
-function newRunToOpen(
-  current: SessionRunLoads,
-  newestRunId: string | undefined
-): string | undefined {
-  const previous = current.newestRunId;
-  if (!previous || !newestRunId || previous === newestRunId) return undefined;
-  if (current.expanded.has(newestRunId) || current.collapsedOrder.includes(newestRunId)) {
-    return undefined;
-  }
-  return newestRunId;
-}
-
-/**
- * Whether a run row opens expanded when it first appears in the tree. Asks the same question as
- * `runsChanged`, so the answer doesn't depend on whether that event has been handled yet.
- */
-export function runOpensExpanded(
-  loads: SessionRunLoads,
-  runFriendlyId: string,
-  newestRunId: string | undefined
-): boolean {
-  return loads.expanded.has(runFriendlyId) || newRunToOpen(loads, newestRunId) === runFriendlyId;
-}
-
-/** The starting state, with the run that opens expanded. */
+/** The starting state, with any runs already expanded. */
 export function createSessionRunLoads(
   expandedRunIds: string[] = [],
   { budget = SESSION_SPAN_BUDGET }: { budget?: number } = {}
@@ -217,8 +189,8 @@ function runLoadedSpans(loads: SessionRunLoads, runFriendlyId: string): number {
  * - At most 3 runs load at once; a run holds its slot until all its pages are in. The newest run
  *   starts first when it's queued.
  * - A run that settled with no spans becomes loaded when its first span arrives while tailing.
- * - When a newer run takes over, it expands; the previous newest run keeps its state, and is read
- *   afresh once if it was still empty.
+ * - When a newer run takes over, it stays collapsed; the previous newest run keeps its state, and
+ *   is read afresh once if it was still empty.
  * - A deep-linked run expands first, so it loads ahead of every run but the newest.
  * - The span budget: a run starts or fetches a page only within it, after freeing the least
  *   recently collapsed runs if that's enough; the newest run is never held back. A run that would
@@ -284,8 +256,6 @@ export function sessionRunLoadsReducer(
       ) {
         next = withoutLoads(next, [previous]);
       }
-      const opened = newRunToOpen(current, action.newestRunId);
-      if (opened) next = { ...next, expanded: new Set([...next.expanded, opened]) };
       return loadWanted(next);
     }
     case "spanCount": {

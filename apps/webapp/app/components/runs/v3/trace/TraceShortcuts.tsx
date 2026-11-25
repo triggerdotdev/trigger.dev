@@ -19,8 +19,10 @@ export function KeyboardShortcuts({
   onToggleLevel,
   afterNavigation,
   trailing,
-}: Required<Omit<TreeShortcutOptions, "enabled">> & {
+}: Required<Omit<TreeShortcutOptions, "enabled" | "onExpandAll">> & {
   enabled: boolean;
+  /** Left out where opening everything would load too much; E isn't listed then. */
+  onExpandAll?: () => void;
   afterNavigation?: React.ReactNode;
   trailing?: React.ReactNode;
 }) {
@@ -28,12 +30,14 @@ export function KeyboardShortcuts({
     <>
       <ArrowKeyShortcuts />
       {afterNavigation}
-      <ShortcutWithAction
-        shortcut={{ key: "e" }}
-        action={onExpandAll}
-        title="Expand all"
-        disabled={!enabled}
-      />
+      {onExpandAll && (
+        <ShortcutWithAction
+          shortcut={{ key: "e" }}
+          action={onExpandAll}
+          title="Expand all"
+          disabled={!enabled}
+        />
+      )}
       <ShortcutWithAction
         shortcut={{ key: "w" }}
         action={onCollapseAll}

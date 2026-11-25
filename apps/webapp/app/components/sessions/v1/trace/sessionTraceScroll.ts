@@ -1,7 +1,8 @@
 import { runNodeId } from "./buildSessionTree";
 
 /** Where the view is: the row at the top and how far it's scrolled into that row. */
-export type ScrollAnchor = { id: string; index: number; offsetPx: number };
+/** `topPx` is where the anchor row's top was when the anchor was taken. */
+export type ScrollAnchor = { id: string; index: number; offsetPx: number; topPx: number };
 
 /** Rows added below the view that the "new below" pill reports. */
 export type NewBelow = { rows: number; newRunId: string | undefined };
@@ -21,15 +22,16 @@ const PILL_COUNT_CAP = 99;
  */
 export function anchorAt(
   scrollTop: number,
-  rowHeightPx: number,
+  rows: RowGeometry,
   keyAt: (index: number) => string | undefined,
   skip: (id: string) => boolean = () => false
 ): ScrollAnchor | undefined {
-  for (let index = Math.floor(scrollTop / rowHeightPx); ; index++) {
+  for (let index = rows.indexAt(scrollTop); ; index++) {
     const id = keyAt(index);
     if (id === undefined) return undefined;
     if (skip(id)) continue;
-    return { id, index, offsetPx: scrollTop - index * rowHeightPx };
+    const topPx = rows.topOf(index);
+    return { id, index, offsetPx: scrollTop - topPx, topPx };
   }
 }
 
@@ -61,12 +63,14 @@ export function findIndexNear(
 export function anchoredScrollTop(
   anchor: ScrollAnchor,
   count: number,
-  rowHeightPx: number,
+  rows: RowGeometry,
   keyAt: (index: number) => string | undefined
 ): number | undefined {
   const index = findIndexNear(anchor.id, anchor.index, count, keyAt);
-  if (index === -1 || index === anchor.index) return undefined;
-  return index * rowHeightPx + anchor.offsetPx;
+  if (index === -1) return undefined;
+  const scrollTop = rows.topOf(index) + anchor.offsetPx;
+  // Same index can still move: a row of another height was swapped in above it.
+  return index === anchor.index && scrollTop === anchor.topPx ? undefined : scrollTop;
 }
 
 /**
@@ -116,8 +120,42 @@ export function pillUpdateDelayMs(lastShownAtMs: number | undefined, nowMs: numb
   return Math.max(0, lastShownAtMs + PILL_UPDATE_MS - nowMs);
 }
 
-/** What the visible rows look like now. Rows are all `rowHeightPx` tall. */
-export type RowsView = {
+export type RowGeometry = {
+  /** Top of the row at `index`, in px from the top of the list. */
+  topOf: (index: number) => number;
+  heightOf: (index: number) => number;
+  totalPx: number;
+  /** The row under a scroll position: the last row whose top is at or above it. */
+  indexAt: (px: number) => number;
+};
+
+/** A geometry from each visible row's height, top to bottom. */
+export function rowGeometry(heights: number[]): RowGeometry {
+  const tops: number[] = [];
+  let total = 0;
+  for (const height of heights) {
+    tops.push(total);
+    total += height;
+  }
+  return {
+    topOf: (index) => tops[index] ?? total,
+    heightOf: (index) => heights[index] ?? 0,
+    totalPx: total,
+    indexAt: (px) => {
+      let low = 0;
+      let high = tops.length - 1;
+      while (low < high) {
+        const mid = Math.ceil((low + high) / 2);
+        if (tops[mid] <= px) low = mid;
+        else high = mid - 1;
+      }
+      return Math.max(0, low);
+    },
+  };
+}
+
+/** What the visible rows look like now. */
+export type RowsView = RowGeometry & {
   count: number;
   keyAt: (index: number) => string | undefined;
   /** A row's index among the visible rows, or -1 when it's hidden or filtered out. */
@@ -143,7 +181,6 @@ export type Reveal = {
  * it gets back; nothing else moves the view.
  */
 export class TraceScrollModel {
-  #rowHeightPx: number;
   #holdAtLatest: boolean;
   #reveal: Reveal | undefined;
   #anchor: ScrollAnchor | undefined;
@@ -158,12 +195,10 @@ export class TraceScrollModel {
   #pendingNewRun: string | undefined;
 
   constructor({
-    rowHeightPx,
     holdAtLatest,
     reveal,
     skipAnchor,
   }: {
-    rowHeightPx: number;
     /** Opening without a deep link: stay at the latest run until its first spans are in. */
     holdAtLatest: boolean;
     /** Opening on a deep link: the row to reveal once it's visible. */
@@ -171,7 +206,6 @@ export class TraceScrollModel {
     /** Rows never used as the anchor (the session row and "Load earlier"). */
     skipAnchor: (id: string) => boolean;
   }) {
-    this.#rowHeightPx = rowHeightPx;
     this.#holdAtLatest = holdAtLatest;
     this.#reveal = reveal;
     this.#skipAnchor = skipAnchor;
@@ -179,10 +213,6 @@ export class TraceScrollModel {
 
   get pill() {
     return this.#pill;
-  }
-
-  get holdingAtLatest() {
-    return this.#holdAtLatest;
   }
 
   /** Whether some of the newest run's spans weren't in the tree yet at the last check. */
@@ -200,7 +230,6 @@ export class TraceScrollModel {
     newestRunId,
     newestSpanIds,
     isLiveSpan,
-    openRunDone,
     filterSettled,
     visibleTargetOf,
   }: {
@@ -213,8 +242,6 @@ export class TraceScrollModel {
     newestSpanIds: Iterable<string>;
     /** Spans the newest run first got from its live tail, not from a stored read. */
     isLiveSpan: (id: string) => boolean;
-    /** The opened run's first spans are in the tree, or it's clear it has none. */
-    openRunDone: boolean;
     filterSettled: () => boolean;
     /** The row to scroll to for a target: itself, or its nearest visible ancestor. */
     visibleTargetOf: (id: string) => string | undefined;
@@ -224,15 +251,16 @@ export class TraceScrollModel {
     if (!active) {
       // Hidden: hold everything as it is.
     } else if (this.#holdAtLatest) {
+      // Nothing opens on load, so the hold lasts one pass.
       scrollTop = this.#maxScrollTop(view);
-      if (openRunDone) this.#holdAtLatest = false;
+      this.#holdAtLatest = false;
     } else {
       scrollTop = this.#tryReveal(view, filterSettled, visibleTargetOf);
       // Until a reveal can happen (its row isn't there yet), the view stays anchored.
       if (scrollTop === undefined) {
         steered = false;
         if (this.#anchor) {
-          scrollTop = anchoredScrollTop(this.#anchor, view.count, this.#rowHeightPx, view.keyAt);
+          scrollTop = anchoredScrollTop(this.#anchor, view.count, view, view.keyAt);
         }
       }
     }
@@ -241,7 +269,10 @@ export class TraceScrollModel {
     // The pill: only spans that arrived from the live tail count. Stored spans (first chunk,
     // pages, errors-only, deep link) are history wherever the view is; nothing counts while
     // something else steers the view.
-    const viewEnd = Math.ceil((top + view.viewportPx) / this.#rowHeightPx);
+    // The first row that starts at or below the view's bottom edge.
+    const bottomPx = top + view.viewportPx;
+    const lastInView = view.indexAt(bottomPx);
+    const viewEnd = view.topOf(lastInView) >= bottomPx ? lastInView : lastInView + 1;
     if (this.#seen.runId !== newestRunId) {
       const runChanged = this.#seen.runId !== undefined && newestRunId !== undefined;
       this.#seen = { runId: newestRunId, ids: new Set(), waiting: false };
@@ -299,7 +330,9 @@ export class TraceScrollModel {
   /** The user (or the browser) scrolled. Scrolling to the bottom has seen what was new. */
   scrolled(view: RowsView) {
     this.#record(view, view.scrollTop);
-    if (view.scrollTop >= this.#maxScrollTop(view) - this.#rowHeightPx) this.#pill = NO_NEW_BELOW;
+    if (view.scrollTop >= this.#maxScrollTop(view) - view.heightOf(view.count - 1)) {
+      this.#pill = NO_NEW_BELOW;
+    }
   }
 
   /** The user's own scroll, click or key in the tab: stop holding and stop a deep-link reveal. */
@@ -308,8 +341,20 @@ export class TraceScrollModel {
     if (this.#reveal?.cancelOnInteraction) this.#reveal = undefined;
   }
 
-  reveal(reveal: Reveal) {
+  /**
+   * Scrolls to a row. With `view`, a row already on the list scrolls now (nothing else would
+   * trigger a pass); otherwise it waits for the rows to change, like a row that's still opening.
+   */
+  reveal(reveal: Reveal, view?: RowsView): number | undefined {
     this.#reveal = reveal;
+    if (!view) return undefined;
+    const scrollTop = this.#tryReveal(
+      view,
+      () => true,
+      (id) => id
+    );
+    if (scrollTop !== undefined) this.#record(view, scrollTop);
+    return scrollTop;
   }
 
   /** The pill was clicked: a new run's row goes to the top, new spans to the bottom. */
@@ -342,19 +387,19 @@ export class TraceScrollModel {
   }
 
   #maxScrollTop(view: RowsView) {
-    return Math.max(0, view.count * this.#rowHeightPx - view.viewportPx);
+    return Math.max(0, view.totalPx - view.viewportPx);
   }
 
   #scrollTopFor(view: RowsView, index: number, align: "start" | "center") {
-    const rowTop = index * this.#rowHeightPx;
-    const top = align === "start" ? rowTop : rowTop - (view.viewportPx - this.#rowHeightPx) / 2;
+    const rowTop = view.topOf(index);
+    const top = align === "start" ? rowTop : rowTop - (view.viewportPx - view.heightOf(index)) / 2;
     return Math.min(Math.max(0, top), this.#maxScrollTop(view));
   }
 
   #record(view: RowsView, scrollTop: number) {
     this.#anchor = anchorAt(
       Math.min(Math.max(0, scrollTop), this.#maxScrollTop(view)),
-      this.#rowHeightPx,
+      view,
       view.keyAt,
       this.#skipAnchor
     );

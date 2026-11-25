@@ -1,7 +1,6 @@
 import { millisecondsToNanoseconds } from "@trigger.dev/core/v3";
 import { describe, expect, it } from "vitest";
 import {
-  GAP_FOLD_MS,
   buildSessionTree,
   isSelectableRow,
   runNodeId,
@@ -15,7 +14,6 @@ import {
   pageCheck,
   runLoad,
   runLoadId,
-  runOpensExpanded,
   runSpanCount,
   sessionRunLoadsReducer,
   type SessionRunLoadOutcome,
@@ -23,7 +21,6 @@ import {
   type SessionRunLoadsAction,
 } from "~/components/sessions/v1/trace/sessionRunLoads";
 import {
-  initiallyExpandedRunFriendlyId,
   liveRunFriendlyId,
   newestRunFriendlyId,
   newRunsPollIntervalMs,
@@ -53,7 +50,6 @@ import type { SessionRunsPage } from "~/presenters/v3/SessionRunsPresenter.serve
 import {
   resolveSessionPageView,
   runReasonBadge,
-  runStartedBecause,
 } from "~/components/sessions/v1/trace/sessionTraceView";
 
 const T0 = Date.parse("2026-10-20T10:00:00.000Z");
@@ -126,31 +122,15 @@ describe("buildSessionTree", () => {
     expect(kinds(tree)).toEqual(["session", "run"]);
   });
 
-  it("folds a quiet period over 10 minutes between two runs into one gap row", () => {
-    const first = run(1, { finishedAt: iso(0) });
-    const second = run(2, { createdAt: iso(GAP_FOLD_MS + 1) });
+  // Waits between runs show only as gaps on the timeline, never as rows.
+  it("adds no row between runs, however long the wait", () => {
     const { tree } = buildSessionTree<SpanData>({
-      runs: [first, second],
+      runs: [run(1, { finishedAt: iso(0) }), run(2, { createdAt: iso(6 * 60 * 60_000) })],
       totalCount: 2,
       spansByRun: new Map(),
     });
 
-    expect(kinds(tree)).toEqual(["session", "run", "gap", "run"]);
-    expect(tree[2]!.data).toEqual({ kind: "gap", durationMs: GAP_FOLD_MS + 1 });
-  });
-
-  it("adds no gap row for 10 minutes or less, or after a run with no finish time", () => {
-    const { tree } = buildSessionTree<SpanData>({
-      runs: [
-        run(1, { finishedAt: iso(0) }),
-        run(2, { createdAt: iso(GAP_FOLD_MS), finishedAt: null, status: "EXECUTING" }),
-        run(3, { createdAt: iso(10 * GAP_FOLD_MS) }),
-      ],
-      totalCount: 3,
-      spansByRun: new Map(),
-    });
-
-    expect(kinds(tree)).toEqual(["session", "run", "run", "run"]);
+    expect(kinds(tree)).toEqual(["session", "run", "run"]);
   });
 
   it("shows a not-loaded row between two pages, with the count from the run numbers", () => {
@@ -322,7 +302,6 @@ describe("buildSessionTree", () => {
   it("only lets session, run and span rows be selected", () => {
     expect(isSelectableRow({ kind: "session", runCount: 1 })).toBe(true);
     expect(isSelectableRow({ kind: "run", run: run(1), spansLoaded: false })).toBe(true);
-    expect(isSelectableRow({ kind: "gap", durationMs: 1 })).toBe(false);
     expect(isSelectableRow({ kind: "loadEarlier", count: 1 })).toBe(false);
     expect(
       isSelectableRow({
@@ -418,23 +397,20 @@ describe("runTimelineScale", () => {
   });
 });
 
-describe("live and initially expanded run", () => {
+describe("live run", () => {
   it("treats the newest run as live while it hasn't reached a final status", () => {
     const runs = [run(1), run(2, { status: "EXECUTING", finishedAt: null })];
     expect(liveRunFriendlyId(runs, 2)).toBe("run_2");
-    expect(initiallyExpandedRunFriendlyId(runs, 2)).toBe("run_2");
   });
 
   it("never treats an older unfinished run as live", () => {
     const runs = [run(1, { status: "WAITING_TO_RESUME", finishedAt: null }), run(2)];
     expect(liveRunFriendlyId(runs, 2)).toBeUndefined();
-    expect(initiallyExpandedRunFriendlyId(runs, 2)).toBe("run_2");
   });
 
   it("treats nothing as live when a newer run exists but isn't loaded", () => {
     const runs = [run(2), run(3, { status: "WAITING_TO_RESUME", finishedAt: null })];
     expect(liveRunFriendlyId(runs, 4)).toBeUndefined();
-    expect(initiallyExpandedRunFriendlyId(runs, 4)).toBe("run_3");
   });
 
   it("isn't live before the newest run is in the run store", () => {
@@ -444,10 +420,6 @@ describe("live and initially expanded run", () => {
   it("keeps the newest run's live updates on after it finishes, only while it's loaded", () => {
     expect(newestRunFriendlyId([run(1), run(2)], 2)).toBe("run_2");
     expect(newestRunFriendlyId([run(1), run(2)], 3)).toBeUndefined();
-  });
-
-  it("expands nothing in an empty session", () => {
-    expect(initiallyExpandedRunFriendlyId([], 0)).toBeUndefined();
   });
 });
 
@@ -694,20 +666,6 @@ describe("resolveSessionPageView", () => {
   });
 });
 
-describe("runStartedBecause", () => {
-  // Catches: a restart after a crash reading as a plain continuation in the run panel.
-  it("says the run restarted after a crash, whatever its stored reason", () => {
-    expect(runStartedBecause({ reason: "continuation", afterCrash: true })).toMatch(/crashed/);
-  });
-
-  // Catches: a custom end-and-continue reason being replaced or reworded.
-  it("shows a custom reason as it was sent", () => {
-    expect(runStartedBecause({ reason: "Handoff to billing agent", afterCrash: false })).toBe(
-      "Handoff to billing agent"
-    );
-  });
-});
-
 describe("runReasonBadge", () => {
   // Catches: every row carrying a reason badge again, so the reason truncates next to a status.
   it("shows nothing for a first run or a plain continuation", () => {
@@ -724,7 +682,7 @@ describe("runReasonBadge", () => {
   // (review round 5, 2026-10-30).
   it("treats reasons like toString or constructor as custom", () => {
     expect(runReasonBadge({ reason: "toString", afterCrash: false })?.label).toBe("toString");
-    expect(runStartedBecause({ reason: "constructor", afterCrash: false })).toBe("constructor");
+    expect(runReasonBadge({ reason: "constructor", afterCrash: false })?.label).toBe("constructor");
   });
 
   // Catches: notable reasons (new version, manual, custom) losing their badge.
@@ -1163,10 +1121,11 @@ describe("sessionRunLoadsReducer: new runs", () => {
   });
   const opened = () => run(createSessionRunLoads(["run_25"]), runsChanged(["run_25"], "run_25"));
 
-  it("expands a new newest run and loads it", () => {
+  // Nothing opens on its own: opening a run zooms the timeline, which would yank the view.
+  it("leaves a new newest run collapsed", () => {
     const loads = run(opened(), runsChanged(["run_25", "run_26"], "run_26"));
-    expect(loads.expanded.has("run_26")).toBe(true);
-    expect(runLoad(loads, "run_26").state).toBe("loading");
+    expect(loads.expanded.has("run_26")).toBe(false);
+    expect(runLoad(loads, "run_26").state).toBe("idle");
   });
 
   it("leaves the previous run as it was, expanded or collapsed", () => {
@@ -1179,14 +1138,6 @@ describe("sessionRunLoadsReducer: new runs", () => {
       runsChanged(["run_25", "run_26"], "run_26")
     );
     expect(collapsed.expanded.has("run_25")).toBe(false);
-    expect(collapsed.expanded.has("run_26")).toBe(true);
-  });
-
-  it("expands only the newest of several new runs", () => {
-    const loads = run(opened(), runsChanged(["run_25", "run_26", "run_27", "run_28"], "run_28"));
-    expect([...loads.expanded].sort()).toEqual(["run_25", "run_28"]);
-    expect(runLoad(loads, "run_26").state).toBe("idle");
-    expect(runLoad(loads, "run_27").state).toBe("idle");
   });
 
   it("expands nothing on the first read or when older runs are added", () => {
@@ -1197,22 +1148,19 @@ describe("sessionRunLoadsReducer: new runs", () => {
     expect([...earlier.expanded]).toEqual(["run_25"]);
   });
 
-  it("keeps a new run without a status expanded until it reaches the run store", () => {
-    let loads = run(opened(), runsChanged(["run_25"], "run_26"));
-    expect(loads.expanded.has("run_26")).toBe(true);
-    expect(runLoad(loads, "run_26").state).toBe("idle");
-    loads = run(loads, runsChanged(["run_25", "run_26"], "run_26"));
-    expect(runLoad(loads, "run_26").state).toBe("loading");
-  });
-
-  it("starts a new run at the next free slot, ahead of older queued runs", () => {
+  it("starts a new run the user opens at the next free slot, ahead of older queued runs", () => {
     const older = Array.from({ length: 20 }, (_, i) => `run_${i + 1}`);
     let loads = run(createSessionRunLoads(), runsChanged(older, "run_20"));
     loads = run(loads, { type: "expandedMany", runFriendlyIds: [...older].reverse() });
     expect(loads.queue).toHaveLength(17);
 
     // The new run reaches the run store a poll after it appears.
-    loads = run(loads, runsChanged(older, "run_21"), runsChanged([...older, "run_21"], "run_21"));
+    loads = run(
+      loads,
+      runsChanged(older, "run_21"),
+      runsChanged([...older, "run_21"], "run_21"),
+      expand("run_21")
+    );
     expect(runLoad(loads, "run_21").state).toBe("queued");
 
     const loading = runLoad(loads, "run_20");
@@ -1226,42 +1174,9 @@ describe("sessionRunLoadsReducer: new runs", () => {
     expect(runLoad(loads, "run_21").state).toBe("loading");
   });
 
-  it("doesn't reopen a run the user collapsed if it becomes the newest again", () => {
-    const loads = run(
-      opened(),
-      runsChanged(["run_25", "run_26"], "run_26"),
-      expand("run_26", false),
-      runsChanged(["run_25", "run_26"], "run_25"),
-      runsChanged(["run_25", "run_26"], "run_26")
-    );
-    expect(loads.expanded.has("run_26")).toBe(false);
-  });
-
-  describe("runOpensExpanded", () => {
-    it("gives the tree the same answer before and after runsChanged is handled", () => {
-      const before = opened();
-      const after = run(before, runsChanged(["run_25", "run_26"], "run_26"));
-      for (const loads of [before, after]) {
-        expect(runOpensExpanded(loads, "run_26", "run_26")).toBe(true);
-        expect(runOpensExpanded(loads, "run_25", "run_26")).toBe(true);
-      }
-    });
-
-    it("opens the starting and deep-linked runs, and nothing else", () => {
-      const loads = run(createSessionRunLoads(["run_25"]), {
-        type: "deepLinked",
-        runFriendlyId: "run_3",
-      });
-      expect(runOpensExpanded(loads, "run_25", undefined)).toBe(true);
-      expect(runOpensExpanded(loads, "run_3", undefined)).toBe(true);
-      expect(runOpensExpanded(loads, "run_4", undefined)).toBe(false);
-      // The first read of the newest run isn't a new run.
-      expect(runOpensExpanded(loads, "run_24", "run_25")).toBe(false);
-    });
-
-    it("doesn't open older runs added by Load earlier", () => {
-      expect(runOpensExpanded(opened(), "run_5", "run_25")).toBe(false);
-    });
+  it("opens only the deep-linked run", () => {
+    const loads = run(createSessionRunLoads(), { type: "deepLinked", runFriendlyId: "run_3" });
+    expect([...loads.expanded]).toEqual(["run_3"]);
   });
 });
 

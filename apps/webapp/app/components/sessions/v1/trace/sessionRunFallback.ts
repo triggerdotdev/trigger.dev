@@ -38,20 +38,6 @@ export function isRunStarting(run: Pick<SessionTraceRun, "triggeredAt">, nowMs: 
   return nowMs - new Date(run.triggeredAt).getTime() < RUN_STARTING_WINDOW_MS;
 }
 
-const UNAVAILABLE_REASONS: Record<UnavailableReason, string | undefined> = {
-  legacyStore: "This run's spans are in an older store this view can't read.",
-  // Said once in the tab's bar instead.
-  emergencyCap: undefined,
-  chunkUnsupported: "This run's spans are stored in a way this view can't read in parts.",
-  noWriteTimes: "This run's spans are missing the details this view needs to read them in parts.",
-  anchorMissing: "The start of this run's trace is missing.",
-  noSpans: "This run didn't record any spans.",
-};
-
-export function unavailableReasonText(reason: UnavailableReason) {
-  return UNAVAILABLE_REASONS[reason];
-}
-
 export const EMERGENCY_CAP_NOTICE =
   "Traces can't load here right now. Open a run's page to see its trace.";
 
