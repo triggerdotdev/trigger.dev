@@ -7,7 +7,7 @@ import { Paragraph } from "~/components/primitives/Paragraph";
 import { redirectWithErrorMessage, redirectWithSuccessMessage } from "~/models/message.server";
 import { confirmEmailChange, previewEmailChange } from "~/services/emailChange.server";
 import { emailChangeConfirmationCookie } from "~/services/emailChangeConfirmationCookie.server";
-import { getUserId } from "~/services/session.server";
+import { keepCurrentSession, getUserId } from "~/services/session.server";
 import { accountPath } from "~/utils/pathBuilder";
 
 /**
@@ -47,22 +47,26 @@ export async function action({ request }: ActionFunctionArgs) {
 
   const formData = await request.formData();
   const token = formData.get("token");
+  // Read before confirming: the change ends the user's sessions, this one included until it's kept.
+  const sessionUserId = await getUserId(request);
   const result = await confirmEmailChange(typeof token === "string" ? token : "");
 
-  const sessionUserId = await getUserId(request);
   const destination = sessionUserId ? accountPath() : "/login";
 
   if (!result.ok) {
     return redirectWithErrorMessage(destination, request, result.error);
   }
 
-  return redirectWithSuccessMessage(
+  const keepSession = await keepCurrentSession(request, result.userId, result.changedAt);
+  const response = await redirectWithSuccessMessage(
     destination,
     request,
     sessionUserId === result.userId
       ? "Your email address has been updated."
       : `Your email address is now ${result.email}. Use it to log in.`
   );
+  if (keepSession) response.headers.append("Set-Cookie", keepSession);
+  return response;
 }
 
 export default function ConfirmEmailChangePage() {

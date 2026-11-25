@@ -143,6 +143,8 @@ describe("session policy on authenticated requests", () => {
         checkSession: vi.fn(async () => ({
           valid: true as const,
           nextSessionEnd: new Date(Date.now() - 60_000),
+          sessionsValidAfter: null,
+          revokedSessions: [],
         })),
       });
       const findFirst = vi.spyOn(prisma.user, "findFirst");

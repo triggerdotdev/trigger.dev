@@ -23,9 +23,13 @@ export type SessionDecision =
       valid: true;
       /**
        * The user's session deadline, when the plugin read it alongside its own check so the
-       * host need not. Omitted: the host reads it itself.
+       * host need not. Omitted (or any of the three fields omitted): the host reads them itself.
        */
       nextSessionEnd?: Date | null;
+      /** The user's `sessionsValidAfter`, read alongside `nextSessionEnd`. */
+      sessionsValidAfter?: Date | null;
+      /** The user's `revokedSessions`, read alongside `nextSessionEnd`. */
+      revokedSessions?: Date[];
     }
   | { valid: false };
 

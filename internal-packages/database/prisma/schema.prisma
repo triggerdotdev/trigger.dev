@@ -68,6 +68,11 @@ model User {
   /// piggybacks on the User fetch that requireUser already does.
   nextSessionEnd DateTime?
 
+  /// Sessions issued before this are ended, except the one that set it.
+  sessionsValidAfter DateTime?
+  /// Issue times of sessions that were signed out.
+  revokedSessions    DateTime[] @default([])
+
   invitationCode       InvitationCode?       @relation(fields: [invitationCodeId], references: [id])
   invitationCodeId     String?
   personalAccessTokens PersonalAccessToken[]

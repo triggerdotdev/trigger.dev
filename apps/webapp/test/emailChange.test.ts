@@ -13,9 +13,12 @@ const sent = vi.hoisted(() => ({
 }));
 
 vi.mock("~/db.server", async () => {
-  const { Prisma } = await import("@trigger.dev/database");
+  const { Prisma, $transaction } = await import("@trigger.dev/database");
   return {
     Prisma,
+    // The webapp wrapper only adds a span name and logging around the shared helper.
+    $transaction: (client: PrismaClient, _name: string, fn: Parameters<typeof $transaction>[1]) =>
+      $transaction(client, fn, () => {}),
     get prisma() {
       if (!prismaHolder.client) throw new Error("test prisma not set");
       return prismaHolder.client;

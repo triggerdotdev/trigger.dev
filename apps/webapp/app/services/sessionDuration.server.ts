@@ -1,5 +1,5 @@
 import type { Session } from "@remix-run/node";
-import type { PrismaClientOrTransaction } from "@trigger.dev/database";
+import { Prisma, type PrismaClientOrTransaction } from "@trigger.dev/database";
 import { prisma } from "~/db.server";
 import { commitSession, DEFAULT_SESSION_DURATION_SECONDS } from "./sessionStorage.server";
 
@@ -140,6 +140,109 @@ export function getAllowedSessionOptions(
   return allowed;
 }
 
+/** Session key holding when the session was issued (ms since epoch), for session policy checks. */
+export const SESSION_ISSUED_AT_KEY = "issuedAt";
+/** Session key holding when the session's own window closes (ms since epoch). */
+export const SESSION_EXPIRES_AT_KEY = "expiresAt";
+
+type SessionTimes = { issuedAt?: number; expiresAt?: number };
+
+export function getSessionTimes(session: Session): SessionTimes {
+  const issuedAt = session.get(SESSION_ISSUED_AT_KEY);
+  const expiresAt = session.get(SESSION_EXPIRES_AT_KEY);
+  return {
+    issuedAt: typeof issuedAt === "number" ? issuedAt : undefined,
+    expiresAt: typeof expiresAt === "number" ? expiresAt : undefined,
+  };
+}
+
+/**
+ * When the session's own window closes: its stamped expiry, else one cookie lifetime after it was
+ * issued. Undefined for sessions that predate issue-time stamping.
+ */
+export function sessionWindowEnd({ issuedAt, expiresAt }: SessionTimes): number | undefined {
+  if (expiresAt !== undefined) return expiresAt;
+  return issuedAt === undefined ? undefined : issuedAt + DEFAULT_SESSION_DURATION_SECONDS * 1000;
+}
+
+type SessionRevocationState = {
+  sessionsValidAfter: Date | null;
+  revokedSessions: Date[];
+};
+
+/**
+ * Why a session is no longer accepted, or undefined while it is. A session without an issue time
+ * counts as issued before any cut-off.
+ */
+export function sessionEndReason(
+  state: SessionRevocationState,
+  times: SessionTimes,
+  now: number
+): "revoked" | "expired" | undefined {
+  const { issuedAt } = times;
+  const validAfter = state.sessionsValidAfter?.getTime();
+  if (validAfter !== undefined && (issuedAt === undefined || issuedAt < validAfter)) {
+    return "revoked";
+  }
+  if (issuedAt !== undefined && state.revokedSessions.some((d) => d.getTime() === issuedAt)) {
+    return "revoked";
+  }
+  const windowEnd = sessionWindowEnd(times);
+  if (windowEnd !== undefined && now > windowEnd) return "expired";
+  return undefined;
+}
+
+/**
+ * Ends every session of `userId` issued before `at`. A later cut-off already recorded is kept, so
+ * concurrent account changes never bring an ended session back.
+ */
+export async function endSessionsIssuedBefore(
+  userId: string,
+  at: Date,
+  client: PrismaClientOrTransaction = prisma
+): Promise<void> {
+  await client.$executeRaw`UPDATE "User" SET "sessionsValidAfter" = GREATEST("sessionsValidAfter",
+      (to_timestamp(${at.getTime()}::float8 / 1000) AT TIME ZONE 'UTC')::timestamp(3))
+    WHERE id = ${userId}`;
+}
+
+/** Signed-out sessions kept per user before falling back to ending all of them. */
+const MAX_REVOKED_SESSIONS = 50;
+
+/**
+ * Records a signed-out session so its cookie is no longer accepted. Entries older than the longest
+ * possible session are dropped on each write; when the list is full, every session issued until
+ * now is ended instead. A session without an issue time ends all of the user's sessions that lack
+ * one, via the earliest possible `sessionsValidAfter`.
+ */
+export async function revokeSession(
+  userId: string,
+  issuedAt: number | undefined,
+  client: PrismaClientOrTransaction = prisma
+): Promise<void> {
+  if (issuedAt === undefined) {
+    await client.user.updateMany({
+      where: { id: userId, sessionsValidAfter: null },
+      data: { sessionsValidAfter: new Date(1) },
+    });
+    return;
+  }
+  // Every expression reads the row being updated, so concurrent sign-outs don't drop each other.
+  const issued = Prisma.sql`(to_timestamp(${issuedAt}::float8 / 1000) AT TIME ZONE 'UTC')::timestamp(3)`;
+  const kept = Prisma.sql`ARRAY(SELECT t FROM unnest("revokedSessions") t
+    WHERE t > (now() AT TIME ZONE 'UTC') - make_interval(secs => ${DEFAULT_SESSION_DURATION_SECONDS}))`;
+  const full = Prisma.sql`cardinality(${kept}) >= ${MAX_REVOKED_SESSIONS}`;
+  // A session that is already ended changes nothing, so repeats never use up the list.
+  await client.$executeRaw`UPDATE "User" SET
+    "revokedSessions" = CASE WHEN ${full} THEN ARRAY[]::TIMESTAMP(3)[]
+      ELSE array_append(${kept}, ${issued}) END,
+    "sessionsValidAfter" = CASE WHEN ${full} THEN GREATEST("sessionsValidAfter", now() AT TIME ZONE 'UTC')
+      ELSE "sessionsValidAfter" END
+    WHERE id = ${userId}
+      AND NOT (${issued} = ANY("revokedSessions"))
+      AND ("sessionsValidAfter" IS NULL OR "sessionsValidAfter" <= ${issued})`;
+}
+
 /**
  * Commits the session for an authenticated user and stamps the user's
  * effective expiry into `User.nextSessionEnd`. Use this at every
@@ -155,9 +258,6 @@ export function getAllowedSessionOptions(
  * `User.nextSessionEnd`. If we let the cookie expire client-side, the user
  * is silently logged out.
  */
-/** Session key holding when the session was issued (ms since epoch), for session policy checks. */
-export const SESSION_ISSUED_AT_KEY = "issuedAt";
-
 export async function commitAuthenticatedSession(
   session: Session,
   userId: string,
@@ -165,10 +265,43 @@ export async function commitAuthenticatedSession(
   client: PrismaClientOrTransaction = prisma
 ): Promise<string> {
   const { durationSeconds } = await getEffectiveSessionDuration(userId, client);
-  await client.user.update({
-    where: { id: userId },
-    data: { nextSessionEnd: new Date(now + durationSeconds * 1000) },
-  });
+  const issued = Prisma.sql`to_timestamp(${now}::float8 / 1000) AT TIME ZONE 'UTC'`;
+  const end = now + durationSeconds * 1000;
+  // Sessions that already passed the previous deadline stay ended once the new deadline is set.
+  await client.$executeRaw`UPDATE "User" SET
+    "sessionsValidAfter" = CASE WHEN "nextSessionEnd" < ${issued}
+      THEN GREATEST("sessionsValidAfter", ${issued}) ELSE "sessionsValidAfter" END,
+    "nextSessionEnd" = to_timestamp(${end}::float8 / 1000) AT TIME ZONE 'UTC'
+    WHERE id = ${userId}`;
   session.set(SESSION_ISSUED_AT_KEY, now);
+  session.set(SESSION_EXPIRES_AT_KEY, end);
+  return commitSession(session, { maxAge: DEFAULT_SESSION_DURATION_SECONDS });
+}
+
+/**
+ * Applies a new session duration without lengthening any session. A shorter duration moves the
+ * deadline earlier and ends the user's other sessions, so a later login can't carry them past it;
+ * this session is kept with its window shortened. A longer duration takes effect at the next login.
+ */
+export async function shortenAuthenticatedSession(
+  session: Session,
+  userId: string,
+  now: number = Date.now(),
+  client: PrismaClientOrTransaction = prisma
+): Promise<string> {
+  const { durationSeconds } = await getEffectiveSessionDuration(userId, client);
+  const end = now + durationSeconds * 1000;
+  const endAt = Prisma.sql`(to_timestamp(${end}::float8 / 1000) AT TIME ZONE 'UTC')::timestamp(3)`;
+  const nowAt = Prisma.sql`(to_timestamp(${now}::float8 / 1000) AT TIME ZONE 'UTC')::timestamp(3)`;
+  const shorter = Prisma.sql`${endAt} < COALESCE("nextSessionEnd", 'infinity'::timestamp)`;
+  const [row] = await client.$queryRaw<{ shortened: boolean }[]>`UPDATE "User" SET
+      "sessionsValidAfter" = CASE WHEN ${shorter}
+        THEN GREATEST("sessionsValidAfter", ${nowAt}) ELSE "sessionsValidAfter" END,
+      "nextSessionEnd" = CASE WHEN ${shorter} THEN ${endAt} ELSE "nextSessionEnd" END
+    WHERE id = ${userId}
+    RETURNING "nextSessionEnd" = ${endAt} AS shortened`;
+  const windowEnd = Math.min(sessionWindowEnd(getSessionTimes(session)) ?? end, end);
+  if (row?.shortened) session.set(SESSION_ISSUED_AT_KEY, now);
+  session.set(SESSION_EXPIRES_AT_KEY, windowEnd);
   return commitSession(session, { maxAge: DEFAULT_SESSION_DURATION_SECONDS });
 }

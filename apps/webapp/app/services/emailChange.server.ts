@@ -11,11 +11,12 @@
 import { Prisma } from "@trigger.dev/database";
 import { generateJWT, validateJWT } from "@trigger.dev/core/v3/jwt";
 import { Ratelimit } from "@upstash/ratelimit";
-import { prisma } from "~/db.server";
+import { $transaction, prisma } from "~/db.server";
 import { env } from "~/env.server";
 import { publicAppOrigin } from "~/services/adminOrigin.server";
 import { sendEmail } from "~/services/email.server";
 import { logger } from "~/services/logger.server";
+import { endSessionsIssuedBefore } from "~/services/sessionDuration.server";
 import { createRedisRateLimitClient, RateLimiter } from "~/services/rateLimiter.server";
 import { getEmailOwnership } from "~/services/ssoManagedIdentity.server";
 import { assertEmailAllowed } from "~/utils/email";
@@ -184,7 +185,13 @@ export async function cancelEmailChange(userId: string): Promise<void> {
 }
 
 export type ConfirmEmailChangeResult =
-  | { ok: true; userId: string; email: string }
+  | {
+      ok: true;
+      userId: string;
+      email: string;
+      /** When this confirmation changed the address; the user's earlier sessions end then. */
+      changedAt?: Date;
+    }
   | EmailChangeFailure;
 
 /**
@@ -215,12 +222,17 @@ export async function confirmEmailChange(token: string): Promise<ConfirmEmailCha
   const policy = await checkEmailPolicy(user, claims.email);
   if (!policy.ok) return policy;
 
+  const changedAt = new Date();
   try {
-    const { count } = await prisma.user.updateMany({
-      where: { id: user.id, pendingEmail: claims.email },
-      data: { email: claims.email, pendingEmail: null },
+    const count = await $transaction(prisma, "confirmEmailChange", async (tx) => {
+      const { count } = await tx.user.updateMany({
+        where: { id: user.id, pendingEmail: claims.email },
+        data: { email: claims.email, pendingEmail: null },
+      });
+      if (count > 0) await endSessionsIssuedBefore(user.id, changedAt, tx);
+      return count;
     });
-    if (count === 0) {
+    if (!count) {
       // A concurrent open may have applied it between the read above and here.
       const now = await prisma.user.findFirst({ where: { id: user.id }, select: { email: true } });
       if (now && normalizeEmail(now.email) === claims.email) {
@@ -242,5 +254,5 @@ export async function confirmEmailChange(token: string): Promise<ConfirmEmailCha
     logger.error("Failed sending email changed notice", { userId: user.id, error });
   }
 
-  return { ok: true, userId: user.id, email: claims.email };
+  return { ok: true, userId: user.id, email: claims.email, changedAt };
 }

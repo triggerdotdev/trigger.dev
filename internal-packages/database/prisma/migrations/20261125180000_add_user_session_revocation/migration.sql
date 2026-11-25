@@ -1,0 +1,3 @@
+-- AlterTable
+ALTER TABLE "public"."User" ADD COLUMN IF NOT EXISTS "sessionsValidAfter" TIMESTAMP(3),
+ADD COLUMN IF NOT EXISTS "revokedSessions" TIMESTAMP(3)[] DEFAULT ARRAY[]::TIMESTAMP(3)[];

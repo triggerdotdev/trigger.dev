@@ -7,7 +7,7 @@ import {
   typedJsonWithSuccessMessage,
 } from "~/models/message.server";
 import { MultiFactorAuthenticationService } from "~/services/mfa/multiFactorAuthentication.server";
-import { requireUserId } from "~/services/session.server";
+import { keepCurrentSession, requireUserId } from "~/services/session.server";
 import { isMfaRequiredByOrganization } from "~/services/mfa/mfaRequirement.server";
 import { ServiceValidationError } from "~/v3/services/baseService.server";
 import { MfaRateLimitError } from "~/services/mfa/mfaRateLimiterGlobal.server";
@@ -106,7 +106,8 @@ export async function action({ request }: ActionFunctionArgs) {
         });
 
         if (result.success) {
-          return typedJsonWithSuccessMessage(
+          const keepSession = await keepCurrentSession(request, userId, result.changedAt);
+          const response = await typedJsonWithSuccessMessage(
             {
               action: "disable-mfa" as const,
               success: true as const,
@@ -114,6 +115,8 @@ export async function action({ request }: ActionFunctionArgs) {
             request,
             "Successfully disabled MFA"
           );
+          if (keepSession) response.headers.append("Set-Cookie", keepSession);
+          return response;
         } else {
           return typedjson({
             action: "disable-mfa" as const,
@@ -126,11 +129,15 @@ export async function action({ request }: ActionFunctionArgs) {
         const result = await mfaSetupService.validateTotpSetup(userId, submission.data.totpCode);
 
         if (result.success) {
-          return typedjson({
-            action: "validate-totp" as const,
-            success: true as const,
-            recoveryCodes: result.recoveryCodes,
-          });
+          const keepSession = await keepCurrentSession(request, userId, result.changedAt);
+          return typedjson(
+            {
+              action: "validate-totp" as const,
+              success: true as const,
+              recoveryCodes: result.recoveryCodes,
+            },
+            keepSession ? { headers: { "Set-Cookie": keepSession } } : undefined
+          );
         } else {
           return typedjson({
             action: "validate-totp" as const,

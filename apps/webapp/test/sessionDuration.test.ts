@@ -21,6 +21,7 @@ import {
   getOrganizationSessionCap,
   isAllowedSessionDuration,
   SESSION_DURATION_OPTIONS,
+  SESSION_EXPIRES_AT_KEY,
   SESSION_ISSUED_AT_KEY,
 } from "../app/services/sessionDuration.server";
 
@@ -222,6 +223,7 @@ describe("commitAuthenticatedSession", () => {
     await commitAuthenticatedSession(session, user.id, 1_700_000_000_000, prisma);
 
     expect(session.get(SESSION_ISSUED_AT_KEY)).toBe(1_700_000_000_000);
+    expect(session.get(SESSION_EXPIRES_AT_KEY)).toBe(1_700_000_000_000 + oneHour * 1000);
   });
 
   containerTest("resets nextSessionEnd to a fresh window on each commit", async ({ prisma }) => {

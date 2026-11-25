@@ -1,5 +1,5 @@
 import { redirect, type ActionFunction, type LoaderFunction } from "@remix-run/node";
-import { authenticator } from "~/services/auth.server";
+import { logout } from "~/services/session.server";
 import { sanitizeRedirectPath } from "~/utils";
 import { isSameOriginNavigation } from "~/utils/sameOriginNavigation";
 import { loginOriginForRequest } from "~/services/adminOrigin.server";
@@ -16,7 +16,7 @@ function logoutRedirectTo(request: Request): string {
 }
 
 export const action: ActionFunction = async ({ request }) => {
-  return await authenticator.logout(request, { redirectTo: logoutRedirectTo(request) });
+  return await logout(request, logoutRedirectTo(request));
 };
 
 export const loader: LoaderFunction = async ({ request }) => {
@@ -25,5 +25,5 @@ export const loader: LoaderFunction = async ({ request }) => {
     throw redirect("/");
   }
 
-  return await authenticator.logout(request, { redirectTo: logoutRedirectTo(request) });
+  return await logout(request, logoutRedirectTo(request));
 };
