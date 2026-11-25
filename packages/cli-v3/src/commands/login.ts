@@ -44,6 +44,7 @@ import {
 import { VERSION } from "../version.js";
 import { env, isCI } from "std-env";
 import { CLOUD_API_URL } from "../consts.js";
+import { rememberUserId } from "../utilities/knownUser.js";
 import {
   validateAccessToken,
   NotPersonalAccessTokenError,
@@ -208,6 +209,8 @@ export async function login(options?: LoginOptions): Promise<LoginResult> {
         if (!userData.success) {
           throw new Error(userData.error);
         }
+
+        rememberUserId(userData.data.userId, auth.apiUrl);
 
         return {
           ok: true as const,

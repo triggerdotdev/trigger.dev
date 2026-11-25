@@ -296,6 +296,45 @@ class Telemetry {
   };
 
   mcp = {
+    isEnabled: () => IS_MANAGED_CLOUD && this.#posthogClient !== undefined,
+
+    sessionStarted: ({
+      userId,
+      eventProperties,
+      timestamp,
+    }: {
+      userId: string;
+      eventProperties: Record<string, unknown>;
+      timestamp?: Date;
+    }) => {
+      if (!IS_MANAGED_CLOUD) return;
+      this.#capture({ userId, event: "$mcp_initialize", eventProperties, timestamp });
+    },
+
+    toolCalled: ({
+      userId,
+      organizationId,
+      projectId,
+      eventProperties,
+      timestamp,
+    }: {
+      userId: string;
+      organizationId?: string;
+      projectId?: string;
+      eventProperties: Record<string, unknown>;
+      timestamp?: Date;
+    }) => {
+      if (!IS_MANAGED_CLOUD) return;
+      this.#capture({
+        userId,
+        event: "$mcp_tool_call",
+        organizationId,
+        projectId,
+        eventProperties,
+        timestamp,
+      });
+    },
+
     feedbackSubmitted: ({
       userId,
       message,
@@ -377,6 +416,7 @@ class Telemetry {
       event: event.event,
       properties,
       groups,
+      timestamp: event.timestamp,
     };
     this.#posthogClient.capture(eventData);
   }
@@ -392,6 +432,7 @@ type CaptureEvent = {
   eventProperties?: Record<string, any>;
   userProperties?: Record<string, any>;
   userOnceProperties?: Record<string, any>;
+  timestamp?: Date;
 };
 
 export const telemetry = singleton(

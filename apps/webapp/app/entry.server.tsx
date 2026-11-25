@@ -28,6 +28,9 @@ import { createMcpBearerAuthenticator } from "./mcp/auth/bearer.server";
 import { MCP_SCOPES, mcpResource } from "./services/oauth/metadata.server";
 import { createMcpProtectedResourceHandler } from "./mcp/protectedResource.server";
 import { createMcpRouter } from "./mcp/server.server";
+import { telemetrySessionStore } from "./mcp/telemetrySessionStore.server";
+import { warmTelemetrySessionStore } from "./mcp/telemetrySessionStore";
+import { telemetry } from "./services/telemetry.server";
 import {
   personalAccessTokenAuthFailureBody,
   resolveAndRecheckUserActorClaims,
@@ -443,6 +446,12 @@ export const mcpRouter = env.MCP_SERVER_ENABLED
       }),
     })
   : undefined;
+if (env.MCP_SERVER_ENABLED) {
+  warmTelemetrySessionStore({
+    enabled: () => telemetry.mcp.isEnabled(),
+    open: telemetrySessionStore,
+  });
+}
 export const mcpProtectedResource = env.MCP_SERVER_ENABLED
   ? createMcpProtectedResourceHandler({
       origin: env.MCP_ORIGIN,

@@ -6,6 +6,8 @@ import { BundleError } from "../build/bundle.js";
 import { formatCommandError } from "../utilities/commandError.js";
 import { readAuthConfigCurrentProfileName } from "../utilities/configFiles.js";
 import { logger } from "../utilities/logger.js";
+import { trackCommand, type CommandTracker } from "../utilities/productAnalytics.js";
+import { VERSION } from "../version.js";
 import { trace } from "@opentelemetry/api";
 
 export const CommonCommandOptions = z.object({
@@ -41,12 +43,23 @@ export async function handleTelemetry(action: () => Promise<void>) {
   }
 }
 
+let activeTracker: CommandTracker | undefined;
+
+// Exits only after the command's analytics event is flushed (bounded), keeping the exit code.
+export async function exitAfterTracking(code: number): Promise<never> {
+  await activeTracker?.finish(code === 0 ? "success" : "error");
+  activeTracker = undefined;
+  return process.exit(code);
+}
+
 export async function wrapCommandAction<T extends z.ZodObject<any>, TResult>(
   name: string,
   schema: T,
   options: unknown,
   action: (opts: z.output<T>) => Promise<TResult>
 ): Promise<TResult | undefined> {
+  let tracker: CommandTracker = { finish: async () => {} };
+
   try {
     const parsedOptions = schema.safeParse(options);
 
@@ -60,10 +73,21 @@ export async function wrapCommandAction<T extends z.ZodObject<any>, TResult>(
       options: options,
     });
 
+    tracker = trackCommand(name, {
+      skipTelemetry: (parsedOptions.data as { skipTelemetry?: boolean }).skipTelemetry,
+      cliVersion: VERSION,
+    });
+
+    activeTracker = tracker;
     const result = await action(parsedOptions.data);
+
+    activeTracker = undefined;
+    await tracker.finish("success");
 
     return result;
   } catch (e) {
+    await tracker.finish("error");
+
     if (e instanceof SkipLoggingError) {
       // do nothing
     } else if (e instanceof OutroCommandError) {

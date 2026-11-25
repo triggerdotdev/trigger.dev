@@ -47,6 +47,7 @@ import {
   handleTelemetry,
   OutroCommandError,
   SkipLoggingError,
+  exitAfterTracking,
   wrapCommandAction,
 } from "../cli/common.js";
 import { loadConfig } from "../config.js";
@@ -1613,7 +1614,7 @@ async function handleNativeBuildServerDeploy({
 
     outro(`Version ${deployment.version} is being deployed`);
 
-    return process.exit(0);
+    return exitAfterTracking(0);
   }
 
   await followBuildServerDeployment({
@@ -1949,7 +1950,7 @@ async function handleLocalBundleDeploy({
 
     outro(`Version ${deployment.version} is being deployed`);
 
-    return process.exit(0);
+    return exitAfterTracking(0);
   }
 
   await followBuildServerDeployment({
@@ -2564,7 +2565,7 @@ async function followBuildServerDeployment({
             : ""
         }`
       );
-      return process.exit(0);
+      return exitAfterTracking(0);
     }
     case "failed": {
       renderer.finish("Deployment failed", "failure");
@@ -2642,7 +2643,7 @@ async function followBuildServerDeployment({
             : ""
         }`
       );
-      return process.exit(0);
+      return exitAfterTracking(0);
     }
   }
 }

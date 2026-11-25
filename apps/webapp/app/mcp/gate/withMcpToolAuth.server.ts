@@ -13,7 +13,15 @@ import {
   describeMcpSubject,
 } from "../confirm/confirmation.server";
 import type { McpConfirmationStore } from "../confirm/store.server";
+import {
+  MCP_SESSION_HEADER,
+  sanitizeMcpSessionId,
+  sessionHandling,
+  toolCalledProperties,
+  userAgentOf,
+} from "../sessionTelemetry";
 import { requiresApproval } from "./approval.server";
+import { reportToolCall } from "./reportToolCall.server";
 import { fenceUntrusted } from "./fence.server";
 import { resolveMcpSubject } from "./resolveSubject.server";
 import type {
@@ -361,7 +369,32 @@ export function withMcpToolAuth<TArgs>(
       logger.error("mcp.tool failed", { tool, error });
       return failed();
     } finally {
+      const handling = sessionHandling(extra.era, request.headers);
+      const denyReason = outcome in DENY_REASONS ? DENY_REASONS[outcome as Denial] : undefined;
+      const durationMs = Math.round(performance.now() - startedAt);
+      reportToolCall({
+        userId: identity.userId,
+        organizationId: subject?.organizationId,
+        projectId: subject?.projectId,
+        properties: toolCalledProperties({
+          mcpSessionId: handling.mcpSessionId,
+          tool,
+          outcome,
+          durationMs,
+          args,
+          environmentType: subject?.environmentType,
+          denyReason,
+          tokenKind: identity.kind,
+          clientId: identity.kind === "uat" ? identity.clientId : undefined,
+          userAgent: userAgentOf(request.headers),
+          client: extra.client,
+        }),
+        stitch: handling.stitch
+          ? { client: extra.client, userAgent: userAgentOf(request.headers) }
+          : undefined,
+      });
       logger.info("mcp.tool", {
+        mcpSessionId: sanitizeMcpSessionId(request.headers.get(MCP_SESSION_HEADER)),
         userId: identity.userId,
         tokenKind: identity.kind,
         tokenId: identity.kind === "pat" ? identity.tokenId : identity.sourceTokenId,
@@ -371,10 +404,10 @@ export function withMcpToolAuth<TArgs>(
         projectId: subject?.projectId,
         environmentId: subject?.environmentId,
         environmentType: subject?.environmentType,
-        denyReason: outcome in DENY_REASONS ? DENY_REASONS[outcome as Denial] : undefined,
+        denyReason,
         confirmationId,
         outcome,
-        durationMs: Math.round(performance.now() - startedAt),
+        durationMs,
       });
     }
   };

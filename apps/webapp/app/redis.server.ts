@@ -15,6 +15,8 @@ export type RedisWithClusterOptions = {
   maxRetriesPerRequest?: number | null;
   /** Reject a command that gets no reply within this many ms (default: no timeout). */
   commandTimeout?: number;
+  /** Reject commands while disconnected instead of queueing them; in cluster mode only at cluster level. */
+  enableOfflineQueue?: boolean;
 };
 
 export type RedisClient = Redis | Cluster;
@@ -41,6 +43,9 @@ export function createRedisClient(
 
     redis = new Redis.Cluster(nodes, {
       ...options.clusterOptions,
+      ...(options.enableOfflineQueue !== undefined
+        ? { enableOfflineQueue: options.enableOfflineQueue }
+        : {}),
       redisOptions: {
         connectionName,
         keyPrefix: options.keyPrefix,
@@ -84,6 +89,9 @@ export function createRedisClient(
         ? { maxRetriesPerRequest: options.maxRetriesPerRequest }
         : {}),
       ...(options.commandTimeout !== undefined ? { commandTimeout: options.commandTimeout } : {}),
+      ...(options.enableOfflineQueue !== undefined
+        ? { enableOfflineQueue: options.enableOfflineQueue }
+        : {}),
       ...(options.tlsDisabled ? {} : { tls: {} }),
     });
   }

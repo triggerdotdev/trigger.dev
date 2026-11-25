@@ -11,6 +11,15 @@ import express, {
   type Response as ExpressResponse,
 } from "express";
 import type { McpBearerAuthResult } from "./auth/bearer.server";
+import { reportSessionStarted, type ReportToolCall } from "./gate/reportToolCall.server";
+import {
+  clientInfoFromInitialize,
+  MCP_SERVER_INFO,
+  newMcpSessionId,
+  protocolVersionFromInitialize,
+  sessionStartedProperties,
+  userAgentOf,
+} from "./sessionTelemetry";
 import type { McpPreAuthRateLimit } from "./preAuthRateLimit.server";
 import {
   mcpTools,
@@ -25,19 +34,17 @@ export type McpRouterOptions = {
   rateLimit: RequestHandler;
   preAuth?: McpPreAuthRateLimit;
   tools?: McpToolDefinition[];
+  report?: ReportToolCall;
 };
 
 export function createMcpRouter(options: McpRouterOptions): express.Router {
   const tools = options.tools ?? mcpTools;
   const router = express.Router();
   const buildServer = (ctx: McpToolContext) => {
-    const server = new McpServer(
-      { name: "trigger.dev", version: "1.0.0" },
-      {
-        capabilities: { tools: {} },
-        cacheHints: { "tools/list": { ttlMs: 0, cacheScope: "private" } },
-      }
-    );
+    const server = new McpServer(MCP_SERVER_INFO, {
+      capabilities: { tools: {} },
+      cacheHints: { "tools/list": { ttlMs: 0, cacheScope: "private" } },
+    });
     registerMcpTools(server, tools, ctx);
     return server;
   };
@@ -75,7 +82,7 @@ export function createMcpRouter(options: McpRouterOptions): express.Router {
     express.json({ limit: "1mb" }),
     async (req, res, next) => {
       const request: Request = res.locals.mcpRequest;
-      const ctx = { identity: res.locals.mcpIdentity, request };
+      const ctx = { identity: res.locals.mcpIdentity, request, report: options.report };
       try {
         if (Array.isArray(req.body)) {
           res.status(400).json({
@@ -87,6 +94,19 @@ export function createMcpRouter(options: McpRouterOptions): express.Router {
         }
         if (await isLegacyRequest(request, req.body)) {
           const server = buildServer({ ...ctx, era: "legacy" });
+          if (req.body?.method === "initialize") {
+            const mcpSessionId = newMcpSessionId();
+            res.setHeader("Mcp-Session-Id", mcpSessionId);
+            reportSessionStarted({
+              userId: ctx.identity.userId,
+              properties: sessionStartedProperties({
+                mcpSessionId,
+                ...clientInfoFromInitialize(req.body),
+                protocolVersion: protocolVersionFromInitialize(req.body),
+                userAgent: userAgentOf(request.headers),
+              }),
+            });
+          }
           await pipeFetchResponse(res, await serveLegacy(server, request, req.body, res));
           return;
         }

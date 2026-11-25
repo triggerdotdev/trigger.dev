@@ -56,6 +56,7 @@ import {
   setWebhookSecretTool,
 } from "./tools/webhooks.js";
 import { respondWithError } from "./utils.js";
+import { runInCallScope } from "./callScope.js";
 import { isTelemetryEnabled } from "./telemetry.js";
 
 /** Tool names that perform write/mutating operations. */
@@ -169,12 +170,27 @@ export function registerTools(context: McpContext) {
         inputSchema: tool.inputSchema,
       },
       async (input, extra) => {
+        const startedAt = performance.now();
+        const scope: { projectRef?: string } = {};
+        let ok = false;
         try {
           // await so a rejected async handler (e.g. a network failure in get_report) is caught
           // here and wrapped, not surfaced as an unhandled rejection.
-          return await tool.handler(input, { ...extra, ctx: context });
+          const result = await runInCallScope(scope, () =>
+            tool.handler(input, { ...extra, ctx: context })
+          );
+          ok = !result?.isError;
+          return result;
         } catch (error) {
           return respondWithError(error);
+        } finally {
+          context.telemetry.toolCalled({
+            tool: tool.name,
+            ok,
+            durationMs: Math.round(performance.now() - startedAt),
+            input,
+            resolvedProjectRef: scope.projectRef,
+          });
         }
       }
     );

@@ -4,6 +4,7 @@ import plugin from "@trigger.dev/rbac";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, vi } from "vitest";
+import { newMcpSessionId, sanitizeMcpSessionId } from "~/mcp/sessionTelemetry";
 
 vi.setConfig({ testTimeout: 60_000 });
 
@@ -268,58 +269,71 @@ describe("MCP protocol 2026-07-28", () => {
     });
   });
 
-  // Catches: the legacy era reaching its transport for listen, or a transport given a sessionIdGenerator.
-  postgresTest("refuses legacy-shaped listen and never issues a session id", async ({ prisma }) => {
-    const { token } = await seed(prisma);
-    const legacyInit = rpc(1, "initialize", {
-      protocolVersion: "2025-11-25",
-      capabilities: {},
-      clientInfo: { name: "golden", version: "1.0.0" },
-    });
-    const modernList = modernRpc(2, "tools/list");
-    const modernCall = modernRpc(3, "tools/call", { name: "list_projects", arguments: {} });
-    const legacyList = rpc(4, "tools/list");
-    const legacyCall = call(5, "list_projects");
-    const legacyListen = rpc(6, "subscriptions/listen", {
-      notifications: { toolsListChanged: true },
-    });
+  // Catches: the legacy era reaching its transport for listen, or a transport given a sessionIdGenerator
+  // (the id on initialize is minted by the router, not by the transport).
+  postgresTest(
+    "refuses legacy-shaped listen and only labels initialize with a session id",
+    async ({ prisma }) => {
+      const { token } = await seed(prisma);
+      const legacyInit = rpc(1, "initialize", {
+        protocolVersion: "2025-11-25",
+        capabilities: {},
+        clientInfo: { name: "golden", version: "1.0.0" },
+      });
+      const modernList = modernRpc(2, "tools/list");
+      const modernCall = modernRpc(3, "tools/call", { name: "list_projects", arguments: {} });
+      const legacyList = rpc(4, "tools/list");
+      const legacyCall = call(5, "list_projects");
+      const legacyListen = rpc(6, "subscriptions/listen", {
+        notifications: { toolsListChanged: true },
+      });
 
-    await withServer(prisma, async (baseUrl) => {
-      const post = (body: { method: string }, extra: Record<string, string> = {}) =>
-        fetch(`${baseUrl}/mcp`, {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            Accept: "application/json, text/event-stream",
-            Authorization: `Bearer ${token}`,
-            ...extra,
-          },
-          body: JSON.stringify(body),
-          signal: AbortSignal.timeout(5_000),
-        });
+      await withServer(prisma, async (baseUrl) => {
+        const post = (body: { method: string }, extra: Record<string, string> = {}) =>
+          fetch(`${baseUrl}/mcp`, {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              Accept: "application/json, text/event-stream",
+              Authorization: `Bearer ${token}`,
+              ...extra,
+            },
+            body: JSON.stringify(body),
+            signal: AbortSignal.timeout(5_000),
+          });
 
-      const listened = await post(legacyListen);
-      expect(listened.headers.get("content-type")).toContain("application/json");
-      expect(((await listened.json()) as any).error.code).toBe(-32601);
+        const withSession = await post(legacyList, { "Mcp-Session-Id": newMcpSessionId() });
+        expect(withSession.status).toBe(200);
+        await withSession.text();
 
-      const requests = [
-        { name: "legacy initialize", send: () => post(legacyInit) },
-        { name: "legacy tools/list", send: () => post(legacyList) },
-        { name: "legacy tools/call", send: () => post(legacyCall) },
-        { name: "modern tools/list", send: () => post(modernList, headersFor(modernList)) },
-        { name: "modern tools/call", send: () => post(modernCall, headersFor(modernCall)) },
-      ];
-      for (const { name, send } of requests) {
-        const res = await send();
-        await res.text();
-        expect({ name, status: res.status, session: res.headers.get("mcp-session-id") }).toEqual({
-          name,
-          status: 200,
-          session: null,
-        });
-      }
-    });
-  });
+        const listened = await post(legacyListen);
+        expect(listened.headers.get("content-type")).toContain("application/json");
+        expect(((await listened.json()) as any).error.code).toBe(-32601);
+
+        const requests = [
+          { name: "legacy initialize", send: () => post(legacyInit) },
+          { name: "legacy tools/list", send: () => post(legacyList) },
+          { name: "legacy tools/call", send: () => post(legacyCall) },
+          { name: "modern tools/list", send: () => post(modernList, headersFor(modernList)) },
+          { name: "modern tools/call", send: () => post(modernCall, headersFor(modernCall)) },
+        ];
+        for (const { name, send } of requests) {
+          const res = await send();
+          await res.text();
+          const session = res.headers.get("mcp-session-id");
+          expect({
+            name,
+            status: res.status,
+            session: sanitizeMcpSessionId(session) ? "minted" : session,
+          }).toEqual({
+            name,
+            status: 200,
+            session: name === "legacy initialize" ? "minted" : null,
+          });
+        }
+      });
+    }
+  );
 
   // Catches: the rate limiter running after express.json or before bearer auth.
   postgresTest("runs bearer auth, then the rate limiter, then body parsing", async ({ prisma }) => {

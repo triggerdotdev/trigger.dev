@@ -13,6 +13,13 @@ import { logger } from "~/services/logger.server";
 import { MCP_SCOPES } from "~/services/oauth/metadata.server";
 import type { McpRequestExtra, McpToolAuth } from "./gate/types";
 import { missingScopes } from "./gate/withMcpToolAuth.server";
+import { reportToolCall, type ReportToolCall } from "./gate/reportToolCall.server";
+import {
+  clientIdentityFromEnvelope,
+  sessionHandling,
+  toolCalledProperties,
+  userAgentOf,
+} from "./sessionTelemetry";
 import type { McpIdentity } from "./types";
 import { agentsTools } from "./tools/agents.server";
 import { alertsTools } from "./tools/alerts.server";
@@ -73,7 +80,12 @@ export type McpToolDefinition = {
   ) => Promise<CallToolResult>;
 };
 
-export type McpToolContext = { identity: McpIdentity; request: Request; era: ProtocolEra };
+export type McpToolContext = {
+  identity: McpIdentity;
+  request: Request;
+  era: ProtocolEra;
+  report?: ReportToolCall;
+};
 
 function assertUniqueToolNames(tools: McpToolDefinition[]) {
   const seen = new Set<string>();
@@ -140,7 +152,7 @@ export function registerMcpTools(
         annotations: tool.annotations,
         scopeChallenge:
           ctx.era === "modern" && tool.auth
-            ? scopeChallengeFor(tool.name, tool.auth, ctx.identity)
+            ? scopeChallengeFor(tool.name, tool.auth, ctx, Object.keys(tool.inputSchema))
             : undefined,
       },
       async (args: unknown, extra) => {
@@ -149,6 +161,8 @@ export function registerMcpTools(
             signal: extra.mcpReq.signal,
             requestId: extra.mcpReq.id,
             era: ctx.era,
+            client:
+              ctx.era === "modern" ? clientIdentityFromEnvelope(extra.mcpReq.envelope) : undefined,
           });
         } catch (error) {
           if (ctx.era === "modern" && error instanceof UrlElicitationRequiredError) {
@@ -170,14 +184,44 @@ export function registerMcpTools(
   }
 }
 
+// The call is rejected before validation, so only names the tool declares are reported.
+function pickKeys(args: unknown, allowed: string[]) {
+  if (typeof args !== "object" || args === null) return undefined;
+  return Object.fromEntries(Object.entries(args).filter(([key]) => allowed.includes(key)));
+}
+
 function scopeChallengeFor(
   tool: string,
   auth: McpToolAuth,
-  identity: McpIdentity
+  ctx: McpToolContext,
+  schemaKeys: string[]
 ): ScopeChallengeHandler {
-  return () => {
+  const { identity } = ctx;
+  return ({ request: rpc }) => {
     const [first, ...rest] = missingScopes(auth, identity);
     if (!first || identity.kind !== "uat") return undefined;
+    const handling = sessionHandling(ctx.era, ctx.request.headers);
+    (ctx.report ?? reportToolCall)({
+      userId: identity.userId,
+      properties: toolCalledProperties({
+        mcpSessionId: handling.mcpSessionId,
+        tool,
+        outcome: "insufficient_scope",
+        durationMs: 0,
+        args: pickKeys(rpc.params?.arguments, schemaKeys),
+        denyReason: "scope",
+        tokenKind: identity.kind,
+        clientId: identity.clientId,
+        userAgent: userAgentOf(ctx.request.headers),
+        client: clientIdentityFromEnvelope(rpc.params?._meta),
+      }),
+      stitch: handling.stitch
+        ? {
+            client: clientIdentityFromEnvelope(rpc.params?._meta),
+            userAgent: userAgentOf(ctx.request.headers),
+          }
+        : undefined,
+    });
     logger.info("mcp.tool", {
       userId: identity.userId,
       tokenKind: identity.kind,

@@ -1,6 +1,7 @@
 import type { RuntimeEnvironmentType } from "@trigger.dev/database";
 import type { RbacScopeAction, RbacScopeResourceType } from "@trigger.dev/plugins";
 import type { RbacAbility } from "@trigger.dev/rbac";
+import type { McpClientIdentity } from "../sessionTelemetry";
 import type { McpIdentity } from "../types";
 
 export type { McpIdentity } from "../types";
@@ -50,6 +51,7 @@ export type McpRequestExtra = {
   signal: AbortSignal;
   requestId: string | number;
   era?: "legacy" | "modern";
+  client?: McpClientIdentity;
 };
 
 export type McpToolContext = {

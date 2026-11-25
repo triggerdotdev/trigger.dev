@@ -1,6 +1,7 @@
 import { ApiClient, type GitMeta } from "@trigger.dev/core/v3";
 import { CliApiClient } from "../apiClient.js";
 import { readAuthConfigProfile } from "./configFiles.js";
+import { knownUserGeneration, rememberUserId } from "./knownUser.js";
 import { logger } from "./logger.js";
 
 export type LoginResultOk = {
@@ -36,16 +37,25 @@ export type LoginResult =
       };
     };
 
-export async function isLoggedIn(profile: string = "default"): Promise<LoginResult> {
+export async function isLoggedIn(
+  profile: string = "default",
+  deps: {
+    readProfile?: typeof readAuthConfigProfile;
+    whoAmI?: (apiUrl: string, accessToken: string) => ReturnType<CliApiClient["whoAmI"]>;
+    signal?: AbortSignal;
+  } = {}
+): Promise<LoginResult> {
+  const generation = knownUserGeneration();
   try {
-    const config = readAuthConfigProfile(profile);
+    const config = (deps.readProfile ?? readAuthConfigProfile)(profile);
 
     if (!config?.accessToken || !config?.apiUrl) {
       return { ok: false as const, error: "You must login first" };
     }
 
-    const apiClient = new CliApiClient(config.apiUrl, config.accessToken);
-    const userData = await apiClient.whoAmI();
+    const userData = await (
+      deps.whoAmI ?? ((url, token) => new CliApiClient(url, token).whoAmI(undefined, deps.signal))
+    )(config.apiUrl, config.accessToken);
 
     if (!userData.success) {
       return {
@@ -59,6 +69,8 @@ export async function isLoggedIn(profile: string = "default"): Promise<LoginResu
         },
       };
     }
+
+    rememberUserId(userData.data.userId, config.apiUrl, generation);
 
     return {
       ok: true as const,
