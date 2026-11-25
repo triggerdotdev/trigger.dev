@@ -1,4 +1,4 @@
-import { type Prisma, type TaskSchedule } from "@trigger.dev/database";
+import { Prisma, type TaskSchedule } from "@trigger.dev/database";
 import cronstrue from "cronstrue";
 import { nanoid } from "nanoid";
 import { generateFriendlyId } from "../friendlyIdentifiers";
@@ -23,6 +23,28 @@ import {
 
 export type UpsertTaskScheduleServiceOptions = UpsertSchedule;
 
+/** The message a create-only call fails with when the deduplication key is already taken. */
+const DEDUPLICATION_KEY_TAKEN = "A schedule with this deduplication key already exists";
+/** A unique violation on the project's deduplication key, not on any other unique column. */
+function isDeduplicationKeyConflict(error: unknown) {
+  if (!(error instanceof Prisma.PrismaClientKnownRequestError) || error.code !== "P2002") {
+    return false;
+  }
+  return targetsDeduplicationKey(error.meta?.target);
+}
+
+/**
+ * Whether a unique violation's target names the deduplication key. The pg driver adapter can
+ * report quoted column names or a constraint name, so each entry is matched by substring.
+ */
+function targetsDeduplicationKey(target: unknown) {
+  return (Array.isArray(target) ? target : [target]).some((field) =>
+    String(field ?? "").includes("deduplicationKey")
+  );
+}
+
+const SCHEDULE_CHANGED = "The schedule was changed by another request. Fetch it again and retry.";
+
 type InstanceWithEnvironment = Prisma.TaskScheduleInstanceGetPayload<{
   include: {
     environment: {
@@ -41,7 +63,11 @@ export class UpsertTaskScheduleService extends BaseService {
   public async call(
     projectId: string,
     schedule: UpsertTaskScheduleServiceOptions,
-    options?: { runTokenEnvironmentId: string }
+    /**
+     * `createOnly`: never update; a taken deduplication key fails with a 409 instead.
+     * `revision`: update only while the locked schedule's `updatedAt` is still this; else a 409.
+     */
+    options?: { runTokenEnvironmentId: string; createOnly?: boolean; revision?: Date }
   ) {
     if (
       options &&
@@ -84,7 +110,9 @@ export class UpsertTaskScheduleService extends BaseService {
           options.runTokenEnvironmentId,
           async (instanceId) => {
             instanceIds.push(instanceId);
-          }
+          },
+          options.createOnly,
+          options.revision
         ),
       { isolationLevel: "ReadCommitted" }
     );
@@ -106,7 +134,9 @@ export class UpsertTaskScheduleService extends BaseService {
     },
     runTokenEnvironmentId?: string,
     registerInstance: (instanceId: string) => Promise<unknown> = (instanceId) =>
-      scheduleEngine.registerNextTaskScheduleInstance({ instanceId })
+      scheduleEngine.registerNextTaskScheduleInstance({ instanceId }),
+    createOnly = false,
+    revision?: Date
   ) {
     const deduplicationKey =
       typeof schedule.deduplicationKey === "string" && schedule.deduplicationKey !== ""
@@ -124,6 +154,19 @@ export class UpsertTaskScheduleService extends BaseService {
           },
         });
 
+    if (existingSchedule && createOnly) {
+      throw new ServiceValidationError(DEDUPLICATION_KEY_TAKEN, 409);
+    }
+
+    if (revision !== undefined) {
+      // A revision is checked under the run-token row lock; without it the check could not hold.
+      if (!runTokenEnvironmentId) {
+        throw new Error("A schedule revision can only be checked with a run-token environment");
+      }
+      // The approved schedule is gone: never fall through to creating a new one.
+      if (!existingSchedule) throw new ServiceValidationError(SCHEDULE_CHANGED, 409);
+    }
+
     if (existingSchedule && runTokenEnvironmentId) {
       existingSchedule = await lockScheduleForRunTokenMutation(
         this._prisma,
@@ -134,6 +177,14 @@ export class UpsertTaskScheduleService extends BaseService {
       if (!existingSchedule) {
         throw new ServiceValidationError("Schedule not found or shared with another environment");
       }
+    }
+
+    if (
+      revision !== undefined &&
+      existingSchedule &&
+      existingSchedule.updatedAt.getTime() !== revision.getTime()
+    ) {
+      throw new ServiceValidationError(SCHEDULE_CHANGED, 409);
     }
 
     let result;
@@ -152,13 +203,22 @@ export class UpsertTaskScheduleService extends BaseService {
         context.defaultWindowDurationSeconds !== undefined
           ? context.defaultWindowDurationSeconds
           : await resolveNewScheduleDefaultWindowSeconds(this._prisma, context.organizationId);
-      result = await this.#createNewSchedule(
+      const create = this.#createNewSchedule(
         schedule,
         projectId,
         deduplicationKey,
         defaultWindowDurationSeconds,
         registerInstance
       );
+      // A concurrent create with the same key commits first: the unique key makes this insert fail.
+      result = createOnly
+        ? await create.catch((error: unknown) => {
+            if (isDeduplicationKeyConflict(error)) {
+              throw new ServiceValidationError(DEDUPLICATION_KEY_TAKEN, 409);
+            }
+            throw error;
+          })
+        : await create;
     }
 
     if (!result) {

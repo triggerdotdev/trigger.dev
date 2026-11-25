@@ -126,6 +126,155 @@
             }
           },
           {
+            "name": "list_tasks",
+            "title": "List Tasks",
+            "description": "List the tasks in an environment's current version, like the Tasks page in the dashboard: each task's ID, kind (standard, scheduled, agent or webhook), file, export name and description, its runs in the last 24 hours by status, and how many are running now. Returns 100 tasks per page.",
+            "inputSchema": {
+              "type": "object",
+              "$schema": "https://json-schema.org/draft/2020-12/schema",
+              "properties": {
+                "projectRef": {
+                  "type": "string",
+                  "description": "The trigger.dev project ref, starts with proj_. We will attempt to automatically detect the project ref if running inside a directory that includes a trigger.config.ts file, or if you pass the --project-ref option to the MCP server."
+                },
+                "configPath": {
+                  "type": "string",
+                  "description": "The path to the trigger.config.ts file. Only used when the trigger.config.ts file is not at the root dir (like in a monorepo setup). If not provided, we will try to find the config file in the current working directory"
+                },
+                "environment": {
+                  "default": "dev",
+                  "type": "string",
+                  "enum": ["dev", "staging", "prod", "preview"],
+                  "description": "The environment to get tasks for"
+                },
+                "branch": {
+                  "type": "string",
+                  "description": "The branch to get tasks for, only used for preview environments and branchable development environments"
+                },
+                "page": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 100,
+                  "description": "The page to return, 100 tasks per page (default 1)"
+                }
+              }
+            },
+            "annotations": {
+              "readOnlyHint": true,
+              "destructiveHint": false,
+              "title": "List Tasks"
+            }
+          },
+          {
+            "name": "list_schedules",
+            "title": "List Schedules",
+            "description": "List the schedules in an environment, newest first, like the Schedules page in the dashboard: each schedule's task, cron, timezone, window, active state, next run, external ID and deduplication key, and whether it is declarative (defined in code) or imperative. Filter by task, type or text. Also shows how many schedules the project uses of its plan limit.",
+            "inputSchema": {
+              "type": "object",
+              "$schema": "https://json-schema.org/draft/2020-12/schema",
+              "properties": {
+                "projectRef": {
+                  "type": "string",
+                  "description": "The trigger.dev project ref, starts with proj_. We will attempt to automatically detect the project ref if running inside a directory that includes a trigger.config.ts file, or if you pass the --project-ref option to the MCP server."
+                },
+                "configPath": {
+                  "type": "string",
+                  "description": "The path to the trigger.config.ts file. Only used when the trigger.config.ts file is not at the root dir (like in a monorepo setup). If not provided, we will try to find the config file in the current working directory"
+                },
+                "environment": {
+                  "default": "dev",
+                  "type": "string",
+                  "enum": ["dev", "staging", "prod", "preview"],
+                  "description": "The environment to get tasks for"
+                },
+                "branch": {
+                  "type": "string",
+                  "description": "The branch to get tasks for, only used for preview environments and branchable development environments"
+                },
+                "tasks": {
+                  "minItems": 1,
+                  "maxItems": 20,
+                  "type": "array",
+                  "items": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 128
+                  },
+                  "description": "Only schedules for these task IDs"
+                },
+                "search": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 128,
+                  "description": "Only schedules whose ID, external ID, deduplication key or cron contains this text"
+                },
+                "type": {
+                  "type": "string",
+                  "enum": ["declarative", "imperative"],
+                  "description": "declarative: defined in code and synced on deploy. imperative: created in the dashboard or with the API."
+                },
+                "page": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 1000,
+                  "description": "The page to return (default 1)"
+                },
+                "limit": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 50,
+                  "description": "How many per page (default 20)"
+                }
+              }
+            },
+            "annotations": {
+              "readOnlyHint": true,
+              "destructiveHint": false,
+              "title": "List Schedules"
+            }
+          },
+          {
+            "name": "get_schedule_details",
+            "title": "Get Schedule Details",
+            "description": "Get one schedule in an environment, like the schedule page in the dashboard: its task, cron with a description, timezone, window, active state, the next 5 runs, external ID, deduplication key, the environments it runs in, and whether it is declarative (defined in code) or imperative. Use list_runs with the schedule ID to see the runs it triggered.",
+            "inputSchema": {
+              "type": "object",
+              "$schema": "https://json-schema.org/draft/2020-12/schema",
+              "properties": {
+                "projectRef": {
+                  "type": "string",
+                  "description": "The trigger.dev project ref, starts with proj_. We will attempt to automatically detect the project ref if running inside a directory that includes a trigger.config.ts file, or if you pass the --project-ref option to the MCP server."
+                },
+                "configPath": {
+                  "type": "string",
+                  "description": "The path to the trigger.config.ts file. Only used when the trigger.config.ts file is not at the root dir (like in a monorepo setup). If not provided, we will try to find the config file in the current working directory"
+                },
+                "environment": {
+                  "default": "dev",
+                  "type": "string",
+                  "enum": ["dev", "staging", "prod", "preview"],
+                  "description": "The environment to get tasks for"
+                },
+                "branch": {
+                  "type": "string",
+                  "description": "The branch to get tasks for, only used for preview environments and branchable development environments"
+                },
+                "scheduleId": {
+                  "type": "string",
+                  "maxLength": 70,
+                  "pattern": "^sched_[0-9A-Za-z]{1,64}$",
+                  "description": "The schedule ID, starts with sched_. Use list_schedules to find it."
+                }
+              },
+              "required": ["scheduleId"]
+            },
+            "annotations": {
+              "readOnlyHint": true,
+              "destructiveHint": false,
+              "title": "Get Schedule Details"
+            }
+          },
+          {
             "name": "list_runs",
             "title": "List Runs",
             "description": "List all runs for a project. Use this tool when you need to search for a run or list all runs for a project.",
@@ -5666,6 +5815,280 @@
             },
             "annotations": {
               "title": "Trigger Task",
+              "readOnlyHint": false,
+              "destructiveHint": true
+            }
+          },
+          {
+            "name": "create_schedule",
+            "title": "Create Schedule",
+            "description": "Create a schedule that triggers a scheduled task (one defined with schedules.task) on a cron, in this environment only. It is active at once and starts runs on its own until it is deactivated or deleted. Outside development environments it counts toward the project's schedule limit.",
+            "inputSchema": {
+              "type": "object",
+              "$schema": "https://json-schema.org/draft/2020-12/schema",
+              "properties": {
+                "projectRef": {
+                  "type": "string",
+                  "description": "The trigger.dev project ref, starts with proj_. We will attempt to automatically detect the project ref if running inside a directory that includes a trigger.config.ts file, or if you pass the --project-ref option to the MCP server."
+                },
+                "configPath": {
+                  "type": "string",
+                  "description": "The path to the trigger.config.ts file. Only used when the trigger.config.ts file is not at the root dir (like in a monorepo setup). If not provided, we will try to find the config file in the current working directory"
+                },
+                "environment": {
+                  "default": "dev",
+                  "type": "string",
+                  "enum": ["dev", "staging", "prod", "preview"],
+                  "description": "The environment to get tasks for"
+                },
+                "branch": {
+                  "type": "string",
+                  "description": "The branch to get tasks for, only used for preview environments and branchable development environments"
+                },
+                "taskId": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 128,
+                  "description": "The ID of a scheduled task (defined with schedules.task) in this environment"
+                },
+                "cron": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 100,
+                  "description": "A cron expression with 5 fields (minute hour day-of-month month day-of-week), e.g. \"0 9 * * 1-5\". Seconds are not allowed."
+                },
+                "timezone": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 64,
+                  "description": "An IANA timezone the cron is evaluated in, e.g. \"Europe/London\". Defaults to UTC."
+                },
+                "externalId": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 256,
+                  "description": "Your own ID for this schedule, passed to every run it triggers, e.g. a user ID"
+                },
+                "deduplicationKey": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 256,
+                  "description": "A key unique in the project. A schedule with this key must not exist yet. It cannot be changed later."
+                },
+                "window": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 16,
+                  "description": "Spread each run over a window after its fire time, as a duration (\"30m\", \"2h\", up to 24h) or a share of the gap until the next fire time (\"50%\")."
+                }
+              },
+              "required": ["taskId", "cron"]
+            },
+            "annotations": {
+              "title": "Create Schedule",
+              "readOnlyHint": false,
+              "destructiveHint": true
+            }
+          },
+          {
+            "name": "update_schedule",
+            "title": "Update Schedule",
+            "description": "Change an imperative schedule's cron, timezone, external ID or window. Omitted fields keep their values. Declarative schedules (defined in code) and schedules that also run in another environment can't be changed here.",
+            "inputSchema": {
+              "type": "object",
+              "$schema": "https://json-schema.org/draft/2020-12/schema",
+              "properties": {
+                "projectRef": {
+                  "type": "string",
+                  "description": "The trigger.dev project ref, starts with proj_. We will attempt to automatically detect the project ref if running inside a directory that includes a trigger.config.ts file, or if you pass the --project-ref option to the MCP server."
+                },
+                "configPath": {
+                  "type": "string",
+                  "description": "The path to the trigger.config.ts file. Only used when the trigger.config.ts file is not at the root dir (like in a monorepo setup). If not provided, we will try to find the config file in the current working directory"
+                },
+                "environment": {
+                  "default": "dev",
+                  "type": "string",
+                  "enum": ["dev", "staging", "prod", "preview"],
+                  "description": "The environment to get tasks for"
+                },
+                "branch": {
+                  "type": "string",
+                  "description": "The branch to get tasks for, only used for preview environments and branchable development environments"
+                },
+                "scheduleId": {
+                  "type": "string",
+                  "maxLength": 70,
+                  "pattern": "^sched_[0-9A-Za-z]{1,64}$",
+                  "description": "The schedule ID, starts with sched_. Use list_schedules to find it."
+                },
+                "cron": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 100,
+                  "description": "A cron expression with 5 fields (minute hour day-of-month month day-of-week), e.g. \"0 9 * * 1-5\". Seconds are not allowed."
+                },
+                "timezone": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 64,
+                  "description": "An IANA timezone the cron is evaluated in, e.g. \"Europe/London\". Defaults to UTC."
+                },
+                "externalId": {
+                  "anyOf": [
+                    {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 256
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "description": "A new external ID, or null to remove it. Omit to keep the current one."
+                },
+                "window": {
+                  "anyOf": [
+                    {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 16,
+                      "description": "Spread each run over a window after its fire time, as a duration (\"30m\", \"2h\", up to 24h) or a share of the gap until the next fire time (\"50%\")."
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "description": "A new window, or null to remove it (a default window captured when the schedule was created then applies). Omit to keep the current one."
+                }
+              },
+              "required": ["scheduleId"]
+            },
+            "annotations": {
+              "title": "Update Schedule",
+              "readOnlyHint": false,
+              "destructiveHint": true
+            }
+          },
+          {
+            "name": "activate_schedule",
+            "title": "Activate Schedule",
+            "description": "Activate an inactive imperative schedule so it starts triggering runs again at its next fire time. Missed fire times are not run.",
+            "inputSchema": {
+              "type": "object",
+              "$schema": "https://json-schema.org/draft/2020-12/schema",
+              "properties": {
+                "projectRef": {
+                  "type": "string",
+                  "description": "The trigger.dev project ref, starts with proj_. We will attempt to automatically detect the project ref if running inside a directory that includes a trigger.config.ts file, or if you pass the --project-ref option to the MCP server."
+                },
+                "configPath": {
+                  "type": "string",
+                  "description": "The path to the trigger.config.ts file. Only used when the trigger.config.ts file is not at the root dir (like in a monorepo setup). If not provided, we will try to find the config file in the current working directory"
+                },
+                "environment": {
+                  "default": "dev",
+                  "type": "string",
+                  "enum": ["dev", "staging", "prod", "preview"],
+                  "description": "The environment to get tasks for"
+                },
+                "branch": {
+                  "type": "string",
+                  "description": "The branch to get tasks for, only used for preview environments and branchable development environments"
+                },
+                "scheduleId": {
+                  "type": "string",
+                  "maxLength": 70,
+                  "pattern": "^sched_[0-9A-Za-z]{1,64}$",
+                  "description": "The schedule ID, starts with sched_. Use list_schedules to find it."
+                }
+              },
+              "required": ["scheduleId"]
+            },
+            "annotations": {
+              "title": "Activate Schedule",
+              "readOnlyHint": false,
+              "destructiveHint": true
+            }
+          },
+          {
+            "name": "deactivate_schedule",
+            "title": "Deactivate Schedule",
+            "description": "Deactivate an imperative schedule so it triggers no runs until it is activated again. Runs it already triggered are not affected.",
+            "inputSchema": {
+              "type": "object",
+              "$schema": "https://json-schema.org/draft/2020-12/schema",
+              "properties": {
+                "projectRef": {
+                  "type": "string",
+                  "description": "The trigger.dev project ref, starts with proj_. We will attempt to automatically detect the project ref if running inside a directory that includes a trigger.config.ts file, or if you pass the --project-ref option to the MCP server."
+                },
+                "configPath": {
+                  "type": "string",
+                  "description": "The path to the trigger.config.ts file. Only used when the trigger.config.ts file is not at the root dir (like in a monorepo setup). If not provided, we will try to find the config file in the current working directory"
+                },
+                "environment": {
+                  "default": "dev",
+                  "type": "string",
+                  "enum": ["dev", "staging", "prod", "preview"],
+                  "description": "The environment to get tasks for"
+                },
+                "branch": {
+                  "type": "string",
+                  "description": "The branch to get tasks for, only used for preview environments and branchable development environments"
+                },
+                "scheduleId": {
+                  "type": "string",
+                  "maxLength": 70,
+                  "pattern": "^sched_[0-9A-Za-z]{1,64}$",
+                  "description": "The schedule ID, starts with sched_. Use list_schedules to find it."
+                }
+              },
+              "required": ["scheduleId"]
+            },
+            "annotations": {
+              "title": "Deactivate Schedule",
+              "readOnlyHint": false,
+              "destructiveHint": true
+            }
+          },
+          {
+            "name": "delete_schedule",
+            "title": "Delete Schedule",
+            "description": "Delete an imperative schedule permanently so it triggers no more runs. Runs it already triggered are kept. Declarative schedules (defined in code) are removed by deleting them from code and deploying.",
+            "inputSchema": {
+              "type": "object",
+              "$schema": "https://json-schema.org/draft/2020-12/schema",
+              "properties": {
+                "projectRef": {
+                  "type": "string",
+                  "description": "The trigger.dev project ref, starts with proj_. We will attempt to automatically detect the project ref if running inside a directory that includes a trigger.config.ts file, or if you pass the --project-ref option to the MCP server."
+                },
+                "configPath": {
+                  "type": "string",
+                  "description": "The path to the trigger.config.ts file. Only used when the trigger.config.ts file is not at the root dir (like in a monorepo setup). If not provided, we will try to find the config file in the current working directory"
+                },
+                "environment": {
+                  "default": "dev",
+                  "type": "string",
+                  "enum": ["dev", "staging", "prod", "preview"],
+                  "description": "The environment to get tasks for"
+                },
+                "branch": {
+                  "type": "string",
+                  "description": "The branch to get tasks for, only used for preview environments and branchable development environments"
+                },
+                "scheduleId": {
+                  "type": "string",
+                  "maxLength": 70,
+                  "pattern": "^sched_[0-9A-Za-z]{1,64}$",
+                  "description": "The schedule ID, starts with sched_. Use list_schedules to find it."
+                }
+              },
+              "required": ["scheduleId"]
+            },
+            "annotations": {
+              "title": "Delete Schedule",
               "readOnlyHint": false,
               "destructiveHint": true
             }

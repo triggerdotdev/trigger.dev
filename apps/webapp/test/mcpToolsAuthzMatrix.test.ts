@@ -69,6 +69,7 @@ import { mcpResource } from "~/services/oauth/metadata.server";
 const project = { environment: "prod" };
 const endpoint = { ...project, endpointId: "payments" };
 const prompt = { ...project, slug: "my-prompt" };
+const sched = { ...project, scheduleId: "sched_1" };
 const errorGroup = { ...project, errorId: "error_abc123" };
 
 const TOOLS: Array<{ tool: string; args: Record<string, unknown>; scope: string }> = [
@@ -233,6 +234,18 @@ const TOOLS: Array<{ tool: string; args: Record<string, unknown>; scope: string 
   { tool: "generate_webhook_verify_token", args: endpoint, scope: "write:webhooks" },
   { tool: "pause_webhook_endpoint", args: endpoint, scope: "write:webhooks" },
   { tool: "resume_webhook_endpoint", args: endpoint, scope: "write:webhooks" },
+  { tool: "list_tasks", args: project, scope: "read:tasks" },
+  { tool: "list_schedules", args: project, scope: "read:tasks" },
+  { tool: "get_schedule_details", args: sched, scope: "read:tasks" },
+  {
+    tool: "create_schedule",
+    args: { ...project, taskId: "nightly", cron: "0 9 * * *" },
+    scope: "write:tasks",
+  },
+  { tool: "update_schedule", args: { ...sched, cron: "0 9 * * *" }, scope: "write:tasks" },
+  { tool: "activate_schedule", args: sched, scope: "write:tasks" },
+  { tool: "deactivate_schedule", args: sched, scope: "write:tasks" },
+  { tool: "delete_schedule", args: sched, scope: "write:tasks" },
   {
     tool: "cancel_webhook_waiter",
     args: { ...endpoint, waiterId: "waitpoint_1" },

@@ -23,6 +23,8 @@ type ScheduleListOptions = {
    * dashboard renders the column. Defaults off.
    */
   includeLastRun?: boolean;
+  /** Also return the cron time each `lastRun` belongs to, as `lastRunFiredAt`. */
+  includeLastRunFiredAt?: boolean;
 } & ScheduleListFilters;
 
 const DEFAULT_PAGE_SIZE = 20;
@@ -44,6 +46,7 @@ type ScheduleListItem = {
   nextRun: Date;
   nextRunEffectiveAt: Date;
   lastRun: Date | undefined;
+  lastRunFiredAt?: Date;
   active: boolean;
   environments: {
     id: string;
@@ -64,6 +67,7 @@ export class ScheduleListPresenter extends BasePresenter {
     type,
     pageSize = DEFAULT_PAGE_SIZE,
     includeLastRun = false,
+    includeLastRunFiredAt = false,
   }: ScheduleListOptions) {
     const hasFilters =
       type !== undefined || tasks !== undefined || (search !== undefined && search !== "");
@@ -310,11 +314,11 @@ export class ScheduleListPresenter extends BasePresenter {
         active: schedule.active,
         updatedAt: schedule.updatedAt,
       })),
-      { phaseSecret: env.SCHEDULE_PHASE_SEED, includeLastRun }
+      { phaseSecret: env.SCHEDULE_PHASE_SEED, includeLastRun, includeLastRunFiredAt }
     );
 
     const schedules: ScheduleListItem[] = rawSchedules.map((schedule, index) => {
-      const { nextRun, nextRunEffectiveAt, lastRun } = timings[index];
+      const { nextRun, nextRunEffectiveAt, lastRun, lastRunFiredAt } = timings[index];
       const resolvedWindow = formatResolvedScheduleWindow(schedule);
 
       return {
@@ -333,6 +337,7 @@ export class ScheduleListPresenter extends BasePresenter {
         active: schedule.active,
         externalId: schedule.externalId,
         lastRun,
+        ...(lastRunFiredAt ? { lastRunFiredAt } : {}),
         nextRun,
         nextRunEffectiveAt,
         environments: schedule.instances.map((instance) => {
