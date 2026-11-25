@@ -451,9 +451,12 @@ const zodIpc = new ZodIpcConnection({
 
       initializeApiManagers();
 
-      console.log(
-        `[${new Date().toISOString()}] Received EXECUTE_TASK_RUN isWarmStart ${String(isWarmStart)}`
-      );
+      console.log(`[${new Date().toISOString()}] Received EXECUTE_TASK_RUN`, {
+        runId: execution.run.id,
+        attemptNumber: execution.attempt.number,
+        taskId: execution.task.id,
+        isWarmStart,
+      });
 
       if (_lastFlushPromise) {
         const now = performance.now();
@@ -483,8 +486,6 @@ const zodIpc = new ZodIpcConnection({
       });
 
       standardRunTimelineMetricsManager.registerMetricsFromExecution(metrics, isWarmStart);
-
-      console.log(`[${new Date().toISOString()}] Received EXECUTE_TASK_RUN`, execution);
 
       if (_isRunning) {
         console.error("Worker is already running a task");

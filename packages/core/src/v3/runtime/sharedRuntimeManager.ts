@@ -312,11 +312,17 @@ export class SharedRuntimeManager implements RuntimeManager {
   }
 
   private waitpointForDebugLog(waitpoint: CompletedWaitpoint): DebugLogPropertiesInput {
-    const { completedAfter, completedAt, output, ...rest } = waitpoint;
+    const { completedAfter, completedAt } = waitpoint;
 
     return {
-      ...rest,
-      output: output?.slice(0, 100),
+      id: waitpoint.id,
+      friendlyId: waitpoint.friendlyId,
+      type: waitpoint.type,
+      index: waitpoint.index,
+      completedByTaskRun: waitpoint.completedByTaskRun,
+      completedByBatch: waitpoint.completedByBatch,
+      outputType: waitpoint.outputType,
+      outputIsError: waitpoint.outputIsError,
       completedAfter: completedAfter?.toISOString(),
       completedAt: completedAt?.toISOString(),
       completedAfterDate: completedAfter,

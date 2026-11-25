@@ -30,7 +30,6 @@ import { forkEnvFromRunEnv, type TaskRunProcessProvider } from "./taskRunProcess
 import { hasUsableRunToken, RunTokenRefresher, type RunTokenUpdate } from "./runTokenRefresh.js";
 import { SecretEnv } from "./secretEnv.js";
 import { UsageJwtRefresher } from "./usageJwtRefresh.js";
-import { redactSecrets } from "./redact.js";
 
 const CREDENTIAL_RESUME_RETRY_DELAYS_MS = [0, 1_000, 3_000];
 
@@ -506,7 +505,9 @@ export class RunExecution {
     });
 
     this.sendDebugLog("started attempt", {
-      start: { ...start.data, envVars: redactSecrets(start.data.envVars) },
+      attemptNumber: start.data.run.attemptNumber,
+      taskId: start.data.execution.task.id,
+      envVarCount: Object.keys(start.data.envVars).length,
     });
 
     this.currentTaskRunEnv = forkEnvFromRunEnv(start.data.envVars);
@@ -982,8 +983,8 @@ export class RunExecution {
     }
 
     this.sendDebugLog(`[override] processing: ${reason}`, {
-      overrides: redactSecrets(overrides),
-      currentEnv: redactSecrets(this.env.rawForLogging),
+      overrideKeys: Object.keys(overrides),
+      currentEnv: this.env.rawForLogging,
     });
 
     // Override the env with the new values
