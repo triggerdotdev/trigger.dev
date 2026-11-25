@@ -258,6 +258,18 @@ Webhook URLs are served from `WEBHOOK_INGRESS_ORIGIN`, which defaults to `API_OR
 
 The Docker Compose setup only passes the variables listed under the webapp service's `environment` in `hosting/docker/webapp/docker-compose.yml`, so add the webhook variables there. With the Helm chart, set them in `webapp.extraEnvVars`.
 
+## Logs page
+
+The dashboard [Logs page](/observability/logs) needs three things on a self-hosted instance:
+
+1. Store task events in ClickHouse: set `EVENT_REPOSITORY_DEFAULT_STORE=clickhouse_v2` (the default is `postgres`). See [Task events](/self-hosting/docker#task-events). The Logs page only searches events stored in ClickHouse. Switching the default doesn't move existing runs, and runs that already write to PostgreSQL keep writing there.
+2. Set `LOGS_SEARCH_DUAL_WRITE_ACTIVE=on` so new logs are also written to the table the Logs page searches. It's `off` by default, which leaves the page empty. It doesn't backfill: logs written before you turn it on aren't searchable. Setting it back to `off` stops new writes but keeps the rows already written. To turn it on for some organizations only, set it to `by-id` and list their IDs, comma-separated, in `LOGS_SEARCH_DUAL_WRITE_ORGANIZATION_IDS`.
+3. Give organizations access with the `hasLogsPageAccess` feature flag: turn it on for everyone on the admin dashboard's **Global Feature Flags** page, or for one organization from its feature flags on the **Organizations** page. Without it, only admins see **Logs** in the sidebar.
+
+The Logs page searches at most 30 days back, which isn't configurable. The search table keeps rows for 90 days.
+
+The Docker Compose setup only passes the variables listed under the webapp service's `environment` in `hosting/docker/webapp/docker-compose.yml`, so add `LOGS_SEARCH_DUAL_WRITE_ACTIVE` there, and `LOGS_SEARCH_DUAL_WRITE_ORGANIZATION_IDS` if you use `by-id` (`EVENT_REPOSITORY_DEFAULT_STORE` is already passed). With the Helm chart, set them in `webapp.extraEnvVars`.
+
 ## Multi-Provider Object Storage
 
 The object storage system supports multiple S3-compatible providers (R2, S3, GCS, MinIO, etc.) using protocol prefixes. This enables migrating between providers without breaking existing runs.

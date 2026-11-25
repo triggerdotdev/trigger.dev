@@ -377,7 +377,12 @@
           },
           {
             "group": "Observability",
-            "pages": ["observability/query", "observability/dashboards", "reports"]
+            "pages": [
+              "observability/logs",
+              "observability/query",
+              "observability/dashboards",
+              "reports"
+            ]
           },
           {
             "group": "Using the Dashboard",
