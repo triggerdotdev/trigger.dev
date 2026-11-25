@@ -52,6 +52,8 @@ export function waitpointClusterOptions(endpoint: string) {
   return {
     nodes: [{ host: url.hostname, port: Number(url.port || 6379) }],
     failFast: true,
+    // Spread connect attempts across the endpoint's nodes; see snapshotStoreConnection.server.ts.
+    spreadStartupNodes: true,
     clusterOptions: {
       lazyConnect: true,
       scaleReads: "master" as const,

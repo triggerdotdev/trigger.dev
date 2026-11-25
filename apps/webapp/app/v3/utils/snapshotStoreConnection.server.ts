@@ -55,6 +55,9 @@ export function snapshotClusterOptions(endpoint: string) {
   return {
     nodes: [{ host: url.hostname, port: Number(url.port || 6379) }],
     failFast: true,
+    // The cluster endpoint resolves to every node; don't keep retrying the first record if that
+    // node is down.
+    spreadStartupNodes: true,
     clusterOptions: {
       lazyConnect: true,
       scaleReads: "master" as const,
@@ -62,16 +65,12 @@ export function snapshotClusterOptions(endpoint: string) {
       // goes silent sends neither, so without a periodic refresh the client never finds the
       // promoted replica.
       slotsRefreshInterval: SLOTS_REFRESH_INTERVAL_MS,
-      ...(url.protocol === "rediss:" && {
-        // Preserve the seed hostname; AWS TLS certificates do not identify private IPs.
-        dnsLookup: (address: string, callback: (err: Error | null, address: string) => void) =>
-          callback(null, address),
-      }),
     },
     redisOptions: {
       username: url.username ? decodeURIComponent(url.username) : undefined,
       password: url.password ? decodeURIComponent(url.password) : undefined,
-      // Discovered nodes can be IPs too; verify them against the configured cluster hostname.
+      // The startup node is an IP and discovered nodes are per-node hostnames; verify every node
+      // against the configured cluster hostname.
       tls: url.protocol === "rediss:" ? { servername: url.hostname } : undefined,
       commandTimeout: COMMAND_TIMEOUT_MS,
       connectTimeout: CONNECT_TIMEOUT_MS,
