@@ -44,6 +44,8 @@ const s2 = vi.hoisted(() => ({
   readCalls: 0,
   /** The `.in` tail read throws, as when S2 does not answer. */
   inTailThrows: false,
+  /** How many times the `.in` tail was read. */
+  inTailReads: 0,
 }));
 
 // Every stream name is `${STREAM_PREFIX}/sessions/<key>/<io>`, the shape production uses.
@@ -72,6 +74,7 @@ vi.mock("~/services/realtime/v1StreamsGlobal.server", async () => {
     override async readSessionInTailSeq(
       ...args: Parameters<InstanceType<typeof S2RealtimeStreams>["readSessionInTailSeq"]>
     ) {
+      s2.inTailReads++;
       if (s2.inTailThrows) throw new Error("S2 did not answer");
       return super.readSessionInTailSeq(...args);
     }
@@ -304,6 +307,7 @@ async function setup(prisma: PrismaClient) {
   s2.outUnreadable = false;
   s2.readCalls = 0;
   s2.inTailThrows = false;
+  s2.inTailReads = 0;
 
   // A stream key of its own, so tests that share the s2-lite container never see each other's records.
   return { suffix, seed, environment, key: `chat-${suffix}` };
@@ -336,6 +340,25 @@ async function sessionWithLiveRun(prisma: PrismaClient, ctx: Ctx, closed = false
     },
   });
   return { session, run: { id: runId, friendlyId, createdAt: runCreatedAt } };
+}
+
+/** A session no run has ever been claimed for: `currentRunId` is null. */
+async function sessionWithoutRun(prisma: PrismaClient, ctx: Ctx) {
+  return prisma.session.create({
+    data: {
+      friendlyId: `session_${ctx.suffix}`,
+      externalId: ctx.key,
+      type: "chat.agent",
+      projectId: ctx.seed.projectId,
+      runtimeEnvironmentId: ctx.seed.envId,
+      environmentType: "PRODUCTION",
+      organizationId: ctx.seed.organizationId,
+      taskIdentifier: "my-chat",
+      triggerConfig: { basePayload: {} } as never,
+      currentRunId: null,
+      currentRunVersion: 0,
+    },
+  });
 }
 
 /** Appends records to one of the session's channels, as S2 stores them at `timestamp`. */
@@ -1484,6 +1507,54 @@ describe("a run that recorded the .in seq it was triggered at", () => {
 });
 
 describe("the .in seq captured when a session run is triggered", () => {
+  // Catches: a session's first run waiting on an `.in` tail read before it is triggered (a read
+  // that creates the stream on a basin that creates streams on read), and anchoring that run above
+  // messages it answers: with no run ever claimed, its agent reads `.in` from seq 0.
+  postgresTest(
+    "a session's first run is anchored at seq 0 without reading the .in tail",
+    async ({ prisma }) => {
+      const ctx = await setup(prisma as unknown as PrismaClient);
+      const session = await sessionWithoutRun(prisma as unknown as PrismaClient, ctx);
+      await pushIn(ctx, message("m0"));
+      await pushIn(ctx, message("m1"));
+
+      const ensured = await ensureRunForSession({
+        session,
+        environment: ctx.environment,
+        reason: "initial",
+      });
+
+      expect(ensured.triggered).toBe(true);
+      expect(triggerState.calls).toHaveLength(1);
+      expect(triggerState.calls[0]!.options.sessionInSeq).toBe(0);
+      expect(s2.inTailReads).toBe(0);
+    }
+  );
+
+  // Catches: a run started for messages already on `.in` (it carries a first seq) recording a
+  // `sessionInSeq` of 0, below that first seq, because its session has no current run: the run-end
+  // check would then scan `.in` from 0 for it, and the first seq would no longer sit below the tail.
+  postgresTest(
+    "a first run started for messages already on .in still reads the tail",
+    async ({ prisma }) => {
+      const ctx = await setup(prisma as unknown as PrismaClient);
+      const session = await sessionWithoutRun(prisma as unknown as PrismaClient, ctx);
+      await pushIn(ctx, message("m0"));
+      await pushIn(ctx, message("m1"));
+
+      const ensured = await ensureRunForSession({
+        session,
+        environment: ctx.environment,
+        reason: "initial",
+        sessionInFirstSeq: 1,
+      });
+
+      expect(ensured.triggered).toBe(true);
+      expect(triggerState.calls[0]!.options.sessionInFirstSeq).toBe(1);
+      expect(triggerState.calls[0]!.options.sessionInSeq).toBe(2);
+    }
+  );
+
   // Catches: the seq being read after the trigger (a message appended in between would then be
   // below the anchor and never continued), or missing from one of the trigger paths.
   postgresTest(

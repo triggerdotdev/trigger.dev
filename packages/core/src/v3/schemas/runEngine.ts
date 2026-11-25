@@ -33,9 +33,12 @@ export const RunAnnotations = z.object({
   /** The endpoint (friendly id) that delivery arrived on. */
   webhookEndpointId: z.string().optional(),
   /**
-   * For a session run: the session's `.in` tail seq (the next seq) read just before the run was
-   * triggered. `.in` messages at or after it arrived after the run started. Where the run-end check
-   * starts reading when the run wrote no turn of its own.
+   * For a session run: where the run-end check starts reading `.in` when the run wrote no turn of
+   * its own, so messages at or after it are ones this run is held to answer. It is the session's
+   * `.in` tail seq (the next seq) read just before the run was triggered, so those messages arrived
+   * after the run started; except for a session's first run not started for messages already on
+   * `.in` (no `sessionInFirstSeq`), which records 0 without a read: that run reads `.in` from the
+   * start, so every message already on it is its own.
    */
   sessionInSeq: z.number().int().nonnegative().optional(),
   /**
