@@ -8,6 +8,8 @@ const prismaHolder = vi.hoisted(() => ({
 
 vi.mock("~/services/rbac.server", () => ({
   rbac: {
+    isUsingPlugin: async () => false,
+    removeFormerMemberRoles: async () => ({ ok: true }),
     getUserRole: async () => null,
     setUserRole: async () => ({ ok: true }),
   },

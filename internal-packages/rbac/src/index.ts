@@ -556,6 +556,12 @@ class LazyController implements RoleBaseAccessController {
     return (await this.c()).removeUserRole(...args);
   }
 
+  async removeFormerMemberRoles(
+    ...args: Parameters<RoleBaseAccessController["removeFormerMemberRoles"]>
+  ): Promise<RoleAssignmentResult> {
+    return (await this.c()).removeFormerMemberRoles(...args);
+  }
+
   async getTokenRole(
     ...args: Parameters<RoleBaseAccessController["getTokenRole"]>
   ): Promise<Role | null> {

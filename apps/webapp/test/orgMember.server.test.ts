@@ -27,6 +27,7 @@ vi.mock("~/services/rbac.server", () => ({
       (await rbacHolder.duringSetUserRole?.()) ?? rbacHolder.setUserRoleResult,
     getUserRoles: async () => new Map(),
     removeUserRole: async () => ({ ok: true }),
+    removeFormerMemberRoles: async () => ({ ok: true }),
   },
 }));
 

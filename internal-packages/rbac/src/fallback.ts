@@ -426,6 +426,11 @@ class RoleBaseAccessFallbackController implements RoleBaseAccessController {
     return { ok: false, error: "RBAC plugin not installed" };
   }
 
+  // No role assignments exist without the plugin, so there is nothing to clear.
+  async removeFormerMemberRoles(): Promise<RoleAssignmentResult> {
+    return { ok: true };
+  }
+
   async getTokenRole(): Promise<Role | null> {
     return null;
   }

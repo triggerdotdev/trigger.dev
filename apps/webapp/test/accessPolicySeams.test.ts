@@ -27,8 +27,10 @@ vi.mock("~/db.server", async () => {
 
 vi.mock("~/services/rbac.server", () => ({
   rbac: {
+    isUsingPlugin: async () => false,
     getUserRole: async () => null,
     setUserRole: async () => ({ ok: true }),
+    removeFormerMemberRoles: async () => ({ ok: true }),
   },
 }));
 

@@ -25,7 +25,8 @@ import {
   revokePersonalAccessToken,
 } from "~/services/personalAccessToken.server";
 
-async function deleteMembership(memberId: string, organizationId: string) {
+/** Removes a membership the way a removal does: development keys rotated, under the member lock. */
+export async function deleteMembership(memberId: string, organizationId: string) {
   const member = { id: memberId, organizationId };
   // The new development keys' fingerprints are saved first: a failed save fails the removal.
   const newKeys = await prepareMemberRemovalKeys(prisma, member, SYSTEM_ACTOR);
@@ -242,6 +243,14 @@ export async function ensureOrgMember(
     throw new OrganizationNotAcceptingMembersError();
   }
 
+  // A role left from an earlier membership outranks the one this join sets (and the legacy fallback
+  // when it sets none), so a former Owner would rejoin as Owner. Clear it first, and refuse the join
+  // if that fails. Without the plugin this is a no-op.
+  const cleared = await rbac.removeFormerMemberRoles({ userId, organizationId });
+  if (!cleared.ok) {
+    throw new Error(`ensureOrgMember: failed to clear a former member's roles: ${cleared.error}`);
+  }
+
   // Two concurrent JIT/invite flows can both miss the findFirst above and
   // race to create the same (userId, organizationId) row; the unique
   // constraint makes one lose with P2002. Treat that as the idempotent
@@ -422,7 +431,8 @@ export async function removeOrgMemberForDirectory(
     target: memberAuditTarget(member),
     ...attribution,
   });
-  const removeRole = await rbac.removeUserRole({ userId, organizationId });
+  // Clears project-scoped roles too, and is a no-op if they've rejoined by now.
+  const removeRole = await rbac.removeFormerMemberRoles({ userId, organizationId });
   if (!removeRole.ok) {
     logger.warn("removeOrgMemberForDirectory: failed to remove RBAC role", {
       userId,

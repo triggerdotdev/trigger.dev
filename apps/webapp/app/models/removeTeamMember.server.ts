@@ -1,5 +1,6 @@
 import type { PrismaClient } from "@trigger.dev/database";
 import { $transaction } from "~/db.server";
+import { logger } from "~/services/logger.server";
 import { enqueueAttioMemberSync } from "~/services/attio.server";
 import { auditLogs } from "~/services/auditLogs/auditLogs.server";
 import { rbac } from "~/services/rbac.server";
@@ -96,6 +97,19 @@ export async function removeTeamMember(
     throw new Error("Failed to remove organization member");
   }
   recordMemberRemovalCredentials(result.credentials, actor);
+  // A role assignment outlives the membership it was granted for: remove them all (org and project
+  // scoped), unless the user has rejoined by now. Best-effort, since the membership is already gone
+  // and every way to rejoin clears a role left behind first.
+  const clearedRoles = await rbac
+    .removeFormerMemberRoles({ userId: result.target.userId, organizationId: org.id })
+    .catch((error) => ({ ok: false as const, error: String(error) }));
+  if (!clearedRoles.ok) {
+    logger.warn("removeTeamMember: failed to remove the former member's roles", {
+      userId: result.target.userId,
+      organizationId: org.id,
+      error: clearedRoles.error,
+    });
+  }
   await enqueueAttioMemberSync({ organizationId: org.id, userId: result.target.userId });
   auditLogs.record({
     category: "members",

@@ -84,6 +84,10 @@ vi.mock("~/services/rbac.server", async () => {
   }
 
   const roleStandIn: Record<string, unknown> = {
+    // Stands in for the plugin, so code that only touches roles when one is loaded does here too.
+    async isUsingPlugin() {
+      return true;
+    },
     async getUserRole({ userId, organizationId }: { userId: string; organizationId: string }) {
       rbacHolder.reads.getUserRole++;
       return effectiveRole(userId, organizationId);
@@ -102,7 +106,22 @@ vi.mock("~/services/rbac.server", async () => {
       await rbacHolder.allRolesGate;
       return Object.values(rbacHolder.roles);
     },
-    async setUserRole(params: { userId: string; organizationId: string; roleId: string }) {
+    async getAssignableRoleIds() {
+      return Object.values(rbacHolder.roles).map((r) => r.id);
+    },
+    async systemRoles() {
+      return Object.values(rbacHolder.roles).map((r) => ({
+        ...r,
+        description: "",
+        available: true,
+      }));
+    },
+    async setUserRole(params: {
+      userId: string;
+      organizationId: string;
+      roleId: string;
+      onlyIfUnassigned?: boolean;
+    }) {
       const role = Object.values(rbacHolder.roles).find((r) => r.id === params.roleId);
       if (!role) return { ok: false, error: "Role not found" };
       const previousRole = await effectiveRole(params.userId, params.organizationId);
@@ -128,11 +147,32 @@ vi.mock("~/services/rbac.server", async () => {
           code: "last_owner",
         };
       }
+      // Checked right before the write, with nothing awaited in between, as the plugin checks it in
+      // the write's transaction.
+      if (
+        params.onlyIfUnassigned &&
+        rbacHolder.assignments.has(key(params.userId, params.organizationId))
+      ) {
+        return { ok: true, previousRole, changed: false, kept: true };
+      }
       rbacHolder.assignments.set(key(params.userId, params.organizationId), role);
       return { ok: true, previousRole, changed: previousRole.id !== role.id };
     },
     async removeUserRole({ userId, organizationId }: { userId: string; organizationId: string }) {
       rbacHolder.assignments.delete(key(userId, organizationId));
+      return { ok: true };
+    },
+    async removeFormerMemberRoles({
+      userId,
+      organizationId,
+    }: {
+      userId: string;
+      organizationId: string;
+    }) {
+      const member = await prismaHolder.client!.orgMember.findFirst({
+        where: { userId, organizationId },
+      });
+      if (!member) rbacHolder.assignments.delete(key(userId, organizationId));
       return { ok: true };
     },
   };
@@ -684,20 +724,18 @@ describe("invite accepted with a role", () => {
           action: "member.role_changed",
           organizationId: organization.id,
           target: { type: "member", id: joinerMember.id, name: joiner.email },
-          changes: { role: { before: "Admin", after: "Developer" } },
+          changes: { role: { before: null, after: "Developer" } },
         },
       ]);
     })
   );
 
-  // Catches: concurrent accepts where the creator of the membership assigns the invite's role after
-  // the other request consumed the invite and checked the role. The consumer sees the membership's
-  // legacy role, so its invite.accepted has no role; the creator's invite delete misses, so it must
-  // record the role it assigned as member.role_changed. The client below holds the creator between
-  // creating the membership and deleting the invite, and starts the consumer once the membership
-  // exists.
+  // Catches: the invite consumed while its member is still on the legacy fallback (Admin), when the
+  // request that created the membership stalls before writing the role. The client below holds the
+  // creator just after creating the membership, and runs the other accept to the end meanwhile: it
+  // must assign the role itself, and the role must be recorded once.
   postgresTest(
-    "records the role when a concurrent accept assigns it after the invite was consumed",
+    "assigns the role when the accept that joined stalls before writing it",
     async ({ prisma }) =>
       inAuditedRequest(async () => {
         prismaHolder.client = prisma;
@@ -753,27 +791,18 @@ describe("invite accepted with a role", () => {
 
         expect(consumerResult).not.toBeInstanceOf(Error);
         expect(creatorResult).not.toBeInstanceOf(Error);
-        expect(roleAfterConsumer).toBeUndefined();
+        expect(roleAfterConsumer).toEqual(rbacHolder.roles.developer);
         expect(await prisma.orgMemberInvite.count({ where: { id: invite!.id } })).toBe(0);
         expect(rbacHolder.assignments.get(`${organization.id}:${joiner.id}`)).toEqual(
           rbacHolder.roles.developer
         );
-        const joinerMember = await prisma.orgMember.findFirstOrThrow({
-          where: { userId: joiner.id, organizationId: organization.id },
-        });
-        expect(byAction(await recordedEvents(recorded))).toEqual([
+        expect(await recordedEvents(recorded)).toEqual([
           {
             category: "members",
             action: "invite.accepted",
             organizationId: organization.id,
             target: { type: "invite", id: invite!.id, name: joiner.email },
-          },
-          {
-            category: "members",
-            action: "member.role_changed",
-            organizationId: organization.id,
-            target: { type: "member", id: joinerMember.id, name: joiner.email },
-            changes: { role: { before: "Admin", after: "Developer" } },
+            changes: { role: "Developer" },
           },
         ]);
       })
@@ -905,6 +934,179 @@ describe("member removal audit events", () => {
           action: "member.removed",
           organizationId: organization.id,
           target: { type: "member", id: regularMember.id, name: member.email },
+        },
+      ]);
+    })
+  );
+});
+
+describe("a former member's role", () => {
+  // Catches: a former Owner's leftover role coming back when they rejoin through SSO or Directory
+  // Sync, which join without an invite. (The invite path is covered end to end.)
+  postgresTest("doesn't come back when they rejoin through SSO", async ({ prisma }) =>
+    inAuditedRequest(async () => {
+      prismaHolder.client = prisma;
+      useRoleStandIn();
+      const { ensureOrgMember } = await import("~/models/orgMember.server");
+      const { rbac } = await import("~/services/rbac.server");
+      const { organization } = await seedOrg(prisma);
+      const formerOwner = await createUser(prisma, "former-owner");
+      rbacHolder.assignments.set(`${organization.id}:${formerOwner.id}`, rbacHolder.roles.owner);
+
+      await ensureOrgMember({
+        userId: formerOwner.id,
+        organizationId: organization.id,
+        roleId: null,
+        source: "sso_jit",
+      });
+
+      expect(
+        await rbac.getUserRole({ userId: formerOwner.id, organizationId: organization.id })
+      ).toEqual(rbacHolder.roles.admin);
+    })
+  );
+});
+
+describe("an invite with a role, without the RBAC plugin", () => {
+  // Catches: an invite carrying a role id (sent while a plugin was installed) not joining once the
+  // plugin is gone, on the real open-source fallback, which has no roles to write.
+  postgresTest("joins and consumes the invite", async ({ prisma }) =>
+    inAuditedRequest(async () => {
+      prismaHolder.client = prisma;
+      const { acceptInvite } = await import("~/models/member.server");
+      const { organization, admin } = await seedOrg(prisma);
+      const joiner = await createUser(prisma, "joiner");
+      const invite = await prisma.orgMemberInvite.create({
+        data: {
+          email: joiner.email,
+          organizationId: organization.id,
+          inviterId: admin.id,
+          rbacRoleId: rbacHolder.roles.developer.id,
+        },
+      });
+
+      await acceptInvite({ user: joiner, inviteId: invite.id, organizationId: organization.id });
+
+      expect(
+        await prisma.orgMember.findFirst({
+          where: { userId: joiner.id, organizationId: organization.id },
+        })
+      ).not.toBeNull();
+      expect(await prisma.orgMemberInvite.count({ where: { id: invite.id } })).toBe(0);
+    })
+  );
+});
+
+describe("an invite accepted again after an accept stopped short", () => {
+  // Catches: a retry leaving the member on the legacy fallback (Admin) when an earlier accept
+  // created the membership and stopped before writing the role (a crash, or an undo that failed).
+  // The retry finds a member with a role (the fallback), so a check for "no role" never writes it.
+  postgresTest("writes the invite's role", async ({ prisma }) =>
+    inAuditedRequest(async () => {
+      prismaHolder.client = prisma;
+      useRoleStandIn();
+      const { acceptInvite, inviteMembers } = await import("~/models/member.server");
+      const { organization, admin } = await seedOrg(prisma);
+      const joiner = await createUser(prisma, "joiner");
+      const {
+        created: [invite],
+      } = await inviteMembers({
+        slug: organization.slug,
+        emails: [joiner.email],
+        userId: admin.id,
+        rbacRoleId: rbacHolder.roles.developer.id,
+      });
+      // What the earlier accept left: the membership, without the role.
+      await prisma.orgMember.create({
+        data: {
+          userId: joiner.id,
+          organizationId: organization.id,
+          role: "MEMBER",
+          invitedById: admin.id,
+          joinMethod: "invite",
+        },
+      });
+
+      const recorded = await startRecording();
+      await acceptInvite({ user: joiner, inviteId: invite!.id, organizationId: organization.id });
+
+      expect(rbacHolder.assignments.get(`${organization.id}:${joiner.id}`)).toEqual(
+        rbacHolder.roles.developer
+      );
+      expect(await recordedEvents(recorded)).toEqual([
+        {
+          category: "members",
+          action: "invite.accepted",
+          organizationId: organization.id,
+          target: { type: "invite", id: invite!.id, name: joiner.email },
+          changes: { role: "Developer" },
+        },
+      ]);
+    })
+  );
+});
+
+describe("an invite accepted again after environment setup failed", () => {
+  // Catches: the role written on joining appearing in no audit event, because the attempt that
+  // wrote it failed before recording anything and the retry finds it already in place.
+  postgresTest("records the role the member joined with, once", async ({ prisma }) =>
+    inAuditedRequest(async () => {
+      prismaHolder.client = prisma;
+      useRoleStandIn();
+      const { acceptInvite, inviteMembers, ENV_SETUP_INCOMPLETE } =
+        await import("~/models/member.server");
+      const { organization, admin } = await seedOrg(prisma);
+      await prisma.project.create({
+        data: {
+          name: "Project",
+          slug: `project-${suffix()}`,
+          externalRef: `proj_${suffix()}`,
+          organizationId: organization.id,
+        },
+      });
+      const joiner = await createUser(prisma, "joiner");
+      const {
+        created: [invite],
+      } = await inviteMembers({
+        slug: organization.slug,
+        emails: [joiner.email],
+        userId: admin.id,
+        rbacRoleId: rbacHolder.roles.developer.id,
+      });
+
+      // A real failure inside Postgres: a trigger rejects this org's environment inserts until it's
+      // dropped, so the first accept's setup fails after the role is written and the retry succeeds.
+      await prisma.$executeRawUnsafe(`
+        CREATE FUNCTION fail_environment_setup() RETURNS trigger AS $$
+        BEGIN RAISE EXCEPTION 'environment setup failed'; END $$ LANGUAGE plpgsql`);
+      await prisma.$executeRawUnsafe(`
+        CREATE TRIGGER fail_environment_setup BEFORE INSERT ON "RuntimeEnvironment"
+        FOR EACH ROW WHEN (NEW."organizationId" = '${organization.id}')
+        EXECUTE FUNCTION fail_environment_setup()`);
+
+      const recorded = await startRecording();
+      await expect(
+        acceptInvite({ user: joiner, inviteId: invite!.id, organizationId: organization.id })
+      ).rejects.toThrow(ENV_SETUP_INCOMPLETE);
+      await prisma.$executeRawUnsafe(`DROP TRIGGER fail_environment_setup ON "RuntimeEnvironment"`);
+      await acceptInvite({ user: joiner, inviteId: invite!.id, organizationId: organization.id });
+
+      const joinerMember = await prisma.orgMember.findFirstOrThrow({
+        where: { userId: joiner.id, organizationId: organization.id },
+      });
+      expect(byAction(await recordedEvents(recorded))).toEqual([
+        {
+          category: "members",
+          action: "invite.accepted",
+          organizationId: organization.id,
+          target: { type: "invite", id: invite!.id, name: joiner.email },
+        },
+        {
+          category: "members",
+          action: "member.role_changed",
+          organizationId: organization.id,
+          target: { type: "member", id: joinerMember.id, name: joiner.email },
+          changes: { role: { before: null, after: "Developer" } },
         },
       ]);
     })
@@ -1158,10 +1360,8 @@ describe("role change audit events", () => {
             where: { userId: member.id, organizationId: organization.id },
           })
         ).toBe(0);
-        // Still the seeded role: the refused change wrote nothing.
-        expect(rbacHolder.assignments.get(`${organization.id}:${member.id}`)).toEqual(
-          rbacHolder.roles.developer
-        );
+        // The removal cleared their role, and the refused change wrote none back.
+        expect(rbacHolder.assignments.has(`${organization.id}:${member.id}`)).toBe(false);
         expect(await recordedEvents(recorded)).toEqual([
           {
             category: "members",
