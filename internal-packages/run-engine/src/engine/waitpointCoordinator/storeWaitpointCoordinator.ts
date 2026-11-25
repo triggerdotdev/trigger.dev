@@ -585,7 +585,12 @@ export class StoreWaitpointCoordinator implements WaitpointCoordinator {
       standalone: type === "MANUAL" && !params.runId ? true : undefined,
     });
 
-    if (type === "MANUAL") await this.#store.manualCatalog.publish(record, acceptUntil);
+    if (type === "MANUAL")
+      await this.#store.manualCatalog.publish(
+        record,
+        acceptUntil,
+        params.keyedCreation?.scope ?? params.environmentId
+      );
 
     if (params.idempotencyKey) {
       const reserved = await this.#store.createWithIdempotencyKey({

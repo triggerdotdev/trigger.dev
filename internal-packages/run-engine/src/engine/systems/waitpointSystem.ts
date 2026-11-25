@@ -125,6 +125,7 @@ export type WaitpointSystemOptions = {
         | "readRelatedRunIds"
         | "manualCatalog"
         | "retireManualCatalog"
+        | "releaseRemovedIdempotencyKey"
         | "isAwaited"
       >
     >;
@@ -221,6 +222,7 @@ export class WaitpointSystem {
         | "readRelatedRunIds"
         | "manualCatalog"
         | "retireManualCatalog"
+        | "releaseRemovedIdempotencyKey"
         | "isAwaited"
       >
     >;
@@ -757,7 +759,7 @@ export class WaitpointSystem {
       return [];
     if (params.id && classifyWaitpointCoordinator(params.id) !== "store") return [];
     if (!this.#waitpointStore?.manualCatalog) throw new Error("MANUAL catalog is not wired");
-    return (await this.#waitpointStore.manualCatalog.list(params)).map((stored) =>
+    return (await this.#waitpointStore.manualCatalog.list(params)).records.map((stored) =>
       waitpointFromStoredRecord(stored.record.id, stored)
     );
   }
@@ -957,6 +959,27 @@ export class WaitpointSystem {
         : generateRunOpsIdV2(shard);
   }
 
+  /** Only on the unavailable-winner path: a native MANUAL id whose catalogue manifest is standalone. */
+  async #isRemovedStandaloneToken(
+    waitpointId: string,
+    params: { organizationId?: string }
+  ): Promise<boolean> {
+    const parsed = parseWaitpointId(waitpointId);
+    if (
+      parsed.format !== "b32hexW" ||
+      parsed.type !== "MANUAL" ||
+      !params.organizationId ||
+      !this.#waitpointStore?.manualCatalog ||
+      !this.#waitpointStore.releaseRemovedIdempotencyKey
+    )
+      return false;
+    const manifest = await this.#waitpointStore.manualCatalog.getManifest(
+      params.organizationId,
+      waitpointId
+    );
+    return manifest?.standalone === true;
+  }
+
   /** One claim seam for enabled native token and PG creators sharing the existing raw key. */
   async #createUnderKeyClaim(
     params: {
@@ -968,6 +991,7 @@ export class WaitpointSystem {
       enabled: boolean;
       standaloneResidency?: "NEW" | "LEGACY";
       standaloneShardKey?: ShardKey;
+      standaloneStoreEligible?: boolean;
     },
     create: (
       keyedCreation?: CreateDateTimeWaitpointParams["keyedCreation"],
@@ -1030,12 +1054,13 @@ export class WaitpointSystem {
               legacy.idempotencyKeyExpiresAt.getTime() >= Date.now())
           )
             return { kind: "cached", waitpoint: legacy };
-          const claim = await beginClaim({
+          const claimArgs = {
             environmentId: keyedCreation.scope,
             idempotencyKey: key,
             token: keyedCreation.claimToken,
             acceptUntil: keyedCreation.acceptUntil,
-          });
+          };
+          let claim = await beginClaim(claimArgs);
           // Prove the PG mutex still belongs to this exact transaction before any store
           // publication or expiry retirement. A delayed BEGIN never authorizes a dead tx.
           await tx.$queryRaw`SELECT 1`;
@@ -1051,12 +1076,31 @@ export class WaitpointSystem {
               tx
             );
           }
-          if (claim.winnerId) {
-            const waitpoint = await this.#readStoreDateTimeWaitpoint({
-              waitpointId: claim.winnerId,
+          const readWinner = (waitpointId: string) =>
+            this.#readStoreDateTimeWaitpoint({
+              waitpointId,
               environmentId: params.environmentId,
               projectId: params.projectId,
             });
+          if (claim.winnerId) {
+            let waitpoint = await readWinner(claim.winnerId);
+            // A removed standalone token's reservation can outlive its record until its
+            // retirement job. Its manifest's marker frees the key, whatever the flags are now.
+            // The job may also release the key and delete the manifest while this runs, so a
+            // missing MANUAL winner is always claimed once more.
+            const winner = parseWaitpointId(claim.winnerId);
+            if (!waitpoint && winner.format === "b32hexW" && winner.type === "MANUAL") {
+              if (await this.#isRemovedStandaloneToken(claim.winnerId, params))
+                await lowLevel.releaseRemovedIdempotencyKey!(
+                  keyedCreation.scope,
+                  key,
+                  claim.winnerId
+                );
+              claim = await beginClaim(claimArgs);
+              await tx.$queryRaw`SELECT 1`;
+              if (!claim.winnerId) return create(keyedCreation, { store, tx });
+              waitpoint = await readWinner(claim.winnerId);
+            }
             if (!waitpoint) throw new Error("Keyed DATETIME reservation winner is unavailable");
             return { kind: "cached", waitpoint };
           }
@@ -1438,6 +1482,7 @@ export class WaitpointSystem {
           enabled,
           standaloneResidency,
           standaloneShardKey,
+          standaloneStoreEligible,
         },
         async (keyedCreation, keyClaim) =>
           (creationCoordinator === this.legacyCoordinator && keyClaim

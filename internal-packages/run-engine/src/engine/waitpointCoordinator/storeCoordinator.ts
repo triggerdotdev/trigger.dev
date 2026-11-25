@@ -118,6 +118,8 @@ export type WaitpointRecordInput = {
 };
 
 function keyRetainUntil(record: WaitpointRecordInput): string {
+  // A standalone token retains from completion; its retirement job ends the reservation.
+  if (record.type === "MANUAL" && record.standalone) return "0";
   if ((record.type !== "DATETIME" && record.type !== "MANUAL") || !record.idempotencyKey)
     return "0";
   if (!record.idempotencyKeyExpiresAt) return "-1";
@@ -1226,6 +1228,21 @@ export class WaitpointStoreCoordinator {
     );
   }
 
+  /** Ends a removed token's reservation; one naming any other waitpoint is left in place. */
+  async releaseRemovedIdempotencyKey(
+    namespace: string,
+    key: string,
+    waitpointId: string
+  ): Promise<void> {
+    await this.beforeCommand?.();
+    await this.redis.eval(
+      `if redis.call('GET', KEYS[1]) == ARGV[1] then redis.call('DEL', KEYS[1]) end; return 1`,
+      1,
+      idempotencyKey(namespace, key),
+      waitpointId
+    );
+  }
+
   async beginIdempotencyKeyClaim(args: {
     environmentId: string;
     idempotencyKey: string;
@@ -1470,6 +1487,13 @@ export class WaitpointStoreCoordinator {
         return Date.now() + Math.max(1000, this.terminalRetentionMs);
       return; // Pending, fanout-pinned, or permanently keyed source.
     }
+    // Before retire: it deletes the manifest that names this reservation.
+    if (manifest.idempotencyKey !== undefined && manifest.idempotencyKeyScope !== undefined)
+      await this.releaseRemovedIdempotencyKey(
+        manifest.idempotencyKeyScope,
+        manifest.idempotencyKey,
+        waitpointId
+      );
     if (!(await this.manualCatalog.retire(manifest)))
       return Math.max(Date.now() + 1000, manifest.acceptUntil + 1);
     await this.retirePendingSource(waitpointId, organizationId);

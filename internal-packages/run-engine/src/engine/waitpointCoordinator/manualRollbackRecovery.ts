@@ -1063,13 +1063,18 @@ export class ManualWaitpointRollbackRecovery {
       );
       if (source.catalogMetadata) {
         const remaining = await this.deps.redis.pttl(waitpointKeys(source.waitpointId).record);
-        if (
-          remaining === -2 &&
-          !(await this.deps.store.manualCatalog.retire(
-            parseManualWaitpointCatalogManifest(source.catalogMetadata)
-          ))
-        )
-          throw new Error("MANUAL catalog publication fence is still open");
+        if (remaining === -2) {
+          const manifest = parseManualWaitpointCatalogManifest(source.catalogMetadata);
+          // Before retire, as retireManualCatalog does: a standalone manifest names this reservation.
+          if (manifest.idempotencyKey !== undefined && manifest.idempotencyKeyScope !== undefined)
+            await this.deps.store.releaseRemovedIdempotencyKey(
+              manifest.idempotencyKeyScope,
+              manifest.idempotencyKey,
+              source.waitpointId
+            );
+          if (!(await this.deps.store.manualCatalog.retire(manifest)))
+            throw new Error("MANUAL catalog publication fence is still open");
+        }
       }
       const catalog = manualWaitpointCatalogManifestKey(plan.organizationId, source.waitpointId);
       assertSingleSlot("rollback source index", [

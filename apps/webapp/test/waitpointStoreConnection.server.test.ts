@@ -38,18 +38,20 @@ describe("waitpointStoreConnection.server", () => {
           direction: "forward",
           limit: 10,
         });
-        expect(rows.map((row) => row.record.id)).toEqual([created.waitpoint.id]);
+        expect(rows.records.map((row) => row.record.id)).toEqual([created.waitpoint.id]);
         expect(await catalog.getManifest("org_catalog_proxy", created.waitpoint.id)).toBeDefined();
         expect(activations).toBe(1);
         // Consumer shutdown must leave the shared connection under its owner's lifecycle.
         await connection.store.quit();
         expect(
-          await list({
-            organizationId: "org_catalog_proxy",
-            environmentId: "env_catalog_proxy",
-            direction: "forward",
-            limit: 10,
-          })
+          (
+            await list({
+              organizationId: "org_catalog_proxy",
+              environmentId: "env_catalog_proxy",
+              direction: "forward",
+              limit: 10,
+            })
+          ).records
         ).toHaveLength(1);
       } finally {
         await connection.close();

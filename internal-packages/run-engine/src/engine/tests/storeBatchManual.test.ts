@@ -1,4 +1,4 @@
-import { createHash } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { SimpleQueue } from "@trigger.dev/redis-worker";
 import { workerCatalog } from "../workerCatalog.js";
 import { cycleAnchorSnapshotId } from "../systems/waitpointSystem.js";
@@ -11,15 +11,21 @@ import {
   isStandaloneStoreWaitpoint,
 } from "../waitpointCoordinator/storeWaitpointCoordinator.js";
 import {
+  idempotencyKey,
   idempotencyReceiptKey,
   organizationSourceReceiptKey,
   fanoutPartition,
   organizationPendingSourceIndexKey,
   waitpointKeys,
 } from "../waitpointCoordinator/keys.js";
-import { RunId, parseWaitpointId } from "@trigger.dev/core/v3/isomorphic";
+import {
+  RunId,
+  generateRunOpsId,
+  generateWaitpointId,
+  parseWaitpointId,
+} from "@trigger.dev/core/v3/isomorphic";
 import { timeoutError } from "@trigger.dev/core/v3";
-import { describe, expect } from "vitest";
+import { describe, expect, vi } from "vitest";
 import { WaitpointStoreCoordinator } from "../waitpointCoordinator/storeCoordinator.js";
 import { manualWaitpointCatalogManifestKey } from "../waitpointCoordinator/manualWaitpointCatalog.js";
 import { deriveBatchWaitpointId } from "../waitpointCoordinator/runWaitpointId.js";
@@ -32,6 +38,43 @@ import {
 import { keys } from "./utils/waitpointRouting.js";
 import { generateScopedHttpCallbackHash } from "../../../../../apps/webapp/app/services/httpCallbackHash.server.js";
 import { resolveScopedWaitpointCallback } from "../../../../../apps/webapp/app/services/scopedWaitpointCallback.server.js";
+import type { RunEngine } from "../index.js";
+
+/** Every wp:v1 key name, sorted-set member, hash field or string value that holds a needle. */
+async function leftovers(
+  redis: ReturnType<typeof createRedisClient>,
+  needles: string[],
+  waitingRunIds: string[] = []
+) {
+  const found: string[] = [];
+  for (const key of await redis.keys("wp:v1*")) {
+    // The waiting run's own results name the token until the run ends.
+    if (waitingRunIds.some((runId) => key.startsWith(`wp:v1:run:{${runId}}`))) continue;
+    const type = await redis.type(key);
+    const items =
+      type === "zset"
+        ? await redis.zrange(key, 0, -1)
+        : type === "hash"
+          ? await redis.hkeys(key)
+          : type === "string"
+            ? [(await redis.get(key)) ?? ""]
+            : [];
+    for (const item of [key, ...items])
+      if (needles.some((needle) => item.includes(needle))) found.push(`${key} ${item}`);
+  }
+  return found;
+}
+
+/** Runs a token's recovery job by hand once its creation fence has closed; returns its scope. */
+async function recoverByHand(engine: RunEngine, waitpointId: string) {
+  const job = await engine["worker"].getJob(`recoverDateTimeWaitpoint:${waitpointId}`);
+  const payload = workerCatalog.recoverDateTimeWaitpoint.schema.parse(job!.item);
+  await vi.waitFor(() => engine.waitpointSystem.recoverDateTimeWaitpoint(payload), {
+    timeout: 30_000,
+    interval: 250,
+  });
+  return payload.keyedCreation!.scope;
+}
 
 describe("native batch and run-bound manual lifecycle", () => {
   containerTest(
@@ -371,7 +414,7 @@ describe("native batch and run-bound manual lifecycle", () => {
           direction: "forward",
           limit: 10,
         });
-        expect(completedCatalog.map((item) => item.record.id)).toEqual(
+        expect(completedCatalog.records.map((item) => item.record.id)).toEqual(
           expect.arrayContaining([manual.waitpoint.id, elapsed.waitpoint.id])
         );
         // Catches: rollback completing an elapsed timed MANUAL with success/null instead of
@@ -394,7 +437,7 @@ describe("native batch and run-bound manual lifecycle", () => {
               direction: "forward",
               limit: 10,
             })
-          ).map((item) => item.record.id);
+          ).records.map((item) => item.record.id);
         expect(await completedIds(true)).toContain(elapsed.waitpoint.id);
         expect(await completedIds(false)).not.toContain(elapsed.waitpoint.id);
         expect(
@@ -406,7 +449,7 @@ describe("native batch and run-bound manual lifecycle", () => {
               direction: "forward",
               limit: 10,
             })
-          ).map((item) => item.record.id)
+          ).records.map((item) => item.record.id)
         ).toEqual([pending.waitpoint.id]);
         expect(await redis.hget(waitpointKeys(pending.waitpoint.id).record, "status")).toBe(
           "PENDING"
@@ -1573,6 +1616,477 @@ describe("native batch and run-bound manual lifecycle", () => {
         await engine.quit();
         await store.quit();
         await snapshots.quit();
+      }
+    }
+  );
+
+  const retentionMs = 2000;
+
+  // Catches: rollback cleanup deleting an expired standalone token's manifest but not its key,
+  // so every later create with that key fails.
+  containerTest(
+    "rollback cleanup of an expired keyed standalone token frees its key",
+    async ({ prisma, redisOptions }) => {
+      const snapshots = new RedisSnapshotStore({ redisOptions, completedTtlMs: 60000 });
+      const store = new WaitpointStoreCoordinator({
+        redisOptions,
+        terminalRetentionMs: retentionMs,
+      });
+      let enabled = true;
+      const engine = makeEngine(prisma, redisOptions, {
+        store,
+        snapshotStore: snapshots,
+        workerDisabled: true,
+        isWaitpointStoreEnabled: () => enabled,
+      });
+      const redis = createRedisClient(redisOptions);
+      try {
+        const env = await setupAuthenticatedEnvironment(prisma, "PRODUCTION");
+        const request = {
+          environmentId: env.id,
+          projectId: env.project.id,
+          organizationId: env.organization.id,
+          standaloneStoreEligible: true as const,
+          idempotencyKey: `rollback-${randomUUID()}`,
+        };
+        const old = (await engine.createManualWaitpoint(request)).waitpoint.id;
+        await engine.completeWaitpoint({
+          id: old,
+          organizationId: env.organization.id,
+          onlyIfPending: true,
+          output: { value: "done", isError: false },
+        });
+        const keyScope = await recoverByHand(engine, old);
+        await expect
+          .poll(() => redis.exists(waitpointKeys(old).record), { timeout: 30_000, interval: 100 })
+          .toBe(0);
+
+        enabled = false;
+        const recovery = new ManualWaitpointRollbackRecovery({
+          target: "isolated-test",
+          controlPlane: prisma,
+          runStore: new PostgresRunStore({ prisma, readOnlyPrisma: prisma }),
+          redis,
+          store,
+        });
+        const { plan } = await recovery.discover({
+          organizationId: env.organization.id,
+          kind: "pending-sources",
+          partition: fanoutPartition(old),
+        });
+        expect(plan.sources.map((source) => source.waitpointId)).toContain(old);
+        expect((await recovery.apply(plan, [], true, [old])).errors).toEqual([]);
+        expect(await store.manualCatalog.getManifest(env.organization.id, old)).toBeUndefined();
+        expect(await redis.exists(idempotencyKey(keyScope, request.idempotencyKey))).toBe(0);
+
+        enabled = true;
+        const fresh = await engine.createManualWaitpoint(request);
+        expect(fresh.isCached).toBe(false);
+        expect(fresh.waitpoint.id).not.toBe(old);
+      } finally {
+        await engine.quit();
+        await store.quit();
+        await snapshots.quit();
+        await redis.quit();
+      }
+    }
+  );
+
+  // Catches: a create that read the old winner failing when that token's retirement releases
+  // the key and deletes the manifest before the create looks for the manifest.
+  containerTest(
+    "a keyed create racing the old standalone token's retirement makes a new token",
+    async ({ prisma, redisOptions }) => {
+      class RacingStore extends WaitpointStoreCoordinator {
+        race?: () => Promise<void>;
+        override async beginIdempotencyKeyClaim(
+          args: Parameters<WaitpointStoreCoordinator["beginIdempotencyKeyClaim"]>[0]
+        ) {
+          const claim = await super.beginIdempotencyKeyClaim(args);
+          const race = this.race;
+          this.race = undefined;
+          await race?.();
+          return claim;
+        }
+      }
+      const snapshots = new RedisSnapshotStore({ redisOptions, completedTtlMs: 60000 });
+      const store = new RacingStore({ redisOptions, terminalRetentionMs: retentionMs });
+      const engine = makeEngine(prisma, redisOptions, {
+        store,
+        snapshotStore: snapshots,
+        workerDisabled: true,
+        isWaitpointStoreEnabled: () => true,
+      });
+      const redis = createRedisClient(redisOptions);
+      try {
+        const env = await setupAuthenticatedEnvironment(prisma, "PRODUCTION");
+        const request = {
+          environmentId: env.id,
+          projectId: env.project.id,
+          organizationId: env.organization.id,
+          standaloneStoreEligible: true as const,
+          idempotencyKey: `race-${randomUUID()}`,
+        };
+        const old = (await engine.createManualWaitpoint(request)).waitpoint.id;
+        await engine.completeWaitpoint({
+          id: old,
+          organizationId: env.organization.id,
+          onlyIfPending: true,
+          output: { value: "done", isError: false },
+        });
+        const keyScope = await recoverByHand(engine, old);
+        await expect
+          .poll(() => redis.exists(waitpointKeys(old).record), { timeout: 30_000, interval: 100 })
+          .toBe(0);
+        let retired = false;
+        store.race = async () => {
+          expect(await redis.get(idempotencyKey(keyScope, request.idempotencyKey))).toBe(old);
+          expect(
+            await engine.waitpointSystem.retireManualCatalog({
+              waitpointId: old,
+              organizationId: env.organization.id,
+            })
+          ).toBeUndefined();
+          retired = true;
+        };
+        const fresh = await engine.createManualWaitpoint(request);
+        expect(retired).toBe(true);
+        expect(fresh.isCached).toBe(false);
+        expect(fresh.waitpoint.id).not.toBe(old);
+        expect(await redis.get(idempotencyKey(keyScope, request.idempotencyKey))).toBe(
+          fresh.waitpoint.id
+        );
+      } finally {
+        await engine.quit();
+        await store.quit();
+        await snapshots.quit();
+        await redis.quit();
+      }
+    }
+  );
+
+  containerTest(
+    "a completed keyed standalone token is removed with every record at its retention",
+    async ({ prisma, redisOptions }) => {
+      const snapshots = new RedisSnapshotStore({ redisOptions, completedTtlMs: 60000 });
+      const store = new WaitpointStoreCoordinator({
+        redisOptions,
+        terminalRetentionMs: retentionMs,
+      });
+      const engine = makeEngine(prisma, redisOptions, {
+        store,
+        snapshotStore: snapshots,
+        isWaitpointStoreEnabled: () => true,
+      });
+      const redis = createRedisClient(redisOptions);
+      try {
+        const env = await setupAuthenticatedEnvironment(prisma, "PRODUCTION");
+        const scope = {
+          environmentId: env.id,
+          projectId: env.project.id,
+          organizationId: env.organization.id,
+        };
+        await setupBackgroundWorker(engine, env, ["waiter"]);
+        const run = await triggerRun(engine, env, prisma, {
+          friendlyId: RunId.generate().friendlyId,
+          taskIdentifier: "waiter",
+        });
+        await dequeueAndStart(engine, "waiter");
+        const owner = { standaloneStoreEligible: true as const };
+        const tokens: { id: string; idempotencyKey: string }[] = [];
+        for (const idempotencyKeyExpiresAt of [undefined, new Date(Date.now() + 3_600_000)]) {
+          const idempotencyKey = `removed-${randomUUID()}`;
+          const created = await engine.createManualWaitpoint({
+            ...scope,
+            ...owner,
+            idempotencyKey,
+            idempotencyKeyExpiresAt,
+          });
+          expect(parseWaitpointId(created.waitpoint.id)).toMatchObject({
+            format: "b32hexW",
+            type: "MANUAL",
+          });
+          tokens.push({ id: created.waitpoint.id, idempotencyKey });
+        }
+        // Catches: retention from completion reaching a run-bound token, whose key is kept for ever.
+        const runBound = { ...scope, runId: run.id, idempotencyKey: `kept-${randomUUID()}` };
+        const runBoundId = (await engine.createManualWaitpoint(runBound)).waitpoint.id;
+        // T8: a keyed wait.for with no key lifetime keeps its shipped keep-for-ever rule.
+        const datetimeKey = `datetime-${randomUUID()}`;
+        const datetime = await engine.createDateTimeWaitpoint({
+          ...scope,
+          runId: generateRunOpsId(),
+          completedAfter: new Date(Date.now() + 500),
+          idempotencyKey: datetimeKey,
+        });
+        await engine.blockRunWithWaitpoint({
+          runId: run.id,
+          waitpoints: tokens.map((token) => token.id),
+          projectId: env.project.id,
+          organizationId: env.organization.id,
+        });
+        for (const id of [...tokens.map((token) => token.id), runBoundId])
+          await engine.completeWaitpoint({
+            id,
+            organizationId: env.organization.id,
+            onlyIfPending: true,
+            output: { value: "done", isError: false },
+          });
+        await expect
+          .poll(
+            () =>
+              leftovers(
+                redis,
+                tokens.flatMap((token) => [token.id, token.idempotencyKey]),
+                [run.id]
+              ),
+            { timeout: retentionMs + 600_000, interval: 250 }
+          )
+          .toEqual([]);
+
+        // T3: a removed token reads as an id that never existed.
+        const never = await engine.getStoreDateTimeWaitpoint({
+          ...scope,
+          waitpointId: generateWaitpointId("MANUAL"),
+        });
+        expect(never).toBeNull();
+        for (const token of tokens)
+          expect(
+            await engine.getStoreDateTimeWaitpoint({ ...scope, waitpointId: token.id })
+          ).toEqual(never);
+
+        // T2: the key makes a new token, which a second create returns.
+        for (const token of tokens) {
+          const request = { ...scope, ...owner, idempotencyKey: token.idempotencyKey };
+          const fresh = await engine.createManualWaitpoint(request);
+          expect(fresh.isCached).toBe(false);
+          expect(fresh.waitpoint.id).not.toBe(token.id);
+          const again = await engine.createManualWaitpoint(request);
+          expect(again).toMatchObject({ isCached: true, waitpoint: { id: fresh.waitpoint.id } });
+        }
+
+        await expect
+          .poll(
+            () => engine["worker"].getJob(`recoverDateTimeWaitpoint:${datetime.waitpoint.id}`),
+            { timeout: 30_000, interval: 250 }
+          )
+          .toBeNull();
+        expect(
+          (await engine.getStoreDateTimeWaitpoint({ ...scope, waitpointId: datetime.waitpoint.id }))
+            ?.status
+        ).toBe("COMPLETED");
+        expect(await redis.pttl(waitpointKeys(datetime.waitpoint.id).record)).toBe(-1);
+        const [reservation] = await redis.keys(`wp:v1:idem:*${datetimeKey}`);
+        expect(await redis.get(reservation!)).toBe(datetime.waitpoint.id);
+        expect(await redis.pttl(reservation!)).toBe(-1);
+
+        expect(await redis.pttl(waitpointKeys(runBoundId).record)).toBe(-1);
+        expect(
+          (await store.manualCatalog.getManifest(env.organization.id, runBoundId))
+            ?.idempotencyKeyScope
+        ).toBeUndefined();
+        expect(await engine.createManualWaitpoint(runBound)).toMatchObject({
+          isCached: true,
+          waitpoint: { id: runBoundId, status: "COMPLETED" },
+        });
+      } finally {
+        await engine.quit();
+        await store.quit();
+        await snapshots.quit();
+        await redis.quit();
+      }
+    },
+    retentionMs + 15 * 60_000
+  );
+
+  containerTest(
+    "a waiting keyed MANUAL token and a completed run-bound one keep their key",
+    async ({ prisma, redisOptions }) => {
+      const snapshots = new RedisSnapshotStore({ redisOptions, completedTtlMs: 60000 });
+      const store = new WaitpointStoreCoordinator({
+        redisOptions,
+        terminalRetentionMs: retentionMs,
+      });
+      const engine = makeEngine(prisma, redisOptions, {
+        store,
+        snapshotStore: snapshots,
+        workerDisabled: true,
+        isWaitpointStoreEnabled: () => true,
+      });
+      const redis = createRedisClient(redisOptions);
+      try {
+        const env = await setupAuthenticatedEnvironment(prisma, "PRODUCTION");
+        const scope = {
+          environmentId: env.id,
+          projectId: env.project.id,
+          organizationId: env.organization.id,
+        };
+        const runBound = { runId: generateRunOpsId() };
+        const cases = [
+          { owner: { standaloneStoreEligible: true as const }, completed: false },
+          { owner: runBound, completed: false },
+          { owner: runBound, completed: true },
+        ];
+        await Promise.all(
+          cases.map(async ({ owner, completed }) => {
+            const request = { ...scope, ...owner, idempotencyKey: `kept-${randomUUID()}` };
+            const id = (await engine.createManualWaitpoint(request)).waitpoint.id;
+            if (completed) {
+              await engine.completeWaitpoint({
+                id,
+                organizationId: env.organization.id,
+                onlyIfPending: true,
+                output: { value: "done", isError: false },
+              });
+            }
+            // T5 (waiting), and a completed run-bound token: after the allocation ACK and the retirement job.
+            const keyScope = await recoverByHand(engine, id);
+            expect(
+              await engine.waitpointSystem.retireManualCatalog({
+                waitpointId: id,
+                organizationId: env.organization.id,
+              })
+            ).toBeUndefined();
+            expect(await redis.pttl(waitpointKeys(id).record)).toBe(-1);
+            expect(await redis.get(idempotencyKey(keyScope, request.idempotencyKey))).toBe(id);
+            expect(await redis.pttl(idempotencyKey(keyScope, request.idempotencyKey))).toBe(-1);
+            expect(await engine.createManualWaitpoint(request)).toMatchObject({
+              isCached: true,
+              waitpoint: { id, status: completed ? "COMPLETED" : "PENDING" },
+            });
+          })
+        );
+      } finally {
+        await engine.quit();
+        await store.quit();
+        await snapshots.quit();
+        await redis.quit();
+      }
+    }
+  );
+
+  containerTest(
+    "a removed keyed standalone token frees its key and its retirement keeps a newer token's key",
+    async ({ prisma, redisOptions }) => {
+      const snapshots = new RedisSnapshotStore({ redisOptions, completedTtlMs: 60000 });
+      const store = new WaitpointStoreCoordinator({
+        redisOptions,
+        terminalRetentionMs: retentionMs,
+      });
+      const engine = makeEngine(prisma, redisOptions, {
+        store,
+        snapshotStore: snapshots,
+        workerDisabled: true,
+        isWaitpointStoreEnabled: () => true,
+      });
+      const redis = createRedisClient(redisOptions);
+      try {
+        const env = await setupAuthenticatedEnvironment(prisma, "PRODUCTION");
+        const scope = {
+          environmentId: env.id,
+          projectId: env.project.id,
+          organizationId: env.organization.id,
+        };
+        const complete = (id: string) =>
+          engine.completeWaitpoint({
+            id,
+            organizationId: env.organization.id,
+            onlyIfPending: true,
+            output: { value: "done", isError: false },
+          });
+        const removed = (id: string) =>
+          expect
+            .poll(() => redis.exists(waitpointKeys(id).record), { timeout: 30_000, interval: 100 })
+            .toBe(0);
+        const retire = (id: string) =>
+          engine.waitpointSystem.retireManualCatalog({
+            waitpointId: id,
+            organizationId: env.organization.id,
+          });
+        const owners = [{ standaloneStoreEligible: true as const }];
+        await Promise.all(
+          owners.flatMap((owner) => [
+            // T6: A's key lifetime ends before its retention; B takes the key; A is then removed.
+            (async () => {
+              const request = { ...scope, ...owner, idempotencyKey: `newer-${randomUUID()}` };
+              const a = (
+                await engine.createManualWaitpoint({
+                  ...request,
+                  idempotencyKeyExpiresAt: new Date(Date.now() + 1000),
+                })
+              ).waitpoint.id;
+              await complete(a);
+              await expect
+                .poll(
+                  () => engine.waitpointSystem.readExistingStoreDateTimeWaitpointByKey(request),
+                  { timeout: 30_000, interval: 100 }
+                )
+                .toBeNull();
+              const b = await engine.createManualWaitpoint(request);
+              expect(b.isCached).toBe(false);
+              const keyScope = await recoverByHand(engine, a);
+              await removed(a);
+              expect(await retire(a)).toBeUndefined();
+              expect(await redis.get(idempotencyKey(keyScope, request.idempotencyKey))).toBe(
+                b.waitpoint.id
+              );
+              expect(await engine.createManualWaitpoint(request)).toMatchObject({
+                isCached: true,
+                waitpoint: { id: b.waitpoint.id },
+              });
+            })(),
+            // T7: the record has expired and its retirement job has not run yet.
+            (async () => {
+              const request = { ...scope, ...owner, idempotencyKey: `expired-${randomUUID()}` };
+              const old = (await engine.createManualWaitpoint(request)).waitpoint.id;
+              await complete(old);
+              const keyScope = await recoverByHand(engine, old);
+              await removed(old);
+              const fresh = await engine.createManualWaitpoint(request);
+              expect(fresh.isCached).toBe(false);
+              expect(fresh.waitpoint.id).not.toBe(old);
+              expect(await retire(old)).toBeUndefined();
+              const registry = organizationPendingSourceIndexKey(
+                env.organization.id,
+                fanoutPartition(old)
+              );
+              expect(
+                (await leftovers(redis, [old])).filter(
+                  (entry) => entry.startsWith("wp:v1:manual:") || entry.startsWith(registry)
+                )
+              ).toEqual([]);
+              expect(await redis.get(idempotencyKey(keyScope, request.idempotencyKey))).toBe(
+                fresh.waitpoint.id
+              );
+            })(),
+          ])
+        );
+
+        // Catches: a removed standalone token's key failing creation after the standalone tokens
+        // flag is turned off, while the store flag stays on and its retirement job has not run.
+        const request = { ...scope, idempotencyKey: `flag-off-${randomUUID()}` };
+        const old = (
+          await engine.createManualWaitpoint({ ...request, standaloneStoreEligible: true })
+        ).waitpoint.id;
+        await complete(old);
+        const keyScope = await recoverByHand(engine, old);
+        await removed(old);
+        expect(await store.manualCatalog.getManifest(env.organization.id, old)).toMatchObject({
+          standalone: true,
+        });
+        expect(await redis.get(idempotencyKey(keyScope, request.idempotencyKey))).toBe(old);
+        const fresh = await engine.createManualWaitpoint(request);
+        expect(fresh.isCached).toBe(false);
+        expect(fresh.waitpoint.id).not.toBe(old);
+        expect(await engine.createManualWaitpoint(request)).toMatchObject({
+          isCached: true,
+          waitpoint: { id: fresh.waitpoint.id },
+        });
+      } finally {
+        await engine.quit();
+        await store.quit();
+        await snapshots.quit();
+        await redis.quit();
       }
     }
   );
