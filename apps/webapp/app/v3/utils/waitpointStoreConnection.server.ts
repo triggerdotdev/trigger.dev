@@ -82,6 +82,8 @@ export function createWaitpointStoreConnection(
     onActivate?: () => void;
     /** How long a passed memory-policy check is trusted. Defaults to 30s. */
     policyCheckIntervalMs?: number;
+    /** How long completed waitpoint records are kept. Defaults to the coordinator's 14 days. */
+    completedTtlMs?: number;
   } = {}
 ) {
   let client: Cluster | undefined;
@@ -161,6 +163,7 @@ export function createWaitpointStoreConnection(
         client: getClient(),
         beforeCommand,
         meter: options.meter,
+        terminalRetentionMs: options.completedTtlMs,
       });
       for (const listener of activationListeners) listener();
       activationListeners.clear();

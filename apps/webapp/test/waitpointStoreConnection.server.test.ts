@@ -68,6 +68,49 @@ describe("waitpointStoreConnection.server", () => {
     30_000
   );
 
+  // Catches: RUN_ENGINE_WAITPOINT_STORE_COMPLETED_TTL_MS not reaching the coordinator, which would keep
+  // completed waitpoints for the 14-day default.
+  test.skipIf(!hasLocalRedisServer())(
+    "completed waitpoints expire after the configured retention",
+    async () => {
+      const cluster = await startLocalRedisCluster();
+      const completedTtlMs = 60 * 60 * 1000;
+      const connection = createWaitpointStoreConnection(
+        `redis://127.0.0.1:${cluster.nodes[0]!.port}`,
+        { completedTtlMs }
+      );
+      try {
+        const adapter = new StoreWaitpointCoordinator({ store: connection.store });
+        const created = await adapter.createManualWaitpoint({
+          runId: "run_retention",
+          environmentId: "env_retention",
+          projectId: "proj_retention",
+          mintContext: { organizationId: "org_retention" },
+        });
+        expect(created.kind).toBe("created");
+        const waitpointId = created.waitpoint.id;
+        await adapter.complete({
+          waitpointId,
+          output: { value: "{}", type: "application/json", isError: false },
+          organizationId: "org_retention",
+        });
+
+        await expect
+          .poll(async () => {
+            const state = await connection.store.describeWaitpoint(waitpointId);
+            return state.outcome === "exists" ? state.recordTtlMs : undefined;
+          })
+          .toBeGreaterThan(0);
+        const state = await connection.store.describeWaitpoint(waitpointId);
+        expect(state.outcome === "exists" && state.recordTtlMs).toBeLessThanOrEqual(completedTtlMs);
+      } finally {
+        await connection.close();
+        await cluster.stop();
+      }
+    },
+    30_000
+  );
+
   // Catches: a whole-cluster outage reaching the webhook engine as an ordinary error with standalone
   // tokens on, which fails deliveries, or any change to how it is reported with them off.
   test.skipIf(!hasLocalRedisServer())(

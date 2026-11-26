@@ -1653,6 +1653,14 @@ const EnvironmentSchema = z
     RUN_ENGINE_SNAPSHOT_STORE_REDIS_URL: z.string().optional(),
     // Infrastructure only; the global/org waitpointStoreEnabled flag owns activation.
     RUN_ENGINE_WAITPOINT_STORE_REDIS_URL: z.string().optional(),
+    // How long completed waitpoints (and finished runs' waitpoint state) stay in the waitpoint
+    // store. Keep it at least RUN_ENGINE_SNAPSHOT_STORE_COMPLETED_TTL_MS, so a run that can
+    // still read its snapshots also finds its waitpoints.
+    RUN_ENGINE_WAITPOINT_STORE_COMPLETED_TTL_MS: z.coerce
+      .number()
+      .int()
+      .positive()
+      .default(24 * 60 * 60 * 1_000),
     // How long a fetched org snapshotStoreMode override is reused per process. 0 disables caching.
     RUN_ENGINE_SNAPSHOT_STORE_DIAL_CACHE_MS: z.coerce.number().int().min(0).default(5000),
     // How long a finished run's snapshot state stays in the store. Redis-primary runs fail closed
