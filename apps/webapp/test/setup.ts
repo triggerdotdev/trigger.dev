@@ -1,8 +1,10 @@
-import { vi } from "vitest";
+import { afterAll, vi } from "vitest";
 import type * as IORedisModule from "ioredis";
 import type * as TaskMetadataCacheModule from "~/services/taskMetadataCache.server";
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
+
+afterAll(() => new Promise((resolve) => setTimeout(resolve, 0)));
 
 // CI has no .env and no REDIS_HOST/REDIS_PORT, so import-time guards like
 // autoIncrementCounter.server.ts throw and their suites fail to collect. Default
