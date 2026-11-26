@@ -59,7 +59,13 @@ function returnPath(request: Request): string {
  */
 export async function requireRecentMfa(
   request: Request,
-  options: { userId: string; action: MfaStepUpAction; organizationId?: string }
+  options: {
+    userId: string;
+    action: MfaStepUpAction;
+    organizationId?: string;
+    /** Where to come back to when the request can't say: a form post with no referrer. */
+    returnTo?: string;
+  }
 ): Promise<void> {
   // Only a live impersonation of this user skips: a former admin's leftover cookie names someone else.
   if ((await getImpersonationId(request)) === options.userId) return;
@@ -87,6 +93,6 @@ export async function requireRecentMfa(
   const session = await getUserSession(request);
   if (isMfaVerificationFresh(session.get(MFA_VERIFIED_AT_SESSION_KEY), windowMinutes)) return;
 
-  const searchParams = new URLSearchParams([["redirectTo", returnPath(request)]]);
-  throw redirect(`${MFA_VERIFY_PATH}?${searchParams}`);
+  const back = options.returnTo ? sanitizeRedirectPath(options.returnTo) : returnPath(request);
+  throw redirect(`${MFA_VERIFY_PATH}?${new URLSearchParams([["redirectTo", back]])}`);
 }

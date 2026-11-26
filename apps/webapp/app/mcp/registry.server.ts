@@ -31,6 +31,7 @@ import { dashboardsReadTools } from "./tools/dashboardsRead.server";
 import { deploymentDetailsTools } from "./tools/deploymentDetails.server";
 import { deploysTools } from "./tools/deploys.server";
 import { docsTools } from "./tools/docs.server";
+import { envVarTools } from "./tools/envVars.server";
 import { errorsTools } from "./tools/errors.server";
 import { modelsTools } from "./tools/models.server";
 import { orgsTools } from "./tools/orgs.server";
@@ -118,6 +119,7 @@ export const mcpTools: McpToolDefinition[] = assertUniqueToolNames([
   ...waitpointsTools,
   ...deploysTools,
   ...deploymentDetailsTools,
+  ...envVarTools,
   ...queryTools,
   ...dashboardsTools,
   ...dashboardsReadTools,

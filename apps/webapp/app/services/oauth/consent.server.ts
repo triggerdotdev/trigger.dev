@@ -2,6 +2,7 @@ import type { OAuthClient } from "@trigger.dev/database";
 import { $replica, prisma } from "~/db.server";
 import { env } from "~/env.server";
 import { getCsrfToken, verifyCsrfToken } from "~/services/csrf.server";
+import { requireRecentMfa } from "~/services/mfa/mfaPolicy.server";
 import { AUTHORIZATION_CODE_TTL_MS } from "~/services/personalAccessToken.server";
 import {
   authorizationRedirectUrl,
@@ -157,6 +158,33 @@ function mintableWhere(code: string, userId: string) {
   };
 }
 
+/** Whether the code still waits for this user's decision. */
+function isPending(
+  row: {
+    createdAt: Date;
+    requestedByUserId: string | null;
+    approvedByUserId: string | null;
+    personalAccessTokenId: string | null;
+  },
+  userId: string
+) {
+  const expired = row.createdAt.getTime() < Date.now() - AUTHORIZATION_CODE_TTL_MS;
+  return !expired && startedBy(row, userId) && !row.approvedByUserId && !row.personalAccessTokenId;
+}
+
+/** Granting env var access needs the same recent MFA as the env var pages. */
+export async function requireEnvVarConsentMfa(
+  request: Request,
+  params: { scope: string[]; userId: string; returnTo?: string }
+): Promise<void> {
+  if (!params.scope.includes("read:envvars")) return;
+  await requireRecentMfa(request, {
+    userId: params.userId,
+    action: "environmentVariables",
+    returnTo: params.returnTo,
+  });
+}
+
 export type OAuthConsentView =
   | { status: "not_oauth" }
   | { status: "invalid" }
@@ -165,6 +193,7 @@ export type OAuthConsentView =
       status: "consent";
       client: ClientIdentity;
       scopes: string[];
+      requestedScope: string[];
       reauthorizePath: string;
       csrfToken: string;
       setCookie?: string;
@@ -184,15 +213,7 @@ export async function loadOAuthConsent(
   if (!env.MCP_SERVER_ENABLED) return { status: "invalid" };
   if (isImpersonating) return { status: "impersonating" };
 
-  const expired = row.createdAt.getTime() < Date.now() - AUTHORIZATION_CODE_TTL_MS;
-  if (
-    !row.oauthClient ||
-    !row.redirectUri ||
-    expired ||
-    !startedBy(row, userId) ||
-    row.approvedByUserId ||
-    row.personalAccessTokenId
-  ) {
+  if (!row.oauthClient || !row.redirectUri || !isPending(row, userId)) {
     return { status: "invalid" };
   }
 
@@ -201,6 +222,7 @@ export async function loadOAuthConsent(
     status: "consent",
     client: describeOAuthClient(row.oauthClient, row.redirectUri),
     scopes: describeScopes(row.scope),
+    requestedScope: row.scope,
     reauthorizePath: buildReauthorizePath(
       { ...row, redirectUri: row.redirectUri, oauthClient: row.oauthClient },
       new URL(request.url).searchParams.get("state")
@@ -226,6 +248,8 @@ export async function decideOAuthConsent(
     formData: FormData;
     state?: string | null;
     isImpersonating?: boolean;
+    /** Runs before a pending code is approved; may throw a redirect, e.g. to MFA. */
+    beforeApprove: (grant: { scope: string[] }) => Promise<void>;
   },
   prismaClient = prisma
 ): Promise<OAuthConsentDecision> {
@@ -253,6 +277,9 @@ export async function decideOAuthConsent(
       url: authorizationRedirectUrl(row.redirectUri, { error: "access_denied" }, state),
     };
   }
+
+  if (!isPending(row, params.userId)) return { status: "invalid" };
+  await params.beforeApprove({ scope: row.scope });
 
   const { count } = await prismaClient.authorizationCode.updateMany({
     where,

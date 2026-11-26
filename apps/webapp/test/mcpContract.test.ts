@@ -63,6 +63,7 @@ const REMOTE_ONLY: Record<string, string> = {
   delete_schedule: "the CLI has no schedule tools yet",
   get_deployment_details: "the CLI has no tool for it yet",
   get_agent_details: "the public API has no endpoint for an agent's details and activity",
+  list_environment_variables: "names only, through OAuth; the CLI has no env var tools",
   get_alert_details: "reads the Dashboard alert presenter, which only the server has",
   list_alert_channels: "reads the Dashboard channel presenter, which only the server has",
   update_alert: "edits through the Dashboard alert services, which only the server has",

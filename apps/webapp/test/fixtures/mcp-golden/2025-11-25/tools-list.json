@@ -1438,6 +1438,42 @@
             }
           },
           {
+            "name": "list_environment_variables",
+            "title": "List Environment Variables",
+            "description": "List the environment variable names of a project, never their values: for each name, the environments where it is set and whether it is secret there, then the names set in some environments but not others. Environments your role may not read are named but not read. Only available through an OAuth connection with the read:envvars scope. Returns up to 100 names per call and names at most 5 branches per name; each answer says the offset to continue from.",
+            "inputSchema": {
+              "type": "object",
+              "$schema": "https://json-schema.org/draft/2020-12/schema",
+              "properties": {
+                "projectRef": {
+                  "type": "string",
+                  "description": "The trigger.dev project ref, starts with proj_. We will attempt to automatically detect the project ref if running inside a directory that includes a trigger.config.ts file, or if you pass the --project-ref option to the MCP server."
+                },
+                "configPath": {
+                  "type": "string",
+                  "description": "The path to the trigger.config.ts file. Only used when the trigger.config.ts file is not at the root dir (like in a monorepo setup). If not provided, we will try to find the config file in the current working directory"
+                },
+                "offset": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 100000000,
+                  "description": "How many names to skip, in name order (default 0)"
+                },
+                "limit": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 100,
+                  "description": "How many names to return at most (default 100)"
+                }
+              }
+            },
+            "annotations": {
+              "readOnlyHint": true,
+              "destructiveHint": false,
+              "title": "List Environment Variables"
+            }
+          },
+          {
             "name": "get_query_schema",
             "title": "Get Query Schema",
             "description": "Get the column schema for a specific TRQL table. Available tables: 'runs' (task execution data), 'metrics' (CPU, memory, custom metrics), 'llm_metrics' (LLM token usage, costs, latency). Returns columns, types, descriptions, and allowed values for the specified table.",

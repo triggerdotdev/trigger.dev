@@ -43,6 +43,8 @@ export type McpToolAuth =
       action: string;
       subject: string;
       confirm?: boolean | McpConfirmSpec;
+      /** A project-wide subject passes when the right holds in any environment type; the tool checks each. */
+      anyEnvType?: true;
       resourceId?: (args: any) => string | undefined;
       resolveSubject?: (args: unknown, identity: McpIdentity) => Promise<McpSubject | null>;
     };

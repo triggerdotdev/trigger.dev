@@ -264,6 +264,7 @@ const TOOLS: Array<{
   { tool: "resume_webhook_endpoint", args: endpoint, scope: "write:webhooks" },
   { tool: "list_tasks", args: project, scope: "read:tasks" },
   { tool: "list_schedules", args: project, scope: "read:tasks" },
+  { tool: "list_environment_variables", args: {}, scope: "read:envvars" },
   { tool: "get_schedule_details", args: sched, scope: "read:tasks" },
   {
     tool: "create_schedule",
