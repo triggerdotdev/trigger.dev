@@ -4,7 +4,7 @@ import plugin from "@trigger.dev/rbac";
 import type { PrismaClient } from "@trigger.dev/database";
 import { createHash } from "node:crypto";
 import { setTimeout as sleep } from "node:timers/promises";
-import { describe, expect, onTestFinished, vi } from "vitest";
+import { describe, expect, it, onTestFinished, vi } from "vitest";
 import { z } from "zod";
 import {
   createRuntimeEnvironment,
@@ -54,6 +54,7 @@ vi.mock("~/services/rbac.server", () => ({
 import type { McpIdentity } from "~/mcp/types";
 import { createModelsTools } from "~/mcp/tools/models.server";
 import { createPromptsReadTools } from "~/mcp/tools/promptsRead.server";
+import { compilePromptTemplate, compilePromptTemplateBounded } from "~/v3/promptTemplate";
 import { readLimitOptions } from "~/presenters/v3/clickhouseReadLimit";
 
 type Result = { isError?: boolean; content: { text: string }[] };
@@ -472,6 +473,158 @@ describe("MCP prompt read tools", () => {
         isError: true,
         text: expect.stringMatching(/^Prompt <untrusted-data[^>]*>staging-only<.*list_prompts/),
       });
+    }
+  );
+
+  // Catches: variables ignored, a version other than the resolved one rendered, a variable value outside the fence, or another environment's prompt rendered.
+  containerTestWithClickhouse(
+    "get_prompt renders the resolved version as the resolve API does",
+    async ({ prisma, clickhouseContainer }) => {
+      const { ids, call } = await seed(prisma, clickhouseContainer.getConnectionUrl());
+      const { version } = await prompt(prisma, ids.prod, "renderer");
+      const current = "Hello {{name}}{{#vip}}, welcome back {{name}}{{/vip}}. {{missing}}!";
+      await version(1, ["current"], current);
+      await version(2, ["beta"], "Beta {{name}}");
+      await prompt(prisma, ids.staging, "staging-render");
+      const variables = { name: "Ada", vip: true };
+      const rendered = (text: string) =>
+        text.match(/Rendered text: <untrusted-data[^>]*>\n?([\s\S]*?)\n?<\/untrusted-data/)?.[1];
+
+      const plain = textOf(await call("get_prompt", { slug: "renderer", variables }));
+      expect(rendered(plain)).toBe("Hello Ada, welcome back Ada. !");
+
+      const hostile = textOf(
+        await call("get_prompt", { slug: "renderer", variables: { name: HOSTILE } })
+      );
+      expect(hostile).toContain("Rendered text: <untrusted-data");
+      expect(hostile).not.toContain('</untrusted-data boundary="x">');
+
+      await version(3, ["override"], "Override {{name}}", "dashboard");
+      const overridden = textOf(
+        await call("get_prompt", { slug: "renderer", label: "beta", variables: { name: "Ada" } })
+      );
+      expect(rendered(overridden)).toBe("Override Ada");
+
+      const other = await call("get_prompt", { slug: "staging-render", variables });
+      expect(other.isError).toBe(true);
+      expect(textOf(other)).not.toContain("Rendered");
+    }
+  );
+
+  // Catches: a blank version reported as rendered (the resolve API answers 404 "Prompt has no content" for it).
+  containerTestWithClickhouse(
+    "get_prompt does not render a blank version",
+    async ({ prisma, clickhouseContainer }) => {
+      const { ids, call } = await seed(prisma, clickhouseContainer.getConnectionUrl());
+      const { version } = await prompt(prisma, ids.prod, "blank");
+      await version(1, ["current", "override"], "", "dashboard");
+      const out = textOf(await call("get_prompt", { slug: "blank", variables: {} }));
+      expect(out).toContain("Not rendered");
+      expect(out).toContain("no text content");
+      expect(out).not.toContain("Rendered text");
+    }
+  );
+
+  // Catches: the render cap applied only after the full expansion is built, or the cut flag lost.
+  it("compilePromptTemplateBounded stops expanding past the limit and is unchanged under it", () => {
+    const limit = 32_000;
+    const value = "x".repeat(8_000);
+    const big = compilePromptTemplateBounded("{{a}}".repeat(1_000_000), { a: value }, limit);
+    expect(big.cut).toBe(true);
+    expect(big.text.length).toBeLessThanOrEqual(limit + 2 * value.length);
+    const section = compilePromptTemplateBounded(
+      "{{#a}}{{a}}{{/a}}".repeat(1_000_000),
+      { a: value },
+      limit
+    );
+    expect(section.cut).toBe(true);
+    expect(section.text.length).toBeLessThanOrEqual(limit + 2 * value.length);
+    let conversions = 0;
+    const counted = {
+      toString: () => {
+        conversions++;
+        return value;
+      },
+    };
+    compilePromptTemplateBounded("{{a}}".repeat(10_000), { a: counted }, limit);
+    expect(conversions).toBeLessThanOrEqual(6);
+    conversions = 0;
+    compilePromptTemplateBounded(
+      "{{#s}}{{a}}{{/s}}".repeat(10_000),
+      { s: true, a: counted },
+      limit
+    );
+    expect(conversions).toBeLessThanOrEqual(6);
+    const small = "Hi {{ a }}{{#a}} {{a}}{{/a}}{{b}}";
+    expect(compilePromptTemplateBounded(small, { a: "x" }, limit)).toEqual({
+      text: compilePromptTemplate(small, { a: "x" }),
+      cut: false,
+    });
+  });
+
+  // Catches: the cap argument dropped at the call site, the cut flag ignored, or a partly substituted render shown.
+  containerTestWithClickhouse(
+    "get_prompt never shows a render that exceeds the limit",
+    async ({ prisma, clickhouseContainer }) => {
+      const { ids, call } = await seed(prisma, clickhouseContainer.getConnectionUrl());
+      const { version } = await prompt(prisma, ids.prod, "capped");
+      const big = "x".repeat(7_990);
+      const cases = [
+        { template: "{{a}}".repeat(6), variables: { a: big } },
+        {
+          template: `Hello {{ name }}. ${"{{#s}}{{big}}{{/s}}".repeat(5)}`,
+          variables: { name: "Ada", s: true, big },
+        },
+        {
+          template: `${"{{#s}}{{v}}{{/s}}".repeat(5)}Hello {{ name }}`,
+          variables: { name: "Ada", s: true, v: "{{z}}".repeat(1_598) },
+        },
+      ];
+      for (const [i, { template, variables }] of cases.entries()) {
+        await version(i + 1, i === 0 ? ["current"] : [`c${i}`], template);
+        const out = textOf(
+          await call("get_prompt", { slug: "capped", ...(i ? { version: i + 1 } : {}), variables })
+        );
+        expect(out).toContain("Rendered text not shown");
+        expect(out).toContain("substituting");
+        expect(out).not.toContain("Rendered text:");
+        expect(out).not.toContain("Hello .");
+      }
+      await version(9, ["long"], "y".repeat(33_000));
+      const long = textOf(await call("get_prompt", { slug: "capped", version: 9, variables: {} }));
+      expect(long).toContain("Rendered text not shown");
+      expect(long).toContain("longer than");
+      expect(long).not.toContain("substituting");
+      expect(long).not.toContain("Rendered text:");
+    }
+  );
+
+  // Catches: get_prompt accepting unbounded variables, or checking them only after reading the prompt.
+  containerTestWithClickhouse(
+    "get_prompt bounds the variables before reading anything",
+    async ({ prisma, clickhouseContainer }) => {
+      const { ids, call } = await seed(prisma, clickhouseContainer.getConnectionUrl());
+      const { version } = await prompt(prisma, ids.prod, "bounded");
+      await version(1, ["current"], "{{v0}}");
+      const many = (count: number, value: string) =>
+        Object.fromEntries(Array.from({ length: count }, (_, i) => [`v${i}`, value]));
+
+      for (const variables of [
+        many(51, "x"),
+        { v0: "x".repeat(7_999) },
+        { v0: ["x".repeat(7_997)] },
+        { ["k".repeat(65)]: "x" },
+      ]) {
+        const refused = await call("get_prompt", { slug: "no-such-prompt", variables });
+        expect(refused.isError).toBe(true);
+        expect(textOf(refused)).toContain("Invalid arguments");
+      }
+
+      const inCap = textOf(
+        await call("get_prompt", { slug: "bounded", variables: many(50, "y".repeat(7_998)) })
+      );
+      expect(inCap).toContain(`Rendered text: <untrusted-data`);
+      expect(inCap).toContain("y".repeat(7_998));
     }
   );
 

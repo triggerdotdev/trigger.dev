@@ -3,6 +3,7 @@ import { $replica } from "~/db.server";
 import { PromptPresenter, type GenerationRow } from "~/presenters/v3/PromptPresenter.server";
 import { clickhouseFactory } from "~/services/clickhouse/clickhouseFactoryInstance.server";
 import { formatModelCost } from "~/utils/modelFormatters";
+import { compilePromptTemplateBounded } from "~/v3/promptTemplate";
 import { parsePeriodToMs } from "~/utils/periods";
 import type { McpToolContext } from "../gate/withMcpToolAuth.server";
 import type { McpToolDefinition } from "../registry.server";
@@ -22,6 +23,7 @@ import { GetPromptInput, ListGenerationsInput } from "./schemas/prompts";
 
 const TEMPLATE_CHARS = 32_000;
 const JSON_CHARS = 8_000;
+const LIMIT = TEMPLATE_CHARS.toLocaleString("en-US");
 const CURSOR = /^[A-Za-z0-9+/]{1,1024}={0,2}$/;
 const RUN_ID = /^run_[A-Za-z0-9]{1,64}$/;
 const LABEL = /^[a-z0-9_-]{1,64}$/;
@@ -87,6 +89,23 @@ function formatVersion(version: PromptVersion, by: string): string[] {
   return lines;
 }
 
+function formatRendered(version: PromptVersion, variables: Record<string, unknown>): string[] {
+  if (!version.textContent) return ["Not rendered: this version has no text content."];
+  const { text, cut } = compilePromptTemplateBounded(
+    version.textContent,
+    variables,
+    TEMPLATE_CHARS
+  );
+  return [
+    `Rendered with variables: ${fencedJson(variables, "prompt-render-variables", JSON_CHARS)}`,
+    cut
+      ? `Rendered text not shown: substituting the variables produces more than ${LIMIT} characters.`
+      : text.length > TEMPLATE_CHARS
+        ? `Rendered text not shown: the rendered text is longer than ${LIMIT} characters.`
+        : `Rendered text: ${fenced(text, "prompt-rendered", TEMPLATE_CHARS)}`,
+  ];
+}
+
 function formatPrompt(
   prompt: Prompt,
   counts: { total: number; current?: number; override?: number }
@@ -146,7 +165,7 @@ export function createPromptsReadTools({
       name: "get_prompt",
       title: "Get Prompt",
       description:
-        'Get a prompt\'s details (description, type, tags, default model and config, variables, source file, version counts) and resolve one version with its full template. By default it resolves the "current" label; pass a label or a version number to resolve another. An active dashboard override always wins over a label, as it does when your code resolves the prompt.',
+        'Get a prompt\'s details (description, type, tags, default model and config, variables, source file, version counts) and resolve one version with its full template. By default it resolves the "current" label; pass a label or a version number to resolve another. Pass variables to also get the version rendered with them, as the prompt resolve API does, but a render is not shown when its substituted values or its final text exceed 32,000 characters (variable defaults and transforms from the schema in your code are not applied). An active dashboard override always wins over a label, as it does when your code resolves the prompt.',
       shape: GetPromptInput.shape,
       auth,
       run: async (input, ctx) => {
@@ -175,6 +194,7 @@ export function createPromptsReadTools({
         lines.push("");
         if (version) {
           lines.push(...formatVersion(version, resolvedBy(input, version)));
+          if (input.variables) lines.push(...formatRendered(version, input.variables));
         } else {
           lines.push(
             input.version !== undefined

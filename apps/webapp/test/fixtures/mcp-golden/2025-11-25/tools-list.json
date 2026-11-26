@@ -1959,7 +1959,7 @@
           {
             "name": "get_prompt",
             "title": "Get Prompt",
-            "description": "Get a prompt's details (description, type, tags, default model and config, variables, source file, version counts) and resolve one version with its full template. By default it resolves the \"current\" label; pass a label or a version number to resolve another. An active dashboard override always wins over a label, as it does when your code resolves the prompt.",
+            "description": "Get a prompt's details (description, type, tags, default model and config, variables, source file, version counts) and resolve one version with its full template. By default it resolves the \"current\" label; pass a label or a version number to resolve another. Pass variables to also get the version rendered with them, as the prompt resolve API does, but a render is not shown when its substituted values or its final text exceed 32,000 characters (variable defaults and transforms from the schema in your code are not applied). An active dashboard override always wins over a label, as it does when your code resolves the prompt.",
             "inputSchema": {
               "type": "object",
               "$schema": "https://json-schema.org/draft/2020-12/schema",
@@ -1999,6 +1999,15 @@
                   "type": "integer",
                   "exclusiveMinimum": 0,
                   "maximum": 9007199254740991
+                },
+                "variables": {
+                  "description": "Render the resolved version with these variables, as the prompt resolve API does, but a render is not shown when its substituted values or its final text exceed 32,000 characters. Variable defaults and transforms from the schema in your code are not applied, so pass every value. A {{name}} with no value renders as empty text. Up to 50 variables, names up to 64 characters, each value up to 8000 characters as JSON.",
+                  "type": "object",
+                  "propertyNames": {
+                    "type": "string",
+                    "maxLength": 64
+                  },
+                  "additionalProperties": {}
                 }
               },
               "required": ["slug"]

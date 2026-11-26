@@ -26,6 +26,10 @@ export const UpdateOverrideInput = PromptSlugInput.extend({
   commitMessage: z.string().optional().describe("Commit message describing the change"),
 });
 
+const MAX_VARIABLES = 50;
+const MAX_VARIABLE_NAME_CHARS = 64;
+const MAX_VARIABLE_VALUE_CHARS = 8_000;
+
 const BoundedSlug = z.string().min(1).max(256).describe("The prompt slug");
 
 export const GetPromptInput = CommonProjectsInput.extend({
@@ -44,6 +48,24 @@ export const GetPromptInput = CommonProjectsInput.extend({
     .positive()
     .optional()
     .describe("Resolve this exact version number instead of a label"),
+  variables: z
+    .record(
+      z.string().max(MAX_VARIABLE_NAME_CHARS),
+      z
+        .unknown()
+        .refine(
+          (value) => (JSON.stringify(value) ?? "").length <= MAX_VARIABLE_VALUE_CHARS,
+          `Each variable value must be at most ${MAX_VARIABLE_VALUE_CHARS} characters as JSON`
+        )
+    )
+    .refine(
+      (variables) => Object.keys(variables).length <= MAX_VARIABLES,
+      `At most ${MAX_VARIABLES} variables`
+    )
+    .optional()
+    .describe(
+      `Render the resolved version with these variables, as the prompt resolve API does, but a render is not shown when its substituted values or its final text exceed 32,000 characters. Variable defaults and transforms from the schema in your code are not applied, so pass every value. A {{name}} with no value renders as empty text. Up to ${MAX_VARIABLES} variables, names up to ${MAX_VARIABLE_NAME_CHARS} characters, each value up to ${MAX_VARIABLE_VALUE_CHARS} characters as JSON.`
+    ),
 });
 
 export const ListGenerationsInput = CommonProjectsInput.extend({

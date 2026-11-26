@@ -7,6 +7,7 @@ import {
   createActionApiRoute,
   createLoaderApiRoute,
 } from "~/services/routeBuilders/apiBuilder.server";
+import { compilePromptTemplate, PromptVariables } from "~/v3/promptTemplate";
 
 const ParamsSchema = z.object({
   slug: z.string(),
@@ -95,7 +96,7 @@ export const loader = createLoaderApiRoute(
 // POST /api/v1/prompts/:slug — Resolve prompt with variables
 
 const ResolveBody = z.object({
-  variables: z.record(z.string(), z.unknown()).default({}),
+  variables: PromptVariables.default({}),
   label: z.string().optional(),
   version: z.number().optional(),
 });
@@ -144,7 +145,7 @@ const { action } = createActionApiRoute(
       return json({ error: "Prompt has no content" }, { status: 404 });
     }
 
-    const text = compileTemplate(version.textContent, body.variables);
+    const text = compilePromptTemplate(version.textContent, body.variables);
     return json({
       data: {
         promptId: prompt.friendlyId,
@@ -161,21 +162,3 @@ const { action } = createActionApiRoute(
 );
 
 export { action };
-
-function compileTemplate(template: string, variables: Record<string, unknown>): string {
-  let result = template.replace(/\{\{#(\w+)\}\}([\s\S]*?)\{\{\/\1\}\}/g, (_match, key, content) => {
-    const value = variables[key];
-    return value
-      ? content.replace(/\{\{(\w+)\}\}/g, (_m: string, k: string) => {
-          return String(variables[k] ?? "");
-        })
-      : "";
-  });
-
-  result = result.replace(/\{\{\s*(\w+)\s*\}\}/g, (_match, key) => {
-    const value = variables[key];
-    return value !== undefined && value !== null ? String(value) : "";
-  });
-
-  return result;
-}
