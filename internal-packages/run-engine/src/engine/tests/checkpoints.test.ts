@@ -1,8 +1,14 @@
 import { containerTest, assertNonNullable } from "@internal/testcontainers";
 import { createRedisClient } from "@internal/redis";
 import {
+  PostgresRunStore,
   RedisSnapshotStore,
+  residencyKey,
+  SnapshotReadUnavailableError,
+  SnapshotResidencyResolver,
+  SnapshotStateExpiredError,
   SnapshotWriteUnavailableError,
+  TaskRunExecutionSnapshotStore,
   snapshotKeys,
   type SnapshotStoreDial,
 } from "@internal/run-store";
@@ -25,6 +31,7 @@ import { getLatestExecutionSnapshot } from "../systems/executionSnapshotSystem.j
 import { cycleAnchorSnapshotId } from "../systems/waitpointSystem.js";
 import { WaitpointStoreCoordinator } from "../waitpointCoordinator/storeCoordinator.js";
 import { encodeCheckpointMetadata } from "../checkpointMetadata.js";
+import { createCompletedWaitpointResolver } from "../systems/completedWaitpointResolver.js";
 
 vi.setConfig({ testTimeout: 60_000 });
 
@@ -2988,6 +2995,798 @@ describe("RunEngine checkpoints carried by a MemoryDB-only run's snapshots", () 
           }
         }
       );
+
+      describe("lifetime of state-held checkpoints", () => {
+        const LIFETIME_MS = 3_000;
+
+        async function lifetimeHarness(
+          prisma: PrismaClient,
+          redisOptions: any,
+          completedTtlMs: number,
+          flag: ReturnType<typeof checkpointFlag>,
+          maxAttempts?: number
+        ) {
+          const env = await setupAuthenticatedEnvironment(prisma, "PRODUCTION");
+          const snapshotStore = new RedisSnapshotStore({ redisOptions, completedTtlMs });
+          const engine = makeEngine(prisma, redisOptions, {
+            snapshotStore,
+            isCheckpointStoreEnabled: flag.resolve,
+          });
+          await setupBackgroundWorker(
+            engine,
+            env,
+            "test-task",
+            undefined,
+            maxAttempts === undefined ? undefined : { maxAttempts }
+          );
+          return { env, snapshotStore, engine };
+        }
+
+        async function endedAt(prisma: PrismaClient, runId: string, statuses: string[]) {
+          const deadline = Date.now() + 30_000;
+          for (;;) {
+            const { status } = await prisma.taskRun.findFirstOrThrow({ where: { id: runId } });
+            if (statuses.includes(status)) return Date.now();
+            expect(Date.now(), `run still ${status}`).toBeLessThan(deadline);
+            await setTimeout(250);
+          }
+        }
+
+        async function expectStateGone(
+          redisOptions: any,
+          runId: string,
+          completedTtlMs: number,
+          ended: number
+        ) {
+          const raw = createRedisClient(redisOptions, { onError: () => {} });
+          try {
+            const deadline = ended + completedTtlMs + 5_000;
+            while ((await raw.exists(snapshotKeys(runId).e)) !== 0) {
+              expect(Date.now(), "the run's state outlived its lifetime").toBeLessThan(deadline);
+              await setTimeout(250);
+            }
+            expect(await raw.keys(`snap:v1:*${runId}*`)).toEqual([residencyKey(runId)]);
+          } finally {
+            await raw.quit();
+          }
+        }
+
+        async function pttlOfState(redisOptions: any, runId: string) {
+          const raw = createRedisClient(redisOptions, { onError: () => {} });
+          try {
+            return await raw.pttl(snapshotKeys(runId).e);
+          } finally {
+            await raw.quit();
+          }
+        }
+
+        async function hasStateField(redisOptions: any, runId: string, checkpointId: string) {
+          const raw = createRedisClient(redisOptions, { onError: () => {} });
+          try {
+            return await raw.hexists(snapshotKeys(runId).e, `${checkpointId}#cp`);
+          } finally {
+            await raw.quit();
+          }
+        }
+
+        // Catches: a finished run's state, superseded checkpoint included, kept past its lifetime.
+        containerTest(
+          "a run that succeeds after two suspends leaves no checkpoint in MemoryDB after the lifetime",
+          async ({ prisma, redisOptions }) => {
+            const flag = checkpointFlag(true);
+            const { env, snapshotStore, engine } = await lifetimeHarness(
+              prisma,
+              redisOptions,
+              LIFETIME_MS,
+              flag
+            );
+            try {
+              const first = await startAndBlock(engine, env, prisma, snapshotStore);
+              const c1 = (await suspend(engine, first.run.id, first.wait.id, "life-a-1")).checkpoint
+                .id;
+              await engine.completeWaitpoint({ id: first.tokenId });
+              const restore1 = await dequeueRestore(engine, env);
+              expect(restore1.checkpoint?.id).toBe(c1);
+              await engine.continueRunExecution({
+                runId: first.run.id,
+                snapshotId: restore1.snapshot.id,
+              });
+
+              const second = await block(engine, env, first.run.id);
+              const c2 = (await suspend(engine, first.run.id, second.wait.id, "life-a-2"))
+                .checkpoint.id;
+              await engine.completeWaitpoint({ id: second.tokenId });
+              const restore2 = await dequeueRestore(engine, env);
+              expect(restore2.checkpoint?.id).toBe(c2);
+              const continued = await engine.continueRunExecution({
+                runId: first.run.id,
+                snapshotId: restore2.snapshot.id,
+              });
+
+              expect(await stateFields(redisOptions, first.run.id)).toEqual(
+                [`${c1}#cp`, `${c2}#cp`].sort()
+              );
+              await engine.completeRunAttempt({
+                runId: first.run.id,
+                snapshotId: continued.snapshot.id,
+                completion: {
+                  id: first.run.id,
+                  ok: true,
+                  output: "{}",
+                  outputType: "application/json",
+                },
+              });
+              const ended = await endedAt(prisma, first.run.id, ["COMPLETED_SUCCESSFULLY"]);
+              await expectStateGone(redisOptions, first.run.id, LIFETIME_MS, ended);
+            } finally {
+              await engine.quit();
+              await snapshotStore.quit();
+            }
+          }
+        );
+
+        // Catches: a failed run's state, with its checkpoint, kept past its lifetime.
+        containerTest(
+          "a run that fails with no retries left leaves no checkpoint in MemoryDB after the lifetime",
+          async ({ prisma, redisOptions }) => {
+            const flag = checkpointFlag(true);
+            const { env, snapshotStore, engine } = await lifetimeHarness(
+              prisma,
+              redisOptions,
+              LIFETIME_MS,
+              flag,
+              1
+            );
+            try {
+              const { run, tokenId, wait } = await startAndBlock(
+                engine,
+                env,
+                prisma,
+                snapshotStore
+              );
+              const c1 = (await suspend(engine, run.id, wait.id, "life-b-1")).checkpoint.id;
+              await engine.completeWaitpoint({ id: tokenId });
+              const restore = await dequeueRestore(engine, env);
+              expect(restore.checkpoint?.id).toBe(c1);
+              const continued = await engine.continueRunExecution({
+                runId: run.id,
+                snapshotId: restore.snapshot.id,
+              });
+
+              expect(await stateFields(redisOptions, run.id)).toEqual([`${c1}#cp`]);
+              await engine.completeRunAttempt({
+                runId: run.id,
+                snapshotId: continued.snapshot.id,
+                completion: {
+                  ok: false,
+                  id: run.id,
+                  error: {
+                    type: "BUILT_IN_ERROR",
+                    name: "UserError",
+                    message: "This is a user error",
+                    stackTrace: "Error: This is a user error\n    at <anonymous>:1:1",
+                  },
+                },
+              });
+              const ended = await endedAt(prisma, run.id, ["COMPLETED_WITH_ERRORS"]);
+              await expectStateGone(redisOptions, run.id, LIFETIME_MS, ended);
+            } finally {
+              await engine.quit();
+              await snapshotStore.quit();
+            }
+          }
+        );
+
+        // Catches: a checkpoint written while the flag was on outliving its run once the flag is off.
+        containerTest(
+          "a run cancelled while suspended after the flag went off leaves no checkpoint in MemoryDB after the lifetime",
+          async ({ prisma, redisOptions }) => {
+            const flag = checkpointFlag(true);
+            const { env, snapshotStore, engine } = await lifetimeHarness(
+              prisma,
+              redisOptions,
+              LIFETIME_MS,
+              flag
+            );
+            try {
+              const { run, wait } = await startAndBlock(engine, env, prisma, snapshotStore);
+              const c1 = (await suspend(engine, run.id, wait.id, "life-c-1")).checkpoint.id;
+              flag.set(false);
+
+              expect(await stateFields(redisOptions, run.id)).toEqual([`${c1}#cp`]);
+              await engine.cancelRun({ runId: run.id });
+              const ended = await endedAt(prisma, run.id, ["CANCELED"]);
+              await expectStateGone(redisOptions, run.id, LIFETIME_MS, ended);
+            } finally {
+              await engine.quit();
+              await snapshotStore.quit();
+            }
+          }
+        );
+
+        // Catches: a checkpoint dropped by a failed restore removed while its run is active.
+        containerTest(
+          "a run whose restore fails with no retries left keeps the dropped checkpoint until it ends, then leaves none after the lifetime",
+          async ({ prisma, redisOptions }) => {
+            const flag = checkpointFlag(true);
+            const { env, snapshotStore, engine } = await lifetimeHarness(
+              prisma,
+              redisOptions,
+              LIFETIME_MS,
+              flag,
+              2
+            );
+            try {
+              const { run, tokenId, wait } = await startAndBlock(
+                engine,
+                env,
+                prisma,
+                snapshotStore
+              );
+              const c1 = (await suspend(engine, run.id, wait.id, "life-d-1")).checkpoint.id;
+              await engine.completeWaitpoint({ id: tokenId });
+              const restore1 = await dequeueRestore(engine, env);
+              expect(restore1.checkpoint?.id).toBe(c1);
+              expect(
+                await engine.reportRestoreOutcome({
+                  runId: run.id,
+                  snapshotId: restore1.snapshot.id,
+                  outcome: "fail",
+                  reason: "SnapshotNotFound",
+                })
+              ).toEqual({ ok: true, outcome: "fail" });
+
+              const retry = await dequeueRestore(engine, env);
+              expect(retry.checkpoint).toBeUndefined();
+              expect(await hasStateField(redisOptions, run.id, c1)).toBe(1);
+              await engine.startRunAttempt({ runId: run.id, snapshotId: retry.snapshot.id });
+              const second = await block(engine, env, run.id);
+              const c2 = (await suspend(engine, run.id, second.wait.id, "life-d-2")).checkpoint.id;
+              await engine.completeWaitpoint({ id: second.tokenId });
+              const restore2 = await dequeueRestore(engine, env);
+              expect(restore2.checkpoint?.id).toBe(c2);
+
+              expect(await stateFields(redisOptions, run.id)).toEqual(
+                [`${c1}#cp`, `${c2}#cp`].sort()
+              );
+              expect(
+                await engine.reportRestoreOutcome({
+                  runId: run.id,
+                  snapshotId: restore2.snapshot.id,
+                  outcome: "fail",
+                  reason: "SnapshotNotFound",
+                })
+              ).toEqual({ ok: true, outcome: "fail" });
+              const ended = await endedAt(prisma, run.id, ["CRASHED", "SYSTEM_FAILURE"]);
+              await expectStateGone(redisOptions, run.id, LIFETIME_MS, ended);
+            } finally {
+              await engine.quit();
+              await snapshotStore.quit();
+            }
+          }
+        );
+
+        // Catches: an expiry set on an active run's state before its restore.
+        containerTest(
+          "a suspended run's state has no expiry over several lifetimes and it restores with its checkpoint",
+          async ({ prisma, redisOptions }) => {
+            const flag = checkpointFlag(true);
+            const { env, snapshotStore, engine } = await lifetimeHarness(
+              prisma,
+              redisOptions,
+              LIFETIME_MS,
+              flag
+            );
+            try {
+              const { run, tokenId, wait } = await startAndBlock(
+                engine,
+                env,
+                prisma,
+                snapshotStore
+              );
+              const c1 = (await suspend(engine, run.id, wait.id, "life-9a-1")).checkpoint.id;
+              const pttls: number[] = [];
+              for (let i = 0; i < 10; i++) {
+                pttls.push(await pttlOfState(redisOptions, run.id));
+                await setTimeout(1_000);
+              }
+              expect(pttls).toEqual(Array(10).fill(-1));
+              expect(await stateFields(redisOptions, run.id)).toEqual([`${c1}#cp`]);
+
+              await engine.completeWaitpoint({ id: tokenId });
+              const restore = await dequeueRestore(engine, env);
+              expect(restore.checkpoint?.id).toBe(c1);
+              expect(restore.checkpoint?.location).toBe("life-9a-1");
+              const continued = await engine.continueRunExecution({
+                runId: run.id,
+                snapshotId: restore.snapshot.id,
+              });
+              expect(continued.snapshot.executionStatus).toBe("EXECUTING");
+            } finally {
+              await engine.quit();
+              await snapshotStore.quit();
+            }
+          }
+        );
+
+        // Catches: a run ending on the lifetime it was suspended under rather than the one in force.
+        containerTest(
+          "a run that ends after the lifetime changed expires on the new lifetime",
+          async ({ prisma, redisOptions }) => {
+            const NEW_LIFETIME_MS = 8_000;
+            const flag = checkpointFlag(true);
+            const before = await lifetimeHarness(prisma, redisOptions, LIFETIME_MS, flag);
+            let runId: string;
+            try {
+              const { run, wait } = await startAndBlock(
+                before.engine,
+                before.env,
+                prisma,
+                before.snapshotStore
+              );
+              runId = run.id;
+              const c1 = (await suspend(before.engine, run.id, wait.id, "life-9b-1")).checkpoint.id;
+              expect(await stateFields(redisOptions, run.id)).toEqual([`${c1}#cp`]);
+            } finally {
+              await before.engine.quit();
+              await before.snapshotStore.quit();
+            }
+
+            const snapshotStore = new RedisSnapshotStore({
+              redisOptions,
+              completedTtlMs: NEW_LIFETIME_MS,
+            });
+            const engine = makeEngine(prisma, redisOptions, {
+              snapshotStore,
+              isCheckpointStoreEnabled: flag.resolve,
+            });
+            try {
+              const cancelStarted = Date.now();
+              await engine.cancelRun({ runId });
+              // cancelRun returns after the terminal entry set the TTL, so at most the time since
+              // cancelStarted has run off it: a shorter lifetime fails however slow the worker is.
+              const pttl = await pttlOfState(redisOptions, runId);
+              const elapsed = Date.now() - cancelStarted;
+              const ended = await endedAt(prisma, runId, ["CANCELED"]);
+              expect(pttl).toBeGreaterThanOrEqual(NEW_LIFETIME_MS - elapsed - 1);
+              expect(pttl).toBeGreaterThan(LIFETIME_MS);
+              expect(pttl).toBeLessThanOrEqual(NEW_LIFETIME_MS);
+              await expectStateGone(redisOptions, runId, NEW_LIFETIME_MS, ended);
+            } finally {
+              await engine.quit();
+              await snapshotStore.quit();
+            }
+          }
+        );
+      });
+
+      describe("when the state-held checkpoint read fails", () => {
+        class CheckpointReadStore extends RedisSnapshotStore {
+          reads = 0;
+          failing = false;
+
+          override async readCheckpoint(
+            runId: string,
+            checkpointId: string
+          ): Promise<string | null> {
+            this.reads++;
+            if (this.failing) throw new Error("checkpoint read failed in test");
+            return super.readCheckpoint(runId, checkpointId);
+          }
+        }
+
+        async function readFaults(prisma: PrismaClient, redisOptions: any) {
+          const env = await setupAuthenticatedEnvironment(prisma, "PRODUCTION");
+          const snapshotStore = new CheckpointReadStore({ redisOptions, completedTtlMs: 60_000 });
+          const flag = checkpointFlag(true);
+          const engine = makeEngine(prisma, redisOptions, {
+            snapshotStore,
+            isCheckpointStoreEnabled: flag.resolve,
+          });
+          await setupBackgroundWorker(engine, env, "test-task");
+          return { env, snapshotStore, engine };
+        }
+
+        async function queuedFlagged(
+          engine: RunEngine,
+          env: Env,
+          prisma: PrismaClient,
+          store: RedisSnapshotStore
+        ) {
+          const { run, tokenId, wait } = await startAndBlockOn(
+            engine,
+            env,
+            prisma,
+            store,
+            BIRTH_QUEUE
+          );
+          const result = accepted(
+            await engine.createCheckpoint({
+              runId: run.id,
+              snapshotId: wait.id,
+              checkpoint: FLAGGED,
+            })
+          );
+          await expectCarried(engine, prisma, run.id, "SUSPENDED", result.row);
+          await engine.completeWaitpoint({ id: tokenId });
+          let queued = await getLatestExecutionSnapshot(prisma, run.id, engine.runStore);
+          for (let i = 0; i < 80 && queued.executionStatus !== "QUEUED"; i++) {
+            await setTimeout(250);
+            queued = await getLatestExecutionSnapshot(prisma, run.id, engine.runStore);
+          }
+          expect(queued.executionStatus).toBe("QUEUED");
+          return { run, checkpoint: result.row, queued };
+        }
+
+        async function captureError(fn: () => Promise<unknown>): Promise<unknown> {
+          try {
+            await fn();
+          } catch (e) {
+            return e;
+          }
+          throw new Error("expected the call to reject");
+        }
+
+        // Catches: a failed checkpoint read lapsing the heartbeat or answering as if no checkpoint.
+        containerTest(
+          "a heartbeat whose state-held checkpoint read fails extends the heartbeat and rejects as a failed snapshot read does",
+          async ({ prisma, redisOptions }) => {
+            const { env, snapshotStore, engine } = await readFaults(prisma, redisOptions);
+            try {
+              const { run, checkpoint } = await queuedFlagged(engine, env, prisma, snapshotStore);
+              const restore = await dequeueFrom(engine, env, RESTORE_QUEUE);
+              expect(restore.checkpoint?.id).toBe(checkpoint.id);
+              await expectCarried(engine, prisma, run.id, "PENDING_EXECUTING", checkpoint);
+
+              const worker = (engine as any).worker;
+              const jobId = `heartbeatSnapshot.${run.id}`;
+              // Pull the heartbeat deadline close, so any extension is unambiguous.
+              await worker.reschedule(jobId, new Date(Date.now() + 5_000));
+              const before = await worker.getJob(jobId);
+              expect(before).not.toBeNull();
+              expect(before.timestamp.getTime()).toBeLessThan(Date.now() + 10_000);
+
+              const reads = snapshotStore.reads;
+              snapshotStore.failing = true;
+              const called = Date.now();
+              const error = await captureError(() =>
+                engine.heartbeatRun({ runId: run.id, snapshotId: restore.snapshot.id })
+              );
+              snapshotStore.failing = false;
+              expect(error).toBeInstanceOf(SnapshotReadUnavailableError);
+              expect(error).not.toBeInstanceOf(SnapshotStateExpiredError);
+              expect((error as SnapshotReadUnavailableError).retriable).toBe(true);
+              expect((error as SnapshotReadUnavailableError).reason).toBe("readCheckpoint failed");
+              expect(snapshotStore.reads).toBeGreaterThan(reads);
+              const after = await worker.getJob(jobId);
+              expect(after).not.toBeNull();
+              // The engine's default EXECUTING heartbeat, which makeEngine leaves as it is.
+              expect(after.timestamp.getTime()).toBeGreaterThanOrEqual(called + 60_000);
+
+              const healthy = await engine.heartbeatRun({
+                runId: run.id,
+                snapshotId: restore.snapshot.id,
+              });
+              expect(healthy.snapshot.id).toBe(restore.snapshot.id);
+              await expectCarried(engine, prisma, run.id, "PENDING_EXECUTING", checkpoint);
+            } finally {
+              await engine.quit();
+              await snapshotStore.quit();
+            }
+          }
+        );
+
+        // Catches: a failed checkpoint read sending or snapshotting without it, or failing the run.
+        containerTest(
+          "a dequeue whose state-held checkpoint read fails sends no message and leaves the run queued with its checkpoint",
+          async ({ prisma, redisOptions }) => {
+            const { env, snapshotStore, engine } = await readFaults(prisma, redisOptions);
+            try {
+              const { run, checkpoint, queued } = await queuedFlagged(
+                engine,
+                env,
+                prisma,
+                snapshotStore
+              );
+              let onRestoreQueue = 0;
+              for (let i = 0; i < 100 && onRestoreQueue !== 1; i++) {
+                await engine.runQueue.processMasterQueueForEnvironment(env.id, 10);
+                onRestoreQueue = (await engine.runQueue.peekAllOnWorkerQueue(RESTORE_QUEUE)).length;
+                if (onRestoreQueue !== 1) await setTimeout(200);
+              }
+              expect(onRestoreQueue).toBe(1);
+              const m0 = await engine.runQueue.readMessage(env.organizationId, run.id);
+              assertNonNullable(m0);
+              const status = await runStatus(prisma, run.id);
+
+              const reads = snapshotStore.reads;
+              snapshotStore.failing = true;
+              const dequeued = await engine.dequeueFromWorkerQueue({
+                consumerId: "read_fault_consumer",
+                workerQueue: RESTORE_QUEUE,
+                blockingPop: false,
+              });
+              snapshotStore.failing = false;
+              expect(dequeued).toEqual([]);
+              // The read under the dequeue's lock, and the recovery's read again.
+              expect(snapshotStore.reads).toBeGreaterThanOrEqual(reads + 2);
+
+              const latest = await getLatestExecutionSnapshot(prisma, run.id, engine.runStore);
+              expect(latest.id).toBe(queued.id);
+              expect(latest.executionStatus).toBe("QUEUED");
+              expect(latest.checkpointStore).toBe("state");
+              expect(latest.checkpointId).toBe(checkpoint.id);
+              expect(await runStatus(prisma, run.id)).toBe(status);
+              const nacked = await engine.runQueue.readMessage(env.organizationId, run.id);
+              expect(nacked?.attempt).toBe(m0.attempt + 1);
+
+              const restore = await dequeueFrom(engine, env, RESTORE_QUEUE);
+              expect(restore.checkpoint).toMatchObject({
+                id: checkpoint.id,
+                friendlyId: checkpoint.friendlyId,
+                type: "KUBERNETES",
+                location: FLAGGED.location,
+                imageRef: FLAGGED.imageRef,
+                reason: FLAGGED.reason,
+                digest: FLAGGED.digest,
+              });
+              await expectCarried(engine, prisma, run.id, "PENDING_EXECUTING", checkpoint);
+            } finally {
+              await engine.quit();
+              await snapshotStore.quit();
+            }
+          }
+        );
+      });
+
+      describe("toggling and mixed checkpoints", () => {
+        // Records the checkpoint id of each Postgres checkpoint read.
+        class CountingPostgresStore extends PostgresRunStore {
+          readonly lookups: string[] = [];
+
+          override async findTaskRunCheckpointById(
+            ...args: Parameters<PostgresRunStore["findTaskRunCheckpointById"]>
+          ) {
+            this.lookups.push(args[0]);
+            return super.findTaskRunCheckpointById(...args);
+          }
+        }
+
+        // Records the checkpoint id of each state-held checkpoint read.
+        class StateReadCountingStore extends RedisSnapshotStore {
+          readonly reads: string[] = [];
+
+          override async readCheckpoint(runId: string, checkpointId: string) {
+            this.reads.push(checkpointId);
+            return super.readCheckpoint(runId, checkpointId);
+          }
+        }
+
+        async function countedHarness(
+          prisma: PrismaClient,
+          redisOptions: any,
+          flag: { resolve: (organizationId: string) => Promise<boolean> }
+        ) {
+          const env = await setupAuthenticatedEnvironment(prisma, "PRODUCTION");
+          const snapshotStore = new StateReadCountingStore({
+            redisOptions,
+            completedTtlMs: 60_000,
+          });
+          const postgres = new CountingPostgresStore({ prisma, readOnlyPrisma: prisma });
+          const runStore = new TaskRunExecutionSnapshotStore(postgres, {
+            store: snapshotStore,
+            mode: "redis-only",
+            resolveDial: () => "redis-only",
+            residencyResolver: new SnapshotResidencyResolver({ store: snapshotStore }),
+            resolveCompletedWaitpoints: createCompletedWaitpointResolver(postgres),
+            logicalRunStoreRoute: "logical:1",
+          });
+          const engine = makeEngine(prisma, redisOptions, {
+            snapshotStore,
+            runStore,
+            isCheckpointStoreEnabled: flag.resolve,
+          });
+          await setupBackgroundWorker(engine, env, "test-task");
+          return { env, snapshotStore, engine, postgres };
+        }
+
+        // Answers true on odd calls and false on even ones.
+        function alternatingFlag() {
+          const calls: string[] = [];
+          return {
+            calls,
+            resolve: async (organizationId: string) => {
+              calls.push(organizationId);
+              return calls.length % 2 === 1;
+            },
+          };
+        }
+
+        // Catches: a read that picks a checkpoint's store by the flag or by the newest checkpoint
+        // instead of each entry's record, or a read that looks the flag up.
+        containerTest(
+          "one run holds a Postgres and a state-held checkpoint and a since read reads each from its own store with no flag lookup",
+          async ({ prisma, redisOptions }) => {
+            const flag = checkpointFlag(false);
+            const { env, snapshotStore, engine, postgres } = await countedHarness(
+              prisma,
+              redisOptions,
+              flag
+            );
+            try {
+              const {
+                run,
+                tokenId,
+                wait: wait1,
+              } = await startAndBlock(engine, env, prisma, snapshotStore);
+              const c1 = (await suspend(engine, run.id, wait1.id, "pg-loc-1")).checkpoint.id;
+              expect(await prisma.taskRunCheckpoint.count({ where: { id: c1 } })).toBe(1);
+              expect(await stateFields(redisOptions, run.id)).toEqual([]);
+
+              await engine.completeWaitpoint({ id: tokenId });
+              const restore = await dequeueRestore(engine, env);
+              expect(restore.checkpoint?.id).toBe(c1);
+              await engine.continueRunExecution({ runId: run.id, snapshotId: restore.snapshot.id });
+              const { wait: wait2 } = await block(engine, env, run.id);
+
+              flag.set(true);
+              const c2 = (await suspend(engine, run.id, wait2.id, "loc-2")).checkpoint.id;
+              expect(await prisma.taskRunCheckpoint.count({ where: { id: c2 } })).toBe(0);
+              expect(await stateFields(redisOptions, run.id)).toEqual([`${c2}#cp`]);
+
+              postgres.lookups.length = 0;
+              snapshotStore.reads.length = 0;
+              expect(
+                statusAndCheckpoint(
+                  await engine.getSnapshotsSince({ runId: run.id, snapshotId: wait1.id })
+                )
+              ).toEqual([
+                ["SUSPENDED", c1],
+                ["QUEUED", c1],
+                ["PENDING_EXECUTING", c1],
+                ["EXECUTING", "none"],
+                ["EXECUTING_WITH_WAITPOINTS", "none"],
+                ["SUSPENDED", c2],
+              ]);
+              expect(postgres.lookups.length).toBeGreaterThan(0);
+              expect(new Set(postgres.lookups)).toEqual(new Set([c1]));
+              expect(snapshotStore.reads.length).toBeGreaterThan(0);
+              expect(new Set(snapshotStore.reads)).toEqual(new Set([c2]));
+              expect(flag.calls).toEqual([env.organizationId, env.organizationId]);
+            } finally {
+              await engine.quit();
+              await snapshotStore.quit();
+            }
+          }
+        );
+
+        // Catches: a step after the flag goes on giving a Postgres checkpoint the state's record, or
+        // looking the flag up.
+        containerTest(
+          "a Postgres checkpoint is carried with no record after the flag goes on, through requeue, release and a recovered failed dequeue",
+          async ({ prisma, redisOptions }) => {
+            const flag = checkpointFlag(false);
+            const { env, snapshotStore, engine } = await countedHarness(prisma, redisOptions, flag);
+            try {
+              const steps = {
+                requeue: async (runId: string) => {
+                  const restore = await dequeueRestore(engine, env);
+                  expect(restore.run.id).toBe(runId);
+                  expect(
+                    await engine.reportRestoreOutcome({
+                      runId,
+                      snapshotId: restore.snapshot.id,
+                      outcome: "requeue",
+                      reason: "NodeBusy",
+                    })
+                  ).toEqual({ ok: true, outcome: "requeue" });
+                },
+                release: async (runId: string) => {
+                  const restore = await dequeueRestore(engine, env);
+                  expect(restore.run.id).toBe(runId);
+                  expect(
+                    await engine.releaseRun({
+                      runId,
+                      snapshotId: restore.snapshot.id,
+                      reason: "not started",
+                    })
+                  ).toEqual({ ok: true, requeued: true });
+                },
+                recovery: async () => {
+                  await expect
+                    .poll(async () => {
+                      await engine.runQueue.processMasterQueueForEnvironment(env.id, 10);
+                      return (await engine.runQueue.peekAllOnWorkerQueue("main")).length;
+                    })
+                    .toBe(1);
+                  engine.eventBus.once("runLocked", () => {
+                    throw new Error("Restore preparation failed after locking the run");
+                  });
+                  expect(
+                    await engine.dequeueFromWorkerQueue({
+                      consumerId: "restore_consumer",
+                      workerQueue: "main",
+                      blockingPop: false,
+                    })
+                  ).toEqual([]);
+                },
+              };
+
+              for (const [index, [name, step]] of Object.entries(steps).entries()) {
+                flag.set(false);
+                const { run, tokenId, wait } = await startAndBlock(
+                  engine,
+                  env,
+                  prisma,
+                  snapshotStore
+                );
+                const c = (await suspend(engine, run.id, wait.id, "pg-loc-1")).checkpoint.id;
+                expect(await prisma.taskRunCheckpoint.count({ where: { id: c } })).toBe(1);
+                await engine.completeWaitpoint({ id: tokenId });
+                const queued = await untilLatest(engine, prisma, run.id, "QUEUED");
+
+                flag.set(true);
+                await step(run.id);
+                const read = await expectPostgresCarried(
+                  engine,
+                  prisma,
+                  snapshotStore,
+                  run.id,
+                  "QUEUED",
+                  c
+                );
+                expect(read.checkpointId, name).toBe(c);
+                expect(read.id, name).not.toBe(queued.id);
+                expect(await stateFields(redisOptions, run.id)).toEqual([]);
+                const next = await dequeueRestore(engine, env);
+                expect(next.run.id).toBe(run.id);
+                expect(next.checkpoint?.id, name).toBe(c);
+                expect(flag.calls).toEqual(Array(index + 1).fill(env.organizationId));
+                await engine.continueRunExecution({ runId: run.id, snapshotId: next.snapshot.id });
+              }
+            } finally {
+              await engine.quit();
+              await snapshotStore.quit();
+            }
+          }
+        );
+
+        // Catches: a checkpoint written to both stores, to neither, or a record that does not match
+        // the store the checkpoint went to, when the flag changes between suspends.
+        containerTest(
+          "a flag that changes between suspends puts each checkpoint in exactly one store and records which",
+          async ({ prisma, redisOptions }) => {
+            const flag = alternatingFlag();
+            const { env, snapshotStore, engine } = await flagged(prisma, redisOptions, flag);
+            try {
+              const blocked = [];
+              for (let i = 0; i < 8; i++) {
+                blocked.push(await startAndBlock(engine, env, prisma, snapshotStore));
+              }
+              const stores: string[] = [];
+              for (const [i, { run, wait }] of blocked.entries()) {
+                const id = (await suspend(engine, run.id, wait.id, `toggle-loc-${i}`)).checkpoint
+                  .id;
+                const rows = await prisma.taskRunCheckpoint.count({ where: { id } });
+                const fields = await stateFields(redisOptions, run.id);
+                expect(fields.filter((f) => f !== `${id}#cp`)).toEqual([]);
+                expect(rows + fields.length).toBe(1);
+                const head = await rawHead(snapshotStore, run.id);
+                expect(head.executionStatus).toBe("SUSPENDED");
+                expect(head.checkpointId).toBe(id);
+                expect(head.checkpointStore === "state").toBe(fields.length === 1);
+                stores.push(fields.length === 1 ? "state" : "postgres");
+              }
+              expect(stores.filter((s) => s === "state")).toHaveLength(4);
+              expect(stores.filter((s) => s === "postgres")).toHaveLength(4);
+              expect(flag.calls).toEqual(Array(8).fill(env.organizationId));
+            } finally {
+              await engine.quit();
+              await snapshotStore.quit();
+            }
+          }
+        );
+      });
     });
   });
 });
