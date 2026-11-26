@@ -1,4 +1,6 @@
 import { containerTest, assertNonNullable } from "@internal/testcontainers";
+import { createRedisClient } from "@internal/redis";
+import { RedisSnapshotStore, snapshotKeys } from "@internal/run-store";
 import { trace } from "@internal/tracing";
 import { expect } from "vitest";
 import { RunEngine } from "../index.js";
@@ -6,6 +8,13 @@ import { setTimeout } from "node:timers/promises";
 import type { EventBusEventArgs } from "../eventBus.js";
 import { setupAuthenticatedEnvironment, setupBackgroundWorker } from "./setup.js";
 import { generateFriendlyId } from "@trigger.dev/core/v3/isomorphic";
+import type { RunExecutionData } from "@trigger.dev/core/v3";
+import type { PrismaClient } from "@trigger.dev/database";
+import {
+  dequeueAndStart,
+  makeEngine,
+  triggerRun,
+} from "./utils/storeRunWaitpointLifecycleFixtures.js";
 
 vi.setConfig({ testTimeout: 60_000 });
 
@@ -1173,4 +1182,257 @@ describe("RunEngine checkpoints", () => {
       await engine.quit();
     }
   });
+});
+
+describe("RunEngine checkpoints carried by a MemoryDB-only run's snapshots", () => {
+  type Env = Awaited<ReturnType<typeof setupAuthenticatedEnvironment>>;
+
+  const checkpointInput = (location: string) => ({
+    type: "KUBERNETES" as const,
+    reason: "TEST_CHECKPOINT",
+    location,
+    imageRef: "test-image-ref",
+  });
+
+  const statusAndCheckpoint = (snapshots: RunExecutionData[] | null) =>
+    (snapshots ?? []).map((s) => [s.snapshot.executionStatus, s.checkpoint?.id ?? "none"]);
+
+  async function harness(prisma: PrismaClient, redisOptions: any) {
+    const env = await setupAuthenticatedEnvironment(prisma, "PRODUCTION");
+    const snapshotStore = new RedisSnapshotStore({ redisOptions, completedTtlMs: 60_000 });
+    const engine = makeEngine(prisma, redisOptions, { snapshotStore });
+    await setupBackgroundWorker(engine, env, "test-task");
+    return { env, snapshotStore, engine };
+  }
+
+  // A MemoryDB-only run, started and blocked on a manual token.
+  async function startAndBlock(
+    engine: RunEngine,
+    env: Env,
+    prisma: PrismaClient,
+    store: RedisSnapshotStore
+  ) {
+    const run = await triggerRun(engine, env, prisma, {
+      friendlyId: generateFriendlyId("run"),
+      taskIdentifier: "test-task",
+    });
+    expect(await store.readBirthResidency(run.id)).toBe("redis-primary");
+    expect(await prisma.taskRunExecutionSnapshot.count({ where: { runId: run.id } })).toBe(0);
+    await dequeueAndStart(engine, `consumer_${run.id}`);
+    return { run, ...(await block(engine, env, run.id)) };
+  }
+
+  async function block(engine: RunEngine, env: Env, runId: string) {
+    const token = await engine.createManualWaitpoint({
+      environmentId: env.id,
+      projectId: env.projectId,
+    });
+    const wait = await engine.blockRunWithWaitpoint({
+      runId,
+      waitpoints: token.waitpoint.id,
+      projectId: env.projectId,
+      organizationId: env.organizationId,
+    });
+    expect(wait.executionStatus).toBe("EXECUTING_WITH_WAITPOINTS");
+    return { tokenId: token.waitpoint.id, wait };
+  }
+
+  async function suspend(engine: RunEngine, runId: string, snapshotId: string, location: string) {
+    const result = await engine.createCheckpoint({
+      runId,
+      snapshotId,
+      checkpoint: checkpointInput(location),
+    });
+    if (!result.ok) throw new Error(result.error);
+    return result;
+  }
+
+  async function dequeueRestore(engine: RunEngine, env: Env) {
+    const deadline = Date.now() + 20_000;
+    while (Date.now() < deadline) {
+      await engine.runQueue.processMasterQueueForEnvironment(env.id, 10);
+      const dequeued = await engine.dequeueFromWorkerQueue({
+        consumerId: "restore_consumer",
+        workerQueue: "main",
+      });
+      if (dequeued.length > 0) return dequeued[0]!;
+      await setTimeout(200);
+    }
+    throw new Error("restore never reached the worker queue");
+  }
+
+  // Catches: a checkpoint carried into a snapshot that should not have one, or a window that gives
+  // every snapshot the same checkpoint.
+  containerTest(
+    "each snapshot carries its own checkpoint across two suspends, and none after continue or finish",
+    async ({ prisma, redisOptions }) => {
+      const { env, snapshotStore, engine } = await harness(prisma, redisOptions);
+      try {
+        const {
+          run,
+          tokenId: token1,
+          wait: wait1,
+        } = await startAndBlock(engine, env, prisma, snapshotStore);
+        const c1 = (await suspend(engine, run.id, wait1.id, "loc-1")).checkpoint.id;
+        await engine.completeWaitpoint({ id: token1 });
+        const restore1 = await dequeueRestore(engine, env);
+        expect(restore1.checkpoint?.id).toBe(c1);
+        await engine.continueRunExecution({ runId: run.id, snapshotId: restore1.snapshot.id });
+
+        const { tokenId: token2, wait: wait2 } = await block(engine, env, run.id);
+        const c2 = (await suspend(engine, run.id, wait2.id, "loc-2")).checkpoint.id;
+
+        expect(
+          statusAndCheckpoint(
+            await engine.getSnapshotsSince({ runId: run.id, snapshotId: wait1.id })
+          )
+        ).toEqual([
+          ["SUSPENDED", c1],
+          ["QUEUED", c1],
+          ["PENDING_EXECUTING", c1],
+          ["EXECUTING", "none"],
+          ["EXECUTING_WITH_WAITPOINTS", "none"],
+          ["SUSPENDED", c2],
+        ]);
+        const latest = await engine.getRunExecutionData({ runId: run.id });
+        expect(latest?.checkpoint?.location).toBe("loc-2");
+
+        await engine.completeWaitpoint({ id: token2 });
+        const restore2 = await dequeueRestore(engine, env);
+        expect(restore2.checkpoint?.id).toBe(c2);
+        const continued = await engine.continueRunExecution({
+          runId: run.id,
+          snapshotId: restore2.snapshot.id,
+        });
+        await engine.completeRunAttempt({
+          runId: run.id,
+          snapshotId: continued.snapshot.id,
+          completion: { id: run.id, ok: true, output: "{}", outputType: "application/json" },
+        });
+        expect(
+          statusAndCheckpoint(
+            await engine.getSnapshotsSince({ runId: run.id, snapshotId: wait2.id })
+          )
+        ).toEqual([
+          ["SUSPENDED", c2],
+          ["QUEUED", c2],
+          ["PENDING_EXECUTING", c2],
+          ["EXECUTING", "none"],
+          ["FINISHED", "none"],
+        ]);
+        expect(await prisma.taskRunExecutionSnapshot.count({ where: { runId: run.id } })).toBe(0);
+      } finally {
+        await engine.quit();
+        await snapshotStore.quit();
+      }
+    }
+  );
+
+  // Catches: a cancel of a restore carrying the checkpoint into PENDING_CANCEL.
+  containerTest(
+    "a cancel of a restore's PENDING_EXECUTING snapshot writes PENDING_CANCEL with no checkpoint",
+    async ({ prisma, redisOptions }) => {
+      const { env, snapshotStore, engine } = await harness(prisma, redisOptions);
+      try {
+        const { run, tokenId, wait } = await startAndBlock(engine, env, prisma, snapshotStore);
+        const c1 = (await suspend(engine, run.id, wait.id, "loc-1")).checkpoint.id;
+        await engine.completeWaitpoint({ id: tokenId });
+        const restore = await dequeueRestore(engine, env);
+        expect(restore.snapshot.executionStatus).toBe("PENDING_EXECUTING");
+        expect(restore.checkpoint?.id).toBe(c1);
+
+        const cancelled = await engine.cancelRun({ runId: run.id });
+        expect(cancelled.snapshot.executionStatus).toBe("PENDING_CANCEL");
+        expect(
+          statusAndCheckpoint(
+            await engine.getSnapshotsSince({ runId: run.id, snapshotId: restore.snapshot.id })
+          )
+        ).toEqual([["PENDING_CANCEL", "none"]]);
+      } finally {
+        await engine.quit();
+        await snapshotStore.quit();
+      }
+    }
+  );
+
+  // Catches: the invalid-state dequeue snapshot dropping the run's checkpoint.
+  containerTest(
+    "a dequeue that finds a run in a state it cannot dequeue keeps its checkpoint and fails the run",
+    async ({ prisma, redisOptions }) => {
+      const { env, snapshotStore, engine } = await harness(prisma, redisOptions);
+      try {
+        const { run, tokenId, wait } = await startAndBlock(engine, env, prisma, snapshotStore);
+        const c1 = (await suspend(engine, run.id, wait.id, "loc-1")).checkpoint.id;
+        await engine.completeWaitpoint({ id: tokenId });
+
+        let queued = await engine.getRunExecutionData({ runId: run.id });
+        for (let i = 0; i < 80 && queued?.snapshot.executionStatus !== "QUEUED"; i++) {
+          await setTimeout(250);
+          queued = await engine.getRunExecutionData({ runId: run.id });
+        }
+        assertNonNullable(queued);
+        expect(queued.snapshot.executionStatus).toBe("QUEUED");
+        expect(queued.checkpoint?.id).toBe(c1);
+        await engine.runQueue.processMasterQueueForEnvironment(env.id, 10);
+
+        const written = await engine.executionSnapshotSystem.createExecutionSnapshot(prisma, {
+          run: {
+            id: run.id,
+            status: queued.run.status,
+            attemptNumber: queued.run.attemptNumber,
+          },
+          snapshot: { executionStatus: "SUSPENDED", description: "Suspended again before dequeue" },
+          previousSnapshotId: queued.snapshot.id,
+          environmentId: env.id,
+          environmentType: env.type,
+          projectId: env.projectId,
+          organizationId: env.organizationId,
+          checkpointId: c1,
+        });
+
+        const deadline = Date.now() + 20_000;
+        let status = "";
+        while (Date.now() < deadline) {
+          await engine.runQueue.processMasterQueueForEnvironment(env.id, 10);
+          const dequeued = await engine.dequeueFromWorkerQueue({
+            consumerId: "invalid_state_consumer",
+            workerQueue: "main",
+          });
+          expect(dequeued).toEqual([]);
+          status = (await prisma.taskRun.findFirstOrThrow({ where: { id: run.id } })).status;
+          if (status !== "PENDING" && status !== "WAITING_TO_RESUME") break;
+          await setTimeout(200);
+        }
+
+        // The invalid-state snapshot carries an error, so it is not valid: the since window (valid
+        // snapshots only) skips it, and both it and the FINISHED snapshot follow the one written
+        // above. Both are read from the run's MemoryDB entries.
+        const since = await engine.getSnapshotsSince({ runId: run.id, snapshotId: written.id });
+        expect(statusAndCheckpoint(since)).toEqual([["FINISHED", "none"]]);
+        const raw = createRedisClient(redisOptions, { onError: () => {} });
+        try {
+          const fields = await raw.hgetall(snapshotKeys(run.id).e);
+          const entries = Object.entries(fields)
+            .filter(([field]) => !field.includes("#"))
+            .map(([, value]) => JSON.parse(value))
+            .filter((e) => e.previousSnapshotId === written.id)
+            .map((e) => [e.executionStatus, e.error !== undefined, e.checkpointId ?? "none"]);
+          expect(entries.sort()).toEqual([
+            ["FINISHED", false, "none"],
+            ["SUSPENDED", true, c1],
+          ]);
+        } finally {
+          await raw.quit();
+        }
+        const failed = await prisma.taskRun.findFirstOrThrow({ where: { id: run.id } });
+        expect((failed.error as { code?: string } | null)?.code).toBe(
+          "TASK_DEQUEUED_INVALID_STATE"
+        );
+        expect(failed.status).toBe("SYSTEM_FAILURE");
+      } finally {
+        await engine.quit();
+        await snapshotStore.quit();
+      }
+    }
+  );
 });
