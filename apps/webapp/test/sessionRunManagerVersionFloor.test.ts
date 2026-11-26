@@ -424,6 +424,52 @@ async function createInWaitpoint(
   return waitpoint;
 }
 
+/**
+ * Gives the current deployment (V2) a worker with the agents `slugs`, which can continue a
+ * handed-over turn when `turnHandover`.
+ */
+async function currentWorker(
+  prisma: PrismaClient,
+  seed: Seed,
+  suffix: string,
+  turnHandover: boolean,
+  slugs: string[]
+) {
+  const current = await prisma.workerDeployment.findFirstOrThrow({
+    where: { environmentId: seed.environment.id, version: V2 },
+  });
+  const worker = await prisma.backgroundWorker.create({
+    data: {
+      friendlyId: `worker_${suffix}`,
+      contentHash: `hash_${suffix}`,
+      version: V2,
+      sdkVersion: "4.9.0",
+      metadata: {},
+      projectId: seed.project.id,
+      runtimeEnvironmentId: seed.environment.id,
+    },
+  });
+  await prisma.workerDeployment.update({
+    where: { id: current.id },
+    data: { workerId: worker.id },
+  });
+  for (const slug of slugs) {
+    await prisma.backgroundWorkerTask.create({
+      data: {
+        slug,
+        friendlyId: `task_${suffix}_${slug}`,
+        filePath: `src/${slug}.ts`,
+        workerId: worker.id,
+        projectId: seed.project.id,
+        runtimeEnvironmentId: seed.environment.id,
+        triggerSource: "AGENT",
+        config: turnHandover ? { type: "ai-sdk-chat", turnHandover } : { type: "ai-sdk-chat" },
+      },
+    });
+  }
+  return worker;
+}
+
 function lastTrigger() {
   const call = triggerState.calls.at(-1);
   return { payload: call?.body?.payload ?? {}, options: call?.body?.options ?? {} };
@@ -1458,15 +1504,106 @@ describe("session version floor — pins", () => {
     expect(lastTrigger().options.lockToVersion).toBeUndefined();
   });
 
-  // Catches: any token that can write the session (a browser's public session token) labelling a
-  // swap as a threshold move, or forcing a move past the session's lockToVersion pin, by sending
-  // reason "skew-threshold" to end-and-continue.
+  // Catches: a handed-over turn continuing on a current deployment whose SDK can't continue it
+  // (a promote to an older SDK just before the handover), which answers the turn again.
   postgresTest(
-    "a skew-threshold swap from a caller is recorded as manual and keeps the session's pin",
+    "a handed-over turn continues on a version that can continue it",
+    async ({ prisma }) => {
+      const p = prisma as unknown as PrismaClient;
+      const suffix = `floor_handover_${seq++}`;
+      const { seed, writerStore } = await setup(p, suffix);
+      const current = await p.workerDeployment.findFirstOrThrow({
+        where: { environmentId: seed.environment.id, version: V2 },
+      });
+      const worker = await p.backgroundWorker.create({
+        data: {
+          friendlyId: `worker_${suffix}`,
+          contentHash: `hash_${suffix}`,
+          version: V2,
+          sdkVersion: "4.9.0",
+          metadata: {},
+          projectId: seed.project.id,
+          runtimeEnvironmentId: seed.environment.id,
+        },
+      });
+      await p.workerDeployment.update({ where: { id: current.id }, data: { workerId: worker.id } });
+      // An agent on an SDK without handover: no `turnHandover` in its config.
+      const task = await p.backgroundWorkerTask.create({
+        data: {
+          slug: "my-chat",
+          friendlyId: `task_${suffix}`,
+          filePath: "src/chat.ts",
+          workerId: worker.id,
+          projectId: seed.project.id,
+          runtimeEnvironmentId: seed.environment.id,
+          triggerSource: "AGENT",
+          config: { type: "ai-sdk-chat" },
+        },
+      });
+
+      const swap = async (n: number) => {
+        const live = await createLiveRun(writerStore, seed, `${suffix}${n}`, V1);
+        const session = await createSession(p, seed, `${suffix}${n}`, { currentRunId: live.runId });
+        return swapSessionRun({
+          session,
+          callingRunId: live.runId,
+          environment: environmentFor(seed, { minVersion: V2 }),
+          reason: "skew-threshold",
+        });
+      };
+
+      expect((await swap(1)).swapped).toBe(true);
+      expect(lastTrigger().options.lockToVersion).toBe(V1);
+
+      await p.backgroundWorkerTask.update({
+        where: { id: task.id },
+        data: { config: { type: "ai-sdk-chat", turnHandover: true } },
+      });
+      triggerState.result = {
+        run: { id: cuidRunId(`m${suffix}`), friendlyId: `run_${suffix}_next`, status: "PENDING" },
+      };
+      expect((await swap(2)).swapped).toBe(true);
+      expect(lastTrigger().options.lockToVersion).toBe(V2);
+    }
+  );
+
+  // Catches: an environment threshold over an agent the current deployment no longer has locking
+  // the continuation to that deployment, where the run can't start ("Task not found on locked
+  // version") and the reply stops half-written.
+  postgresTest(
+    "a handed-over turn stays on its version when the current deployment lacks the task",
+    async ({ prisma }) => {
+      const p = prisma as unknown as PrismaClient;
+      const suffix = `floor_handover_notask_${seq++}`;
+      const { seed, writerStore } = await setup(p, suffix);
+      await currentWorker(p, seed, suffix, true, ["other-chat"]);
+      const live = await createLiveRun(writerStore, seed, suffix, V1);
+      const session = await createSession(p, seed, suffix, { currentRunId: live.runId });
+
+      const result = await swapSessionRun({
+        session,
+        callingRunId: live.runId,
+        environment: environmentFor(seed, { minVersion: V2 }),
+        reason: "skew-threshold",
+      });
+
+      expect(result.swapped).toBe(true);
+      expect(lastTrigger().options.lockToVersion).toBe(V1);
+    }
+  );
+
+  // Catches: any token that can write the session (a browser's public session token) forcing a
+  // move to the current deployment past the session's lockToVersion pin by sending
+  // reason "skew-threshold" to end-and-continue when no threshold applies.
+  postgresTest(
+    "a skew-threshold swap without a threshold above the run keeps the session's pin",
     async ({ prisma }) => {
       const p = prisma as unknown as PrismaClient;
       const suffix = `floor_forged_${seq++}`;
       const { seed, writerStore } = await setup(p, suffix);
+      // A current deployment a real handover would lock the continuation to.
+      await currentWorker(p, seed, suffix, true, ["my-chat"]);
+
       const swap = async (n: number, environment: AuthenticatedEnvironment, runVersion: string) => {
         const live = await createLiveRun(writerStore, seed, `${suffix}${n}`, runVersion);
         const session = await createSession(p, seed, `${suffix}${n}`, {
@@ -1478,11 +1615,15 @@ describe("session version floor — pins", () => {
           callingRunId: live.runId,
           environment,
           reason: "skew-threshold",
+          handover: { afterSteps: 3, messageId: "msg_1", thresholdVersion: "forged" },
         });
         const row = await p.sessionRun.findFirst({
           where: { sessionId: session.id },
-          select: { reason: true },
+          select: { reason: true, handover: true },
         });
+        // Catches: a demoted move still storing the caller's handover, so the dashboard showed a
+        // fake mid-reply threshold move.
+        expect(row?.handover).toBeNull();
         return { swapped: result.swapped, reason: row?.reason };
       };
 
@@ -1499,6 +1640,92 @@ describe("session version floor — pins", () => {
         reason: "manual",
       });
       expect(lastTrigger().options.lockToVersion).toBe(V1);
+    }
+  );
+
+  // Catches: a handed-over turn moved without a threshold above the calling run
+  // (chat.requestUpgrade() mid-turn, or a threshold rolled back before the swap) starting on a
+  // deployment whose SDK can't continue it, which answers the message again from step 1.
+  postgresTest(
+    "any handed-over turn is locked to a version that can continue it",
+    async ({ prisma }) => {
+      const p = prisma as unknown as PrismaClient;
+      const suffix = `floor_handover_any_${seq++}`;
+      const { seed, writerStore } = await setup(p, suffix);
+      const worker = await currentWorker(p, seed, suffix, false, ["my-chat"]);
+
+      const swap = async (n: number, reason: "skew-threshold" | "upgrade") => {
+        triggerState.result = {
+          run: {
+            id: cuidRunId(`a${suffix}${n}`),
+            friendlyId: `run_${suffix}_${n}`,
+            status: "PENDING",
+          },
+        };
+        const live = await createLiveRun(writerStore, seed, `${suffix}${n}`, V1);
+        const session = await createSession(p, seed, `${suffix}${n}`, { currentRunId: live.runId });
+        await swapSessionRun({
+          session,
+          callingRunId: live.runId,
+          environment: environmentFor(seed),
+          reason,
+          handover: { afterSteps: 1, messageId: "msg_1" },
+        });
+        return lastTrigger().options.lockToVersion;
+      };
+
+      expect(await swap(1, "upgrade")).toBe(V1);
+      expect(await swap(2, "skew-threshold")).toBe(V1);
+
+      await p.backgroundWorkerTask.updateMany({
+        where: { workerId: worker.id },
+        data: { config: { type: "ai-sdk-chat", turnHandover: true } },
+      });
+      expect(await swap(3, "upgrade")).toBe(V2);
+    }
+  );
+
+  // Catches: the stored handover naming whatever threshold version the caller sent instead of the
+  // threshold that actually moved the turn.
+  postgresTest(
+    "a handover records the server's threshold version, and only for skew-threshold or upgrade",
+    async ({ prisma }) => {
+      const p = prisma as unknown as PrismaClient;
+      const suffix = `floor_handover_row_${seq++}`;
+      const { seed, writerStore } = await setup(p, suffix);
+      await currentWorker(p, seed, suffix, true, ["my-chat"]);
+
+      const swap = async (n: number, reason: "skew-threshold" | "upgrade" | "manual") => {
+        triggerState.result = {
+          run: {
+            id: cuidRunId(`h${suffix}${n}`),
+            friendlyId: `run_${suffix}_${n}`,
+            status: "PENDING",
+          },
+        };
+        const live = await createLiveRun(writerStore, seed, `${suffix}${n}`, V1);
+        const session = await createSession(p, seed, `${suffix}${n}`, { currentRunId: live.runId });
+        await swapSessionRun({
+          session,
+          callingRunId: live.runId,
+          environment: environmentFor(seed, { minVersion: V2 }),
+          reason,
+          handover: { afterSteps: 2, messageId: "msg_1", thresholdVersion: "99999999.1" },
+        });
+        const row = await p.sessionRun.findFirst({
+          where: { sessionId: session.id },
+          select: { handover: true },
+        });
+        return row?.handover;
+      };
+
+      expect(await swap(1, "skew-threshold")).toEqual({
+        afterSteps: 2,
+        messageId: "msg_1",
+        thresholdVersion: V2,
+      });
+      expect(await swap(2, "upgrade")).toEqual({ afterSteps: 2, messageId: "msg_1" });
+      expect(await swap(3, "manual")).toBeNull();
     }
   );
 

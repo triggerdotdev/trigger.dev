@@ -1349,6 +1349,9 @@ model SessionRun {
   /// Plain string for forward-compat with future trigger reasons.
   reason      String
   triggeredAt DateTime @default(now())
+  /// Set when this run continues a reply the previous run handed over mid-turn:
+  /// `{ afterSteps, messageId?, thresholdVersion? }`.
+  handover    Json?
 
   session Session @relation(fields: [sessionId], references: [id], onDelete: Cascade)
 

@@ -9,6 +9,7 @@ import { z } from "zod";
 import { $transaction } from "~/db.server";
 import { logger } from "~/services/logger.server";
 import { hashApiKey } from "~/utils/apiKeys";
+import { syncSkewProtectionThresholdSignal } from "~/services/realtime/skewProtectionThresholdSignal.server";
 import { findCurrentDeployment } from "~/v3/models/workerDeployment.server";
 import { compareDeploymentVersions } from "~/v3/utils/deploymentVersions";
 import {
@@ -363,6 +364,11 @@ export async function setSkewProtectionThreshold(
     return { changed: true };
   });
 
+  // A repeat also syncs: setting the same version again repairs a signal an earlier send lost
+  // (S2 down), as the runbook says. It costs one read of the signal stream.
+  if (result) {
+    await syncSkewProtectionThresholdSignal(environment.id, { changed: true });
+  }
   return result ?? { changed: false };
 }
 
@@ -395,6 +401,10 @@ export async function clearSkewProtectionThreshold(
     return { cleared: { version: previous.version } };
   });
 
+  // A repeat clear syncs too, like a repeat set: it repairs a clear whose signal was lost.
+  if (result) {
+    await syncSkewProtectionThresholdSignal(environment.id, { changed: true });
+  }
   return result ?? { cleared: undefined };
 }
 

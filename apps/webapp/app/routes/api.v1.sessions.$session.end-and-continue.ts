@@ -104,7 +104,8 @@ const { action, loader } = createActionApiRoute(
     try {
       // Body's `reason` is free-form for forward-compat (audit metadata
       // only); narrow into the closed `EnsureRunReason` set, defaulting
-      // to `"manual"` for unknown labels.
+      // to `"manual"` for unknown labels. `skew-threshold`: a run handing
+      // its turn over because the skew protection threshold passed it.
       const reason = SESSION_RUN_REASONS.find((known) => known === body.reason) ?? "manual";
 
       const result = await swapSessionRun({
@@ -113,6 +114,9 @@ const { action, loader } = createActionApiRoute(
         environment: authentication.environment,
         reason,
         externalDeploymentId: body.externalDeploymentId,
+        // Only the run itself hands a reply over: a browser's session token can move the chat but
+        // can't record a mid-reply handover.
+        handover: authentication.type === "PRIVATE" ? body.handover : undefined,
       });
 
       // Read-after-write: the swap just triggered (or claimed) the

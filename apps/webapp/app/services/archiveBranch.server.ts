@@ -3,6 +3,7 @@ import { prisma } from "~/db.server";
 import { logger } from "./logger.server";
 import { archiveBranchMutation } from "./branchArchiveMutation.server";
 import { controlPlaneResolver } from "~/v3/runOpsMigration/controlPlaneResolver.server";
+import { deleteEnvironmentSignalStreams } from "./realtime/environmentSignals.server";
 
 export class ArchiveBranchService {
   #prismaClient: PrismaClient;
@@ -57,6 +58,7 @@ export class ArchiveBranchService {
               id: true,
               slug: true,
               maximumConcurrencyLimit: true,
+              streamBasinName: true,
             },
           },
           project: {
@@ -88,6 +90,9 @@ export class ArchiveBranchService {
 
       // archivedAt/slug/shortcode changed in the control-plane; drop any cached copy.
       controlPlaneResolver.invalidateEnvironment(environmentId);
+
+      // The archive renamed the slug the stream name is built from: name it from the old row.
+      await deleteEnvironmentSignalStreams([environment]);
 
       return {
         success: true as const,

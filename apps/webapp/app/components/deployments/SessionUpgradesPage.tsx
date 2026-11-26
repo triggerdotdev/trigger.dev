@@ -63,6 +63,7 @@ type SessionUpgradesPageData = {
   threshold: Omit<Threshold, "scope"> | null;
   agents: SkewProtectionAgentRow[];
   changes: HistoryChange[];
+  midTurnHandover: boolean;
   environmentId: string;
   canWriteDeployments: boolean;
 };
@@ -171,14 +172,16 @@ function SetBy({ threshold }: { threshold: Omit<Threshold, "scope"> }) {
 
 function InCode({
   inCode,
+  midTurnHandover,
   long = false,
 }: {
   inCode: SkewProtectionAgentRow["inCode"];
+  midTurnHandover: boolean;
   long?: boolean;
 }) {
   switch (inCode.type) {
     case "versionSkew": {
-      const text = versionSkewText(inCode.versionSkew) ?? inCode.versionSkew;
+      const text = versionSkewText(inCode.versionSkew, midTurnHandover) ?? inCode.versionSkew;
       return long ? (
         <span className="flex flex-col items-start gap-1">
           <InlineCode variant="extra-small">{inCode.versionSkew}</InlineCode>
@@ -378,7 +381,7 @@ function AgentsTable({ data, className }: { data: SessionUpgradesPageData; class
                   <AgentName task={agent.task} />
                 </TableCell>
                 <TableCell to={to}>
-                  <InCode inCode={agent.inCode} />
+                  <InCode inCode={agent.inCode} midTurnHandover={data.midTurnHandover} />
                 </TableCell>
                 <TableCell to={to}>
                   <ThresholdCell

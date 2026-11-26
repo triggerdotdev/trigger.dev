@@ -1,5 +1,6 @@
 import type { TaskRunStatus } from "@trigger.dev/database";
 import type { SessionRunsSessionFacts } from "~/presenters/v3/SessionRunsPresenter.server";
+import type { SessionHandover } from "./sessionHandoverData";
 
 /** The Runs tab shows this many; "View all runs" covers the rest. */
 export const SESSION_DETAILS_RUNS = 50;
@@ -11,6 +12,8 @@ export type SessionRunEntry = {
   reason: string;
   triggeredAt: string;
   run: { friendlyId: string; status: TaskRunStatus; version?: string | null } | null;
+  /** Set when this run continued a reply the previous run handed over mid-turn. */
+  handover?: SessionHandover;
 };
 
 /** What the session details show that can change while the page is open. */
@@ -81,6 +84,7 @@ export function mergeSessionRunEntries(
       run: run.status
         ? { friendlyId: run.friendlyId, status: run.status, version: previous?.run?.version }
         : (previous?.run ?? null),
+      handover: previous?.handover,
     });
   }
   return [...byRun.values()]

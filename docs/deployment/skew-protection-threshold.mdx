@@ -17,7 +17,7 @@ A threshold can also cover [one task](#a-threshold-for-one-task) instead of the 
 Setting the threshold starts no runs. Each session on a version before it moves when it's next used:
 
 - **The next message.** The session gets a new run on the current deployment, which picks up the conversation's history and answers the message once. The old run is canceled with a reason that names the cause and links the new run: `Moved to 20261109.22 by the skew protection threshold. Continued in run_…`. When a task's own threshold moved it, the reason names the task: `…by the skew protection threshold for support-agent.`
-- **A reply in progress is never cut off.** It finishes on its old version. Messages sent during it, or within 10 seconds after it ends, are answered there too. The next message after that moves the session.
+- **A reply in progress is never cut off.** It finishes on its old version. Messages sent during it, or within 10 seconds after it ends, are answered there too. The next message after that moves the session. An agent with [`versionSkew: "follow-mid-turn"`](/ai-chat/patterns/mid-turn-handover) moves a reply in progress instead: it finishes the step it is on, and the current deployment continues the reply from the next step. On a self-hosted instance, this needs S2 [realtime streams](/self-hosting/docker#realtime-streams); without them, replies in progress always finish on their old version.
 - **Opening a chat.** Calling `sessions.start` on an older session moves it right away, with no message.
 - **A chat with no new message** keeps its run and its version. Nothing is started or canceled for it, and nothing is written.
 - **Pins.** A `lockToVersion` or `externalDeploymentId` pin below the threshold is ignored for every run the session starts, and so is an `externalDeploymentId` that names a deployment that isn't deployed yet. The session's stored pins are never changed, so clearing the threshold brings them back. Until then, `sessions.retrieve()` returns an ignored pin as unset, so an agent that follows its session's pin doesn't ask for that deployment.
@@ -26,42 +26,14 @@ Sessions move to the **current** deployment, not to the threshold's version. Tha
 
 ## Before a breaking change
 
-The threshold exists for the change old builds can't handle: a database migration, a removed tool, a changed API. It moves sessions, but it doesn't end runs, so check what's still running before you make that change.
+The threshold exists for the change old builds can't handle: a database migration, a removed tool, a changed API. It moves sessions, but it doesn't end runs, so check what's still running before you make that change. For the whole sequence from CI, see [deploy a breaking change to a chat agent](/guides/ai-agents/deploy-a-breaking-change).
 
 1. **Deploy and promote the fix first.** Sessions move to the current deployment, not to the threshold's version.
 2. **Set the threshold** on that deployment.
 3. **Wait for the old runs to end.** A chat nobody messages keeps its old run until it ends on its own (after the agent's idle timeout) or you cancel it. An idle chat run counts: it shows as **Executing** or **Waiting** on its old version.
 4. **Check that no run on an older version is still active**, then make the breaking change.
 
-On the **Runs** page, filter by **Version** (pick the versions before the threshold) and by **Status** (Queued, Dequeued, Executing and Waiting). The list should be empty. To check from a script, this one takes the threshold, lists every active run on a version below it, and cancels them with `--cancel`:
-
-```ts scripts/old-runs.ts
-import { runs } from "@trigger.dev/sdk";
-
-// The threshold you set, e.g. 20261124.3
-const threshold = process.argv[2];
-const cancel = process.argv.includes("--cancel");
-
-// Versions look like 20261124.3: compare the date, then the number
-const below = (version: string) => {
-  const [a, b] = version.split(".").map(Number);
-  const [x, y] = threshold.split(".").map(Number);
-  return a < x || (a === x && b < y);
-};
-
-let found = 0;
-for await (const run of runs.list({ status: ["QUEUED", "DEQUEUED", "EXECUTING", "WAITING"] })) {
-  if (!run.version || !below(run.version)) continue;
-  found++;
-  console.log(run.id, run.version, run.status, run.taskIdentifier);
-  if (cancel) await runs.cancel(run.id);
-}
-
-console.log(found === 0 ? "No runs on older versions." : `${found} run(s) on older versions.`);
-process.exitCode = found === 0 || cancel ? 0 : 1;
-```
-
-Run it with the environment's secret key in `TRIGGER_SECRET_KEY`: `npx tsx scripts/old-runs.ts 20261124.3`.
+On the **Runs** page, filter by **Version** (pick the versions before the threshold) and by **Status** (Queued, Dequeued, Executing and Waiting). The list should be empty. To check from a script, and cancel what's left, use the `old-runs.ts` script in [deploy a breaking change](/guides/ai-agents/deploy-a-breaking-change#4-check-that-nothing-older-is-running): it takes the threshold and lists every active run on a version below it.
 
 Canceling an idle chat's run loses nothing: the next message to that chat starts a run on the current deployment.
 

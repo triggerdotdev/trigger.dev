@@ -88,9 +88,34 @@ export const TURN_JOIN_INJECTION_ID_HEADER = "turn-join-injection-id" as const;
  */
 export const SESSION_CLOSED_REASON_HEADER = "session-closed-reason" as const;
 
+/**
+ * Header on `turn-handover` records: how many steps of the reply the run that
+ * wrote it had finished. The run that continues the turn starts at the next one.
+ */
+export const TURN_HANDOVER_STEPS_HEADER = "turn-handover-steps" as const;
+
+/**
+ * Header on `turn-handover` records: the id of the user message the handed-over
+ * reply answers, so the run that continues it doesn't take a later message for it.
+ */
+export const TURN_HANDOVER_ANSWERED_HEADER = "turn-handover-answered" as const;
+
+/**
+ * Header on `turn-handover` records written for `chat.requestUpgrade()`: the deployment the turn
+ * moves to, empty for the current one. Absent on a skew protection move. Lets the server continue
+ * the turn as the same move when the run couldn't start the next run itself.
+ */
+export const TURN_HANDOVER_UPGRADE_HEADER = "turn-handover-upgrade" as const;
+
 export const TRIGGER_CONTROL_SUBTYPE = {
   TURN_COMPLETE: "turn-complete",
   UPGRADE_REQUIRED: "upgrade-required",
+  /**
+   * A run stopped at a step boundary partway through a turn and handed the
+   * turn to a new run, which continues the same reply. Not a turn boundary:
+   * readers keep reading.
+   */
+  TURN_HANDOVER: "turn-handover",
   SESSION_CLOSED: "session-closed",
   PENDING_VERSION: "pending-version",
 } as const;

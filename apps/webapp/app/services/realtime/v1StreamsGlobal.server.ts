@@ -53,8 +53,24 @@ export function resolveStreamBasin(ctx: StreamBasinContext): string | undefined 
   );
 }
 
+/** What naming an environment's streams needs: a deleted or archived environment works too. */
+export type StreamEnvironment = Pick<AuthenticatedEnvironment, "id" | "slug"> & {
+  organization: { id: string };
+};
+
+function hasS2Credentials(): boolean {
+  return Boolean(
+    env.REALTIME_STREAMS_S2_ACCESS_TOKEN || env.REALTIME_STREAMS_S2_SKIP_ACCESS_TOKENS === "true"
+  );
+}
+
+/** Whether `getRealtimeStreamInstance(…, "v2", basinContext)` returns S2 streams, without making one. */
+export function hasS2RealtimeStreams(basinContext: StreamBasinContext): boolean {
+  return resolveStreamBasin(basinContext) !== undefined && hasS2Credentials();
+}
+
 export function getRealtimeStreamInstance(
-  environment: AuthenticatedEnvironment,
+  environment: StreamEnvironment,
   streamVersion: string,
   basinContext?: StreamBasinContext
 ): StreamIngestor & StreamResponder {
@@ -63,10 +79,7 @@ export function getRealtimeStreamInstance(
   }
 
   const resolvedBasin = resolveStreamBasin(basinContext ?? {});
-  if (
-    resolvedBasin &&
-    (env.REALTIME_STREAMS_S2_ACCESS_TOKEN || env.REALTIME_STREAMS_S2_SKIP_ACCESS_TOKENS === "true")
-  ) {
+  if (resolvedBasin && hasS2Credentials()) {
     return new S2RealtimeStreams({
       basin: resolvedBasin,
       accessToken: env.REALTIME_STREAMS_S2_ACCESS_TOKEN ?? "",
@@ -89,7 +102,7 @@ export function getRealtimeStreamInstance(
 
 // Shared basin needs `org/{orgId}` to namespace; per-org basin already
 // isolates so the segment drops.
-function streamPrefixFor(environment: AuthenticatedEnvironment, basin: string): string {
+function streamPrefixFor(environment: StreamEnvironment, basin: string): string {
   const isPerOrgBasin = basin !== env.REALTIME_STREAMS_S2_BASIN;
   const segments = isPerOrgBasin
     ? ["env", environment.slug, environment.id]

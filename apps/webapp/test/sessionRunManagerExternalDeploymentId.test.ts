@@ -21,6 +21,9 @@ const triggerState = vi.hoisted(() => ({
   result: { run: { id: "", friendlyId: "", status: "PENDING" } } as {
     run: { id: string; friendlyId: string; status: string };
   },
+  /** Runs while the run is being triggered: something another request commits meanwhile. */
+  during: undefined as (() => Promise<void>) | undefined,
+  cancelled: [] as string[],
 }));
 
 vi.mock("~/db.server", () => {
@@ -77,6 +80,7 @@ vi.mock("~/v3/services/triggerTask.server", () => ({
   TriggerTaskService: class {
     async call(taskIdentifier: string, _environment: any, body: any, options: any) {
       triggerState.calls.push({ taskIdentifier, body, options });
+      await triggerState.during?.();
       return triggerState.result;
     }
   },
@@ -84,7 +88,9 @@ vi.mock("~/v3/services/triggerTask.server", () => ({
 
 vi.mock("~/v3/services/cancelTaskRun.server", () => ({
   CancelTaskRunService: class {
-    async call() {}
+    async call(run: { id: string }) {
+      triggerState.cancelled.push(run.id);
+    }
   },
 }));
 
@@ -185,6 +191,8 @@ async function setup(prisma: PrismaClient, suffix: string) {
   primaryHolder.client = prisma;
   storeHolder.store = writerStore;
   triggerState.calls.length = 0;
+  triggerState.during = undefined;
+  triggerState.cancelled.length = 0;
   return { seed, writerStore };
 }
 
@@ -612,6 +620,144 @@ describe("session runs — external deployment id", () => {
 
     const stored = await prisma.session.findFirstOrThrow({ where: { id: session.id } });
     expect(stored.triggerConfig).toMatchObject({ externalDeploymentId: "commit-old" });
+  });
+});
+
+// A run asks to move on before the swap that started it has committed: it reads the session at the
+// old version, and the claim then misses the new one.
+describe("session runs — a swap from a run whose own swap commits meanwhile", () => {
+  // Catches: the second handover cancelling its successor and leaving the turn with no run
+  postgresTest("claims again at the new version with the same successor", async ({ prisma }) => {
+    const suffix = `back_to_back_${seq++}`;
+    const { seed, writerStore } = await setup(prisma as unknown as PrismaClient, suffix);
+
+    const firstRunId = cuidRunId(`a${seq}`);
+    const callingRunId = cuidRunId(`b${seq}`);
+    for (const [runId, name] of [
+      [firstRunId, "first"],
+      [callingRunId, "calling"],
+    ] as const) {
+      await writerStore.createRun(
+        buildCreateRunInput({
+          runId,
+          friendlyId: `run_${suffix}_${name}`,
+          organizationId: seed.organization.id,
+          projectId: seed.project.id,
+          runtimeEnvironmentId: seed.environment.id,
+        })
+      );
+    }
+    const successorId = cuidRunId(`c${seq}`);
+    triggerState.result = {
+      run: { id: successorId, friendlyId: `run_${suffix}_next`, status: "PENDING" },
+    };
+
+    const session = await prisma.session.create({
+      data: {
+        friendlyId: `session_${suffix}`,
+        type: "chat.agent",
+        projectId: seed.project.id,
+        runtimeEnvironmentId: seed.environment.id,
+        environmentType: "PRODUCTION",
+        organizationId: seed.organization.id,
+        taskIdentifier: "my-chat",
+        triggerConfig: { basePayload: {} },
+        currentRunId: firstRunId,
+        currentRunVersion: 7,
+      },
+    });
+    // The first run's swap to the calling run commits while the calling run's successor triggers.
+    triggerState.during = async () => {
+      await prisma.session.update({
+        where: { id: session.id },
+        data: { currentRunId: callingRunId, currentRunVersion: 8 },
+      });
+    };
+
+    const result = await swapSessionRun({
+      session: { ...session, currentRunId: callingRunId },
+      callingRunId,
+      environment: environmentFor(seed),
+      reason: "continuation",
+    });
+
+    expect(result).toMatchObject({ runId: successorId, swapped: true });
+    expect(triggerState.calls).toHaveLength(1);
+    const stored = await prisma.session.findFirstOrThrow({ where: { id: session.id } });
+    expect(stored).toMatchObject({ currentRunId: successorId, currentRunVersion: 9 });
+  });
+});
+
+// Catches: a failed lookup after a missed claim leaving the queued successor running beside the owner
+describe("session runs — a swap whose owner lookup fails after a missed claim", () => {
+  postgresTest("cancels the successor and throws", async ({ prisma }) => {
+    const suffix = `owner_lookup_${seq++}`;
+    const { seed, writerStore } = await setup(prisma as unknown as PrismaClient, suffix);
+
+    const ownerRunId = cuidRunId(`o${seq}`);
+    const callingRunId = cuidRunId(`k${seq}`);
+    const successorId = cuidRunId(`s${seq}`);
+    for (const [runId, name] of [
+      [ownerRunId, "owner"],
+      [callingRunId, "calling"],
+      [successorId, "next"],
+    ] as const) {
+      await writerStore.createRun(
+        buildCreateRunInput({
+          runId,
+          friendlyId: `run_${suffix}_${name}`,
+          organizationId: seed.organization.id,
+          projectId: seed.project.id,
+          runtimeEnvironmentId: seed.environment.id,
+        })
+      );
+    }
+    triggerState.result = {
+      run: { id: successorId, friendlyId: `run_${suffix}_next`, status: "PENDING" },
+    };
+
+    const session = await prisma.session.create({
+      data: {
+        friendlyId: `session_${suffix}`,
+        type: "chat.agent",
+        projectId: seed.project.id,
+        runtimeEnvironmentId: seed.environment.id,
+        environmentType: "PRODUCTION",
+        organizationId: seed.organization.id,
+        taskIdentifier: "my-chat",
+        triggerConfig: { basePayload: {} },
+        currentRunId: ownerRunId,
+        currentRunVersion: 0,
+      },
+    });
+    // After the successor is queued, the writer's next session read (the owner lookup) times out.
+    const real = primaryHolder.client;
+    triggerState.during = async () => {
+      primaryHolder.client = new Proxy(real, {
+        get(target, prop) {
+          if (prop !== "session") return target[prop];
+          return new Proxy(target.session, {
+            get(sessions, method) {
+              if (method !== "findFirst") return sessions[method];
+              return async () => {
+                primaryHolder.client = real;
+                throw new Error("writer timed out");
+              };
+            },
+          });
+        },
+      });
+    };
+
+    await expect(
+      swapSessionRun({
+        session: { ...session, currentRunId: callingRunId },
+        callingRunId,
+        environment: environmentFor(seed),
+        reason: "continuation",
+      })
+    ).rejects.toThrow("writer timed out");
+    await vi.waitFor(() => expect(triggerState.cancelled).toEqual([successorId]));
   });
 });
 

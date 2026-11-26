@@ -1,10 +1,11 @@
-import { RunAnnotations, tryCatch } from "@trigger.dev/core/v3";
+import { EndAndContinueSessionRequestBody, RunAnnotations, tryCatch } from "@trigger.dev/core/v3";
 import { z } from "zod";
 import { prisma } from "~/db.server";
 import type { AuthenticatedEnvironment } from "~/services/apiAuth.server";
 import { logger } from "~/services/logger.server";
 import { S2RealtimeStreams } from "./s2realtimeStreams.server";
-import { ensureRunForSession, firstSeqForNewRun } from "./sessionRunManager.server";
+import { SKEW_THRESHOLD_RUN_REASON } from "~/utils/sessionMove";
+import { ensureRunForSession, firstSeqForNewRun, swapSessionRun } from "./sessionRunManager.server";
 import { canonicalSessionAddressingKey } from "./sessions.server";
 import { getRealtimeStreamInstance } from "./v1StreamsGlobal.server";
 
@@ -63,7 +64,7 @@ type SessionInputStreams = Pick<
 /**
  * Is there a message on `.in` that the run which just ended never read?
  *
- * A run that FAILED and did not end on a turn-complete of its own died mid-turn (partial chunks on
+ * A run that FAILED and did not end on a turn-complete or turn-handover of its own died mid-turn (partial chunks on
  * `.out` after the message it was answering) or at boot (nothing of its own on `.out`): it answers
  * "failed-mid-turn" without looking at `.in`, so nothing re-answers the message it died on. See
  * `continueSessionIfInputUnread` for why. A failed run that did end on its own turn-complete is
@@ -113,10 +114,27 @@ async function hasUnreadSessionMessage(
   outcome: SessionRunOutcome | undefined
 ): Promise<
   | { status: "unread"; firstSeq: number | undefined }
+  | { status: "handed-over"; afterSteps: number; upgrade?: string }
   | { status: "nothing-unread" | "failed-mid-turn" | "out-commands-only" | "unreadable" }
 > {
   const outTail = await streams.peekSessionOutTail(addressingKey);
   if (outTail.kind === "unknown") return { status: "unreadable" };
+  // The run handed its reply over mid-turn and ended without starting the run that continues it
+  // (it couldn't reach the API). Failed counts too: a run that ends while the API is down loses its
+  // completion and is failed as stalled later, but its reply was handed over all the same. Only its
+  // own marker counts: a run started after it, which ended without writing anything, must not hand
+  // the same reply over again.
+  if (
+    outTail.kind === "record" &&
+    outTail.control === "turn-handover" &&
+    outTail.timestamp >= run.createdAt.getTime()
+  ) {
+    return {
+      status: "handed-over",
+      afterSteps: outTail.handoverSteps ?? 0,
+      ...(outTail.handoverUpgrade !== undefined ? { upgrade: outTail.handoverUpgrade } : {}),
+    };
+  }
   // `.out` was read and holds no record to go on (a trim deleted the turn-complete or every
   // record, or the agent trimmed several times after it): the run's last turn is gone, and retrying cannot bring
   // it back. Not "empty": that would scan `.in` from the run's start and could start a run that
@@ -359,9 +377,14 @@ export async function runSessionRunCompletionJob(
  * Safe to run again: once a continuation took over, the ended run is no longer current and this
  * finds nothing to do.
  *
+ * A run that ended on its own `turn-handover` marker (succeeded, or failed: one that ended while
+ * the API was down is failed as stalled) handed a reply over mid-turn but couldn't start the run
+ * that continues it (the API was unreachable). It is swapped out here as it
+ * would have swapped itself (`swapSessionRun`), so the reply continues without a new message.
+ *
  * A run that FAILED (a crash, an out-of-memory kill after the task's retries, the max duration, an
- * error outside the turn loop) is only continued when it ended on a turn-complete of its own, which
- * leaves a message it never started on (an `onSuccess` hook that threw, a crash while idle). One
+ * error outside the turn loop) is only continued when it ended on a turn-complete or turn-handover of
+ * its own; a turn-complete leaves a message it never started on (an `onSuccess` hook that threw, a crash while idle). One
  * that died inside a turn, or at boot, gets "failed-mid-turn" and nothing starts: its user got no
  * feedback, and a retry of the same message can fail the same way, over and over, so it is left to
  * the user, whose next message starts a run (the append path revives a failed run). An error inside
@@ -443,6 +466,42 @@ export async function continueSessionIfInputUnread(
     } else {
       logger.warn("Could not read the session streams, the check will be retried", context);
     }
+  }
+  if (unread.status === "handed-over") {
+    // The same move the run would have made (an upgrade to its target, or a skew protection move):
+    // a run locked to a version that can continue the reply takes the session over from it.
+    const handover = { afterSteps: unread.afterSteps };
+    // The target as the live route takes it ("" clears the pin). One it would reject (too long)
+    // never became a pin there, so the reply moves as a skew protection move instead.
+    const target =
+      unread.upgrade !== undefined
+        ? EndAndContinueSessionRequestBody.shape.externalDeploymentId.safeParse(unread.upgrade)
+        : undefined;
+    if (target && !target.success) {
+      logger.warn("A handed-over upgrade names a deployment the API rejects; moving it without", {
+        runId: run.id,
+        sessionId: session.friendlyId,
+      });
+    }
+    const swapped = await swapSessionRun(
+      target?.success
+        ? {
+            session,
+            callingRunId: run.id,
+            environment,
+            reason: "upgrade",
+            externalDeploymentId: target.data,
+            handover,
+          }
+        : {
+            session,
+            callingRunId: run.id,
+            environment,
+            reason: SKEW_THRESHOLD_RUN_REASON,
+            handover,
+          }
+    );
+    return swapped.swapped ? "continued" : "already-running";
   }
   if (unread.status !== "unread") return unread.status;
 

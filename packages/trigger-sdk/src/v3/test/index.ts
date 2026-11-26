@@ -13,6 +13,7 @@ export {
   type MockChatAgentHarness,
   type MockChatAgentTurn,
   type SeededChannelDelivery,
+  type SeededStop,
 } from "./mock-chat-agent.js";
 
 export { type TestOutRecord } from "./test-session-handle.js";

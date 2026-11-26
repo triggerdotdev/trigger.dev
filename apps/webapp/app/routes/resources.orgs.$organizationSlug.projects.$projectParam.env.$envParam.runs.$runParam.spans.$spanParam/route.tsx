@@ -63,6 +63,7 @@ import { ToastUI } from "~/components/primitives/Toast";
 import { InfoIconTooltip, SimpleTooltip } from "~/components/primitives/Tooltip";
 import { TruncatedCopyableValue } from "~/components/primitives/TruncatedCopyableValue";
 import { RunTimeline, RunTimelineEvent, SpanTimeline } from "~/components/run/RunTimeline";
+import { RunContinuationProperties } from "~/components/sessions/v1/SessionHandover";
 import { AIEmbedSpanDetails, AISpanDetails, AIToolCallSpanDetails } from "~/components/runs/v3/ai";
 import { PacketDisplay } from "~/components/runs/v3/PacketDisplay";
 import { PromptSpanDetails } from "~/components/runs/v3/PromptSpanDetails";
@@ -551,6 +552,8 @@ function RunBody({
   const { value, replace } = useSearchParams();
   const tab = value(tabParam);
   const resetFetcher = useTypedFetcher<typeof resetIdempotencyKeyAction>();
+  const handedOverTo = run.session?.handedOverTo;
+  const continuedFrom = run.session?.continuedFrom;
 
   const queuePath = queueMetrics?.queueFriendlyId
     ? concurrencyQueuePath(organization, project, environment, {
@@ -824,6 +827,10 @@ function RunBody({
                     </>
                   )
                 ) : null}
+                <RunContinuationProperties
+                  handedOverTo={handedOverTo}
+                  continuedFrom={continuedFrom}
+                />
                 {run.batch && (
                   <Property.Item>
                     <Property.Label>Batch</Property.Label>

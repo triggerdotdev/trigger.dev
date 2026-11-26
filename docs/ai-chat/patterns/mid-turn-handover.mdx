@@ -1,0 +1,123 @@
+---
+title: "Moving a running turn"
+sidebarTitle: "Mid-turn handover"
+description: "Move a chat agent turn that is still running onto the current deployment at its next step, with versionSkew: \"follow-mid-turn\", so a fix reaches a long reply without waiting for it to end."
+---
+
+**With `versionSkew: "follow-mid-turn"`, a turn running below the [skew protection threshold](/deployment/skew-protection-threshold) stops after the step it is on, and a run on the current deployment continues the same reply from the next step.**
+
+By default a turn that is already running finishes on the version it started on, and the session moves at the next message. That is fine for short replies. When a long turn shouldn't wait (a deployment fixes a broken tool, say), opt the agent in:
+
+```ts trigger/support-agent.ts
+import { chat } from "@trigger.dev/sdk/ai";
+import { anthropic } from "@ai-sdk/anthropic";
+import { streamText } from "ai";
+import { lookupOrder, refund } from "./tools";
+
+export const supportAgent = chat.agent({
+  id: "support-agent",
+  versionSkew: "follow-mid-turn",
+  run: async ({ messages, signal }) =>
+    streamText({
+      ...chat.toStreamTextOptions(),
+      model: anthropic("claude-sonnet-5-5"),
+      messages,
+      tools: { lookupOrder, refund },
+      abortSignal: signal,
+    }),
+});
+```
+
+`"follow-mid-turn"` does everything [`"follow"`](/ai-chat/patterns/version-upgrades#staying-put) does. The threshold itself has no option: set it as usual, for the environment or for one task.
+
+```bash Set a threshold for one task
+curl -X PUT "https://api.trigger.dev/api/v1/deployments/skew-protection-threshold" \
+  -H "Authorization: Bearer $TRIGGER_SECRET_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{ "version": "20261118.4", "task": "support-agent" }'
+```
+
+## How a turn moves
+
+While a turn runs, the agent watches the environment's skew protection threshold. When the run's version is below the threshold for its task, the turn stops at the end of the step it is on (a model call, or a tool call and its result), and a run on the current deployment continues the same reply from the next step. Finished tool calls keep their results, so no step runs twice. The person chatting sees a pause of a few seconds while the new run starts (the reply shows as still streaming), then the same reply continues.
+
+- **A step is never cut.** A tool that is running finishes first, however long it takes. A turn waiting on a subtask hands over when the subtask returns.
+- **A turn on its last step finishes where it is.** The handover happens between steps, so a reply that is already writing its final answer completes on the old version, and the session moves at the next message.
+- **The old run ends as completed**, not canceled.
+- A turn that starts later on a run below the threshold, or a run that resumes from a wait partway through a turn, moves at its next step boundary too. Clearing the threshold stops turns from moving.
+- Agents without the option finish the turn on their version and move at the next message.
+- If the API can't be reached to start the run that continues the reply, the old run keeps trying for about three minutes. If it still can't, it ends, and the run that continues the reply starts once the API sees the old run end. A run that starts while the API can't be reached waits for it the same way, and fails rather than answer a message again.
+
+`chat.requestUpgrade()` called from `run()`, a tool or `chat.defer()` while a turn streams takes the same path, with or without the option: the turn stops after the current step and the run it upgrades to continues the reply. If that deployment was built with an SDK that can't continue a turn, a run on the turn's own version continues it instead, and the session moves at the next message. See [version upgrades](/ai-chat/patterns/version-upgrades).
+
+## What your code sees
+
+- **Hooks fire once per turn.** `onTurnStart` ran on the old version. `onTurnComplete` runs on the new one, with the whole reply. Your `run` function is called again on the new version with the steps so far in `messages`.
+- **Code after `streamText` in the old run does not run for that turn**, and `streamText`'s own `onFinish` fires only on the new version, with the steps that ran there. Put per-turn cleanup in `onTurnComplete`.
+- **A stop, steer or new message during the pause** behaves as on one run. A stop ends the reply where the old version left it: the new run records the turn as stopped and makes no model call. A steer reaches `pendingMessages` at the step where the new run picks up. A new message is answered after the reply, in order.
+
+## Requirements
+
+- **Both versions need an SDK that supports `"follow-mid-turn"`.** A run deployed with an older SDK doesn't know the option and finishes its turn on its old version; its session moves at the next message. If the agent in the current deployment was built with an older SDK, none of that agent's turns move.
+- **`streamText` needs the agent's step hook.** `chat.toStreamTextOptions()` and `turn.prepareStep()` include it. With your own `prepareStep`, call `chat.handOverAtStep()` first (see [your own prepareStep](#your-own-preparestep)). A `run` that returns `streamText` without any of these, or a hand-rolled loop over `chat.messages` and `chat.MessageAccumulator`, never hands over mid-turn: its turns finish on their version.
+- **Turns from a channel never hand over mid-turn.** A turn answering a message from a [channel](/webhooks/channels) such as Slack finishes on its version, because its reply posts back through that delivery. The session moves at the next message.
+- **Self-hosted instances need S2 [realtime streams](/self-hosting/docker#realtime-streams).** A running turn learns about the threshold through them. Without them, `"follow-mid-turn"` behaves like `"follow"`.
+
+## Custom agents
+
+A `chat.createSession()` loop takes the same option and hands over the same way, as long as `streamText` gets the step hook through `turn.prepareStep()` or `chat.toStreamTextOptions()`. The loop must not save a handed-over reply as final:
+
+```ts trigger/custom-agent.ts
+import { chat, type ChatTaskWirePayload } from "@trigger.dev/sdk/ai";
+import { anthropic } from "@ai-sdk/anthropic";
+import { streamText } from "ai";
+import { db } from "./db";
+import { tools } from "./tools";
+
+export const customAgent = chat.customAgent({
+  id: "custom-agent",
+  run: async (payload: ChatTaskWirePayload, { signal }) => {
+    for await (const turn of chat.createSession(payload, {
+      signal,
+      versionSkew: "follow-mid-turn",
+    })) {
+      const result = streamText({
+        model: anthropic("claude-sonnet-5-5"),
+        messages: turn.messages,
+        tools,
+        abortSignal: turn.signal,
+        prepareStep: turn.prepareStep(),
+      });
+      await turn.complete(result);
+      // The reply so far: the new run finishes it under the same message id
+      if (turn.handedOver) break;
+      await db.chat.update({ where: { id: turn.chatId }, data: { messages: turn.uiMessages } });
+    }
+  },
+});
+```
+
+- **On the old version**, `turn.complete()` returns the reply so far and `turn.handedOver` is true. The loop ends at the next iteration. Don't save that response as final: the new run finishes it under the same message id.
+- **On the new version**, the first turn is a continuation (`turn.continuation` is true) with the message and the reply so far already in `turn.uiMessages`. Seed your stored history with `turn.setMessages()` as usual; the reply so far stays last. `turn.complete()` streams the rest into the same message. If the person stopped during the pause, `turn.stopped` is true and `turn.complete()` ends the turn with the reply as it was.
+
+### Your own prepareStep
+
+With your own `prepareStep`, call `chat.handOverAtStep()` first. It returns at once unless the turn should hand over (it does nothing without the option), and when it does hand over it never returns, so the next step doesn't start:
+
+```ts
+streamText({
+  // ...
+  prepareStep: async (step) => {
+    await chat.handOverAtStep(step);
+    return myPrepareStep(step);
+  },
+});
+```
+
+The same call works in a `chat.agent` whose `run` returns `streamText` without `chat.toStreamTextOptions()`.
+
+## See also
+
+- [Skew protection threshold](/deployment/skew-protection-threshold): move every older session in an environment, or one task's, to the current deployment
+- [Version upgrades](/ai-chat/patterns/version-upgrades): which tool moves a session when, and `chat.requestUpgrade()`
+- [Version skew protection](/deployment/atomic-deployment#chat-sessions): pin a session to the deployment matching the app build that started it

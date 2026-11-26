@@ -18,6 +18,8 @@ import {
   SESSION_IN_EVENT_ID_HEADER,
   TRIGGER_CONTROL_HEADER,
   TRIGGER_CONTROL_SUBTYPE,
+  TURN_HANDOVER_STEPS_HEADER,
+  TURN_HANDOVER_UPGRADE_HEADER,
 } from "@trigger.dev/core/v3";
 import { $transaction as realTransaction } from "@trigger.dev/database";
 import type { PrismaClient } from "@trigger.dev/database";
@@ -1145,6 +1147,130 @@ describe("a session's input that no run read", () => {
 // A run that FAILED gives the user no feedback and a retry can fail the same way, so the check does
 // not retry the turn it died in: the user's next message starts a run. What it still continues is a
 // message the run never started on, which a run that ended on its own turn-complete leaves behind.
+/** The marker a run writes when it hands its reply over at a step boundary. */
+async function pushTurnHandover(
+  ctx: Ctx,
+  steps: number,
+  timestamp: number = Date.now(),
+  upgrade?: string
+) {
+  await appendRecords(ctx, "out", [
+    {
+      body: "",
+      headers: [
+        [TRIGGER_CONTROL_HEADER, TRIGGER_CONTROL_SUBTYPE.TURN_HANDOVER],
+        [TURN_HANDOVER_STEPS_HEADER, String(steps)],
+        ...(upgrade !== undefined
+          ? [[TURN_HANDOVER_UPGRADE_HEADER, upgrade] as [string, string]]
+          : []),
+      ],
+      timestamp,
+    },
+  ]);
+}
+
+describe("a run that handed its reply over and ended", () => {
+  // Catches: a reply handed over mid-turn by a run that couldn't reach the API to start the next
+  // run being left with no run: nothing continued it until the user sent another message.
+  postgresTest(
+    "hands the reply over to a new run when the run ended on its own marker",
+    async ({ prisma }) => {
+      const ctx = await setup(prisma as unknown as PrismaClient);
+      const { session, run } = await sessionWithLiveRun(prisma as unknown as PrismaClient, ctx);
+      await pushIn(ctx, message("answering"));
+      await pushChunk(ctx);
+      await pushTurnHandover(ctx, 2);
+      await finish(prisma as unknown as PrismaClient, run.id);
+
+      expect(await runEnded(ctx, { ...run, sessionInSeq: 1 }, "succeeded")).toBe("continued");
+      expect(triggerState.calls).toHaveLength(1);
+      expect(triggerState.calls[0]!.body.payload).toMatchObject({
+        continuation: true,
+        previousRunId: run.friendlyId,
+      });
+      const row = await prisma.session.findFirstOrThrow({ where: { id: session.id } });
+      expect(row.currentRunId).toBe(`trig${triggerState.next - 1}`.padEnd(24, "t"));
+      expect(row.currentRunVersion).toBe(1);
+    }
+  );
+
+  // Catches: a run that took the reply over and ended without writing anything handing the same
+  // reply over again, each run starting the next.
+  postgresTest("does not hand over a marker written before the run started", async ({ prisma }) => {
+    const ctx = await setup(prisma as unknown as PrismaClient);
+    const { run } = await sessionWithLiveRun(prisma as unknown as PrismaClient, ctx);
+    await pushIn(ctx, message("answering"));
+    await pushTurnHandover(ctx, 1, run.createdAt.getTime() - 1_000);
+    await finish(prisma as unknown as PrismaClient, run.id);
+
+    expect(await runEnded(ctx, { ...run, sessionInSeq: 1 }, "succeeded")).toBe("nothing-unread");
+    expect(triggerState.calls).toHaveLength(0);
+  });
+
+  // Catches: a reply handed over by `chat.requestUpgrade()` continuing as a skew protection move,
+  // on the wrong deployment and with the session's old pin kept.
+  postgresTest("continues an upgrade as an upgrade, to its target", async ({ prisma }) => {
+    const ctx = await setup(prisma as unknown as PrismaClient);
+    const { session, run } = await sessionWithLiveRun(prisma as unknown as PrismaClient, ctx);
+    await pushIn(ctx, message("answering"));
+    await pushTurnHandover(ctx, 1, Date.now(), "deployment_target");
+    await finish(prisma as unknown as PrismaClient, run.id);
+
+    expect(await runEnded(ctx, { ...run, sessionInSeq: 1 }, "succeeded")).toBe("continued");
+    const row = await prisma.session.findFirstOrThrow({ where: { id: session.id } });
+    expect(row.triggerConfig).toMatchObject({ externalDeploymentId: "deployment_target" });
+  });
+
+  postgresTest("clears the pin for an upgrade to the current deployment", async ({ prisma }) => {
+    const ctx = await setup(prisma as unknown as PrismaClient);
+    const { session, run } = await sessionWithLiveRun(prisma as unknown as PrismaClient, ctx);
+    await prisma.session.update({
+      where: { id: session.id },
+      data: { triggerConfig: { basePayload: {}, externalDeploymentId: "deployment_old" } },
+    });
+    await pushIn(ctx, message("answering"));
+    await pushTurnHandover(ctx, 1, Date.now(), "");
+    await finish(prisma as unknown as PrismaClient, run.id);
+
+    expect(await runEnded(ctx, { ...run, sessionInSeq: 1 }, "succeeded")).toBe("continued");
+    const row = await prisma.session.findFirstOrThrow({ where: { id: session.id } });
+    expect(row.triggerConfig).not.toHaveProperty("externalDeploymentId");
+  });
+
+  // Catches: a target the API rejects (too long) being stored as the session's pin, which every
+  // later run start then fails to parse.
+  postgresTest("moves without a target the API would reject", async ({ prisma }) => {
+    const ctx = await setup(prisma as unknown as PrismaClient);
+    const { session, run } = await sessionWithLiveRun(prisma as unknown as PrismaClient, ctx);
+    await pushIn(ctx, message("answering"));
+    await pushTurnHandover(ctx, 1, Date.now(), "d".repeat(300));
+    await finish(prisma as unknown as PrismaClient, run.id);
+
+    expect(await runEnded(ctx, { ...run, sessionInSeq: 1 }, "succeeded")).toBe("continued");
+    const row = await prisma.session.findFirstOrThrow({ where: { id: session.id } });
+    expect(row.triggerConfig).not.toHaveProperty("externalDeploymentId");
+  });
+
+  // Catches: a run that ended while the API was down, so its completion was lost and it was failed
+  // as stalled, leaving the reply it handed over with no run until the next message.
+  postgresTest("hands the reply over when the run failed after its marker", async ({ prisma }) => {
+    const ctx = await setup(prisma as unknown as PrismaClient);
+    const { session, run } = await sessionWithLiveRun(prisma as unknown as PrismaClient, ctx);
+    await pushIn(ctx, message("answering"));
+    await pushTurnHandover(ctx, 1);
+    await finish(prisma as unknown as PrismaClient, run.id, "SYSTEM_FAILURE");
+
+    expect(await runEnded(ctx, { ...run, sessionInSeq: 1 }, "failed")).toBe("continued");
+    expect(triggerState.calls).toHaveLength(1);
+    expect(triggerState.calls[0]!.body.payload).toMatchObject({
+      continuation: true,
+      previousRunId: run.friendlyId,
+    });
+    const row = await prisma.session.findFirstOrThrow({ where: { id: session.id } });
+    expect(row.currentRunId).toBe(`trig${triggerState.next - 1}`.padEnd(24, "t"));
+  });
+});
+
 describe("a run that failed", () => {
   // Catches: a run that died mid-turn (partial chunks after the message it was answering) being
   // replaced by a run that re-answers that message, which can crash the same way, again and again.

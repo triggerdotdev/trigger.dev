@@ -5,6 +5,7 @@ import { Button } from "~/components/primitives/Buttons";
 import { Paragraph } from "~/components/primitives/Paragraph";
 import { Spinner } from "~/components/primitives/Spinner";
 import { AgentMessageView } from "~/components/runs/v3/agent/AgentMessageView";
+import type { SessionHandover } from "~/components/sessions/v1/sessionHandoverData";
 import { useAutoScrollToBottom } from "~/hooks/useAutoScrollToBottom";
 import type { TranscriptSeed } from "~/services/realtime/transcriptSeed.server";
 import { v3SessionTranscriptPath } from "~/utils/pathBuilder";
@@ -83,8 +84,11 @@ const INITIAL_PAYLOAD_TIMESTAMP = 0;
 export function AgentView({
   agentView,
   paused = false,
+  handovers,
 }: {
   agentView: AgentViewAuth;
+  /** Replies that moved to another run mid-turn, marked where the move happened. */
+  handovers?: readonly SessionHandover[];
   /** Hidden: the streams keep reading, but the messages render once it's shown again. */
   paused?: boolean;
 }) {
@@ -129,7 +133,7 @@ export function AgentView({
               </Button>
             </div>
           ) : null}
-          <AgentMessageView messages={messages} />
+          <AgentMessageView messages={messages} handovers={handovers} />
         </>
       )}
     </div>

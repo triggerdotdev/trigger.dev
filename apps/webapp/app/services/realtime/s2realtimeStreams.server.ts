@@ -7,6 +7,8 @@ import {
   headerValue,
   SESSION_IN_CONSUMED_ID_HEADER,
   SESSION_IN_EVENT_ID_HEADER,
+  TURN_HANDOVER_STEPS_HEADER,
+  TURN_HANDOVER_UPGRADE_HEADER,
 } from "@trigger.dev/core/v3";
 import { randomUUID } from "node:crypto";
 import { setTimeout as sleep } from "node:timers/promises";
@@ -27,6 +29,9 @@ import { ServiceValidationError } from "~/v3/services/common.server";
 const S2_MAX_METERED_BYTES = 1024 * 1024; // 1 MiB
 const S2_RECORD_BASE_OVERHEAD_BYTES = 8;
 const S2_PEEK_TIMEOUT_MS = 2000;
+// Appends and stream config on the deploy and threshold paths: a hung S2 call can't hold a promote
+// or a dashboard action open.
+const S2_WRITE_TIMEOUT_MS = 5000;
 // The `.out` tail peek reads this many records first. At steady state the tail is
 // `[turn-complete, trim]`, and the peek runs on every reconnect, so it stays small.
 const PEEK_TAIL_RECORDS = 2;
@@ -70,6 +75,10 @@ export type SessionOutTail =
        * handled, anything past it is unread. Present on every SDK that writes the cursor at all.
        */
       inEventId?: number;
+      /** On a `turn-handover` marker: the steps of the reply finished before it was handed over. */
+      handoverSteps?: number;
+      /** On a `turn-handover` marker for `chat.requestUpgrade()`: the target, "" for current. */
+      handoverUpgrade?: string;
     };
 
 /**
@@ -646,6 +655,157 @@ export class S2RealtimeStreams implements StreamResponder, StreamIngestor {
     });
   }
 
+  // ---------- Environment-level streams (signals) ----------
+
+  /** An environment-level stream under this environment's prefix, e.g. `signals`. */
+  public toEnvironmentStreamName(name: string): string {
+    return `${this.streamPrefix}/${name}`;
+  }
+
+  /**
+   * The last record of a stream and the seq the next append gets, without waiting. On a basin
+   * that creates streams on read this creates an empty stream that didn't exist.
+   */
+  async readLastRecord(s2Stream: string): Promise<{
+    nextSeq: number;
+    record?: { seq: number; body: string; headers: Array<[string, string]> };
+  }> {
+    const res = await fetch(
+      `${this.baseUrl}/streams/${encodeURIComponent(s2Stream)}/records?tail_offset=1&clamp=true&wait=0`,
+      {
+        method: "GET",
+        headers: {
+          Authorization: `Bearer ${this.token}`,
+          Accept: "application/json",
+          "S2-Format": "raw",
+          "S2-Basin": this.basin,
+        },
+        signal: AbortSignal.timeout(S2_PEEK_TIMEOUT_MS),
+      }
+    );
+    if (res.status === 416 || res.status === 404) {
+      const body = (await res.json().catch(() => undefined)) as
+        | { tail?: { seq_num?: number } }
+        | undefined;
+      return { nextSeq: body?.tail?.seq_num ?? 0 };
+    }
+    if (!res.ok) {
+      await cancelResponseBody(res);
+      throw new Error(`S2 read last record failed: ${res.status} ${res.statusText}`);
+    }
+    const json = (await res.json()) as {
+      records?: Array<{ seq_num: number; body: string; headers?: Array<[string, string]> }>;
+      tail?: { seq_num: number };
+    };
+    const last = json.records?.at(-1);
+    if (!last) return { nextSeq: json.tail?.seq_num ?? 0 };
+    return {
+      nextSeq: json.tail?.seq_num ?? last.seq_num + 1,
+      record: { seq: last.seq_num, body: last.body, headers: last.headers ?? [] },
+    };
+  }
+
+  /**
+   * Append records only if the stream's next seq is still `matchSeqNum`. Returns the first
+   * record's seq, or the actual next seq when another append got there first.
+   */
+  async appendIfNextSeq(
+    s2Stream: string,
+    records: Array<{ body: Uint8Array | string; headers?: Array<[string, string]> }>,
+    matchSeqNum: number
+  ): Promise<{ ok: true; startSeq: number } | { ok: false; nextSeq: number }> {
+    const b64 = (value: Uint8Array | string) => Buffer.from(value).toString("base64");
+    const res = await fetch(`${this.baseUrl}/streams/${encodeURIComponent(s2Stream)}/records`, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${this.token}`,
+        "Content-Type": "application/json",
+        "S2-Format": "base64",
+        "S2-Basin": this.basin,
+      },
+      body: JSON.stringify({
+        records: records.map((record) => ({
+          ...(record.headers
+            ? { headers: record.headers.map(([name, value]) => [b64(name), b64(value)]) }
+            : {}),
+          body: b64(record.body),
+        })),
+        match_seq_num: matchSeqNum,
+      }),
+      signal: AbortSignal.timeout(S2_WRITE_TIMEOUT_MS),
+    });
+    if (res.status === 412) {
+      const body = (await res.json().catch(() => undefined)) as
+        | { seq_num_mismatch?: number }
+        | undefined;
+      return { ok: false, nextSeq: body?.seq_num_mismatch ?? matchSeqNum };
+    }
+    if (!res.ok) {
+      const text = await res.text().catch(() => "");
+      throw Object.assign(new Error(`S2 append failed: ${res.status} ${text}`.trim()), {
+        status: res.status,
+      });
+    }
+    const ack = (await res.json()) as S2AppendAck;
+    return { ok: true, startSeq: ack.start.seq_num };
+  }
+
+  /**
+   * Keep a stream's records until they are trimmed, whatever the basin's age retention. Creates
+   * the stream if it doesn't exist.
+   */
+  async keepStreamUntilTrimmed(s2Stream: string): Promise<void> {
+    const config = { retention_policy: { infinite: {} } };
+    const headers = {
+      Authorization: `Bearer ${this.token}`,
+      "Content-Type": "application/json",
+      "S2-Basin": this.basin,
+    };
+    const patch = await fetch(`${this.baseUrl}/streams/${encodeURIComponent(s2Stream)}`, {
+      method: "PATCH",
+      headers,
+      body: JSON.stringify(config),
+      signal: AbortSignal.timeout(S2_WRITE_TIMEOUT_MS),
+    });
+    if (patch.ok) return void (await cancelResponseBody(patch));
+    await cancelResponseBody(patch);
+    if (patch.status !== 404) {
+      throw new Error(`S2 reconfigure stream failed: ${patch.status} ${patch.statusText}`);
+    }
+    const create = await fetch(`${this.baseUrl}/streams`, {
+      method: "POST",
+      headers,
+      body: JSON.stringify({ stream: s2Stream, config }),
+      signal: AbortSignal.timeout(S2_WRITE_TIMEOUT_MS),
+    });
+    await cancelResponseBody(create);
+    if (!create.ok && create.status !== 409) {
+      throw new Error(`S2 create stream failed: ${create.status} ${create.statusText}`);
+    }
+  }
+
+  /** Delete a stream. A stream that doesn't exist counts as deleted. */
+  async deleteStream(s2Stream: string): Promise<void> {
+    const res = await fetch(`${this.baseUrl}/streams/${encodeURIComponent(s2Stream)}`, {
+      method: "DELETE",
+      headers: { Authorization: `Bearer ${this.token}`, "S2-Basin": this.basin },
+      signal: AbortSignal.timeout(S2_WRITE_TIMEOUT_MS),
+    });
+    await cancelResponseBody(res);
+    if (!res.ok && res.status !== 404) {
+      throw new Error(`S2 delete stream failed: ${res.status} ${res.statusText}`);
+    }
+  }
+
+  /** Serve SSE from an environment-level stream. */
+  async streamResponseFromEnvironmentStream(
+    name: string,
+    signal: AbortSignal,
+    options?: StreamResponseOptions
+  ): Promise<Response> {
+    return this.#streamResponseByName(this.toEnvironmentStreamName(name), signal, options);
+  }
+
   async peekSessionOutTail(addressingKey: string): Promise<SessionOutTail> {
     return this.#peekTail(this.toSessionStreamName(addressingKey, "out"));
   }
@@ -843,6 +1003,7 @@ export class S2RealtimeStreams implements StreamResponder, StreamIngestor {
     } catch (error) {
       this.logger.warn(isTimeoutError(error) ? `${label}: timed out` : `${label}: fetch failed`, {
         stream: s2Stream,
+        error: errorFields(error),
       });
       return undefined;
     }
@@ -1125,6 +1286,18 @@ function describeFetchError(err: unknown): Record<string, unknown> {
   return out;
 }
 
+/** Name and message only: a timeout and a refused connection read differently. */
+function errorFields(error: unknown): { name: string; message: string; code?: string } {
+  if (!(error instanceof Error)) return { name: "unknown", message: String(error) };
+  // undici's "fetch failed" keeps the reason (ECONNREFUSED, ETIMEDOUT) on its cause.
+  const code = (error.cause as { code?: unknown } | undefined)?.code;
+  return {
+    name: error.name,
+    message: error.message,
+    ...(typeof code === "string" ? { code } : {}),
+  };
+}
+
 function isTimeoutError(error: unknown): boolean {
   return error instanceof Error && error.name === "TimeoutError";
 }
@@ -1142,12 +1315,17 @@ function tailRecordFrom(records: PeekedRecord[]): SessionOutTail | undefined {
     const inConsumedSeq = consumed !== undefined && consumed !== "" ? Number(consumed) : NaN;
     const eventId = headerValue(headers, SESSION_IN_EVENT_ID_HEADER);
     const inEventId = eventId !== undefined && eventId !== "" ? Number(eventId) : NaN;
+    const steps = headerValue(headers, TURN_HANDOVER_STEPS_HEADER);
+    const handoverSteps = steps !== undefined && steps !== "" ? Number(steps) : NaN;
+    const handoverUpgrade = headerValue(headers, TURN_HANDOVER_UPGRADE_HEADER);
     return {
       kind: "record",
       control: headerValue(headers, "trigger-control"),
       timestamp: record.timestamp,
       inConsumedSeq: Number.isInteger(inConsumedSeq) ? inConsumedSeq : undefined,
       inEventId: Number.isInteger(inEventId) ? inEventId : undefined,
+      ...(Number.isInteger(handoverSteps) ? { handoverSteps } : {}),
+      ...(handoverUpgrade !== undefined ? { handoverUpgrade } : {}),
     };
   }
   return undefined;

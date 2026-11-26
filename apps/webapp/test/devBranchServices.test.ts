@@ -21,6 +21,13 @@ vi.mock("~/services/platform.v3.server", () => ({
   getLimit: vi.fn().mockResolvedValue(5),
 }));
 
+const { deleteEnvironmentSignalStreams } = vi.hoisted(() => ({
+  deleteEnvironmentSignalStreams: vi.fn(async (_environments: unknown[]) => undefined),
+}));
+vi.mock("~/services/realtime/environmentSignals.server", () => ({
+  deleteEnvironmentSignalStreams,
+}));
+
 vi.setConfig({ testTimeout: 60_000 });
 
 async function createDevRoot(
@@ -233,6 +240,10 @@ describe("ArchiveBranchService — DEVELOPMENT", () => {
       expect(archived.branch.archivedAt).not.toBeNull();
       // Slug + shortcode are randomized on archive so the name can be reused.
       expect(archived.branch.slug).not.toBe(originalSlug);
+      // Catches: the signal stream left behind, or looked up by the renamed slug (a different stream).
+      expect(deleteEnvironmentSignalStreams).toHaveBeenCalledWith([
+        expect.objectContaining({ id: created.branch.id, slug: originalSlug }),
+      ]);
 
       // The same branch name can now be created again (new row, deterministic slug).
       const recreated = await new UpsertBranchService(prisma).call(orgFilter, {

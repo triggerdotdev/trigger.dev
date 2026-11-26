@@ -8,6 +8,7 @@ export { TestRealtimeStreamsManager } from "./test-realtime-streams-manager.js";
 export { TestRunMetadataManager } from "./test-run-metadata-manager.js";
 export { TestSessionStreamManager } from "./test-session-stream-manager.js";
 export { StandardSessionStreamManager } from "../sessionStreams/manager.js";
+export { TestSignalsManager } from "./test-signals-manager.js";
 export type { SessionStreamManager } from "../sessionStreams/types.js";
 export {
   SessionWaitpointBackend,

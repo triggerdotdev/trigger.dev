@@ -3,6 +3,7 @@
 // the staff floor flag.
 
 import { describe, expect, vi } from "vitest";
+import type * as SyncModule from "~/services/realtime/skewProtectionThresholdSignal.server";
 
 // ChangeCurrentDeploymentService's side effects (task identifiers, declarative resources) use the
 // module-level clients; point them at the test database.
@@ -24,6 +25,73 @@ vi.mock("~/db.server", async (importOriginal) => {
     webhookPrisma: client,
     runOpsNewPrisma: client,
     runOpsLegacyPrisma: client,
+  };
+});
+
+// The skew protection threshold signal goes to an in-memory latest map per environment.
+const signals = vi.hoisted(() => ({
+  latest: new Map<string, unknown>(),
+  sends: [] as Array<{ environmentId: string; payload: unknown }>,
+  reads: 0,
+  /** The next send throws, as when S2 is down. */
+  failNext: false,
+  /** Reads throw the 501 of an environment without the S2 realtime backend. */
+  noS2: false,
+  /** Runs once, inside the next stream read, before it returns. */
+  onRead: undefined as undefined | (() => Promise<void>),
+}));
+vi.mock("~/services/realtime/environmentSignals.server", () => {
+  class SignalError extends Error {
+    constructor(
+      message: string,
+      readonly status: number
+    ) {
+      super(message);
+    }
+  }
+  return {
+    SignalError,
+    signalsAvailable: () => !signals.noS2,
+    readLatestSignals: async (environment: { id: string }) => {
+      signals.reads++;
+      if (signals.noS2) throw new SignalError("Signals require the S2 realtime backend.", 501);
+      const onRead = signals.onRead;
+      signals.onRead = undefined;
+      await onRead?.();
+      return signals.latest.has(environment.id)
+        ? [
+            {
+              name: "trigger.skew-protection-threshold",
+              payload: signals.latest.get(environment.id),
+            },
+          ]
+        : [];
+    },
+    sendEnvironmentSignal: async (environment: { id: string }, input: { payload: unknown }) => {
+      if (signals.failNext) {
+        signals.failNext = false;
+        throw new Error("The operation was aborted due to timeout");
+      }
+      signals.latest.set(environment.id, input.payload);
+      signals.sends.push({ environmentId: environment.id, payload: input.payload });
+      return { seq: signals.sends.length };
+    },
+  };
+});
+
+// A promote doesn't wait for the threshold signal sync; tests wait for it through this.
+const syncs = vi.hoisted(() => ({ pending: [] as Array<Promise<void>> }));
+vi.mock("~/services/realtime/skewProtectionThresholdSignal.server", async (importOriginal) => {
+  const real = await importOriginal<typeof SyncModule>();
+  return {
+    ...real,
+    syncSkewProtectionThresholdSignal: (
+      ...args: Parameters<typeof real.syncSkewProtectionThresholdSignal>
+    ) => {
+      const sync = real.syncSkewProtectionThresholdSignal(...args);
+      syncs.pending.push(sync);
+      return sync;
+    },
   };
 });
 
@@ -97,7 +165,7 @@ async function deploy(
   s: Seed,
   version: string,
   tasks: string[] = [],
-  // Whether its agents (tasks named `*-agent`) are on an SDK that reports its settings.
+  // Whether its agents (tasks named `*-agent`) are on an SDK that can continue a handed-over turn.
   turnHandover = true
 ) {
   const worker = await prisma.backgroundWorker.create({
@@ -163,6 +231,7 @@ async function promote(
     disableVersionCheck: true,
     actor: actor.userId ? { userId: actor.userId } : undefined,
   });
+  await Promise.all(syncs.pending.splice(0));
   const cleared = result.skewProtectionThresholdsCleared;
   return { thresholdCleared: cleared?.environment, tasksCleared: cleared?.tasks ?? [] };
 }
@@ -405,7 +474,7 @@ describe("the Session upgrades page", () => {
       const v2 = await deploy(p, s, V2, ["support-agent", "custom-agent", "inbox"]);
       await p.backgroundWorkerTask.updateMany({
         where: { workerId: v2.worker.id, slug: "support-agent" },
-        data: { config: { type: "ai-sdk-chat", versionSkew: "hold" } },
+        data: { config: { type: "ai-sdk-chat", versionSkew: "follow-mid-turn" } },
       });
       await promote(p, s, v2);
       await setThreshold(p, s, V1);
@@ -434,11 +503,22 @@ describe("the Session upgrades page", () => {
         },
         {
           task: "support-agent",
-          inCode: { type: "versionSkew", versionSkew: "hold" },
+          inCode: { type: "versionSkew", versionSkew: "follow-mid-turn" },
           threshold: { version: V2, scope: "task" },
         },
       ]);
       expect(page.changes).toHaveLength(3);
+      expect(page.midTurnHandover).toBe(true);
+      signals.noS2 = true;
+      try {
+        const withoutS2 = await getSkewProtectionPage(p, {
+          environmentId: s.environment.id,
+          userId: "user_sam",
+        });
+        expect(withoutS2.midTurnHandover).toBe(false);
+      } finally {
+        signals.noS2 = false;
+      }
 
       // Catches: an agent's own threshold shown as the one in force when the environment's is
       // higher, while sessions move to the environment's.
@@ -911,14 +991,14 @@ describe("a threshold for one task", () => {
         userId: "user_sam",
         task: "support-agent",
       })
-    ).toEqual({ currentVersion: V2, versions: [V2, V1], threshold: null });
+    ).toEqual({ currentVersion: V2, versions: [V2, V1], threshold: null, midTurnHandover: true });
     expect(
       await getSkewProtectionThresholdChoices(p, {
         environmentId: s.environment.id,
         userId: "user_sam",
         task: "plain-task",
       })
-    ).toEqual({ currentVersion: V2, versions: [V2], threshold: null });
+    ).toEqual({ currentVersion: V2, versions: [V2], threshold: null, midTurnHandover: true });
 
     // Catches: the Deployments dialog offering a version above current.
     expect(
@@ -1002,14 +1082,30 @@ describe("a threshold for one task", () => {
     const v2 = await deploy(p, s, V2, ["support-agent", "custom-agent", "inbox"]);
     await configure(v2.worker.id, "support-agent", {
       type: "ai-sdk-chat",
-      versionSkew: "hold",
+      versionSkew: "follow-mid-turn",
     });
     await configure(v2.worker.id, "custom-agent", { type: "ai-sdk-chat", turnHandover: true });
     await promote(p, s, v2);
-    expect(await versionSkew("support-agent")).toBe("hold");
+    expect(await versionSkew("support-agent")).toBe("follow-mid-turn");
     // Catches: a chat.customAgent shown as "Not reported by this version's SDK".
     expect(await versionSkew("custom-agent")).toBe("no row");
     expect(await versionSkew("inbox")).toBe("no row");
+
+    const choices = () =>
+      getSkewProtectionThresholdChoices(p, {
+        environmentId: s.environment.id,
+        userId: "user_sam",
+        task: "support-agent",
+      });
+    expect((await choices()).midTurnHandover).toBe(true);
+    // Catches: the row promising a reply in progress moves on an instance without S2, where it
+    // never does.
+    signals.noS2 = true;
+    try {
+      expect((await choices()).midTurnHandover).toBe(false);
+    } finally {
+      signals.noS2 = false;
+    }
   });
 });
 
@@ -1215,5 +1311,145 @@ describe("skew protection threshold from the Deployments page", () => {
 
     const [set] = await getSkewProtectionThresholdHistory(p, { environmentId: s.environment.id });
     expect(set).toMatchObject({ kind: "set", actorName: "a team member" });
+  });
+});
+
+describe("the skew protection threshold signal", () => {
+  const sendsFor = (s: Seed) =>
+    signals.sends.filter((send) => send.environmentId === s.environment.id).map((x) => x.payload);
+
+  // Catches: a change that doesn't reach running turns, a repeat that sends again, or a promote
+  // in an environment without thresholds reading the signal stream.
+  postgresTest(
+    "set, clear, promote and rollback send the thresholds when they change",
+    async ({ prisma }) => {
+      const p = prisma as unknown as PrismaClient;
+      db.client = p;
+      const s = await seed(p);
+      const v1 = await deploy(p, s, V1, ["a-agent"]);
+      const v2 = await deploy(p, s, V2, ["a-agent"]);
+      const reads = signals.reads;
+      await promote(p, s, v2);
+      expect(signals.reads).toBe(reads);
+      expect(sendsFor(s)).toEqual([]);
+
+      await setThreshold(p, s, V1);
+      await setThreshold(p, s, V1);
+      await setThreshold(p, s, V2, "a-agent");
+      const midTurnTasks = ["a-agent"];
+      expect(sendsFor(s)).toEqual([
+        { environment: V1, midTurnTasks },
+        { environment: V1, tasks: { "a-agent": V2 }, midTurnTasks },
+      ]);
+
+      // An agent on an old SDK becoming current: its turns can't move mid-turn. A newer one
+      // again: they can.
+      const old = await deploy(p, s, V10, ["a-agent"], false);
+      await promote(p, s, old);
+      expect(sendsFor(s).at(-1)).toEqual({ environment: V1, tasks: { "a-agent": V2 } });
+
+      await clearSkewProtectionThreshold(p, s.environment, { source: "api" }, "a-agent");
+      expect(sendsFor(s).at(-1)).toEqual({ environment: V1 });
+
+      // Back on a new SDK: turns can move again.
+      await promote(p, s, v1, { direction: "rollback" });
+      expect(sendsFor(s).at(-1)).toEqual({ environment: V1, midTurnTasks });
+
+      await clearSkewProtectionThreshold(p, s.environment, { source: "api" });
+      expect(sendsFor(s).at(-1)).toEqual({});
+      await promote(p, s, v2);
+      expect(sendsFor(s)).toHaveLength(6);
+    }
+  );
+
+  // Catches: two overlapping syncs leaving the older payload last. Sync A reads the thresholds
+  // (V1), a second set commits V2 and its sync sends V2, then A reads the stream, sees V2 differ
+  // from its V1 and sends V1: the database says V2, running turns hear V1.
+  postgresTest("an overlapping sync can't leave an older payload last", async ({ prisma }) => {
+    const p = prisma as unknown as PrismaClient;
+    db.client = p;
+    const s = await seed(p);
+    await deploy(p, s, V1, ["a"]);
+    const v2 = await deploy(p, s, V2, ["a"]);
+    await promote(p, s, v2);
+
+    signals.onRead = async () => {
+      await setThreshold(p, s, V2);
+    };
+    await setThreshold(p, s, V1);
+
+    expect((await thresholdOf(p, s))?.version).toBe(V2);
+    expect(sendsFor(s).at(-1)).toEqual({ environment: V2 });
+  });
+
+  // Catches: every promote and deploy finalize of an environment with thresholds waiting on S2
+  // (seconds when it hangs) for the signal sync.
+  postgresTest("a promote doesn't wait for the signal sync", async ({ prisma }) => {
+    const p = prisma as unknown as PrismaClient;
+    db.client = p;
+    const s = await seed(p);
+    const v1 = await deploy(p, s, V1, ["a"]);
+    const v2 = await deploy(p, s, V2, ["a"]);
+    await promote(p, s, v1);
+    await setThreshold(p, s, V1);
+
+    let release!: () => void;
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    signals.onRead = () => gate;
+    const promoted = await Promise.race([
+      new ChangeCurrentDeploymentService(p, p, new NoopTaskMetadataCache())
+        .call(v2.deployment, "promote", { disableVersionCheck: true })
+        .then(() => true),
+      new Promise((resolve) => setTimeout(() => resolve(false), 2_000)),
+    ]);
+    release();
+    await Promise.all(syncs.pending.splice(0));
+    expect(promoted).toBe(true);
+  });
+
+  // Catches: a self-hosted environment on the v1 realtime backend (no signals) logging an error
+  // for every threshold set, clear and promote.
+  postgresTest("without the S2 backend a set logs no error", async ({ prisma }) => {
+    const p = prisma as unknown as PrismaClient;
+    db.client = p;
+    const s = await seed(p);
+    await promote(p, s, await deploy(p, s, V1, ["a"]));
+    const error = vi.spyOn(logger, "error");
+    signals.noS2 = true;
+    try {
+      await setThreshold(p, s, V1);
+      await clearSkewProtectionThreshold(p, s.environment, { source: "api" });
+    } finally {
+      signals.noS2 = false;
+    }
+    expect(error.mock.calls.map(([message]) => message)).not.toContain(
+      "Failed to send the skew protection threshold signal"
+    );
+    expect(await thresholdOf(p, s)).toBeNull();
+    error.mockRestore();
+  });
+
+  // Catches: a threshold signal lost to an S2 outage staying lost when the same version is set
+  // (or the same threshold cleared) again, so running turns never hand over.
+  postgresTest("setting or clearing again repairs a lost signal", async ({ prisma }) => {
+    const p = prisma as unknown as PrismaClient;
+    db.client = p;
+    const s = await seed(p);
+    const v1 = await deploy(p, s, V1, ["a"]);
+    await promote(p, s, v1);
+
+    signals.failNext = true;
+    await setThreshold(p, s, V1);
+    expect(sendsFor(s)).toEqual([]);
+    await setThreshold(p, s, V1);
+    expect(sendsFor(s)).toEqual([{ environment: V1 }]);
+
+    signals.failNext = true;
+    await clearSkewProtectionThreshold(p, s.environment, { source: "api" });
+    expect(sendsFor(s)).toHaveLength(1);
+    await clearSkewProtectionThreshold(p, s.environment, { source: "api" });
+    expect(sendsFor(s).at(-1)).toEqual({});
   });
 });

@@ -2,8 +2,8 @@ import { z } from "zod";
 import { logger } from "~/services/logger.server";
 
 // An environment's skew protection thresholds as stored, and their strict read. The writes live in
-// skewProtectionThreshold.server.ts, and the lenient read that appends use in
-// sessionVersionFloor.server.ts.
+// skewProtectionThreshold.server.ts, the signal in skewProtectionThresholdSignal.server.ts, and
+// the lenient read that appends use in sessionVersionFloor.server.ts.
 
 /** Who set the skew protection threshold. `migrated` is the staff-set floor it replaced. */
 export const SkewProtectionThresholdSetBy = z.object({

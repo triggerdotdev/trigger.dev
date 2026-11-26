@@ -1,0 +1,189 @@
+---
+title: "Deploy a breaking change to a chat agent"
+sidebarTitle: "Deploy a breaking change"
+description: "Ship a change that older versions of your agent can't handle, such as a database migration or a removed tool, without leaving any chat running the old code."
+---
+
+**Learn how to ship a change that breaks older versions of a chat agent without leaving a single chat on the old code.**
+
+Chats are long-lived: each one keeps running the version it started on until something moves it. Before a database migration, a removed tool or a changed API, every chat has to be off the versions that depend on the old behavior. You'll opt the agent in to moving mid-reply, deploy the fix, set the [skew protection threshold](/deployment/skew-protection-threshold) from CI, check that no run is left on an older version, and then make the breaking change.
+
+```bash Quick reference
+# 1. Earlier, as its own deploy: versionSkew: "follow-mid-turn" on the agent
+# 2. Deploy the fix and note its version
+npx trigger.dev@latest deploy --env prod
+# 3. Move every older chat to it
+curl -X PUT "https://api.trigger.dev/api/v1/deployments/skew-protection-threshold" \
+  -H "Authorization: Bearer $TRIGGER_SECRET_KEY" -H "Content-Type: application/json" \
+  -d '{"version":"<the fix version>"}'
+# 4. Wait until this lists nothing older (step 4 covers canceling idle chats)
+npx tsx scripts/old-runs.ts <the fix version>
+# 5. Make the breaking change
+```
+
+## 1. Opt the agent in before you need it
+
+Set `versionSkew: "follow-mid-turn"` on the agent and deploy it on its own, before you deploy the fix. Adding it in the same deploy as the fix is too late: it's the old run that notices the threshold and hands its reply over, so the option has to be in the version that is already running when the fix ships.
+
+```ts trigger/support-agent.ts
+import { chat } from "@trigger.dev/sdk/ai";
+import { anthropic } from "@ai-sdk/anthropic";
+import { streamText } from "ai";
+import { lookupOrder } from "./tools";
+
+export const supportAgent = chat.agent({
+  id: "support-agent",
+  versionSkew: "follow-mid-turn",
+  run: async ({ messages, signal }) =>
+    streamText({
+      ...chat.toStreamTextOptions(),
+      model: anthropic("claude-sonnet-5-5"),
+      messages,
+      tools: { lookupOrder },
+      abortSignal: signal,
+    }),
+});
+```
+
+With it, a reply in progress on an older version stops after the step it is on, and the current deployment continues the same reply. Without it, a reply in progress finishes on its old version, and the chat moves at its next message. Both versions need an SDK that supports `"follow-mid-turn"`. If either is older, the reply finishes on its old version, and the check in step 4 lists its run until the run ends. [Moving a running turn](/ai-chat/patterns/mid-turn-handover#requirements) lists the other requirements.
+
+## 2. Write the fix so it runs before the change
+
+The fix is deployed first and the breaking change comes last, so the fixed version has to work against things as they are now. For a migration that renames a column, the fix reads the new column when it exists and falls back to the old one. For a removed tool, the fix stops offering the tool while the tool's backend still answers.
+
+## 3. Deploy the fix and set the threshold
+
+Deploy the fix, then set the threshold to its version. The deploy authenticates with a personal access token (`TRIGGER_ACCESS_TOKEN`), but the threshold API needs the environment's secret key (`tr_prod_...` for production, from the **API keys** page): store it as a separate `TRIGGER_SECRET_KEY` secret. The `deploy` step sets a `deploymentVersion` output:
+
+```yaml .github/workflows/release-trigger-prod.yml
+name: Deploy to Trigger.dev (prod)
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Use Node.js 20.x
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20.x"
+
+      - name: Install dependencies
+        run: npm install
+
+      - name: Deploy Trigger.dev
+        id: deploy
+        env:
+          TRIGGER_ACCESS_TOKEN: ${{ secrets.TRIGGER_ACCESS_TOKEN }}
+        run: npx trigger.dev@latest deploy --env prod
+
+      - name: Move older chats to this version
+        env:
+          TRIGGER_SECRET_KEY: ${{ secrets.TRIGGER_SECRET_KEY }}
+          VERSION: ${{ steps.deploy.outputs.deploymentVersion }}
+        run: |
+          curl --fail-with-body -X PUT "https://api.trigger.dev/api/v1/deployments/skew-protection-threshold" \
+            -H "Authorization: Bearer $TRIGGER_SECRET_KEY" \
+            -H "Content-Type: application/json" \
+            -d "{\"version\":\"$VERSION\"}"
+```
+
+The response is the environment's state after the change:
+
+```json 200
+{
+  "currentVersion": "20261124.3",
+  "threshold": {
+    "version": "20261124.3",
+    "setAt": "2026-11-24T18:24:16.605Z",
+    "setBy": { "type": "api", "name": null },
+    "deploymentId": "deployment_3t61uxpjbts8c97w2n2n6"
+  },
+  "tasks": {}
+}
+```
+
+Only set the threshold on deploys that need it, for example from a separate workflow you start by hand. A threshold on every deploy moves every chat on every deploy. To move only this agent's chats, add `"task": "support-agent"` to the body ([a threshold for one task](/deployment/skew-protection-threshold#a-threshold-for-one-task)). To set it from the dashboard instead, open **Session upgrades** under **Deployments** and choose **Upgrade sessions**.
+
+From here, each chat on an older version moves to the fix:
+
+- **A reply in progress** stops after its current step (a running tool finishes first), and the fix continues it. The person chatting sees a pause of a few seconds.
+- **A reply to a [channel](/webhooks/channels) message**, such as one from Slack, finishes on its old version, because its answer posts back through that delivery. The chat moves at its next message. Wait for that reply before you cancel its run in step 4.
+- **A chat that gets a new message** answers it on the fix.
+- **A chat nobody messages** keeps its old run until the run ends on its own after the agent's idle timeout.
+
+For the agent's idle timeout after each reply, a chat's run stays warm and holds a concurrency slot, the same as a run that is replying. Under a low concurrency limit, warm idle runs can leave no slot for moved chats and new chats, whose runs then queue until an idle run suspends or ends. Canceling idle old runs in step 4 frees their slots.
+
+## 4. Check that nothing older is running
+
+Before the breaking change, make sure no run on a version below the threshold is still active. This script lists them, and cancels them with `--cancel`. On the dashboard, the **Runs** page shows the same list when you filter by **Version** and by **Status** ([skew protection threshold](/deployment/skew-protection-threshold#before-a-breaking-change)).
+
+```ts scripts/old-runs.ts
+import { runs } from "@trigger.dev/sdk";
+
+// The threshold you set, e.g. 20261124.3
+const threshold = process.argv[2];
+const cancel = process.argv.includes("--cancel");
+
+// Versions look like 20261124.3: compare the date, then the number
+const below = (version: string) => {
+  const [a, b] = version.split(".").map(Number);
+  const [x, y] = threshold.split(".").map(Number);
+  return a < x || (a === x && b < y);
+};
+
+let found = 0;
+for await (const run of runs.list({ status: ["QUEUED", "DEQUEUED", "EXECUTING", "WAITING"] })) {
+  if (!run.version || !below(run.version)) continue;
+  found++;
+  console.log(run.id, run.version, run.status, run.taskIdentifier);
+  if (cancel) await runs.cancel(run.id);
+}
+
+console.log(found === 0 ? "No runs on older versions." : `${found} run(s) on older versions.`);
+process.exitCode = found === 0 || cancel ? 0 : 1;
+```
+
+Run it with the environment's secret key in `TRIGGER_SECRET_KEY`:
+
+```bash
+npx tsx scripts/old-runs.ts 20261124.3
+```
+
+```bash Output
+run_cmwv0qliv00burswmuplk1c48 20261124.1 EXECUTING support-agent
+run_cmwv0pn2300bprswmgm7kbaz0 20261124.1 EXECUTING support-agent
+2 run(s) on older versions.
+```
+
+An idle chat's run counts: it shows as `EXECUTING` or `WAITING` while it waits for the next message. Wait for it to end after the agent's idle timeout, or cancel it with `--cancel`. Canceling an idle chat run loses nothing: the chat's next message starts a run on the fix with the whole conversation. Don't cancel a run that is replying: it hands over when its current step ends, and canceling it loses the reply.
+
+Run the script again until it prints:
+
+```bash Output
+No runs on older versions.
+```
+
+## 5. Make the breaking change
+
+Run the migration, remove the tool's backend, or change the API. Only versions at or above the threshold are running, and every chat that comes back later starts on the current deployment.
+
+## Verify it
+
+- **A reply that moved.** On the **Runs** page, filter by the chat's tag (`chat:<chatId>`). The run on the older version ends as **Completed** when its step finishes, and the next run, on the fix, starts a few seconds later and finishes the same reply.
+- **A chat that was idle.** Send it a message. The answer comes from a run on the fix. If you didn't cancel the old run, that run ends as canceled with a reason that links the new one.
+
+A reply only hands over between steps, and one on its last step finishes where it is ([how a turn moves](/ai-chat/patterns/mid-turn-handover#how-a-turn-moves)). A reply with no tool calls has a single step, so it always finishes on its old version and the chat moves at its next message. To see a real handover, send a message that makes the agent call a tool that takes several seconds, and set the threshold while the tool is running.
+
+## See also
+
+- [Skew protection threshold](/deployment/skew-protection-threshold): every option of the threshold, for an environment or one task
+- [Moving a running turn](/ai-chat/patterns/mid-turn-handover): what your code sees when a reply moves mid-turn
+- [Version upgrades](/ai-chat/patterns/version-upgrades): which tool moves a chat when

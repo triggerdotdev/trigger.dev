@@ -30,6 +30,7 @@ import {
   extractAIToolCallData,
 } from "~/components/runs/v3/ai";
 import { RUNNING_STATUSES } from "~/components/runs/v3/TaskRunStatus";
+import { findRunHandovers } from "./runHandovers.server";
 import { baseWorkerQueue } from "~/runEngine/concerns/workerQueueSplit.server";
 import { logger } from "~/services/logger.server";
 import { safeJsonParse } from "~/utils/json";
@@ -387,8 +388,11 @@ export class SpanPresenter extends BasePresenter {
       ? await this._replica.sessionRun.findFirst({
           where: { runId: run.id },
           select: {
+            id: true,
+            sessionId: true,
             reason: true,
             triggeredAt: true,
+            handover: true,
             session: {
               select: {
                 friendlyId: true,
@@ -418,6 +422,10 @@ export class SpanPresenter extends BasePresenter {
                 : ("ACTIVE" as const),
           reason: sessionRun.reason,
           triggeredAt: sessionRun.triggeredAt,
+          ...(await findRunHandovers(this._replica, sessionRun, {
+            friendlyId: run.friendlyId,
+            version: lockedWorker?.lockedToVersion?.version ?? null,
+          })),
         }
       : undefined;
 

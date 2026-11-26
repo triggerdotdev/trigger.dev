@@ -7,7 +7,12 @@ import {
   DASHBOARD_TRANSCRIPT_PAGE,
   readSessionTranscriptSeed,
 } from "~/services/realtime/transcriptSeed.server";
-import { findSessionRunsPage } from "~/services/realtime/sessionRunPage.server";
+import { findSessionRunsPage, type SessionRunRow } from "~/services/realtime/sessionRunPage.server";
+import {
+  handoverRun,
+  parseSessionRunHandover,
+  sessionHandover,
+} from "~/components/sessions/v1/sessionHandoverData";
 import { resolveSessionByIdOrExternalId } from "~/services/realtime/sessions.server";
 import { LEGACY_PLAYGROUND_TAG } from "~/services/sessionsRepository/sessionsRepository.server";
 import { runStore } from "~/v3/runStore.server";
@@ -100,6 +105,17 @@ export class SessionPresenter {
         : [];
     });
     const runsById = new Map(runs.map((r) => [r.id, r] as const));
+    // Rows are newest first, so the run that handed a reply over is the next row.
+    const handoverOf = (row: SessionRunRow, previous: SessionRunRow | undefined) => {
+      const handover = parseSessionRunHandover(row.handover);
+      if (!handover) return undefined;
+      return sessionHandover(
+        handover,
+        row,
+        previous ? handoverRun(previous.runId, runsById.get(previous.runId)) : null,
+        handoverRun(row.runId, runsById.get(row.runId))
+      );
+    };
 
     const currentRun = session.currentRunId
       ? (runsById.get(session.currentRunId) ??
@@ -167,7 +183,7 @@ export class SessionPresenter {
             version: currentRun.taskVersion,
           }
         : null,
-      runs: sessionRuns.map((r) => {
+      runs: sessionRuns.map((r, index) => {
         const run = runsById.get(r.runId);
         return {
           id: r.id,
@@ -177,6 +193,7 @@ export class SessionPresenter {
           run: run
             ? { friendlyId: run.friendlyId, status: run.status, version: run.taskVersion }
             : null,
+          handover: handoverOf(r, sessionRuns[index + 1]),
         };
       }),
       agentView: {

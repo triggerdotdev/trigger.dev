@@ -421,7 +421,7 @@ type CommonTaskOptions<
   triggerSource?: string;
 
   /** @internal Agent configuration, only set when `triggerSource` is `"agent"`. */
-  agentConfig?: { type: string };
+  agentConfig?: { type: string; versionSkew?: string; turnHandover?: boolean };
 };
 
 /**

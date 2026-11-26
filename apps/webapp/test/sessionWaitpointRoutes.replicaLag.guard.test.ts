@@ -290,6 +290,55 @@ describe("route-session-waitpoint reads under replica lag", () => {
     }
   );
 
+  // Catches: a browser's public session token storing a handover, which the dashboard then shows as
+  // a mid-reply threshold move that never happened.
+  heteroPostgresTest(
+    "end-and-continue: only the run's own credential passes a handover to the swap",
+    async ({ prisma14 }) => {
+      const prisma = prisma14 as unknown as PrismaClient;
+      const suffix = `eac_handover_${seq++}`;
+      const seed = await seedTenant(prisma, suffix);
+      const runId = `run_${"b".repeat(21)}${seq}`;
+      const friendlyId = `run_call_${suffix}`;
+      H.store = new PostgresRunStore({ prisma, readOnlyPrisma: prisma });
+      await H.store.createRun(
+        buildCreateRunInput({
+          runId,
+          friendlyId,
+          organizationId: seed.organization.id,
+          projectId: seed.project.id,
+          runtimeEnvironmentId: seed.environment.id,
+        })
+      );
+      H.primary = prisma;
+      H.replica = prisma;
+      H.swap = { calls: [], result: { runId, swapped: true } };
+
+      const handler = await loadHandler(
+        "~/routes/api.v1.sessions.$session.end-and-continue",
+        "session"
+      );
+      const handover = { afterSteps: 2, messageId: "msg_1", thresholdVersion: "20261124.1" };
+      for (const type of ["PRIVATE", "PUBLIC_JWT"]) {
+        const res = await handler({
+          authentication: { type, environment: seed.environment },
+          params: { session: `session_${suffix}` },
+          body: { callingRunId: friendlyId, reason: "skew-threshold", handover },
+          resource: {
+            id: `session_${suffix}`,
+            friendlyId: `session_${suffix}`,
+            externalId: null,
+            closedAt: null,
+            expiresAt: null,
+          },
+        });
+        expect(res.status).toBe(200);
+      }
+
+      expect(H.swap.calls.map((call) => call.handover)).toEqual([handover, undefined]);
+    }
+  );
+
   // waitpoint-token complete lookup
   heteroPostgresTest(
     "waitpoint-token complete: a token absent on the replica is resolved via the primary re-read and completes",

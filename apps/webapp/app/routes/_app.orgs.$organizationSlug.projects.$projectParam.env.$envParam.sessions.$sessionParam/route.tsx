@@ -56,6 +56,7 @@ import {
 } from "~/components/sessions/v1/useConversationTranscript";
 import { CloseSessionDialog } from "~/components/sessions/v1/CloseSessionDialog";
 import { SessionStatusCombo } from "~/components/sessions/v1/SessionStatus";
+import { HandoverRunsTabDetail } from "~/components/sessions/v1/SessionHandover";
 import { $replica } from "~/db.server";
 import { useEnvironment } from "~/hooks/useEnvironment";
 import { useOrganization } from "~/hooks/useOrganizations";
@@ -522,6 +523,8 @@ function ConversationPane({
   const channelParam = value("channel");
   const activeChannel = channelParam && channels.includes(channelParam) ? channelParam : undefined;
 
+  const handovers = session.runs.flatMap((entry) => (entry.handover ? [entry.handover] : []));
+
   const sessionId = session.agentView.sessionId;
   const encodedSession = encodeURIComponent(sessionId);
   const sessionResourceBase = `/resources/orgs/${organization.slug}/projects/${project.slug}/env/${environment.slug}/sessions/${encodedSession}/realtime/v1`;
@@ -592,6 +595,7 @@ function ConversationPane({
                 key={session.agentView.sessionId}
                 agentView={{ ...session.agentView, transcriptSeed: transcript.seed }}
                 paused={!active}
+                handovers={handovers}
               />
             ) : (
               <div className="flex items-center justify-center gap-2 py-6">
@@ -1497,7 +1501,10 @@ function RunsTab({
               friendlyId: entry.run.friendlyId,
             })
           : undefined;
-        const title = sessionRunTitle(entry.reason);
+        const handover = entry.handover;
+        const title = handover
+          ? { text: "Moved mid-reply", capitalize: false }
+          : sessionRunTitle(entry.reason);
         return (
           <TimelineRow key={entry.id} isLast={isLast}>
             <span
@@ -1511,6 +1518,7 @@ function RunsTab({
             <span className="text-xs text-text-dimmed">
               <DateTime date={entry.triggeredAt} />
             </span>
+            {handover ? <HandoverRunsTabDetail handover={handover} /> : null}
             {entry.run && runPath ? (
               <>
                 <SimpleTooltip

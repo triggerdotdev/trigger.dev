@@ -3,6 +3,8 @@ import { memo } from "react";
 import { AssistantResponse, ChatBubble, ToolUseRow } from "~/components/runs/v3/ai/AIChatMessages";
 import { Popover, PopoverContent, PopoverTrigger } from "~/components/primitives/Popover";
 import { textLinkClassName } from "~/components/primitives/TextLink";
+import { HandoverDivider } from "~/components/sessions/v1/SessionHandover";
+import type { SessionHandover } from "~/components/sessions/v1/sessionHandoverData";
 
 // ---------------------------------------------------------------------------
 // AgentMessageView — renders an AI SDK UIMessage[] conversation.
@@ -21,11 +23,18 @@ import { textLinkClassName } from "~/components/primitives/TextLink";
 //   data-{name}     — custom data parts (rendered as a small popover)
 // ---------------------------------------------------------------------------
 
-export function AgentMessageView({ messages }: { messages: UIMessage[] }) {
+export function AgentMessageView({
+  messages,
+  handovers,
+}: {
+  messages: UIMessage[];
+  /** Replies that moved to another run mid-turn: drawn where the next run took over. */
+  handovers?: readonly SessionHandover[];
+}) {
   return (
     <div className="mx-auto flex w-full min-w-0 max-w-[800px] flex-col gap-2">
       {messages.map((msg) => (
-        <MessageBubble key={msg.id} message={msg} />
+        <MessageBubble key={msg.id} message={msg} handovers={handovers} />
       ))}
     </div>
   );
@@ -39,7 +48,14 @@ export function AgentMessageView({ messages }: { messages: UIMessage[] }) {
 // Default shallow prop comparison is fine: AI SDK's useChat keeps stable
 // references for messages that haven't changed, so only the last message
 // (the one receiving new chunks) re-renders.
-export const MessageBubble = memo(function MessageBubble({ message }: { message: UIMessage }) {
+export const MessageBubble = memo(function MessageBubble({
+  message,
+  handovers,
+}: {
+  message: UIMessage;
+  /** Every handover in the conversation: a reply can move more than once. */
+  handovers?: readonly SessionHandover[];
+}) {
   if (message.role === "user") {
     const text =
       message.parts
@@ -60,7 +76,8 @@ export const MessageBubble = memo(function MessageBubble({ message }: { message:
     const hasContent = message.parts && message.parts.length > 0;
     if (!hasContent) return null;
 
-    return <div className="space-y-2">{renderAssistantParts(message.parts ?? [])}</div>;
+    const moves = handovers?.filter((h) => h.messageId === message.id) ?? [];
+    return <div className="space-y-2">{renderAssistantParts(message.parts ?? [], moves)}</div>;
   }
 
   return null;
@@ -70,11 +87,21 @@ export const MessageBubble = memo(function MessageBubble({ message }: { message:
 // under a single "Tool calls:" label with a flex-wrap row so they have a
 // proper gap between them. Non-data parts pass through to renderPart
 // unchanged.
-function renderAssistantParts(parts: UIMessage["parts"]) {
+function renderAssistantParts(parts: UIMessage["parts"], handovers: readonly SessionHandover[]) {
   const nodes: React.ReactNode[] = [];
   let i = 0;
+  let steps = 0;
   while (i < parts.length) {
     const type = parts[i].type as string;
+    // The divider before the first step the next run took is where the reply moved.
+    if (type === "step-start") steps++;
+    const handover =
+      type === "step-start" ? handovers.find((h) => h.afterSteps + 1 === steps) : undefined;
+    if (handover) {
+      nodes.push(<HandoverDivider key={`handover-${i}`} handover={handover} />);
+      i++;
+      continue;
+    }
     if (type?.startsWith?.("data-") && type !== "data-subagent-run") {
       const groupStart = i;
       const group: UIMessage["parts"] = [];

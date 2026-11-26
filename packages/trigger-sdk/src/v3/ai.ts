@@ -4,6 +4,7 @@ import {
   accessoryAttributes,
   type ChatSnapshotV1 as CoreChatSnapshotV1,
   type ApiClientConfiguration,
+  ApiError,
   apiClientManager,
   canFallbackToLocalPublicToken,
   generateJWT,
@@ -30,6 +31,9 @@ import {
   TURN_START_IN_SEQ_HEADER,
   TRIGGER_TURN_MARKER_SUBTYPE,
   sessionStreams,
+  signals,
+  SKEW_PROTECTION_THRESHOLD_SIGNAL,
+  skewProtectionThresholdForTask,
   SessionChannelRouter,
   InputStreamTimeoutError,
   taskContext,
@@ -39,6 +43,9 @@ import {
   type TaskSchema,
   type TaskWithSchema,
   TRIGGER_CONTROL_SUBTYPE,
+  TURN_HANDOVER_ANSWERED_HEADER,
+  TURN_HANDOVER_UPGRADE_HEADER,
+  TURN_HANDOVER_STEPS_HEADER,
   SESSION_CLOSED_HEADER,
   SESSION_CLOSED_REASON_HEADER,
   tryCatch,
@@ -56,7 +63,9 @@ import {
   type NarrowWebhookEvent,
   type AnyWebhookEndpoint,
   type InferWebhookEndpointEvent,
+  type SessionRunHandover,
 } from "@trigger.dev/core/v3";
+import { compareDeploymentVersions } from "@trigger.dev/core/v3/isomorphic";
 import type {
   streamText as aiStreamTextSignature,
   FinishReason,
@@ -456,6 +465,13 @@ type ReplaySessionOutTailResult<TUIMessage extends UIMessage> = {
    * `input-streaming` orphans surfaced via `pendingToolCalls`).
    */
   partialRaw: TUIMessage | undefined;
+  /**
+   * Set when the last thing on the stream is a `turn-handover` record: the
+   * previous run stopped at a step boundary and `partial` is the reply so far,
+   * every step in it finished. The turn is continued, not answered again.
+   * `answeredId` is the user message the reply answers (absent from older SDKs).
+   */
+  handover?: { steps: number; answeredId?: string };
 };
 
 type ReplaySessionOutTailImpl = <TUIMessage extends UIMessage>(
@@ -511,7 +527,26 @@ async function replaySessionOutTail<TUIMessage extends UIMessage>(
     afterEventId: options?.lastEventId,
   });
   const collected: UIMessageChunk[] = [];
+  let handover: { steps: number; answeredId?: string } | undefined;
+  /** Chunks written by the run a handover continued in; they extend the reply before them. */
+  const continuesReply = new Set<UIMessageChunk>();
+  let afterHandover = false;
   for (const record of response.records) {
+    const control = controlSubtype(record.headers);
+    if (control === TRIGGER_CONTROL_SUBTYPE.TURN_HANDOVER) {
+      const steps = Number.parseInt(
+        headerValue(record.headers, TURN_HANDOVER_STEPS_HEADER) ?? "",
+        10
+      );
+      const answeredId = headerValue(record.headers, TURN_HANDOVER_ANSWERED_HEADER);
+      handover = {
+        steps: Number.isFinite(steps) ? steps : 0,
+        ...(answeredId ? { answeredId } : {}),
+      };
+      afterHandover = true;
+      continue;
+    }
+    if (control === TRIGGER_CONTROL_SUBTYPE.TURN_COMPLETE) handover = undefined;
     // `data` is the chunk object as written by the SDK's session-out
     // writer (an AI SDK `UIMessageChunk` or a Trigger control object).
     // The route forwards it as-is — no JSON envelope to unwrap here.
@@ -525,6 +560,15 @@ async function replaySessionOutTail<TUIMessage extends UIMessage>(
     // session-state telemetry, etc.). They ride the same stream but aren't part
     // of the UIMessageChunk discriminated union and would confuse the reducer.
     if (type.startsWith("trigger:")) continue;
+    // Anything written after the marker means the run that took over died too:
+    // that is a cut-off reply, recovered the ordinary way.
+    handover = undefined;
+    // The continuing run restarts the message with `start`; chunks it writes before that (a
+    // steering marker) belong to the same reply too.
+    if (afterHandover && type === "start") {
+      continuesReply.add(chunk as UIMessageChunk);
+      afterHandover = false;
+    }
     collected.push(chunk as UIMessageChunk);
   }
   if (collected.length === 0) return { settled: [], partial: undefined, partialRaw: undefined };
@@ -537,6 +581,11 @@ async function replaySessionOutTail<TUIMessage extends UIMessage>(
   const segments: Segment[] = [];
   let current: Segment | undefined;
   for (const chunk of collected) {
+    if (chunk.type === "start" && current && continuesReply.has(chunk)) {
+      // The run a handover continued in restarts the same message.
+      current.chunks.push(chunk);
+      continue;
+    }
     if (chunk.type === "start") {
       current = { chunks: [chunk], closed: false };
       segments.push(current);
@@ -589,7 +638,7 @@ async function replaySessionOutTail<TUIMessage extends UIMessage>(
       settled.push(last as TUIMessage);
     }
   }
-  return { settled, partial, partialRaw };
+  return { settled, partial, partialRaw, ...(partial && handover ? { handover } : {}) };
 }
 
 /**
@@ -635,6 +684,7 @@ type ReplaySessionInTailImpl = <TUIMessage extends UIMessage>(
   | {
       messages: { message: TUIMessage; metadata: unknown; seqNum: number }[];
       channelEvents: ReplayedChannelEvent[];
+      stops?: number[];
     }
 >;
 
@@ -690,10 +740,16 @@ async function replaySessionInTailWithChannels<TUIMessage extends UIMessage>(
 ): Promise<{
   messages: { message: TUIMessage; metadata: unknown; seqNum: number }[];
   channelEvents: ReplayedChannelEvent[];
+  /** Seq nums of `stop` records on the tail. Only a handed-over turn acts on them. */
+  stops: number[];
+  /** The highest seq read, of any record: the end of the replay window this read saw. */
+  lastSeqNum?: number;
 }> {
   if (replaySessionInTailImpl) {
     const replayed = await replaySessionInTailImpl<TUIMessage>(sessionId, options);
-    return Array.isArray(replayed) ? { messages: replayed, channelEvents: [] } : replayed;
+    return Array.isArray(replayed)
+      ? { messages: replayed, channelEvents: [], stops: [] }
+      : { ...replayed, stops: replayed.stops ?? [] };
   }
   const apiClient = apiClientManager.clientOrThrow();
   const response = await apiClient.readSessionStreamRecords(sessionId, "in", {
@@ -701,7 +757,15 @@ async function replaySessionInTailWithChannels<TUIMessage extends UIMessage>(
   });
   const out: { message: TUIMessage; metadata: unknown; seqNum: number }[] = [];
   const channelEvents: ReplayedChannelEvent[] = [];
+  const stops: number[] = [];
+  let lastSeqNum: number | undefined;
   for (const record of response.records) {
+    if (
+      Number.isFinite(record.seqNum) &&
+      (lastSeqNum === undefined || record.seqNum > lastSeqNum)
+    ) {
+      lastSeqNum = record.seqNum;
+    }
     // session.in writers POST `JSON.stringify(chunk)` directly; the
     // webapp wraps that in `{ data: <string>, id }` and stores it on
     // S2. The records endpoint hands `data` back as the original
@@ -719,6 +783,7 @@ async function replaySessionInTailWithChannels<TUIMessage extends UIMessage>(
     }
     if (!chunk || typeof chunk !== "object") continue;
     const kind = (chunk as { kind?: unknown }).kind;
+    if (kind === "stop") stops.push(record.seqNum);
     if (kind !== "message") continue;
     const payload = (
       chunk as {
@@ -751,7 +816,12 @@ async function replaySessionInTailWithChannels<TUIMessage extends UIMessage>(
       seqNum: record.seqNum,
     });
   }
-  return { messages: out, channelEvents };
+  return {
+    messages: out,
+    channelEvents,
+    stops,
+    ...(lastSeqNum !== undefined ? { lastSeqNum } : {}),
+  };
 }
 
 /**
@@ -2678,6 +2748,11 @@ async function installChatInputRouter(
     fallbackResumeFrom?: number;
     recoveredSeqNums?: readonly number[];
     resuming?: boolean;
+    /**
+     * The end of the replay window as the boot's own tail read saw it. Reading it again would put
+     * a record that landed in between (a stop) inside the window, where it is dropped as replayed.
+     */
+    replayWindowEnd?: number;
   }
 ): Promise<SessionChannelRouter> {
   const entry = chatInputRouterEntry(chatId);
@@ -2700,7 +2775,9 @@ async function installChatInputRouter(
   // exactly how a head-start handover reaches a cold run.
   const resuming = checkpoint.resumeFrom !== undefined || options?.resuming === true;
   if (resuming) {
-    const replayWindowEnd = await findSessionInReplayWindowEnd(chatId, checkpoint.resumeFrom);
+    const replayWindowEnd =
+      options?.replayWindowEnd ??
+      (await findSessionInReplayWindowEnd(chatId, checkpoint.resumeFrom));
     if (replayWindowEnd !== undefined) {
       checkpoint.appliedThrough = Math.max(
         checkpoint.appliedThrough ?? replayWindowEnd,
@@ -3628,6 +3705,351 @@ const chatUpgradeExternalDeploymentIdKey = locals.create<string>(
 );
 
 /**
+ * @internal The running turn's mid-turn handover state.
+ *
+ * `followsMidTurn` is set when the agent has `versionSkew: "follow-mid-turn"`.
+ * `requested` is set while the latest `trigger.skew-protection-threshold` signal puts this run's
+ * version below the threshold for its task, and cleared when a later one doesn't.
+ * `handOver` is set while the turn's response is piped by the managed pipe:
+ * the managed `prepareStep` calls it between steps, and it resolves true once
+ * every chunk of the finished steps is in the output and the pipe is detached.
+ */
+type TurnHandover = {
+  followsMidTurn?: boolean;
+  requested?: { version?: string };
+  /** Steps of the reply finished by earlier runs, when this turn continues a handed-over one. */
+  stepOffset?: number;
+  handOver?: (finishedSteps: number, lastStepToolCallIds: string[]) => Promise<boolean>;
+};
+const chatTurnHandoverKey = locals.create<TurnHandover>("chat.turnHandover");
+
+/** Whether this run's turn should move, from the latest `trigger.skew-protection-threshold` signal. */
+function turnHandoverRequestFor(payload: unknown, ctx: TaskRunContext): TurnHandover["requested"] {
+  const version = skewProtectionThresholdForTask(payload, ctx.task.id);
+  if (!version) return undefined;
+  const ownVersion = ctx.deployment?.version ?? ctx.run.version;
+  if (!ownVersion || compareDeploymentVersions(ownVersion, version) >= 0) return undefined;
+  return { version };
+}
+
+/** How long a handover waits for the finished steps' chunks to reach the output before giving up. */
+const TURN_HANDOVER_DRAIN_TIMEOUT_MS = 5_000;
+
+/**
+ * At a step boundary: hand the running turn over if this run was asked to. True once the turn's
+ * finished steps are written and its pipe is detached; the next step's model call must then
+ * never start.
+ */
+async function handOverAtStepBoundary(steps: readonly CompactionStep[]): Promise<boolean> {
+  const handover = locals.get(chatTurnHandoverKey);
+  // `chat.requestUpgrade()` during the turn takes the same path as the signal.
+  const asked = handover?.requested || locals.get(chatUpgradeRequestedKey);
+  if (!asked || !handover?.handOver || steps.length === 0) return false;
+  // A turn only goes on to another step after tool calls. Their ids tie this
+  // boundary to the generation the turn is piping (see `whenToolStepFinished`).
+  const lastStepToolCallIds =
+    steps.at(-1)?.content.flatMap((part) => (part.toolCallId ? [part.toolCallId] : [])) ?? [];
+  const finishedSteps = (handover.stepOffset ?? 0) + steps.length;
+  const handedOver = await handover.handOver(finishedSteps, lastStepToolCallIds);
+  if (handedOver) endStreamTextSpanAtHandover(finishedSteps, handover.requested?.version);
+  return handedOver;
+}
+
+/**
+ * The model call's `ai.streamText` span would never end once its turn is handed over: the next
+ * step's `prepareStep` never settles. End it here, where it is the active span, saying why.
+ */
+function endStreamTextSpanAtHandover(afterSteps: number, thresholdVersion: string | undefined) {
+  const span = trace.getActiveSpan();
+  if (!span || (span as { name?: unknown }).name !== "ai.streamText") return;
+  span.setAttributes({
+    "chat.handover.afterSteps": afterSteps,
+    ...(thresholdVersion ? { "chat.handover.thresholdVersion": thresholdVersion } : {}),
+  });
+  span.addEvent("turn handed over", { "chat.handover.afterSteps": afterSteps });
+  span.end();
+}
+
+/**
+ * Hand the running turn over to a newer version at this step boundary, if it was asked to.
+ * Only for agents with `versionSkew: "follow-mid-turn"`; otherwise it does nothing.
+ *
+ * `chat.toStreamTextOptions()` and `turn.prepareStep()` do this already. Call it first in your
+ * own `prepareStep` when you pass neither. When the turn is handed over the returned promise
+ * never settles, so the next step never starts and the run exits.
+ *
+ * @example
+ * ```ts
+ * streamText({
+ *   model,
+ *   messages,
+ *   prepareStep: async (step) => {
+ *     await chat.handOverAtStep(step);
+ *     return myPrepareStep(step);
+ *   },
+ * });
+ * ```
+ */
+async function handOverAtStep(step: { steps: readonly unknown[] }): Promise<void> {
+  if (!locals.get(chatTurnHandoverKey)?.followsMidTurn) return;
+  if (await handOverAtStepBoundary(step.steps as readonly CompactionStep[])) {
+    await new Promise<never>(() => {});
+  }
+}
+
+/**
+ * The turn a previous run handed over, read at a `chat.createSession` continuation boot: the reply
+ * so far (the `.out` tail ends on a `turn-handover` marker), the message it answers (the head of
+ * the unconsumed `.in` tail), and whether a stop was sent during the handover.
+ */
+async function readHandedOverTurn(chatId: string): Promise<
+  | {
+      partial: UIMessage;
+      answered?: { message: UIMessage; seqNum: number };
+      /** The id of the message the reply answers, also when it isn't on `.in` (a payload). */
+      answeredId?: string;
+      /** Messages the previous run injected into the reply: part of it, never answered again. */
+      injected: { message: UIMessage; seqNum: number }[];
+      stopped: boolean;
+      /** The highest `.in` seq read, for the router's replay window. */
+      lastSeqNum?: number;
+      /** Steps of the reply finished before it was handed over. */
+      steps: number;
+    }
+  | undefined
+> {
+  try {
+    return await retryWhileApiUnavailable("chat session: reading a handed-over turn", () =>
+      readHandedOverTurnOnce(chatId)
+    );
+  } catch (error) {
+    // Booting without the turn would answer its message again from the first step: fail instead.
+    if (isApiUnavailable(error)) throw error;
+    logger.warn("chat session: reading a handed-over turn failed; continuing without it", {
+      error: error instanceof Error ? error.message : String(error),
+    });
+    return undefined;
+  }
+}
+
+async function readHandedOverTurnOnce(chatId: string) {
+  const out = await replaySessionOutTail<UIMessage>(chatId);
+  if (!out.handover || !out.partial) return undefined;
+  // Without the cursor the tail is read from the start, as chat.agent's boot does.
+  const cursor = await findLatestSessionInCursor(chatId).catch((error: unknown) => {
+    if (isApiUnavailable(error)) throw error;
+    return undefined;
+  });
+  const tail = await replaySessionInTailWithChannels<UIMessage>(chatId, {
+    lastEventId: cursor !== undefined ? String(cursor) : undefined,
+  });
+  // Without the marker's id (an older SDK wrote it), the head of the tail is the answered one.
+  const answeredId = out.handover.answeredId;
+  const answered = answeredId
+    ? tail.messages.find((entry) => entry.message.id === answeredId)
+    : tail.messages[0];
+  const injectedIds = new Set(steeringMarkers([out.partial]).flatMap((m) => m.messageIds));
+  return {
+    partial: out.partial,
+    steps: out.handover.steps,
+    ...(answered ? { answered: { message: answered.message, seqNum: answered.seqNum } } : {}),
+    injected: tail.messages
+      .filter((entry) => entry !== answered && injectedIds.has(entry.message.id))
+      .map((entry) => ({ message: entry.message, seqNum: entry.seqNum })),
+    ...((answeredId ?? answered?.message.id)
+      ? { answeredId: answeredId ?? answered?.message.id }
+      : {}),
+    stopped: stoppedDuringHandover(tail.stops, answered?.seqNum),
+    ...(tail.lastSeqNum !== undefined ? { lastSeqNum: tail.lastSeqNum } : {}),
+  };
+}
+
+/**
+ * The user messages right before a handed-over partial at the end of `chain`: the one the reply
+ * answers and any the previous run injected into it.
+ */
+function usersBeforeHandedOverPartial<T extends UIMessage>(chain: readonly T[]): T[] {
+  let start = chain.length - 1;
+  while (start > 0 && chain[start - 1]!.role === "user") start--;
+  return chain.slice(start, chain.length - 1);
+}
+
+/**
+ * Whether a stop was sent while the previous run handed its turn over. That run acts on a stop
+ * only while its turn runs, so one after the answered message reached nobody.
+ */
+function stoppedDuringHandover(stopSeqs: readonly number[], answeredSeq: number | undefined) {
+  return stopSeqs.some((seqNum) => seqNum > (answeredSeq ?? Number.NEGATIVE_INFINITY));
+}
+
+type ArmedTurnHandover = {
+  /** The signal to pipe the response with: aborted once the turn is handed over. */
+  signal: AbortSignal;
+  /** How many steps finished before the turn was handed over; undefined until it is. */
+  afterSteps(): number | undefined;
+};
+
+/**
+ * From here the running turn can be handed over at a step boundary: `turnHandover.handOver`
+ * waits until the output holds every chunk of the finished steps, then aborts the returned signal
+ * to detach the pipe. Clear `turnHandover.handOver` when the pipe ends.
+ */
+function armTurnHandover(turnHandover: TurnHandover, turnSignal: AbortSignal): ArmedTurnHandover {
+  const controller = new AbortController();
+  const response = managedResponse();
+  let afterSteps: number | undefined;
+  turnHandover.handOver = async (finishedSteps, lastStepToolCallIds) => {
+    if (turnSignal.aborted) return false;
+    const written = await response.whenToolStepFinished(
+      lastStepToolCallIds,
+      TURN_HANDOVER_DRAIN_TIMEOUT_MS
+    );
+    if (!written || turnSignal.aborted) return false;
+    afterSteps = finishedSteps;
+    controller.abort(new DOMException("turn handed over", "AbortError"));
+    return true;
+  };
+  return { signal: AbortSignal.any([turnSignal, controller.signal]), afterSteps: () => afterSteps };
+}
+
+/**
+ * The turn was handed over: flush what the finished steps wrote, write the handover marker, and
+ * start the run that continues the reply. The marker goes first so that run finds it at boot.
+ * Returns the continuing run's id when it started.
+ */
+async function finishHandedOverTurn(
+  chatId: string,
+  handover: SessionRunHandover,
+  answeredId: string | undefined
+): Promise<string | undefined> {
+  // One decision for the marker and every request: `chat.defer()` work can still change it.
+  const upgrade = locals.get(chatUpgradeRequestedKey)
+    ? { externalDeploymentId: locals.get(chatUpgradeExternalDeploymentIdKey) }
+    : undefined;
+  await locals.get(chatManagedResponseKey)?.close();
+  await getChatSession().out.writeControl(TRIGGER_CONTROL_SUBTYPE.TURN_HANDOVER, [
+    [TURN_HANDOVER_STEPS_HEADER, String(handover.afterSteps)],
+    ...(answeredId ? [[TURN_HANDOVER_ANSWERED_HEADER, answeredId] as [string, string]] : []),
+    ...(upgrade
+      ? [[TURN_HANDOVER_UPGRADE_HEADER, upgrade.externalDeploymentId ?? ""] as [string, string]]
+      : []),
+  ]);
+  return continueHandedOverTurn(chatId, handover, upgrade);
+}
+
+/** Wait for the turn's `chat.defer()` work, at most 5 seconds. */
+async function awaitDeferredWork(): Promise<void> {
+  const deferred = locals.get(chatDeferKey);
+  if (deferred && deferred.size > 0) {
+    await Promise.race([
+      Promise.allSettled(deferred),
+      new Promise<void>((r) => setTimeout(r, 5_000)),
+    ]);
+  }
+}
+
+/**
+ * Start the run that continues a handed-over turn: the upgrade target when `chat.requestUpgrade()`
+ * asked for the handover, otherwise the current deployment as a skew protection move.
+ */
+async function continueHandedOverTurn(
+  chatId: string,
+  handover: SessionRunHandover,
+  upgrade: { externalDeploymentId?: string } | undefined
+): Promise<string | undefined> {
+  const thresholdVersion = locals.get(chatTurnHandoverKey)?.requested?.version;
+  try {
+    return await retryWhileApiUnavailable("chat: starting the run a turn was handed to", () =>
+      performEndAndContinue(
+        upgrade
+          ? {
+              reason: "upgrade",
+              externalDeploymentId: upgrade.externalDeploymentId,
+              handover,
+            }
+          : {
+              reason: "skew-threshold",
+              handover: { ...handover, ...(thresholdVersion ? { thresholdVersion } : {}) },
+            }
+      )
+    );
+  } catch (error) {
+    // The run exits with the marker last. The server sees the run end on it and starts the run
+    // that continues the reply.
+    logger.warn("chat: starting the run a turn was handed to failed", { chatId, error });
+    return undefined;
+  }
+}
+
+/**
+ * The waits between tries of a call a mid-turn handover depends on, about three minutes in all, so
+ * a turn isn't dropped while the API restarts. Each try is a request the API client already retries
+ * for a few seconds.
+ */
+const API_UNAVAILABLE_RETRY_DELAYS_MS = [1, 2, 4, 8, 15, 30, 30, 30, 30, 30].map((s) => s * 1000);
+let apiUnavailableRetryDelaysMs: readonly number[] = API_UNAVAILABLE_RETRY_DELAYS_MS;
+
+/** @internal */
+export function __setApiUnavailableRetryDelaysForTests(delays: readonly number[] | undefined) {
+  apiUnavailableRetryDelaysMs = delays ?? API_UNAVAILABLE_RETRY_DELAYS_MS;
+}
+
+/**
+ * Whether the API didn't answer: no response, or a 5xx, 408 or 429. A 4xx is the server's answer
+ * and isn't retried, nor is an error that didn't come from the API.
+ */
+function isApiUnavailable(error: unknown): boolean {
+  if (!(error instanceof ApiError)) return false;
+  return (
+    error.status === undefined ||
+    error.status >= 500 ||
+    error.status === 408 ||
+    error.status === 429
+  );
+}
+
+/** Run `fn`, trying again while the API is unavailable; the last error is thrown. */
+async function retryWhileApiUnavailable<T>(what: string, fn: () => Promise<T>): Promise<T> {
+  for (let attempt = 0; ; attempt++) {
+    try {
+      return await fn();
+    } catch (error) {
+      const delayMs = apiUnavailableRetryDelaysMs[attempt];
+      if (delayMs === undefined || !isApiUnavailable(error)) throw error;
+      logger.warn(`${what} failed; trying again`, {
+        attempt: attempt + 1,
+        delayMs,
+        error: error instanceof Error ? error.message : String(error),
+      });
+      await new Promise((resolve) => setTimeout(resolve, delayMs));
+    }
+  }
+}
+
+/**
+ * The running turn's handover state (also set in locals for the step-boundary check) and the
+ * function that stops listening. With `versionSkew: "follow-mid-turn"` the run listens for
+ * `trigger.skew-protection-threshold` while the turn runs; otherwise it opens no connection and
+ * only `chat.requestUpgrade()` can hand the turn over.
+ */
+function listenForTurnHandover(policy: ChatVersionSkewPolicy | undefined): {
+  turnHandover: TurnHandover;
+  stop: () => void;
+} {
+  const followsMidTurn = policy === "follow-mid-turn";
+  const turnHandover: TurnHandover = { followsMidTurn };
+  locals.set(chatTurnHandoverKey, turnHandover);
+  const ctx = taskContext.ctx;
+  const stop =
+    ctx && followsMidTurn
+      ? signals.on(SKEW_PROTECTION_THRESHOLD_SIGNAL, (signal) => {
+          turnHandover.requested = turnHandoverRequestFor(signal.payload, ctx);
+        })
+      : () => {};
+  return { turnHandover, stop };
+}
+
+/**
  * @internal Flag set by `chat.endRun()` to exit the loop after the current
  * turn completes, without any upgrade semantics. Checked at the same
  * post-turn / pre-wait sites as `chatUpgradeRequestedKey`.
@@ -3867,6 +4289,13 @@ type SteeringQueueEntry = {
   uiMessage: UIMessage;
   modelMessages: ModelMessage[];
   seqNum?: number;
+  /**
+   * Takes the message for injection when it isn't a router record: a message the
+   * boot recovered from the `.in` tail and queued as a later turn. False when that
+   * turn already started. `release` gives it back if the transform fails.
+   */
+  claim?: () => boolean;
+  release?: () => void;
 };
 /** @internal */
 const chatPendingMessagesKey = locals.create<PendingMessagesOptions>("chat.pendingMessages");
@@ -4648,6 +5077,10 @@ async function drainSteeringQueue(
       const claimed: SteeringQueueEntry[] = [];
       const takenRecords: SessionStreamRecord[] = [];
       for (const entry of batch) {
+        if (entry.claim) {
+          if (entry.claim()) claimed.push(entry);
+          continue;
+        }
         if (entry.seqNum === undefined) {
           claimed.push(entry);
           continue;
@@ -4672,6 +5105,7 @@ async function drainSteeringQueue(
        */
       const releaseClaim = () => {
         for (const record of takenRecords) router.untake(CHAT_ROUTE_MESSAGES, record);
+        for (const entry of claimed) entry.release?.();
         for (const entry of claimed) if (!queue.includes(entry)) queue.push(entry);
       };
 
@@ -5527,6 +5961,13 @@ function toStreamTextOptions(
       responseMessages?: ModelMessage[];
     }) => {
       let resultMessages: ModelMessage[] | undefined;
+
+      // 0. Mid-turn handover. The server asked this run to move to a newer
+      // version; at least one step has finished, so the turn stops here and a
+      // new run continues it from this step. This step's model call must never
+      // start, so the promise is left pending: the run exits once the turn has
+      // written its marker.
+      if (await handOverAtStepBoundary(steps)) return new Promise<never>(() => {});
 
       // 1. Compaction
       if (taskCompaction) {
@@ -8204,8 +8645,13 @@ export type ChatAgentOptions<
    * - `"follow"` (default) hands the conversation to the pinned deployment at the next
    *   turn boundary, so no `chat.requestUpgrade()` of your own is needed.
    * - `"hold"` stays put until you ask to move. Manual `chat.requestUpgrade()` works either way.
+   * - `"follow-mid-turn"` does everything `"follow"` does, and also moves a turn that is still
+   *   running: when this run's version is below the skew protection threshold for this agent,
+   *   the turn stops after its current step and a run on the current deployment continues the
+   *   same reply from the next step. Without it, a running turn finishes on its version and the
+   *   conversation moves at the next message.
    *
-   * Ignored for sessions with no pin, and for sessions using `lockToVersion`.
+   * Pin following is ignored for sessions with no pin, and for sessions using `lockToVersion`.
    */
   versionSkew?: ChatVersionSkewPolicy;
 
@@ -9029,7 +9475,7 @@ function chatCustomAgent<
   >({
     ...restOptions,
     triggerSource: "agent",
-    agentConfig: { type: "ai-sdk-chat" },
+    agentConfig: { type: "ai-sdk-chat", turnHandover: true },
     run: async (
       payload: ChatTaskWirePayload<TUIMessage, inferSchemaIn<TClientDataSchema>>,
       runOptions
@@ -9273,7 +9719,7 @@ function chatAgent<
     ...restOptions,
     retry,
     triggerSource: "agent",
-    agentConfig: { type: "ai-sdk-chat" },
+    agentConfig: { type: "ai-sdk-chat", versionSkew: versionSkew ?? "follow", turnHandover: true },
     run: async (
       payload: ChatTaskWirePayload<TUIMessage, inferSchemaIn<TClientDataSchema>>,
       { signal: runSignal, ctx }
@@ -9719,10 +10165,26 @@ function chatAgent<
       let replayedSettled: TUIMessage[] = [];
       let replayedPartial: TUIMessage | undefined;
       let replayedPartialRaw: TUIMessage | undefined;
+      let replayedHandover: { steps: number; answeredId?: string } | undefined;
+      /** The id of the message a resumed handed-over turn answers, for a second handover. */
+      let resumedAnsweredId: string | undefined;
+      /** The turn the previous run handed over mid-reply, queued to continue first. */
+      let resumedHandoverPayload:
+        | ChatTaskWirePayload<TUIMessage, inferSchemaIn<TClientDataSchema>>
+        | undefined;
       let replayedInTail: { message: TUIMessage; metadata: unknown; seqNum: number }[] = [];
       // Channel deliveries on the same tail. They are not "messages" for the recovery hooks, but
       // they are turns the predecessor owed, and they have to dispatch in seq order with the rest.
       let replayedChannelInTail: ReplayedChannelEvent[] = [];
+      let replayedInStops: number[] = [];
+      let replayedInLastSeq: number | undefined;
+      /**
+       * A stop sent while the turn was being handed over: on the tail after the
+       * message the turn answers, or live before the continued turn starts. The
+       * continued turn then ends where the previous run left the reply.
+       */
+      let resumedHandoverStopped = false;
+      let resumedHandoverStopSub: { off: () => void } | undefined;
       // Wire payloads to dispatch as turns before the regular session.in
       // pump kicks in. Populated by `onRecoveryBoot.recoveredTurns` (or its
       // default, `inFlightUsers`). The turn-loop checks this queue ahead of
@@ -9819,16 +10281,26 @@ function chatAgent<
             // independent (both depend only on the snapshot) — run them
             // concurrently. Each phase keeps its own catch + duration
             // attribute.
+            /** Set when the API didn't answer the `.in` reads, retries included. */
+            let inReplayUnavailable: unknown;
             const replayOutPhase = async () => {
               const replayOutStart = Date.now();
               try {
-                const replayResult = await replaySessionOutTail<TUIMessage>(sessionIdForSnapshot, {
-                  lastEventId: bootSnapshot?.lastOutEventId,
-                });
+                const replayResult = await retryWhileApiUnavailable(
+                  "chat.agent: session.out replay",
+                  () =>
+                    replaySessionOutTail<TUIMessage>(sessionIdForSnapshot, {
+                      lastEventId: bootSnapshot?.lastOutEventId,
+                    })
+                );
                 replayedSettled = replayResult.settled;
                 replayedPartial = replayResult.partial;
                 replayedPartialRaw = replayResult.partialRaw;
+                replayedHandover = replayResult.handover;
               } catch (error) {
+                // Without `.out` the run can't tell a reply handed over mid-turn from a finished
+                // one, and would answer its message again from the first step: fail the boot.
+                if (isApiUnavailable(error)) throw error;
                 logger.warn("chat.agent: session.out replay failed; using snapshot only", {
                   error: error instanceof Error ? error.message : String(error),
                   sessionId: sessionIdForSnapshot,
@@ -9867,12 +10339,16 @@ function chatAgent<
                 bootInCursorResolved = true;
               } else {
                 try {
-                  bootInCursor = await findLatestSessionInCursor(payload.chatId);
+                  bootInCursor = await retryWhileApiUnavailable(
+                    "chat.agent: session.in cursor scan",
+                    () => findLatestSessionInCursor(payload.chatId)
+                  );
                   bootInCursorResolved = true;
-                } catch {
+                } catch (error) {
                   // Transient scan failure: leave unresolved so the
                   // resume-cursor block below retries the lookup.
                   bootInCursor = undefined;
+                  if (isApiUnavailable(error)) inReplayUnavailable = error;
                 }
               }
               bootSpan.setAttribute(
@@ -9880,12 +10356,17 @@ function chatAgent<
                 snapshotInCursor !== undefined
               );
               try {
-                const tail = await replaySessionInTailWithChannels<TUIMessage>(payload.chatId, {
-                  lastEventId: bootInCursor !== undefined ? String(bootInCursor) : undefined,
-                });
+                const tail = await retryWhileApiUnavailable("chat.agent: session.in replay", () =>
+                  replaySessionInTailWithChannels<TUIMessage>(payload.chatId, {
+                    lastEventId: bootInCursor !== undefined ? String(bootInCursor) : undefined,
+                  })
+                );
                 replayedInTail = tail.messages;
                 replayedChannelInTail = tail.channelEvents;
+                replayedInStops = tail.stops;
+                replayedInLastSeq = tail.lastSeqNum;
               } catch (error) {
+                if (isApiUnavailable(error)) inReplayUnavailable = error;
                 logger.warn(
                   "chat.agent: session.in replay failed; in-flight users may not be recovered",
                   { error: error instanceof Error ? error.message : String(error) }
@@ -9896,6 +10377,11 @@ function chatAgent<
             };
 
             await Promise.all([replayOutPhase(), replayInPhase()]);
+            // A handed-over turn's message and the replies after it are found on `.in`: booting
+            // without it would answer messages again.
+            if (replayedHandover !== undefined && inReplayUnavailable !== undefined) {
+              throw inReplayUnavailable;
+            }
           },
           {
             attributes: {
@@ -9916,10 +10402,18 @@ function chatAgent<
         ...replayedChannelInTail.map((r) => r.seqNum),
       ];
 
+      // A boot that may continue a handed-over turn listens for a stop from the moment the router
+      // attaches: one arriving before the continued turn has a stop controller reaches nobody.
+      if (replayedHandover !== undefined) {
+        resumedHandoverStopSub = chatInputRouter().on(CHAT_ROUTE_STOP, () => {
+          resumedHandoverStopped = true;
+        });
+      }
       await installChatInputRouter(payload.chatId, {
         fallbackResumeFrom: bootInCursorResolved ? bootInCursor : undefined,
         recoveredSeqNums,
         resuming: Boolean(payload.continuation) || ctx.attempt.number > 1,
+        replayWindowEnd: replayedInLastSeq,
       });
 
       // ── Recovery boot + chain reconstruction ────────────────────────
@@ -9936,6 +10430,12 @@ function chatAgent<
         // predecessor chose to end before processing the message;
         // those route through the normal continuation-wait path.
         const hasRecoveredState = partialAssistant !== undefined;
+        // The previous run stopped at a step boundary and handed its turn over.
+        // The reply so far is whole (every step in it finished), so this run
+        // continues it under the same message id: no recovery hook, and the
+        // message it answers is not dispatched as a new turn.
+        const handedOver =
+          couldHavePriorState && partialAssistant !== undefined && replayedHandover !== undefined;
 
         if (couldHavePriorState && hasRecoveredState) {
           locals.set(chatChannelRecoveryPendingKey, { value: true });
@@ -9944,7 +10444,7 @@ function chatAgent<
         let hookChain: TUIMessage[] | undefined;
         let hookRecoveredTurns: TUIMessage[] | undefined;
         let hookBeforeBoot: (() => Promise<void>) | undefined;
-        if (couldHavePriorState && hasRecoveredState && onRecoveryBoot) {
+        if (couldHavePriorState && hasRecoveredState && !handedOver && onRecoveryBoot) {
           // Extract from the RAW partial (pre-cleanup). `cleanupAbortedParts`
           // strips exactly the input-streaming / input-available tool parts
           // we want to surface here, so the cleaned `partialAssistant` would
@@ -10026,14 +10526,53 @@ function chatAgent<
           inFlightUsers.length > 1 &&
           inFlightUsers[0]!.role === "user" &&
           (replayedChannelInTail.length === 0 || replayedInTail[0]?.seqNum === oldestTailSeq);
-        if (hookChain !== undefined) {
+        // On a handover the answered message is the head of the `.in` tail, unless
+        // the turn-start transcript already ends on a different user message
+        // (the message came in the run's payload and never was on `.in`).
+        const lastSettled = settledMessages.at(-1);
+        const markedAnswered = replayedHandover?.answeredId;
+        const tailHoldsAnswered =
+          handedOver &&
+          inFlightUsers.length > 0 &&
+          (markedAnswered
+            ? inFlightUsers[0]!.id === markedAnswered
+            : lastSettled?.role !== "user" || lastSettled.id === inFlightUsers[0]!.id);
+        if (handedOver) {
+          resumedAnsweredId =
+            markedAnswered ??
+            (tailHoldsAnswered
+              ? inFlightUsers[0]!.id
+              : lastSettled?.role === "user"
+                ? lastSettled.id
+                : undefined);
+        }
+        // Messages the previous run already injected into the reply (its markers name them) are
+        // part of it: they go in the chain, where the marker renders them for the model, and are
+        // neither answered nor offered again.
+        const injectedIntoReply = new Set(
+          handedOver ? steeringMarkers([partialAssistant!]).flatMap((m) => m.messageIds) : []
+        );
+        const tailAfterAnswered = replayedInTail.slice(tailHoldsAnswered ? 1 : 0);
+        if (handedOver) {
+          seedChain = mergeByIdReplaceWins<TUIMessage>(settledMessages, [
+            ...(tailHoldsAnswered ? [inFlightUsers[0]!] : []),
+            ...tailAfterAnswered
+              .filter((r) => injectedIntoReply.has(r.message.id))
+              .map((r) => r.message),
+            partialAssistant!,
+          ]);
+        } else if (hookChain !== undefined) {
           seedChain = hookChain;
         } else if (partialFollowsBrowserMessage) {
           seedChain = [...settledMessages, inFlightUsers[0]!, partialAssistant];
         } else {
           seedChain = settledMessages;
         }
-        if (hookRecoveredTurns !== undefined) {
+        if (handedOver) {
+          recoveredEntries = tailAfterAnswered
+            .filter((r) => !injectedIntoReply.has(r.message.id))
+            .map((r) => ({ message: r.message, seqNum: r.seqNum }));
+        } else if (hookRecoveredTurns !== undefined) {
           const seqNumsByRecoveredId = new Map<string, number[]>();
           for (const entry of replayedInTail) {
             const existing = seqNumsByRecoveredId.get(entry.message.id);
@@ -10122,6 +10661,30 @@ function chatAgent<
           toInject.push({ injectedPayload, seqNum: entry.seqNum });
         }
         toInject.sort((a, b) => (a.seqNum ?? Infinity) - (b.seqNum ?? Infinity));
+        if (handedOver) {
+          // The handed-over turn continues before anything that arrived after it.
+          // It carries no message: the one it answers is already in the chain.
+          const answered = tailHoldsAnswered ? replayedInTail[0]! : undefined;
+          resumedHandoverPayload = {
+            chatId: payload.chatId,
+            sessionId: payload.sessionId,
+            metadata: answered ? answered.metadata : payload.metadata,
+            trigger: "submit-message",
+            continuation: payload.continuation,
+            previousRunId: payload.previousRunId,
+          } as ChatTaskWirePayload<TUIMessage, inferSchemaIn<TClientDataSchema>>;
+          bootInjectedQueue.push(resumedHandoverPayload);
+          if (answered) {
+            recoveredSeqByPayload.set(resumedHandoverPayload, answered.seqNum);
+            dispatchedRecoveredSeqs.add(answered.seqNum);
+          }
+          if (stoppedDuringHandover(replayedInStops, answered?.seqNum)) {
+            resumedHandoverStopped = true;
+          }
+        } else {
+          resumedHandoverStopSub?.off();
+          resumedHandoverStopSub = undefined;
+        }
         for (const { injectedPayload, seqNum } of toInject) {
           bootInjectedQueue.push(injectedPayload);
           if (seqNum !== undefined) {
@@ -10689,6 +11252,7 @@ function chatAgent<
           // Declared here so the finally can detach it — a handler leaked past
           // its turn duplicates every mid-stream message into the shared buffer.
           let turnMsgSub: { off: () => void } | undefined;
+          let stopTurnHandoverSignal: (() => void) | undefined;
           let turnControlSub: { off: () => void } | undefined;
           let capturedPartialResponse: TUIMessage | undefined;
           let responseCommitted = false;
@@ -11192,8 +11756,18 @@ function chatAgent<
             const isAction = currentWirePayload.trigger === "action";
             const spanName = isAction ? "chat action" : `chat turn ${turn + 1}`;
 
+            const continuesHandedOverTurn =
+              resumedHandoverPayload !== undefined && currentWirePayload === resumedHandoverPayload;
             const turnAttributes: Attributes = {
               ...(isAction ? {} : { "turn.number": turn + 1 }),
+              ...(continuesHandedOverTurn && replayedHandover
+                ? {
+                    "chat.handover.fromStep": replayedHandover.steps + 1,
+                    ...(currentWirePayload.previousRunId
+                      ? { "chat.handover.fromRun": currentWirePayload.previousRunId }
+                      : {}),
+                  }
+                : {}),
               "gen_ai.conversation.id": currentWirePayload.chatId,
               "gen_ai.operation.name": "chat",
               "chat.trigger": currentWirePayload.trigger,
@@ -11275,7 +11849,61 @@ function chatAgent<
                 const cancelSignal = runSignal;
                 const combinedSignal = AbortSignal.any([runSignal, stopController.signal]);
 
+                // Mid-turn handover, both sides. `resumingHandover`: this turn continues a
+                // reply the previous run handed over. `turnHandover`: this run may be asked
+                // to hand its own turn over once the managed pipe arms it.
+                const resumingHandover =
+                  resumedHandoverPayload !== undefined &&
+                  currentWirePayload === resumedHandoverPayload;
+                if (resumingHandover) {
+                  resumedHandoverStopSub?.off();
+                  resumedHandoverStopSub = undefined;
+                  if (resumedHandoverStopped) stopController.abort("stopped");
+                }
+                // With `versionSkew: "follow-mid-turn"` the run listens for the environment's
+                // skew protection threshold signal while the turn runs. Listening delivers the
+                // latest one first, so a turn that starts after a set hands over at its first
+                // step boundary too. The run decides from its own version and task: nothing is
+                // looked up per run.
+                const listening = listenForTurnHandover(versionSkew);
+                const turnHandover = listening.turnHandover;
+                if (resumingHandover) turnHandover.stepOffset = replayedHandover?.steps;
+                stopTurnHandoverSignal = listening.stop;
+                let armedHandover: ArmedTurnHandover | undefined;
+
                 const pmConfig = locals.get(chatPendingMessagesKey);
+                // Messages sent while the turn was handed over were recovered as later turns.
+                // On one run they would have reached `pendingMessages` at this step boundary,
+                // so offer them here; one that is injected doesn't also run as a turn.
+                if (resumingHandover && pmConfig) {
+                  const queue = locals.get(chatSteeringQueueKey) ?? [];
+                  for (const queued of [...bootInjectedQueue]) {
+                    const message = queued.message as TUIMessage | undefined;
+                    const seqNum = recoveredSeqByPayload.get(queued);
+                    if (!message || message.role !== "user" || seqNum === undefined) continue;
+                    try {
+                      queue.push({
+                        uiMessage: message,
+                        modelMessages: await toModelMessages([message]),
+                        claim: () => {
+                          const at = bootInjectedQueue.indexOf(queued);
+                          if (at === -1) return false;
+                          bootInjectedQueue.splice(at, 1);
+                          chatInputRouter().settleRecovered(seqNum);
+                          return true;
+                        },
+                        release: () => {
+                          if (bootInjectedQueue.includes(queued)) return;
+                          bootInjectedQueue.unshift(queued);
+                          chatInputRouter().markRecovered([seqNum]);
+                        },
+                      });
+                    } catch {
+                      /* conversion failed: it runs as its own turn */
+                    }
+                  }
+                  locals.set(chatSteeringQueueKey, queue);
+                }
                 /**
                  * Only attached when there is a steering config to feed. Without
                  * one a mid-turn message is left queued on the router, which is
@@ -11653,6 +12281,22 @@ function chatAgent<
                       }
                     }
 
+                    // The handed-over reply's steps are only in the seeded chain (the previous run
+                    // never reached onTurnComplete), so the hook's history can't hold them: keep the
+                    // partial, after the message it answers.
+                    const handedOverPartial = resumingHandover
+                      ? accumulatedUIMessages.at(-1)
+                      : undefined;
+                    if (handedOverPartial?.role === "assistant") {
+                      const withoutPartial = merged.filter((m) => m.id !== handedOverPartial.id);
+                      merged.length = 0;
+                      merged.push(...withoutPartial);
+                      for (const received of usersBeforeHandedOverPartial(accumulatedUIMessages)) {
+                        if (!merged.some((m) => m.id === received.id)) merged.push(received);
+                      }
+                      merged.push(handedOverPartial);
+                    }
+
                     accumulatedUIMessages = merged;
                     accumulatedMessages = await toModelMessages(merged);
                     laneCompacted = false;
@@ -11826,6 +12470,17 @@ function chatAgent<
                     }
                   }
 
+                  if (resumingHandover) {
+                    // The message this reply answers (and any steer the previous run injected
+                    // into it) was received by the previous run. It is still this turn's, so
+                    // `onTurnComplete` gets it with the reply.
+                    const received = usersBeforeHandedOverPartial(accumulatedUIMessages);
+                    turnNewUIMessages.push(...received);
+                    if (received.length > 0) {
+                      turnNewModelMessages.push(...(await toModelMessages(received)));
+                    }
+                  }
+
                   locals.set(chatCurrentUIMessagesKey, accumulatedUIMessages);
                 } // end if (trigger !== "action")
 
@@ -11851,6 +12506,7 @@ function chatAgent<
                   isDroppedChannelDelivery ||
                   (!isAction &&
                     !splicedHandoverPartial &&
+                    !resumingHandover &&
                     !channelInteractionResolved &&
                     currentWirePayload.trigger === "submit-message" &&
                     turnNewUIMessages.length === 0 &&
@@ -11943,7 +12599,9 @@ function chatAgent<
                 // A no-op turn skips this block, and with it `followSessionPin`:
                 // there is nothing to answer, so nothing to hand over.
                 if ((!isAction || actionTurn) && !isNoOpTurn) {
-                  if (!hydrateMessages) {
+                  // A continued turn keeps the previous run's turn-start save: saving the
+                  // reply so far would make a reload replay its chunks on top of it.
+                  if (!hydrateMessages && !resumingHandover) {
                     chatDeferBeforeOutput(
                       saveTranscript({
                         reason: "turn-start",
@@ -12033,7 +12691,8 @@ function chatAgent<
 
                   // Fire onTurnStart before running user code — persist messages
                   // so a mid-stream page refresh still shows the user's message.
-                  if (onTurnStart) {
+                  // Not again for a continued turn: it fired in the run that started it.
+                  if (onTurnStart && !resumingHandover) {
                     await tracer.startActiveSpan(
                       "onTurnStart()",
                       async () => {
@@ -12086,7 +12745,9 @@ function chatAgent<
                     );
                   }
 
-                  await followSessionPin(currentWirePayload.chatId, versionSkew);
+                  if (!resumingHandover) {
+                    await followSessionPin(currentWirePayload.chatId, versionSkew);
+                  }
 
                   // chat.requestUpgrade() called in onTurnStart (or onValidateMessages) —
                   // skip run() and hand over to a fresh run on the new version. The
@@ -12148,7 +12809,13 @@ function chatAgent<
                       });
                     }
 
-                    if (isHeadStartFinalTurn) {
+                    if (resumingHandover && stopController.signal.aborted) {
+                      // Stopped during the handover: the reply ends where the previous
+                      // run left it, and no model call is made.
+                      const lastUI = accumulatedUIMessages[accumulatedUIMessages.length - 1];
+                      if (lastUI && lastUI.role === "assistant") capturedResponseMessage = lastUI;
+                      managedResponse().seed(accumulatedUIMessages);
+                    } else if (isHeadStartFinalTurn) {
                       // The synthesized partial UIMessage IS the response.
                       // It was pushed to `accumulatedUIMessages` during the
                       // submit-message branch's splice; recover it as the
@@ -12335,10 +13002,15 @@ function chatAgent<
                         channelStreamEditor && uiStream instanceof ReadableStream
                           ? uiStream.pipeThrough(makeChannelStreamTap(channelStreamEditor))
                           : uiStream;
+                      // A channel delivery's reply posts back through the delivery, which the
+                      // continuing run wouldn't have: that turn finishes on this run.
+                      armedHandover = channelWireEvent
+                        ? undefined
+                        : armTurnHandover(turnHandover, combinedSignal);
                       await pipeChat(
                         tapUIMessageChunks(streamForPipe, turnBufferedChunks),
                         {
-                          signal: combinedSignal,
+                          signal: armedHandover?.signal ?? combinedSignal,
                           spanName: "stream response",
                         },
                         { originalMessages: isActionTurn ? undefined : accumulatedUIMessages }
@@ -12355,15 +13027,39 @@ function chatAgent<
                       if (runSignal.aborted) {
                         return "exit"; // Full run cancellation — exit
                       }
-                      // Stop generation — fall through to continue the loop
+                      // Stop generation, or a handover — fall through
                     } else {
                       throw error;
                     }
                   } finally {
+                    turnHandover.handOver = undefined;
                     msgSub?.off();
                     turnControlSub?.off();
                     locals.set(chatTurnChannelTapKey, undefined);
                     await channelStreamEditor?.stop();
+                  }
+
+                  // Handed over at a step boundary. The turn is not complete: no
+                  // `onTurnComplete`, no transcript save, no turn-complete record.
+                  const handedOverAfterSteps = armedHandover?.afterSteps();
+                  if (handedOverAfterSteps !== undefined && !runSignal.aborted) {
+                    await awaitDeferredWork();
+                    const handedOverMessageId = (
+                      await locals.get(chatManagedResponseKey)?.snapshot()
+                    )?.id;
+                    turnSpan.setAttribute("chat.handover.steps", handedOverAfterSteps);
+                    const continuingRunId = await finishHandedOverTurn(
+                      currentWirePayload.chatId,
+                      {
+                        afterSteps: handedOverAfterSteps,
+                        ...(handedOverMessageId ? { messageId: handedOverMessageId } : {}),
+                      },
+                      cleanedIncomingMessages.at(-1)?.id ??
+                        (resumingHandover ? resumedAnsweredId : undefined)
+                    );
+                    if (continuingRunId)
+                      turnSpan.setAttribute("chat.handover.toRun", continuingRunId);
+                    return "exit";
                   }
 
                   // Wait for onFinish to fire — on abort this may resolve slightly
@@ -12678,13 +13374,7 @@ function chatAgent<
 
                   // Await deferred background work (e.g. DB writes from onTurnStart)
                   // before firing hooks so they can rely on the work being done.
-                  const deferredWork = locals.get(chatDeferKey);
-                  if (deferredWork && deferredWork.size > 0) {
-                    await Promise.race([
-                      Promise.allSettled(deferredWork),
-                      new Promise<void>((r) => setTimeout(r, 5_000)),
-                    ]);
-                  }
+                  await awaitDeferredWork();
 
                   // Outer-loop compaction: runs between turns for single-step responses
                   // where prepareStep never fires (no tool calls = no step boundaries).
@@ -13306,6 +13996,11 @@ function chatAgent<
                   return "exit";
                 }
 
+                // The turn is over: stop listening for handover signals while idle. The
+                // next turn listens again and gets the latest one first.
+                stopTurnHandoverSignal?.();
+                stopTurnHandoverSignal = undefined;
+
                 // Wait for the next message — stay idle briefly, then suspend
                 const effectiveIdleTimeout =
                   (metadata.get(IDLE_TIMEOUT_METADATA_KEY) as number | undefined) ??
@@ -13814,6 +14509,9 @@ function chatAgent<
               continue;
             }
 
+            stopTurnHandoverSignal?.();
+            stopTurnHandoverSignal = undefined;
+
             // Wait for the next message — same as after a successful turn
             const effectiveIdleTimeout =
               (metadata.get(IDLE_TIMEOUT_METADATA_KEY) as number | undefined) ??
@@ -13844,6 +14542,8 @@ function chatAgent<
             }
             // Continue to next iteration of the for loop
           } finally {
+            stopTurnHandoverSignal?.();
+            stopTurnHandoverSignal = undefined;
             turnMsgSub?.off();
             locals.set(chatManagedResponseActiveKey, false);
             await locals
@@ -14533,8 +15233,10 @@ function isStopped(): boolean {
  * When called from `onTurnStart` or `onValidateMessages`, `run()` is skipped
  * entirely and the successor answers the message that opened the turn.
  *
- * When called from `run()` or `chat.defer()`, the current turn completes
- * normally and the handover happens afterward.
+ * When called from `run()`, a tool or `chat.defer()` while the turn is
+ * streaming, the turn stops at its next step boundary and the successor
+ * continues the same reply from there (nothing is lost or run twice). A turn
+ * with no further step completes normally and the handover happens afterward.
  *
  * Call from `onTurnStart`, `onValidateMessages`, `onChatResume`, `run()`,
  * or inside `chat.defer()`.
@@ -14643,10 +15345,12 @@ async function endAndContinue(): Promise<void> {
 }
 
 /** @internal Shared server handoff used by managed and custom agent loops. */
+/** Returns the id of the run that took over the session, when the server answered. */
 async function performEndAndContinue(options: {
-  reason: "continuation" | "upgrade";
+  reason: "continuation" | "upgrade" | "skew-threshold";
   externalDeploymentId?: string;
-}): Promise<void> {
+  handover?: SessionRunHandover;
+}): Promise<string | undefined> {
   const chatId = locals.get(chatExternalIdKey);
   const callingRunId = locals.get(chatAgentRunContextKey)?.run.id;
 
@@ -14660,10 +15364,11 @@ async function performEndAndContinue(options: {
     callingRunId,
     reason: options.reason,
     ...(externalDeploymentId ? { externalDeploymentId } : {}),
+    ...(options.handover ? { handover: options.handover } : {}),
   });
 
   if (result?.pendingVersion !== true) {
-    return;
+    return result?.runId;
   }
 
   // The successor parked. Say so on `.out` while this run still can — the transport's
@@ -14675,6 +15380,7 @@ async function performEndAndContinue(options: {
   if (error) {
     logger.warn("could not signal a parked handoff", { chatId, error });
   }
+  return result.runId;
 }
 
 /**
@@ -15685,6 +16391,9 @@ export type ChatSessionOptions = {
   /**
    * What to do when the session's `externalDeploymentId` no longer names this deployment.
    * `"follow"` (default) hands over at the next turn boundary; `"hold"` stays put.
+   * `"follow-mid-turn"` is `"follow"`, and a turn running below the skew protection threshold
+   * also moves to the current deployment at its next step (through `turn.prepareStep()` or
+   * `chat.handOverAtStep()`).
    */
   versionSkew?: ChatVersionSkewPolicy;
   /** Automatic context compaction — same options as `chat.agent({ compaction })`. */
@@ -15723,6 +16432,14 @@ export type ChatTurn<TClientData = unknown> = {
    * call `streamText` as usual; it runs the handed-over tool round.
    */
   handover: { isFinal: boolean } | null;
+  /**
+   * True once `turn.complete()` handed this turn to a run on a newer version at a step boundary
+   * (`versionSkew: "follow-mid-turn"` below a skew protection threshold, or `chat.requestUpgrade()`
+   * during the turn). The response it returned is
+   * the reply so far: the new run finishes it under the same message id. The loop ends at the next
+   * `next()`.
+   */
+  readonly handedOver: boolean;
 
   /**
    * Replace accumulated messages (for compaction). Takes UIMessages and
@@ -15924,19 +16641,64 @@ function createChatSession<TClientData = unknown>(
       // The current turn's message subscription — detached defensively at the
       // top of next() in case user code threw without complete()/done().
       let activeMsgSub: ChatMessageSubscription | undefined;
+      // Mid-turn handover: the listener of the running turn, whether a turn was handed over (the
+      // loop then ends), and the turn this run continues (read at a continuation boot).
+      let stopTurnHandover: (() => void) | undefined;
+      let handedOverTurn = false;
+      let resumedHandover: Awaited<ReturnType<typeof readHandedOverTurn>>;
 
       const iterator: AsyncIterator<ChatTurn<TClientData>> = {
         async next(): Promise<IteratorResult<ChatTurn<TClientData>>> {
           activeMsgSub?.off();
           activeMsgSub = undefined;
+          stopTurnHandover?.();
+          stopTurnHandover = undefined;
+          if (handedOverTurn) {
+            stop?.cleanup();
+            return { done: true, value: undefined };
+          }
           if (!booted) {
             booted = true;
+            if (currentPayload.continuation === true && !currentPayload.message) {
+              resumedHandover = await readHandedOverTurn(currentPayload.chatId);
+            }
             await installChatInputRouter(currentPayload.chatId, {
               resuming: Boolean(currentPayload.continuation),
+              replayWindowEnd: resumedHandover?.lastSeqNum,
             });
+            // The continued turn answers this message and already holds the injected ones, so
+            // the router must not also deliver them. Marked here rather than through the
+            // install: `chat.customAgent` attaches the router before the loop starts, and the
+            // tail may have queued the records already.
+            if (resumedHandover) {
+              const router = chatInputRouter();
+              const seqs = [
+                ...(resumedHandover.answered ? [resumedHandover.answered.seqNum] : []),
+                ...resumedHandover.injected.map((entry) => entry.seqNum),
+              ];
+              router.markRecovered(seqs);
+              for (const seq of seqs) router.take(CHAT_ROUTE_MESSAGES, seq);
+            }
             stop = createStopSignal();
           }
           turn++;
+          // Turn 0 of a run that continues a handed-over turn: the reply so far and the message
+          // it answers seed the accumulator, and the turn runs at once with no new message.
+          const resumingTurn = turn === 0 ? resumedHandover : undefined;
+          if (resumingTurn) {
+            currentPayload = {
+              ...currentPayload,
+              trigger: "submit-message",
+              message: resumingTurn.answered?.message,
+            };
+            // These messages are part of this turn; nothing else will dispatch them.
+            if (resumingTurn.answered) {
+              chatInputRouter().settleRecovered(resumingTurn.answered.seqNum);
+            }
+            for (const entry of resumingTurn.injected) {
+              chatInputRouter().settleRecovered(entry.seqNum);
+            }
+          }
 
           // Head-start handover: the server triggered this run with
           // `trigger: "handover-prepare"` and signals the warm step-1 partial on
@@ -15971,7 +16733,7 @@ function createChatSession<TClientData = unknown>(
           // arrive with the sticky boot-payload fields stripped, so running
           // a turn immediately would invoke the model with no user input.
           const isMessagelessContinuationBoot =
-            currentPayload.continuation === true && !currentPayload.message;
+            currentPayload.continuation === true && !currentPayload.message && !resumingTurn;
           if (
             turn === 0 &&
             (currentPayload.trigger === "preload" || isMessagelessContinuationBoot)
@@ -16045,6 +16807,14 @@ function createChatSession<TClientData = unknown>(
 
           // Reset stop signal for this turn
           stop.reset();
+          // Listen for the handover signal while this turn runs (see chat.agent's turn loop).
+          const listening = listenForTurnHandover(sessionVersionSkew);
+          const turnHandover = listening.turnHandover;
+          if (resumingTurn) turnHandover.stepOffset = resumingTurn.steps;
+          stopTurnHandover = listening.stop;
+          // A stop sent while the previous run handed this turn over.
+          const pausedStop = new AbortController();
+          if (resumingTurn?.stopped) pausedStop.abort("stopped");
 
           // Reset per-turn state
           await locals.get(chatManagedResponseKey)?.close();
@@ -16136,8 +16906,20 @@ function createChatSession<TClientData = unknown>(
             }
             accumulator.applyHandover(pendingHandoverSignal);
           }
+          if (resumingTurn) {
+            // The injected messages sit before the reply, where its markers render them.
+            await accumulator.setMessages([
+              ...accumulator.uiMessages,
+              ...resumingTurn.injected.map((entry) => entry.message),
+              resumingTurn.partial,
+            ]);
+          }
 
-          await followSessionPin(currentPayload.chatId, sessionVersionSkew);
+          // A handed-over reply is continued here, never moved again before its next step (as in
+          // chat.agent's resumed turn).
+          if (!resumingTurn) {
+            await followSessionPin(currentPayload.chatId, sessionVersionSkew);
+          }
 
           // chat.requestUpgrade() called before this turn — signal transport and exit
           if (locals.get(chatUpgradeRequestedKey)) {
@@ -16147,7 +16929,7 @@ function createChatSession<TClientData = unknown>(
             return { done: true, value: undefined };
           }
 
-          const combinedSignal = AbortSignal.any([runSignal, stop.signal]);
+          const combinedSignal = AbortSignal.any([runSignal, stop.signal, pausedStop.signal]);
 
           const turnObj: ChatTurn<TClientData> = {
             number: turn,
@@ -16162,15 +16944,24 @@ function createChatSession<TClientData = unknown>(
             },
             signal: combinedSignal,
             get stopped() {
-              return stop.signal.aborted && !runSignal.aborted;
+              return (stop.signal.aborted || pausedStop.signal.aborted) && !runSignal.aborted;
             },
             continuation: currentPayload.continuation ?? false,
             previousTurnUsage,
             totalUsage: cumulativeUsage,
             handover: handoverThisTurn,
+            get handedOver() {
+              return handedOverTurn;
+            },
 
             async setMessages(uiMessages: UIMessage[]) {
-              await accumulator.setMessages(uiMessages);
+              // A continued turn keeps the reply so far last, whatever history the caller seeds.
+              const partial = resumingTurn?.partial;
+              await accumulator.setMessages(
+                partial && !uiMessages.some((m) => m.id === partial.id)
+                  ? [...uiMessages, partial]
+                  : uiMessages
+              );
             },
 
             async complete(source?: UIMessageStreamable) {
@@ -16192,22 +16983,48 @@ function createChatSession<TClientData = unknown>(
                 await chatWriteTurnComplete();
                 return response;
               }
+              // Stopped while the previous run handed this turn over: the reply ends where
+              // that run left it. Nothing is piped (the source's request is already aborted).
+              if (resumingTurn && pausedStop.signal.aborted) {
+                sessionMsgSub?.off();
+                await chatWriteTurnComplete();
+                return resumingTurn.partial;
+              }
               let response: UIMessage | undefined;
+              const armedHandover = armTurnHandover(turnHandover, combinedSignal);
               try {
                 const captured = await pipeChatAndCapture(source, {
-                  signal: combinedSignal,
-                  // On a non-final handover turn, thread the spliced partial so a
-                  // resumed tool round's tool-output chunks merge into the
-                  // handed-over tool-call. Gated on the handover turn only — a
-                  // normal turn must not pass originalMessages (it would merge the
-                  // fresh response into the prior assistant message).
-                  ...(handoverThisTurn ? { originalMessages: accumulator.uiMessages } : {}),
+                  signal: armedHandover.signal,
+                  // On a non-final handover turn, or a turn continued from a previous run,
+                  // thread the spliced partial so the new chunks merge into the same message.
+                  // A normal turn must not pass originalMessages (it would merge the fresh
+                  // response into the prior assistant message).
+                  ...(handoverThisTurn || resumingTurn
+                    ? { originalMessages: accumulator.uiMessages }
+                    : {}),
                 });
+                turnHandover.handOver = undefined;
                 if (runSignal.aborted) {
                   // Full cancel — don't accumulate
                   sessionMsgSub?.off();
                   await chatWriteTurnComplete();
                   return undefined;
+                }
+                // Handed over at a step boundary: no turn-complete.
+                const handedOverAfterSteps = armedHandover.afterSteps();
+                if (handedOverAfterSteps !== undefined) {
+                  handedOverTurn = true;
+                  stopTurnHandover?.();
+                  stopTurnHandover = undefined;
+                  await finishHandedOverTurn(
+                    currentPayload.chatId,
+                    {
+                      afterSteps: handedOverAfterSteps,
+                      ...(captured.message?.id ? { messageId: captured.message.id } : {}),
+                    },
+                    currentPayload.message?.id ?? resumedHandover?.answeredId
+                  );
+                  return captured.message;
                 }
                 // Surface a genuine stream failure to the caller. A user stop
                 // (status "aborted") falls through so the partial is accumulated.
@@ -16323,10 +17140,6 @@ function createChatSession<TClientData = unknown>(
             },
 
             prepareStep() {
-              const hasCompaction = !!sessionCompaction;
-              const hasPending = !!sessionPendingMessages;
-              if (!hasCompaction && !hasPending) return undefined;
-
               return retainStepMessages(
                 async ({
                   messages: stepMsgs,
@@ -16337,6 +17150,7 @@ function createChatSession<TClientData = unknown>(
                   steps: CompactionStep[];
                   responseMessages?: ModelMessage[];
                 }) => {
+                  if (await handOverAtStepBoundary(steps)) return new Promise<never>(() => {});
                   let resultMessages: ModelMessage[] | undefined;
 
                   if (sessionCompaction) {
@@ -17171,6 +17985,8 @@ export const chat = {
   surface: getChannelSurface,
   /** Request that the run exits after the current turn so the next message starts on the latest version. See {@link requestUpgrade}. */
   requestUpgrade,
+  /** Hand the running turn over to a newer version at this step boundary, from your own `prepareStep`. See {@link handOverAtStep}. */
+  handOverAtStep,
   /** Hand off a custom agent Session to a fresh run. See {@link endAndContinue}. */
   endAndContinue,
   /** Exit the run after the current turn completes, without any upgrade signal. See {@link endRun}. */
@@ -17527,16 +18343,16 @@ async function writeTurnCompleteChunk(
  * No `upgrade-required` chunk is written here: the turn already produced its
  * answer, so there is nothing for a client to be told about.
  */
-async function persistUpgradeHandoff(): Promise<void> {
+async function persistUpgradeHandoff(): Promise<string | undefined> {
   const chatId = locals.get(chatExternalIdKey);
   const callingRunId = locals.get(chatAgentRunContextKey)?.run.id;
 
   if (!chatId || !callingRunId) {
-    return;
+    return undefined;
   }
 
   try {
-    await performEndAndContinue({
+    return await performEndAndContinue({
       reason: "upgrade",
       externalDeploymentId: locals.get(chatUpgradeExternalDeploymentIdKey),
     });
@@ -17546,6 +18362,7 @@ async function persistUpgradeHandoff(): Promise<void> {
       callingRunId,
       error,
     });
+    return undefined;
   }
 }
 

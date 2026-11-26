@@ -17,6 +17,10 @@ import {
 
 export const AgentConfig = z.object({
   type: z.string(), // "ai-sdk-chat" initially, extensible for future agent types
+  /** The agent's `versionSkew` setting (`chat.agent` only). */
+  versionSkew: z.string().max(32).optional(),
+  /** True when the agent's SDK can continue a turn handed over mid-turn by an older run. */
+  turnHandover: z.boolean().optional(),
 });
 
 export type AgentConfig = z.infer<typeof AgentConfig>;

@@ -2243,6 +2243,17 @@ export type RetrieveSessionResponseBody = z.infer<typeof RetrieveSessionResponse
  * server triggers a new run, atomically swaps `currentRunId`, and the
  * caller exits.
  */
+/**
+ * A reply handed over mid-turn: the steps the run handing over had finished, the reply's message
+ * id, and the skew protection threshold that asked for the move (absent for `chat.requestUpgrade()`).
+ */
+export const SessionRunHandover = z.object({
+  afterSteps: z.number().int().nonnegative(),
+  messageId: z.string().max(256).optional(),
+  thresholdVersion: z.string().max(64).optional(),
+});
+export type SessionRunHandover = z.infer<typeof SessionRunHandover>;
+
 export const EndAndContinueSessionRequestBody = z.object({
   /** The friendlyId of the run requesting the handoff. */
   callingRunId: z.string(),
@@ -2253,6 +2264,8 @@ export const EndAndContinueSessionRequestBody = z.object({
    * `"upgrade"`. `lockToVersion` is never cleared.
    */
   externalDeploymentId: ExternalDeploymentId,
+  /** Set when the calling run stopped partway through a reply and the new run continues it. */
+  handover: SessionRunHandover.optional(),
 });
 export type EndAndContinueSessionRequestBody = z.infer<typeof EndAndContinueSessionRequestBody>;
 

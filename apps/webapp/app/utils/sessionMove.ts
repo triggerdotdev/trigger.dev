@@ -13,7 +13,10 @@ export const SESSION_RUN_REASONS = [
 ] as const;
 export type SessionRunReason = (typeof SESSION_RUN_REASONS)[number];
 
-/** The reason of a run that replaced one below a skew protection threshold, at the next message. */
+/**
+ * The reason of a run that replaced one below a skew protection threshold, at the next message or
+ * mid-turn.
+ */
 export const SKEW_THRESHOLD_RUN_REASON = "skew-threshold" satisfies SessionRunReason;
 
 export type SupersededRunCancelReason = {

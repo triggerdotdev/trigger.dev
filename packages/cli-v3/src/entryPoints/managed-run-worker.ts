@@ -29,6 +29,7 @@ import {
   runtime,
   runTimelineMetrics,
   sessionStreams,
+  signals,
   stringifyIO,
   taskContext,
   TaskRunContext,
@@ -62,6 +63,7 @@ import {
   StandardResourceCatalog,
   StandardRunTimelineMetricsManager,
   StandardSessionStreamManager,
+  StandardSignalsManager,
   StandardTraceContextManager,
   StandardWaitUntilManager,
   TaskExecutor,
@@ -160,6 +162,7 @@ let runMetadataManager!: StandardMetadataManager;
 let standardRealtimeStreamsManager!: StandardRealtimeStreamsManager;
 let standardInputStreamManager!: StandardInputStreamManager;
 let standardSessionStreamManager!: StandardSessionStreamManager;
+let standardSignalsManager!: StandardSignalsManager;
 
 // The API URL and secret key these capture arrive with the first EXECUTE_TASK_RUN, not the fork env.
 function initializeApiManagers() {
@@ -193,6 +196,14 @@ function initializeApiManagers() {
       false
   );
   sessionStreams.setGlobalManager(standardSessionStreamManager);
+
+  standardSignalsManager = new StandardSignalsManager(
+    apiClientManager.clientOrThrow(),
+    getEnvVar("TRIGGER_STREAM_URL", getEnvVar("TRIGGER_API_URL")) ?? "https://api.trigger.dev",
+    () => taskContext.ctx?.task.id,
+    getEnvVar("TRIGGER_STREAMS_DEBUG") === "1" || getEnvVar("TRIGGER_STREAMS_DEBUG") === "true"
+  );
+  signals.setGlobalManager(standardSignalsManager);
 }
 
 const waitUntilTimeoutInMs = getNumberEnvVar("TRIGGER_WAIT_UNTIL_TIMEOUT_MS", 60_000);
@@ -388,6 +399,7 @@ function resetExecutionEnvironment() {
   standardRealtimeStreamsManager.reset();
   standardInputStreamManager.reset();
   standardSessionStreamManager.reset();
+  standardSignalsManager.reset();
   _sharedWorkerRuntime?.reset();
   durableClock.reset();
   taskContext.disable();
@@ -698,6 +710,9 @@ const zodIpc = new ZodIpcConnection({
           }
         } finally {
           standardHeartbeatsManager.stopHeartbeat();
+          // A listener the task never stopped would keep its signal subscription open, and its
+          // handler running, while a kept-alive process waits for the next run.
+          standardSignalsManager.reset();
           resourceCatalog.clearCurrentFileContext();
 
           _execution = undefined;

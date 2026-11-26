@@ -76,6 +76,7 @@
                 "pages": [
                   "ai-chat/patterns/sub-agents",
                   "ai-chat/patterns/version-upgrades",
+                  "ai-chat/patterns/mid-turn-handover",
                   "ai-chat/patterns/database-persistence",
                   "ai-chat/patterns/persistence-and-replay",
                   "ai-chat/patterns/branching-conversations",
@@ -174,6 +175,7 @@
               "tags",
               "runs/metadata",
               "tasks/streams",
+              "tasks/signals",
               "run-usage",
               "context",
               "runs/priority",
@@ -628,6 +630,7 @@
             "pages": [
               "guides/ai-agents/overview",
               "guides/ai-agents/chat-agent",
+              "guides/ai-agents/deploy-a-breaking-change",
               "guides/ai-agents/generate-translate-copy",
               "guides/ai-agents/route-question",
               "guides/ai-agents/respond-and-check-content",

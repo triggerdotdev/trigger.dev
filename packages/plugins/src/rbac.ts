@@ -247,6 +247,7 @@ export type RbacScopeResourceType =
   | "query"
   | "errors"
   | "webhooks"
+  | "signals"
   | "devWorkers";
 
 /**

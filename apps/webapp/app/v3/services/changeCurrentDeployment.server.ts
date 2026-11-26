@@ -2,6 +2,7 @@ import { BackgroundWorkerMetadata, tryCatch } from "@trigger.dev/core/v3";
 import { CURRENT_DEPLOYMENT_LABEL } from "@trigger.dev/core/v3/isomorphic";
 import type { PrismaClientOrTransaction, WorkerDeployment } from "@trigger.dev/database";
 import { $transaction, webhookPrisma } from "~/db.server";
+import { syncSkewProtectionThresholdSignal } from "~/services/realtime/skewProtectionThresholdSignal.server";
 import { logger } from "~/services/logger.server";
 import { syncTaskIdentifiers } from "~/services/taskIdentifierRegistry.server";
 import {
@@ -159,6 +160,13 @@ export class ChangeCurrentDeploymentService extends BaseService {
         });
       }
     );
+
+    // The signal says whether the current deployment's SDK can continue a turn, and carries the
+    // thresholds the promote may have cleared. Not awaited: with S2 slow it would hold every
+    // promote and deploy for seconds, and it never throws (a failure is logged).
+    void syncSkewProtectionThresholdSignal(deployment.environmentId, {
+      changed: thresholdsCleared !== undefined,
+    });
 
     if (thresholdsCleared) {
       logger.info("Cleared skew protection thresholds: the new current deployment is below them", {

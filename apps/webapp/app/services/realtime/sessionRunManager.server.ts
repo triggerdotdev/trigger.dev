@@ -1,14 +1,19 @@
 import type { Prisma, Session, TaskRunStatus } from "@trigger.dev/database";
+import type { SessionRunHandover } from "@trigger.dev/core/v3";
 import {
   SessionTriggerConfig as SessionTriggerConfigZod,
   TaskRunError,
   tryCatch,
 } from "@trigger.dev/core/v3";
 import { setTimeout as sleep } from "node:timers/promises";
+import { isDeepStrictEqual } from "node:util";
 import type { z } from "zod";
 import { prisma, $replica, $transaction } from "~/db.server";
 import { runStore } from "~/v3/runStore.server";
-import { findCurrentDeploymentVersion } from "~/v3/models/workerDeployment.server";
+import {
+  findCurrentDeployment,
+  findCurrentDeploymentVersion,
+} from "~/v3/models/workerDeployment.server";
 import { engine } from "~/v3/runEngine.server";
 import type { AuthenticatedEnvironment } from "~/services/apiAuth.server";
 import { logger } from "~/services/logger.server";
@@ -20,6 +25,7 @@ import { externalDeploymentCacheInstance } from "~/services/externalDeploymentCa
 import { resolveExternalDeployment } from "~/v3/services/resolveExternalDeployment.server";
 import { S2RealtimeStreams, type SessionOutTail } from "./s2realtimeStreams.server";
 import { canonicalSessionAddressingKey } from "./sessions.server";
+import { turnContinuationVersion } from "./turnHandoverState";
 import {
   determineRealtimeStreamsVersion,
   getRealtimeStreamInstance,
@@ -682,6 +688,8 @@ async function triggerSessionRun(params: {
   config: SessionTriggerConfig;
   environment: AuthenticatedEnvironment;
   payloadOverrides?: Record<string, unknown>;
+  /** Lock this run to a version, over the session's pins and the floor (a handed-over turn). */
+  lockToVersion?: string;
   sessionInFirstSeq?: number;
   /** The `.in` tail when it is already known; read when unset. */
   sessionInSeq?: number;
@@ -694,7 +702,10 @@ async function triggerSessionRun(params: {
   taskVersion?: string;
 }> {
   const { session, environment, payloadOverrides } = params;
-  const config = await sessionPinsInEffect(params.config, environment, session.taskIdentifier);
+  const pinned = await sessionPinsInEffect(params.config, environment, session.taskIdentifier);
+  const config = params.lockToVersion
+    ? { ...pinned, lockToVersion: params.lockToVersion, externalDeploymentId: undefined }
+    : pinned;
 
   const payload = {
     ...config.basePayload,
@@ -782,6 +793,8 @@ type SwapSessionRunParams = {
    * absent clears the pin.
    */
   externalDeploymentId?: string | null;
+  /** The calling run stopped partway through a reply: recorded on the new run's SessionRun row. */
+  handover?: SessionRunHandover;
 };
 
 export type SwapSessionRunResult = {
@@ -822,9 +835,30 @@ export async function swapSessionRun(params: SwapSessionRunParams): Promise<Swap
   });
   const session = onWriter ? { ...params.session, ...onWriter } : params.session;
 
-  // Only the server records `skew-threshold`, for its own moves: a caller asking for it gets `manual`.
+  // A handed-over turn continues only on a deployment whose SDK can continue it. Any token that can
+  // write the session can ask for a `skew-threshold` move, which locks past the session's
+  // `lockToVersion` pin: it counts only while a threshold is above the calling run.
+  const handover =
+    params.reason === SKEW_THRESHOLD_RUN_REASON
+      ? await handoverContinuation(environment, callingRunId, session.taskIdentifier)
+      : undefined;
+  if (params.reason === SKEW_THRESHOLD_RUN_REASON && !handover) {
+    logger.warn("A skew-threshold handover with no threshold above the run: treated as manual", {
+      sessionId: session.id,
+      callingRunId,
+    });
+  }
   const reason: EnsureRunReason =
-    params.reason === SKEW_THRESHOLD_RUN_REASON ? "manual" : params.reason;
+    params.reason === SKEW_THRESHOLD_RUN_REASON && !handover ? "manual" : params.reason;
+  // The handover is recorded only for a move it explains, and names the threshold the server found,
+  // not the caller's.
+  const recordedHandover: SessionRunHandover | undefined = !params.handover
+    ? undefined
+    : handover
+      ? { ...params.handover, thresholdVersion: handover.thresholdVersion }
+      : reason === "upgrade"
+        ? { afterSteps: params.handover.afterSteps, messageId: params.handover.messageId }
+        : undefined;
 
   // `callingRunId` is the internal cuid (`Session.currentRunId` stores
   // cuid; the route handler resolves the wire's friendlyId before passing
@@ -862,11 +896,20 @@ export async function swapSessionRun(params: SwapSessionRunParams): Promise<Swap
       ? { ...storedConfig, externalDeploymentId: params.externalDeploymentId ?? undefined }
       : storedConfig;
 
+  // Any other move of a handed-over turn (`chat.requestUpgrade()` mid-turn, a threshold cleared
+  // before the swap) gets the same receiver check as the threshold's.
+  const lockedVersion = handover
+    ? handover.lockToVersion
+    : params.handover
+      ? await handoverReceiverVersion(environment, config, session.taskIdentifier, callingRunId)
+      : undefined;
+
   const triggered = await triggerSessionRun({
     session,
     config,
     environment,
     payloadOverrides: mergedPayloadOverrides,
+    lockToVersion: lockedVersion,
   });
 
   const claim = (currentRunVersion: number) =>
@@ -888,9 +931,55 @@ export async function swapSessionRun(params: SwapSessionRunParams): Promise<Swap
       sessionId: session.id,
       triggered,
       reason,
+      handover: recordedHandover,
     });
 
-  const won = await claim(session.currentRunVersion);
+  let won = await claim(session.currentRunVersion);
+  if (!won) {
+    // Back-to-back moves: this run can ask to move on before the swap that started it commits, so
+    // it read the version below its own. If the writer now names this run, with the config the
+    // successor was built from, claim again at that version: still one successor.
+    const owner = await prisma.session
+      .findFirst({
+        where: { id: session.id },
+        select: {
+          currentRunId: true,
+          currentRunVersion: true,
+          triggerConfig: true,
+          closedAt: true,
+        },
+      })
+      .catch((error: unknown) => {
+        // The claim definitely missed: don't leave the successor running beside the owner.
+        cancelUnclaimedRun({
+          runId: triggered.id,
+          sessionId: session.id,
+          failureMessage: "Failed to cancel preempted swap run",
+        });
+        throw error;
+      });
+    if (
+      owner?.currentRunId === callingRunId &&
+      !owner.closedAt &&
+      owner.currentRunVersion !== session.currentRunVersion &&
+      isDeepStrictEqual(owner.triggerConfig, session.triggerConfig)
+    ) {
+      won = await claim(owner.currentRunVersion);
+    }
+  }
+
+  if (reason === SKEW_THRESHOLD_RUN_REASON) {
+    logger.info("Handed a turn over to a new run", {
+      sessionId: session.id,
+      callingRunId,
+      newRunId: triggered.id,
+      swapped: won,
+      lockedVersion,
+      afterSteps: recordedHandover?.afterSteps,
+      thresholdVersion: recordedHandover?.thresholdVersion,
+      pendingVersion: isPendingVersionStatus(triggered.status),
+    });
+  }
 
   if (won) {
     return {
@@ -963,8 +1052,9 @@ async function claimSessionRun(params: {
   sessionId: string;
   triggered: TriggeredSessionRun;
   reason: EnsureRunReason;
+  handover?: SessionRunHandover;
 }): Promise<boolean> {
-  const { where, data, sessionId, triggered, reason } = params;
+  const { where, data, sessionId, triggered, reason, handover } = params;
 
   const [error, won] = await tryCatch(
     $transaction(prisma, "sessionRunManager.claimSessionRun", async (tx) => {
@@ -978,6 +1068,7 @@ async function claimSessionRun(params: {
           runId: triggered.id,
           reason,
           triggeredAt: triggered.createdAt,
+          ...(handover ? { handover } : {}),
         },
       });
       return true;
@@ -1184,6 +1275,102 @@ async function isRunFinalOnWriter(runId: string): Promise<boolean> {
     runStore.findRun({ id: runId }, { select: { status: true } }, prisma)
   );
   return !error && run !== null && isFinalRunStatus(run.status);
+}
+
+/**
+ * The version a handed-over turn continues on (see {@link turnContinuationVersion}), or undefined
+ * when no threshold is above the calling run. Reads on the writer: the current deployment and the
+ * run, then whether the current deployment has the task. A threshold over an agent the current
+ * deployment no longer has would lock the continuation to a version that can't start it; the turn
+ * continues on the handing-over run's version instead.
+ */
+async function handoverContinuation(
+  environment: AuthenticatedEnvironment,
+  callingRunId: string,
+  taskIdentifier: string
+): Promise<{ lockToVersion: string | undefined; thresholdVersion: string } | undefined> {
+  const floor = sessionVersionFloorFor(environment, taskIdentifier);
+  if (!floor) return undefined;
+  const [current, callingRun] = await Promise.all([
+    findCurrentDeployment(environment.id, prisma),
+    runStore.findRun({ id: callingRunId }, { select: { taskVersion: true } }, prisma),
+  ]);
+  if (
+    !callingRun?.taskVersion ||
+    !isVersionBelowSessionVersionFloor(callingRun.taskVersion, floor)
+  ) {
+    return undefined;
+  }
+  const currentTask = current?.workerId
+    ? await prisma.backgroundWorkerTask.findFirst({
+        where: { workerId: current.workerId, slug: taskIdentifier },
+        select: { config: true },
+      })
+    : null;
+  return {
+    lockToVersion: turnContinuationVersion(
+      current && currentTask
+        ? { version: current.version, taskConfig: currentTask.config }
+        : undefined,
+      callingRun.taskVersion
+    ),
+    thresholdVersion: floor.minVersion,
+  };
+}
+
+/**
+ * The version a turn handed over without a threshold above the calling run continues on: the
+ * deployment the session's pins pick when its task can continue a turn, otherwise the calling
+ * run's version (see {@link turnContinuationVersion}). A pin to a deployment that isn't ready
+ * reads as one that can't.
+ */
+async function handoverReceiverVersion(
+  environment: AuthenticatedEnvironment,
+  config: SessionTriggerConfig,
+  taskIdentifier: string,
+  callingRunId: string
+): Promise<string | undefined> {
+  const pins = await sessionPinsInEffect(config, environment, taskIdentifier);
+  const [target, callingRun] = await Promise.all([
+    handoverTargetWorker(environment, pins),
+    runStore.findRun({ id: callingRunId }, { select: { taskVersion: true } }, prisma),
+  ]);
+  const targetTask = target?.workerId
+    ? await prisma.backgroundWorkerTask.findFirst({
+        where: { workerId: target.workerId, slug: taskIdentifier },
+        select: { config: true },
+      })
+    : null;
+  return turnContinuationVersion(
+    target && targetTask ? { version: target.version, taskConfig: targetTask.config } : undefined,
+    callingRun?.taskVersion
+  );
+}
+
+/** The worker a run started with these pins lands on, as triggerSessionRun picks it. */
+async function handoverTargetWorker(
+  environment: AuthenticatedEnvironment,
+  pins: SessionTriggerConfig
+): Promise<{ version: string; workerId: string | null } | undefined> {
+  if (pins.lockToVersion) {
+    const worker = await prisma.backgroundWorker.findFirst({
+      where: { runtimeEnvironmentId: environment.id, version: pins.lockToVersion },
+      select: { id: true, version: true },
+    });
+    return worker ? { version: worker.version, workerId: worker.id } : undefined;
+  }
+  if (pins.externalDeploymentId) {
+    const resolution = await resolveExternalDeployment({
+      prisma,
+      environmentId: environment.id,
+      externalDeploymentId: pins.externalDeploymentId,
+      cache: externalDeploymentCacheInstance,
+    });
+    return resolution.outcome === "park"
+      ? undefined
+      : { version: resolution.worker.version, workerId: resolution.worker.workerId };
+  }
+  return findCurrentDeployment(environment.id, prisma);
 }
 
 /**

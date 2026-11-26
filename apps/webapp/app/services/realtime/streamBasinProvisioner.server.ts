@@ -13,6 +13,7 @@ import { env } from "~/env.server";
 import { logger } from "~/services/logger.server";
 import { controlPlaneResolver } from "~/v3/runOpsMigration/controlPlaneResolver.server";
 import { parseDuration } from "./duration.server";
+import { moveEnvironmentSignalStreams } from "./environmentSignals.server";
 
 function isPerOrgBasinsEnabled(): boolean {
   return env.REALTIME_STREAMS_PER_ORG_BASINS_ENABLED === "true";
@@ -79,6 +80,8 @@ async function provisionBasinForOrg(
 
   // streamBasinName is embedded in every env of the org; drop all its cached env rows.
   controlPlaneResolver.invalidateOrganization(org.id);
+
+  await moveOrgSignalStreams(org.id, null, basin);
 
   logger.info("[streamBasinProvisioner] provisioned basin for org", {
     orgId: org.id,
@@ -169,12 +172,37 @@ export async function deprovisionBasinForOrg(
   // streamBasinName is embedded in every env of the org; drop all its cached env rows.
   controlPlaneResolver.invalidateOrganization(org.id);
 
+  await moveOrgSignalStreams(org.id, org.streamBasinName, null);
+
   logger.info("[streamBasinProvisioner] deprovisioned basin for org", {
     orgId,
     previousBasin: org.streamBasinName,
   });
 
   return { kind: "deprovisioned" };
+}
+
+// Signal state lives only in S2, so a basin change would reset every environment's signals. Live
+// environments only: archived branches and deleted projects lost their signal streams already.
+// Best effort: never fails the basin change.
+async function moveOrgSignalStreams(
+  orgId: string,
+  fromBasin: string | null,
+  toBasin: string | null
+): Promise<void> {
+  try {
+    const environments = await prisma.runtimeEnvironment.findMany({
+      where: { organizationId: orgId, archivedAt: null, project: { deletedAt: null } },
+      select: { id: true, slug: true },
+    });
+    await moveEnvironmentSignalStreams(
+      environments.map((e) => ({ ...e, organization: { id: orgId } })),
+      fromBasin,
+      toBasin
+    );
+  } catch (error) {
+    logger.warn("[streamBasinProvisioner] failed to move signal streams", { orgId, error });
+  }
 }
 
 // S2 REST: POST /v1/basins to create, PATCH /v1/basins/{name} to

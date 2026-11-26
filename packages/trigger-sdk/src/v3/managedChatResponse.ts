@@ -18,6 +18,7 @@ export class ManagedChatResponse {
   private orderedSteps = true;
   private piping = false;
   private pendingData: Array<{ chunk: UIMessageChunk; capture: boolean; anchor: string[] }> = [];
+  private toolStepWaiters: Array<{ anchor: string[]; resolve: (finished: boolean) => void }> = [];
 
   constructor(
     private readonly publish: (stream: ReadableStream<UIMessageChunk>) => Promise<unknown>
@@ -111,10 +112,17 @@ export class ManagedChatResponse {
     if (typeof toolCallId === "string") this.openStepToolCallIds.add(toolCallId);
     if (chunk.type === "finish-step") {
       for (const id of this.openStepToolCallIds) this.finishedToolCallIds.add(id);
+      if (this.toolStepWaiters.length > 0) {
+        const reached = this.toolStepWaiters.filter((waiter) => this.finished(waiter.anchor));
+        this.toolStepWaiters = this.toolStepWaiters.filter((waiter) => !reached.includes(waiter));
+        for (const waiter of reached) waiter.resolve(true);
+      }
       this.openStepToolCallIds.clear();
-      const released = this.pendingData.filter((next) => this.finished(next.anchor));
-      this.pendingData = this.pendingData.filter((next) => !released.includes(next));
-      for (const next of released) this.write(next.chunk, next.capture);
+      if (this.pendingData.length > 0) {
+        const released = this.pendingData.filter((next) => this.finished(next.anchor));
+        this.pendingData = this.pendingData.filter((next) => !released.includes(next));
+        for (const next of released) this.write(next.chunk, next.capture);
+      }
     }
   }
 
@@ -167,6 +175,31 @@ export class ManagedChatResponse {
         this.flushPendingData();
       }
     }
+  }
+
+  /**
+   * Resolves true once the step that made `toolCallIds` has finished in this
+   * stream, so everything up to and including that step is in the output.
+   * False if that has not happened within `timeoutMs`, which is also what a
+   * generation that is not the one being piped gets (one nested in a tool).
+   */
+  whenToolStepFinished(toolCallIds: readonly string[], timeoutMs: number): Promise<boolean> {
+    if (toolCallIds.length === 0) return Promise.resolve(false);
+    if (this.finished(toolCallIds)) return Promise.resolve(true);
+    return new Promise((resolve) => {
+      const waiter = {
+        anchor: [...toolCallIds],
+        resolve: (finished: boolean) => {
+          clearTimeout(timer);
+          resolve(finished);
+        },
+      };
+      const timer = setTimeout(() => {
+        this.toolStepWaiters = this.toolStepWaiters.filter((next) => next !== waiter);
+        resolve(false);
+      }, timeoutMs);
+      this.toolStepWaiters.push(waiter);
+    });
   }
 
   /** Native reduction of the exact admitted chunks, including same-ID updates. */

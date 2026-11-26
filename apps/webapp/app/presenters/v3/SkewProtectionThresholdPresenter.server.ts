@@ -5,6 +5,8 @@ import {
   type SkewProtectionThreshold,
   type SkewProtectionThresholdSetBy,
 } from "~/v3/services/skewProtectionThresholds.server";
+import { signalsAvailable } from "~/services/realtime/environmentSignals.server";
+import { taskContinuesTurns } from "~/services/realtime/turnHandoverState";
 import { compareDeploymentVersions } from "~/v3/utils/deploymentVersions";
 import {
   currentDeploymentVersion,
@@ -226,7 +228,15 @@ export type SkewProtectionThresholdChoices = {
    * (it has no setting of its own: `chat.createSession` takes one per call).
    */
   versionSkew?: string | null;
+  /** False on an instance without S2 realtime streams: `follow-mid-turn` moves between replies. */
+  midTurnHandover: boolean;
 };
+
+function midTurnHandover(
+  environment: { organization: { streamBasinName: string | null } } | null
+): boolean {
+  return environment ? signalsAvailable(environment.organization) : false;
+}
 
 /** What an agent's code says about moving its sessions, as its current deployment reports it. */
 type AgentInCode =
@@ -241,10 +251,9 @@ type AgentInCode =
 function agentInCode(config: unknown): AgentInCode {
   const versionSkew = (config as { versionSkew?: unknown } | null)?.versionSkew;
   if (typeof versionSkew === "string") return { type: "versionSkew", versionSkew };
-  // The SDK that reports `versionSkew` also reports `turnHandover`: on it, an agent without
-  // `versionSkew` is a `chat.customAgent`.
-  const reportsSettings = (config as { turnHandover?: unknown } | null)?.turnHandover === true;
-  return reportsSettings ? { type: "custom" } : { type: "not-reported" };
+  // The SDK that hands turns over is the one that reports `versionSkew`: on it, an agent without
+  // one is a `chat.customAgent`.
+  return taskContinuesTurns(config) ? { type: "custom" } : { type: "not-reported" };
 }
 
 export type SkewProtectionAgentRow = {
@@ -275,6 +284,7 @@ export async function getSkewProtectionPage(
       where: { id: environmentId },
       select: {
         skewProtectionThresholds: true,
+        organization: { select: { streamBasinName: true } },
       },
     }),
     getSkewProtectionThresholdHistory(prisma, { environmentId }),
@@ -330,6 +340,8 @@ export async function getSkewProtectionPage(
     threshold: shown ? { ...toItem(shown), byYou: byYou(shown) } : null,
     agents: rows,
     changes,
+    /** False on an instance without S2 realtime streams: `follow-mid-turn` moves between replies. */
+    midTurnHandover: midTurnHandover(environment),
   };
 }
 
@@ -351,6 +363,7 @@ export async function getSkewProtectionThresholdChoices(
       where: { id: environmentId },
       select: {
         skewProtectionThresholds: true,
+        organization: { select: { streamBasinName: true } },
       },
     }),
   ]);
@@ -364,6 +377,7 @@ export async function getSkewProtectionThresholdChoices(
   const choices: SkewProtectionThresholdChoices = {
     currentVersion,
     versions: [],
+    midTurnHandover: midTurnHandover(environment),
     threshold: shown
       ? {
           ...toItem(shown),

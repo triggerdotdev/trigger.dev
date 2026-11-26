@@ -1,6 +1,8 @@
 import { inputStreams } from "../input-streams-api.js";
 import { realtimeStreams } from "../realtime-streams-api.js";
 import { sessionStreams } from "../session-streams-api.js";
+import { signals } from "../signals-api.js";
+import { TestSignalsManager } from "./test-signals-manager.js";
 import { localsAPI } from "../locals-api.js";
 import { runMetadata } from "../run-metadata-api.js";
 import { taskContext } from "../task-context-api.js";
@@ -123,6 +125,11 @@ export type MockTaskContextDrivers = {
       close(sessionId: string, io?: SessionChannelIO): void;
     };
   };
+  /** Signals, backed by an in-memory manager installed as the `signals` global. */
+  signals: {
+    /** Send a signal to the task's listeners as the server would (latest kept for later `on()`). */
+    send(name: string, payload: unknown, options?: { task?: string }): void;
+  };
   /** The mock `TaskRunContext` assembled from defaults + user overrides. */
   ctx: TaskRunContext;
 };
@@ -240,6 +247,7 @@ export async function runInMockTaskContext<T>(
   const inputManager = new TestInputStreamManager();
   const outputManager = new TestRealtimeStreamsManager();
   const sessionStreamManager = options?.sessionStreamManager ?? new TestSessionStreamManager();
+  const signalsManager = new TestSignalsManager(() => ctx.task.id);
 
   // Unregister any previously-installed managers so `setGlobal*` wins —
   // `registerGlobal` returns false silently if an entry already exists.
@@ -250,6 +258,7 @@ export async function runInMockTaskContext<T>(
   unregisterGlobal("input-streams");
   unregisterGlobal("realtime-streams");
   unregisterGlobal("session-streams");
+  unregisterGlobal("signals");
   unregisterGlobal("task-context");
 
   localsAPI.setGlobalLocalsManager(localsManager);
@@ -259,6 +268,7 @@ export async function runInMockTaskContext<T>(
   inputStreams.setGlobalManager(inputManager);
   realtimeStreams.setGlobalManager(outputManager);
   sessionStreams.setGlobalManager(sessionStreamManager);
+  signals.setGlobalManager(signalsManager);
   taskContext.setGlobalTaskContext({
     ctx,
     worker,
@@ -295,6 +305,10 @@ export async function runInMockTaskContext<T>(
         },
       },
     },
+    signals: {
+      send: (name, payload, signalOptions) =>
+        signalsManager.__sendFromTest(name, payload, signalOptions),
+    },
     ctx,
   };
 
@@ -310,6 +324,7 @@ export async function runInMockTaskContext<T>(
     unregisterGlobal("input-streams");
     unregisterGlobal("realtime-streams");
     unregisterGlobal("session-streams");
+    unregisterGlobal("signals");
     unregisterGlobal("run-metadata");
     localsManager.reset();
     inputManager.reset();
@@ -317,6 +332,7 @@ export async function runInMockTaskContext<T>(
     if (sessionStreamManager instanceof TestSessionStreamManager) {
       sessionStreamManager.reset();
     }
+    signalsManager.reset();
     metadataManager.reset();
   }
 }

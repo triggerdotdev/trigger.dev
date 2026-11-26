@@ -136,11 +136,18 @@ export function UpgradeSessionsDialog({ children, onSet, ...props }: UpgradeSess
 
 const VERSION_SKEW_TEXT: Record<string, string> = {
   follow: "Sessions move between replies",
+  "follow-mid-turn": "A reply in progress moves at its next step",
   hold: "Sessions move only when the agent asks",
 };
 
-/** What an agent's `versionSkew` does here. */
-export function versionSkewText(versionSkew: string): string | undefined {
+/**
+ * What an agent's `versionSkew` does here. Without S2 realtime streams (`midTurnHandover` false)
+ * a running turn never hears about the threshold, so `follow-mid-turn` acts like `follow`.
+ */
+export function versionSkewText(versionSkew: string, midTurnHandover: boolean): string | undefined {
+  if (versionSkew === "follow-mid-turn" && !midTurnHandover) {
+    return "Moves between replies on this instance (moving a reply in progress needs S2 realtime streams)";
+  }
   return VERSION_SKEW_TEXT[versionSkew];
 }
 
@@ -238,7 +245,7 @@ function UpgradeSessionsBody({
                       versionSkew: "{choices.versionSkew}"
                     </InlineCode>
                   }
-                  detail={versionSkewText(choices.versionSkew)}
+                  detail={versionSkewText(choices.versionSkew, choices.midTurnHandover)}
                 />
               )}
             </StatusRow>

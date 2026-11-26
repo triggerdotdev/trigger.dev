@@ -339,6 +339,12 @@ class TestSessionOutputChannel extends SessionOutputChannel {
           synthetic.sessionClosed = value === "true";
         } else if (name === "session-closed-reason") {
           synthetic.reason = value;
+        } else if (name === "turn-handover-steps") {
+          synthetic.handoverSteps = value;
+        } else if (name === "turn-handover-answered") {
+          synthetic.handoverAnswered = value;
+        } else if (name === "turn-handover-upgrade") {
+          synthetic.handoverUpgrade = value;
         }
       }
     }
