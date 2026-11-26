@@ -709,6 +709,7 @@
           {
             "group": "Example tasks",
             "pages": [
+              "guides/examples/apify-actor-run",
               "guides/examples/deepgram-transcribe-audio",
               "guides/examples/fal-ai-image-to-cartoon",
               "guides/examples/fal-ai-realtime",
