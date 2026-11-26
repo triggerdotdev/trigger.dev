@@ -342,6 +342,7 @@ export class SecretProxyFixture {
   }
 
   private async startInterceptor() {
+    const buildStartedAt = performance.now();
     await exec(
       cargo,
       [
@@ -358,6 +359,9 @@ export class SecretProxyFixture {
         timeout: 600_000,
         env: { ...process.env, PATH: `${dirname(cargo)}:${process.env.PATH}` },
       }
+    );
+    console.info(
+      `Built native secret proxy fixture in ${Math.round(performance.now() - buildStartedAt)}ms`
     );
     this.directory = await mkdtemp(join(tmpdir(), "sp-real-"));
     await chmod(this.directory, 0o700);
