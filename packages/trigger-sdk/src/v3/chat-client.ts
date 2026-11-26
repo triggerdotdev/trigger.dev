@@ -24,7 +24,6 @@ import { readUIMessageStream } from "../imports/ai-runtime.js";
 import {
   apiClientManager,
   controlSubtype,
-  ReadSessionStreamRecordsResponseBody,
   SDK_CREDENTIAL_OPERATION_HEADER,
   SDK_CREDENTIAL_REASON_HEADER,
   SSEStreamSubscription,
@@ -36,15 +35,18 @@ import {
   appendedInSeq,
   boundaryInCursor,
   chatRunTags,
-  isBoundaryBeforeSend,
   MAX_EOF_RESUBSCRIBES,
-  PENDING_MESSAGE_INJECTED_TYPE,
   slimSubmitMessageForWire,
-  turnJoinCovers,
-  turnJoinInjectionId,
-  turnStartInSeq,
   waitBeforeEofResubscribe,
 } from "./ai-shared.js";
+import {
+  drainOutRecordsPage,
+  OutRecordsUnsupportedWarning,
+  readTurnBack,
+  searchTurnStart,
+  sessionOutUrl,
+  TurnOwnership,
+} from "./chat-turn-reader.js";
 import { triggerConcurrencyBody } from "./concurrency-shared.js";
 import { sessions, type SessionTriggerConfigInput } from "./sessions.js";
 
@@ -299,37 +301,6 @@ export class ChatStream {
 // ─── Internal ──────────────────────────────────────────────────────
 
 /**
- * Page budget for the records drain that finds where a cursorless send's turn
- * starts. The agent trims `.out` to about one turn, so one page is the norm.
- */
-const MAX_TURN_START_PAGES = 4;
-
-/** Per request: a page of at most a turn's records is normally back in well under a second. */
-const DRAIN_TIMEOUT_MS = 2_000;
-const DRAIN_RETRY_DELAY_MS = 200;
-/**
- * For the whole turn-start search, which the per-request timeout alone leaves
- * at pages x attempts x timeout (about 16s). It leaves a slow page and its
- * quick retry room, and caps what a send can wait before its stream opens.
- */
-const TURN_START_DEADLINE_MS = 3_000;
-
-/**
- * Statuses that say the server has no records endpoint behind this path (a
- * proxy that only forwards the streaming one), as opposed to a failure worth
- * holding the answer back for.
- */
-const RECORDS_UNSUPPORTED_STATUSES = new Set([404, 405, 501]);
-
-class OutRecordsUnsupportedError extends Error {}
-
-/** What the turn-start search found. */
-type TurnStartSearch =
-  | { kind: "found"; cursor: number | undefined; hold: boolean }
-  | { kind: "unsupported" }
-  | { kind: "failed" };
-
-/**
  * The earlier of two event ids, where no id is the start of the retained
  * output, before every id.
  */
@@ -350,9 +321,6 @@ function laterEventId(current: string | undefined, next: string): string {
   const b = Number(next);
   return Number.isNaN(a) || Number.isNaN(b) || b >= a ? next : current;
 }
-
-/** One `.out/records` entry; the turn-start search reads its seq and headers. */
-type DrainedRecord = ReadSessionStreamRecordsResponseBody["records"][number];
 
 type SessionState = {
   lastEventId?: string;
@@ -419,7 +387,11 @@ export class AgentChat<TAgent = unknown> {
 
   private state: SessionState;
   /** The records endpoint is unsupported on this path; warned once. */
-  private warnedOutRecordsUnsupported = false;
+  private readonly outRecordsUnsupported = new OutRecordsUnsupportedWarning(
+    "AgentChat",
+    "a send without `session.lastEventId`",
+    "Pass `session.lastEventId`"
+  );
   /**
    * Where each response stream still reading began. Streams of one instance
    * share `state.lastEventId`, which one of them advances past records another
@@ -807,21 +779,13 @@ export class AgentChat<TAgent = unknown> {
     // fetch gets the fallback rather than a request that skips it.
     if (this.fetchOverride) return true;
 
-    const found = await this.searchTurnStart(inSeq, abortSignal);
+    const found = await searchTurnStart(inSeq, abortSignal, this.readOutRecordsPage);
     // A stop can land while the drain is in flight, after the check above; the
     // cursor it found may then sit past the stopped turn's boundary. A caller
     // abort is the same: the stream below posts the stop for it.
     if (state.skipToTurnComplete || abortSignal?.aborted) return true;
     if (found.kind === "unsupported") {
-      if (!this.warnedOutRecordsUnsupported) {
-        this.warnedOutRecordsUnsupported = true;
-        console.warn(
-          `AgentChat: reading the chat's earlier output isn't supported by this server or proxy, ` +
-            `so a send without \`session.lastEventId\` reads from the start of the retained output. ` +
-            `With an agent on an older SDK version the reply is held until its turn completes. ` +
-            `Pass \`session.lastEventId\` to avoid reading earlier turns.`
-        );
-      }
+      this.outRecordsUnsupported.warnOnce();
       // Nothing proves which records are this send's, so unmarked ones are held
       // until a turn-start marker or a boundary says whose they are.
       return true;
@@ -836,165 +800,24 @@ export class AgentChat<TAgent = unknown> {
   }
 
   /**
-   * Drain the retained records for the last boundary of a turn before `inSeq`.
-   * The send's turn is then everything after it when that boundary's
-   * `session-in-event-id` is `inSeq - 1`: the agent holds that cursor behind any
-   * message it has not answered yet, so nothing unanswered sits between the two.
-   * A lower one means earlier messages are still waiting, and their turns are
-   * ahead of this one.
+   * One page of this chat's `.out/records`, for the turn-start search and the
+   * read-back of a dropped turn (`chat-turn-reader.ts`).
    */
-  private async searchTurnStart(
-    inSeq: number,
-    abortSignal: AbortSignal | undefined
-  ): Promise<TurnStartSearch> {
-    // One deadline for the whole search, ended with the caller's own abort.
-    const deadline = new AbortController();
-    const deadlineTimer = setTimeout(() => deadline.abort(), TURN_START_DEADLINE_MS);
-    const signal = abortSignal ? AbortSignal.any([abortSignal, deadline.signal]) : deadline.signal;
-    try {
-      let after: string | undefined;
-      let earlierBoundary: number | undefined;
-      let earlierCursor: number | undefined;
-      let chunksSinceBoundary = false;
-      // A `turn-join` folded my message into the turn now being read, so its
-      // boundary closes my turn even when its cursor sits below my seq.
-      let joinedMyTurn = false;
-      const found = (): TurnStartSearch => ({
-        kind: "found",
-        cursor: earlierBoundary,
-        hold: earlierCursor !== inSeq - 1,
-      });
-
-      for (let page = 0; page < MAX_TURN_START_PAGES; page++) {
-        const records = await this.drainOutRecords(after, signal);
-        if (records.length === 0) {
-          // Caught up with the tail without meeting a boundary of this turn.
-          // Nothing retained after the last boundary: nothing to tell apart.
-          return chunksSinceBoundary
-            ? found()
-            : { kind: "found", cursor: earlierBoundary, hold: false };
-        }
-        for (const record of records) {
-          const subtype = controlSubtype(record.headers);
-          if (subtype === TRIGGER_CONTROL_SUBTYPE.TURN_COMPLETE) {
-            const cursor = boundaryInCursor(record.headers);
-            // This turn's own boundary (already written). One that closes the
-            // turn my message was folded into is mine too: an input or queued
-            // action ahead of mine can still be owed, so it carries a lower cursor.
-            if (joinedMyTurn || (cursor !== undefined && cursor >= inSeq)) return found();
-            earlierBoundary = record.seqNum;
-            earlierCursor = cursor;
-            chunksSinceBoundary = false;
-          } else if (subtype === TRIGGER_TURN_MARKER_SUBTYPE.TURN_JOIN) {
-            if (turnJoinCovers(record.headers, inSeq)) joinedMyTurn = true;
-          } else if (subtype === TRIGGER_TURN_MARKER_SUBTYPE.TURN_START) {
-            joinedMyTurn = false;
-          } else if (subtype === undefined && record.headers?.[0]?.[0] !== "") {
-            // A data record; other control records and S2 commands say nothing.
-            chunksSinceBoundary = true;
-          }
-        }
-        // The server sets no page size, so only an empty page is the tail.
-        after = String(records[records.length - 1]!.seqNum);
-      }
-      return { kind: "failed" };
-    } catch (error) {
-      return error instanceof OutRecordsUnsupportedError
-        ? { kind: "unsupported" }
-        : { kind: "failed" };
-    } finally {
-      clearTimeout(deadlineTimer);
-    }
-  }
-
-  /**
-   * The data chunks of the records from `fromSeq` up to (not including) `toSeq`:
-   * a turn this stream dropped as another's and then found had answered its own
-   * message. Bounded like the turn-start search; a read that fails or isn't
-   * served returns what it has, which degrades to the send ending empty.
-   */
-  private async readTurnBack(
-    fromSeq: number,
-    toSeq: number,
-    signal: AbortSignal
-  ): Promise<UIMessageChunk[]> {
-    const chunks: UIMessageChunk[] = [];
-    // The route takes digits only, so a turn starting at seq 0 reads from the start.
-    let after: string | undefined = fromSeq > 0 ? String(fromSeq - 1) : undefined;
-    try {
-      for (let page = 0; page < MAX_TURN_START_PAGES; page++) {
-        const records = await this.drainOutRecords(after, signal);
-        if (records.length === 0) break;
-        for (const record of records) {
-          if (record.seqNum >= toSeq) return chunks;
-          if (record.headers && record.headers.length > 0) continue;
-          if (record.data && typeof record.data === "object") {
-            chunks.push(record.data as UIMessageChunk);
-          }
-        }
-        after = String(records[records.length - 1]!.seqNum);
-      }
-    } catch {
-      // Not readable: the send ends without that turn's output.
-    }
-    return chunks;
-  }
-
-  /**
-   * One page of `GET .../out/records` (the `wait=0` drain). It sits in front of
-   * a send's stream, so it gets a short timeout and at most one quick retry on a
-   * 5xx or a network error; anything else, or `signal` aborting, fails at once
-   * and the caller falls back to holding chunks.
-   *
-   * This stays a direct request rather than `apiClient.readSessionStreamRecords`:
-   * that call takes no abort signal and runs the API client's retry schedule
-   * with no per-request timeout, so it can't be bounded by a caller's abort or
-   * this search's deadline without widening core's public API. The response is
-   * checked with the same schema core uses for it.
-   */
-  private async drainOutRecords(
-    afterEventId: string | undefined,
-    signal: AbortSignal
-  ): Promise<DrainedRecord[]> {
+  private readonly readOutRecordsPage = (afterEventId: string | undefined, signal: AbortSignal) => {
     const headers: Record<string, string> = {
       ...apiClientManager.clientOrThrow().getAuthenticationHeaders("readSessionStreamRecords"),
       "x-trigger-source": "sdk",
     };
     const branch = apiClientManager.branchName;
     if (branch) headers["x-trigger-branch"] = branch;
-    const query =
-      afterEventId !== undefined ? `?afterEventId=${encodeURIComponent(afterEventId)}` : "";
-    const url = `${this.resolveBaseURL("out")}/realtime/v1/sessions/${encodeURIComponent(this.chatId)}/out/records${query}`;
-
-    for (let attempt = 0; ; attempt++) {
-      let retryable = true;
-      try {
-        const response = await fetch(url, {
-          headers,
-          signal: AbortSignal.any([signal, AbortSignal.timeout(DRAIN_TIMEOUT_MS)]),
-        });
-        if (response.ok) {
-          const body = ReadSessionStreamRecordsResponseBody.safeParse(await response.json());
-          // A malformed body is not worth a retry.
-          if (!body.success) {
-            retryable = false;
-            throw new Error("Unexpected records response");
-          }
-          return body.data.records;
-        }
-        await response.body?.cancel().catch(() => {});
-        if (RECORDS_UNSUPPORTED_STATUSES.has(response.status)) {
-          retryable = false;
-          throw new OutRecordsUnsupportedError(`No .out/records endpoint: ${response.status}`);
-        }
-        retryable = response.status >= 500;
-        throw new Error(`Reading the .out records failed: ${response.status}`);
-      } catch (error) {
-        if (!retryable || attempt > 0 || signal.aborted) throw error;
-      }
-      await new Promise((resolve) => setTimeout(resolve, DRAIN_RETRY_DELAY_MS));
-    }
-  }
+    return drainOutRecordsPage({
+      outUrl: sessionOutUrl(this.resolveBaseURL("out"), this.chatId),
+      afterEventId,
+      headers,
+      signal,
+      fetchClient: fetch,
+    });
+  };
 
   /** Resolves to the appended record's `.in` seq, when the server reports one. */
   private async appendInputChunk(body: string): Promise<number | undefined> {
@@ -1142,22 +965,9 @@ export class AgentChat<TAgent = unknown> {
       // Reading from before this instance's own cursor, past records of a send it
       // already made: unmarked chunks there are not necessarily this send's.
       (sinceInSeq !== undefined && startCursor !== state.lastEventId);
-    const held: UIMessageChunk[] = [];
-    // Whose turn the records being read belong to, as the agent's `turn-start`
-    // marker says (an agent that writes none leaves it "unknown"). Another
-    // message's turn is dropped as it streams, never buffered; this send's is
-    // delivered live from its marker. Reset at each boundary.
-    //
-    // "joining": my message was folded into the running turn. The records that
-    // follow can still include the previous step's batched tail, so I start at
-    // the next step, where the injected message first shapes the output.
-    let owner: "mine" | "other" | "joining" | "unknown" = "unknown";
-    // With "joining": the injection chunk the join record names, which ends the
-    // previous step's tail (undefined: the record names none, start at a step).
-    let joinInjectionId: string | undefined;
-    // Where the turn I am dropping began, to read it back if it turns out to
-    // have answered my message after all (see the boundary below).
-    let droppedFrom: number | undefined;
+    // Whose turn the records being read belong to, and what is held until a
+    // boundary says (see `TurnOwnership`).
+    const ownership = new TurnOwnership<UIMessageChunk>(sinceInSeq, holdUntilBoundary);
     // While holding, the position the next read resumes from. `state.lastEventId`
     // is the caller's persisted cursor and must not move past chunks that were
     // never delivered, so it only catches up when they are flushed or dropped.
@@ -1228,7 +1038,7 @@ export class AgentChat<TAgent = unknown> {
     // located): the listener never fires, but the turn is already on `.in`.
     if (abortSignal?.aborted) onExternalAbort();
 
-    const streamUrl = `${this.resolveBaseURL("out")}/realtime/v1/sessions/${encodeURIComponent(chatId)}/out`;
+    const streamUrl = sessionOutUrl(this.resolveBaseURL("out"), chatId);
 
     // Resolved when the consumer reads what is queued, or the stream is
     // cancelled or aborted. No timer: nothing outlives a consumer that goes away.
@@ -1255,8 +1065,8 @@ export class AgentChat<TAgent = unknown> {
       };
       // Nothing is undelivered past the cursor once held chunks are resolved.
       const settleHeld = (deliver: boolean) => {
+        const held = ownership.takeHeld();
         if (deliver) for (const chunk of held) controller.enqueue(chunk);
-        held.length = 0;
         if (holdUntilBoundary && readCursor !== undefined) {
           state.lastEventId = laterEventId(state.lastEventId, readCursor);
         }
@@ -1338,24 +1148,15 @@ export class AgentChat<TAgent = unknown> {
                 }
               }
 
-              // A boundary below my send's `.in` seq closed an earlier turn:
-              // not mine to close on, and what was held before it is that
-              // turn's output. It also is the stale tail the gate below waits
-              // for, when a stop left one outstanding. Not when a marker or a
-              // join already made this turn mine: its boundary can carry a lower
-              // cursor (an input or queued action ahead of mine is still owed),
-              // and it is the one to close on.
+              // A boundary of an earlier turn (see `closesEarlierTurn`): not mine
+              // to close on, and what was held before it is that turn's output. It
+              // also is the stale tail the gate below waits for, when a stop left
+              // one outstanding.
               if (
                 controlValue === TRIGGER_CONTROL_SUBTYPE.TURN_COMPLETE &&
-                ((owner !== "mine" &&
-                  owner !== "joining" &&
-                  isBoundaryBeforeSend(value.headers, sinceInSeq)) ||
-                  // A turn the marker says isn't mine, closing with no cursor (it
-                  // answered no `.in` message), is not mine to close on either.
-                  (owner === "other" && boundaryInCursor(value.headers) === undefined))
+                ownership.closesEarlierTurn(value.headers)
               ) {
                 settleHeld(false);
-                owner = "unknown";
                 if (skipStaleBoundary) {
                   skipStaleBoundary = false;
                   state.skipToTurnComplete = false;
@@ -1390,27 +1191,14 @@ export class AgentChat<TAgent = unknown> {
                 continue;
               }
 
-              // The agent says whose turn the records that follow belong to.
-              // Nothing held before it can be that turn's (an unmarked turn
-              // ends at its boundary), and a reader with no send of its own
-              // has no turn to tell apart.
+              // The agent says whose turn the records that follow belong to, or
+              // which messages it folded into the running one.
               if (controlValue === TRIGGER_TURN_MARKER_SUBTYPE.TURN_START) {
-                if (sinceInSeq !== undefined) {
-                  held.length = 0;
-                  owner = turnStartInSeq(value.headers) === sinceInSeq ? "mine" : "other";
-                  if (owner === "other") droppedFrom = Number(value.id);
-                }
+                ownership.turnStart(value.headers, value.id);
                 continue;
               }
-
-              // Messages folded into the running turn: what follows answers
-              // them. If mine is one, I take the rest of this turn.
               if (controlValue === TRIGGER_TURN_MARKER_SUBTYPE.TURN_JOIN) {
-                if (sinceInSeq !== undefined && turnJoinCovers(value.headers, sinceInSeq)) {
-                  held.length = 0;
-                  owner = "joining";
-                  joinInjectionId = turnJoinInjectionId(value.headers);
-                }
+                ownership.turnJoin(value.headers);
                 continue;
               }
 
@@ -1446,13 +1234,15 @@ export class AgentChat<TAgent = unknown> {
                 // answered mine (folded in with no marker I could match: a failed
                 // marker write, a message the agent read from a recovery). Read its
                 // records back, so I end with that turn's output rather than nothing.
-                if (
-                  owner === "other" &&
-                  droppedFrom !== undefined &&
-                  Number.isFinite(droppedFrom)
-                ) {
+                const droppedFrom = ownership.droppedTurnStart();
+                if (droppedFrom !== undefined) {
                   const end = Number(value.id);
-                  for (const chunk of await this.readTurnBack(droppedFrom, end, combinedSignal)) {
+                  for (const chunk of await readTurnBack(
+                    droppedFrom,
+                    end,
+                    combinedSignal,
+                    this.readOutRecordsPage
+                  )) {
                     controller.enqueue(chunk);
                   }
                 }
@@ -1486,29 +1276,9 @@ export class AgentChat<TAgent = unknown> {
               // a live turn. Unknown control records stay neutral: they are no
               // reason for a reconnect to pin another long-poll window.
               sawLiveTurn = true;
-              // Another message's turn: not mine, and not worth holding.
-              if (owner === "other") continue;
-              if (owner === "joining") {
-                const joined = value.chunk as { type?: string; id?: string };
-                if (joinInjectionId !== undefined) {
-                  // The batched tail of the step before the injection can land
-                  // after the join record, `start-step` included, so a step
-                  // boundary can't tell it from the next step. The injection
-                  // chunk is ordered with that tail: the rest of the turn is what
-                  // follows it.
-                  if (
-                    joined.type === PENDING_MESSAGE_INJECTED_TYPE &&
-                    joined.id === joinInjectionId
-                  )
-                    owner = "mine";
-                  continue;
-                }
-                if (joined.type !== "start-step") continue;
-                owner = "mine";
-              }
-              if (holdUntilBoundary && owner === "unknown")
-                held.push(value.chunk as UIMessageChunk);
-              else {
+              const route = ownership.route(value.chunk);
+              if (route === "hold") ownership.hold(value.chunk as UIMessageChunk);
+              else if (route === "deliver") {
                 controller.enqueue(value.chunk as UIMessageChunk);
                 // Delivered live in hold mode (a marker made it mine): nothing
                 // held is behind this record, so the saved cursor can pass it and
@@ -1543,7 +1313,7 @@ export class AgentChat<TAgent = unknown> {
             // The run is gone mid-turn: what was held back is the partial
             // answer, which a consumer gets ahead of the error as it would
             // had the chunks streamed live.
-            if (held.length > 0) {
+            if (ownership.holding) {
               settleHeld(true);
               await untilDrained();
               // The caller went away while the chunks were unread: nothing is

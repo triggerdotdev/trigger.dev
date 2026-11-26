@@ -1102,6 +1102,54 @@ describe("AgentChat reading a turn without a cursor", () => {
     });
   }
 
+  it("holds the answer when an earlier message is owed and nothing of its turn is on .out yet", async () => {
+    // Catches: the shared lookup ending its hold at a quiet tail whose last
+    // boundary's cursor is below the send's predecessor (message 2 is owed and about
+    // to answer), so message 2's reply was returned as the send's: "answer 2answer 3".
+    stubSession({
+      retained: answerRecords(1, "answer 1", 1),
+      inSeq: 2,
+      onAppend: (inSeq, log) => {
+        // The agent starts message 2's turn only after the lookup has read `.out`.
+        setTimeout(() => {
+          log.push(...answerRecords((log.at(-1)?.seq ?? 0) + 1, "answer 2", 2));
+          log.push(...answerRecords((log.at(-1)?.seq ?? 0) + 1, `answer ${inSeq}`, inSeq));
+        }, 50);
+      },
+    });
+
+    await withApiContext(async () => {
+      const chat = new AgentChat({ agent: "test-agent", id: "chat-owed", session: {} });
+
+      expect(await (await chat.sendMessage("three")).text()).toBe("answer 3");
+    });
+  });
+
+  it("starts before a recovered turn's marker when its boundary cursor is still behind", async () => {
+    // Catches: the shared lookup skipping a turn the agent marked as the send's own
+    // (turn-start naming its seq) because its boundary's committed cursor sits below
+    // the seq, so the stream started after the turn's output and never saw it.
+    stubSession({
+      retained: answerRecords(1, "answer 1", 1),
+      inSeq: 1,
+      onAppend: (_inSeq, log) => {
+        // A recovered turn for message 2, written before the lookup reads `.out`:
+        // its boundary still carries cursor 1, as the router holds it below owed inputs.
+        const next = (log.at(-1)?.seq ?? 0) + 1;
+        log.push({ seq: next, marker: { inSeq: 2 } }, ...answerRecords(next + 1, "recovered", 1));
+      },
+    });
+
+    await withApiContext(async () => {
+      const chat = new AgentChat({ agent: "test-agent", id: "chat-recovered", session: {} });
+      const text = chat.sendMessage("two").then((r) => r.text());
+
+      expect(
+        await Promise.race([text, new Promise((r) => setTimeout(() => r("timed out"), 1_500))])
+      ).toBe("recovered");
+    });
+  });
+
   it("streams a cursorless send on an existing chat before its boundary is written", async () => {
     // Catches: holding a cursorless turn's chunks until its boundary even though
     // the records drain says where the turn starts, which ends live streaming.
@@ -1791,6 +1839,63 @@ describe("AgentChat streaming around other turns and older agents", () => {
       const chunks: UIMessageChunk[] = [];
       for (let r = await reader.read(); !r.done; r = await reader.read()) chunks.push(r.value);
       expect(text(chunks)).toBe("mine");
+    });
+  });
+
+  it("streams live past an earlier boundary with no cursor when a later one carries one", async () => {
+    // Catches: the turn-start lookup stopping at a boundary with no `.in` cursor
+    // (a turn that answered no message) and holding the reply, when the later
+    // boundary's cursor shows the agent had answered everything before this send.
+    const { log } = stubSession({
+      retained: [{ seq: 0, boundary: true }, ...earlierTurn, ...ownStart],
+      inSeq: 1,
+      onAppend: () => {},
+    });
+
+    await withApiContext(async () => {
+      const chat = new AgentChat({ agent: "test-agent", id: "chat-live-mixed", session: {} });
+      const reader = (
+        await chat.sendRaw([{ id: "u2", role: "user", parts: [{ type: "text", text: "two" }] }])
+      ).getReader();
+
+      const first = await Promise.race([reader.read(), sleep(1_000)]);
+      expect(first).not.toBe("idle");
+      log.push(...ownEnd(2));
+      const rest: UIMessageChunk[] = [];
+      for (let r = await reader.read(); !r.done; r = await reader.read()) rest.push(r.value);
+      expect(text(rest)).toBe("mine");
+    });
+  });
+
+  it("reads only the send's own turn from an agent that writes no cursor at all", async () => {
+    // Catches: the turn-start lookup taking the first of several boundaries with no
+    // `.in` cursor as the send's own, so the read starts before the last earlier
+    // turn and hands back that turn's reply instead of this send's.
+    const delta = (seq: number, value: string): LogRecord => ({
+      seq,
+      chunk: { type: "text-delta", id: `t-${seq}`, delta: value },
+    });
+    const { log } = stubSession({
+      retained: [
+        delta(1, "one"),
+        { seq: 2, boundary: true },
+        delta(3, "prev"),
+        { seq: 4, boundary: true },
+      ],
+      inSeq: 1,
+      onAppend: () => {},
+    });
+
+    await withApiContext(async () => {
+      const chat = new AgentChat({ agent: "test-agent", id: "chat-no-cursor", session: {} });
+      const stream = await chat.sendRaw([
+        { id: "u3", role: "user", parts: [{ type: "text", text: "three" }] },
+      ]);
+      // The agent answers after the send's lookup has run.
+      log.push(delta(5, "answer"), { seq: 6, boundary: true });
+      const chunks = await Promise.race([drain(stream), sleep(2_000)]);
+      expect(chunks).not.toBe("idle");
+      expect(text(chunks as UIMessageChunk[])).toBe("answer");
     });
   });
 

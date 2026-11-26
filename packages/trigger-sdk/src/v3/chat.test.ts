@@ -1666,6 +1666,34 @@ describe("TriggerChatTransport", () => {
       expect(await drainChunks(next)).toEqual(sampleChunks);
     });
 
+    it("moves the saved cursor past a lost turn's records in hold mode", async () => {
+      // Catches: the lost-output error leaving a hold-mode reader's saved cursor
+      // behind the records it had read (it only catches up at a boundary the reader
+      // goes on past), so the next reader re-read the swallowed turn.
+      mockFetch([
+        () =>
+          defaultSseResponse([
+            { type: "text-delta", id: "old", delta: "stale" },
+            { type: "text-start", id: "new" },
+            { type: "trigger:turn-complete", sessionInEventId: RETRY_SEQ },
+          ]),
+      ]);
+      const persisted: ChatSessionPersistedState[] = [];
+      const transport = await armedGate(
+        "chat-lost-cursor",
+        { publicAccessToken: "p", isStreaming: true },
+        { onSessionChange: (_chatId, session) => session && persisted.push(session) }
+      );
+
+      const stream = await send(transport, "chat-lost-cursor");
+
+      await expect(drainChunks(stream)).rejects.toThrow(/output was lost/);
+      // The lost turn's boundary is the third record.
+      expect(transport.getSession("chat-lost-cursor")?.lastEventId).toBe("3");
+      expect(persisted.at(-1)?.lastEventId).toBe("3");
+      transport.dispose();
+    });
+
     it("errors the turn when the gate swallowed the new turn's own output", async () => {
       // The stopped run died without writing a boundary, so the gate ate the new
       // turn: surface an error rather than complete an empty answer.
@@ -1883,6 +1911,97 @@ describe("TriggerChatTransport", () => {
 
       transport.dispose();
       reloaded.dispose();
+    });
+
+    it("starts a retried turn after the stopped one in hold mode too (no saved cursor)", async () => {
+      // Catches: with no `.out` cursor the retry's reader holds chunks, so the state's
+      // cursor lags the read position, and the gate clearing moved the turn start to
+      // that stale cursor: a reload before the retry finished resumed from the start
+      // of the window and replayed the stopped turn's tail ahead of the retried reply.
+      const sseHeaders = { "content-type": "text/event-stream", "X-Stream-Version": "v2" };
+      const cursors: Array<string | null> = [];
+      // Records 1..3: the stopped turn's tail and its boundary; 4 the retry's first
+      // chunk, still running. Records 5 and 6 come after the first read.
+      const records = JSON.parse(
+        sseEncode([
+          { type: "text-delta", id: "old", delta: "stale" },
+          { type: "text-end", id: "old" },
+          { type: "trigger:turn-complete", sessionInEventId: RETRY_SEQ - 1 },
+          { type: "text-start", id: "new" },
+          { type: "text-delta", id: "new", delta: "retried" },
+          { type: "trigger:turn-complete", sessionInEventId: RETRY_SEQ },
+        ]).match(/^data: (.*)$/m)![1]!
+      ).records as Array<{ seq_num: number }>;
+      let available = 4;
+      global.fetch = vi.fn().mockImplementation(async (url: string | URL, init?: RequestInit) => {
+        const urlStr = typeof url === "string" ? url : url.toString();
+        if (isSessionStreamAppendUrl(urlStr)) {
+          return new Response(JSON.stringify({ ok: true, seq: RETRY_SEQ }), { status: 200 });
+        }
+        if (!isSessionOutSubscribeUrl(urlStr)) throw new Error(`Unexpected URL: ${urlStr}`);
+        const cursor = new Headers(init?.headers).get("Last-Event-ID");
+        cursors.push(cursor);
+        const signal = init?.signal;
+        const served = records.filter(
+          (r) => r.seq_num > Number(cursor ?? 0) && r.seq_num <= available
+        );
+        const batch = `event: batch\ndata: ${JSON.stringify({ records: served })}\n\n`;
+        const body = new ReadableStream<Uint8Array>({
+          start(controller) {
+            controller.enqueue(new TextEncoder().encode(batch));
+            const onAbort = () => {
+              const err = new Error("aborted");
+              err.name = "AbortError";
+              try {
+                controller.error(err);
+              } catch {
+                /* already errored */
+              }
+            };
+            if (signal?.aborted) onAbort();
+            else signal?.addEventListener("abort", onAbort, { once: true });
+          },
+        });
+        return new Response(body, { status: 200, headers: sseHeaders });
+      });
+
+      const persisted: ChatSessionPersistedState[] = [];
+      const transport = await armedGate(
+        "chat-retry-hold",
+        { publicAccessToken: "p", isStreaming: true },
+        { onSessionChange: (_chatId, session) => session && persisted.push(session) }
+      );
+
+      const stream = await send(transport, "chat-retry-hold");
+      const reader = stream.getReader();
+      // The retry's chunk is held (no turn marker says it is the retry's) until its
+      // boundary, so the reader is pending while the gate has already cleared.
+      await vi.waitFor(() =>
+        expect(persisted.at(-1)).toMatchObject({ isStreaming: true, lastEventId: "3" })
+      );
+
+      const reloaded = new TriggerChatTransport({
+        task: "my-chat-task",
+        accessToken: () => "pat",
+        sessions: { "chat-retry-hold": persisted.at(-1)! },
+      });
+      available = 6;
+      const resumed = await reloaded.reconnectToStream({ chatId: "chat-retry-hold" });
+      expect(resumed).not.toBeNull();
+      expect(cursors.at(-1)).toBe("3");
+
+      const [forMessage, forChunks] = resumed!.tee();
+      let message: UIMessage | undefined;
+      for await (const m of readUIMessageStream({ stream: forMessage })) message = m;
+      expect(await drainChunks(forChunks)).toEqual([
+        { type: "text-start", id: "new" },
+        { type: "text-delta", id: "new", delta: "retried" },
+      ]);
+      expect(message?.parts.find((p) => p.type === "text")).toMatchObject({ text: "retried" });
+
+      transport.dispose();
+      reloaded.dispose();
+      await reader.cancel().catch(() => {});
     });
 
     it("clears on the first turn-complete after two consecutive stops", async () => {
@@ -2978,6 +3097,207 @@ describe("TriggerChatTransport", () => {
       transport.dispose();
       await finishSent();
     });
+
+    // A turn on `.out` as the server holds it: records 11..14, still running.
+    const runningTurn = [
+      { type: "start" },
+      { type: "text-start", id: "t1" },
+      { type: "text-delta", id: "t1", delta: "Hel" },
+      { type: "text-delta", id: "t1", delta: "lo" },
+    ].map((chunk, i) => ({
+      body: JSON.stringify({ data: chunk, id: `p-${i}` }),
+      seq_num: 11 + i,
+      timestamp: 1700000000000 + i,
+      headers: [] as Array<[string, string]>,
+    }));
+
+    // `.out` serves the running turn and stays open until aborted; `.out/records`
+    // answers once `recordsGate` opens (or rejects when its signal aborts), with
+    // the turn's first record as its start.
+    function lookupTransport(
+      chatId: string,
+      session: ChatSessionPersistedState,
+      options: { recordsGate?: Promise<void>; multiTab?: boolean } = {}
+    ) {
+      const outReads: Array<string | null> = [];
+      let appendCount = 0;
+      global.fetch = vi.fn().mockImplementation(async (url: string | URL, init?: RequestInit) => {
+        const urlStr = typeof url === "string" ? url : url.toString();
+        if (isSessionStreamAppendUrl(urlStr)) {
+          appendCount++;
+          return defaultAppendResponse();
+        }
+        if (urlStr.includes("/out/records")) {
+          const signal = init?.signal ?? undefined;
+          if (options.recordsGate) {
+            await new Promise<void>((resolve, reject) => {
+              const abort = () => reject(new DOMException("aborted", "AbortError"));
+              if (signal?.aborted) return abort();
+              signal?.addEventListener("abort", abort, { once: true });
+              options.recordsGate!.then(resolve, reject);
+            });
+          }
+          return Response.json({ records: [] });
+        }
+        if (isSessionOutSubscribeUrl(urlStr)) {
+          const cursor = new Headers(init?.headers).get("Last-Event-ID");
+          outReads.push(cursor);
+          const served = runningTurn.filter((r) => r.seq_num > Number(cursor ?? 0));
+          const body = new ReadableStream<Uint8Array>({
+            start(controller) {
+              controller.enqueue(
+                new TextEncoder().encode(
+                  `event: batch\ndata: ${JSON.stringify({ records: served })}\n\n`
+                )
+              );
+              const onAbort = () => {
+                const err = new Error("aborted");
+                err.name = "AbortError";
+                try {
+                  controller.error(err);
+                } catch {
+                  /* already errored */
+                }
+              };
+              if (init?.signal?.aborted) onAbort();
+              else init?.signal?.addEventListener("abort", onAbort, { once: true });
+            },
+          });
+          return new Response(body, {
+            status: 200,
+            headers: { "content-type": "text/event-stream", "X-Stream-Version": "v2" },
+          });
+        }
+        throw new Error(`Unexpected URL: ${urlStr}`);
+      });
+      const transport = new TriggerChatTransport({
+        task: "my-chat-task",
+        accessToken: () => "pat",
+        multiTab: options.multiTab,
+        sessions: { [chatId]: session },
+      });
+      return { transport, outReads, appends: () => appendCount };
+    }
+
+    // Reads `count` chunks of a stream that stays open, then lets go of it.
+    async function drainChunksUntil(stream: ReadableStream<UIMessageChunk>, count: number) {
+      const reader = stream.getReader();
+      const out: UIMessageChunk[] = [];
+      while (out.length < count) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        out.push(value);
+      }
+      reader.releaseLock();
+      return out;
+    }
+
+    it("hands out a stream to a resume that follows an abort during the lookup, with a cursor", async () => {
+      // Catches: a resume aborted between registering its controller and
+      // subscribing (the lookup await yields even with a cursor) still held the
+      // slot, so the remount's immediate resume got null: the StrictMode bug again.
+      const { transport, appends } = lookupTransport("chat-strict", {
+        publicAccessToken: "p",
+        lastEventId: "10",
+        isStreaming: true,
+      });
+      const abort = new AbortController();
+      const first = transport.reconnectToStream({
+        chatId: "chat-strict",
+        abortSignal: abort.signal,
+      });
+      abort.abort();
+      const second = await transport.reconnectToStream({ chatId: "chat-strict" });
+
+      expect(second).not.toBeNull();
+      expect(await first).toBeNull();
+      const chunks = await drainChunksUntil(second!, 4);
+      expect(chunks.map((c) => c.type)).toEqual([
+        "start",
+        "text-start",
+        "text-delta",
+        "text-delta",
+      ]);
+      expect(appends()).toBe(0);
+      transport.dispose();
+    });
+
+    it("hands out a stream to a resume that follows an abort during a cursorless lookup", async () => {
+      // Catches: the same bug when the lookup is a real `.out/records` page: the
+      // aborted resume's slot stayed taken for as long as that request was in flight.
+      let release!: () => void;
+      const recordsGate = new Promise<void>((resolve) => (release = resolve));
+      const { transport, outReads, appends } = lookupTransport(
+        "chat-strict-lookup",
+        { publicAccessToken: "p", isStreaming: true, activeInputSeq: 7 },
+        { recordsGate }
+      );
+      const abort = new AbortController();
+      const first = transport.reconnectToStream({
+        chatId: "chat-strict-lookup",
+        abortSignal: abort.signal,
+      });
+      await vi.waitFor(() => expect(vi.mocked(global.fetch)).toHaveBeenCalledTimes(1));
+      abort.abort();
+      const second = transport.reconnectToStream({ chatId: "chat-strict-lookup" });
+      release();
+
+      expect(await first).toBeNull();
+      const stream = await second;
+      expect(stream).not.toBeNull();
+      const chunks = await drainChunksUntil(stream!, 4);
+      expect(chunks.map((c) => c.type)).toEqual([
+        "start",
+        "text-start",
+        "text-delta",
+        "text-delta",
+      ]);
+      expect(outReads).toHaveLength(1);
+      expect(appends()).toBe(0);
+      transport.dispose();
+    });
+
+    it("does not let an aborted resume take the slot or the claim back after its lookup (multi-tab)", async () => {
+      // Catches: the stale resume, once its lookup settles, subscribing anyway or
+      // freeing what is no longer its own: it replaced the send that took over the
+      // chat (a second reader) or dropped that send's slot and tab claim.
+      let release!: () => void;
+      const recordsGate = new Promise<void>((resolve) => (release = resolve));
+      const { transport, outReads, appends } = lookupTransport(
+        "chat-stale",
+        { publicAccessToken: "p", isStreaming: true, activeInputSeq: 7 },
+        { recordsGate, multiTab: true }
+      );
+      const abort = new AbortController();
+      const stale = transport.reconnectToStream({
+        chatId: "chat-stale",
+        abortSignal: abort.signal,
+      });
+      await vi.waitFor(() => expect(vi.mocked(global.fetch)).toHaveBeenCalledTimes(1));
+      abort.abort();
+
+      // Another resume takes the slot while the stale one's lookup is in flight:
+      // the abort freed it, so it gets a stream rather than null.
+      const next = transport.reconnectToStream({ chatId: "chat-stale" });
+      release();
+      expect(await stale).toBeNull();
+      const stream = await next;
+      expect(stream).not.toBeNull();
+
+      // The stale resume left the new one's slot alone: its stream is live and
+      // delivers the turn, and a further resume still finds the slot taken.
+      const chunks = await drainChunksUntil(stream!, 4);
+      expect(chunks.map((c) => c.type)).toEqual([
+        "start",
+        "text-start",
+        "text-delta",
+        "text-delta",
+      ]);
+      expect(await transport.reconnectToStream({ chatId: "chat-stale" })).toBeNull();
+      expect(outReads).toHaveLength(1);
+      expect(appends()).toBe(0);
+      transport.dispose();
+    });
   });
 
   describe("superseded stream teardown", () => {
@@ -3521,5 +3841,784 @@ describe("TriggerChatTransport", () => {
       const textChunks = surfaced.filter((c: any) => c.type === "text-delta");
       expect(textChunks).toHaveLength(2);
     });
+  });
+});
+
+// ───────────────────────────────────────────────────────────────────────────
+// A reload or reconnect without a `.out` cursor must not replay earlier turns
+// ───────────────────────────────────────────────────────────────────────────
+
+describe("TriggerChatTransport without a .out cursor", () => {
+  type LogRecord = {
+    seq: number;
+    chunk?: unknown;
+    boundary?: boolean;
+    inCursor?: number;
+    /** A `turn-start` marker naming the `.in` seq its turn answers. */
+    turnStartFor?: number;
+  };
+  type RecordsMode = "headers" | "no-headers" | "fail";
+
+  let originalFetch: typeof global.fetch;
+
+  beforeEach(() => {
+    originalFetch = global.fetch;
+  });
+
+  afterEach(() => {
+    global.fetch = originalFetch;
+    vi.restoreAllMocks();
+  });
+
+  /** One answered turn: a text part, then the boundary carrying the turn's `.in` cursor. */
+  function answer(firstSeq: number, text: string, inCursor: number | undefined): LogRecord[] {
+    return [
+      { seq: firstSeq, chunk: { type: "text-start", id: `t-${firstSeq}` } },
+      { seq: firstSeq + 1, chunk: { type: "text-delta", id: `t-${firstSeq}`, delta: text } },
+      { seq: firstSeq + 2, chunk: { type: "text-end", id: `t-${firstSeq}` } },
+      { seq: firstSeq + 3, boundary: true, inCursor },
+    ];
+  }
+
+  const texts = (chunks: UIMessageChunk[]) =>
+    chunks
+      .filter((c): c is Extract<UIMessageChunk, { type: "text-delta" }> => c.type === "text-delta")
+      .map((c) => c.delta);
+
+  const earlierTurns = [...answer(1, "answer one", 1), ...answer(5, "answer two", 2)];
+
+  const boundaryHeaders = (r: LogRecord) => [
+    ["trigger-control", "turn-complete"],
+    ...(r.inCursor !== undefined ? [["session-in-event-id", String(r.inCursor)]] : []),
+  ];
+  const isControl = (r: LogRecord) => r.boundary === true || r.turnStartFor !== undefined;
+  const controlHeaders = (r: LogRecord) =>
+    r.turnStartFor !== undefined
+      ? [
+          ["trigger-control", "turn-start"],
+          ["turn-start-in-seq", String(r.turnStartFor)],
+        ]
+      : boundaryHeaders(r);
+
+  /**
+   * A session that keeps `.in` and `.out` the way the server does: an append
+   * gets the next `.in` seq and `onAppend` plays the agent onto `.out`; the
+   * `wait=0` records drain and the SSE read both serve the records after their
+   * cursor (the whole retained window when they send none).
+   */
+  function stubSession(options: {
+    retained: LogRecord[];
+    inSeq: number;
+    records?: RecordsMode;
+    /** `.out/records` waits for this, and rejects as a real fetch does when its signal aborts. */
+    recordsGate?: Promise<void>;
+    /** The nth `.out/records` request waits for this (a read-back after the lookup). */
+    holdRecordsCall?: { nth: number; until: Promise<void> };
+    onAppend?: (inSeq: number, log: LogRecord[]) => void;
+  }) {
+    const log = [...options.retained];
+    let inSeq = options.inSeq;
+    const recordsMode = options.records ?? "headers";
+    const outReads: Array<string | null> = [];
+    const appendBodies: string[] = [];
+    let recordsCalls = 0;
+
+    const sse = (records: LogRecord[]) =>
+      new Response(
+        records.length
+          ? `event: batch\ndata: ${JSON.stringify({
+              records: records.map((r) => ({
+                body: isControl(r) ? "" : JSON.stringify({ data: r.chunk, id: `p-${r.seq}` }),
+                seq_num: r.seq,
+                timestamp: r.seq,
+                headers: isControl(r) ? controlHeaders(r) : [],
+              })),
+            })}\n\n`
+          : "",
+        {
+          status: 200,
+          headers: { "content-type": "text/event-stream", "X-Stream-Version": "v2" },
+        }
+      );
+
+    global.fetch = vi.fn().mockImplementation(async (url: string | URL, init?: RequestInit) => {
+      const urlStr = typeof url === "string" ? url : url.toString();
+      if (urlStr.includes("/out/records")) {
+        recordsCalls++;
+        const signal = init?.signal ?? undefined;
+        if (options.recordsGate) {
+          await new Promise<void>((resolve, reject) => {
+            const abort = () => reject(new DOMException("aborted", "AbortError"));
+            if (signal?.aborted) return abort();
+            signal?.addEventListener("abort", abort, { once: true });
+            options.recordsGate!.then(resolve, reject);
+          });
+        }
+        if (options.holdRecordsCall?.nth === recordsCalls) await options.holdRecordsCall.until;
+        if (recordsMode === "fail") return new Response("nope", { status: 404 });
+        const after = Number(new URL(urlStr).searchParams.get("afterEventId") ?? 0);
+        return Response.json({
+          records: log
+            .filter((r) => r.seq > after)
+            .map((r) => ({
+              data: isControl(r) ? "" : r.chunk,
+              id: String(r.seq),
+              seqNum: r.seq,
+              ...(isControl(r) && recordsMode === "headers" ? { headers: controlHeaders(r) } : {}),
+            })),
+        });
+      }
+      if (isSessionStreamAppendUrl(urlStr)) {
+        const body = String(init?.body ?? "");
+        appendBodies.push(body);
+        // A stop is an ordinary `.in` record: it takes the next seq, and the agent
+        // answers nothing for it.
+        inSeq += 1;
+        if (!/"kind":"stop"/.test(body)) options.onAppend?.(inSeq, log);
+        return new Response(JSON.stringify({ ok: true, seq: inSeq }), { status: 200 });
+      }
+      if (isSessionOutSubscribeUrl(urlStr)) {
+        const lastEventId = new Headers(init?.headers).get("Last-Event-ID");
+        outReads.push(lastEventId);
+        const after = lastEventId ? Number(lastEventId) : 0;
+        return sse(log.filter((r) => r.seq > after));
+      }
+      throw new Error(`Unexpected URL: ${urlStr}`);
+    });
+
+    return { log, outReads, appendBodies, recordsCalls: () => recordsCalls };
+  }
+
+  // The agent answers each message as soon as it lands on `.in`.
+  const answerEach = (inSeq: number, log: LogRecord[]) => {
+    log.push(...answer((log.at(-1)?.seq ?? 0) + 1, `answer ${inSeq}`, inSeq));
+  };
+
+  function makeTransport(session: ChatSessionPersistedState = { publicAccessToken: "p" }) {
+    return new TriggerChatTransport({
+      task: "my-chat-task",
+      accessToken: () => "pat",
+      sessions: { "chat-x": session },
+    });
+  }
+
+  const send = (transport: TriggerChatTransport, abortSignal?: AbortSignal) =>
+    transport.sendMessages({
+      trigger: "submit-message",
+      chatId: "chat-x",
+      messageId: undefined,
+      messages: [createUserMessage("three")],
+      abortSignal,
+    });
+
+  // `headers` finds where the turn starts and streams live from there; the others
+  // can't, and hold the chunks until a boundary says whose they are.
+  for (const records of ["headers", "no-headers", "fail"] as const) {
+    it(`sendMessages surfaces only the new turn when the window holds earlier turns (${records})`, async () => {
+      // Catches: a reload with no `.out` cursor re-streaming the previous turn's
+      // chunks to the UI ahead of the new answer (the browser transport only skipped
+      // the earlier turn's turn-complete, not its chunks).
+      const session = stubSession({
+        retained: earlierTurns,
+        inSeq: 2,
+        records,
+        onAppend: answerEach,
+      });
+
+      const stream = await send(makeTransport());
+      const chunks = await drainChunks(stream);
+
+      expect(texts(chunks)).toEqual(["answer 3"]);
+      if (records === "headers") {
+        // Streamed live from the last earlier boundary, not from the window start.
+        expect(session.outReads).toEqual(["8"]);
+      }
+    });
+  }
+
+  it("sendAction surfaces only the action's own turn when the window holds earlier turns", async () => {
+    // Catches: the same replay on the action path, which opens its stream the same way.
+    stubSession({ retained: earlierTurns, inSeq: 2, onAppend: answerEach });
+
+    const stream = await makeTransport().sendAction("chat-x", { type: "undo" });
+
+    expect(texts(await drainChunks(stream))).toEqual(["answer 3"]);
+  });
+
+  it("persists the located turn start so a reload mid-turn resumes from it", async () => {
+    // Catches: a cursorless send persisting no cursor for its turn, so every
+    // reload before the turn completes starts from the window start again.
+    const session = stubSession({ retained: earlierTurns, inSeq: 2, onAppend: answerEach });
+    const transport = makeTransport();
+
+    const stream = await send(transport);
+
+    expect(transport.getSession("chat-x")?.lastEventId).toBe("8");
+    await drainChunks(stream);
+    expect(session.outReads).toEqual(["8"]);
+  });
+
+  for (const records of ["headers", "fail"] as const) {
+    it(`reconnectToStream resumes the turn in flight without replaying the previous answer (${records})`, async () => {
+      // Catches: a reload mid-answer with no persisted `.out` cursor re-streaming
+      // the previous turn's chunks before the turn it is resuming.
+      stubSession({
+        retained: [...earlierTurns, ...answer(9, "answer 3", 3)],
+        inSeq: 3,
+        records,
+      });
+      const transport = makeTransport({
+        publicAccessToken: "p",
+        isStreaming: true,
+        activeInputSeq: 3,
+      });
+
+      const stream = await transport.reconnectToStream({ chatId: "chat-x" });
+
+      expect(texts(await drainChunks(stream!))).toEqual(["answer 3"]);
+    });
+  }
+
+  it("holds the answer when an earlier message is queued and nothing of its turn is on .out yet", async () => {
+    // Catches: the lookup ending its hold at a quiet tail whose last boundary's
+    // cursor is below this send's predecessor (message 2 is queued, unanswered),
+    // so message 2's reply streamed as this send's: ["answer 2", "answer 3"].
+    stubSession({
+      retained: [...answer(1, "answer one", 1)],
+      inSeq: 2,
+      // The agent has not started message 2's turn when the lookup reads `.out`,
+      // and answers 2 then 3 shortly after.
+      onAppend: (inSeq, log) => {
+        setTimeout(() => {
+          log.push(...answer((log.at(-1)?.seq ?? 0) + 1, "answer 2", 2));
+          log.push(...answer((log.at(-1)?.seq ?? 0) + 1, `answer ${inSeq}`, inSeq));
+        }, 50);
+      },
+    });
+
+    const stream = await send(makeTransport());
+
+    expect(texts(await drainChunks(stream))).toEqual(["answer 3"]);
+  });
+
+  it("resumes a turn a recovery ended with an error, whose boundary cursor still sits behind", async () => {
+    // Catches: a cursorless reconnect treating the recovered turn's own boundary
+    // as an earlier turn's because its committed `.in` cursor is behind (the
+    // router holds it below owed inputs), skipping the turn's error and
+    // completion and waiting for an answer the agent had already ended.
+    stubSession({
+      retained: [
+        ...answer(1, "answer one", 1),
+        { seq: 5, turnStartFor: 2 },
+        { seq: 6, chunk: { type: "error", errorText: "recovered" } },
+        { seq: 7, boundary: true, inCursor: 1 },
+      ],
+      inSeq: 2,
+    });
+    const transport = makeTransport({
+      publicAccessToken: "p",
+      isStreaming: true,
+      activeInputSeq: 2,
+    });
+
+    const stream = await transport.reconnectToStream({ chatId: "chat-x" });
+    const reader = stream!.getReader();
+    const seen: string[] = [];
+    let ended = false;
+    const deadline = Date.now() + 1_500;
+    // One read stays pending across iterations: abandoning it on the idle timer
+    // would let it consume the chunk the next read was waiting for.
+    let pending: ReturnType<typeof reader.read> | undefined;
+    while (Date.now() < deadline && !ended) {
+      pending ??= reader.read();
+      const next = await Promise.race([
+        pending,
+        new Promise<"idle">((resolve) => setTimeout(() => resolve("idle"), 200)),
+      ]);
+      if (next === "idle") continue;
+      pending = undefined;
+      if (next.done) ended = true;
+      else seen.push(next.value.type);
+    }
+    await reader.cancel().catch(() => {});
+
+    expect(seen).toEqual(["error"]);
+    expect(ended).toBe(true);
+  });
+
+  it("leaves the replacement send's state alone when a send is superseded during the read-back of a dropped turn", async () => {
+    // Catches: the old reader, once its read-back of a turn it had dropped as
+    // another's resolved (the abort is absorbed), delivering the chunks and
+    // clearing the new send's `activeInputSeq` and `isStreaming`.
+    let release!: () => void;
+    const until = new Promise<void>((resolve) => (release = resolve));
+    const session = stubSession({
+      // A turn the marker names for message 1 closes past message 2, so it
+      // answered message 2 after all and is read back at its boundary.
+      retained: [
+        { seq: 1, turnStartFor: 1 },
+        { seq: 2, chunk: { type: "text-delta", id: "t-2", delta: "dropped" } },
+        { seq: 3, boundary: true, inCursor: 2 },
+      ],
+      inSeq: 1,
+      holdRecordsCall: { nth: 2, until },
+    });
+    const transport = makeTransport();
+
+    const first = await send(transport);
+    const firstChunks = drainChunks(first);
+    await vi.waitFor(() => expect(session.recordsCalls()).toBe(2));
+    const second = await send(transport);
+    release();
+
+    expect(await firstChunks).toEqual([]);
+    expect(transport.getSession("chat-x")).toMatchObject({ isStreaming: true, activeInputSeq: 3 });
+    await second.cancel();
+  });
+
+  for (const stoppedBy of ["stopGeneration", "aborting the send's own signal"] as const) {
+    it(`answers the next send after ${stoppedBy} during the read-back of a dropped turn`, async () => {
+      // Catches: a stop landing while the read-back of a turn the stream already
+      // read the boundary of is pending arming the stop gate for a boundary that has
+      // gone by. The next send has a saved cursor past it, so the gate swallowed its
+      // output and failed it with "The previous turn's output was lost".
+      let release!: () => void;
+      const until = new Promise<void>((resolve) => (release = resolve));
+      const session = stubSession({
+        retained: [
+          { seq: 1, turnStartFor: 1 },
+          { seq: 2, chunk: { type: "text-delta", id: "t-2", delta: "dropped" } },
+          { seq: 3, boundary: true, inCursor: 2 },
+        ],
+        inSeq: 1,
+        holdRecordsCall: { nth: 2, until },
+        // Only the replacement's message is answered (the stop takes seq 3).
+        onAppend: (inSeq, log) => {
+          if (inSeq > 2) answerEach(inSeq, log);
+        },
+      });
+      const transport = makeTransport();
+      const abort = new AbortController();
+
+      const first = await send(transport, abort.signal);
+      const firstChunks = drainChunks(first);
+      await vi.waitFor(() => expect(session.recordsCalls()).toBe(2));
+      if (stoppedBy === "stopGeneration")
+        expect(await transport.stopGeneration("chat-x")).toBe(true);
+      else abort.abort();
+      release();
+      await firstChunks;
+
+      expect(transport.getSession("chat-x")).toMatchObject({ isStreaming: false });
+      const second = await send(transport);
+      expect(texts(await drainChunks(second))).toEqual(["answer 4"]);
+      expect(transport.getSession("chat-x")).toMatchObject({
+        isStreaming: false,
+        activeInputSeq: undefined,
+      });
+    });
+  }
+
+  for (const stoppedBy of ["stopGeneration", "aborting the send's own signal"] as const) {
+    it(`answers a send that starts while the read-back is still pending after ${stoppedBy}`, async () => {
+      // Catches: the saved cursor already sitting past the stopped turn's boundary
+      // while its read-back is pending, so the stop gate waited for a boundary the
+      // reader had passed and a send started in that window dropped its whole answer
+      // ("The previous turn's output was lost").
+      let release!: () => void;
+      const until = new Promise<void>((resolve) => (release = resolve));
+      const session = stubSession({
+        retained: [
+          { seq: 1, turnStartFor: 1 },
+          { seq: 2, chunk: { type: "text-delta", id: "t-2", delta: "dropped" } },
+          { seq: 3, boundary: true, inCursor: 2 },
+        ],
+        inSeq: 1,
+        holdRecordsCall: { nth: 2, until },
+        onAppend: (inSeq, log) => {
+          if (inSeq > 2) answerEach(inSeq, log);
+        },
+      });
+      const transport = makeTransport();
+      const abort = new AbortController();
+
+      const first = await send(transport, abort.signal);
+      const firstChunks = drainChunks(first);
+      await vi.waitFor(() => expect(session.recordsCalls()).toBe(2));
+      if (stoppedBy === "stopGeneration")
+        expect(await transport.stopGeneration("chat-x")).toBe(true);
+      else abort.abort();
+      // The replacement starts and is read before the old read-back returns.
+      const second = await send(transport);
+      const secondChunks = drainChunks(second);
+      // Its own `.out` read, after the first stream's, is under way.
+      await vi.waitFor(() => expect(session.outReads.length).toBeGreaterThanOrEqual(2));
+      release();
+      await firstChunks;
+
+      expect(texts(await secondChunks)).toEqual(["answer 4"]);
+      expect(transport.getSession("chat-x")).toMatchObject({
+        isStreaming: false,
+        activeInputSeq: undefined,
+      });
+    });
+  }
+
+  for (const stoppedBy of ["stopGeneration", "aborting the send's own signal"] as const) {
+    it(`answers the retry after ${stoppedBy} during a read-back, with older completions in the window`, async () => {
+      // Catches: the read-back restoring the saved cursor to the one the holding
+      // lookup kept in memory only (undefined), so the retry (a Stop bypasses the
+      // lookup) read from the start of the window and an older cursorless completion
+      // cleared the gate and settled it with no answer.
+      let release!: () => void;
+      const until = new Promise<void>((resolve) => (release = resolve));
+      const session = stubSession({
+        retained: [
+          // Completions of older turns: one from an agent that writes no cursor
+          // (or a handover first turn), one at `.in` cursor 0.
+          { seq: 1, boundary: true },
+          { seq: 2, boundary: true, inCursor: 0 },
+          // The marked turn for input 1 closes past input 2, so it answered it.
+          { seq: 3, turnStartFor: 1 },
+          { seq: 4, chunk: { type: "text-delta", id: "t-4", delta: "dropped" } },
+          { seq: 5, boundary: true, inCursor: 2 },
+        ],
+        inSeq: 1,
+        holdRecordsCall: { nth: 2, until },
+        // Only the retry's message is answered (the stop takes seq 3).
+        onAppend: (inSeq, log) => {
+          if (inSeq > 2) answerEach(inSeq, log);
+        },
+      });
+      const transport = makeTransport();
+      const abort = new AbortController();
+
+      const first = await send(transport, abort.signal);
+      const firstChunks = drainChunks(first);
+      await vi.waitFor(() => expect(session.recordsCalls()).toBe(2));
+      if (stoppedBy === "stopGeneration")
+        expect(await transport.stopGeneration("chat-x")).toBe(true);
+      else abort.abort();
+      release();
+      await firstChunks;
+
+      const retry = await send(transport);
+      expect(texts(await drainChunks(retry))).toEqual(["answer 4"]);
+    });
+  }
+
+  describe("while a dropped turn's read-back is pending", () => {
+    // An earlier turn, then a turn the marker names for message 1 that closes past
+    // message 2: it answered message 2 after all, and is read back at its boundary.
+    const retained = [
+      ...answer(1, "answer one", 0),
+      { seq: 5, turnStartFor: 1 },
+      { seq: 6, chunk: { type: "text-delta", id: "t-6", delta: "dropped" } },
+      { seq: 7, boundary: true, inCursor: 2 },
+    ] satisfies LogRecord[];
+
+    function pendingReadBack() {
+      let release!: () => void;
+      const until = new Promise<void>((resolve) => (release = resolve));
+      const session = stubSession({ retained, inSeq: 1, holdRecordsCall: { nth: 2, until } });
+      return { session, release };
+    }
+
+    it("refuses a reconnect, and the send still finishes with its own answer", async () => {
+      // Catches: a reconnect opening a second reader on a turn whose boundary the
+      // send's stream has already read, or the send losing its answer to it.
+      const { session, release } = pendingReadBack();
+      const transport = makeTransport();
+
+      const sent = await send(transport);
+      const sentChunks = drainChunks(sent);
+      await vi.waitFor(() => expect(session.recordsCalls()).toBe(2));
+
+      expect(await transport.reconnectToStream({ chatId: "chat-x" })).toBeNull();
+      release();
+
+      expect(texts(await sentChunks)).toEqual(["dropped"]);
+      expect(transport.getSession("chat-x")).toMatchObject({ isStreaming: false });
+    });
+
+    it("resumes the turn's answer once after a reload, without the earlier turn's output", async () => {
+      // Catches: a reload at this moment, from the session saved then (no cursor
+      // yet, the turn's seq), replaying the earlier turn or losing the answer.
+      const { session, release } = pendingReadBack();
+      const transport = makeTransport();
+
+      const sent = await send(transport);
+      const sentChunks = drainChunks(sent);
+      await vi.waitFor(() => expect(session.recordsCalls()).toBe(2));
+      const saved = transport.getSession("chat-x")!;
+      expect(saved).toMatchObject({ isStreaming: true, activeInputSeq: 2 });
+
+      const resumed = await makeTransport(saved).reconnectToStream({ chatId: "chat-x" });
+
+      expect(texts(await drainChunks(resumed!))).toEqual(["dropped"]);
+      release();
+      await sentChunks;
+    });
+  });
+
+  it("keeps a resume's turn seq when its consumer aborts without a stop during a dropped turn's read-back", async () => {
+    // Catches: clearing the turn's `activeInputSeq` for any reader aborted during
+    // the read-back, including a resume whose consumer unmounted and wrote no stop.
+    // The turn stays streaming with no cursor and no seq, so the next resume made
+    // no lookup and read from the window start: "answer one" came back as this turn's.
+    let release!: () => void;
+    const until = new Promise<void>((resolve) => (release = resolve));
+    const session = stubSession({
+      retained: [
+        ...answer(1, "answer one", 0),
+        { seq: 5, turnStartFor: 1 },
+        { seq: 6, chunk: { type: "text-delta", id: "t-6", delta: "dropped" } },
+        { seq: 7, boundary: true, inCursor: 2 },
+      ],
+      inSeq: 1,
+      holdRecordsCall: { nth: 2, until },
+    });
+    const transport = makeTransport({
+      publicAccessToken: "p",
+      isStreaming: true,
+      activeInputSeq: 2,
+    });
+    const abort = new AbortController();
+
+    const first = await transport.reconnectToStream({
+      chatId: "chat-x",
+      abortSignal: abort.signal,
+    });
+    const firstChunks = drainChunks(first!);
+    await vi.waitFor(() => expect(session.recordsCalls()).toBe(2));
+    abort.abort();
+    release();
+    await firstChunks;
+
+    expect(transport.getSession("chat-x")).toMatchObject({ isStreaming: true, activeInputSeq: 2 });
+    const second = await transport.reconnectToStream({ chatId: "chat-x" });
+    expect(texts(await drainChunks(second!))).toEqual(["dropped"]);
+    // It repeated the lookup rather than reading from the window start.
+    expect(session.recordsCalls()).toBeGreaterThanOrEqual(3);
+  });
+
+  it("keeps the previous behaviour for an agent that writes no cursor on its boundaries", async () => {
+    // Catches: the lookup hanging, or dropping the turn, for an agent that predates
+    // the `.in` cursor header; it must still end the stream on a boundary as it did.
+    stubSession({
+      retained: [...answer(1, "answer one", undefined)],
+      inSeq: 1,
+      onAppend: (inSeq, log) =>
+        log.push(...answer((log.at(-1)?.seq ?? 0) + 1, `answer ${inSeq}`, undefined)),
+    });
+
+    const stream = await send(makeTransport());
+
+    expect(texts(await drainChunks(stream))).toEqual(["answer 2"]);
+  });
+
+  it("does not persist a cursor past chunks it holds when the turn is cancelled", async () => {
+    // Catches: held chunks advancing the cursor, so after a cancel the persisted
+    // cursor sits past the first undelivered chunk and a reload loses the turn's start.
+    const session = stubSession({
+      // The own turn's first chunks are on `.out` but its boundary is not yet.
+      retained: [
+        ...earlierTurns,
+        { seq: 9, chunk: { type: "text-start", id: "t-9" } },
+        { seq: 10, chunk: { type: "text-delta", id: "t-9", delta: "partial" } },
+      ],
+      inSeq: 2,
+      records: "fail",
+    });
+    const transport = makeTransport();
+    const abort = new AbortController();
+
+    const stream = await send(transport, abort.signal);
+    const drained = drainChunks(stream);
+    // The EOF resubscribe reads on from what it has read, not from the window start.
+    await vi.waitFor(() => expect(session.outReads.length).toBeGreaterThanOrEqual(2), {
+      timeout: 5_000,
+    });
+    abort.abort();
+    expect(await drained).toEqual([]);
+
+    // Once the cancelled turn no longer counts as streaming, the persisted cursor is
+    // the session's own: the earlier turn's boundary (seq 8), not the held chunks (10).
+    await vi.waitFor(() => expect(transport.getSession("chat-x")?.isStreaming).toBe(false));
+    expect(transport.getSession("chat-x")?.lastEventId).toBe("8");
+  });
+
+  it("stops the lookup and posts the stop once when the caller aborts the send", async () => {
+    // Catches: an aborted cursorless send waiting out the lookup, then streaming a
+    // turn the caller already cancelled without ever stopping it; and the stopped
+    // send leaving the saved session streaming, so a reload reopens the stopped reply.
+    let release!: () => void;
+    const recordsGate = new Promise<void>((resolve) => (release = resolve));
+    const session = stubSession({
+      retained: earlierTurns,
+      inSeq: 2,
+      recordsGate,
+      onAppend: answerEach,
+    });
+    const abort = new AbortController();
+    const transport = makeTransport();
+
+    const sending = send(transport, abort.signal);
+    await vi.waitFor(() => expect(session.recordsCalls()).toBe(1));
+    abort.abort();
+    const stream = await sending;
+    await drainChunks(stream);
+    release();
+
+    const stops = session.appendBodies.filter((body) => /"kind":"stop"/.test(body));
+    expect(stops).toHaveLength(1);
+    expect(transport.getSession("chat-x")?.isStreaming).toBe(false);
+  });
+
+  it("reads .out/records through the fetch override with the session token and headers", async () => {
+    // Catches: the lookup using the global fetch, which ignores the transport's
+    // override, token and headers (a proxy or a custom auth scheme never sees it)
+    // while every other test still passes by falling back to holding the chunks.
+    stubSession({ retained: earlierTurns, inSeq: 2, onAppend: answerEach });
+    const stubbed = global.fetch;
+    const overridden: Array<{ url: string; init: RequestInit; endpoint: string }> = [];
+    const transport = new TriggerChatTransport({
+      task: "my-chat-task",
+      accessToken: () => "pat",
+      headers: { "X-Tenant": "acme" },
+      fetch: async (url, init, ctx) => {
+        overridden.push({ url, init, endpoint: ctx.endpoint });
+        return stubbed(url, init);
+      },
+      sessions: { "chat-x": { publicAccessToken: "session-pat" } },
+    });
+
+    await drainChunks(await send(transport));
+
+    const records = overridden.filter((call) => call.url.includes("/out/records"));
+    expect(records.length).toBeGreaterThanOrEqual(1);
+    const headers = new Headers(records[0]!.init.headers);
+    expect(records[0]!.endpoint).toBe("out");
+    expect(headers.get("Authorization")).toBe("Bearer session-pat");
+    expect(headers.get("X-Tenant")).toBe("acme");
+  });
+
+  it("reconnectToStream gives way to a send that lands while its lookup is pending", async () => {
+    // Catches: a reconnect whose lookup was overtaken by a send subscribing anyway,
+    // leaving two readers on `.out` writing the same cursor.
+    let release!: () => void;
+    const recordsGate = new Promise<void>((resolve) => (release = resolve));
+    const session = stubSession({
+      retained: earlierTurns,
+      inSeq: 2,
+      recordsGate,
+      onAppend: answerEach,
+    });
+    const transport = makeTransport({
+      publicAccessToken: "p",
+      isStreaming: true,
+      activeInputSeq: 2,
+    });
+
+    const reconnecting = transport.reconnectToStream({ chatId: "chat-x" });
+    await vi.waitFor(() => expect(session.recordsCalls()).toBe(1));
+    const sending = send(transport);
+    await vi.waitFor(() => expect(session.recordsCalls()).toBe(2));
+    release();
+
+    expect(await reconnecting).toBeNull();
+    expect(texts(await drainChunks(await sending))).toEqual(["answer 3"]);
+    expect(session.outReads).toHaveLength(1);
+  });
+
+  for (const via of ["sendMessages", "sendAction"] as const) {
+    it(`stopGeneration while ${via} is locating its turn stops it cleanly`, async () => {
+      // Catches: the send unregistering the active stream before its lookup, so a
+      // stop in that window finds nothing to abort, the stream then subscribes and
+      // the stop gate swallows the turn ("The previous turn's output was lost").
+      let release!: () => void;
+      const recordsGate = new Promise<void>((resolve) => (release = resolve));
+      const session = stubSession({
+        retained: earlierTurns,
+        inSeq: 2,
+        recordsGate,
+        onAppend: answerEach,
+      });
+      const transport = makeTransport();
+
+      const sending =
+        via === "sendMessages" ? send(transport) : transport.sendAction("chat-x", { type: "undo" });
+      await vi.waitFor(() => expect(session.recordsCalls()).toBe(1));
+      expect(await transport.stopGeneration("chat-x")).toBe(true);
+      release();
+
+      expect(await drainChunks(await sending)).toEqual([]);
+      const stops = session.appendBodies.filter((body) => /"kind":"stop"/.test(body));
+      expect(stops).toHaveLength(1);
+      expect(transport.getSession("chat-x")?.isStreaming).toBe(false);
+    });
+  }
+
+  for (const second of ["sendMessages", "sendAction"] as const) {
+    it(`a ${second} over a send still locating its turn keeps its own registration and stop`, async () => {
+      // Catches: the superseded first send, once its lookup is aborted, still
+      // subscribing: it overwrote the new send's registration and its teardown then
+      // deleted it and dropped the tab claim, so a stop in the new send's lookup found
+      // nothing to abort, the stop gate swallowed the turn, and a reconnect opened a
+      // second reader.
+      let release!: () => void;
+      const recordsGate = new Promise<void>((resolve) => (release = resolve));
+      const session = stubSession({
+        retained: earlierTurns,
+        inSeq: 2,
+        recordsGate,
+        onAppend: answerEach,
+      });
+      const transport = makeTransport();
+      const first = send(transport);
+      await vi.waitFor(() => expect(session.recordsCalls()).toBe(1));
+      const next =
+        second === "sendMessages"
+          ? send(transport)
+          : transport.sendAction("chat-x", { type: "undo" });
+      await vi.waitFor(() => expect(session.recordsCalls()).toBe(2));
+
+      // The first send ends empty, as the superseded stream does, and leaves the
+      // new send's registration alone.
+      expect(await drainChunks(await first)).toEqual([]);
+      // A reconnect still finds the new send's stream, so no second reader opens.
+      expect(await transport.reconnectToStream({ chatId: "chat-x" })).toBeNull();
+
+      expect(await transport.stopGeneration("chat-x")).toBe(true);
+      release();
+
+      expect(await drainChunks(await next)).toEqual([]);
+      const stops = session.appendBodies.filter((body) => /"kind":"stop"/.test(body));
+      expect(stops).toHaveLength(1);
+      expect(transport.getSession("chat-x")?.isStreaming).toBe(false);
+    });
+  }
+
+  it("reconnectToStream does not open a second reader while a send is locating its turn", async () => {
+    // Catches: a reload-style reconnect in the send's lookup window seeing no active
+    // stream and subscribing alongside the send.
+    let release!: () => void;
+    const recordsGate = new Promise<void>((resolve) => (release = resolve));
+    const session = stubSession({
+      retained: earlierTurns,
+      inSeq: 2,
+      recordsGate,
+      onAppend: answerEach,
+    });
+    const transport = makeTransport();
+
+    const sending = send(transport);
+    await vi.waitFor(() => expect(session.recordsCalls()).toBe(1));
+    expect(await transport.reconnectToStream({ chatId: "chat-x" })).toBeNull();
+    release();
+
+    expect(texts(await drainChunks(await sending))).toEqual(["answer 3"]);
+    expect(session.outReads).toHaveLength(1);
+    expect(session.recordsCalls()).toBe(1);
   });
 });

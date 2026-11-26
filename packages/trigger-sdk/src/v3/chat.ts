@@ -39,12 +39,21 @@ import {
   SESSION_IN_EVENT_ID_HEADER,
   SSEStreamSubscription,
   TRIGGER_CONTROL_SUBTYPE,
+  TRIGGER_TURN_MARKER_SUBTYPE,
 } from "@trigger.dev/core/v3";
 
 function byteLength(body: string): number {
   return new TextEncoder().encode(body).byteLength;
 }
 import { ChatTabCoordinator } from "./chat-tab-coordinator.js";
+import {
+  drainOutRecordsPage,
+  OutRecordsUnsupportedWarning,
+  readTurnBack,
+  searchTurnStart,
+  sessionOutUrl,
+  TurnOwnership,
+} from "./chat-turn-reader.js";
 import {
   appendedInSeq,
   boundaryInCursor,
@@ -815,6 +824,12 @@ export class TriggerChatTransport implements ChatTransport<UIMessage> {
   private readonly resolveBaseURLFn: ChatBaseURLResolver;
   private fetchOverride: ChatFetchOverride | undefined;
   private readonly extraHeaders: Record<string, string>;
+  /** The "no `.out/records` on this path" warning is given once per transport. */
+  private readonly outRecordsUnsupported = new OutRecordsUnsupportedWarning(
+    "TriggerChatTransport",
+    "a send or reconnect without a saved `lastEventId`",
+    "Persist the session's `lastEventId`"
+  );
   private readonly streamTimeoutSeconds: number;
   private defaultMetadata: Record<string, unknown> | undefined;
   private readonly watchMode: boolean;
@@ -1032,12 +1047,10 @@ export class TriggerChatTransport implements ChatTransport<UIMessage> {
       () => this.callWithAuthRetry(chatId, state, sendChatMessage)
     );
 
-    // Cancel any in-flight stream for this chat — the new turn supersedes it.
-    const activeStream = this.activeStreams.get(chatId);
-    if (activeStream) {
-      activeStream.abort();
-      this.activeStreams.delete(chatId);
-    }
+    // The new turn supersedes any in-flight stream, and registers its own
+    // controller now: the lookup below can take seconds, and a stop or a reconnect
+    // in that window must find this turn, not an empty slot.
+    const turnAbort = this.supersedeActiveStream(chatId);
 
     state.activeInputSeq = inSeq;
     state.isStreaming = true;
@@ -1045,10 +1058,24 @@ export class TriggerChatTransport implements ChatTransport<UIMessage> {
     state.outstandingTurnAbandoned = false;
     this.notifySessionChange(chatId, state);
 
+    const lookup = linkSignals(abortSignal, turnAbort.signal);
+    let located: Awaited<ReturnType<typeof this.locateTurnStart>>;
+    try {
+      located = await this.locateTurnStart(chatId, state, inSeq, lookup.signal);
+    } finally {
+      lookup.dispose();
+    }
+    // A stop, or a newer send, ended this turn's stream during the lookup. The
+    // stream was unregistered then, and the new owner holds the entry and the tab
+    // claim: subscribing would take them back.
+    if (turnAbort.signal.aborted) return closedStream();
+
     // Owning turn: aborting this live send stops the turn the user drives.
     return this.subscribeToSessionStream(state, abortSignal, chatId, {
+      streamAbort: turnAbort,
       sinceInSeq: inSeq,
       sendStopOnAbort: true,
+      ...located,
     });
   };
 
@@ -1366,17 +1393,46 @@ export class TriggerChatTransport implements ChatTransport<UIMessage> {
     // previous reader consumed.
     if (state.turnStart) state.lastEventId = state.turnStart.lastEventId;
 
+    // A reload with no persisted cursor would read from the oldest retained
+    // record and replay the previous turn ahead of the one it resumes. The turn's
+    // `.in` seq is persisted, so find where it starts the way a send does.
+    const inSeq = state.activeInputSeq;
+    // The stream's own abort listener doesn't exist until the subscription does,
+    // and the lookup yields even with a cursor. A resume that writes no stop on
+    // abort lets go of its slot and claim the moment its consumer aborts (a
+    // remount's resume follows at once); an owning one is stopped by that
+    // listener once the stream exists, as a send is.
+    const consumerSignal = options.abortSignal;
+    const freeOnAbort = () => {
+      abortController.abort();
+      this.releaseIfOwner(options.chatId, abortController);
+    };
+    const watchConsumer = consumerSignal && !consumerSignal.aborted && !options.stopOnAbort;
+    if (watchConsumer) consumerSignal.addEventListener("abort", freeOnAbort, { once: true });
+    let located: Awaited<ReturnType<typeof this.locateTurnStart>>;
+    try {
+      located = await this.locateTurnStart(options.chatId, state, inSeq, abortSignal);
+    } finally {
+      if (watchConsumer) consumerSignal.removeEventListener("abort", freeOnAbort);
+    }
+    // A send that arrived during the lookup superseded this reader and owns the
+    // stream now, and a consumer that aborted it let go of the slot: subscribing
+    // would take both back.
+    if (abortController.signal.aborted) return null;
+
     return this.subscribeToSessionStream(state, abortSignal, options.chatId, {
+      streamAbort: abortController,
       resumed: true,
       sendStopOnAbort: options.stopOnAbort ?? false,
-      sinceInSeq: state.activeInputSeq,
+      sinceInSeq: inSeq,
+      ...located,
       // Reconnect-on-reload opts into the server's settled-peek shortcut
       // so the SSE doesn't hang for 60s when no turn is in flight. A known
       // active input must not peek because the previous turn's completion
       // can remain at the tail until the current turn writes its first chunk.
       // Watch mode must NOT peek: a settled peek between turns closes the
       // standing subscription, so the viewer never sees the next turn.
-      peekSettled: !this.watchMode && state.activeInputSeq === undefined,
+      peekSettled: !this.watchMode && inSeq === undefined,
     });
   };
 
@@ -1497,11 +1553,9 @@ export class TriggerChatTransport implements ChatTransport<UIMessage> {
     // `sendMessages`. Two concurrent readers both write `state.lastEventId`
     // and the slower one can regress the cursor, replaying records on the
     // next reconnect.
-    const activeStream = this.activeStreams.get(chatId);
-    if (activeStream) {
-      activeStream.abort();
-      this.activeStreams.delete(chatId);
-    }
+    // Registered before the lookup below, so a stop or reconnect in that window
+    // finds this action's stream.
+    const turnAbort = this.supersedeActiveStream(chatId);
 
     // Mark streaming + persist so a reload mid-action resumes (reconnectToStream
     // no-ops when the persisted session says isStreaming: false).
@@ -1511,11 +1565,23 @@ export class TriggerChatTransport implements ChatTransport<UIMessage> {
     state.outstandingTurnAbandoned = false;
     this.notifySessionChange(chatId, state);
 
+    const lookup = linkSignals(options?.abortSignal, turnAbort.signal);
+    let located: Awaited<ReturnType<typeof this.locateTurnStart>>;
+    try {
+      located = await this.locateTurnStart(chatId, state, inSeq, lookup.signal);
+    } finally {
+      lookup.dispose();
+    }
+    // Same as `sendMessages`: a stop or a newer send already ended this stream.
+    if (turnAbort.signal.aborted) return closedStream();
+
     // Owning action: aborting this send stops the turn the user drives.
     return this.subscribeToSessionStream(state, options?.abortSignal, chatId, {
+      streamAbort: turnAbort,
       sinceInSeq: inSeq,
       sendStopOnAbort: true,
       onSettled: options?.onSettled,
+      ...located,
     });
   };
 
@@ -1895,6 +1961,135 @@ export class TriggerChatTransport implements ChatTransport<UIMessage> {
     return this.fetchOverride ? this.fetchOverride(url, init, ctx) : fetch(url, init);
   }
 
+  /**
+   * Free the chat's `activeStreams` slot and tab claim, but only while `controller`
+   * still owns the slot: a stop or a newer send took it over, and the claim with it.
+   */
+  private releaseIfOwner(chatId: string, controller: AbortController): void {
+    if (this.activeStreams.get(chatId) !== controller) return;
+    this.activeStreams.delete(chatId);
+    this.coordinator?.release(chatId);
+  }
+
+  /**
+   * Abort the chat's in-flight stream, if any, and register a fresh controller as
+   * the active one. The caller hands it to `subscribeToSessionStream`, which then
+   * owns it; until then it stands for a stream still being set up.
+   */
+  private supersedeActiveStream(chatId: string): AbortController {
+    const previous = this.activeStreams.get(chatId);
+    const controller = new AbortController();
+    // Take the entry before aborting the old stream: its abort listener frees the
+    // entry (and the tab claim) it still owns, and must find ours here instead.
+    this.activeStreams.set(chatId, controller);
+    previous?.abort();
+    return controller;
+  }
+
+  /**
+   * A send, action or reconnect with no `.out` cursor reads from the oldest
+   * retained record, so the previous turn's chunks would reach the UI ahead of
+   * the turn it asked for. Find where that turn starts (`searchTurnStart` in
+   * `chat-turn-reader.ts`, shared with `AgentChat`): a cursor it finds becomes
+   * the session's and the turn's resume point, and `holdUntilBoundary` means the
+   * stream must hold chunks no turn marker claims until a boundary says whose
+   * they are.
+   *
+   * The lookup is one bounded `GET .../out/records` per cursorless send, with the
+   * session's own token and `fetch` override, and never per chunk.
+   */
+  private async locateTurnStart(
+    chatId: string,
+    state: ChatSessionState,
+    inSeq: number | undefined,
+    abortSignal: AbortSignal | undefined
+  ): Promise<{
+    holdUntilBoundary: boolean;
+    startCursor: string | undefined;
+    abortedWhileLocating: boolean;
+  }> {
+    // A function, so the check after the lookup isn't narrowed by the one before it.
+    const isAborted = () => abortSignal?.aborted === true;
+    const abortedBefore = isAborted();
+    const found = await this.findTurnStart(chatId, state, inSeq, abortSignal);
+    return { ...found, abortedWhileLocating: !abortedBefore && isAborted() };
+  }
+
+  /**
+   * Reads pages of a chat's `.out/records` with the session's own token and
+   * `fetch` override: the turn-start lookup, and the read-back of a turn a
+   * stream dropped as another's.
+   */
+  private outRecordsPages(chatId: string, state: ChatSessionState) {
+    const ctx: ChatTransportEndpointContext = { endpoint: "out", chatId };
+    const outUrl = sessionOutUrl(this.resolveBaseURL(ctx), chatId);
+    const fetchClient = this.sseFetchClient(ctx);
+    return (afterEventId: string | undefined, signal: AbortSignal) =>
+      drainOutRecordsPage({
+        outUrl,
+        afterEventId,
+        headers: {
+          ...this.extraHeaders,
+          Authorization: `Bearer ${state.publicAccessToken}`,
+          "x-trigger-source": "sdk",
+        },
+        signal,
+        fetchClient,
+      });
+  }
+
+  /**
+   * `startCursor` is where a stream that holds starts reading. It is not the
+   * session's cursor: that is persisted, and a reload restoring a cursor skips
+   * the lookup and so the hold, delivering an earlier message's unmarked answer.
+   * The state catches up once the held chunks are placed.
+   */
+  private async findTurnStart(
+    chatId: string,
+    state: ChatSessionState,
+    inSeq: number | undefined,
+    abortSignal: AbortSignal | undefined
+  ): Promise<{ holdUntilBoundary: boolean; startCursor: string | undefined }> {
+    const noCursor = (holdUntilBoundary: boolean) => ({
+      holdUntilBoundary,
+      startCursor: undefined,
+    });
+    if (inSeq === undefined || state.lastEventId !== undefined) return noCursor(false);
+    // A stop is outstanding: the stream skips records up to the stopped turn's
+    // boundary, which is only right when it reads from before that boundary. A
+    // cursor past it would have the gate swallow this turn instead.
+    if (state.skipToTurnComplete) return noCursor(true);
+
+    // A window ending on a boundary no cursor or marker places is taken as the
+    // turn's own: a reconnect resumes a turn sent before the page closed, which
+    // may have ended since, and a send's reply may already be on `.out`.
+    const found = await searchTurnStart(
+      inSeq,
+      abortSignal,
+      this.outRecordsPages(chatId, state),
+      "own"
+    );
+    // A stop can land while the lookup is in flight; a caller abort is the same,
+    // the stream posts the stop for it.
+    if (state.skipToTurnComplete || abortSignal?.aborted) return noCursor(true);
+    if (found.kind === "unsupported") {
+      this.outRecordsUnsupported.warnOnce();
+      return noCursor(true);
+    }
+    if (found.kind === "failed") return noCursor(true);
+    if (found.hold) {
+      return { holdUntilBoundary: true, startCursor: found.cursor?.toString() };
+    }
+    if (found.cursor !== undefined) {
+      state.lastEventId = String(found.cursor);
+      // The turn's resume point moves with it: a reload mid-turn starts here, not
+      // from the window start.
+      if (state.turnStart) state.turnStart = { lastEventId: state.lastEventId };
+      this.notifySessionChange(chatId, state);
+    }
+    return noCursor(false);
+  }
+
   private async appendInputChunk(
     chatId: string,
     token: string,
@@ -2059,59 +2254,76 @@ export class TriggerChatTransport implements ChatTransport<UIMessage> {
     state: ChatSessionState,
     abortSignal: AbortSignal | undefined,
     chatId: string,
-    options?: {
+    options: {
+      /**
+       * The controller the caller registered in `activeStreams` for this stream
+       * before the lookup that precedes the subscription. The stream only runs
+       * while it still owns that entry.
+       */
+      streamAbort: AbortController;
       sendStopOnAbort?: boolean;
       peekSettled?: boolean;
       resumed?: boolean;
       /** `.in` seq of the send that opened this stream; skip turn-completes below it (earlier turns). */
       sinceInSeq?: number;
       onSettled?: ChatActionOptions["onSettled"];
+      /**
+       * Hold chunks until a turn-complete says whose they are (see
+       * `locateTurnStart`): an earlier turn's are dropped, this turn's released at
+       * its own boundary. The persisted cursor only moves past chunks once they
+       * are delivered or dropped.
+       */
+      holdUntilBoundary?: boolean;
+      /** Where a holding stream starts reading, in place of the session's cursor. */
+      startCursor?: string;
+      /**
+       * `abortSignal` may have fired while the turn's start was being located,
+       * before this listener existed; the turn is already on `.in`, so act on it.
+       */
+      abortedWhileLocating?: boolean;
     }
   ): ReadableStream<UIMessageChunk> {
-    const internalAbort = new AbortController();
+    const internalAbort = options.streamAbort;
+    // Never register, replace or release what isn't ours: a stop or a newer send
+    // took the entry (and the tab claim) while this stream was being set up.
+    if (this.activeStreams.get(chatId) !== internalAbort) return closedStream();
     let didSettle = false;
     let stoppedTurn = false;
-    this.activeStreams.set(chatId, internalAbort);
     const combinedSignal = abortSignal
       ? AbortSignal.any([abortSignal, internalAbort.signal])
       : internalAbort.signal;
 
     if (abortSignal) {
-      abortSignal.addEventListener(
-        "abort",
-        () => {
-          // A late abort (unmount, or the consumer dropping a drained stream)
-          // has no turn to stop: don't gate the next one, don't write a stop.
-          const outstanding =
-            !state.outstandingTurnAbandoned &&
-            (state.isStreaming || state.activeInputSeq !== undefined);
-          if (options?.sendStopOnAbort !== false && outstanding && !internalAbort.signal.aborted) {
-            stoppedTurn = true;
-            state.skipToTurnComplete = true;
-            state.supersededInputSeq = state.activeInputSeq;
-            this.appendInputChunk(
-              chatId,
-              state.publicAccessToken,
-              this.serializeInputChunk({ kind: "stop" })
-            ).catch(() => {});
-          }
-          internalAbort.abort();
-          // An abort that wrote no stop means "stop reading", not "the turn
-          // ended". Free the slot now so a remount's resume gets a stream
-          // instead of null, and so this stream's unwinding end-of-stream
-          // block, which only settles the turn for the entry's owner, leaves
-          // a turn that is still running alone. A stop keeps the entry: that
-          // block then ends the turn.
-          if (!stoppedTurn && this.activeStreams.get(chatId) === internalAbort) {
-            this.activeStreams.delete(chatId);
-            this.coordinator?.release(chatId);
-          }
-        },
-        { once: true }
-      );
+      const onAbort = () => {
+        // A late abort (unmount, or the consumer dropping a drained stream)
+        // has no turn to stop: don't gate the next one, don't write a stop.
+        const outstanding =
+          !state.outstandingTurnAbandoned &&
+          (state.isStreaming || state.activeInputSeq !== undefined);
+        if (options?.sendStopOnAbort !== false && outstanding && !internalAbort.signal.aborted) {
+          stoppedTurn = true;
+          state.skipToTurnComplete = true;
+          state.supersededInputSeq = state.activeInputSeq;
+          this.appendInputChunk(
+            chatId,
+            state.publicAccessToken,
+            this.serializeInputChunk({ kind: "stop" })
+          ).catch(() => {});
+        }
+        internalAbort.abort();
+        // An abort that wrote no stop means "stop reading", not "the turn
+        // ended". Free the slot now so a remount's resume gets a stream
+        // instead of null, and so this stream's unwinding end-of-stream
+        // block, which only settles the turn for the entry's owner, leaves
+        // a turn that is still running alone. A stop keeps the entry: that
+        // block then ends the turn.
+        if (!stoppedTurn) this.releaseIfOwner(chatId, internalAbort);
+      };
+      abortSignal.addEventListener("abort", onAbort, { once: true });
+      if (options?.abortedWhileLocating && abortSignal.aborted) onAbort();
     }
 
-    const streamUrl = `${this.resolveBaseURL({ endpoint: "out", chatId })}/realtime/v1/sessions/${encodeURIComponent(chatId)}/out`;
+    const streamUrl = sessionOutUrl(this.resolveBaseURL({ endpoint: "out", chatId }), chatId);
 
     return new ReadableStream<UIMessageChunk>({
       start: async (controller) => {
@@ -2174,6 +2386,55 @@ export class TriggerChatTransport implements ChatTransport<UIMessage> {
         let sawFirstChunk = false;
         let sinceInSeq = options?.sinceInSeq;
 
+        // Hold mode: chunks wait here until a boundary says whose they are.
+        // `state.lastEventId` is the resume cursor the caller persists and must
+        // not move past chunks that were never delivered, so while holding the
+        // read position lives here and the state catches up when they are
+        // flushed or dropped.
+        let holdUntilBoundary = options?.holdUntilBoundary === true;
+        // Whose turn the records belong to, from the agent's turn markers, and
+        // what is held until a boundary says (see `TurnOwnership`).
+        let ownership = new TurnOwnership<{ chunk: UIMessageChunk; id: string | undefined }>(
+          sinceInSeq,
+          holdUntilBoundary
+        );
+        let readCursor = options.startCursor ?? state.lastEventId;
+
+        const deliverChunk = (chunk: UIMessageChunk, id: string | undefined) => {
+          if (!sawFirstChunk) {
+            sawFirstChunk = true;
+            this.emitEvent({
+              type: "first-chunk",
+              chatId,
+              timestamp: Date.now(),
+              chunkType: (chunk as { type?: string }).type,
+              lastEventId: id,
+              ...this.turnAttribution(chatId),
+            });
+          }
+          controller.enqueue(chunk);
+        };
+
+        // Release (`deliver`) or discard what was held, and catch the state's
+        // cursor up to everything read.
+        const settleHeld = (deliver: boolean) => {
+          if (!holdUntilBoundary) return;
+          const held = ownership.takeHeld();
+          if (deliver) for (const { chunk, id } of held) deliverChunk(chunk, id);
+          state.lastEventId = readCursor;
+        };
+
+        // This stream ends without its turn's boundary (stopped, or the turn is
+        // gone): clear what the saved session says is streaming, but only for the
+        // entry's owner. A superseded stream's turn is the replacement's now.
+        const endTurnIfOwner = () => {
+          if (state.isStreaming && this.activeStreams.get(chatId) === internalAbort) {
+            state.isStreaming = false;
+            state.turnStart = undefined;
+            this.notifySessionChange(chatId, state);
+          }
+        };
+
         const connectSseOnce = async (token: string) => {
           const subscription = new SSEStreamSubscription(streamUrl, {
             headers: {
@@ -2183,7 +2444,7 @@ export class TriggerChatTransport implements ChatTransport<UIMessage> {
             },
             signal: combinedSignal,
             timeoutInSeconds: this.streamTimeoutSeconds,
-            lastEventId: state.lastEventId,
+            lastEventId: holdUntilBoundary ? readCursor : state.lastEventId,
             // Reconnect if no decoded record arrives for 60 seconds.
             stallTimeoutMs: 60_000,
             // Bound connected silence while preserving recovery from network failures.
@@ -2256,15 +2517,26 @@ export class TriggerChatTransport implements ChatTransport<UIMessage> {
 
           // Settled close, or the turn is gone — tell the UI instead of
           // leaving it spinning on a stream nobody will finish.
-          if (state.isStreaming && this.activeStreams.get(chatId) === internalAbort) {
-            state.isStreaming = false;
-            state.turnStart = undefined;
-            this.notifySessionChange(chatId, state);
-          }
+          endTurnIfOwner();
           return null;
         };
 
         try {
+          // Stopped or superseded while its turn start was being located: there is
+          // nothing left to read, and reading on would hand a stopped turn's output
+          // to the stop gate.
+          if (internalAbort.signal.aborted) {
+            // A stop written for it ended the turn: the saved session must not
+            // reopen the stopped reply. A superseded or passive reader leaves
+            // the state to whoever owns it now.
+            if (stoppedTurn) endTurnIfOwner();
+            try {
+              controller.close();
+            } catch {
+              /* already closed by a consumer cancel */
+            }
+            return;
+          }
           let reader: ReadableStreamDefaultReader<{
             id: string;
             chunk: unknown;
@@ -2308,6 +2580,9 @@ export class TriggerChatTransport implements ChatTransport<UIMessage> {
               if (next.done) {
                 const resumed = await resumeAfterEof();
                 if (resumed === null) {
+                  // No boundary came to say whose they are; a consumer that is
+                  // still there gets them, as it would have before they were held.
+                  if (!combinedSignal.aborted) settleHeld(true);
                   try {
                     controller.close();
                   } catch {
@@ -2333,9 +2608,14 @@ export class TriggerChatTransport implements ChatTransport<UIMessage> {
               return;
             }
 
+            // This stream's own read position before this record, for a boundary
+            // whose read-back is still to come (see the turn's own boundary below).
+            // Not the saved cursor: a holding stream's start is kept out of it.
+            const cursorBeforeRecord = readCursor;
             if (value.id) {
               state.turnStart ??= { lastEventId: state.lastEventId };
-              state.lastEventId = value.id;
+              readCursor = value.id;
+              if (!holdUntilBoundary) state.lastEventId = value.id;
             }
             // Any record — including the first of a resumed connection, which
             // arrives via `primed` — re-earns the resubscribe budget, so a long
@@ -2390,9 +2670,10 @@ export class TriggerChatTransport implements ChatTransport<UIMessage> {
               state.skipToTurnComplete = false;
               state.supersededInputSeq = undefined;
               // The stopped turn ends here: start the turn after its boundary so
-              // a rewind or reload doesn't replay the tail the gate dropped.
+              // a rewind or reload doesn't replay the tail the gate dropped. The
+              // read position, not the state's cursor: a hold-mode reader's lags it.
               if (value.id) {
-                state.turnStart = { lastEventId: state.lastEventId };
+                state.turnStart = { lastEventId: readCursor };
                 this.notifySessionChange(chatId, state);
               }
               // This boundary is the new turn's own, so the gate swallowed its
@@ -2412,6 +2693,9 @@ export class TriggerChatTransport implements ChatTransport<UIMessage> {
                     "stream"
                   );
                 }
+                // Whatever a hold-mode reader holds is not this turn's: drop it and
+                // let the saved cursor pass the records already read.
+                settleHeld(false);
                 state.activeInputSeq = undefined;
                 state.isStreaming = false;
                 state.turnStart = undefined;
@@ -2454,14 +2738,70 @@ export class TriggerChatTransport implements ChatTransport<UIMessage> {
               continue;
             }
 
+            // The agent says whose turn the records that follow belong to, or
+            // which messages it folded into the running one.
+            if (controlValue === TRIGGER_TURN_MARKER_SUBTYPE.TURN_START) {
+              ownership.turnStart(value.headers, value.id);
+              continue;
+            }
+            if (controlValue === TRIGGER_TURN_MARKER_SUBTYPE.TURN_JOIN) {
+              ownership.turnJoin(value.headers);
+              continue;
+            }
+
             if (controlValue === TRIGGER_CONTROL_SUBTYPE.TURN_COMPLETE) {
               const sessionInEventId = headerValue(value.headers, SESSION_IN_EVENT_ID_HEADER);
               const lastEventId = value.id || undefined;
-              // Skip a turn-complete from an earlier turn (committed `.in` cursor
-              // below this send's seq), e.g. an undo action that raced this send.
-              if (isBoundaryBeforeSend(value.headers, sinceInSeq)) {
+              // Skip an earlier turn's turn-complete (see `closesEarlierTurn`), e.g.
+              // an undo action that raced this send, or a replayed message's turn.
+              if (ownership.closesEarlierTurn(value.headers)) {
+                // Whatever was held before it is that turn's output; the next
+                // read, and a reload mid-turn, start after it.
+                if (holdUntilBoundary) {
+                  settleHeld(false);
+                  if (state.turnStart) state.turnStart = { lastEventId: readCursor };
+                }
                 continue;
               }
+              // This turn's own boundary: what was held is its answer.
+              const droppedFrom = ownership.droppedTurnStart();
+              const readBackFrom = droppedFrom !== undefined && value.id ? droppedFrom : undefined;
+              settleHeld(true);
+              // The turn dropped as another's closed past this send's message, so
+              // it answered it (folded in with no marker to match): read it back.
+              if (readBackFrom !== undefined) {
+                // The turn is not over until the read-back is: the saved cursor
+                // stays before its boundary meanwhile, so a stop, a newer send or a
+                // reload in that window treats the turn as still outstanding, as it
+                // does for any turn, instead of reading past a boundary it never saw.
+                // The turn is placed by now, so the position just before the boundary
+                // is safe to save, unlike a holding lookup's start; it is also the
+                // one a stopped retry must read from, so that older completions in
+                // the window can't settle it.
+                state.lastEventId = cursorBeforeRecord;
+                const readBack = await readTurnBack(
+                  readBackFrom,
+                  Number(value.id),
+                  combinedSignal,
+                  this.outRecordsPages(chatId, state)
+                );
+                // A stop or a newer send ended this stream during the read: its
+                // result and the turn's end are not this stream's to deliver.
+                // The read absorbs the abort, so it is checked here.
+                if (combinedSignal.aborted) {
+                  endTurnIfOwner();
+                  try {
+                    controller.close();
+                  } catch {
+                    /* already closed by a consumer cancel */
+                  }
+                  return;
+                }
+                for (const chunk of readBack) deliverChunk(chunk, undefined);
+                state.lastEventId = readCursor;
+              }
+              // Later turns on a standing (watch) subscription stream live.
+              holdUntilBoundary = false;
               // A close decided during this turn rides out on turn-complete —
               // the last record a reader sees before it ends the stream.
               if (headerValue(value.headers, SESSION_CLOSED_HEADER) === "true") {
@@ -2489,6 +2829,7 @@ export class TriggerChatTransport implements ChatTransport<UIMessage> {
               });
               state.activeInputSeq = undefined;
               sinceInSeq = undefined;
+              ownership = new TurnOwnership(undefined, false);
               state.isStreaming = false;
               state.turnStart = undefined;
               this.notifySessionChange(chatId, state);
@@ -2541,18 +2882,15 @@ export class TriggerChatTransport implements ChatTransport<UIMessage> {
             // unwrapped from the S2 record envelope (the parser does the
             // JSON unwrap). Drop empty/malformed payloads defensively.
             if (value.chunk == null) continue;
-            if (!sawFirstChunk) {
-              sawFirstChunk = true;
-              this.emitEvent({
-                type: "first-chunk",
-                chatId,
-                timestamp: Date.now(),
-                chunkType: (value.chunk as { type?: string }).type,
-                lastEventId: value.id || undefined,
-                ...this.turnAttribution(chatId),
-              });
+            const route = ownership.route(value.chunk);
+            if (route === "hold") {
+              ownership.hold({ chunk: value.chunk as UIMessageChunk, id: value.id || undefined });
+            } else if (route === "deliver") {
+              deliverChunk(value.chunk as UIMessageChunk, value.id || undefined);
+              // Delivered live in hold mode (a marker made the turn this send's):
+              // nothing held is behind it, so the saved cursor can pass it.
+              if (holdUntilBoundary) state.lastEventId = readCursor;
             }
-            controller.enqueue(value.chunk as UIMessageChunk);
           }
         } catch (error) {
           if (error instanceof Error && error.name === "AbortError") {
@@ -2583,10 +2921,7 @@ export class TriggerChatTransport implements ChatTransport<UIMessage> {
           // Only clear the entry (and drop the tab claim) if it is still
           // ours — a superseding send registers its controller before this
           // teardown runs, and owns the claim from then on.
-          if (this.activeStreams.get(chatId) === internalAbort) {
-            this.activeStreams.delete(chatId);
-            this.coordinator?.release(chatId);
-          }
+          this.releaseIfOwner(chatId, internalAbort);
         }
       },
       // A consumer that stops reading without aborting (drops the reader)
@@ -2596,6 +2931,44 @@ export class TriggerChatTransport implements ChatTransport<UIMessage> {
       },
     });
   }
+}
+
+/** A stream that is already done: what a superseded or stopped send hands back. */
+function closedStream(): ReadableStream<UIMessageChunk> {
+  return new ReadableStream<UIMessageChunk>({
+    start(controller) {
+      controller.close();
+    },
+  });
+}
+
+/**
+ * One signal that aborts when either input does, without `AbortSignal.any`, which
+ * keeps a listener on the caller's long-lived signal for as long as that lives.
+ * `dispose` removes ours once the work it covered has settled.
+ */
+function linkSignals(
+  callerSignal: AbortSignal | undefined,
+  own: AbortSignal
+): { signal: AbortSignal; dispose: () => void } {
+  if (!callerSignal) return { signal: own, dispose: () => {} };
+  const linked = new AbortController();
+  const abortFrom = (source: AbortSignal) => () => linked.abort(source.reason);
+  const onCaller = abortFrom(callerSignal);
+  const onOwn = abortFrom(own);
+  if (callerSignal.aborted) onCaller();
+  else if (own.aborted) onOwn();
+  else {
+    callerSignal.addEventListener("abort", onCaller, { once: true });
+    own.addEventListener("abort", onOwn, { once: true });
+  }
+  return {
+    signal: linked.signal,
+    dispose: () => {
+      callerSignal.removeEventListener("abort", onCaller);
+      own.removeEventListener("abort", onOwn);
+    },
+  };
 }
 
 /**

@@ -57,6 +57,14 @@ function textDelta(seqNum: number, text: string): BatchRecord {
   };
 }
 
+/**
+ * The `wait=0` records drain a send or reconnect makes when it has no `.out`
+ * cursor, answered with nothing retained so the fixtures' streams stay as written.
+ */
+function recordsDrain(url: string | URL): Response | undefined {
+  return String(url).includes("/out/records") ? Response.json({ records: [] }) : undefined;
+}
+
 function inResponse(seq?: number): Response {
   return new Response(JSON.stringify(seq === undefined ? { ok: true } : { ok: true, seq }), {
     status: 200,
@@ -79,7 +87,8 @@ function makeTransport(out: Response, inSeq: number | undefined) {
     task: "test-task",
     accessToken: async () => "tok_test",
     sessions: { c1: { publicAccessToken: "tok_test", isStreaming: false } },
-    fetch: async (_url, _init, ctx) => (ctx.endpoint === "in" ? inResponse(inSeq) : out),
+    fetch: async (url, _init, ctx) =>
+      recordsDrain(url) ?? (ctx.endpoint === "in" ? inResponse(inSeq) : out),
   };
   return new TriggerChatTransport(options);
 }
@@ -103,8 +112,9 @@ describe("transport turn correlation", () => {
       accessToken: async () => "tok_test",
       sessions: { c1: { publicAccessToken: "tok_test", isStreaming: false } },
       onSessionChange,
-      fetch: async (_url, _init, ctx) =>
-        ctx.endpoint === "in" ? inResponse(5) : batchResponse([turnComplete(10, 5)]),
+      fetch: async (url, _init, ctx) =>
+        recordsDrain(url) ??
+        (ctx.endpoint === "in" ? inResponse(5) : batchResponse([turnComplete(10, 5)])),
     });
 
     const stream = await transport.sendMessages({
@@ -153,7 +163,8 @@ describe("transport turn correlation", () => {
       sessions: {
         c1: { publicAccessToken: "tok_test", isStreaming: true, activeInputSeq: 5 },
       },
-      fetch: async () =>
+      fetch: async (url) =>
+        recordsDrain(url) ??
         batchResponse([turnComplete(10, 4), textDelta(11, "current"), turnComplete(12, 5)]),
     });
 
@@ -175,7 +186,9 @@ describe("transport turn correlation", () => {
         sessions: {
           c1: { publicAccessToken: "tok_test", isStreaming: true, activeInputSeq: 5 },
         },
-        fetch: async (_url, init) => {
+        fetch: async (url, init) => {
+          const drained = recordsDrain(url);
+          if (drained) return drained;
           const headers = new Headers(init?.headers);
           subscribeHeaders.push(headers);
 
@@ -212,7 +225,8 @@ describe("transport turn correlation", () => {
         sessions: {
           c1: { publicAccessToken: "tok_test", isStreaming: true, activeInputSeq: 5 },
         },
-        fetch: async () => batchResponse([turnComplete(10, inCursor), textDelta(11, "late")]),
+        fetch: async (url) =>
+          recordsDrain(url) ?? batchResponse([turnComplete(10, inCursor), textDelta(11, "late")]),
       });
 
       const stream = await transport.reconnectToStream({ chatId: "c1" });
@@ -237,7 +251,9 @@ describe("transport turn correlation", () => {
       onEvent: (event) => {
         if (event.type === "turn-completed") turnCompleted.push(Number(event.sessionInEventId));
       },
-      fetch: async () => {
+      fetch: async (url) => {
+        const drained = recordsDrain(url);
+        if (drained) return drained;
         outCalls++;
         return outCalls === 1
           ? batchResponse([
