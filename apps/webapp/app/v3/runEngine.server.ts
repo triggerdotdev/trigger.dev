@@ -1,3 +1,4 @@
+import { createCheckpointStoreEnabledResolver } from "./utils/checkpointStoreEnabled.server";
 import { createWaitpointStoreEnabledResolver } from "./utils/waitpointStoreEnabled.server";
 import { FEATURE_FLAG } from "./featureFlags";
 import { globalFlagsRegistry } from "./globalFlagsRegistry.server";
@@ -44,6 +45,10 @@ function createRunEngine() {
         }
       : undefined,
     waitpointStoreEnabled: createWaitpointStoreEnabledResolver(
+      () => globalFlagsRegistry.current(),
+      prisma
+    ),
+    checkpointStoreEnabled: createCheckpointStoreEnabledResolver(
       () => globalFlagsRegistry.current(),
       prisma
     ),

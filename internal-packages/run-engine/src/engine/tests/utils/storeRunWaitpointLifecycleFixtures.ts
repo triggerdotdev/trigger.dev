@@ -58,6 +58,7 @@ export function makeEngine(
     runStore?: RunStore;
     runLockRetryConfig?: LockRetryConfig;
     isCapabilityReady?: () => boolean;
+    isCheckpointStoreEnabled?: (organizationId: string) => boolean | Promise<boolean>;
   }
 ) {
   return new RunEngine({
@@ -88,6 +89,7 @@ export function makeEngine(
     tracer: trace.getTracer("test", "0.0.0"),
     waitpointStoreEnabled:
       opts.isWaitpointStoreEnabled ?? (opts.store ? () => opts.enabled ?? true : undefined),
+    checkpointStoreEnabled: opts.isCheckpointStoreEnabled,
     ...(opts.store
       ? {
           waitpointRouting: {

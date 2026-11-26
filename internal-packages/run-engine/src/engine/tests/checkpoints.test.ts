@@ -1,15 +1,20 @@
 import { containerTest, assertNonNullable } from "@internal/testcontainers";
 import { createRedisClient } from "@internal/redis";
-import { RedisSnapshotStore, snapshotKeys } from "@internal/run-store";
+import {
+  RedisSnapshotStore,
+  SnapshotWriteUnavailableError,
+  snapshotKeys,
+  type SnapshotStoreDial,
+} from "@internal/run-store";
 import { trace } from "@internal/tracing";
 import { expect } from "vitest";
 import { RunEngine } from "../index.js";
 import { setTimeout } from "node:timers/promises";
 import type { EventBusEventArgs } from "../eventBus.js";
 import { setupAuthenticatedEnvironment, setupBackgroundWorker } from "./setup.js";
-import { generateFriendlyId } from "@trigger.dev/core/v3/isomorphic";
+import { generateFriendlyId, generateInternalId } from "@trigger.dev/core/v3/isomorphic";
 import type { RunExecutionData } from "@trigger.dev/core/v3";
-import type { PrismaClient } from "@trigger.dev/database";
+import { Decimal, type Prisma, PrismaClient } from "@trigger.dev/database";
 import {
   dequeueAndStart,
   makeEngine,
@@ -17,6 +22,9 @@ import {
   triggerRun,
 } from "./utils/storeRunWaitpointLifecycleFixtures.js";
 import { getLatestExecutionSnapshot } from "../systems/executionSnapshotSystem.js";
+import { cycleAnchorSnapshotId } from "../systems/waitpointSystem.js";
+import { WaitpointStoreCoordinator } from "../waitpointCoordinator/storeCoordinator.js";
+import { encodeCheckpointMetadata } from "../checkpointMetadata.js";
 
 vi.setConfig({ testTimeout: 60_000 });
 
@@ -2066,5 +2074,920 @@ describe("RunEngine checkpoints carried by a MemoryDB-only run's snapshots", () 
         }
       }
     );
+
+    describe("with checkpointStoreEnabled", () => {
+      const FLAGGED = {
+        type: "KUBERNETES" as const,
+        location: "flagged-loc-1",
+        imageRef: "flagged-image-ref",
+        reason: "TEST_FLAGGED",
+        digest: `sha256:${"ab".repeat(32)}`,
+      };
+      const ROW_KEYS = [
+        "createdAt",
+        "friendlyId",
+        "id",
+        "imageRef",
+        "location",
+        "metadata",
+        "projectId",
+        "reason",
+        "runtimeEnvironmentId",
+        "type",
+        "updatedAt",
+      ];
+
+      function checkpointFlag(initial: boolean | Error) {
+        let value = initial;
+        const calls: string[] = [];
+        return {
+          calls,
+          set(next: boolean | Error) {
+            value = next;
+          },
+          resolve: async (organizationId: string) => {
+            calls.push(organizationId);
+            if (value instanceof Error) throw value;
+            return value;
+          },
+        };
+      }
+
+      class CheckpointWriteStore extends RedisSnapshotStore {
+        writes = 0;
+        fail: "throw" | "false" | undefined;
+
+        override async writeCheckpoint(runId: string, checkpointId: string, raw: string) {
+          this.writes++;
+          if (this.fail === "throw") throw new Error("checkpoint write failed in test");
+          if (this.fail === "false") return false;
+          return super.writeCheckpoint(runId, checkpointId, raw);
+        }
+      }
+
+      async function flagged(
+        prisma: PrismaClient,
+        redisOptions: any,
+        flag: { resolve: (organizationId: string) => Promise<boolean> },
+        opts?: {
+          dial?: () => SnapshotStoreDial;
+          waitpointStore?: WaitpointStoreCoordinator;
+          env?: Env;
+        }
+      ) {
+        const env = opts?.env ?? (await setupAuthenticatedEnvironment(prisma, "PRODUCTION"));
+        const snapshotStore = new CheckpointWriteStore({ redisOptions, completedTtlMs: 60_000 });
+        const engine = makeEngine(prisma, redisOptions, {
+          snapshotStore,
+          resolveDial: opts?.dial,
+          isCheckpointStoreEnabled: flag.resolve,
+          ...(opts?.waitpointStore ? { store: opts.waitpointStore, enabled: true } : {}),
+        });
+        await setupBackgroundWorker(engine, env, "test-task");
+        return { env, snapshotStore, engine };
+      }
+
+      // The engine returns the stored row; its declared type is the wire shape.
+      function accepted(result: Awaited<ReturnType<RunEngine["createCheckpoint"]>>) {
+        if (!result.ok) throw new Error(result.error);
+        return { ...result, row: result.checkpoint as unknown as Seeded };
+      }
+
+      async function startAndBlockOn(
+        engine: RunEngine,
+        env: Env,
+        prisma: PrismaClient,
+        store: RedisSnapshotStore,
+        workerQueue: string,
+        // The birth residency marker; null for a run with none (dial "off").
+        residency: string | null = "redis-primary"
+      ) {
+        const friendlyId = generateFriendlyId("run");
+        const run = await engine.trigger(
+          {
+            number: 1,
+            friendlyId,
+            environment: env,
+            taskIdentifier: "test-task",
+            payload: "{}",
+            payloadType: "application/json",
+            context: {},
+            traceContext: {},
+            traceId: `t_${friendlyId}`,
+            spanId: `s_${friendlyId}`,
+            workerQueue,
+            queue: "task/test-task",
+            isTest: false,
+            tags: [],
+          },
+          prisma
+        );
+        expect(await store.readBirthResidency(run.id)).toBe(residency ?? undefined);
+        const first = await dequeueFrom(engine, env, workerQueue);
+        expect(first.run.id).toBe(run.id);
+        const started = await engine.startRunAttempt({
+          runId: run.id,
+          snapshotId: first.snapshot.id,
+        });
+        const { tokenId, wait } = await block(engine, env, run.id);
+        return { run, started, tokenId, wait };
+      }
+
+      async function queuedExecutingOn(
+        engine: RunEngine,
+        env: Env,
+        prisma: PrismaClient,
+        store: RedisSnapshotStore,
+        workerQueue: string,
+        residency?: string | null
+      ) {
+        const blocked = await startAndBlockOn(engine, env, prisma, store, workerQueue, residency);
+        const queuedExecuting = await engine.executionSnapshotSystem.createExecutionSnapshot(
+          prisma,
+          {
+            run: blocked.started.run,
+            snapshot: {
+              executionStatus: "QUEUED_EXECUTING",
+              description: "Checkpoint request is in flight during re-enqueue",
+            },
+            previousSnapshotId: blocked.wait.id,
+            environmentId: env.id,
+            environmentType: env.type,
+            projectId: env.projectId,
+            organizationId: env.organizationId,
+          }
+        );
+        return { ...blocked, queuedExecuting };
+      }
+
+      async function stateFields(redisOptions: any, runId: string) {
+        const raw = createRedisClient(redisOptions, { onError: () => {} });
+        try {
+          return (await raw.hkeys(snapshotKeys(runId).e)).filter((f) => f.endsWith("#cp")).sort();
+        } finally {
+          await raw.quit();
+        }
+      }
+
+      async function secondOrganisationEnvironment(prisma: PrismaClient, first: Env) {
+        const org = await prisma.organization.create({
+          data: { title: "Test Organization", slug: "test-organization-second" },
+        });
+        const project = await prisma.project.create({
+          data: {
+            name: "Test Project",
+            slug: "test-project-second",
+            externalRef: "proj_1234-second",
+            organizationId: org.id,
+            defaultWorkerGroupId: first.project.defaultWorkerGroupId,
+          },
+        });
+        const environment = await prisma.runtimeEnvironment.create({
+          data: {
+            type: "PRODUCTION",
+            slug: "slug-second",
+            projectId: project.id,
+            organizationId: org.id,
+            apiKey: "api_key-second",
+            pkApiKey: "pk_api_key-second",
+            shortcode: "short_code-second",
+            maximumConcurrencyLimit: 10,
+            concurrencyLimitBurstFactor: new Decimal(2.0),
+          },
+        });
+        return prisma.runtimeEnvironment.findUniqueOrThrow({
+          where: { id: environment.id },
+          include: { project: true, organization: true, orgMember: true },
+        });
+      }
+
+      // A PrismaClient whose statements naming "TaskRunCheckpoint" are counted from its query events.
+      function checkpointTableCounter(uri: string) {
+        const client = new PrismaClient({
+          datasources: { db: { url: uri } },
+          log: [{ emit: "event", level: "query" }],
+        });
+        let statements = 0;
+        const markers = new Set<string>();
+        client.$on("query", (event: Prisma.QueryEvent) => {
+          if (event.query.includes('"TaskRunCheckpoint"')) statements++;
+          for (const marker of markers) if (event.query.includes(marker)) markers.delete(marker);
+        });
+        async function settle() {
+          const marker = `lookup_marker_${generateInternalId()}`;
+          markers.add(marker);
+          await client.$queryRawUnsafe(`SELECT 1 AS "${marker}"`);
+          for (let i = 0; i < 500 && markers.has(marker); i++) await setTimeout(10);
+          expect(markers.has(marker)).toBe(false);
+        }
+        return { client, settle, count: () => statements };
+      }
+
+      async function latestId(engine: RunEngine, prisma: PrismaClient, runId: string) {
+        return (await getLatestExecutionSnapshot(prisma, runId, engine.runStore)).id;
+      }
+
+      async function untilLatest(
+        engine: RunEngine,
+        prisma: PrismaClient,
+        runId: string,
+        status: string
+      ) {
+        let latest = await getLatestExecutionSnapshot(prisma, runId, engine.runStore);
+        for (let i = 0; i < 80 && latest.executionStatus !== status; i++) {
+          await setTimeout(250);
+          latest = await getLatestExecutionSnapshot(prisma, runId, engine.runStore);
+        }
+        expect(latest.executionStatus).toBe(status);
+        return latest;
+      }
+
+      async function runStatus(prisma: PrismaClient, runId: string) {
+        return (await prisma.taskRun.findFirstOrThrow({ where: { id: runId } })).status;
+      }
+
+      // Catches: a flagged suspend writing its checkpoint to Postgres, a snapshot without the record,
+      // more than one lookup, or a restore that cannot find the state-held checkpoint.
+      containerTest(
+        "a flagged suspend of a waiting run writes its checkpoint into the run's state and the run completes with no checkpoint-table statement",
+        async ({ prisma, postgresContainer, redisOptions }) => {
+          const counter = checkpointTableCounter(postgresContainer.getConnectionUri());
+          const flag = checkpointFlag(true);
+          const { env, snapshotStore, engine } = await flagged(counter.client, redisOptions, flag);
+          try {
+            await counter.settle();
+            const before = counter.count();
+            const { run, tokenId, wait } = await startAndBlockOn(
+              engine,
+              env,
+              counter.client,
+              snapshotStore,
+              BIRTH_QUEUE
+            );
+            expect(flag.calls).toEqual([]);
+            expect(await engine.runQueue.currentConcurrencyOfEnvironment(env)).toBe(1);
+
+            const result = accepted(
+              await engine.createCheckpoint({
+                runId: run.id,
+                snapshotId: wait.id,
+                checkpoint: FLAGGED,
+              })
+            );
+            expect(result.snapshot.executionStatus).toBe("SUSPENDED");
+            expect(flag.calls).toEqual([env.organizationId]);
+            const read = await expectCarried(engine, prisma, run.id, "SUSPENDED", result.row);
+            expect(read.checkpoint).toEqual(result.checkpoint);
+            expect(Object.keys(result.checkpoint).sort()).toEqual(ROW_KEYS);
+            expect(result.row.metadata).toBe(encodeCheckpointMetadata(FLAGGED.digest));
+            expect(await stateFields(redisOptions, run.id)).toEqual([`${result.row.id}#cp`]);
+            expect(snapshotStore.writes).toBe(1);
+            expect(await runStatus(prisma, run.id)).toBe("WAITING_TO_RESUME");
+            expect(await engine.runQueue.currentConcurrencyOfEnvironment(env)).toBe(0);
+
+            await engine.completeWaitpoint({ id: tokenId });
+            await untilLatest(engine, prisma, run.id, "QUEUED");
+            await expectCarried(engine, prisma, run.id, "QUEUED", result.row);
+            await engine.runQueue.processMasterQueueForEnvironment(env.id, 10);
+            const message = await engine.runQueue.readMessage(env.organizationId, run.id);
+            expect(message).toMatchObject({ workerQueue: RESTORE_QUEUE });
+            const restore = await dequeueFrom(engine, env, RESTORE_QUEUE);
+            expect(restore.checkpoint).toMatchObject({
+              id: result.row.id,
+              friendlyId: result.row.friendlyId,
+              type: "KUBERNETES",
+              location: "flagged-loc-1",
+              imageRef: "flagged-image-ref",
+              reason: "TEST_FLAGGED",
+              digest: FLAGGED.digest,
+            });
+            await expectCarried(engine, prisma, run.id, "PENDING_EXECUTING", result.row);
+            const continued = await engine.continueRunExecution({
+              runId: run.id,
+              snapshotId: restore.snapshot.id,
+            });
+            expect(continued.snapshot.executionStatus).toBe("EXECUTING");
+            await engine.completeRunAttempt({
+              runId: run.id,
+              snapshotId: continued.snapshot.id,
+              completion: { id: run.id, ok: true, output: "{}", outputType: "application/json" },
+            });
+            expect(await runStatus(prisma, run.id)).toBe("COMPLETED_SUCCESSFULLY");
+
+            await counter.settle();
+            expect(counter.count() - before).toBe(0);
+            expect(flag.calls).toEqual([env.organizationId]);
+          } finally {
+            await engine.quit();
+            await snapshotStore.quit();
+            await counter.client.$disconnect();
+          }
+        }
+      );
+
+      for (const scenario of [
+        {
+          type: "KUBERNETES" as const,
+          location: "flagged-loc-2",
+          lane: RESTORE_QUEUE,
+          others: [WRONG_QUEUE],
+        },
+        {
+          type: "DOCKER" as const,
+          location: "flagged-loc-3",
+          lane: RESTORE_QUEUE,
+          others: [WRONG_QUEUE],
+        },
+        {
+          type: "COMPUTE" as const,
+          location: "node-a/snap-1",
+          lane: WRONG_QUEUE,
+          others: [RESTORE_QUEUE],
+        },
+      ]) {
+        // Catches: the requeue of a QUEUED_EXECUTING run losing the record or the restore lane.
+        containerTest(
+          `a flagged suspend of a QUEUED_EXECUTING ${scenario.type} run queues it on its restore lane with a state-held checkpoint`,
+          async ({ prisma, redisOptions }) => {
+            const flag = checkpointFlag(true);
+            const { env, snapshotStore, engine } = await flagged(prisma, redisOptions, flag);
+            try {
+              const { run, wait } = await queuedExecutingOn(
+                engine,
+                env,
+                prisma,
+                snapshotStore,
+                BIRTH_QUEUE
+              );
+              expect(await engine.runQueue.currentConcurrencyOfEnvironment(env)).toBe(1);
+
+              const result = accepted(
+                await engine.createCheckpoint({
+                  runId: run.id,
+                  snapshotId: wait.id,
+                  checkpoint: {
+                    type: scenario.type,
+                    location: scenario.location,
+                    imageRef: FLAGGED.imageRef,
+                    reason: FLAGGED.reason,
+                  },
+                })
+              );
+              expect(result.snapshot.executionStatus).toBe("QUEUED");
+              expect(flag.calls).toEqual([env.organizationId]);
+              await expectCarried(engine, prisma, run.id, "QUEUED", result.row);
+              expect(await engine.runQueue.currentConcurrencyOfEnvironment(env)).toBe(0);
+
+              const message = await engine.runQueue.readMessage(env.organizationId, run.id);
+              expect(message).toMatchObject({ workerQueue: scenario.lane });
+              await engine.runQueue.processMasterQueueForEnvironment(env.id, 10);
+              for (const workerQueue of [BIRTH_QUEUE, ...scenario.others]) {
+                expect(
+                  await engine.dequeueFromWorkerQueue({
+                    consumerId: "flagged_consumer",
+                    workerQueue,
+                    blockingPop: false,
+                  })
+                ).toEqual([]);
+              }
+              const restore = await dequeueFrom(engine, env, scenario.lane);
+              expect(restore.checkpoint).toMatchObject({
+                id: result.row.id,
+                type: scenario.type,
+              });
+              expect(
+                await prisma.taskRunCheckpoint.count({ where: { runtimeEnvironmentId: env.id } })
+              ).toBe(0);
+            } finally {
+              await engine.quit();
+              await snapshotStore.quit();
+            }
+          }
+        );
+      }
+
+      for (const scenario of [
+        {
+          name: "an unflagged suspend of a MemoryDB-only",
+          on: false,
+          dial: undefined,
+          residency: "redis-primary",
+        },
+        { name: "a flagged suspend of an off", on: true, dial: "off" as const, residency: null },
+        {
+          name: "a flagged suspend of a dual-write",
+          on: true,
+          dial: "dual-write" as const,
+          residency: "mirrored",
+        },
+        {
+          name: "a flagged suspend of a redis-read",
+          on: true,
+          dial: "redis-read" as const,
+          residency: "mirrored",
+        },
+      ]) {
+        // Catches: the requeue of a QUEUED_EXECUTING run whose checkpoint is in Postgres carrying the
+        // record (a QUEUED snapshot that points at a state-held checkpoint that does not exist).
+        containerTest(
+          `${scenario.name} QUEUED_EXECUTING run queues it with a Postgres checkpoint and no record`,
+          async ({ prisma, redisOptions }) => {
+            const flag = checkpointFlag(scenario.on);
+            const { env, snapshotStore, engine } = await flagged(prisma, redisOptions, flag, {
+              dial: scenario.dial ? () => scenario.dial : undefined,
+            });
+            try {
+              const { run, wait } = await queuedExecutingOn(
+                engine,
+                env,
+                prisma,
+                snapshotStore,
+                BIRTH_QUEUE,
+                scenario.residency
+              );
+              const result = accepted(
+                await engine.createCheckpoint({
+                  runId: run.id,
+                  snapshotId: wait.id,
+                  checkpoint: FLAGGED,
+                })
+              );
+              expect(result.snapshot.executionStatus).toBe("QUEUED");
+              expect(flag.calls).toEqual(scenario.dial === undefined ? [env.organizationId] : []);
+              expect(await prisma.taskRunCheckpoint.count({ where: { id: result.row.id } })).toBe(
+                1
+              );
+              const head = await snapshotStore.getLatest(run.id);
+              if (scenario.dial === "off") {
+                expect(head).toBeNull();
+              } else {
+                expect(head?.entry.executionStatus).toBe("QUEUED");
+                expect(head?.entry.checkpointId).toBe(result.row.id);
+                expect("checkpointStore" in head!.entry).toBe(false);
+              }
+              const read = await getLatestExecutionSnapshot(prisma, run.id, engine.runStore);
+              expect(read.executionStatus).toBe("QUEUED");
+              expect(read.checkpoint?.id).toBe(result.row.id);
+              expect("checkpointStore" in read).toBe(false);
+              expect(await stateFields(redisOptions, run.id)).toEqual([]);
+              expect(snapshotStore.writes).toBe(0);
+            } finally {
+              await engine.quit();
+              await snapshotStore.quit();
+            }
+          }
+        );
+      }
+
+      // Catches: an unflagged suspend of a MemoryDB-only run changing where its checkpoint goes.
+      containerTest(
+        "an unflagged suspend of a MemoryDB-only run makes one lookup and writes its checkpoint to Postgres as today",
+        async ({ prisma, redisOptions }) => {
+          const flag = checkpointFlag(false);
+          const { env, snapshotStore, engine } = await flagged(prisma, redisOptions, flag);
+          try {
+            const { run, tokenId, wait } = await startAndBlockOn(
+              engine,
+              env,
+              prisma,
+              snapshotStore,
+              BIRTH_QUEUE
+            );
+            const result = accepted(
+              await engine.createCheckpoint({
+                runId: run.id,
+                snapshotId: wait.id,
+                checkpoint: FLAGGED,
+              })
+            );
+            expect(result.snapshot.executionStatus).toBe("SUSPENDED");
+            expect(flag.calls).toEqual([env.organizationId]);
+            expect(await prisma.taskRunCheckpoint.count({ where: { id: result.row.id } })).toBe(1);
+            const head = await rawHead(snapshotStore, run.id);
+            expect(head.checkpointId).toBe(result.row.id);
+            expect("checkpointStore" in head).toBe(false);
+            const read = await getLatestExecutionSnapshot(prisma, run.id, engine.runStore);
+            expect("checkpointStore" in read).toBe(false);
+            expect(await stateFields(redisOptions, run.id)).toEqual([]);
+            expect(snapshotStore.writes).toBe(0);
+            expect(await runStatus(prisma, run.id)).toBe("WAITING_TO_RESUME");
+
+            await engine.completeWaitpoint({ id: tokenId });
+            const restore = await dequeueFrom(engine, env, RESTORE_QUEUE);
+            expect(restore.checkpoint?.id).toBe(result.row.id);
+          } finally {
+            await engine.quit();
+            await snapshotStore.quit();
+          }
+        }
+      );
+
+      for (const dial of ["off", "dual-write", "redis-read"] as const) {
+        // Catches: a lookup or a state-held write for a run whose snapshots are in Postgres.
+        containerTest(
+          `a flagged suspend of a ${dial} run makes no lookup and writes its checkpoint to Postgres`,
+          async ({ prisma, redisOptions }) => {
+            const flag = checkpointFlag(true);
+            const { env, snapshotStore, engine } = await flagged(prisma, redisOptions, flag, {
+              dial: () => dial,
+            });
+            try {
+              const run = await triggerRun(engine, env, prisma, {
+                friendlyId: generateFriendlyId("run"),
+                taskIdentifier: "test-task",
+              });
+              await dequeueAndStart(engine, `consumer_${run.id}`);
+              const { wait } = await block(engine, env, run.id);
+              const result = accepted(
+                await engine.createCheckpoint({
+                  runId: run.id,
+                  snapshotId: wait.id,
+                  checkpoint: checkpointInput("pg-loc-1"),
+                })
+              );
+              expect(result.snapshot.executionStatus).toBe("SUSPENDED");
+              expect(flag.calls).toEqual([]);
+              expect(await prisma.taskRunCheckpoint.count({ where: { id: result.row.id } })).toBe(
+                1
+              );
+              const read = await getLatestExecutionSnapshot(prisma, run.id, engine.runStore);
+              expect(read.checkpoint?.id).toBe(result.row.id);
+              expect("checkpointStore" in read).toBe(false);
+              expect(await stateFields(redisOptions, run.id)).toEqual([]);
+              expect(snapshotStore.writes).toBe(0);
+            } finally {
+              await engine.quit();
+              await snapshotStore.quit();
+            }
+          }
+        );
+      }
+
+      // Catches: a lookup or a write made before a suspend is discarded, or for a missing run.
+      containerTest(
+        "discarded suspends and a suspend of a missing run make no lookup and write nothing",
+        async ({ prisma, redisOptions }) => {
+          const flag = checkpointFlag(true);
+          const { env, snapshotStore, engine } = await flagged(prisma, redisOptions, flag);
+          try {
+            const { run, wait } = await startAndBlock(engine, env, prisma, snapshotStore);
+            const observe = async () => ({
+              calls: flag.calls.length,
+              rows: await prisma.taskRunCheckpoint.count({
+                where: { runtimeEnvironmentId: env.id },
+              }),
+              fields: await stateFields(redisOptions, run.id),
+              latest: await latestId(engine, prisma, run.id),
+            });
+
+            let before = await observe();
+            expect(
+              await engine.createCheckpoint({
+                runId: run.id,
+                snapshotId: wait.id,
+                checkpoint: { type: "COMPUTE", location: "foo://bar-123" },
+              })
+            ).toEqual({ ok: false, error: "Invalid checkpoint location" });
+            expect(await observe()).toEqual(before);
+
+            assertNonNullable(wait.previousSnapshotId);
+            expect(
+              await engine.createCheckpoint({
+                runId: run.id,
+                snapshotId: wait.previousSnapshotId,
+                checkpoint: FLAGGED,
+              })
+            ).toEqual({ ok: false, error: "Not the latest snapshot" });
+            expect(await observe()).toEqual(before);
+
+            const result = accepted(
+              await engine.createCheckpoint({
+                runId: run.id,
+                snapshotId: wait.id,
+                checkpoint: FLAGGED,
+              })
+            );
+            expect(flag.calls).toEqual([env.organizationId]);
+            expect(await stateFields(redisOptions, run.id)).toEqual([`${result.row.id}#cp`]);
+
+            before = await observe();
+            expect(
+              await engine.createCheckpoint({
+                runId: run.id,
+                snapshotId: result.snapshot.id,
+                checkpoint: FLAGGED,
+              })
+            ).toEqual({ ok: false, error: "Status SUSPENDED is not checkpointable" });
+            expect(await observe()).toEqual(before);
+
+            await expect(
+              engine.createCheckpoint({
+                runId: generateFriendlyId("run").replace(/^run_/, ""),
+                snapshotId: wait.id,
+                checkpoint: FLAGGED,
+              })
+            ).rejects.toThrow();
+            expect(await observe()).toEqual(before);
+          } finally {
+            await engine.quit();
+            await snapshotStore.quit();
+          }
+        }
+      );
+
+      // Catches: a failed lookup swallowed as off (a Postgres checkpoint), or work done before it.
+      containerTest(
+        "a failed checkpoint flag lookup rejects the suspend of a waiting and of a QUEUED_EXECUTING run and changes nothing",
+        async ({ prisma, redisOptions }) => {
+          const failure = new Error("checkpoint flag lookup failed");
+          const flag = checkpointFlag(failure);
+          const { env, snapshotStore, engine } = await flagged(prisma, redisOptions, flag);
+          const statusChanged: string[] = [];
+          engine.eventBus.on("runStatusChanged", (event) => statusChanged.push(event.run.id));
+          try {
+            const waiting = await startAndBlockOn(engine, env, prisma, snapshotStore, BIRTH_QUEUE);
+            const queued = await queuedExecutingOn(engine, env, prisma, snapshotStore, BIRTH_QUEUE);
+            for (const [index, subject] of [waiting, queued].entries()) {
+              const runId = subject.run.id;
+              const observe = async () => {
+                const row = await prisma.taskRun.findFirstOrThrow({ where: { id: runId } });
+                return {
+                  latest: await latestId(engine, prisma, runId),
+                  status: row.status,
+                  updatedAt: row.updatedAt,
+                  message: await engine.runQueue.readMessage(env.organizationId, runId),
+                  concurrency: await engine.runQueue.currentConcurrencyOfEnvironment(env),
+                  rows: await prisma.taskRunCheckpoint.count({
+                    where: { runtimeEnvironmentId: env.id },
+                  }),
+                  fields: await stateFields(redisOptions, runId),
+                  events: statusChanged.filter((id) => id === runId).length,
+                };
+              };
+              const before = await observe();
+              await expect(
+                engine.createCheckpoint({
+                  runId,
+                  snapshotId: subject.wait.id,
+                  checkpoint: FLAGGED,
+                })
+              ).rejects.toBe(failure);
+              expect(flag.calls).toEqual(Array(index + 1).fill(env.organizationId));
+              expect(await observe()).toEqual(before);
+            }
+            expect(snapshotStore.writes).toBe(0);
+          } finally {
+            await engine.quit();
+            await snapshotStore.quit();
+          }
+        }
+      );
+
+      // Catches: a failed state write falling back to Postgres, or a snapshot written that refers to
+      // a checkpoint that was never stored.
+      containerTest(
+        "a failed state write rejects the suspend with no Postgres fallback and no snapshot that refers to it",
+        async ({ prisma, redisOptions }) => {
+          const flag = checkpointFlag(true);
+          const { env, snapshotStore, engine } = await flagged(prisma, redisOptions, flag);
+          try {
+            for (const fail of ["throw", "false"] as const) {
+              const waiting = await startAndBlockOn(
+                engine,
+                env,
+                prisma,
+                snapshotStore,
+                BIRTH_QUEUE
+              );
+              const queued = await queuedExecutingOn(
+                engine,
+                env,
+                prisma,
+                snapshotStore,
+                BIRTH_QUEUE
+              );
+              for (const [subject, expectedLatest] of [
+                [waiting, waiting.wait.id],
+                [queued, queued.queuedExecuting.id],
+              ] as const) {
+                const runId = subject.run.id;
+                const writes = snapshotStore.writes;
+                const message = await engine.runQueue.readMessage(env.organizationId, runId);
+                expect(await latestId(engine, prisma, runId)).toBe(expectedLatest);
+                snapshotStore.fail = fail;
+                const error = await engine
+                  .createCheckpoint({ runId, snapshotId: subject.wait.id, checkpoint: FLAGGED })
+                  .then(
+                    () => undefined,
+                    (e: unknown) => e
+                  );
+                snapshotStore.fail = undefined;
+                expect(error).toBeInstanceOf(SnapshotWriteUnavailableError);
+                expect(snapshotStore.writes).toBe(writes + 1);
+                expect(
+                  await prisma.taskRunCheckpoint.count({ where: { runtimeEnvironmentId: env.id } })
+                ).toBe(0);
+                expect(await stateFields(redisOptions, runId)).toEqual([]);
+                expect(await latestId(engine, prisma, runId)).toBe(expectedLatest);
+                expect(await runStatus(prisma, runId)).toBe("WAITING_TO_RESUME");
+                expect(await engine.runQueue.readMessage(env.organizationId, runId)).toEqual(
+                  message
+                );
+              }
+            }
+          } finally {
+            await engine.quit();
+            await snapshotStore.quit();
+          }
+        }
+      );
+
+      // Catches: a flag turned off still writing into the state, or a cached lookup.
+      containerTest(
+        "after the flag goes off, the next suspend writes a Postgres checkpoint and the run restores from it",
+        async ({ prisma, redisOptions }) => {
+          const flag = checkpointFlag(true);
+          const { env, snapshotStore, engine } = await flagged(prisma, redisOptions, flag);
+          try {
+            const first = await startAndBlock(engine, env, prisma, snapshotStore);
+            const one = await suspend(engine, first.run.id, first.wait.id, "loc-1");
+            await expectCarried(
+              engine,
+              prisma,
+              first.run.id,
+              "SUSPENDED",
+              one.checkpoint as unknown as Seeded
+            );
+            expect(snapshotStore.writes).toBe(1);
+
+            flag.set(false);
+            const second = await startAndBlock(engine, env, prisma, snapshotStore);
+            const two = await suspend(engine, second.run.id, second.wait.id, "pg-loc-1");
+            expect(flag.calls).toEqual([env.organizationId, env.organizationId]);
+            expect(await prisma.taskRunCheckpoint.count({ where: { id: two.checkpoint.id } })).toBe(
+              1
+            );
+            const read = await getLatestExecutionSnapshot(prisma, second.run.id, engine.runStore);
+            expect("checkpointStore" in read).toBe(false);
+            expect(await stateFields(redisOptions, second.run.id)).toEqual([]);
+            expect(snapshotStore.writes).toBe(1);
+
+            await engine.completeWaitpoint({ id: second.tokenId });
+            const restore = await dequeueRestore(engine, env);
+            expect(restore.run.id).toBe(second.run.id);
+            expect(restore.checkpoint?.id).toBe(two.checkpoint.id);
+          } finally {
+            await engine.quit();
+            await snapshotStore.quit();
+          }
+        }
+      );
+
+      // Catches: one organisation's flag deciding another organisation's checkpoint store.
+      containerTest(
+        "with one organisation flagged, another organisation's suspend writes a Postgres checkpoint",
+        async ({ prisma, redisOptions }) => {
+          const calls: string[] = [];
+          let flaggedOrganizationId = "";
+          const resolver = {
+            resolve: async (organizationId: string) => {
+              calls.push(organizationId);
+              return organizationId === flaggedOrganizationId;
+            },
+          };
+          const {
+            env: envA,
+            snapshotStore,
+            engine,
+          } = await flagged(prisma, redisOptions, resolver);
+          flaggedOrganizationId = envA.organizationId;
+          try {
+            const envB = await secondOrganisationEnvironment(prisma, envA);
+            await setupBackgroundWorker(engine, envB, "test-task");
+
+            const a = await startAndBlock(engine, envA, prisma, snapshotStore);
+            const checkpointA = (await suspend(engine, a.run.id, a.wait.id, "loc-a")).checkpoint;
+            const b = await startAndBlock(engine, envB, prisma, snapshotStore);
+            const checkpointB = (await suspend(engine, b.run.id, b.wait.id, "pg-loc-1")).checkpoint;
+
+            expect(calls).toEqual([envA.organizationId, envB.organizationId]);
+            await expectCarried(
+              engine,
+              prisma,
+              a.run.id,
+              "SUSPENDED",
+              checkpointA as unknown as Seeded
+            );
+            expect(await prisma.taskRunCheckpoint.count({ where: { id: checkpointB.id } })).toBe(1);
+            const readB = await getLatestExecutionSnapshot(prisma, b.run.id, engine.runStore);
+            expect(readB.checkpoint?.id).toBe(checkpointB.id);
+            expect("checkpointStore" in readB).toBe(false);
+            expect(await stateFields(redisOptions, b.run.id)).toEqual([]);
+            expect(snapshotStore.writes).toBe(1);
+          } finally {
+            await engine.quit();
+            await snapshotStore.quit();
+          }
+        }
+      );
+
+      // Catches: the checkpoint flag read through the waitpoint flag or the snapshot store setting,
+      // or a checkpoint flag that changes a run's residency or a waitpoint's store.
+      containerTest(
+        "the checkpoint flag is independent of the waitpoint flag and the snapshot store setting",
+        async ({ prisma, redisOptions }) => {
+          const flag = checkpointFlag(false);
+          const waitpointStore = new WaitpointStoreCoordinator({ redisOptions });
+          const { env, snapshotStore, engine } = await flagged(prisma, redisOptions, flag, {
+            waitpointStore,
+          });
+          try {
+            // (a) The waitpoint flag on, the checkpoint flag off.
+            const first = await startAndBlock(engine, env, prisma, snapshotStore);
+            const firstAnchor = cycleAnchorSnapshotId(
+              await getLatestExecutionSnapshot(prisma, first.run.id, engine.runStore)
+            );
+            const one = await suspend(engine, first.run.id, first.wait.id, "pg-loc-1");
+            expect(await prisma.taskRunCheckpoint.count({ where: { id: one.checkpoint.id } })).toBe(
+              1
+            );
+            expect(await stateFields(redisOptions, first.run.id)).toEqual([]);
+            const oneSuspended = await getLatestExecutionSnapshot(
+              prisma,
+              first.run.id,
+              engine.runStore
+            );
+            expect(oneSuspended.executionStatus).toBe("SUSPENDED");
+            expect(
+              (oneSuspended.metadata as { waitpointCycleAnchor?: string } | null)
+                ?.waitpointCycleAnchor
+            ).toBe(firstAnchor);
+
+            // (b) Both flags on: residency and the waitpoint's store are unchanged by the suspend.
+            flag.set(true);
+            const second = await startAndBlock(engine, env, prisma, snapshotStore);
+            const residency = await snapshotStore.readBirthResidency(second.run.id);
+            const tokenRows = await prisma.waitpoint.count({ where: { id: second.tokenId } });
+            const secondAnchor = cycleAnchorSnapshotId(
+              await getLatestExecutionSnapshot(prisma, second.run.id, engine.runStore)
+            );
+            const two = await suspend(engine, second.run.id, second.wait.id, "loc-2");
+            expect(await snapshotStore.readBirthResidency(second.run.id)).toBe(residency);
+            expect(await prisma.waitpoint.count({ where: { id: second.tokenId } })).toBe(tokenRows);
+            const twoSuspended = await expectCarried(
+              engine,
+              prisma,
+              second.run.id,
+              "SUSPENDED",
+              two.checkpoint as unknown as Seeded
+            );
+            expect(
+              (twoSuspended.metadata as { waitpointCycleAnchor?: string } | null)
+                ?.waitpointCycleAnchor
+            ).toBe(secondAnchor);
+          } finally {
+            await engine.quit();
+            await snapshotStore.quit();
+            await waitpointStore.quit();
+          }
+
+          // (c) The setting lowered after a run's birth: that run is still MemoryDB-only.
+          let dial: SnapshotStoreDial = "redis-only";
+          const lowered = checkpointFlag(true);
+          const separate = await flagged(prisma, redisOptions, lowered, {
+            dial: () => dial,
+            env,
+          });
+          try {
+            const third = await startAndBlock(separate.engine, env, prisma, separate.snapshotStore);
+            dial = "off";
+            const three = await suspend(separate.engine, third.run.id, third.wait.id, "loc-3");
+            expect(lowered.calls).toEqual([env.organizationId]);
+            await expectCarried(
+              separate.engine,
+              prisma,
+              third.run.id,
+              "SUSPENDED",
+              three.checkpoint as unknown as Seeded
+            );
+
+            const fourth = await triggerRun(separate.engine, env, prisma, {
+              friendlyId: generateFriendlyId("run"),
+              taskIdentifier: "test-task",
+            });
+            await dequeueAndStart(separate.engine, `consumer_${fourth.id}`);
+            const { wait } = await block(separate.engine, env, fourth.id);
+            const four = await suspend(separate.engine, fourth.id, wait.id, "pg-loc-1");
+            expect(lowered.calls).toEqual([env.organizationId]);
+            expect(
+              await prisma.taskRunCheckpoint.count({ where: { id: four.checkpoint.id } })
+            ).toBe(1);
+          } finally {
+            await separate.engine.quit();
+            await separate.snapshotStore.quit();
+          }
+        }
+      );
+    });
   });
 });

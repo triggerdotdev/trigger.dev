@@ -9,7 +9,10 @@ import type { PrismaClientOrTransaction } from "~/db.server";
 import {
   FEATURE_FLAG,
   FeatureFlagCatalog,
+  GLOBAL_LOCKED_FLAGS,
+  ORG_LOCKED_FLAGS,
   hasUnreadableTurnEvalsOverride,
+  parseStoredOrgFlags,
 } from "~/v3/featureFlags";
 import { makeFlag, makeSetFlag } from "~/v3/featureFlags.server";
 
@@ -129,5 +132,22 @@ describe("deployNowEnabled flag", () => {
     expect(schema.safeParse(true).success).toBe(true);
     // strict boolean: the string "false" must NOT coerce to a boolean
     expect(schema.safeParse("false").success).toBe(false);
+  });
+});
+
+describe("checkpointStoreEnabled flag", () => {
+  // Catches: a coercing schema that turns the string "false" on, or the key unknown or locked.
+  it("is registered as a strict boolean flag, settable per organization and globally", () => {
+    expect(FEATURE_FLAG.checkpointStoreEnabled).toBe("checkpointStoreEnabled");
+    const schema = FeatureFlagCatalog[FEATURE_FLAG.checkpointStoreEnabled];
+    expect(schema.safeParse(true).success).toBe(true);
+    expect(schema.safeParse(false).success).toBe(true);
+    expect(schema.safeParse("false").success).toBe(false);
+    expect(schema.safeParse("true").success).toBe(false);
+    const stored = parseStoredOrgFlags({ checkpointStoreEnabled: true });
+    expect(stored.valid).toEqual({ checkpointStoreEnabled: true });
+    expect(stored.unknownKeys).not.toHaveProperty("checkpointStoreEnabled");
+    expect(GLOBAL_LOCKED_FLAGS).not.toContain(FEATURE_FLAG.checkpointStoreEnabled);
+    expect(ORG_LOCKED_FLAGS).not.toContain(FEATURE_FLAG.checkpointStoreEnabled);
   });
 });

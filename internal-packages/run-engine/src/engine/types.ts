@@ -93,6 +93,8 @@ export type RunEngineOptions = {
     organizationId: string,
     organizationFlags?: unknown
   ) => boolean | Promise<boolean>;
+  /** Read once per suspend of a MemoryDB-only run. Omitted means every checkpoint is written to Postgres. */
+  checkpointStoreEnabled?: (organizationId: string) => boolean | Promise<boolean>;
   prisma: PrismaClient;
   readOnlyPrisma?: PrismaReplicaClient;
   /** Optional RunStore implementation to inject. Defaults to a PostgresRunStore

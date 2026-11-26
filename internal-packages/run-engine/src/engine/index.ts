@@ -700,6 +700,7 @@ export class RunEngine {
       resources,
       waitpointStoreEnabled: (organizationId) =>
         this.waitpointSystem.isStoreRoutingEnabled(organizationId),
+      checkpointStoreEnabled: options.checkpointStoreEnabled,
       executionSnapshotSystem: this.executionSnapshotSystem,
       enqueueSystem: this.enqueueSystem,
     });

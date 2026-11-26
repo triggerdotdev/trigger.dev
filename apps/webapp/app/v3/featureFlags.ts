@@ -8,6 +8,7 @@ export function hasAgentVault(flags: unknown) {
 
 export const FEATURE_FLAG = {
   waitpointStoreEnabled: "waitpointStoreEnabled",
+  checkpointStoreEnabled: "checkpointStoreEnabled",
   waitpointStoreStandaloneTokens: "waitpointStoreStandaloneTokens",
   snapshotStoreMode: "snapshotStoreMode",
   allowEmptyEnvironmentVariableValues: "allowEmptyEnvironmentVariableValues",
@@ -111,6 +112,8 @@ const WorkerQueueEnvironmentOverrideKey = z
 
 export const FeatureFlagCatalog = {
   [FEATURE_FLAG.waitpointStoreEnabled]: z.boolean(),
+  // Organization override, then global default, then off. Strict: coercion reads "false" as true.
+  [FEATURE_FLAG.checkpointStoreEnabled]: z.boolean(),
   // Standalone wait tokens go to the waitpoint store only when waitpointStoreEnabled is on too.
   [FEATURE_FLAG.waitpointStoreStandaloneTokens]: z.boolean(),
   // Organization override, then global default, then off.
