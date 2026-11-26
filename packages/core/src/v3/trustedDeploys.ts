@@ -1,6 +1,7 @@
 import { z } from "zod/v4";
 import { EXTERNAL_DEPLOYMENT_ID_MAX_LENGTH } from "./externalDeploymentId.js";
 import {
+  CliVersionPolicy,
   CreateArtifactResponseBody,
   InitializeDeploymentResponseBody,
   PromoteDeploymentResponseBody,
@@ -113,7 +114,9 @@ export const PrepareTrustedDeployRequest = TrustedDeployTarget.extend({
   .strict()
   .superRefine(validateBranch);
 
-export const PrepareTrustedDeployResponse = CreateArtifactResponseBody;
+export const PrepareTrustedDeployResponse = CreateArtifactResponseBody.extend({
+  cliVersionPolicy: CliVersionPolicy.optional().catch(undefined),
+});
 
 export const ArchiveTrustedPreviewRequest = TrustedDeployTarget.extend({
   env: z.literal("preview"),
@@ -181,5 +184,6 @@ function validateBranch(value: z.infer<typeof TrustedDeployTarget>, ctx: z.Refin
 }
 
 export type PrepareTrustedDeployRequest = z.infer<typeof PrepareTrustedDeployRequest>;
+export type PrepareTrustedDeployResponse = z.infer<typeof PrepareTrustedDeployResponse>;
 export type SubmitTrustedDeployRequest = z.infer<typeof SubmitTrustedDeployRequest>;
 export type SubmitTrustedDeployResponse = z.infer<typeof SubmitTrustedDeployResponse>;

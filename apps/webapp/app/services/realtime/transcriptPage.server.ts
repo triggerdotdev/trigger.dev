@@ -6,6 +6,7 @@ import {
   TRANSCRIPT_BLOB_CONTENT_TYPE,
   TRANSCRIPT_TRAILER_BYTES,
   type TranscriptFooter,
+  type TranscriptPagePlan,
 } from "@trigger.dev/core/v3";
 import { downloadObjectRangeFromObjectStore } from "~/v3/objectStore.server";
 import { ObjectVersionChangedError } from "~/v3/objectStoreClient.server";
@@ -29,6 +30,10 @@ export type TranscriptPage = {
   /** Messages in the whole transcript. */
   totalEntries: number;
   cursors: { lastOutEventId?: string; lastInEventId?: string };
+  /** An entry larger than `maxWindowBytes`, skipped without being downloaded. */
+  omitted?: { index: number; bytes: number; id: string };
+  /** Set when `before` names no entry in the transcript. */
+  unknownCursor?: true;
 };
 
 /** Where a session's transcript object lives in the object store. */
@@ -55,20 +60,40 @@ type Suffix = {
  * one version's offsets to another version's bytes, so every follow-up range
  * carries the first read's version and a mismatch declines rather than
  * returning entries that do not belong together.
+ *
+ * With `ifMatch`, every read is pinned to that version and a change throws
+ * `ObjectVersionChangedError` instead. With `maxWindowBytes`, a footer or page
+ * window larger than it is not downloaded. `beforeRead` runs before each GET
+ * and may throw to stop the read.
  */
 export async function readTranscriptPageRanged(
   storageKey: string,
   location: TranscriptStoreLocation,
-  opts: { limit?: number; before?: string } | undefined
+  opts:
+    | {
+        limit?: number;
+        before?: string;
+        maxWindowBytes?: number;
+        ifMatch?: string;
+        beforeRead?: () => void;
+      }
+    | undefined
 ): Promise<TranscriptPage | "unsupported"> {
-  const suffix = await readSuffix(storageKey, location);
+  opts?.beforeRead?.();
+  const suffix = await readSuffix(storageKey, location, opts?.ifMatch);
   if (!suffix) return "unsupported";
 
   let footer: TranscriptFooter | undefined;
   try {
-    footer = await resolveFooter(storageKey, location, suffix);
+    footer = await resolveFooter(
+      storageKey,
+      location,
+      suffix,
+      opts?.maxWindowBytes,
+      opts?.beforeRead
+    );
   } catch (error) {
-    if (error instanceof ObjectVersionChangedError) return "unsupported";
+    if (error instanceof ObjectVersionChangedError && !opts?.ifMatch) return "unsupported";
     throw error;
   }
   if (!footer) return "unsupported";
@@ -78,7 +103,12 @@ export async function readTranscriptPageRanged(
     lastInEventId: footer.lastInEventId,
   };
   const limit = Math.min(opts?.limit ?? MAX_PAGE_ENTRIES, MAX_PAGE_ENTRIES);
-  const plan = planTranscriptPage(footer, { limit, before: opts?.before });
+  const planned = planTranscriptPage(footer, { limit, before: opts?.before });
+  const fitted =
+    planned && opts?.maxWindowBytes !== undefined
+      ? fitTranscriptPageToBytes(footer, planned, opts.maxWindowBytes)
+      : undefined;
+  const plan = fitted?.plan ?? planned;
 
   if (!plan) {
     return {
@@ -88,14 +118,29 @@ export async function readTranscriptPageRanged(
       startIndex: 0,
       totalEntries: footer.ids.length,
       cursors,
+      ...(opts?.before !== undefined && !footer.ids.includes(opts.before)
+        ? { unknownCursor: true as const }
+        : {}),
+    };
+  }
+
+  if (fitted?.omitted) {
+    return {
+      messages: [],
+      nextCursor: plan.nextCursor,
+      savedAt: footer.savedAt,
+      startIndex: plan.startIndex,
+      totalEntries: plan.totalEntries,
+      cursors,
+      omitted: fitted.omitted,
     };
   }
 
   let window: Uint8Array;
   try {
-    window = await readWindow(storageKey, location, suffix, plan.start, plan.end);
+    window = await readWindow(storageKey, location, suffix, plan.start, plan.end, opts?.beforeRead);
   } catch (error) {
-    if (error instanceof ObjectVersionChangedError) return "unsupported";
+    if (error instanceof ObjectVersionChangedError && !opts?.ifMatch) return "unsupported";
     throw error;
   }
   const entries = parseTranscriptEntryLines(new TextDecoder().decode(window));
@@ -110,14 +155,60 @@ export async function readTranscriptPageRanged(
   };
 }
 
+/**
+ * Shrink a page to the newest whole entries whose bytes fit `maxWindowBytes`,
+ * the source bytes the page may download. When the newest entry alone is
+ * larger, the page holds nothing and reports it omitted, with the cursor past it.
+ */
+function fitTranscriptPageToBytes(
+  footer: TranscriptFooter,
+  plan: TranscriptPagePlan,
+  maxWindowBytes: number
+): { plan: TranscriptPagePlan; omitted?: { index: number; bytes: number; id: string } } {
+  const endIndex = plan.startIndex + plan.ids.length;
+  let first = endIndex;
+  while (first > plan.startIndex && plan.end - footer.offsets[first - 1]! <= maxWindowBytes) {
+    first--;
+  }
+  if (first === plan.startIndex) return { plan };
+
+  if (first === endIndex) {
+    const index = endIndex - 1;
+    const start = footer.offsets[index]!;
+    return {
+      plan: {
+        ...plan,
+        start,
+        end: start,
+        ids: [],
+        nextCursor: index > 0 ? footer.ids[index] : undefined,
+        startIndex: index,
+      },
+      omitted: { index, bytes: plan.end - start, id: footer.ids[index]! },
+    };
+  }
+
+  return {
+    plan: {
+      ...plan,
+      start: footer.offsets[first]!,
+      ids: footer.ids.slice(first, endIndex),
+      nextCursor: footer.ids[first],
+      startIndex: first,
+    },
+  };
+}
+
 async function readSuffix(
   key: string,
-  location: TranscriptStoreLocation
+  location: TranscriptStoreLocation,
+  ifMatch: string | undefined
 ): Promise<Suffix | undefined> {
   const range = await downloadObjectRangeFromObjectStore(
     { dataType: "application/store", data: key },
     location,
-    { suffixLength: SUFFIX_READ_BYTES }
+    { suffixLength: SUFFIX_READ_BYTES },
+    ifMatch ? { ifMatch } : undefined
   );
 
   if (
@@ -139,13 +230,16 @@ async function readSuffix(
 async function resolveFooter(
   key: string,
   location: TranscriptStoreLocation,
-  suffix: Suffix
+  suffix: Suffix,
+  maxFooterBytes: number | undefined,
+  beforeRead: (() => void) | undefined
 ): Promise<TranscriptFooter | undefined> {
   const decoder = new TextDecoder();
   const trailer = readTranscriptTrailer(
     decoder.decode(suffix.bytes.subarray(suffix.bytes.byteLength - TRANSCRIPT_TRAILER_BYTES))
   );
   if (!trailer) return undefined;
+  if (maxFooterBytes !== undefined && trailer.footerLength > maxFooterBytes) return undefined;
 
   const footerEndFromEnd = TRANSCRIPT_TRAILER_BYTES + 1;
 
@@ -160,6 +254,7 @@ async function resolveFooter(
   const start = end - trailer.footerLength;
   if (start < 0) return undefined;
 
+  beforeRead?.();
   const range = await downloadObjectRangeFromObjectStore(
     { dataType: "application/store", data: key },
     location,
@@ -175,12 +270,14 @@ async function readWindow(
   location: TranscriptStoreLocation,
   suffix: Suffix,
   start: number,
-  end: number
+  end: number,
+  beforeRead: (() => void) | undefined
 ): Promise<Uint8Array> {
   const suffixStart = suffix.totalSize - suffix.bytes.byteLength;
   if (start >= suffixStart) {
     return suffix.bytes.subarray(start - suffixStart, end - suffixStart);
   }
+  beforeRead?.();
   const range = await downloadObjectRangeFromObjectStore(
     { dataType: "application/store", data: key },
     location,

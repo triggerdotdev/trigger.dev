@@ -50,3 +50,92 @@ export const WriteSessionChannelInput = CommonProjectsInput.extend({
       "The record to append to the channel's `in` stream. Pass an object for a structured record (e.g. { paused: true }) or a string for a raw record."
     ),
 });
+
+const SessionIdInput = z
+  .string()
+  .min(1)
+  .max(256)
+  .describe("The session id (session_* friendlyId) or the externalId it was created with.");
+
+const filterList = (description: string) =>
+  z.array(z.string().min(1).max(256)).max(20).describe(description).optional();
+
+export const ListSessionsInput = CommonProjectsInput.extend({
+  statuses: z
+    .array(z.enum(["ACTIVE", "CLOSED", "EXPIRED"]))
+    .max(3)
+    .describe("Only sessions with these statuses.")
+    .optional(),
+  types: filterList("Only sessions of these types, e.g. chat.agent."),
+  taskIdentifiers: filterList("Only sessions of these agents (their task ids)."),
+  externalId: z
+    .string()
+    .min(1)
+    .max(256)
+    .describe("Only the session with this externalId.")
+    .optional(),
+  tags: filterList("Only sessions with any of these tags."),
+  period: z
+    .string()
+    .regex(/^\d{1,4}[mhdw]$/)
+    .describe('Only sessions created in this last period, e.g. "1h", "7d" or "30d".')
+    .optional(),
+  from: z
+    .string()
+    .datetime()
+    .describe("Only sessions created at or after this ISO 8601 time. Ignored when period is set.")
+    .optional(),
+  to: z
+    .string()
+    .datetime()
+    .describe("Only sessions created at or before this ISO 8601 time. Ignored when period is set.")
+    .optional(),
+  cursor: z
+    .string()
+    .regex(/^[A-Za-z0-9_-]{1,128}$/)
+    .describe("The cursor from a previous call.")
+    .optional(),
+  direction: z
+    .enum(["forward", "backward"])
+    .describe("`forward` (default) pages to older sessions, `backward` to newer ones.")
+    .optional(),
+  limit: z.number().int().min(1).max(50).describe("How many to return (default 25).").optional(),
+});
+
+export const SessionDetailsInput = CommonProjectsInput.extend({
+  sessionId: SessionIdInput,
+});
+
+export const ReadSessionTranscriptInput = CommonProjectsInput.extend({
+  sessionId: SessionIdInput,
+  before: z
+    .string()
+    .min(1)
+    .max(256)
+    .describe(
+      "Cursor: return the messages before this message id. Use the cursor from a prior read."
+    )
+    .optional(),
+  maxMessages: z
+    .number()
+    .int()
+    .min(1)
+    .max(100)
+    .describe("Maximum messages to return. Up to 100, defaults to 20.")
+    .default(20),
+});
+
+export const ListPlaygroundConversationsInput = CommonProjectsInput.extend({
+  agentSlug: z
+    .string()
+    .min(1)
+    .max(256)
+    .describe("The agent's task id. Use list_agents to find it."),
+  limit: z
+    .number()
+    .int()
+    .min(1)
+    .max(10)
+    .describe("How many to return, up to 10 (default 10).")
+    .optional(),
+});

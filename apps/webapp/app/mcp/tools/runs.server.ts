@@ -3,6 +3,7 @@ import type {
   RetrieveSpanDetailResponseBody,
 } from "@trigger.dev/core/v3";
 import { setTimeout as sleep } from "node:timers/promises";
+import parseDuration from "parse-duration";
 import { CURRENT_API_VERSION } from "~/api/versions";
 import { extractAISpanData } from "~/components/runs/v3/ai";
 import { $replica } from "~/db.server";
@@ -11,6 +12,7 @@ import {
   ApiRunListSearchParams,
 } from "~/presenters/v3/ApiRunListPresenter.server";
 import { ApiRetrieveRunPresenter } from "~/presenters/v3/ApiRetrieveRunPresenter.server";
+import { RunTagListPresenter } from "~/presenters/v3/RunTagListPresenter.server";
 import type { AuthenticatedEnvironment } from "~/services/apiAuth.server";
 import { ServiceValidationError } from "~/v3/services/common.server";
 import { getRequestAbortSignal } from "~/services/httpAsyncStorage.server";
@@ -44,10 +46,12 @@ import {
   formatRunTrace,
   formatSpanDetail,
 } from "./format/runs";
+import { friendlyIdPattern } from "./schemas/bulkActions";
 import {
   GetRunDetailsInput,
   GetSpanDetailsInput,
   ListRunsInput,
+  ListRunTagsInput,
   WaitForRunInput,
 } from "./schemas/runs";
 
@@ -247,12 +251,29 @@ export function createRunsTools(options: RunsToolsOptions = {}): McpToolDefiniti
             "filter[createdAt][period]": input.period,
             "filter[machine]": input.machine,
             "filter[region]": input.region,
+            "filter[queue]": input.queue,
+            "filter[batch]": input.batch,
+            "filter[schedule]": input.schedule,
+            "filter[bulkAction]": input.bulkAction,
           }).filter(([, value]) => value !== undefined)
         )
       );
 
       if (!parsedParams.success) {
         return errorResult(parsedParams.error.issues.map((issue) => issue.message).join("; "));
+      }
+
+      for (const [name, prefix] of [
+        ["batch", "batch"],
+        ["schedule", "sched"],
+        ["bulkAction", "bulk"],
+      ] as const) {
+        const value = input[name];
+        if (value !== undefined && !friendlyIdPattern(prefix).test(value)) {
+          return errorResult(
+            `Invalid arguments: ${name} must be lowercase ${prefix}_ followed by letters and digits`
+          );
+        }
       }
 
       try {
@@ -296,7 +317,7 @@ export function createRunsTools(options: RunsToolsOptions = {}): McpToolDefiniti
       if (offset === 0) {
         const run = await new ApiRetrieveRunPresenter(CURRENT_API_VERSION).call(found, environment);
         content.push("## Run Details");
-        content.push(formatRun(run as Parameters<typeof formatRun>[0]));
+        content.push(formatRun(run as Parameters<typeof formatRun>[0], found));
         content.push("");
       }
 
@@ -397,7 +418,50 @@ export function createRunsTools(options: RunsToolsOptions = {}): McpToolDefiniti
     },
   });
 
-  return [listRuns, getRunDetails, getSpanDetails, waitForRun];
+  const listRunTags = defineReadTool({
+    name: "list_run_tags",
+    title: "List Run Tags",
+    description:
+      "List the tags used on runs in an environment, in alphabetical order. Only tags on runs created in the period are included. Use a returned tag with the `tag` filter of list_runs.",
+    shape: ListRunTagsInput.shape,
+    auth: { action: "read", subject: "runs" },
+    run: async (input, ctx) => {
+      const environment = await resolveToolEnvironment(ctx);
+      if (!environment) return errorResult("Environment not found");
+
+      if (!parseDuration(input.period, "ms")) {
+        return errorResult(`Invalid arguments: period=${input.period}`);
+      }
+
+      try {
+        const result = await new RunTagListPresenter().call({
+          organizationId: environment.organizationId,
+          projectId: environment.projectId,
+          environmentId: environment.id,
+          name: input.name,
+          period: input.period,
+          pageSize: input.limit,
+        });
+        const tags = result.tags.slice(0, input.limit);
+
+        if (tags.length === 0) return textResult(`No tags found in the last ${input.period}.`);
+
+        const lines = [
+          `Found ${tags.length} tag${tags.length === 1 ? "" : "s"} in the last ${input.period}:`,
+          fenceUntrusted(tags.join("\n"), "run-tags"),
+        ];
+        if (result.hasMore) {
+          lines.push("More tags match. Pass `name` to narrow the list or raise `limit`.");
+        }
+        return textResult(lines.join("\n"));
+      } catch (error) {
+        if (error instanceof RunsListQueryError) return errorResult(error.message);
+        throw error;
+      }
+    },
+  });
+
+  return [listRuns, getRunDetails, getSpanDetails, waitForRun, listRunTags];
 }
 
 export const runsTools = createRunsTools();

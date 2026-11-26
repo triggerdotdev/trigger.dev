@@ -1,5 +1,6 @@
 import { GitPullRequestIcon, GitCommitIcon, GitBranchIcon } from "lucide-react";
 import { type GitMetaLinks } from "~/presenters/v3/BranchesPresenter.server";
+import { isHttpUrl } from "~/utils/gitRemoteUrl";
 import { LinkButton } from "./primitives/Buttons";
 import { SimpleTooltip } from "./primitives/Tooltip";
 
@@ -7,9 +8,11 @@ export function GitMetadata({ git }: { git?: GitMetaLinks | null }) {
   if (!git) return null;
   return (
     <>
-      {git.pullRequestUrl && git.pullRequestNumber && <GitMetadataPullRequest git={git} />}
-      {git.branchUrl && <GitMetadataBranch git={git} />}
-      {git.shortSha && <GitMetadataCommit git={git} />}
+      {isHttpUrl(git.pullRequestUrl) && git.pullRequestNumber && (
+        <GitMetadataPullRequest git={git} />
+      )}
+      {isHttpUrl(git.branchUrl) && <GitMetadataBranch git={git} />}
+      {git.shortSha && isHttpUrl(git.commitUrl) && <GitMetadataCommit git={git} />}
     </>
   );
 }
@@ -26,10 +29,10 @@ function GitMetadataBranch({ git }: { git: Pick<GitMetaLinks, "branchUrl" | "bra
           to={git.branchUrl}
           className="pl-1 duration-0 [&_span]:duration-0 group-hover/table-row:[&_span]:text-text-bright"
         >
-          {git.branchName}
+          <span className="inline-block max-w-40 truncate align-bottom">{git.branchName}</span>
         </LinkButton>
       }
-      content="Jump to GitHub branch"
+      content={git.branchName}
     />
   );
 }
@@ -50,10 +53,10 @@ function GitMetadataCommit({
           iconSpacing="gap-x-1"
           className="pl-1 duration-0 [&_span]:duration-0 group-hover/table-row:[&_span]:text-text-bright"
         >
-          {`${git.shortSha} / ${git.commitMessage}`}
+          <span className="inline-block max-w-64 truncate align-bottom">{`${git.shortSha} / ${git.commitMessage}`}</span>
         </LinkButton>
       }
-      content="Jump to GitHub commit"
+      content={git.commitMessage ?? git.shortSha}
     />
   );
 }
@@ -76,10 +79,12 @@ function GitMetadataPullRequest({
           iconSpacing="gap-x-1"
           className="pl-1 duration-0 [&_span]:duration-0 group-hover/table-row:[&_span]:text-text-bright"
         >
-          #{git.pullRequestNumber} {git.pullRequestTitle}
+          <span className="inline-block max-w-56 truncate align-bottom">
+            #{git.pullRequestNumber} {git.pullRequestTitle}
+          </span>
         </LinkButton>
       }
-      content="Jump to GitHub pull request"
+      content={`#${git.pullRequestNumber} ${git.pullRequestTitle ?? ""}`}
     />
   );
 }

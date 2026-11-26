@@ -2,12 +2,18 @@ import { type ReactElement, type ReactNode } from "react";
 import { BarChart, ReferenceLine, Tooltip, YAxis } from "recharts";
 import { SimpleTooltip } from "~/components/primitives/Tooltip";
 
-// Fixed px dims skip ResponsiveContainer's ResizeObserver — otherwise every panel resize
-// re-renders all the charts in a list at once.
-export const ACTIVITY_CHART_WIDTH = 112;
-export const ACTIVITY_CHART_HEIGHT = 24;
-export const ACTIVITY_CHART_PEAK_CLASS =
-  "-mt-1 inline-block min-w-7 text-xxs tabular-nums text-text-dimmed";
+import {
+  ACTIVITY_CHART_HEIGHT,
+  ACTIVITY_CHART_PEAK_CLASS,
+  ACTIVITY_CHART_WIDTH,
+} from "./ActivityBarChartBlankState";
+
+export {
+  ACTIVITY_CHART_HEIGHT,
+  ACTIVITY_CHART_PEAK_CLASS,
+  ACTIVITY_CHART_WIDTH,
+  ActivityBarChartBlankState,
+} from "./ActivityBarChartBlankState";
 
 type ActivityBarChartProps = {
   /** Recharts row data; each row is a bucket. The bar `children` read their `dataKey`s off it. */
@@ -79,23 +85,4 @@ function ActivityPeakLabel({ tooltip, children }: { tooltip?: ReactNode; childre
   const label = <span className={ACTIVITY_CHART_PEAK_CLASS}>{children}</span>;
   if (!tooltip) return label;
   return <SimpleTooltip asChild button={label} content={tooltip} />;
-}
-
-// SVG line matches recharts' y=0 ReferenceLine anti-aliasing; a CSS border looks too crisp.
-export function ActivityBarChartBlankState({ width = ACTIVITY_CHART_WIDTH }: { width?: number }) {
-  return (
-    <div className="flex items-start gap-1.5">
-      <svg width={width} height={ACTIVITY_CHART_HEIGHT} className="rounded-sm">
-        <line
-          x1={0}
-          y1={ACTIVITY_CHART_HEIGHT}
-          x2={width}
-          y2={ACTIVITY_CHART_HEIGHT}
-          stroke="var(--color-border-bright)"
-          strokeWidth={1}
-        />
-      </svg>
-      <span className={ACTIVITY_CHART_PEAK_CLASS}>0</span>
-    </div>
-  );
 }

@@ -283,31 +283,101 @@ export async function revokePersonalAccessToken(
   }
 ) {
   const revoked = await prisma.personalAccessToken.updateManyAndReturn({
+    // Revoked once: a second revoke would record another event and move the fingerprint's time.
     where: {
       id: tokenId,
       userId,
+      revokedAt: null,
     },
     data: {
       revokedAt: new Date(),
     },
-    select: { id: true, name: true, obfuscatedToken: true, hashedToken: true, revokedAt: true },
+    select: {
+      id: true,
+      name: true,
+      obfuscatedToken: true,
+      hashedToken: true,
+      revokedAt: true,
+      oauthClientId: true,
+    },
   });
 
   if (revoked.length === 0) {
     throw new Error("PAT not found or already revoked");
   }
 
-  markCredentialHashRevoked(revoked[0].hashedToken, {
+  recordPersonalAccessTokenRevoked(revoked[0], {
     ...revocation,
-    revokedAt: revoked[0].revokedAt ?? undefined,
+    revokedBy: revocation.revokedBy ?? userActor(userId),
   });
+}
+
+/**
+ * After a revoke commits: marks the token's fingerprint revoked and records `pat.revoked`. A
+ * revocation by `system` with no `source` had no request behind it, e.g. directory sync.
+ */
+export function recordPersonalAccessTokenRevoked(
+  token: {
+    id: string;
+    name: string;
+    obfuscatedToken: string;
+    hashedToken: string;
+    revokedAt: Date | null;
+    oauthClientId?: string | null;
+  },
+  revocation: Pick<CredentialRevocation, "reason"> & {
+    revokedBy: AuditLogActor;
+    /** The event's reason, when it says more than the fingerprint's. */
+    auditReason?: string;
+    /** How the revoke was made, when the request's context doesn't say. */
+    source?: AuditLogSource;
+  }
+) {
+  markCredentialHashRevoked(token.hashedToken, {
+    reason: revocation.reason,
+    revokedBy: revocation.revokedBy,
+    revokedAt: token.revokedAt ?? undefined,
+  });
+  const source =
+    revocation.source ?? (revocation.revokedBy.type === "system" ? ("system" as const) : undefined);
   auditLogs.record({
     category: "credentials",
     action: "pat.revoked",
-    ...patAuditFields(revoked[0], revocation.revokedBy ?? userActor(userId)),
-    // Directory sync revokes with no request behind it.
-    ...(revocation.revokedBy?.type === "system" ? { source: "system" as const } : {}),
-    changes: { reason: revocation.reason },
+    ...patAuditFields(token, revocation.revokedBy),
+    ...(source ? { source } : {}),
+    changes: {
+      reason: revocation.auditReason ?? revocation.reason,
+      ...grantClient(token),
+    },
+  });
+}
+
+/**
+ * The OAuth client an MCP grant's token was issued to, by row id: the token's name comes from the
+ * client's self-chosen name, which anyone registering a client can copy.
+ */
+function grantClient(token: { oauthClientId?: string | null }): Record<string, string> {
+  return token.oauthClientId ? { oauthClientId: token.oauthClientId } : {};
+}
+
+/** Records `pat.created`. Call once the token's row has committed. */
+export function recordPersonalAccessTokenCreated(
+  token: {
+    id: string;
+    name: string;
+    obfuscatedToken: string;
+    expiresAt: Date | null;
+    oauthClientId?: string | null;
+  },
+  actor: AuditLogActor,
+  source?: AuditLogSource
+) {
+  auditLogs.record({
+    category: "credentials",
+    action: "pat.created",
+    ...patAuditFields(token, actor),
+    ...(source ? { source } : {}),
+    changes: { expiresAt: token.expiresAt?.toISOString() ?? null, ...grantClient(token) },
   });
 }
 
@@ -947,13 +1017,7 @@ export async function createPersonalAccessToken(
       name,
       source: auditSource,
     });
-    auditLogs.record({
-      category: "credentials",
-      action: "pat.created",
-      ...patAuditFields(personalAccessToken, userActor(userId)),
-      ...(auditLogSource ? { source: auditLogSource } : {}),
-      changes: { expiresAt: personalAccessToken.expiresAt?.toISOString() ?? null },
-    });
+    recordPersonalAccessTokenCreated(personalAccessToken, userActor(userId), auditLogSource);
   }
 
   return {

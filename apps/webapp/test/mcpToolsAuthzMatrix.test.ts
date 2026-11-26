@@ -43,6 +43,13 @@ vi.mock("~/db.server", () => {
   };
 });
 vi.mock("~/v3/webhookEngine.server", () => ({ webhookEngine: {} }));
+vi.mock("~/services/clickhouse/clickhouseFactoryInstance.server", () => ({
+  clickhouseFactory: {
+    getClickhouseForOrganization: async () => {
+      throw new Error("no ClickHouse in this test");
+    },
+  },
+}));
 vi.mock("~/services/rbac.server", () => ({
   rbac: new Proxy(
     {},
@@ -71,19 +78,96 @@ const TOOLS: Array<{ tool: string; args: Record<string, unknown>; scope: string 
     args: { ...project, runId: "run_1", timeoutInSeconds: 1 },
     scope: "read:runs",
   },
+  { tool: "list_run_tags", args: project, scope: "read:runs" },
+  { tool: "read_run_stream", args: { ...project, runId: "run_1" }, scope: "read:runs" },
+  { tool: "search_logs", args: project, scope: "read:runs" },
+  { tool: "get_log", args: { ...project, logId: "t::s::run_1::0" }, scope: "read:runs" },
   { tool: "list_deploys", args: project, scope: "read:deployments" },
+  {
+    tool: "get_deployment_details",
+    args: { ...project, deploymentId: "abcd1234" },
+    scope: "read:deployments",
+  },
+  { tool: "reset_run_idempotency_key", args: { ...project, runId: "run_1" }, scope: "write:runs" },
+  {
+    tool: "update_run_metadata",
+    args: { ...project, runId: "run_1", metadata: { a: 1 } },
+    scope: "write:runs",
+  },
+  { tool: "add_run_tags", args: { ...project, runId: "run_1", tags: ["a"] }, scope: "write:runs" },
+  {
+    tool: "reschedule_run",
+    args: { ...project, runId: "run_1", delay: "1h" },
+    scope: "write:runs",
+  },
+  { tool: "list_bulk_actions", args: project, scope: "read:runs" },
+  { tool: "get_bulk_action", args: { ...project, bulkActionId: "bulk_1" }, scope: "read:runs" },
+  {
+    tool: "create_bulk_action",
+    args: { ...project, action: "cancel", runIds: ["run_1"] },
+    scope: "write:runs",
+  },
+  { tool: "abort_bulk_action", args: { ...project, bulkActionId: "bulk_1" }, scope: "write:runs" },
   { tool: "get_query_schema", args: { ...project, table: "runs" }, scope: "read:query" },
   { tool: "list_dashboards", args: project, scope: "read:query" },
+  { tool: "get_dashboard", args: { ...project, dashboardId: "dashboard_1" }, scope: "read:query" },
+  { tool: "list_query_history", args: project, scope: "read:query" },
+  { tool: "list_models", args: project, scope: "read:query" },
+  { tool: "get_model", args: { ...project, modelId: "llm_model_1" }, scope: "read:query" },
+  { tool: "get_model_usage", args: project, scope: "read:query" },
+  {
+    tool: "update_dashboard_widget",
+    args: { ...project, dashboardId: "dashboard_1", widgetId: "w1", title: "x" },
+    scope: "write:query",
+  },
+  {
+    tool: "update_dashboard",
+    args: { ...project, dashboardId: "dashboard_1", title: "x" },
+    scope: "write:query",
+  },
+  {
+    tool: "delete_dashboard",
+    args: { ...project, dashboardId: "dashboard_1" },
+    scope: "write:query",
+  },
   { tool: "get_prompt_versions", args: prompt, scope: "read:prompts" },
+  { tool: "get_prompt", args: prompt, scope: "read:prompts" },
+  { tool: "list_prompt_generations", args: prompt, scope: "read:prompts" },
   { tool: "list_agents", args: project, scope: "read:deployments" },
+  {
+    tool: "get_agent_details",
+    args: { ...project, agentSlug: "my-agent" },
+    scope: "read:deployments",
+  },
   {
     tool: "read_session_channel",
     args: { ...project, sessionId: "session_1" },
     scope: "read:sessions",
   },
+  { tool: "list_sessions", args: project, scope: "read:sessions" },
+  {
+    tool: "get_session_details",
+    args: { ...project, sessionId: "session_1" },
+    scope: "read:sessions",
+  },
+  {
+    tool: "read_session_transcript",
+    args: { ...project, sessionId: "session_1" },
+    scope: "read:sessions",
+  },
+  {
+    tool: "list_playground_conversations",
+    args: { ...project, agentSlug: "my-agent" },
+    scope: "read:sessions",
+  },
   { tool: "list_alert_capabilities", args: project, scope: "read:alerts" },
+  { tool: "get_alert_details", args: { ...project, alertId: "alert_1" }, scope: "read:alerts" },
+  { tool: "list_alert_channels", args: project, scope: "read:alerts" },
   { tool: "list_webhook_endpoints", args: project, scope: "read:webhooks" },
   { tool: "get_webhook_endpoint_details", args: endpoint, scope: "read:webhooks" },
+  { tool: "search_webhook_endpoints", args: project, scope: "read:webhooks" },
+  { tool: "get_task_webhook", args: { ...project, taskId: "orders" }, scope: "read:webhooks" },
+  { tool: "list_webhook_waiters", args: endpoint, scope: "read:webhooks" },
   { tool: "list_webhook_deliveries", args: project, scope: "read:webhooks" },
   {
     tool: "get_webhook_delivery",
@@ -102,6 +186,25 @@ const TOOLS: Array<{ tool: string; args: Record<string, unknown>; scope: string 
     },
     scope: "write:alerts",
   },
+  {
+    tool: "update_alert",
+    args: { ...project, alertId: "alert_1", name: "x" },
+    scope: "write:alerts",
+  },
+  { tool: "stop_alert", args: { ...project, alertId: "alert_1" }, scope: "write:alerts" },
+  { tool: "activate_alert", args: { ...project, alertId: "alert_1" }, scope: "write:alerts" },
+  { tool: "delete_alert", args: { ...project, alertId: "alert_1" }, scope: "write:alerts" },
+  {
+    tool: "create_alert_group",
+    args: {
+      ...project,
+      name: "group",
+      notifiers: [{ type: "channel", channelId: "chan_1" }],
+      memberAlertIds: ["alert_1", "alert_2"],
+    },
+    scope: "write:alerts",
+  },
+  { tool: "ungroup_alert", args: { ...project, alertId: "alert_1" }, scope: "write:alerts" },
   { tool: "promote_prompt_version", args: { ...prompt, version: 1 }, scope: "update:prompts" },
   {
     tool: "create_prompt_override",
@@ -120,6 +223,15 @@ const TOOLS: Array<{ tool: string; args: Record<string, unknown>; scope: string 
   },
   { tool: "generate_webhook_secret", args: endpoint, scope: "write:webhooks" },
   { tool: "set_webhook_secret", args: { ...endpoint, secret: "whsec_x" }, scope: "write:webhooks" },
+  { tool: "remove_webhook_secret", args: endpoint, scope: "write:webhooks" },
+  { tool: "generate_webhook_verify_token", args: endpoint, scope: "write:webhooks" },
+  { tool: "pause_webhook_endpoint", args: endpoint, scope: "write:webhooks" },
+  { tool: "resume_webhook_endpoint", args: endpoint, scope: "write:webhooks" },
+  {
+    tool: "cancel_webhook_waiter",
+    args: { ...endpoint, waiterId: "waitpoint_1" },
+    scope: "write:waitpoints",
+  },
 ];
 
 function call(name: string) {

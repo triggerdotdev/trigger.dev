@@ -9,6 +9,7 @@ import {
   parseScheduleWindow,
   type NormalizedScheduleWindow,
 } from "@trigger.dev/core/v3";
+import { parseExpression } from "cron-parser";
 import { nextScheduledTimestamps } from "./utils/calculateNextSchedule.server";
 
 const SECONDS_PER_UNIT = {
@@ -31,6 +32,8 @@ export type ScheduleWindowDatabaseFields = {
 export type ScheduleRunTiming = {
   nominalAt: Date;
   effectiveAt: Date;
+  /** The end of the range a run can be spread over: the cron time plus the window. */
+  rangeEndAt: Date;
 };
 
 export function normalizeScheduleWindow(window: string | undefined): ScheduleWindowDatabaseFields {
@@ -111,22 +114,7 @@ export function formatResolvedScheduleWindow(fields: {
   return { window: formatDurationSeconds(window.durationSeconds), source };
 }
 
-export function calculateNextScheduleRunTimes({
-  cron,
-  timezone,
-  deduplicationKey,
-  environmentId,
-  schedulePhase,
-  phaseSecret,
-  windowDurationSeconds,
-  windowPercentage,
-  defaultWindowDurationSeconds,
-  minimumWindowDurationSeconds = null,
-  from = new Date(),
-  count = 1,
-}: {
-  cron: string;
-  timezone: string | null;
+type ScheduleRunTimingFields = {
   deduplicationKey: string;
   environmentId: string;
   schedulePhase: number | null;
@@ -135,13 +123,22 @@ export function calculateNextScheduleRunTimes({
   windowPercentage: number | null;
   defaultWindowDurationSeconds?: number | null;
   minimumWindowDurationSeconds?: number | null;
-  from?: Date;
-  count?: number;
-}): ScheduleRunTiming[] {
-  if (count <= 0) {
-    return [];
-  }
+};
 
+/**
+ * When a schedule's run really starts, given its cron time and the next one: the schedule's phase
+ * and window applied the way the scheduler applies them.
+ */
+export function createScheduleRunTimer({
+  deduplicationKey,
+  environmentId,
+  schedulePhase,
+  phaseSecret,
+  windowDurationSeconds,
+  windowPercentage,
+  defaultWindowDurationSeconds,
+  minimumWindowDurationSeconds = null,
+}: ScheduleRunTimingFields) {
   const phase =
     schedulePhase ??
     calculateSchedulePhase({
@@ -154,18 +151,121 @@ export function calculateNextScheduleRunTimes({
     windowPercentage,
     defaultWindowDurationSeconds,
   }).window;
-  const nominalTimes = nextScheduledTimestamps(cron, timezone, from, count + 1);
 
-  return nominalTimes.slice(0, count).map((nominalAt, index) => ({
-    nominalAt,
-    effectiveAt: calculateEffectiveScheduleTime({
+  return (nominalAt: Date, nextNominalAt: Date): ScheduleRunTiming => {
+    const timing = calculateEffectiveScheduleTime({
       nominalAt,
-      nextNominalAt: nominalTimes[index + 1],
+      nextNominalAt,
       schedulePhase: phase,
       window,
       minimumWindowDurationSeconds,
-    }).effectiveAt,
-  }));
+    });
+    return {
+      nominalAt,
+      effectiveAt: timing.effectiveAt,
+      rangeEndAt: new Date(nominalAt.getTime() + timing.effectiveRangeMs),
+    };
+  };
+}
+
+export function calculateNextScheduleRunTimes({
+  cron,
+  timezone,
+  from = new Date(),
+  count = 1,
+  ...timingFields
+}: ScheduleRunTimingFields & {
+  cron: string;
+  timezone: string | null;
+  from?: Date;
+  count?: number;
+}): ScheduleRunTiming[] {
+  if (count <= 0) {
+    return [];
+  }
+
+  const runTiming = createScheduleRunTimer(timingFields);
+  const nominalTimes = nextScheduledTimestamps(cron, timezone, from, count + 1);
+
+  return nominalTimes
+    .slice(0, count)
+    .map((nominalAt, index) => runTiming(nominalAt, nominalTimes[index + 1]));
+}
+
+export type ScheduleDays = {
+  /** Local calendar days in the schedule's timezone, starting today. */
+  days: Array<{ date: string; fires: boolean }>;
+  /** The hours and minutes the cron fires at on a day it fires, in the schedule's timezone. */
+  hours: number[];
+  minutes: number[];
+};
+
+/**
+ * Which of the next `dayCount` local days a cron fires on, and at which local times. Built from
+ * the cron's fields rather than by stepping through every run: stepping a timezone cron costs
+ * about a millisecond a run, and a week of a dense cron is thousands of runs.
+ */
+export function calculateScheduleDays({
+  cron,
+  timezone,
+  from = new Date(),
+  dayCount = 7,
+}: {
+  cron: string;
+  timezone: string | null;
+  from?: Date;
+  dayCount?: number;
+}): ScheduleDays | undefined {
+  try {
+    const expression = parseExpression(cron, { utc: timezone === null, tz: timezone ?? undefined });
+    // A predefined expression (`@daily`) has no fields to split, so its fields come from the
+    // parser. Any other keeps its own: the parser writes `1#2` (the second Monday) back as `1`.
+    const fields = cron.trim().startsWith("@")
+      ? expression.stringify().split(" ")
+      : cron.trim().split(/\s+/);
+    // A six-field cron leads with seconds.
+    const [, , dayOfMonth, month, dayOfWeek] = fields.length === 6 ? fields.slice(1) : fields;
+    const today = new Intl.DateTimeFormat("en-CA", {
+      timeZone: timezone ?? "UTC",
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+    }).format(from);
+    // Day matching is calendar arithmetic, so it runs on the same day fields in UTC.
+    const start = new Date(`${today}T00:00:00Z`);
+    const days = Array.from({ length: dayCount }, (_, index) => {
+      const day = new Date(start.getTime() + index * 86_400_000);
+      return { date: day.toISOString().slice(0, 10), fires: false };
+    });
+    const everyDay = [dayOfMonth, month, dayOfWeek].every(
+      (field) => field === "*" || field === "?"
+    );
+    if (everyDay) {
+      // Nothing to work out, and stepping a year of days costs a few hundred milliseconds.
+      for (const day of days) day.fires = true;
+    } else {
+      const byDate = new Map(days.map((day) => [day.date, day] as const));
+      const end = start.getTime() + dayCount * 86_400_000;
+      const dayIterator = parseExpression(`0 0 ${dayOfMonth} ${month} ${dayOfWeek}`, {
+        utc: true,
+        currentDate: new Date(start.getTime() - 1000),
+      });
+      // A cron's days repeat within eight years, so this ends; the cap is for a broken one.
+      for (let step = 0; step <= dayCount; step++) {
+        const fired = dayIterator.next().toDate();
+        if (fired.getTime() >= end) break;
+        const day = byDate.get(fired.toISOString().slice(0, 10));
+        if (day) day.fires = true;
+      }
+    }
+    return {
+      days,
+      hours: [...expression.fields.hour],
+      minutes: [...expression.fields.minute],
+    };
+  } catch {
+    return undefined;
+  }
 }
 
 export function validateScheduleWindowSyntax(

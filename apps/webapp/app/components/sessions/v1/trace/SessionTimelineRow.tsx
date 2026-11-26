@@ -84,9 +84,11 @@ function RowGridlines() {
   );
 }
 
+/** Same meanings as the run page's bars: green done, red failed, grey canceled or expired. */
 function runBarClassName(status: TaskRunStatus | null) {
   if (!status) return "bg-charcoal-600";
+  if (status === "COMPLETED_SUCCESSFULLY") return "bg-success/60";
   if (isFailedRunStatus(status)) return "bg-error/60";
-  if (isFinalRunStatus(status)) return "bg-blue-500/60";
+  if (isFinalRunStatus(status)) return "bg-surface-control";
   return "bg-pending/60";
 }

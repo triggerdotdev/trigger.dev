@@ -15,6 +15,10 @@ import { tryCatch } from "@trigger.dev/core";
 import { externalDeploymentCacheInstance } from "~/services/externalDeploymentCacheInstance.server";
 import type { PrismaClientOrTransaction } from "~/db.server";
 import { queueDeploymentCheck } from "../deploymentChecksWorker.server";
+import { computeOnlyEnabled, loadOrgFeatureFlags } from "~/v3/computeOnlyFlag.server";
+
+const COMPUTE_ONLY_MISSING_TEMPLATE_MESSAGE =
+  "This deploy couldn't be completed. Try deploying again, or contact support if it keeps failing.";
 
 export class FinalizeDeploymentService extends BaseService {
   constructor(
@@ -27,7 +31,12 @@ export class FinalizeDeploymentService extends BaseService {
   public async call(
     authenticatedEnv: AuthenticatedEnvironment,
     id: string,
-    body: FinalizeDeploymentRequestBody
+    body: FinalizeDeploymentRequestBody,
+    /**
+     * The org's `featureFlags` read from the primary, when the caller already did. Not the
+     * authenticated env's copy, which comes from a replica that can miss a just-set `computeOnly`.
+     */
+    primaryOrgFeatureFlags?: unknown
   ) {
     const deployment = await this._prisma.workerDeployment.findFirst({
       where: {
@@ -73,14 +82,32 @@ export class FinalizeDeploymentService extends BaseService {
       throw new ServiceValidationError("Worker deployment is not in DEPLOYING status");
     }
 
-    // Sandbox tasks only run on microVMs, so a deployment without a template cannot serve them.
+    const orgFeatureFlags =
+      primaryOrgFeatureFlags === undefined
+        ? await loadOrgFeatureFlags(this._prisma, authenticatedEnv.organizationId)
+        : primaryOrgFeatureFlags;
+
+    // Sandbox tasks and compute-only orgs run only on microVMs, so a deployment without a
+    // template cannot serve them.
     const sandboxTask = deployment.worker.tasks.find((task) => task.executionMode === "SANDBOX");
-    if (sandboxTask && !deployment.templateKey) {
-      const message = `Sandbox task "${sandboxTask.slug}" needs microVM compute, but this deployment has no compute template.`;
-      await new FailDeploymentService().call(authenticatedEnv, deployment.friendlyId, {
-        error: { name: "MissingComputeTemplate", message },
+    if (!deployment.templateKey && (sandboxTask || computeOnlyEnabled(orgFeatureFlags))) {
+      const error = sandboxTask
+        ? {
+            name: "MissingComputeTemplate",
+            message: `Sandbox task "${sandboxTask.slug}" needs microVM compute, but this deployment has no compute template.`,
+          }
+        : { name: "DeploymentFailed", message: COMPUTE_ONLY_MISSING_TEMPLATE_MESSAGE };
+      if (!sandboxTask) {
+        // The reason stays in the log: the user only learns what to do next.
+        logger.warn("Finalize refused: compute-only org's deployment has no template", {
+          organizationId: authenticatedEnv.organizationId,
+          deploymentId: deployment.id,
+        });
+      }
+      await new FailDeploymentService(this._prisma).call(authenticatedEnv, deployment.friendlyId, {
+        error,
       });
-      throw new ServiceValidationError(message);
+      throw new ServiceValidationError(error.message);
     }
 
     const imageDigest = validatedImageDigest(body.imageDigest);
@@ -153,7 +180,7 @@ export class FinalizeDeploymentService extends BaseService {
     if (typeof body.skipPromotion === "undefined" || !body.skipPromotion) {
       const promotionService = new ChangeCurrentDeploymentService(this._prisma);
 
-      await promotionService.call(finalizedDeployment, "promote");
+      await promotionService.call(finalizedDeployment, "promote", undefined, orgFeatureFlags);
     }
 
     try {

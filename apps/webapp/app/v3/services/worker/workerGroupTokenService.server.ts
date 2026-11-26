@@ -14,7 +14,7 @@ import type {
   TaskRunExecutionResult,
 } from "@trigger.dev/core/v3";
 import { getMeter } from "@internal/tracing";
-import { SemanticInternalAttributes } from "@trigger.dev/core/v3";
+import { requiresSecretProxy, SemanticInternalAttributes } from "@trigger.dev/core/v3";
 import { fromFriendlyId } from "@trigger.dev/core/v3/isomorphic";
 import {
   WORKER_HEADERS,
@@ -56,7 +56,8 @@ import { singleton } from "~/utils/singleton";
 import { resolveAttemptVariables } from "~/services/environmentEncryption/attemptVariables.server";
 import { secretProxy } from "~/services/secretProxy/instance.server";
 import type { SecretProxyExecutionMetadata } from "~/services/secretProxy/service.server";
-import { failAttemptForSecretProxySigning } from "~/services/secretProxy/attemptFailure.server";
+import { failAttemptForRunTokenSigning } from "~/services/secretProxy/attemptFailure.server";
+import { rootKeyInjectionDisabled } from "./rootKeyInjectionPolicy.server";
 import {
   pinnedRunPolicy,
   runTokenScopes,
@@ -79,6 +80,10 @@ const authenticatedWorkerInstanceCache = singleton(
   "authenticatedWorkerInstanceCache",
   createAuthenticatedWorkerInstanceCache
 );
+
+function secretProxyPlacementRequired() {
+  return json({ error: "Run requires secret proxy placement" }, { status: 409 });
+}
 
 // Opt-in suppression of untokened worker actions on runs created after the cutoff. Only the
 // no-header path ever reads a run row, and only when this is on - default off means feature-off is
@@ -148,32 +153,60 @@ export class WorkerGroupTokenService extends WithRunEngine {
   async findWorkerGroup({ token }: { token: string }) {
     const tokenHash = await this.hashToken(token);
 
-    const workerGroup = await this._prisma.workerInstanceGroup.findFirst({
+    const matchedToken = await this._prisma.workerGroupToken.findFirst({
       where: {
-        token: {
-          OR: [
-            { tokenHash },
-            { previousTokenHash: tokenHash, previousTokenValidUntil: { gt: new Date() } },
-          ],
-        },
+        OR: [
+          { tokenHash },
+          { previousTokenHash: tokenHash, previousTokenValidUntil: { gt: new Date() } },
+        ],
       },
-      include: {
-        token: { select: { tokenHash: true, previousTokenValidUntil: true } },
-      },
+      include: { workerGroup: true, childOf: true },
     });
 
-    if (!workerGroup) {
+    const group = matchedToken?.workerGroup ?? matchedToken?.childOf;
+
+    if (!matchedToken || !group) {
       logger.warn("[WorkerGroupTokenService] No matching worker group found");
       return null;
     }
 
-    const { token: matchedToken, ...group } = workerGroup;
     const tokenValidUntil =
       matchedToken.tokenHash === tokenHash
         ? undefined
         : (matchedToken.previousTokenValidUntil ?? undefined);
 
-    return { ...group, tokenValidUntil };
+    const tokenKind: WorkerTokenKind = !matchedToken.workerGroup
+      ? "child"
+      : tokenValidUntil
+        ? "previous-global"
+        : "global";
+
+    return { ...group, tokenValidUntil, tokenKind, matchedTokenId: matchedToken.id };
+  }
+
+  async createChildToken({ workerGroupId }: { workerGroupId: string }) {
+    const workerGroup = await this._prisma.workerInstanceGroup.findFirst({
+      where: { id: workerGroupId },
+      select: { id: true },
+    });
+
+    if (!workerGroup) return;
+
+    const rawToken = await this.generateToken();
+
+    const workerGroupToken = await this._prisma.workerGroupToken.create({
+      data: { tokenHash: rawToken.hash, workerGroupId },
+    });
+
+    return { id: workerGroupToken.id, plaintext: rawToken.plaintext };
+  }
+
+  async deleteChildToken({ workerGroupId, tokenId }: { workerGroupId: string; tokenId: string }) {
+    const deleted = await this._prisma.workerGroupToken.deleteMany({
+      where: { id: tokenId, workerGroupId, workerGroup: { is: null } },
+    });
+
+    return deleted.count > 0;
   }
 
   async rotateToken({ workerGroupId, graceMs }: { workerGroupId: string; graceMs: number }) {
@@ -342,6 +375,13 @@ export class WorkerGroupTokenService extends WithRunEngine {
           return;
         }
 
+        logger.info("[WorkerGroupTokenService] Worker authenticated", {
+          instanceName,
+          workerGroupId: workerGroup.id,
+          tokenKind: workerGroup.tokenKind,
+          tokenId: workerGroup.matchedTokenId,
+        });
+
         return new AuthenticatedWorkerInstance({
           prisma: this._prisma,
           engine: this._engine,
@@ -356,6 +396,7 @@ export class WorkerGroupTokenService extends WithRunEngine {
           allowedSubscriptions: env.RUN_ENGINE_WORKER_QUEUE_SUBSCRIPTIONS[workerGroup.id] ?? [],
           mixedRuntime: env.RUN_ENGINE_MIXED_RUNTIME_WORKER_GROUPS.includes(workerGroup.id),
           tokenValidUntil: workerGroup.tokenValidUntil,
+          tokenKind: workerGroup.tokenKind,
         });
       }
     );
@@ -465,8 +506,11 @@ export type AuthenticatedWorkerInstanceOptions = WithRunEngineOptions<
     projectId?: string | null;
     name: string;
     tokenValidUntil?: Date;
+    tokenKind?: WorkerTokenKind;
   }
 >;
+
+export type WorkerTokenKind = "global" | "previous-global" | "child";
 
 export class AuthenticatedWorkerInstance extends WithRunEngine {
   readonly type: WorkerInstanceGroupType;
@@ -476,6 +520,7 @@ export class AuthenticatedWorkerInstance extends WithRunEngine {
   readonly workerInstanceId: string;
   readonly masterQueue: string;
   readonly tokenValidUntil?: Date;
+  readonly tokenKind: WorkerTokenKind;
   private readonly queueConsumer: WorkerQueueConsumer;
 
   // FIXME: Required for unmanaged workers
@@ -493,6 +538,7 @@ export class AuthenticatedWorkerInstance extends WithRunEngine {
     this.workerInstanceId = opts.workerInstanceId;
     this.masterQueue = opts.masterQueue;
     this.tokenValidUntil = opts.tokenValidUntil;
+    this.tokenKind = opts.tokenKind ?? "global";
     this.queueConsumer = createWorkerQueueConsumer(opts);
 
     if (refusedSubscriptions(opts).length > 0 && !warnedRefusedGroups.has(opts.workerGroupId)) {
@@ -686,6 +732,7 @@ export class AuthenticatedWorkerInstance extends WithRunEngine {
     sandboxRunId,
     supportsRunTokenRefresh,
     supportsUsageJwtRefresh,
+    supportsRootKeyFreeExecution,
     supportsSecretProxy,
   }: {
     runFriendlyId: string;
@@ -698,10 +745,12 @@ export class AuthenticatedWorkerInstance extends WithRunEngine {
     sandboxRunId?: string;
     supportsRunTokenRefresh?: boolean;
     supportsUsageJwtRefresh?: boolean;
+    supportsRootKeyFreeExecution?: boolean;
     supportsSecretProxy?: boolean;
   }): Promise<
     StartRunAttemptResult & {
       envVars: Record<string, string>;
+      requiresRunToken?: boolean;
       secretProxy?: SecretProxyExecutionMetadata;
     }
   > {
@@ -710,15 +759,40 @@ export class AuthenticatedWorkerInstance extends WithRunEngine {
     await this.assertCreatedAtGate({ runId, environmentId, action: "start" });
 
     // Resolved before the attempt exists, so an unavailable key leaves the run startable.
-    const { environment, pinned } = await this.findAttemptEnvironment(runId, environmentId);
+    const { environment, pinned, secretProxyRequired } = await this.findAttemptEnvironment(
+      runId,
+      environmentId
+    );
+    if (secretProxyRequired && !supportsSecretProxy) throw secretProxyPlacementRequired();
+    const requiresRunToken = rootKeyInjectionDisabled(environment);
+
+    const runTokenSupported = supportsRunTokenRefresh === true && environmentId === environment.id;
+    if (
+      requiresRunToken &&
+      (!runTokenSupported ||
+        !supportsUsageJwtRefresh ||
+        !supportsRootKeyFreeExecution ||
+        !env.RUN_TOKEN_ISSUER_URL)
+    ) {
+      throw json(
+        {
+          error:
+            "This deployment requires run tokens, but the runner or platform does not support root-key-free execution.",
+        },
+        { status: 503 }
+      );
+    }
     const resolved = await resolveAttemptVariables(
       environment,
       environment.parentEnvironment ?? undefined,
       { grant: pinned?.policy.envVars }
     );
-    const prepared = { ...resolved, variables: withoutRootKey(pinned, resolved.variables) };
-
-    const runTokenSupported = supportsRunTokenRefresh === true && environmentId === environment.id;
+    const prepared = {
+      ...resolved,
+      variables: requiresRunToken
+        ? resolved.variables.filter(({ key }) => key !== "TRIGGER_SECRET_KEY")
+        : withoutRootKey(pinned, resolved.variables),
+    };
     if (pinned && !runTokenSupported) {
       throw json(
         { error: "This run's execution policy needs a worker that supports run tokens" },
@@ -736,7 +810,9 @@ export class AuthenticatedWorkerInstance extends WithRunEngine {
     // Policy runs have no root key to fall back to, so they always get a run token.
     const runTokenAvailable =
       runTokenSupported &&
-      (pinned !== undefined || runTokenInjectionEnabled(environment.organization?.featureFlags));
+      (requiresRunToken ||
+        pinned !== undefined ||
+        runTokenInjectionEnabled(environment.organization?.featureFlags));
     const proxy = prepared.proxyValues.length
       ? secretProxy(
           env.CONTROL_PLANE_DEQUEUE_READS_FROM_REPLICA === "1" ? this._replica : this._prisma
@@ -758,7 +834,8 @@ export class AuthenticatedWorkerInstance extends WithRunEngine {
       isWarmStart,
       workerCell: stamped ? workerCell : undefined,
       workerLane: stamped ? workerLane : undefined,
-      enforceDuplicateAttemptStart: supportsSecretProxy === true || proxy !== undefined,
+      enforceDuplicateAttemptStart:
+        requiresRunToken || supportsSecretProxy === true || proxy !== undefined,
       workerId: this.workerInstanceId,
       runnerId,
       environmentId,
@@ -767,22 +844,26 @@ export class AuthenticatedWorkerInstance extends WithRunEngine {
     const defaultMachinePreset = machinePresetFromName(defaultMachine);
 
     const runToken = runTokenAvailable
-      ? await this.mintRunTokenOrSkip(environment, engineResult, pinned)
+      ? await this.mintRunTokenOrSkip(
+          environment,
+          engineResult,
+          pinned,
+          requiresRunToken || !!proxy || !!pinned
+        )
       : undefined;
 
     let secretProxyMetadata: SecretProxyExecutionMetadata | undefined;
     let variables = prepared.variables;
-    if (proxy || pinned) {
-      if (!runToken) {
-        return failAttemptForSecretProxySigning({
-          engine: this._engine,
-          run: engineResult.run,
-          snapshotId: engineResult.snapshot.id,
-          environmentId: environment.id,
-          workerId: this.workerInstanceId,
-          runnerId,
-        });
-      }
+    if (!runToken && (requiresRunToken || proxy || pinned)) {
+      return failAttemptForRunTokenSigning({
+        secretProxy: !!proxy || !!pinned,
+        engine: this._engine,
+        run: engineResult.run,
+        snapshotId: engineResult.snapshot.id,
+        environmentId: environment.id,
+        workerId: this.workerInstanceId,
+        runnerId,
+      });
     }
     if (proxy && runToken) {
       const delivery = proxy.finalizeRuntime(prepared.proxyValues, proxyHosts!, {
@@ -827,6 +908,7 @@ export class AuthenticatedWorkerInstance extends WithRunEngine {
     return {
       ...engineResult,
       envVars,
+      ...(requiresRunToken ? { requiresRunToken } : {}),
       ...(secretProxyMetadata ? { secretProxy: secretProxyMetadata } : {}),
     };
   }
@@ -889,6 +971,7 @@ export class AuthenticatedWorkerInstance extends WithRunEngine {
     return {
       environment,
       pinned: pinnedRunPolicy(run.annotations),
+      secretProxyRequired: requiresSecretProxy(run.annotations),
     };
   }
 
@@ -896,7 +979,8 @@ export class AuthenticatedWorkerInstance extends WithRunEngine {
   private async mintRunTokenOrSkip(
     environment: RuntimeEnvironment,
     engineResult: StartRunAttemptResult,
-    pinned: PinnedRunPolicy | undefined
+    pinned: PinnedRunPolicy | undefined,
+    required: boolean
   ): Promise<string | undefined> {
     const { execution } = engineResult;
     try {
@@ -912,10 +996,15 @@ export class AuthenticatedWorkerInstance extends WithRunEngine {
         scopes: runTokenScopes(pinned, execution.run.id),
       });
     } catch (error) {
-      logger.warn("Failed to mint run token, continuing without it", {
-        runId: execution.run.id,
-        error: error instanceof Error ? error.message : String(error),
-      });
+      logger.warn(
+        required
+          ? "Required run token mint failed"
+          : "Failed to mint run token, continuing without it",
+        {
+          runId: execution.run.id,
+          error: error instanceof Error ? error.message : String(error),
+        }
+      );
       return undefined;
     }
   }

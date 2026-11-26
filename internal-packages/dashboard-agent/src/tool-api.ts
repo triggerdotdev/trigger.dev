@@ -1,4 +1,7 @@
 import {
+  dashboardAgentLogSearchBody,
+  dashboardAgentLogSearchResult,
+  dashboardAgentLogSearchValidationError,
   formatTriggerUri,
   queueGroundingSchema,
   type QueueGrounding,
@@ -24,6 +27,7 @@ import {
   renderViewSchema,
   runQuerySchema,
   searchDocsSchema,
+  searchLogsSchema,
 } from "./tool-schemas";
 import {
   apiGet,
@@ -448,6 +452,9 @@ function runQueryModelOutput(output: any) {
 /** Failed `run_query` calls in a row before the tool tells the model to stop and answer. */
 export const MAX_CONSECUTIVE_QUERY_FAILURES = 3;
 
+// The server can finish its last slice after the 10-second search budget.
+const LOG_SEARCH_TIMEOUT_MS = 25_000;
+
 export function buildApiTools(args: {
   ctx: DashboardAgentToolContext;
   client: DashboardAgentApiClient;
@@ -456,7 +463,15 @@ export function buildApiTools(args: {
 }): ToolSet {
   const { ctx, client, renderInvestigations, reads } = args;
   const { userActorToken } = ctx;
-  const { origin, hasAuth, envApiGet, postQuery, validateChartQuery, environmentIdFor } = client;
+  const {
+    origin,
+    hasAuth,
+    envApiGet,
+    envApiPost,
+    postQuery,
+    validateChartQuery,
+    environmentIdFor,
+  } = client;
 
   // Records the scope a read actually landed in, so a citation of it canonicalizes there.
   async function noteRead(kind: "run" | ScopedReadKind, id: string, target: EnvTarget) {
@@ -1168,6 +1183,74 @@ export function buildApiTools(args: {
         } finally {
           clearTimeout(timer);
         }
+      },
+    }),
+
+    search_logs: tool({
+      ...searchLogsSchema,
+      execute: async ({ project, environment, branch, ...filters }, { abortSignal }) => {
+        if (!hasAuth) return NO_AUTH;
+        const body = dashboardAgentLogSearchBody.safeParse(filters);
+        if (!body.success)
+          return { error: body.error.issues[0]?.message ?? "Invalid log filters." };
+        const resolved = await resolveTarget(
+          { project, environment, branch },
+          ctx,
+          "search logs in"
+        );
+        if (!resolved.ok) return { error: resolved.error };
+
+        const result = await envApiPost(
+          "/api/v1/dashboard-agent/logs/search",
+          resolved.target,
+          body.data,
+          {
+            timeoutMs: LOG_SEARCH_TIMEOUT_MS,
+            signal: abortSignal,
+          }
+        );
+        if (isEnvUnavailable(result)) return envUnavailableError(result, "search logs in");
+        if (!result.ok) {
+          if ("status" in result && result.status === 403) {
+            return {
+              error:
+                "Log search requires access to the Logs page and permission to read runs in this environment.",
+            };
+          }
+          if ("status" in result && result.status === 400) {
+            const validation = dashboardAgentLogSearchValidationError.safeParse(result.data);
+            if (validation.success) return { error: validation.data.error };
+          }
+          return { error: `Couldn't search logs${fetchReason(result)}.` };
+        }
+
+        const parsed = dashboardAgentLogSearchResult.safeParse(result.data);
+        if (!parsed.success) return { error: "Couldn't read the log search results." };
+        const { logs, ...coverage } = parsed.data;
+        // A later turn can quote these excerpts even after history is compacted.
+        if (logs.length && !(await ctx.markChatReadLogs?.())) {
+          return { error: "Couldn't prepare log excerpts for this chat." };
+        }
+        const runIds = new Set(logs.flatMap((log) => (log.runId ? [log.runId] : [])));
+        await Promise.all([...runIds].map((id) => noteRead("run", id, resolved.target)));
+        const rows = await withRowUris(
+          resolved.target,
+          logs.map((log) => ({
+            ...log,
+            taskIdentifier: fenceUntrusted("taskIdentifier", log.taskIdentifier),
+            message: fenceUntrusted("logMessage", log.message),
+          })),
+          (log, environmentId) =>
+            log.runId
+              ? formatTriggerUri({
+                  kind: "run",
+                  projectRef: resolved.target.projectRef,
+                  environmentId,
+                  runId: log.runId,
+                })
+              : undefined
+        );
+        return { ...scopeOf(resolved), ...coverage, logs: rows };
       },
     }),
   };

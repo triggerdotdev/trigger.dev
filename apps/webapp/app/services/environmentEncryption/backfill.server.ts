@@ -3,6 +3,7 @@ import { setTimeout as sleep } from "node:timers/promises";
 import type { Redis } from "@internal/redis";
 import { boundedIn, type PrismaClient, type PrismaTransactionClient } from "@trigger.dev/database";
 import { logger } from "~/services/logger.server";
+import { FEATURE_FLAG, isPlainFlagObject } from "~/v3/featureFlags";
 import {
   migrateEnvironmentEncryption,
   type EnvironmentMigrationProgress,
@@ -10,6 +11,7 @@ import {
 import type { EnvironmentEncryptionService } from "./service.server";
 
 export type BackfillOperation = "inspect" | "enroll" | "migrate" | "verify";
+export type FleetOperation = "enroll" | "migrate";
 type Status = "queued" | "running" | "completed" | "stopped" | "failed";
 type Environment = { id: string; projectId: string; organizationId: string; label: string };
 type Cursor = { organizationId: string; environmentId: string };
@@ -20,6 +22,7 @@ export type EncryptionBackfillPage = {
   environments: Environment[];
   after: Cursor | null;
   nextCursor: Cursor | null;
+  fleetOperation?: FleetOperation;
 };
 export type EncryptionBackfillJob = {
   id: string;
@@ -41,6 +44,19 @@ export type EncryptionBackfillJob = {
   enrolledEnvironments: number;
   kmsEnvironments: number;
   keyringEnvironments: number;
+  skippedEnvironments: number;
+  fleet?: {
+    phase: "apply" | "verify";
+    throughEnvironmentId: string | null;
+    pageNumber: number;
+    pageSize: number;
+    completedPages: number;
+    completedEnvironments: number;
+    rewritten: number;
+    conflicts: number;
+    skippedEnvironments: number;
+    pageProgress: EnvironmentMigrationProgress;
+  };
   error?: string;
 };
 
@@ -96,6 +112,22 @@ function newJob(
     enrolledEnvironments: 0,
     kmsEnvironments: 0,
     keyringEnvironments: 0,
+    skippedEnvironments: 0,
+  };
+}
+
+function resetPageProgress(job: EncryptionBackfillJob): EncryptionBackfillJob {
+  return {
+    ...job,
+    completedEnvironments: 0,
+    currentEnvironment: null,
+    progress: emptyProgress(),
+    completedProgress: emptyProgress(),
+    enrolledEnvironments: 0,
+    kmsEnvironments: 0,
+    keyringEnvironments: 0,
+    skippedEnvironments: 0,
+    error: undefined,
   };
 }
 
@@ -151,6 +183,7 @@ export class EnvironmentEncryptionBackfill {
   async nextPage(pageId: string) {
     const page = await this.page();
     if (!page || page.id !== pageId) throw new Error("Page changed; refresh before continuing");
+    if (page.fleetOperation) throw new Error("Fleet pages advance automatically");
     if (!(await this.pageVerified()))
       throw new Error("Verify this page successfully before advancing");
     if (!page.nextCursor) throw new Error("No more pages for this selection");
@@ -239,6 +272,7 @@ export class EnvironmentEncryptionBackfill {
     const page = await this.page();
     if (!page || page.id !== pageId)
       throw new Error("Page changed; select or refresh the page first");
+    if (page.fleetOperation) throw new Error("Use fleet controls or select a manual cohort");
     if (operation === "migrate") {
       const enrolled = await this.options.db.runtimeEnvironment.count({
         where: {
@@ -268,6 +302,139 @@ export class EnvironmentEncryptionBackfill {
       throw new Error("Another page job is active; stop it or wait for completion");
     if (created === -1) throw new Error("Page changed; refresh before continuing");
     return job;
+  }
+
+  async createFleet(operation: FleetOperation, actorId: string, previousPageId: string) {
+    const last = await this.options.db.runtimeEnvironment.findFirst({
+      orderBy: { id: "desc" },
+      select: { id: true },
+    });
+    const throughEnvironmentId = last?.id ?? null;
+    const page = await this.#loadFleetPage(operation, throughEnvironmentId, null, 1);
+    const job = newJob(operation, page.id, actorId);
+    job.fleet = {
+      phase: "apply",
+      throughEnvironmentId,
+      pageNumber: 1,
+      pageSize: page.environments.length,
+      completedPages: 0,
+      completedEnvironments: 0,
+      rewritten: 0,
+      conflicts: 0,
+      skippedEnvironments: 0,
+      pageProgress: emptyProgress(),
+    };
+    const created = await this.options.redis.eval(
+      `
+      local status = redis.call('HGET', KEYS[1], 'status')
+      if status == 'queued' or status == 'running' then return 0 end
+      if (redis.call('HGET', KEYS[1], 'pageId') or '') ~= ARGV[3] then return -1 end
+      redis.call('HSET', KEYS[1], 'page', ARGV[1], 'pageId', ARGV[2], 'job', ARGV[4], 'id', ARGV[5], 'verified', '', 'status', 'queued', 'stop', '0')
+      return 1
+    `,
+      1,
+      STATE_KEY,
+      JSON.stringify(page),
+      page.id,
+      previousPageId,
+      JSON.stringify(job),
+      job.id
+    );
+    if (created === 0) throw new Error("Another job is active; stop it or wait for completion");
+    if (created === -1) throw new Error("Page changed; refresh before starting a fleet pass");
+    return job;
+  }
+
+  async resumeFleet(id: string, actorId: string) {
+    const current = await this.current();
+    const page = await this.page();
+    if (!current?.fleet || current.id !== id || !page || page.id !== current.pageId)
+      throw new Error("Fleet job changed; refresh before resuming");
+    if (current.status !== "stopped" && current.status !== "failed")
+      throw new Error("Only stopped or failed fleet jobs can be resumed");
+    const job = resetPageProgress(current);
+    job.fleet = { ...current.fleet, phase: "apply", pageProgress: emptyProgress() };
+    job.status = "queued";
+    job.actorId = actorId;
+    job.updatedAt = new Date().toISOString();
+    const resumed = await this.options.redis.eval(
+      `
+      if redis.call('HGET', KEYS[1], 'id') ~= ARGV[1] or redis.call('HGET', KEYS[1], 'pageId') ~= ARGV[2] then return 0 end
+      local status = redis.call('HGET', KEYS[1], 'status')
+      if status ~= 'stopped' and status ~= 'failed' then return 0 end
+      redis.call('HSET', KEYS[1], 'job', ARGV[3], 'status', 'queued', 'stop', '0', 'verified', '')
+      return 1
+    `,
+      1,
+      STATE_KEY,
+      id,
+      page.id,
+      JSON.stringify(job)
+    );
+    if (!resumed) throw new Error("Fleet job changed; refresh before resuming");
+    return job;
+  }
+
+  async #loadFleetPage(
+    operation: FleetOperation,
+    through: string | null,
+    after: Cursor | null,
+    number: number
+  ): Promise<EncryptionBackfillPage> {
+    const page: EncryptionBackfillPage = {
+      id: randomUUID(),
+      number,
+      organizations: [],
+      after,
+      fleetOperation: operation,
+      environments: [],
+      nextCursor: null,
+    };
+    if (!through) return page;
+    const bounds = { lte: through, ...(after ? { gt: after.environmentId } : {}) };
+    const select = {
+      id: true,
+      projectId: true,
+      organizationId: true,
+      slug: true,
+      branchName: true,
+      project: { select: { name: true } },
+    } as const;
+    const rows =
+      operation === "migrate"
+        ? (
+            await this.options.db.environmentEncryptionPolicy.findMany({
+              where: { environmentId: bounds, activeKeyId: { not: null } },
+              select: { environment: { select } },
+              orderBy: { environmentId: "asc" },
+              take: PAGE_SIZE + 1,
+            })
+          ).map((policy) => policy.environment)
+        : await this.options.db.runtimeEnvironment.findMany({
+            where: {
+              id: bounds,
+              OR: [
+                { encryptionPolicy: { is: null } },
+                { encryptionPolicy: { is: { activeKeyId: null } } },
+              ],
+            },
+            select,
+            orderBy: { id: "asc" },
+            take: PAGE_SIZE + 1,
+          });
+    const selected = rows.slice(0, PAGE_SIZE);
+    const last = selected.at(-1);
+    page.environments = selected.map((environment) => ({
+      id: environment.id,
+      projectId: environment.projectId,
+      organizationId: environment.organizationId,
+      label: `${environment.project.name} / ${environment.slug}${environment.branchName ? ` / ${environment.branchName}` : ""}`,
+    }));
+    page.nextCursor =
+      rows.length > PAGE_SIZE && last
+        ? { organizationId: last.organizationId, environmentId: last.id }
+        : null;
+    return page;
   }
 
   async stop(id: string) {
@@ -309,21 +476,23 @@ export class EnvironmentEncryptionBackfill {
     );
   }
 
-  async run(id: string) {
+  async run(id: string): Promise<boolean> {
     const token = randomUUID();
     if (!(await this.options.redis.set(LEASE_KEY, token, "PX", LEASE_MS, "NX")))
       throw new Error("Encryption backfill worker is already running");
     try {
-      const job = await this.current();
-      const page = await this.page();
+      const current = await this.current();
+      const selected = await this.page();
       if (
-        !job ||
-        job.id !== id ||
-        !["queued", "running"].includes(job.status) ||
-        !page ||
-        page.id !== job.pageId
+        !current ||
+        current.id !== id ||
+        !["queued", "running"].includes(current.status) ||
+        !selected ||
+        selected.id !== current.pageId
       )
-        return;
+        return false;
+      let job: EncryptionBackfillJob = current;
+      let page: EncryptionBackfillPage = selected;
       const checkLease = async () => {
         const result = await this.options.redis.eval(
           `
@@ -343,19 +512,24 @@ export class EnvironmentEncryptionBackfill {
         if (result === -1) throw new Error("Encryption backfill worker lost its lease");
         return result === 0;
       };
-      const save = async () => {
-        job.updatedAt = new Date().toISOString();
+      const save = async (
+        snapshot: EncryptionBackfillJob = job,
+        nextPage?: EncryptionBackfillPage
+      ) => {
+        snapshot.updatedAt = new Date().toISOString();
         const verified =
-          job.operation === "verify" &&
-          job.status === "completed" &&
-          job.progress.remaining === 0 &&
-          job.completedEnvironments === page.environments.length;
+          !snapshot.fleet &&
+          snapshot.operation === "verify" &&
+          snapshot.status === "completed" &&
+          snapshot.progress.remaining === 0 &&
+          snapshot.completedEnvironments === page.environments.length;
         const saved = await this.options.redis.eval(
           `
           if redis.call('GET', KEYS[2]) ~= ARGV[1] then return 0 end
           if redis.call('HGET', KEYS[1], 'id') ~= ARGV[2] or redis.call('HGET', KEYS[1], 'pageId') ~= ARGV[6] then return 0 end
           redis.call('HSET', KEYS[1], 'job', ARGV[3], 'status', ARGV[5])
           if ARGV[7] == '1' then redis.call('HSET', KEYS[1], 'verified', ARGV[6]) end
+          if ARGV[8] ~= '' then redis.call('HSET', KEYS[1], 'page', ARGV[8], 'pageId', ARGV[9], 'verified', '') end
           redis.call('PEXPIRE', KEYS[2], ARGV[4])
           return 1
         `,
@@ -364,17 +538,22 @@ export class EnvironmentEncryptionBackfill {
           LEASE_KEY,
           token,
           id,
-          JSON.stringify(job),
+          JSON.stringify(snapshot),
           LEASE_MS,
-          job.status,
+          snapshot.status,
           page.id,
-          verified ? "1" : "0"
+          verified ? "1" : "0",
+          nextPage ? JSON.stringify(nextPage) : "",
+          snapshot.pageId
         );
         if (!saved) throw new Error("Encryption backfill worker lost its lease");
+        job = snapshot;
+        if (nextPage) page = nextPage;
       };
       job.status = "running";
       await save();
       try {
+        const operation = job.fleet?.phase === "verify" ? "verify" : job.operation;
         for (let index = job.completedEnvironments; index < page.environments.length; index++) {
           if (!(await checkLease())) {
             job.status = "stopped";
@@ -391,10 +570,27 @@ export class EnvironmentEncryptionBackfill {
           await save();
           const scope = { projectId: environment.projectId, environmentId: environment.id };
           if (
-            job.operation === "enroll" &&
+            operation === "enroll" &&
             !(await this.options.encryption.prepareWrite(scope)).keyId
           ) {
-            job.error = "Enrollment is disabled for this environment. Check deployment/org flags.";
+            const organization = job.fleet
+              ? await this.options.db.organization.findFirst({
+                  where: { id: environment.organizationId },
+                  select: { featureFlags: true },
+                })
+              : null;
+            if (
+              organization &&
+              isPlainFlagObject(organization.featureFlags) &&
+              organization.featureFlags[FEATURE_FLAG.environmentEncryptionEnabled] === false
+            ) {
+              job.skippedEnvironments++;
+              job.completedEnvironments++;
+              await save();
+              continue;
+            }
+            job.error =
+              "Enrollment is disabled for this environment. Check deployment/global/org flags.";
             job.status = "failed";
             break;
           }
@@ -404,12 +600,12 @@ export class EnvironmentEncryptionBackfill {
           job.currentEnvironment.activeKeyId = policy?.activeKeyId ?? null;
           job.currentEnvironment.wrappingProvider = policy?.wrappingProvider ?? null;
           job.currentEnvironment.wrappingKeyReference = policy?.wrappingKeyReference ?? null;
-          if (job.operation === "migrate" && !policy?.activeKeyId) {
+          if (operation === "migrate" && !policy?.activeKeyId) {
             job.error = "Environment is not enrolled. No further environments processed.";
             job.status = "failed";
             break;
           }
-          if (job.operation !== "enroll") {
+          if (operation !== "enroll") {
             const progress = await migrateEnvironmentEncryption({
               db: this.options.db,
               encryption: this.options.encryption,
@@ -418,7 +614,7 @@ export class EnvironmentEncryptionBackfill {
                 return this.options.transaction(fn);
               },
               ...scope,
-              apply: job.operation === "migrate",
+              apply: operation === "migrate",
               batchSize: BATCH_SIZE,
               pauseMs: PAUSE_MS,
               shouldContinue: checkLease,
@@ -441,10 +637,78 @@ export class EnvironmentEncryptionBackfill {
             if (policy.wrappingProvider === "PLATFORM_KEYRING") job.keyringEnvironments++;
           }
           await save();
-          if (job.operation === "enroll") await sleep(PAUSE_MS);
+          if (operation === "enroll") await sleep(PAUSE_MS);
+        }
+        if (job.status === "running" && job.fleet) {
+          if (!(await checkLease())) {
+            job.status = "stopped";
+          } else if (
+            job.operation === "migrate" &&
+            job.fleet.phase === "apply" &&
+            page.environments.length
+          ) {
+            const next = resetPageProgress(job);
+            next.fleet = { ...job.fleet, phase: "verify", pageProgress: { ...job.progress } };
+            await save(next);
+            return true;
+          } else if (job.operation === "migrate" && job.progress.remaining) {
+            job.status = "failed";
+            job.error =
+              "Fleet verification found values still needing migration. Resume to reapply and verify this page.";
+          } else if (!page.environments.length) {
+            job.status = "completed";
+          } else {
+            const last = page.environments[page.environments.length - 1]!;
+            const nextPage = await this.#loadFleetPage(
+              job.operation as FleetOperation,
+              job.fleet.throughEnvironmentId,
+              { organizationId: last.organizationId, environmentId: last.id },
+              page.number + 1
+            );
+            const progress = job.operation === "migrate" ? job.fleet.pageProgress : job.progress;
+            const fleet = {
+              ...job.fleet,
+              phase: "apply" as const,
+              completedPages: job.fleet.completedPages + 1,
+              completedEnvironments: job.fleet.completedEnvironments + page.environments.length,
+              rewritten: job.fleet.rewritten + progress.rewritten,
+              conflicts: job.fleet.conflicts + progress.conflicts,
+              skippedEnvironments: job.fleet.skippedEnvironments + job.skippedEnvironments,
+              pageProgress: emptyProgress(),
+            };
+            if (nextPage.environments.length) {
+              const next = resetPageProgress(job);
+              next.pageId = nextPage.id;
+              next.fleet = {
+                ...fleet,
+                pageNumber: nextPage.number,
+                pageSize: nextPage.environments.length,
+              };
+              await save(next, nextPage);
+              return true;
+            }
+            await save({ ...job, fleet, status: "completed" });
+            return false;
+          }
         }
         if (job.status === "running") job.status = "completed";
       } catch (error) {
+        const environment = page.environments[job.completedEnvironments];
+        if (
+          job.fleet &&
+          environment &&
+          job.currentEnvironment?.id === environment.id &&
+          !(await this.options.db.runtimeEnvironment.findFirst({
+            where: { id: environment.id },
+            select: { id: true },
+          }))
+        ) {
+          job.completedEnvironments++;
+          job.skippedEnvironments++;
+          job.progress = { ...job.completedProgress };
+          await save();
+          return true;
+        }
         logger.error("Environment encryption backfill failed", {
           jobId: id,
           operation: job.operation,
@@ -458,6 +722,7 @@ export class EnvironmentEncryptionBackfill {
           "Environment operation failed. No further environments processed. Check key access and inspect/verify this page before retrying.";
       }
       await save();
+      return false;
     } finally {
       await this.options.redis.eval(
         `

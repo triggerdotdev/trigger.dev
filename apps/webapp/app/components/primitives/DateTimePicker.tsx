@@ -3,7 +3,7 @@
 import * as React from "react";
 import { ChevronUpDownIcon } from "@heroicons/react/20/solid";
 import { format } from "date-fns";
-import { Calendar } from "./Calendar";
+import { LazyCalendar, preloadCalendar } from "./LazyCalendar";
 import { Popover, PopoverContent, PopoverTrigger } from "./Popover";
 import { Button } from "./Buttons";
 import { cn } from "~/utils/cn";
@@ -83,6 +83,8 @@ export function DateTimePicker({
         <PopoverTrigger asChild>
           <button
             type="button"
+            onPointerEnter={preloadCalendar}
+            onFocus={preloadCalendar}
             className={cn(
               "flex h-[1.8rem] w-full items-center justify-between gap-2 whitespace-nowrap rounded border border-border-bright bg-background-hover px-2 text-xs tabular-nums transition hover:border-border-bright",
               value ? "text-text-bright" : "text-text-dimmed"
@@ -93,7 +95,7 @@ export function DateTimePicker({
           </button>
         </PopoverTrigger>
         <PopoverContent className="w-auto p-0" align="start">
-          <Calendar
+          <LazyCalendar
             mode="single"
             selected={value}
             onSelect={handleDateSelect}

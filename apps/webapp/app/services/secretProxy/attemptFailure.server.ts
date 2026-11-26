@@ -3,7 +3,8 @@ import { retrySettingsFromLockedConfig, type RunEngine } from "@internal/run-eng
 import { logger } from "~/services/logger.server";
 import { recordSecretProxyFailure } from "./telemetry.server";
 
-export async function failAttemptForSecretProxySigning(options: {
+export async function failAttemptForRunTokenSigning(options: {
+  secretProxy: boolean;
   engine: Pick<RunEngine, "runStore" | "completeRunAttempt">;
   run: { id: string; attemptNumber?: number | null };
   snapshotId: string;
@@ -12,7 +13,7 @@ export async function failAttemptForSecretProxySigning(options: {
   runnerId?: string;
 }): Promise<never> {
   const message = "Run token signing failed";
-  recordSecretProxyFailure("signing", "signing");
+  if (options.secretProxy) recordSecretProxyFailure("signing", "signing");
   try {
     const run = await options.engine.runStore.findRunOnPrimary(
       { id: options.run.id },
@@ -36,8 +37,8 @@ export async function failAttemptForSecretProxySigning(options: {
       },
     });
   } catch (error) {
-    recordSecretProxyFailure("signing", "requeue");
-    logger.error("Failed to requeue attempt after secret proxy signing failure", {
+    if (options.secretProxy) recordSecretProxyFailure("signing", "requeue");
+    logger.error("Failed to requeue attempt after run token signing failure", {
       runId: options.run.id,
       error,
     });

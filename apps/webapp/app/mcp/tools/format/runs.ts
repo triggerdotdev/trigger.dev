@@ -8,6 +8,8 @@ import type {
 } from "@trigger.dev/core/v3/schemas";
 import { fenceUntrusted } from "../../gate/fence.server";
 
+const METADATA_CHARS = 4_000;
+
 type RunShape = {
   id: string;
   taskIdentifier: string;
@@ -37,7 +39,10 @@ function fencedError(error: NonNullable<RunShape["error"]>, extra: string[] = []
   return fenceUntrusted(text.join("\n"), "run-error");
 }
 
-export function formatRun(run: RetrieveRunResponse): string {
+export function formatRun(
+  run: RetrieveRunResponse,
+  queueing: { priorityMs?: number; concurrencyKey?: string | null } = {}
+): string {
   const lines: string[] = [];
 
   lines.push(`Run ${run.id}`);
@@ -97,6 +102,16 @@ export function formatRun(run: RetrieveRunResponse): string {
     lines.push(`TTL: ${run.ttl}`);
   }
 
+  if (queueing.priorityMs) {
+    lines.push(`Priority: ${queueing.priorityMs / 1000}s`);
+  }
+
+  if (queueing.concurrencyKey) {
+    lines.push(
+      `Concurrency key: ${fenceUntrusted(queueing.concurrencyKey, "run-concurrency-key")}`
+    );
+  }
+
   if (run.payload) {
     lines.push(`Payload: ${fenceUntrusted(JSON.stringify(run.payload, null, 2), "run-payload")}`);
   } else if (run.payloadPresignedUrl) {
@@ -110,7 +125,12 @@ export function formatRun(run: RetrieveRunResponse): string {
   }
 
   if (run.metadata && Object.keys(run.metadata).length > 0) {
-    lines.push(`Metadata: ${Object.keys(run.metadata).length} fields`);
+    const json = JSON.stringify(run.metadata, null, 2);
+    const body =
+      json.length > METADATA_CHARS
+        ? `${json.slice(0, METADATA_CHARS)}\n… (truncated, ${json.length} characters in total)`
+        : json;
+    lines.push(`Metadata: ${fenceUntrusted(body, "run-metadata")}`);
   }
 
   return lines.join("\n");

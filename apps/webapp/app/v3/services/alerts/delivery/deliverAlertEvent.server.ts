@@ -39,6 +39,7 @@ import { alertsRateLimiter } from "~/v3/alertsRateLimiter.server";
 import { isOrganizationAlertsEnabled } from "~/v3/canUseAlertsList.server";
 import {
   SkipRetryError,
+  getDeliveryFailureReason,
   findSlackIntegration as defaultFindSlackIntegration,
   postSlackMessage as defaultPostSlackMessage,
   deliverWebhookPayload as defaultDeliverWebhookPayload,
@@ -48,6 +49,10 @@ import { groupFiredDetail } from "../groupFired";
 
 const WEBHOOK_VERSION = "2026-09-17";
 const STALE_CLAIM_MS = 5 * 60 * 1000;
+const MIN_RATE_LIMIT_DELAY_MS = 1000;
+const RATE_LIMIT_JITTER_MS = 5000;
+const RATE_LIMIT_WAIT_FRACTION = 0.25;
+const DEADLINE_MARGIN_MS = 60_000;
 
 type SendSlackMessageFn = (
   integration: OrganizationIntegrationForService<"SLACK">,
@@ -67,7 +72,11 @@ type FindSlackIntegrationFn = typeof defaultFindSlackIntegration;
 
 type FindChannelFn = (params: { id: string; projectId: string }) => Promise<ChannelInfo | null>;
 
-type CheckRateLimitFn = (channelId: string) => Promise<{ allowed: boolean } | null>;
+type CheckRateLimitFn = (
+  channelId: string
+) => Promise<{ allowed: boolean; retryAfter?: number } | null>;
+
+type ScheduleRetryFn = (availableAt: Date) => Promise<void>;
 
 type AlertContext = {
   organization: { slug: string; title: string };
@@ -91,6 +100,8 @@ export type DeliverAlertEventDeps = {
   loadErrorTitle?: LoadErrorTitleFn;
   isOrganizationEnabled?: (organizationId: string) => Promise<boolean>;
   retryCap?: DeliveryRetryCap;
+  scheduleRetry: ScheduleRetryFn;
+  random?: () => number;
 };
 
 type ChannelInfo = {
@@ -175,6 +186,7 @@ export async function deliverAlertEvent(
   const loadErrorTitle = deps.loadErrorTitle ?? defaultLoadErrorTitle;
   const isOrganizationEnabled = deps.isOrganizationEnabled ?? isOrganizationAlertsEnabled;
   const retryCap = deps.retryCap ?? alertDeliveryRetryCap();
+  const random = deps.random ?? Math.random;
 
   const event = await getAlertEvent(db, { id: eventId, at: eventAt });
 
@@ -207,6 +219,11 @@ export async function deliverAlertEvent(
   if (claimableDeliveries.length === 0) return;
 
   const retryableErrors: unknown[] = [];
+  const retryableCauses: string[] = [];
+  let rateLimited = false;
+  let maxRetryAfter = 0;
+  let maxAgeDelay = 0;
+  let minDeadlineCap = Infinity;
   let contextPromise: Promise<AlertContext | null> | undefined;
   const getContext = () => (contextPromise ??= loadAlertContext(alert));
   const fingerprint =
@@ -285,7 +302,18 @@ export async function deliverAlertEvent(
           channelId,
           attempts: claim.delivery.attempts,
         });
-        retryableErrors.push(new Error("rate_limited"));
+        const retryAfter = Number.isFinite(rateLimitResult.retryAfter)
+          ? rateLimitResult.retryAfter!
+          : 0;
+        const now = Date.now();
+        const startedAt = (claim.delivery.firstAttemptAt ?? claim.delivery.createdAt).getTime();
+        const remainingMs = startedAt + retryCap.maxAgeMs - now;
+        rateLimited = true;
+        maxRetryAfter = Math.max(maxRetryAfter, retryAfter);
+        maxAgeDelay = Math.max(maxAgeDelay, (now - startedAt) * RATE_LIMIT_WAIT_FRACTION);
+        if (remainingMs > DEADLINE_MARGIN_MS) {
+          minDeadlineCap = Math.min(minDeadlineCap, remainingMs - DEADLINE_MARGIN_MS);
+        }
         continue;
       }
 
@@ -349,12 +377,54 @@ export async function deliverAlertEvent(
         error,
       });
       retryableErrors.push(error);
+      retryableCauses.push(describeFailure(channelType, error));
     }
   }
 
   if (retryableErrors.length > 0) {
-    throw new AggregateError(retryableErrors, `${retryableErrors.length} deliveries failed`);
+    throw new AggregateError(
+      retryableErrors,
+      `${retryableErrors.length} deliveries failed: ${retryableCauses.join("; ")}`
+    );
   }
+
+  if (rateLimited) {
+    const delay = Math.max(
+      maxRetryAfter,
+      Math.min(maxAgeDelay, minDeadlineCap),
+      MIN_RATE_LIMIT_DELAY_MS
+    );
+    await deps.scheduleRetry(new Date(Date.now() + delay + random() * RATE_LIMIT_JITTER_MS));
+  }
+}
+
+const SAFE_TOKEN = /^[A-Za-z0-9_]{1,64}$/;
+const SAFE_CODE = /^[A-Z][A-Z0-9_]{1,40}$/;
+
+function safeMatch(pattern: RegExp, value: unknown) {
+  return typeof value === "string" && pattern.test(value) ? value : undefined;
+}
+
+function failureReason(error: unknown) {
+  if (!(error instanceof Error)) return "unknown";
+  const reason = safeMatch(SAFE_TOKEN, getDeliveryFailureReason(error));
+  if (reason) return reason;
+  const name = safeMatch(SAFE_TOKEN, error.constructor?.name) ?? "Error";
+  const cause = error.cause as { code?: unknown } | null | undefined;
+  const code =
+    safeMatch(SAFE_CODE, (error as { code?: unknown }).code) ??
+    (typeof cause === "object" && cause !== null ? safeMatch(SAFE_CODE, cause.code) : undefined);
+  return code ? `${name} ${code}` : name;
+}
+
+function describeFailure(channelType: string | undefined, error: unknown) {
+  let reason: string;
+  try {
+    reason = failureReason(error);
+  } catch {
+    reason = "unknown";
+  }
+  return `${channelType ?? "UNKNOWN"}: ${reason}`;
 }
 
 async function deliverToChannel(params: {

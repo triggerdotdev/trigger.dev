@@ -232,6 +232,18 @@ describe("runnerBodyFor", () => {
     }
   );
 
+  it.each(["proxy", undefined] as const)(
+    "keeps the VM network mode on cold starts and restores (%s)",
+    (workloadNetwork) => {
+      const opts = createOptions({ workloadNetwork });
+      for (const restore of [undefined, { snapshotID: "snap-abc", node: "node-a" }]) {
+        expect(
+          runnerBodyFor(opts, { ...meta, runtime: "microvm", restore }).spec.networkPlugin
+        ).toBe(workloadNetwork === "proxy" ? true : undefined);
+      }
+    }
+  );
+
   it("omits the token reference when no token was issued", () => {
     expect(runnerBodyFor(createOptions(), meta).spec.deployment).not.toHaveProperty("token");
   });
@@ -484,6 +496,7 @@ describe("run-crd carries every shared create-option or excludes it on purpose",
     "deploymentVersion",
     "runtime",
     "deploymentToken",
+    "workloadNetwork",
     "runId",
     "runFriendlyId",
     "snapshotId",
@@ -540,6 +553,7 @@ describe("run-crd carries every shared create-option or excludes it on purpose",
     deploymentVersion: { deploymentVersion: "99.9.9" },
     runtime: { runtime: "bun" },
     deploymentToken: { deploymentToken: "tok_probe" },
+    workloadNetwork: { workloadNetwork: "proxy" },
     runId: { runId: "run_other_internal" },
     runFriendlyId: { runFriendlyId: "run_other" },
     snapshotId: { snapshotId: "snapshot_other_internal" },
@@ -2982,7 +2996,10 @@ describe("runnerStartFailure", () => {
 
   function failedRunner(
     reason: string,
-    overrides: { labels?: Record<string, string>; bootstrap?: object | null } = {}
+    overrides: {
+      labels?: Record<string, string>;
+      bootstrap?: object | null;
+    } = {}
   ) {
     return {
       metadata: {

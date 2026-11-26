@@ -11,20 +11,18 @@ Should the burden ever get too much, we'd be happy to see you on [Trigger.dev cl
 
 **Warning:** This guide alone is unlikely to result in a production-ready deployment. Security, scaling, and reliability concerns are not fully addressed here.
 
-## What's new?
+## What's included
 
-Goodbye v3, hello v4! We made quite a few changes:
-
-- **Much simpler setup.** The provider and coordinator are now combined into a single supervisor. No more startup scripts, just `docker compose up`.
-- **Automatic container cleanup.** The supervisor will automatically clean up containers that are no longer needed.
-- **Support for multiple worker machines.** This is a big one, and we're very excited about it! You can now scale your workers horizontally as needed.
-- **Resource limits enforced by default.** This means that tasks will be limited to the total CPU and RAM of the machine preset, preventing noisy neighbours.
-- **No direct Docker socket access.** The compose file now comes with [Docker Socket Proxy](https://github.com/Tecnativa/docker-socket-proxy) by default. Yes, you want this.
-- **No host networking.** All containers are now running with network isolation, using only the network access they need.
-- **No checkpoint support.** This was only ever experimental when self-hosting and not recommended. It caused a bunch of issues. We decided to focus on the core features instead.
-- **Built-in container registry and object storage.** You can now deploy and execute tasks without needing third party services for this.
-- **Improved CLI commands.** You don't need any additional flags to deploy anymore, and there's a new command to easily `switch` between profiles.
-- **Whitelisting for GitHub OAuth.** Any whitelisted email addresses will now also apply to sign ins via GitHub, unlike v3 where they only applied to magic links.
+- **Single supervisor.** The supervisor manages worker containers, so there are no startup scripts: just `docker compose up`.
+- **Automatic container cleanup.** The supervisor cleans up containers that are no longer needed.
+- **Multiple worker machines.** You can scale your workers horizontally as needed.
+- **Resource limits enforced by default.** Tasks are limited to the total CPU and RAM of their machine preset, preventing noisy neighbours.
+- **No direct Docker socket access.** The compose file comes with [Docker Socket Proxy](https://github.com/Tecnativa/docker-socket-proxy) by default.
+- **No host networking.** All containers run with network isolation, using only the network access they need.
+- **No checkpoint support.** Checkpoints are not available when self-hosting.
+- **Built-in container registry and object storage.** You can deploy and execute tasks without third party services for these.
+- **Simple CLI setup.** You don't need any additional flags to deploy, and you can `switch` between profiles.
+- **Whitelisting for GitHub OAuth.** Whitelisted email addresses apply to sign ins via GitHub as well as magic links.
 
 ## Requirements
 

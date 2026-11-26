@@ -194,6 +194,13 @@ describe("QueryAlertTranscript", () => {
     expect(question()).toBe("Watch this query?");
     expect(card()!.querySelector("[data-testid=query-alert-query]")!.textContent).toBe(QUERY);
     expect(card()!.querySelector("input, textarea")).toBeNull();
+    // The highlighter loads after the first paint: the query shows plain until it arrives.
+    await vi.waitFor(async () => {
+      await act(async () => {});
+      expect(
+        card()!.querySelector("[data-testid=query-alert-query] .token.keyword")
+      ).not.toBeNull();
+    });
     const block = card()!.querySelector("[data-testid=query-alert-query]")!;
     const keywords = Array.from(block.querySelectorAll(".token.keyword")).map((t) => t.textContent);
     expect(keywords).toEqual(expect.arrayContaining(["SELECT", "AS", "FROM"]));

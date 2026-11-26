@@ -104,6 +104,7 @@ const sections: StorySection[] = [
     items: [
       { name: "Tabs", slug: "tabs" },
       { name: "Page header", slug: "page-header" },
+      { name: "Detail pages", slug: "detail-pages" },
       { name: "Tree view", slug: "tree-view" },
       { name: "Resizable", slug: "resizable" },
       { name: "Animated panel", slug: "animated-panel" },

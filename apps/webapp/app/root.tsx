@@ -2,6 +2,7 @@ import type { LinksFunction, LoaderFunctionArgs, MetaFunction } from "@remix-run
 import type { CSSProperties } from "react";
 import type { ShouldRevalidateFunction } from "@remix-run/react";
 import { Links, Meta, Outlet, Scripts, ScrollRestoration } from "@remix-run/react";
+import { onlyDetailTabChanged } from "~/utils/detailTabRevalidation";
 import { type UseDataFunctionReturn, typedjson, useTypedLoaderData } from "remix-typedjson";
 import { ExternalScripts } from "remix-utils/external-scripts";
 import type { ToastMessage } from "~/models/message.server";
@@ -77,7 +78,8 @@ export const meta: MetaFunction = ({ data }) => {
 export const loader = async ({ request }: LoaderFunctionArgs) => {
   const session = await getSession(request.headers.get("cookie"));
   const toastMessage = session.get("toastMessage") as ToastMessage;
-  const posthogProjectKey = env.POSTHOG_PROJECT_KEY;
+  const posthogProjectKey =
+    env.TRIGGER_TELEMETRY_DISABLED === undefined ? env.POSTHOG_PROJECT_KEY : undefined;
   const posthogUiHost = env.POSTHOG_HOST;
   const features = featuresForRequest(request);
   const timezone = await getTimezonePreference(request);
@@ -162,6 +164,11 @@ export type LoaderType = typeof loader;
 
 export const shouldRevalidate: ShouldRevalidateFunction = (options) => {
   if (options.formAction === "/resources/environment") {
+    return false;
+  }
+
+  // A detail page tab switch: nothing here reads `?tab=`.
+  if (onlyDetailTabChanged(options)) {
     return false;
   }
 

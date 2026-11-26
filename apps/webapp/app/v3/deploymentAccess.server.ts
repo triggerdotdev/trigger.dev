@@ -14,12 +14,15 @@ import { logger } from "~/services/logger.server";
 import { isCloud } from "~/services/platform.v3.server";
 import { createRedisRateLimitClient, RateLimiter } from "~/services/rateLimiterCore.server";
 import { singleton } from "~/utils/singleton";
+import { syncComputeOnlyFlag } from "./computeOnlyFlag.server";
+import { globalFlagsRegistry } from "./globalFlagsRegistry.server";
 import { resolvePlanState } from "./freeSchedulePolicy.server";
 import { ServiceValidationError } from "./services/common.server";
 
 const MODULE_NAME = "@triggerdotdev/plugins/deployment-access";
 
 const DEFAULT_DENIED_MESSAGE = "Deployments are not available for this organization.";
+const FLAG_SYNC_FAILED_MESSAGE = "We couldn't prepare this deploy. Try deploying again.";
 
 /** Null when no deployment access plugin is loaded: every check allows. */
 export function getDeploymentAccessController(): Promise<DeploymentAccessController | null> {
@@ -76,15 +79,59 @@ async function resolveController({
 /**
  * Asks the plugin whether a deploy may go ahead. Without a plugin everything is allowed. A plugin
  * that throws denies: a check that can't run must not open the door.
+ *
+ * The global `computeOnlyDeploys` flag goes with every check, read from the global flag snapshot
+ * (reloaded every GLOBAL_FLAGS_RELOAD_INTERVAL_MS). A cold snapshot reads as off.
+ *
+ * Placement is decided once, at initialize: an allowed decision there is mirrored into the org's
+ * `computeOnly` flag. Pass the org's loaded `featureFlags` as `organizationFeatureFlags` so the
+ * write only happens when the flag changes. A flag that can't be written denies too, so a
+ * compute-only org never deploys without it. A denied decision leaves the flag alone: an org
+ * already on compute keeps running there. Preflight and register_worker never touch the flag.
  */
 export async function checkDeployAccess(
-  check: DeploymentAccessCheck,
-  source: ControllerSource = {}
+  request: Omit<DeploymentAccessCheck, "computeOnlyDeploys">,
+  {
+    client = prisma,
+    computeOnlyDeploys = globalFlagsRegistry.current()?.computeOnlyDeploys ?? false,
+    organizationFeatureFlags,
+    ...source
+  }: ControllerSource & {
+    client?: PrismaClientOrTransaction;
+    computeOnlyDeploys?: boolean;
+    organizationFeatureFlags?: unknown;
+  } = {}
 ): Promise<DeploymentAccessDecision> {
+  const check: DeploymentAccessCheck = { ...request, computeOnlyDeploys };
   try {
     const controller = await resolveController(source);
     if (!controller) return { allowed: true };
-    return await controller.checkDeploy(check);
+    const decision = await controller.checkDeploy(check);
+    if (decision.allowed && check.stage === "initialize") {
+      try {
+        await syncComputeOnlyFlag(
+          client,
+          check.organizationId,
+          decision,
+          organizationFeatureFlags,
+          {
+            stage: check.stage,
+            projectId: check.projectId,
+            environmentId: check.environmentId,
+          }
+        );
+      } catch (error) {
+        // Still refused (a compute-only org must never deploy without its flag), but this is a
+        // transient failure, so say to retry rather than that deploys aren't available.
+        logger.error("Deployment access: couldn't update the computeOnly flag", {
+          organizationId: check.organizationId,
+          placement: decision.placement,
+          error: error instanceof Error ? error.message : String(error),
+        });
+        return { allowed: false, kind: "denied", message: FLAG_SYNC_FAILED_MESSAGE };
+      }
+    }
+    return decision;
   } catch (error) {
     logger.error("Deployment access check failed", {
       stage: check.stage,

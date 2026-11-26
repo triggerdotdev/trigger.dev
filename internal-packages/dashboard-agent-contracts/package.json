@@ -6,7 +6,8 @@
   "types": "./src/index.ts",
   "type": "module",
   "exports": {
-    ".": "./src/index.ts"
+    ".": "./src/index.ts",
+    "./run-filters": "./src/run-filters.ts"
   },
   "dependencies": {
     "@internal/alert-contracts": "workspace:*",
@@ -14,7 +15,7 @@
   },
   "devDependencies": {
     "typescript": "catalog:",
-    "vitest": "4.1.11"
+    "vitest": "4.1.12"
   },
   "scripts": {
     "typecheck": "tsc --noEmit",

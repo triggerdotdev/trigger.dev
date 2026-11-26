@@ -87,10 +87,13 @@ describe("appendRunFilters", () => {
     );
   });
 
-  // Control: the untranslated URL is what the live failure looked like. One status the
-  // page cannot parse and it discards everything, the period included.
-  it("pins why translation is needed: raw FAILED wipes the whole filter set", () => {
-    expect(pageReads(`${RUNS_PATH}?statuses=FAILED&period=1d`)).toEqual({});
+  // Control: the page reads each filter on its own and accepts the API's status names, so an
+  // untranslated URL keeps its period and reads FAILED as the status it covers.
+  it("an untranslated FAILED no longer wipes the filter set", () => {
+    expect(pageReads(`${RUNS_PATH}?statuses=FAILED&period=1d`)).toEqual({
+      statuses: ["COMPLETED_WITH_ERRORS"],
+      period: "1d",
+    });
   });
 });
 

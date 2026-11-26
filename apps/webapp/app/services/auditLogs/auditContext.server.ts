@@ -97,6 +97,21 @@ export function getRequestActor(): AuditLogActor | null {
   return getHttpContext()?.auditIdentity?.actor ?? null;
 }
 
+/**
+ * A request to the OAuth token or revoke endpoint. The client isn't signed in as anyone, so there
+ * is no actor; events name theirs. Noted for the caller's IP and user agent, which matter most
+ * when a code or refresh token is replayed.
+ */
+export function noteOAuthClientRequest(request: Request): void {
+  setAuditIdentity(request, () => ({
+    actor: null,
+    credential: null,
+    onBehalfOf: null,
+    source: "api",
+    origin: null,
+  }));
+}
+
 /** A dashboard session. While staff impersonate a user, the user is the actor. */
 export function noteSessionAuthentication(
   request: Request,
@@ -145,11 +160,15 @@ export function noteBearerAuthentication(request: Request, result: HostBearerAut
 
     // An additional key has a row id: the audit plugin finds its fingerprint by kind and id.
     if (subject.type === "apiKey") {
-      return apiKeyIdentity(request, {
+      const identity = apiKeyIdentity(request, {
         kind: "additional_api_key",
         id: subject.apiKeyId,
         last4: lastFour(token),
       });
+      // A key the platform minted for itself, such as a build's deploy key: Trigger.dev acted.
+      return resolution.apiKeyIssuedBy === "SYSTEM"
+        ? { ...identity, actor: { type: "trigger_infra", id: null } }
+        : identity;
     }
 
     // Root and legacy environment keys resolve to a user subject, so the key is identified by the
@@ -163,7 +182,10 @@ export function noteBearerAuthentication(request: Request, result: HostBearerAut
   });
 }
 
-/** The pre-RBAC API-key path: root or additional key, or a public JWT. */
+/**
+ * The pre-RBAC API-key path: root or additional key, or a public JWT. It accepts only full-access
+ * additional keys, so a platform-minted deploy key (always scoped) never arrives here.
+ */
 export function noteLegacyApiKeyAuthentication(
   request: Request,
   result:
@@ -254,15 +276,21 @@ export function notePersonalAccessTokenAuthentication(
   });
 }
 
-/** An organization access token. It has no user, so the token is the actor. */
+/**
+ * An organization access token. It has no user, so the token is the actor, unless the platform
+ * minted it for itself, such as for a build: then Trigger.dev acted.
+ */
 export function noteOrganizationAccessTokenAuthentication(
   request: Request,
-  auth: { tokenId: string }
+  auth: { tokenId: string; type: "USER" | "SYSTEM" }
 ): void {
   setAuditIdentity(request, () => {
     const token = bearerToken(request) ?? "";
     return {
-      actor: { type: "oat", id: auth.tokenId },
+      actor:
+        auth.type === "SYSTEM"
+          ? { type: "trigger_infra", id: null }
+          : { type: "oat", id: auth.tokenId },
       credential: { kind: "oat", id: auth.tokenId, last4: lastFour(token), fingerprintId: null },
       onBehalfOf: null,
       source: sourceFromHeaders(request),

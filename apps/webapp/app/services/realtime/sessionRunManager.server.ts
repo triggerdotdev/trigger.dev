@@ -7,12 +7,14 @@ import { runStore } from "~/v3/runStore.server";
 import { engine } from "~/v3/runEngine.server";
 import type { AuthenticatedEnvironment } from "~/services/apiAuth.server";
 import { logger } from "~/services/logger.server";
+import { startActiveSpan } from "~/v3/tracer.server";
 import { CancelTaskRunService, type CancelableTaskRun } from "~/v3/services/cancelTaskRun.server";
 import { TriggerTaskService } from "~/v3/services/triggerTask.server";
 import { isFinalRunStatus } from "~/v3/taskStatus";
 import { externalDeploymentCacheInstance } from "~/services/externalDeploymentCacheInstance.server";
 import { resolveExternalDeployment } from "~/v3/services/resolveExternalDeployment.server";
-import { S2RealtimeStreams } from "./s2realtimeStreams.server";
+import { S2RealtimeStreams, type SessionOutTail } from "./s2realtimeStreams.server";
+import { canonicalSessionAddressingKey } from "./sessions.server";
 import {
   determineRealtimeStreamsVersion,
   getRealtimeStreamInstance,
@@ -88,6 +90,18 @@ type EnsureRunForSessionParams = {
    */
   payloadOverrides?: Record<string, unknown>;
   /**
+   * Read the current run's status from the writer instead of the replica. For a caller that has
+   * just seen that run end (or must not act on a replica that has not caught up with its end):
+   * a stale "still alive" answer would hand back a run that is already gone.
+   */
+  probeOnWriter?: boolean;
+  /**
+   * The first `.in` seq the run started here is meant to answer, for a caller that already has
+   * messages on `.in` it is starting the run for (`RunAnnotations.sessionInFirstSeq`). Leave it
+   * unset when the run is started before its messages are appended.
+   */
+  sessionInFirstSeq?: number;
+  /**
    * @internal Recursion-guard counter for the lost-claim-race retry path.
    * Public callers should leave this unset; the function recurses with
    * an incremented value on the pathological "winner's run was already
@@ -131,7 +145,15 @@ export type EnsureRunResult = {
 export async function ensureRunForSession(
   params: EnsureRunForSessionParams
 ): Promise<EnsureRunResult> {
-  const { session, environment, reason, payloadOverrides, _attempt = 1 } = params;
+  const {
+    session,
+    environment,
+    reason,
+    payloadOverrides,
+    probeOnWriter,
+    sessionInFirstSeq,
+    _attempt = 1,
+  } = params;
 
   if (_attempt > ENSURE_RUN_FOR_SESSION_MAX_ATTEMPTS) {
     throw new SessionRunManagerError(
@@ -145,7 +167,7 @@ export async function ensureRunForSession(
   let priorRunFriendlyId: string | undefined;
   let superseded: { runId: string; taskVersion: string | null; status: TaskRunStatus } | undefined;
   if (session.currentRunId) {
-    let probe = await getCurrentRunProbe(session.currentRunId);
+    let probe = probeOnWriter ? null : await getCurrentRunProbe(session.currentRunId);
     if (!probe) {
       // Replica miss on a row we just observed via `currentRunId` — the
       // run was likely triggered moments ago and hasn't replicated yet.
@@ -236,6 +258,18 @@ export async function ensureRunForSession(
     config,
     environment,
     payloadOverrides: mergedPayloadOverrides,
+    sessionInFirstSeq,
+    // A session's first run is anchored at `.in` seq 0 without reading the tail. `currentRunId`
+    // is only set by a claim and never cleared, so null means no run has ever been claimed, and
+    // that run's agent boots with no `.out` cursor and reads `.in` from seq 0 (on a first boot
+    // nothing on `.in` counts as applied): every message on `.in`, including one that landed
+    // before it was triggered, is its to answer. So 0 is exact, not an approximation. It also
+    // skips an S2 read that, on a basin that creates streams on read, would create `.in`. A run
+    // started for messages already on `.in` (`sessionInFirstSeq`) still reads it, so its anchor
+    // stays above its first seq as `RunAnnotations` requires. Every other trigger (a current run,
+    // the lost-race recursion below, a swap, a revive, a continuation) reads the tail as before.
+    // Derived from `session` so the recursion re-derives it from the fresh row.
+    sessionInSeq: session.currentRunId || sessionInFirstSeq !== undefined ? undefined : 0,
   });
 
   if (superseded) {
@@ -364,8 +398,133 @@ export async function ensureRunForSession(
     environment,
     reason,
     payloadOverrides,
+    sessionInFirstSeq,
     _attempt: _attempt + 1,
   });
+}
+
+/**
+ * The first `.in` seq a run started for messages already on `.in` will answer
+ * (`RunAnnotations.sessionInFirstSeq`). One rule for every such start (a revive after an append,
+ * the completion check's continuation): the new run boots from the cursor of the last
+ * `turn-complete` on `.out` and answers everything after it, so its first seq is that cursor plus
+ * one, whoever wrote the turn. When `.out` does not end on a turn-complete that carries an `.in`
+ * cursor there is no boot cursor to read, and it is the earliest message known to be unread
+ * (`earliestKnownSeq`: the appended seq on a revive, the first unread seq on a continuation).
+ *
+ * The cursor can sit above `earliestKnownSeq` only when the turn already consumed that message, so
+ * the result is at or below every message the new run answers and above everything an earlier run
+ * consumed.
+ */
+export function firstSeqForNewRun(
+  outTail: SessionOutTail,
+  earliestKnownSeq: number | undefined
+): number | undefined {
+  if (
+    outTail.kind === "record" &&
+    outTail.control === "turn-complete" &&
+    outTail.inEventId !== undefined
+  ) {
+    return outTail.inEventId + 1;
+  }
+  return earliestKnownSeq;
+}
+
+/**
+ * `firstSeqForNewRun` for a revive, which has not read `.out` yet. One `.out` tail peek, bounded by
+ * the S2 client's timeout. A peek that fails falls back to the appended seq: the run still starts.
+ */
+async function firstSeqForRevive(
+  session: Pick<Session, "friendlyId" | "externalId" | "streamBasinName">,
+  environment: AuthenticatedEnvironment,
+  appendedSeq: number
+): Promise<number> {
+  const [error, firstSeq] = await tryCatch(
+    (async () => {
+      const streams = getRealtimeStreamInstance(environment, "v2", { session });
+      if (!(streams instanceof S2RealtimeStreams)) return appendedSeq;
+      const outTail = await streams.peekSessionOutTail(
+        canonicalSessionAddressingKey(session, session.friendlyId)
+      );
+      return firstSeqForNewRun(outTail, appendedSeq) ?? appendedSeq;
+    })()
+  );
+  if (error) {
+    logger.warn("Failed to read the session .out tail to revive its run", {
+      sessionId: session.friendlyId,
+      error,
+    });
+    return appendedSeq;
+  }
+  return firstSeq;
+}
+
+/**
+ * Call after every `.in` append that followed an `ensureRunForSession` (one home for the rule).
+ *
+ * The ensure probed the run before the record landed, so a run that ended in between was reused as
+ * if it were alive and will never read the record. Look at that run again now that the record is
+ * durable, on the writer: a run still alive here ends after the record landed, so the completion
+ * check (`continueSessionIfInputUnread`) reads it; a run already ended is replaced now, started for
+ * the messages already on `.in` (`firstSeqForNewRun`, with the appended seq as the earliest known
+ * one). A run that was cancelled is left alone: a cancel is a decision to stop (the run-end
+ * handlers skip it for the same reason), so a cancel that lands before the record does not start a
+ * run that answers it; the next append starts one, as it does after any ended run. Costs one
+ * primary-key read per append that reused a run, and, only when it replaces a run, one `.out` tail
+ * peek. Never throws: on a failure the append stands and the completion check or the next append
+ * revives the session.
+ *
+ * The race that remains: appends are concurrent, so the one that wins the revive claim may not be
+ * the first to land. The boot cursor, not the winner's own seq, keeps the first seq at or below an
+ * earlier unread message; when the `.out` peek fails the first seq falls back to the appended seq,
+ * which can sit above one, and an earlier run's turn-complete is then judged by `sessionInSeq` alone
+ * if that run fails (the same fallback as a run started with no first seq).
+ */
+export async function reviveReusedRunIfEnded(params: {
+  session: EnsureRunForSessionParams["session"];
+  environment: AuthenticatedEnvironment;
+  reason: EnsureRunReason;
+  ensured: EnsureRunResult;
+  /**
+   * The seq the append wrote the record at; undefined when it wrote none (a lost claim) or got no
+   * seq back. The run is then started without a first seq: the winner's own revive carries it.
+   */
+  appendedSeq?: number;
+}): Promise<EnsureRunResult> {
+  const { session, environment, reason, ensured, appendedSeq } = params;
+  if (ensured.triggered) return ensured;
+
+  const [error, revived] = await tryCatch(
+    (async () => {
+      const probe = await runStore.findRun(
+        { id: ensured.runId },
+        { select: { status: true } },
+        prisma
+      );
+      if (!probe || !isFinalRunStatus(probe.status) || probe.status === "CANCELED") {
+        return undefined;
+      }
+      return ensureRunForSession({
+        session: { ...session, currentRunId: ensured.runId },
+        environment,
+        reason,
+        probeOnWriter: true,
+        sessionInFirstSeq:
+          appendedSeq !== undefined
+            ? await firstSeqForRevive(session, environment, appendedSeq)
+            : undefined,
+      });
+    })()
+  );
+  if (error) {
+    logger.error("Failed to re-check the run an append reused", {
+      sessionId: session.id,
+      runId: ensured.runId,
+      error,
+    });
+    return ensured;
+  }
+  return revived ?? ensured;
 }
 
 /** Both version pins are forwarded; `TriggerTaskService` decides which governs. */
@@ -390,6 +549,41 @@ function isPendingVersionStatus(status: TaskRunStatus): boolean {
 }
 
 /**
+ * The session's `.in` tail seq (the next seq), recorded on the run as `sessionInSeq` so the
+ * run-end check can tell which messages arrived after it started. Read before the run is created:
+ * a message appended between the read and the run's creation counts as the new run's, which is
+ * right, since the run boots from the cursor and reads it. Undefined when the streams are not S2
+ * or the tail cannot be read: the check then falls back to timestamps, and the trigger goes on.
+ *
+ * Cost: one S2 tail read per session-run trigger that has no known tail (a session's first run
+ * passes its own, see `ensureRunForSession`), bounded by the S2 client's timeout; no query.
+ */
+async function readSessionInSeqForTrigger(
+  session: Pick<Session, "friendlyId" | "externalId" | "streamBasinName">,
+  environment: AuthenticatedEnvironment
+): Promise<number | undefined> {
+  const [error, seq] = await tryCatch(
+    startActiveSpan("readSessionInSeqForTrigger()", async (span) => {
+      const streams = getRealtimeStreamInstance(environment, "v2", { session });
+      if (!(streams instanceof S2RealtimeStreams)) return undefined;
+      const tailSeq = await streams.readSessionInTailSeq(
+        canonicalSessionAddressingKey(session, session.friendlyId)
+      );
+      if (tailSeq !== undefined) span.setAttribute("session.in_seq", tailSeq);
+      return tailSeq;
+    })
+  );
+  if (error) {
+    logger.warn("Failed to read the session .in tail before triggering its run", {
+      sessionId: session.friendlyId,
+      error,
+    });
+    return undefined;
+  }
+  return seq;
+}
+
+/**
  * Trigger a single run for a session. Builds `TriggerTaskRequestBody`
  * by shallow-merging `payloadOverrides` over `config.basePayload` and
  * threading `config`'s machine/queue/tags through the trigger options.
@@ -399,12 +593,21 @@ function isPendingVersionStatus(status: TaskRunStatus): boolean {
  * this, run-scoped `streams.*` calls inside a session run resolve to v1 while
  * the session it belongs to is on v2. `determineRealtimeStreamsVersion`
  * degrades to v1 where v2 streams are not configured.
+ *
+ * The run records the `.in` tail as `sessionInSeq`: the caller's, when it already knows it (a
+ * session's first run, anchored at 0), else the tail read just before the trigger. And, when
+ * the caller is starting it for messages already on `.in` (a revive after an append, a continuation
+ * for unread input), the first seq it was started to answer (`sessionInFirstSeq`, below the tail).
+ * Each field has one job, told on `RunAnnotations`.
  */
 async function triggerSessionRun(params: {
-  session: Pick<Session, "id" | "friendlyId" | "taskIdentifier">;
+  session: Pick<Session, "id" | "friendlyId" | "externalId" | "taskIdentifier" | "streamBasinName">;
   config: SessionTriggerConfig;
   environment: AuthenticatedEnvironment;
   payloadOverrides?: Record<string, unknown>;
+  sessionInFirstSeq?: number;
+  /** The `.in` tail when it is already known; read when unset. */
+  sessionInSeq?: number;
 }): Promise<{ id: string; friendlyId: string; status: TaskRunStatus; createdAt?: Date }> {
   const { session, environment, payloadOverrides } = params;
   const floor = sessionVersionFloorFor(environment);
@@ -426,11 +629,17 @@ async function triggerSessionRun(params: {
     options: buildSessionRunOptions(config),
   };
 
+  const { sessionInFirstSeq } = params;
+  const sessionInSeq =
+    params.sessionInSeq ?? (await readSessionInSeqForTrigger(session, environment));
+
   const service = new TriggerTaskService();
   const result = await service.call(session.taskIdentifier, environment, body, {
     triggerSource: "session",
     triggerAction: "trigger",
     sessionId: session.friendlyId,
+    ...(sessionInSeq !== undefined ? { sessionInSeq } : {}),
+    ...(sessionInFirstSeq !== undefined ? { sessionInFirstSeq } : {}),
     realtimeStreamsVersion: determineRealtimeStreamsVersion(
       "v2",
       environment.organization.streamBasinName
@@ -461,7 +670,14 @@ type SwapSessionRunParams = {
    */
   session: Pick<
     Session,
-    "id" | "friendlyId" | "taskIdentifier" | "triggerConfig" | "currentRunId" | "currentRunVersion"
+    | "id"
+    | "friendlyId"
+    | "externalId"
+    | "taskIdentifier"
+    | "triggerConfig"
+    | "currentRunId"
+    | "currentRunVersion"
+    | "streamBasinName"
   >;
   /**
    * The run requesting the swap. Optimistic claim requires

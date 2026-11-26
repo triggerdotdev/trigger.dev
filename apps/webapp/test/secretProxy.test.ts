@@ -113,7 +113,7 @@ async function seed(db: PrismaClient) {
     db,
     encryption,
     keyring: placeholderKeys,
-    serviceToken,
+    caller: { kind: "sharedToken" as const, token: serviceToken },
     issuer,
     publicJwks: async () => ({ keys: [key.publicJwk] }),
     findRun: (id: string, runtimeEnvironmentId: string, projectId: string) =>
@@ -218,14 +218,10 @@ describe("secret proxy integration", () => {
     const handleFor = (variableId: string) =>
       placeholderForVariable(placeholderKeys, { runId: f.run.friendlyId, attempt: 1 }, variableId);
 
-    const resolved = await f.service.resolve(
-      serviceToken,
-      token,
-      requestFor(handleFor(granted.variable.id))
-    );
+    const resolved = await f.service.resolve(token, requestFor(handleFor(granted.variable.id)));
     expect(resolved.credentials[0]!.value).toBe("granted-value");
     await expect(
-      f.service.resolve(serviceToken, token, requestFor(handleFor(other.variable.id)))
+      f.service.resolve(token, requestFor(handleFor(other.variable.id)))
     ).rejects.toBeInstanceOf(SecretProxyDeniedError);
   });
 
@@ -320,7 +316,7 @@ describe("secret proxy integration", () => {
         await released;
       });
       await lockReady;
-      const resolving = service.resolve(serviceToken, token, requestFor(handle));
+      const resolving = service.resolve(token, requestFor(handle));
       try {
         await vi.waitFor(async () => {
           const waiting = await prisma.$queryRaw<
@@ -339,12 +335,9 @@ describe("secret proxy integration", () => {
       expect(result.credentials).toEqual([
         { handle, hostname: "api.example.com", value: "original" },
       ]);
-      await expect(service.resolve(serviceToken, token, requestFor(handle))).rejects.toThrow(
-        "not authorized"
-      );
+      await expect(service.resolve(token, requestFor(handle))).rejects.toThrow("not authorized");
       expect(
-        (await service.resolve(serviceToken, token, requestFor(handle, "new.example.com")))
-          .credentials
+        (await service.resolve(token, requestFor(handle, "new.example.com"))).credentials
       ).toEqual([{ handle, hostname: "new.example.com", value: "rotated" }]);
     }
   );
@@ -377,7 +370,7 @@ describe("secret proxy integration", () => {
       await lockReady;
       let first: Awaited<ReturnType<SecretProxyService["resolve"]>>;
       try {
-        const resolving = f.service.resolve(serviceToken, token, requestFor(handle));
+        const resolving = f.service.resolve(token, requestFor(handle));
         const enteredAt = Date.now();
         await prisma.$queryRaw`SELECT 1 FROM pg_sleep(0.1)`;
         release();
@@ -390,7 +383,7 @@ describe("secret proxy integration", () => {
       }
       await prisma.$queryRaw`SELECT 1 FROM pg_sleep(30.05)`;
       expect(first.expiresAtMs).toBeLessThan(Date.now());
-      const fresh = await f.service.resolve(serviceToken, token, requestFor(handle));
+      const fresh = await f.service.resolve(token, requestFor(handle));
       expect(fresh.credentials[0]!.value).toBe("credential");
       expect(fresh.expiresAtMs).toBeGreaterThan(Date.now());
       expect(fresh.expiresAtMs).toBeLessThanOrEqual(Date.now() + 30_000);
@@ -452,7 +445,7 @@ describe("secret proxy integration", () => {
         secret.variable.id,
         "retained-7"
       );
-      const response = await service.resolve(serviceToken, token, requestFor(handle, hosts[0]!));
+      const response = await service.resolve(token, requestFor(handle, hosts[0]!));
       expect(response).toEqual({
         runId: f.run.friendlyId,
         attempt: 1,
@@ -485,9 +478,9 @@ describe("secret proxy integration", () => {
           proxyConfig: { allowedHosts: hosts },
         },
       });
-      await expect(
-        service.resolve(serviceToken, token, requestFor(handle, hosts[0]!))
-      ).rejects.toThrow("Too many secret proxy variables");
+      await expect(service.resolve(token, requestFor(handle, hosts[0]!))).rejects.toThrow(
+        "Too many secret proxy variables"
+      );
     }
   );
 
@@ -514,13 +507,13 @@ describe("secret proxy integration", () => {
           value.variable.id
         )
       );
-      const response = await f.service.resolve(serviceToken, token, requestFor(handles[0]!));
+      const response = await f.service.resolve(token, requestFor(handles[0]!));
       expect(response.credentials[0]!.value).toBe(escaped);
       expect(Buffer.byteLength(JSON.stringify(response))).toBeLessThan(
         SECRET_PROXY_MAX_RESPONSE_BYTES
       );
       await expect(
-        f.service.resolve(serviceToken, token, {
+        f.service.resolve(token, {
           bindingId: "allocation-1",
           resolve: handles.map((handle) => ({ handle, hostname: "api.example.com", port: 443 })),
         })
@@ -554,8 +547,8 @@ describe("secret proxy integration", () => {
           method: "POST",
           headers: {
             "content-type": "application/json",
-            "x-trigger-secret-proxy-token": serviceToken,
-            authorization: `Bearer ${token}`,
+            authorization: `Bearer ${serviceToken}`,
+            "x-trigger-run-token": token,
           },
           body: "x".repeat(32_769),
         })
@@ -566,7 +559,7 @@ describe("secret proxy integration", () => {
         { runId: f.run.friendlyId, attempt: 1 },
         secret.variable.id
       );
-      const snapshot = await f.service.resolve(serviceToken, token, {
+      const snapshot = await f.service.resolve(token, {
         bindingId: "allocation-1",
         resolve: [],
       });
@@ -582,8 +575,8 @@ describe("secret proxy integration", () => {
           method: "POST",
           headers: {
             "content-type": "application/json",
-            "x-trigger-secret-proxy-token": serviceToken,
-            authorization: `Bearer ${token}`,
+            authorization: `Bearer ${serviceToken}`,
+            "x-trigger-run-token": token,
           },
           body: JSON.stringify(requestFor(handle)),
         })
@@ -611,7 +604,7 @@ describe("secret proxy integration", () => {
       expect(JSON.stringify(exported)).not.toContain(token);
       expect(JSON.stringify(exported)).not.toContain(handle);
       expect(JSON.stringify(exported)).not.toContain("secret-one");
-      const first = await f.service.resolve(serviceToken, token, requestFor(handle));
+      const first = await f.service.resolve(token, requestFor(handle));
       expect(first.credentials).toHaveLength(1);
       expect(first.credentials[0]).toMatchObject({
         value: "secret-one",
@@ -619,7 +612,7 @@ describe("secret proxy integration", () => {
         hostname: "api.example.com",
       });
       expect(first.expiresAtMs).toBeLessThanOrEqual(Date.now() + 30_000);
-      const second = await f.service.resolve(serviceToken, token, requestFor(handle));
+      const second = await f.service.resolve(token, requestFor(handle));
       expect(second.expiresAtMs).toBeGreaterThanOrEqual(first.expiresAtMs);
       expect(second.expiresAtMs).toBeLessThanOrEqual(Date.now() + 30_000);
       const retained = placeholderForVariable(
@@ -628,28 +621,21 @@ describe("secret proxy integration", () => {
         secret.variable.id,
         "retained"
       );
-      expect(
-        (await f.service.resolve(serviceToken, token, requestFor(retained))).credentials[0]!.value
-      ).toBe("secret-one");
+      expect((await f.service.resolve(token, requestFor(retained))).credentials[0]!.value).toBe(
+        "secret-one"
+      );
+      expect(await f.service.serviceAuthenticated("wrong-service")).toBe(false);
       await expect(
-        f.service.resolve("wrong-service", token, requestFor(handle))
+        f.service.resolve(token, requestFor(handle, "other.example.com"))
       ).rejects.toBeInstanceOf(SecretProxyDeniedError);
       await expect(
-        f.service.resolve(serviceToken, token, requestFor(handle, "other.example.com"))
+        f.service.resolve(await f.sign({ run_id: RunId.generate().friendlyId }), requestFor(handle))
       ).rejects.toBeInstanceOf(SecretProxyDeniedError);
       await expect(
-        f.service.resolve(
-          serviceToken,
-          await f.sign({ run_id: RunId.generate().friendlyId }),
-          requestFor(handle)
-        )
-      ).rejects.toBeInstanceOf(SecretProxyDeniedError);
-      await expect(
-        f.service.resolve(serviceToken, await f.sign({ attempt: 2 }), requestFor(handle))
+        f.service.resolve(await f.sign({ attempt: 2 }), requestFor(handle))
       ).rejects.toBeInstanceOf(SecretProxyDeniedError);
       await expect(
         f.service.resolve(
-          serviceToken,
           token,
           requestFor(
             placeholderForVariable(
@@ -685,7 +671,7 @@ describe("secret proxy integration", () => {
         where: { id: secret.record.id },
         data: { version: { increment: 1 } },
       });
-      const rotated = await f.service.resolve(serviceToken, token, requestFor(handle));
+      const rotated = await f.service.resolve(token, requestFor(handle));
       expect(rotated.credentials[0]).toMatchObject({
         handle,
         value: "secret-two",
@@ -695,9 +681,9 @@ describe("secret proxy integration", () => {
         where: { id: f.run.id },
         data: { status: "COMPLETED_SUCCESSFULLY" },
       });
-      await expect(
-        f.service.resolve(serviceToken, token, requestFor(handle))
-      ).rejects.toBeInstanceOf(SecretProxyDeniedError);
+      await expect(f.service.resolve(token, requestFor(handle))).rejects.toBeInstanceOf(
+        SecretProxyDeniedError
+      );
     }
   );
 
@@ -1011,8 +997,8 @@ describe("secret proxy integration", () => {
             method: "POST",
             headers: {
               "content-type": "application/json",
-              "x-trigger-secret-proxy-token": serviceToken,
-              authorization: `Bearer ${runToken}`,
+              authorization: `Bearer ${serviceToken}`,
+              "x-trigger-run-token": runToken,
             },
             body: JSON.stringify({
               bindingId: "allocation-1",
@@ -1058,9 +1044,9 @@ describe("secret proxy integration", () => {
       { runId: f.run.friendlyId, attempt: 1 },
       secret.variable.id
     );
-    await expect(
-      f.service.resolve(serviceToken, await f.sign(), requestFor(handle))
-    ).rejects.toThrow("not authorized");
+    await expect(f.service.resolve(await f.sign(), requestFor(handle))).rejects.toThrow(
+      "not authorized"
+    );
   });
 
   postgresTest(
@@ -1083,7 +1069,7 @@ describe("secret proxy integration", () => {
         { runId: f.run.friendlyId, attempt: 1 },
         value.variable.id
       );
-      const result = await f.service.resolve(serviceToken, token, requestFor(handle));
+      const result = await f.service.resolve(token, requestFor(handle));
       expect(result.expiresAtMs).toBeLessThanOrEqual(Date.now() + 10_000);
       expect(result.credentials[0]).toMatchObject({
         value: "legacy-plaintext",
@@ -1091,13 +1077,13 @@ describe("secret proxy integration", () => {
       expect(result.expiresAtMs).toBeLessThanOrEqual(Date.now() + 30_000);
       expect(result.expiresAtMs).toBeGreaterThan(Date.now());
       await expect(
-        f.service.resolve(serviceToken, token, {
+        f.service.resolve(token, {
           bindingId: "allocation-1",
           resolve: [{ handle, hostname: "127.0.0.1", port: 443 }],
         })
       ).rejects.toThrow();
       await expect(
-        f.service.resolve(serviceToken, token, {
+        f.service.resolve(token, {
           bindingId: "allocation-1",
           resolve: [{ handle, hostname: "api.example.com", port: 80 }],
         })

@@ -23,3 +23,9 @@ export const RETRY_IMMEDIATELY_SNAPSHOT_DESCRIPTION =
  * the snapshot before this move.
  */
 export const CONTINUED_WHILST_EXECUTING_DESCRIPTION = "Run was continued, whilst still executing.";
+
+/** Created by both the dequeue and run attempt systems; OTel dedupes instruments by name. */
+export const COMPUTE_FALLBACKS_REFUSED_COUNTER = {
+  name: "run_engine.compute_fallbacks_refused",
+  description: "Container fallbacks refused for runs that must stay on compute, by site and why",
+} as const;

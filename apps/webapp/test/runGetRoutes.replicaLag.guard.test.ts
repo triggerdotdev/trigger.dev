@@ -42,6 +42,7 @@ const authUser = vi.hoisted(() => ({
   isImpersonating: false,
   isViewingAsUser: false,
 }));
+const requireSessionUser = vi.hoisted(() => vi.fn(async () => authUser));
 const resolved = vi.hoisted(() => ({
   authEnv: undefined as any,
   env: undefined as any,
@@ -115,7 +116,7 @@ vi.mock("~/v3/runStore.server", () => ({
 // server-only import graph, which this test deliberately keeps out.
 vi.mock("~/services/session.server", () => ({
   requireUserId: async () => authUser.id,
-  requireUser: async () => authUser,
+  requireUser: requireSessionUser,
   getUserId: async () => authUser.id,
 }));
 
@@ -208,6 +209,7 @@ vi.mock("~/presenters/v3/RegionsPresenter.server", () => ({
 }));
 vi.mock("~/v3/models/workerDeployment.server", () => ({
   findCurrentWorkerDeployment: async () => null,
+  findCurrentVersion: async () => undefined,
 }));
 vi.mock("~/runEngine/concerns/workerQueueSplit.server", () => ({
   regionForDisplay: () => undefined,
@@ -674,7 +676,11 @@ describe("routes-run-get — REAL loaders/actions vs a frozen owning replica", (
           concurrencyKey: "ck-site4",
         })
       );
-      resolved.authEnv = authEnvFor(seed);
+      const parentApiKey = "test-parent-key";
+      resolved.authEnv = {
+        ...authEnvFor(seed),
+        parentEnvironment: { id: "parent-env", apiKey: parentApiKey },
+      };
 
       const stale = laggingReplica(prisma14, [
         {
@@ -699,14 +705,21 @@ describe("routes-run-get — REAL loaders/actions vs a frozen owning replica", (
         prisma17 as any,
         stale.client
       );
-      const res = (await debugLoader({
+      const args = {
         request: new Request(`http://localhost/resources/taskruns/${friendlyId}/debug`),
         params: { runParam: friendlyId },
         context: {} as never,
-      })) as Response;
+      };
+      await expect(debugLoader(args)).rejects.toMatchObject({ status: 404 });
+
+      requireSessionUser.mockResolvedValueOnce({ ...authUser, isImpersonating: true });
+      const res = await debugLoader(args);
       expect(stale.wasHit("taskRun")).toBe(true);
       expect(res.status).toBe(200);
-      const body = await res.json();
+      const rawBody = await res.text();
+      expect(rawBody).not.toContain(seed.environment.apiKey);
+      expect(rawBody).not.toContain(parentApiKey);
+      const body = JSON.parse(rawBody);
       const data = body.json ?? body;
       expect(data.engine).toBe("V2");
       expect(data.run.queue).toBe("task/my-task");

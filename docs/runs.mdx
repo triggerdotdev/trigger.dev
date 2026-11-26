@@ -143,13 +143,13 @@ await runs.cancel(runId);
 
 When a run is canceled:
 
-– The task execution is stopped
+- The task execution is stopped
 
-– The run is marked as canceled
+- The run is marked as canceled
 
-– The task will not be retried
+- The task will not be retried
 
-– Any in-progress child runs are also canceled
+- Any in-progress child runs are also canceled
 
 ### Time-to-live (TTL)
 
@@ -398,7 +398,7 @@ for await (const run of runs.subscribeToRun<typeof myTask>(runId)) {
 }
 ```
 
-For more on real-time updates, see the [Realtime](/realtime) documentation.
+For more on real-time updates, see the [Realtime](/realtime/overview) documentation.
 
 ### Triggering runs for undeployed tasks
 

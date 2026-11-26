@@ -31,6 +31,7 @@ export const action = createActionWorkerApiRoute(
       workerLane: body.workerLane,
       supportsRunTokenRefresh: body.supportsRunTokenRefresh,
       supportsUsageJwtRefresh: body.supportsUsageJwtRefresh,
+      supportsRootKeyFreeExecution: body.supportsRootKeyFreeExecution,
       supportsSecretProxy: body.supportsSecretProxy,
       runnerId,
       environmentId,

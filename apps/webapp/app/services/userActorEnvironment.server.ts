@@ -11,7 +11,7 @@ import { rbac } from "~/services/rbac.server";
 
 const FORBIDDEN_ENVIRONMENT_CODE = "forbidden_environment";
 
-const DASHBOARD_AGENT_CLIENT = "dashboard-agent";
+export const DASHBOARD_AGENT_CLIENT = "dashboard-agent";
 
 /** Only the webapp's own mint yields this shape; a token minted from a PAT always names its `pat`. */
 export function isDashboardAgentUserActor(claims: UserActorClaims | undefined): boolean {

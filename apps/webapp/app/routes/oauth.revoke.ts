@@ -2,6 +2,7 @@ import { json, type ActionFunctionArgs } from "@remix-run/server-runtime";
 import { env } from "~/env.server";
 import { checkOAuthIpRateLimit } from "~/services/oauth/rateLimit.server";
 import { revokeToken } from "~/services/oauth/token.server";
+import { noteOAuthClientRequest } from "~/services/auditLogs/auditContext.server";
 
 export async function action({ request }: ActionFunctionArgs) {
   if (!env.MCP_SERVER_ENABLED) {
@@ -20,6 +21,7 @@ export async function action({ request }: ActionFunctionArgs) {
     );
   }
 
+  noteOAuthClientRequest(request);
   await revokeToken(new URLSearchParams(await request.text()));
   return new Response(null, { status: 200 });
 }

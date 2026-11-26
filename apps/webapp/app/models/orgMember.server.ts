@@ -1,5 +1,5 @@
 import { tryCatch } from "@trigger.dev/core/utils";
-import type { RoleAssignmentResult } from "@trigger.dev/plugins";
+import type { UserRoleAssignmentResult } from "@trigger.dev/plugins";
 import { $transaction, Prisma, prisma } from "~/db.server";
 import { deleteOrgMember, prepareMemberRemovalKeys } from "./deleteOrgMember.server";
 import { findOrCreateDirectoryUser } from "./directoryUser.server";
@@ -81,21 +81,19 @@ async function wasMemberAtWrite(userId: string, organizationId: string): Promise
  * that failed. Setting the role a member already has, or a role for a user who isn't a member,
  * records nothing. While recording is off, it reads nothing for the event.
  *
- * "after" is the role this call wrote. "before" is read before the write, outside the plugin's
- * transaction, so it is best-effort: a concurrent change between the read and the write can make it
- * stale, or skip the event when the stale role equals the new one. The proper fix (the plugin
- * returning the previous role from its transaction) is
- * https://linear.app/triggerdotdev/issue/TRI-16184. The member is read before the write too, so the
- * event can name them after a later removal. Whether they were still a member at the write is
- * checked right after it, before this returns (see `wasMemberAtWrite`). Auditing never blocks the
- * role change: a failed read is logged and the change goes ahead.
+ * "before" and whether the role changed come from the plugin, read in the write's transaction, so
+ * they are exact. "after" is the role this call wrote, but its name is looked up after the write,
+ * so a custom role renamed or deleted since then shows its new name or null. The member is read
+ * before the write, so the event can name them after a later removal. Whether they were still a
+ * member at the write is checked right after it, before this returns (see `wasMemberAtWrite`).
+ * Auditing never blocks the role change: a failed read is logged and the change goes ahead.
  *
  * `attribution` is for callers with no user behind them, such as the directory sync worker.
  */
 export async function setOrgMemberRole(
   params: { userId: string; organizationId: string; roleId: string },
   attribution?: MemberAuditAttribution
-): Promise<RoleAssignmentResult> {
+): Promise<UserRoleAssignmentResult> {
   const result = await writeOrgMemberRole(params, attribution);
   if (result.ok) {
     await enqueueAttioMemberSync({ organizationId: params.organizationId, userId: params.userId });
@@ -106,22 +104,18 @@ export async function setOrgMemberRole(
 async function writeOrgMemberRole(
   params: { userId: string; organizationId: string; roleId: string },
   attribution?: MemberAuditAttribution
-): Promise<RoleAssignmentResult> {
+): Promise<UserRoleAssignmentResult> {
   const { userId, organizationId, roleId } = params;
 
   if (!auditLogs.isRecordingEnabled()) {
     return rbac.setUserRole({ userId, organizationId, roleId });
   }
 
-  // Both reads run together, so the change waits for one round trip, not two. The role is read even
-  // for a user who turns out not to be a member, where it goes unused.
-  const [[memberReadError, memberBeforeWrite], [roleBeforeError, roleBefore]] = await Promise.all([
-    // Read before the write, so a later removal can't leave the event with nobody to name. If this
-    // read fails, the member is looked up after the write instead.
-    tryCatch(findAuditMember(userId, organizationId)),
-    // If this read fails, the change is recorded with an unknown "before".
-    tryCatch(rbac.getUserRole({ userId, organizationId })),
-  ]);
+  // Read before the write, so a later removal can't leave the event with nobody to name. If this
+  // read fails, the member is looked up after the write instead.
+  const [memberReadError, memberBeforeWrite] = await tryCatch(
+    findAuditMember(userId, organizationId)
+  );
   if (memberReadError) {
     logger.warn("setOrgMemberRole: failed to read the member before the change", {
       userId,
@@ -133,16 +127,8 @@ async function writeOrgMemberRole(
     return rbac.setUserRole({ userId, organizationId, roleId });
   }
 
-  if (roleBeforeError) {
-    logger.warn("setOrgMemberRole: failed to read the role before the change", {
-      userId,
-      organizationId,
-      error: roleBeforeError,
-    });
-  }
-
   const result = await rbac.setUserRole({ userId, organizationId, roleId });
-  if (!result.ok || (!roleBeforeError && roleBefore?.id === roleId)) {
+  if (!result.ok || !result.changed) {
     return result;
   }
 
@@ -168,7 +154,7 @@ async function writeOrgMemberRole(
         target: memberAuditTarget(member),
         changes: {
           role: {
-            before: roleBefore?.name ?? null,
+            before: result.previousRole?.name ?? null,
             after: await auditRoleName(organizationId, roleId),
           },
         },

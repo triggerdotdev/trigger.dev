@@ -4,6 +4,7 @@ import { oauthError } from "~/services/oauth/metadata.server";
 import { exchangeAuthorizationCode, exchangeRefreshToken } from "~/services/oauth/token.server";
 import { checkOAuthIpRateLimit } from "~/services/oauth/rateLimit.server";
 import { extractClientIp } from "~/utils/extractClientIp.server";
+import { noteOAuthClientRequest } from "~/services/auditLogs/auditContext.server";
 
 const noStore = { "Cache-Control": "no-store", Pragma: "no-cache" };
 
@@ -24,6 +25,7 @@ export async function action({ request }: ActionFunctionArgs) {
     );
   }
 
+  noteOAuthClientRequest(request);
   const params = new URLSearchParams(await request.text());
   const grantType = params.get("grant_type");
 

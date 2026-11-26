@@ -12,7 +12,12 @@ import type { RunMetadataManager, RunMetadataUpdater } from "./types.js";
 
 export class StandardMetadataManager implements RunMetadataManager {
   private flushTimeoutId: NodeJS.Timeout | null = null;
-  private isFlushing: boolean = false;
+  /** The periodic flush that is running; a tick schedules the next only while it is still this one. */
+  private periodicFlushRun: object | undefined;
+  /** Set once the last flush has been handed to the run's completion: nothing is sent after it. */
+  private flushingStopped: boolean = false;
+  /** The update request being sent. At most one is in flight, so updates stay ordered. */
+  private inFlightFlush: Promise<void> | undefined;
   private store: Record<string, DeserializedJson> | undefined;
 
   private queuedOperations: Set<RunMetadataChangeOperation> = new Set();
@@ -32,12 +37,15 @@ export class StandardMetadataManager implements RunMetadataManager {
     this.runId = undefined;
     this.runIdIsRoot = false;
 
-    if (this.flushTimeoutId) {
-      clearTimeout(this.flushTimeoutId);
-      this.flushTimeoutId = null;
-    }
+    this.stopPeriodicFlush();
 
-    this.isFlushing = false;
+    // The previous run's request settles on its own, against its own run id: it
+    // isn't this run's, so this run's first flush sends at once. Its settling
+    // leaves this run's in-flight request alone, and its response doesn't replace
+    // this run's metadata (see `flush` and `#send`).
+    this.inFlightFlush = undefined;
+    // The previous run handed its last flush to its completion; this run flushes again.
+    this.flushingStopped = false;
   }
 
   get parent(): RunMetadataUpdater {
@@ -352,21 +360,26 @@ export class StandardMetadataManager implements RunMetadataManager {
     }
   }
 
-  public async flush(requestOptions?: ApiRequestOptions): Promise<void> {
-    if (!this.runId) {
-      return;
+  /**
+   * Sends the queued changes and resolves when that request settles. When a
+   * request is already in flight it returns at once and sends nothing, so
+   * requests never overlap: what it leaves queued goes out with a later flush
+   * once the in-flight request has settled, or with the run's completion
+   * (`stopAndReturnLastFlush`) if the run ends first.
+   */
+  public flush(requestOptions?: ApiRequestOptions): Promise<void> {
+    if (!this.runId || this.flushingStopped || !this.#needsFlush() || this.inFlightFlush) {
+      return Promise.resolve();
     }
 
-    if (!this.#needsFlush()) {
-      return;
-    }
+    const sending = this.#send(this.runId, requestOptions).finally(() => {
+      if (this.inFlightFlush === sending) this.inFlightFlush = undefined;
+    });
+    this.inFlightFlush = sending;
+    return sending;
+  }
 
-    if (this.isFlushing) {
-      return;
-    }
-
-    this.isFlushing = true;
-
+  async #send(runId: string, requestOptions?: ApiRequestOptions): Promise<void> {
     const operations = Array.from(this.queuedOperations);
     this.queuedOperations.clear();
 
@@ -382,7 +395,7 @@ export class StandardMetadataManager implements RunMetadataManager {
       const collapsedRootOperations = collapseOperations(rootOperations);
 
       const response = await this.apiClient.updateRunMetadata(
-        this.runId,
+        runId,
         {
           operations: collapsedOperations,
           parentOperations: collapsedParentOperations,
@@ -391,39 +404,41 @@ export class StandardMetadataManager implements RunMetadataManager {
         requestOptions
       );
 
-      this.store = response.metadata;
+      // A response to an earlier run's request (settling after a `reset()`) is
+      // not this run's metadata.
+      if (this.runId === runId) this.store = response.metadata;
     } catch (error) {
       console.error("Failed to flush metadata", error);
-    } finally {
-      this.isFlushing = false;
     }
   }
 
   public startPeriodicFlush(intervalMs: number = 1000) {
-    const periodicFlush = async (intervalMs: number) => {
-      if (this.isFlushing) {
-        return;
-      }
+    const run = {};
+    this.periodicFlushRun = run;
 
+    const periodicFlush = async () => {
       try {
+        // A tick that lands on an in-flight request returns at once; a later tick, or the run's
+        // completion, sends what's left.
         await this.flush();
       } catch (error) {
         console.error("Failed to flush metadata", error);
-        throw error;
       } finally {
-        this.isFlushing = false;
         scheduleNext();
       }
     };
 
     const scheduleNext = () => {
-      this.flushTimeoutId = setTimeout(() => periodicFlush(intervalMs), intervalMs);
+      // Stopped (or restarted) while this tick was flushing: leave the timer alone.
+      if (this.periodicFlushRun !== run) return;
+      this.flushTimeoutId = setTimeout(periodicFlush, intervalMs);
     };
 
     scheduleNext();
   }
 
   stopPeriodicFlush(): void {
+    this.periodicFlushRun = undefined;
     if (this.flushTimeoutId) {
       clearTimeout(this.flushTimeoutId);
       this.flushTimeoutId = null;
@@ -432,7 +447,7 @@ export class StandardMetadataManager implements RunMetadataManager {
 
   async stopAndReturnLastFlush(): Promise<IOPacket> {
     this.stopPeriodicFlush();
-    this.isFlushing = true;
+    this.flushingStopped = true;
 
     if (!this.#needsFlush()) {
       return { dataType: "application/json" };

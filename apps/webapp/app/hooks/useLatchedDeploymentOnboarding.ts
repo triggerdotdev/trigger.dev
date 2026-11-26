@@ -2,7 +2,7 @@ import { useLocation } from "@remix-run/react";
 import type { WorkerDeploymentStatus } from "@trigger.dev/database";
 import { useState } from "react";
 import { useTypedFetcher } from "remix-typedjson";
-import type { loader as deploymentLoader } from "~/routes/_app.orgs.$organizationSlug.projects.$projectParam.env.$envParam.deployments.$deploymentParam/route";
+import type { loader as deploymentLoader } from "~/routes/_app.orgs.$organizationSlug.projects.$projectParam.env.$envParam.deployments_.$deploymentParam/route";
 import { type OnboardingLatch, resolveOnboardingLatch } from "./deploymentOnboardingLatch";
 import { useInterval } from "./useInterval";
 

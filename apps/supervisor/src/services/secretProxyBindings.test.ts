@@ -1,5 +1,5 @@
 import type { SupervisorHttpClient } from "@trigger.dev/core/v3/workers";
-import { chmod } from "node:fs/promises";
+import { chmod, rename } from "node:fs/promises";
 import { setTimeout as sleep } from "node:timers/promises";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { SecretProxyFixture, deploymentClaims, executionInput } from "./fixtures/secretProxy.js";
@@ -607,6 +607,87 @@ describe("SecretProxyBindings with real k3s and native interceptor UDS", () => {
     });
     expect(await fixture.acceptsTls(sandbox)).toBe(true);
     await finish(sandbox, first.snapshot.friendlyId);
+  }, 60_000);
+
+  function continued(caller: SecretProxyCaller, snapshotId: string, attempt = 1) {
+    const next = accepted(caller, { snapshotId, attempt });
+    return {
+      run: { friendlyId: caller.runId, attemptNumber: attempt },
+      snapshot: next.snapshot,
+      runToken: next.envVars.TRIGGER_RUN_TOKEN,
+      secretProxy: next.secretProxy,
+    };
+  }
+
+  it("binds a continue that arrives while the interceptor is restarting", async () => {
+    const caller = { ...callers[0]!, runId: "run_continue_restart" };
+    const first = await start(caller);
+    await bindings.revokeSuspending(caller.runId, "snap_restart_suspend");
+    bindings.suspendSettled(caller.runId, "snap_restart_suspend", true);
+    const placement = await bindings.prepareStart(caller, { continuing: true });
+    expect(placement).toBeDefined();
+
+    // Between the old process exiting and the new one binding the socket.
+    const moved = `${fixture.socketPath}.restarting`;
+    await rename(fixture.socketPath, moved);
+    const back = sleep(1_000).then(() => rename(moved, fixture.socketPath));
+    await bindings.activateContinue(caller, placement!, continued(caller, "snap_restart"));
+    await back;
+    expect(await fixture.acceptsTls(caller)).toBe(true);
+    await finish(caller, first.snapshot.friendlyId);
+  });
+
+  it("binds a retried continue after the first bind failed", async () => {
+    const caller = { ...callers[0]!, runId: "run_continue_retry" };
+    const first = await start(caller);
+    await bindings.revokeSuspending(caller.runId, "snap_retry_suspend");
+    bindings.suspendSettled(caller.runId, "snap_retry_suspend", true);
+
+    const placement = await bindings.prepareStart(caller, { continuing: true });
+    await chmod(fixture.socketPath, 0o644);
+    try {
+      await expect(
+        bindings.activateContinue(caller, placement!, continued(caller, "snap_retry"))
+      ).rejects.toThrow();
+    } finally {
+      await chmod(fixture.socketPath, 0o600);
+    }
+    expect(await fixture.acceptsTls(caller)).toBe(false);
+
+    // The runner retries the continue; its pending rebind must not make the retry busy.
+    const retry = await bindings.prepareStart(caller, { continuing: true });
+    expect(retry).toBeDefined();
+    await bindings.activateContinue(caller, retry!, continued(caller, "snap_retry"));
+    expect(await fixture.acceptsTls(caller)).toBe(true);
+    await finish(caller, first.snapshot.friendlyId);
+  });
+
+  it("binds a restored sandbox's retried continue after its credential write failed", async () => {
+    const [restored] = (await fixture.placements([
+      { runId: "run_restoredsandboxretry", singleUse: true, checkpoint: "checkpoint_e5f6a7b8" },
+    ])) as [SecretProxyCaller];
+    await fixture.registerAllocation(restored);
+
+    // The allocation is reserved, then the credential write is refused.
+    const placement = await bindings.prepareStart(restored, { continuing: true });
+    const first = continued(restored, "snap_sandbox_retry", 2);
+    await expect(
+      bindings.activateContinue(restored, placement!, {
+        ...first,
+        secretProxy: {
+          ...first.secretProxy!,
+          expiresAtMs: first.secretProxy!.expiresAtMs + 60_000,
+        },
+      })
+    ).rejects.toThrow();
+    expect(await fixture.acceptsTls(restored)).toBe(false);
+
+    // The runner retries the same continue; no heartbeat in between.
+    const retry = await bindings.prepareStart(restored, { continuing: true });
+    expect(retry).toBeDefined();
+    await bindings.activateContinue(restored, retry!, first);
+    expect(await fixture.acceptsTls(restored)).toBe(true);
+    await finish(restored, first.snapshot.friendlyId);
   }, 60_000);
 
   it("rebinds the source VM on its next heartbeat when the platform discards its suspend", async () => {

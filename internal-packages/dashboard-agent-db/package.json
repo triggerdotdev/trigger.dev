@@ -17,7 +17,7 @@
   "devDependencies": {
     "@testcontainers/postgresql": "^11.14.0",
     "drizzle-kit": "^0.31.0",
-    "vitest": "4.1.11"
+    "vitest": "4.1.12"
   },
   "scripts": {
     "test": "vitest run",

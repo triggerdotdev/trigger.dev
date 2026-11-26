@@ -639,9 +639,10 @@ export interface Task<TIdentifier extends string, TInput = void, TOutput = any> 
   /**
    * Batch trigger multiple task runs with the given payloads, and continue without waiting for the results. If you want to wait for the results, use `batchTriggerAndWait`. Returns the id of the triggered batch.
    * @param items - Array, AsyncIterable, or ReadableStream of batch items
-   * @returns InvokeBatchHandle
+   * @returns BatchRunHandle
    * - `batchId` - The id of the triggered batch.
-   * - `runs` - The ids of the triggered task runs.
+   * - `runCount` - The number of runs in the batch.
+   * - `publicAccessToken` - A JWT that can be used to access the batch and its runs.
    */
   batchTrigger: (
     items:
@@ -1179,20 +1180,24 @@ export type BatchRunHandleFromTypes<TRunTypes extends AnyRunTypes> = TRunTypes e
   : never;
 
 /**
- * A BatchRunHandle can be used to retrieve the runs of a batch trigger in a typesafe manner.
+ * The handle returned by `batch.triggerByTask()`.
+ *
+ * Batch runs are created asynchronously after the call returns, so the handle does not include
+ * the run IDs. `batch.retrieve(handle.batchId)` returns the batch as it is when you call it, so
+ * its `runs` can be empty or partial right after triggering. If you need every run ID, poll it
+ * until `processing.completedAt` is set and check `processing.errors` for items that failed to
+ * create a run, or use `batch.triggerByTaskAndWait()` to get typed results for each run.
+ *
+ * Earlier versions of this type also declared `runs`, `isCached` and `idempotencyKey`. Those
+ * fields were never returned at runtime and have been removed.
  */
-export type BatchTasksRunHandle<TTasks extends readonly AnyTask[]> = BrandedRun<
+export type BatchTasksRunHandle<_TTasks extends readonly AnyTask[]> = BrandedRun<
   {
+    /** The ID of the triggered batch. */
     batchId: string;
-    isCached: boolean;
-    idempotencyKey?: string;
-    runs: {
-      [K in keyof TTasks]: BatchedRunHandle<
-        TaskIdentifier<TTasks[K]>,
-        TaskPayload<TTasks[K]>,
-        TaskOutput<TTasks[K]>
-      >;
-    };
+    /** The number of runs in the batch. */
+    runCount: number;
+    /** An auto-generated JWT that can be used to access the batch and its runs. */
     publicAccessToken: string;
   },
   any,

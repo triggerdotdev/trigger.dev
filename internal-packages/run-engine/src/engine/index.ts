@@ -79,6 +79,7 @@ import {
   StaleCompletionNotes,
 } from "./staleCompletions.js";
 import { getFinalRunStatuses } from "./statuses.js";
+import { legacyToV2WorkerQueues } from "./workerQueueRouting.js";
 import { BatchSystem } from "./systems/batchSystem.js";
 import { CheckpointSystem } from "./systems/checkpointSystem.js";
 import { DebounceSystem } from "./systems/debounceSystem.js";
@@ -103,7 +104,9 @@ import type { SystemResources } from "./systems/systems.js";
 import {
   type RunStore,
   type SnapshotRoute,
+  PENDING_UNIT_IN_PROGRESS_REASON,
   PostgresRunStore,
+  SnapshotReadUnavailableError,
   snapshotRouteFromSnapshot,
   toWireRoute,
 } from "@internal/run-store";
@@ -678,6 +681,7 @@ export class RunEngine {
       raceSimulationSystem: this.raceSimulationSystem,
       pendingVersionRunIdLookup:
         options.pendingVersionRunIdLookup ?? new NoopPendingVersionRunIdLookup(),
+      legacyToV2WorkerQueues: legacyToV2WorkerQueues(options.legacyWorkerQueuesOnV2 ?? []),
     };
     this.#resources = resources;
 
@@ -3405,6 +3409,7 @@ export class RunEngine {
             return result;
           } catch (replicaRetryError) {
             if (!(replicaRetryError instanceof ExecutionSnapshotNotFoundError)) {
+              this.#rethrowIfSnapshotReadRetriable(replicaRetryError, runId, snapshotId);
               this.logger.error("Failed to getSnapshotsSince", {
                 message:
                   replicaRetryError instanceof Error
@@ -3428,6 +3433,7 @@ export class RunEngine {
           });
           return result;
         } catch (retryError) {
+          this.#rethrowIfSnapshotReadRetriable(retryError, runId, snapshotId);
           this.logger.error("Failed to getSnapshotsSince", {
             message: retryError instanceof Error ? retryError.message : retryError,
             runId,
@@ -3438,6 +3444,7 @@ export class RunEngine {
         }
       }
 
+      this.#rethrowIfSnapshotReadRetriable(e, runId, snapshotId);
       this.logger.error("Failed to getSnapshotsSince", {
         message: e instanceof Error ? e.message : e,
         runId,
@@ -3445,6 +3452,27 @@ export class RunEngine {
       });
       return null;
     }
+  }
+
+  // Retriable reads are rethrown so the route answers 503. Only the pending-unit commit race leaves
+  // "Failed to getSnapshotsSince" (which alerting matches): other retriable reasons, such as a
+  // quarantine or a dangling cycle, may not clear on retry and must stay alertable.
+  #rethrowIfSnapshotReadRetriable(error: unknown, runId: string, snapshotId: string) {
+    if (!(error instanceof SnapshotReadUnavailableError && error.retriable)) return;
+    if (error.reason === PENDING_UNIT_IN_PROGRESS_REASON) {
+      this.logger.warn("getSnapshotsSince: pending unit transaction in progress, retriable", {
+        runId,
+        snapshotId,
+      });
+    } else {
+      this.logger.error("Failed to getSnapshotsSince", {
+        message: error.message,
+        runId,
+        snapshotId,
+        retriable: true,
+      });
+    }
+    throw error;
   }
 
   async registerRacepointForRun({ runId, waitInterval }: { runId: string; waitInterval: number }) {

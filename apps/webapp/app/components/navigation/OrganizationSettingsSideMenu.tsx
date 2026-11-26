@@ -1,6 +1,7 @@
 import { ArrowLeftIcon } from "@heroicons/react/24/solid";
 import { BellIcon } from "~/assets/icons/BellIcon";
 import { ChainLinkIcon } from "~/assets/icons/ChainLinkIcon";
+import { ListCheckedIcon } from "~/assets/icons/ListCheckedIcon";
 import { CreditCardIcon } from "~/assets/icons/CreditCardIcon";
 import { FolderOpenIcon } from "~/assets/icons/FolderOpenIcon";
 import { PadlockIcon } from "~/assets/icons/PadlockIcon";
@@ -24,6 +25,7 @@ import {
   organizationSecurityPath,
   organizationSsoPath,
   organizationSupportAccessPath,
+  organizationAuditLogPath,
   organizationTeamPath,
   organizationVercelIntegrationPath,
   v3BillingLimitsPath,
@@ -39,6 +41,7 @@ import { useShowSelfServe } from "~/hooks/useShowSelfServe";
 import { useCurrentPlan } from "~/routes/_app.orgs.$organizationSlug/route";
 import { Paragraph } from "../primitives/Paragraph";
 import { Badge } from "../primitives/Badge";
+import { NewBadge } from "../FeatureBadges";
 import { useHasAdminAccess } from "~/hooks/useUser";
 
 export type BuildInfo = {
@@ -199,6 +202,19 @@ export function OrganizationSettingsSideMenu({
                 data-action="support-access"
               />
             )}
+          {/* The org's flag, which admins and impersonators bypass. Display only: the page checks
+              the flag itself, also for an admin viewing as a user. */}
+          {(featureFlags.hasAuditLogsAccess === true || isAdmin) && (
+            <SideMenuItem
+              name="Audit log"
+              icon={ListCheckedIcon}
+              activeIconColor="text-text-bright"
+              inactiveIconColor="text-text-dimmed"
+              to={organizationAuditLogPath(organization)}
+              data-action="audit-log"
+              badge={<NewBadge />}
+            />
+          )}
         </div>
         <div className="flex flex-col">
           <div className="mb-1">

@@ -1,24 +1,16 @@
-import {
-  isInfrastructureError,
-  WebhookEngine,
-  WebhookInfrastructureError,
-} from "@internal/webhook-engine";
+import { isInfrastructureError, WebhookEngine } from "@internal/webhook-engine";
 import type { WebhookDeliverTaskErrorType, WebhookRedisOptions } from "@internal/webhook-engine";
-import { tryCatch } from "@trigger.dev/core/utils";
 import { resolve4 } from "node:dns/promises";
 import { z } from "zod";
 import { $replica, webhookPartitionPrisma, webhookPrisma, webhookReplica } from "~/db.server";
 import { env } from "~/env.server";
 import { findEnvironmentById } from "~/models/runtimeEnvironment.server";
-import { S2RealtimeStreams } from "~/services/realtime/s2realtimeStreams.server";
-import { completeSessionStreamWaitpoints } from "~/services/realtime/sessionChannelAppend.server";
-import { ensureRunForSession } from "~/services/realtime/sessionRunManager.server";
-import { getRealtimeStreamInstance } from "~/services/realtime/v1StreamsGlobal.server";
 import { getSecretStore } from "~/services/secrets/secretStore.server";
 import { webhookEngineMetricsHooks } from "~/services/webhookMetrics.server";
 import { singleton } from "~/utils/singleton";
 import { ServiceValidationError } from "./services/common.server";
 import { TriggerTaskService } from "./services/triggerTask.server";
+import { deliverPartToSession } from "./webhookSessionDelivery.server";
 import { resolveWebhookSession } from "./webhookSessionTarget.server";
 import { activeSigningSecrets, StoredSigningSecret } from "./webhookSigningSecret";
 import { adoptCapturedWebhookSigningSecret } from "./webhookSigningSecret.server";
@@ -240,22 +232,9 @@ function createWebhookEngine() {
         }
         const { session, isCached } = resolution;
 
-        // Boot / revive the run, then append the action. The run reads it from `.in`.
-        const ensureResult = await ensureRunForSession({
-          session,
-          environment,
-          reason: isCached ? "continuation" : "initial",
-        });
-
-        const realtimeStream = getRealtimeStreamInstance(environment, "v2", { session });
-        if (!(realtimeStream instanceof S2RealtimeStreams)) {
-          return { success: false, error: "Session channels require the S2 realtime backend" };
-        }
-
-        const addressingKey = session.externalId ?? session.friendlyId;
         // "action" (chat.event) -> onAction envelope; "message" (channels) -> a turn whose message the
         // run derives by applying the connector's inbound() to the raw event.
-        const payload =
+        const deliveredPayload =
           deliverAs === "message"
             ? {
                 chatId: externalId,
@@ -284,34 +263,22 @@ function createWebhookEngine() {
                   endpoint,
                 },
               };
-        const part = JSON.stringify({ kind: "message", payload });
 
-        const claim = await claimPart();
-        if (claim === "busy") {
-          throw new WebhookInfrastructureError(
-            "Another attempt is appending this delivery to the session"
-          );
-        }
-        if (claim === "append") {
-          const [appendError] = await tryCatch(
-            realtimeStream.appendPartToSessionStream(part, partId, addressingKey, "in")
-          );
-          if (appendError) {
-            // Nothing landed — release the claim so a retry re-appends the same id.
-            await releasePart();
-            // A ServiceValidationError (e.g. record too large) is terminal; anything else is transient.
-            if (appendError instanceof ServiceValidationError) {
-              return { success: false, error: appendError.message };
-            }
-            throw appendError;
-          }
-          await commitPart();
+        const delivered = await deliverPartToSession({
+          environment,
+          session,
+          isCached,
+          part: JSON.stringify({ kind: "message", payload: deliveredPayload }),
+          partId,
+          claimPart,
+          commitPart,
+          releasePart,
+        });
+        if (!delivered.ok) {
+          return { success: false, error: delivered.error };
         }
 
-        // Wake any `.in` waitpoints the run registered (best-effort; the record is durable in S2).
-        await completeSessionStreamWaitpoints(environment, addressingKey, "in", part);
-
-        return { success: true, runId: ensureResult.runId };
+        return { success: true, runId: delivered.runId };
       } catch (error) {
         return {
           success: false,

@@ -5,6 +5,8 @@ import type {
   AuditLogCredentialRevokedInput,
   AuditLogEventPage,
   AuditLogEventQuery,
+  AuditLogEventSummary,
+  AuditLogEventSummaryQuery,
   AuditLogInput,
   AuditLogListedEvent,
 } from "@trigger.dev/plugins";
@@ -71,6 +73,12 @@ export type AuditLogs = {
   findCredentialFingerprint(hash: string): Promise<{ fingerprintId: string } | null>;
   /** No events without the plugin. */
   listEvents(query: AuditLogEventQuery): Promise<AuditLogEventPage>;
+  /**
+   * What the events `listEvents` returns for the same filters add up to. Null without the plugin,
+   * or when it can't summarize. The plugin leaves out every IP the list hides, staff's included:
+   * a count can't be filtered here.
+   */
+  summarizeEvents(query: AuditLogEventSummaryQuery): Promise<AuditLogEventSummary | null>;
 };
 
 const NO_EVENTS: AuditLogEventPage = { events: [], nextCursor: null };
@@ -87,7 +95,13 @@ function errorMessage(error: unknown): string {
  * e.g. staff identity or fingerprint ids, and those must never reach a customer.
  */
 function toListedEvent(event: AuditLogListedEvent): AuditLogListedEvent {
-  const { credential, endpoint, origin } = event;
+  const { endpoint, origin } = event;
+  // Trigger.dev staff acted: their IP, user agent and credential stay internal.
+  const byStaff = event.actor.type === "support" || event.source === "staff";
+  // A platform-minted key (a build's deploy key, Vercel promote, preview archive): its IP and key
+  // are our infrastructure's, so they stay internal too.
+  const infraActed = event.actor.type === "trigger_infra";
+  const credential = byStaff || infraActed ? null : event.credential;
   return {
     category: event.category,
     action: event.action,
@@ -98,14 +112,14 @@ function toListedEvent(event: AuditLogListedEvent): AuditLogListedEvent {
     environmentId: event.environmentId,
     environmentType: event.environmentType,
     target: { type: event.target.type, id: event.target.id, name: event.target.name },
-    actor: { type: event.actor.type, id: event.actor.id },
+    // Which staff member acted as Trigger.dev support stays internal, whatever the plugin stored.
+    actor: { type: event.actor.type, id: event.actor.type === "support" ? null : event.actor.id },
     credential: credential
       ? { kind: credential.kind, id: credential.id, last4: credential.last4 }
       : null,
     source: event.source,
-    // Trigger.dev staff acted: the IP and user agent are theirs, so they stay internal.
     endpoint:
-      endpoint && event.actor.type !== "support" && event.source !== "staff"
+      endpoint && !byStaff && !infraActed
         ? {
             ip: endpoint.ip,
             userAgent: endpoint.userAgent,
@@ -123,6 +137,26 @@ function toListedEvent(event: AuditLogListedEvent): AuditLogListedEvent {
     requestId: event.requestId,
     changes: event.changes,
   } as AuditLogListedEvent;
+}
+
+/** Copies only the summary's fields, like `toListedEvent`. */
+function toEventSummary(summary: AuditLogEventSummary): AuditLogEventSummary {
+  return {
+    eventCount: summary.eventCount,
+    firstSeenAt: summary.firstSeenAt,
+    lastSeenAt: summary.lastSeenAt,
+    ipCount: summary.ipCount,
+    countryCodes: [...summary.countryCodes],
+    countryCount: summary.countryCount,
+    recentIps: summary.recentIps.map(({ ip, lastSeenAt, location }) => ({
+      ip,
+      lastSeenAt,
+      location: location
+        ? { countryCode: location.countryCode, asn: location.asn, asName: location.asName }
+        : null,
+    })),
+    approximate: summary.approximate,
+  };
 }
 
 /**
@@ -296,6 +330,13 @@ export function createAuditLogs(options: {
           .map(toListedEvent),
         nextCursor: page.nextCursor,
       };
+    },
+
+    async summarizeEvents(query) {
+      const controller = await options.controller();
+      if (!controller?.summarizeEvents) return null;
+
+      return toEventSummary(await controller.summarizeEvents(query));
     },
   };
 }

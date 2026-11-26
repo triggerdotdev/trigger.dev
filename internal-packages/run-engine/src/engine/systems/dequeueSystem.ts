@@ -1,7 +1,12 @@
 import { type Counter, startSpan } from "@internal/tracing";
 import { assertExhaustive, tryCatch } from "@trigger.dev/core";
 import type { DequeuedMessage, TaskRunInternalError } from "@trigger.dev/core/v3";
-import { isSandboxRun, RetryOptions, RunAnnotations } from "@trigger.dev/core/v3";
+import {
+  computeOnlyReason,
+  isSandboxRun,
+  RetryOptions,
+  RunAnnotations,
+} from "@trigger.dev/core/v3";
 import { getMaxDuration, SnapshotId } from "@trigger.dev/core/v3/isomorphic";
 import { placementTag } from "@trigger.dev/core/v3/serverOnly";
 import type {
@@ -18,7 +23,10 @@ import type {
   ResolvedWorkerDeployment,
   ResolvedWorkerTask,
 } from "../controlPlaneResolver.js";
-import { CONTINUED_WHILST_EXECUTING_DESCRIPTION } from "../consts.js";
+import {
+  COMPUTE_FALLBACKS_REFUSED_COUNTER,
+  CONTINUED_WHILST_EXECUTING_DESCRIPTION,
+} from "../consts.js";
 import { deletedEnvironmentReason, MISSING_ENVIRONMENT_REASON } from "../controlPlaneResolver.js";
 
 import { sendNotificationToWorker } from "../eventBus.js";
@@ -158,6 +166,7 @@ export class DequeueSystem {
   private readonly deploymentWaitMaxMs: number;
   private readonly deploymentStatusMode: () => DeploymentStatusMode;
   private readonly deploymentNotDeployedCounter: Counter;
+  private readonly computeFallbacksRefusedCounter: Counter;
 
   constructor(private readonly options: DequeueSystemOptions) {
     this.$ = options.resources;
@@ -174,6 +183,10 @@ export class DequeueSystem {
           "Dequeues of a run whose deployment hasn't finished deploying, by what enforce mode does (or would do in shadow mode): fail, fail_stalled or wait",
         unit: "runs",
       }
+    );
+    this.computeFallbacksRefusedCounter = this.$.meter.createCounter(
+      COMPUTE_FALLBACKS_REFUSED_COUNTER.name,
+      { description: COMPUTE_FALLBACKS_REFUSED_COUNTER.description, unit: "runs" }
     );
   }
 
@@ -724,14 +737,22 @@ export class DequeueSystem {
                 !snapshot.checkpointId &&
                 !result.deployment?.templateKey
               ) {
+                // A run that must stay on compute (a sandbox, or a compute-only org's run)
+                // waits for a template instead of moving to a container lane.
+                const why = computeOnlyReason(result.run.annotations);
+                if (why) {
+                  this.computeFallbacksRefusedCounter.add(1, { site: "dequeue", why });
+                  this.$.logger.info(
+                    "RunEngine.dequeueFromWorkerQueue(): No template, kept on compute",
+                    { runId, workerQueue, why }
+                  );
+                }
                 const outcome = await this.#moveToTemplateFallback({
                   orgId,
                   runId,
                   workerQueue,
-                  // A sandbox must not leave compute, so it waits for a template instead.
-                  fallbackWorkerQueue: isSandboxRun(result.run.annotations)
-                    ? undefined
-                    : templateFallbackWorkerQueue(workerQueue),
+                  fallbackWorkerQueue: why ? undefined : templateFallbackWorkerQueue(workerQueue),
+                  pinnedToCompute: !!why,
                   tx: prisma,
                 });
                 span.setAttribute("result", outcome);
@@ -1140,12 +1161,15 @@ export class DequeueSystem {
     runId,
     workerQueue,
     fallbackWorkerQueue,
+    pinnedToCompute = false,
     tx,
   }: {
     orgId: string;
     runId: string;
     workerQueue: string;
     fallbackWorkerQueue: string | undefined;
+    /** The run executes only on microVM compute, so it can never start without a template. */
+    pinnedToCompute?: boolean;
     tx: PrismaClientOrTransaction;
   }): Promise<"TEMPLATE_FALLBACK" | "TEMPLATE_WAIT"> {
     if (fallbackWorkerQueue && fallbackWorkerQueue !== workerQueue) {
@@ -1185,7 +1209,9 @@ export class DequeueSystem {
         error: {
           type: "INTERNAL_ERROR",
           code: "TASK_RUN_DEQUEUED_MAX_RETRIES",
-          message: "The run's deployment is not ready to start on this worker queue.",
+          message: pinnedToCompute
+            ? "This run couldn't start. Deploy again, then replay the run."
+            : "The run's deployment is not ready to start on this worker queue.",
         },
         tx,
       });

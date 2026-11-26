@@ -298,6 +298,7 @@ describe("findRunByIdWithMollifierFallback", () => {
         workerQueue: "default",
         queue: "task/my-task",
         concurrencyKey: "tenant-42",
+        priorityMs: 30_000,
         machine: "medium-1x",
         realtimeStreamsVersion: "v2",
         seedMetadata: '{"k":"v"}',
@@ -320,6 +321,7 @@ describe("findRunByIdWithMollifierFallback", () => {
     expect(result!.workerQueue).toBe("default");
     expect(result!.queue).toBe("task/my-task");
     expect(result!.concurrencyKey).toBe("tenant-42");
+    expect(result!.priorityMs).toBe(30_000);
     expect(result!.machinePreset).toBe("medium-1x");
     expect(result!.realtimeStreamsVersion).toBe("v2");
     expect(result!.seedMetadata).toBe('{"k":"v"}');

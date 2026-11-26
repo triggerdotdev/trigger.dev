@@ -3,6 +3,7 @@ import {
   type WorkerDeploymentStatus,
   type WorkerInstanceGroupType,
 } from "@trigger.dev/database";
+import type { DeploymentDisplayStatus } from "~/components/runs/v3/DeploymentStatus";
 import { sqlDatabaseSchema, type PrismaClient, prisma } from "~/db.server";
 import { type Organization } from "~/models/organization.server";
 import { type Project } from "~/models/project.server";
@@ -15,8 +16,28 @@ import {
   buildVercelDeploymentUrl,
 } from "~/v3/vercel/vercelProjectIntegrationSchema";
 import { resolveRedeploySource } from "~/v3/redeploy";
+import { deploymentStatusFilterSql } from "./deploymentStatusFilter";
+import { deploymentDaySql, safeTimeZone } from "~/v3/deploymentActivity.server";
+import { tryCatch } from "@trigger.dev/core/utils";
+import { env } from "~/env.server";
+import { logger } from "~/services/logger.server";
+import { deployCliVersionPolicy } from "~/v3/cliVersionPolicyInstance.server";
+import { environmentCliVersionWarning } from "./cliVersionWarning.server";
 
 const pageSize = 20;
+
+export type DeploymentListFilters = {
+  statuses?: DeploymentDisplayStatus[];
+  branches?: string[];
+  search?: string;
+  /** YYYY-MM-DD: only deployments made that day, in `timeZone`. */
+  day?: string;
+  timeZone?: string;
+};
+
+function escapeLike(value: string) {
+  return value.replace(/[\\%_]/g, "\\$&");
+}
 
 type DeploymentList = Awaited<ReturnType<DeploymentListPresenter["call"]>>;
 export type DeploymentListItem = DeploymentList["deployments"][0];
@@ -34,16 +55,19 @@ export class DeploymentListPresenter {
     organizationSlug,
     environmentSlug,
     page = 1,
+    filters = {},
   }: {
     userId: User["id"];
     projectSlug: Project["slug"];
     organizationSlug: Organization["slug"];
     environmentSlug: string;
     page?: number;
+    filters?: DeploymentListFilters;
   }) {
     const project = await this.#prismaClient.project.findFirstOrThrow({
       select: {
         id: true,
+        organization: { select: { featureFlags: true } },
         connectedGithubRepository: {
           select: {
             branchTracking: true,
@@ -75,22 +99,42 @@ export class DeploymentListPresenter {
       throw new Error(`Environment not found`);
     }
 
-    const totalCount = await this.#prismaClient.workerDeployment.count({
-      where: {
-        projectId: project.id,
-        environmentId: environment.id,
-      },
-    });
+    const statuses = filters.statuses?.length ? filters.statuses : undefined;
+    const branches = filters.branches?.length ? filters.branches : undefined;
+    const search = filters.search?.trim() || undefined;
+    const day = filters.day;
+    const hasFilters = !!(statuses || branches || search || day);
 
-    const labeledDeployments = await this.#prismaClient.workerDeploymentPromotion.findMany({
-      where: {
-        environmentId: environment.id,
-      },
-      select: {
-        deploymentId: true,
-        label: true,
-      },
-    });
+    // Served by @@index([environmentId, status, id]) when filtering by status, otherwise by
+    // @@unique([environmentId, version]). Branch and version search filter the env's rows.
+    const filterSql = Prisma.sql`${statuses ? deploymentStatusFilterSql(statuses) : Prisma.empty} ${branches ? Prisma.sql`AND wd."git"->>'commitRef' = ANY(${branches})` : Prisma.empty} ${
+      search ? Prisma.sql`AND wd."version" ILIKE ${`%${escapeLike(search)}%`}` : Prisma.empty
+    } ${day ? Prisma.sql`AND ${deploymentDaySql(day, safeTimeZone(filters.timeZone))}` : Prisma.empty}`;
+
+    const [countRows, anyDeployment, labeledDeployments] = await Promise.all([
+      this.#prismaClient.$queryRaw<{ count: bigint }[]>`
+        SELECT COUNT(*) AS count FROM ${sqlDatabaseSchema}."WorkerDeployment" AS wd
+        WHERE wd."environmentId" = ${environment.id} ${filterSql}`,
+      hasFilters
+        ? this.#prismaClient.workerDeployment.findFirst({
+            where: { environmentId: environment.id },
+            select: { id: true },
+          })
+        : null,
+      this.#prismaClient.workerDeploymentPromotion.findMany({
+        where: {
+          environmentId: environment.id,
+        },
+        select: {
+          deploymentId: true,
+          label: true,
+          deployment: { select: { version: true, shortCode: true } },
+        },
+      }),
+    ]);
+    const totalCount = Number(countRows[0]?.count ?? 0);
+    const hasAnyDeployments = hasFilters ? !!anyDeployment : totalCount > 0;
+    const currentPromotion = labeledDeployments.find((d) => d.label === "current");
 
     // Check for Vercel integration before the main query so we can conditionally LEFT JOIN
     let hasVercelIntegration = false;
@@ -198,9 +242,26 @@ ${vercelJoin}
 WHERE
   wd."projectId" = ${project.id}
   AND wd."environmentId" = ${environment.id}
+  ${filterSql}
 ORDER BY
   string_to_array(wd."version", '.')::int[] DESC
 LIMIT ${pageSize} OFFSET ${pageSize * (page - 1)};`;
+
+    const [cliVersionWarningError, cliVersionWarning] = await tryCatch(
+      environmentCliVersionWarning(this.#prismaClient, {
+        environmentId: environment.id,
+        policy: deployCliVersionPolicy(project.organization),
+        since: new Date(
+          Date.now() - env.DEPLOY_CLI_VERSION_WARNING_LOOKBACK_DAYS * 24 * 60 * 60 * 1000
+        ),
+      })
+    );
+    if (cliVersionWarningError) {
+      logger.error("Failed to load the CLI version warning", {
+        environmentId: environment.id,
+        error: cliVersionWarningError,
+      });
+    }
 
     const { connectedGithubRepository } = project;
 
@@ -226,7 +287,12 @@ LIMIT ${pageSize} OFFSET ${pageSize * (page - 1)};`;
       environmentType: environment.type,
       currentPage: page,
       totalPages: Math.ceil(totalCount / pageSize),
+      hasAnyDeployments,
+      hasFilters,
+      // The current deploy can be on another page or filtered out; rollback and promote need it.
+      currentDeployment: currentPromotion?.deployment,
       hasVercelIntegration,
+      cliVersionWarning: cliVersionWarning ?? undefined,
       connectedGithubRepository: project.connectedGithubRepository ?? undefined,
       environmentGitHubBranch,
       deployments: deployments.map((deployment, index) => {
@@ -263,7 +329,7 @@ LIMIT ${pageSize} OFFSET ${pageSize * (page - 1)};`;
           isBuilt: !!deployment.builtAt,
           isCurrent: label?.label === "current",
           isDeployed: deployment.status === "DEPLOYED",
-          isLatest: page === 1 && index === 0,
+          isLatest: page === 1 && index === 0 && !hasFilters,
           type: deployment.type,
           environment: {
             id: environment.id,

@@ -525,6 +525,7 @@ export class AlertDetailPresenter extends BasePresenter {
     projectId: string;
     environmentId: string;
     eventsWindow?: { since: Date; until: Date };
+    skipCurrentReading?: boolean;
   }): Promise<AlertDetail | null> {
     return this.trace("call", async () => {
       const alert = await getAlert(this._alertDb, {
@@ -569,7 +570,9 @@ export class AlertDetailPresenter extends BasePresenter {
               channelIds,
             })
           : { environmentType: null, channels: new Map<string, NotifierChannel>() },
-        getCurrentReading(alert, this._getCurrentReadingDeps),
+        params.skipCurrentReading
+          ? Promise.resolve<CurrentReading>({ status: "unavailable", observedAt: new Date() })
+          : getCurrentReading(alert, this._getCurrentReadingDeps),
       ]);
       const eventTimes = eventTimesById.get(alert.id);
       const notifiers = notifiersFor(notifierRefs, channels);

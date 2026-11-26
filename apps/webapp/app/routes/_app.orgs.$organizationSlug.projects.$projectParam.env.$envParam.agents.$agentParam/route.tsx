@@ -1,247 +1,164 @@
-import { BookOpenIcon } from "@heroicons/react/24/solid";
+import { BookOpenIcon } from "@heroicons/react/20/solid";
+import { type ShouldRevalidateFunction, useLocation } from "@remix-run/react";
 import { type LoaderFunctionArgs } from "@remix-run/server-runtime";
-import { Suspense, useMemo, useState } from "react";
-import { TypedAwait, typeddefer, useTypedLoaderData } from "remix-typedjson";
-import { z } from "zod";
+import { useMemo, useState } from "react";
+import { typeddefer, useTypedLoaderData } from "remix-typedjson";
+import { AIChatIcon } from "~/assets/icons/AIChatIcon";
 import { BeakerIcon } from "~/assets/icons/BeakerIcon";
-import { CubeSparkleIcon } from "~/assets/icons/CubeSparkleIcon";
-import { PageContainer } from "~/components/layout/AppLayout";
-import { MetricsLayout } from "~/components/layout/MetricsLayout";
+import { agentsAgentPageContext } from "~/components/dashboard-agent/suggested-prompts";
+import { WhenAgentUnavailable } from "~/components/dashboard-agent/WhenAgentUnavailable";
+import { PageBody, PageContainer } from "~/components/layout/AppLayout";
 import { DirectionSchema, ListPagination } from "~/components/ListPagination";
-import { LinkButton } from "~/components/primitives/Buttons";
+import { Button, LinkButton } from "~/components/primitives/Buttons";
 import { buildActivityTimeAxis } from "~/components/primitives/charts/activityTimeAxis";
-import { ChartCard } from "~/components/primitives/charts/ChartCard";
+import { ChartBlankState } from "~/components/primitives/charts/ChartBlankState";
 import { Chart, type ChartConfig } from "~/components/primitives/charts/ChartCompound";
 import { ChartSyncProvider } from "~/components/primitives/charts/ChartSyncContext";
 import { statusColor } from "~/components/primitives/charts/statusColors";
-import { CopyableText } from "~/components/primitives/CopyableText";
-import { DateTime } from "~/components/primitives/DateTime";
-import { Header2 } from "~/components/primitives/Headers";
-import { NavBar, PageAccessories, PageTitle } from "~/components/primitives/PageHeader";
-import { Paragraph } from "~/components/primitives/Paragraph";
-import * as Property from "~/components/primitives/PropertyTable";
-import { Spinner } from "~/components/primitives/Spinner";
-import { TabButton, TabContainer } from "~/components/primitives/Tabs";
+import { DeferredContent } from "~/components/primitives/detail/DeferredContent";
 import {
-  RunsListErrorState,
-  RunsListErrorStateNoop,
-} from "~/components/runs/v3/RunsListErrorState";
-import { RunsListQueryError } from "~/services/runsRepository/runsRepository.server";
-import { TimeFilter, timeFilterFromTo } from "~/components/runs/v3/SharedFilters";
-import { TaskRunsTable } from "~/components/runs/v3/TaskRunsTable";
+  DetailPageTitle,
+  DetailProperty,
+  PropertyGroup,
+  useDetailTab,
+} from "~/components/primitives/detail/DetailPage";
+import {
+  ChartSkeleton,
+  DetailTabEmpty,
+  DetailTabError,
+  DetailTabLoading,
+  DetailTableTab,
+  SkeletonBone,
+} from "~/components/primitives/detail/DetailSections";
+import { NavBar, PageAccessories } from "~/components/primitives/PageHeader";
+import { TimeFilter } from "~/components/runs/v3/SharedFilters";
 import { SessionsTable } from "~/components/sessions/v1/SessionsTable";
+import { TaskDetailView } from "~/components/tasks/TaskDetailView";
 import { $replica } from "~/db.server";
 import { useEnvironment } from "~/hooks/useEnvironment";
 import { useOrganization } from "~/hooks/useOrganizations";
 import { useProject } from "~/hooks/useProject";
 import { useZoomToTimeFilter } from "~/hooks/useZoomToTimeFilter";
-import { findProjectBySlug } from "~/models/project.server";
-import { findEnvironmentBySlug } from "~/models/runtimeEnvironment.server";
 import {
-  AgentDetailPresenter,
   type AgentActivity,
-  type AgentDetail,
+  AgentDetailPresenter,
+  type AgentModelUsage,
 } from "~/presenters/v3/AgentDetailPresenter.server";
-import { NextRunListPresenter } from "~/presenters/v3/NextRunListPresenter.server";
-import { getRunColumnsForSelect } from "~/presenters/v3/runColumnsFromRequest.server";
-import { RunsDisplayOptions } from "~/components/runs/v3/RunsDisplayOptions";
 import { SessionListPresenter } from "~/presenters/v3/SessionListPresenter.server";
+import { loadTaskDetailPage, taskQueueAction } from "~/presenters/v3/TaskDetailPage.server";
 import { clickhouseFactory } from "~/services/clickhouse/clickhouseFactoryInstance.server";
-import { getResizableSnapshot } from "~/services/resizablePanel.server";
-import { requireUser } from "~/services/session.server";
+import { cn } from "~/utils/cn";
+import { onlyDetailTabChanged } from "~/utils/detailTabRevalidation";
+import type { Handle } from "~/utils/handle";
+import { formatNumber } from "~/utils/numberFormatter";
+import { pageMeta } from "~/utils/pageTitle";
 import {
   docsPath,
-  EnvironmentParamSchema,
   v3EnvironmentPath,
   v3PlaygroundAgentPath,
+  v3SessionsPath,
 } from "~/utils/pathBuilder";
 import { parseFiniteInt } from "~/utils/searchParams";
-import { agentsAgentPageContext } from "~/components/dashboard-agent/suggested-prompts";
-import { WhenAgentUnavailable } from "~/components/dashboard-agent/WhenAgentUnavailable";
-import type { Handle } from "~/utils/handle";
 
 export const handle: Handle = {
   agentPageContext: (data) => agentsAgentPageContext(data),
 };
-import { pageMeta } from "~/utils/pageTitle";
 
 export const meta = pageMeta<typeof loader>(({ data, params }) => [
-  data?.agent?.slug ?? params.agentParam ?? "Agent",
+  data?.task?.slug ?? params.agentParam ?? "Agent",
   "Agents",
 ]);
 
-const AgentParamSchema = EnvironmentParamSchema.extend({
-  agentParam: z.string(),
-});
+const EMPTY_ACTIVITY: AgentActivity = { data: [], statuses: [] };
 
+/**
+ * The agent page is the task page (Runs, Queue, the rail) with the agent's Sessions tab first,
+ * the Playground as its main action, and the agent's model and instructions in the rail.
+ */
 export const loader = async ({ request, params }: LoaderFunctionArgs) => {
-  const user = await requireUser(request);
-  const userId = user.id;
-  const { organizationSlug, projectParam, envParam, agentParam } = AgentParamSchema.parse(params);
-
-  const project = await findProjectBySlug(organizationSlug, projectParam, userId);
-  if (!project) {
-    throw new Response("Project not found", { status: 404 });
-  }
-
-  const environment = await findEnvironmentBySlug(project.id, envParam, userId);
-  if (!environment) {
-    throw new Response("Environment not found", { status: 404 });
-  }
+  const { user, project, environment, time, page } = await loadTaskDetailPage({
+    request,
+    params: { ...(params as Record<string, string>), taskParam: params.agentParam },
+    triggerSource: "AGENT",
+    defaultTab: "sessions",
+  });
 
   const url = new URL(request.url);
+  const sessionsTabOpen = (url.searchParams.get("tab") ?? "sessions") === "sessions";
   const period = url.searchParams.get("period") ?? undefined;
   const from = parseFiniteInt(url.searchParams.get("from"));
   const to = parseFiniteInt(url.searchParams.get("to"));
-  const cursor = url.searchParams.get("cursor") ?? undefined;
-  const directionRaw = url.searchParams.get("direction") ?? undefined;
-  const direction = directionRaw ? DirectionSchema.parse(directionRaw) : undefined;
+  const cursor = sessionsTabOpen ? (url.searchParams.get("cursor") ?? undefined) : undefined;
+  const direction = DirectionSchema.catch("forward").parse(
+    url.searchParams.get("direction") ?? undefined
+  );
 
-  const [clickhouse, runsListClickhouse] = await Promise.all([
-    clickhouseFactory.getClickhouseForOrganization(project.organizationId, "standard"),
-    clickhouseFactory.getClickhouseForOrganization(project.organizationId, "runsList"),
-  ]);
-
-  const presenter = new AgentDetailPresenter($replica, clickhouse);
-  const agent = await presenter.findAgent({
+  const clickhouse = await clickhouseFactory.getClickhouseForOrganization(
+    project.organizationId,
+    "standard"
+  );
+  const presenter = new AgentDetailPresenter(clickhouse);
+  const scope = {
+    organizationId: project.organizationId,
+    projectId: project.id,
     environmentId: environment.id,
-    environmentType: environment.type,
-    agentSlug: agentParam,
-  });
+    agentSlug: page.task.slug,
+    from: time.from,
+    to: time.to,
+  };
 
-  if (!agent) {
-    throw new Response("Agent not found", { status: 404 });
-  }
-
-  const time = timeFilterFromTo({ period, from, to, defaultPeriod: "7d" });
-
-  const runActivity = presenter
-    .getActivity({
-      organizationId: project.organizationId,
-      projectId: project.id,
-      environmentId: environment.id,
-      agentSlug: agent.slug,
-      from: time.from,
-      to: time.to,
-    })
-    .catch(() => ({ data: [], statuses: [] }) satisfies AgentActivity);
-
-  const sessionActivity = presenter
-    .getSessionActivity({
-      organizationId: project.organizationId,
-      projectId: project.id,
-      environmentId: environment.id,
-      agentSlug: agent.slug,
-      from: time.from,
-      to: time.to,
-    })
-    .catch(() => ({ data: [], statuses: [] }) satisfies AgentActivity);
-
-  const llmCostActivity = presenter
-    .getLlmCostActivity({
-      organizationId: project.organizationId,
-      projectId: project.id,
-      environmentId: environment.id,
-      agentSlug: agent.slug,
-      from: time.from,
-      to: time.to,
-    })
-    .catch(() => ({ data: [], statuses: [] }) satisfies AgentActivity);
-
-  const llmTokenActivity = presenter
-    .getLlmTokenActivity({
-      organizationId: project.organizationId,
-      projectId: project.id,
-      environmentId: environment.id,
-      agentSlug: agent.slug,
-      from: time.from,
-      to: time.to,
-    })
-    .catch(() => ({ data: [], statuses: [] }) satisfies AgentActivity);
-
-  const runList = new NextRunListPresenter($replica, runsListClickhouse)
-    .call(project.organizationId, environment.id, {
-      userId,
-      projectId: project.id,
-      tasks: [agent.slug],
-      period,
-      from,
-      to,
-      cursor,
-      direction,
-      columns: getRunColumnsForSelect(request),
-    })
-    .catch((error) => {
-      if (error instanceof RunsListQueryError) {
-        throw error;
-      }
-      return null;
-    });
-
-  const sessionList = new SessionListPresenter($replica, clickhouse)
-    .call(project.organizationId, environment.id, {
-      userId,
-      projectId: project.id,
-      taskIdentifiers: [agent.slug],
-      period,
-      from,
-      to,
-      cursor,
-      direction,
-    })
-    .catch(() => null);
-
-  // The [main | config] split is draggable and its width is persisted to a cookie by the
-  // Resizable primitive; hydrate it here so a reload keeps the user's saved split.
-  const sidebarSnapshot = await getResizableSnapshot(request, "agent-detail-sidebar");
+  const config = (page.task.config ?? {}) as Record<string, unknown>;
 
   return typeddefer({
-    agent,
-    runActivity,
-    sessionActivity,
-    llmCostActivity,
-    llmTokenActivity,
-    runList,
-    sessionList,
-    sidebarSnapshot,
+    ...page,
+    // The dashboard agent's page context reads `agent.slug`.
+    agent: {
+      slug: page.task.slug,
+      type: typeof config.type === "string" ? config.type : null,
+      model: typeof config.model === "string" ? config.model : null,
+      instructions: typeof config.instructions === "string" ? config.instructions : null,
+    },
+    sessionActivity: presenter.getSessionActivity(scope).catch(() => EMPTY_ACTIVITY),
+    llmCostActivity: presenter.getLlmCostActivity(scope).catch(() => EMPTY_ACTIVITY),
+    llmTokenActivity: presenter.getLlmTokenActivity(scope).catch(() => EMPTY_ACTIVITY),
+    modelUsage: presenter.getModelUsage(scope).catch((): AgentModelUsage[] => []),
+    sessionList: new SessionListPresenter($replica, clickhouse)
+      .call(project.organizationId, environment.id, {
+        userId: user.id,
+        projectId: project.id,
+        taskIdentifiers: [page.task.slug],
+        period,
+        from,
+        to,
+        cursor,
+        direction,
+      })
+      .catch(() => null),
   });
 };
 
-type AgentTab = "sessions" | "runs";
+/** The Queue tab's pause, resume and override buttons post here. */
+export const action = taskQueueAction;
+
+/** Every tab's data is already loaded: switching tabs doesn't run the loader again. */
+export const shouldRevalidate: ShouldRevalidateFunction = (args) =>
+  onlyDetailTabChanged(args) ? false : args.defaultShouldRevalidate;
+
+type LoaderData = ReturnType<typeof useTypedLoaderData<typeof loader>>;
 
 export default function Page() {
-  const {
-    agent,
-    runActivity,
-    sessionActivity,
-    llmCostActivity,
-    llmTokenActivity,
-    runList,
-    sessionList,
-    sidebarSnapshot,
-  } = useTypedLoaderData<typeof loader>();
+  const data = useTypedLoaderData<typeof loader>();
   const organization = useOrganization();
   const project = useProject();
   const environment = useEnvironment();
-
-  const playgroundPath = v3PlaygroundAgentPath(organization, project, environment, agent.slug);
-  const tasksPath = v3EnvironmentPath(organization, project, environment);
-
-  const [tab, setTab] = useState<AgentTab>("sessions");
-  const zoomToTimeFilter = useZoomToTimeFilter();
-  const tabLabel = tab === "sessions" ? "Sessions" : "Runs";
+  const { agent } = data;
 
   return (
     <PageContainer>
       <NavBar>
-        <PageTitle
-          backButton={{ to: tasksPath, text: "Tasks" }}
-          title={
-            <span className="flex items-center gap-1">
-              <CubeSparkleIcon className="size-4.5 text-agents" />
-              <span>{agent.slug}</span>
-            </span>
-          }
+        <DetailPageTitle
+          title={agent.slug}
+          backButton={{ to: v3EnvironmentPath(organization, project, environment), text: "Tasks" }}
         />
         <PageAccessories>
           <WhenAgentUnavailable>
@@ -255,259 +172,286 @@ export default function Page() {
           </WhenAgentUnavailable>
         </PageAccessories>
       </NavBar>
-      <MetricsLayout.Root>
-        <MetricsLayout.Filters>
-          <div className="flex items-center gap-2">
-            <TimeFilter defaultPeriod="7d" labelName={tabLabel} />
-          </div>
-        </MetricsLayout.Filters>
-
-        {/* Activity / LLM spend / Token charts as a fixed-height chart row (three-up), synced +
-            drag-to-zoom. The old draggable charts/table split is intentionally dropped — the
-            charts get a fixed row and the table flows below in the page scroll. */}
-        <ChartSyncProvider onZoom={zoomToTimeFilter}>
-          <MetricsLayout.Grid kind="charts" columns={{ base: 1, sm: 3 }}>
-            <ChartCard title={tabLabel}>
-              {tab === "sessions" ? (
-                <Suspense fallback={<ActivityChartSkeleton />}>
-                  <TypedAwait resolve={sessionActivity} errorElement={<ActivityChartSkeleton />}>
-                    {(result) => <ActivityChart activity={result} />}
-                  </TypedAwait>
-                </Suspense>
-              ) : (
-                <Suspense fallback={<ActivityChartSkeleton />}>
-                  <TypedAwait resolve={runActivity} errorElement={<ActivityChartSkeleton />}>
-                    {(result) => <ActivityChart activity={result} />}
-                  </TypedAwait>
-                </Suspense>
-              )}
-            </ChartCard>
-
-            <ChartCard title="LLM spend ($)">
-              <Suspense fallback={<ActivityChartSkeleton />}>
-                <TypedAwait resolve={llmCostActivity} errorElement={<ActivityChartSkeleton />}>
-                  {(result) => (
-                    <ScalarActivityChart
-                      activity={result}
-                      seriesKey="cost"
-                      label="Spend"
-                      color="var(--color-agents)"
-                      valueFormatter={formatCurrency}
-                    />
-                  )}
-                </TypedAwait>
-              </Suspense>
-            </ChartCard>
-
-            <ChartCard title="Tokens">
-              <Suspense fallback={<ActivityChartSkeleton />}>
-                <TypedAwait resolve={llmTokenActivity} errorElement={<ActivityChartSkeleton />}>
-                  {(result) => (
-                    <ScalarActivityChart
-                      activity={result}
-                      seriesKey="tokens"
-                      label="Tokens"
-                      color="#14B8A6"
-                      valueFormatter={formatTokens}
-                    />
-                  )}
-                </TypedAwait>
-              </Suspense>
-            </ChartCard>
-          </MetricsLayout.Grid>
-        </ChartSyncProvider>
-
-        {/* Tabs alone on their row (Queue detail pattern), then the table below them. */}
-        <MetricsLayout.Content>
-          {/* Single child so Content's gap-2.5 can't separate the bar from the table. */}
-          <div className="flex flex-col">
-            <TabContainer variant="title" className="justify-between border-y px-2">
-              <div className="flex items-stretch gap-x-6">
-                <TabButton
-                  isActive={tab === "sessions"}
-                  layoutId="agent-page-tabs"
-                  variant="title"
-                  onClick={() => setTab("sessions")}
-                >
-                  Sessions
-                </TabButton>
-                <TabButton
-                  isActive={tab === "runs"}
-                  layoutId="agent-page-tabs"
-                  variant="title"
-                  onClick={() => setTab("runs")}
-                >
-                  Runs
-                </TabButton>
-              </div>
-              <div className="flex items-center gap-1.5">
-                {tab === "sessions" ? (
-                  <Suspense fallback={null}>
-                    <TypedAwait resolve={sessionList} errorElement={null}>
-                      {(list) => (list ? <ListPagination list={list} /> : null)}
-                    </TypedAwait>
-                  </Suspense>
-                ) : (
-                  <>
-                    <RunsDisplayOptions sampleFilters={{ tasks: agent.slug, rootOnly: "false" }} />
-                    <Suspense fallback={null}>
-                      <TypedAwait resolve={runList} errorElement={<RunsListErrorStateNoop />}>
-                        {(list) => (list ? <ListPagination list={list} /> : null)}
-                      </TypedAwait>
-                    </Suspense>
-                  </>
-                )}
-              </div>
-            </TabContainer>
-            <AgentContentArea tab={tab} sessionList={sessionList} runList={runList} />
-          </div>
-        </MetricsLayout.Content>
-
-        <MetricsLayout.Sidebar
-          resizable
-          autosaveId="agent-detail-sidebar"
-          snapshot={sidebarSnapshot}
-          min="280px"
-          defaultSize="380px"
-          max="500px"
-        >
-          <AgentDetailSidebar agent={agent} playgroundPath={playgroundPath} />
-        </MetricsLayout.Sidebar>
-      </MetricsLayout.Root>
+      <PageBody scrollable={false}>
+        <TaskDetailView
+          data={data}
+          leadingTab={{
+            id: "sessions",
+            label: "Sessions",
+            content: <AgentSessionsTab data={data} />,
+          }}
+          primaryAction={
+            <LinkButton
+              variant="primary/small"
+              to={v3PlaygroundAgentPath(organization, project, environment, agent.slug)}
+              LeadingIcon={BeakerIcon}
+              iconSpacing="gap-x-2"
+              leadingIconClassName="-mx-2"
+            >
+              Playground
+            </LinkButton>
+          }
+          detailsExtra={<AgentDetailsProperties data={data} />}
+          railAfterDetails={
+            agent.instructions ? (
+              <PropertyGroup title="Instructions">
+                <Instructions text={agent.instructions} />
+              </PropertyGroup>
+            ) : null
+          }
+        />
+      </PageBody>
     </PageContainer>
   );
 }
 
-type LoaderData = ReturnType<typeof useTypedLoaderData<typeof loader>>;
+// ---------- Sessions ----------
 
-function AgentContentArea({
-  tab,
-  sessionList,
-  runList,
-}: { tab: AgentTab } & Pick<LoaderData, "sessionList" | "runList">) {
-  // No `stickyHeader` — it drops the table's own overflow-x-auto and the charts scroll with it.
-  return tab === "sessions" ? (
-    <Suspense fallback={<TableLoading />}>
-      <TypedAwait resolve={sessionList} errorElement={<TableLoading />}>
-        {(list) =>
-          list ? (
-            <SessionsTable
-              sessions={list.sessions}
-              filters={list.filters}
-              hasFilters={list.hasFilters}
-              showTopBorder={false}
-            />
-          ) : (
-            <TableLoading />
-          )
-        }
-      </TypedAwait>
-    </Suspense>
-  ) : (
-    <Suspense fallback={<TableLoading />}>
-      <TypedAwait resolve={runList} errorElement={<RunsListErrorState />}>
-        {(list) =>
-          list ? (
-            <TaskRunsTable
-              total={list.runs.length}
-              hasFilters={list.hasFilters}
-              filters={list.filters}
-              runs={list.runs}
-              variant="dimmed"
-              showTopBorder={false}
-            />
-          ) : (
-            <TableLoading />
-          )
-        }
-      </TypedAwait>
-    </Suspense>
+/** The page's tabs, in order; the first opens by default. */
+const AGENT_TABS = ["sessions", "runs", "queue"] as const;
+
+const SESSION_SKELETON_COLUMNS = [
+  { label: "ID" },
+  { label: "Status" },
+  { label: "Type" },
+  { label: "Agent ID" },
+  { label: "Test" },
+  { label: "Tags" },
+  { label: "Created" },
+  { label: "Duration" },
+];
+
+function AgentSessionsTab({ data }: { data: LoaderData }) {
+  const [, , isPending] = useDetailTab(AGENT_TABS);
+  const organization = useOrganization();
+  const project = useProject();
+  const environment = useEnvironment();
+  const location = useLocation();
+
+  const params = new URLSearchParams(location.search);
+  const sessionsListPath = `${v3SessionsPath(organization, project, environment)}?${new URLSearchParams(
+    [
+      ["taskIdentifiers", data.agent.slug],
+      ...(["period", "from", "to"] as const).flatMap((key) => {
+        const value = params.get(key);
+        return value ? [[key, value]] : [];
+      }),
+    ]
+  ).toString()}`;
+  params.delete("tab");
+  const retainKey = params.toString();
+
+  const tools = <TimeFilter defaultPeriod="7d" labelName="Sessions" />;
+  const openInSessionsList = (
+    <LinkButton
+      variant="tertiary/small"
+      to={sessionsListPath}
+      LeadingIcon={AIChatIcon}
+      leadingIconClassName="text-sessions"
+    >
+      Open in sessions list
+    </LinkButton>
+  );
+  const band = <SessionsBand data={data} retainKey={retainKey} />;
+  const skeleton = (
+    <DetailTableTab tools={tools} actions={openInSessionsList} above={band}>
+      <DetailTabLoading columns={SESSION_SKELETON_COLUMNS} rows={10} />
+    </DetailTableTab>
+  );
+
+  if (isPending) return skeleton;
+
+  return (
+    <DeferredContent
+      resolve={data.sessionList}
+      retainKey={retainKey}
+      fallback={skeleton}
+      errorElement={
+        <DetailTableTab tools={tools} actions={openInSessionsList} above={band}>
+          <DetailTabError
+            title="Couldn't load sessions"
+            cause="The sessions for this agent didn't load. Try again, or open them in the sessions list."
+          />
+        </DetailTableTab>
+      }
+    >
+      {(list) =>
+        !list ? (
+          skeleton
+        ) : (
+          <DetailTableTab
+            tools={tools}
+            actions={
+              <>
+                {openInSessionsList}
+                <ListPagination list={list} />
+              </>
+            }
+            above={band}
+          >
+            {list.sessions.length === 0 && !params.has("cursor") ? (
+              <DetailTabEmpty
+                title="No sessions in this period"
+                description="Start a conversation in the Playground, or widen the time filter."
+                action={
+                  <LinkButton
+                    variant="secondary/small"
+                    to={v3PlaygroundAgentPath(organization, project, environment, data.agent.slug)}
+                    LeadingIcon={BeakerIcon}
+                    iconSpacing="gap-x-2"
+                    leadingIconClassName="-mx-2"
+                  >
+                    Open Playground
+                  </LinkButton>
+                }
+              />
+            ) : (
+              <SessionsTable
+                sessions={list.sessions}
+                filters={list.filters}
+                hasFilters={list.hasFilters}
+                showTopBorder={false}
+                stickyHeader
+              />
+            )}
+          </DetailTableTab>
+        )
+      }
+    </DeferredContent>
   );
 }
 
-function AgentDetailSidebar({
-  agent,
-  playgroundPath,
-}: {
-  agent: AgentDetail;
-  playgroundPath: string;
-}) {
-  const config = (agent.config ?? {}) as Record<string, unknown>;
-  const agentType = typeof config.type === "string" ? config.type : undefined;
-  const model = typeof config.model === "string" ? config.model : undefined;
-  const instructions = typeof config.instructions === "string" ? config.instructions : undefined;
+/**
+ * Sessions by status beside what they cost: LLM spend and tokens for the same period, each with
+ * its total. Drag across any chart to zoom the time filter.
+ */
+function SessionsBand({ data, retainKey }: { data: LoaderData; retainKey: string }) {
+  const zoomToTimeFilter = useZoomToTimeFilter();
 
   return (
-    <div className="grid h-full grid-rows-[auto_1fr] overflow-hidden bg-background-bright">
-      <div className="flex min-w-0 items-center gap-2 border-b border-grid-dimmed py-2 pl-3 pr-2">
-        <Header2 className="flex min-w-0 flex-1 items-center gap-1.5">
-          <CubeSparkleIcon className="size-4.5 shrink-0 text-agents" />
-          <span className="truncate">{agent.slug}</span>
-        </Header2>
-        <LinkButton
-          variant="primary/small"
-          to={playgroundPath}
-          LeadingIcon={BeakerIcon}
-          iconSpacing="gap-x-2"
-          leadingIconClassName="-mx-2"
-          className="shrink-0"
+    <div className="grid h-40 flex-none grid-cols-3 border-b border-grid-bright">
+      <ChartSyncProvider onZoom={zoomToTimeFilter}>
+        <BandPanel
+          label="Sessions"
+          resolve={data.sessionActivity}
+          retainKey={retainKey}
+          total={(activity) => formatNumber(sumActivity(activity))}
         >
-          Test agent
-        </LinkButton>
-      </div>
-      <div className="overflow-y-auto px-3 py-3 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-surface-control">
-        <Property.Table>
-          <Property.Item>
-            <Property.Label>Slug</Property.Label>
-            <Property.Value>
-              <CopyableText value={agent.slug} />
-            </Property.Value>
-          </Property.Item>
-          <Property.Item>
-            <Property.Label>File path</Property.Label>
-            <Property.Value>
-              <CopyableText value={agent.filePath} />
-            </Property.Value>
-          </Property.Item>
-          {agentType && (
-            <Property.Item>
-              <Property.Label>Type</Property.Label>
-              <Property.Value>
-                <span className="font-mono text-sm">{agentType}</span>
-              </Property.Value>
-            </Property.Item>
-          )}
-          {model && (
-            <Property.Item>
-              <Property.Label>Model</Property.Label>
-              <Property.Value>
-                <span className="font-mono text-sm">{model}</span>
-              </Property.Value>
-            </Property.Item>
-          )}
-          {instructions && (
-            <Property.Item className="gap-1">
-              <Property.Label>Instructions</Property.Label>
-              <Property.Value>
-                <Paragraph variant="small" className="whitespace-pre-wrap text-text-dimmed">
-                  {instructions}
-                </Paragraph>
-              </Property.Value>
-            </Property.Item>
-          )}
-          <Property.Item>
-            <Property.Label>Created</Property.Label>
-            <Property.Value>
-              <DateTime date={agent.createdAt} />
-            </Property.Value>
-          </Property.Item>
-        </Property.Table>
-      </div>
+          {(activity) =>
+            sumActivity(activity) > 0 ? (
+              <SessionsByStatusChart activity={activity} />
+            ) : (
+              <ChartBlankState icon={AIChatIcon} message="No sessions in this period" />
+            )
+          }
+        </BandPanel>
+        <BandPanel
+          label="LLM spend"
+          resolve={data.llmCostActivity}
+          retainKey={retainKey}
+          total={(activity) => formatCurrency(sumActivity(activity))}
+          className="border-l border-grid-bright"
+        >
+          {(activity) =>
+            sumActivity(activity) > 0 ? (
+              <ScalarActivityChart
+                activity={activity}
+                seriesKey="cost"
+                label="Spend"
+                color="var(--color-agents)"
+                valueFormatter={formatCurrency}
+              />
+            ) : (
+              <ChartBlankState message="No LLM calls recorded" />
+            )
+          }
+        </BandPanel>
+        <BandPanel
+          label="Tokens"
+          resolve={data.llmTokenActivity}
+          retainKey={retainKey}
+          total={(activity) => formatTokens(sumActivity(activity))}
+          className="border-l border-grid-bright"
+        >
+          {(activity) =>
+            sumActivity(activity) > 0 ? (
+              <ScalarActivityChart
+                activity={activity}
+                seriesKey="tokens"
+                label="Tokens"
+                color="#14B8A6"
+                valueFormatter={formatTokens}
+              />
+            ) : (
+              <ChartBlankState message="No LLM calls recorded" />
+            )
+          }
+        </BandPanel>
+      </ChartSyncProvider>
     </div>
   );
 }
 
-function ActivityChart({ activity }: { activity: AgentActivity }) {
+function BandPanel({
+  label,
+  resolve,
+  retainKey,
+  total,
+  className,
+  children,
+}: {
+  label: string;
+  resolve: Promise<AgentActivity>;
+  retainKey: string;
+  total: (activity: AgentActivity) => string;
+  className?: string;
+  children: (activity: AgentActivity) => React.ReactNode;
+}) {
+  const loading = (
+    <>
+      <div className="flex h-5 items-baseline gap-2">
+        <span className="text-xs text-text-dimmed">{label}</span>
+        <SkeletonBone className="h-3 w-10" />
+      </div>
+      <div className="min-h-0 flex-1">
+        <ChartSkeleton bars={label === "Sessions" ? 42 : 20} />
+      </div>
+    </>
+  );
+
+  return (
+    <div className={cn("flex min-w-0 flex-col gap-1.5 px-3 pb-2 pt-2.5", className)}>
+      <DeferredContent
+        resolve={resolve}
+        retainKey={retainKey}
+        fallback={loading}
+        errorElement={loading}
+      >
+        {(activity) => (
+          <>
+            <div className="flex h-5 items-baseline gap-2">
+              <span className="text-xs text-text-dimmed">{label}</span>
+              <span className="text-sm font-medium tabular-nums text-text-bright">
+                {total(activity)}
+              </span>
+            </div>
+            <div className="min-h-0 flex-1">{children(activity)}</div>
+          </>
+        )}
+      </DeferredContent>
+    </div>
+  );
+}
+
+function sumActivity(activity: AgentActivity) {
+  let total = 0;
+  for (const point of activity.data) {
+    for (const key of activity.statuses) total += Number(point[key] ?? 0);
+  }
+  return total;
+}
+
+function SessionsByStatusChart({ activity }: { activity: AgentActivity }) {
   const chartConfig: ChartConfig = useMemo(() => {
     const cfg: ChartConfig = {};
     for (const status of activity.statuses) {
@@ -539,24 +483,6 @@ function ActivityChart({ activity }: { activity: AgentActivity }) {
         tooltipLabelFormatter={tooltipLabelFormatter}
       />
     </Chart.Root>
-  );
-}
-
-function ActivityChartSkeleton() {
-  return (
-    <div className="flex min-h-0 flex-1 items-end gap-px rounded-sm">
-      {Array.from({ length: 42 }).map((_, i) => (
-        <div key={i} className="h-full flex-1 bg-background-dimmed" />
-      ))}
-    </div>
-  );
-}
-
-function TableLoading() {
-  return (
-    <div className="flex h-full items-center justify-center">
-      <Spinner className="size-6" />
-    </div>
   );
 }
 
@@ -592,6 +518,77 @@ function ScalarActivityChart({
         tooltipValueFormatter={valueFormatter}
       />
     </Chart.Root>
+  );
+}
+
+// ---------- Rail ----------
+
+function AgentDetailsProperties({ data }: { data: LoaderData }) {
+  const { agent } = data;
+  return (
+    <>
+      {agent.type ? (
+        <DetailProperty label="Agent type">
+          <span className="font-mono text-xs">{agent.type}</span>
+        </DetailProperty>
+      ) : null}
+      <DetailProperty label="Model">
+        {agent.model ? (
+          <span className="font-mono text-xs">{agent.model}</span>
+        ) : (
+          <DeferredContent
+            resolve={data.modelUsage}
+            fallback={<SkeletonBone className="h-3.5 w-24" />}
+            errorElement={<>–</>}
+          >
+            {(usage) => <ModelUsage usage={usage} />}
+          </DeferredContent>
+        )}
+      </DetailProperty>
+    </>
+  );
+}
+
+/** The models the agent called in the period, with how many calls each. */
+function ModelUsage({ usage }: { usage: AgentModelUsage[] }) {
+  if (usage.length === 0) {
+    return <span className="text-text-dimmed">No LLM calls in this period</span>;
+  }
+  return (
+    <ul className="flex min-w-0 flex-col gap-1">
+      {usage.map((row) => (
+        <li key={row.model} className="flex min-w-0 items-baseline justify-between gap-2">
+          <span className="truncate font-mono text-xs">{row.model}</span>
+          <span className="flex-none text-xs tabular-nums text-text-dimmed">
+            {formatNumber(row.calls)} {row.calls === 1 ? "call" : "calls"}
+          </span>
+        </li>
+      ))}
+    </ul>
+  );
+}
+
+const INSTRUCTIONS_PREVIEW_CHARS = 320;
+
+function Instructions({ text }: { text: string }) {
+  const [expanded, setExpanded] = useState(false);
+  const long = text.length > INSTRUCTIONS_PREVIEW_CHARS;
+  return (
+    <div className="flex flex-col items-start gap-1.5">
+      <p
+        className={cn(
+          "whitespace-pre-wrap text-xs leading-5 text-text-dimmed",
+          long && !expanded && "line-clamp-6"
+        )}
+      >
+        {text}
+      </p>
+      {long ? (
+        <Button variant="minimal/small" onClick={() => setExpanded((open) => !open)}>
+          {expanded ? "Show less" : "Show all"}
+        </Button>
+      ) : null}
+    </div>
   );
 }
 

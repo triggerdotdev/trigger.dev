@@ -1734,6 +1734,7 @@ export type RuntimeEnvironmentForEnvRepo = Pick<
   | "apiKey"
   | "organizationId"
   | "branchName"
+  | "parentEnvironmentId"
   | "builtInEnvironmentVariableOverrides"
 > & { organization?: { featureFlags: unknown } | null };
 
@@ -1754,7 +1755,9 @@ export async function prepareVariablesForEnvironment(
   const resolved = await environmentVariablesRepository.resolveEnvironmentVariables(
     runtimeEnvironment.projectId,
     runtimeEnvironment.id,
-    parentEnvironment?.id,
+    (runtimeEnvironment.type === "DEVELOPMENT"
+      ? runtimeEnvironment.parentEnvironmentId
+      : parentEnvironment?.id) ?? undefined,
     {
       readFromReplica: env.CONTROL_PLANE_DEQUEUE_READS_FROM_REPLICA === "1",
       grant: options?.grant,

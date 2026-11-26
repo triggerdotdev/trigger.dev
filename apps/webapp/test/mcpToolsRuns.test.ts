@@ -1,6 +1,8 @@
-import { postgresTest } from "@internal/testcontainers";
+import { ClickHouse } from "@internal/clickhouse";
+import { containerTestWithClickhouse, postgresTest } from "@internal/testcontainers";
 import plugin from "@trigger.dev/rbac";
 import type { PrismaClient } from "@trigger.dev/database";
+import { BatchId, BulkActionId } from "@trigger.dev/core/v3/isomorphic";
 import { createHash } from "node:crypto";
 import { describe, expect, vi } from "vitest";
 import {
@@ -26,11 +28,24 @@ vi.hoisted(() => {
 const mocks = vi.hoisted(() => ({
   db: undefined as unknown as Record<string | symbol, unknown>,
   rbac: undefined as unknown as Record<string, (...args: any[]) => any>,
+  clickhouse: undefined as unknown,
 }));
 
-vi.mock("~/db.server", () => ({
-  $replica: new Proxy({}, { get: (_, prop) => mocks.db[prop] }),
-  prisma: new Proxy({}, { get: (_, prop) => mocks.db[prop] }),
+vi.mock("~/db.server", async () => {
+  const { Prisma } = await import("@trigger.dev/database");
+  const db = new Proxy({}, { get: (_, prop) => mocks.db[prop] });
+  return {
+    $replica: db,
+    prisma: db,
+    runOpsNewPrisma: db,
+    runOpsNewReplica: db,
+    runOpsLegacyPrisma: db,
+    runOpsLegacyReplica: db,
+    sqlDatabaseSchema: Prisma.sql([`public`]),
+  };
+});
+vi.mock("~/services/clickhouse/clickhouseFactoryInstance.server", () => ({
+  clickhouseFactory: { getClickhouseForOrganization: async () => mocks.clickhouse },
 }));
 vi.mock("~/services/rbac.server", () => ({
   rbac: new Proxy(
@@ -44,12 +59,16 @@ vi.mock("~/services/rbac.server", () => ({
   ),
 }));
 
+import { CURRENT_API_VERSION } from "~/api/versions";
 import type { McpToolDefinition } from "~/mcp/registry.server";
 import type { McpIdentity } from "~/mcp/types";
 import { deploysTools } from "~/mcp/tools/deploys.server";
 import { orgsTools } from "~/mcp/tools/orgs.server";
 import { createRunsTools } from "~/mcp/tools/runs.server";
 import { tasksTools } from "~/mcp/tools/tasks.server";
+import { findEnvironmentById } from "~/models/runtimeEnvironment.server";
+import { ApiRetrieveRunPresenter } from "~/presenters/v3/ApiRetrieveRunPresenter.server";
+import { insertTaskRunV2Rows } from "./helpers/apiRunListPresenterTestHelpers";
 
 const PAYLOAD_SCHEMA = { type: "object", properties: { email: { type: "string" } } };
 
@@ -438,6 +457,64 @@ describe("mcp read tools", () => {
     expect(second).not.toContain("## Run Details");
   });
 
+  // Catches: get_run_details printing only the metadata field count, or dropping the size cap.
+  postgresTest("get_run_details shows metadata values, capped", async ({ prisma }) => {
+    const { ids, identity, request, scope } = await seed(prisma);
+    const details = tool(createRunsTools(), "get_run_details");
+    const metadataOf = async (metadata: Record<string, unknown>) => {
+      const run = await createRun(prisma, ids, {
+        metadata: JSON.stringify(metadata),
+        metadataType: "application/json",
+      });
+      const text = textOf(await details({ ...scope, runId: run.friendlyId }, identity, request));
+      return text.match(
+        /Metadata: <untrusted-data source="run-metadata"[^>]*>([\s\S]*?)<\/untrusted-data/
+      )?.[1];
+    };
+
+    const small = await metadataOf({ progress: 42, stage: "uploading" });
+    expect(small).toContain('"stage": "uploading"');
+    expect(small).not.toContain("truncated");
+
+    const large = await metadataOf({ blob: "x".repeat(10_000) });
+    expect(large).toContain("truncated");
+    expect(large!.length).toBeLessThan(4_200);
+  });
+
+  // Catches: get_run_details hiding the priority or concurrency key, or the public run response gaining them.
+  postgresTest(
+    "get_run_details shows priority and concurrency key only when set",
+    async ({ prisma }) => {
+      const { ids, identity, request, scope } = await seed(prisma);
+      const details = tool(createRunsTools(), "get_run_details");
+      const shown = async (overrides: Record<string, unknown>) => {
+        const run = await createRun(prisma, ids, overrides);
+        const text = textOf(await details({ ...scope, runId: run.friendlyId }, identity, request));
+        const environment = await findEnvironmentById(ids.environmentId);
+        const found = await ApiRetrieveRunPresenter.findRun(run.friendlyId, environment!);
+        const body = await new ApiRetrieveRunPresenter(CURRENT_API_VERSION).call(
+          found!,
+          environment!
+        );
+        return {
+          priority: text.match(/Priority: (\S+)/)?.[1],
+          concurrencyKey: text.match(
+            /Concurrency key: <untrusted-data source="run-concurrency-key"[^>]*>([^<]*)</
+          )?.[1],
+          publicKeys: Object.keys(body).filter((key) => /priority|concurrency/i.test(key)),
+        };
+      };
+
+      expect({
+        set: await shown({ priorityMs: 10_000, concurrencyKey: "mcp-test-key" }),
+        unset: await shown({}),
+      }).toEqual({
+        set: { priority: "10s", concurrencyKey: "mcp-test-key", publicKeys: [] },
+        unset: { priority: undefined, concurrencyKey: undefined, publicKeys: [] },
+      });
+    }
+  );
+
   postgresTest("list_deploys lists the seeded deployment", async ({ prisma }) => {
     const { identity, request, scope } = await seed(prisma);
 
@@ -529,4 +606,283 @@ describe("mcp read tools", () => {
     expect(text).toContain("still running");
     expect(text).toContain(`Run ${run.friendlyId}`);
   });
+});
+
+async function seedFilterRuns(prisma: PrismaClient, clickhouseUrl: string) {
+  const seeded = await seed(prisma);
+  const { a, b, ids } = seeded;
+  mocks.clickhouse = new ClickHouse({ url: clickhouseUrl, name: "mcp-list-runs-filters" });
+
+  const staging = await createRuntimeEnvironment(prisma, {
+    projectId: a.project.id,
+    organizationId: a.organization.id,
+    type: "STAGING",
+  });
+  const batch = await prisma.batchTaskRun.create({
+    data: { ...BatchId.generate(), runtimeEnvironmentId: ids.environmentId },
+  });
+  const schedule = await prisma.taskSchedule.create({
+    data: {
+      friendlyId: `sched_${uniqueId("s").replace(/-/g, "")}`,
+      taskIdentifier: "my-task",
+      generatorExpression: "* * * * *",
+      projectId: a.project.id,
+    },
+  });
+  const bulk = BulkActionId.generate();
+  const tagged = {
+    queue: "custom-queue",
+    batchId: batch.id,
+    scheduleId: schedule.id,
+    bulkActionGroupIds: [bulk.id],
+  };
+
+  const matches = [
+    await createRun(prisma, ids, { ...tagged, createdAt: new Date(Date.now() - 2_000) }),
+    await createRun(prisma, ids, { ...tagged, createdAt: new Date(Date.now() - 1_000) }),
+  ];
+  const plain = await createRun(prisma, ids);
+  const otherEnv = await createRun(prisma, { ...ids, environmentId: staging.id }, tagged);
+  const otherProject = await createRun(
+    prisma,
+    {
+      projectId: b.project.id,
+      organizationId: b.organization.id,
+      environmentId: seeded.runB.runtimeEnvironmentId,
+    },
+    tagged
+  );
+  await insertTaskRunV2Rows(mocks.clickhouse as ClickHouse, [
+    ...matches,
+    plain,
+    otherEnv,
+    otherProject,
+    seeded.run,
+    seeded.runB,
+  ]);
+
+  const filters = {
+    queue: "custom-queue",
+    batch: batch.friendlyId,
+    schedule: schedule.friendlyId,
+    bulkAction: bulk.friendlyId,
+  };
+  return { ...seeded, filters, matches, others: [plain, otherEnv, otherProject, seeded.run] };
+}
+
+const listedRunIds = (text: string) =>
+  [...text.matchAll(/^\d+\. (run-\d+-\d+)/gm)].map((m) => m[1]).sort();
+
+describe("list_runs dashboard filters", () => {
+  // Catches: a filter not forwarded to the run list, matching runs outside the environment, or a valid mixed-case ID refused.
+  containerTestWithClickhouse(
+    "each filter returns only matching runs in the caller's environment",
+    async ({ prisma, clickhouseContainer }) => {
+      const { filters, matches, others, identity, request, scope } = await seedFilterRuns(
+        prisma,
+        clickhouseContainer.getConnectionUrl()
+      );
+      const list = tool(createRunsTools(), "list_runs");
+      const expected = matches.map((run) => run.friendlyId).sort();
+
+      expect(listedRunIds(textOf(await list(scope, identity, request)))).toHaveLength(4);
+      for (const [name, value] of Object.entries(filters)) {
+        const text = textOf(await list({ ...scope, [name]: value }, identity, request));
+        expect(listedRunIds(text), name).toEqual(expected);
+        for (const other of others) expect(text, name).not.toContain(other.friendlyId);
+      }
+
+      const mixedCase = await list(
+        { ...scope, batch: "batch_2ABCdefGHI0123456789jklMN" },
+        identity,
+        request
+      );
+      expect(textOf(mixedCase)).toContain("No runs found.");
+    }
+  );
+
+  // Catches: a new filter dropping an existing one, breaking the cursor, or skipping validation, so a malformed batch or schedule ID reads as no runs.
+  containerTestWithClickhouse(
+    "filters combine, page by cursor, and reject invalid input",
+    async ({ prisma, clickhouseContainer }) => {
+      const { b, filters, matches, identity, request, scope } = await seedFilterRuns(
+        prisma,
+        clickhouseContainer.getConnectionUrl()
+      );
+      const list = tool(createRunsTools(), "list_runs");
+
+      const none = await list(
+        { ...scope, queue: filters.queue, taskIdentifier: "other-task" },
+        identity,
+        request
+      );
+      expect(none.isError, textOf(none)).toBeFalsy();
+      expect(textOf(none)).toContain("No runs found.");
+
+      const first = textOf(
+        await list({ ...scope, queue: filters.queue, limit: 1 }, identity, request)
+      );
+      const cursor = first.match(/Next cursor: (\S+)/)?.[1];
+      expect(cursor, "first page has no next cursor").toBeDefined();
+      const second = textOf(
+        await list({ ...scope, queue: filters.queue, limit: 1, cursor }, identity, request)
+      );
+      expect([...listedRunIds(first), ...listedRunIds(second)].sort()).toEqual(
+        matches.map((run) => run.friendlyId).sort()
+      );
+
+      for (const bad of [
+        { queue: 123 },
+        { bulkAction: "bulk_" },
+        { batch: "not-a-batch-id" },
+        { batch: filters.schedule },
+      ]) {
+        const invalid = await list({ ...scope, ...bad }, identity, request);
+        expect(invalid.isError, JSON.stringify(bad)).toBe(true);
+        expect(textOf(invalid), JSON.stringify(bad)).toContain("Invalid arguments");
+      }
+      for (const [bad, text] of [
+        [{ batch: "Batch_abc1" }, "batch must be lowercase batch_ followed by letters and digits"],
+        [
+          { schedule: "SCHED_abc1" },
+          "schedule must be lowercase sched_ followed by letters and digits",
+        ],
+        [
+          { schedule: "sched_a-b" },
+          "schedule must be lowercase sched_ followed by letters and digits",
+        ],
+        [
+          { bulkAction: "BULK_abc1" },
+          "bulkAction must be lowercase bulk_ followed by letters and digits",
+        ],
+        [
+          { bulkAction: "bulk_a_b" },
+          "bulkAction must be lowercase bulk_ followed by letters and digits",
+        ],
+      ] as const) {
+        const invalid = await list({ ...scope, ...bad }, identity, request);
+        expect(invalid.isError, text).toBe(true);
+        expect(textOf(invalid), text).toContain(text);
+      }
+
+      const denied = await list(
+        { ...scope, queue: filters.queue, projectRef: b.project.externalRef },
+        identity,
+        request
+      );
+      expect(textOf(denied)).toBe("Not authorized");
+    }
+  );
+});
+
+describe("list_runs version filter", () => {
+  // Catches: a comma-separated version list matched as one literal version.
+  containerTestWithClickhouse(
+    "returns runs of every listed version",
+    async ({ prisma, clickhouseContainer }) => {
+      const seeded = await seed(prisma);
+      const { ids, identity, request, scope } = seeded;
+      mocks.clickhouse = new ClickHouse({
+        url: clickhouseContainer.getConnectionUrl(),
+        name: "mcp-list-runs-versions",
+      });
+      const [v1, v2, v3] = [
+        await createRun(prisma, ids, { taskVersion: "20250101.1" }),
+        await createRun(prisma, ids, { taskVersion: "20250101.2" }),
+        await createRun(prisma, ids, { taskVersion: "20250101.3" }),
+      ];
+      await insertTaskRunV2Rows(mocks.clickhouse as ClickHouse, [v1, v2, v3]);
+
+      const text = textOf(
+        await tool(createRunsTools(), "list_runs")(
+          { ...scope, version: "20250101.1,20250101.2" },
+          identity,
+          request
+        )
+      );
+
+      expect(listedRunIds(text)).toEqual([v1.friendlyId, v2.friendlyId].sort());
+    }
+  );
+});
+
+describe("list_run_tags", () => {
+  // Catches: tags leaking from another environment, project or org, or the name, period or limit not applied.
+  containerTestWithClickhouse(
+    "lists the environment's tags, searches by name and applies the limit",
+    async ({ prisma, clickhouseContainer }) => {
+      const seeded = await seed(prisma);
+      const { a, b, ids, identity, request, scope } = seeded;
+      mocks.clickhouse = new ClickHouse({
+        url: clickhouseContainer.getConnectionUrl(),
+        name: "mcp-list-run-tags",
+      });
+      const staging = await createRuntimeEnvironment(prisma, {
+        projectId: a.project.id,
+        organizationId: a.organization.id,
+        type: "STAGING",
+      });
+      const sibling = await prisma.project.create({
+        data: {
+          name: "Sibling",
+          slug: uniqueId("proj"),
+          organizationId: a.organization.id,
+          externalRef: uniqueId("ext"),
+        },
+      });
+      await insertTaskRunV2Rows(mocks.clickhouse as ClickHouse, [
+        await createRun(prisma, ids, { runTags: ["user:alice", "plan:pro"] }),
+        await createRun(prisma, ids, { runTags: ["user:bob"] }),
+        await createRun(
+          prisma,
+          { ...ids, environmentId: staging.id },
+          { runTags: ["user:staging"] }
+        ),
+        await createRun(
+          prisma,
+          {
+            projectId: b.project.id,
+            organizationId: b.organization.id,
+            environmentId: seeded.runB.runtimeEnvironmentId,
+          },
+          { runTags: ["user:other-org"] }
+        ),
+        await createRun(
+          prisma,
+          { ...ids, projectId: sibling.id },
+          { runTags: ["user:sibling-project"] }
+        ),
+        await createRun(prisma, ids, {
+          runTags: ["user:old"],
+          createdAt: new Date(Date.now() - 10 * 24 * 60 * 60 * 1000),
+        }),
+      ]);
+      const list = tool(createRunsTools(), "list_run_tags");
+      const tagsIn = (text: string) =>
+        text
+          .match(/<untrusted-data source="run-tags"[^>]*>\n?([\s\S]*?)\n?<\/untrusted-data/)?.[1]
+          ?.split("\n");
+
+      expect(tagsIn(textOf(await list(scope, identity, request)))).toEqual([
+        "plan:pro",
+        "user:alice",
+        "user:bob",
+      ]);
+      expect(tagsIn(textOf(await list({ ...scope, name: "USER:" }, identity, request)))).toEqual([
+        "user:alice",
+        "user:bob",
+      ]);
+
+      const limited = textOf(await list({ ...scope, limit: 1 }, identity, request));
+      expect(tagsIn(limited)).toEqual(["plan:pro"]);
+      expect(limited).toContain("More tags match");
+
+      expect(
+        tagsIn(textOf(await list({ ...scope, name: "user:", period: "30d" }, identity, request)))
+      ).toEqual(["user:alice", "user:bob", "user:old"]);
+      const invalid = await list({ ...scope, period: "soon" }, identity, request);
+      expect(invalid.isError).toBe(true);
+      expect(textOf(invalid)).toContain("Invalid arguments: period=soon");
+    }
+  );
 });

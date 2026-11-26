@@ -1,4 +1,5 @@
-import { CURRENT_DEPLOYMENT_LABEL } from "@trigger.dev/core/v3/isomorphic";
+import { versionStanding } from "~/utils/versionLabel";
+import { findCurrentVersion } from "~/v3/models/workerDeployment.server";
 import { type RuntimeEnvironment } from "@trigger.dev/database";
 import { BasePresenter } from "./basePresenter.server";
 
@@ -40,33 +41,13 @@ export class VersionListPresenter extends BasePresenter {
       take: this.perPage,
     });
 
-    let currentVersion: string | undefined;
-
-    if (environment.type !== "DEVELOPMENT") {
-      const currentWorker = await this._replica.workerDeploymentPromotion.findFirst({
-        select: {
-          deployment: {
-            select: {
-              version: true,
-            },
-          },
-        },
-        where: {
-          environmentId: environment.id,
-          label: CURRENT_DEPLOYMENT_LABEL,
-        },
-      });
-
-      if (currentWorker) {
-        currentVersion = currentWorker.deployment.version;
-      }
-    }
+    const currentVersion = await findCurrentVersion(environment, this._replica);
 
     return {
       success: true as const,
       versions: versions.map((version) => ({
         version: version.version,
-        isCurrent: version.version === currentVersion,
+        standing: versionStanding(version.version, currentVersion),
       })),
       hasFilters,
     };

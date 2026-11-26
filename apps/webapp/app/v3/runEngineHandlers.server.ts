@@ -22,6 +22,10 @@ import { logger } from "~/services/logger.server";
 import { updateMetadataService } from "~/services/metadata/updateMetadataInstance.server";
 import { reportInvocationUsage } from "~/services/platform.v3.server";
 import { publishChangeRecord } from "~/services/realtime/runChangeNotifierInstance.server";
+import {
+  enqueueSessionRunCompletionCheck,
+  type SessionRunOutcome,
+} from "~/services/realtime/sessionRunCompletion.server";
 import { MetadataTooLargeError } from "~/utils/packets";
 import { QueueSizeLimitExceededError } from "~/v3/services/common.server";
 import { TriggerTaskService } from "~/v3/services/triggerTask.server";
@@ -43,6 +47,27 @@ import {
   readRunForEventOrThrow,
   type EventReadDeps,
 } from "./runEngineHandlersShared.server";
+
+/**
+ * An agent run that ended may leave a message on its session's `.in` that it never read: queue the
+ * check for it. Not awaited: it never throws and must not delay the run's event. Only succeeded and
+ * failed runs call this; a cancel means stop, and an expired run never started. The outcome rides
+ * in the job because a failed run is treated differently: one that died inside a turn is not
+ * continued (its user got no feedback and a retry can fail the same way, so the next message from
+ * the user starts a run). An error inside a turn never reaches here: chat.agent catches it, writes
+ * an error and a turn-complete, and keeps the run alive.
+ */
+function queueSessionContinuationCheck(
+  taskRun: { id: string; createdAt: Date; annotations: unknown },
+  environmentId: string,
+  outcome: SessionRunOutcome
+) {
+  void enqueueSessionRunCompletionCheck({
+    run: { id: taskRun.id, createdAt: taskRun.createdAt, annotations: taskRun.annotations },
+    environmentId,
+    outcome,
+  });
+}
 
 export function registerRunEngineEventBusHandlers() {
   // Resolve the split-mode gate ONCE at registration scope (never per-event).
@@ -78,6 +103,8 @@ export function registerRunEngineEventBusHandlers() {
           // the native backend is disabled.
           runTags: true,
           batchId: true,
+          // Lets the session continuation check skip every run that is not an agent run.
+          annotations: true,
         },
         await eventReadDeps()
       )
@@ -98,6 +125,8 @@ export function registerRunEngineEventBusHandlers() {
       batchId: taskRun.batchId,
       updatedAtMs: run.updatedAt.getTime(),
     });
+
+    queueSessionContinuationCheck(taskRun, environment.id, "succeeded");
 
     const eventRepository = await getEventRepositoryForStore(
       run.taskEventStore,
@@ -162,6 +191,8 @@ export function registerRunEngineEventBusHandlers() {
           // the native backend is disabled).
           runTags: true,
           batchId: true,
+          // Lets the session continuation check skip every run that is not an agent run.
+          annotations: true,
         },
         await eventReadDeps()
       )
@@ -182,6 +213,8 @@ export function registerRunEngineEventBusHandlers() {
       batchId: taskRun.batchId,
       updatedAtMs: run.updatedAt.getTime(),
     });
+
+    queueSessionContinuationCheck(taskRun, environment.id, "failed");
 
     const eventRepository = await getEventRepositoryForStore(
       run.taskEventStore,

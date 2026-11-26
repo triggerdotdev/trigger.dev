@@ -1,0 +1,39 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="700" height="170" viewBox="0 0 700 170">
+<defs>
+  <marker id="arrow-green" viewBox="0 0 10 10" refX="7" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse" markerUnits="userSpaceOnUse">
+    <path d="M 1.5 1.5 L 7 5 L 1.5 8.5" fill="none" stroke="#A8FF53" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+  </marker>
+  <marker id="arrow-lavender" viewBox="0 0 10 10" refX="7" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse" markerUnits="userSpaceOnUse">
+    <path d="M 1.5 1.5 L 7 5 L 1.5 8.5" fill="none" stroke="#7655fd" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+  </marker>
+  <marker id="arrow-muted" viewBox="0 0 10 10" refX="7" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse" markerUnits="userSpaceOnUse">
+    <path d="M 1.5 1.5 L 7 5 L 1.5 8.5" fill="none" stroke="#878C99" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+  </marker>
+</defs>
+<g id="canvas"><rect width="700" height="170" rx="12" fill="#121317"/></g>
+<g id="connections">
+<path id="edge-granola-agent" d="M 220 70 L 420 70" fill="none" stroke="#A8FF53" stroke-width="1.5" marker-end="url(#arrow-green)"/>
+<path id="edge-agent-granola" d="M 420 94 L 220 94" fill="none" stroke="#7655fd" stroke-width="1.5" marker-end="url(#arrow-lavender)"/>
+</g>
+<g id="nodes">
+<g id="node-granola">
+  <rect x="60" y="52" width="160" height="44" rx="6" fill="#1E2024" stroke="#272A2E" stroke-width="1"/>
+  <text x="140" y="79" text-anchor="middle" fill="#E8E9EC" font-family="'Geist Mono', Menlo, monospace" font-size="13">Granola note</text>
+</g>
+<g id="node-agent">
+  <rect x="420" y="52" width="220" height="60" rx="6" fill="#1E2024" stroke="#A8FF53" stroke-width="1.5"/>
+  <text x="530" y="78" text-anchor="middle" fill="#E8E9EC" font-family="'Geist Mono', Menlo, monospace" font-size="13">Trigger.dev agent</text>
+  <text x="530" y="96" text-anchor="middle" fill="#878C99" font-family="'Geist Mono', Menlo, monospace" font-size="11">one run per note</text>
+</g>
+</g>
+<g id="labels">
+<circle cx="258" cy="40" r="9" fill="#A8FF53"/>
+<text x="258" y="44" text-anchor="middle" fill="#121317" font-family="'Geist Mono', Menlo, monospace" font-size="12" font-weight="700">1</text>
+<text x="274" y="44" text-anchor="start" fill="#A8FF53" font-family="'Geist Mono', Menlo, monospace" font-size="12">summary ready</text>
+<text x="320" y="60" text-anchor="middle" fill="#878C99" font-family="'Geist Mono', Menlo, monospace" font-size="12">(note.generated webhook)</text>
+<circle cx="230" cy="112" r="9" fill="#7655fd"/>
+<text x="230" y="116" text-anchor="middle" fill="#E8E9EC" font-family="'Geist Mono', Menlo, monospace" font-size="12" font-weight="700">2</text>
+<text x="246" y="116" text-anchor="start" fill="#7655fd" font-family="'Geist Mono', Menlo, monospace" font-size="12">fetch note + transcript</text>
+<text x="320" y="132" text-anchor="middle" fill="#878C99" font-family="'Geist Mono', Menlo, monospace" font-size="12">(Get Note API)</text>
+</g>
+</svg>

@@ -16,27 +16,42 @@ import { missingScopes } from "./gate/withMcpToolAuth.server";
 import type { McpIdentity } from "./types";
 import { agentsTools } from "./tools/agents.server";
 import { alertsTools } from "./tools/alerts.server";
+import { bulkActionsTools } from "./tools/bulkActions.server";
 import { dashboardsTools } from "./tools/dashboards.server";
+import { dashboardsEditTools } from "./tools/dashboardsEdit.server";
+import { dashboardsReadTools } from "./tools/dashboardsRead.server";
+import { deploymentDetailsTools } from "./tools/deploymentDetails.server";
 import { deploysTools } from "./tools/deploys.server";
 import { docsTools } from "./tools/docs.server";
+import { modelsTools } from "./tools/models.server";
 import { orgsTools } from "./tools/orgs.server";
 import { promptsTools } from "./tools/prompts.server";
+import { promptsReadTools } from "./tools/promptsRead.server";
 import { queryTools } from "./tools/query.server";
 import { reportTools } from "./tools/report.server";
+import { logsTools } from "./tools/logs.server";
 import { runsTools } from "./tools/runs.server";
+import { runStreamsTools } from "./tools/runStreams.server";
 import { sessionsTools } from "./tools/sessions.server";
+import { sessionsReadTools } from "./tools/sessionsRead.server";
 import { tasksTools } from "./tools/tasks.server";
 import { webhooksTools } from "./tools/webhooks.server";
+import { webhooksReadTools } from "./tools/webhooksRead.server";
 import { agentChatTools } from "./tools/agentChat.server";
+import { alertsManageTools } from "./tools/alertsManage.server";
 import { alertsWriteTools } from "./tools/alertsWrite.server";
+import { bulkActionsWriteTools } from "./tools/bulkActionsWrite.server";
 import { dashboardsWriteTools } from "./tools/dashboardsWrite.server";
 import { feedbackTools } from "./tools/feedback.server";
 import { orgsWriteTools } from "./tools/orgsWrite.server";
 import { promptsWriteTools } from "./tools/promptsWrite.server";
+import { runsEditTools } from "./tools/runsEdit.server";
 import { runsWriteTools } from "./tools/runsWrite.server";
 import { sessionsWriteTools } from "./tools/sessionsWrite.server";
 import { tasksWriteTools } from "./tools/tasksWrite.server";
 import { webhooksWriteTools } from "./tools/webhooksWrite.server";
+import { webhooksEndpointWriteTools } from "./tools/webhooksEndpointWrite.server";
+import { webhooksWaiterWriteTools } from "./tools/webhooksWaiterWrite.server";
 
 export type McpApprovalClass = "required" | "configurable" | "none";
 
@@ -73,26 +88,41 @@ export const mcpTools: McpToolDefinition[] = assertUniqueToolNames([
   ...orgsTools,
   ...tasksTools,
   ...runsTools,
+  ...runStreamsTools,
+  ...logsTools,
+  ...bulkActionsTools,
   ...deploysTools,
+  ...deploymentDetailsTools,
   ...queryTools,
   ...dashboardsTools,
+  ...dashboardsReadTools,
+  ...modelsTools,
   ...promptsTools,
+  ...promptsReadTools,
   ...agentsTools,
   ...sessionsTools,
+  ...sessionsReadTools,
   ...alertsTools,
   ...webhooksTools,
+  ...webhooksReadTools,
   ...reportTools,
   ...docsTools,
   ...agentChatTools,
   ...alertsWriteTools,
+  ...alertsManageTools,
   ...dashboardsWriteTools,
+  ...dashboardsEditTools,
   ...feedbackTools,
   ...orgsWriteTools,
   ...promptsWriteTools,
   ...runsWriteTools,
+  ...runsEditTools,
+  ...bulkActionsWriteTools,
   ...sessionsWriteTools,
   ...tasksWriteTools,
   ...webhooksWriteTools,
+  ...webhooksEndpointWriteTools,
+  ...webhooksWaiterWriteTools,
 ]);
 
 export function registerMcpTools(

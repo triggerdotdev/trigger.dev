@@ -51,7 +51,7 @@ const machines = {
   },
   baseCostInCents: 0.0005,
 };
-const fixture = new SecretProxyFixture();
+const fixture = new SecretProxyFixture("manual");
 beforeAll(() => fixture.start(), 600_000);
 afterAll(() => fixture.stop(), 60_000);
 
@@ -339,13 +339,14 @@ async function setupProxyRun(
     org_id: environment.organizationId,
     project_id: environment.projectId,
     deployment_version: deployment.version,
+    workload_network: "proxy" as const,
   };
   const proxy = bindings();
   await proxy.start();
   const callers = await fixture.placements(
     [
-      { runId: run.friendlyId, singleUse: options.singleUse },
-      { runId: RunId.generate().friendlyId },
+      { runId: run.friendlyId, singleUse: options.singleUse, sourceIp: "127.0.0.1" },
+      { runId: RunId.generate().friendlyId, sourceIp: "192.0.2.2" },
     ],
     claims
   );
@@ -418,19 +419,6 @@ postgresAndRedisTest(
     expect(await fixture.acceptsTls(second)).toBe(false);
   }
 );
-
-async function loopbackPlacement(caller: SecretProxyCaller): Promise<SecretProxyCaller> {
-  const pod = await fixture.core.readNamespacedPod({
-    name: caller.runnerId!,
-    namespace: fixture.namespace,
-  });
-  await fixture.core.replaceNamespacedPodStatus({
-    name: caller.runnerId!,
-    namespace: fixture.namespace,
-    body: { ...pod, status: { ...pod.status, podIP: "127.0.0.1", podIPs: [{ ip: "127.0.0.1" }] } },
-  });
-  return { ...caller, sourceIp: "127.0.0.1" };
-}
 
 postgresAndRedisTest(
   "sandbox proxy delivery is bootstrap-only and reused allocations cannot claim cold starts",
@@ -509,7 +497,7 @@ postgresAndRedisTest(
       data: { readyAt: new Date(0) },
     });
     await internalRunSigningService.activateKey(signingKey.id, actorUserId);
-    const caller = await loopbackPlacement(f.callers[0]!);
+    const caller = f.callers[0]!;
     const worker = new AuthenticatedWorkerInstance({
       prisma,
       engine: f.engine,
@@ -618,7 +606,7 @@ postgresAndRedisTest(
   "a later-snapshot completion after supervisor restart revokes before retry and only its owner can complete",
   async ({ prisma, redisOptions }) => {
     const f = await setupProxyRun(prisma, redisOptions);
-    const caller = await loopbackPlacement(f.callers[0]!);
+    const caller = f.callers[0]!;
     const started = await f.start(caller, f.dequeued.snapshot.id);
     const previousBinding = await currentBindingId(caller);
     await f.proxy.stop();
@@ -695,11 +683,7 @@ postgresAndRedisTest(
       const result = await response.json();
       expect(result.result.attemptStatus).toBe("RETRY_IMMEDIATELY");
       expect(await fixture.acceptsTls(caller)).toBe(false);
-      const retried = await f.start(
-        await loopbackPlacement(caller),
-        result.result.snapshot.id,
-        replacement
-      );
+      const retried = await f.start(caller, result.result.snapshot.id, replacement);
       expect(retried.run.attemptNumber).toBe(2);
       expect(await currentBindingId(caller)).not.toBe(previousBinding);
       expect(await fixture.acceptsTls(caller)).toBe(true);
@@ -733,7 +717,7 @@ postgresAndRedisTest(
   "busy retirement fences a pending platform start and retries its forced settlement",
   async ({ prisma, redisOptions }) => {
     const f = await setupProxyRun(prisma, redisOptions);
-    const caller = await loopbackPlacement(f.callers[0]!);
+    const caller = f.callers[0]!;
     const signals = new EventEmitter();
     const accepted = once(signals, "accepted");
     const responseGate = once(signals, "respond");

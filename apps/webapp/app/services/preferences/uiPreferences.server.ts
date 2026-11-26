@@ -54,3 +54,15 @@ export async function setTimezonePreference(timezone: string, request: Request) 
   session.set("timezone", timezone);
   return session;
 }
+
+/** Whether the deployments list shows its activity grid. Hidden until someone asks for it. */
+export async function getDeployActivityPreference(request: Request): Promise<boolean> {
+  const session = await getUiPreferencesSession(request);
+  return session.get("showDeployActivity") === true;
+}
+
+export async function setDeployActivityPreference(show: boolean, request: Request) {
+  const session = await getUiPreferencesSession(request);
+  session.set("showDeployActivity", show);
+  return session;
+}

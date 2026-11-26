@@ -1,10 +1,47 @@
 import { createRedisClusterClient, type Cluster } from "@internal/redis";
-import { RedisSnapshotStore, type SnapshotStoreMetrics } from "@internal/run-store";
+import {
+  isTransientRedisClientError,
+  RedisSnapshotStore,
+  type SnapshotStoreMetrics,
+} from "@internal/run-store";
 
 const DEFAULT_COMPLETED_TTL_MS = 4 * 24 * 60 * 60 * 1_000;
 const COMMAND_TIMEOUT_MS = 1_000;
 const CONNECT_TIMEOUT_MS = 500;
+const SLOTS_REFRESH_INTERVAL_MS = 2_000;
+const SLOT_REFRESH_SETTLE_MS = 2_000;
 const POLICY_CHECK_INTERVAL_MS = 30_000;
+
+/**
+ * ioredis arms the next periodic slot refresh from the callback of the current one, so a refresh in
+ * flight when the client closes leaves a timer running afterwards. refreshSlotsCache queues a
+ * callback behind an in-flight refresh: wait for it, bounded in case no node answers, and if it only
+ * finishes after the client closed, disconnect again to clear the timer that refresh armed.
+ */
+async function quitAfterSlotRefresh(connection: Cluster) {
+  let disconnected = false;
+  let settleTimer: NodeJS.Timeout | undefined;
+  try {
+    if (connection.status === "ready") {
+      await Promise.race([
+        new Promise<void>((resolve) =>
+          connection.refreshSlotsCache(() => {
+            if (disconnected) connection.disconnect();
+            resolve();
+          })
+        ),
+        new Promise<void>((resolve) => {
+          settleTimer = setTimeout(resolve, SLOT_REFRESH_SETTLE_MS);
+        }),
+      ]);
+    }
+    await connection.quit();
+  } finally {
+    clearTimeout(settleTimer);
+    connection.disconnect();
+    disconnected = true;
+  }
+}
 
 /** Infrastructure only. Rollout modes belong to the existing polled flags, not this URL. */
 export function snapshotClusterOptions(endpoint: string) {
@@ -21,6 +58,10 @@ export function snapshotClusterOptions(endpoint: string) {
     clusterOptions: {
       lazyConnect: true,
       scaleReads: "master" as const,
+      // ioredis only re-reads the slot map on MOVED or a closed connection. A failed primary that
+      // goes silent sends neither, so without a periodic refresh the client never finds the
+      // promoted replica.
+      slotsRefreshInterval: SLOTS_REFRESH_INTERVAL_MS,
       ...(url.protocol === "rediss:" && {
         // Preserve the seed hostname; AWS TLS certificates do not identify private IPs.
         dnsLookup: (address: string, callback: (err: Error | null, address: string) => void) =>
@@ -50,6 +91,8 @@ export function createSnapshotConnection(
     onError?: (error: Error) => void;
     /** How long a finished run's snapshot state stays in the store. */
     completedTtlMs?: number;
+    /** How long a passed memory-policy check is trusted. Defaults to 30s. */
+    policyCheckIntervalMs?: number;
   } = {}
 ) {
   const clientOptions = snapshotClusterOptions(endpoint);
@@ -57,7 +100,9 @@ export function createSnapshotConnection(
   let store: RedisSnapshotStore | undefined;
   let connecting: Promise<void> | undefined;
   let policyCheck: Promise<void> | undefined;
+  const policyCheckIntervalMs = options.policyCheckIntervalMs ?? POLICY_CHECK_INTERVAL_MS;
   let policyCheckedAt = 0;
+  let protocolCompatible = false;
   let closed = false;
 
   function getClient() {
@@ -97,17 +142,34 @@ export function createSnapshotConnection(
   async function beforeCommand(operation: string) {
     await ready();
     if (operation !== "prepare" && operation !== "append") return;
-    if (Date.now() - policyCheckedAt < POLICY_CHECK_INTERVAL_MS) return;
+    if (Date.now() - policyCheckedAt < policyCheckIntervalMs) return;
     policyCheck ??= (async () => {
-      // INFO is supported by MemoryDB, whereas CONFIG is restricted. Check every current primary.
+      // INFO is supported by MemoryDB, whereas CONFIG is restricted. Check every primary that
+      // answers: a primary that is down must not block writes to the shards that are still up.
       const nodes = getClient().nodes("master");
       if (nodes.length === 0) throw new Error("Snapshot cluster has no primary nodes");
-      const memory = await Promise.all(nodes.map((node) => node.info("memory")));
+      const results = await Promise.allSettled(nodes.map((node) => node.info("memory")));
+      const memory: string[] = [];
+      let unreachable: unknown;
+      for (const result of results) {
+        if (result.status === "fulfilled") memory.push(result.value);
+        // Only a node that didn't answer is skipped. A reply error such as NOPERM fails the check.
+        else if (isTransientRedisClientError(result.reason)) unreachable ??= result.reason;
+        else throw result.reason;
+      }
+      if (memory.length === 0) throw unreachable;
       if (memory.some((info) => !/^maxmemory_policy:noeviction\r?$/m.test(info))) {
         throw new Error("Snapshot writes require noeviction on every primary");
       }
-      const protocol = await store!.readOrBootstrapProtocolMarker("1");
-      if (!protocol.compatible) throw new Error("Snapshot cluster protocol is incompatible");
+      try {
+        const protocol = await store!.readOrBootstrapProtocolMarker("1");
+        protocolCompatible = protocol.compatible;
+        if (!protocol.compatible) throw new Error("Snapshot cluster protocol is incompatible");
+      } catch (error) {
+        // The marker is one key on one shard. Once this process has seen it compatible, failing to
+        // reach that shard keeps the earlier result instead of failing writes to every shard.
+        if (!(protocolCompatible && isTransientRedisClientError(error))) throw error;
+      }
       policyCheckedAt = Date.now();
     })().finally(() => {
       policyCheck = undefined;
@@ -134,11 +196,7 @@ export function createSnapshotConnection(
           client.disconnect();
           return;
         }
-        try {
-          await client.quit();
-        } finally {
-          client.disconnect();
-        }
+        await quitAfterSlotRefresh(client);
       }
     },
   };

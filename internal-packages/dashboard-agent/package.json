@@ -22,14 +22,14 @@
     "@trigger.dev/sdk": "workspace:*",
     "ai": "^6.0.116",
     "drizzle-orm": "^0.45.0",
-    "zod": "4.5.4"
+    "zod": "4.6.7"
   },
   "devDependencies": {
     "@ai-sdk/provider": "3.0.8",
     "@internal/testcontainers": "workspace:*",
     "@trigger.dev/build": "workspace:*",
     "trigger.dev": "workspace:*",
-    "vitest": "4.1.11"
+    "vitest": "4.1.12"
   },
   "scripts": {
     "typecheck": "tsc --noEmit",

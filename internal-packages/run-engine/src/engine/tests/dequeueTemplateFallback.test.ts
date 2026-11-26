@@ -14,7 +14,11 @@ const TEMPLATE_KEY = "4f2b1c0e9d8a7b6c5d4e3f2a1b0c9d8e7f6a5b4c3d2e1f0a9b8c7d6e5f
 const COMPUTE_QUEUE = "compute-main";
 const CONTAINER_QUEUE = "container-main";
 
-function createEngine(prisma: PrismaClientOrTransaction, redisOptions: any) {
+function createEngine(
+  prisma: PrismaClientOrTransaction,
+  redisOptions: any,
+  { maxAttempts }: { maxAttempts?: number } = {}
+) {
   return new RunEngine({
     prisma: prisma as any,
     worker: { redis: redisOptions, workers: 1, tasksPerWorker: 10, pollIntervalMs: 100 },
@@ -22,6 +26,9 @@ function createEngine(prisma: PrismaClientOrTransaction, redisOptions: any) {
       redis: redisOptions,
       masterQueueConsumersDisabled: true,
       processWorkerQueueDebounceMs: 50,
+      ...(maxAttempts
+        ? { retryOptions: { maxAttempts, minTimeoutInMs: 1, maxTimeoutInMs: 1, factor: 1 } }
+        : {}),
     },
     runLock: { redis: redisOptions },
     machines: {
@@ -39,7 +46,8 @@ async function trigger(
   engine: RunEngine,
   prisma: PrismaClientOrTransaction,
   environment: MinimalAuthenticatedEnvironment,
-  taskIdentifier: string
+  taskIdentifier: string,
+  annotations?: { computeOnly?: true; executionMode?: "SANDBOX" }
 ) {
   const run = await engine.trigger(
     {
@@ -57,6 +65,12 @@ async function trigger(
       queue: `task/${taskIdentifier}`,
       isTest: false,
       tags: [],
+      annotations: annotations && {
+        triggerSource: "sdk",
+        triggerAction: "trigger",
+        rootTriggerSource: "sdk",
+        ...annotations,
+      },
     },
     prisma
   );
@@ -142,6 +156,68 @@ describe("RunEngine dequeue on a worker queue that needs a template", () => {
 
         const started = await prisma.taskRun.findUniqueOrThrow({ where: { id: run.id } });
         expect(started.workerQueue).toBe(COMPUTE_QUEUE);
+      } finally {
+        await engine.quit();
+      }
+    }
+  );
+
+  // Catches: a compute-only or sandbox run moved to a container lane for lack of a template.
+  containerTest.for([
+    { name: "compute-only", annotations: { computeOnly: true as const } },
+    { name: "sandbox", annotations: { executionMode: "SANDBOX" as const } },
+  ])(
+    "keeps a $name run without a template on compute",
+    async ({ annotations }, { prisma, redisOptions }) => {
+      const environment = await setupAuthenticatedEnvironment(prisma, "PRODUCTION");
+      const engine = createEngine(prisma, redisOptions);
+
+      try {
+        const taskIdentifier = "test-task";
+        await setupBackgroundWorker(engine, environment, taskIdentifier);
+        const run = await trigger(engine, prisma, environment, taskIdentifier, annotations);
+
+        const dequeued = await dequeueCompute(engine, () => CONTAINER_QUEUE);
+        expect(dequeued).toHaveLength(0);
+
+        const waiting = await prisma.taskRun.findUniqueOrThrow({ where: { id: run.id } });
+        expect(waiting.workerQueue).toBe(COMPUTE_QUEUE);
+        expect(waiting.status).toBe("PENDING");
+      } finally {
+        await engine.quit();
+      }
+    }
+  );
+
+  // Catches: a run that can only start on compute failing, once its template wait runs out, with a
+  // message that doesn't say to deploy again.
+  containerTest.for([
+    {
+      name: "compute-only",
+      annotations: { computeOnly: true as const },
+      message: "This run couldn't start. Deploy again, then replay the run.",
+    },
+    {
+      name: "unpinned",
+      annotations: undefined,
+      message: "The run's deployment is not ready to start on this worker queue.",
+    },
+  ])(
+    "fails a $name run without a template once its wait budget is spent",
+    async ({ annotations, message }, { prisma, redisOptions }) => {
+      const environment = await setupAuthenticatedEnvironment(prisma, "PRODUCTION");
+      const engine = createEngine(prisma, redisOptions, { maxAttempts: 1 });
+
+      try {
+        const taskIdentifier = "test-task";
+        await setupBackgroundWorker(engine, environment, taskIdentifier);
+        const run = await trigger(engine, prisma, environment, taskIdentifier, annotations);
+
+        expect(await dequeueCompute(engine, () => undefined)).toHaveLength(0);
+
+        const failed = await prisma.taskRun.findUniqueOrThrow({ where: { id: run.id } });
+        expect(failed.status).toBe("SYSTEM_FAILURE");
+        expect(failed.error).toMatchObject({ code: "TASK_RUN_DEQUEUED_MAX_RETRIES", message });
       } finally {
         await engine.quit();
       }

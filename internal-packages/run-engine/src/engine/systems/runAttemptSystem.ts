@@ -9,7 +9,7 @@ import {
 import type { RedisOptions } from "@internal/redis";
 import { startSpan, type Counter } from "@internal/tracing";
 import { tryCatch } from "@trigger.dev/core/utils";
-import { isSandboxRun, sanitizeError } from "@trigger.dev/core/v3";
+import { computeOnlyReason, sanitizeError } from "@trigger.dev/core/v3";
 import { assertNever } from "assert-never";
 import type {
   CompleteRunAttemptResult,
@@ -39,6 +39,7 @@ import type {
   RuntimeEnvironmentType,
 } from "@trigger.dev/database";
 import {
+  COMPUTE_FALLBACKS_REFUSED_COUNTER,
   CONTINUED_WHILST_EXECUTING_DESCRIPTION,
   MAX_TASK_RUN_ATTEMPTS,
   RETRY_IMMEDIATELY_SNAPSHOT_DESCRIPTION,
@@ -156,6 +157,7 @@ export class RunAttemptSystem {
   private readonly rederivationsCounter: Counter;
   private readonly releasesCounter: Counter;
   private readonly restoreOutcomesCounter: Counter;
+  private readonly computeFallbacksRefusedCounter: Counter;
   private readonly duplicateAttemptStartsCounter: Counter;
   private readonly staleCompletionsCounter: Counter;
   private readonly cache: UnkeyCache<{
@@ -191,6 +193,10 @@ export class RunAttemptSystem {
       description: "Failed restores reported by a supervisor, by outcome, reason and result",
       unit: "reports",
     });
+    this.computeFallbacksRefusedCounter = this.$.meter.createCounter(
+      COMPUTE_FALLBACKS_REFUSED_COUNTER.name,
+      { description: COMPUTE_FALLBACKS_REFUSED_COUNTER.description, unit: "runs" }
+    );
     this.duplicateAttemptStartsCounter = this.$.meter.createCounter(
       "run_engine.duplicate_attempt_starts",
       {
@@ -1402,7 +1408,12 @@ export class RunAttemptSystem {
                   projectId: env.project.id,
                   timestamp: retryAt.getTime(),
                   resetQueueAttempts: resetQueueAttempts ?? !forceRequeue,
-                  workerQueue: workerQueueForPublish(run, env),
+                  workerQueue: workerQueueForPublish(
+                    run,
+                    env,
+                    undefined,
+                    this.$.legacyToV2WorkerQueues
+                  ),
                   error: {
                     type: "INTERNAL_ERROR",
                     code: "TASK_RUN_DEQUEUED_MAX_RETRIES",
@@ -1957,7 +1968,8 @@ export class RunAttemptSystem {
         latestSnapshot.executionStatus !== "PENDING_EXECUTING" ||
         (outcome === "fail" && !latestSnapshot.checkpointId) ||
         (outcome === "fallback" && latestSnapshot.checkpointId) ||
-        (servesWorkerQueue && !servesRun(run, latestSnapshot, servesWorkerQueue))
+        (servesWorkerQueue &&
+          !servesRun(run, latestSnapshot, servesWorkerQueue, this.$.legacyToV2WorkerQueues))
       ) {
         this.restoreOutcomesCounter.add(1, {
           outcome,
@@ -1995,11 +2007,18 @@ export class RunAttemptSystem {
         case "fallback": {
           let moveToWorkerQueue: string | undefined;
           if (outcome === "fallback") {
-            // A sandbox must not leave compute, so it is requeued in place.
-            const target =
-              run && !isSandboxRun(run.annotations)
-                ? fallbackWorkerQueue?.(run.workerQueue)
-                : undefined;
+            // A run that must stay on compute (a sandbox, or a compute-only org's run) is
+            // requeued in place.
+            const why = run !== null ? computeOnlyReason(run.annotations) : undefined;
+            if (run && why) {
+              this.computeFallbacksRefusedCounter.add(1, { site: "cold_start", why });
+              this.$.logger.info("reportRestoreOutcome: cold start kept on compute", {
+                runId,
+                workerQueue: run.workerQueue,
+                why,
+              });
+            }
+            const target = run && !why ? fallbackWorkerQueue?.(run.workerQueue) : undefined;
             // Without a worker queue to move to, it is requeued where it is.
             moveToWorkerQueue = target !== run?.workerQueue ? target : undefined;
             this.$.logger.info("reportRestoreOutcome: moving a cold start", {
@@ -2114,7 +2133,7 @@ export class RunAttemptSystem {
           { id: runId },
           { select: { workerQueue: true } }
         );
-        refused = !servesRun(run, latestSnapshot, servesWorkerQueue);
+        refused = !servesRun(run, latestSnapshot, servesWorkerQueue, this.$.legacyToV2WorkerQueues);
       }
 
       if (refused) {
@@ -3441,21 +3460,22 @@ const METRIC_REASONS = new Set([
 function servesRun(
   run: { workerQueue: string } | null,
   snapshot: Pick<EnhancedExecutionSnapshot, "environmentId" | "environmentType" | "checkpoint">,
-  serves: (workerQueue: string) => boolean
+  serves: (workerQueue: string) => boolean,
+  legacyToV2: ReadonlyMap<string, string> | undefined
 ): boolean {
   if (!run) {
     return false;
   }
   return (
     serves(run.workerQueue) ||
-    (!!snapshot.checkpoint &&
-      serves(
-        workerQueueForPublish(
-          run,
-          { id: snapshot.environmentId, type: snapshot.environmentType },
-          snapshot.checkpoint
-        )
-      ))
+    serves(
+      workerQueueForPublish(
+        run,
+        { id: snapshot.environmentId, type: snapshot.environmentType },
+        snapshot.checkpoint ?? undefined,
+        legacyToV2
+      )
+    )
   );
 }
 

@@ -114,6 +114,7 @@ export async function buildSyntheticSpanRun(args: {
     executedAt: null,
     updatedAt: run.cancelledAt ?? run.createdAt,
     delayUntil: run.delayUntil ?? null,
+    queuedAt: null,
     expiredAt: null,
     // Symmetric with `ApiRetrieveRunPresenter` — FAILED buffered runs
     // must surface a non-null `completedAt` so the run-detail panel
@@ -146,6 +147,8 @@ export async function buildSyntheticSpanRun(args: {
       isCustomQueue: !queueName.startsWith("task/"),
       concurrencyKey: run.concurrencyKey ?? null,
     },
+    // A buffered run has no gates yet: the engine compiles them when it takes the run.
+    gates: null,
     tags: run.runTags,
     baseCostInCents: 0,
     costInCents: 0,

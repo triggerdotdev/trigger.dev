@@ -14,6 +14,7 @@ import {
   RUN_STATUS_GROUPS,
   zeroFillGroupedSeries,
 } from "./activitySeries.server";
+import { readLimitOptions, type ReadLimit } from "./clickhouseReadLimit";
 
 type TaskDetailQueue = {
   friendlyId: string;
@@ -36,7 +37,10 @@ export type TaskDetail = {
   exportName: string | null;
   description: string | null;
   triggerSource: TaskTriggerSource;
+  /** When this version's task row was written. */
   createdAt: Date;
+  /** When the task first appeared in the project: its earliest worker task row. */
+  firstSeenAt: Date;
   config: unknown;
   workerVersion: string | null;
   queue: TaskDetailQueue | null;
@@ -63,11 +67,13 @@ export class TaskDetailPresenter {
   ) {}
 
   async findTask({
+    projectId,
     environmentId,
     environmentType,
     taskSlug,
     expectedTriggerSource,
   }: {
+    projectId: string;
     environmentId: string;
     environmentType: RuntimeEnvironmentType;
     taskSlug: string;
@@ -112,6 +118,14 @@ export class TaskDetailPresenter {
 
     if (!task) return null;
 
+    // The oldest row for this slug across the project's workers, read off the
+    // [projectId, slug, createdAt] index.
+    const firstSeen = await this.replica.backgroundWorkerTask.findFirst({
+      where: { projectId, slug: taskSlug },
+      orderBy: { createdAt: "asc" },
+      select: { createdAt: true },
+    });
+
     const retryParsed = RetryOptions.safeParse(task.retryConfig ?? undefined);
     const retry: TaskDetailRetry | null = retryParsed.success
       ? {
@@ -130,6 +144,7 @@ export class TaskDetailPresenter {
       description: task.description,
       triggerSource: task.triggerSource,
       createdAt: task.createdAt,
+      firstSeenAt: firstSeen?.createdAt ?? task.createdAt,
       config: task.config,
       workerVersion: currentWorker.version,
       queue: task.queue,
@@ -148,6 +163,7 @@ export class TaskDetailPresenter {
     taskSlug,
     from,
     to,
+    limit,
   }: {
     organizationId: string;
     projectId: string;
@@ -155,6 +171,7 @@ export class TaskDetailPresenter {
     taskSlug: string;
     from: Date;
     to: Date;
+    limit?: ReadLimit;
   }): Promise<TaskActivity> {
     const rangeMs = Math.max(1, to.getTime() - from.getTime());
     const bucketSeconds = chooseBucketSeconds(rangeMs);
@@ -193,17 +210,20 @@ export class TaskDetailPresenter {
       }),
     });
 
-    const [error, rows] = await queryFn({
-      organizationId,
-      projectId,
-      environmentId,
-      taskSlug,
-      bucketSeconds,
-      // ClickHouse's DateTime64(3, 'UTC') parser rejects the trailing `Z` from
-      // JS toISOString() ("only 23 of 24 bytes was parsed"). Strip it.
-      fromTime: from.toISOString().slice(0, -1),
-      toTime: to.toISOString().slice(0, -1),
-    });
+    const [error, rows] = await queryFn(
+      {
+        organizationId,
+        projectId,
+        environmentId,
+        taskSlug,
+        bucketSeconds,
+        // ClickHouse's DateTime64(3, 'UTC') parser rejects the trailing `Z` from
+        // JS toISOString() ("only 23 of 24 bytes was parsed"). Strip it.
+        fromTime: from.toISOString().slice(0, -1),
+        toTime: to.toISOString().slice(0, -1),
+      },
+      readLimitOptions(limit)
+    );
 
     if (error) {
       console.error("Task activity query failed:", error);

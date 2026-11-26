@@ -3,6 +3,7 @@ import type {
   AuditLogEventQuery,
   AuditLogListedAction,
   AuditLogListedCategory,
+  AuditLogSource,
 } from "@trigger.dev/plugins";
 import { z } from "zod";
 
@@ -41,11 +42,23 @@ const LISTED_ACTIONS = [
   "support.session_ended",
 ] as const satisfies readonly AuditLogListedAction[];
 
-// Fails to compile when the plugin contract gains a category or action these lists lack.
+/** Every way a request can reach us, as an event's `source` names it. */
+const SOURCES = [
+  "dashboard",
+  "api",
+  "cli",
+  "run",
+  "staff",
+  "system",
+] as const satisfies readonly AuditLogSource[];
+
+// Fails to compile when the plugin contract gains a category, action or source these lists lack.
 type MissingCategory = Exclude<AuditLogListedCategory, (typeof LISTED_CATEGORIES)[number]>;
 type MissingAction = Exclude<AuditLogListedAction, (typeof LISTED_ACTIONS)[number]>;
+type MissingSource = Exclude<AuditLogSource, (typeof SOURCES)[number]>;
 const _everyCategoryListed: [MissingCategory] extends [never] ? true : never = true;
 const _everyActionListed: [MissingAction] extends [never] ? true : never = true;
+const _everySourceListed: [MissingSource] extends [never] ? true : never = true;
 
 const MAX_PAGE_SIZE = 100;
 const DEFAULT_PAGE_SIZE = 20;
@@ -104,24 +117,26 @@ export const AuditEventsSearchParams = z
     "filter[projectId]": id.optional(),
     "filter[environmentId]": id.optional(),
     "filter[keyLast4]": z.string().length(4).optional(),
+    "filter[source]": commaSeparated(SOURCES).optional(),
+    "filter[targetName]": z.string().min(1).max(1024).optional(),
   })
   .strict();
 
 export type AuditEventsSearchParams = z.infer<typeof AuditEventsSearchParams>;
 
-type TimeRange = { from: Date; to: Date };
+export type TimeRange = { from: Date; to: Date };
 
 /** Before any audit event: an unbounded start until a visibility window applies. */
-const EARLIEST_EVENT = new Date("2000-01-01T00:00:00.000Z");
+export const EARLIEST_EVENT = new Date("2000-01-01T00:00:00.000Z");
 
 /**
- * The single place the plan's visibility window is enforced on the public API. Returns the part of
- * the requested range the organization may see.
+ * The single place the plan's visibility window is enforced, for the public API and the audit log
+ * page. Returns the part of the requested range the organization may see.
  *
  * TODO(TRI-15844): no window is decided yet, so this passes the range through unchanged. When one
  * is, move `from` forward to the start of the organization's window here.
  */
-async function clampToVisibilityWindow(
+export async function clampToVisibilityWindow(
   _organizationId: string,
   requested: TimeRange
 ): Promise<TimeRange> {
@@ -154,6 +169,8 @@ export async function toAuditLogEventQuery(
     projectId: searchParams["filter[projectId]"],
     environmentId: searchParams["filter[environmentId]"],
     keyLast4: searchParams["filter[keyLast4]"],
+    sources: searchParams["filter[source]"],
+    targetName: searchParams["filter[targetName]"],
     cursor: searchParams["page[after]"],
     limit: searchParams["page[size]"],
   };

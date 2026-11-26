@@ -1,5 +1,8 @@
+import { CurrentVersionProvider } from "~/components/versions/VersionLabel";
+import { findCurrentVersion } from "~/v3/models/workerDeployment.server";
 import { BeakerIcon, BookOpenIcon } from "@heroicons/react/24/solid";
-import { runFiltersSchema } from "@internal/dashboard-agent-contracts";
+// The subpath keeps the rest of the agent contracts (and their schemas) out of this page's bundle.
+import { runFiltersSchema } from "@internal/dashboard-agent-contracts/run-filters";
 import { useLocation, useNavigation, useRevalidator } from "@remix-run/react";
 
 import { type LoaderFunctionArgs } from "@remix-run/server-runtime";
@@ -154,9 +157,13 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
       })
     : { canCancelRuns: true, canReplayRuns: true };
 
+  // One lookup per page load for every version label in the table.
+  const currentVersion = await findCurrentVersion(environment, $replica);
+
   return typeddefer(
     {
       data: list,
+      currentVersion,
       rootOnlyDefault: filters.rootOnly,
       filters,
       ...runPermissions,
@@ -166,7 +173,7 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
 };
 
 export default function Page() {
-  const { data, rootOnlyDefault, filters, canCancelRuns, canReplayRuns } =
+  const { data, currentVersion, rootOnlyDefault, filters, canCancelRuns, canReplayRuns } =
     useTypedLoaderData<typeof loader>();
   const { isConnected } = useDevPresence();
   const environment = useEnvironment();
@@ -190,41 +197,43 @@ export default function Page() {
         </PageAccessories>
       </NavBar>
       <PageBody scrollable={false}>
-        <SelectedItemsProvider
-          initialSelectedItems={[]}
-          maxSelectedItemCount={BULK_ACTION_RUN_LIMIT}
-        >
-          {({ selectedItems }) => (
-            <Suspense
-              fallback={
-                <div className="grid h-full max-h-full grid-rows-[2.5rem_auto] overflow-hidden">
-                  <div className="border-b border-grid-bright" />
-                  <div className="my-2 flex items-center justify-center">
-                    <div className="mx-auto flex items-center gap-2">
-                      <Spinner />
-                      <Paragraph variant="small">Loading runs</Paragraph>
+        <CurrentVersionProvider currentVersion={currentVersion}>
+          <SelectedItemsProvider
+            initialSelectedItems={[]}
+            maxSelectedItemCount={BULK_ACTION_RUN_LIMIT}
+          >
+            {({ selectedItems }) => (
+              <Suspense
+                fallback={
+                  <div className="grid h-full max-h-full grid-rows-[2.5rem_auto] overflow-hidden">
+                    <div className="border-b border-grid-bright" />
+                    <div className="my-2 flex items-center justify-center">
+                      <div className="mx-auto flex items-center gap-2">
+                        <Spinner />
+                        <Paragraph variant="small">Loading runs</Paragraph>
+                      </div>
                     </div>
                   </div>
-                </div>
-              }
-            >
-              <TypedAwait resolve={data} errorElement={<RunsListErrorState />}>
-                {(list) => {
-                  return (
-                    <RunsList
-                      list={list}
-                      selectedItems={selectedItems}
-                      rootOnlyDefault={rootOnlyDefault}
-                      filters={filters}
-                      canCancelRuns={canCancelRuns}
-                      canReplayRuns={canReplayRuns}
-                    />
-                  );
-                }}
-              </TypedAwait>
-            </Suspense>
-          )}
-        </SelectedItemsProvider>
+                }
+              >
+                <TypedAwait resolve={data} errorElement={<RunsListErrorState />}>
+                  {(list) => {
+                    return (
+                      <RunsList
+                        list={list}
+                        selectedItems={selectedItems}
+                        rootOnlyDefault={rootOnlyDefault}
+                        filters={filters}
+                        canCancelRuns={canCancelRuns}
+                        canReplayRuns={canReplayRuns}
+                      />
+                    );
+                  }}
+                </TypedAwait>
+              </Suspense>
+            )}
+          </SelectedItemsProvider>
+        </CurrentVersionProvider>
       </PageBody>
     </>
   );
@@ -330,7 +339,7 @@ function RunsList({
               />
             )
           ) : (
-            <div className={cn("grid h-full max-h-full grid-rows-[auto_1fr] overflow-hidden")}>
+            <div className="grid h-full max-h-full grid-rows-[auto_1fr] overflow-hidden">
               <div className="flex items-start justify-between gap-x-2 p-2">
                 <RunsFilters
                   possibleTasks={list.possibleTasks}
@@ -410,6 +419,7 @@ function RunsList({
                 rootOnlyDefault={rootOnlyDefault}
                 canCancelRuns={canCancelRuns}
                 canReplayRuns={canReplayRuns}
+                canWidenPeriod
               />
             </div>
           )}

@@ -1390,21 +1390,6 @@ function EnvironmentPauseResumeButton({
   );
 }
 
-export function isEnvironmentPauseResumeFormSubmission(
-  formMethod: string | undefined,
-  formData: FormData | undefined
-) {
-  if (!formMethod || !formData) {
-    return false;
-  }
-
-  return (
-    formMethod.toLowerCase() === "post" &&
-    (formData.get("action") === "environment-pause" ||
-      formData.get("action") === "environment-resume")
-  );
-}
-
 export function QueueFilters() {
   const { value, replace } = useSearchParams();
 

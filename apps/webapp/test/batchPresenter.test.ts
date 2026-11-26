@@ -255,9 +255,9 @@ describe("BatchPresenter read-through (PG14 legacy + PG17 new)", () => {
     }
   );
 
-  // Post-termination / not-found yields the normal "Batch not found".
+  // Post-termination / not-found resolves null, which the batch page turns into a 404.
   heteroPostgresTest(
-    "throws the normal not-found when the batch is absent from both stores",
+    "returns null when the batch is absent from both stores",
     async ({ prisma14, prisma17 }) => {
       const ctx = await seedEnvironment(prisma14, "missing1");
 
@@ -270,7 +270,7 @@ describe("BatchPresenter read-through (PG14 legacy + PG17 new)", () => {
 
       await expect(
         presenter.call({ environmentId: ctx.environmentId, batchId: "batch_does_not_exist" })
-      ).rejects.toThrow("Batch not found");
+      ).resolves.toBeNull();
     }
   );
 

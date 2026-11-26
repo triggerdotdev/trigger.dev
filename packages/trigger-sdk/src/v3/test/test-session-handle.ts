@@ -62,10 +62,59 @@ export type TestSessionOutState = {
   chunks: unknown[];
   /** Registered write listeners (fired for each chunk). */
   listeners: Set<(chunk: unknown) => void>;
+  /**
+   * `.out` as the server keeps it: one record per write with its 1-based seq
+   * and its headers (`trigger-control` plus siblings on a control record, none
+   * on a data record). Index `n - 1` holds seq `n`, the same number
+   * `writeControl` acknowledges.
+   */
+  records?: TestOutRecord[];
+  /**
+   * Milliseconds each append to `.out` takes to be acknowledged: every control
+   * record and one-shot append, and the first chunk of each piped stream (later
+   * chunks of a pipe are batched behind it). Zero by default.
+   */
+  appendLatencyMs?: number;
+  /**
+   * Milliseconds a piped chunk waits before it is acknowledged, modelling the
+   * writer's batching: chunks of one pipe stay in order but land after a direct
+   * append made at the same moment. Zero by default.
+   */
+  pipeLingerMs?: number;
+  /**
+   * Drop the turn-start and turn-join control records instead of writing them,
+   * as an agent on an older SDK version would, which writes neither.
+   */
+  omitTurnMarkers?: boolean;
 };
 
-function notify(state: TestSessionOutState, chunk: unknown): void {
+const ackDelay = (state: TestSessionOutState) =>
+  state.appendLatencyMs
+    ? new Promise<void>((resolve) => setTimeout(resolve, state.appendLatencyMs))
+    : undefined;
+
+/** One `.out` record as a reader sees it. */
+export type TestOutRecord = {
+  seqNum: number;
+  /** `performance.now()` when the record was acknowledged. */
+  at: number;
+  headers: Array<[string, string]>;
+  /** The UIMessageChunk of a data record; absent on a control record. */
+  chunk?: unknown;
+};
+
+function notify(
+  state: TestSessionOutState,
+  chunk: unknown,
+  headers: Array<[string, string]> = []
+): void {
   state.chunks.push(chunk);
+  state.records?.push({
+    seqNum: state.chunks.length,
+    at: performance.now(),
+    headers,
+    ...(headers.length === 0 ? { chunk } : {}),
+  });
   for (const listener of state.listeners) {
     try {
       listener(chunk);
@@ -110,6 +159,7 @@ class TestSessionOutputChannel extends SessionOutputChannel {
   }
 
   async append<T>(value: T, _options?: SessionPipeStreamOptions): Promise<void> {
+    await ackDelay(this.state);
     notify(this.state, value);
   }
 
@@ -119,6 +169,7 @@ class TestSessionOutputChannel extends SessionOutputChannel {
   ): PipeStreamResult<T> {
     const state = this.state;
     const readChunks: T[] = [];
+    const lingering: Promise<void>[] = [];
     let pipeError: unknown;
     let resolveDone!: () => void;
     const done = new Promise<void>((resolve) => {
@@ -130,11 +181,27 @@ class TestSessionOutputChannel extends SessionOutputChannel {
       try {
         const readable = ensureReadableStream(value);
         reader = readable.getReader();
+        let first = true;
         while (true) {
           const { done: d, value: v } = await reader.read();
           if (d) break;
+          if (first) {
+            first = false;
+            await ackDelay(state);
+          }
           readChunks.push(v as T);
-          notify(state, v);
+          if (state.pipeLingerMs) {
+            lingering.push(
+              new Promise<void>((resolve) =>
+                setTimeout(() => {
+                  notify(state, v);
+                  resolve();
+                }, state.pipeLingerMs)
+              )
+            );
+          } else {
+            notify(state, v);
+          }
         }
       } catch (err) {
         // Mirror production: a source-stream error (or a throw from stream
@@ -147,6 +214,7 @@ class TestSessionOutputChannel extends SessionOutputChannel {
         } catch {
           // ignore
         }
+        await Promise.all(lingering);
         resolveDone();
       }
     })();
@@ -254,6 +322,10 @@ class TestSessionOutputChannel extends SessionOutputChannel {
     subtype: string,
     extraHeaders?: ReadonlyArray<readonly [string, string]>
   ): Promise<StreamWriteResult> {
+    if (this.state.omitTurnMarkers && (subtype === "turn-start" || subtype === "turn-join")) {
+      return { lastEventId: String(this.state.chunks.length) };
+    }
+    await ackDelay(this.state);
     const synthetic: Record<string, unknown> = { type: `trigger:${subtype}` };
     if (extraHeaders) {
       for (const [name, value] of extraHeaders) {
@@ -270,7 +342,10 @@ class TestSessionOutputChannel extends SessionOutputChannel {
         }
       }
     }
-    notify(this.state, synthetic);
+    notify(this.state, synthetic, [
+      ["trigger-control", subtype],
+      ...(extraHeaders ?? []).map(([name, value]): [string, string] => [name, value]),
+    ]);
     // Project a synthetic monotonic seq_num as the ack's `lastEventId`,
     // mirroring what S2 returns in production (there it's the control
     // record's seq_num). Using the running `.out` record count lets

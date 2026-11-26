@@ -50,7 +50,7 @@ export const myChat = chat.agent({
   // `streamText` below is the SDK's, from the run argument. See "Common mistakes".
   run: async ({ messages, signal, streamText }) =>
     streamText({
-      model: anthropic("claude-sonnet-4-5"),
+      model: anthropic("claude-sonnet-5-5"),
       messages,
       abortSignal: signal,
       stopWhen: stepCountIs(15),
@@ -136,7 +136,7 @@ export const agentChat = chat.agent({
 // `chat.toStreamTextOptions()` is the alternative when threading it down is impractical.
 async function runAgentLoop(messages: ModelMessage[], streamText: ChatStreamText) {
   const result = streamText({
-    model: anthropic("claude-sonnet-4-5"),
+    model: anthropic("claude-sonnet-5-5"),
     messages,
   });
   await chat.pipe(result); // works from anywhere in the task
@@ -165,7 +165,7 @@ export const myChat = chat.agent({
   tools, // so toModelOutput survives across turns
   run: async ({ messages, tools, signal, streamText }) =>
     streamText({
-      model: anthropic("claude-sonnet-4-5"),
+      model: anthropic("claude-sonnet-5-5"),
       messages,
       tools, // same set, handed back typed
       abortSignal: signal,

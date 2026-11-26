@@ -20,7 +20,12 @@ vi.setConfig({ testTimeout: 60_000, hookTimeout: 60_000 });
 
 // Prevent the db / engine / run-store singletons from constructing at import (the service is driven with
 // an explicitly-injected prisma + store).
-vi.mock("~/db.server", () => ({ prisma: {}, $replica: {} }));
+vi.mock("~/db.server", () => ({
+  prisma: {},
+  $replica: {},
+  $transaction: (client: any, _name: string, fn: (tx: any) => Promise<unknown>) =>
+    client.$transaction(fn),
+}));
 vi.mock("~/v3/runEngine.server", () => ({ engine: {} }));
 vi.mock("~/v3/runStore.server", () => ({ runStore: {} }));
 // commonWorker.enqueue is the "next batch" scheduling side effect — orthogonal to the hydration read.

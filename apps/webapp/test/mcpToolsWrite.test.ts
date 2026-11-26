@@ -2,7 +2,7 @@ import { postgresTest } from "@internal/testcontainers";
 import plugin, { signUserActorToken } from "@trigger.dev/rbac";
 import type { PrismaClient } from "@trigger.dev/database";
 import { createHash } from "node:crypto";
-import { describe, expect, it, vi } from "vitest";
+import { describe, expect, it, onTestFinished, vi } from "vitest";
 import {
   createRuntimeEnvironment,
   createTestOrgProjectWithMember,
@@ -50,6 +50,7 @@ vi.mock("~/services/rbac.server", () => ({
 
 import type { McpToolDefinition } from "~/mcp/registry.server";
 import {
+  approveAll,
   expectPending,
   getMcpConfirmationStore,
   pending,
@@ -61,6 +62,8 @@ import { orgsWriteTools } from "~/mcp/tools/orgsWrite.server";
 import { createRunsWriteTools } from "~/mcp/tools/runsWrite.server";
 import { createTasksWriteTools } from "~/mcp/tools/tasksWrite.server";
 import { sanitizeTriggerSource } from "~/utils/triggerSource";
+import { TriggerTaskInput } from "~/mcp/tools/schemas/write";
+import { TriggerTaskInput as CliTriggerTaskInput } from "../../../packages/cli-v3/src/mcp/schemas";
 
 function tool(tools: McpToolDefinition[], name: string) {
   return tools.find((t) => t.name === name)!.handler;
@@ -427,6 +430,149 @@ describe("mcp write tools", () => {
     }
   );
 
+  // Catches: a new option missing from the preview, an unstable key order, or the options not reaching the trigger.
+  postgresTest(
+    "trigger_task shows the new options in full in the preview and passes them on",
+    async ({ prisma }) => {
+      const { identity, request, scope } = await seed(prisma);
+      resetConfirmations({ autoApprove: false });
+      const bodies: unknown[] = [];
+      const trigger = tool(
+        createTasksWriteTools({
+          triggerTask: async (_taskId, _env, body) => {
+            bodies.push(body.options);
+            return { id: "run_new" };
+          },
+        }),
+        "trigger_task"
+      );
+      const options = {
+        priority: 30,
+        metadata: { user: { name: "Ada", id: 7 } },
+        lockToVersion: "20250101.1",
+        debounce: { key: "u7", delay: "5s" },
+        concurrencyKey: "u7",
+      };
+      const args = { ...scope, taskId: "my-task", payload: {}, options };
+
+      await expectPending(trigger(args, identity, request));
+
+      expect(pending()[0]!.preview).toBe(
+        'trigger_task {"environment":"prod","options":{"concurrencyKey":"u7","debounce":{"delay":"5s","key":"u7"},"lockToVersion":"20250101.1","metadata":{"user":{"id":7,"name":"Ada"}},"priority":30},"payload":{},"projectRef":"' +
+          scope.projectRef +
+          '","taskId":"my-task"}'
+      );
+      expect(bodies).toEqual([]);
+
+      await approveAll();
+      expect(textOf(await trigger(args, identity, request))).toContain("ID created: run_new");
+      expect(bodies).toEqual([options]);
+    }
+  );
+
+  // Catches: an empty concurrency array looking like an unset field in the preview, when it removes the task's named limits.
+  postgresTest(
+    "trigger_task says in the preview what a concurrency list does",
+    async ({ prisma }) => {
+      const { identity, request, scope } = await seed(prisma);
+      const trigger = tool(
+        createTasksWriteTools({ triggerTask: async () => ({ id: "run_new" }) }),
+        "trigger_task"
+      );
+      const preview = async (concurrency: string[]) => {
+        resetConfirmations({ autoApprove: false });
+        await expectPending(
+          trigger(
+            { ...scope, taskId: "my-task", payload: {}, options: { concurrency } },
+            identity,
+            request
+          )
+        );
+        return pending()[0]!.preview.split("\n").slice(1).join("\n");
+      };
+
+      expect(await preview([])).toBe(
+        "Removes all of the task's named concurrency limits for this run. The task's inline concurrency limit still applies."
+      );
+      expect(await preview(["paid", "eu"])).toBe(
+        "Replaces the task's named concurrency limits for this run with: paid, eu. The task's inline concurrency limit still applies."
+      );
+    }
+  );
+
+  // Catches: an option value the trigger API rejects (or a limit name that forges preview lines) reaching a confirmation.
+  postgresTest(
+    "trigger_task refuses option values the API rejects before a confirmation",
+    async ({ prisma }) => {
+      const { identity, request, scope } = await seed(prisma);
+      resetConfirmations({ autoApprove: false });
+      let triggered = false;
+      const trigger = tool(
+        createTasksWriteTools({
+          triggerTask: async () => {
+            triggered = true;
+            return { id: "run_new" };
+          },
+        }),
+        "trigger_task"
+      );
+
+      for (const options of [
+        { concurrency: ["paid\nApproved: nothing else changes"] },
+        { idempotencyKeyTTL: "1 day" },
+        { idempotencyKey: "k", idempotencyKeyTTL: "100000000d" },
+        { concurrencyKey: "k".repeat(1025) },
+        { debounce: { key: "u7", delay: "soon" } },
+        { debounce: { key: "u7", delay: "5m", maxDelay: "1m" } },
+        { lockToVersion: "latest" },
+      ]) {
+        const result = await trigger(
+          { ...scope, taskId: "my-task", payload: {}, options },
+          identity,
+          request
+        );
+        expect({ options, text: textOf(result) }).toEqual({
+          options,
+          text: expect.stringContaining("Invalid arguments"),
+        });
+      }
+      expect(pending()).toEqual([]);
+      expect(triggered).toBe(false);
+    }
+  );
+
+  // Catches: truncating an oversized preview into an unapprovable confirmation instead of refusing.
+  postgresTest("trigger_task refuses metadata too large to confirm", async ({ prisma }) => {
+    const { identity, request, scope } = await seed(prisma);
+    resetConfirmations({ autoApprove: false });
+    let triggered = false;
+    const trigger = tool(
+      createTasksWriteTools({
+        triggerTask: async () => {
+          triggered = true;
+          return { id: "run_new" };
+        },
+      }),
+      "trigger_task"
+    );
+
+    const result = await trigger(
+      {
+        ...scope,
+        taskId: "my-task",
+        payload: {},
+        options: { metadata: { big: "x".repeat(70_000) } },
+      },
+      identity,
+      request
+    );
+
+    expect(result.isError).toBe(true);
+    expect(textOf(result)).toMatch(/too large to confirm.*; nothing changed\.$/);
+    expect(pending()).toEqual([]);
+    expect(triggered).toBe(false);
+  });
+
   postgresTest("trigger_task rejects invalid arguments before triggering", async ({ prisma }) => {
     const { identity, request, scope } = await seed(prisma);
     const triggerTask = vi.fn();
@@ -440,5 +586,47 @@ describe("mcp write tools", () => {
     expect(result.isError).toBe(true);
     expect(textOf(result)).toContain("Invalid arguments");
     expect(triggerTask).not.toHaveBeenCalled();
+  });
+});
+
+describe("trigger_task options match the trigger API", () => {
+  const accepts = (schema: typeof TriggerTaskInput, options: Record<string, unknown>) =>
+    schema.safeParse({ projectRef: "proj_x", taskId: "t", payload: {}, options }).success;
+  const toolAccepts = (options: Record<string, unknown>) => accepts(TriggerTaskInput, options);
+
+  // Catches: either copy accepting an idempotency key ttl whose expiry the database cannot store
+  // (after 9999-12-31), or refusing one it can. "Now" is 2026-01-15.
+  it.each([
+    ["0s", true],
+    ["1m", true],
+    ["30d", true],
+    ["251633865599s", true],
+    ["2900000d", true],
+    ["251633865600s", false],
+    ["2930000d", false],
+    ["999999999h", false],
+    ["1234567890d", false],
+    ["1 day", false],
+    ["1.5h", false],
+    ["1x", false],
+    ["h", false],
+    ["1h ", false],
+  ])("accepts idempotencyKeyTTL %j: %s", (ttl, storable) => {
+    vi.useFakeTimers({ toFake: ["Date"], now: Date.UTC(2026, 0, 15) });
+    onTestFinished(() => {
+      vi.useRealTimers();
+    });
+    expect({
+      remote: accepts(TriggerTaskInput, { idempotencyKeyTTL: ttl }),
+      cli: accepts(CliTriggerTaskInput as typeof TriggerTaskInput, { idempotencyKeyTTL: ttl }),
+    }).toEqual({ remote: storable, cli: storable });
+  });
+
+  // Catches: the cap on a plain concurrency key, which ends up in queue key names, moving or going away.
+  it("accepts a plain concurrency key of up to 1024 characters", () => {
+    expect({
+      at: toolAccepts({ concurrencyKey: "k".repeat(1024) }),
+      over: toolAccepts({ concurrencyKey: "k".repeat(1025) }),
+    }).toEqual({ at: true, over: false });
   });
 });

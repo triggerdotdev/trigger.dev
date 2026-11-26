@@ -1,371 +1,286 @@
-import { BookOpenIcon } from "@heroicons/react/24/solid";
-import { type MetaFunction, useSearchParams } from "@remix-run/react";
+import { BookOpenIcon, PaperAirplaneIcon } from "@heroicons/react/20/solid";
+import { type ShouldRevalidateFunction } from "@remix-run/react";
 import { type LoaderFunctionArgs } from "@remix-run/server-runtime";
-import { type ReactNode, Suspense, useMemo, useState } from "react";
-import { TypedAwait, typeddefer, useTypedLoaderData } from "remix-typedjson";
-import { z } from "zod";
+import { typeddefer, useTypedLoaderData } from "remix-typedjson";
 import { WebhookIcon } from "~/assets/icons/WebhookIcon";
-import { PageBody } from "~/components/layout/AppLayout";
-import { DirectionSchema, ListPagination } from "~/components/ListPagination";
+import { PageBody, PageContainer } from "~/components/layout/AppLayout";
+import { DirectionSchema } from "~/components/ListPagination";
 import { LinkButton } from "~/components/primitives/Buttons";
-import { Card } from "~/components/primitives/charts/Card";
-import { Chart, type ChartConfig } from "~/components/primitives/charts/ChartCompound";
 import { CopyableText } from "~/components/primitives/CopyableText";
-import { DateTime } from "~/components/primitives/DateTime";
-import { Header2 } from "~/components/primitives/Headers";
-import { NavBar, PageAccessories, PageTitle } from "~/components/primitives/PageHeader";
-import * as Property from "~/components/primitives/PropertyTable";
 import {
-  ResizableHandle,
-  ResizablePanel,
-  ResizablePanelGroup,
-} from "~/components/primitives/Resizable";
-import { Spinner } from "~/components/primitives/Spinner";
-import { TabButton, TabContainer } from "~/components/primitives/Tabs";
-import {
-  RunsListErrorState,
-  RunsListErrorStateNoop,
-} from "~/components/runs/v3/RunsListErrorState";
-import { RunsListQueryError } from "~/services/runsRepository/runsRepository.server";
-import { TimeFilter, timeFilterFromTo } from "~/components/runs/v3/SharedFilters";
-import { TaskRunsTable } from "~/components/runs/v3/TaskRunsTable";
-import { EndpointStatusBadge } from "~/components/webhookEndpoints/v1/EndpointStatus";
+  DetailPageTitle,
+  PropertyGroup,
+  useDetailTab,
+} from "~/components/primitives/detail/DetailPage";
+import { DetailTabEmpty, DetailTableTab } from "~/components/primitives/detail/DetailSections";
+import { NavBar, PageAccessories } from "~/components/primitives/PageHeader";
 import { Paragraph } from "~/components/primitives/Paragraph";
 import {
   Table,
-  TableBlankRow,
   TableBody,
   TableCell,
   TableHeader,
   TableHeaderCell,
   TableRow,
 } from "~/components/primitives/Table";
+import { SimpleTooltip } from "~/components/primitives/Tooltip";
+import { TaskDetailView } from "~/components/tasks/TaskDetailView";
+import { DeliveriesTab } from "~/components/webhookDeliveries/v1/DeliveriesTab";
+import { parseDeliveryListFilters } from "~/components/webhookDeliveries/v1/deliveryListFilters";
+import { EndpointStatusBadge } from "~/components/webhookEndpoints/v1/EndpointStatus";
 import { $replica } from "~/db.server";
 import { useEnvironment } from "~/hooks/useEnvironment";
 import { useOrganization } from "~/hooks/useOrganizations";
 import { useProject } from "~/hooks/useProject";
-import { findProjectBySlug } from "~/models/project.server";
-import { findEnvironmentBySlug } from "~/models/runtimeEnvironment.server";
-import { NextRunListPresenter } from "~/presenters/v3/NextRunListPresenter.server";
+import { loadTaskDetailPage, taskQueueAction } from "~/presenters/v3/TaskDetailPage.server";
 import {
+  type DeliveryActivity,
   WebhookDetailPresenter,
-  type WebhookActivity,
-  type WebhookDetail,
 } from "~/presenters/v3/WebhookDetailPresenter.server";
 import { clickhouseFactory } from "~/services/clickhouse/clickhouseFactoryInstance.server";
-import { requireUser } from "~/services/session.server";
+import { onlyDetailTabChanged } from "~/utils/detailTabRevalidation";
+import { pageMeta } from "~/utils/pageTitle";
+import { docsPath, v3EnvironmentPath, v3WebhookEndpointPath } from "~/utils/pathBuilder";
+import { parseFiniteInt } from "~/utils/searchParams";
 import { webhookIngressUrl } from "~/utils/webhookIngressUrl.server";
 import { requireWebhooksAccess } from "~/v3/webhooksAccess.server";
-import {
-  docsPath,
-  EnvironmentParamSchema,
-  v3EnvironmentPath,
-  v3WebhookEndpointPath,
-} from "~/utils/pathBuilder";
-import { parseFiniteInt } from "~/utils/searchParams";
 
-export const meta: MetaFunction<typeof loader> = ({ data }) => {
-  const slug = (data as { webhook?: WebhookDetail | null } | undefined)?.webhook?.slug;
-  return [{ title: slug ? `${slug} | Webhooks | Trigger.dev` : "Webhook | Trigger.dev" }];
-};
+export const meta = pageMeta<typeof loader>(({ data, params }) => [
+  data?.task?.slug ?? params.webhookParam ?? "Webhook",
+  "Tasks",
+]);
 
-const WebhookParamSchema = EnvironmentParamSchema.extend({
-  webhookParam: z.string(),
-});
-
+/**
+ * A webhook() task: the task page (Runs, Queue, the rail) with the deliveries its endpoints
+ * received first, its endpoints as a tab, and each endpoint's URL and signing state in the rail.
+ */
 export const loader = async ({ request, params }: LoaderFunctionArgs) => {
-  const user = await requireUser(request);
-  const userId = user.id;
-  const { organizationSlug, projectParam, envParam, webhookParam } =
-    WebhookParamSchema.parse(params);
-
-  const project = await findProjectBySlug(organizationSlug, projectParam, userId);
-  if (!project) {
-    throw new Response("Project not found", { status: 404 });
-  }
-
-  const environment = await findEnvironmentBySlug(project.id, envParam, userId);
-  if (!environment) {
-    throw new Response("Environment not found", { status: 404 });
-  }
-
+  const { user, project, environment, time, page } = await loadTaskDetailPage({
+    request,
+    params: { ...(params as Record<string, string>), taskParam: params.webhookParam },
+    triggerSource: "WEBHOOK",
+    defaultTab: "deliveries",
+  });
   await requireWebhooksAccess(user, project.organizationId);
 
+  const clickhouse = await clickhouseFactory.getClickhouseForOrganization(
+    project.organizationId,
+    "standard"
+  );
+  const presenter = new WebhookDetailPresenter($replica, clickhouse);
+  const endpoints = await presenter.findTaskEndpoints({
+    environmentId: environment.id,
+    webhookSlug: page.task.slug,
+  });
+  const endpointIds = endpoints.map((endpoint) => endpoint.id);
+
   const url = new URL(request.url);
-  const periodParam = url.searchParams.get("period") ?? undefined;
+  const deliveriesTabOpen = (url.searchParams.get("tab") ?? "deliveries") === "deliveries";
+  const period = url.searchParams.get("period") ?? undefined;
   const from = parseFiniteInt(url.searchParams.get("from"));
   const to = parseFiniteInt(url.searchParams.get("to"));
-  const hasExplicitWindow = Boolean(periodParam || from || to);
-  const period = periodParam ?? (hasExplicitWindow ? undefined : "7d");
-  const runsCursor = url.searchParams.get("runsCursor") ?? undefined;
-  const runsDirectionRaw = url.searchParams.get("runsDirection") ?? undefined;
-  const runsDirection = runsDirectionRaw ? DirectionSchema.parse(runsDirectionRaw) : undefined;
-
-  const [clickhouse, runsListClickhouse] = await Promise.all([
-    clickhouseFactory.getClickhouseForOrganization(project.organizationId, "standard"),
-    clickhouseFactory.getClickhouseForOrganization(project.organizationId, "runsList"),
-  ]);
-
-  const presenter = new WebhookDetailPresenter($replica, clickhouse);
-  const webhook = await presenter.findWebhook({
+  const scope = {
+    organizationId: project.organizationId,
+    projectId: project.id,
     environmentId: environment.id,
-    environmentType: environment.type,
-    webhookSlug: webhookParam,
-  });
-
-  if (!webhook) {
-    throw new Response("Webhook not found", { status: 404 });
-  }
-
-  const time = timeFilterFromTo({ period, from, to, defaultPeriod: "7d" });
-
-  const runActivity = presenter
-    .getRunActivity({
-      organizationId: project.organizationId,
-      projectId: project.id,
-      environmentId: environment.id,
-      webhookSlug: webhook.slug,
-      from: time.from,
-      to: time.to,
-    })
-    .catch(() => ({ data: [], statuses: [] }) satisfies WebhookActivity);
-
-  const endpointUrls = Object.fromEntries(
-    webhook.endpoints.map((endpoint) => [endpoint.id, webhookIngressUrl(endpoint.opaqueId)])
-  );
-
-  const runList = new NextRunListPresenter($replica, runsListClickhouse)
-    .call(project.organizationId, environment.id, {
-      userId,
-      projectId: project.id,
-      tasks: [webhook.slug],
-      period,
-      from,
-      to,
-      cursor: runsCursor,
-      direction: runsDirection,
-    })
-    .catch((error) => {
-      if (error instanceof RunsListQueryError) {
-        throw error;
-      }
-      return null;
-    });
+  };
 
   return typeddefer({
-    webhook,
-    endpointUrls,
-    runActivity,
-    runList,
+    ...page,
+    endpoints: endpoints.map((endpoint) => ({
+      ...endpoint,
+      ingestUrl: webhookIngressUrl(endpoint.opaqueId),
+    })),
+    deliveryActivity: presenter
+      .getDeliveryActivity({
+        ...scope,
+        webhookEndpointIds: endpointIds,
+        from: time.from,
+        to: time.to,
+      })
+      .catch((): DeliveryActivity => ({
+        data: [],
+        statuses: [],
+        totals: {},
+        lastDeliveryAt: null,
+      })),
+    deliveriesList: presenter
+      .listDeliveries({
+        ...scope,
+        webhookEndpointIds: endpointIds,
+        period: period ?? (from || to ? undefined : "7d"),
+        from,
+        to,
+        hasExplicitWindow: Boolean(period || from || to),
+        filters: parseDeliveryListFilters(url.searchParams),
+        cursor: deliveriesTabOpen ? (url.searchParams.get("cursor") ?? undefined) : undefined,
+        direction: DirectionSchema.catch("forward").parse(
+          url.searchParams.get("direction") ?? undefined
+        ),
+      })
+      .catch(() => null),
   });
 };
 
-type WebhookTab = "runs" | "endpoints";
+/** The Queue tab's pause, resume and override buttons post here. */
+export const action = taskQueueAction;
 
-export default function Page() {
-  const { webhook, endpointUrls, runActivity, runList } = useTypedLoaderData<typeof loader>();
-  const organization = useOrganization();
-  const project = useProject();
-  const environment = useEnvironment();
-
-  const tasksPath = v3EnvironmentPath(organization, project, environment);
-
-  const [searchParams] = useSearchParams();
-  const [tab, setTab] = useState<WebhookTab>(() =>
-    searchParams.get("tab") === "endpoints" ? "endpoints" : "runs"
-  );
-
-  return (
-    <>
-      <NavBar>
-        <PageTitle
-          backButton={{ to: tasksPath, text: "Tasks" }}
-          title={
-            <span className="flex items-center gap-1">
-              <WebhookIcon className="size-4.5 text-webhooks" />
-              <span>{webhook.slug}</span>
-            </span>
-          }
-        />
-        <PageAccessories>
-          <LinkButton
-            variant="docs/small"
-            LeadingIcon={BookOpenIcon}
-            to={docsPath("webhooks/overview")}
-          >
-            Webhooks docs
-          </LinkButton>
-        </PageAccessories>
-      </NavBar>
-      <PageBody scrollable={false}>
-        <ResizablePanelGroup orientation="horizontal" className="max-h-full">
-          <ResizablePanel id="webhook-main" min="300px">
-            <div className="grid h-full grid-rows-[auto_1fr] overflow-hidden">
-              <div className="flex h-10 items-end border-b border-grid-dimmed bg-background-bright pl-3 pr-2">
-                <TabContainer className="-mb-px">
-                  <TabButton
-                    isActive={tab === "runs"}
-                    layoutId="webhook-page-tabs"
-                    onClick={() => setTab("runs")}
-                  >
-                    Runs
-                  </TabButton>
-                  <TabButton
-                    isActive={tab === "endpoints"}
-                    layoutId="webhook-page-tabs"
-                    onClick={() => setTab("endpoints")}
-                  >
-                    Endpoints
-                  </TabButton>
-                </TabContainer>
-                {tab === "runs" ? (
-                  <div className="ml-auto flex items-center gap-2 self-center">
-                    <TimeFilter
-                      defaultPeriod="7d"
-                      labelName="Runs"
-                      clearParams={["runsCursor", "runsDirection"]}
-                    />
-                    <Suspense fallback={null}>
-                      <TypedAwait resolve={runList} errorElement={<RunsListErrorStateNoop />}>
-                        {(list) =>
-                          list ? (
-                            <ListPagination
-                              list={list}
-                              cursorParam="runsCursor"
-                              directionParam="runsDirection"
-                            />
-                          ) : null
-                        }
-                      </TypedAwait>
-                    </Suspense>
-                  </div>
-                ) : null}
-              </div>
-
-              {tab === "runs" ? (
-                <ResizablePanelGroup orientation="vertical" className="max-h-full">
-                  <ResizablePanel id="webhook-activity" min="220px" default="320px">
-                    <div className="flex h-full flex-col overflow-hidden bg-background p-2">
-                      <div className="grid min-h-0 flex-1 grid-cols-1 gap-2">
-                        <ChartCard title="Runs">
-                          <Suspense fallback={<ActivityChartSkeleton />}>
-                            <TypedAwait
-                              resolve={runActivity}
-                              errorElement={<ActivityChartSkeleton />}
-                            >
-                              {(result) => <ActivityChart activity={result} />}
-                            </TypedAwait>
-                          </Suspense>
-                        </ChartCard>
-                      </div>
-                    </div>
-                  </ResizablePanel>
-
-                  <ResizableHandle id="webhook-activity-handle" />
-
-                  <ResizablePanel id="webhook-content" min="160px">
-                    <RunsArea runList={runList} />
-                  </ResizablePanel>
-                </ResizablePanelGroup>
-              ) : (
-                <WebhookEndpointsTable webhook={webhook} endpointUrls={endpointUrls} />
-              )}
-            </div>
-          </ResizablePanel>
-
-          <ResizableHandle id="webhook-detail-handle" />
-          <ResizablePanel
-            id="webhook-detail"
-            min="280px"
-            default="380px"
-            max="500px"
-            isStaticAtRest
-          >
-            <WebhookDetailSidebar webhook={webhook} />
-          </ResizablePanel>
-        </ResizablePanelGroup>
-      </PageBody>
-    </>
-  );
-}
+/** Every tab's data is already loaded: switching tabs doesn't run the loader again. */
+export const shouldRevalidate: ShouldRevalidateFunction = (args) =>
+  onlyDetailTabChanged(args) ? false : args.defaultShouldRevalidate;
 
 type LoaderData = ReturnType<typeof useTypedLoaderData<typeof loader>>;
+type Endpoint = LoaderData["endpoints"][number];
 
-function RunsArea({ runList }: Pick<LoaderData, "runList">) {
-  return (
-    <div className="h-full overflow-hidden">
-      <Suspense fallback={<TableLoading />}>
-        <TypedAwait resolve={runList} errorElement={<RunsListErrorState />}>
-          {(list) =>
-            list ? (
-              <div className="h-full overflow-y-auto scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600">
-                <TaskRunsTable
-                  enableSmartColumns={false}
-                  total={list.runs.length}
-                  hasFilters={list.hasFilters}
-                  filters={list.filters}
-                  runs={list.runs}
-                  variant="dimmed"
-                  showTopBorder={false}
-                  stickyHeader
-                />
-              </div>
-            ) : (
-              <TableLoading />
-            )
-          }
-        </TypedAwait>
-      </Suspense>
-    </div>
-  );
-}
+/** The page's tabs, in order; the first opens by default. */
+const WEBHOOK_TABS = ["deliveries", "runs", "queue", "endpoints"] as const;
 
-/** The endpoints this task subscribes to. Each row opens the endpoint, where its deliveries are. */
-function WebhookEndpointsTable({
-  webhook,
-  endpointUrls,
-}: {
-  webhook: WebhookDetail;
-  endpointUrls: Record<string, string>;
-}) {
+export default function Page() {
+  const data = useTypedLoaderData<typeof loader>();
   const organization = useOrganization();
   const project = useProject();
   const environment = useEnvironment();
+  const { endpoints } = data;
+  const [, , isPending] = useDetailTab(WEBHOOK_TABS);
+
+  const endpointPath = (endpoint: Endpoint, tab?: string) =>
+    `${v3WebhookEndpointPath(organization, project, environment, endpoint.friendlyId)}${
+      tab ? `?tab=${tab}` : ""
+    }`;
+  const sendTest =
+    endpoints.length > 0 ? (
+      <LinkButton
+        variant="primary/small"
+        to={endpointPath(endpoints[0], "test")}
+        LeadingIcon={PaperAirplaneIcon}
+      >
+        Send test event
+      </LinkButton>
+    ) : undefined;
 
   return (
-    <Table className="max-h-full overflow-y-auto" showTopBorder={false} stickyHeader>
-      <TableHeader>
-        <TableRow>
-          <TableHeaderCell>Endpoint</TableHeaderCell>
-          <TableHeaderCell>Status</TableHeaderCell>
-          <TableHeaderCell>Source</TableHeaderCell>
-          <TableHeaderCell>Filter</TableHeaderCell>
-          <TableHeaderCell>URL</TableHeaderCell>
-        </TableRow>
-      </TableHeader>
-      <TableBody>
-        {webhook.endpoints.length === 0 ? (
-          <TableBlankRow colSpan={5}>
-            <Paragraph variant="small" className="text-center text-text-dimmed">
-              This task doesn't subscribe to an endpoint in this environment yet.
-            </Paragraph>
-          </TableBlankRow>
-        ) : (
-          webhook.endpoints.map((endpoint) => {
-            const path = v3WebhookEndpointPath(
-              organization,
-              project,
-              environment,
-              endpoint.friendlyId
-            );
+    <PageContainer>
+      <NavTitle slug={data.task.slug} />
+      <PageBody scrollable={false}>
+        <TaskDetailView
+          data={data}
+          leadingTab={{
+            id: "deliveries",
+            label: "Deliveries",
+            content: (
+              <DeliveriesTab
+                deliveriesList={data.deliveriesList}
+                activity={data.deliveryActivity}
+                webhookEndpointIds={endpoints.map((endpoint) => endpoint.id)}
+                webhookTaskSlug={data.task.slug}
+                isPending={isPending}
+                endpoints={
+                  endpoints.length > 1
+                    ? Object.fromEntries(
+                        endpoints.map((endpoint) => [
+                          endpoint.id,
+                          { label: endpointLabel(endpoint), path: endpointPath(endpoint) },
+                        ])
+                      )
+                    : undefined
+                }
+                emptyAction={
+                  sendTest ? (
+                    <LinkButton
+                      variant="secondary/small"
+                      to={endpointPath(endpoints[0], "test")}
+                      LeadingIcon={PaperAirplaneIcon}
+                    >
+                      Send test event
+                    </LinkButton>
+                  ) : undefined
+                }
+              />
+            ),
+          }}
+          extraTab={{
+            id: "endpoints",
+            label: "Endpoints",
+            count: String(endpoints.length),
+            content: <EndpointsTab endpoints={endpoints} endpointPath={endpointPath} />,
+          }}
+          primaryAction={sendTest}
+          railAfterDetails={<EndpointsRail endpoints={endpoints} endpointPath={endpointPath} />}
+        />
+      </PageBody>
+    </PageContainer>
+  );
+}
+
+function NavTitle({ slug }: { slug: string }) {
+  const organization = useOrganization();
+  const project = useProject();
+  const environment = useEnvironment();
+  return (
+    <NavBar>
+      <DetailPageTitle
+        title={slug}
+        backButton={{ to: v3EnvironmentPath(organization, project, environment), text: "Tasks" }}
+      />
+      <PageAccessories>
+        <LinkButton
+          variant="docs/small"
+          LeadingIcon={BookOpenIcon}
+          to={docsPath("webhooks/overview")}
+        >
+          Webhooks docs
+        </LinkButton>
+      </PageAccessories>
+    </NavBar>
+  );
+}
+
+function endpointLabel(endpoint: Pick<Endpoint, "declaredId" | "tenantId">) {
+  return endpoint.tenantId ? `${endpoint.declaredId} · ${endpoint.tenantId}` : endpoint.declaredId;
+}
+
+// ---------- Endpoints ----------
+
+/** The endpoints this task subscribes to. Each row opens the endpoint. */
+function EndpointsTab({
+  endpoints,
+  endpointPath,
+}: {
+  endpoints: Endpoint[];
+  endpointPath: (endpoint: Endpoint, tab?: string) => string;
+}) {
+  if (endpoints.length === 0) {
+    return (
+      <DetailTabEmpty
+        title="No endpoints in this environment"
+        description="Deploy the task with a webhook endpoint to get a URL for the provider."
+      />
+    );
+  }
+
+  return (
+    <DetailTableTab>
+      <Table showTopBorder={false} stickyHeader>
+        <TableHeader>
+          <TableRow>
+            <TableHeaderCell>Endpoint</TableHeaderCell>
+            <TableHeaderCell>Status</TableHeaderCell>
+            <TableHeaderCell>Source</TableHeaderCell>
+            <TableHeaderCell>Signing secret</TableHeaderCell>
+            <TableHeaderCell>Filter</TableHeaderCell>
+            <TableHeaderCell>Webhook URL</TableHeaderCell>
+          </TableRow>
+        </TableHeader>
+        <TableBody>
+          {endpoints.map((endpoint) => {
+            const path = endpointPath(endpoint);
             return (
               <TableRow key={endpoint.id}>
                 <TableCell to={path}>
                   <span className="flex items-center gap-1.5">
                     <WebhookIcon className="size-4 shrink-0 text-webhooks" />
                     <span className="font-mono text-xs text-text-bright">
-                      {endpoint.declaredId}
-                      {endpoint.tenantId ? ` · ${endpoint.tenantId}` : ""}
+                      {endpointLabel(endpoint)}
                     </span>
                   </span>
                 </TableCell>
@@ -373,14 +288,10 @@ function WebhookEndpointsTable({
                   <EndpointStatusBadge status={endpoint.status} />
                 </TableCell>
                 <TableCell to={path}>
-                  <span className="text-xs">
-                    {endpoint.source}
-                    {endpoint.hasSigningSecret ? (
-                      ""
-                    ) : (
-                      <span className="text-text-dimmed"> · signing secret not set</span>
-                    )}
-                  </span>
+                  <span className="font-mono text-xs">{endpoint.source}</span>
+                </TableCell>
+                <TableCell to={path}>
+                  <SigningState endpoint={endpoint} />
                 </TableCell>
                 <TableCell to={path}>
                   {endpoint.filter ? (
@@ -391,169 +302,89 @@ function WebhookEndpointsTable({
                 </TableCell>
                 <TableCell>
                   <CopyableText
-                    value={endpointUrls[endpoint.id] ?? ""}
+                    value={endpoint.ingestUrl}
                     className="max-w-xs font-mono text-xs"
                     truncate
                   />
                 </TableCell>
               </TableRow>
             );
-          })
-        )}
-      </TableBody>
-    </Table>
+          })}
+        </TableBody>
+      </Table>
+    </DetailTableTab>
   );
 }
 
-function WebhookDetailSidebar({ webhook }: { webhook: WebhookDetail }) {
+/** Ready, or the warning that every delivery is rejected until a secret is set. */
+function SigningState({ endpoint }: { endpoint: Endpoint }) {
+  return endpoint.hasSigningSecret ? (
+    <span className="flex items-center gap-1.5">
+      <span className="size-2 rounded-full bg-success" />
+      Ready
+    </span>
+  ) : (
+    <SimpleTooltip
+      content="Every delivery is rejected until the signing secret is set on the endpoint."
+      button={
+        <span className="flex items-center gap-1.5 text-warning">
+          <span className="size-2 rounded-full bg-warning" />
+          Not set
+        </span>
+      }
+    />
+  );
+}
+
+// ---------- Rail ----------
+
+/** Where the provider sends to, per endpoint: the URL to paste, and whether it can verify yet. */
+function EndpointsRail({
+  endpoints,
+  endpointPath,
+}: {
+  endpoints: Endpoint[];
+  endpointPath: (endpoint: Endpoint, tab?: string) => string;
+}) {
   return (
-    <div className="grid h-full grid-rows-[auto_1fr] overflow-hidden bg-background-bright">
-      <div className="flex items-center gap-2 border-b border-grid-dimmed py-2 pl-3 pr-2">
-        <Header2 className="flex min-w-0 flex-1 items-center gap-1.5">
-          <WebhookIcon className="size-4.5 shrink-0 text-webhooks" />
-          <span className="truncate">{webhook.slug}</span>
-        </Header2>
-      </div>
-      <div className="overflow-y-auto px-3 py-3 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600">
-        <Property.Table>
-          <Property.Item>
-            <Property.Label>File path</Property.Label>
-            <Property.Value>
-              <CopyableText value={webhook.filePath} />
-            </Property.Value>
-          </Property.Item>
-          <Property.Item>
-            <Property.Label>Created</Property.Label>
-            <Property.Value>
-              <DateTime date={webhook.createdAt} />
-            </Property.Value>
-          </Property.Item>
-        </Property.Table>
-      </div>
-    </div>
+    <PropertyGroup title={endpoints.length === 1 ? "Endpoint" : "Endpoints"}>
+      {endpoints.length === 0 ? (
+        <Paragraph variant="small" className="text-text-dimmed">
+          None in this environment yet.
+        </Paragraph>
+      ) : (
+        endpoints.slice(0, 3).map((endpoint) => (
+          <div key={endpoint.id} className="flex min-w-0 flex-col gap-1.5">
+            <div className="flex min-w-0 items-center justify-between gap-2 text-sm">
+              <LinkButton
+                variant="minimal/small"
+                to={endpointPath(endpoint)}
+                LeadingIcon={WebhookIcon}
+                leadingIconClassName="text-webhooks"
+                className="-ml-1 min-w-0"
+              >
+                <span className="truncate font-mono text-xs">{endpointLabel(endpoint)}</span>
+              </LinkButton>
+              <span className="flex flex-none items-center gap-3 text-xs">
+                <EndpointStatusBadge status={endpoint.status} />
+              </span>
+            </div>
+            <CopyableText
+              value={endpoint.ingestUrl}
+              className="min-w-0 font-mono text-xs text-text-dimmed"
+              truncate
+            />
+            <span className="text-xs">
+              <SigningState endpoint={endpoint} />
+            </span>
+          </div>
+        ))
+      )}
+      {endpoints.length > 3 ? (
+        <Paragraph variant="extra-small" className="text-text-dimmed">
+          And {endpoints.length - 3} more on the Endpoints tab.
+        </Paragraph>
+      ) : null}
+    </PropertyGroup>
   );
-}
-
-const STATUS_COLOR: Record<string, string> = {
-  COMPLETED: "#28BF5C",
-  RUNNING: "#3B82F6",
-  FAILED: "#E11D48",
-  CANCELED: "#878C99",
-};
-
-function ActivityChart({ activity }: { activity: WebhookActivity }) {
-  const chartConfig: ChartConfig = useMemo(() => {
-    const cfg: ChartConfig = {};
-    for (const status of activity.statuses) {
-      cfg[status] = {
-        label: status.charAt(0) + status.slice(1).toLowerCase(),
-        color: STATUS_COLOR[status] ?? "#9CA3AF",
-      };
-    }
-    return cfg;
-  }, [activity.statuses]);
-
-  const { xAxisFormatter, xAxisTicks, tooltipLabelFormatter } = useMemo(
-    () => buildTimeAxis(activity.data),
-    [activity.data]
-  );
-
-  return (
-    <Chart.Root
-      config={chartConfig}
-      data={activity.data}
-      dataKey="bucket"
-      series={activity.statuses}
-      fillContainer
-    >
-      <Chart.Bar
-        stackId="status"
-        barRadius={0}
-        xAxisProps={{
-          tickFormatter: xAxisFormatter,
-          ...(xAxisTicks ? { ticks: xAxisTicks, interval: 0 } : {}),
-        }}
-        tooltipLabelFormatter={tooltipLabelFormatter}
-      />
-    </Chart.Root>
-  );
-}
-
-function ActivityChartSkeleton() {
-  return (
-    <div className="flex min-h-0 flex-1 items-end gap-px rounded-sm">
-      {Array.from({ length: 42 }).map((_, i) => (
-        <div key={i} className="h-full flex-1 bg-charcoal-850" />
-      ))}
-    </div>
-  );
-}
-
-function TableLoading() {
-  return (
-    <div className="flex h-full items-center justify-center">
-      <Spinner className="size-6" />
-    </div>
-  );
-}
-
-function ChartCard({ title, children }: { title: string; children: ReactNode }) {
-  return (
-    <Card className="h-full overflow-hidden px-0 pb-2 pt-3">
-      <Card.Header>{title}</Card.Header>
-      <div className="min-h-0 flex-1 px-2">{children}</div>
-    </Card>
-  );
-}
-
-function buildTimeAxis(data: WebhookActivity["data"]) {
-  const range = data.length >= 2 ? data[data.length - 1].bucket - data[0].bucket : 0;
-  const oneDay = 24 * 60 * 60 * 1000;
-  const showTime = range <= oneDay;
-
-  const xAxisFormatter = (value: number) => {
-    const date = new Date(value);
-    return showTime
-      ? date.toLocaleTimeString("en-US", {
-          hour: "2-digit",
-          minute: "2-digit",
-          hour12: false,
-          timeZone: "UTC",
-        })
-      : date.toLocaleDateString("en-US", {
-          month: "short",
-          day: "numeric",
-          timeZone: "UTC",
-        });
-  };
-
-  const xAxisTicks = showTime
-    ? undefined
-    : data.filter((d) => new Date(d.bucket).getUTCHours() === 0).map((d) => d.bucket);
-
-  const bucketMs = data.length >= 2 ? data[1].bucket - data[0].bucket : 0;
-  const isSubDayBucket = bucketMs > 0 && bucketMs < oneDay;
-
-  const tooltipLabelFormatter = (_label: string, payload: { payload?: { bucket?: number } }[]) => {
-    const ts = payload?.[0]?.payload?.bucket;
-    if (typeof ts !== "number" || !Number.isFinite(ts)) return _label;
-    const date = new Date(ts);
-    return isSubDayBucket
-      ? date.toLocaleString("en-US", {
-          month: "short",
-          day: "numeric",
-          hour: "2-digit",
-          minute: "2-digit",
-          hour12: false,
-          timeZone: "UTC",
-        })
-      : date.toLocaleDateString("en-US", {
-          month: "short",
-          day: "numeric",
-          year: "numeric",
-          timeZone: "UTC",
-        });
-  };
-
-  return { xAxisFormatter, xAxisTicks, tooltipLabelFormatter };
 }

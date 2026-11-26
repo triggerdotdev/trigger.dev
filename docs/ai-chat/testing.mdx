@@ -244,7 +244,7 @@ Each turn returns:
 ```ts
 type MockChatAgentTurn = {
   chunks: UIMessageChunk[];   // text-delta, tool-call, etc.
-  rawChunks: unknown[];       // includes control chunks (turn-complete, errors)
+  rawChunks: unknown[];       // includes control chunks (turn-complete, errors), not turn markers
 };
 ```
 
@@ -611,6 +611,9 @@ function mockChatAgent(
 | `previousRunId`  | `string`                                                              | `undefined`   | Set `payload.previousRunId` on the initial wire payload. Typically paired with `continuation: true`.   |
 | `snapshot`       | `ChatSnapshotV1`                                                      | `undefined`   | Pre-seed the snapshot the agent reads at run boot (replaces the real S3 GET). Use to drive resume scenarios with prior history. See [Persistence and replay](/ai-chat/patterns/persistence-and-replay) for the production snapshot model. |
 | `setupLocals`    | `({ set }) => void \| Promise<void>`                                   | `undefined`   | Callback invoked before `run()` starts. Use `set(key, value)` to inject server-side dependencies (DB clients, service stubs) that the agent reads via `locals.get()`. |
+| `outAppendLatencyMs` | `number`                                                          | `0`           | Milliseconds each append to the output stream takes to be acknowledged (control records, one-shot appends and the first chunk of each piped stream). For testing timing, such as time to first chunk. |
+| `outPipeLingerMs` | `number`                                                             | `0`           | Milliseconds each piped chunk lingers before it is acknowledged, modelling the writer's batching so a control record written while a step streams can land ahead of that step's tail. |
+| `omitTurnMarkers` | `boolean`                                                            | `false`       | Write no `turn-start` or `turn-join` records, as an agent on an older SDK version does, to test how a client behaves against it. |
 
 ##### Boot modes
 
@@ -643,7 +646,10 @@ The harness's initial wire payload depends on `mode`:
 | `getSnapshot()`                       | The most recently written snapshot, or `undefined` if no snapshot was written.                         |
 | `close()`                             | Send a `close` trigger, abort the signal, wait for `run()` to return. Always call at end of test.      |
 | `allChunks`                           | Every `UIMessageChunk` emitted since the harness was created.                                          |
-| `allRawChunks`                        | Every raw chunk emitted since creation, including control chunks (`trigger:turn-complete`, errors).    |
+| `allRawChunks`                        | Every raw chunk emitted since creation, including control chunks (`trigger:turn-complete`, errors). The `turn-start` and `turn-join` markers the agent writes (see [Which turn a record belongs to](/ai-chat/client-protocol#which-turn-a-record-belongs-to)) are left out, so exact-sequence assertions don't see them; they are in `outRecords`. |
+| `outRecords`                          | The output stream as a reader sees it: every record with its 1-based `seqNum`, its `headers` (a `trigger-control` entry on control records, none on data records), its `chunk` (data records) and the `at` time it was acknowledged (`TestOutRecord`). |
+| `onOutRecord(listener)`               | Call `listener(record)` for each record written to the output stream, after it is in `outRecords`. Returns an unsubscribe function. |
+| `deliverInput(chunk, seqNum)`         | Put a record on `session.in` at an explicit seq, without waiting for a turn, the way the server does for an append from any client. Use it to drive several sends in flight, or to host a real `AgentChat` over a fake fetch. |
 
 ### runInMockTaskContext
 

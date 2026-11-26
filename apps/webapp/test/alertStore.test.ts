@@ -10,6 +10,7 @@ import {
   getAlert,
   listActiveSeenOccurrenceKeys,
   listAlertEvents,
+  listDeliveriesForEvents,
   releaseDelivery,
   sweepExpiredOccurrenceSeen,
 } from "~/v3/services/alerts/storage/alertStore.server";
@@ -169,4 +170,36 @@ describe("alertStore", () => {
     expect(await sweepExpiredOccurrenceSeen(prisma, { now: later, batch: 10 })).toBe(1);
     expect(await prisma.alertOccurrenceSeen.count({ where: { alertId: alert.id } })).toBe(0);
   });
+
+  // Catches: dropping the event-id filter, so deliveries of other events in the same window are returned.
+  postgresTest(
+    "listDeliveriesForEvents returns only the given events' deliveries",
+    async ({ prisma }) => {
+      await applyAlertsMigration(prisma);
+      const own = await createAlert(prisma, BASE);
+      const other = await createAlert(prisma, BASE);
+      const at = (s: number) => new Date(Date.UTC(2026, 10, 1, 0, 0, s));
+      const event = (alertId: string, id: string, s: number) =>
+        prisma.alertEvent.create({ data: { id, alertId, type: "raised", at: at(s) } });
+      const events = [await event(own.id, "evt_own_1", 1), await event(own.id, "evt_own_3", 3)];
+      const outside = [await event(own.id, "evt_own_2", 2), await event(other.id, "evt_other", 2)];
+      for (const evt of [...events, ...outside]) {
+        await prisma.alertDelivery.create({
+          data: {
+            id: `dlv_${evt.id}`,
+            alertEventId: evt.id,
+            eventAt: evt.at,
+            notifierId: "channel:chan_1",
+            notifier: BASE.notifiers[0],
+          },
+        });
+      }
+
+      const found = await listDeliveriesForEvents(prisma, events, { take: 10 });
+      const none = await listDeliveriesForEvents(prisma, [], { take: 10 });
+
+      expect(found.map((d) => d.id).sort()).toEqual(["dlv_evt_own_1", "dlv_evt_own_3"]);
+      expect(none).toEqual([]);
+    }
+  );
 });

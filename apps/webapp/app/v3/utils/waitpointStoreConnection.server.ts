@@ -1,10 +1,44 @@
 import { createRedisClusterClient, type Cluster } from "@internal/redis";
 import type { Meter } from "@internal/tracing";
 import { WaitpointStoreCoordinator } from "@internal/run-engine";
+import { isTransientRedisClientError } from "@internal/run-store";
 
 const CONNECT_TIMEOUT_MS = 1_000;
 const COMMAND_TIMEOUT_MS = 2_000;
+const SLOTS_REFRESH_INTERVAL_MS = 2_000;
+const SLOT_REFRESH_SETTLE_MS = 2_000;
 const POLICY_CHECK_INTERVAL_MS = 30_000;
+
+/**
+ * ioredis arms the next periodic slot refresh from the callback of the current one, so a refresh in
+ * flight when the client closes leaves a timer running afterwards. refreshSlotsCache queues a
+ * callback behind an in-flight refresh: wait for it, bounded in case no node answers, and if it only
+ * finishes after the client closed, disconnect again to clear the timer that refresh armed.
+ */
+async function quitAfterSlotRefresh(connection: Cluster) {
+  let disconnected = false;
+  let settleTimer: NodeJS.Timeout | undefined;
+  try {
+    if (connection.status === "ready") {
+      await Promise.race([
+        new Promise<void>((resolve) =>
+          connection.refreshSlotsCache(() => {
+            if (disconnected) connection.disconnect();
+            resolve();
+          })
+        ),
+        new Promise<void>((resolve) => {
+          settleTimer = setTimeout(resolve, SLOT_REFRESH_SETTLE_MS);
+        }),
+      ]);
+    }
+    await connection.quit();
+  } finally {
+    clearTimeout(settleTimer);
+    connection.disconnect();
+    disconnected = true;
+  }
+}
 
 /** Infrastructure configuration alone never enables waitpoint routing. */
 export function waitpointClusterOptions(endpoint: string) {
@@ -18,7 +52,12 @@ export function waitpointClusterOptions(endpoint: string) {
   return {
     nodes: [{ host: url.hostname, port: Number(url.port || 6379) }],
     failFast: true,
-    clusterOptions: { lazyConnect: true, scaleReads: "master" as const },
+    clusterOptions: {
+      lazyConnect: true,
+      scaleReads: "master" as const,
+      // Find a promoted replica after a failover; see snapshotStoreConnection.server.ts.
+      slotsRefreshInterval: SLOTS_REFRESH_INTERVAL_MS,
+    },
     redisOptions: {
       username: url.username ? decodeURIComponent(url.username) : undefined,
       password: url.password ? decodeURIComponent(url.password) : undefined,
@@ -35,12 +74,19 @@ export function waitpointClusterOptions(endpoint: string) {
 /** No client, socket, timer or probe until an enabled store operation uses the facade. */
 export function createWaitpointStoreConnection(
   endpoint: string,
-  options: { meter?: Meter; onError?: (error: Error) => void; onActivate?: () => void } = {}
+  options: {
+    meter?: Meter;
+    onError?: (error: Error) => void;
+    onActivate?: () => void;
+    /** How long a passed memory-policy check is trusted. Defaults to 30s. */
+    policyCheckIntervalMs?: number;
+  } = {}
 ) {
   let client: Cluster | undefined;
   let store: WaitpointStoreCoordinator | undefined;
   let connecting: Promise<void> | undefined;
   let policyCheck: Promise<void> | undefined;
+  const policyCheckIntervalMs = options.policyCheckIntervalMs ?? POLICY_CHECK_INTERVAL_MS;
   let policyCheckedAt = 0;
   let closed = false;
   const activationListeners = new Set<() => void>();
@@ -82,11 +128,21 @@ export function createWaitpointStoreConnection(
 
   async function beforeCommand() {
     await ready();
-    if (Date.now() - policyCheckedAt < POLICY_CHECK_INTERVAL_MS) return;
+    if (Date.now() - policyCheckedAt < policyCheckIntervalMs) return;
     policyCheck ??= (async () => {
       const nodes = getClient().nodes("master");
       if (nodes.length === 0) throw new Error("Waitpoint cluster has no primary nodes");
-      const memory = await Promise.all(nodes.map((node) => node.info("memory")));
+      // A primary that is down must not block commands to the shards that are still up.
+      const results = await Promise.allSettled(nodes.map((node) => node.info("memory")));
+      const memory: string[] = [];
+      let unreachable: unknown;
+      for (const result of results) {
+        if (result.status === "fulfilled") memory.push(result.value);
+        // Only a node that didn't answer is skipped. A reply error such as NOPERM fails the check.
+        else if (isTransientRedisClientError(result.reason)) unreachable ??= result.reason;
+        else throw result.reason;
+      }
+      if (memory.length === 0) throw unreachable;
       if (memory.some((info) => !/^maxmemory_policy:noeviction\r?$/m.test(info))) {
         throw new Error("Waitpoint coordination requires noeviction on every primary");
       }
@@ -173,11 +229,7 @@ export function createWaitpointStoreConnection(
         client.disconnect();
         return;
       }
-      try {
-        await client.quit();
-      } finally {
-        client.disconnect();
-      }
+      await quitAfterSlotRefresh(client);
     },
   };
 }

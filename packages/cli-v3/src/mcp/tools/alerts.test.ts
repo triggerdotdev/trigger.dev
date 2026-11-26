@@ -183,4 +183,30 @@ describe("alert tools with --dev-only", () => {
     expect(api.getAlert).not.toHaveBeenCalled();
     expect(api.resolveAlert).toHaveBeenCalledTimes(1);
   });
+
+  // Catches: the local create_alert dropping query or signal before calling the API.
+  it("create_alert sends a custom query alert's query and signal", async () => {
+    const { api, ctx } = makeCtx(false);
+    const input = {
+      capabilityKey: "custom.query",
+      params: {},
+      condition: { kind: "threshold", operator: ">", value: 5, windowSec: 600 },
+      behavior: {},
+      notifiers: [{ type: "channel", channelId: "c1" }],
+      query: "SELECT count() AS failures FROM runs",
+      signal: { mode: "threshold", measure: "failures" },
+    };
+
+    await (createAlertTool.handler as any)(
+      { ...input, environment: "prod", projectRef: "proj_1" },
+      { ctx }
+    );
+
+    expect(api.createAlert).toHaveBeenCalledWith("proj_1", {
+      ...input,
+      environment: "prod",
+      branch: undefined,
+      name: undefined,
+    });
+  });
 });

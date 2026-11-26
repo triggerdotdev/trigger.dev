@@ -7,6 +7,7 @@ import { NextRunListPresenter } from "./NextRunListPresenter.server";
 import { scheduleWhereClause } from "~/models/schedules.server";
 import {
   calculateNextScheduleRunTimes,
+  createScheduleRunTimer,
   formatResolvedScheduleWindow,
 } from "~/v3/scheduleWindow.server";
 import { env } from "~/env.server";
@@ -17,6 +18,8 @@ type ViewScheduleOptions = {
   friendlyId: string;
   environmentId: string;
   includeRunHistory?: boolean;
+  /** How many upcoming runs to work out. Each costs about a millisecond for a timezone cron. */
+  nextRunCount?: number;
 };
 
 export class ViewSchedulePresenter {
@@ -32,6 +35,7 @@ export class ViewSchedulePresenter {
     friendlyId,
     environmentId,
     includeRunHistory = true,
+    nextRunCount = 5,
   }: ViewScheduleOptions) {
     const schedule = await this.#prismaClient.taskSchedule.findFirst({
       select: {
@@ -96,19 +100,23 @@ export class ViewSchedulePresenter {
       return;
     }
 
+    const timingFields = {
+      deduplicationKey: schedule.deduplicationKey,
+      environmentId,
+      schedulePhase: instance?.schedulePhase ?? null,
+      phaseSecret: env.SCHEDULE_PHASE_SEED,
+      windowDurationSeconds: schedule.windowDurationSeconds,
+      windowPercentage: schedule.windowPercentage,
+      defaultWindowDurationSeconds: schedule.defaultWindowDurationSeconds,
+      minimumWindowDurationSeconds: schedule.minimumWindowDurationSeconds,
+    };
+
     const nextRuns = schedule.active
       ? calculateNextScheduleRunTimes({
+          ...timingFields,
           cron: schedule.generatorExpression,
           timezone: schedule.timezone,
-          deduplicationKey: schedule.deduplicationKey,
-          environmentId,
-          schedulePhase: instance?.schedulePhase ?? null,
-          phaseSecret: env.SCHEDULE_PHASE_SEED,
-          windowDurationSeconds: schedule.windowDurationSeconds,
-          windowPercentage: schedule.windowPercentage,
-          defaultWindowDurationSeconds: schedule.defaultWindowDurationSeconds,
-          minimumWindowDurationSeconds: schedule.minimumWindowDurationSeconds,
-          count: 5,
+          count: nextRunCount,
         })
       : [];
 
@@ -139,6 +147,8 @@ export class ViewSchedulePresenter {
           };
         }),
       },
+      /** A run's timing from its cron time and the next one. Server only. */
+      runTiming: createScheduleRunTimer(timingFields),
     };
   }
 

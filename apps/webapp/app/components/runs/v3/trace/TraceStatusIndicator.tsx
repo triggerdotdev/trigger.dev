@@ -151,7 +151,7 @@ function StatusLabel({
   );
 }
 
-function PulsingDot() {
+export function PulsingDot() {
   return (
     <span className="relative flex size-2">
       <span

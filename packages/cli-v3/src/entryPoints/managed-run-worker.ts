@@ -77,6 +77,7 @@ import sourceMapSupport from "source-map-support";
 import { env } from "std-env";
 import { normalizeImportPath } from "../utilities/normalizeImportPath.js";
 import { dropInheritedRunToken, installRunToken } from "./runTokenEnv.js";
+import { hasUsableRunToken } from "./managed/runTokenRefresh.js";
 import { installUsageJwt } from "./usageJwt.js";
 import { WARMUP_FLAG } from "./warmupCommand.js";
 import {
@@ -413,7 +414,7 @@ const zodIpc = new ZodIpcConnection({
   process,
   handlers: {
     EXECUTE_TASK_RUN: async (
-      { execution, traceContext, metadata, metrics, env, isWarmStart },
+      { execution, traceContext, metadata, metrics, env, isWarmStart, requiresRunToken },
       sender
     ) => {
       const startupEnvNotApplied = env ? startupOnlyEnvNotApplied(_startupEnv, env) : [];
@@ -426,6 +427,26 @@ const zodIpc = new ZodIpcConnection({
         });
 
         _lastEnv = env;
+      }
+
+      if (
+        requiresRunToken &&
+        (Object.hasOwn(process.env, "TRIGGER_SECRET_KEY") ||
+          !hasUsableRunToken(
+            process.env.TRIGGER_RUN_TOKEN,
+            execution.run.id,
+            execution.attempt.number
+          ))
+      ) {
+        await sender.send("TASK_RUN_COMPLETED", {
+          execution,
+          result: {
+            ok: false,
+            id: execution.run.id,
+            error: { type: "STRING_ERROR", raw: "Cannot install the required run token" },
+          },
+        });
+        return;
       }
 
       initializeApiManagers();

@@ -27,6 +27,7 @@ export type DashboardAgentToolContext = {
   // The dashboard path the user is on, passed as context to ask_support.
   currentPage?: string;
   chatId?: string;
+  markChatReadLogs?: () => Promise<boolean>;
   // Structured view of the same page, when the host could classify it.
   pageContext?: AgentPageContext;
   // Set by the host from the org's alerts gate. Off by default: the monitoring alert tools are not attached.

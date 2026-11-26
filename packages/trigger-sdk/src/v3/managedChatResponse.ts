@@ -16,6 +16,7 @@ export class ManagedChatResponse {
   /** Data written now waits for the step that made these tool calls. */
   private dataAnchor?: string[];
   private orderedSteps = true;
+  private piping = false;
   private pendingData: Array<{ chunk: UIMessageChunk; capture: boolean; anchor: string[] }> = [];
 
   constructor(
@@ -53,6 +54,15 @@ export class ManagedChatResponse {
       !toolCallIds.some((id) => this.finishedToolCallIds.has(id))
         ? [...toolCallIds]
         : undefined;
+  }
+
+  /**
+   * Whether the model's step output goes out through this response, so data
+   * written with `writeData` is ordered with it. False before a source is piped
+   * in, and for a raw pipe, which writes the steps on a pipe of its own.
+   */
+  get ordersStepOutput(): boolean {
+    return this.orderedSteps && this.piping;
   }
 
   /** Raw pipes own their output ordering and do not feed this capture. */
@@ -112,6 +122,7 @@ export class ManagedChatResponse {
     source: AsyncIterable<UIMessageChunk> | ReadableStream<UIMessageChunk>,
     signal?: AbortSignal
   ): Promise<void> {
+    this.piping = true;
     const reader = source instanceof ReadableStream ? source.getReader() : undefined;
     const iterator = reader
       ? undefined

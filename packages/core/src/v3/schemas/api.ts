@@ -1023,8 +1023,17 @@ export const DeployBuildPath = z.enum(["depot", "native", "native_local_bundle"]
 
 export type DeployBuildPath = z.infer<typeof DeployBuildPath>;
 
+export const CliVersionPolicy = z.object({
+  minimum: z.string(),
+  enforced_from: z.string().datetime({ offset: true }),
+});
+
+export type CliVersionPolicy = z.infer<typeof CliVersionPolicy>;
+
 export const GetDeploySettingsResponseBody = z.object({
   build_path: DeployBuildPath,
+  // A malformed policy must never cost a client its build path.
+  cli_version_policy: CliVersionPolicy.optional().catch(undefined),
 });
 
 export type GetDeploySettingsResponseBody = z.infer<typeof GetDeploySettingsResponseBody>;
@@ -1105,6 +1114,7 @@ export const GetDeploymentResponseBody = z.object({
    * attach-to-existing-deployment path (`cli-v3/src/commands/deploy.ts:1156`).
    */
   externalId: z.string().optional(),
+  createdAt: z.string().optional(),
   externalBuildData: ExternalBuildData.optional().nullable(),
   baseImages: DeployBaseImages.optional(),
   errorData: DeploymentErrorData.nullish(),
@@ -1636,6 +1646,23 @@ export const ListRunResponse = z.object({
     next: z.string().optional(),
     previous: z.string().optional(),
   }),
+  /**
+   * The filters the list was run with, including defaults the request didn't set. With no
+   * `filter[createdAt]` period, from or to, runs created in the last 7 days are listed and
+   * `createdAt.isDefault` is true.
+   */
+  appliedFilters: z
+    .object({
+      createdAt: z
+        .object({
+          period: z.string().optional(),
+          from: z.coerce.date().optional(),
+          to: z.coerce.date().optional(),
+          isDefault: z.boolean(),
+        })
+        .optional(),
+    })
+    .optional(),
 });
 
 export type ListRunResponse = z.infer<typeof ListRunResponse>;

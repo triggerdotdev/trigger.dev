@@ -6,6 +6,7 @@ import { alertAreaSchema } from "@internal/alert-contracts";
 import {
   alertDraftPatchSchema,
   DASHBOARD_AGENT_FEEDBACK_LIMITS,
+  dashboardAgentLogSearchFilters,
   monitoringPlanInputSchema,
   parseJsonText,
   planDecisionInputSchema,
@@ -558,6 +559,12 @@ export const DASHBOARD_AGENT_ALERT_CREATION_EXCLUDED_TOOLS = [
   "plan_decision",
 ] as const;
 
+export const searchLogsSchema = tool({
+  description:
+    "Search task logs newest first in one environment. Use for log messages or excerpts, not error-group counts or a run's execution timeline. complete covers only the returned range; disclose retentionClamped. If incomplete, do not claim no matches. Continue with nextCursor and the same filters.",
+  inputSchema: dashboardAgentLogSearchFilters.extend(targetFields),
+});
+
 /** The schema-only tool set, in the same key order `tools.ts` attaches executes in. */
 export const dashboardAgentToolSchemas = {
   list_projects: listProjectsSchema,
@@ -579,6 +586,7 @@ export const dashboardAgentToolSchemas = {
   get_deploy: getDeploySchema,
   correlate_version: correlateVersionSchema,
   search_docs: searchDocsSchema,
+  search_logs: searchLogsSchema,
   get_current_page: getCurrentPageSchema,
   navigate_to: navigateToSchema,
   locate: locateSchema,
@@ -695,6 +703,7 @@ You have read-only tools that act as the user against their own account:
 - list_tasks: the tasks deployed in the current environment.
 - list_runs: recent runs in the current environment, filterable by status, task, time period, or error group.
 - get_run: status, timing, cost, and error details for a run by its run id.
+- search_logs: find recent log messages across runs or filter by text, level, task, run, and time range. A partial search cannot establish there were no matches.
 - get_run_trace: a run's execution timeline (spans, durations, errors) - evidence for an investigation into why it failed, retried, or was slow, not itself the answer.
 - list_errors: distinct errors in the current environment grouped by fingerprint, with occurrence counts and status (unresolved/resolved/ignored).
 - get_error: full detail for one error group by its error id, including affected versions and who resolved or ignored it.

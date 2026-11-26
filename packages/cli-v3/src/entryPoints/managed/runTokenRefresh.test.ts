@@ -132,12 +132,26 @@ describe("RunTokenRefresher", () => {
     });
   });
 
+  it("does not treat an unexpired token in the SDK expiry buffer as usable on restore", async () => {
+    const { instance } = refresher(runToken(5 * MINUTE), [
+      { result: "failure", reason: "ack_timeout" },
+    ]);
+    expect(instance.hasUsableToken).toBe(false);
+    const replacement = runToken(5 * MINUTE + 1);
+    await instance.handleHeartbeatResponse(instance.report("restore"), replacement);
+    expect(instance.hasUsableToken).toBe(false);
+    await instance.handleHeartbeatResponse(instance.report("restore"), replacement);
+    expect(instance.hasUsableToken).toBe(true);
+    expect(instance.isDue).toBe(true);
+  });
+
   it("never installs a replacement minted for another run or attempt", async () => {
     const { instance, installed } = refresher(runToken(10 * MINUTE));
 
     for (const replacement of [
       runToken(60 * MINUTE, { attempt: 1 }),
       runToken(60 * MINUTE, { run_id: "run_b" }),
+      runToken(0),
       "not-a-jwt",
     ]) {
       await expect(

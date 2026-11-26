@@ -648,4 +648,72 @@ describe("RunEngineTriggerTaskService", () => {
       );
     }
   );
+
+  // Catches: an idempotency key ttl whose expiry the database cannot store reaching the insert, or a storable one changed.
+  containerTest(
+    "gives an idempotency key ttl past what the database can store the same default expiry as an unparsable one",
+    async ({ prisma, redisOptions }) => {
+      vi.useFakeTimers({ toFake: ["Date"], now: Date.UTC(2026, 0, 15), shouldAdvanceTime: false });
+      onTestFinished(() => {
+        vi.useRealTimers();
+      });
+      const engine = new RunEngine({
+        prisma,
+        worker: { redis: redisOptions, workers: 1, tasksPerWorker: 10, pollIntervalMs: 100 },
+        queue: { redis: redisOptions },
+        runLock: { redis: redisOptions },
+        machines: {
+          defaultMachine: "small-1x",
+          machines: {
+            "small-1x": { name: "small-1x" as const, cpu: 0.5, memory: 0.5, centsPerMs: 0.0001 },
+          },
+          baseCostInCents: 0.0005,
+        },
+        tracer: trace.getTracer("test", "0.0.0"),
+      });
+      onTestFinished(() => engine.quit());
+      const environment = await setupAuthenticatedEnvironment(prisma, "PRODUCTION");
+      await setupBackgroundWorker(engine, environment, "test-task");
+      const service = new RunEngineTriggerTaskService({
+        engine,
+        prisma,
+        payloadProcessor: new MockPayloadProcessor(),
+        queueConcern: new DefaultQueueManager(prisma, engine),
+        idempotencyKeyConcern: new IdempotencyKeyConcern(
+          prisma,
+          engine,
+          new MockTraceEventConcern()
+        ),
+        validator: new MockTriggerTaskValidator(),
+        traceEventConcern: new MockTraceEventConcern(),
+        tracer: trace.getTracer("test", "0.0.0"),
+        metadataMaximumSize: 1024 * 1024,
+      });
+      const expiryFor = async (idempotencyKeyTTL: string) => {
+        const result = await service.call({
+          taskId: "test-task",
+          environment,
+          body: {
+            payload: {},
+            options: { idempotencyKey: `key-${idempotencyKeyTTL}`, idempotencyKeyTTL },
+          },
+        });
+        const run = await prisma.taskRun.findFirstOrThrow({ where: { id: result!.run.id } });
+        return run.idempotencyKeyExpiresAt?.toISOString();
+      };
+
+      const fallback = "2026-02-14T00:00:00.000Z";
+      expect({
+        unparsable: await expiryFor("banana"),
+        lastStorable: await expiryFor("251633865599s"),
+        afterYear9999: await expiryFor("251633865600s"),
+        overflowing: await expiryFor("1234567890d"),
+      }).toEqual({
+        unparsable: fallback,
+        lastStorable: "9999-12-31T23:59:59.000Z",
+        afterYear9999: fallback,
+        overflowing: fallback,
+      });
+    }
+  );
 });

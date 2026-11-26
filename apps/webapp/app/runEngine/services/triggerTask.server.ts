@@ -54,6 +54,7 @@ import {
 } from "~/v3/workerRegions.server";
 import { globalFlagsRegistry } from "~/v3/globalFlagsRegistry.server";
 import { sandboxTasksEnabled } from "~/v3/sandboxTasksFlag.server";
+import { computeOnlyEnabled } from "~/v3/computeOnlyFlag.server";
 import {
   publishClaim as publishMollifierClaim,
   releaseClaim as releaseMollifierClaim,
@@ -544,6 +545,11 @@ export class RunEngineTriggerTaskService {
             environmentId: environment.id,
             environmentType: environment.type,
           });
+          // Deployed runs of a compute-only org run only on microVMs, like sandboxes, whatever
+          // the env or org worker queue overrides say.
+          const computeOnly =
+            environment.type !== "DEVELOPMENT" && computeOnlyEnabled(orgFeatureFlags);
+          const pinnedToCompute = !!executionPolicy || computeOnly;
           const migrated = resolveComputeMigration({
             baseWorkerQueue,
             baseEnableFastPath: enableFastPath,
@@ -555,7 +561,7 @@ export class RunEngineTriggerTaskService {
             flags: globalFlagsRegistry.current(),
             envType: environment.type,
             // Sandboxes only run on microVMs, whatever the org's migration state.
-            environmentCompat: executionPolicy ? "compute" : environmentOverride.compat,
+            environmentCompat: pinnedToCompute ? "compute" : environmentOverride.compat,
             templateKey,
           });
 
@@ -570,15 +576,27 @@ export class RunEngineTriggerTaskService {
             workerGroups.find((group) => group.masterQueue === baseWorkerQueue)?.workloadType ===
               "MICROVM";
           if (
-            executionPolicy &&
+            pinnedToCompute &&
             environment.type !== "DEVELOPMENT" &&
             !migrated.compute &&
             !(onMicrovmGroup && templateKey)
           ) {
+            if (executionPolicy) {
+              throw new ServiceValidationError(
+                `Task "${taskId}" is a sandbox and needs microVM compute, which is not available ${
+                  templateKey ? "in this region" : "for this deployment (no compute template)"
+                }.`
+              );
+            }
+            // The reason stays in the log: the caller only learns what to do next.
+            logger.warn("Trigger refused: compute-only run has nowhere to start", {
+              organizationId: environment.organizationId,
+              environmentId: environment.id,
+              taskId,
+              reason: templateKey ? "no_compute_in_region" : "no_template",
+            });
             throw new ServiceValidationError(
-              `Task "${taskId}" is a sandbox and needs microVM compute, which is not available ${
-                templateKey ? "in this region" : "for this deployment (no compute template)"
-              }.`
+              "This task can't run on its current version. Deploy again and trigger the new version, or contact support if it keeps failing."
             );
           }
 
@@ -594,9 +612,17 @@ export class RunEngineTriggerTaskService {
             externalDeploymentId,
             webhookDeliveryId: options.webhookDeliveryId,
             webhookEndpointId: options.webhookEndpointId,
+            ...(options.sessionInSeq !== undefined ? { sessionInSeq: options.sessionInSeq } : {}),
+            ...(options.sessionInFirstSeq !== undefined
+              ? { sessionInFirstSeq: options.sessionInFirstSeq }
+              : {}),
+            ...(environment.type !== "DEVELOPMENT" && environment.project.secretProxyEnabled
+              ? { secretProxyRequired: true as const }
+              : {}),
             ...(executionPolicy
               ? { executionMode: "SANDBOX" as const, executionPolicy, sessionId: options.sessionId }
               : {}),
+            ...(computeOnly && { computeOnly: true as const }),
           };
 
           const workerQueue =
@@ -608,7 +634,7 @@ export class RunEngineTriggerTaskService {
                   orgFeatureFlags,
                   v2Enabled: env.TRIGGER_WORKER_QUEUE_V2_ENABLED === "1",
                   splitEnabled: env.TRIGGER_WORKER_QUEUE_SCHEDULED_SPLIT_ENABLED === "1",
-                  environmentOverride: executionPolicy
+                  environmentOverride: pinnedToCompute
                     ? { ...environmentOverride, compat: "compute" }
                     : environmentOverride,
                   workerGroups,
@@ -996,8 +1022,12 @@ export class RunEngineTriggerTaskService {
       rootScheduleId?: string | undefined;
       externalDeploymentId?: string | undefined;
       executionMode?: "SANDBOX";
+      computeOnly?: true;
+      secretProxyRequired?: true;
       executionPolicy?: RunExecutionPolicy;
       sessionId?: string;
+      sessionInSeq?: number;
+      sessionInFirstSeq?: number;
     };
     parkedOnExternalDeploymentId?: string;
     planType?: string;

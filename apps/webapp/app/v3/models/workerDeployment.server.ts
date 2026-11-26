@@ -204,3 +204,34 @@ export async function findCurrentWorkerFromEnvironment(
     return deployment?.worker ?? null;
   }
 }
+
+/** The version promoted as current in an environment, or undefined if nothing is promoted. */
+async function findCurrentDeploymentVersion(
+  environmentId: string,
+  prismaClient?: PrismaClientOrTransaction
+): Promise<string | undefined> {
+  const promotion = await (prismaClient ?? prisma).workerDeploymentPromotion.findFirst({
+    where: { environmentId, label: CURRENT_DEPLOYMENT_LABEL },
+    select: { deployment: { select: { version: true } } },
+  });
+  return promotion?.deployment.version;
+}
+
+/**
+ * The version new runs start on: the newest version in Development, the promoted one elsewhere.
+ * Undefined when there's none yet. Load it once per page and pass it down, not once per row.
+ */
+export async function findCurrentVersion(
+  environment: Pick<AuthenticatedEnvironment, "id" | "type">,
+  prismaClient?: PrismaClientOrTransaction
+): Promise<string | undefined> {
+  if (environment.type !== "DEVELOPMENT") {
+    return findCurrentDeploymentVersion(environment.id, prismaClient);
+  }
+  const worker = await (prismaClient ?? prisma).backgroundWorker.findFirst({
+    where: { runtimeEnvironmentId: environment.id },
+    orderBy: { createdAt: "desc" },
+    select: { version: true },
+  });
+  return worker?.version;
+}

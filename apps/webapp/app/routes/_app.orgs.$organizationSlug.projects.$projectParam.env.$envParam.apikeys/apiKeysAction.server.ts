@@ -4,7 +4,6 @@ import { z } from "zod";
 import { MAX_API_KEY_TASK_IDENTIFIERS } from "~/consts";
 import {
   createEnvironmentApiKey,
-  disableRootApiKeyVisibility,
   isApiKeyUserError,
   revokeEnvironmentApiKey,
   updateEnvironmentApiKeyAccess,
@@ -28,7 +27,6 @@ import { logger } from "~/services/logger.server";
 import { resolveProjectAuthScope } from "~/services/projectAuthScope.server";
 import { rbac } from "~/services/rbac.server";
 import { dashboardAction } from "~/services/routeBuilders/dashboardBuilder";
-import { DISABLE_ROOT_API_KEY_VISIBILITY_CONFIRMATION } from "~/utils/apiKeyAccess";
 import { ApiKeyNoteField } from "~/utils/apiKeyNote";
 import { EnvironmentParamSchema } from "~/utils/pathBuilder";
 import { splitIpRangesInput } from "~/utils/ipRangeEntries";
@@ -98,10 +96,6 @@ const ApiKeyActionSchema = z.discriminatedUnion("action", [
       .transform((value) => value === "true"),
   }),
   z.object({ action: z.literal("delete-preset"), presetId: z.string().min(1) }),
-  z.object({
-    action: z.literal("disable-root"),
-    confirmation: z.literal(DISABLE_ROOT_API_KEY_VISIBILITY_CONFIRMATION),
-  }),
 ]);
 
 const DIALOG_ACTIONS = new Set(["create", "update-access", "save-preset", "delete-preset"]);
@@ -302,18 +296,6 @@ export const apiKeysAction = dashboardAction(
           });
 
           return redirectWithSuccessMessage(returnPath, request, "Allowed IP addresses updated");
-        }
-        case "disable-root": {
-          await disableRootApiKeyVisibility({
-            environmentId: keyEnvironmentId,
-            userId: user.id,
-          });
-
-          return redirectWithSuccessMessage(
-            returnPath,
-            request,
-            "Root API key visibility disabled"
-          );
         }
       }
     } catch (error) {

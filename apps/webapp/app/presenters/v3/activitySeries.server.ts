@@ -44,6 +44,39 @@ export function chooseBucketSeconds(
   return best;
 }
 
+const HOUR_MS = 60 * 60 * 1000;
+const DAY_MS = 24 * HOUR_MS;
+/** The most buckets the webhook delivery activity chart draws: a year of days fits. */
+const MAX_DELIVERY_ACTIVITY_BUCKETS = 400;
+/** Deliveries aren't kept this long, so a longer range has nothing more to show. */
+const MAX_DELIVERY_ACTIVITY_RANGE_MS = 5 * 365 * DAY_MS;
+
+/**
+ * The buckets of the webhook delivery activity chart: hours for a day, six hours for a week, days
+ * beyond that. `from` and `to` come from the URL and can be any dates, so the range is cut to
+ * `MAX_DELIVERY_ACTIVITY_RANGE_MS` and its buckets widen until no more than
+ * `MAX_DELIVERY_ACTIVITY_BUCKETS` cover it.
+ */
+export function deliveryActivityBuckets(from: Date, to: Date) {
+  const toMs = to.getTime();
+  const fromMs = Math.max(from.getTime(), toMs - MAX_DELIVERY_ACTIVITY_RANGE_MS);
+  const rangeMs = Math.max(1, toMs - fromMs);
+  const usualSeconds =
+    rangeMs <= DAY_MS ? 60 * 60 : rangeMs <= 7 * DAY_MS ? 6 * 60 * 60 : 24 * 60 * 60;
+  const bucketSeconds = Math.max(
+    usualSeconds,
+    Math.ceil(rangeMs / 1000 / MAX_DELIVERY_ACTIVITY_BUCKETS)
+  );
+  const bucketMs = bucketSeconds * 1000;
+  return {
+    from: new Date(fromMs),
+    bucketSeconds,
+    bucketMs,
+    start: Math.floor(fromMs / bucketMs) * bucketMs,
+    end: Math.ceil(toMs / bucketMs) * bucketMs,
+  };
+}
+
 export const RUN_STATUS_GROUPS = ["COMPLETED", "FAILED", "CANCELED", "RUNNING"] as const;
 export type RunStatusGroup = (typeof RUN_STATUS_GROUPS)[number];
 

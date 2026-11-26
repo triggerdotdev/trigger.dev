@@ -46,6 +46,9 @@ function byteLength(body: string): number {
 }
 import { ChatTabCoordinator } from "./chat-tab-coordinator.js";
 import {
+  appendedInSeq,
+  boundaryInCursor,
+  isBoundaryBeforeSend,
   MAX_EOF_RESUBSCRIBES,
   slimSubmitMessageForWire,
   waitBeforeEofResubscribe,
@@ -1940,7 +1943,7 @@ export class TriggerChatTransport implements ChatTransport<UIMessage> {
       });
     }
 
-    return typeof data?.seq === "number" ? data.seq : undefined;
+    return appendedInSeq(data);
   }
 
   private async callWithAuthRetry<T>(
@@ -2363,14 +2366,8 @@ export class TriggerChatTransport implements ChatTransport<UIMessage> {
               if (controlValue !== TRIGGER_CONTROL_SUBTYPE.TURN_COMPLETE) continue;
               // A boundary older than the superseded turn is not its boundary —
               // keep gating. A header-less boundary (legacy wire) still clears.
-              const gateCursorRaw = headerValue(value.headers, SESSION_IN_EVENT_ID_HEADER);
-              const gateCursor =
-                gateCursorRaw !== undefined ? Number.parseInt(gateCursorRaw, 10) : NaN;
-              if (
-                state.supersededInputSeq !== undefined &&
-                !Number.isNaN(gateCursor) &&
-                gateCursor < state.supersededInputSeq
-              ) {
+              const gateCursor = boundaryInCursor(value.headers);
+              if (isBoundaryBeforeSend(value.headers, state.supersededInputSeq)) {
                 continue;
               }
               state.skipToTurnComplete = false;
@@ -2380,7 +2377,7 @@ export class TriggerChatTransport implements ChatTransport<UIMessage> {
               // leave nothing armed for the retry.
               if (
                 sinceInSeq !== undefined &&
-                !Number.isNaN(gateCursor) &&
+                gateCursor !== undefined &&
                 gateCursor >= sinceInSeq
               ) {
                 // The lost boundary may also carry the session close.
@@ -2439,12 +2436,8 @@ export class TriggerChatTransport implements ChatTransport<UIMessage> {
               const lastEventId = value.id || undefined;
               // Skip a turn-complete from an earlier turn (committed `.in` cursor
               // below this send's seq), e.g. an undo action that raced this send.
-              if (sinceInSeq !== undefined) {
-                const cursorRaw = headerValue(value.headers, SESSION_IN_EVENT_ID_HEADER);
-                const cursor = cursorRaw !== undefined ? Number.parseInt(cursorRaw, 10) : NaN;
-                if (!Number.isNaN(cursor) && cursor < sinceInSeq) {
-                  continue;
-                }
+              if (isBoundaryBeforeSend(value.headers, sinceInSeq)) {
+                continue;
               }
               // A close decided during this turn rides out on turn-complete —
               // the last record a reader sees before it ends the stream.

@@ -2,6 +2,7 @@ import { json, type LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { type GetDeploySettingsResponseBody } from "@trigger.dev/core/v3";
 import { z } from "zod";
 import { authenticateApiKeyWithScope } from "~/services/apiAuth.server";
+import { cliVersionPolicyBody } from "~/v3/cliVersionPolicy.server";
 import { logger } from "~/services/logger.server";
 import { DeploymentService } from "~/v3/services/deployment.server";
 
@@ -36,7 +37,7 @@ export async function loader({ request, params }: LoaderFunctionArgs) {
     return await deploymentService
       .getDeploySettings(authenticatedEnv, { projectRef, envSlug: env })
       .match(
-        ({ buildPath, buildPathSource }) => {
+        ({ buildPath, buildPathSource, cliVersionPolicy }) => {
           logger.info("Resolved deploy build path", {
             environmentId: authenticatedEnv.id,
             projectRef,
@@ -45,7 +46,10 @@ export async function loader({ request, params }: LoaderFunctionArgs) {
             buildPathSource,
           });
 
-          return json({ build_path: buildPath } satisfies GetDeploySettingsResponseBody);
+          return json({
+            build_path: buildPath,
+            cli_version_policy: cliVersionPolicyBody(cliVersionPolicy),
+          } satisfies GetDeploySettingsResponseBody);
         },
         (error) => {
           switch (error.type) {

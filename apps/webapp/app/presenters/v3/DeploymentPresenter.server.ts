@@ -13,12 +13,19 @@ import { type User } from "~/models/user.server";
 import { getUsername } from "~/utils/username";
 import { processGitMetadata } from "./BranchesPresenter.server";
 import { VercelProjectIntegrationDataSchema } from "~/v3/vercel/vercelProjectIntegrationSchema";
-import { S2 } from "@s2-dev/streamstore";
 import { env } from "~/env.server";
 import { createRedisClient } from "~/redis.server";
 import { tryCatch } from "@trigger.dev/core";
 import { logger } from "~/services/logger.server";
 import { redeployOfShortCode } from "~/v3/redeploy";
+import {
+  createDeploymentLogsS2Client,
+  deploymentLogsPublicEndpoint,
+  skipDeploymentLogsAccessTokens,
+  UNAUTHENTICATED_S2_TOKEN,
+} from "~/v3/deploymentLogsS2.server";
+import { deployCliVersionPolicy } from "~/v3/cliVersionPolicyInstance.server";
+import { cliVersionWarningFor } from "./cliVersionWarning.server";
 
 const S2_TOKEN_KEY_PREFIX = "s2-token:project:";
 
@@ -31,7 +38,7 @@ const s2TokenRedis = createRedisClient("s2-token-cache", {
   clusterMode: env.CACHE_REDIS_CLUSTER_MODE_ENABLED === "1",
 });
 
-const s2 = env.S2_ENABLED === "1" ? new S2({ accessToken: env.S2_ACCESS_TOKEN }) : undefined;
+const s2 = createDeploymentLogsS2Client();
 
 export type ErrorData = {
   name: string;
@@ -53,18 +60,22 @@ export class DeploymentPresenter {
     organizationSlug,
     environmentSlug,
     deploymentShortCode,
+    withEventStream = true,
   }: {
     userId: User["id"];
     projectSlug: Project["slug"];
     organizationSlug: Organization["slug"];
     environmentSlug: RuntimeEnvironment["slug"];
     deploymentShortCode: WorkerDeployment["shortCode"];
+    /** Off for callers that do not stream build logs, so no log access token is issued. */
+    withEventStream?: boolean;
   }) {
-    const project = await this.#prismaClient.project.findFirstOrThrow({
+    const project = await this.#prismaClient.project.findFirst({
       select: {
         id: true,
         organizationId: true,
         externalRef: true,
+        organization: { select: { featureFlags: true } },
       },
       where: {
         slug: projectSlug,
@@ -79,12 +90,16 @@ export class DeploymentPresenter {
       },
     });
 
-    const environment = await findEnvironmentBySlug(project.id, environmentSlug, userId);
-    if (!environment) {
-      throw new Error(`Environment not found`);
+    if (!project) {
+      return null;
     }
 
-    const deployment = await this.#prismaClient.workerDeployment.findFirstOrThrow({
+    const environment = await findEnvironmentBySlug(project.id, environmentSlug, userId);
+    if (!environment) {
+      return null;
+    }
+
+    const deployment = await this.#prismaClient.workerDeployment.findFirst({
       where: {
         projectId: project.id,
         shortCode: deploymentShortCode,
@@ -92,6 +107,7 @@ export class DeploymentPresenter {
       },
       select: {
         id: true,
+        friendlyId: true,
         shortCode: true,
         version: true,
         runtime: true,
@@ -125,11 +141,13 @@ export class DeploymentPresenter {
         builtAt: true,
         deployedAt: true,
         createdAt: true,
+        cliVersion: true,
         startedAt: true,
         installedAt: true,
         canceledAt: true,
         canceledReason: true,
         supersededById: true,
+        failedAt: true,
         git: true,
         promotions: {
           select: {
@@ -165,6 +183,10 @@ export class DeploymentPresenter {
         triggeredVia: true,
       },
     });
+
+    if (!deployment) {
+      return null;
+    }
 
     const supersededBy =
       deployment.status === "CANCELED" && deployment.supersededById
@@ -228,6 +250,7 @@ export class DeploymentPresenter {
 
     let eventStream = undefined;
     if (
+      withEventStream &&
       env.S2_ENABLED === "1" &&
       (buildServerMetadata ||
         gitMetadata?.source === "trigger_github_app" ||
@@ -243,10 +266,23 @@ export class DeploymentPresenter {
             basin: env.S2_DEPLOYMENT_LOGS_BASIN_NAME,
             stream: `projects/${project.externalRef}/deployments/${deployment.shortCode}`,
             accessToken,
+            endpoint: deploymentLogsPublicEndpoint(),
           },
         };
       }
     }
+
+    const cliVersionWarning = cliVersionWarningFor(
+      deployCliVersionPolicy(project.organization),
+      deployment.cliVersion,
+      deployment.worker?.cliVersion
+    );
+    const cliVersion =
+      cliVersionWarning?.cliVersion ??
+      [deployment.worker?.cliVersion, deployment.cliVersion].find(
+        (version) => version && version !== "unknown"
+      ) ??
+      deployment.worker?.cliVersion;
 
     return {
       eventStream,
@@ -263,6 +299,8 @@ export class DeploymentPresenter {
         canceledAt: deployment.canceledAt,
         canceledReason: deployment.canceledReason,
         supersededBy,
+        failedAt: deployment.failedAt,
+        friendlyId: deployment.friendlyId,
         tasks: deployment.worker?.tasks,
         label: deployment.promotions?.[0]?.label,
         environment: {
@@ -274,7 +312,8 @@ export class DeploymentPresenter {
         },
         deployedBy: deployment.triggeredBy,
         sdkVersion: deployment.worker?.sdkVersion,
-        cliVersion: deployment.worker?.cliVersion,
+        cliVersion,
+        cliVersionWarning,
         runtime: deployment.worker?.runtime ?? deployment.runtime,
         runtimeVersion: deployment.worker?.runtimeVersion ?? deployment.runtimeVersion,
         imageReference: deployment.imageReference,
@@ -299,6 +338,8 @@ export class DeploymentPresenter {
     if (env.S2_ENABLED !== "1" || !s2) {
       throw new Error("Failed getting S2 access token: S2 is not enabled");
     }
+
+    if (skipDeploymentLogsAccessTokens()) return UNAUTHENTICATED_S2_TOKEN;
 
     const redisKey = `${S2_TOKEN_KEY_PREFIX}${projectRef}`;
     const cachedToken = await s2TokenRedis.get(redisKey);

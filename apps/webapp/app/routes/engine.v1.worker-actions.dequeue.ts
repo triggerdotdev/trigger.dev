@@ -15,7 +15,11 @@ export const action = createActionWorkerApiRoute(
     authenticatedWorker,
     runnerId,
     body,
-  }): Promise<TypedResponse<WorkerApiDequeueResponseBody>> => {
+  }): Promise<TypedResponse<WorkerApiDequeueResponseBody | { error: string }>> => {
+    if (authenticatedWorker.tokenKind === "child") {
+      return json({ error: "Child worker tokens cannot dequeue" }, { status: 403 });
+    }
+
     return json(
       await authenticatedWorker.dequeue({
         runnerId,

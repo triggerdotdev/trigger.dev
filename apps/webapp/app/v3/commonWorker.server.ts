@@ -21,6 +21,13 @@ import {
   MembershipDevEnvironmentsSchema,
   provisionDevEnvironmentsForMembership,
 } from "~/services/memberDevEnvironments.server";
+import { findEnvironmentById } from "~/models/runtimeEnvironment.server";
+import {
+  runSessionRunCompletionJob,
+  SESSION_RUN_COMPLETION_MAX_ATTEMPTS,
+  SESSION_RUN_COMPLETION_JOB,
+  SessionRunCompletionPayloadSchema,
+} from "~/services/realtime/sessionRunCompletion.server";
 import { singleton } from "~/utils/singleton";
 import { DeliverAlertService } from "./services/alerts/deliverAlert.server";
 import { PerformDeploymentAlertsService } from "./services/alerts/performDeploymentAlerts.server";
@@ -310,6 +317,15 @@ function initializeWorker() {
           maxAttempts: 5,
         },
       },
+      // An agent run ended: if it left a message unread on its session's `.in`, start a
+      // continuation. Retried, and safe to run twice.
+      [SESSION_RUN_COMPLETION_JOB]: {
+        schema: SessionRunCompletionPayloadSchema,
+        visibilityTimeoutMs: 60_000,
+        retry: {
+          maxAttempts: SESSION_RUN_COMPLETION_MAX_ATTEMPTS,
+        },
+      },
       "org.convergeRunsEnabled": {
         schema: OrgProvisioningPayloadSchema,
         visibilityTimeoutMs: ORG_PROVISIONING_VISIBILITY_TIMEOUT_MS,
@@ -383,6 +399,13 @@ function initializeWorker() {
       },
       "attio.syncUser": async ({ payload }) => {
         await runAttioUserSync(payload);
+      },
+      [SESSION_RUN_COMPLETION_JOB]: async ({ payload, attempt }) => {
+        await runSessionRunCompletionJob(
+          payload,
+          { findEnvironment: findEnvironmentById },
+          attempt
+        );
       },
       "attio.syncMember": async ({ payload }) => {
         await runAttioMemberSync(payload);

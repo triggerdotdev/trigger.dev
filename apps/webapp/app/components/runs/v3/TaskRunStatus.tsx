@@ -58,8 +58,8 @@ export const filterableTaskRunStatuses = [
 const taskRunStatusDescriptions: Record<TaskRunStatus, string> = {
   DELAYED: "Task has been delayed and is waiting to be executed.",
   PENDING: "Task is waiting to be executed.",
-  PENDING_VERSION: "Run cannot execute until a version includes the task and queue.",
-  WAITING_FOR_DEPLOY: "Run cannot execute until a version includes the task and queue.",
+  PENDING_VERSION: "Waiting for a version that includes this run's task and queue.",
+  WAITING_FOR_DEPLOY: "Waiting for a version that includes this run's task and queue.",
   DEQUEUED: "Task has been dequeued from the queue but is not yet executing.",
   EXECUTING: "Task is currently being executed.",
   RETRYING_AFTER_FAILURE: "Task is being reattempted after a failure.",

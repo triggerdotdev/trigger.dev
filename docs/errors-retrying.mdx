@@ -206,12 +206,13 @@ In this complicated example:
 
 ```ts tasks.ts
 import { task } from "@trigger.dev/sdk";
+import OpenAI from "openai";
 import { calculateISO8601DurationOpenAIVariantResetAt, openai } from "./openai.js";
 
 export const openaiTask = task({
   id: "openai-task",
   retry: {
-    maxAttempts: 1,
+    maxAttempts: 3,
   },
   run: async (payload: { prompt: string }) => {
     const chatCompletion = await openai.chat.completions.create({
@@ -240,8 +241,8 @@ export const openaiTask = task({
         return;
       }
 
-      const remainingRequests = error.headers["x-ratelimit-remaining-requests"];
-      const requestResets = error.headers["x-ratelimit-reset-requests"];
+      const remainingRequests = error.headers.get("x-ratelimit-remaining-requests");
+      const requestResets = error.headers.get("x-ratelimit-reset-requests");
 
       if (typeof remainingRequests === "string" && Number(remainingRequests) === 0) {
         return {
@@ -249,8 +250,8 @@ export const openaiTask = task({
         };
       }
 
-      const remainingTokens = error.headers["x-ratelimit-remaining-tokens"];
-      const tokensResets = error.headers["x-ratelimit-reset-tokens"];
+      const remainingTokens = error.headers.get("x-ratelimit-remaining-tokens");
+      const tokensResets = error.headers.get("x-ratelimit-reset-tokens");
 
       if (typeof remainingTokens === "string" && Number(remainingTokens) === 0) {
         return {
@@ -265,10 +266,10 @@ export const openaiTask = task({
 ```ts openai.ts
 import { OpenAI } from "openai";
 
-export const openai = new OpenAI({ apiKey: env.OPENAI_API_KEY });
+export const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
 export function calculateISO8601DurationOpenAIVariantResetAt(
-  resets: string,
+  resets: string | null,
   now: Date = new Date()
 ): Date | undefined {
   // Check if the input is null or undefined

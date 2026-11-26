@@ -92,6 +92,43 @@ describe("S2RealtimeStreams session peek", () => {
     expect(elapsed).toBeLessThan(5000);
   });
 
+  // Catches: the walk past command records running to its record bound however long it takes,
+  // so a slow S2 holds every reconnect for the whole peek deadline; and a walk that ran out of
+  // time reading as "commands-only" (a final answer, never retried) instead of a failed read.
+  it("reads a .out peek whose walk runs out of its budget as unknown", async () => {
+    // The first read answers at once with the last two records (seq 98 and 99), both commands. The
+    // reads after it answer one command record each, 250 ms apart: four of them are more than
+    // the walk's budget, though each is far inside the peek deadline.
+    handler = (request, response) => {
+      const url = new URL(request.url ?? "", "http://localhost");
+      const isFirst = url.searchParams.has("tail_offset");
+      const first = isFirst ? 98 : Number(url.searchParams.get("seq_num"));
+      const count = Number(url.searchParams.get("count"));
+      setTimeout(
+        () => {
+          response.writeHead(200, { "Content-Type": "application/json" });
+          response.end(
+            JSON.stringify({
+              records: Array.from({ length: count }, (_, i) => ({
+                seq_num: first + i,
+                timestamp: 1,
+                body: "",
+                headers: [["", "trim"]],
+              })),
+            })
+          );
+        },
+        isFirst ? 0 : 250
+      );
+    };
+
+    const startedAt = Date.now();
+    await expect(createStreams().peekSessionOutTail("chat_1")).resolves.toEqual({
+      kind: "unknown",
+    });
+    expect(Date.now() - startedAt).toBeLessThan(1000);
+  });
+
   it("reads the .out tail record past a trim command", async () => {
     handler = (request, response) => {
       expect(decodeURIComponent(request.url ?? "")).toContain("/sessions/chat_1/out/records?");
@@ -106,6 +143,7 @@ describe("S2RealtimeStreams session peek", () => {
               headers: [
                 ["trigger-control", "turn-complete"],
                 ["session-in-consumed-id", "4"],
+                ["session-in-event-id", "2"],
               ],
             },
             { seq_num: 8, timestamp: 1235, body: "", headers: [["", "trim"]] },
@@ -119,6 +157,7 @@ describe("S2RealtimeStreams session peek", () => {
       control: "turn-complete",
       timestamp: 1234,
       inConsumedSeq: 4,
+      inEventId: 2,
     });
   });
 

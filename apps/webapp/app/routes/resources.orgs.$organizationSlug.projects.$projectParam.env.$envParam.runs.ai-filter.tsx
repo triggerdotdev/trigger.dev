@@ -102,7 +102,7 @@ export async function action({ request, params }: ActionFunctionArgs) {
       });
 
       if (isCurrent) {
-        const currentVersion = versions.versions.find((v) => v.isCurrent);
+        const currentVersion = versions.versions.find((v) => v.standing === "current");
         if (currentVersion) {
           return {
             version: currentVersion.version,

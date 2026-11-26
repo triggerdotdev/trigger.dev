@@ -345,6 +345,8 @@ export type RunEngineOptions = {
    * should inject a ClickHouse-backed implementation.
    */
   pendingVersionRunIdLookup?: PendingVersionRunIdLookup;
+  /** Legacy worker queues whose runs publish to their v2 container stable queues instead. */
+  legacyWorkerQueuesOnV2?: readonly string[];
   /**
    * When the pending-version lookup returns zero candidates, schedule
    * one more attempt after this delay to cover ClickHouse replication
