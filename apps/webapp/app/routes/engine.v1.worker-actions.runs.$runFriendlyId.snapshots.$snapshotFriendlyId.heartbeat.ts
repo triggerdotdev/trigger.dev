@@ -18,6 +18,7 @@ export const action = createActionWorkerApiRoute(
       runFriendlyId: z.string(),
       snapshotFriendlyId: z.string(),
     }),
+    workerActionToken: "heartbeat",
   },
   async ({
     authenticatedWorker,
@@ -26,6 +27,7 @@ export const action = createActionWorkerApiRoute(
     runnerId,
     environmentId,
     sandboxRunId,
+    tokenEnvironmentId,
   }): Promise<TypedResponse<WorkerApiRunHeartbeatResponseBody | { error: string }>> => {
     const { runFriendlyId, snapshotFriendlyId } = params;
 
@@ -37,6 +39,7 @@ export const action = createActionWorkerApiRoute(
         runnerId,
         environmentId,
         sandboxRunId,
+        tokenEnvironmentId,
         runTokenReport: body.runToken,
         usageJwtReport: body.usageJwt,
       });

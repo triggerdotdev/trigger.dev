@@ -66,6 +66,7 @@ describe("WorkloadServer attempt start", () => {
       },
       "runner_1",
       undefined,
+      undefined,
       undefined
     );
   });
@@ -83,6 +84,7 @@ describe("WorkloadServer attempt start", () => {
       "snapshot_1",
       { supportsSecretProxy: false, workerCell: "cell-a", workerLane: "microvm" },
       "runner_1",
+      undefined,
       undefined,
       undefined
     );

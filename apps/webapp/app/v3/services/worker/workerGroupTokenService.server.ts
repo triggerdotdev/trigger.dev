@@ -40,6 +40,10 @@ import { customAlphabet } from "nanoid";
 import { z } from "zod";
 import { env } from "~/env.server";
 import { evaluateCreatedAtGate, runAgeBucket } from "./workloadTokenAuthorization.server";
+import {
+  assertWorkerActionTokenStartVersion,
+  type WorkerActionTokenStartVersion,
+} from "./workerActionToken.server";
 import { dequeueWorkerQueues } from "~/runEngine/concerns/workerQueueDequeue.server";
 import {
   createWorkerQueueConsumer,
@@ -647,12 +651,21 @@ export class AuthenticatedWorkerInstance extends WithRunEngine {
     }
   }
 
+  async findRunCreatedAt(runFriendlyId: string): Promise<Date | undefined> {
+    const run = await this._engine.runStore.findRun(
+      { id: fromFriendlyId(runFriendlyId) },
+      { select: { createdAt: true } }
+    );
+    return run?.createdAt;
+  }
+
   async heartbeatRun({
     runFriendlyId,
     snapshotFriendlyId,
     runnerId,
     environmentId,
     sandboxRunId,
+    tokenEnvironmentId,
     runTokenReport,
     usageJwtReport,
   }: {
@@ -661,6 +674,7 @@ export class AuthenticatedWorkerInstance extends WithRunEngine {
     runnerId?: string;
     environmentId?: string;
     sandboxRunId?: string;
+    tokenEnvironmentId?: string;
     runTokenReport?: RunTokenHeartbeatReport;
     usageJwtReport?: WorkerApiRunHeartbeatRequestBody["usageJwt"];
   }): Promise<{ runToken?: string; usageJwt?: string; usageJwtError?: "refresh_failed" }> {
@@ -669,6 +683,7 @@ export class AuthenticatedWorkerInstance extends WithRunEngine {
       snapshotId: fromFriendlyId(snapshotFriendlyId),
       workerId: this.workerInstanceId,
       runnerId,
+      ...(tokenEnvironmentId ? { environmentId: tokenEnvironmentId } : {}),
     });
 
     const runToken = await refreshRunTokenOnHeartbeat({
@@ -734,6 +749,7 @@ export class AuthenticatedWorkerInstance extends WithRunEngine {
     supportsUsageJwtRefresh,
     supportsRootKeyFreeExecution,
     supportsSecretProxy,
+    startVersion,
   }: {
     runFriendlyId: string;
     snapshotFriendlyId: string;
@@ -747,6 +763,7 @@ export class AuthenticatedWorkerInstance extends WithRunEngine {
     supportsUsageJwtRefresh?: boolean;
     supportsRootKeyFreeExecution?: boolean;
     supportsSecretProxy?: boolean;
+    startVersion?: WorkerActionTokenStartVersion;
   }): Promise<
     StartRunAttemptResult & {
       envVars: Record<string, string>;
@@ -759,10 +776,20 @@ export class AuthenticatedWorkerInstance extends WithRunEngine {
     await this.assertCreatedAtGate({ runId, environmentId, action: "start" });
 
     // Resolved before the attempt exists, so an unavailable key leaves the run startable.
-    const { environment, pinned, secretProxyRequired } = await this.findAttemptEnvironment(
-      runId,
-      environmentId
-    );
+    const { environment, pinned, secretProxyRequired, taskVersion } =
+      await this.findAttemptEnvironment(runId, environmentId, startVersion !== undefined);
+    if (startVersion) {
+      const lockedVersion =
+        startVersion.mode === "enforce" && taskVersion === null
+          ? await this.findTaskVersionOnPrimary(runId)
+          : taskVersion;
+      assertWorkerActionTokenStartVersion({
+        startVersion,
+        lockedVersion,
+        worker: this,
+        runFriendlyId,
+      });
+    }
     if (secretProxyRequired && !supportsSecretProxy) throw secretProxyPlacementRequired();
     const requiresRunToken = rootKeyInjectionDisabled(environment);
 
@@ -937,10 +964,28 @@ export class AuthenticatedWorkerInstance extends WithRunEngine {
     return kind;
   }
 
+  private async findTaskVersionOnPrimary(runId: string): Promise<string | null> {
+    const run = await this._engine.runStore.findRunOnPrimary(
+      { id: runId },
+      { select: { taskVersion: true } }
+    );
+    return run?.taskVersion ?? null;
+  }
+
   // The engine validates the header's scope before any resolved variables are returned.
-  private async findAttemptEnvironment(runId: string, environmentId?: string) {
+  private async findAttemptEnvironment(
+    runId: string,
+    environmentId?: string,
+    includeTaskVersion = false
+  ) {
     const where = { id: runId };
-    const select = { select: { runtimeEnvironmentId: true, annotations: true } };
+    const select = {
+      select: {
+        runtimeEnvironmentId: true,
+        annotations: true,
+        ...(includeTaskVersion ? { taskVersion: true } : {}),
+      },
+    };
     // With a verified environment, a replica miss is lag on a just-triggered run. Legacy callers
     // without one keep the retryable 503 below.
     const run =
@@ -972,6 +1017,7 @@ export class AuthenticatedWorkerInstance extends WithRunEngine {
       environment,
       pinned: pinnedRunPolicy(run.annotations),
       secretProxyRequired: requiresSecretProxy(run.annotations),
+      taskVersion: "taskVersion" in run ? (run.taskVersion as string | null) : undefined,
     };
   }
 
@@ -1079,12 +1125,14 @@ export class AuthenticatedWorkerInstance extends WithRunEngine {
     snapshotFriendlyId,
     checkpoint,
     runnerId,
+    tokenEnvironmentId,
   }: {
     runFriendlyId: string;
     snapshotFriendlyId: string;
     checkpoint: CheckpointInput;
     runnerId?: string;
     environmentId?: string;
+    tokenEnvironmentId?: string;
   }) {
     return await this._engine.createCheckpoint({
       runId: fromFriendlyId(runFriendlyId),
@@ -1092,6 +1140,7 @@ export class AuthenticatedWorkerInstance extends WithRunEngine {
       checkpoint,
       workerId: this.workerInstanceId,
       runnerId,
+      ...(tokenEnvironmentId ? { environmentId: tokenEnvironmentId } : {}),
     });
   }
 

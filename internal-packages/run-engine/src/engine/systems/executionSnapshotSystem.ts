@@ -725,6 +725,7 @@ export class ExecutionSnapshotSystem {
     runId,
     snapshotId,
     organizationId,
+    environmentId,
     workerId,
     runnerId,
     tx,
@@ -732,6 +733,7 @@ export class ExecutionSnapshotSystem {
     runId: string;
     snapshotId: string;
     organizationId?: string;
+    environmentId?: string;
     workerId?: string;
     runnerId?: string;
     tx?: PrismaClientOrTransaction;
@@ -774,6 +776,9 @@ export class ExecutionSnapshotSystem {
         );
       }
       throw error;
+    }
+    if (environmentId !== undefined && latestSnapshot.environmentId !== environmentId) {
+      throw new LatestExecutionSnapshotNotFoundError(runId);
     }
     if (latestSnapshot.id !== snapshotId) {
       this.$.logger.log("heartbeatRun: no longer the latest snapshot, stopping the heartbeat.", {

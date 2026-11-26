@@ -13,6 +13,7 @@ export const action = createActionWorkerApiRoute(
       snapshotFriendlyId: z.string(),
     }),
     body: z.compile(WorkerApiSuspendRunRequestBody),
+    workerActionToken: "suspend",
   },
   async ({
     authenticatedWorker,
@@ -20,6 +21,7 @@ export const action = createActionWorkerApiRoute(
     body,
     runnerId,
     environmentId,
+    tokenEnvironmentId,
   }): Promise<TypedResponse<WorkerApiSuspendRunResponseBody>> => {
     const { runFriendlyId, snapshotFriendlyId } = params;
 
@@ -42,6 +44,7 @@ export const action = createActionWorkerApiRoute(
         checkpoint: body.checkpoint,
         runnerId,
         environmentId,
+        tokenEnvironmentId,
       });
 
       if (!result.ok) {

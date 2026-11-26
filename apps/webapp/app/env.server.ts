@@ -10,6 +10,7 @@ import { OidcIssuerSchema } from "./utils/oidcIssuer";
 import { isValidDatabaseUrl } from "./utils/db";
 import { parseDeployBaseImages } from "~/v3/deployBaseImages.server";
 import { parseRunOpsShards, validateShardListAgainstNewUrl } from "~/v3/runOpsShards.server";
+import { parseWorkerActionTokenConfig } from "~/v3/services/worker/workerActionTokenVerifier.server";
 import { isValidRegex } from "./utils/regex";
 import { isValidCronExpression } from "./utils/cron";
 import { DEFAULT_EVENT_RETENTION_DAYS } from "~/v3/eventRepository/eventRetention";
@@ -1161,6 +1162,9 @@ const EnvironmentSchema = z
     // cutoff pass (grandfathered). Default off = no run-row read, byte-for-byte today's behavior.
     WORKLOAD_CREATED_AT_GATE_ENABLED: z.string().default("0"),
     WORKLOAD_TOKEN_CUTOFF: z.string().datetime().optional(),
+    WORKLOAD_TOKEN_PUBLIC_KEYS: z.string().optional(),
+    WORKER_ACTION_TOKEN_MODES: z.string().optional(),
+    WORKER_ACTION_TOKEN_CUTOFF: z.string().datetime().optional(),
     // Free orgs without a verified card can't deploy to cloud. Off by default. With no cutoff, every
     // Free org is gated; with one, only orgs created at or after it.
     CARD_VERIFICATION_GATE_ENABLED: BoolEnv.default(false),
@@ -3078,6 +3082,19 @@ const EnvironmentSchema = z
         path: ["RUN_OPS_SHARDS"],
         message:
           "RUN_OPS_SHARDS is non-empty but RUN_OPS_DATABASE_URL is unset; a shard requires the gen-1 new store",
+      });
+    }
+    try {
+      parseWorkerActionTokenConfig({
+        modes: env.WORKER_ACTION_TOKEN_MODES,
+        publicKeys: env.WORKLOAD_TOKEN_PUBLIC_KEYS,
+        cutoff: env.WORKER_ACTION_TOKEN_CUTOFF,
+      });
+    } catch (error) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["WORKER_ACTION_TOKEN_MODES"],
+        message: error instanceof Error ? error.message : String(error),
       });
     }
   });

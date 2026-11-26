@@ -12,6 +12,7 @@ export const action = createActionWorkerApiRoute(
       runFriendlyId: z.string(),
       snapshotFriendlyId: z.string(),
     }),
+    workerActionToken: "start",
   },
   async ({
     authenticatedWorker,
@@ -20,6 +21,7 @@ export const action = createActionWorkerApiRoute(
     runnerId,
     environmentId,
     sandboxRunId,
+    startVersion,
   }): Promise<TypedResponse<WorkerApiRunAttemptStartResponseBody>> => {
     const { runFriendlyId, snapshotFriendlyId } = params;
 
@@ -36,6 +38,7 @@ export const action = createActionWorkerApiRoute(
       runnerId,
       environmentId,
       sandboxRunId,
+      startVersion,
     });
 
     return json(runExecutionData);

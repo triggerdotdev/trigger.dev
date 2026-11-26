@@ -3189,6 +3189,7 @@ export class RunEngine {
     checkpoint,
     workerId,
     runnerId,
+    environmentId,
     tx,
   }: {
     runId: string;
@@ -3196,6 +3197,7 @@ export class RunEngine {
     checkpoint: CheckpointInput;
     workerId?: string;
     runnerId?: string;
+    environmentId?: string;
     tx?: PrismaClientOrTransaction;
   }): Promise<CreateCheckpointResult> {
     return this.checkpointSystem.createCheckpoint({
@@ -3204,6 +3206,7 @@ export class RunEngine {
       checkpoint,
       workerId,
       runnerId,
+      environmentId,
       tx,
     });
   }
@@ -3321,6 +3324,7 @@ export class RunEngine {
     runId,
     snapshotId,
     organizationId,
+    environmentId,
     workerId,
     runnerId,
     tx,
@@ -3328,6 +3332,7 @@ export class RunEngine {
     runId: string;
     snapshotId: string;
     organizationId?: string;
+    environmentId?: string;
     workerId?: string;
     runnerId?: string;
     tx?: PrismaClientOrTransaction;
@@ -3336,6 +3341,7 @@ export class RunEngine {
       runId,
       snapshotId,
       organizationId,
+      environmentId,
       workerId,
       runnerId,
       tx,

@@ -10,6 +10,7 @@ export const loader = createLoaderWorkerApiRoute(
     params: z.object({
       runFriendlyId: z.string(),
     }),
+    workerActionToken: "snapshots_latest",
   },
   async ({
     authenticatedWorker,

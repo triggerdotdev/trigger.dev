@@ -35,7 +35,10 @@ import {
   workloadTokenEnforced,
   workloadTokensEnabled,
 } from "../workloadToken.js";
-import type { WorkloadDeploymentTokenClaims } from "@trigger.dev/core/v3";
+import {
+  looksLikeWorkloadDeploymentToken,
+  type WorkloadDeploymentTokenClaims,
+} from "@trigger.dev/core/v3";
 import {
   SecretProxyAllocationBusyError,
   type SecretProxyBindings,
@@ -316,11 +319,14 @@ export class WorkloadServer extends EventEmitter<WorkloadServerEvents> {
         sandboxRunId?: string;
         workloadNetwork?: WorkloadDeploymentTokenClaims["workload_network"];
         claims?: WorkloadDeploymentTokenClaims;
+        workloadToken?: string;
       }
     | { ok: false }
   > {
+    const workloadToken = this.workloadTokenToForward(req);
+
     if (!workloadTokensEnabled) {
-      return this.secretProxy ? { ok: false } : { ok: true };
+      return this.secretProxy ? { ok: false } : { ok: true, workloadToken };
     }
 
     const result = await verifyDeploymentIdHeader(this.deploymentIdFromRequest(req), "http");
@@ -375,7 +381,13 @@ export class WorkloadServer extends EventEmitter<WorkloadServerEvents> {
       environmentId: verified?.environment_id,
       sandboxRunId: verified?.execution_mode === "SANDBOX" ? verified.run : undefined,
       claims: result.outcome === "jwt_valid" ? result.claims : undefined,
+      workloadToken,
     };
+  }
+
+  private workloadTokenToForward(req: IncomingMessage): string | undefined {
+    const raw = this.deploymentIdFromRequest(req);
+    return raw && looksLikeWorkloadDeploymentToken(raw) ? raw : undefined;
   }
 
   private previousKeyRunAllowed(runFriendlyId: string, caller: PreviousKeyCaller): boolean {
@@ -675,7 +687,8 @@ export class WorkloadServer extends EventEmitter<WorkloadServerEvents> {
                       },
                       caller.runnerId,
                       auth.environmentId,
-                      auth.sandboxRunId
+                      auth.sandboxRunId,
+                      auth.workloadToken
                     );
                     if (startResponse.success && (placement || startResponse.data.secretProxy)) {
                       const response = startResponse;
@@ -705,7 +718,8 @@ export class WorkloadServer extends EventEmitter<WorkloadServerEvents> {
                               forceRequeue: true,
                             },
                             caller.runnerId,
-                            auth.environmentId
+                            auth.environmentId,
+                            auth.workloadToken
                           );
                         if (proxy && placement) {
                           await proxy.failStart(caller, placement.bindingId, complete);
@@ -807,7 +821,8 @@ export class WorkloadServer extends EventEmitter<WorkloadServerEvents> {
                     params.snapshotFriendlyId,
                     proxy ? body : completion,
                     runnerId,
-                    auth.environmentId
+                    auth.environmentId,
+                    auth.workloadToken
                   );
                 const completeResponse = proxy
                   ? await proxy.complete(
@@ -872,7 +887,8 @@ export class WorkloadServer extends EventEmitter<WorkloadServerEvents> {
                     body,
                     runnerId,
                     auth.environmentId,
-                    auth.sandboxRunId
+                    auth.sandboxRunId,
+                    auth.workloadToken
                   );
                   if (response.success) {
                     await proxy?.refresh(params.runFriendlyId, response.data.runToken);
@@ -1074,6 +1090,7 @@ export class WorkloadServer extends EventEmitter<WorkloadServerEvents> {
                     retryBudget: this.continueRetryBudget,
                     supportsSecretProxy: !!placement || !!tracked,
                     sandboxRunId: auth.sandboxRunId,
+                    workloadToken: auth.workloadToken,
                   }
                 );
 
@@ -1155,7 +1172,8 @@ export class WorkloadServer extends EventEmitter<WorkloadServerEvents> {
                   params.runFriendlyId,
                   params.snapshotFriendlyId,
                   this.runnerIdFromRequest(req),
-                  auth.environmentId
+                  auth.environmentId,
+                  auth.workloadToken
                 );
 
                 if (!sinceSnapshotResponse.success) {

@@ -178,7 +178,8 @@ export class SupervisorHttpClient {
     body: WorkerApiRunHeartbeatRequestBody,
     runnerId?: string,
     environmentId?: string,
-    sandboxRunId?: string
+    sandboxRunId?: string,
+    workloadToken?: string
   ) {
     return this.request(
       "heartbeat_run",
@@ -191,6 +192,7 @@ export class SupervisorHttpClient {
           ...this.runnerIdHeader(runnerId),
           ...this.environmentIdHeader(environmentId),
           ...createHeaders({ [WORKER_HEADERS.SANDBOX_RUN_ID]: sandboxRunId }),
+          ...this.workloadTokenHeader(workloadToken),
           "Content-Type": "application/json",
         },
         body: JSON.stringify(body),
@@ -204,7 +206,8 @@ export class SupervisorHttpClient {
     body: WorkerApiRunAttemptStartRequestBody,
     runnerId?: string,
     environmentId?: string,
-    sandboxRunId?: string
+    sandboxRunId?: string,
+    workloadToken?: string
   ) {
     return this.request(
       "start_run_attempt",
@@ -217,6 +220,7 @@ export class SupervisorHttpClient {
           ...this.runnerIdHeader(runnerId),
           ...this.environmentIdHeader(environmentId),
           ...createHeaders({ [WORKER_HEADERS.SANDBOX_RUN_ID]: sandboxRunId }),
+          ...this.workloadTokenHeader(workloadToken),
         },
         body: JSON.stringify(body),
       }
@@ -228,7 +232,8 @@ export class SupervisorHttpClient {
     snapshotId: string,
     body: WorkerApiRunAttemptCompleteRequestBody,
     runnerId?: string,
-    environmentId?: string
+    environmentId?: string,
+    workloadToken?: string
   ) {
     return this.request(
       "complete_run_attempt",
@@ -240,6 +245,7 @@ export class SupervisorHttpClient {
           ...this.defaultHeaders,
           ...this.runnerIdHeader(runnerId),
           ...this.environmentIdHeader(environmentId),
+          ...this.workloadTokenHeader(workloadToken),
         },
         body: JSON.stringify(body),
       }
@@ -266,7 +272,8 @@ export class SupervisorHttpClient {
     runId: string,
     snapshotId: string,
     runnerId?: string,
-    environmentId?: string
+    environmentId?: string,
+    workloadToken?: string
   ) {
     return this.request(
       "get_snapshots_since",
@@ -278,6 +285,7 @@ export class SupervisorHttpClient {
           ...this.defaultHeaders,
           ...this.runnerIdHeader(runnerId),
           ...this.environmentIdHeader(environmentId),
+          ...this.workloadTokenHeader(workloadToken),
         },
       }
     );
@@ -321,6 +329,7 @@ export class SupervisorHttpClient {
       retryBudget?: ContinueRetryBudget;
       supportsSecretProxy?: boolean;
       sandboxRunId?: string;
+      workloadToken?: string;
     }
   ): Promise<
     ApiResult<WorkerApiContinueRunExecutionResponseBody> & { retry?: ContinueRetrySummary }
@@ -338,6 +347,7 @@ export class SupervisorHttpClient {
             ...this.runnerIdHeader(runnerId),
             ...this.environmentIdHeader(environmentId),
             ...createHeaders({ [WORKER_HEADERS.SANDBOX_RUN_ID]: options?.sandboxRunId }),
+            ...this.workloadTokenHeader(options?.workloadToken),
           },
           signal,
         },
@@ -480,6 +490,12 @@ export class SupervisorHttpClient {
   private environmentIdHeader(environmentId?: string): Record<string, string> {
     return createHeaders({
       [WORKER_HEADERS.ENVIRONMENT_ID]: environmentId,
+    });
+  }
+
+  private workloadTokenHeader(workloadToken?: string): Record<string, string> {
+    return createHeaders({
+      [WORKER_HEADERS.WORKLOAD_TOKEN]: workloadToken,
     });
   }
 }

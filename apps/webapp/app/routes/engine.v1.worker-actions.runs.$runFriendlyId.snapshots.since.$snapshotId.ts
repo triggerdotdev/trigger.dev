@@ -11,6 +11,7 @@ export const loader = createLoaderWorkerApiRoute(
       runFriendlyId: z.string(),
       snapshotId: z.string(),
     }),
+    workerActionToken: "snapshots_since",
   },
   async ({
     authenticatedWorker,

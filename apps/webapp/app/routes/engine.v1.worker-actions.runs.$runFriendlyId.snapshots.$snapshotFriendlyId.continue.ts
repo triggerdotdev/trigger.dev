@@ -14,6 +14,7 @@ export const loader = createLoaderWorkerApiRoute(
       snapshotFriendlyId: z.string(),
     }),
     searchParams: z.object({ supportsSecretProxy: z.literal("1").optional() }),
+    workerActionToken: "continue",
   },
   async ({
     authenticatedWorker,

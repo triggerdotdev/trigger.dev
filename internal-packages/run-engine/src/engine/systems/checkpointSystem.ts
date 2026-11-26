@@ -16,7 +16,7 @@ import {
 } from "./executionSnapshotSystem.js";
 import type { SystemResources } from "./systems.js";
 import { snapshotRouteFromSnapshot } from "@internal/run-store";
-import { ServiceValidationError } from "../errors.js";
+import { LatestExecutionSnapshotNotFoundError, ServiceValidationError } from "../errors.js";
 import type { EnqueueSystem } from "./enqueueSystem.js";
 import { cycleAnchorSnapshotId } from "./waitpointSystem.js";
 
@@ -52,6 +52,7 @@ export class CheckpointSystem {
     checkpoint,
     workerId,
     runnerId,
+    environmentId,
     tx,
   }: {
     runId: string;
@@ -59,12 +60,16 @@ export class CheckpointSystem {
     checkpoint: CheckpointInput;
     workerId?: string;
     runnerId?: string;
+    environmentId?: string;
     tx?: PrismaClientOrTransaction;
   }): Promise<CreateCheckpointResult> {
     const prisma = tx ?? this.$.prisma;
 
     return await this.$.runLock.lock("createCheckpoint", [runId], async () => {
       const snapshot = await getLatestExecutionSnapshot(prisma, runId, this.$.runStore);
+      if (environmentId !== undefined && snapshot.environmentId !== environmentId) {
+        throw new LatestExecutionSnapshotNotFoundError(runId);
+      }
 
       const isValidSnapshot =
         // Case 1: The provided snapshotId matches the current snapshot

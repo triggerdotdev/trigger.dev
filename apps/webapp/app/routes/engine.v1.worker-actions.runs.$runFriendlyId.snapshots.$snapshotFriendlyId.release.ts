@@ -18,6 +18,7 @@ export const action = createActionWorkerApiRoute(
       snapshotFriendlyId: z.string(),
     }),
     body: z.compile(WorkerApiRunReleaseRequestBody),
+    workerActionToken: "release",
   },
   async ({
     authenticatedWorker,

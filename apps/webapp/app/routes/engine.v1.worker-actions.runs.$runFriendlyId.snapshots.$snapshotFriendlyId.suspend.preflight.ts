@@ -8,6 +8,7 @@ export const action = createActionWorkerApiRoute(
       runFriendlyId: z.string(),
       snapshotFriendlyId: z.string(),
     }),
+    workerActionToken: "suspend",
   },
   async ({ authenticatedWorker, params, environmentId }) => {
     const authorizedEnvironmentId = await authenticatedWorker.authorizeSuspend(
