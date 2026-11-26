@@ -247,7 +247,15 @@ async function confirm(
   const consumed = await store.consumeApproved(lookup);
   if (consumed) return { approved: true, id: consumed.id, preview: consumed.preview };
 
-  const preview = await confirmationPreview(tool, spec, args, subject, undefined, ability);
+  const preview = await confirmationPreview(
+    tool,
+    spec,
+    args,
+    subject,
+    undefined,
+    ability,
+    identity
+  );
   if ("refuse" in preview) return { approved: false, refused: preview.refuse };
 
   const created = await store.createPending({

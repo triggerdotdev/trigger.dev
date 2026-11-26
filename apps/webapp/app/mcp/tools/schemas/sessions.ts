@@ -162,3 +162,13 @@ export const ListPlaygroundConversationsInput = CommonProjectsInput.extend({
     .describe("How many to return, up to 10 (default 10).")
     .optional(),
 });
+
+export const DeletePlaygroundConversationInput = CommonProjectsInput.extend({
+  chatId: z
+    .string()
+    .min(1)
+    .max(256)
+    .describe("The conversation's chat id. Use list_playground_conversations to find it."),
+});
+
+export type DeletePlaygroundConversationInput = z.output<typeof DeletePlaygroundConversationInput>;

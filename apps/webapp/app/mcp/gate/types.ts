@@ -32,7 +32,8 @@ export type McpConfirmSpec<A = unknown> = {
   preview: (
     args: A,
     subject: McpSubject | null,
-    ability?: RbacAbility
+    ability?: RbacAbility,
+    identity?: McpIdentity
   ) => string | McpPreviewRefusal | Promise<string | McpPreviewRefusal>;
 };
 

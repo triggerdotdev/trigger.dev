@@ -65,7 +65,8 @@ export async function confirmationPreview(
   args: unknown,
   subject: McpSubject | null,
   fingerprintKey?: string,
-  ability?: RbacAbility
+  ability?: RbacAbility,
+  identity?: McpIdentity
 ): Promise<{ preview: string; truncated: boolean } | McpPreviewRefusal>;
 export async function confirmationPreview(
   tool: string,
@@ -73,10 +74,11 @@ export async function confirmationPreview(
   args: unknown,
   subject: McpSubject | null,
   fingerprintKey?: string,
-  ability?: RbacAbility
+  ability?: RbacAbility,
+  identity?: McpIdentity
 ): Promise<{ preview: string; truncated: boolean } | McpPreviewRefusal> {
   if (spec !== true) {
-    const preview = await spec.preview(args, subject, ability);
+    const preview = await spec.preview(args, subject, ability, identity);
     if (typeof preview !== "string") return preview;
     if (preview.length > PREVIEW_LIMIT) {
       return {

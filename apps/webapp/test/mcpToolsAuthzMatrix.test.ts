@@ -262,6 +262,11 @@ const TOOLS: Array<{
     args: { ...project, agentSlug: "my-agent" },
     scope: "read:sessions",
   },
+  {
+    tool: "delete_playground_conversation",
+    args: { ...project, chatId: "chat_1" },
+    scope: "write:sessions",
+  },
   { tool: "list_alert_capabilities", args: project, scope: "read:alerts" },
   { tool: "get_alert_details", args: { ...project, alertId: "alert_1" }, scope: "read:alerts" },
   { tool: "list_alert_channels", args: project, scope: "read:alerts" },
