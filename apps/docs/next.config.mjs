@@ -13,13 +13,17 @@ const resolveAlias = {
   "fumadocs-core/server": rel(fileURLToPath(import.meta.resolve("fumadocs-core/server"))),
 };
 
-// Doc page URLs: everything but routes, agent files and `.md` URLs.
+// Doc page URLs: everything but routes, agent files, embed pages and `.md` URLs.
 const pagePaths =
-  "/:path((?!api/|og/|hovers/|llms|_next/|robots\\.txt$|sitemap\\.xml$|v3-openapi)(?!.*\\.md$).+)";
+  "/:path((?!api/|og/|embed/|hovers/|mcp$|llms|_next/|\\.well-known/|skill\\.md$|robots\\.txt$|sitemap\\.xml$|v3-openapi)(?!.*\\.md$).+)";
 // Agent-facing files every page advertises in its Link header.
 const discoveryLinks = [
   `</docs/llms.txt>; rel="llms-txt"`,
   `</docs/llms-full.txt>; rel="llms-full-txt"`,
+  `</docs/.well-known/api-catalog>; rel="api-catalog"`,
+  `</docs/.well-known/mcp/server-card.json>; rel="mcp-server-card"`,
+  `</docs/.well-known/agent-card.json>; rel="agent-card"`,
+  `</docs/.well-known/agent-skills/index.json>; rel="agent-skills"`,
 ];
 
 // Build parallelism is capped so `next build` fits an 8 GB machine however many cores it reports:
@@ -29,6 +33,17 @@ const discoveryLinks = [
 const dev = process.env.NODE_ENV === "development";
 const buildCpus = Number(process.env.DOCS_BUILD_CPUS) || (dev ? 8 : 4);
 process.env.TURBO_TASKS_AVAILABLE_PARALLELISM ??= String(buildCpus);
+
+// Who may frame the embed pages (/docs/embed/*, the dashboard's docs panel): the dashboards, plus
+// the dashboard this build points at.
+const frameAncestors = [
+  "'self'",
+  "https://cloud.trigger.dev",
+  "https://test-cloud.trigger.dev",
+  process.env.NEXT_PUBLIC_DASHBOARD_URL,
+]
+  .filter(Boolean)
+  .join(" ");
 
 /** @type {import('next').NextConfig} */
 const config = {
@@ -59,12 +74,20 @@ const config = {
           ? [{ source: `${r.source}.md`, destination: `${r.destination}.md`, permanent: true }]
           : []),
       ]),
+      // The dashboard's docs panel links old paths too; the query (project, theme) carries over.
+      ...redirects
+        .filter((r) => r.destination.startsWith("/"))
+        .map((r) => ({
+          source: `/embed${r.source}`,
+          destination: `/embed${r.destination}`,
+          permanent: true,
+        })),
     ];
   },
   async headers() {
     const agentHeaders = [
-      // Every page: only the docs frame themselves, no MIME sniffing, and only the origin in
-      // cross-site referrers.
+      // Every page: only the docs frame themselves (the /embed entry below overrides this for the
+      // dashboards), no MIME sniffing, and only the origin in cross-site referrers.
       {
         source: "/:path*",
         headers: [
@@ -84,6 +107,13 @@ const config = {
             ].join(", "),
           },
           { key: "Vary", value: "Accept" },
+        ],
+      },
+      {
+        source: "/embed/:path*",
+        headers: [
+          { key: "Content-Security-Policy", value: `frame-ancestors ${frameAncestors}` },
+          { key: "X-Robots-Tag", value: "noindex" },
         ],
       },
     ];
@@ -114,7 +144,11 @@ const config = {
           ];
         }),
       ],
-      afterFiles: [{ source: "/:path*.md", destination: "/llms.mdx/:path*" }],
+      afterFiles: [
+        // The skill's discovery URL serves /skill.md (before the catch-all below claims it).
+        { source: "/.well-known/agent-skills/trigger/skill.md", destination: "/skill.md" },
+        { source: "/:path*.md", destination: "/llms.mdx/:path*" },
+      ],
     };
   },
 };

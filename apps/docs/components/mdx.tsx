@@ -4,9 +4,12 @@ import type { ComponentProps } from "react";
 import * as mintlify from "./mintlify";
 import { Mermaid } from "./mermaid";
 import { CodeSample } from "./code-block";
+import { DeployExample } from "./deploy-example";
 import { TypeHover } from "./type-hover";
 import { SdkType } from "./sdk-type";
+import { DashboardAnchor } from "./dashboard-anchor";
 import { withBase } from "@/lib/base-path";
+import { personalizationEnabled, productionDashboardOrigin } from "@/lib/dashboard-link";
 
 const components = {
   ...defaultMdxComponents,
@@ -16,6 +19,15 @@ const components = {
   TypeHover,
   SdkType,
   pre: CodeSample,
+  // Added after example repo cards by lib/remark-deploy-example.ts.
+  DeployExample,
+  // Dashboard links land in the signed-in reader's own project.
+  a: ({ href, ...props }: ComponentProps<"a">) =>
+    personalizationEnabled && href?.startsWith(productionDashboardOrigin) ? (
+      <DashboardAnchor href={href} {...props} />
+    ) : (
+      <defaultMdxComponents.a href={href} {...props} />
+    ),
   // Mintlify accepts these aliases or unknown names without failing.
   Warn: mintlify.Warning,
   // Markdown images always carry alt text (possibly empty); a JSX <img> without one is decorative.

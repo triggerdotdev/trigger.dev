@@ -213,6 +213,18 @@ importers:
 
   apps/docs:
     dependencies:
+      '@ai-sdk/anthropic':
+        specifier: 3.0.125
+        version: 3.0.125(patch_hash=08f1641f732c1729dc6bf8fda854bbcc4cbdb851d54d0b7e82086712fc0d6e4c)(zod@4.6.7)
+      '@ai-sdk/react':
+        specifier: 3.0.170
+        version: 3.0.170(react@19.2.9)(zod@4.6.7)
+      '@babel/parser':
+        specifier: 7.29.9
+        version: 7.29.9
+      ai:
+        specifier: 6.0.116
+        version: 6.0.116(zod@4.6.7)
       fumadocs-core:
         specifier: 16.19.6
         version: 16.19.6(@mdx-js/mdx@3.1.1)(@modelcontextprotocol/server@2.4.0)(@types/estree-jsx@1.0.0)(@types/hast@3.0.5)(@types/mdast@4.0.4)(@types/react@19.2.14)(lucide-react@1.77.0(@types/react@19.2.14)(react@19.2.9))(next@16.4.6(@opentelemetry/api@1.9.1)(@playwright/test@1.37.0)(@types/node@24.13.3)(@types/react@19.2.14)(react-dom@19.2.9(react@19.2.9))(react@19.2.9))(react-dom@19.2.9(react@19.2.9))(react@19.2.9)(zod@4.6.7)
@@ -234,6 +246,9 @@ importers:
       hast-util-to-html:
         specifier: 9.0.7
         version: 9.0.7
+      ioredis:
+        specifier: 5.6.1
+        version: 5.6.1
       lucide-react:
         specifier: 1.77.0
         version: 1.77.0(@types/react@19.2.14)(react@19.2.9)
@@ -261,6 +276,9 @@ importers:
       react-dom:
         specifier: 19.2.9
         version: 19.2.9(react@19.2.9)
+      shiki:
+        specifier: 4.6.0
+        version: 4.6.0
       unist-util-visit:
         specifier: 5.2.0
         version: 5.2.0
@@ -268,6 +286,12 @@ importers:
         specifier: 4.6.7
         version: 4.6.7
     devDependencies:
+      '@ai-sdk/provider':
+        specifier: 3.0.8
+        version: 3.0.8
+      '@babel/types':
+        specifier: 7.29.8
+        version: 7.29.8
       '@tailwindcss/postcss':
         specifier: 4.3.5
         version: 4.3.5
@@ -17748,6 +17772,16 @@ snapshots:
     transitivePeerDependencies:
       - zod
 
+  '@ai-sdk/react@3.0.170(react@19.2.9)(zod@4.6.7)':
+    dependencies:
+      '@ai-sdk/provider-utils': 4.0.29(zod@4.6.7)
+      ai: 6.0.116(zod@4.6.7)
+      react: 19.2.9
+      swr: 2.2.5(react@19.2.9)
+      throttleit: 2.1.0
+    transitivePeerDependencies:
+      - zod
+
   '@alloc/quick-lru@5.2.0': {}
 
   '@andrewbranch/untar.js@1.0.3': {}
@@ -33843,6 +33877,12 @@ snapshots:
       react: 18.3.1
       use-sync-external-store: 1.2.2(react@18.3.1)
 
+  swr@2.2.5(react@19.2.9):
+    dependencies:
+      client-only: 0.0.1
+      react: 19.2.9
+      use-sync-external-store: 1.2.2(react@19.2.9)
+
   symbol-tree@3.2.4: {}
 
   sync-content@2.0.4:
@@ -34585,6 +34625,10 @@ snapshots:
   use-sync-external-store@1.2.2(react@18.3.1):
     dependencies:
       react: 18.3.1
+
+  use-sync-external-store@1.2.2(react@19.2.9):
+    dependencies:
+      react: 19.2.9
 
   use-sync-external-store@1.7.0(react@18.3.1):
     dependencies:

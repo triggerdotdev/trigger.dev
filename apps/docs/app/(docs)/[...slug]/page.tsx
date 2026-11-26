@@ -8,6 +8,9 @@ import {
   ViewOptionsPopover,
 } from "fumadocs-ui/layouts/notebook/page";
 import { TrackPageActions } from "@/components/analytics";
+import { CopyPromptButton } from "@/components/copy-prompt";
+import { pageSection } from "@/lib/agent-markdown";
+import { isPromptPage } from "@/lib/copy-prompt";
 import { PageFeedback } from "@/components/feedback";
 import { PageBody } from "@/components/page-body";
 import { PageFreshness } from "@/components/page-freshness";
@@ -26,6 +29,7 @@ export default async function Page({ params }: Props) {
   // fumadocs prefixes the /docs basePath itself.
   const markdownUrl = `${page.url}.md`;
   const api = await pageApi(page);
+  const promptable = !api && isPromptPage(pageSection(page), await page.data.getText("processed"));
 
   return (
     <DocsPage toc={toc} full={page.data.full || page.data.mode === "wide" || !!api}>
@@ -45,6 +49,13 @@ export default async function Page({ params }: Props) {
           <div className="flex shrink-0 flex-row items-center gap-2 sm:pt-1.5">
             <TrackPageActions path={page.url}>
               <MarkdownCopyButton markdownUrl={markdownUrl} />
+              {promptable && (
+                <CopyPromptButton
+                  path={page.url}
+                  title={page.data.title}
+                  mdUrl={`${docsUrl}${page.url}.md`}
+                />
+              )}
               <ViewOptionsPopover
                 markdownUrl={markdownUrl}
                 pageUrl={`${docsUrl}${page.url}`}

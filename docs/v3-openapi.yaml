@@ -14,6 +14,7 @@ servers:
 paths:
   "/api/v1/schedules":
     post:
+      x-trigger-access: write:schedules
       operationId: create_schedule_v1
       summary: Create a schedule
       description: Create a new `IMPERATIVE` schedule based on the specified options.
@@ -53,6 +54,7 @@ paths:
             });
 
     get:
+      x-trigger-access: read:schedules
       operationId: list_schedules_v1
       summary: List all schedules
       description: List all schedules. You can also paginate the results.
@@ -91,6 +93,7 @@ paths:
 
   "/api/v1/schedules/{schedule_id}":
     get:
+      x-trigger-access: read:schedules
       operationId: get_schedule_v1
       summary: Retrieve Schedule
       description: Get a schedule by its ID.
@@ -125,6 +128,7 @@ paths:
             const schedule = await schedules.retrieve(scheduleId);
 
     put:
+      x-trigger-access: write:schedules
       operationId: update_schedule_v1
       summary: Update Schedule
       description: Update a schedule by its ID. This will only work on `IMPERATIVE` schedules that were created in the dashboard or using the imperative SDK functions like `schedules.create()`.
@@ -171,6 +175,7 @@ paths:
             });
 
     delete:
+      x-trigger-access: write:schedules
       operationId: delete_schedule_v1
       summary: Delete Schedule
       description: Delete a schedule by its ID. This will only work on `IMPERATIVE` schedules that were created in the dashboard or using the imperative SDK functions like `schedules.create()`.
@@ -201,6 +206,7 @@ paths:
 
   "/api/v1/schedules/{schedule_id}/deactivate":
     post:
+      x-trigger-access: write:schedules
       operationId: deactivate_schedule_v1
       summary: Deactivate Schedule.
       description: Deactivate a schedule by its ID. This will only work on `IMPERATIVE` schedules that were created in the dashboard or using the imperative SDK functions like `schedules.create()`.
@@ -235,6 +241,7 @@ paths:
 
   "/api/v1/schedules/{schedule_id}/activate":
     post:
+      x-trigger-access: write:schedules
       operationId: activate_schedule_v1
       summary: Activate Schedule
       description: Activate a schedule by its ID. This will only work on `IMPERATIVE` schedules that were created in the dashboard or using the imperative SDK functions like `schedules.create()`.
@@ -300,6 +307,7 @@ paths:
     parameters:
       - $ref: "#/components/parameters/runId"
     post:
+      x-trigger-access: write:runs
       operationId: replay_run_v1
       summary: Replay a run
       description: Creates a new run with the same payload and options as the original
@@ -460,6 +468,7 @@ paths:
     parameters:
       - $ref: "#/components/parameters/runId"
     post:
+      x-trigger-access: write:runs
       operationId: add_run_tags_v1
       summary: Add tags to a run
       description: Adds one or more tags to a run. Runs can have a maximum of 10 tags. Duplicate tags are ignored.
@@ -542,6 +551,7 @@ paths:
     parameters:
       - $ref: "#/components/parameters/runId"
     get:
+      x-trigger-access: read:runs
       operationId: get_run_trace_v1
       summary: Retrieve run trace
       description: Returns the OTel trace subtree for the requested run — the run's span as `rootSpan`, its ancestor chain, and its descendant spans. For child or nested runs in a large trace, this is scoped to that run rather than the trace-wide root. Pass `page[size]` or `page[after]` to page the trace as flat spans instead; paging works for runs at the root of their trace.
@@ -724,6 +734,7 @@ paths:
     parameters:
       - $ref: "#/components/parameters/runId"
     get:
+      x-trigger-access: read:runs
       operationId: get_run_events_v1
       summary: Retrieve run events
       description: Returns all OTel span events for a run. Useful for debugging and observability.
@@ -860,6 +871,7 @@ paths:
     parameters:
       - $ref: "#/components/parameters/runId"
     put:
+      x-trigger-access: write:runs
       operationId: update_run_metadata_v1
       summary: Update run metadata
       description: Update the metadata of a run.
@@ -940,6 +952,7 @@ paths:
     parameters:
       - $ref: "#/components/parameters/runId"
     post:
+      x-trigger-access: write:runs
       operationId: cancel_run_v1
       summary: Cancel a run
       description: Cancels an in-progress run. If the run is already completed, this
@@ -1003,6 +1016,7 @@ paths:
 
   "/api/v1/deployments":
     get:
+      x-trigger-access: read:deployments
       operationId: list_deployments_v1
       summary: List deployments
       description: List deployments for the authenticated environment, ordered by most recent first.
@@ -1155,6 +1169,7 @@ paths:
           type: string
         description: The deployment ID.
     get:
+      x-trigger-access: read:deployments
       operationId: get_deployment_v1
       summary: Get deployment
       description: Retrieve information about a specific deployment by its ID.
@@ -1263,6 +1278,7 @@ paths:
 
   "/api/v1/deployments/latest":
     get:
+      x-trigger-access: read:deployments
       operationId: get_latest_deployment_v1
       summary: Get latest deployment
       description: Retrieve information about the latest unmanaged deployment for the authenticated project.
@@ -1343,6 +1359,7 @@ paths:
           type: string
         description: The deployment version to promote (e.g., "20250228.1").
     post:
+      x-trigger-access: write:deployments
       operationId: promote_deployment_v1
       summary: Promote deployment
       description: Promote a previously deployed version to be the current version for the environment. This makes the specified version active for new task runs.
@@ -1402,6 +1419,7 @@ paths:
 
   "/api/v1/query":
     post:
+      x-trigger-access: read:query
       operationId: execute_query_v1
       summary: Execute a TRQL query
       description: Execute a TRQL (Trigger.dev Query Language) query against your run data. TRQL is a SQL-style query language that allows you to analyze runs, calculate metrics, and export data.
@@ -1527,6 +1545,7 @@ paths:
 
   "/api/v1/query/schema":
     get:
+      x-trigger-access: read:query
       operationId: get_query_schema_v1
       summary: Get query schema
       description: Get the schema for TRQL queries, including all available tables, their columns, data types, descriptions, and allowed values.
@@ -1592,6 +1611,7 @@ paths:
 
   "/api/v1/query/dashboards":
     get:
+      x-trigger-access: read:query
       operationId: list_dashboards_v1
       summary: List dashboards
       description: List the built-in dashboards and your organization's custom dashboards, with their widgets. Built-in dashboards contain pre-built TRQL queries for common metrics like run success rates, costs, and LLM usage.
@@ -1652,6 +1672,7 @@ paths:
             curl "https://api.trigger.dev/api/v1/query/dashboards" \
               -H "Authorization: Bearer tr_dev_sk_1234"
     post:
+      x-trigger-access: write:query
       operationId: create_dashboard_v1
       summary: Create a dashboard
       description: Create a custom dashboard, optionally with its widgets. Every widget query is checked against the queryable tables before it is saved. Creating more dashboards than your plan allows returns a 403.
@@ -1717,6 +1738,7 @@ paths:
         schema:
           type: string
     get:
+      x-trigger-access: read:query
       operationId: retrieve_dashboard_v1
       summary: Retrieve a dashboard
       description: Retrieve a custom dashboard with every widget, its query, display and grid position.
@@ -1740,6 +1762,7 @@ paths:
 
             const dashboard = await query.dashboards.retrieve("dashboard_1234");
     patch:
+      x-trigger-access: write:query
       operationId: update_dashboard_v1
       summary: Update a dashboard
       description: Rename a custom dashboard or change its description.
@@ -1781,6 +1804,7 @@ paths:
 
             await query.dashboards.update("dashboard_1234", { title: "Email pipeline" });
     put:
+      x-trigger-access: write:query
       operationId: replace_dashboard_v1
       summary: Replace a dashboard's widgets
       description: Replace every widget on a custom dashboard, and optionally its title and description. A widget that already exists keeps its position unless you pass a new one; new widgets without a position are stacked full width below the others, in order.
@@ -1842,6 +1866,7 @@ paths:
               revision: current.revision,
             });
     delete:
+      x-trigger-access: write:query
       operationId: delete_dashboard_v1
       summary: Delete a dashboard
       description: Delete a custom dashboard.
@@ -1877,6 +1902,7 @@ paths:
         schema:
           type: string
     post:
+      x-trigger-access: write:query
       operationId: add_dashboard_widget_v1
       summary: Add a dashboard widget
       description: Add a widget to a custom dashboard. Without a position it is placed full width at the bottom.
@@ -1941,6 +1967,7 @@ paths:
         schema:
           type: string
     patch:
+      x-trigger-access: write:query
       operationId: update_dashboard_widget_v1
       summary: Update a dashboard widget
       description: Change a widget's title, query, display or position.
@@ -1990,6 +2017,7 @@ paths:
               position: { x: 0, y: 0, w: 6, h: 10 },
             });
     delete:
+      x-trigger-access: write:query
       operationId: delete_dashboard_widget_v1
       summary: Delete a dashboard widget
       description: Remove a widget from a custom dashboard.
@@ -2026,6 +2054,7 @@ paths:
     parameters:
       - $ref: "#/components/parameters/runId"
     post:
+      x-trigger-access: write:runs
       operationId: reschedule_run_v1
       summary: Rescheduled a delayed run
       description: Updates a delayed run with a new delay. Only valid when the run is in the DELAYED state.
@@ -2091,6 +2120,7 @@ paths:
     parameters:
       - $ref: "#/components/parameters/runId"
     get:
+      x-trigger-access: read:runs
       operationId: get_run_result_v1
       summary: Retrieve run result
       description: Returns the execution result of a completed run. Returns 404 if the run doesn't exist or hasn't finished yet.
@@ -2169,6 +2199,7 @@ paths:
     parameters:
       - $ref: "#/components/parameters/runId"
     get:
+      x-trigger-access: read:runs
       operationId: retrieve_run_v1
       summary: Retrieve a run
       description: |
@@ -2246,6 +2277,7 @@ paths:
 
   "/api/v1/runs":
     get:
+      x-trigger-access: read:runs
       operationId: list_runs_v1
       summary: List runs
       description: List runs in a specific environment. You can filter the runs by status, created at, task identifier, version, and more. Without a `filter[createdAt]` value, only runs created in the last 7 days are returned. This endpoint is for browsing, reporting, and bulk operations, not for coordinating runs, so don't call it before every trigger or poll it in a loop. See [runs.list() best practices](/runs/list-best-practices).
@@ -2315,6 +2347,7 @@ paths:
 
   "/api/v1/bulk-actions":
     get:
+      x-trigger-access: read:runs
       operationId: list_bulk_actions_v1
       summary: List bulk actions
       description: List bulk actions in the current environment. Bulk actions are returned newest first and can be paginated with cursor pagination.
@@ -2352,6 +2385,7 @@ paths:
             }
 
     post:
+      x-trigger-access: write:runs
       operationId: create_bulk_action_v1
       summary: Create bulk action
       description: Create an asynchronous bulk action to cancel or replay runs selected by run IDs or filters.
@@ -2422,6 +2456,7 @@ paths:
 
   "/api/v1/bulk-actions/{bulkActionId}":
     get:
+      x-trigger-access: read:runs
       operationId: retrieve_bulk_action_v1
       summary: Retrieve bulk action
       description: Retrieve the status and aggregate processing counts for a bulk action.
@@ -2453,6 +2488,7 @@ paths:
 
   "/api/v1/bulk-actions/{bulkActionId}/abort":
     post:
+      x-trigger-access: write:runs
       operationId: abort_bulk_action_v1
       summary: Abort bulk action
       description: Abort a pending bulk action so it stops processing additional runs. Runs already processed by the action are not undone.
@@ -2492,6 +2528,7 @@ paths:
     parameters:
       - $ref: "#/components/parameters/projectRef"
     get:
+      x-trigger-access: read:runs
       operationId: list_project_runs_v1
       summary: List project runs
       description: List runs in a project, across multiple environments, using Personal Access Token auth. You can filter the runs by status, created at, task identifier, version, and more.
@@ -2572,6 +2609,7 @@ paths:
       - $ref: "#/components/parameters/projectRef"
       - $ref: "#/components/parameters/env"
     get:
+      x-trigger-access: read:envvars
       operationId: list_project_envvars_v1
       summary: List environment variables
       description: List all environment variables for a specific project and environment.
@@ -2633,6 +2671,7 @@ paths:
               }
             })
     post:
+      x-trigger-access: write:envvars
       operationId: create_project_envvar_v1
       summary: Create environment variable
       description: Create a new environment variable for a specific project and environment.
@@ -2718,6 +2757,7 @@ paths:
       - $ref: "#/components/parameters/projectRef"
       - $ref: "#/components/parameters/env"
     post:
+      x-trigger-access: write:envvars
       operationId: upload_project_envvars_v1
       summary: Upload environment variables
       description: Upload mulitple environment variables for a specific project and environment.
@@ -2800,6 +2840,7 @@ paths:
       - $ref: "#/components/parameters/env"
       - $ref: "#/components/parameters/envvarName"
     get:
+      x-trigger-access: read:envvars
       operationId: get_project_envvar_v1
       summary: Retrieve environment variable
       description: Retrieve a specific environment variable for a specific project and environment.
@@ -2858,6 +2899,7 @@ paths:
             })
 
     delete:
+      x-trigger-access: write:envvars
       operationId: delete_project_envvar_v1
       summary: Delete environment variable
       description: Delete a specific environment variable for a specific project and environment.
@@ -2920,6 +2962,7 @@ paths:
               }
             })
     put:
+      x-trigger-access: write:envvars
       operationId: update_project_envvar_v1
       summary: Update environment variable
       description: Update a specific environment variable for a specific project and environment.
@@ -2995,6 +3038,7 @@ paths:
     parameters:
       - $ref: "#/components/parameters/taskIdentifier"
     post:
+      x-trigger-access: trigger:tasks
       operationId: trigger_task_v1
       summary: Trigger a task
       description: Trigger a task by its identifier.
@@ -3108,6 +3152,7 @@ paths:
     parameters:
       - $ref: "#/components/parameters/taskIdentifier"
     post:
+      x-trigger-access: batchTrigger:tasks
       operationId: batch_trigger_task_by_id_v1
       summary: Batch trigger a specific task
       description: Batch trigger a specific task with up to 1,000 payloads. All items in the batch run the same task.
@@ -3185,6 +3230,7 @@ paths:
 
   "/api/v1/tasks/batch":
     post:
+      x-trigger-access: batchTrigger:tasks
       operationId: batch_trigger_task_v1
       summary: Batch trigger tasks
       description: Batch trigger tasks with up to 1,000 payloads with SDK 4.3.1+ (500 in prior versions).
@@ -3280,6 +3326,7 @@ paths:
     parameters:
       - $ref: "#/components/parameters/batchId"
     get:
+      x-trigger-access: read:batch
       operationId: retrieve_batch_v1
       summary: Retrieve a batch
       description: Retrieve a batch by its ID, including its status and the IDs of all runs in the batch.
@@ -3375,6 +3422,7 @@ paths:
     parameters:
       - $ref: "#/components/parameters/batchId"
     get:
+      x-trigger-access: read:batch
       operationId: get_batch_results_v1
       summary: Retrieve batch results
       description: Returns the execution results of all completed runs in a batch. Only finished runs (successful or failed) are included in the items array — runs that are still executing are omitted. Returns 404 if the batch doesn't exist.
@@ -3449,6 +3497,7 @@ paths:
 
   "/api/v1/queues":
     get:
+      x-trigger-access: read:queues
       operationId: list_queues_v1
       summary: List all queues
       description: List all queues in your environment with pagination support.
@@ -3494,6 +3543,7 @@ paths:
 
   "/api/v1/queues/{queueParam}":
     get:
+      x-trigger-access: read:queues
       operationId: retrieve_queue_v1
       summary: Retrieve a queue
       description: Get a queue by its ID, or by type and name.
@@ -3554,6 +3604,7 @@ paths:
 
   "/api/v1/queues/{queueParam}/pause":
     post:
+      x-trigger-access: write:queues
       operationId: pause_queue_v1
       summary: Pause or resume a queue
       description: Pause a queue to prevent new runs from starting, or resume a paused queue. Runs that are currently executing will continue to completion.
@@ -3618,6 +3669,7 @@ paths:
 
   "/api/v1/queues/{queueParam}/concurrency/override":
     post:
+      x-trigger-access: write:queues
       operationId: override_queue_concurrency_v1
       summary: Override queue concurrency limit
       description: Override the concurrency limit of a queue. This is useful for temporarily scaling up or down based on demand.
@@ -3689,6 +3741,7 @@ paths:
 
   "/api/v1/queues/{queueParam}/concurrency/reset":
     post:
+      x-trigger-access: write:queues
       operationId: reset_queue_concurrency_v1
       summary: Reset queue concurrency limit
       description: Reset the concurrency limit of a queue back to its base value defined in code.
@@ -3750,6 +3803,7 @@ paths:
 
   "/api/v1/concurrency-limits":
     get:
+      x-trigger-access: read:queues
       operationId: list_concurrency_limits_v1
       summary: List concurrency limits
       description: |
@@ -3809,6 +3863,7 @@ paths:
 
   "/api/v1/concurrency-limits/{name}":
     get:
+      x-trigger-access: read:queues
       operationId: retrieve_concurrency_limit_v1
       summary: Retrieve concurrency limit
       description: Retrieve a concurrency limit by name, with its bounds and live running and queued counts. With the concurrencyKey query parameter, retrieve the limit's view for that one key instead (its per-key bound, any per-key override and when it expires, and the runs executing for the key).
@@ -3851,6 +3906,7 @@ paths:
 
   "/api/v1/concurrency-limits/{name}/override":
     post:
+      x-trigger-access: write:queues
       operationId: override_concurrency_limit_v1
       summary: Override concurrency limit
       description: |
@@ -3937,6 +3993,7 @@ paths:
 
   "/api/v1/concurrency-limits/{name}/pause":
     post:
+      x-trigger-access: write:queues
       operationId: pause_concurrency_limit_v1
       summary: Pause or resume a concurrency limit
       description: |
@@ -3994,6 +4051,7 @@ paths:
 
   "/api/v1/concurrency-limits/{name}/reset":
     post:
+      x-trigger-access: write:queues
       operationId: reset_concurrency_limit_v1
       summary: Reset concurrency limit
       description: Reset a concurrency limit back to the values declared in your code, clearing any override. With a concurrencyKey in the body, clear that key's per-key override instead and leave the limit itself alone.
@@ -4045,6 +4103,7 @@ paths:
 
   "/api/v1/waitpoints/tokens":
     post:
+      x-trigger-access: write:waitpoints
       operationId: create_waitpoint_token_v1
       summary: Create a waitpoint token
       description: >-
@@ -4088,6 +4147,7 @@ paths:
             console.log(token.url); // HTTP callback URL to complete externally
 
     get:
+      x-trigger-access: read:waitpoints
       operationId: list_waitpoint_tokens_v1
       summary: List waitpoint tokens
       description: >-
@@ -4284,6 +4344,7 @@ paths:
 
   "/api/v1/waitpoints/tokens/{waitpointId}/complete":
     post:
+      x-trigger-access: write:waitpoints
       operationId: complete_waitpoint_token_v1
       summary: Complete a waitpoint token
       description: >-
@@ -4342,6 +4403,7 @@ paths:
 
   "/api/v1/waitpoints/tokens/{waitpointId}":
     get:
+      x-trigger-access: read:waitpoints
       operationId: retrieve_waitpoint_token_v1
       summary: Retrieve a waitpoint token
       description: >-
@@ -4387,6 +4449,7 @@ paths:
 
   "/api/v1/sessions":
     post:
+      x-trigger-access: trigger:tasks
       operationId: create_session_v1
       summary: Create a session
       description: >-
@@ -4468,6 +4531,7 @@ paths:
             console.log(isCached); // false on a brand-new session
 
     get:
+      x-trigger-access: read:sessions
       operationId: list_sessions_v1
       summary: List sessions
       description: >-
@@ -4518,6 +4582,7 @@ paths:
     parameters:
       - $ref: "#/components/parameters/session"
     get:
+      x-trigger-access: read:sessions
       operationId: retrieve_session_v1
       summary: Retrieve a session
       description: >-
@@ -4551,6 +4616,7 @@ paths:
             console.log(session.currentRunId, session.tags, session.closedAt);
 
     patch:
+      x-trigger-access: admin:sessions
       operationId: update_session_v1
       summary: Update a session
       description: >-
@@ -4605,6 +4671,7 @@ paths:
     parameters:
       - $ref: "#/components/parameters/session"
     post:
+      x-trigger-access: admin:sessions
       operationId: close_session_v1
       summary: Close a session
       description: >-
@@ -4645,6 +4712,7 @@ paths:
 
   "/api/v1/errors":
     get:
+      x-trigger-access: read:errors
       operationId: list_errors_v1
       summary: List errors
       description: |
@@ -4681,6 +4749,7 @@ paths:
     parameters:
       - $ref: "#/components/parameters/errorId"
     get:
+      x-trigger-access: read:errors
       operationId: retrieve_error_v1
       summary: Retrieve an error
       description: Retrieve detailed information about a single error group, including its lifecycle state and the worker versions it has affected.
@@ -4709,6 +4778,7 @@ paths:
     parameters:
       - $ref: "#/components/parameters/errorId"
     post:
+      x-trigger-access: write:errors
       operationId: resolve_error_v1
       summary: Resolve an error
       description: |
@@ -4751,6 +4821,7 @@ paths:
     parameters:
       - $ref: "#/components/parameters/errorId"
     post:
+      x-trigger-access: write:errors
       operationId: ignore_error_v1
       summary: Ignore an error
       description: |
@@ -4802,6 +4873,7 @@ paths:
     parameters:
       - $ref: "#/components/parameters/errorId"
     post:
+      x-trigger-access: write:errors
       operationId: unresolve_error_v1
       summary: Unresolve an error
       description: Move a resolved or ignored error group back to unresolved.
@@ -4828,6 +4900,7 @@ paths:
               -H "Authorization: Bearer $TRIGGER_SECRET_KEY"
   "/api/v1/webhooks/endpoints":
     get:
+      x-trigger-access: read:webhooks
       operationId: list_webhook_endpoints_v1
       summary: List webhook endpoints
       description: >-
@@ -4864,6 +4937,7 @@ paths:
     parameters:
       - $ref: "#/components/parameters/webhookEndpointId"
     get:
+      x-trigger-access: read:webhooks
       operationId: retrieve_webhook_endpoint_v1
       summary: Retrieve a webhook endpoint
       description: >-
@@ -4894,6 +4968,7 @@ paths:
     parameters:
       - $ref: "#/components/parameters/webhookEndpointId"
     post:
+      x-trigger-access: write:webhooks
       operationId: enable_webhook_endpoint_v1
       summary: Enable a webhook endpoint
       description: >-
@@ -4923,6 +4998,7 @@ paths:
     parameters:
       - $ref: "#/components/parameters/webhookEndpointId"
     post:
+      x-trigger-access: write:webhooks
       operationId: disable_webhook_endpoint_v1
       summary: Disable a webhook endpoint
       description: >-
@@ -4953,6 +5029,7 @@ paths:
     parameters:
       - $ref: "#/components/parameters/webhookEndpointId"
     post:
+      x-trigger-access: write:webhooks
       operationId: rotate_webhook_endpoint_secret_v1
       summary: Generate a webhook signing secret
       description: >-
@@ -5003,6 +5080,7 @@ paths:
     parameters:
       - $ref: "#/components/parameters/webhookEndpointId"
     put:
+      x-trigger-access: write:webhooks
       operationId: set_webhook_endpoint_secret_v1
       summary: Set a webhook signing secret
       description: >-
@@ -5056,6 +5134,7 @@ paths:
     parameters:
       - $ref: "#/components/parameters/webhookEndpointId"
     post:
+      x-trigger-access: write:waitpoints
       operationId: create_webhook_waiter_v1
       summary: Create a webhook waiter
       description: >-
@@ -5126,6 +5205,7 @@ paths:
         description: The waiter's id, which is also its waitpoint id.
         example: waitpoint_abc123
     post:
+      x-trigger-access: write:waitpoints
       operationId: cancel_webhook_waiter_v1
       summary: Cancel a webhook waiter
       description: >-
@@ -5163,6 +5243,7 @@ paths:
               -H "Authorization: Bearer $TRIGGER_SECRET_KEY"
   "/api/v1/webhooks/deliveries":
     get:
+      x-trigger-access: read:webhooks
       operationId: list_webhook_deliveries_v1
       summary: List webhook deliveries
       description: >-
@@ -5254,6 +5335,7 @@ paths:
     parameters:
       - $ref: "#/components/parameters/webhookDeliveryId"
     get:
+      x-trigger-access: read:webhooks
       operationId: retrieve_webhook_delivery_v1
       summary: Retrieve a webhook delivery
       description: >-
@@ -5285,6 +5367,10 @@ paths:
     parameters:
       - $ref: "#/components/parameters/webhookDeliveryId"
     post:
+      x-trigger-access: write:webhooks
+      # Checked per subscriber inside the handler, so a docs key for this page needs it too.
+      # `write:sessions` is needed only for an agent's subscriber, so it isn't listed here.
+      x-trigger-access-also: ["trigger:tasks"]
       operationId: replay_webhook_delivery_v1
       summary: Replay a webhook delivery
       description: >-

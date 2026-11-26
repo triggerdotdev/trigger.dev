@@ -4,6 +4,8 @@ import { remarkMdxMermaid } from "fumadocs-core/mdx-plugins/remark-mdx-mermaid";
 import { z } from "zod";
 import { remarkMintlify } from "./lib/remark-mintlify";
 import { remarkNpmTabs } from "./lib/remark-npm-tabs";
+import { remarkDeployExample } from "./lib/remark-deploy-example";
+import { remarkTaskTest, TASK_TEST_ATTR, TASK_TEST_META } from "./lib/remark-task-test";
 import { triggerDark, triggerLight } from "./lib/shiki-themes";
 import { headingSlugger } from "./lib/slug";
 import { twoslashTransformers } from "./lib/twoslash";
@@ -41,7 +43,16 @@ export default defineConfig({
   mdxOptions: {
     // Snippets are rendered by other pages without props, so components come from a provider.
     providerImportSource: "docs-mdx-components", // alias in next.config.mjs
-    remarkPlugins: (v) => [remarkNpmTabs, remarkMintlify, remarkMdxMermaid, ...v],
+    remarkPlugins: (v) => [
+      remarkNpmTabs,
+      remarkMintlify,
+      // After the tabs on purpose: its commands stay npm. An example can pin a package manager
+      // (Corepack then refuses yarn or pnpm in it); npm runs in every example.
+      remarkDeployExample,
+      remarkTaskTest,
+      remarkMdxMermaid,
+      ...v,
+    ],
     // Heading ids as the previous site made them, so existing deep links keep working.
     remarkHeadingOptions: {
       slug(root, _heading, text) {
@@ -57,6 +68,12 @@ export default defineConfig({
     rehypeCodeOptions: {
       themes: { light: triggerLight, dark: triggerDark },
       fallbackLanguage: "text",
+      // Fumadocs' attributes, plus the "Test in dashboard" path from lib/remark-task-test.ts.
+      parseMetaString(meta, node, tree) {
+        const attrs = rehypeCodeDefaultOptions.parseMetaString?.(meta, node, tree) ?? {};
+        const test = TASK_TEST_META.exec(meta)?.[1];
+        return test ? { ...attrs, [TASK_TEST_ATTR]: test } : attrs;
+      },
       transformers: [...(rehypeCodeDefaultOptions.transformers ?? []), ...twoslashTransformers()],
     },
   },

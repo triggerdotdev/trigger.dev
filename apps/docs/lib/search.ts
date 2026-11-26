@@ -2,8 +2,9 @@ import type { SortedResult } from "fumadocs-core/search";
 import index from "@/.generated/search-index.js";
 import { excerpt, Searcher } from "./search-core";
 
-// The index is built at build time by scripts/build-search-index.mjs.
-const searcher = new Searcher(index);
+// One ranking for the search dialog and the MCP search tool. The index is built at build time
+// by scripts/build-search-index.mjs.
+export const searcher = new Searcher(index);
 
 /** Search dialog results: each page, then its best matching sections. */
 export function searchResults(query: string, tag?: string): SortedResult[] {

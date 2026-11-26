@@ -55,7 +55,7 @@ jobs:
               - "apps/docs/**"
 
   # Builds the docs site (apps/docs) and runs its checks: every internal link and #anchor
-  # resolves, and every published docs URL and redirect still answers.
+  # resolves, every published docs URL and redirect still answers, and the MCP endpoint works.
   check:
     name: check
     needs: changes
@@ -106,7 +106,7 @@ jobs:
         env:
           NEXT_TELEMETRY_DISABLED: "1"
 
-      - name: 🔗 Check links and URLs
+      - name: 🔗 Check links, URLs and MCP
         run: pnpm --filter docs-site check
         env:
           NEXT_TELEMETRY_DISABLED: "1"

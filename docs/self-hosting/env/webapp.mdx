@@ -24,6 +24,7 @@ mode: "wide"
 | `API_ORIGIN`                                     | No       | `APP_ORIGIN`          | API origin URL.                                                                                                    |
 | `STREAM_ORIGIN`                                  | No       | `APP_ORIGIN`          | Realtime stream origin URL.                                                                                        |
 | `ELECTRIC_ORIGIN`                                | No       | http://localhost:3060 | Electric origin URL.                                                                                               |
+| `DOCS_ORIGINS` | No | https://trigger.dev | Comma-separated docs site origins that may read the signed-in user with credentials, for personalized docs. Set it empty to allow none. |
 | **Postgres**                                     |          |                       |                                                                                                                    |
 | `DATABASE_URL`                                   | Yes      | —                     | PostgreSQL connection string.                                                                                      |
 | `DIRECT_URL`                                     | Yes      | —                     | Direct DB connection string used for migrations etc.                                                               |

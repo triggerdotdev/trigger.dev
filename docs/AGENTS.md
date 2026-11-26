@@ -8,7 +8,7 @@ From `trigger.dev/`:
 
 - `pnpm --filter docs-site dev`: the site at http://localhost:43000/docs, reloading as you edit.
 - `pnpm --filter docs-site check --links`: every internal link and `#anchor` resolves (a second or two, no build).
-- `pnpm --filter docs-site build && pnpm --filter docs-site check`: the full check CI runs on docs PRs (links, every published URL and redirect).
+- `pnpm --filter docs-site build && pnpm --filter docs-site check`: the full check CI runs on docs PRs (links, every published URL and redirect, the MCP endpoint).
 
 Before you open a PR, run what CI runs, from `trigger.dev/`:
 
@@ -98,16 +98,22 @@ Docs-site only:
 - TypeScript blocks that import from `@trigger.dev/*` get type hovers on the built site, from the SDK's types. Nothing to add to the fence; `no-twoslash` in the fence meta skips a block. Type errors are not reported and never fail the build (most samples are excerpts that use names defined elsewhere), so a misspelled method like `tags.ad(...)` passes silently. Check new calls yourself: on the preview, a real SDK call shows a hover and a typo shows none.
 - Install and CLI commands: write the npm version once in a `bash` block with no title. The site shows it as npm, pnpm, yarn and bun tabs that follow the reader's package manager. A hand-written `<CodeGroup>` with fences titled `npm`, `pnpm`, `bun` works too.
 
+### Samples readers can run
+
+- Project ref and dev key: write `<project-ref>` (or `proj_xxxxxxxx`) and `tr_dev_xxxxxxxx`. Signed-in readers see their own project ref and a docs key in their place; everyone else sees the placeholder. Prod and staging keys are never filled. The swap happens in code blocks only, not in prose or link hrefs. To see it locally, run `dev` with `NEXT_PUBLIC_DOCS_PERSONALIZATION=1` and `NEXT_PUBLIC_DASHBOARD_URL` set to a local dashboard you're signed in to, started with `DOCS_ORIGINS=http://localhost:43000`.
+- "Test in dashboard": a section (the code between two headings) that defines a task and triggers it with a literal payload gets a button that opens that task's Test page with the payload filled in. Nothing to add.
+- "Deploy this example": on guide pages, the first card that links an example repo on GitHub gets the commands to run it in the reader's project. Nothing to add.
+
 ## API reference pages
 
-API pages come from `openapi.yml` and `v3-openapi.yaml`: a page names its operation in `openapi:` frontmatter and has no body of its own.
+API pages come from `openapi.yml` and `v3-openapi.yaml`. Each operation lists the access a key needs (`x-trigger-access`, read from the webapp route). After adding or changing an operation, run `node apps/docs/scripts/api-access.mjs` to write it, and `pnpm --filter docs-site test` to check that the specs match the routes.
 
 ## Publishing
 
 - A PR that only changes `docs/` goes live within minutes of merging. Merge it once what it describes is live.
 - Docs in a PR that also changes code go live with the next `docs-release-*` tag.
 - A docs-only change that conflicts with unpublished docs, or links to an unpublished page, waits for the next tag. The publish run comments on the commit when that happens.
-- Every published version is built and checked (every URL, security headers) before it replaces the live site. If a check fails, the live site stays as it was.
+- Every published version is built and checked (every URL, the MCP endpoint, security headers) before it replaces the live site. If a check fails, the live site stays as it was.
 
 ## Checks on a docs PR
 
@@ -123,7 +129,7 @@ CI builds the site and runs `pnpm --filter docs-site check`. Run the same locall
 | `FAIL redirect <path> -> ... (want ...)` | A redirect points at a page that doesn't exist, or loops. | Point it at a live page. |
 | `SDK types aren't built` | The build ran without `pnpm --filter docs-site build:sdk`. | Run it once, then build again. |
 | A build error naming an MDX file | Invalid MDX: an unclosed tag, a bare `<` or `{` in text. | Escape it (`\<`, `\{`) or put it in backticks. |
-| `FAIL` from `check-headers` | The site's code, not the content. | Ask whoever changed `apps/docs`. |
+| `FAIL` from `check-mcp` or `check-headers` | The site's code, not the content. | Ask whoever changed `apps/docs`. |
 
 Pull requests from the team also get a preview deployment, linked in a PR comment.
 

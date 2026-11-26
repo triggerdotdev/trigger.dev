@@ -45,6 +45,7 @@ paths:
 
   /api/v3/batches:
     post:
+      x-trigger-access: batchTrigger:batch
       operationId: createBatch
       externalDocs:
         description: Find more info here
@@ -123,6 +124,7 @@ paths:
 
   /api/v3/batches/{batchId}/items:
     post:
+      x-trigger-access: trigger:tasks
       operationId: streamBatchItems
       externalDocs:
         description: Find more info here

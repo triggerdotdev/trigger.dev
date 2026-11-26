@@ -4,7 +4,9 @@ import type { MDXContent } from "mdx/types";
 import { createOpenAPI } from "fumadocs-openapi/server";
 import path from "node:path";
 import { docs } from "fumadocs-mdx:collections/server";
+import docsJsonFile from "../../../docs/docs.json";
 import { contentDir } from "./content-files";
+import { redirectTarget } from "./slug";
 
 export const siteUrl = "https://trigger.dev";
 export const docsUrl = `${siteUrl}/docs`;
@@ -18,6 +20,26 @@ export const source = loader({
 });
 
 export type DocPage = NonNullable<ReturnType<typeof source.getPage>>;
+
+const { redirects = [] } = docsJsonFile as {
+  redirects?: { source: string; destination: string }[];
+};
+
+/** The page at a docs path or URL (`/docs/queues#limits`, `https://trigger.dev/docs/queues.md`,
+ * `queues`), following docs.json redirects from old paths. */
+export function pageFromPath(input: string) {
+  const slug = input
+    .replace(/^https?:\/\/[^/]+/, "")
+    .replace(/^\/?docs\//, "")
+    .replace(/[#?].*$/, "")
+    .replace(/\.mdx?$/, "")
+    .split("/")
+    .filter(Boolean);
+  const moved = redirectTarget(`/${slug.join("/")}`, redirects);
+  return (
+    source.getPage(slug) ?? (moved ? source.getPage(moved.split("/").filter(Boolean)) : undefined)
+  );
+}
 
 type LoadedPage = { body: MDXContent; toc: TOCItemType[]; _exports: Record<string, unknown> };
 
@@ -43,12 +65,26 @@ export function parseOpenapiRef(ref: string) {
 
 export type PageApi = NonNullable<Awaited<ReturnType<typeof pageApi>>>;
 
-/** The OpenAPI operation an API page documents, with its spec. */
+/** The OpenAPI operation an API page documents, with its spec and required access. */
 export async function pageApi(page: DocPage) {
   if (!page.data.openapi) return undefined;
   const api = parseOpenapiRef(page.data.openapi);
   const schema = withApiServer((await openapi.getSchema(api.document)).bundled);
-  return { ...api, schema };
+  const op = operation(schema, api.path, api.method);
+  const access = op?.["x-trigger-access"];
+  // `x-trigger-access-also`: hand-written scopes the handler checks beyond the route gate.
+  const also = Array.isArray(op?.["x-trigger-access-also"]) ? op["x-trigger-access-also"] : [];
+  return {
+    ...api,
+    schema,
+    access: typeof access === "string" ? [access, ...also] : null,
+    // Only a personal access token works: every listed alternative is `personalAccessToken` (the
+    // env var operations also take a project's API key, so they keep the API keys link).
+    pat:
+      Array.isArray(op?.security) &&
+      op.security.length > 0 &&
+      op.security.every((s) => "personalAccessToken" in s),
+  };
 }
 
 // A local or self-hosted API for the playground to call, listed before the spec's servers.
@@ -59,4 +95,15 @@ function withApiServer<T extends { servers?: { url?: string; description?: strin
   return url
     ? { ...doc, servers: [{ url, description: "This environment" }, ...(doc.servers ?? [])] }
     : doc;
+}
+
+// The operation object. Its `x-trigger-access` is what a key needs to call it (checked against the routes).
+function operation(doc: object, path: string, method: string) {
+  type Op = {
+    "x-trigger-access"?: unknown;
+    "x-trigger-access-also"?: string[];
+    security?: Record<string, unknown>[];
+  };
+  const paths = (doc as { paths?: Record<string, Record<string, Op>> }).paths;
+  return paths?.[path]?.[method.toLowerCase()];
 }

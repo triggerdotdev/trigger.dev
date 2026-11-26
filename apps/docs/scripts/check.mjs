@@ -1,8 +1,8 @@
 #!/usr/bin/env node
 // `pnpm --filter docs-site check`: the docs checks CI runs on every docs PR.
 //   1. heading id tests and internal links (source only, no build needed)
-//   2. against the built site, served here on a free port: the URL contract and the security
-//      headers
+//   2. against the built site, served here on a free port: the URL contract, the MCP shape and
+//      the security headers
 // Run `pnpm --filter docs-site build` first; `check --links` runs step 1 only.
 import { spawn, spawnSync } from "node:child_process";
 import { existsSync } from "node:fs";
@@ -48,7 +48,11 @@ if (!process.argv.includes("--links")) {
       if (i > 120 || server.exitCode !== null) throw new Error("next start did not come up");
       await new Promise((r) => setTimeout(r, 250));
     }
-    ok = run("scripts/check-urls.mjs", base) & run("scripts/check-headers.mjs", base) & ok;
+    ok =
+      run("scripts/check-urls.mjs", base) &
+      run("scripts/check-mcp.mjs", base) &
+      run("scripts/check-headers.mjs", base) &
+      ok;
   } finally {
     server.kill();
   }

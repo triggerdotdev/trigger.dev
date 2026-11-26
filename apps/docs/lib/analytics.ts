@@ -1,5 +1,6 @@
 import type { PostHog } from "posthog-js";
 import { redact } from "./redact";
+import { hasSignedInHint } from "./reader";
 
 // Public settings, inlined at build time. Without a key nothing loads and track() is a no-op.
 const key = process.env.NEXT_PUBLIC_POSTHOG_KEY;
@@ -52,7 +53,8 @@ export function analytics(): Promise<PostHog> | undefined {
       // Page URLs carry readers' text too (`?q=`), so they're redacted like track()'s properties.
       before_send: redactUrls,
     });
-    posthog.register({ site: "docs" });
+    // `signed_in`: the dashboard's hint cookie, no identity. The cutover reads the signed-in share from it.
+    posthog.register({ site: "docs", signed_in: hasSignedInHint(document.cookie) });
     return posthog;
   }));
 }
@@ -82,9 +84,16 @@ export function redactUrls<E extends { properties?: Props; $set?: Props; $set_on
 type DocsEvent =
   | "docs_search"
   | "docs_search_result_clicked"
+  | "docs_ask_ai_asked"
+  | "docs_ask_ai_answered"
+  | "docs_ask_ai_continued"
+  | "docs_ask_ai_citation_clicked"
+  | "docs_ask_ai_feedback"
   | "docs_page_feedback"
   | "docs_copy_markdown"
+  | "docs_copy_prompt"
   | "docs_open_in_ai"
+  | "docs_reader_error"
   | "docs_not_found";
 
 export function track(event: DocsEvent, properties: Record<string, unknown> = {}) {

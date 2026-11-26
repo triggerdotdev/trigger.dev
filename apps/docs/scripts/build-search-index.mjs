@@ -19,8 +19,14 @@ import {
 } from "../lib/content-files.ts";
 
 // A production build without these still builds and passes every check, then quietly ships
-// without analytics. Previews and local builds may skip them.
-const PRODUCTION_ENV = ["NEXT_PUBLIC_POSTHOG_KEY"];
+// without Ask AI, its limits, analytics or personalization. Previews and local builds may skip them.
+const PRODUCTION_ENV = [
+  "ANTHROPIC_API_KEY",
+  "REDIS_URL",
+  "DOCS_WORKER_SECRET",
+  "NEXT_PUBLIC_POSTHOG_KEY",
+  "NEXT_PUBLIC_DOCS_PERSONALIZATION",
+];
 if (process.env.VERCEL_ENV === "production") {
   const missing = PRODUCTION_ENV.filter((name) => !process.env[name]);
   if (missing.length) {

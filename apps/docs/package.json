@@ -13,6 +13,10 @@
     "test": "vitest run"
   },
   "dependencies": {
+    "@ai-sdk/anthropic": "3.0.125",
+    "@ai-sdk/react": "3.0.170",
+    "@babel/parser": "7.29.9",
+    "ai": "6.0.116",
     "fumadocs-core": "16.19.6",
     "fumadocs-mdx": "15.6.4",
     "fumadocs-openapi": "12.6.7",
@@ -20,6 +24,7 @@
     "fumadocs-typescript": "5.6.2",
     "fumadocs-ui": "16.19.6",
     "hast-util-to-html": "9.0.7",
+    "ioredis": "5.6.1",
     "lucide-react": "1.77.0",
     "mermaid": "12.3.0",
     "next": "16.4.6",
@@ -29,10 +34,13 @@
     "posthog-js": "1.407.3",
     "react": "19.2.9",
     "react-dom": "19.2.9",
+    "shiki": "4.6.0",
     "unist-util-visit": "5.2.0",
     "zod": "4.6.7"
   },
   "devDependencies": {
+    "@ai-sdk/provider": "3.0.8",
+    "@babel/types": "7.29.8",
     "@tailwindcss/postcss": "4.3.5",
     "@trigger.dev/build": "workspace:*",
     "@trigger.dev/react-hooks": "workspace:*",

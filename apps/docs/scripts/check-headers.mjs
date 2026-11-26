@@ -1,6 +1,6 @@
 #!/usr/bin/env node
-// Security headers at <base>: docs pages can't be framed by other sites, and every response
-// carries nosniff and a referrer policy.
+// Security headers at <base>: docs pages can't be framed by other sites, embed pages only by the
+// dashboards, and every response carries nosniff and a referrer policy.
 // Usage: node scripts/check-headers.mjs <base, e.g. http://localhost:43000/docs>
 const [base] = process.argv.slice(2);
 if (!base) {
@@ -13,6 +13,7 @@ const headers = bypass ? { "x-vercel-protection-bypass": bypass } : {};
 const cases = [
   ["/introduction", "frame-ancestors 'self'"],
   ["/introduction.md", "frame-ancestors 'self'"],
+  ["/embed/introduction", "frame-ancestors 'self' https://cloud.trigger.dev"],
 ];
 const failures = [];
 for (const [path, csp] of cases) {

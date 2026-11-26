@@ -63,6 +63,9 @@ function navPlace(page: DocPage) {
   return places.get(page.url);
 }
 
+/** The page's top-level docs section (a docs.json dropdown), when it's in the nav. */
+export const pageSection = (page: DocPage) => navPlace(page)?.section;
+
 // JSON strings are valid YAML scalars, so titles with colons or quotes need no special casing.
 const y = (v: string) => JSON.stringify(v);
 
@@ -94,7 +97,7 @@ function pageFrontmatter(page: DocPage) {
  * The markdown an agent gets for a page: title, description and the body with snippets and SDK type
  * tables inlined, keeping only the `chosen` variant of each tab group.
  */
-async function pageMarkdown(page: DocPage, chosen: Chosen = {}) {
+export async function pageMarkdown(page: DocPage, chosen: Chosen = {}) {
   // Snippet sources come from the build, not the disk: the deployed app has no trigger.dev/docs.
   const body = expandSdkTypes(
     inlineSnippets(await page.data.getText("processed"), pageImports[page.path] ?? "", snippets)

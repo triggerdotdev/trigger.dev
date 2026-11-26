@@ -1,11 +1,11 @@
-import { sectionFile, siteDescription } from "@/lib/agent-surface";
+import { mcpUrl, sectionFile, siteDescription } from "@/lib/agent-surface";
 import { listedPages, sections } from "@/lib/nav";
 import { docsUrl } from "@/lib/source";
 
 export const revalidate = false;
 
 // Sections by nav group, one line per page with its description, like the Mintlify file,
-// plus where agents find the full text.
+// plus where agents find the full text, the MCP server and the skill.
 export function GET() {
   const lines = [
     "# Trigger.dev",
@@ -18,6 +18,8 @@ export function GET() {
       .map((s) => `[${s}](${docsUrl}/llms-full/${sectionFile(s)})`)
       .join(", ")}`,
     `- Any page as markdown: add \`.md\` to its URL, or send \`Accept: text/markdown\``,
+    `- MCP server (search and read the docs): ${mcpUrl}`,
+    `- Agent skill: ${docsUrl}/skill.md`,
     "",
     "## Docs",
   ];

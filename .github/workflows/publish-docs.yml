@@ -190,7 +190,7 @@ jobs:
         if: steps.config.outputs.enabled == 'true'
         run: pnpm dlx "$VERCEL_CLI" pull --yes --environment=production --token="$VERCEL_TOKEN"
 
-      # The build stops if a production setting (analytics) is missing.
+      # The build stops if a production setting (Ask AI, its limits, analytics) is missing.
       - name: 🏗️ Build
         if: steps.config.outputs.enabled == 'true'
         env:
@@ -204,7 +204,7 @@ jobs:
           url=$(pnpm dlx "$VERCEL_CLI" deploy --prebuilt --prod --skip-domain --token="$VERCEL_TOKEN")
           echo "url=$url" >> "$GITHUB_OUTPUT"
 
-      - name: 🔗 Check URLs and headers on the deployment
+      - name: 🔗 Check URLs, MCP and headers on the deployment
         if: steps.config.outputs.enabled == 'true'
         working-directory: apps/docs
         env:
@@ -213,6 +213,7 @@ jobs:
           VERCEL_AUTOMATION_BYPASS_SECRET: ${{ secrets.VERCEL_AUTOMATION_BYPASS_SECRET }}
         run: |
           node scripts/check-urls.mjs "$URL/docs" --live
+          node scripts/check-mcp.mjs "$URL/docs"
           node scripts/check-headers.mjs "$URL/docs"
 
       - name: ✅ Promote to production

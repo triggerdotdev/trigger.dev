@@ -214,6 +214,29 @@ export default defineConfig({
 
 </Accordion>
 
+## Docs MCP server
+
+The docs have their own MCP server at `https://trigger.dev/docs/mcp`. It needs no login or API key, and gives your AI tool two tools: search the docs, and read a page as markdown. Use it when you only want the docs, or alongside the [MCP Server](/mcp-introduction), which works with your projects.
+
+<CardGroup cols={2}>
+  <Card title="Add to Cursor" icon="plug" href="cursor://anysphere.cursor-deeplink/mcp/install?name=trigger-docs&config=eyJ1cmwiOiJodHRwczovL3RyaWdnZXIuZGV2L2RvY3MvbWNwIn0=">
+    Opens Cursor and adds the docs MCP server.
+  </Card>
+  <Card title="Add to VS Code" icon="plug" href="vscode:mcp/install?%7B%22name%22%3A%22trigger-docs%22%2C%22type%22%3A%22http%22%2C%22url%22%3A%22https%3A%2F%2Ftrigger.dev%2Fdocs%2Fmcp%22%7D">
+    Opens VS Code and adds the docs MCP server for Copilot.
+  </Card>
+</CardGroup>
+
+In Claude Code, run:
+
+```bash
+claude mcp add --transport http trigger-docs https://trigger.dev/docs/mcp
+```
+
+Other MCP clients take the same URL as a remote (streamable HTTP) server.
+
+Every guide and quick start also has a **Copy prompt** button at the top of the page. It copies the page as instructions your AI coding assistant can follow in your project.
+
 ## llms.txt
 
 We also publish machine-readable documentation for LLM consumption:
@@ -221,7 +244,7 @@ We also publish machine-readable documentation for LLM consumption:
 - [trigger.dev/docs/llms.txt](https://trigger.dev/docs/llms.txt) — concise overview
 - [trigger.dev/docs/llms-full.txt](https://trigger.dev/docs/llms-full.txt) — full documentation
 
-These follow the [llms.txt standard](https://llmstxt.org) and can be fed directly into any LLM context window.
+These follow the [llms.txt standard](https://llmstxt.org) and can be fed directly into any LLM context window. Any page is also available as markdown: add `.md` to its URL, for example [trigger.dev/docs/tasks/overview.md](https://trigger.dev/docs/tasks/overview.md). Agents that discover agent skills find the docs skill at `https://trigger.dev/docs/.well-known/agent-skills/index.json`; the skill itself is `https://trigger.dev/docs/skill.md`.
 
 
 ## Troubleshooting
