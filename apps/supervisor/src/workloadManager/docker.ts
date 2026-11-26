@@ -9,6 +9,7 @@ import { getDockerHostDomain, getRunnerId, normalizeDockerHostUrl } from "../uti
 import Docker from "dockerode";
 import { tryCatch } from "@trigger.dev/core";
 import { ECRAuthService } from "./ecrAuth.js";
+import { createLogFields } from "./createLogFields.js";
 import {
   dockerContainerGone,
   dockerCreateRefused,
@@ -67,7 +68,7 @@ export class DockerWorkloadManager implements WorkloadManager {
   }
 
   async create(opts: WorkloadManagerCreateOptions) {
-    this.logger.verbose("create()", { opts });
+    this.logger.verbose("create()", createLogFields(opts));
 
     const runnerId = getRunnerId(opts.runFriendlyId, opts.nextAttemptNumber);
 
@@ -154,7 +155,7 @@ export class DockerWorkloadManager implements WorkloadManager {
       containerCreateOpts.platform = this.platformOverride;
     }
 
-    const logger = this.logger.child({ opts, containerCreateOpts });
+    const logger = this.logger.child({ ...createLogFields(opts), containerCreateOpts });
 
     const [inspectError, inspectResult] = await tryCatch(this.docker.getImage(imageRef).inspect());
 

@@ -1325,6 +1325,10 @@ export class WorkloadServer extends EventEmitter<WorkloadServerEvents> {
             : result.outcome === "legacy_bare"
               ? socket.data.deploymentId
               : undefined;
+      } else {
+        const raw = socket.data.deploymentId;
+        socket.data.deploymentFriendlyId =
+          raw && !looksLikeWorkloadDeploymentToken(raw) ? raw : undefined;
       }
 
       this.logger.debug("[WS] handshake complete", {
@@ -1335,14 +1339,11 @@ export class WorkloadServer extends EventEmitter<WorkloadServerEvents> {
       next();
     });
     websocketServer.on("connection", (socket) => {
-      const socketLogger = this.logger.child({
-        socketId: socket.id,
-        socketData: socket.data,
-      });
+      const socketLogger = this.logger.child({ socketId: socket.id });
 
       const getSocketMetadata = () => {
         return {
-          deploymentId: socket.data.deploymentFriendlyId ?? socket.data.deploymentId,
+          deploymentId: socket.data.deploymentFriendlyId,
           runId: socket.data.runFriendlyId,
           snapshotId: socket.data.snapshotId,
           runnerId: socket.data.runnerId,
@@ -1361,7 +1362,7 @@ export class WorkloadServer extends EventEmitter<WorkloadServerEvents> {
           populate: (state) => {
             state.extras.event = event;
             setMeta(state, "run_id", friendlyId);
-            const deploymentId = socket.data.deploymentFriendlyId ?? socket.data.deploymentId;
+            const deploymentId = socket.data.deploymentFriendlyId;
             if (deploymentId) {
               setMeta(state, "deployment_id", deploymentId);
             }

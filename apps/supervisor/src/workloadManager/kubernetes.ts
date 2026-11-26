@@ -24,6 +24,7 @@ import {
   withNodeSelector,
 } from "./kubernetesPodSpec.js";
 import { rewriteImageRegistry } from "./imageRegistry.js";
+import { createLogFields } from "./createLogFields.js";
 import { k8sCreateRefused, k8sErrorMessage, WorkloadNotCreatedError } from "./createErrors.js";
 import { runnerTokenSecretName, type TokenSecretHolder, TokenSecrets } from "./tokenSecret.js";
 
@@ -137,7 +138,7 @@ export class KubernetesWorkloadManager implements WorkloadManager {
   }
 
   async create(opts: WorkloadManagerCreateOptions) {
-    this.logger.verbose("[KubernetesWorkloadManager] Creating container", { opts });
+    this.logger.verbose("[KubernetesWorkloadManager] Creating container", createLogFields(opts));
 
     const runnerId = getRunnerId(opts.runFriendlyId, opts.nextAttemptNumber);
 

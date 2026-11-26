@@ -17,8 +17,8 @@ const claims = {
 const completion = { ok: true, id: "run_1", outputType: "application/json" };
 
 describe.each([
-  { proxy: true, port: 18761 },
-  { proxy: false, port: 18762 },
+  { proxy: true, port: 18771 },
+  { proxy: false, port: 18772 },
 ])("workload server with proxy=$proxy", ({ proxy, port }) => {
   const base = `http://127.0.0.1:${port}/api/v1/workload-actions/runs/run_1/snapshots/snapshot_1`;
   const startRunAttempt = vi.fn(async () => ({ success: true as const, data: { envVars: {} } }));
