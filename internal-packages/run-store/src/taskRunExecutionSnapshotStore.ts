@@ -1437,8 +1437,34 @@ export class TaskRunExecutionSnapshotStore extends DelegatingRunStore {
     return rows;
   }
 
-  // Checkpoints stay in Postgres. The window omits the completed-waitpoint relation to avoid an N×M
-  // join, as the Postgres window does.
+  // A "state" record reads the snapshot state only, with no Postgres fallback; any other, Postgres.
+  async #loadCheckpoint(
+    entry: { checkpointId?: string; checkpointStore?: string },
+    runId: string,
+    client?: ReadClient
+  ): Promise<Prisma.TaskRunCheckpointGetPayload<{}> | null> {
+    if (!entry.checkpointId) return null;
+    if (entry.checkpointStore !== "state") {
+      return this.delegate.findTaskRunCheckpointById(entry.checkpointId, runId, client);
+    }
+    let row:
+      | (Omit<Prisma.TaskRunCheckpointGetPayload<{}>, "createdAt" | "updatedAt"> & {
+          createdAt: string;
+          updatedAt: string;
+        })
+      | null;
+    try {
+      const raw = await this.#store.readCheckpoint(runId, entry.checkpointId);
+      row = raw === null ? null : JSON.parse(raw);
+    } catch (error) {
+      throw new SnapshotReadUnavailableError(runId, "readCheckpoint failed", { cause: error });
+    }
+    if (row === null) return null;
+    return { ...row, createdAt: new Date(row.createdAt), updatedAt: new Date(row.updatedAt) };
+  }
+
+  // The checkpoint is loaded from the store the entry's record names. The window omits the
+  // completed-waitpoint relation to avoid an N×M join, as the Postgres window does.
   async #reproduceWindowRow(
     read: SnapshotRead,
     completedWaitpointOrder: string[],
@@ -1457,15 +1483,14 @@ export class TaskRunExecutionSnapshotStore extends DelegatingRunStore {
       batchId?: string;
       attemptNumber?: number;
       checkpointId?: string;
+      checkpointStore?: string;
       workerId?: string;
       runnerId?: string;
       metadata?: unknown;
       error?: string;
       createdAt: string;
     };
-    const checkpoint = entry.checkpointId
-      ? await this.delegate.findTaskRunCheckpointById(entry.checkpointId, entry.runId, client)
-      : null;
+    const checkpoint = await this.#loadCheckpoint(entry, entry.runId, client);
     const createdAt = new Date(entry.createdAt);
     return {
       id: read.id,
@@ -1496,7 +1521,8 @@ export class TaskRunExecutionSnapshotStore extends DelegatingRunStore {
   }
 
   // Rebuilds a snapshot read from the MemoryDB entry, with its completed-waitpoint cycle as
-  // unenhanced rows and the checkpoint from Postgres. A dangling or incomplete cycle fails closed.
+  // unenhanced rows and the checkpoint from the store the entry's record names. A dangling or
+  // incomplete cycle fails closed.
   async #reproduceSnapshotFromEntry(
     head: SnapshotRead,
     client?: ReadClient,
@@ -1560,9 +1586,7 @@ export class TaskRunExecutionSnapshotStore extends DelegatingRunStore {
       completedWaitpointOrder = cw.order;
     }
 
-    const checkpoint = entry.checkpointId
-      ? await this.delegate.findTaskRunCheckpointById(entry.checkpointId, runId, client)
-      : null;
+    const checkpoint = await this.#loadCheckpoint(entry, runId, client);
 
     const createdAt = new Date(entry.createdAt);
     return {

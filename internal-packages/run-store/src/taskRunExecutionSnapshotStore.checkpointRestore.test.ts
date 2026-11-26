@@ -278,11 +278,14 @@ class FailingCheckpointReadStore extends PostgresRunStore {
   }
 }
 
-// Birth, then a SUSPENDED and a QUEUED snapshot that both refer to one checkpoint.
+// Birth, then a SUSPENDED and a QUEUED snapshot that both refer to one checkpoint. `stateHeld`
+// writes it into the run's snapshot state; `record` is set on both snapshots ("state" by default
+// with `stateHeld`).
 async function seedSuspendedThenQueued(
   prisma: PrismaClient,
   delegate: PostgresRunStore,
-  store: RedisSnapshotStore
+  store: RedisSnapshotStore,
+  options?: { stateHeld?: Partial<StateHeldCheckpointInput>; record?: string }
 ) {
   const env = await seedSnapshotEnvironment(prisma);
   const runId = generateInternalId();
@@ -291,7 +294,7 @@ async function seedSuspendedThenQueued(
   const queuedId = generateInternalId();
   const base = Date.now();
   const birthAt = new Date(base);
-  const checkpoint = await createCheckpoint(delegate, runId, env);
+  let checkpoint = options?.stateHeld ? undefined : await createCheckpoint(delegate, runId, env);
   const writer = new TaskRunExecutionSnapshotStore(delegate, {
     store,
     mode: "redis-only",
@@ -302,9 +305,19 @@ async function seedSuspendedThenQueued(
     data: buildCreateRunData(runId, env),
     snapshot: { ...birthSnapshot(env, birthId), createdAt: birthAt },
   });
+  if (options?.stateHeld) {
+    checkpoint = await writer.createStateHeldCheckpoint(
+      checkpointInput(env, options.stateHeld),
+      runId,
+      routeFor(env)
+    );
+  }
+  if (!checkpoint) throw new Error("no checkpoint seeded");
+  const record = options?.record ?? (options?.stateHeld ? "state" : undefined);
   const common = {
     run: { id: runId, status: "WAITING_TO_RESUME" as const, attemptNumber: 1 },
     checkpointId: checkpoint.id,
+    ...(record !== undefined && { checkpointStore: record as "state" }),
     environmentId: env.id,
     environmentType: env.type,
     projectId: env.projectId,
@@ -1099,4 +1112,328 @@ describe("TaskRunExecutionSnapshotStore state-held checkpoint write", () => {
       await t.cleanup();
     }
   });
+});
+
+// Records the checkpoint id of each state-held checkpoint read; every other command reaches MemoryDB.
+class CountingCheckpointStateStore extends RedisSnapshotStore {
+  readonly reads: string[] = [];
+
+  override async readCheckpoint(runId: string, checkpointId: string): Promise<string | null> {
+    this.reads.push(checkpointId);
+    return super.readCheckpoint(runId, checkpointId);
+  }
+}
+
+// A store whose state-held checkpoint read fails, as a MemoryDB error would.
+class FailingCheckpointStateStore extends RedisSnapshotStore {
+  readonly failure = new Error("checkpoint state read failed");
+
+  override async readCheckpoint(): Promise<never> {
+    throw this.failure;
+  }
+}
+
+function checkpointLookups(calls: string[]) {
+  return calls.filter((c) => c === "findTaskRunCheckpointById").length;
+}
+
+describe("TaskRunExecutionSnapshotStore (redis-only) state-held checkpoint reads", () => {
+  function readerOver(delegate: PostgresRunStore, store: RedisSnapshotStore) {
+    const recorder = recordingDelegate(delegate);
+    const reader = new TaskRunExecutionSnapshotStore(recorder.proxy, {
+      store,
+      mode: "redis-only",
+      logicalRunStoreRoute: ROUTE,
+      resolveCompletedWaitpoints: resolver,
+    });
+    return { reader, calls: recorder.calls };
+  }
+
+  // Catches: a state-held checkpoint read back with string dates, other keys, or changed values.
+  containerTest(
+    "the latest, by-id and since reads return the state-held checkpoint as the row it was written",
+    async ({ prisma, redisOptions }) => {
+      const delegate = new PostgresRunStore({ prisma, readOnlyPrisma: prisma });
+      const store = new CountingCheckpointStateStore({ redisOptions, completedTtlMs: 60_000 });
+      try {
+        const seeded = await seedSuspendedThenQueued(prisma, delegate, store, { stateHeld: {} });
+        const { reader } = readerOver(delegate, store);
+        const [readLatest, readById, readWindow] = readAll(
+          reader,
+          seeded.runId,
+          seeded.suspendedId,
+          seeded.birthAt
+        );
+        const latest = await readLatest();
+        const byId = (await readById()) as Awaited<ReturnType<typeof readLatest>>;
+        const window = await readWindow();
+
+        expect(window.map((row) => row.id)).toEqual([seeded.queuedId, seeded.suspendedId]);
+        for (const checkpoint of [
+          latest?.checkpoint,
+          byId?.checkpoint,
+          ...window.map((row) => row.checkpoint),
+        ]) {
+          expect(checkpoint).toEqual(seeded.checkpoint);
+          expect(checkpoint?.createdAt).toBeInstanceOf(Date);
+          expect(checkpoint?.updatedAt).toBeInstanceOf(Date);
+        }
+        expect(latest?.checkpointStore).toBe("state");
+        expect(byId?.checkpointStore).toBe("state");
+        for (const row of window) {
+          expect("checkpointStore" in row).toBe(false);
+        }
+        const pgRow = await createCheckpoint(delegate, seeded.runId, seeded.env);
+        expect(Object.keys(latest!.checkpoint!).sort()).toEqual(Object.keys(pgRow).sort());
+
+        const big = "x".repeat(65_536);
+        const metadata = `{"digest":"sha256:${"cd".repeat(32)}"}`;
+        const large = await seedSuspendedThenQueued(prisma, delegate, store, {
+          stateHeld: { type: "KUBERNETES", imageRef: big, reason: big, metadata },
+        });
+        const [largeLatest, largeById, largeWindow] = readAll(
+          reader,
+          large.runId,
+          large.suspendedId,
+          large.birthAt
+        );
+        const largeRows = [
+          (await largeLatest())?.checkpoint,
+          ((await largeById()) as Awaited<ReturnType<typeof largeLatest>>)?.checkpoint,
+          ...(await largeWindow()).map((row) => row.checkpoint),
+        ];
+        expect(largeRows).toHaveLength(4);
+        for (const checkpoint of largeRows) {
+          expect([
+            checkpoint?.type,
+            checkpoint?.imageRef,
+            checkpoint?.reason,
+            checkpoint?.metadata,
+          ]).toEqual(["KUBERNETES", big, big, metadata]);
+        }
+      } finally {
+        await store.quit();
+      }
+    }
+  );
+
+  // Catches: a state-held checkpoint also read from Postgres, or read more than once per snapshot.
+  containerTest(
+    "reads one state-held checkpoint per snapshot and none from Postgres",
+    async ({ prisma, redisOptions }) => {
+      const delegate = new PostgresRunStore({ prisma, readOnlyPrisma: prisma });
+      const store = new CountingCheckpointStateStore({ redisOptions, completedTtlMs: 60_000 });
+      try {
+        const seeded = await seedSuspendedThenQueued(prisma, delegate, store, { stateHeld: {} });
+        const { reader, calls } = readerOver(delegate, store);
+        const id = seeded.checkpoint.id;
+        const expected = [[id], [id, id], [id, id, id, id]];
+        const reads = readAll(reader, seeded.runId, seeded.suspendedId, seeded.birthAt);
+        for (let i = 0; i < reads.length; i++) {
+          await reads[i]();
+          expect(checkpointLookups(calls)).toBe(0);
+          expect(store.reads).toEqual(expected[i]);
+        }
+      } finally {
+        await store.quit();
+      }
+    }
+  );
+
+  // Catches: an entry with no record, or a record other than "state", not read from Postgres as today.
+  containerTest(
+    "an entry with no record, or a record other than state, reads its checkpoint from Postgres",
+    async ({ prisma, redisOptions }) => {
+      const delegate = new PostgresRunStore({ prisma, readOnlyPrisma: prisma });
+      const store = new CountingCheckpointStateStore({ redisOptions, completedTtlMs: 60_000 });
+      try {
+        for (const options of [undefined, { record: "postgres" }, { record: "State" }]) {
+          const seeded = await seedSuspendedThenQueued(prisma, delegate, store, options);
+          const { reader, calls } = readerOver(delegate, store);
+          const [readLatest, readById, readWindow] = readAll(
+            reader,
+            seeded.runId,
+            seeded.suspendedId,
+            seeded.birthAt
+          );
+          const latest = await readLatest();
+          expect(checkpointLookups(calls)).toBe(1);
+          const byId = (await readById()) as Awaited<ReturnType<typeof readLatest>>;
+          expect(checkpointLookups(calls)).toBe(2);
+          const window = await readWindow();
+          expect(checkpointLookups(calls)).toBe(4);
+
+          const checkpoints = [
+            latest?.checkpoint,
+            byId?.checkpoint,
+            ...window.map((r) => r.checkpoint),
+          ];
+          expect(checkpoints).toHaveLength(4);
+          for (const checkpoint of checkpoints) {
+            expect(checkpoint?.id).toBe(seeded.checkpoint.id);
+            expect(checkpoint?.location).toBe("s3://bucket/checkpoint");
+          }
+          expect(store.reads).toEqual([]);
+        }
+      } finally {
+        await store.quit();
+      }
+    }
+  );
+
+  // Catches: a failed state-held checkpoint read swallowed, unwrapped, or followed by a Postgres read.
+  containerTest(
+    "a failing state-held checkpoint read rejects the latest, by-id and since reads as read-unavailable",
+    async ({ prisma, redisOptions }) => {
+      const delegate = new PostgresRunStore({ prisma, readOnlyPrisma: prisma });
+      const store = new FailingCheckpointStateStore({ redisOptions, completedTtlMs: 60_000 });
+      try {
+        const seeded = await seedSuspendedThenQueued(prisma, delegate, store, { stateHeld: {} });
+        const { reader, calls } = readerOver(delegate, store);
+        for (const read of readAll(reader, seeded.runId, seeded.suspendedId, seeded.birthAt)) {
+          const error = await rejectionOf(read());
+          expect(error).toBeInstanceOf(SnapshotReadUnavailableError);
+          expect(error).toMatchObject({
+            runId: seeded.runId,
+            reason: "readCheckpoint failed",
+            retriable: true,
+          });
+          expect((error as SnapshotReadUnavailableError).cause).toBe(store.failure);
+        }
+        expect(checkpointLookups(calls)).toBe(0);
+      } finally {
+        await store.quit();
+      }
+    }
+  );
+
+  // Catches: a stored checkpoint that is not JSON parsed outside the wrapped read, or read from Postgres.
+  containerTest(
+    "a state-held checkpoint stored as a value that is not JSON rejects the reads as read-unavailable",
+    async ({ prisma, redisOptions }) => {
+      const delegate = new PostgresRunStore({ prisma, readOnlyPrisma: prisma });
+      const store = new CountingCheckpointStateStore({ redisOptions, completedTtlMs: 60_000 });
+      const raw = createRedisClient(redisOptions, { onError: () => {} });
+      try {
+        const seeded = await seedSuspendedThenQueued(prisma, delegate, store, { stateHeld: {} });
+        await raw.hset(snapshotKeys(seeded.runId).e, `${seeded.checkpoint.id}#cp`, "{not json");
+        const { reader, calls } = readerOver(delegate, store);
+        for (const read of readAll(reader, seeded.runId, seeded.suspendedId, seeded.birthAt)) {
+          const error = await rejectionOf(read());
+          expect(error).toBeInstanceOf(SnapshotReadUnavailableError);
+          expect(error).toMatchObject({ runId: seeded.runId, reason: "readCheckpoint failed" });
+        }
+        expect(checkpointLookups(calls)).toBe(0);
+      } finally {
+        await raw.quit();
+        await store.quit();
+      }
+    }
+  );
+
+  // Catches: a state-held checkpoint missing from the state read as an error, dropped id, or from Postgres.
+  containerTest(
+    "a state-held checkpoint missing from the state reads as no checkpoint, with the id kept",
+    async ({ prisma, redisOptions }) => {
+      const delegate = new PostgresRunStore({ prisma, readOnlyPrisma: prisma });
+      const store = new CountingCheckpointStateStore({ redisOptions, completedTtlMs: 60_000 });
+      const raw = createRedisClient(redisOptions, { onError: () => {} });
+      try {
+        const seeded = await seedSuspendedThenQueued(prisma, delegate, store, { stateHeld: {} });
+        const id = seeded.checkpoint.id;
+        expect(await raw.hdel(snapshotKeys(seeded.runId).e, `${id}#cp`)).toBe(1);
+        const { reader, calls } = readerOver(delegate, store);
+        const [readLatest, readById, readWindow] = readAll(
+          reader,
+          seeded.runId,
+          seeded.suspendedId,
+          seeded.birthAt
+        );
+
+        const latest = await readWithoutError(readLatest);
+        expect([latest?.id, latest?.checkpointId, latest?.checkpoint]).toEqual([
+          seeded.queuedId,
+          id,
+          null,
+        ]);
+        expect(store.reads).toEqual([id]);
+        const byId = (await readWithoutError(readById)) as Awaited<ReturnType<typeof readLatest>>;
+        expect([byId?.id, byId?.checkpointId, byId?.checkpoint]).toEqual([
+          seeded.suspendedId,
+          id,
+          null,
+        ]);
+        expect(store.reads).toEqual([id, id]);
+        const window = await readWithoutError(readWindow);
+        expect(window.map((s) => [s.id, s.checkpointId, s.checkpoint])).toEqual([
+          [seeded.queuedId, id, null],
+          [seeded.suspendedId, id, null],
+        ]);
+        expect(store.reads).toEqual([id, id, id, id]);
+        expect(checkpointLookups(calls)).toBe(0);
+      } finally {
+        await raw.quit();
+        await store.quit();
+      }
+    }
+  );
+
+  // Catches: a snapshot reading another snapshot's checkpoint, or a run's two checkpoint stores mixed up.
+  containerTest(
+    "each snapshot reads its own checkpoint from the store its record names",
+    async ({ prisma, redisOptions }) => {
+      const t = await setup(prisma, redisOptions);
+      const counting = new CountingCheckpointStateStore({ redisOptions, completedTtlMs: 60_000 });
+      try {
+        const { runId, birthId } = await t.born();
+        const c0 = await createCheckpoint(t.postgres, runId, t.env);
+        const s0 = await t.snapshot(runId, birthId, "SUSPENDED", { checkpointId: c0.id });
+        const state = { checkpointStore: "state" as const };
+        const c1 = await t.decorator.createStateHeldCheckpoint(
+          checkpointInput(t.env),
+          runId,
+          routeFor(t.env)
+        );
+        const s1 = await t.snapshot(runId, s0, "SUSPENDED", { checkpointId: c1.id, ...state });
+        const s2 = await t.snapshot(runId, s1, "SUSPENDED", { checkpointId: c1.id, ...state });
+        const c2 = await t.decorator.createStateHeldCheckpoint(
+          checkpointInput(t.env),
+          runId,
+          routeFor(t.env)
+        );
+        const s3 = await t.snapshot(runId, s2, "SUSPENDED", { checkpointId: c2.id, ...state });
+        const s4 = await t.snapshot(runId, s3, "SUSPENDED", { checkpointId: c2.id, ...state });
+        const reader = t.decorate(counting);
+
+        const lookupsBefore = checkpointLookups(t.recorder.calls);
+        const window = await reader.findManyExecutionSnapshots({
+          where: { runId, isValid: true, createdAt: { gt: new Date(0) } },
+          include: { checkpoint: true },
+          orderBy: { createdAt: "desc" },
+          take: 50,
+        });
+        expect(Object.fromEntries(window.map((row) => [row.id, row.checkpoint?.id]))).toEqual({
+          [birthId]: undefined,
+          [s0]: c0.id,
+          [s1]: c1.id,
+          [s2]: c1.id,
+          [s3]: c2.id,
+          [s4]: c2.id,
+        });
+        expect(checkpointLookups(t.recorder.calls) - lookupsBefore).toBe(1);
+        expect([...counting.reads].sort()).toEqual([c2.id, c2.id, c1.id, c1.id].sort());
+
+        expect((await reader.findLatestExecutionSnapshot(runId))?.checkpoint?.id).toBe(c2.id);
+        const byId = await reader.findExecutionSnapshot(
+          { where: { runId, id: s1 } },
+          undefined,
+          routeFor(t.env)
+        );
+        expect((byId as { checkpoint?: { id: string } | null } | null)?.checkpoint?.id).toBe(c1.id);
+      } finally {
+        await counting.quit();
+        await t.cleanup();
+      }
+    }
+  );
 });

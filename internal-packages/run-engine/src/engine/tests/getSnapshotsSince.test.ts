@@ -7,6 +7,7 @@ import {
   type CompletedWaitpointResolver,
 } from "@internal/run-store";
 import {
+  CheckpointId,
   generateFriendlyId,
   generateInternalId,
   generateWaitpointId,
@@ -1718,29 +1719,42 @@ class CheckpointLookupCountingStore extends PostgresRunStore {
   }
 }
 
+// Records the checkpoint id of each state-held checkpoint read.
+class CheckpointStateReadCountingStore extends RedisSnapshotStore {
+  readonly reads: string[] = [];
+
+  override async readCheckpoint(runId: string, checkpointId: string): Promise<string | null> {
+    this.reads.push(checkpointId);
+    return super.readCheckpoint(runId, checkpointId);
+  }
+}
+
 describe("getExecutionSnapshotsSince checkpoint lookups for a MemoryDB-only run", () => {
   // Seeds birth, a cursor and 51 later snapshots, each referring to one checkpoint; the newest has
-  // one completed store waitpoint.
+  // one completed store waitpoint. `stateHeld` holds the checkpoint in the run's snapshot state.
   async function seed(
     prisma: PrismaClient,
-    redisOptions: ConstructorParameters<typeof RedisSnapshotStore>[0]["redisOptions"]
+    redisOptions: ConstructorParameters<typeof RedisSnapshotStore>[0]["redisOptions"],
+    options?: { stateHeld?: boolean }
   ) {
     const delegate = new CheckpointLookupCountingStore({ prisma, readOnlyPrisma: prisma });
     const store = new RedisSnapshotStore({ redisOptions, completedTtlMs: 60_000 });
     const env = await seedSnapshotEnvironment(prisma);
     const runId = generateInternalId();
-    const checkpoint = await delegate.createTaskRunCheckpoint(
-      {
-        data: {
-          friendlyId: `checkpoint_${generateInternalId().slice(-12)}`,
-          type: "DOCKER",
-          location: "s3://bucket/checkpoint",
-          projectId: env.projectId,
-          runtimeEnvironmentId: env.id,
-        },
-      },
-      runId
-    );
+    let checkpoint = options?.stateHeld
+      ? undefined
+      : await delegate.createTaskRunCheckpoint(
+          {
+            data: {
+              friendlyId: `checkpoint_${generateInternalId().slice(-12)}`,
+              type: "DOCKER",
+              location: "s3://bucket/checkpoint",
+              projectId: env.projectId,
+              runtimeEnvironmentId: env.id,
+            },
+          },
+          runId
+        );
     const writer = new TaskRunExecutionSnapshotStore(delegate, {
       store,
       mode: "redis-only",
@@ -1764,6 +1778,20 @@ describe("getExecutionSnapshotsSince checkpoint lookups for a MemoryDB-only run"
         organizationId: env.organizationId,
       },
     });
+    if (options?.stateHeld) {
+      checkpoint = await writer.createStateHeldCheckpoint(
+        {
+          ...CheckpointId.generate(),
+          type: "DOCKER",
+          location: "s3://bucket/checkpoint",
+          projectId: env.projectId,
+          runtimeEnvironmentId: env.id,
+        },
+        runId,
+        { version: 1, residency: "redis-primary", organizationId: env.organizationId }
+      );
+    }
+    if (!checkpoint) throw new Error("no checkpoint seeded");
     const waitpointId = generateWaitpointId("MANUAL");
     const ids: string[] = [];
     let previousSnapshotId = birthId;
@@ -1777,6 +1805,7 @@ describe("getExecutionSnapshotsSince checkpoint lookups for a MemoryDB-only run"
         snapshot: { executionStatus: "QUEUED", description: "Run was queued" },
         previousSnapshotId,
         checkpointId: checkpoint.id,
+        ...(options?.stateHeld && { checkpointStore: "state" as const }),
         environmentId: env.id,
         environmentType: env.type,
         projectId: env.projectId,
@@ -1803,7 +1832,7 @@ describe("getExecutionSnapshotsSince checkpoint lookups for a MemoryDB-only run"
     }
     expect(await store.readBirthResidency(runId)).toBe("redis-primary");
     expect(await prisma.taskRunExecutionSnapshot.count({ where: { runId } })).toBe(0);
-    return { delegate, store, env, runId, ids, waitpointId };
+    return { delegate, store, env, runId, ids, waitpointId, checkpoint };
   }
 
   // Resolves each record as the run engine does; `empty` makes it return none.
@@ -1916,6 +1945,93 @@ describe("getExecutionSnapshotsSince checkpoint lookups for a MemoryDB-only run"
           other: 0,
         });
       } finally {
+        await seeded.store.quit();
+      }
+    }
+  );
+
+  // Catches: a since read of state-held checkpoints reading Postgres, or more than one read per snapshot.
+  containerTest(
+    "a since read of state-held checkpoints makes 52 snapshot-state reads, or 53 with the repair read, and no Postgres lookup",
+    async ({ prisma, redisOptions }) => {
+      const seeded = await seed(prisma, redisOptions, { stateHeld: true });
+      const counting = new CheckpointStateReadCountingStore({
+        redisOptions,
+        completedTtlMs: 60_000,
+      });
+      try {
+        const [cursorId] = seeded.ids;
+        const newestId = seeded.ids[seeded.ids.length - 1];
+
+        const reader = new TaskRunExecutionSnapshotStore(seeded.delegate, {
+          store: counting,
+          mode: "redis-only",
+          logicalRunStoreRoute: "logical:1",
+          resolveCompletedWaitpoints: resolverReturning(() => false),
+        });
+        counting.reads.splice(0);
+        seeded.delegate.checkpointLookups = 0;
+        const plain = await getExecutionSnapshotsSince(
+          prisma,
+          seeded.runId,
+          cursorId,
+          reader,
+          undefined,
+          seeded.env.id,
+          seeded.env.organizationId,
+          () => true
+        );
+        expect(plain).toHaveLength(50);
+        expect(plain[plain.length - 1].id).toBe(newestId);
+        expect(plain[plain.length - 1].completedWaitpoints.map((w) => w.id)).toEqual([
+          seeded.waitpointId,
+        ]);
+        expect(new Set(plain.map((s) => s.checkpoint?.id))).toEqual(
+          new Set([seeded.checkpoint.id])
+        );
+        expect(counting.reads.length).toBe(52);
+        expect(seeded.delegate.checkpointLookups).toBe(0);
+
+        // The first resolve misses the waitpoint, so the selected snapshot is read again on the
+        // repair client.
+        let resolves = 0;
+        const repairingReader = new TaskRunExecutionSnapshotStore(seeded.delegate, {
+          store: counting,
+          mode: "redis-only",
+          logicalRunStoreRoute: "logical:1",
+          resolveCompletedWaitpoints: resolverReturning(() => resolves++ === 0),
+        });
+        const repairClient = new Proxy(prisma, {
+          get(target, prop) {
+            const value = (target as Record<string | symbol, unknown>)[prop];
+            return typeof value === "function" ? value.bind(target) : value;
+          },
+        }) as unknown as PrismaClient;
+        counting.reads.splice(0);
+        seeded.delegate.checkpointLookups = 0;
+        const repaired = await getExecutionSnapshotsSince(
+          prisma,
+          seeded.runId,
+          cursorId,
+          repairingReader,
+          repairClient,
+          seeded.env.id,
+          seeded.env.organizationId,
+          () => true
+        );
+        expect(repaired).toHaveLength(50);
+        expect(repaired[repaired.length - 1].id).toBe(newestId);
+        expect(repaired[repaired.length - 1].completedWaitpoints.map((w) => w.id)).toEqual([
+          seeded.waitpointId,
+        ]);
+        expect(new Set(repaired.map((s) => s.checkpoint?.id))).toEqual(
+          new Set([seeded.checkpoint.id])
+        );
+        expect(resolves).toBe(2);
+        expect(counting.reads.length).toBe(53);
+        expect(seeded.delegate.checkpointLookups).toBe(0);
+      } finally {
+        await counting.quit();
         await seeded.store.quit();
       }
     }

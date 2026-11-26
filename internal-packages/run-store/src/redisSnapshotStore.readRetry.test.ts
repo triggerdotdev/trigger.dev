@@ -147,6 +147,20 @@ describe("RedisSnapshotStore read retry", () => {
     }
   );
 
+  // Catches: the state-held checkpoint read failing on a transient client error instead of retrying.
+  redisTest(
+    "readCheckpoint returns the stored checkpoint after one command timeout",
+    async ({ redisOptions }) => {
+      await withStore(redisOptions, async (store, client) => {
+        const raw = '{"id":"cp_1"}';
+        expect(await store.writeCheckpoint("run_1", "cp_1", raw)).toBe(true);
+        const spy = vi.spyOn(client, "hget").mockRejectedValueOnce(commandTimeout());
+        expect(await store.readCheckpoint("run_1", "cp_1")).toBe(raw);
+        expect(attempts(spy, client)).toBe(2);
+      });
+    }
+  );
+
   redisTest("a write is never retried on a command timeout", async ({ redisOptions }) => {
     await withStore(redisOptions, async (store, client) => {
       const timeout = commandTimeout();

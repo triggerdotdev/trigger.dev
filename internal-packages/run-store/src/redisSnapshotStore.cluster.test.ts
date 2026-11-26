@@ -184,6 +184,17 @@ describe.skipIf(!RUN_CLUSTER)("cluster key slots", () => {
     expect(await store.writeCheckpoint(runId, "cp_1", '{"id":"cp_1"}')).toBe(true);
     expect(await cluster.hget(snapshotKeys(runId).e, "cp_1#cp")).toBe('{"id":"cp_1"}');
   });
+
+  // Catches: the state-held checkpoint read leaving the run's :e, or failing on a real cluster.
+  it("reads a state-held checkpoint on a real cluster", async () => {
+    const store = new RedisSnapshotStore({ client: cluster, completedTtlMs: 60_000 });
+    const runId = "run_cluster_checkpoint_read";
+    await store.append({ entry: entry(runId, "s0"), kind: "birth", isTerminal: false });
+
+    expect(await store.writeCheckpoint(runId, "cp_1", '{"id":"cp_1"}')).toBe(true);
+    expect(await store.readCheckpoint(runId, "cp_1")).toBe('{"id":"cp_1"}');
+    expect(await store.readCheckpoint(runId, "cp_2")).toBeNull();
+  });
 });
 
 // Replica'd cluster (3 masters + 3 replicas): prove committed snapshot state survives losing the

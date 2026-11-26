@@ -694,6 +694,15 @@ export class RedisSnapshotStore {
     });
   }
 
+  // Reads the state-held checkpoint writeCheckpoint stores; null when the field is absent.
+  async readCheckpoint(runId: string, checkpointId: string): Promise<string | null> {
+    return this.#timed("readCheckpoint", () =>
+      this.#retryingRead("readCheckpoint", () =>
+        this.redis.hget(snapshotKeys(runId).e, `${checkpointId}#cp`)
+      )
+    );
+  }
+
   async append(args: {
     entry: SnapshotEntryInput;
     kind: "birth" | "transition";
