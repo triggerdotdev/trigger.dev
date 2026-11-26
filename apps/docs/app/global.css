@@ -7,6 +7,7 @@
 @import "../.generated/choices.css";
 @import "non.geist";
 @import "non.geist/mono";
+@import "./dashboard-figures.css";
 
 @source "../components";
 

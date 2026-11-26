@@ -24,7 +24,9 @@ const OUTPUT_WEIGHT = 5;
 /**
  * Fixed windows: per reader per minute and per day, and caps on the whole site per day: answers,
  * and tokens. 25M weighted tokens is about $50 a day at Sonnet-class prices; set
- * ASK_AI_DAILY_TOKENS to change it (for another model, or a different spend).
+ * ASK_AI_DAILY_TOKENS to change it (for another model, or a different spend). Bedrock reports the
+ * same usage and also discounts cached reads, but its us. regional profiles cost about 10% more
+ * than Anthropic's list price, so the same budget is about $55 there.
  */
 const LIMITS = {
   perMinute: 6,

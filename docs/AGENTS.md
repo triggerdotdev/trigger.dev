@@ -84,6 +84,7 @@ The same names and props as the Mintlify components the pages already use (imple
 Docs-site only:
 
 - `<SdkType name="TaskOptions" />` - every property of an SDK type, generated from the SDK's types and JSDoc (types listed in `apps/docs/lib/sdk-types/index.ts`)
+- `<DashboardFigure name="api-keys" highlight="create:1" />` - a dashboard screen drawn in code instead of a screenshot (figures listed in `apps/docs/lib/dashboard-figures.ts`). Use one for any picture of the dashboard; to add or change one, follow `.claude/skills/docs-dashboard-figures/SKILL.md`
 
 ## Links
 
@@ -110,9 +111,9 @@ API pages come from `openapi.yml` and `v3-openapi.yaml`. Each operation lists th
 
 ## Publishing
 
-- A PR that only changes `docs/` goes live within minutes of merging. Merge it once what it describes is live.
+- A PR that only changes `docs/` goes live a few minutes after merging, when the publish run has built and checked the site. Merge it once what it describes is live.
 - Docs in a PR that also changes code go live with the next `docs-release-*` tag.
-- A docs-only change that conflicts with unpublished docs, or links to an unpublished page, waits for the next tag. The publish run comments on the commit when that happens.
+- A docs-only change that conflicts with unpublished docs, or links to an unpublished page, waits for the next tag. In chonk, a PR that will wait gets a "Docs publishing" comment before merging that says why, and the publish run comments on the commit after merging. No comment does not mean the change goes live right away.
 - Every published version is built and checked (every URL, the MCP endpoint, security headers) before it replaces the live site. If a check fails, the live site stays as it was.
 
 ## Checks on a docs PR
@@ -127,6 +128,8 @@ CI builds the site and runs `pnpm --filter docs-site check`. Run the same locall
 | `BROKEN ... (no such file)` | An image or file path that doesn't exist. | Fix the path under `images/`. |
 | `FAIL sitemap <path> -> 404` | A published page was moved or deleted without a redirect. | Add a `redirects` entry. |
 | `FAIL redirect <path> -> ... (want ...)` | A redirect points at a page that doesn't exist, or loops. | Point it at a live page. |
+| `error: <file>: no figure named "..."` or an unknown mark | A `<DashboardFigure>` tag names a figure or mark that doesn't exist. | Use a name from `apps/docs/lib/dashboard-figures.ts`. |
+| `warning: ... may be stale` | A webapp file a dashboard figure copies has changed. Only a warning. | Follow the figures skill to check and re-stamp it. |
 | `SDK types aren't built` | The build ran without `pnpm --filter docs-site build:sdk`. | Run it once, then build again. |
 | A build error naming an MDX file | Invalid MDX: an unclosed tag, a bare `<` or `{` in text. | Escape it (`\<`, `\{`) or put it in backticks. |
 | `FAIL` from `check-mcp` or `check-headers` | The site's code, not the content. | Ask whoever changed `apps/docs`. |

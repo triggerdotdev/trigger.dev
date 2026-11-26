@@ -8,6 +8,8 @@ export default {
     ".": {
       entry: [
         "scripts/**/*.{js,mjs,cjs,ts,mts,cts}",
+        // Browser helpers a skill loads into a page, not imported.
+        ".claude/skills/**/*.js",
         "docker/scripts/distrust-cas.cjs",
         "vitest.internal.config.ts",
         "vitest.internal-reports.config.mjs",
@@ -24,6 +26,8 @@ export default {
         "components/mintlify.tsx",
         // Read by path by the <SdkType> table generator.
         "lib/sdk-types/index.ts",
+        // Run by path from scripts/check.mjs and the deploy workflows.
+        "scripts/check-*.mjs",
       ],
       // Resolved by path for Twoslash hovers.
       ignoreDependencies: ["@trigger.dev/build", "@trigger.dev/react-hooks"],

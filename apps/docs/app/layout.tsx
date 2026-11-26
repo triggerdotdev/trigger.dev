@@ -3,7 +3,7 @@ import type { ReactNode } from "react";
 import { Analytics } from "@/components/analytics";
 import { WebMcp } from "@/components/webmcp";
 import { DocsRootProvider } from "@/components/root-provider";
-import { askEnabled } from "@/lib/ask-config";
+import { askConfigured } from "@/lib/ask-config";
 import { choiceScript } from "@/lib/choices";
 import { sections } from "@/lib/nav";
 import { siteUrl } from "@/lib/source";
@@ -24,7 +24,7 @@ export default function RootLayout({ children }: { children: ReactNode }) {
         <script dangerouslySetInnerHTML={{ __html: choiceScript }} />
       </head>
       <body className="flex min-h-screen flex-col">
-        <DocsRootProvider ask={askEnabled()} tags={sections.map((s) => ({ name: s, value: s }))}>
+        <DocsRootProvider ask={askConfigured()} tags={sections.map((s) => ({ name: s, value: s }))}>
           {children}
         </DocsRootProvider>
         <Analytics />

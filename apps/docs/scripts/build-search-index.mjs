@@ -11,17 +11,22 @@ import { tokenCss } from "../lib/shiki-themes.ts";
 import { choiceCss } from "../lib/choices.ts";
 import { generateSdkTypes } from "../lib/sdk-type-gen.ts";
 import {
+  DASHBOARD_FIGURE_TAG,
+  figureTagAttrs,
+  getDashboardFigure,
+} from "../lib/dashboard-figures.ts";
+import {
   bodyLines,
   contentDirOf,
   mdxFiles,
   readSnippets,
   stripFrontmatter,
 } from "../lib/content-files.ts";
+import { askModelId } from "../lib/ask-config.ts";
 
 // A production build without these still builds and passes every check, then quietly ships
 // without Ask AI, its limits, analytics or personalization. Previews and local builds may skip them.
 const PRODUCTION_ENV = [
-  "ANTHROPIC_API_KEY",
   "REDIS_URL",
   "DOCS_WORKER_SECRET",
   "NEXT_PUBLIC_POSTHOG_KEY",
@@ -29,6 +34,9 @@ const PRODUCTION_ENV = [
 ];
 if (process.env.VERCEL_ENV === "production") {
   const missing = PRODUCTION_ENV.filter((name) => !process.env[name]);
+  // ANTHROPIC_API_KEY, or DOCS_ASK_MODEL_PROVIDER=bedrock with AWS credentials and a region.
+  const ask = askModelId();
+  if (ask.error) missing.unshift(`Ask AI (${ask.error})`);
   if (missing.length) {
     console.error(`Production build stopped: ${missing.join(", ")} not set.`);
     process.exit(1);
@@ -73,21 +81,29 @@ const SHOWN_ATTRS = /\b(?:title|path|query|body|header|name|label)="([^"]*)"/g;
 
 /** MDX to plain text: JSX tags dropped (shown attribute values kept), markdown syntax removed. */
 function plain(text) {
-  return text
-    .replace(/\{\/\*[\s\S]*?\*\/\}/g, "")
-    .replace(/<\/?[A-Za-z][\w.]*(?:\s(?:[^<>{}]|\{[^{}]*\})*)?\/?>/g, (tag) =>
-      [...tag.matchAll(SHOWN_ATTRS)].map((m) => ` ${m[1]}. `).join("")
-    )
-    .replace(/!\[[^\]]*\]\([^)]*\)/g, "")
-    .replace(/\[([^\]]*)\]\([^)]*\)/g, "$1")
-    .replace(/^\s*(?:[-*+]|\d+\.)\s+/gm, "")
-    .replace(/^\s*>\s?/gm, "")
-    .replace(/\|/g, " ")
-    .replace(/^\s*:?-{3,}:?(?:\s+:?-{3,}:?)*\s*$/gm, "")
-    .replace(/[*_`]+/g, "")
-    .replace(/[ \t]+/g, " ")
-    .replace(/\n{3,}/g, "\n\n")
-    .trim();
+  return (
+    text
+      .replace(/\{\/\*[\s\S]*?\*\/\}/g, "")
+      // A dashboard figure is a picture: its description (the image's label) and caption are its
+      // words, not `name`.
+      .replace(DASHBOARD_FIGURE_TAG, (_, attrs) => {
+        const { name = "", caption = "" } = figureTagAttrs(attrs);
+        return ` ${getDashboardFigure(name)?.description ?? ""} ${caption} `;
+      })
+      .replace(/<\/?[A-Za-z][\w.]*(?:\s(?:[^<>{}]|\{[^{}]*\})*)?\/?>/g, (tag) =>
+        [...tag.matchAll(SHOWN_ATTRS)].map((m) => ` ${m[1]}. `).join("")
+      )
+      .replace(/!\[[^\]]*\]\([^)]*\)/g, "")
+      .replace(/\[([^\]]*)\]\([^)]*\)/g, "$1")
+      .replace(/^\s*(?:[-*+]|\d+\.)\s+/gm, "")
+      .replace(/^\s*>\s?/gm, "")
+      .replace(/\|/g, " ")
+      .replace(/^\s*:?-{3,}:?(?:\s+:?-{3,}:?)*\s*$/gm, "")
+      .replace(/[*_`]+/g, "")
+      .replace(/[ \t]+/g, " ")
+      .replace(/\n{3,}/g, "\n\n")
+      .trim()
+  );
 }
 
 /** Split the page body into sections by heading; code goes to its own field. */

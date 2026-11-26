@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 // `pnpm --filter docs-site check`: the docs checks CI runs on every docs PR.
-//   1. heading id tests and internal links (source only, no build needed)
+//   1. heading id tests, internal links and dashboard figure tags (source only, no build needed;
+//      stale figures are warnings, see check-figures.mjs)
 //   2. against the built site, served here on a free port: the URL contract, the MCP shape and
 //      the security headers
 // Run `pnpm --filter docs-site build` first; `check --links` runs step 1 only.
@@ -16,7 +17,9 @@ const run = (...args) =>
   spawnSync(process.execPath, args, { cwd: app, stdio: "inherit" }).status === 0;
 
 let ok =
-  run("node_modules/vitest/vitest.mjs", "run", "lib/slug.test.ts") & run("scripts/check-links.mjs");
+  run("node_modules/vitest/vitest.mjs", "run", "lib/slug.test.ts") &
+  run("scripts/check-links.mjs") &
+  run("scripts/check-figures.mjs");
 
 if (!process.argv.includes("--links")) {
   if (!existsSync(path.join(app, ".next/BUILD_ID"))) {

@@ -24,4 +24,4 @@ What a failure means and how to fix it: `AGENTS.md`, "Checks on a docs PR".
 
 ## Mintlify (until the switch)
 
-Until the switch, the live site still deploys from Mintlify, which doesn't render `<SdkType>`. `pnpm run dev --filter docs` runs the Mintlify preview at http://localhost:3050.
+Until the switch, the live site still deploys from Mintlify, which renders neither `<DashboardFigure>` nor `<SdkType>`. `pnpm run dev --filter docs` runs the Mintlify preview at http://localhost:3050.

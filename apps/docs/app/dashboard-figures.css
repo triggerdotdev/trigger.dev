@@ -1,0 +1,357 @@
+/*
+  Dashboard figures (components/dashboard-figure.tsx): the dashboard's own token names and
+  values, so a figure copies the webapp's class strings verbatim (bg-background-bright,
+  text-text-dimmed, border-grid-bright, text-dev ...).
+
+  Copied from apps/webapp/app/tailwind.css: the raw palettes and the semantic @theme block
+  (the dark theme), and the light theme's overrides. When the webapp changes a token, change
+  it here too. The docs keep their own values for the few names both define (text-bright,
+  text-dimmed, text-faint, text-link); .dash-figure sets the dashboard's inside figures.
+*/
+
+@custom-variant light (&:where(html:not(.dark), html:not(.dark) *));
+
+@theme {
+  --text-xxs: 0.65rem;
+  --text-xxs--line-height: 0.75rem;
+  --text-xxs--letter-spacing: -0.01em;
+  --text-xxs--font-weight: 500;
+  --text-2sm: 0.8125rem;
+  --text-2sm--line-height: 0.875rem;
+  --text-2sm--letter-spacing: -0.01em;
+  --text-2sm--font-weight: 500;
+
+  --color-charcoal-1000: #0b0c0f;
+  --color-apple-200: #cfffa0;
+  --color-apple-400: #afff62;
+  --color-apple-750: #5e932a;
+  --color-apple-850: #2e4e10;
+  --color-mint-50: #f0fdf4;
+  --color-mint-100: #ddfbe6;
+  --color-mint-200: #bdf5d0;
+  --color-mint-300: #87eba9;
+  --color-mint-400: #4fd97e;
+  --color-mint-500: #28bf5c;
+  --color-mint-600: #1b9e48;
+  --color-mint-700: #197c3c;
+  --color-mint-800: #196233;
+  --color-mint-900: #16512c;
+  --color-mint-950: #062d15;
+  --color-sun-50: #fdfee8;
+  --color-sun-100: #fdffc2;
+  --color-sun-200: #ffff89;
+  --color-sun-300: #fff852;
+  --color-sun-400: #fdea12;
+  --color-sun-500: #eccf06;
+  --color-sun-600: #cca302;
+  --color-sun-700: #a37505;
+  --color-sun-800: #865b0d;
+  --color-sun-900: #724b11;
+  --color-sun-950: #432705;
+  --color-lavender-50: #f4f2ff;
+  --color-lavender-100: #eae8ff;
+  --color-lavender-200: #d7d4ff;
+  --color-lavender-500: #7655fd;
+  --color-lavender-700: #5620e1;
+  --color-lavender-900: #3d189a;
+  --color-lavender-950: #230c69;
+
+  /* Semantic tokens, dark theme (the webapp's @theme defaults). */
+  --color-primary: var(--color-text-link);
+  --color-secondary: var(--color-charcoal-650);
+  --color-tertiary: var(--color-charcoal-700);
+  --color-text-link: var(--color-lavender-400);
+  --color-text-link-hover: var(--color-lavender-300);
+  --color-accent-fill: var(--color-lavender-600);
+  --color-text-faint: var(--color-charcoal-500);
+  --color-text-dimmed: var(--color-charcoal-400);
+  --color-text-bright: var(--color-charcoal-200);
+
+  --color-background-deep: var(--color-charcoal-900);
+  /* The code editor (codeMirrorTheme.ts): the JSON tokens figures draw. */
+  --color-editor-background: var(--color-background-deep);
+  --color-editor-foreground: #abb2bf;
+  --color-editor-name: #9b99ff;
+  --color-editor-string: #afec73;
+  --color-editor-comment: #7d8799;
+  /* CodeBlock (code/CodeBlock.tsx): the JSON tokens of payloads, outputs and properties. */
+  --color-code-foreground: #878c99;
+  --color-code-plain: #d4d4d4;
+  --color-code-constant: #9c9af2;
+  --color-code-language: #9b99ff;
+  --color-code-string: #afec73;
+  --color-code-builtin: #e5c07b;
+  --text-shadow-custom: 1px 1px 1px rgba(0, 0, 0, 0.5);
+  --color-editor-keyword: #c678dd;
+  --color-editor-type: #e5c07b;
+  --color-background-dimmed: var(--color-charcoal-850);
+  --color-background-bright: var(--color-charcoal-800);
+  --color-background-hover: var(--color-charcoal-750);
+  --color-surface-hover-subtle: var(--color-charcoal-750);
+  --color-background-raised: var(--color-charcoal-700);
+  --color-segmented-track: color-mix(in srgb, var(--color-background-raised) 50%, transparent);
+  --color-surface-selected: var(--color-charcoal-650);
+  --color-surface-selected-hover: var(--color-charcoal-600);
+  --color-surface-control: var(--color-charcoal-600);
+  --color-surface-control-hover: var(--color-charcoal-550);
+  --color-surface-control-active: var(--color-charcoal-500);
+  --color-input-bg: var(--color-charcoal-750);
+
+  --color-grid-dimmed: var(--color-charcoal-750);
+  --color-grid-bright: var(--color-charcoal-700);
+  --color-border-selected: color-mix(
+    in srgb,
+    var(--color-border-bright) 50%,
+    var(--color-surface-selected)
+  );
+  --color-border-bright: var(--color-charcoal-600);
+  --color-border-brighter: var(--color-charcoal-550);
+  --color-border-brightest: var(--color-charcoal-500);
+  --color-success: var(--color-mint-500);
+  --color-pending: var(--color-blue-500);
+  --color-warning: var(--color-amber-500);
+  --color-log-trace: var(--color-purple-500);
+  --color-error: var(--color-rose-600);
+
+  --color-dev: var(--color-pink-500);
+  --color-staging: var(--color-orange-400);
+  --color-prod: var(--color-mint-500);
+  --color-preview: var(--color-blue-500);
+
+  --color-tasks: var(--color-blue-500);
+  --color-runs: var(--color-indigo-500);
+  --color-batches: var(--color-pink-500);
+  --color-schedules: var(--color-yellow-500);
+  --color-queues: var(--color-purple-500);
+  --color-query: var(--color-blue-500);
+  --color-metrics: var(--color-green-500);
+  --color-customDashboards: var(--color-charcoal-400);
+  --color-deployments: var(--color-blue-500);
+  --color-concurrency: var(--color-amber-500);
+  --color-limits: var(--color-purple-500);
+  --color-regions: var(--color-green-500);
+  --color-logs: var(--color-pink-500);
+  --color-tests: var(--color-pink-500);
+  --color-apiKeys: var(--color-amber-500);
+  --color-environmentVariables: var(--color-pink-500);
+  --color-alerts: var(--color-red-500);
+  --color-projectSettings: var(--color-blue-500);
+  --color-orgSettings: var(--color-blue-500);
+  --color-docs: var(--color-blue-500);
+  --color-bulkActions: var(--color-emerald-500);
+  --color-aiPrompts: var(--color-blue-500);
+  --color-aiMetrics: var(--color-green-500);
+  --color-errors: var(--color-amber-500);
+  --color-agents: var(--color-purple-500);
+  --color-webhooks: var(--color-teal-500);
+  --color-sessions: var(--color-pink-500);
+  --color-playgrounds: var(--color-fuchsia-500);
+  --color-models: var(--color-violet-500);
+  --color-previewBranches: var(--color-blue-500);
+
+  --color-callout-warning-text: var(--color-yellow-200);
+  --color-callout-error-text: var(--color-rose-200);
+  --color-callout-success-text: var(--color-green-200);
+  --color-callout-docs: var(--color-blue-400);
+  --color-callout-docs-text: var(--color-blue-200);
+  --color-callout-pending: var(--color-blue-400);
+  --color-callout-pending-bg: var(--color-blue-800);
+  --color-callout-pending-text: var(--color-blue-300);
+  --color-callout-pricing: var(--color-indigo-400);
+  --color-callout-pricing-bg: var(--color-indigo-800);
+  --color-callout-pricing-text: var(--color-indigo-300);
+
+  --color-run-pending: var(--color-charcoal-500);
+  --color-run-delayed: #6b7580;
+  --color-run-pending-version: var(--color-warning);
+  --color-run-waiting-for-deploy: #d97706;
+  --color-run-executing: var(--color-pending);
+  --color-run-retrying-after-failure: #2f6fec;
+  --color-run-dequeued: #4d8ef5;
+  --color-run-waiting-to-resume: #555d67;
+  --color-run-paused: #fbbf24;
+  --color-run-canceled: #78828c;
+  --color-run-expired: #848d96;
+  --color-run-interrupted: #d52c4d;
+  --color-run-completed-successfully: var(--color-success);
+  --color-run-completed-with-errors: #de405c;
+  --color-run-system-failure: #e7536c;
+  --color-run-crashed: #cc193d;
+  --color-run-timed-out: #f0667b;
+
+  /* The ring and badge a highlight draws around the element the text points at: indigo-500 with
+     white digits in both themes (not a dashboard token, so light doesn't override it). */
+  --color-figure-mark: var(--color-indigo-500);
+  --color-figure-mark-ink: #ffffff;
+}
+
+/* The names the docs also define, back to the dashboard's dark values inside a figure. */
+.dash-figure {
+  /* Tokens defined from other tokens resolve where they're declared: redeclare them here so
+     they follow the figure's values, not the docs' (or :root's dark ones in light mode). */
+  --color-primary: var(--color-text-link);
+  --color-run-completed-successfully: var(--color-success);
+  --color-run-executing: var(--color-pending);
+  --color-run-pending-version: var(--color-warning);
+  --color-text-faint: var(--color-charcoal-500);
+  --color-text-dimmed: var(--color-charcoal-400);
+  --color-text-bright: var(--color-charcoal-200);
+  --color-text-link: var(--color-lavender-400);
+}
+
+/* The dashboard's base layer: default border color, body text color and font features. */
+@layer base {
+  .dash-figure-canvas,
+  .dash-figure-canvas *,
+  .dash-figure-canvas ::after,
+  .dash-figure-canvas ::before {
+    border-color: var(--color-grid-bright);
+  }
+  .dash-figure-canvas {
+    color: var(--color-text-dimmed);
+    font-family: var(--font-sans);
+    font-feature-settings:
+      "rlig" 1,
+      "calt" 1;
+    -webkit-font-smoothing: antialiased;
+  }
+}
+
+/* The dashboard's light theme (and its light accents), when the docs are light. */
+html:not(.dark) .dash-figure {
+  --color-secondary: #ffffff;
+  --color-input-bg: #ffffff;
+  --color-tertiary: #eef0f3;
+  --color-text-link: var(--color-lavender-600);
+  --color-text-link-hover: var(--color-lavender-800);
+  --color-text-faint: var(--color-charcoal-400);
+  --color-text-dimmed: var(--color-charcoal-500);
+  --color-text-bright: var(--color-charcoal-800);
+
+  --color-background-deep: #f1f2f4;
+  --color-editor-background: #ffffff;
+  --color-editor-foreground: #2e2e4b;
+  --color-editor-name: #197c3c;
+  --color-editor-string: #262626;
+  --color-editor-comment: #767a81;
+  --color-code-foreground: #333333;
+  --color-code-plain: #2e2e4b;
+  --color-code-constant: #1e1e1e;
+  --color-code-language: #b114d3;
+  --color-code-string: #262626;
+  --color-code-builtin: #3080e0;
+  --color-editor-keyword: #b114d3;
+  --color-editor-type: #2980b9;
+  --color-background-dimmed: #fbfbfc;
+  --color-background-bright: #ffffff;
+  --color-background-hover: #f2f3f5;
+  --color-surface-hover-subtle: #f7f8f9;
+  --color-background-raised: #e9eaee;
+  --color-surface-control: #dcdee3;
+  --color-segmented-track: var(--color-background-raised);
+  --color-surface-control-hover: #cfd2d9;
+  --color-surface-control-active: #b8bcc6;
+  --color-surface-selected: #eff0f2;
+  --color-surface-selected-hover: #e7e9ec;
+
+  --color-grid-dimmed: #eceef1;
+  --color-grid-bright: #e2e4e9;
+  --color-border-selected: #e0e2e6;
+  --color-border-bright: #d2d5db;
+  --color-border-brighter: #b9bdc7;
+  --color-border-brightest: #9ba1ad;
+
+  --color-staging: var(--color-orange-600);
+  --color-customDashboards: var(--color-charcoal-500);
+
+  --color-callout-warning-text: var(--color-yellow-800);
+  --color-callout-error-text: var(--color-rose-700);
+  --color-callout-success-text: var(--color-green-800);
+  --color-callout-docs-text: var(--color-blue-800);
+  --color-callout-pending-bg: var(--color-blue-100);
+  --color-callout-pending-text: var(--color-blue-800);
+  --color-callout-pricing-bg: var(--color-indigo-100);
+  --color-callout-pricing-text: var(--color-indigo-800);
+
+  --color-run-pending: #ccd0d6;
+  --color-run-delayed: #d3d6db;
+  --color-run-waiting-to-resume: #c5c9d0;
+  --color-run-canceled: #d8dbdf;
+  --color-run-expired: #dee0e4;
+
+  --color-success: var(--color-mint-600);
+  --color-warning: var(--color-amber-600);
+  --color-prod: var(--color-mint-600);
+  --color-schedules: var(--color-yellow-700);
+  --color-metrics: var(--color-green-600);
+  --color-regions: var(--color-green-600);
+  --color-aiMetrics: var(--color-green-600);
+  --color-bulkActions: var(--color-emerald-600);
+  --color-concurrency: var(--color-amber-600);
+  --color-errors: var(--color-amber-600);
+  --color-apiKeys: var(--color-amber-600);
+  --color-log-trace: var(--color-purple-600);
+  --color-callout-docs: var(--color-blue-500);
+  --color-callout-pending: var(--color-blue-500);
+  --color-callout-pricing: var(--color-indigo-500);
+  --color-run-waiting-for-deploy: var(--color-amber-700);
+  --color-run-pending-version: #c76508;
+  --color-run-paused: var(--color-amber-600);
+  --color-run-timed-out: #ed5f74;
+}
+
+/*
+  Scale to the column: the canvas is authored at the dashboard's real pixel size and shrinks
+  (never grows) to fit. tan(atan2(a, b)) is a / b as a plain number, so no script is needed.
+*/
+.dash-figure-viewport {
+  container-type: inline-size;
+  position: relative;
+  overflow: hidden;
+  width: 100%;
+  max-width: var(--fig-w);
+  aspect-ratio: var(--fig-ratio);
+}
+.dash-figure-canvas {
+  position: absolute;
+  inset: 0 auto auto 0;
+  width: var(--fig-w);
+  height: var(--fig-h);
+  transform-origin: 0 0;
+  transform: scale(tan(atan2(100cqw, var(--fig-w))));
+}
+
+/* Marks: data-mark="add-new" in a figure; its highlight prop turns them on with a generated
+   rule (components/dashboard-figure.tsx): a ring, and a badge for "add-new:2". The badge sits to
+   the right; data-mark-badge="below" or "left" moves it where the figure has room. */
+@layer components {
+  .dash-figure [data-mark] {
+    position: relative;
+  }
+}
+.dash-figure [data-mark]::after {
+  display: none;
+  position: absolute;
+  top: 50%;
+  left: calc(100% + 0.75rem);
+  translate: 0 -50%;
+  z-index: 20;
+  place-items: center;
+  min-width: 1.375rem;
+  height: 1.375rem;
+  padding: 0 0.25rem;
+  border-radius: 0.25rem;
+  background: var(--color-figure-mark);
+  color: var(--color-figure-mark-ink);
+  font: 700 0.875rem/1 var(--font-sans);
+}
+.dash-figure [data-mark-badge="below"]::after {
+  top: calc(100% + 0.75rem);
+  left: auto;
+  right: 0;
+  translate: none;
+}
+.dash-figure [data-mark-badge="left"]::after {
+  left: auto;
+  right: calc(100% + 0.75rem);
+}

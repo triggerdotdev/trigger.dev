@@ -4,19 +4,22 @@
 // CLI hands result.content straight to the model, so it must be text content with /docs/ links.
 // get_page must return a page with its snippets inlined (the page body comes from the build).
 // Usage: node scripts/check-mcp.mjs <base, e.g. http://localhost:43000/docs>
+import { protectionHeaders } from "./protection-headers.mjs";
+
 const [base] = process.argv.slice(2);
 if (!base) {
   console.error("usage: node scripts/check-mcp.mjs <base>");
   process.exit(2);
 }
 
-// A preview behind Vercel Authentication lets the check in with the project's automation bypass secret.
-const bypass = process.env.VERCEL_AUTOMATION_BYPASS_SECRET;
-const bypassHeaders = bypass ? { "x-vercel-protection-bypass": bypass } : {};
+// Lets the check through a deployment's Vercel Authentication (protection-headers.mjs).
+const bypassHeaders = await protectionHeaders();
 
 async function call(name, args) {
   const res = await fetch(`${base.replace(/\/$/, "")}/mcp`, {
     method: "POST",
+    // Never follow a redirect: the protection header would go with it to another host.
+    redirect: "error",
     headers: {
       "Content-Type": "application/json",
       Accept: "application/json, text/event-stream",
@@ -76,6 +79,8 @@ if (legacy.status !== 200 || !legacy.items[0]?.text.startsWith("# "))
 async function raw(body) {
   const res = await fetch(`${base.replace(/\/$/, "")}/mcp`, {
     method: "POST",
+    // Never follow a redirect: the protection header would go with it to another host.
+    redirect: "error",
     headers: { "Content-Type": "application/json", Accept: "application/json", ...bypassHeaders },
     body: JSON.stringify(body),
   });

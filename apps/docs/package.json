@@ -10,12 +10,17 @@
     "start": "next start --port 43000",
     "postinstall": "fumadocs-mdx",
     "check": "node scripts/check.mjs",
+    "check:figures": "node scripts/check-figures.mjs",
     "test": "vitest run"
   },
   "dependencies": {
+    "@ai-sdk/amazon-bedrock": "4.0.186",
     "@ai-sdk/anthropic": "3.0.125",
     "@ai-sdk/react": "3.0.170",
+    "@aws-sdk/credential-provider-web-identity": "3.972.77",
     "@babel/parser": "7.29.9",
+    "@heroicons/react": "2.0.13",
+    "@vercel/functions": "3.11.1",
     "ai": "6.0.116",
     "fumadocs-core": "16.19.6",
     "fumadocs-mdx": "15.6.4",

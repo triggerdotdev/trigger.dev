@@ -7,7 +7,7 @@ paths:
 
 - MDX rendered by the docs site in `apps/docs`; `docs/AGENTS.md` has the full guide, including what each CI check failure means. Frontmatter: `title`, `description`, `sidebarTitle` (optional).
 - After creating a new page, add it to `docs.json` navigation under the correct group.
-- Components: `<Note>`, `<Warning>`, `<Info>`, `<Tip>`, `<CodeGroup>`, `<Expandable>`, `<Steps>`/`<Step>` (Mintlify's names and props).
+- Components: `<Note>`, `<Warning>`, `<Info>`, `<Tip>`, `<CodeGroup>`, `<Expandable>`, `<Steps>`/`<Step>` (Mintlify's names and props). Pictures of the dashboard are `<DashboardFigure>`, not screenshots (`.claude/skills/docs-dashboard-figures/SKILL.md`).
 - Moving or deleting a page: add a `redirects` entry in `docs.json`.
 - Check with `pnpm --filter docs-site check --links` (fast), or build and run `check` for everything CI runs.
 - Code examples should be complete and runnable where possible.

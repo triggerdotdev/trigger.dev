@@ -7,6 +7,7 @@ import { CodeSample } from "./code-block";
 import { DeployExample } from "./deploy-example";
 import { TypeHover } from "./type-hover";
 import { SdkType } from "./sdk-type";
+import { DashboardFigure } from "./dashboard-figure";
 import { DashboardAnchor } from "./dashboard-anchor";
 import { withBase } from "@/lib/base-path";
 import { personalizationEnabled, productionDashboardOrigin } from "@/lib/dashboard-link";
@@ -18,6 +19,8 @@ const components = {
   // Type hover popups on SDK code samples (lib/twoslash.ts, lib/rehype-code-weight.ts).
   TypeHover,
   SdkType,
+  // Dashboard screens drawn in code (lib/dashboard-figures.ts).
+  DashboardFigure,
   pre: CodeSample,
   // Added after example repo cards by lib/remark-deploy-example.ts.
   DeployExample,

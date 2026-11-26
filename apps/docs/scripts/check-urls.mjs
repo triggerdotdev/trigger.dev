@@ -9,6 +9,7 @@
 import { readFileSync, writeFileSync, existsSync } from "node:fs";
 import path from "node:path";
 import { contentDirOf } from "../lib/content-files.ts";
+import { protectionHeaders } from "./protection-headers.mjs";
 
 const [base] = process.argv.slice(2).filter((a) => !a.startsWith("--"));
 const docsJsonPath = path.join(contentDirOf(path.resolve(import.meta.dirname, "..")), "docs.json");
@@ -17,9 +18,6 @@ if (!base) {
   process.exit(2);
 }
 const root = base.replace(/\/$/, "");
-// A preview behind Vercel Authentication lets the check in with the project's automation bypass secret.
-const bypass = process.env.VERCEL_AUTOMATION_BYPASS_SECRET;
-const bypassHeaders = bypass ? { "x-vercel-protection-bypass": bypass } : {};
 const LIVE = "https://trigger.dev/docs";
 const cache = new URL("./live-sitemap.txt", import.meta.url);
 
@@ -123,10 +121,12 @@ const checks = [
 async function resolve(path) {
   let url = root + path;
   for (let hop = 0; hop < 5; hop++) {
-    const res = await fetch(url, { redirect: "manual", headers: bypassHeaders });
+    // Lets the check through a deployment's Vercel Authentication; refreshed per request because
+    // a GitHub OIDC token can expire during a long run.
+    const res = await fetch(url, { redirect: "manual", headers: await protectionHeaders() });
     if (res.status >= 300 && res.status < 400) {
       url = new URL(res.headers.get("location"), url).href;
-      // Never follow off the base: the bypass secret would go with the request.
+      // Never follow off the base: the bypass secret or OIDC token would go with the request.
       if (new URL(url).origin !== new URL(root).origin) return { status: "offsite", final: url };
       continue;
     }

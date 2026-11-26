@@ -5,7 +5,7 @@ import { AskAIButton, AskAIPanel, PhoneSearchAndAsk } from "@/components/ask-ai"
 import { HeaderTabs } from "@/components/header-tabs";
 import { Logo } from "@/components/logo";
 import { ReaderMenu } from "@/components/reader-menu";
-import { askEnabled } from "@/lib/ask-config";
+import { askConfigured } from "@/lib/ask-config";
 import { dashboardLink, personalizationEnabled } from "@/lib/dashboard-link";
 import { pageTree, sectionTabs as tabs } from "@/lib/nav";
 import { githubUrl } from "@/lib/source";
@@ -19,7 +19,7 @@ export default function Layout({ children }: { children: ReactNode }) {
       // Pages are static and CDN-cached: fetch one on click instead of every sidebar link in view.
       sidebar={{ prefetch: false }}
       searchToggle={
-        askEnabled()
+        askConfigured()
           ? { components: { sm: <PhoneSearchAndAsk hideIfDisabled className="p-2" /> } }
           : undefined
       }
@@ -36,7 +36,7 @@ export default function Layout({ children }: { children: ReactNode }) {
       }}
       githubUrl={githubUrl}
       links={[
-        ...(askEnabled() ? [{ type: "custom" as const, children: <AskAIButton /> }] : []),
+        ...(askConfigured() ? [{ type: "custom" as const, children: <AskAIButton /> }] : []),
         {
           type: "button",
           text: "Dashboard",
@@ -49,7 +49,7 @@ export default function Layout({ children }: { children: ReactNode }) {
       ]}
     >
       {children}
-      {askEnabled() && <AskAIPanel />}
+      {askConfigured() && <AskAIPanel />}
     </DocsLayout>
   );
 }

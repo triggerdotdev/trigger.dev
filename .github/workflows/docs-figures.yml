@@ -1,0 +1,40 @@
+name: 📚 Docs figures
+
+# The docs draw some dashboard screens in code (apps/docs/lib/dashboard-figures.ts). A webapp change
+# can make one stale, so this runs on webapp changes too and lists the figures to review as warnings.
+# It fails only on a <DashboardFigure> tag that names a missing figure or mark.
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+    paths:
+      - ".github/workflows/docs-figures.yml"
+      - "apps/webapp/app/**"
+      - "apps/docs/lib/dashboard-figures*"
+      - "apps/docs/scripts/check-figures.mjs"
+      - "docs/**"
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  figures:
+    name: figures
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: 📥 Checkout repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: ⎔ Setup node
+        uses: WarpBuilds/setup-node@2867cf8f859d73439e1ad18b542617e5a29f0f10 # v7.0.0
+        with:
+          node-version: 24.22.1
+
+      - name: 🖼️ Check dashboard figures
+        run: node apps/docs/scripts/check-figures.mjs

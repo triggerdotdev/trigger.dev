@@ -1,8 +1,10 @@
+import { createBedrockAnthropic } from "@ai-sdk/amazon-bedrock/anthropic";
 import type { LanguageModelV3StreamPart } from "@ai-sdk/provider";
 import { simulateReadableStream } from "ai";
 import { MockLanguageModelV3 } from "ai/test";
 import { describe, expect, it } from "vitest";
 import { createAskHandler, type AskDeps } from "./ask";
+import { bedrockSettings } from "./ask-config";
 import {
   dailyTokens,
   fixedWindowLimiter,
@@ -89,6 +91,37 @@ function memoryCounter(): Counter {
 }
 
 describe("ask handler", () => {
+  it("sends Bedrock the same Anthropic request: cache breakpoint, thinking, tools", async () => {
+    let url = "";
+    let auth = "";
+    let sent: Record<string, any> = {};
+    const settings = bedrockSettings({
+      DOCS_ASK_AWS_ACCESS_KEY_ID: "id",
+      DOCS_ASK_AWS_SECRET_ACCESS_KEY: "secret",
+      DOCS_ASK_AWS_REGION: "us-east-1",
+    });
+    const model = createBedrockAnthropic({
+      ...settings,
+      // The SDK's own transport hook: captures the signed request instead of calling AWS.
+      fetch: async (input, init) => {
+        url = String(input);
+        auth = new Headers(init?.headers).get("authorization") ?? "";
+        sent = JSON.parse(String(init?.body));
+        return new Response("{}", { status: 400 });
+      },
+    })("us.anthropic.claude-sonnet-5-5");
+    const logs: Record<string, unknown>[] = [];
+    await (await createAskHandler(deps({ model, log: (e) => logs.push(e) }))(ask("hi"))).text();
+    expect(url).toBe(
+      "https://bedrock-runtime.us-east-1.amazonaws.com/model/us.anthropic.claude-sonnet-5-5/invoke-with-response-stream"
+    );
+    expect(auth).toMatch(/^AWS4-HMAC-SHA256 Credential=id\//);
+    expect(sent.system[0].cache_control).toEqual({ type: "ephemeral", ttl: "1h" });
+    expect(sent.thinking).toEqual({ type: "between_tools" });
+    expect(sent.tools.map((t: { name: string }) => t.name)).toEqual(["search_docs", "read_page"]);
+    expect(logs.some((l) => l.event === "ask.error")).toBe(true);
+  });
+
   it("streams an answer with numbered sources, and the excerpt goes to the model only", async () => {
     const { model, prompts } = scriptedModel();
     const logs: Record<string, unknown>[] = [];

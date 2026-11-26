@@ -2,13 +2,14 @@
 // Security headers at <base>: docs pages can't be framed by other sites, embed pages only by the
 // dashboards, and every response carries nosniff and a referrer policy.
 // Usage: node scripts/check-headers.mjs <base, e.g. http://localhost:43000/docs>
+import { protectionHeaders } from "./protection-headers.mjs";
+
 const [base] = process.argv.slice(2);
 if (!base) {
   console.error("usage: node scripts/check-headers.mjs <base>");
   process.exit(2);
 }
-const bypass = process.env.VERCEL_AUTOMATION_BYPASS_SECRET;
-const headers = bypass ? { "x-vercel-protection-bypass": bypass } : {};
+const headers = await protectionHeaders();
 
 const cases = [
   ["/introduction", "frame-ancestors 'self'"],

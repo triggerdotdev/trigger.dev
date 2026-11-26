@@ -1,6 +1,7 @@
 import { pageImports, snippets } from "@/.generated/snippets.js";
 import { sectionFile } from "./agent-surface";
 import { queryChoices, type Chosen } from "./choices";
+import { expandDashboardFigures } from "./dashboard-figures";
 import type { Folder, Node } from "fumadocs-core/page-tree";
 import { navPages, pageTree, sections } from "./nav";
 import { expandSdkTypes } from "./sdk-type-table";
@@ -94,13 +95,15 @@ function pageFrontmatter(page: DocPage) {
 }
 
 /**
- * The markdown an agent gets for a page: title, description and the body with snippets and SDK type
- * tables inlined, keeping only the `chosen` variant of each tab group.
+ * The markdown an agent gets for a page: title, description and the body with snippets, SDK type
+ * tables and dashboard figure descriptions inlined, keeping only the `chosen` variant of each tab group.
  */
 export async function pageMarkdown(page: DocPage, chosen: Chosen = {}) {
   // Snippet sources come from the build, not the disk: the deployed app has no trigger.dev/docs.
-  const body = expandSdkTypes(
-    inlineSnippets(await page.data.getText("processed"), pageImports[page.path] ?? "", snippets)
+  const body = expandDashboardFigures(
+    expandSdkTypes(
+      inlineSnippets(await page.data.getText("processed"), pageImports[page.path] ?? "", snippets)
+    )
   );
   const api = await apiMarkdown(page);
   const description = page.data.description ?? api?.description;

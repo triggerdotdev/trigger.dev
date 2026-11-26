@@ -1,7 +1,8 @@
+import { createBedrockAnthropic } from "@ai-sdk/amazon-bedrock/anthropic";
 import { anthropic } from "@ai-sdk/anthropic";
 import { pageMarkdown } from "@/lib/agent-markdown";
 import { createAskHandler } from "@/lib/ask";
-import { askEnabled, askModel } from "@/lib/ask-config";
+import { askModelId, askProvider, bedrockSettings } from "@/lib/ask-config";
 import { listedPages } from "@/lib/nav";
 import { limiterFromEnv } from "@/lib/ask-rate-limit";
 import { searcher } from "@/lib/search";
@@ -20,13 +21,21 @@ function pageIndex() {
   return lines.join("\n");
 }
 
+const configured = askModelId();
+// Anthropic without a key is the normal local setup; a chosen Bedrock that can't run is a mistake.
+if (configured.error && askProvider() === "bedrock")
+  console.error(JSON.stringify({ event: "ask.config_error", error: configured.error }));
+
 const limiter = limiterFromEnv();
-if (askEnabled() && !limiter)
+if (configured.id && !limiter)
   console.warn("Ask AI: REDIS_URL is not set, so rate limits are off (local only).");
 
-const handler = askEnabled()
+const handler = configured.id
   ? createAskHandler({
-      model: anthropic(askModel()),
+      model:
+        askProvider() === "bedrock"
+          ? createBedrockAnthropic(bedrockSettings())(configured.id)
+          : anthropic(configured.id),
       limiter,
       proxySecret: process.env.DOCS_WORKER_SECRET || undefined,
       pageIndex: pageIndex(),
