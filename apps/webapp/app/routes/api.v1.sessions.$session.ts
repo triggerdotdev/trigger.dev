@@ -11,6 +11,7 @@ import {
   resolveSessionByIdOrExternalId,
   serializeSessionWithFriendlyRunId,
 } from "~/services/realtime/sessions.server";
+import { sessionUpdateData } from "~/services/realtime/sessionWrites.server";
 import {
   anyResource,
   createActionApiRoute,
@@ -109,18 +110,7 @@ const { action } = createActionApiRoute(
     try {
       const updated = await prisma.session.update({
         where: { id: existing.id },
-        data: {
-          ...(body.tags !== undefined ? { tags: body.tags } : {}),
-          ...(body.metadata !== undefined
-            ? {
-                metadata:
-                  body.metadata === null
-                    ? Prisma.JsonNull
-                    : (body.metadata as Prisma.InputJsonValue),
-              }
-            : {}),
-          ...(body.externalId !== undefined ? { externalId: body.externalId } : {}),
-        },
+        data: sessionUpdateData(body),
       });
 
       return json<RetrieveSessionResponseBody>(await serializeSessionWithFriendlyRunId(updated));

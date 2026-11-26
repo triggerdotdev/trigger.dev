@@ -90,7 +90,7 @@ const SCOPE_LABEL_OVERRIDES: Record<string, string> = {
   "write:projects": "Create projects",
   "write:query": "Run queries",
   "write:runs": "Cancel and replay runs",
-  "write:sessions": "Send to and end agent sessions",
+  "write:sessions": "Send to and end agent sessions, and change their tags and metadata",
   "write:tasks": "Manage tasks",
   "write:waitpoints": "Complete waitpoints",
   "write:webhooks": "Manage webhooks",

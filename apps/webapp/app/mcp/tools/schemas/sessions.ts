@@ -125,6 +125,29 @@ export const ReadSessionTranscriptInput = CommonProjectsInput.extend({
     .default(20),
 });
 
+export const UpdateSessionInput = CommonProjectsInput.extend({
+  sessionId: SessionIdInput,
+  tags: z
+    .array(z.string().max(128))
+    .max(10)
+    .describe("Replaces all of the session's tags. Up to 10, each up to 128 characters.")
+    .optional(),
+  metadata: z
+    .record(z.string(), z.unknown())
+    .nullable()
+    .describe("Replaces the session's metadata in full. Pass null to clear it.")
+    .optional(),
+});
+
+export type UpdateSessionInput = z.output<typeof UpdateSessionInput>;
+
+export const CloseSessionInput = CommonProjectsInput.extend({
+  sessionId: SessionIdInput,
+  reason: z.string().max(256).describe("Why the session is closed, stored with it.").optional(),
+});
+
+export type CloseSessionInput = z.output<typeof CloseSessionInput>;
+
 export const ListPlaygroundConversationsInput = CommonProjectsInput.extend({
   agentSlug: z
     .string()

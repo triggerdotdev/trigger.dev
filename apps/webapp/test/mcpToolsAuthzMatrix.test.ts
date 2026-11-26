@@ -186,6 +186,12 @@ const TOOLS: Array<{
     scope: "read:sessions",
   },
   {
+    tool: "update_session",
+    args: { ...project, sessionId: "session_1", tags: ["a"] },
+    scope: "write:sessions",
+  },
+  { tool: "close_session", args: { ...project, sessionId: "session_1" }, scope: "write:sessions" },
+  {
     tool: "list_playground_conversations",
     args: { ...project, agentSlug: "my-agent" },
     scope: "read:sessions",

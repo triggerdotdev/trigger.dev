@@ -21,7 +21,7 @@ const ENDPOINT_ID = /^wh_[a-z0-9]{1,64}$/;
 const WAITPOINT_ID = /^waitpoint_[a-z0-9]{1,64}$/;
 const CURSOR = /^[A-Za-z0-9_-]{1,2000}$/;
 
-const PREVIEW_UNSAFE =
+export const PREVIEW_UNSAFE =
   /[\u007f-\u009f\u061c\u200b-\u200f\u2028\u2029\u202a-\u202e\u2066-\u2069\ufeff]/g;
 
 export function quoteForPreview(text: string): string {

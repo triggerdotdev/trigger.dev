@@ -5905,6 +5905,117 @@
             }
           },
           {
+            "name": "update_session",
+            "title": "Update Session",
+            "description": "Replace a session's tags, its metadata, or both, like the public API's session update. Omitted fields keep their values; pass metadata null to clear it. This also works on a closed session. The external ID can't be changed.",
+            "inputSchema": {
+              "type": "object",
+              "$schema": "https://json-schema.org/draft/2020-12/schema",
+              "properties": {
+                "projectRef": {
+                  "type": "string",
+                  "description": "The trigger.dev project ref, starts with proj_. We will attempt to automatically detect the project ref if running inside a directory that includes a trigger.config.ts file, or if you pass the --project-ref option to the MCP server."
+                },
+                "configPath": {
+                  "type": "string",
+                  "description": "The path to the trigger.config.ts file. Only used when the trigger.config.ts file is not at the root dir (like in a monorepo setup). If not provided, we will try to find the config file in the current working directory"
+                },
+                "environment": {
+                  "default": "dev",
+                  "type": "string",
+                  "enum": ["dev", "staging", "prod", "preview"],
+                  "description": "The environment to get tasks for"
+                },
+                "branch": {
+                  "type": "string",
+                  "description": "The branch to get tasks for, only used for preview environments and branchable development environments"
+                },
+                "sessionId": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 256,
+                  "description": "The session id (session_* friendlyId) or the externalId it was created with."
+                },
+                "tags": {
+                  "maxItems": 10,
+                  "type": "array",
+                  "items": {
+                    "type": "string",
+                    "maxLength": 128
+                  },
+                  "description": "Replaces all of the session's tags. Up to 10, each up to 128 characters."
+                },
+                "metadata": {
+                  "anyOf": [
+                    {
+                      "type": "object",
+                      "propertyNames": {
+                        "type": "string"
+                      },
+                      "additionalProperties": {}
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "description": "Replaces the session's metadata in full. Pass null to clear it."
+                }
+              },
+              "required": ["sessionId"]
+            },
+            "annotations": {
+              "title": "Update Session",
+              "readOnlyHint": false,
+              "destructiveHint": true
+            }
+          },
+          {
+            "name": "close_session",
+            "title": "Close Session",
+            "description": "Close a session for good, like the public API's session close. It accepts no more input and starts no more runs, and its current run is asked to stop (best effort). Optionally record a reason.",
+            "inputSchema": {
+              "type": "object",
+              "$schema": "https://json-schema.org/draft/2020-12/schema",
+              "properties": {
+                "projectRef": {
+                  "type": "string",
+                  "description": "The trigger.dev project ref, starts with proj_. We will attempt to automatically detect the project ref if running inside a directory that includes a trigger.config.ts file, or if you pass the --project-ref option to the MCP server."
+                },
+                "configPath": {
+                  "type": "string",
+                  "description": "The path to the trigger.config.ts file. Only used when the trigger.config.ts file is not at the root dir (like in a monorepo setup). If not provided, we will try to find the config file in the current working directory"
+                },
+                "environment": {
+                  "default": "dev",
+                  "type": "string",
+                  "enum": ["dev", "staging", "prod", "preview"],
+                  "description": "The environment to get tasks for"
+                },
+                "branch": {
+                  "type": "string",
+                  "description": "The branch to get tasks for, only used for preview environments and branchable development environments"
+                },
+                "sessionId": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 256,
+                  "description": "The session id (session_* friendlyId) or the externalId it was created with."
+                },
+                "reason": {
+                  "type": "string",
+                  "maxLength": 256,
+                  "description": "Why the session is closed, stored with it."
+                }
+              },
+              "required": ["sessionId"]
+            },
+            "annotations": {
+              "title": "Close Session",
+              "readOnlyHint": false,
+              "destructiveHint": true
+            }
+          },
+          {
             "name": "trigger_task",
             "title": "Trigger Task",
             "description": "Trigger a task in the project. Use the get_tasks tool to get a list of tasks and ask the user to select one if it's not clear which one to use. The run executes in the background, so only wait for it to complete (with the wait_for_run_to_complete tool) if the user asked you to.",
