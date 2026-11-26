@@ -1,6 +1,10 @@
 import { BackgroundWorkerMetadata, tryCatch } from "@trigger.dev/core/v3";
 import { CURRENT_DEPLOYMENT_LABEL } from "@trigger.dev/core/v3/isomorphic";
-import type { PrismaClientOrTransaction, WorkerDeployment } from "@trigger.dev/database";
+import {
+  isTransactionClient,
+  type PrismaClientOrTransaction,
+  type WorkerDeployment,
+} from "@trigger.dev/database";
 import { $transaction, webhookPrisma } from "~/db.server";
 import { syncSkewProtectionThresholdSignal } from "~/services/realtime/skewProtectionThresholdSignal.server";
 import { logger } from "~/services/logger.server";
@@ -18,10 +22,17 @@ import { compareDeploymentVersions } from "../utils/deploymentVersions";
 import { computeOnlyEnabled } from "../computeOnlyFlag.server";
 import {
   clearSkewProtectionThresholdsAbove,
+  lockThresholdsAbove,
   type SkewProtectionThresholdsCleared,
 } from "./skewProtectionThreshold.server";
 
 export type ChangeCurrentDeploymentDirection = "promote" | "rollback";
+
+/** A compute-only organization can't make a deployment without a compute template current. */
+export const blockedForComputeOnly = (
+  deployment: Pick<WorkerDeployment, "templateKey">,
+  organizationFeatureFlags: unknown
+) => !deployment.templateKey && computeOnlyEnabled(organizationFeatureFlags);
 
 export type ChangeCurrentDeploymentOptions = {
   /** Skip the check that a promote moves forward and a rollback moves back. */
@@ -36,7 +47,19 @@ export type ChangeCurrentDeploymentOptions = {
    * deployment with no compute template costs one read to check the organization.
    */
   organizationFeatureFlags?: unknown;
+  /** When set, the switch only happens if this is still the current deployment (null: none). */
+  expectedCurrentDeploymentId?: string | null;
+  /** When set, the switch only happens if it would clear exactly these thresholds. */
+  expectedClearedThresholds?: SkewProtectionThresholdsCleared;
 };
+
+const THRESHOLDS_CHANGED = new Error("The skew protection thresholds changed since approval");
+
+const clearedKey = (cleared: SkewProtectionThresholdsCleared) =>
+  JSON.stringify({
+    environment: cleared.environment?.version ?? null,
+    tasks: [...cleared.tasks].sort((a, b) => a.task.localeCompare(b.task)),
+  });
 
 export type ChangeCurrentDeploymentResult = {
   /**
@@ -44,6 +67,8 @@ export type ChangeCurrentDeploymentResult = {
    * because the new current version is below them.
    */
   skewProtectionThresholdsCleared?: SkewProtectionThresholdsCleared;
+  /** Set when `expectedCurrentDeploymentId` no longer matched; nothing changed. */
+  stale?: true;
 };
 
 export class ChangeCurrentDeploymentService extends BaseService {
@@ -63,7 +88,17 @@ export class ChangeCurrentDeploymentService extends BaseService {
     direction: ChangeCurrentDeploymentDirection,
     options: ChangeCurrentDeploymentOptions = {}
   ): Promise<ChangeCurrentDeploymentResult> {
-    const { disableVersionCheck, actor, organizationFeatureFlags } = options;
+    const {
+      disableVersionCheck,
+      actor,
+      organizationFeatureFlags,
+      expectedCurrentDeploymentId,
+      expectedClearedThresholds,
+    } = options;
+    // On a caller's transaction a stale answer couldn't undo the pointer write, which would commit.
+    if (expectedClearedThresholds !== undefined && isTransactionClient(this._prisma)) {
+      throw new Error("expectedClearedThresholds needs the service to run its own transaction");
+    }
     if (!deployment.workerId) {
       throw new ServiceValidationError(
         direction === "promote"
@@ -95,6 +130,13 @@ export class ChangeCurrentDeploymentService extends BaseService {
         },
       },
     });
+
+    if (
+      expectedCurrentDeploymentId !== undefined &&
+      (currentPromotion?.deployment.id ?? null) !== expectedCurrentDeploymentId
+    ) {
+      return { stale: true };
+    }
 
     if (currentPromotion) {
       if (currentPromotion.deployment.id === deployment.id) {
@@ -131,11 +173,11 @@ export class ChangeCurrentDeploymentService extends BaseService {
     }
 
     // Set this deployment as the current deployment for this environment, and in the same
-    // transaction clear every skew protection threshold this deployment is below.
-    const thresholdsCleared = await $transaction(
-      this._prisma,
-      "changeCurrentDeployment",
-      async (tx) => {
+    // transaction clear every skew protection threshold this deployment is below. With an
+    // expected current deployment the switch is conditional on it.
+    // Locks are taken pointer first, then the environment row, in every path.
+    const switched = await $transaction(this._prisma, "changeCurrentDeployment", async (tx) => {
+      if (expectedCurrentDeploymentId === undefined) {
         await tx.workerDeploymentPromotion.upsert({
           where: {
             environmentId_label: {
@@ -152,14 +194,49 @@ export class ChangeCurrentDeploymentService extends BaseService {
             deploymentId: deployment.id,
           },
         });
+      } else {
+        const pointer = {
+          environmentId: deployment.environmentId,
+          label: CURRENT_DEPLOYMENT_LABEL,
+        };
+        const written =
+          expectedCurrentDeploymentId === null
+            ? await tx.workerDeploymentPromotion.createMany({
+                data: [{ ...pointer, deploymentId: deployment.id }],
+                skipDuplicates: true,
+              })
+            : await tx.workerDeploymentPromotion.updateMany({
+                where: { ...pointer, deploymentId: expectedCurrentDeploymentId },
+                data: { deploymentId: deployment.id },
+              });
+        if (written.count === 0) return { stale: true as const };
+      }
 
-        return clearSkewProtectionThresholdsAbove(tx, {
+      if (expectedClearedThresholds !== undefined) {
+        const clearing = await lockThresholdsAbove(
+          tx,
+          deployment.environmentId,
+          deployment.version
+        );
+        // Throwing rolls back the pointer write above.
+        if (clearedKey(clearing) !== clearedKey(expectedClearedThresholds)) {
+          throw THRESHOLDS_CHANGED;
+        }
+      }
+
+      return {
+        thresholdsCleared: await clearSkewProtectionThresholdsAbove(tx, {
           environmentId: deployment.environmentId,
           version: deployment.version,
           ...actor,
-        });
-      }
-    );
+        }),
+      };
+    }).catch((error: unknown) => {
+      if (error === THRESHOLDS_CHANGED) return { stale: true as const };
+      throw error;
+    });
+    if (switched && "stale" in switched) return { stale: true };
+    const thresholdsCleared = switched?.thresholdsCleared;
 
     // The signal says whether the current deployment's SDK can continue a turn, and carries the
     // thresholds the promote may have cleared. Not awaited: with S2 slow it would hold every
@@ -261,7 +338,7 @@ export class ChangeCurrentDeploymentService extends BaseService {
               select: { organization: { select: { featureFlags: true } } },
             })
           )?.organization.featureFlags;
-    if (computeOnlyEnabled(flags)) {
+    if (blockedForComputeOnly(deployment, flags)) {
       logger.warn("Refused to make a deployment without a template current (compute-only org)", {
         deploymentId: deployment.id,
         environmentId: deployment.environmentId,

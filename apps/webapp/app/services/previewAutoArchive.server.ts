@@ -117,6 +117,7 @@ export async function previewAutoArchiveCount(
         scheduled: 0,
         inProgress: 0,
         protectedBranches: [] as string[],
+        ready: [] as string[],
         partial: branches.length > PREVIEW_LIMIT,
       };
       for (const branch of sample) {
@@ -136,6 +137,7 @@ export async function previewAutoArchiveCount(
             break;
           case "ready":
             result.count++;
+            result.ready.push(branch.branchName!);
             break;
           case "scheduled":
             result.scheduled++;
@@ -156,25 +158,38 @@ export async function savePreviewAutoArchivePolicy(
   prisma: PrismaClient,
   parentId: string,
   input: { days: number | null; excludedBranches: string[] },
-  now = new Date()
-) {
+  now = new Date(),
+  /** When set, saves only if this is still the stored policy. */
+  expected?: { days: number | null; excludedBranches: string[] }
+): Promise<{ stale: true } | undefined> {
   const { days, excludedBranches } = PreviewAutoArchivePolicy.parse(input);
-  await prisma.runtimeEnvironment.update({
+  const where = {
+    id: parentId,
+    type: "PREVIEW" as const,
+    parentEnvironmentId: null,
+    isBranchableEnvironment: true,
+    archivedAt: null,
+  };
+  const data = {
+    previewAutoArchiveAfterDays: days,
+    previewAutoArchiveExcludedBranches: excludedBranches,
+    previewAutoArchiveNextCheckAt: days === null ? null : now,
+    previewAutoArchiveCursorCreatedAt: null,
+    previewAutoArchiveCursorId: null,
+  };
+  if (!expected) {
+    await prisma.runtimeEnvironment.update({ where, data });
+    return;
+  }
+  const written = await prisma.runtimeEnvironment.updateMany({
     where: {
-      id: parentId,
-      type: "PREVIEW",
-      parentEnvironmentId: null,
-      isBranchableEnvironment: true,
-      archivedAt: null,
+      ...where,
+      previewAutoArchiveAfterDays: expected.days,
+      previewAutoArchiveExcludedBranches: { equals: expected.excludedBranches },
     },
-    data: {
-      previewAutoArchiveAfterDays: days,
-      previewAutoArchiveExcludedBranches: excludedBranches,
-      previewAutoArchiveNextCheckAt: days === null ? null : now,
-      previewAutoArchiveCursorCreatedAt: null,
-      previewAutoArchiveCursorId: null,
-    },
+    data,
   });
+  return written.count === 0 ? { stale: true } : undefined;
 }
 
 /** At most four database pages globally, even with duplicate jobs or many webapp

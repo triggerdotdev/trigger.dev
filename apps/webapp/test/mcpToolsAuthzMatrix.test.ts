@@ -13,7 +13,9 @@ const SECRET = "test-user-actor-secret";
 
 vi.setConfig({ testTimeout: 60_000 });
 
-vi.hoisted(() => {
+await vi.hoisted(async () => {
+  const { pointAllRedisAt } = await import("./helpers/redisEnv");
+  pointAllRedisAt("127.0.0.1", 1);
   Object.assign(process.env, {
     DATABASE_URL: "postgresql://unused:unused@localhost:5432/unused",
     DIRECT_URL: "postgresql://unused:unused@localhost:5432/unused",
@@ -95,12 +97,76 @@ const prompt = { ...project, slug: "my-prompt" };
 const sched = { ...project, scheduleId: "sched_1" };
 const errorGroup = { ...project, errorId: "error_abc123" };
 
+const notBranchable =
+  "This environment has no branches. Use preview (with preview branches enabled in the dashboard) or dev; nothing changed.";
+const deploymentNotFound =
+  "Deployment abc was not found in this environment. Use list_deploys to see the deployments in this environment.";
+const regionsOff = "Regions are not available on this server.";
+
 const TOOLS: Array<{
   tool: string;
   args: Record<string, unknown>;
   scope: string;
   ownText?: string;
 }> = [
+  {
+    tool: "list_environments",
+    args: {},
+    scope: "read:environments",
+    ownText:
+      "Found 2 environments\n\n- preview (PREVIEW) | current deployment not shown: needs read:deployments\n- prod (PRODUCTION) | current deployment not shown: needs read:deployments",
+  },
+  {
+    tool: "list_branches",
+    args: { environment: "preview" },
+    scope: "read:branches",
+    ownText:
+      "This project has no branchable preview environment. Enable preview branches in the dashboard first.",
+  },
+  { tool: "list_regions", args: {}, scope: "read:projects", ownText: regionsOff },
+  {
+    tool: "promote_deployment",
+    args: { ...project, shortCode: "abc" },
+    scope: "write:deployments",
+    ownText: deploymentNotFound,
+  },
+  {
+    tool: "rollback_deployment",
+    args: { ...project, shortCode: "abc" },
+    scope: "write:deployments",
+    ownText: deploymentNotFound,
+  },
+  {
+    tool: "cancel_deployment",
+    args: { ...project, shortCode: "abc" },
+    scope: "write:deployments",
+    ownText: deploymentNotFound,
+  },
+  {
+    tool: "create_branch",
+    args: { environment: "preview", branchName: "x" },
+    scope: "write:branches",
+    ownText: notBranchable,
+  },
+  {
+    tool: "archive_branch",
+    args: { environment: "preview", branchName: "x" },
+    scope: "write:branches",
+    ownText: notBranchable,
+  },
+  {
+    tool: "set_preview_auto_archive",
+    args: { days: 7 },
+    scope: "write:branches",
+    ownText:
+      "This project has no branchable preview environment. Enable preview branches in the dashboard first; nothing changed.",
+  },
+  {
+    tool: "set_default_region",
+    args: { region: "us-east-1" },
+    scope: "manage:project",
+    ownText: regionsOff,
+  },
   { tool: "get_current_worker", args: project, scope: "read:deployments" },
   { tool: "get_task_schema", args: { ...project, taskSlug: "my-task" }, scope: "read:deployments" },
   {
@@ -366,6 +432,12 @@ async function seed(prisma: PrismaClient) {
     organizationId: a.organization.id,
     type: "PRODUCTION",
     slug: "prod",
+  });
+  await createRuntimeEnvironment(prisma, {
+    projectId: a.project.id,
+    organizationId: a.organization.id,
+    type: "PREVIEW",
+    slug: "preview",
   });
 
   const outsiderPat = await pat(prisma, outsider.user.id);

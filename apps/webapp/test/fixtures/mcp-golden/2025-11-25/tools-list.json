@@ -1474,6 +1474,99 @@
             }
           },
           {
+            "name": "list_environments",
+            "title": "List Environments",
+            "description": "List a project's environments (prod, staging, preview and your dev environment) with whether each is paused, its current deployment, the preview branch auto-archive policy and whether your dev CLI is connected. Branches are listed by list_branches.",
+            "inputSchema": {
+              "type": "object",
+              "$schema": "https://json-schema.org/draft/2020-12/schema",
+              "properties": {
+                "projectRef": {
+                  "type": "string",
+                  "description": "The trigger.dev project ref, starts with proj_. We will attempt to automatically detect the project ref if running inside a directory that includes a trigger.config.ts file, or if you pass the --project-ref option to the MCP server."
+                },
+                "configPath": {
+                  "type": "string",
+                  "description": "The path to the trigger.config.ts file. Only used when the trigger.config.ts file is not at the root dir (like in a monorepo setup). If not provided, we will try to find the config file in the current working directory"
+                }
+              }
+            },
+            "annotations": {
+              "readOnlyHint": true,
+              "destructiveHint": false,
+              "title": "List Environments"
+            }
+          },
+          {
+            "name": "list_branches",
+            "title": "List Branches",
+            "description": "List preview branches, or your own development branches, like the Branches pages in the dashboard: archived state, last deployment, when automatic archiving is due and whether the dev CLI is connected. 25 per page.",
+            "inputSchema": {
+              "type": "object",
+              "$schema": "https://json-schema.org/draft/2020-12/schema",
+              "properties": {
+                "projectRef": {
+                  "type": "string",
+                  "description": "The trigger.dev project ref, starts with proj_. We will attempt to automatically detect the project ref if running inside a directory that includes a trigger.config.ts file, or if you pass the --project-ref option to the MCP server."
+                },
+                "configPath": {
+                  "type": "string",
+                  "description": "The path to the trigger.config.ts file. Only used when the trigger.config.ts file is not at the root dir (like in a monorepo setup). If not provided, we will try to find the config file in the current working directory"
+                },
+                "environment": {
+                  "type": "string",
+                  "enum": ["preview", "dev"],
+                  "description": "preview branches, or dev for your own dev branches."
+                },
+                "search": {
+                  "type": "string",
+                  "maxLength": 255,
+                  "description": "Only branches whose name contains this text."
+                },
+                "showArchived": {
+                  "type": "boolean",
+                  "description": "Include archived branches."
+                },
+                "page": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 10000,
+                  "description": "The page to return, from 1."
+                }
+              },
+              "required": ["environment"]
+            },
+            "annotations": {
+              "readOnlyHint": true,
+              "destructiveHint": false,
+              "title": "List Branches"
+            }
+          },
+          {
+            "name": "list_regions",
+            "title": "List Regions",
+            "description": "List the regions this project's runs can execute in, like the Regions page, and which one is the project's default. Change the default with set_default_region.",
+            "inputSchema": {
+              "type": "object",
+              "$schema": "https://json-schema.org/draft/2020-12/schema",
+              "properties": {
+                "projectRef": {
+                  "type": "string",
+                  "description": "The trigger.dev project ref, starts with proj_. We will attempt to automatically detect the project ref if running inside a directory that includes a trigger.config.ts file, or if you pass the --project-ref option to the MCP server."
+                },
+                "configPath": {
+                  "type": "string",
+                  "description": "The path to the trigger.config.ts file. Only used when the trigger.config.ts file is not at the root dir (like in a monorepo setup). If not provided, we will try to find the config file in the current working directory"
+                }
+              }
+            },
+            "annotations": {
+              "readOnlyHint": true,
+              "destructiveHint": false,
+              "title": "List Regions"
+            }
+          },
+          {
             "name": "get_query_schema",
             "title": "Get Query Schema",
             "description": "Get the column schema for a specific TRQL table. Available tables: 'runs' (task execution data), 'metrics' (CPU, memory, custom metrics), 'llm_metrics' (LLM token usage, costs, latency). Returns columns, types, descriptions, and allowed values for the specified table.",
@@ -6869,6 +6962,280 @@
             },
             "annotations": {
               "title": "Complete Waitpoint Token",
+              "readOnlyHint": false,
+              "destructiveHint": true
+            }
+          },
+          {
+            "name": "promote_deployment",
+            "title": "Promote Deployment",
+            "description": "Make a newer deployed version the current deployment of an environment, like Promote on the Deployments page. New runs use it from then on. Identify it by its short code from list_deploys; for preview pass the branch.",
+            "inputSchema": {
+              "type": "object",
+              "$schema": "https://json-schema.org/draft/2020-12/schema",
+              "properties": {
+                "projectRef": {
+                  "type": "string",
+                  "description": "The trigger.dev project ref, starts with proj_. We will attempt to automatically detect the project ref if running inside a directory that includes a trigger.config.ts file, or if you pass the --project-ref option to the MCP server."
+                },
+                "configPath": {
+                  "type": "string",
+                  "description": "The path to the trigger.config.ts file. Only used when the trigger.config.ts file is not at the root dir (like in a monorepo setup). If not provided, we will try to find the config file in the current working directory"
+                },
+                "environment": {
+                  "type": "string",
+                  "enum": ["staging", "prod", "preview"],
+                  "description": "The environment the deployment belongs to."
+                },
+                "branch": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 255,
+                  "description": "The preview branch the deployment belongs to."
+                },
+                "shortCode": {
+                  "type": "string",
+                  "pattern": "^[A-Za-z0-9_-]{1,64}$",
+                  "description": "The deployment's short code, as shown by list_deploys."
+                }
+              },
+              "required": ["environment", "shortCode"]
+            },
+            "annotations": {
+              "title": "Promote Deployment",
+              "readOnlyHint": false,
+              "destructiveHint": true
+            }
+          },
+          {
+            "name": "rollback_deployment",
+            "title": "Rollback Deployment",
+            "description": "Make an older deployed version the current deployment of an environment again, like Rollback on the Deployments page. New runs use it from then on. Identify it by its short code from list_deploys; for preview pass the branch.",
+            "inputSchema": {
+              "type": "object",
+              "$schema": "https://json-schema.org/draft/2020-12/schema",
+              "properties": {
+                "projectRef": {
+                  "type": "string",
+                  "description": "The trigger.dev project ref, starts with proj_. We will attempt to automatically detect the project ref if running inside a directory that includes a trigger.config.ts file, or if you pass the --project-ref option to the MCP server."
+                },
+                "configPath": {
+                  "type": "string",
+                  "description": "The path to the trigger.config.ts file. Only used when the trigger.config.ts file is not at the root dir (like in a monorepo setup). If not provided, we will try to find the config file in the current working directory"
+                },
+                "environment": {
+                  "type": "string",
+                  "enum": ["staging", "prod", "preview"],
+                  "description": "The environment the deployment belongs to."
+                },
+                "branch": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 255,
+                  "description": "The preview branch the deployment belongs to."
+                },
+                "shortCode": {
+                  "type": "string",
+                  "pattern": "^[A-Za-z0-9_-]{1,64}$",
+                  "description": "The deployment's short code, as shown by list_deploys."
+                }
+              },
+              "required": ["environment", "shortCode"]
+            },
+            "annotations": {
+              "title": "Rollback Deployment",
+              "readOnlyHint": false,
+              "destructiveHint": true
+            }
+          },
+          {
+            "name": "cancel_deployment",
+            "title": "Cancel Deployment",
+            "description": "Cancel a deployment that is still being built or deployed, like Cancel on the Deployments page. It never becomes current and this cannot be undone. Identify it by its short code from list_deploys; for preview pass the branch.",
+            "inputSchema": {
+              "type": "object",
+              "$schema": "https://json-schema.org/draft/2020-12/schema",
+              "properties": {
+                "projectRef": {
+                  "type": "string",
+                  "description": "The trigger.dev project ref, starts with proj_. We will attempt to automatically detect the project ref if running inside a directory that includes a trigger.config.ts file, or if you pass the --project-ref option to the MCP server."
+                },
+                "configPath": {
+                  "type": "string",
+                  "description": "The path to the trigger.config.ts file. Only used when the trigger.config.ts file is not at the root dir (like in a monorepo setup). If not provided, we will try to find the config file in the current working directory"
+                },
+                "environment": {
+                  "type": "string",
+                  "enum": ["staging", "prod", "preview"],
+                  "description": "The environment the deployment belongs to."
+                },
+                "branch": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 255,
+                  "description": "The preview branch the deployment belongs to."
+                },
+                "shortCode": {
+                  "type": "string",
+                  "pattern": "^[A-Za-z0-9_-]{1,64}$",
+                  "description": "The deployment's short code, as shown by list_deploys."
+                }
+              },
+              "required": ["environment", "shortCode"]
+            },
+            "annotations": {
+              "title": "Cancel Deployment",
+              "readOnlyHint": false,
+              "destructiveHint": true
+            }
+          },
+          {
+            "name": "create_branch",
+            "title": "Create Branch",
+            "description": "Create a preview branch, or a branch of your own dev environment, like New branch on the Branches pages. Each branch is its own environment with its own runs.",
+            "inputSchema": {
+              "type": "object",
+              "$schema": "https://json-schema.org/draft/2020-12/schema",
+              "properties": {
+                "projectRef": {
+                  "type": "string",
+                  "description": "The trigger.dev project ref, starts with proj_. We will attempt to automatically detect the project ref if running inside a directory that includes a trigger.config.ts file, or if you pass the --project-ref option to the MCP server."
+                },
+                "configPath": {
+                  "type": "string",
+                  "description": "The path to the trigger.config.ts file. Only used when the trigger.config.ts file is not at the root dir (like in a monorepo setup). If not provided, we will try to find the config file in the current working directory"
+                },
+                "environment": {
+                  "type": "string",
+                  "enum": ["preview", "dev"],
+                  "description": "preview for a preview branch, dev for a branch of your own dev environment."
+                },
+                "branchName": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 255,
+                  "description": "The git branch name for the new branch."
+                }
+              },
+              "required": ["environment", "branchName"]
+            },
+            "annotations": {
+              "title": "Create Branch",
+              "readOnlyHint": false,
+              "destructiveHint": true
+            }
+          },
+          {
+            "name": "archive_branch",
+            "title": "Archive Branch",
+            "description": "Archive a preview branch, or a branch of your own dev environment, like Archive branch on the Branches pages. It becomes permanently read-only: no runs can be triggered or executed in it. This cannot be undone.",
+            "inputSchema": {
+              "type": "object",
+              "$schema": "https://json-schema.org/draft/2020-12/schema",
+              "properties": {
+                "projectRef": {
+                  "type": "string",
+                  "description": "The trigger.dev project ref, starts with proj_. We will attempt to automatically detect the project ref if running inside a directory that includes a trigger.config.ts file, or if you pass the --project-ref option to the MCP server."
+                },
+                "configPath": {
+                  "type": "string",
+                  "description": "The path to the trigger.config.ts file. Only used when the trigger.config.ts file is not at the root dir (like in a monorepo setup). If not provided, we will try to find the config file in the current working directory"
+                },
+                "environment": {
+                  "type": "string",
+                  "enum": ["preview", "dev"],
+                  "description": "preview for a preview branch, dev for a branch of your own dev environment."
+                },
+                "branchName": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 255,
+                  "description": "The branch name, as shown by list_branches."
+                }
+              },
+              "required": ["environment", "branchName"]
+            },
+            "annotations": {
+              "title": "Archive Branch",
+              "readOnlyHint": false,
+              "destructiveHint": true
+            }
+          },
+          {
+            "name": "set_preview_auto_archive",
+            "title": "Set Preview Branch Auto-Archive",
+            "description": "Set or turn off automatic archiving of preview branches, like the auto-archive settings on the Preview branches page: branches are archived a number of days after their last deployment (or creation), except excluded branch names. Pass days null to turn it off.",
+            "inputSchema": {
+              "type": "object",
+              "$schema": "https://json-schema.org/draft/2020-12/schema",
+              "properties": {
+                "projectRef": {
+                  "type": "string",
+                  "description": "The trigger.dev project ref, starts with proj_. We will attempt to automatically detect the project ref if running inside a directory that includes a trigger.config.ts file, or if you pass the --project-ref option to the MCP server."
+                },
+                "configPath": {
+                  "type": "string",
+                  "description": "The path to the trigger.config.ts file. Only used when the trigger.config.ts file is not at the root dir (like in a monorepo setup). If not provided, we will try to find the config file in the current working directory"
+                },
+                "days": {
+                  "anyOf": [
+                    {
+                      "type": "integer",
+                      "minimum": 1,
+                      "maximum": 365
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "description": "Archive preview branches this many days after their last deployment (or creation). null turns automatic archiving off."
+                },
+                "excludedBranches": {
+                  "maxItems": 100,
+                  "type": "array",
+                  "items": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 255
+                  },
+                  "description": "Branch names that are never archived automatically. Replaces the current list."
+                }
+              },
+              "required": ["days"]
+            },
+            "annotations": {
+              "title": "Set Preview Branch Auto-Archive",
+              "readOnlyHint": false,
+              "destructiveHint": true
+            }
+          },
+          {
+            "name": "set_default_region",
+            "title": "Set Default Region",
+            "description": "Set the project's default region, like Set as default on the Regions page. Runs triggered afterwards in deployed environments without their own region run there. list_regions lists the regions.",
+            "inputSchema": {
+              "type": "object",
+              "$schema": "https://json-schema.org/draft/2020-12/schema",
+              "properties": {
+                "projectRef": {
+                  "type": "string",
+                  "description": "The trigger.dev project ref, starts with proj_. We will attempt to automatically detect the project ref if running inside a directory that includes a trigger.config.ts file, or if you pass the --project-ref option to the MCP server."
+                },
+                "configPath": {
+                  "type": "string",
+                  "description": "The path to the trigger.config.ts file. Only used when the trigger.config.ts file is not at the root dir (like in a monorepo setup). If not provided, we will try to find the config file in the current working directory"
+                },
+                "region": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 128,
+                  "description": "The region name, as shown by list_regions."
+                }
+              },
+              "required": ["region"]
+            },
+            "annotations": {
+              "title": "Set Default Region",
               "readOnlyHint": false,
               "destructiveHint": true
             }

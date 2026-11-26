@@ -98,6 +98,16 @@ const REMOTE_ONLY: Record<string, string> = {
   list_waitpoint_tokens: "the CLI has no tool for it yet",
   get_waitpoint_token: "the CLI has no tool for it yet",
   complete_waitpoint_token: "the CLI has no tool for it yet",
+  list_environments: "the CLI has no tool for it yet; it mirrors the dashboard environment list",
+  list_branches: "list_preview_branches is shared; this adds dev branches and the dashboard fields",
+  list_regions: "the public API has no endpoint to list regions",
+  promote_deployment: "the CLI has no MCP twin for the public promote route",
+  rollback_deployment: "the public API has no rollback route; it mirrors a dashboard action",
+  cancel_deployment: "the CLI has no MCP twin for the public cancel route",
+  create_branch: "the CLI has no MCP twin for the public branch route",
+  archive_branch: "the CLI has no MCP twin for the public archive route",
+  set_preview_auto_archive: "the public API has no route for it; it mirrors a dashboard setting",
+  set_default_region: "the CLI has no MCP twin for the public default region route",
 };
 
 const WRITE_TOOL_APPROVAL: Record<string, "required" | "configurable" | { none: string }> = {
@@ -153,6 +163,13 @@ const WRITE_TOOL_APPROVAL: Record<string, "required" | "configurable" | { none: 
   resolve_error: "configurable",
   ignore_error: "configurable",
   unresolve_error: "configurable",
+  promote_deployment: "configurable",
+  rollback_deployment: "configurable",
+  cancel_deployment: "configurable",
+  create_branch: "configurable",
+  archive_branch: "required",
+  set_preview_auto_archive: "required",
+  set_default_region: "configurable",
 };
 
 type CliTool = {

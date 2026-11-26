@@ -168,6 +168,26 @@ async function removeThresholds(
   `;
 }
 
+/** Locks the environment's thresholds and returns those above `version`, the ones a switch to it clears. */
+export async function lockThresholdsAbove(
+  tx: PrismaTransactionClient,
+  environmentId: string,
+  version: string
+): Promise<SkewProtectionThresholdsCleared> {
+  const thresholds = await lockThresholds(tx, environmentId);
+  const isAbove = (threshold: SkewProtectionThreshold) =>
+    compareDeploymentVersions(version, threshold.version) < 0;
+  return {
+    environment:
+      thresholds.environment && isAbove(thresholds.environment)
+        ? { version: thresholds.environment.version }
+        : undefined,
+    tasks: [...thresholds.tasks]
+      .filter(([, threshold]) => isAbove(threshold))
+      .map(([task, threshold]) => ({ task, version: threshold.version })),
+  };
+}
+
 /**
  * Clear every skew protection threshold above the deployment becoming current (a rollback below
  * it): sessions move to the current deployment, so a threshold can't be above it. Covers the
@@ -185,19 +205,7 @@ export async function clearSkewProtectionThresholdsAbove(
     apiKeyName?: string;
   }
 ): Promise<SkewProtectionThresholdsCleared | undefined> {
-  const thresholds = await lockThresholds(tx, params.environmentId);
-  const isAbove = (threshold: SkewProtectionThreshold) =>
-    compareDeploymentVersions(params.version, threshold.version) < 0;
-
-  const cleared: SkewProtectionThresholdsCleared = {
-    environment:
-      thresholds.environment && isAbove(thresholds.environment)
-        ? { version: thresholds.environment.version }
-        : undefined,
-    tasks: [...thresholds.tasks]
-      .filter(([, threshold]) => isAbove(threshold))
-      .map(([task, threshold]) => ({ task, version: threshold.version })),
-  };
+  const cleared = await lockThresholdsAbove(tx, params.environmentId, params.version);
   if (!cleared.environment && cleared.tasks.length === 0) return undefined;
 
   await removeThresholds(tx, params.environmentId, {

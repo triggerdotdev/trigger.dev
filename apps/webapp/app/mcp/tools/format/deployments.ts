@@ -20,10 +20,10 @@ const ID = /^[0-9A-Za-z_-]{1,128}$/;
 const plainOr = (value: string, pattern: RegExp, source: string) =>
   pattern.test(value) ? value : untrusted(value, source, VALUE_CHARS);
 
-export const deploymentNotFound = (id: string) =>
-  plainError(
-    `Deployment ${plainOr(id, ID, "deployment-id")} was not found in this environment. Use list_deploys to see the deployments in this environment.`
-  );
+export const deploymentNotFoundText = (id: string) =>
+  `Deployment ${plainOr(id, ID, "deployment-id")} was not found in this environment. Use list_deploys to see the deployments in this environment.`;
+
+export const deploymentNotFound = (id: string) => plainError(deploymentNotFoundText(id));
 
 export const agentNotFound = (slug: string) =>
   plainError(

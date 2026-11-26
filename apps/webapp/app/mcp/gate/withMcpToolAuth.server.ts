@@ -229,7 +229,8 @@ async function confirm(
   spec: true | McpConfirmSpec,
   args: unknown,
   identity: McpIdentity,
-  subject: McpSubject | null
+  subject: McpSubject | null,
+  ability?: RbacAbility
 ): Promise<
   | { approved: true; id: string; preview: string }
   | { approved: false; id: string; url: string; message: string }
@@ -246,7 +247,7 @@ async function confirm(
   const consumed = await store.consumeApproved(lookup);
   if (consumed) return { approved: true, id: consumed.id, preview: consumed.preview };
 
-  const preview = await confirmationPreview(tool, spec, args, subject);
+  const preview = await confirmationPreview(tool, spec, args, subject, undefined, ability);
   if ("refuse" in preview) return { approved: false, refused: preview.refuse };
 
   const created = await store.createPending({
@@ -318,7 +319,15 @@ export function withMcpToolAuth<TArgs>(
           return denialResult(outcome, named ?? auth);
         }
         const { store, mode } = await confirmationDefaults(options);
-        const check = await confirm(store, tool, approval, args, identity, subject);
+        const check = await confirm(
+          store,
+          tool,
+          approval,
+          args,
+          identity,
+          subject,
+          authorization.ability
+        );
         if ("refused" in check) {
           outcome = "refused";
           return errorText(check.refused);

@@ -94,6 +94,7 @@ postgresTest(
       scheduled: 2,
       inProgress: 1,
       protectedBranches: ["protected-new", "protected-old"],
+      ready: ["ready"],
       partial: false,
     });
     expect(await previewAutoArchiveCount(prisma, parent.id, 30, [], now)).toMatchObject({

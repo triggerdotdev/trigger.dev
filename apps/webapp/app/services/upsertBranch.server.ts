@@ -40,6 +40,24 @@ type OrgFilter =
 const DEV_BRANCH_STALE_AFTER_MS = 60 * 60 * 1000;
 const DEV_BRANCH_AUTO_ARCHIVE_LIMIT = 3;
 
+/** The branch limit used when the plan sets none: no limit in practice. */
+export const NO_BRANCH_LIMIT = 100_000_000;
+
+/** The unique key a branch upsert matches: shortcode for preview, slug and member for dev. */
+export function branchKey(
+  parent: { type: string; orgMemberId: string | null },
+  projectId: string,
+  branchSlug: string
+) {
+  return parent.type === "DEVELOPMENT"
+    ? { projectId, slug: branchSlug, orgMemberId: parent.orgMemberId }
+    : { projectId, shortcode: branchSlug };
+}
+
+/** The slug a branch environment gets; different names can share one. */
+export const branchSlugFor = (parentSlug: string, branchName: string) =>
+  slug(`${parentSlug}-${branchName}`);
+
 export class UpsertBranchService {
   #prismaClient: PrismaClient;
 
@@ -53,7 +71,8 @@ export class UpsertBranchService {
     // Ideally we would take care of both the authentication and authorization checks in the controllers and routes.
     // That would unify how we handle authorization and org/project membership checks. Also it would make the service layer queries simpler.
     orgFilter: OrgFilter,
-    { projectId, env, branchName, git }: CreateBranchOptions
+    { projectId, env, branchName, git }: CreateBranchOptions,
+    { archiveToMakeRoom = true }: { archiveToMakeRoom?: boolean } = {}
   ) {
     const parentEnvType = toBranchableEnvironmentType(env);
     // Dev branch creation is always user-scoped (org tokens are rejected upstream),
@@ -141,15 +160,16 @@ export class UpsertBranchService {
         userId,
         newBranchName: sanitizedBranchName,
       });
-      const autoArchivedBranches = limits.isAtLimit
-        ? await autoArchiveStaleDevBranches({
-            prisma: this.#prismaClient,
-            orgFilter,
-            parentEnvironment,
-            userId,
-            limit: limits.limit,
-          })
-        : [];
+      const autoArchivedBranches =
+        limits.isAtLimit && archiveToMakeRoom
+          ? await autoArchiveStaleDevBranches({
+              prisma: this.#prismaClient,
+              orgFilter,
+              parentEnvironment,
+              userId,
+              limit: limits.limit,
+            })
+          : [];
 
       if (autoArchivedBranches.length > 0) {
         limits = await checkBranchLimit({
@@ -172,10 +192,11 @@ export class UpsertBranchService {
         return {
           success: false as const,
           error: `You've used all ${limits.used} of ${limits.limit} branches for your plan. ${remediation}`,
+          limits,
         };
       }
 
-      const branchSlug = `${slug(`${parentEnvironment.slug}-${sanitizedBranchName}`)}`;
+      const branchSlug = branchSlugFor(parentEnvironment.slug, sanitizedBranchName);
       const apiKey = createApiKeyForEnv(parentEnvironment.type);
       const pkApiKey = createPkApiKeyForEnv(parentEnvironment.type);
       const isDevelopmentBranch = parentEnvironment.type === "DEVELOPMENT";
@@ -185,23 +206,13 @@ export class UpsertBranchService {
       const shortcode = isDevelopmentBranch
         ? `${branchSlug}-${parentEnvironment.shortcode}`
         : branchSlug;
+      const key = branchKey(parentEnvironment, parentEnvironment.project.id, branchSlug);
       let branchWhere: Prisma.RuntimeEnvironmentWhereUniqueInput;
-      if (isDevelopmentBranch) {
-        invariant(parentEnvironment.orgMemberId, "Development branches require an org member");
-        branchWhere = {
-          projectId_slug_orgMemberId: {
-            projectId: parentEnvironment.project.id,
-            slug: branchSlug,
-            orgMemberId: parentEnvironment.orgMemberId,
-          },
-        };
+      if ("slug" in key) {
+        invariant(key.orgMemberId, "Development branches require an org member");
+        branchWhere = { projectId_slug_orgMemberId: { ...key, orgMemberId: key.orgMemberId } };
       } else {
-        branchWhere = {
-          projectId_shortcode: {
-            projectId: parentEnvironment.project.id,
-            shortcode,
-          },
-        };
+        branchWhere = { projectId_shortcode: key };
       }
       const billingPause = await getInitialEnvPauseStateForBillingLimit(
         parentEnvironment.organization.id,
@@ -408,7 +419,7 @@ export async function checkBranchLimit({
     : usedEnvs.length;
 
   const limitName = type === "PREVIEW" ? "branches" : "branchesDev";
-  const baseLimit = await getLimit(organizationId, limitName, 100_000_000);
+  const baseLimit = await getLimit(organizationId, limitName, NO_BRANCH_LIMIT);
   const currentPlan = await getCurrentPlan(organizationId);
   const purchasedBranches = currentPlan?.v3Subscription?.addOns?.branches?.purchased ?? 0;
   // We deliberately include purchased PREVIEW branches in DEV limits... (not documented anywhere)

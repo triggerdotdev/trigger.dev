@@ -113,7 +113,13 @@ export async function action({ request }: ActionFunctionArgs) {
     await savePreviewAutoArchivePolicy(prisma, parent.id, policy.data);
   } else if (days !== null) {
     try {
-      preview = await previewAutoArchiveCount(prisma, parent.id, days, excludedBranches);
+      const { ready: _ready, ...counted } = await previewAutoArchiveCount(
+        prisma,
+        parent.id,
+        days,
+        excludedBranches
+      );
+      preview = counted;
     } catch {
       return json(
         {

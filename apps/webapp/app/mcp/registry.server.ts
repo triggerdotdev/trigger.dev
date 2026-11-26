@@ -30,6 +30,7 @@ import { dashboardsEditTools } from "./tools/dashboardsEdit.server";
 import { dashboardsReadTools } from "./tools/dashboardsRead.server";
 import { deploymentDetailsTools } from "./tools/deploymentDetails.server";
 import { deploysTools } from "./tools/deploys.server";
+import { environmentsTools } from "./tools/environments.server";
 import { docsTools } from "./tools/docs.server";
 import { envVarTools } from "./tools/envVars.server";
 import { errorsTools } from "./tools/errors.server";
@@ -68,6 +69,8 @@ import { webhooksWriteTools } from "./tools/webhooksWrite.server";
 import { webhooksEndpointWriteTools } from "./tools/webhooksEndpointWrite.server";
 import { waitpointsWriteTools } from "./tools/waitpointsWrite.server";
 import { webhooksWaiterWriteTools } from "./tools/webhooksWaiterWrite.server";
+import { deploymentsWriteTools } from "./tools/deploymentsWrite.server";
+import { environmentsWriteTools } from "./tools/environmentsWrite.server";
 
 export type McpApprovalClass = "required" | "configurable" | "none";
 
@@ -120,6 +123,7 @@ export const mcpTools: McpToolDefinition[] = assertUniqueToolNames([
   ...deploysTools,
   ...deploymentDetailsTools,
   ...envVarTools,
+  ...environmentsTools,
   ...queryTools,
   ...dashboardsTools,
   ...dashboardsReadTools,
@@ -153,6 +157,8 @@ export const mcpTools: McpToolDefinition[] = assertUniqueToolNames([
   ...webhooksEndpointWriteTools,
   ...webhooksWaiterWriteTools,
   ...waitpointsWriteTools,
+  ...deploymentsWriteTools,
+  ...environmentsWriteTools,
 ]);
 
 export function registerMcpTools(
