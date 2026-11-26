@@ -62,6 +62,8 @@ export type FreeCardOutcome = "complete" | "canceled" | "failed";
 
 const FAILURE_MESSAGES: Record<string, string> = {
   card_not_verified: "Your bank didn't verify that card. Please try another one.",
+  card_not_accepted:
+    "We don't accept prepaid cards, or cards whose type the bank doesn't report. Please use a credit or debit card.",
 };
 
 /** Where the card step hands over once the card is verified or skipped. */
