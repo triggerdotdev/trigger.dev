@@ -13,6 +13,7 @@ export default defineConfig({
       "src/workloadServer/workloadServer.secretProxy.test.ts",
       "src/workloadServer/workloadServer.heartbeat.test.ts",
       "src/workloadServer/workloadServer.auth.test.ts",
+      "src/workloadManager/kubernetesTokenSecret.cluster.test.ts",
     ],
     fileParallelism: false,
     server: { deps: { inline: [/@trigger.dev\//, /@internal\//] } },
