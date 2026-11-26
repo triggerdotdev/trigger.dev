@@ -30,7 +30,7 @@ export const program = new Command();
 
 program
   .name(COMMAND_NAME)
-  .description("Create, run locally and deploy Trigger.dev background tasks.")
+  .description("Create, run locally and deploy Trigger.dev tasks and AI agents.")
   .version(VERSION, "-v, --version", "Display the version number");
 
 configureLoginCommand(program);
