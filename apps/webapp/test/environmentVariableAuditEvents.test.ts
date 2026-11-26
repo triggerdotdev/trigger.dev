@@ -506,42 +506,58 @@ describe("env var audit events", () => {
       });
       const before = (await events()).length;
 
-      const response = await runWithHttpContext(
-        {
-          requestId: "req_envvar_import",
-          path: `/api/v1/projects/${project.externalRef}/envvars/preview/import`,
-          host: "api.trigger.dev",
-          method: "POST",
-          abortController: new AbortController(),
+      const sendImport = (body: {
+        variables: Record<string, string>;
+        parentVariables: Record<string, string>;
+        override?: boolean;
+      }) =>
+        runWithHttpContext(
+          {
+            requestId: "req_envvar_import",
+            path: `/api/v1/projects/${project.externalRef}/envvars/preview/import`,
+            host: "api.trigger.dev",
+            method: "POST",
+            abortController: new AbortController(),
+          },
+          () =>
+            importVariables({
+              params: { projectRef: project.externalRef, slug: "preview" },
+              context: {},
+              request: new Request(
+                `http://localhost/api/v1/projects/${project.externalRef}/envvars/preview/import`,
+                {
+                  method: "POST",
+                  headers: {
+                    authorization: `Bearer ${preview.apiKey}`,
+                    "content-type": "application/json",
+                    "x-trigger-branch": "feat-audit",
+                  },
+                  body: JSON.stringify(body),
+                }
+              ),
+            })
+        );
+      const branchKey = "B".repeat(257);
+      const parentKey = "P".repeat(257);
+      const rejected = await sendImport({
+        variables: { [branchKey]: VALUE_MARKER },
+        parentVariables: { [parentKey]: VALUE_MARKER },
+      });
+      expect(rejected.status).toBe(400);
+      const { variableErrors } = await rejected.json();
+      expect(variableErrors.map(({ key }: { key: string }) => key)).toEqual([branchKey, parentKey]);
+
+      const response = await sendImport({
+        variables: {
+          INHERITED_SECRET: `${VALUE_MARKER}-c`,
+          BRANCH_ONLY: `${VALUE_MARKER}-d`,
         },
-        () =>
-          importVariables({
-            params: { projectRef: project.externalRef, slug: "preview" },
-            context: {},
-            request: new Request(
-              `http://localhost/api/v1/projects/${project.externalRef}/envvars/preview/import`,
-              {
-                method: "POST",
-                headers: {
-                  authorization: `Bearer ${preview.apiKey}`,
-                  "content-type": "application/json",
-                  "x-trigger-branch": "feat-audit",
-                },
-                body: JSON.stringify({
-                  variables: {
-                    INHERITED_SECRET: `${VALUE_MARKER}-c`,
-                    BRANCH_ONLY: `${VALUE_MARKER}-d`,
-                  },
-                  parentVariables: {
-                    PARENT_SAME: `${VALUE_MARKER}-b`,
-                    PARENT_NEW: `${VALUE_MARKER}-e`,
-                  },
-                  override: true,
-                }),
-              }
-            ),
-          })
-      );
+        parentVariables: {
+          PARENT_SAME: `${VALUE_MARKER}-b`,
+          PARENT_NEW: `${VALUE_MARKER}-e`,
+        },
+        override: true,
+      });
       expect(response.status).toBe(200);
 
       const event = (key: string, id: string, environmentId: string, isSecret: boolean) => ({

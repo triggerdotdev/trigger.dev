@@ -51,3 +51,15 @@ export function removeBlacklistedVariables(
 ): EnvironmentVariable[] {
   return variables.filter((v) => !isBlacklistedVariable(v.key));
 }
+
+/** The longest key a new variable can have. Keys already in a project stay usable when longer. */
+export const MAX_ENVIRONMENT_VARIABLE_KEY_LENGTH = 256;
+
+export const ENVIRONMENT_VARIABLE_KEY_TOO_LONG_ERROR = `Key must be ${MAX_ENVIRONMENT_VARIABLE_KEY_LENGTH} characters or fewer.`;
+
+/** The keys that are too long to create, leaving out ones the project already has. */
+export function newKeysOverMaxLength(keys: string[], existingKeys: ReadonlySet<string>): string[] {
+  return keys.filter(
+    (key) => key.length > MAX_ENVIRONMENT_VARIABLE_KEY_LENGTH && !existingKeys.has(key)
+  );
+}

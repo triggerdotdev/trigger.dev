@@ -87,6 +87,7 @@ import {
   TableRow,
 } from "~/components/primitives/Table";
 import { SimpleTooltip } from "~/components/primitives/Tooltip";
+import { TruncatedText } from "~/components/primitives/TruncatedText";
 import { CopyKeyButton } from "./CopyKeyButton";
 import { prisma } from "~/db.server";
 import { useEnvironment } from "~/hooks/useEnvironment";
@@ -1641,7 +1642,13 @@ function EnvironmentVariableTableRow({
         actionClassName={cn("font-mono", isKeyTicked && "text-text-bright")}
         trailingContent={variable.isFirstTime ? <CopyKeyButton value={variable.key} /> : undefined}
       >
-        {variable.isFirstTime ? variable.key : null}
+        {variable.isFirstTime ? (
+          <TruncatedText
+            text={variable.key}
+            className="relative max-w-md"
+            tooltip={<span className="block max-w-md break-all font-mono">{variable.key}</span>}
+          />
+        ) : null}
         {variable.vaultHosts && <VaultDomains hosts={variable.vaultHosts} />}
       </TableCell>
       <TableCell

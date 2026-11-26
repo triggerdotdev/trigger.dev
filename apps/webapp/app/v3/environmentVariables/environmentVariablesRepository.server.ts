@@ -46,7 +46,10 @@ import type {
 } from "~/services/environmentEncryption/service.server";
 import { deduplicateVariableArray } from "../deduplicateVariableArray.server";
 import {
+  ENVIRONMENT_VARIABLE_KEY_TOO_LONG_ERROR,
   isBlacklistedVariable,
+  MAX_ENVIRONMENT_VARIABLE_KEY_LENGTH,
+  newKeysOverMaxLength,
   removeBlacklistedVariables,
 } from "../environmentVariableRules.server";
 import { FEATURE_FLAG, resolveInternalApiOriginEnabled } from "../featureFlags";
@@ -287,6 +290,15 @@ async function keepBranchVaultPolicies(
     }
   }
   return [...affected];
+}
+
+function overlongKeyFailure(keys: string[]): CreateResult {
+  return {
+    success: false,
+    error: ENVIRONMENT_VARIABLE_KEY_TOO_LONG_ERROR,
+    overlongKeys: true,
+    variableErrors: keys.map((key) => ({ key, error: ENVIRONMENT_VARIABLE_KEY_TOO_LONG_ERROR })),
+  };
 }
 
 function writeFailure(error: unknown, operation: string, projectId: string) {
@@ -702,6 +714,16 @@ export class EnvironmentVariablesRepository implements Repository {
         return { success: true as const };
       }
     }
+    // Vercel sync preserves upstream keys. Only the server can set `via`.
+    if (via !== "vercel") {
+      const tooLongKeys = newKeysOverMaxLength(
+        values.map((v) => v.key),
+        new Set(project.environmentVariables.map((v) => v.key))
+      );
+      if (tooLongKeys.length > 0) {
+        return overlongKeyFailure(tooLongKeys);
+      }
+    }
     if (values.length === 0) {
       return {
         success: false as const,
@@ -785,7 +807,15 @@ export class EnvironmentVariablesRepository implements Repository {
           );
         };
         const committed = await $transaction(this.prismaClient, "create env var", async (tx) => {
-          await lockVariableKeys(tx, projectId, [variable.key]);
+          const locked = await lockVariableKeys(tx, projectId, [variable.key]);
+          // Keep a concurrent delete from turning a grandfathered update into an insert.
+          if (
+            locked.length === 0 &&
+            via !== "vercel" &&
+            variable.key.length > MAX_ENVIRONMENT_VARIABLE_KEY_LENGTH
+          ) {
+            return null;
+          }
           await this.encryption.assertWrite(tx, [...prepared.values()]);
           return this.#writeVariable(tx, projectId, {
             key: variable.key,
@@ -803,6 +833,8 @@ export class EnvironmentVariablesRepository implements Repository {
               (options.isSecret === undefined || existingValueRecord.isSecret === options.isSecret),
           });
         });
+
+        if (committed === null) return overlongKeyFailure([variable.key]);
 
         // Each variable commits on its own, so a later failure keeps these.
         if (committed) {

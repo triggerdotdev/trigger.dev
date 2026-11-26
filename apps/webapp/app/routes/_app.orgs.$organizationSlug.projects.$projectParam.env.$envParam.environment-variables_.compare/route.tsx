@@ -53,6 +53,7 @@ import { SearchInput } from "~/components/primitives/SearchInput";
 import { Select, SelectItem } from "~/components/primitives/Select";
 import { Switch } from "~/components/primitives/Switch";
 import { SimpleTooltip } from "~/components/primitives/Tooltip";
+import { TruncatedText } from "~/components/primitives/TruncatedText";
 import {
   Table,
   TableBody,
@@ -1027,7 +1028,11 @@ function CompareTableRow({
         actionClassName={cn("font-mono", isTicked && "text-text-bright")}
         trailingContent={<CopyKeyButton value={row.key} />}
       >
-        {row.key}
+        <TruncatedText
+          text={row.key}
+          className="relative max-w-md"
+          tooltip={<span className="block max-w-md break-all font-mono">{row.key}</span>}
+        />
       </TableCell>
       {(["left", "right"] as const).map((side) => {
         const copy = copyTo(side);

@@ -264,9 +264,9 @@ export async function lockVariableKeys(
   projectId: string,
   keys: string[]
 ) {
-  if (!keys.length) return;
-  await db
-    .$queryRaw(
+  if (!keys.length) return [];
+  return db
+    .$queryRaw<{ id: string }[]>(
       Prisma.sql`SELECT id FROM "EnvironmentVariable" WHERE "projectId" = ${projectId} AND key = ANY(${keys}::text[]) ORDER BY id FOR UPDATE`
     )
     .catch((error: unknown) => {

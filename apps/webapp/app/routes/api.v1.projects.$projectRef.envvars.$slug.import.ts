@@ -11,6 +11,7 @@ import {
   authenticateEnvVarApiRequest,
   authorizeEnvVarApiRequest,
 } from "~/services/environmentVariableApiAccess.server";
+import { ENVIRONMENT_VARIABLE_KEY_TOO_LONG_ERROR } from "~/v3/environmentVariableRules.server";
 import { EnvironmentVariablesRepository } from "~/v3/environmentVariables/environmentVariablesRepository.server";
 
 const ParamsSchema = z.object({
@@ -99,8 +100,18 @@ export async function action({ params, request }: ActionFunctionArgs) {
       { imported: true }
     );
 
-    let childFailure = !result.success ? result : undefined;
-    let parentFailure = !parentResult.success ? parentResult : undefined;
+    const childFailure = !result.success ? result : undefined;
+    const parentFailure = !parentResult.success ? parentResult : undefined;
+    const variableErrors = [childFailure, parentFailure].flatMap((failure) =>
+      failure?.overlongKeys ? (failure.variableErrors ?? []) : []
+    );
+
+    if (variableErrors.length > 0) {
+      return json(
+        { error: ENVIRONMENT_VARIABLE_KEY_TOO_LONG_ERROR, variableErrors },
+        { status: 400 }
+      );
+    }
 
     if (result.success || parentResult.success) {
       return json({ success: true });

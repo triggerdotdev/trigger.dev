@@ -54,6 +54,7 @@ export type CreateResult =
     }
   | (Failure & {
       variableErrors?: { key: string; error: string }[];
+      overlongKeys?: true;
     });
 
 export const EditEnvironmentVariable = z.object({

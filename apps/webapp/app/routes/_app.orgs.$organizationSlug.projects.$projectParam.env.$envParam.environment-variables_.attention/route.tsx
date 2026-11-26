@@ -58,6 +58,7 @@ import {
   TableRow,
 } from "~/components/primitives/Table";
 import { SimpleTooltip } from "~/components/primitives/Tooltip";
+import { TruncatedText } from "~/components/primitives/TruncatedText";
 import { prisma } from "~/db.server";
 import { env } from "~/env.server";
 import { useEnvironment } from "~/hooks/useEnvironment";
@@ -825,7 +826,11 @@ function AttentionTable({
           actionClassName={cn("font-mono", isTicked && "text-text-bright")}
           trailingContent={<CopyKeyButton value={row.key} />}
         >
-          {row.key}
+          <TruncatedText
+            text={row.key}
+            className="relative max-w-md"
+            tooltip={<span className="block max-w-md break-all font-mono">{row.key}</span>}
+          />
         </TableCell>
         <TableCell
           className={cn("relative max-w-0 py-2 pr-6", tickClassName)}

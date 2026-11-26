@@ -125,11 +125,13 @@ export function ToastUI({
         ) : (
           <ExclamationCircleIcon className={cn("size-4 min-w-4 text-error", title && "mt-1")} />
         )}
-        <div className="flex flex-col">
-          {title && <Header2 className="pt-0">{title}</Header2>}
+        {/* min-w-0 lets the text column shrink, so long unbroken text (a long key or ID) wraps
+            inside the toast instead of overflowing it; the clamp stops it making the toast huge. */}
+        <div className="flex min-w-0 flex-col">
+          {title && <Header2 className="pt-0 wrap-anywhere">{title}</Header2>}
           <Paragraph
             variant={title ? "small/dimmed" : "small/bright"}
-            className={title ? "pb-1 pt-0.5" : ""}
+            className={cn("line-clamp-6 wrap-anywhere", title && "pb-1 pt-0.5")}
           >
             {message}
           </Paragraph>
