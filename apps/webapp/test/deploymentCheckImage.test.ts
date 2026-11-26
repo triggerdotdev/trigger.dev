@@ -4,7 +4,10 @@ import { type AddressInfo } from "node:net";
 import { setTimeout as sleep } from "node:timers/promises";
 import { describe, expect, it, onTestFinished } from "vitest";
 import { type RegistryConfig } from "~/v3/registryConfig.server";
-import { readDeploymentCheckImage } from "~/v3/services/deploymentCheckImage.server";
+import {
+  lookupDeploymentCheckTag,
+  readDeploymentCheckImage,
+} from "~/v3/services/deploymentCheckImage.server";
 
 const HOST = "123456789012.dkr.ecr.us-east-1.amazonaws.com";
 const PROJECT = "proj_abc123";
@@ -41,7 +44,11 @@ function manifestWith(layers: string[], configDigest = blob(9999)) {
   });
 }
 
-type Entry = { imageManifest?: string; imageManifestMediaType?: string };
+type Entry = {
+  imageId?: { imageDigest?: string; imageTag?: string };
+  imageManifest?: string;
+  imageManifestMediaType?: string;
+};
 type Call = {
   operation: string;
   input: Record<string, unknown>;
@@ -508,5 +515,114 @@ describe("readDeploymentCheckImage", () => {
     expect(await read(manifest, aws)).toMatchObject({ kind: "not_configured" });
     expect(calls.map((call) => call.operation)).toEqual(["AssumeRole"]);
     expect(ecrCalls()).toEqual([]);
+  });
+});
+
+describe("lookupDeploymentCheckTag", () => {
+  const TAG = "20260101.1.prod";
+  function lookup(
+    aws: Aws,
+    {
+      imageReference = `${HOST}/${REPO}:${TAG}@${blob(5)}`,
+      withRole = true,
+      timeoutMs,
+    }: { imageReference?: string; withRole?: boolean; timeoutMs?: number } = {}
+  ) {
+    return lookupDeploymentCheckTag(
+      {
+        imageReference,
+        projectRef: PROJECT,
+        registryConfig: config,
+        ...(withRole ? { readRole } : {}),
+      },
+      { aws, ...(timeoutMs ? { timeoutMs } : {}) }
+    );
+  }
+
+  it("gives the digest ECR names for the tag, whatever the manifest is", async () => {
+    // Catches: a lookup by the stored digest instead of the tag, one that reads the image or asks
+    // for URLs, one that refuses an index or an image the check can't take (only its digest is
+    // wanted), or a digest other than ECR's, such as the manifest's own hash.
+    const manifest = manifestWith([blob(1)]);
+    const index = JSON.stringify({
+      schemaVersion: 2,
+      mediaType: "application/vnd.oci.image.index.v1+json",
+      manifests: [],
+    });
+    const cases: Array<[Entry, string]> = [
+      [
+        { imageId: { imageDigest: digestOf(manifest), imageTag: TAG }, imageManifest: manifest },
+        digestOf(manifest),
+      ],
+      [
+        { imageId: { imageDigest: digestOf(index), imageTag: TAG }, imageManifest: index },
+        digestOf(index),
+      ],
+      // ECR's digest, not the manifest's hash: it names what the tag points to.
+      [{ imageId: { imageDigest: blob(77), imageTag: TAG }, imageManifest: manifest }, blob(77)],
+    ];
+    for (const [entry, digest] of cases) {
+      const { aws, ecrCalls } = await startAws({ entries: [entry] });
+      expect(await lookup(aws)).toEqual({ kind: "found", digest });
+      expect(ecrCalls()).toEqual([
+        expect.objectContaining({
+          operation: "BatchGetImage",
+          input: {
+            registryId: "123456789012",
+            repositoryName: REPO,
+            imageIds: [{ imageTag: TAG }],
+          },
+          signedBy: READ_ROLE_KEY,
+        }),
+      ]);
+    }
+  });
+
+  it("says why it can't look the tag up, like a read", async () => {
+    // Catches: a tag ECR can't find taken as final, access refused read again, or a lookup
+    // outside the project's own repository or without the read role.
+    const missing = await startAws({ failures: [{ failureCode: "ImageNotFound" }] });
+    expect(await lookup(missing.aws)).toEqual({
+      kind: "retry",
+      reason: "no manifest (ImageNotFound)",
+    });
+    const refused = await startAws({ ecrError: "AccessDeniedException" });
+    expect(await lookup(refused.aws)).toMatchObject({ kind: "not_configured" });
+    const other = await startAws();
+    expect(
+      await lookup(other.aws, { imageReference: `${HOST}/deployments-test/proj_other:${TAG}` })
+    ).toMatchObject({ kind: "unreadable", reason: "repository is not the project's" });
+    const noRole = await startAws();
+    expect(await lookup(noRole.aws, { withRole: false })).toMatchObject({
+      kind: "not_configured",
+    });
+    expect([...other.calls, ...noRole.calls]).toHaveLength(0);
+    // An entry with no digest and no manifest is ECR's fault: asked again later.
+    const empty = await startAws({ entries: [{ imageId: { imageTag: TAG } }] });
+    expect(await lookup(empty.aws)).toEqual({
+      kind: "retry",
+      reason: "no sha256 digest for the tag",
+    });
+    // So is a digest that isn't sha256, or none at all, even with a manifest to hash: only ECR's
+    // digest names what the tag points to.
+    for (const imageId of [{ imageDigest: "sha512:abc", imageTag: TAG }, undefined]) {
+      const noDigest = await startAws({
+        entries: [{ imageId, imageManifest: manifestWith([blob(1)]), imageManifestMediaType: OCI }],
+      });
+      expect(await lookup(noDigest.aws)).toEqual({
+        kind: "retry",
+        reason: "no sha256 digest for the tag",
+      });
+    }
+  });
+
+  it("gives up after its time limit, cutting off the request still in flight", async () => {
+    // Catches: a hung ECR call holding the check job until the queue redelivers it.
+    const hangs = await startAws({ hang: "BatchGetImage" });
+    expect(await lookup(hangs.aws, { timeoutMs: 200 })).toMatchObject({ kind: "retry" });
+    expect(
+      await eventually(() => hangs.cut.includes("BatchGetImage")),
+      "the hung ECR request was never cut off"
+    ).toBe(true);
   });
 });

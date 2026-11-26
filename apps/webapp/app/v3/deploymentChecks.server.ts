@@ -20,8 +20,11 @@ import { singleton } from "~/utils/singleton";
 import { resolvePlanState } from "~/v3/freeSchedulePolicy.server";
 import { getRegistryConfig } from "~/v3/registryConfig.server";
 import {
+  lookupDeploymentCheckTag,
   readDeploymentCheckImage,
   type DeploymentCheckImageRead,
+  type DeploymentCheckNotRead,
+  type DeploymentCheckTagLookup,
 } from "~/v3/services/deploymentCheckImage.server";
 import {
   resolveEcrImageDigest,
@@ -270,23 +273,22 @@ export type DeploymentCheckJobDependencies = {
   telemetry?: DeploymentCheckTelemetry;
   /** Reads the image for the check; the registry by default. See `readDeploymentCheckImage`. */
   readImage?: (input: DeploymentCheckImageInput) => Promise<DeploymentCheckImageRead>;
+  /** What the deployment's tag points to; the registry by default. See `lookupDeploymentCheckTag`. */
+  lookupTag?: (input: DeploymentCheckTagInput) => Promise<DeploymentCheckTagLookup>;
 };
 
-type DeploymentCheckImageInput = {
+type DeploymentCheckTagInput = {
   imageReference: string;
-  imageDigest: string;
   projectRef: string;
   isV4Deployment: boolean;
 };
 
+type DeploymentCheckImageInput = DeploymentCheckTagInput & { imageDigest: string };
+
 let warnedHalfReadRole = false;
 
-function readImageFromRegistry({
-  imageReference,
-  imageDigest,
-  projectRef,
-  isV4Deployment,
-}: DeploymentCheckImageInput): Promise<DeploymentCheckImageRead> {
+/** Where the registry reads go, as the deployment checks read role. */
+function registryTarget({ imageReference, projectRef, isV4Deployment }: DeploymentCheckTagInput) {
   const roleArn = env.DEPLOYMENT_CHECKS_ECR_ROLE_ARN;
   const externalId = env.DEPLOYMENT_CHECKS_ECR_ROLE_EXTERNAL_ID;
   if (!roleArn !== !externalId && !warnedHalfReadRole) {
@@ -295,19 +297,30 @@ function readImageFromRegistry({
       "Deployment checks read role half configured: set both DEPLOYMENT_CHECKS_ECR_ROLE_ARN and DEPLOYMENT_CHECKS_ECR_ROLE_EXTERNAL_ID, or neither"
     );
   }
-  return readDeploymentCheckImage({
+  return {
     imageReference,
-    imageDigest,
     projectRef,
     registryConfig: getRegistryConfig(isV4Deployment),
     readRole: roleArn && externalId ? { roleArn, externalId } : undefined,
-  });
+  };
+}
+
+function readImageFromRegistry(
+  input: DeploymentCheckImageInput
+): Promise<DeploymentCheckImageRead> {
+  return readDeploymentCheckImage({ ...registryTarget(input), imageDigest: input.imageDigest });
+}
+
+function lookupTagInRegistry(input: DeploymentCheckTagInput): Promise<DeploymentCheckTagLookup> {
+  return lookupDeploymentCheckTag(registryTarget(input));
 }
 
 /**
- * Runs the check for one deployment. It reads the deployment and never writes it: the outcome goes
- * to a log line and a metric. An unavailable answer that may change, an image read worth retrying,
- * or a failed decision, throws, so the worker retries later; the last attempt records it instead.
+ * Runs the check for one deployment: it compares the stored digest with what the tag points to,
+ * then checks the image. It reads the deployment and never writes it: the outcome goes to a log
+ * line and a metric. An unavailable answer that may change, a lookup or image read worth
+ * retrying, or a failed decision, throws, so the worker retries later; the last attempt records it
+ * instead.
  */
 export async function runDeploymentCheck(
   { deploymentId, attempt }: { deploymentId: string; attempt: number },
@@ -316,6 +329,7 @@ export async function runDeploymentCheck(
     controller: injectedController,
     telemetry = defaultTelemetry,
     readImage = readImageFromRegistry,
+    lookupTag = lookupTagInRegistry,
   }: DeploymentCheckJobDependencies = {}
 ): Promise<DeploymentCheckJobOutcome> {
   const controller =
@@ -400,32 +414,91 @@ export async function runDeploymentCheck(
   };
 
   if (decision.plan === "skip") return finish("skipped");
+  if (!deployment.imageReference) return finish("skipped");
+  // Taken here, where the plan is known not to be skip; the checks below run in callbacks.
+  const checkDecision = { plan: decision.plan, selectedBy: decision.selectedBy };
 
-  const imageDigest = deployment.imageReference?.match(/@(sha256:[a-f0-9]{64})$/)?.[1];
-  if (!deployment.imageReference || !imageDigest) return finish("skipped");
+  const imageReference = deployment.imageReference;
+  const target = {
+    imageReference,
+    projectRef: deployment.project.externalRef,
+    isV4Deployment: deployment.type === "MANAGED",
+  };
+  const lastAttempt = attempt >= MAX_ATTEMPTS - 1;
+  // Another host or a later try may manage, so only an answer that can never change is final.
+  const retryLater = (notRead: ImageNotRead, what: string, fields: Record<string, unknown>) => {
+    if (notRead.kind === "unreadable" || lastAttempt) return;
+    logger.info(`Deployment check ${what} not read, retrying later`, {
+      ...log,
+      attempt,
+      ...fields,
+      kind: notRead.kind,
+      detail: notRead.reason,
+    });
+    throw new DeploymentCheckRetryError(`Deployment check ${what} not read, retrying later`);
+  };
+
+  // The digest finalize stored: outside the gate, the one the client reported. Depending on where
+  // they run, a deployment's runs use it or what the tag points to, so the tag is looked up first:
+  // a stored digest that isn't the tag's is a mismatch however either image reads.
+  const storedDigest = imageReference.match(/@(sha256:[a-f0-9]{64})$/)?.[1];
+  const tag = await lookupTag(target);
+  if (tag.kind === "found" && storedDigest !== undefined && storedDigest !== tag.digest) {
+    // Final at once, whatever the images hold. Both are still checked once, side by side and with
+    // no retries, so the result line says what each held when it could be read. An error on either
+    // side is noted in its entry, so the fail is always recorded.
+    const checks = await Promise.all(
+      [storedDigest, tag.digest].map(async (digest) => {
+        try {
+          const image = await readImage({ ...target, imageDigest: digest });
+          if (image.kind !== "read") {
+            return { imageDigest: digest, read: image.kind, detail: image.reason };
+          }
+          const checked = await controller.check({
+            organizationId,
+            projectRef: target.projectRef,
+            deploymentId: deployment.id,
+            imageDigest: digest,
+            image: image.image,
+            decision: checkDecision,
+          });
+          return { imageDigest: digest, checkId: checked.id, outcome: checked.outcome };
+        } catch (error) {
+          return { imageDigest: digest, error: errorMessage(error) };
+        }
+      })
+    );
+    return finish("fail", {
+      reason: "digest_mismatch",
+      imageDigest: tag.digest,
+      reportedDigest: storedDigest,
+      checks,
+    });
+  }
+
+  // The stored digest when there is one, checked at once even when the lookup didn't answer (as
+  // before the lookup existed), or else the tag's. With neither there is nothing to check yet.
+  let imageDigest: string;
+  if (tag.kind === "found") {
+    imageDigest = storedDigest ?? tag.digest;
+  } else if (storedDigest !== undefined) {
+    imageDigest = storedDigest;
+  } else {
+    retryLater(tag, "image tag", {});
+    const [outcome, details] = imageNotRead(tag);
+    return finish(outcome, { ...details, step: "tag" });
+  }
+  const lookupDetails =
+    tag.kind === "found" ? {} : { tagLookup: { kind: tag.kind, detail: tag.reason } };
 
   // Read fresh on every attempt: the download URLs are short-lived. A check is only asked for with
   // the image.
-  const read = await readImage({
-    imageReference: deployment.imageReference,
-    imageDigest,
-    projectRef: deployment.project.externalRef,
-    isV4Deployment: deployment.type === "MANAGED",
-  });
-  const lastAttempt = attempt >= MAX_ATTEMPTS - 1;
-  // Another host or a later read may manage, so only an image that can never be read is final.
-  if (read.kind !== "read" && read.kind !== "unreadable" && !lastAttempt) {
-    logger.info("Deployment check image not read, retrying later", {
-      ...log,
-      attempt,
-      imageDigest,
-      kind: read.kind,
-      detail: read.reason,
-    });
-    throw new DeploymentCheckRetryError("Deployment check image not read, retrying later");
+  const read = await readImage({ ...target, imageDigest });
+  if (read.kind !== "read") {
+    retryLater(read, "image", { imageDigest });
+    const [outcome, details] = imageNotRead(read);
+    return finish(outcome, { ...details, ...lookupDetails });
   }
-  if (read.kind !== "read") return finish(...imageNotRead(read));
-  const { image } = read;
   // Timed from here, so the duration stays the check's own and not the image read's.
   const startedAt = performance.now();
   const result = await controller.check({
@@ -433,8 +506,8 @@ export async function runDeploymentCheck(
     projectRef: deployment.project.externalRef,
     deploymentId: deployment.id,
     imageDigest,
-    image,
-    decision: { plan: decision.plan, selectedBy: decision.selectedBy },
+    image: read.image,
+    decision: checkDecision,
   });
   const durationMs = Math.round(performance.now() - startedAt);
   telemetry.duration.record(durationMs, { mode: decision.plan, outcome: result.outcome });
@@ -449,10 +522,23 @@ export async function runDeploymentCheck(
     throw new DeploymentCheckRetryError("Deployment check unavailable, retrying later");
   }
 
+  if (tag.kind !== "found") {
+    // The stored image was checked, but what the tag points to never was. Any answer but a pass
+    // is final and stands at once, so a scan that already answered is never asked for again. A
+    // pass waits for the lookup, tried again on a later attempt; on the last one the lookup's
+    // answer stands, so the monitors for checks without an answer see it.
+    if (result.outcome !== "pass") {
+      return finish(result.outcome, { checkId: result.id, durationMs, ...lookupDetails });
+    }
+    const checked = { checkId: result.id, checkOutcome: result.outcome };
+    retryLater(tag, "image tag", checked);
+    const [outcome, details] = imageNotRead(tag);
+    return finish(outcome, { ...details, step: "tag", ...checked, durationMs });
+  }
   return finish(result.outcome, { checkId: result.id, durationMs });
 }
 
-type ImageNotRead = Exclude<DeploymentCheckImageRead, { kind: "read" }>;
+type ImageNotRead = DeploymentCheckNotRead;
 
 const IMAGE_NOT_READ_REASONS: Record<ImageNotRead["kind"], string> = {
   retry: "image_not_read",
