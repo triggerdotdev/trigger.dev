@@ -1001,6 +1001,16 @@ export class WaitpointStoreCoordinator {
     };
   }
 
+  /**
+   * Up to `limit` history run ids from one command, so registrations cannot reorder the read the
+   * way they can between pages. Callers authorize the source first.
+   */
+  async readRelatedRunIdsSnapshot(waitpointId: string, limit: number): Promise<string[]> {
+    await this.beforeCommand?.();
+    // ZRANGE 0 -1 would read the whole set, so at least one id is asked for.
+    return this.redis.zrange(waitpointRelatedRunsKey(waitpointId), 0, Math.max(1, limit) - 1);
+  }
+
   /** Stable source-lifetime history; callers authorize the source before reading a page. */
   async readRelatedRunIds(
     waitpointId: string,

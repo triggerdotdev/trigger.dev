@@ -123,6 +123,7 @@ export type WaitpointSystemOptions = {
         | "acknowledgeIdempotencyCandidate"
         | "retirePendingSource"
         | "readRelatedRunIds"
+        | "readRelatedRunIdsSnapshot"
         | "manualCatalog"
         | "retireManualCatalog"
         | "releaseRemovedIdempotencyKey"
@@ -220,6 +221,7 @@ export class WaitpointSystem {
         | "acknowledgeIdempotencyCandidate"
         | "retirePendingSource"
         | "readRelatedRunIds"
+        | "readRelatedRunIdsSnapshot"
         | "manualCatalog"
         | "retireManualCatalog"
         | "releaseRemovedIdempotencyKey"
@@ -1188,6 +1190,22 @@ export class WaitpointSystem {
         params.cursor,
         isStandaloneStoreWaitpoint(source)
       ) ?? { runIds: [] }
+    );
+  }
+
+  /** Up to `limit` of a native token's history run ids, read in one command. */
+  public async readStoreWaitpointRelatedRunIdsSnapshot(params: {
+    waitpointId: string;
+    environmentId: string;
+    projectId: string;
+    organizationId?: string;
+    limit: number;
+  }): Promise<string[]> {
+    const source = await this.readExistingStoreDateTimeWaitpoint(params);
+    if (!source) return [];
+    return (
+      (await this.#waitpointStore?.readRelatedRunIdsSnapshot?.(params.waitpointId, params.limit)) ??
+      []
     );
   }
 

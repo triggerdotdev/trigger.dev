@@ -90,6 +90,11 @@ const REMOTE_ONLY: Record<string, string> = {
   get_session_details: "no public API returns a session's runs and channel names",
   read_session_transcript: "the CLI has no tool for it yet",
   list_playground_conversations: "playground conversations are only listed in the dashboard",
+  list_batches: "the public API has no endpoint to list batches",
+  get_batch_details: "the CLI has no tool for it yet",
+  list_waitpoint_tokens: "the CLI has no tool for it yet",
+  get_waitpoint_token: "the CLI has no tool for it yet",
+  complete_waitpoint_token: "the CLI has no tool for it yet",
 };
 
 const WRITE_TOOL_APPROVAL: Record<string, "required" | "configurable" | { none: string }> = {
@@ -101,6 +106,7 @@ const WRITE_TOOL_APPROVAL: Record<string, "required" | "configurable" | { none: 
   pause_webhook_endpoint: "configurable",
   resume_webhook_endpoint: "configurable",
   cancel_webhook_waiter: "configurable",
+  complete_waitpoint_token: "required",
   submit_feedback: { none: "only logs a report about the MCP server, touches no project data" },
   send_agent_message: { none: "covered by the start_agent_chat confirmation for that chat" },
   close_agent_chat: { none: "covered by the start_agent_chat confirmation for that chat" },

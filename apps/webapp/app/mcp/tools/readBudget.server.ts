@@ -11,7 +11,11 @@ const STOPPED = {
 type Stopped = { ok: false; reason: keyof typeof STOPPED };
 type Read<T> = { ok: true; value: T } | Stopped;
 
-export const stoppedText = (stopped: Stopped) => STOPPED[stopped.reason];
+/** `lookup` is for tools that read one item by id and take no period to shorten. */
+export const stoppedText = (stopped: Stopped, kind: "list" | "lookup" = "list") =>
+  kind === "lookup" && stopped.reason === "timeout"
+    ? "Reading this took too long and was stopped. Try again later."
+    : STOPPED[stopped.reason];
 
 /** One deadline for a tool call: whether it has passed, what is left, and the ClickHouse cap from it. */
 export function startReadBudget(

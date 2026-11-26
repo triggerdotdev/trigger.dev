@@ -29,6 +29,7 @@ vi.hoisted(() => {
 const mocks = vi.hoisted(() => ({
   db: undefined as unknown as Record<string | symbol, unknown>,
   rbac: undefined as unknown as Record<string, (...args: any[]) => any>,
+  runStore: undefined as unknown as Record<string | symbol, unknown>,
 }));
 
 vi.mock("~/mcp/confirm/storeInstance.server", () => import("./helpers/mcpConfirm"));
@@ -40,8 +41,29 @@ vi.mock("~/db.server", () => {
     webhookPrisma: db(),
     webhookReplica: db(),
     webhookPartitionPrisma: db(),
+    runOpsNewReplicaClient: undefined,
+    runOpsLegacyReplicaClient: undefined,
+    runOpsSplitReadEnabled: false,
+    runOpsShardHandles: [],
   };
 });
+vi.mock("~/v3/runEngine.server", () => ({
+  engine: {
+    waitpointSystem: { isWaitpointStoreEnabled: async () => false },
+    canReadStoreManualWaitpoints: () => false,
+  },
+}));
+vi.mock("~/v3/runStore.server", () => ({
+  runStore: new Proxy(
+    {},
+    {
+      get: (_, prop) => {
+        const value = mocks.runStore[prop];
+        return typeof value === "function" ? value.bind(mocks.runStore) : value;
+      },
+    }
+  ),
+}));
 vi.mock("~/v3/webhookEngine.server", () => ({ webhookEngine: {} }));
 vi.mock("~/services/clickhouse/clickhouseFactoryInstance.server", () => ({
   clickhouseFactory: {
@@ -62,6 +84,7 @@ vi.mock("~/services/rbac.server", () => ({
   ),
 }));
 
+import { PostgresRunStore } from "@internal/run-store";
 import { resetConfirmations } from "./helpers/mcpConfirm";
 import { mcpTools } from "~/mcp/registry.server";
 import { mcpResource } from "~/services/oauth/metadata.server";
@@ -72,7 +95,12 @@ const prompt = { ...project, slug: "my-prompt" };
 const sched = { ...project, scheduleId: "sched_1" };
 const errorGroup = { ...project, errorId: "error_abc123" };
 
-const TOOLS: Array<{ tool: string; args: Record<string, unknown>; scope: string }> = [
+const TOOLS: Array<{
+  tool: string;
+  args: Record<string, unknown>;
+  scope: string;
+  ownText?: string;
+}> = [
   { tool: "get_current_worker", args: project, scope: "read:deployments" },
   { tool: "get_task_schema", args: { ...project, taskSlug: "my-task" }, scope: "read:deployments" },
   {
@@ -251,6 +279,39 @@ const TOOLS: Array<{ tool: string; args: Record<string, unknown>; scope: string 
     args: { ...endpoint, waiterId: "waitpoint_1" },
     scope: "write:waitpoints",
   },
+  {
+    tool: "list_batches",
+    args: project,
+    scope: "read:batch",
+    ownText:
+      "No batches match these filters in the last 7d (the default period). Pass a longer period, such as 90d, to look further back.",
+  },
+  {
+    tool: "get_batch_details",
+    args: { ...project, batchId: "batch_1" },
+    scope: "read:batch",
+    ownText:
+      "Batch batch_1 was not found in this environment. Use list_batches to see the batches in this environment.",
+  },
+  {
+    tool: "list_waitpoint_tokens",
+    args: project,
+    scope: "read:waitpoints",
+    ownText: "Waitpoint tokens need SDK version 4 or later in this project.",
+  },
+  {
+    tool: "get_waitpoint_token",
+    args: { ...project, waitpointId: "waitpoint_1" },
+    scope: "read:waitpoints",
+    ownText:
+      "Waitpoint waitpoint_1 was not found in this environment. Use list_waitpoint_tokens to see the waitpoint tokens in this environment.",
+  },
+  {
+    tool: "complete_waitpoint_token",
+    args: { ...project, waitpointId: "waitpoint_1", action: "timeout" },
+    scope: "write:waitpoints",
+    ownText: "Waitpoint waitpoint_1 was not found in this environment; nothing changed.",
+  },
 ];
 
 function call(name: string) {
@@ -280,6 +341,11 @@ const bearer = (token: string) =>
 
 async function seed(prisma: PrismaClient) {
   mocks.db = prisma as unknown as Record<string | symbol, unknown>;
+  mocks.runStore = new PostgresRunStore({
+    prisma,
+    readOnlyPrisma: prisma,
+    schemaVariant: "legacy",
+  }) as unknown as Record<string | symbol, unknown>;
   mocks.rbac = plugin.create(
     { primary: prisma, replica: prisma },
     { forceFallback: true, userActorSecret: SECRET }
@@ -345,8 +411,8 @@ describe("mcp tools authorization matrix", () => {
     const { uatCall } = await seed(prisma);
     const all = [...new Set(TOOLS.map((t) => t.scope))];
 
-    const outcomes: Record<string, { own: boolean; withoutOwn: string }> = {};
-    for (const { tool, args, scope } of TOOLS) {
+    const outcomes: Record<string, { own: boolean | string; withoutOwn: string }> = {};
+    for (const { tool, args, scope, ownText } of TOOLS) {
       const own = textOf(await uatCall(tool, args, [scope]));
       const withoutOwn = textOf(
         await uatCall(
@@ -355,14 +421,17 @@ describe("mcp tools authorization matrix", () => {
           all.filter((s) => s !== scope)
         )
       );
-      outcomes[tool] = { own: !/^(Not authorized|Insufficient scope)/.test(own), withoutOwn };
+      outcomes[tool] = {
+        own: ownText === undefined ? !/^(Not authorized|Insufficient scope)/.test(own) : own,
+        withoutOwn,
+      };
     }
 
     expect(outcomes).toEqual(
       Object.fromEntries(
-        TOOLS.map(({ tool, scope }) => [
+        TOOLS.map(({ tool, scope, ownText }) => [
           tool,
-          { own: true, withoutOwn: `Insufficient scope: this tool requires ${scope}` },
+          { own: ownText ?? true, withoutOwn: `Insufficient scope: this tool requires ${scope}` },
         ])
       )
     );

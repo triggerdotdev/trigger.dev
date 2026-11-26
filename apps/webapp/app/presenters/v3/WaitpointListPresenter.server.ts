@@ -59,6 +59,8 @@ export type WaitpointListOptions = {
   // filters
   id?: string;
   statuses?: WaitpointTokenStatus[];
+  /** Only tokens whose output is (or is not) an error; overrides the one a single status implies. */
+  outputIsError?: boolean;
   idempotencyKey?: string;
   tags?: string[];
   period?: string;
@@ -122,6 +124,7 @@ export class WaitpointListPresenter extends BasePresenter {
     environment,
     id,
     statuses,
+    outputIsError,
     idempotencyKey,
     tags,
     period,
@@ -159,11 +162,11 @@ export class WaitpointListPresenter extends BasePresenter {
       from !== undefined ||
       to !== undefined;
 
-    let filterOutputIsError: boolean | undefined;
+    let filterOutputIsError: boolean | undefined = outputIsError;
     //if the only status is completed: true
     //if the only status is failed: false
     //otherwise undefined
-    if (statuses?.length === 1) {
+    if (filterOutputIsError === undefined && statuses?.length === 1) {
       if (statuses[0] === "COMPLETED") {
         filterOutputIsError = false;
       } else if (statuses[0] === "TIMED_OUT") {

@@ -23,6 +23,7 @@ import {
 import type { McpIdentity } from "./types";
 import { agentsTools } from "./tools/agents.server";
 import { alertsTools } from "./tools/alerts.server";
+import { batchesTools } from "./tools/batches.server";
 import { bulkActionsTools } from "./tools/bulkActions.server";
 import { dashboardsTools } from "./tools/dashboards.server";
 import { dashboardsEditTools } from "./tools/dashboardsEdit.server";
@@ -46,6 +47,7 @@ import { sessionsReadTools } from "./tools/sessionsRead.server";
 import { tasksTools } from "./tools/tasks.server";
 import { taskListTools } from "./tools/tasksList.server";
 import { webhooksTools } from "./tools/webhooks.server";
+import { waitpointsTools } from "./tools/waitpoints.server";
 import { webhooksReadTools } from "./tools/webhooksRead.server";
 import { agentChatTools } from "./tools/agentChat.server";
 import { alertsManageTools } from "./tools/alertsManage.server";
@@ -63,6 +65,7 @@ import { sessionsWriteTools } from "./tools/sessionsWrite.server";
 import { tasksWriteTools } from "./tools/tasksWrite.server";
 import { webhooksWriteTools } from "./tools/webhooksWrite.server";
 import { webhooksEndpointWriteTools } from "./tools/webhooksEndpointWrite.server";
+import { waitpointsWriteTools } from "./tools/waitpointsWrite.server";
 import { webhooksWaiterWriteTools } from "./tools/webhooksWaiterWrite.server";
 
 export type McpApprovalClass = "required" | "configurable" | "none";
@@ -111,6 +114,8 @@ export const mcpTools: McpToolDefinition[] = assertUniqueToolNames([
   ...logsTools,
   ...errorsTools,
   ...bulkActionsTools,
+  ...batchesTools,
+  ...waitpointsTools,
   ...deploysTools,
   ...deploymentDetailsTools,
   ...queryTools,
@@ -145,6 +150,7 @@ export const mcpTools: McpToolDefinition[] = assertUniqueToolNames([
   ...webhooksWriteTools,
   ...webhooksEndpointWriteTools,
   ...webhooksWaiterWriteTools,
+  ...waitpointsWriteTools,
 ]);
 
 export function registerMcpTools(

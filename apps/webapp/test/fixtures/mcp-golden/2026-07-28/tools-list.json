@@ -1031,6 +1031,237 @@
             }
           },
           {
+            "name": "list_batches",
+            "title": "List Batches",
+            "description": "List the batches of an environment, newest first, like the Batches page in the dashboard: each batch's status, run count, version and when it was created and finished. Filter by status and time period. Pass the returned cursor to list older ones.",
+            "inputSchema": {
+              "type": "object",
+              "$schema": "https://json-schema.org/draft/2020-12/schema",
+              "properties": {
+                "projectRef": {
+                  "type": "string",
+                  "description": "The trigger.dev project ref, starts with proj_. We will attempt to automatically detect the project ref if running inside a directory that includes a trigger.config.ts file, or if you pass the --project-ref option to the MCP server."
+                },
+                "configPath": {
+                  "type": "string",
+                  "description": "The path to the trigger.config.ts file. Only used when the trigger.config.ts file is not at the root dir (like in a monorepo setup). If not provided, we will try to find the config file in the current working directory"
+                },
+                "environment": {
+                  "default": "dev",
+                  "type": "string",
+                  "enum": ["dev", "staging", "prod", "preview"],
+                  "description": "The environment to get tasks for"
+                },
+                "branch": {
+                  "type": "string",
+                  "description": "The branch to get tasks for, only used for preview environments and branchable development environments"
+                },
+                "statuses": {
+                  "minItems": 1,
+                  "maxItems": 5,
+                  "type": "array",
+                  "items": {
+                    "type": "string",
+                    "enum": ["PENDING", "PROCESSING", "COMPLETED", "PARTIAL_FAILED", "ABORTED"]
+                  },
+                  "description": "Only batches with these statuses"
+                },
+                "period": {
+                  "type": "string",
+                  "pattern": "^\\d{1,6}[smhdw]$",
+                  "description": "Only batches created in the last N time period, e.g. 1h, 7d, 30d. Defaults to 7d"
+                },
+                "limit": {
+                  "default": 25,
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 100,
+                  "description": "The number of batches to list. Up to 100, defaults to 25"
+                },
+                "cursor": {
+                  "type": "string",
+                  "pattern": "^\\d{1,16}_[A-Za-z0-9]{1,64}$",
+                  "description": "The cursor from a previous list_batches call, to list older ones"
+                }
+              }
+            },
+            "annotations": {
+              "readOnlyHint": true,
+              "destructiveHint": false,
+              "title": "List Batches"
+            }
+          },
+          {
+            "name": "get_batch_details",
+            "title": "Get Batch Details",
+            "description": "Get a batch, like the batch page in the dashboard: its status, run counts, idempotency key, timestamps and run creation errors, then the runs it created, in the order the batch recorded them, with each run's status, task and error, which need read:runs. Shows up to 50 runs per call with a cursor for the next ones; errors are shortened. The ID starts with batch_",
+            "inputSchema": {
+              "type": "object",
+              "$schema": "https://json-schema.org/draft/2020-12/schema",
+              "properties": {
+                "projectRef": {
+                  "type": "string",
+                  "description": "The trigger.dev project ref, starts with proj_. We will attempt to automatically detect the project ref if running inside a directory that includes a trigger.config.ts file, or if you pass the --project-ref option to the MCP server."
+                },
+                "configPath": {
+                  "type": "string",
+                  "description": "The path to the trigger.config.ts file. Only used when the trigger.config.ts file is not at the root dir (like in a monorepo setup). If not provided, we will try to find the config file in the current working directory"
+                },
+                "environment": {
+                  "default": "dev",
+                  "type": "string",
+                  "enum": ["dev", "staging", "prod", "preview"],
+                  "description": "The environment to get tasks for"
+                },
+                "branch": {
+                  "type": "string",
+                  "description": "The branch to get tasks for, only used for preview environments and branchable development environments"
+                },
+                "batchId": {
+                  "type": "string",
+                  "pattern": "^batch_[A-Za-z0-9]{1,64}$",
+                  "description": "The ID of the batch, starts with batch_"
+                },
+                "limit": {
+                  "default": 25,
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 50,
+                  "description": "The number of created runs to show. Up to 50, defaults to 25"
+                },
+                "cursor": {
+                  "type": "string",
+                  "pattern": "^\\d{1,6}$",
+                  "description": "The cursor from a previous get_batch_details call, to show the next created runs"
+                }
+              },
+              "required": ["batchId"]
+            },
+            "annotations": {
+              "readOnlyHint": true,
+              "destructiveHint": false,
+              "title": "Get Batch Details"
+            }
+          },
+          {
+            "name": "list_waitpoint_tokens",
+            "title": "List Waitpoint Tokens",
+            "description": "List the waitpoint tokens of an environment, newest first, like the Waitpoint tokens page in the dashboard: each token's status, when it was created, timed out or completed, its idempotency key and tags. Filter by status, tag, idempotency key and time period. Pass the returned cursor to list older ones.",
+            "inputSchema": {
+              "type": "object",
+              "$schema": "https://json-schema.org/draft/2020-12/schema",
+              "properties": {
+                "projectRef": {
+                  "type": "string",
+                  "description": "The trigger.dev project ref, starts with proj_. We will attempt to automatically detect the project ref if running inside a directory that includes a trigger.config.ts file, or if you pass the --project-ref option to the MCP server."
+                },
+                "configPath": {
+                  "type": "string",
+                  "description": "The path to the trigger.config.ts file. Only used when the trigger.config.ts file is not at the root dir (like in a monorepo setup). If not provided, we will try to find the config file in the current working directory"
+                },
+                "environment": {
+                  "default": "dev",
+                  "type": "string",
+                  "enum": ["dev", "staging", "prod", "preview"],
+                  "description": "The environment to get tasks for"
+                },
+                "branch": {
+                  "type": "string",
+                  "description": "The branch to get tasks for, only used for preview environments and branchable development environments"
+                },
+                "statuses": {
+                  "minItems": 1,
+                  "maxItems": 3,
+                  "type": "array",
+                  "items": {
+                    "type": "string",
+                    "enum": ["WAITING", "COMPLETED", "TIMED_OUT"]
+                  },
+                  "description": "Only tokens with these statuses. Only the pair WAITING and TIMED_OUT without COMPLETED is refused; list those two one at a time. All three together list every token"
+                },
+                "tags": {
+                  "minItems": 1,
+                  "maxItems": 10,
+                  "type": "array",
+                  "items": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 128
+                  },
+                  "description": "Only tokens with any of these tags. Up to 10, each up to 128 characters"
+                },
+                "idempotencyKey": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 512,
+                  "description": "Only the token created with this idempotency key"
+                },
+                "period": {
+                  "type": "string",
+                  "pattern": "^\\d{1,6}[smhdw]$",
+                  "description": "Only tokens created in the last N time period, e.g. 1h, 7d, 30d"
+                },
+                "limit": {
+                  "default": 25,
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 100,
+                  "description": "The number of tokens to list. Up to 100, defaults to 25"
+                },
+                "cursor": {
+                  "type": "string",
+                  "pattern": "^[A-Za-z0-9._=-]{1,512}$",
+                  "description": "The cursor from a previous list_waitpoint_tokens call, to list older ones"
+                }
+              }
+            },
+            "annotations": {
+              "readOnlyHint": true,
+              "destructiveHint": false,
+              "title": "List Waitpoint Tokens"
+            }
+          },
+          {
+            "name": "get_waitpoint_token",
+            "title": "Get Waitpoint Token",
+            "description": "Get a waitpoint, like the waitpoint page in the dashboard: its type, status, idempotency key, tags, timeout, when it completed, its output, and the runs that waited on it (their status and task need read:runs). The output is shortened when long. The ID starts with waitpoint_",
+            "inputSchema": {
+              "type": "object",
+              "$schema": "https://json-schema.org/draft/2020-12/schema",
+              "properties": {
+                "projectRef": {
+                  "type": "string",
+                  "description": "The trigger.dev project ref, starts with proj_. We will attempt to automatically detect the project ref if running inside a directory that includes a trigger.config.ts file, or if you pass the --project-ref option to the MCP server."
+                },
+                "configPath": {
+                  "type": "string",
+                  "description": "The path to the trigger.config.ts file. Only used when the trigger.config.ts file is not at the root dir (like in a monorepo setup). If not provided, we will try to find the config file in the current working directory"
+                },
+                "environment": {
+                  "default": "dev",
+                  "type": "string",
+                  "enum": ["dev", "staging", "prod", "preview"],
+                  "description": "The environment to get tasks for"
+                },
+                "branch": {
+                  "type": "string",
+                  "description": "The branch to get tasks for, only used for preview environments and branchable development environments"
+                },
+                "waitpointId": {
+                  "type": "string",
+                  "pattern": "^waitpoint_[A-Za-z0-9]{1,64}$",
+                  "description": "The ID of the waitpoint, starts with waitpoint_"
+                }
+              },
+              "required": ["waitpointId"]
+            },
+            "annotations": {
+              "readOnlyHint": true,
+              "destructiveHint": false,
+              "title": "Get Waitpoint Token"
+            }
+          },
+          {
             "name": "list_deploys",
             "title": "List Deploys",
             "description": "List all deploys for a project. Use this tool when you need to search for a deploy or list all deploys for a project.",
@@ -6437,6 +6668,56 @@
             },
             "annotations": {
               "title": "Cancel Webhook Waiter",
+              "readOnlyHint": false,
+              "destructiveHint": true
+            }
+          },
+          {
+            "name": "complete_waitpoint_token",
+            "title": "Complete Waitpoint Token",
+            "description": "Complete a waitpoint that a run is waiting on, as the run page in the dashboard does: complete a token with output (JSON the waiting runs receive), complete a token as timed out, or skip a wait.for or wait.until so it ends now. The waiting runs resume at once and it cannot be undone. It refuses a token with more than 10,000 waiting runs, or a store-kept token that 100 or more runs have waited on; complete those from the dashboard. The ID starts with waitpoint_",
+            "inputSchema": {
+              "type": "object",
+              "$schema": "https://json-schema.org/draft/2020-12/schema",
+              "properties": {
+                "projectRef": {
+                  "type": "string",
+                  "description": "The trigger.dev project ref, starts with proj_. We will attempt to automatically detect the project ref if running inside a directory that includes a trigger.config.ts file, or if you pass the --project-ref option to the MCP server."
+                },
+                "configPath": {
+                  "type": "string",
+                  "description": "The path to the trigger.config.ts file. Only used when the trigger.config.ts file is not at the root dir (like in a monorepo setup). If not provided, we will try to find the config file in the current working directory"
+                },
+                "environment": {
+                  "default": "dev",
+                  "type": "string",
+                  "enum": ["dev", "staging", "prod", "preview"],
+                  "description": "The environment to get tasks for"
+                },
+                "branch": {
+                  "type": "string",
+                  "description": "The branch to get tasks for, only used for preview environments and branchable development environments"
+                },
+                "waitpointId": {
+                  "type": "string",
+                  "pattern": "^waitpoint_[A-Za-z0-9]{1,64}$",
+                  "description": "The ID of the waitpoint, starts with waitpoint_"
+                },
+                "action": {
+                  "type": "string",
+                  "enum": ["complete", "timeout", "skip"],
+                  "description": "complete: complete a token with output. timeout: complete a token as timed out. skip: end a wait.for or wait.until now"
+                },
+                "output": {
+                  "type": "string",
+                  "maxLength": 65536,
+                  "description": "JSON text the waiting runs receive as the token's output. Only with action complete; defaults to {}"
+                }
+              },
+              "required": ["waitpointId", "action"]
+            },
+            "annotations": {
+              "title": "Complete Waitpoint Token",
               "readOnlyHint": false,
               "destructiveHint": true
             }

@@ -23,7 +23,7 @@ export function escapeText(text: string): string {
 const escapeLayout = (text: string) =>
   text.replace(INVISIBLE_LAYOUT, (c) => `\\u${c.charCodeAt(0).toString(16).padStart(4, "0")}`);
 
-const formatValue = (value: unknown) => escapeLayout(canonicalJson(value) ?? "undefined");
+export const formatValue = (value: unknown) => escapeLayout(canonicalJson(value) ?? "undefined");
 
 export function quote(text: string): string {
   return escapeText(text.length > TEXT_CHARS ? `${text.slice(0, TEXT_CHARS)}…` : text);

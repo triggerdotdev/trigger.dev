@@ -2980,6 +2980,17 @@ export class RunEngine {
     return this.waitpointSystem.readStoreWaitpointRelatedRunIds(params);
   }
 
+  /** Up to `limit` of a native token's history run ids from one store read, for approval checks. */
+  async getStoreWaitpointRelatedRunIdsSnapshot(params: {
+    waitpointId: string;
+    environmentId: string;
+    projectId: string;
+    organizationId?: string;
+    limit: number;
+  }): Promise<string[]> {
+    return this.waitpointSystem.readStoreWaitpointRelatedRunIdsSnapshot(params);
+  }
+
   /**
    * Ids of the waitpoints the run is blocked on now (not yet completed), from both stores.
    * An organization without the waitpoint store gets [] after the flag check and nothing else.
