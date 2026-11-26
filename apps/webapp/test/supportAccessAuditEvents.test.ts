@@ -807,10 +807,14 @@ describe("Support Access audit events", () => {
       const scoped = await startSession(prisma, staff, customer, home.slug);
       const allowed = await startSession(prisma, staff, customer, other.slug);
       await auditLogs.flush();
-      expect(recorded.map(({ input }) => input.changes)).toEqual([
-        { reason: "Ticket 4824", expiresAt: approval.expiresAt.toISOString() },
-        null,
-      ]);
+      // Each org's event clears the recording gate on its own, so they can land in either order.
+      expect(recorded).toHaveLength(2);
+      expect(
+        Object.fromEntries(recorded.map(({ input }) => [input.organizationId, input.changes]))
+      ).toEqual({
+        [home.id]: { reason: "Ticket 4824", expiresAt: approval.expiresAt.toISOString() },
+        [other.id]: null,
+      });
 
       // Half an hour later, staff turn on "View as user", which commits the cookie again.
       const toggledAt = new Date(startedAt.getTime() + 30 * 60 * 1000);

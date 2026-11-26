@@ -62,6 +62,8 @@ const rbacHolder = vi.hoisted(() => ({
   reads: { getUserRole: 0, allRoles: 0 },
   /** While set, `allRoles` waits for it, like a slow database read. */
   allRolesGate: null as Promise<void> | null,
+  /** While set, `setUserRole` waits for it first, to put concurrent role writes in order. */
+  setUserRoleGate: null as (() => Promise<void>) | null,
 }));
 
 vi.mock("~/services/rbac.server", async () => {
@@ -122,6 +124,7 @@ vi.mock("~/services/rbac.server", async () => {
       roleId: string;
       onlyIfUnassigned?: boolean;
     }) {
+      await rbacHolder.setUserRoleGate?.();
       const role = Object.values(rbacHolder.roles).find((r) => r.id === params.roleId);
       if (!role) return { ok: false, error: "Role not found" };
       const previousRole = await effectiveRole(params.userId, params.organizationId);
@@ -255,6 +258,7 @@ beforeEach(() => {
   rbacHolder.assignments.clear();
   rbacHolder.reads = { getUserRole: 0, allRoles: 0 };
   rbacHolder.allRolesGate = null;
+  rbacHolder.setUserRoleGate = null;
   ssoHolder.overrides = {};
 });
 
@@ -654,8 +658,9 @@ describe("invite accepted with a role", () => {
       });
 
       // Each accept runs labelled, so the client below can tell them apart. Both reach the invite
-      // delete with the membership created by one of them. The other deletes the invite first and
-      // waits for the creator's accept to finish before it checks the role.
+      // delete with the membership created by one of them. The other writes the role only after
+      // the creator has (the creator reaches the delete after its write), deletes the invite first
+      // and waits for the creator's accept to finish before it checks the role.
       const acceptLabel = new AsyncLocalStorage<string>();
       const accepts = new Map<string, Promise<unknown>>();
       let creator: string | undefined;
@@ -664,7 +669,18 @@ describe("invite accepted with a role", () => {
       const bothAtDelete = new Promise<void>((resolve) => (releaseDeletes = resolve));
       let consumerDeleted!: () => void;
       const consumerDeletedInvite = new Promise<void>((resolve) => (consumerDeleted = resolve));
+      let creatorAtDelete!: () => void;
+      const creatorWroteRole = new Promise<void>((resolve) => (creatorAtDelete = resolve));
       const timeout = () => new Promise((resolve) => setTimeout(resolve, 10_000));
+      let creatorRoleWriteTimedOut = false;
+      rbacHolder.setUserRoleGate = async () => {
+        if (acceptLabel.getStore() === creator) return;
+        const wrote = await Promise.race([
+          creatorWroteRole.then(() => true),
+          timeout().then(() => false),
+        ]);
+        if (!wrote) creatorRoleWriteTimedOut = true;
+      };
       prismaHolder.client = prisma.$extends({
         query: {
           orgMember: {
@@ -676,6 +692,7 @@ describe("invite accepted with a role", () => {
           },
           orgMemberInvite: {
             async delete({ args, query }) {
+              if (acceptLabel.getStore() === creator) creatorAtDelete();
               if (++deletesStarted === 2) releaseDeletes();
               await Promise.race([bothAtDelete, timeout()]);
               if (acceptLabel.getStore() === creator) {
@@ -705,6 +722,7 @@ describe("invite accepted with a role", () => {
       const results = await Promise.all(accepts.values());
 
       expect(creator).toBeDefined();
+      expect(creatorRoleWriteTimedOut, "the creator never wrote the role").toBe(false);
       expect(results.filter((result) => result instanceof Error)).toEqual([]);
       expect(rbacHolder.assignments.get(`${organization.id}:${joiner.id}`)).toEqual(
         rbacHolder.roles.developer
