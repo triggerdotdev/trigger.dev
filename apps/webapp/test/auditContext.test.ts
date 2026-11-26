@@ -454,7 +454,7 @@ describe("request audit context from other auth functions", () => {
     const context = await inRequest(async () =>
       noteOrganizationAccessTokenAuthentication(
         apiRequest("tr_oat_abcdefghijklmnopqrstuvwxyz0123456789"),
-        { tokenId: "oat_1" }
+        { tokenId: "oat_1", type: "USER" }
       )
     );
 

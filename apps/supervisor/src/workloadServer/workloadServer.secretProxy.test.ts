@@ -37,6 +37,7 @@ describe.each([
   const refresh = vi.fn(async () => {});
   const exclusive = vi.fn(async (_runId: string, operation: () => Promise<unknown>) => operation());
   const rebindContinued = vi.fn(async () => {});
+  const activateContinue = vi.fn(async () => {});
   const completeRunAttempt = vi.fn(async () => ({
     success: true as const,
     data: { result: { attemptStatus: "RUN_FINISHED" } },
@@ -73,6 +74,7 @@ describe.each([
           refresh,
           exclusive,
           rebindContinued,
+          activateContinue,
         } as unknown as SecretProxyBindings)
       : undefined;
     server = new WorkloadServer({
@@ -102,6 +104,8 @@ describe.each([
     refresh.mockClear();
     exclusive.mockClear();
     rebindContinued.mockClear();
+    activateContinue.mockReset();
+    continueRunExecution.mockClear();
   });
 
   afterAll(async () => {
@@ -204,6 +208,37 @@ describe.each([
       supportsSecretProxy: true,
     });
   });
+
+  it.runIf(proxy)(
+    "replies 503 when the continue bind fails, then binds a retried continue",
+    async () => {
+      const bound = {
+        success: true as const,
+        data: {
+          run: { friendlyId: "run_1", attemptNumber: 1 },
+          snapshot: { friendlyId: "snapshot_2" },
+          runToken: "run-token",
+          secretProxy: { allowedHosts: [] },
+        },
+      };
+      continueRunExecution.mockResolvedValueOnce(bound as any).mockResolvedValueOnce(bound as any);
+      prepareStart.mockResolvedValue({ bindingId: "binding_1" });
+      activateContinue.mockRejectedValueOnce(new Error("Secret proxy control unavailable"));
+      const request = () =>
+        fetch(`${base}/continue`, {
+          headers: {
+            [WORKLOAD_HEADERS.DEPLOYMENT_ID]: token,
+            [WORKLOAD_HEADERS.RUNNER_ID]: "runner_1",
+          },
+        });
+
+      expect((await request()).status).toBe(503);
+      const retried = await request();
+      expect(retried.status).toBe(200);
+      expect(await retried.json()).not.toHaveProperty("runToken");
+      expect(activateContinue).toHaveBeenCalledTimes(2);
+    }
+  );
 
   it(`${proxy ? "forwards" : "strips"} the completion attempt number`, async () => {
     const res = await post("attempts/complete", { completion, attemptNumber: 1 });

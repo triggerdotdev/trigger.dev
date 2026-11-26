@@ -1,6 +1,6 @@
 {
   "name": "@trigger.dev/core",
-  "version": "4.8.8",
+  "version": "4.8.10",
   "description": "Core code used across the Trigger.dev SDK and platform",
   "license": "MIT",
   "publishConfig": {
@@ -236,6 +236,7 @@
     "@arethetypeswrong/cli": "^0.18.5",
     "@epic-web/test-server": "^0.1.0",
     "@internal/testcontainers": "workspace:*",
+    "@opentelemetry/instrumentation-http": "0.219.0",
     "@trigger.dev/database": "workspace:*",
     "@types/humanize-duration": "^3.27.1",
     "ai": "^6.0.0",

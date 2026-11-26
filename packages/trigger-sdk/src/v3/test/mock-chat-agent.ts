@@ -17,7 +17,11 @@ import {
   __setWriteChatSnapshotImplForTests,
   type ChatSnapshotV1,
 } from "../ai.js";
-import { createTestSessionHandle, type TestSessionOutState } from "./test-session-handle.js";
+import {
+  createTestSessionHandle,
+  type TestOutRecord,
+  type TestSessionOutState,
+} from "./test-session-handle.js";
 import { reduceUIMessageChunks } from "../uiMessageChunks.js";
 
 /** Pre-seed locals before the agent's `run()` starts. */
@@ -176,6 +180,23 @@ export type MockChatAgentOptions = {
    * ```
    */
   setupLocals?: SetupLocals;
+  /**
+   * Milliseconds each `.out` append takes to be acknowledged, to model a
+   * network round trip to the stream. Applies to control records, one-shot
+   * appends and the first chunk of each piped stream. Defaults to 0.
+   */
+  outAppendLatencyMs?: number;
+  /**
+   * Milliseconds each piped `.out` chunk lingers before it is acknowledged,
+   * modelling the writer's batching so a direct append (a control record) made
+   * while a step is streaming can land ahead of that step's tail. Defaults to 0.
+   */
+  outPipeLingerMs?: number;
+  /**
+   * Write no turn-start or turn-join records, as an agent on an older SDK version
+   * would, to test a reader against it.
+   */
+  omitTurnMarkers?: boolean;
 };
 
 /**
@@ -406,6 +427,19 @@ export type MockChatAgentHarness = {
   deliverSessionInAtSeq(message: UIMessage, seqNum: number): Promise<void>;
 
   /**
+   * Put an input record on `session.in` at an explicit seq_num (a message, an
+   * action, a stop), the way the server does for an append from any client. It
+   * returns without waiting for a turn, so a test drives several in flight.
+   */
+  deliverInput(chunk: unknown, seqNum: number): Promise<void>;
+
+  /** `.out` as a reader sees it: every record with its seq and headers. */
+  readonly outRecords: ReadonlyArray<TestOutRecord>;
+
+  /** Called for each record written to `.out`, after it is in {@link outRecords}. */
+  onOutRecord(listener: (record: TestOutRecord) => void): () => void;
+
+  /**
    * The most recently written snapshot, or `undefined` if no snapshot
    * has been written yet. Updated each time `writeChatSnapshot` is
    * invoked from the run loop's snapshot-write site (plan section B.6).
@@ -476,7 +510,18 @@ const settlePostTurnChannelEgress = (chatId: string, runEnded: Promise<void>) =>
 const settlePostTurnHooks = (chatId: string, runEnded: Promise<void>) =>
   settleLatch("post-turn hooks", chatId, __waitForPostTurnHooksForTests(chatId), runEnded);
 
-const CONTROL_CHUNK_TYPES = new Set(["trigger:turn-complete", "trigger:upgrade-required"]);
+const CONTROL_CHUNK_TYPES = new Set([
+  "trigger:turn-complete",
+  "trigger:upgrade-required",
+  "trigger:turn-start",
+  "trigger:turn-join",
+]);
+
+function isTurnMarkerChunk(chunk: unknown): boolean {
+  if (typeof chunk !== "object" || chunk === null) return false;
+  const type = (chunk as { type?: string }).type;
+  return type === "trigger:turn-start" || type === "trigger:turn-join";
+}
 
 function isControlChunk(chunk: unknown): boolean {
   if (typeof chunk !== "object" || chunk === null) return false;
@@ -562,6 +607,10 @@ export function mockChatAgent(
   const sessionOutState: TestSessionOutState = {
     chunks: [],
     listeners: new Set(),
+    records: [],
+    appendLatencyMs: options.outAppendLatencyMs,
+    pipeLingerMs: options.outPipeLingerMs,
+    omitTurnMarkers: options.omitTurnMarkers,
   };
 
   // Buffers that survive across harness method calls
@@ -764,7 +813,9 @@ export function mockChatAgent(
 
     // Record every chunk written to session.out, detect turn-complete.
     const listener = (chunk: unknown) => {
-      allRawChunks.push(chunk);
+      // The turn markers are bookkeeping for readers of `.out` (see
+      // `outRecords`); a test asserting the raw chunk sequence doesn't see them.
+      if (!isTurnMarkerChunk(chunk)) allRawChunks.push(chunk);
       if (!isControlChunk(chunk)) {
         allChunks.push(chunk as UIMessageChunk);
       }
@@ -1083,6 +1134,24 @@ export function mockChatAgent(
       if (entries.length > 0) {
         sessionStreams.setLastSeqNum(sessionId, "in", entries.length);
       }
+    },
+
+    async deliverInput(chunk, seqNum) {
+      await harnessReady;
+      await sendSessionInput(sessionId, chunk, "in", { seqNum });
+    },
+
+    get outRecords() {
+      return sessionOutState.records ?? [];
+    },
+
+    onOutRecord(listener) {
+      const wrapped = () => {
+        const record = sessionOutState.records?.at(-1);
+        if (record) listener(record);
+      };
+      sessionOutState.listeners.add(wrapped);
+      return () => sessionOutState.listeners.delete(wrapped);
     },
 
     async deliverSessionInAtSeq(message, seqNum) {

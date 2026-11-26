@@ -36,6 +36,7 @@ export const ORGANIZATION_SPECIFIC_PAGES = [
   "alerts/channels",
   "alerts/legacy",
   "alerts/new",
+  "deployments",
   "logs",
   "query",
   "dashboards/queues",

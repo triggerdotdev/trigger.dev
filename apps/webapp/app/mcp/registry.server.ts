@@ -18,16 +18,22 @@ import { agentsTools } from "./tools/agents.server";
 import { alertsTools } from "./tools/alerts.server";
 import { bulkActionsTools } from "./tools/bulkActions.server";
 import { dashboardsTools } from "./tools/dashboards.server";
+import { dashboardsEditTools } from "./tools/dashboardsEdit.server";
+import { dashboardsReadTools } from "./tools/dashboardsRead.server";
+import { deploymentDetailsTools } from "./tools/deploymentDetails.server";
 import { deploysTools } from "./tools/deploys.server";
 import { docsTools } from "./tools/docs.server";
+import { modelsTools } from "./tools/models.server";
 import { orgsTools } from "./tools/orgs.server";
 import { promptsTools } from "./tools/prompts.server";
+import { promptsReadTools } from "./tools/promptsRead.server";
 import { queryTools } from "./tools/query.server";
 import { reportTools } from "./tools/report.server";
 import { logsTools } from "./tools/logs.server";
 import { runsTools } from "./tools/runs.server";
 import { runStreamsTools } from "./tools/runStreams.server";
 import { sessionsTools } from "./tools/sessions.server";
+import { sessionsReadTools } from "./tools/sessionsRead.server";
 import { tasksTools } from "./tools/tasks.server";
 import { webhooksTools } from "./tools/webhooks.server";
 import { webhooksReadTools } from "./tools/webhooksRead.server";
@@ -86,11 +92,16 @@ export const mcpTools: McpToolDefinition[] = assertUniqueToolNames([
   ...logsTools,
   ...bulkActionsTools,
   ...deploysTools,
+  ...deploymentDetailsTools,
   ...queryTools,
   ...dashboardsTools,
+  ...dashboardsReadTools,
+  ...modelsTools,
   ...promptsTools,
+  ...promptsReadTools,
   ...agentsTools,
   ...sessionsTools,
+  ...sessionsReadTools,
   ...alertsTools,
   ...webhooksTools,
   ...webhooksReadTools,
@@ -100,6 +111,7 @@ export const mcpTools: McpToolDefinition[] = assertUniqueToolNames([
   ...alertsWriteTools,
   ...alertsManageTools,
   ...dashboardsWriteTools,
+  ...dashboardsEditTools,
   ...feedbackTools,
   ...orgsWriteTools,
   ...promptsWriteTools,

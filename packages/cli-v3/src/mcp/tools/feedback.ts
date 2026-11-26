@@ -22,10 +22,12 @@ const SubmitFeedbackInput = {
     .max(MAX_TOOL_NAME_LENGTH)
     .optional()
     .describe("The MCP tool the problem happened in, if it was one tool in particular."),
+  // A regex, not startsWith: zod 4.6 prints startsWith as a non-standard JSON Schema
+  // `format: "starts_with"`, which validators in strict mode refuse to compile.
   projectRef: z
     .string()
     .max(MAX_PROJECT_REF_LENGTH)
-    .startsWith("proj_")
+    .regex(/^proj_.*/, 'Invalid string: must start with "proj_"')
     .optional()
     .describe(
       "The trigger.dev project ref, starts with proj_. Optional: a report without one is still useful."

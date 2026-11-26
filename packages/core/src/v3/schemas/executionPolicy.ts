@@ -88,3 +88,20 @@ export function isSandboxRun(annotations: unknown): boolean {
     (annotations as Record<string, unknown>).executionMode === "SANDBOX"
   );
 }
+
+/**
+ * Why stored run annotations pin a run to microVM compute: a sandbox run, or a run of a
+ * compute-only organization. Such a run is never moved to a container lane. Undefined when the run
+ * may move.
+ */
+export function computeOnlyReason(annotations: unknown): "sandbox" | "compute_only" | undefined {
+  if (isSandboxRun(annotations)) return "sandbox";
+  if (
+    typeof annotations === "object" &&
+    annotations !== null &&
+    (annotations as Record<string, unknown>).computeOnly === true
+  ) {
+    return "compute_only";
+  }
+  return undefined;
+}

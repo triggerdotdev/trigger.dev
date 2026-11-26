@@ -317,7 +317,7 @@ export function createRunsTools(options: RunsToolsOptions = {}): McpToolDefiniti
       if (offset === 0) {
         const run = await new ApiRetrieveRunPresenter(CURRENT_API_VERSION).call(found, environment);
         content.push("## Run Details");
-        content.push(formatRun(run as Parameters<typeof formatRun>[0]));
+        content.push(formatRun(run as Parameters<typeof formatRun>[0], found));
         content.push("");
       }
 

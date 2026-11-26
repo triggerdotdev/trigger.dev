@@ -10,6 +10,9 @@ import { getRealtimeStreamInstance } from "./v1StreamsGlobal.server";
 
 export const SESSION_RUN_COMPLETION_JOB = "sessionRun.continueIfInputUnread" as const;
 
+/** How many times the queue runs the job before it gives up (its retry setting on the worker). */
+export const SESSION_RUN_COMPLETION_MAX_ATTEMPTS = 8;
+
 export const SessionRunCompletionPayloadSchema = z.object({
   /** The run that ended: `TaskRun.id`. */
   runId: z.string(),
@@ -41,6 +44,11 @@ export type SessionContinuationOutcome =
   /** A failed run that died inside a turn: left to the user, see `continueSessionIfInputUnread`. */
   | "failed-mid-turn"
   | "not-a-session-run"
+  /**
+   * `.out` holds only S2 command records, so the run's last turn cannot be read: a final answer,
+   * not retried, nothing continued. See `hasUnreadSessionMessage`.
+   */
+  | "out-commands-only"
   | "unreadable";
 
 /** Records read per page when looking for an unread message, and how many pages at most. */
@@ -90,6 +98,9 @@ type SessionInputStreams = Pick<
  * after); a cursorless one says nothing about whose it is, so it is not taken as the run's. Without
  * either, the run's own iff stored at or after the run was created.
  *
+ * A `.out` that holds only S2 command records answers "out-commands-only", without looking at
+ * `.in`: the turn this run wrote can no longer be read, so nothing says what it answered.
+ *
  * Cost: a run with a cursor, or an anchor, reads forward from it, at most `UNREAD_SCAN_MAX_PAGES`
  * pages. A run with neither reads at most that many pages of `UNREAD_SCAN_PAGE_SIZE` records from
  * the tail, and the usual answer on a long session (nothing new) is one read of one page. There a
@@ -102,10 +113,16 @@ async function hasUnreadSessionMessage(
   outcome: SessionRunOutcome | undefined
 ): Promise<
   | { status: "unread"; firstSeq: number | undefined }
-  | { status: "nothing-unread" | "failed-mid-turn" | "unreadable" }
+  | { status: "nothing-unread" | "failed-mid-turn" | "out-commands-only" | "unreadable" }
 > {
   const outTail = await streams.peekSessionOutTail(addressingKey);
   if (outTail.kind === "unknown") return { status: "unreadable" };
+  // `.out` was read and holds no record to go on (a trim deleted the turn-complete or every
+  // record, or the agent trimmed several times after it): the run's last turn is gone, and retrying cannot bring
+  // it back. Not "empty": that would scan `.in` from the run's start and could start a run that
+  // re-answers messages whose turn-complete was deleted. A message the run never read may go
+  // unanswered until the user's next one, which starts a run; a duplicate reply is the worse miss.
+  if (outTail.kind === "commands-only") return { status: "out-commands-only" };
 
   const ownershipSeq = run.sessionInFirstSeq ?? run.sessionInSeq;
   const wroteOwnTurn =
@@ -283,13 +300,34 @@ export async function enqueueSessionRunCompletionCheck(params: {
 }
 
 /**
+ * Thrown when the session streams could not be read, on every attempt. It carries
+ * `logLevel: "warn"` (the worker logs a failed attempt, and the move to its dead-letter queue after
+ * the last one, at the level its error carries), which keeps the worker's lines out of the error
+ * reporter. The check logs the unreadable streams once at error level on the last attempt, with
+ * the run, the session and the stream names.
+ */
+class SessionStreamsUnreadableError extends Error {
+  readonly logLevel = "warn" as const;
+
+  constructor(runId: string) {
+    super(`Could not read the session streams for run ${runId}`);
+    this.name = "SessionStreamsUnreadableError";
+  }
+}
+
+/**
  * The body of the queued job. Fails the attempt when the streams could not be read, so the queue
- * retries it instead of acking a check that looked at nothing.
+ * retries it instead of acking a check that looked at nothing. `attempt` is the worker's
+ * zero-based attempt count: on the last attempt the check logs the failure at error level before
+ * the job throws, so one unreadable run is one error and not one per retry, and the job still
+ * reaches the dead-letter queue, where it can be replayed.
  */
 export async function runSessionRunCompletionJob(
   payload: z.infer<typeof SessionRunCompletionPayloadSchema>,
-  deps: { findEnvironment: (id: string) => Promise<AuthenticatedEnvironment | null> }
+  deps: { findEnvironment: (id: string) => Promise<AuthenticatedEnvironment | null> },
+  attempt = 0
 ): Promise<void> {
+  const lastAttempt = attempt + 1 >= SESSION_RUN_COMPLETION_MAX_ATTEMPTS;
   const outcome = await continueSessionIfInputUnread(
     {
       run: {
@@ -300,12 +338,17 @@ export async function runSessionRunCompletionJob(
       },
       environmentId: payload.environmentId,
       outcome: payload.outcome,
+      lastAttempt,
     },
     deps
   );
-  // Only "unreadable" is retried: "failed-mid-turn" is a final answer.
+  // Only "unreadable" is retried: every other outcome, "failed-mid-turn" and "out-commands-only"
+  // included, is a final answer. The last attempt throws too, so the worker moves the check to its
+  // dead-letter queue (logged at warn, the level the error carries) and it can be replayed once the
+  // streams can be read. The check itself logged the failure once at error level on that attempt;
+  // that log is wiring, and no test asserts it.
   if (outcome === "unreadable") {
-    throw new Error(`Could not read the session streams for run ${payload.runId}`);
+    throw new SessionStreamsUnreadableError(payload.runId);
   }
 }
 
@@ -340,17 +383,20 @@ export async function runSessionRunCompletionJob(
  *
  * Cost: one indexed `Session.currentRunId` lookup; for a session's current run one S2 tail peek
  * and one `.in` tail read, then at most three bounded pages of `.in` records. Throws on a failure
- * so the queue retries it; "unreadable" (S2 gave no answer) is for the caller to retry as well.
+ * so the queue retries it; "unreadable" (S2 gave no answer) is for the caller to retry as well, and
+ * "out-commands-only" (`.out` read, only command records in it) is final.
  */
 export async function continueSessionIfInputUnread(
   params: {
     run: { id: string; createdAt: Date; sessionInSeq?: number; sessionInFirstSeq?: number };
     environmentId: string;
     outcome?: SessionRunOutcome;
+    /** The queue will not retry after this check: an unreadable stream is logged at error. */
+    lastAttempt?: boolean;
   },
   deps: { findEnvironment: (id: string) => Promise<AuthenticatedEnvironment | null> }
 ): Promise<SessionContinuationOutcome> {
-  const { run, environmentId, outcome } = params;
+  const { run, environmentId, outcome, lastAttempt } = params;
 
   const session = await prisma.session.findFirst({
     where: {
@@ -378,12 +424,26 @@ export async function continueSessionIfInputUnread(
   const streams = getRealtimeStreamInstance(environment, "v2", { session });
   if (!(streams instanceof S2RealtimeStreams)) return "not-a-session-run";
 
-  const unread = await hasUnreadSessionMessage(
-    streams,
-    canonicalSessionAddressingKey(session, session.friendlyId),
-    run,
-    outcome
-  );
+  const addressingKey = canonicalSessionAddressingKey(session, session.friendlyId);
+  const unread = await hasUnreadSessionMessage(streams, addressingKey, run, outcome);
+  if (unread.status === "unreadable" || unread.status === "out-commands-only") {
+    const context = {
+      runId: run.id,
+      sessionId: session.friendlyId,
+      outStream: streams.toSessionStreamName(addressingKey, "out"),
+      inStream: streams.toSessionStreamName(addressingKey, "in"),
+    };
+    if (unread.status === "out-commands-only") {
+      logger.warn(
+        "The session's .out holds only command records, so the run's last turn can't be read; not continuing the session",
+        context
+      );
+    } else if (lastAttempt) {
+      logger.error("Could not read the session streams after the last attempt", context);
+    } else {
+      logger.warn("Could not read the session streams, the check will be retried", context);
+    }
+  }
   if (unread.status !== "unread") return unread.status;
 
   // The messages are already on `.in`: start the run for the first one it will answer. Unknown

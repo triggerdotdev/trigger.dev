@@ -311,11 +311,13 @@ export function ScheduleToggleButton({
   actionPath,
   fetcher,
   variant = "secondary/small",
+  disabled,
 }: {
   schedule: Pick<ScheduleDetail, "active">;
   actionPath: string | undefined;
   fetcher: FetcherWithComponents<unknown>;
   variant?: "secondary/small" | "tertiary/small" | "minimal/small";
+  disabled?: boolean;
 }) {
   const busy = fetcher.state !== "idle";
   return (
@@ -328,7 +330,7 @@ export function ScheduleToggleButton({
         leadingIconClassName={schedule.active ? "text-text-dimmed" : "text-success"}
         name="action"
         value={schedule.active ? "disable" : "enable"}
-        disabled={busy}
+        disabled={busy || disabled}
       >
         {schedule.active ? "Disable" : "Enable"}
       </Button>
@@ -341,18 +343,20 @@ export function ScheduleDeleteButton({
   actionPath,
   fetcher,
   trigger,
+  disabled,
 }: {
   schedule: Pick<ScheduleDetail, "friendlyId" | "externalId">;
   actionPath: string | undefined;
   fetcher: FetcherWithComponents<unknown>;
   trigger?: ReactNode;
+  disabled?: boolean;
 }) {
   const busy = fetcher.state !== "idle";
   return (
     <Dialog>
       <DialogTrigger asChild>
         {trigger ?? (
-          <Button variant="danger/small" LeadingIcon={TrashIcon}>
+          <Button variant="danger/small" LeadingIcon={TrashIcon} disabled={disabled}>
             Delete…
           </Button>
         )}
@@ -386,12 +390,14 @@ export function ScheduleDeleteButton({
 export function ScheduleEditButton({
   onEdit,
   variant = "secondary/small",
+  disabled,
 }: {
   onEdit: () => void;
   variant?: "secondary/small" | "primary/small";
+  disabled?: boolean;
 }) {
   return (
-    <Button variant={variant} LeadingIcon={PencilSquareIcon} onClick={onEdit}>
+    <Button variant={variant} LeadingIcon={PencilSquareIcon} onClick={onEdit} disabled={disabled}>
       Edit…
     </Button>
   );

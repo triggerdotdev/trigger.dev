@@ -60,6 +60,14 @@ function makeSyntheticRun(overrides: Partial<SyntheticRun> = {}): SyntheticRun {
 }
 
 describe("synthesiseFoundRunFromBuffer", () => {
+  // Catches: a buffered run losing the priority it was triggered with.
+  it.each([
+    { priorityMs: 30_000, shown: 30_000 },
+    { priorityMs: undefined, shown: 0 },
+  ])("carries the snapshot priority $priorityMs as $shown", ({ priorityMs, shown }) => {
+    expect(synthesiseFoundRunFromBuffer(makeSyntheticRun({ priorityMs })).priorityMs).toBe(shown);
+  });
+
   it("populates internal id and friendlyId so downstream logging keys off the cuid", () => {
     const found: FoundRun = synthesiseFoundRunFromBuffer(makeSyntheticRun());
     expect(found.id).toBe("run_internal_1");

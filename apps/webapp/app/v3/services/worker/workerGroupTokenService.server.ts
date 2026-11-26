@@ -153,32 +153,60 @@ export class WorkerGroupTokenService extends WithRunEngine {
   async findWorkerGroup({ token }: { token: string }) {
     const tokenHash = await this.hashToken(token);
 
-    const workerGroup = await this._prisma.workerInstanceGroup.findFirst({
+    const matchedToken = await this._prisma.workerGroupToken.findFirst({
       where: {
-        token: {
-          OR: [
-            { tokenHash },
-            { previousTokenHash: tokenHash, previousTokenValidUntil: { gt: new Date() } },
-          ],
-        },
+        OR: [
+          { tokenHash },
+          { previousTokenHash: tokenHash, previousTokenValidUntil: { gt: new Date() } },
+        ],
       },
-      include: {
-        token: { select: { tokenHash: true, previousTokenValidUntil: true } },
-      },
+      include: { workerGroup: true, childOf: true },
     });
 
-    if (!workerGroup) {
+    const group = matchedToken?.workerGroup ?? matchedToken?.childOf;
+
+    if (!matchedToken || !group) {
       logger.warn("[WorkerGroupTokenService] No matching worker group found");
       return null;
     }
 
-    const { token: matchedToken, ...group } = workerGroup;
     const tokenValidUntil =
       matchedToken.tokenHash === tokenHash
         ? undefined
         : (matchedToken.previousTokenValidUntil ?? undefined);
 
-    return { ...group, tokenValidUntil };
+    const tokenKind: WorkerTokenKind = !matchedToken.workerGroup
+      ? "child"
+      : tokenValidUntil
+        ? "previous-global"
+        : "global";
+
+    return { ...group, tokenValidUntil, tokenKind, matchedTokenId: matchedToken.id };
+  }
+
+  async createChildToken({ workerGroupId }: { workerGroupId: string }) {
+    const workerGroup = await this._prisma.workerInstanceGroup.findFirst({
+      where: { id: workerGroupId },
+      select: { id: true },
+    });
+
+    if (!workerGroup) return;
+
+    const rawToken = await this.generateToken();
+
+    const workerGroupToken = await this._prisma.workerGroupToken.create({
+      data: { tokenHash: rawToken.hash, workerGroupId },
+    });
+
+    return { id: workerGroupToken.id, plaintext: rawToken.plaintext };
+  }
+
+  async deleteChildToken({ workerGroupId, tokenId }: { workerGroupId: string; tokenId: string }) {
+    const deleted = await this._prisma.workerGroupToken.deleteMany({
+      where: { id: tokenId, workerGroupId, workerGroup: { is: null } },
+    });
+
+    return deleted.count > 0;
   }
 
   async rotateToken({ workerGroupId, graceMs }: { workerGroupId: string; graceMs: number }) {
@@ -347,6 +375,13 @@ export class WorkerGroupTokenService extends WithRunEngine {
           return;
         }
 
+        logger.info("[WorkerGroupTokenService] Worker authenticated", {
+          instanceName,
+          workerGroupId: workerGroup.id,
+          tokenKind: workerGroup.tokenKind,
+          tokenId: workerGroup.matchedTokenId,
+        });
+
         return new AuthenticatedWorkerInstance({
           prisma: this._prisma,
           engine: this._engine,
@@ -361,6 +396,7 @@ export class WorkerGroupTokenService extends WithRunEngine {
           allowedSubscriptions: env.RUN_ENGINE_WORKER_QUEUE_SUBSCRIPTIONS[workerGroup.id] ?? [],
           mixedRuntime: env.RUN_ENGINE_MIXED_RUNTIME_WORKER_GROUPS.includes(workerGroup.id),
           tokenValidUntil: workerGroup.tokenValidUntil,
+          tokenKind: workerGroup.tokenKind,
         });
       }
     );
@@ -470,8 +506,11 @@ export type AuthenticatedWorkerInstanceOptions = WithRunEngineOptions<
     projectId?: string | null;
     name: string;
     tokenValidUntil?: Date;
+    tokenKind?: WorkerTokenKind;
   }
 >;
+
+export type WorkerTokenKind = "global" | "previous-global" | "child";
 
 export class AuthenticatedWorkerInstance extends WithRunEngine {
   readonly type: WorkerInstanceGroupType;
@@ -481,6 +520,7 @@ export class AuthenticatedWorkerInstance extends WithRunEngine {
   readonly workerInstanceId: string;
   readonly masterQueue: string;
   readonly tokenValidUntil?: Date;
+  readonly tokenKind: WorkerTokenKind;
   private readonly queueConsumer: WorkerQueueConsumer;
 
   // FIXME: Required for unmanaged workers
@@ -498,6 +538,7 @@ export class AuthenticatedWorkerInstance extends WithRunEngine {
     this.workerInstanceId = opts.workerInstanceId;
     this.masterQueue = opts.masterQueue;
     this.tokenValidUntil = opts.tokenValidUntil;
+    this.tokenKind = opts.tokenKind ?? "global";
     this.queueConsumer = createWorkerQueueConsumer(opts);
 
     if (refusedSubscriptions(opts).length > 0 && !warnedRefusedGroups.has(opts.workerGroupId)) {

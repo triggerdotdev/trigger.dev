@@ -43,7 +43,7 @@ function renderRecords(records: StreamRecord[]) {
 
 const TIMED_OUT = "The stream did not answer in time. Try again.";
 
-function withinDeadline<T>(
+export function withinDeadline<T>(
   promise: Promise<T>,
   deadline: number,
   signal: AbortSignal

@@ -16,12 +16,15 @@ export type QueryHistoryItem = {
   filterTo: Date | null;
 };
 
+/** How many recent queries the history shows. */
+export const QUERY_HISTORY_LIMIT = 20;
+
 export class QueryPresenter extends BasePresenter {
   public async call({ organizationId }: { organizationId: string }) {
     const history = await this._replica.customerQuery.findMany({
       where: { organizationId },
       orderBy: { createdAt: "desc" },
-      take: 20,
+      take: QUERY_HISTORY_LIMIT,
       select: {
         id: true,
         query: true,

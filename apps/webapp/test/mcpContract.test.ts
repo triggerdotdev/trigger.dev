@@ -53,6 +53,8 @@ const REMOTE_ONLY: Record<string, string> = {
   pause_webhook_endpoint: "the CLI has no MCP twin for the public disable route",
   resume_webhook_endpoint: "the CLI has no MCP twin for the public enable route",
   cancel_webhook_waiter: "the CLI has no MCP tool for the public waiter cancel route",
+  get_deployment_details: "the CLI has no tool for it yet",
+  get_agent_details: "the public API has no endpoint for an agent's details and activity",
   get_alert_details: "reads the Dashboard alert presenter, which only the server has",
   list_alert_channels: "reads the Dashboard channel presenter, which only the server has",
   update_alert: "edits through the Dashboard alert services, which only the server has",
@@ -61,6 +63,20 @@ const REMOTE_ONLY: Record<string, string> = {
   delete_alert: "deletes through the Dashboard alert services, which only the server has",
   create_alert_group: "groups through the Dashboard alert services, which only the server has",
   ungroup_alert: "ungroups through the Dashboard alert services, which only the server has",
+  get_dashboard: "the CLI has no tool for it yet",
+  list_query_history: "the public API has no endpoint for the Query page history",
+  list_models: "the public API has no endpoint for the model catalogue",
+  get_model: "the public API has no endpoint for a model's details",
+  get_model_usage: "the public API has no endpoint for model usage",
+  get_prompt: "the CLI has no tool for it yet",
+  list_prompt_generations: "the public API has no endpoint for a prompt's generations",
+  update_dashboard_widget: "the CLI has no tool for it yet",
+  update_dashboard: "the CLI has no tool for it yet",
+  delete_dashboard: "the CLI has no tool for it yet",
+  list_sessions: "the CLI has no tool for it yet",
+  get_session_details: "no public API returns a session's runs and channel names",
+  read_session_transcript: "the CLI has no tool for it yet",
+  list_playground_conversations: "playground conversations are only listed in the dashboard",
 };
 
 const WRITE_TOOL_APPROVAL: Record<string, "required" | "configurable" | { none: string }> = {
@@ -94,6 +110,9 @@ const WRITE_TOOL_APPROVAL: Record<string, "required" | "configurable" | { none: 
   ungroup_alert: "required",
   create_dashboard: "configurable",
   set_dashboard_widgets: "configurable",
+  update_dashboard_widget: "configurable",
+  update_dashboard: "configurable",
+  delete_dashboard: "required",
   promote_prompt_version: "configurable",
   create_prompt_override: "configurable",
   update_prompt_override: "configurable",
@@ -148,6 +167,41 @@ function classifyHostedTools(hosted: string[], cli: string[], remoteOnly: string
 }
 
 const toJson = (shape: z.ZodRawShape) => z.toJSONSchema(z.object(shape), { io: "input" });
+
+// The formats JSON Schema 2020-12 defines. Anything else is a custom format a client may not know.
+const STANDARD_FORMATS = new Set([
+  "date-time",
+  "date",
+  "time",
+  "duration",
+  "email",
+  "idn-email",
+  "hostname",
+  "idn-hostname",
+  "ipv4",
+  "ipv6",
+  "uri",
+  "uri-reference",
+  "iri",
+  "iri-reference",
+  "uuid",
+  "uri-template",
+  "json-pointer",
+  "relative-json-pointer",
+  "regex",
+]);
+
+function formatsIn(node: unknown, found: string[] = []): string[] {
+  if (Array.isArray(node)) {
+    for (const item of node) formatsIn(item, found);
+  } else if (node && typeof node === "object") {
+    for (const [key, value] of Object.entries(node)) {
+      if (key === "format" && typeof value === "string") found.push(value);
+      else formatsIn(value, found);
+    }
+  }
+  return found;
+}
 
 describe("MCP remote/CLI contract", () => {
   // Catches: a hosted tool with no CLI twin slipping in undeclared, a REMOTE_ONLY entry with a CLI twin, or a stale REMOTE_ONLY entry.
@@ -215,5 +269,20 @@ describe("MCP remote/CLI contract", () => {
     );
     const registered = mcpTools.map((t) => t.name);
     for (const name of pendingWriteTools) expect(registered).not.toContain(name);
+  });
+
+  // Catches: a string check (startsWith, endsWith, includes, lowercase, ...) that zod prints as a
+  // custom `format`, which JSON Schema validators in strict mode refuse to compile.
+  it("advertises only standard JSON Schema formats in input schemas", () => {
+    const tools = [
+      ...mcpTools.map((t) => ({ name: `remote ${t.name}`, shape: t.inputSchema })),
+      ...[...cliAll].map(([name, t]) => ({ name: `cli ${name}`, shape: t.inputSchema })),
+    ];
+    const custom = tools.flatMap(({ name, shape }) =>
+      formatsIn(toJson(shape))
+        .filter((format) => !STANDARD_FORMATS.has(format))
+        .map((format) => `${name}: ${format}`)
+    );
+    expect(custom).toEqual([]);
   });
 });

@@ -77,7 +77,7 @@ const tools = {
     // The model should see an image part, not base64 bytes:
     toModelOutput: ({ output }) => ({
       type: "content",
-      value: [{ type: "media", mediaType: "image/png", data: output.base64 }],
+      value: [{ type: "file", mediaType: "image/png", data: { type: "data", data: output.base64 } }],
     }),
   }),
 };

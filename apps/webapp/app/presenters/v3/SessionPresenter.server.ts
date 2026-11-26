@@ -25,6 +25,8 @@ export class SessionPresenter {
     environmentSlug: string;
     /** Off when the page opens on the Trace tab: the Conversation tab fetches it when shown. */
     readTranscript: boolean;
+    /** Runs before each query after the first; throwing stops the call. */
+    beforeRead?: () => void;
   }) {
     return startActiveSpan("SessionPresenter.call", (span) => this.#call(args, span), {
       attributes: {
@@ -42,6 +44,7 @@ export class SessionPresenter {
       projectExternalRef,
       environmentSlug,
       readTranscript,
+      beforeRead,
     }: {
       userId: string;
       environmentId: string;
@@ -49,6 +52,7 @@ export class SessionPresenter {
       projectExternalRef: string;
       environmentSlug: string;
       readTranscript: boolean;
+      beforeRead?: () => void;
     },
     rootSpan: Span
   ) {
@@ -62,6 +66,7 @@ export class SessionPresenter {
     rootSpan.setAttribute("session.found", true);
     rootSpan.setAttribute("session.id", session.id);
 
+    beforeRead?.();
     const displayableEnvironment = await startActiveSpan(
       "SessionPresenter.findDisplayableEnvironment",
       () => findDisplayableEnvironment(environmentId, userId)
@@ -73,6 +78,7 @@ export class SessionPresenter {
     // Run history is append-only; latest first matches the runs list.
     // 50 covers the vast majority of sessions; longer histories link out
     // to the runs page via tag filter.
+    beforeRead?.();
     const sessionRuns = await startActiveSpan("SessionPresenter.findSessionRuns", async (span) => {
       const rows = await findSessionRunsPage(this.replica, { sessionId: session.id, take: 50 });
       span.setAttribute("sessionRuns.count", rows.length);
@@ -80,6 +86,7 @@ export class SessionPresenter {
     });
 
     const runIds = sessionRuns.map((r) => r.runId);
+    beforeRead?.();
     const runs = await startActiveSpan("SessionPresenter.findRuns", async (span) => {
       span.setAttribute("runIds.count", runIds.length);
       return runIds.length > 0
@@ -96,15 +103,16 @@ export class SessionPresenter {
 
     const currentRun = session.currentRunId
       ? (runsById.get(session.currentRunId) ??
-        (await startActiveSpan("SessionPresenter.findCurrentRunFallback", () =>
-          runStore.findRun(
+        (await startActiveSpan("SessionPresenter.findCurrentRunFallback", () => {
+          beforeRead?.();
+          return runStore.findRun(
             { id: session.currentRunId! },
             {
               select: { id: true, friendlyId: true, status: true },
             },
             this.replica
-          )
-        )))
+          );
+        })))
       : null;
 
     // The dashboard SSE route is cookie-authed, so `publicAccessToken` is

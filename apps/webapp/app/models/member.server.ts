@@ -4,7 +4,6 @@ import type {
   PrismaClientOrTransaction,
   Project,
 } from "@trigger.dev/database";
-import { tryCatch } from "@trigger.dev/core/utils";
 import { z } from "zod";
 import { Prisma as PrismaNamespace, type Prisma, prisma } from "~/db.server";
 import {
@@ -463,25 +462,11 @@ async function assignInviteRbacRole({
   recordRoleChange?: { memberId: string; email: string };
 }): Promise<boolean> {
   try {
-    let roleBefore: { id: string; name: string } | null = null;
     if (onlyWhenUnassigned) {
       const currentRole = await rbac.getUserRole({ userId, organizationId });
       if (currentRole !== null) {
         return false;
       }
-    } else if (recordRoleChange && auditLogs.isRecordingEnabled()) {
-      // Best-effort, like setOrgMemberRole: a failed read records an unknown "before".
-      const [roleBeforeError, currentRole] = await tryCatch(
-        rbac.getUserRole({ userId, organizationId })
-      );
-      if (roleBeforeError) {
-        logger.warn("acceptInvite: failed to read the role before assigning the invite's role", {
-          organizationId,
-          userId,
-          error: roleBeforeError,
-        });
-      }
-      roleBefore = currentRole ?? null;
     }
 
     const roleResult = await rbac.setUserRole({
@@ -489,7 +474,8 @@ async function assignInviteRbacRole({
       organizationId,
       roleId: rbacRoleId,
     });
-    if (roleResult.ok && recordRoleChange && roleBefore?.id !== rbacRoleId) {
+    // The plugin reports the role it replaced, read in its own transaction.
+    if (roleResult.ok && roleResult.changed && recordRoleChange) {
       recordMemberAuditEventInBackground(
         async () => ({
           category: "members",
@@ -501,7 +487,7 @@ async function assignInviteRbacRole({
           }),
           changes: {
             role: {
-              before: roleBefore?.name ?? null,
+              before: roleResult.previousRole?.name ?? null,
               after: await auditRoleName(organizationId, rbacRoleId),
             },
           },

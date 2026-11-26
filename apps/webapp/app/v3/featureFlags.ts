@@ -30,6 +30,7 @@ export const FEATURE_FLAG = {
   internalApiOriginEnabled: "internalApiOriginEnabled",
   realtimeBackend: "realtimeBackend",
   computeMigrationEnabled: "computeMigrationEnabled",
+  computeOnlyDeploys: "computeOnlyDeploys",
   computeMigrationFreePercentage: "computeMigrationFreePercentage",
   computeMigrationPaidPercentage: "computeMigrationPaidPercentage",
   computeTemplatePrebuildWait: "computeTemplatePrebuildWait",
@@ -57,6 +58,7 @@ export const FEATURE_FLAG = {
   deployBuildPathPreview: "deployBuildPathPreview",
   deployBuildPathStaging: "deployBuildPathStaging",
   deployBuildPathProduction: "deployBuildPathProduction",
+  deployCliVersionEnforcedFrom: "deployCliVersionEnforcedFrom",
   scheduleDefaultWindowEnabled: "scheduleDefaultWindowEnabled",
   deployNowEnabled: "deployNowEnabled",
   apiRateLimitMetricsEnabled: "apiRateLimitMetricsEnabled",
@@ -66,13 +68,14 @@ export const FEATURE_FLAG = {
   trustedDeploysEnabled: "trustedDeploysEnabled",
   sessionTraceEnabled: "sessionTraceEnabled",
   sandboxTasks: "sandboxTasks",
+  computeOnly: "computeOnly",
   auditLogsRecording: "auditLogsRecording",
   hasAuditLogsAccess: "hasAuditLogsAccess",
 } as const;
 
 // Mirrors the core worker-queue enums; defined here because this module is imported client-side.
 const WorkerQueueCompatibilityFlag = z.enum(["any", "container", "compute"]);
-const WorkerQueueChannelFlag = z.enum(["stable", "canary", "proxy"]);
+const WorkerQueueChannelFlag = z.enum(["stable", "canary"]);
 
 export const WORKER_QUEUE_OVERRIDE_ENVIRONMENT_TYPES = [
   "PRODUCTION",
@@ -139,6 +142,9 @@ export const FeatureFlagCatalog = {
   // `suggested-prompts/promotedPrompt.server.ts`.
   [FEATURE_FLAG.promotedDashboardAgentPrompt]: z.string(),
   [FEATURE_FLAG.hasComputeAccess]: z.coerce.boolean(),
+  // Set by the deploy path, never by hand: the org's deployed runs execute only on compute
+  // (microVM) lanes, with no container fallback. Org-scoped only. Strict z.boolean().
+  [FEATURE_FLAG.computeOnly]: z.boolean(),
   [FEATURE_FLAG.hasPrivateConnections]: z.coerce.boolean(),
   [FEATURE_FLAG.hasSso]: z.coerce.boolean(),
   // Gates the Interface theme setting in /account. Off by default.
@@ -167,6 +173,10 @@ export const FeatureFlagCatalog = {
   // way if written as a string via the admin PAT route. The admin toggle sends a real
   // boolean, so this only rejects the dangerous stringified case.
   [FEATURE_FLAG.computeMigrationEnabled]: z.boolean(),
+  // Global only. When on, the deployment access plugin may allow an organization it would
+  // otherwise deny, with its deployed runs limited to compute (microVM) lanes. Off: it denies as before.
+  // Read from the global flag snapshot and sent with each deploy access check. Strict z.boolean().
+  [FEATURE_FLAG.computeOnlyDeploys]: z.boolean(),
   [FEATURE_FLAG.computeMigrationFreePercentage]: z.coerce.number().int().min(0).max(100),
   [FEATURE_FLAG.computeMigrationPaidPercentage]: z.coerce.number().int().min(0).max(100),
   // When on, deploy finalisation waits (up to a timeout) for the compute template
@@ -235,6 +245,8 @@ export const FeatureFlagCatalog = {
   [FEATURE_FLAG.deployBuildPathPreview]: DeployBuildPath,
   [FEATURE_FLAG.deployBuildPathStaging]: DeployBuildPath,
   [FEATURE_FLAG.deployBuildPathProduction]: DeployBuildPath,
+  // Moves DEPLOY_MIN_CLI_VERSION_ENFORCED_FROM later for one org; an earlier date is ignored.
+  [FEATURE_FLAG.deployCliVersionEnforcedFrom]: z.string().datetime({ offset: true }),
   [FEATURE_FLAG.scheduleDefaultWindowEnabled]: z.boolean(),
   // Strict z.boolean() (not z.coerce.boolean()): coercion reads the string
   // "false" as true, which would enable an off-by-default gate.
@@ -284,6 +296,8 @@ export const GLOBAL_LOCKED_FLAGS: FeatureFlagKey[] = [
   FEATURE_FLAG.runOpsMintShardSetPrev,
   FEATURE_FLAG.runOpsMintShardSetFlippedAt,
   FEATURE_FLAG.sandboxTasks,
+  FEATURE_FLAG.deployCliVersionEnforcedFrom,
+  FEATURE_FLAG.computeOnly,
 ];
 
 // Flags that are read-only on the org-level dialog.
@@ -300,6 +314,8 @@ export const ORG_LOCKED_FLAGS: FeatureFlagKey[] = [
   FEATURE_FLAG.runOpsMintShardOverride,
   // Read per dequeue from the global flag snapshot only; the org's flags aren't loaded there.
   FEATURE_FLAG.deploymentStatusMode,
+  // Read per deploy access check from the global flag snapshot only.
+  FEATURE_FLAG.computeOnlyDeploys,
 ];
 
 export type OrgLockedFlagEffect = "live" | "ignored" | "derived";
@@ -318,6 +334,7 @@ export const ORG_LOCKED_FLAG_EFFECT: Partial<Record<FeatureFlagKey, OrgLockedFla
   [FEATURE_FLAG.runOpsMintShardSetFlippedAt]: "ignored",
   [FEATURE_FLAG.runOpsMintShardOverride]: "ignored",
   [FEATURE_FLAG.deploymentStatusMode]: "ignored",
+  [FEATURE_FLAG.computeOnlyDeploys]: "ignored",
   [FEATURE_FLAG.runOpsMintKindPrev]: "derived",
   [FEATURE_FLAG.runOpsMintKindFlippedAt]: "derived",
 };

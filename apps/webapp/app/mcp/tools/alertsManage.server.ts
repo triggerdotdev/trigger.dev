@@ -49,7 +49,7 @@ import {
   usesCustomQuery,
   type Where,
 } from "./alertDrafts.server";
-import { errorResult, resolveToolEnvironment, textResult } from "./define.server";
+import { resolveToolEnvironment, textResult } from "./define.server";
 import { defineWriteTool, staleApproval } from "./defineWrite.server";
 import {
   alertRef,
@@ -61,7 +61,7 @@ import {
   quoted,
   quotedJson,
 } from "./format/alertPreviews";
-import { alertLabel } from "./format/alerts";
+import { alertError, alertLabel } from "./format/alerts";
 import { capText } from "./format/logFields";
 import {
   ActivateAlertInput,
@@ -80,12 +80,12 @@ type Plan<T> = ({ title: string; effects: string[] } & T) | { error: string };
 
 async function runWhere(projectRef: string, ctx: McpToolContext): Promise<Where | McpToolResult> {
   const project = await findMonitoringAlertsProject(projectRef, ctx.identity.userId);
-  if (!project) return errorResult("Project not found");
+  if (!project) return alertError("Project not found");
   if (!(await canUseMonitoringAlerts(project, ctx.identity.userId))) {
-    return errorResult(NOT_ENABLED);
+    return alertError(NOT_ENABLED);
   }
   const environment = await resolveToolEnvironment(ctx);
-  if (!environment) return errorResult("Not authorized");
+  if (!environment) return alertError("Not authorized");
   return {
     organizationId: project.organizationId,
     projectId: project.id,
@@ -239,7 +239,7 @@ async function stopPlan(input: AlertIdInput, where: Where): Promise<Plan<{ alert
         status !== "needs_attention"
           ? `Alert ${ref} is already ${alert.lifecycle}, so there is nothing to stop`
           : alert.lifecycle === "active"
-            ? `Alert ${ref} needs attention; resolve it with resolve_alert first, then stop it`
+            ? `Alert ${ref} needs attention and cannot be stopped until its attention is cleared (the dashboard has the same rule). resolve_alert clears it; stop it right away after that, because it can need attention again before it is stopped. If you get this answer again after resolving, do not repeat the steps; tell the user`
             : `Alert ${ref} needs attention and is already ${alert.lifecycle}; resolve it with resolve_alert; there is nothing to stop`,
     };
   }
@@ -566,7 +566,7 @@ function serviceError(error: unknown, alreadyDone?: string): McpToolResult {
         ? serviceText(error.message)
         : undefined;
   if (known === undefined) throw error;
-  return errorResult(
+  return alertError(
     alreadyDone
       ? `${known}. ${alreadyDone}; check the alert with get_alert_details.`
       : nothingChanged(known)
@@ -604,7 +604,7 @@ const alertIdAction =
     const where = await runWhere(input.projectRef!, ctx);
     if ("content" in where) return where;
     const planned = await plan(input, where);
-    if ("error" in planned) return errorResult(nothingChanged(planned.error));
+    if ("error" in planned) return alertError(nothingChanged(planned.error));
     const stale = staleApproval(ctx, numbered(planned.title, planned.effects));
     if (stale) return stale;
     try {
@@ -645,7 +645,7 @@ export const alertsManageTools: McpToolDefinition[] = [
       const where = await runWhere(input.projectRef!, ctx);
       if ("content" in where) return where;
       const planned = await updatePlan(input, where);
-      if ("error" in planned) return errorResult(nothingChanged(planned.error));
+      if ("error" in planned) return alertError(nothingChanged(planned.error));
       const stale = staleApproval(ctx, numbered(planned.title, planned.effects));
       if (stale) return stale;
       const ref = { projectId: where.projectId, environmentId: where.environmentId };
@@ -676,7 +676,7 @@ export const alertsManageTools: McpToolDefinition[] = [
       }
       const stored = await loadAlert(planned.alert.id, where);
       if (!stored) {
-        return errorResult(
+        return alertError(
           "The alert was not found after the update, so the changes cannot be confirmed; it may have been deleted. Check with list_alerts."
         );
       }
@@ -702,7 +702,7 @@ export const alertsManageTools: McpToolDefinition[] = [
           : "",
       ].filter(Boolean);
       if (missing.length > 0) {
-        return errorResult(
+        return alertError(
           `The update was only partly applied; these are not in place: ${missing.join(", ")}. Check the alert with get_alert_details.`
         );
       }
@@ -738,7 +738,7 @@ export const alertsManageTools: McpToolDefinition[] = [
       const where = await runWhere(input.projectRef!, ctx);
       if ("content" in where) return where;
       const planned = await activatePlan(input, where);
-      if ("error" in planned) return errorResult(nothingChanged(planned.error));
+      if ("error" in planned) return alertError(nothingChanged(planned.error));
       const stale = staleApproval(ctx, numbered(planned.title, planned.effects));
       if (stale) return stale;
       try {
@@ -799,10 +799,10 @@ export const alertsManageTools: McpToolDefinition[] = [
         usesCustomQuery((input.members ?? []).map((m) => m.capabilityKey)) &&
         !canReadQuery(ctx.ability, where.environmentType)
       ) {
-        return errorResult("Not authorized");
+        return alertError("Not authorized");
       }
       const planned = await createGroupPlan(input, where, ctx.identity.userId);
-      if ("error" in planned) return errorResult(nothingChanged(planned.error));
+      if ("error" in planned) return alertError(nothingChanged(planned.error));
       const stale = staleApproval(ctx, numbered(planned.title, planned.effects));
       if (stale) return stale;
       const result = await createAlertGroup(prisma, {
@@ -817,7 +817,7 @@ export const alertsManageTools: McpToolDefinition[] = [
         expiresAt: planned.expiresAt,
         createdBy: ctx.identity.userId,
       });
-      if (!result.ok) return errorResult(nothingChanged(serviceText(result.error)));
+      if (!result.ok) return alertError(nothingChanged(serviceText(result.error)));
       return textResult(`Alert group created: ${alertLabel(named(result.alert))}`);
     },
   }),
@@ -834,7 +834,7 @@ export const alertsManageTools: McpToolDefinition[] = [
       const where = await runWhere(input.projectRef!, ctx);
       if ("content" in where) return where;
       const planned = await ungroupPlan(input, where);
-      if ("error" in planned) return errorResult(nothingChanged(planned.error));
+      if ("error" in planned) return alertError(nothingChanged(planned.error));
       const stale = staleApproval(ctx, numbered(planned.title, planned.effects));
       if (stale) return stale;
       const deleted = await ungroupAlert(prisma, {
@@ -842,7 +842,7 @@ export const alertsManageTools: McpToolDefinition[] = [
         projectId: where.projectId,
         environmentId: where.environmentId,
       });
-      if (!deleted) return errorResult("Alert not found");
+      if (!deleted) return alertError("Alert not found");
       logErased(ctx, where, "ungroup_alert", planned.alert);
       return textResult(
         `Alert group ${alertLabel(named(deleted))} deleted; its members now run on their own.`

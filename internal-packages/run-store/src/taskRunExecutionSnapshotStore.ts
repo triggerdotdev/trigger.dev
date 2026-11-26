@@ -21,6 +21,7 @@ import { boundedIn } from "@trigger.dev/database";
 import type { TaskRunError } from "@trigger.dev/core/v3/schemas";
 import { generateInternalId } from "@trigger.dev/core/v3/isomorphic";
 import { DelegatingRunStore } from "./delegatingRunStore.js";
+import type { RecoveryOutcome } from "./pendingRecoveryWorker.js";
 import type {
   CompletionSnapshotInput,
   CreateCancelledRunInput,
@@ -117,6 +118,9 @@ function reasonWithCause(reason: string, cause: unknown): string {
   const summary = cause instanceof Error ? `${cause.name}: ${cause.message}` : String(cause);
   return `${reason}: ${summary.slice(0, 200)}`;
 }
+
+/** Recovery confirmed the pending unit's Postgres transaction is still in progress; a retry clears it. */
+export const PENDING_UNIT_IN_PROGRESS_REASON = "pending unit unresolved: transaction in progress";
 
 /**
  * A snapshot read that MemoryDB cannot serve authoritatively now: a MemoryDB error, an unsettled
@@ -234,7 +238,7 @@ export type TaskRunExecutionSnapshotStoreOptions = {
   resolvePending?: (
     runId: string,
     options?: { requireSettledTransaction?: boolean }
-  ) => Promise<void>;
+  ) => Promise<RecoveryOutcome | void>;
   /**
    * Expands a completed-waitpoint cycle's records into `CompletedWaitpoint[]`. It lives in
    * run-engine because a `deriveFromRun` record needs a Postgres read. Required to read a
@@ -1243,7 +1247,7 @@ export class TaskRunExecutionSnapshotStore extends DelegatingRunStore {
     if (!this.#resolvePending) {
       throw new SnapshotReadUnavailableError(runId, "pending unit and no recovery resolver");
     }
-    await this.#resolvePending(runId);
+    const outcome = await this.#resolvePending(runId);
     let after: { prepared: boolean; quarantined: boolean };
     try {
       after = await this.#store.readPendingState(runId);
@@ -1254,7 +1258,14 @@ export class TaskRunExecutionSnapshotStore extends DelegatingRunStore {
       throw new SnapshotReadUnavailableError(runId, "run is quarantined");
     }
     if (after.prepared) {
-      throw new SnapshotReadUnavailableError(runId, "pending unit unresolved");
+      // Only a confirmed in-progress commit gets its own reason; a failed recovery stays distinct.
+      const inProgress = outcome?.kind === "retry" && outcome.reason === "in-progress";
+      throw new SnapshotReadUnavailableError(
+        runId,
+        inProgress
+          ? PENDING_UNIT_IN_PROGRESS_REASON
+          : `pending unit unresolved: ${outcome ? (outcome.kind === "retry" ? outcome.reason : outcome.kind) : "no recovery outcome"}`
+      );
     }
   }
 

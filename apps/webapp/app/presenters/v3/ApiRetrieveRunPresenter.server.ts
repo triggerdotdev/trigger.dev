@@ -85,6 +85,8 @@ type CommonRelatedRunWithVersion = CommonRelatedRun & {
 // buffer-synthesis helper below can match this shape under unit test.
 export type FoundRun = CommonRelatedRunWithVersion & {
   traceId: string;
+  priorityMs: number;
+  concurrencyKey: string | null;
   payload: string;
   payloadType: string;
   output: string | null;
@@ -121,6 +123,8 @@ export class ApiRetrieveRunPresenter {
         select: {
           ...commonRunSelect,
           traceId: true,
+          priorityMs: true,
+          concurrencyKey: true,
           payload: true,
           payloadType: true,
           output: true,
@@ -730,6 +734,8 @@ export function synthesiseFoundRunFromBuffer(buffered: SyntheticRun): FoundRun {
       : null,
     runTags: buffered.tags,
     traceId: buffered.traceId ?? "",
+    priorityMs: buffered.priorityMs ?? 0,
+    concurrencyKey: buffered.concurrencyKey ?? null,
     payload: synthesisePayload(buffered),
     payloadType: buffered.payloadType ?? "application/json",
     output: null,

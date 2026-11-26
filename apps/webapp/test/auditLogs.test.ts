@@ -582,6 +582,37 @@ describe("audit logs host", () => {
     ]);
   });
 
+  // Catches: a staff member's id, or the credential they used, reaching the customer.
+  it("never lists who at Trigger.dev acted as support, or with what", async () => {
+    const support: AuditLogEvent = {
+      ...input,
+      id: "evt_support",
+      occurredAt: new Date("2026-11-09T12:00:00Z"),
+      changes: null,
+      actor: { type: "support", id: "staff_1" },
+      credential: { kind: "pat", id: "pat_staff", last4: "st4f", fingerprintId: null },
+      onBehalfOf: null,
+      source: "staff",
+      endpoint: null,
+      origin: null,
+      requestId: null,
+    };
+    const controller = inMemoryController({
+      listEvents: async () => ({ events: [support], nextCursor: null }),
+    });
+    const audit = host({ controller: async () => controller });
+
+    const page = await audit.listEvents({
+      organizationId: "org_1",
+      from: new Date(0),
+      to: new Date(),
+      limit: 50,
+    });
+
+    expect(page.events.map((event) => event.actor)).toEqual([{ type: "support", id: null }]);
+    expect(page.events.map((event) => event.credential)).toEqual([null]);
+  });
+
   // Catches: our build infrastructure's IP, user agent or deploy key reaching the customer, or a
   // customer's own key losing them.
   it("hides the endpoint and credential of events Trigger.dev infrastructure made", async () => {
@@ -621,6 +652,50 @@ describe("audit logs host", () => {
       ["evt_key", { ...endpoint, location: null }, credential],
       ["evt_build", null, null],
     ]);
+  });
+
+  // Catches: fields the plugin adds to a summary (internal ids, raw rows) reaching customers; or a
+  // summary call failing without the plugin, or with a plugin built before summaries.
+  it("summarizes events with only the summary's fields, and nothing without a plugin that can", async () => {
+    const query = { organizationId: "org_1", from: new Date(0), to: new Date() };
+    const location = { countryCode: "GB", asn: 64500, asName: "Example ISP" };
+    const summary = {
+      eventCount: 2,
+      firstSeenAt: new Date("2026-11-04T10:00:00Z"),
+      lastSeenAt: new Date("2026-11-19T14:02:00Z"),
+      ipCount: 1,
+      countryCodes: ["GB"],
+      countryCount: 1,
+      recentIps: [{ ip: "203.0.113.7", lastSeenAt: new Date("2026-11-19T14:02:00Z"), location }],
+
+      approximate: false,
+    };
+    const queries: unknown[] = [];
+    const controller = inMemoryController({
+      summarizeEvents: async (received) => {
+        queries.push(received);
+        return {
+          ...summary,
+          fingerprintIds: ["fp_1"],
+          recentIps: [
+            {
+              ...summary.recentIps[0]!,
+              fingerprintId: "fp_1",
+              location: { ...location, raw: "x" },
+            },
+          ],
+        } as never;
+      },
+    });
+
+    expect(await host({ controller: async () => controller }).summarizeEvents(query)).toEqual(
+      summary
+    );
+    expect(queries).toEqual([query]);
+    expect(await host({ controller: async () => null }).summarizeEvents(query)).toBeNull();
+    expect(
+      await host({ controller: async () => inMemoryController() }).summarizeEvents(query)
+    ).toBeNull();
   });
 
   // Catches: flush resolving before in-flight records finish, or before the plugin flushes its

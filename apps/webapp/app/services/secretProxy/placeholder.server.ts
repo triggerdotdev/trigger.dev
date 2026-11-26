@@ -1,4 +1,4 @@
-import { createHmac, timingSafeEqual } from "node:crypto";
+import { createHmac } from "node:crypto";
 import { isIP } from "node:net";
 import { z } from "zod";
 import type { EffectiveEnvironmentVariable } from "./variables.server";
@@ -63,13 +63,6 @@ export function placeholderForVariable(
     .update(JSON.stringify(["proxy-placeholder-v1", identity.runId, identity.attempt, variableId]))
     .digest("hex");
   return `trsec_v1_${keyId}_${digest}`;
-}
-
-export function serviceTokenMatches(supplied: string | null, expected: string | undefined) {
-  if (!supplied || !expected) return false;
-  const actual = Buffer.from(supplied);
-  const wanted = Buffer.from(expected);
-  return actual.length === wanted.length && timingSafeEqual(actual, wanted);
 }
 
 export function isCanonicalProxyHostname(hostname: string): boolean {

@@ -22,7 +22,11 @@ test("snapshot metrics ignore raw organization IDs; the endpoint creates no eage
     expect(address).toBe("snapshot.example");
   });
   const plainOptions = snapshotClusterOptions("redis://127.0.0.1:1");
-  expect(plainOptions.clusterOptions).toEqual({ lazyConnect: true, scaleReads: "master" });
+  expect(plainOptions.clusterOptions).toEqual({
+    lazyConnect: true,
+    scaleReads: "master",
+    slotsRefreshInterval: 2_000,
+  });
   expect(plainOptions.redisOptions.tls).toBeUndefined();
   expect(options.redisOptions.commandTimeout).toBe(1000);
   const connection = createSnapshotConnection("redis://127.0.0.1:1");

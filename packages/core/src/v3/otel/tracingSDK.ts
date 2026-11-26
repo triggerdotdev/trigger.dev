@@ -1,12 +1,17 @@
 import type { TracerProvider } from "@opentelemetry/api";
 import { DiagConsoleLogger, DiagLogLevel, TraceFlags, diag, metrics } from "@opentelemetry/api";
+import type { RequestOptions } from "node:http";
 import { logs } from "@opentelemetry/api-logs";
 import { TraceState } from "@opentelemetry/core";
 import { OTLPLogExporter } from "@opentelemetry/exporter-logs-otlp-http";
 import { OTLPTraceExporter } from "@opentelemetry/exporter-trace-otlp-http";
 import { OTLPMetricExporter } from "@opentelemetry/exporter-metrics-otlp-http";
 import { HostMetrics } from "@opentelemetry/host-metrics";
-import { registerInstrumentations, type Instrumentation } from "@opentelemetry/instrumentation";
+import {
+  registerInstrumentations,
+  type Instrumentation,
+  type InstrumentationConfig,
+} from "@opentelemetry/instrumentation";
 import type { Resource } from "@opentelemetry/resources";
 import { detectResources, processDetector, resourceFromAttributes } from "@opentelemetry/resources";
 import type {
@@ -205,11 +210,6 @@ export class TracingSDK {
 
     traceProvider.register();
 
-    registerInstrumentations({
-      instrumentations: config.instrumentations ?? [],
-      tracerProvider: traceProvider,
-    });
-
     const logExporter = new OTLPLogExporter({
       url: `${config.url}/v1/logs`,
     });
@@ -326,6 +326,18 @@ export class TracingSDK {
     this._meterProvider = meterProvider;
     this._metricReaders = metricReaders;
     metrics.setGlobalMeterProvider(meterProvider);
+
+    ignoreOwnOtlpRequests(config.instrumentations ?? [], [
+      `${config.url}/v1/traces`,
+      `${config.url}/v1/logs`,
+      metricsUrl,
+    ]);
+
+    registerInstrumentations({
+      instrumentations: config.instrumentations ?? [],
+      tracerProvider: traceProvider,
+      meterProvider,
+    });
 
     if (config.hostMetrics) {
       const hostMetrics = new HostMetrics({
@@ -697,6 +709,64 @@ function isSpanInternalOnly(span: ReadableSpan): boolean {
     internalHosts.some((host) => url.hostname.includes(host)) ||
     url.pathname.includes("/api/v1/usage/ingest")
   );
+}
+
+type OutgoingRequestHook = (request: RequestOptions) => boolean;
+type HttpInstrumentationConfig = InstrumentationConfig & {
+  ignoreOutgoingRequestHook?: OutgoingRequestHook;
+};
+
+// HttpInstrumentation can record the SDK's own OTLP export requests, depending on whether the
+// exporter's http module was loaded before or after it was patched. Skip POSTs to the export
+// URLs (other requests to the same collector stay measured) and keep any hook the user configured.
+export function ignoreOwnOtlpRequests(instrumentations: Instrumentation[], exportUrls: string[]) {
+  const exportEndpoints = new Set(
+    exportUrls.flatMap((url) => {
+      const parsed = safeParseUrl(url);
+      return parsed
+        ? [
+            endpointKey(
+              parsed.protocol,
+              parsed.hostname,
+              parsed.port,
+              parsed.pathname + parsed.search
+            ),
+          ]
+        : [];
+    })
+  );
+
+  for (const instrumentation of instrumentations) {
+    if (instrumentation.instrumentationName !== "@opentelemetry/instrumentation-http") continue;
+
+    const instrumentationConfig: HttpInstrumentationConfig = instrumentation.getConfig();
+    const userHook = instrumentationConfig.ignoreOutgoingRequestHook;
+    const isExport = (request: RequestOptions) =>
+      request.method?.toUpperCase() === "POST" &&
+      exportEndpoints.has(
+        endpointKey(
+          request.protocol ?? "http:",
+          request.hostname ?? request.host ?? "",
+          String(request.port ?? ""),
+          request.path ?? "/"
+        )
+      );
+    const ignoreOutgoingRequestHook: OutgoingRequestHook = (request) =>
+      isExport(request) || (userHook?.(request) ?? false);
+
+    const nextConfig: HttpInstrumentationConfig = {
+      ...instrumentationConfig,
+      ignoreOutgoingRequestHook,
+    };
+    instrumentation.setConfig(nextConfig);
+  }
+}
+
+// URL.hostname keeps IPv6 brackets ("[::1]"); the instrumentation passes the hook "::1".
+// The target is the path plus query, so a same-path request with a different query isn't skipped.
+function endpointKey(protocol: string, hostname: string, port: string, target: string): string {
+  const host = hostname.replace(/^\[(.*)\]$/, "$1");
+  return `${protocol}//${host}:${port || (protocol === "https:" ? "443" : "80")}${target}`;
 }
 
 function safeParseUrl(url: unknown): URL | undefined {

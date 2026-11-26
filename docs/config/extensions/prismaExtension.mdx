@@ -50,7 +50,7 @@ Use this decision tree to determine which mode is right for your project:
 
 ```mermaid
 flowchart TD
-    Start([Which mode should I use?]) --> Q1{Using Prisma 7 or<br/>6.20+ beta?}
+    Start([Which mode should I use?]) --> Q1{Using Prisma 7?}
     Q1 -->|Yes| Modern[Modern Mode]
     Q1 -->|No| Q2{Using Prisma 6.16+<br/>with engineType='client'?}
     Q2 -->|Yes| Modern
@@ -210,7 +210,7 @@ prismaExtension({
 - Designed for the new Prisma architecture
 - Zero configuration required
 - Automatically marks `@prisma/client` as external
-- Works with Prisma 7 beta releases & Prisma 7 when released
+- Works with Prisma 7
 - You manage client generation (like engine-only mode)
 
 **Schema configuration (Prisma 6.16+ with engineType):**
@@ -272,7 +272,7 @@ export default defineConfig({
 **Important notes:**
 
 - You **must** run `prisma generate` yourself.
-- Requires Prisma 6.16.0+ or Prisma 7 beta
+- Requires Prisma 6.16.0+ or Prisma 7
 - The new `prisma-client` provider generates plain TypeScript (no Rust binaries)
 - Requires database adapters (e.g., `@prisma/adapter-pg` for PostgreSQL)
 
@@ -331,7 +331,7 @@ steps:
   - name: Generate Prisma client
     run: npx prisma@6.19.0 generate
   - name: Deploy Trigger.dev
-    run: npx trigger.dev@4.1.1 deploy --env prod
+    run: npx trigger.dev@latest deploy --env prod
     env:
       TRIGGER_ACCESS_TOKEN: ${{ secrets.TRIGGER_ACCESS_TOKEN }}
 ```
@@ -352,7 +352,7 @@ If you are using the [Trigger.dev Github integration](/github-integration), you 
 | 5.0 - 6.15       | Legacy                | Standard Prisma setup                        |
 | 6.7+             | Legacy                | Multi-file schema support                    |
 | 6.16+            | Engine-only or Modern | Modern mode requires `engineType = "client"` |
-| 6.20+ (7.0 beta) | Modern                | Prisma 7 with new architecture               |
+| 7.0+             | Modern                | Prisma 7 with new architecture               |
 
 ---
 
@@ -1008,6 +1008,6 @@ export const db = new PrismaClient({ adapter });
 - [Prisma Documentation](https://www.prisma.io/docs)
 - [Multi-File Schema (Prisma 6.7+)](https://www.prisma.io/docs/orm/prisma-schema/overview/location#multi-file-prisma-schema)
 - [TypedSQL (Prisma 5.19+)](https://www.prisma.io/docs/orm/prisma-client/using-raw-sql/typedsql)
-- [Prisma 7 Beta Documentation](https://www.prisma.io/docs)
+- [Prisma 7 Documentation](https://www.prisma.io/docs)
 
 ---

@@ -146,7 +146,7 @@ export default defineConfig({
 
   // Retry configuration
   retries: {
-    enabledInDev: false, // Enable retries in development
+    enabledInDev: true, // Enable retries in development
     default: {
       maxAttempts: 3,
       minTimeoutInMs: 1000,
@@ -175,8 +175,9 @@ import { defineConfig } from "@trigger.dev/sdk";
 
 export default defineConfig({
   project: "<your-project-ref>",
-  runtime: "bun",
+  runtime: "bun-1.4",
   dirs: ["./src/trigger"],
+  maxDuration: 3600,
 });
 ```
 
@@ -258,10 +259,10 @@ bun add @trigger.dev/react-hooks@latest
 ```typescript
 import { auth } from "@trigger.dev/sdk";
 
-// In your backend API
-export async function getPublicAccessToken() {
+// In your backend API, after checking the user can access this run
+export async function getPublicAccessToken(runId: string) {
   const publicAccessToken = await auth.createPublicToken({
-    scopes: ["read:runs"], // Customize based on needs
+    scopes: { read: { runs: [runId] } }, // Only this run
   });
 
   return publicAccessToken;
@@ -290,7 +291,7 @@ export function TaskStatus({
   return (
     <div>
       <p>Status: {run.status}</p>
-      <p>Progress: {run.completedAt ? "Complete" : "Running..."}</p>
+      <p>Progress: {run.isCompleted ? "Complete" : "Running..."}</p>
     </div>
   );
 }
@@ -319,6 +320,7 @@ export default defineConfig({
       }),
     ],
   },
+  maxDuration: 3600,
 });
 ```
 

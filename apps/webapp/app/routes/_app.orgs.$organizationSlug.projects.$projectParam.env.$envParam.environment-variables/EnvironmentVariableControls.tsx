@@ -90,6 +90,8 @@ export type EnvironmentVariablesPageLoaderData = {
   writableEnvironmentIds: string[];
   pagination: { currentPage: number; totalPages: number; totalCount: number };
   search?: string;
+  // Set when the org has the audit log; `canView` when the role can read it.
+  auditLog: { canView: boolean } | null;
 };
 
 export const environmentVariablesRouteId =

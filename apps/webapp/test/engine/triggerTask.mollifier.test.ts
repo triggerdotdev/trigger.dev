@@ -27,6 +27,8 @@ import { IdempotencyKeyConcern } from "~/runEngine/concerns/idempotencyKeys.serv
 import { DefaultQueueManager } from "~/runEngine/concerns/queues.server";
 import type { ValidationResult } from "~/runEngine/types";
 import { RunEngineTriggerTaskService } from "../../app/runEngine/services/triggerTask.server";
+import { synthesiseFoundRunFromBuffer } from "~/presenters/v3/ApiRetrieveRunPresenter.server";
+import { findRunByIdWithMollifierFallback } from "~/v3/mollifier/readFallback.server";
 import {
   MOCK_SPAN_ID,
   MOCK_TRACE_ID,
@@ -238,7 +240,7 @@ describe("RunEngineTriggerTaskService", () => {
       const result = await triggerTaskService.call({
         taskId: taskIdentifier,
         environment: authenticatedEnvironment,
-        body: { payload: { hello: "world" } },
+        body: { payload: { hello: "world" }, options: { priority: 30 } },
       });
 
       // Pre-modifier span creation: traceRun must run BEFORE the buffer
@@ -318,6 +320,23 @@ describe("RunEngineTriggerTaskService", () => {
       // returns.
       expect(snapshot.traceId).toBe(MOCK_TRACE_ID);
       expect(snapshot.spanId).toBe(MOCK_SPAN_ID);
+
+      // The run read back from the buffer, as get-run sees it before it is drained, keeps its priority.
+      const entry = {
+        ...buffer.accepted[0]!,
+        status: "QUEUED",
+        attempts: 0,
+        createdAt: new Date(),
+      };
+      const buffered = await findRunByIdWithMollifierFallback(
+        {
+          runId: result!.run.friendlyId,
+          environmentId: authenticatedEnvironment.id,
+          organizationId: authenticatedEnvironment.organizationId,
+        },
+        { getBuffer: () => ({ getEntry: async () => entry }) as never }
+      );
+      expect(synthesiseFoundRunFromBuffer(buffered!).priorityMs).toBe(30_000);
 
       // Postgres has NOT been written: engine.trigger was never called on
       // the mollify path. The run materialises only when the drainer

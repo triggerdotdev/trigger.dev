@@ -12,6 +12,7 @@ import { parseDeployBaseImages } from "~/v3/deployBaseImages.server";
 import { parseRunOpsShards, validateShardListAgainstNewUrl } from "~/v3/runOpsShards.server";
 import { isValidRegex } from "./utils/regex";
 import { isValidCronExpression } from "./utils/cron";
+import { DEFAULT_EVENT_RETENTION_DAYS } from "~/v3/eventRepository/eventRetention";
 import { isValidDuration } from "./services/realtime/duration.server";
 import { WorkerQueueSubscriptionPolicyEnv } from "./runEngine/concerns/workerQueueSubscriptions.server";
 
@@ -448,6 +449,24 @@ const EnvironmentSchema = z
       (value) => (value === "" ? undefined : value),
       z.string().min(32).optional()
     ),
+    // The relay's ServiceAccount, checked when WORKLOAD_IDENTITY_ISSUERS is set.
+    SECRET_PROXY_RELAY_SUBJECT: z
+      .string()
+      .min(1)
+      .default("system:serviceaccount:v4-infra:secret-proxy-relay"),
+    // Comma-separated Kubernetes ServiceAccount token issuers (cluster OIDC issuer URLs) whose
+    // workloads may authenticate to internal platform services. When set, those services accept
+    // only workload identity tokens, never their shared tokens.
+    WORKLOAD_IDENTITY_ISSUERS: z
+      .string()
+      .default("")
+      .transform((raw) =>
+        raw
+          .split(",")
+          .map((issuer) => issuer.trim())
+          .filter(Boolean)
+      )
+      .pipe(z.array(z.string().url().startsWith("https://"))),
     ENVIRONMENT_ENCRYPTION_ENABLED: BoolEnv.default(false),
     ENVIRONMENT_ENCRYPTION_KMS_KEY_ARN: z.preprocess(
       (value) => (value === "" ? undefined : value),
@@ -1057,6 +1076,11 @@ const EnvironmentSchema = z
     // so they are unaffected. Defaults to off so detection can run in
     // log-only mode before enforcement.
     DEPRECATE_V3_CLI_DEPLOYS_ENABLED: z.string().default("0"),
+
+    // Parsed in cliVersionPolicy.server.ts, where a bad value is logged instead of failing boot.
+    DEPLOY_MIN_CLI_VERSION: z.string().optional(),
+    DEPLOY_MIN_CLI_VERSION_ENFORCED_FROM: z.string().optional(),
+    DEPLOY_CLI_VERSION_WARNING_LOOKBACK_DAYS: z.coerce.number().int().positive().max(365).catch(30),
 
     // Verify the deploy image exists before promoting. Disable for out-of-band/air-gapped push. ECR only.
     DEPLOY_IMAGE_VERIFICATION_ENABLED: BoolEnv.default(true),
@@ -2803,6 +2827,11 @@ const EnvironmentSchema = z
     EVENTS_CLICKHOUSE_MAX_LIVE_RELOADING_SETTING: z.coerce.number().int().default(2000),
     EVENTS_CLICKHOUSE_TRACE_CHUNK_SIZE: z.coerce.number().int().positive().default(1_000),
     EVENTS_CLICKHOUSE_MAX_TRACE_VIEW_COUNT: z.coerce.number().int().positive().default(150_000),
+    EVENTS_CLICKHOUSE_RETENTION_DAYS: z.coerce
+      .number()
+      .int()
+      .positive()
+      .default(DEFAULT_EVENT_RETENTION_DAYS),
 
     // OTLP ingest transform worker pool (opt-in). When enabled, decode/convert/enrich run in a
     // worker_threads pool instead of the request event loop; the single consolidated insert path

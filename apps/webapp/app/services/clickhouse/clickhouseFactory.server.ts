@@ -908,6 +908,7 @@ function buildEventRepository(
         logsSearchDualWriteOrganizationIds,
         logsSearchDualWriteMaxConcurrency: env.LOGS_SEARCH_DUAL_WRITE_MAX_CONCURRENCY,
         logsSearchDualWriteMaxPending: env.LOGS_SEARCH_DUAL_WRITE_MAX_PENDING,
+        retentionDays: env.EVENTS_CLICKHOUSE_RETENTION_DAYS,
         version: "v1",
       });
     }
@@ -948,6 +949,7 @@ function buildEventRepository(
         logsSearchDualWriteOrganizationIds,
         logsSearchDualWriteMaxConcurrency: env.LOGS_SEARCH_DUAL_WRITE_MAX_CONCURRENCY,
         logsSearchDualWriteMaxPending: env.LOGS_SEARCH_DUAL_WRITE_MAX_PENDING,
+        retentionDays: env.EVENTS_CLICKHOUSE_RETENTION_DAYS,
         version: "v2",
       });
     }

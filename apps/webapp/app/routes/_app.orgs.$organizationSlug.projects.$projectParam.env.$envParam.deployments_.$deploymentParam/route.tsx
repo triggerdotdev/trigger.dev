@@ -5,6 +5,8 @@ import {
   NoSymbolIcon,
 } from "@heroicons/react/20/solid";
 import { InfoPanel } from "~/components/primitives/InfoPanel";
+import { CliVersionWarningBadge } from "~/components/deployments/CliVersionWarning";
+import { TruncatedText } from "~/components/primitives/TruncatedText";
 import { Paragraph } from "~/components/primitives/Paragraph";
 import { ClientOnly } from "remix-utils/client-only";
 import { type ShouldRevalidateFunction, useLocation } from "@remix-run/react";
@@ -119,6 +121,7 @@ import { requireUserId } from "~/services/session.server";
 import { onlyDetailTabChanged } from "~/utils/detailTabRevalidation";
 import type { Handle } from "~/utils/handle";
 import { throwNotFound } from "~/utils/httpErrors";
+import { throwPermissionDenied } from "~/utils/permissionDenied";
 import { formatNumber } from "~/utils/numberFormatter";
 import { pageMeta } from "~/utils/pageTitle";
 import {
@@ -192,7 +195,14 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
     const environmentId = deployment.environment.id;
     const isCurrent = deployment.label === "current";
 
-    const [deploymentAuth, currentPromotion, nextDeployment] = await Promise.all([
+    // Read access is decided in the project's scope. The write flag is read in the
+    // organization's scope, which is how the promote, rollback and cancel actions authenticate.
+    const [readAuth, writeAuth, currentPromotion, nextDeployment] = await Promise.all([
+      rbac.authenticateSession(request, {
+        userId,
+        organizationId,
+        projectId: deployment.projectId,
+      }),
       rbac.authenticateSession(request, { userId, organizationId }),
       $replica.workerDeploymentPromotion.findFirst({
         where: { environmentId, label: "current" },
@@ -217,9 +227,12 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
       nextDeployedAt: nextDeployment?.deployedAt,
       isCurrent,
     });
+    if (!readAuth.ok || !readAuth.ability.can("read", { type: "deployments" })) {
+      throwPermissionDenied();
+    }
     // Display flag only: the promote, rollback and cancel actions check write:deployments.
-    const canWriteDeployments = deploymentAuth.ok
-      ? checkPermissions(deploymentAuth.ability, {
+    const canWriteDeployments = writeAuth.ok
+      ? checkPermissions(writeAuth.ability, {
           canWriteDeployments: { action: "write", resource: { type: "deployments" } },
         }).canWriteDeployments
       : true;
@@ -1259,7 +1272,16 @@ function DeploymentRail({ deployment }: { deployment: Deployment }) {
       <PropertyGroup title="Runtime">
         <PropertyPair>
           <DetailProperty label="SDK version">{deployment.sdkVersion ?? "–"}</DetailProperty>
-          <DetailProperty label="CLI version">{deployment.cliVersion ?? "–"}</DetailProperty>
+          <DetailProperty label="CLI version">
+            {deployment.cliVersionWarning ? (
+              <>
+                <TruncatedText text={deployment.cliVersion ?? "–"} />
+                <CliVersionWarningBadge warning={deployment.cliVersionWarning} />
+              </>
+            ) : (
+              (deployment.cliVersion ?? "–")
+            )}
+          </DetailProperty>
         </PropertyPair>
         <DetailProperty label="Runtime">
           <RuntimeIcon

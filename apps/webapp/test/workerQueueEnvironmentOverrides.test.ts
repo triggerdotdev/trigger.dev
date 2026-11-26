@@ -33,17 +33,6 @@ describe("workerQueueEnvironmentOverrides flag", () => {
     expect(validateFeatureFlagValue(key, {}).success).toBe(true);
   });
 
-  it("accepts the isolated proxy channel for explicit organization or environment routing", () => {
-    const flags = {
-      [FEATURE_FLAG.workerQueueCompatibility]: "compute",
-      [FEATURE_FLAG.workerQueueChannel]: "proxy",
-      [key]: { STAGING: { compat: "compute", channel: "proxy" } },
-    };
-    const result = validatePartialFeatureFlags(flags);
-    expect(result.success).toBe(true);
-    expect(result.data).toEqual(flags);
-  });
-
   it("rejects keys that are not a routed environment type or an environment id", () => {
     for (const scope of ["DEVELOPMENT", "staging", "Production", "PROD", "", "env 1"]) {
       expect(validateFeatureFlagValue(key, { [scope]: { compat: "compute" } }).success).toBe(false);

@@ -7,6 +7,7 @@ import { runStore } from "~/v3/runStore.server";
 import { engine } from "~/v3/runEngine.server";
 import type { AuthenticatedEnvironment } from "~/services/apiAuth.server";
 import { logger } from "~/services/logger.server";
+import { startActiveSpan } from "~/v3/tracer.server";
 import { CancelTaskRunService, type CancelableTaskRun } from "~/v3/services/cancelTaskRun.server";
 import { TriggerTaskService } from "~/v3/services/triggerTask.server";
 import { isFinalRunStatus } from "~/v3/taskStatus";
@@ -258,6 +259,17 @@ export async function ensureRunForSession(
     environment,
     payloadOverrides: mergedPayloadOverrides,
     sessionInFirstSeq,
+    // A session's first run is anchored at `.in` seq 0 without reading the tail. `currentRunId`
+    // is only set by a claim and never cleared, so null means no run has ever been claimed, and
+    // that run's agent boots with no `.out` cursor and reads `.in` from seq 0 (on a first boot
+    // nothing on `.in` counts as applied): every message on `.in`, including one that landed
+    // before it was triggered, is its to answer. So 0 is exact, not an approximation. It also
+    // skips an S2 read that, on a basin that creates streams on read, would create `.in`. A run
+    // started for messages already on `.in` (`sessionInFirstSeq`) still reads it, so its anchor
+    // stays above its first seq as `RunAnnotations` requires. Every other trigger (a current run,
+    // the lost-race recursion below, a swap, a revive, a continuation) reads the tail as before.
+    // Derived from `session` so the recursion re-derives it from the fresh row.
+    sessionInSeq: session.currentRunId || sessionInFirstSeq !== undefined ? undefined : 0,
   });
 
   if (superseded) {
@@ -543,20 +555,23 @@ function isPendingVersionStatus(status: TaskRunStatus): boolean {
  * right, since the run boots from the cursor and reads it. Undefined when the streams are not S2
  * or the tail cannot be read: the check then falls back to timestamps, and the trigger goes on.
  *
- * Cost: one S2 tail read per session-run trigger, bounded by the S2 client's timeout; no query.
+ * Cost: one S2 tail read per session-run trigger that has no known tail (a session's first run
+ * passes its own, see `ensureRunForSession`), bounded by the S2 client's timeout; no query.
  */
 async function readSessionInSeqForTrigger(
   session: Pick<Session, "friendlyId" | "externalId" | "streamBasinName">,
   environment: AuthenticatedEnvironment
 ): Promise<number | undefined> {
   const [error, seq] = await tryCatch(
-    (async () => {
+    startActiveSpan("readSessionInSeqForTrigger()", async (span) => {
       const streams = getRealtimeStreamInstance(environment, "v2", { session });
       if (!(streams instanceof S2RealtimeStreams)) return undefined;
-      return streams.readSessionInTailSeq(
+      const tailSeq = await streams.readSessionInTailSeq(
         canonicalSessionAddressingKey(session, session.friendlyId)
       );
-    })()
+      if (tailSeq !== undefined) span.setAttribute("session.in_seq", tailSeq);
+      return tailSeq;
+    })
   );
   if (error) {
     logger.warn("Failed to read the session .in tail before triggering its run", {
@@ -579,7 +594,8 @@ async function readSessionInSeqForTrigger(
  * the session it belongs to is on v2. `determineRealtimeStreamsVersion`
  * degrades to v1 where v2 streams are not configured.
  *
- * The run always records the `.in` tail read just before the trigger (`sessionInSeq`), and, when
+ * The run records the `.in` tail as `sessionInSeq`: the caller's, when it already knows it (a
+ * session's first run, anchored at 0), else the tail read just before the trigger. And, when
  * the caller is starting it for messages already on `.in` (a revive after an append, a continuation
  * for unread input), the first seq it was started to answer (`sessionInFirstSeq`, below the tail).
  * Each field has one job, told on `RunAnnotations`.
@@ -590,6 +606,8 @@ async function triggerSessionRun(params: {
   environment: AuthenticatedEnvironment;
   payloadOverrides?: Record<string, unknown>;
   sessionInFirstSeq?: number;
+  /** The `.in` tail when it is already known; read when unset. */
+  sessionInSeq?: number;
 }): Promise<{ id: string; friendlyId: string; status: TaskRunStatus; createdAt?: Date }> {
   const { session, environment, payloadOverrides } = params;
   const floor = sessionVersionFloorFor(environment);
@@ -612,7 +630,8 @@ async function triggerSessionRun(params: {
   };
 
   const { sessionInFirstSeq } = params;
-  const sessionInSeq = await readSessionInSeqForTrigger(session, environment);
+  const sessionInSeq =
+    params.sessionInSeq ?? (await readSessionInSeqForTrigger(session, environment));
 
   const service = new TriggerTaskService();
   const result = await service.call(session.taskIdentifier, environment, body, {

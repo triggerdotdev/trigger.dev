@@ -40,7 +40,7 @@ import {
   environmentTextClassName,
 } from "~/components/environments/EnvironmentLabel";
 import { PageBody, PageContainer } from "~/components/layout/AppLayout";
-import { LinkButton } from "~/components/primitives/Buttons";
+import { Button, LinkButton } from "~/components/primitives/Buttons";
 import { Checkbox } from "~/components/primitives/Checkbox";
 import { Header2 } from "~/components/primitives/Headers";
 import { NavBar, PageAccessories, PageTitle } from "~/components/primitives/PageHeader";
@@ -82,7 +82,9 @@ import { redirectWithSuccessMessage } from "~/models/message.server";
 import { EnvironmentVariableKeyPresenter } from "~/presenters/v3/EnvironmentVariableKeyPresenter.server";
 import { EnvironmentVariablesPresenter } from "~/presenters/v3/EnvironmentVariablesPresenter.server";
 import { type EnvironmentVariablesEnvironment } from "~/presenters/v3/environmentVariablesEnvironments.server";
+import { hasAuditLogsAccess } from "~/services/auditLogs/auditLogsAccess.server";
 import { recordDashboardEnvironmentVariablesListed } from "~/services/auditLogs/envVarReadAudit.server";
+import { getImpersonationState } from "~/services/impersonation.server";
 import { logger } from "~/services/logger.server";
 import { resolveProjectAuthScope } from "~/services/projectAuthScope.server";
 import { requireRecentMfa } from "~/services/mfa/mfaPolicy.server";
@@ -92,6 +94,7 @@ import { cn } from "~/utils/cn";
 import {
   EnvironmentParamSchema,
   docsPath,
+  organizationAuditLogPath,
   v3EnvironmentVariableKeyPath,
   v3EnvironmentVariablesAttentionPath,
   v3EnvironmentVariablesComparePath,
@@ -275,6 +278,14 @@ export const loader = dashboardLoader(
         });
       }
 
+      // "View history": shown where the org has the audit log, enabled for roles that can read it.
+      const { isImpersonating } = await getImpersonationState(request, user.id);
+      const auditLog =
+        context.organizationId &&
+        (await hasAuditLogsAccess({ admin: user.admin, isImpersonating }, context.organizationId))
+          ? { canView: ability.can("manage", { type: "audit-logs" }) }
+          : null;
+
       return typedjson({
         environmentVariables: masked,
         allowEmptyEnvironmentVariableValues,
@@ -290,6 +301,7 @@ export const loader = dashboardLoader(
         writableEnvironmentIds,
         pagination,
         search: searchParams.search,
+        auditLog,
       });
     } catch (error) {
       console.error(error);
@@ -601,6 +613,7 @@ function EnvironmentVariablesListPage({
     search,
     writableEnvironmentIds,
     attentionCount,
+    auditLog,
   } = loaderData;
   const location = useLocation();
   const hasSearch = Boolean(search);
@@ -623,6 +636,18 @@ function EnvironmentVariablesListPage({
   // can't be sorted ignores the param.
   const currentSearchParams = new URLSearchParams(location.search);
   const isSortableView = canSortView(currentSearchParams);
+  // The environments the list shows, from the URL like the sort: "View history" covers these, not
+  // the route's environment, which picking another environment doesn't change.
+  const shownEnvironmentIds = selectEnvironmentVariablesFilter({
+    environments,
+    requested: parseEnvironmentVariablesFilter(currentSearchParams.get("env")),
+    requestedBranches: currentSearchParams.getAll("branch"),
+    currentEnvironmentId: environment.id,
+    currentEnvironmentType: environment.type,
+  }).environmentIds;
+  // The audit log filters by one environment: several shown (All, Preview branches) is the project.
+  const historyEnvironmentId =
+    shownEnvironmentIds.length === 1 ? shownEnvironmentIds[0] : undefined;
   const selectedSort = isSortableView
     ? parseEnvironmentVariablesSort(currentSearchParams.get("sort"))
     : undefined;
@@ -968,6 +993,28 @@ function EnvironmentVariablesListPage({
       <NavBar>
         <PageTitle title="Environment variables" />
         <PageAccessories>
+          {auditLog ? (
+            auditLog.canView ? (
+              <LinkButton
+                to={organizationAuditLogPath(organization, {
+                  category: "envvars",
+                  project: project.id,
+                  environment: historyEnvironmentId,
+                })}
+                variant="secondary/small"
+              >
+                View history
+              </LinkButton>
+            ) : (
+              <Button
+                variant="secondary/small"
+                disabled
+                tooltip="You don't have permission to view the audit log"
+              >
+                View history
+              </Button>
+            )
+          ) : null}
           <WhenAgentUnavailable>
             <LinkButton
               LeadingIcon={BookOpenIcon}

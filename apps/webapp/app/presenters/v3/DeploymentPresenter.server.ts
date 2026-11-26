@@ -24,6 +24,8 @@ import {
   skipDeploymentLogsAccessTokens,
   UNAUTHENTICATED_S2_TOKEN,
 } from "~/v3/deploymentLogsS2.server";
+import { deployCliVersionPolicy } from "~/v3/cliVersionPolicyInstance.server";
+import { cliVersionWarningFor } from "./cliVersionWarning.server";
 
 const S2_TOKEN_KEY_PREFIX = "s2-token:project:";
 
@@ -58,18 +60,22 @@ export class DeploymentPresenter {
     organizationSlug,
     environmentSlug,
     deploymentShortCode,
+    withEventStream = true,
   }: {
     userId: User["id"];
     projectSlug: Project["slug"];
     organizationSlug: Organization["slug"];
     environmentSlug: RuntimeEnvironment["slug"];
     deploymentShortCode: WorkerDeployment["shortCode"];
+    /** Off for callers that do not stream build logs, so no log access token is issued. */
+    withEventStream?: boolean;
   }) {
     const project = await this.#prismaClient.project.findFirst({
       select: {
         id: true,
         organizationId: true,
         externalRef: true,
+        organization: { select: { featureFlags: true } },
       },
       where: {
         slug: projectSlug,
@@ -135,6 +141,7 @@ export class DeploymentPresenter {
         builtAt: true,
         deployedAt: true,
         createdAt: true,
+        cliVersion: true,
         startedAt: true,
         installedAt: true,
         canceledAt: true,
@@ -243,6 +250,7 @@ export class DeploymentPresenter {
 
     let eventStream = undefined;
     if (
+      withEventStream &&
       env.S2_ENABLED === "1" &&
       (buildServerMetadata ||
         gitMetadata?.source === "trigger_github_app" ||
@@ -263,6 +271,18 @@ export class DeploymentPresenter {
         };
       }
     }
+
+    const cliVersionWarning = cliVersionWarningFor(
+      deployCliVersionPolicy(project.organization),
+      deployment.cliVersion,
+      deployment.worker?.cliVersion
+    );
+    const cliVersion =
+      cliVersionWarning?.cliVersion ??
+      [deployment.worker?.cliVersion, deployment.cliVersion].find(
+        (version) => version && version !== "unknown"
+      ) ??
+      deployment.worker?.cliVersion;
 
     return {
       eventStream,
@@ -292,7 +312,8 @@ export class DeploymentPresenter {
         },
         deployedBy: deployment.triggeredBy,
         sdkVersion: deployment.worker?.sdkVersion,
-        cliVersion: deployment.worker?.cliVersion,
+        cliVersion,
+        cliVersionWarning,
         runtime: deployment.worker?.runtime ?? deployment.runtime,
         runtimeVersion: deployment.worker?.runtimeVersion ?? deployment.runtimeVersion,
         imageReference: deployment.imageReference,

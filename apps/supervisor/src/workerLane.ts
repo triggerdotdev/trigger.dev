@@ -1,3 +1,4 @@
+import { computeOnlyReason } from "@trigger.dev/core/v3";
 import type { RunnerRuntime } from "./workloadManager/runCrd.js";
 
 export type WorkloadManagerBackend = "kubernetes" | "run-crd" | "docker";
@@ -14,4 +15,13 @@ export function workerLaneFor(
     case "docker":
       return "container";
   }
+}
+
+/**
+ * Whether a dequeued run may be handed to a warm runner. A sandbox never reuses a process or VM
+ * another run has used, and a compute-only run always cold starts: the warm-start key has no
+ * runtime, so a container runner of the same version and machine could otherwise take it.
+ */
+export function mayWarmStart(annotations: unknown): boolean {
+  return computeOnlyReason(annotations) === undefined;
 }

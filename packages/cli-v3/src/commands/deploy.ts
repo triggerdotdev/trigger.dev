@@ -38,6 +38,7 @@ import {
   nativeOnlyFlagError,
   resolveBuildPath,
 } from "../deploy/buildPath.js";
+import { readCliVersionPolicy, warnAboutCliVersionPolicy } from "../deploy/cliVersionPolicy.js";
 import { S2 } from "@s2-dev/streamstore";
 import { mkdir, readFile, unlink } from "node:fs/promises";
 import {
@@ -528,11 +529,19 @@ async function _deployCommand(dir: string, options: DeployCommandOptions) {
     );
   }
 
-  const resolvedBuildPath = await resolveServerBuildPath(
+  const fetchSettings = deploySettingsReader(
     projectClient.client,
     resolvedConfig.project,
-    options
+    options.env
   );
+  const resolvedBuildPath = await resolveServerBuildPath(options, fetchSettings);
+
+  warnAboutCliVersionPolicy(
+    await readCliVersionPolicy(fetchSettings, {
+      attachedToDeployment: isAttachingToExistingDeployment,
+    })
+  );
+
   const buildPath = applyBuildPathOptions(resolvedBuildPath, options);
 
   if (options.dryRun && resolvedBuildPath === "native" && buildPath === "depot") {
@@ -1390,18 +1399,21 @@ function getTriggeredVia(): DeploymentTriggeredVia {
 
 const DEPLOY_SETTINGS_TIMEOUT_MS = 5_000;
 
-async function resolveServerBuildPath(
-  apiClient: CliApiClient,
-  projectRef: string,
-  options: DeployCommandOptions
-): Promise<DeployBuildPath> {
-  const resolved = await resolveBuildPath(options, () =>
-    apiClient.getDeploySettings(
+function deploySettingsReader(apiClient: CliApiClient, projectRef: string, env: string) {
+  let settings: ReturnType<CliApiClient["getDeploySettings"]> | undefined;
+  return () =>
+    (settings ??= apiClient.getDeploySettings(
       projectRef,
-      options.env,
+      env,
       AbortSignal.timeout(DEPLOY_SETTINGS_TIMEOUT_MS)
-    )
-  );
+    ));
+}
+
+async function resolveServerBuildPath(
+  options: DeployCommandOptions,
+  fetchSettings: ReturnType<typeof deploySettingsReader>
+): Promise<DeployBuildPath> {
+  const resolved = await resolveBuildPath(options, fetchSettings);
 
   switch (resolved.from) {
     case "flag":
@@ -1551,6 +1563,7 @@ async function handleNativeBuildServerDeploy({
 
   if (deployment.outcome === "existing") {
     $deploymentSpinner.stop(`Version ${deployment.version} was already deployed`);
+    warnAboutCliVersionPolicy(artifactResult.data.cliVersionPolicy);
 
     setDeploymentGithubActionsOutput({
       version: deployment.version,
@@ -1575,6 +1588,7 @@ async function handleNativeBuildServerDeploy({
     ? cliLink(chalk.bold(rawDeploymentLink), rawDeploymentLink)
     : chalk.bold(rawDeploymentLink);
   $deploymentSpinner.stop("Deployment initialized");
+  warnAboutCliVersionPolicy(artifactResult.data.cliVersionPolicy);
   log.info(`View deployment: ${exposedDeploymentLink}`);
 
   warnAboutCanceledDeployments(deployment.canceledDeployments, options.externalId);
@@ -2316,6 +2330,15 @@ async function handleFromBundleDeploy({
   if (!projectClient) {
     throw new Error("Failed to get project client");
   }
+
+  warnAboutCliVersionPolicy(
+    await readCliVersionPolicy(
+      deploySettingsReader(projectClient.client, projectRef, options.env),
+      {
+        attachedToDeployment: Boolean(existingDeploymentId),
+      }
+    )
+  );
 
   // In attach mode the build-arg values are stored encrypted on the deployment
   let buildEnvVars: Record<string, string> | undefined;

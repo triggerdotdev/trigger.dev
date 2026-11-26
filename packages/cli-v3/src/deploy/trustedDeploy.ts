@@ -10,7 +10,7 @@ import {
   SubmitTrustedDeployResponse,
   TRUSTED_DEPLOY_AUDIENCE,
 } from "@trigger.dev/core/v3";
-import { wrapZodFetch } from "@trigger.dev/core/v3/zodfetch";
+import { type ApiResult, wrapZodFetch } from "@trigger.dev/core/v3/zodfetch";
 import { z } from "zod";
 import { CliApiClient } from "../apiClient.js";
 import type { DeployCommandOptions } from "../commands/deploy.js";
@@ -28,7 +28,11 @@ type GithubActionsEnvironment = {
   ACTIONS_ID_TOKEN_REQUEST_URL?: string;
   ACTIONS_ID_TOKEN_REQUEST_TOKEN?: string;
 };
-export type NativeBuildClient = Pick<CliApiClient, "createArtifact" | "initializeDeployment">;
+export type NativeBuildClient = Pick<CliApiClient, "initializeDeployment"> & {
+  createArtifact(
+    body: Parameters<CliApiClient["createArtifact"]>[0]
+  ): Promise<ApiResult<PrepareTrustedDeployResponse>>;
+};
 
 export function shouldUseGithubOidc(
   authMethod: "auto" | "oidc",

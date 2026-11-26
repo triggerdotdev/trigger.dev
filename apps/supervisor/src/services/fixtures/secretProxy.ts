@@ -400,7 +400,7 @@ export class SecretProxyFixture {
         caFile,
         relayUrl: "https://localhost:1",
         relayRootCa: certPath,
-        nodeTokenFile: tokenPath,
+        relayTokenFile: tokenPath,
       })
     );
     this.interceptor = spawn(join(fcrunDirectory, "target/debug/fcrun-interceptor"), [configPath], {

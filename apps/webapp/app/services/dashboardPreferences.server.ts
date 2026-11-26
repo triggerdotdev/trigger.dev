@@ -484,7 +484,9 @@ export async function removeFavoritesByUrlSubstring({
   return mutateDashboardPreferences(user.id, (prefs) => {
     const currentSideMenu = SideMenuPreferences.parse(prefs.sideMenu ?? {});
     const favorites = currentSideMenu.favorites ?? [];
-    const remaining = favorites.filter((favorite) => !favorite.url.includes(substring));
+    const remaining = favorites.filter(
+      (favorite) => !`${favorite.url.replace(/[?#].*$/, "")}/`.includes(`${substring}/`)
+    );
 
     if (remaining.length === favorites.length) {
       return undefined;

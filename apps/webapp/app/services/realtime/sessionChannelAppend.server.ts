@@ -289,7 +289,8 @@ export async function ensureRunThenAppend({
 
   // An append that wrote no record (a lost claim) or returned no seq leaves `seq` unset. After a
   // lost claim the winner's own revive carries the first seq; a run started here records none, and
-  // its ownership of a turn-complete falls back to `sessionInSeq`, the tail read at trigger.
+  // its ownership of a turn-complete falls back to `sessionInSeq` (the tail read at trigger, or 0
+  // for a session's first run).
   const settledEnsure: EnsureOutcome =
     io === "in" && ensure.ok
       ? {

@@ -88,6 +88,7 @@ export type SyntheticRun = {
   region: string | undefined;
   queue: string | undefined;
   concurrencyKey: string | undefined;
+  priorityMs?: number;
   machinePreset: string | undefined;
   realtimeStreamsVersion: string | undefined;
 
@@ -227,6 +228,7 @@ export async function findRunByIdWithMollifierFallback(
       region: asString(snapshot.region),
       queue: asString(snapshot.queue),
       concurrencyKey: asString(snapshot.concurrencyKey),
+      priorityMs: typeof snapshot.priorityMs === "number" ? snapshot.priorityMs : undefined,
       machinePreset: asString(snapshot.machine),
       realtimeStreamsVersion: asString(snapshot.realtimeStreamsVersion),
 

@@ -59,12 +59,15 @@ vi.mock("~/services/rbac.server", () => ({
   ),
 }));
 
+import { CURRENT_API_VERSION } from "~/api/versions";
 import type { McpToolDefinition } from "~/mcp/registry.server";
 import type { McpIdentity } from "~/mcp/types";
 import { deploysTools } from "~/mcp/tools/deploys.server";
 import { orgsTools } from "~/mcp/tools/orgs.server";
 import { createRunsTools } from "~/mcp/tools/runs.server";
 import { tasksTools } from "~/mcp/tools/tasks.server";
+import { findEnvironmentById } from "~/models/runtimeEnvironment.server";
+import { ApiRetrieveRunPresenter } from "~/presenters/v3/ApiRetrieveRunPresenter.server";
 import { insertTaskRunV2Rows } from "./helpers/apiRunListPresenterTestHelpers";
 
 const PAYLOAD_SCHEMA = { type: "object", properties: { email: { type: "string" } } };
@@ -477,6 +480,40 @@ describe("mcp read tools", () => {
     expect(large).toContain("truncated");
     expect(large!.length).toBeLessThan(4_200);
   });
+
+  // Catches: get_run_details hiding the priority or concurrency key, or the public run response gaining them.
+  postgresTest(
+    "get_run_details shows priority and concurrency key only when set",
+    async ({ prisma }) => {
+      const { ids, identity, request, scope } = await seed(prisma);
+      const details = tool(createRunsTools(), "get_run_details");
+      const shown = async (overrides: Record<string, unknown>) => {
+        const run = await createRun(prisma, ids, overrides);
+        const text = textOf(await details({ ...scope, runId: run.friendlyId }, identity, request));
+        const environment = await findEnvironmentById(ids.environmentId);
+        const found = await ApiRetrieveRunPresenter.findRun(run.friendlyId, environment!);
+        const body = await new ApiRetrieveRunPresenter(CURRENT_API_VERSION).call(
+          found!,
+          environment!
+        );
+        return {
+          priority: text.match(/Priority: (\S+)/)?.[1],
+          concurrencyKey: text.match(
+            /Concurrency key: <untrusted-data source="run-concurrency-key"[^>]*>([^<]*)</
+          )?.[1],
+          publicKeys: Object.keys(body).filter((key) => /priority|concurrency/i.test(key)),
+        };
+      };
+
+      expect({
+        set: await shown({ priorityMs: 10_000, concurrencyKey: "mcp-test-key" }),
+        unset: await shown({}),
+      }).toEqual({
+        set: { priority: "10s", concurrencyKey: "mcp-test-key", publicKeys: [] },
+        unset: { priority: undefined, concurrencyKey: undefined, publicKeys: [] },
+      });
+    }
+  );
 
   postgresTest("list_deploys lists the seeded deployment", async ({ prisma }) => {
     const { identity, request, scope } = await seed(prisma);

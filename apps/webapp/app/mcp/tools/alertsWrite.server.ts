@@ -23,11 +23,13 @@ import {
   QUERY_ACCESS,
   usesCustomQuery,
 } from "./alertDrafts.server";
-import { errorResult, resolveToolEnvironment, textResult } from "./define.server";
-import { defineWriteTool, fencedError, staleApproval } from "./defineWrite.server";
+import { resolveToolEnvironment, textResult } from "./define.server";
+import { defineWriteTool, staleApproval } from "./defineWrite.server";
 import { nothingChanged, numbered } from "./format/alertPreviews";
 import { CreateAlertInput } from "./schemas/alerts";
 import { CommonProjectsInput } from "./schemas/common";
+
+import { alertError } from "./format/alerts";
 
 const NOT_ENABLED = "Monitoring alerts are not enabled for this project";
 
@@ -69,15 +71,15 @@ export const alertsWriteTools: McpToolDefinition[] = [
     },
     run: async (input, ctx) => {
       const project = await findMonitoringAlertsProject(input.projectRef!, ctx.identity.userId);
-      if (!project) return errorResult("Project not found");
+      if (!project) return alertError("Project not found");
       if (!(await canUseMonitoringAlerts(project, ctx.identity.userId))) {
-        return errorResult(NOT_ENABLED);
+        return alertError(NOT_ENABLED);
       }
 
       const environment = await resolveToolEnvironment(ctx);
-      if (!environment) return errorResult("Not authorized");
+      if (!environment) return alertError("Not authorized");
       if (usesCustomQuery([input.capabilityKey]) && !canReadQuery(ctx.ability, environment.type)) {
-        return errorResult("Not authorized");
+        return alertError("Not authorized");
       }
 
       const alertInput = createAlertDraft(input, {
@@ -87,10 +89,10 @@ export const alertsWriteTools: McpToolDefinition[] = [
         environmentType: environment.type,
         createdBy: ctx.identity.userId,
       });
-      if ("error" in alertInput) return errorResult(alertInput.error);
+      if ("error" in alertInput) return alertError(alertInput.error);
 
       const friendly = friendlyChannelIdError(alertInput.notifiers ?? []);
-      if (friendly) return errorResult(friendly);
+      if (friendly) return alertError(friendly);
       const notifierError = await validateAlertNotifiers({
         notifiers: alertInput.notifiers ?? [],
         projectId: project.id,
@@ -99,7 +101,7 @@ export const alertsWriteTools: McpToolDefinition[] = [
         environmentType: environment.type,
       });
       if (notifierError) {
-        return errorResult(nothingChanged(fenceUntrusted(notifierError.message, "alert-error")));
+        return alertError(nothingChanged(fenceUntrusted(notifierError.message, "alert-error")));
       }
       const stale = staleApproval(ctx, await createAlertPreview(alertInput, project.id));
       if (stale) return stale;
@@ -119,13 +121,13 @@ export const alertsWriteTools: McpToolDefinition[] = [
     auth: { action: "write", subject: "alerts" },
     run: async (input, ctx) => {
       const project = await findMonitoringAlertsProject(input.projectRef!, ctx.identity.userId);
-      if (!project) return errorResult("Project not found");
+      if (!project) return alertError("Project not found");
       if (!(await canUseMonitoringAlerts(project, ctx.identity.userId))) {
-        return errorResult(NOT_ENABLED);
+        return alertError(NOT_ENABLED);
       }
 
       const alert = await getAlert(prisma, { id: input.alertId, projectId: project.id });
-      if (!alert) return errorResult("Alert not found");
+      if (!alert) return alertError("Alert not found");
 
       const { identity } = ctx;
       const { ability } = ctx;
@@ -138,12 +140,12 @@ export const alertsWriteTools: McpToolDefinition[] = [
         !ability ||
         !(await canAccessAlertsIn(ability, "write", alert.environmentId))
       ) {
-        return fencedError("Not authorized", "alert-error");
+        return alertError(fenceUntrusted("Not authorized", "alert-error"));
       }
 
       const outcome = await resolveAlert(prisma, { id: alert.id, actorId: identity.userId });
       if (!outcome) {
-        return errorResult(
+        return alertError(
           nothingChanged(
             "Only an alert that needs attention can be resolved, and this one does not"
           )

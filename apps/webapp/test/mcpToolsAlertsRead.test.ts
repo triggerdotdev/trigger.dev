@@ -240,6 +240,60 @@ function denyReadAlertsIn(envType: string) {
 }
 
 describe("remote alert read tools", () => {
+  // Catches: "Resolved by" left over from an earlier resolution shown while the alert needs attention again.
+  postgresTest(
+    "get_alert_details names the resolver only when it is resolved",
+    async ({ prisma }) => {
+      const { run, a } = await seed(prisma);
+      const raised = await createAlert(prisma, a, { name: "raised-again" });
+      const cleared = await createAlert(prisma, a, { name: "cleared" });
+      await prisma.alert.update({
+        where: { id: raised.id },
+        data: { attention: "needs_attention", resolvedBy: a.userId },
+      });
+      await prisma.alert.update({ where: { id: cleared.id }, data: { resolvedBy: a.userId } });
+
+      const texts = [
+        await run("get_alert_details", { alertId: raised.id }),
+        await run("get_alert_details", { alertId: cleared.id }),
+      ];
+
+      expect(texts.map((text) => text.includes("Resolved by:"))).toEqual([false, true]);
+    }
+  );
+
+  // Catches: list_alerts without a count, or a full list not marked as possibly incomplete.
+  postgresTest(
+    "list_alerts says how many it shows and when it hit its limit",
+    async ({ prisma }) => {
+      const { run, a } = await seed(prisma);
+      await createAlert(prisma, a, { name: "one" });
+      const few = await run("list_alerts", {});
+      await prisma.alert.createMany({
+        data: Array.from({ length: 200 }, (_, i) => ({
+          id: uniqueId(`bulk${i}`),
+          organizationId: a.organizationId,
+          projectId: a.projectId,
+          environmentId: a.environmentId,
+          capabilityKey: "queue.depth",
+          params: {},
+          condition: {},
+          createdBy: a.userId,
+          name: `bulk-${i}`,
+        })),
+      });
+      const many = await run("list_alerts", {});
+
+      expect([few.split("\n")[0], many.split("\n").slice(0, 2)]).toEqual([
+        "Showing 1 monitoring alert, those needing attention first, then newest first.",
+        [
+          "Showing 200 monitoring alerts, those needing attention first, then newest first.",
+          "Stopped at the limit of 200; more alerts may exist.",
+        ],
+      ]);
+    }
+  );
+
   // Catches: a user-set alert name, scope, or event text printed outside the fence.
   postgresTest("get_alert_details fences every user-set field", async ({ prisma }) => {
     const { run, a } = await seed(prisma);
@@ -491,7 +545,7 @@ describe("remote alert read tools", () => {
         await run("get_alert_details", { alertId: otherAlert.id }),
       ];
 
-      expect(outcomes).toEqual(Array(3).fill(JSON.stringify({ error: "Alert not found" })));
+      expect(outcomes).toEqual(Array(3).fill("Alert not found"));
     }
   );
 

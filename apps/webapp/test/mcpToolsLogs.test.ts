@@ -1,5 +1,6 @@
 import { ClickHouse, type TaskEventV2Input, toTaskEventSearchV2Row } from "@internal/clickhouse";
 import { containerTestWithClickhouse } from "@internal/testcontainers";
+import { generateJWT } from "@trigger.dev/core/v3/jwt";
 import plugin from "@trigger.dev/rbac";
 import type { PrismaClient } from "@trigger.dev/database";
 import { createHash } from "node:crypto";
@@ -65,6 +66,9 @@ import type { McpIdentity } from "~/mcp/types";
 import { createLogsTools } from "~/mcp/tools/logs.server";
 import { formatLogsPage } from "~/mcp/tools/format/logs";
 import { LogsListPresenter } from "~/presenters/v3/LogsListPresenter.server";
+import { action as searchDashboardAgentLogs } from "~/routes/api.v1.dashboard-agent.logs.search";
+import { signPublicJwtActor } from "~/services/publicJwtActor.server";
+import { publicTokenSecret } from "~/services/publicTokenSubject.server";
 
 const LOGS_FLAGS = { hasLogsPageAccess: true, taskEventRepository: "clickhouse_v2" };
 
@@ -185,6 +189,105 @@ const listedMessages = (text: string) =>
     .sort();
 
 const listedIds = (text: string) => [...text.matchAll(/\| id: (.+)$/gm)].map((m) => m[1]);
+
+containerTestWithClickhouse(
+  "Ask Trigger log search requires verified user delegation, collection read scope and Logs access",
+  async ({ prisma, clickhouseContainer }) => {
+    const { a, clickhouse, prod, staging } = await seed(
+      prisma,
+      clickhouseContainer.getConnectionUrl()
+    );
+    const spanStartedAt = Date.now() - 60_000;
+    const spanDurationMs = 20_000;
+    const spanCompletedAt = spanStartedAt + spanDurationMs;
+    await insertLogs(clickhouse, [
+      {
+        ...prod,
+        message: "payment declined",
+        kind: "LOG_ERROR",
+        start_time: clickhouseTime(spanStartedAt),
+        duration: String(BigInt(spanDurationMs) * 1_000_000n),
+      },
+      { ...prod, message: "payment accepted" },
+      { ...staging, message: "staging payment declined", kind: "LOG_ERROR" },
+    ]);
+    const { apiKey } = await prisma.runtimeEnvironment.findFirstOrThrow({
+      where: { id: prod.environmentId },
+      select: { apiKey: true },
+    });
+
+    async function search(
+      scopes: string[],
+      verified = true,
+      filters: Record<string, unknown> = { search: "payment", levels: ["ERROR"] }
+    ) {
+      const expiresAt = Math.floor(Date.now() / 1000) + 60;
+      const actor = { sub: a.user.id, client: "dashboard-agent" };
+      const sig = verified
+        ? signPublicJwtActor(publicTokenSecret(), actor, {
+            environmentId: prod.environmentId,
+            expiresAt,
+            scopes,
+          })
+        : undefined;
+      const token = await generateJWT({
+        secretKey: apiKey,
+        payload: { sub: prod.environmentId, pub: true, scopes, act: { ...actor, sig } },
+        expirationTime: expiresAt,
+      });
+      return searchDashboardAgentLogs({
+        request: new Request("https://api.trigger.dev/api/v1/dashboard-agent/logs/search", {
+          method: "POST",
+          headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+          body: JSON.stringify(filters),
+        }),
+        params: {},
+        context: {},
+      });
+    }
+
+    expect((await search(["read:runs"], false)).status).toBe(403);
+    expect((await search(["read:runs:run_logs"])).status).toBe(403);
+
+    const response = await search(["read:runs"]);
+    expect(response.status).toBe(200);
+    const { logs } = await response.json();
+    expect(logs).toEqual([
+      expect.objectContaining({
+        message: "payment declined",
+        level: "ERROR",
+        runId: "run_logs",
+        timestamp: new Date(spanCompletedAt).toISOString(),
+      }),
+    ]);
+
+    const shortSearch = await search(["read:runs"], true, { search: "OK" });
+    expect(shortSearch.status).toBe(400);
+    expect(await shortSearch.json()).toEqual({
+      code: "log_search_validation",
+      error: "Log searches must be at least 3 characters.",
+    });
+
+    const to = new Date("2020-01-02").toISOString();
+    expect((await search(["read:runs"], true, { to })).status).toBe(400);
+    const retained = await search(["read:runs"], true, {
+      from: new Date("2020-01-01").toISOString(),
+      to,
+    });
+    expect(retained.status).toBe(200);
+    expect(await retained.json()).toMatchObject({
+      logs: [],
+      complete: true,
+      retentionClamped: true,
+    });
+
+    await prisma.organization.update({
+      where: { id: a.organization.id },
+      data: { featureFlags: { ...LOGS_FLAGS, hasLogsPageAccess: false } },
+    });
+    expect((await search(["read:runs"])).status).toBe(403);
+  }
+);
 
 describe("search_logs", () => {
   // Catches: logs leaking from another environment or project, or the text or level filter ignored.

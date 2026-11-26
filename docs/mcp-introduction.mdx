@@ -57,6 +57,24 @@ Each client has a slightly different config format. Copy the snippet for your cl
 
     [View Claude Code MCP docs ↗](https://code.claude.com/docs/en/mcp)
   </Tab>
+  <Tab title="Codex CLI">
+    Install using the command line:
+
+    ```bash
+    npx trigger.dev@latest install-mcp --client openai-codex
+    ```
+
+    Or add this configuration to `~/.codex/config.toml`:
+
+    ```toml
+    [mcp_servers.trigger]
+    command = "npx"
+    args = ["trigger.dev@latest", "mcp"]
+    startup_timeout_sec = 30
+    ```
+
+    <Note>The `startup_timeout_sec = 30` is recommended. Codex defaults to 10 seconds, which may not be enough for `npx` to download the package on first run.</Note>
+  </Tab>
   <Tab title="Cursor">
     Install using the command line:
 
@@ -78,28 +96,6 @@ Each client has a slightly different config format. Copy the snippet for your cl
     ```
 
     [View Cursor MCP docs ↗](https://cursor.com/docs/context/mcp)
-  </Tab>
-  <Tab title="Windsurf">
-    Install using the command line:
-
-    ```bash
-    npx trigger.dev@latest install-mcp --client windsurf
-    ```
-
-    Or add this configuration to `~/.codeium/windsurf/mcp_config.json`:
-
-    ```json
-    {
-      "mcpServers": {
-        "trigger": {
-          "command": "npx",
-          "args": ["trigger.dev@latest", "mcp"]
-        }
-      }
-    }
-    ```
-
-    [View Windsurf MCP docs ↗](https://docs.windsurf.com/windsurf/cascade/mcp)
   </Tab>
   <Tab title="VS Code">
     Install using the command line:
@@ -125,51 +121,6 @@ Each client has a slightly different config format. Copy the snippet for your cl
 
     [View VS Code MCP docs ↗](https://code.visualstudio.com/docs/copilot/chat/mcp-servers)
   </Tab>
-  <Tab title="Zed">
-    Install using the command line:
-
-    ```bash
-    npx trigger.dev@latest install-mcp --client zed
-    ```
-
-    Or add this configuration to `~/.config/zed/settings.json`:
-
-    ```json
-    {
-      "context_servers": {
-        "trigger": {
-          "source": "custom",
-          "command": "npx",
-          "args": ["trigger.dev@latest", "mcp"]
-        }
-      }
-    }
-    ```
-
-    [View Zed context servers docs ↗](https://zed.dev/docs/ai/mcp)
-  </Tab>
-  <Tab title="Cline">
-    Install using the command line:
-
-    ```bash
-    npx trigger.dev@latest install-mcp --client cline
-    ```
-
-    Or add this configuration to `~/Library/Application Support/Code/User/globalStorage/saoudrizwan.claude-dev/settings/cline_mcp_settings.json`:
-
-    ```json
-    {
-      "mcpServers": {
-        "trigger": {
-          "command": "npx",
-          "args": ["trigger.dev@latest", "mcp"]
-        }
-      }
-    }
-    ```
-
-    [View Cline MCP docs ↗](https://docs.cline.bot/mcp/configuring-mcp-servers)
-  </Tab>
   <Tab title="Gemini CLI">
     Install using the command line:
 
@@ -189,69 +140,6 @@ Each client has a slightly different config format. Copy the snippet for your cl
       }
     }
     ```
-  </Tab>
-  <Tab title="AMP">
-    Install using the command line:
-
-    ```bash
-    npx trigger.dev@latest install-mcp --client amp
-    ```
-
-    Or add this configuration to `~/.config/amp/settings.json`:
-
-    ```json
-    {
-      "amp.mcpServers": {
-        "trigger": {
-          "command": "npx",
-          "args": ["trigger.dev@latest", "mcp"]
-        }
-      }
-    }
-    ```
-
-    [View Sourcegraph AMP MCP docs ↗](https://ampcode.com/manual#mcp)
-  </Tab>
-  <Tab title="Codex CLI">
-    Install using the command line:
-
-    ```bash
-    npx trigger.dev@latest install-mcp --client openai-codex
-    ```
-
-    Or add this configuration to `~/.codex/config.toml`:
-
-    ```toml
-    [mcp_servers.trigger]
-    command = "npx"
-    args = ["trigger.dev@latest", "mcp"]
-    startup_timeout_sec = 30
-    ```
-
-    <Note>The `startup_timeout_sec = 30` is recommended. Codex defaults to 10 seconds, which may not be enough for `npx` to download the package on first run.</Note>
-  </Tab>
-  <Tab title="Crush">
-    Install using the command line:
-
-    ```bash
-    npx trigger.dev@latest install-mcp --client crush
-    ```
-
-    Or add this configuration to `.crush.json` (project), `crush.json`, or `~/.config/crush/crush.json` (user). Files are loaded in priority order: `.crush.json` → `crush.json` → `$HOME/.config/crush/crush.json`.
-
-    ```json
-    {
-      "mcp": {
-        "trigger": {
-          "type": "stdio",
-          "command": "npx",
-          "args": ["trigger.dev@latest", "mcp"]
-        }
-      }
-    }
-    ```
-
-    [View Charm MCP docs ↗](https://github.com/charmbracelet/crush)
   </Tab>
   <Tab title="opencode">
     Install using the command line:
@@ -275,6 +163,112 @@ Each client has a slightly different config format. Copy the snippet for your cl
     ```
 
     [View opencode MCP docs ↗](https://opencode.ai/docs/mcp-servers/)
+  </Tab>
+  <Tab title="Zed">
+    Install using the command line:
+
+    ```bash
+    npx trigger.dev@latest install-mcp --client zed
+    ```
+
+    Or add this configuration to `~/.config/zed/settings.json`:
+
+    ```json
+    {
+      "context_servers": {
+        "trigger": {
+          "source": "custom",
+          "command": "npx",
+          "args": ["trigger.dev@latest", "mcp"]
+        }
+      }
+    }
+    ```
+
+    [View Zed context servers docs ↗](https://zed.dev/docs/ai/mcp)
+  </Tab>
+  <Tab title="Amp">
+    Install using the command line:
+
+    ```bash
+    npx trigger.dev@latest install-mcp --client amp
+    ```
+
+    Or add this configuration to `~/.config/amp/settings.json`:
+
+    ```json
+    {
+      "amp.mcpServers": {
+        "trigger": {
+          "command": "npx",
+          "args": ["trigger.dev@latest", "mcp"]
+        }
+      }
+    }
+    ```
+
+    [View Amp MCP docs ↗](https://ampcode.com/manual#mcp)
+  </Tab>
+  <Tab title="Cline">
+    Install using the command line:
+
+    ```bash
+    npx trigger.dev@latest install-mcp --client cline
+    ```
+
+    Or add this configuration to `~/Library/Application Support/Code/User/globalStorage/saoudrizwan.claude-dev/settings/cline_mcp_settings.json`:
+
+    ```json
+    {
+      "mcpServers": {
+        "trigger": {
+          "command": "npx",
+          "args": ["trigger.dev@latest", "mcp"]
+        }
+      }
+    }
+    ```
+
+    [View Cline MCP docs ↗](https://docs.cline.bot/mcp/configuring-mcp-servers)
+  </Tab>
+  <Tab title="Devin Desktop">
+    Add this configuration to `~/.config/devin/mcp_config.json`, or to `.devin/mcp_config.json` in your project to share it with your team:
+
+    ```json
+    {
+      "mcpServers": {
+        "trigger": {
+          "command": "npx",
+          "args": ["trigger.dev@latest", "mcp"]
+        }
+      }
+    }
+    ```
+
+    [View Devin Desktop MCP docs ↗](https://docs.devin.ai/desktop/devin-local/customizations)
+  </Tab>
+  <Tab title="Crush">
+    Install using the command line:
+
+    ```bash
+    npx trigger.dev@latest install-mcp --client crush
+    ```
+
+    Or add this configuration to `.crush.json` (project), `crush.json`, or `~/.config/crush/crush.json` (user). Files are loaded in priority order: `.crush.json` → `crush.json` → `$HOME/.config/crush/crush.json`.
+
+    ```json
+    {
+      "mcp": {
+        "trigger": {
+          "type": "stdio",
+          "command": "npx",
+          "args": ["trigger.dev@latest", "mcp"]
+        }
+      }
+    }
+    ```
+
+    [View Charm MCP docs ↗](https://github.com/charmbracelet/crush)
   </Tab>
   <Tab title="Ruler">
     Install using the command line:

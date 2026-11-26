@@ -50,6 +50,7 @@ export const myChat = chat.agent({
   },
   run: async ({ messages, signal, streamText }) => {
     return streamText({
+      model: anthropic("claude-sonnet-5-5"),
       messages,
       abortSignal: signal,
       stopWhen: stepCountIs(15),
@@ -144,6 +145,7 @@ export const myChat = chat.agent({
   },
   run: async ({ messages, signal, streamText }) => {
     return streamText({
+      model: anthropic("claude-sonnet-5-5"),
       messages,
       abortSignal: signal,
       stopWhen: stepCountIs(15),

@@ -1111,10 +1111,19 @@ export class WorkloadServer extends EventEmitter<WorkloadServerEvents> {
                       secretProxy,
                     });
                   } catch (error) {
+                    // Fail closed: the VM waits for this reply, so it stays paused rather than
+                    // running unbound. The runner retries a 5xx, and the platform answers a repeated
+                    // continue from the same snapshot with the same result.
                     this.logger.error("Failed to bind continued secret proxy execution", {
                       params,
                       error,
                     });
+                    reply.json(
+                      { ok: false, error: "Secret proxy binding unavailable" },
+                      false,
+                      503
+                    );
+                    return;
                   }
                 }
                 reply.json(continuation as WorkloadContinueRunExecutionResponseBody);

@@ -201,13 +201,13 @@ This is the new version:
 
 
 // New v4 way
-const batchHandle = await tasks.batchTrigger([
-  [myTask, { foo: "bar" }],
-  [myOtherTask, { baz: "qux" }],
+const batchHandle = await batch.triggerByTask([
+  { task: myTask, payload: { foo: "bar" } },
+  { task: myOtherTask, payload: { baz: "qux" } },
 ]);
 
-const batch = await batch.retrieve(batchHandle.batchId); // Use batch.retrieve()
-console.log(batch.runs);
+const batchRun = await batch.retrieve(batchHandle.batchId); // Use batch.retrieve()
+console.log(batchRun.runs);
 
 
 **triggerAndWait / batchTriggerAndWait**: In v4 these return a Result object, not the raw output. Use `if (result.ok) { ... result.output }` or call `.unwrap()` to get the output (throws if the run failed). Do not wrap `triggerAndWait` or `batchTriggerAndWait` in `Promise.all` — this is not supported.

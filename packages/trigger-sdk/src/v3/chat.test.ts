@@ -50,6 +50,29 @@ function sseEncode(chunks: (UIMessageChunk | Record<string, unknown>)[]): string
         headers,
       };
     }
+    if (type === "trigger:turn-start") {
+      const inSeq = (chunk as { inSeq?: number }).inSeq;
+      return {
+        body: "",
+        seq_num: nextSeq++,
+        timestamp: 1700000000000 + i,
+        headers: [
+          ["trigger-control", "turn-start"],
+          ...(inSeq !== undefined ? [["turn-start-in-seq", String(inSeq)]] : []),
+        ],
+      };
+    }
+    if (type === "trigger:turn-join") {
+      return {
+        body: "",
+        seq_num: nextSeq++,
+        timestamp: 1700000000000 + i,
+        headers: [
+          ["trigger-control", "turn-join"],
+          ["turn-start-in-seq", String((chunk as { inSeq?: number }).inSeq)],
+        ],
+      };
+    }
     if (type === "trigger:upgrade-required") {
       return {
         body: "",
@@ -352,6 +375,46 @@ describe("TriggerChatTransport", () => {
       });
       await drainChunks(stream);
       expect(accessToken2).toHaveBeenCalledWith({ chatId: "chat-2" });
+    });
+
+    it("ignores the turn-start and turn-join markers the agent writes", async () => {
+      // Catches: a transport that renders, errors on or stalls at the
+      // `turn-start` control record a newer agent writes, instead of skipping it
+      // as it does any control record it doesn't know.
+      global.fetch = vi.fn().mockImplementation(async (url: string | URL) => {
+        const urlStr = typeof url === "string" ? url : url.toString();
+        if (isSessionStreamAppendUrl(urlStr)) return defaultAppendResponse();
+        if (isSessionOutSubscribeUrl(urlStr)) {
+          return defaultSseResponse([
+            { type: "trigger:turn-start", inSeq: 4 },
+            { type: "text-start", id: "part-1" },
+            { type: "text-delta", id: "part-1", delta: "hello" },
+            { type: "trigger:turn-join", inSeq: 5 },
+            { type: "text-end", id: "part-1" },
+            { type: "trigger:turn-complete" },
+          ]);
+        }
+        throw new Error(`Unexpected URL: ${urlStr}`);
+      });
+      const transport = new TriggerChatTransport({
+        task: "my-chat-task",
+        accessToken: () => "pat",
+        sessions: { "chat-marker": { publicAccessToken: "p" } },
+      });
+
+      const stream = await transport.sendMessages({
+        trigger: "submit-message",
+        chatId: "chat-marker",
+        messageId: undefined,
+        messages: [createUserMessage("hi")],
+        abortSignal: undefined,
+      });
+
+      expect((await drainChunks(stream)).map((c) => c.type)).toEqual([
+        "text-start",
+        "text-delta",
+        "text-end",
+      ]);
     });
 
     it("serves a stream reconnect through the fetch set after the first connect", async () => {

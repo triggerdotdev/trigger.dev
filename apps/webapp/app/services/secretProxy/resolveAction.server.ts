@@ -9,6 +9,7 @@ import {
 import { z } from "zod";
 import { logger } from "../logger.server";
 import { recordSecretProxyFailure, type SecretProxyFailureReason } from "./telemetry.server";
+import { WorkloadIdentityUnavailableError } from "../workloadIdentity.server";
 
 const headers = { "Cache-Control": "no-store", Pragma: "no-cache" };
 const resolutionDuration = singleton("secretProxyResolutionDuration", () =>
@@ -69,17 +70,27 @@ function failure(
 }
 
 async function resolveRequest(service: SecretProxyService, request: Request) {
-  const serviceToken = request.headers.get("x-trigger-secret-proxy-token");
+  // The relay's own credential: a workload identity token, or the shared service token. Only a
+  // rejected relay credential is a 401; the relay treats it as transient, never as a run denial.
+  const serviceBearer = request.headers.get("authorization")?.match(/^Bearer (.+)$/)?.[1];
   // Check the internal service credential before reading the body or examining a run token.
-  if (!service.serviceAuthenticated(serviceToken)) {
-    return failure("service_auth", "Unauthorized service", 401);
+  try {
+    if (!(await service.serviceAuthenticated(serviceBearer))) {
+      return failure("service_auth", "Unauthorized service", 401);
+    }
+  } catch (error) {
+    if (error instanceof WorkloadIdentityUnavailableError) {
+      logger.warn("Secret proxy service authentication unavailable", { error: error.message });
+      return failure("dependency", "Service authentication unavailable", 503);
+    }
+    throw error;
   }
   if (request.method !== "POST") return failure("policy", "Method not allowed", 405);
-  const authorization = request.headers.get("authorization");
-  if (!authorization?.startsWith("Bearer ")) return failure("token", "Invalid run token", 401);
+  const runToken = request.headers.get("x-trigger-run-token");
+  if (!runToken) return failure("token", "Invalid run token", 403);
   try {
     const body = await boundedJson(request);
-    const result = await service.resolve(serviceToken, authorization.slice(7), body);
+    const result = await service.resolve(runToken, body);
     return json(result, { headers });
   } catch (error) {
     if (error instanceof Response) {

@@ -15,6 +15,8 @@ export {
   type SeededChannelDelivery,
 } from "./mock-chat-agent.js";
 
+export { type TestOutRecord } from "./test-session-handle.js";
+
 export {
   runTranscriptStorageTests,
   type TranscriptStorageTestOptions,

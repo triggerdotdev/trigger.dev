@@ -841,7 +841,7 @@ export interface RoleBaseAccessController {
     organizationId: string;
     roleId: string;
     projectId?: string;
-  }): Promise<RoleAssignmentResult>;
+  }): Promise<UserRoleAssignmentResult>;
 
   removeUserRole(params: {
     userId: string;
@@ -899,6 +899,13 @@ type RoleAssignmentErrorCode = "last_owner";
 export type RoleAssignmentResult =
   | { ok: true }
   | { ok: false; error: string; code?: RoleAssignmentErrorCode };
+
+// `setUserRole`'s result. On success, `previousRole` is the user's effective role in that scope
+// before the write (null if they had none) and `changed` is whether the write changed it, both read
+// in the write's transaction.
+export type UserRoleAssignmentResult =
+  | { ok: true; previousRole: Role | null; changed: boolean }
+  | Extract<RoleAssignmentResult, { ok: false }>;
 
 import type { PluginDatabaseConfig } from "./databaseConfig.js";
 import type { ApiKeyCapabilityCatalogue, ApiKeyCapabilityMap } from "./apiKeyCapabilities.js";
