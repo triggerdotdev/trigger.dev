@@ -181,6 +181,8 @@ export type SnapshotEntryInput = {
   projectId: string;
   organizationId: string;
   checkpointId?: string;
+  // Set only for a state-held checkpoint of a MemoryDB-only run; absent means Postgres. No Postgres column: mirrored runs never carry it.
+  checkpointStore?: "state";
   workerId?: string;
   runnerId?: string;
   metadata?: unknown;
@@ -670,6 +672,26 @@ export class RedisSnapshotStore {
   async dropRun(runId: string): Promise<void> {
     const keys = snapshotKeys(runId);
     await this.redis.dropSnapshotRun(keys.e, keys.idx, keys.cur, keys.seq);
+  }
+
+  /**
+   * Writes a state-held checkpoint into the run's `:e` hash as the `<checkpointId>#cp` field, only
+   * when the run's keyspace is alive, and reports whether it was. The field expires and is removed
+   * with `:e`. Not retried: a timed-out write may have applied.
+   */
+  async writeCheckpoint(runId: string, checkpointId: string, raw: string): Promise<boolean> {
+    const k = snapshotKeys(runId);
+    return this.#timed("writeCheckpoint", async () => {
+      const written = await this.redis.writeSnapshotCheckpoint(
+        k.e,
+        k.idx,
+        k.cur,
+        k.seq,
+        checkpointId,
+        raw
+      );
+      return written === 1;
+    });
   }
 
   async append(args: {
@@ -1688,6 +1710,17 @@ export class RedisSnapshotStore {
       `,
     });
 
+    this.redis.defineCommand("writeSnapshotCheckpoint", {
+      numberOfKeys: 4,
+      lua: `
+        ${PRELUDE}
+        -- The liveness check stops HSET creating :e anew without its expiry.
+        if not keyspaceAlive() then return 0 end
+        redis.call('HSET', eKey, ARGV[1] .. '#cp', ARGV[2])
+        return 1
+      `,
+    });
+
     this.redis.defineCommand("readLatestSnapshot", {
       numberOfKeys: 4,
       lua: `
@@ -1917,6 +1950,15 @@ declare module "@internal/redis" {
       id: string,
       callback?: Callback<string[] | null>
     ): Result<string[] | null, Context>;
+    writeSnapshotCheckpoint(
+      eKey: string,
+      idxKey: string,
+      curKey: string,
+      seqKey: string,
+      checkpointId: string,
+      raw: string,
+      callback?: Callback<number>
+    ): Result<number, Context>;
     readLatestSnapshot(
       eKey: string,
       idxKey: string,

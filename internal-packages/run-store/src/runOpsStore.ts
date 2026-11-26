@@ -31,6 +31,7 @@ import type {
   RescheduleSnapshotInput,
   RewriteDebouncedRunData,
   RunStore,
+  StateHeldCheckpointInput,
   TaskRunWithWaitpoint,
   WaitpointColocationOptions,
 } from "./types.js";
@@ -39,6 +40,7 @@ import {
   snapshotResidencyFromMetadata,
   type SnapshotReadContext,
   type SnapshotRoute,
+  type SnapshotRouteWire,
 } from "./snapshotResidency.js";
 import { isReadReplicaClient } from "./readReplicaClient.js";
 import { CONNECTED_RUNS_LIMIT } from "./PostgresRunStore.js";
@@ -2001,6 +2003,15 @@ export class RoutingRunStore implements RunStore {
       ownerRunId,
       RoutingRunStore.#ownPrimary(store, client)
     );
+  }
+
+  async createStateHeldCheckpoint(
+    data: StateHeldCheckpointInput,
+    ownerRunId: string,
+    snapshotRoute: SnapshotRouteWire
+  ): Promise<Prisma.TaskRunCheckpointGetPayload<{}>> {
+    const store = this.#route(ownerRunId);
+    return store.createStateHeldCheckpoint(data, ownerRunId, snapshotRoute);
   }
 
   // ---------------------------------------------------------------------------

@@ -37,12 +37,13 @@ import type {
   RescheduleSnapshotInput,
   RewriteDebouncedRunData,
   RunStore,
+  StateHeldCheckpointInput,
   TaskRunWithWaitpoint,
 } from "./types.js";
 import { isReadReplicaClient } from "./readReplicaClient.js";
 import type { TaskRunError } from "@trigger.dev/core/v3/schemas";
 import type { ShardKey } from "@trigger.dev/core/v3/isomorphic";
-import type { SnapshotReadContext, SnapshotRoute } from "./snapshotResidency.js";
+import type { SnapshotReadContext, SnapshotRoute, SnapshotRouteWire } from "./snapshotResidency.js";
 
 // Loose delegate method shape: each generated client types delegate methods as
 // `<T>(args: PackageLocalArgs<T>) => PrismaPromise<…>` against its own nominal
@@ -2595,6 +2596,17 @@ export class PostgresRunStore implements RunStore {
     return prisma.taskRunCheckpoint.findFirst({
       where: { id: checkpointId },
     }) as Promise<Prisma.TaskRunCheckpointGetPayload<{}> | null>;
+  }
+
+  // A caller's mistake, not an outage: retrying cannot succeed, so not a SnapshotWriteUnavailableError.
+  async createStateHeldCheckpoint(
+    _data: StateHeldCheckpointInput,
+    _ownerRunId: string,
+    _snapshotRoute: SnapshotRouteWire
+  ): Promise<Prisma.TaskRunCheckpointGetPayload<{}>> {
+    throw new Error(
+      "A state-held checkpoint needs the snapshot store; this run store has no snapshot state"
+    );
   }
 
   // --- BatchTaskRun (run-ops) ---

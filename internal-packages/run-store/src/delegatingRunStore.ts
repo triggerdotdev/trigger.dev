@@ -26,7 +26,7 @@ import type {
 } from "@trigger.dev/database";
 import type { TaskRunError } from "@trigger.dev/core/v3/schemas";
 import type { Residency, ShardKey } from "@trigger.dev/core/v3/isomorphic";
-import type { SnapshotReadContext, SnapshotRoute } from "./snapshotResidency.js";
+import type { SnapshotReadContext, SnapshotRoute, SnapshotRouteWire } from "./snapshotResidency.js";
 import type {
   ClearIdempotencyKeyInput,
   CompletionSnapshotInput,
@@ -45,6 +45,7 @@ import type {
   RescheduleSnapshotInput,
   RewriteDebouncedRunData,
   RunStore,
+  StateHeldCheckpointInput,
   TaskRunWithWaitpoint,
   WaitpointColocationOptions,
 } from "./types.js";
@@ -639,6 +640,14 @@ export class DelegatingRunStore implements RunStore {
     client?: ReadClient
   ): Promise<Prisma.TaskRunCheckpointGetPayload<{}> | null> {
     return this.delegate.findTaskRunCheckpointById(checkpointId, ownerRunId, client);
+  }
+
+  createStateHeldCheckpoint(
+    data: StateHeldCheckpointInput,
+    ownerRunId: string,
+    snapshotRoute: SnapshotRouteWire
+  ): Promise<Prisma.TaskRunCheckpointGetPayload<{}>> {
+    return this.delegate.createStateHeldCheckpoint(data, ownerRunId, snapshotRoute);
   }
 
   markBatchWaitpointOnStore(batchId: string, waitpointId: string): Promise<void> {

@@ -174,6 +174,16 @@ describe.skipIf(!RUN_CLUSTER)("cluster key slots", () => {
     expect(await store.finalize(runId, "t")).toEqual({ outcome: "finalized", head: "s2" });
     expect((await store.getLatest(runId))?.id).toBe("s2");
   });
+
+  // Catches: the checkpoint write's keys leaving the run's slot (CROSSSLOT on a real cluster).
+  it("writes a state-held checkpoint on a real cluster without CROSSSLOT", async () => {
+    const store = new RedisSnapshotStore({ client: cluster, completedTtlMs: 60_000 });
+    const runId = "run_cluster_checkpoint";
+    await store.append({ entry: entry(runId, "s0"), kind: "birth", isTerminal: false });
+
+    expect(await store.writeCheckpoint(runId, "cp_1", '{"id":"cp_1"}')).toBe(true);
+    expect(await cluster.hget(snapshotKeys(runId).e, "cp_1#cp")).toBe('{"id":"cp_1"}');
+  });
 });
 
 // Replica'd cluster (3 masters + 3 replicas): prove committed snapshot state survives losing the

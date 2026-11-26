@@ -5,6 +5,7 @@
 // Redis (testcontainers), seeded through the real prepare primitive; no mocks.
 import { describe, expect } from "vitest";
 import { redisTest } from "@internal/testcontainers";
+import { createRedisClient } from "@internal/redis";
 import {
   RedisSnapshotStore,
   type PreparedEntry,
@@ -12,6 +13,7 @@ import {
   type SnapshotEntryInput,
 } from "./redisSnapshotStore.js";
 import { SnapshotResidencyResolver } from "./snapshotResidencyResolver.js";
+import { snapshotKeys } from "./snapshotKeys.js";
 
 function entry(over: { id: string; runId: string }): SnapshotEntryInput {
   return {
@@ -139,6 +141,49 @@ describe("RedisSnapshotStore quarantine atomic move (F10)", () => {
         // Without quarantine-awareness this run reads as `absent` (postgres); it MUST fail closed.
         expect(await resolver.resolve(runId)).toEqual({ kind: "error" });
       } finally {
+        await store.quit();
+      }
+    }
+  );
+});
+
+describe("RedisSnapshotStore quarantine and a state-held checkpoint", () => {
+  // Catches: quarantine starting to expire or remove the run state, or a checkpoint field getting its own expiry.
+  redisTest(
+    "a quarantined transition leaves the run state, with its checkpoint field, without expiry",
+    async ({ redisOptions }) => {
+      const store = new RedisSnapshotStore({ redisOptions, completedTtlMs: 60_000 });
+      const raw = createRedisClient(redisOptions, { onError: () => {} });
+      try {
+        const runId = "run_quarantine_checkpoint";
+        const k = snapshotKeys(runId);
+        const birth = birthUnit(runId);
+        await store.prepare(birth);
+        await store.finalize(runId, birth.transitionToken);
+        expect(await store.writeCheckpoint(runId, "cp_1", '{"id":"cp_1"}')).toBe(true);
+
+        const transition = birthUnit(runId, {
+          transitionToken: "t1",
+          entries: [
+            {
+              entry: entry({ id: "s1", runId }),
+              kind: "transition",
+              isTerminal: false,
+              expectedCur: "b0",
+            },
+          ],
+        });
+        await store.prepare(transition);
+        expect((await store.quarantinePreparedUnit(transition, "redis-primary-null")).moved).toBe(
+          true
+        );
+
+        for (const key of [k.e, k.idx, k.cur, k.seq]) {
+          expect(await raw.pttl(key)).toBe(-1);
+        }
+        expect(await raw.hget(k.e, "cp_1#cp")).toBe('{"id":"cp_1"}');
+      } finally {
+        await raw.quit();
         await store.quit();
       }
     }

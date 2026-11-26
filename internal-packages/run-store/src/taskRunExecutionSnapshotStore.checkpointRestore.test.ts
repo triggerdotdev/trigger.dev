@@ -7,21 +7,26 @@
 // (testcontainers, no mocks).
 import { describe, expect } from "vitest";
 import { containerTest } from "@internal/testcontainers";
-import { createRedisClient } from "@internal/redis";
-import { generateInternalId } from "@trigger.dev/core/v3/isomorphic";
-import type { PrismaClient } from "@trigger.dev/database";
+import { createRedisClient, type RedisClient, type RedisOptions } from "@internal/redis";
+import { CheckpointId, generateInternalId } from "@trigger.dev/core/v3/isomorphic";
+import { TaskRunCheckpointType, type PrismaClient } from "@trigger.dev/database";
 import { PostgresRunStore } from "./PostgresRunStore.js";
 import {
   RedisSnapshotStore,
   type CompletedWaitpointResolver,
   type PreparedPgUnit,
 } from "./redisSnapshotStore.js";
-import { snapshotKeys } from "./snapshotKeys.js";
+import { residencyKey, snapshotKeys } from "./snapshotKeys.js";
 import {
   TaskRunExecutionSnapshotStore,
   SnapshotReadUnavailableError,
+  SnapshotWriteUnavailableError,
 } from "./taskRunExecutionSnapshotStore.js";
 import { buildCreateRunData, seedSnapshotEnvironment } from "./testFixtures/snapshotIdFixture.js";
+import type { SnapshotFixtureEnv } from "./testFixtures/snapshotIdFixture.js";
+import type { SnapshotResidency, SnapshotRouteWire } from "./snapshotResidency.js";
+import type { StateHeldCheckpointInput } from "./types.js";
+import { callsBetween, commandCalls } from "./testFixtures/redisCommandStats.js";
 
 const ROUTE = "logical:1";
 
@@ -560,4 +565,538 @@ describe("TaskRunExecutionSnapshotStore (redis-only) checkpoint reads and quaran
       }
     }
   );
+});
+
+// The route a queue message carries for a redis-primary run.
+function routeFor(env: SnapshotFixtureEnv, residency: SnapshotResidency = "redis-primary") {
+  return { version: 1, residency, organizationId: env.organizationId } satisfies SnapshotRouteWire;
+}
+
+function checkpointInput(
+  env: SnapshotFixtureEnv,
+  over: Partial<StateHeldCheckpointInput> = {}
+): StateHeldCheckpointInput {
+  return {
+    ...CheckpointId.generate(),
+    type: "COMPUTE",
+    location: "s3://bucket/state-held",
+    projectId: env.projectId,
+    runtimeEnvironmentId: env.id,
+    ...over,
+  };
+}
+
+// Records every method read off the delegate. `PostgresRunStore` uses `#` members, so a method must
+// be bound to the real target.
+function recordingDelegate(target: PostgresRunStore) {
+  const calls: string[] = [];
+  const proxy = new Proxy(target, {
+    get(t, prop) {
+      const value = Reflect.get(t, prop, t);
+      if (typeof value !== "function") return value;
+      calls.push(String(prop));
+      return value.bind(t);
+    },
+  });
+  return { proxy, calls };
+}
+
+async function setup(prisma: PrismaClient, redisOptions: RedisOptions, completedTtlMs = 60_000) {
+  const postgres = new PostgresRunStore({ prisma, readOnlyPrisma: prisma });
+  const recorder = recordingDelegate(postgres);
+  const store = new RedisSnapshotStore({ redisOptions, completedTtlMs });
+  const raw = createRedisClient(redisOptions, { onError: () => {} });
+  const env = await seedSnapshotEnvironment(prisma);
+  const decorate = (s: RedisSnapshotStore) =>
+    new TaskRunExecutionSnapshotStore(recorder.proxy, {
+      store: s,
+      mode: "redis-only",
+      resolveDial: () => "redis-only",
+      logicalRunStoreRoute: ROUTE,
+      resolveCompletedWaitpoints: resolver,
+    });
+  const decorator = decorate(store);
+  const born = async () => {
+    const runId = generateInternalId();
+    const birthId = generateInternalId();
+    await decorator.createRun({
+      data: buildCreateRunData(runId, env),
+      snapshot: birthSnapshot(env, birthId),
+    });
+    return { runId, birthId, k: snapshotKeys(runId) };
+  };
+  const snapshot = (
+    runId: string,
+    previousSnapshotId: string,
+    executionStatus: "SUSPENDED" | "FINISHED",
+    over: { checkpointId?: string; checkpointStore?: "state" } = {}
+  ) => {
+    const id = generateInternalId();
+    return decorator
+      .createExecutionSnapshot({
+        id,
+        createdAt: new Date(),
+        run: {
+          id: runId,
+          status: executionStatus === "FINISHED" ? "COMPLETED_SUCCESSFULLY" : "EXECUTING",
+          attemptNumber: 1,
+        },
+        snapshot: { executionStatus, description: executionStatus },
+        previousSnapshotId,
+        environmentId: env.id,
+        environmentType: env.type,
+        projectId: env.projectId,
+        organizationId: env.organizationId,
+        ...over,
+      })
+      .then(() => id);
+  };
+  const cleanup = async () => {
+    await raw.quit();
+    await store.quit();
+  };
+  return { postgres, recorder, store, raw, env, decorate, decorator, born, snapshot, cleanup };
+}
+
+async function rejectionOf(promise: Promise<unknown>): Promise<Error> {
+  try {
+    await promise;
+  } catch (error) {
+    return error as Error;
+  }
+  throw new Error("expected a rejection");
+}
+
+async function keysOf(raw: RedisClient, runId: string) {
+  return (await raw.keys(`*${runId}*`)).sort();
+}
+
+describe("TaskRunExecutionSnapshotStore state-held checkpoint write", () => {
+  // Catches: a stored row that differs from the Postgres row shape, or a stored form the snapshot-state read cannot parse.
+  containerTest(
+    "writes the checkpoint row into the run's :e hash and returns it",
+    async ({ prisma, redisOptions }) => {
+      const t = await setup(prisma, redisOptions);
+      try {
+        const { runId, k } = await t.born();
+        const input = checkpointInput(t.env);
+        const row = await t.decorator.createStateHeldCheckpoint(input, runId, routeFor(t.env));
+        const pgRow = await t.postgres.createTaskRunCheckpoint({ data: input }, runId);
+
+        expect(Object.keys(row).sort()).toEqual(Object.keys(pgRow).sort());
+        expect(row.id).toBe(input.id);
+        expect(row.friendlyId).toBe(input.friendlyId);
+        for (const key of ["type", "location", "projectId", "runtimeEnvironmentId"] as const) {
+          expect(row[key]).toBe(pgRow[key]);
+        }
+        expect(row.createdAt).toBeInstanceOf(Date);
+        expect(row.updatedAt).toBe(row.createdAt);
+        expect(row.imageRef).toBeNull();
+        expect(row.reason).toBeNull();
+        expect(row.metadata).toBeNull();
+        const stored = await t.raw.hget(k.e, `${input.id}#cp`);
+        expect(JSON.parse(stored!)).toEqual(JSON.parse(JSON.stringify(row)));
+        expect(Object.keys(JSON.parse(stored!))).toEqual([
+          "id",
+          "friendlyId",
+          "type",
+          "location",
+          "imageRef",
+          "reason",
+          "metadata",
+          "projectId",
+          "runtimeEnvironmentId",
+          "createdAt",
+          "updatedAt",
+        ]);
+
+        const big = "x".repeat(65_536);
+        const metadata = `{"digest":"sha256:${"ab".repeat(32)}"}`;
+        const input2 = checkpointInput(t.env, {
+          type: "KUBERNETES",
+          imageRef: big,
+          reason: big,
+          metadata,
+        });
+        const row2 = await t.decorator.createStateHeldCheckpoint(input2, runId, routeFor(t.env));
+        expect([row2.type, row2.imageRef, row2.reason, row2.metadata]).toEqual([
+          "KUBERNETES",
+          big,
+          big,
+          metadata,
+        ]);
+        const stored2 = JSON.parse((await t.raw.hget(k.e, `${input2.id}#cp`))!);
+        expect([stored2.type, stored2.imageRef, stored2.reason, stored2.metadata]).toEqual([
+          "KUBERNETES",
+          big,
+          big,
+          metadata,
+        ]);
+
+        // Every checkpoint type is kept as given, on the returned and the stored row.
+        const types = Object.values(TaskRunCheckpointType);
+        expect(types).toEqual(expect.arrayContaining(["DOCKER", "KUBERNETES", "COMPUTE"]));
+        for (const type of types) {
+          const typed = checkpointInput(t.env, { type });
+          const typedRow = await t.decorator.createStateHeldCheckpoint(
+            typed,
+            runId,
+            routeFor(t.env)
+          );
+          const typedStored = JSON.parse((await t.raw.hget(k.e, `${typed.id}#cp`))!);
+          expect([typedRow.type, typedStored.type]).toEqual([type, type]);
+        }
+      } finally {
+        await t.cleanup();
+      }
+    }
+  );
+
+  // Catches: the write touching other keys, running more than one command, or reaching Postgres.
+  containerTest(
+    "is one MemoryDB command on the run's own :e, with no SQL",
+    async ({ prisma, redisOptions }) => {
+      const t = await setup(prisma, redisOptions);
+      try {
+        const warm = await t.born();
+        await t.decorator.createStateHeldCheckpoint(
+          checkpointInput(t.env),
+          warm.runId,
+          routeFor(t.env)
+        );
+        const { runId, k } = await t.born();
+        const big = "y".repeat(65_536);
+        for (const input of [
+          checkpointInput(t.env),
+          checkpointInput(t.env, { imageRef: big, reason: big }),
+        ]) {
+          const state = async () => ({
+            keys: (await t.raw.keys("*")).sort(),
+            hlen: await t.raw.hlen(k.e),
+            idx: await t.raw.zrange(k.idx, 0, -1),
+            cur: await t.raw.get(k.cur),
+            seq: await t.raw.hgetall(k.seq),
+            res: await t.raw.get(residencyKey(runId)),
+          });
+          const before = await state();
+          const callsBefore = t.recorder.calls.length;
+          const statsBefore = await commandCalls(t.raw);
+          await t.decorator.createStateHeldCheckpoint(input, runId, routeFor(t.env));
+          const statsAfter = await commandCalls(t.raw);
+          const callsAfter = t.recorder.calls.length;
+          const after = await state();
+
+          const rose = Object.keys(statsAfter).filter(
+            (c) => callsBetween(statsBefore, statsAfter, c) > 0
+          );
+          expect(
+            callsBetween(statsBefore, statsAfter, "evalsha") +
+              callsBetween(statsBefore, statsAfter, "eval")
+          ).toBe(1);
+          expect(callsBetween(statsBefore, statsAfter, "info")).toBe(1);
+          expect(callsBetween(statsBefore, statsAfter, "exists")).toBeLessThanOrEqual(2);
+          expect(callsBetween(statsBefore, statsAfter, "hset")).toBe(1);
+          expect(
+            rose.filter((c) => !["evalsha", "eval", "info", "exists", "hset"].includes(c))
+          ).toEqual([]);
+
+          expect(after.keys).toEqual(before.keys);
+          expect(after.hlen).toBe(before.hlen + 1);
+          expect({ ...after, hlen: 0 }).toEqual({ ...before, hlen: 0 });
+          expect(callsAfter).toBe(callsBefore);
+          expect(await prisma.taskRunCheckpoint.count({ where: { id: input.id } })).toBe(0);
+        }
+      } finally {
+        await t.cleanup();
+      }
+    }
+  );
+
+  // Catches: a run that is not MemoryDB-only getting a state-held checkpoint.
+  containerTest(
+    "the Postgres store refuses, and so does the decorator for a route that is not redis-primary",
+    async ({ prisma, redisOptions }) => {
+      const t = await setup(prisma, redisOptions);
+      try {
+        const { runId, k } = await t.born();
+        const input = checkpointInput(t.env);
+        const refused = await rejectionOf(
+          t.postgres.createStateHeldCheckpoint(input, runId, routeFor(t.env))
+        );
+        expect(refused).toBeInstanceOf(Error);
+        expect(refused).not.toBeInstanceOf(SnapshotWriteUnavailableError);
+        expect(await prisma.taskRunCheckpoint.count({ where: { id: input.id } })).toBe(0);
+
+        const hlen = await t.raw.hlen(k.e);
+        for (const residency of ["postgres", "mirrored"] as const) {
+          const error = await rejectionOf(
+            t.decorator.createStateHeldCheckpoint(input, runId, routeFor(t.env, residency))
+          );
+          expect(error.constructor).toBe(refused.constructor);
+          expect(error.message).toBe(refused.message);
+          expect(await t.raw.hexists(k.e, `${input.id}#cp`)).toBe(0);
+          expect(await t.raw.hlen(k.e)).toBe(hlen);
+        }
+      } finally {
+        await t.cleanup();
+      }
+    }
+  );
+
+  // Catches: the write creating a run's :e anew, without its expiry, or writing into a half-gone run state.
+  containerTest(
+    "rejects with no key created when the run has no snapshot state",
+    async ({ prisma, redisOptions }) => {
+      const t = await setup(prisma, redisOptions);
+      try {
+        const dropped = await t.born();
+        await t.store.dropRun(dropped.runId);
+        for (const runId of [generateInternalId(), dropped.runId]) {
+          const k = snapshotKeys(runId);
+          const error = await rejectionOf(
+            t.decorator.createStateHeldCheckpoint(checkpointInput(t.env), runId, routeFor(t.env))
+          );
+          expect(error).toBeInstanceOf(SnapshotWriteUnavailableError);
+          expect((error as SnapshotWriteUnavailableError).runId).toBe(runId);
+          expect(await t.raw.exists(k.e)).toBe(0);
+          expect(await t.raw.exists(k.seq)).toBe(0);
+        }
+
+        // Half a keyspace is not alive either: first :e without :seq.
+        const half = await t.born();
+        await t.raw.del(half.k.seq);
+        const hlen = await t.raw.hlen(half.k.e);
+        const error = await rejectionOf(
+          t.decorator.createStateHeldCheckpoint(checkpointInput(t.env), half.runId, routeFor(t.env))
+        );
+        expect(error).toBeInstanceOf(SnapshotWriteUnavailableError);
+        expect(await t.raw.hlen(half.k.e)).toBe(hlen);
+        expect(await t.raw.exists(half.k.seq)).toBe(0);
+
+        // Then :seq without :e: the write must not create :e, so no key is added.
+        const noE = await t.born();
+        await t.raw.del(noE.k.e);
+        const keysBefore = await keysOf(t.raw, noE.runId);
+        const noEError = await rejectionOf(
+          t.decorator.createStateHeldCheckpoint(checkpointInput(t.env), noE.runId, routeFor(t.env))
+        );
+        expect(noEError).toBeInstanceOf(SnapshotWriteUnavailableError);
+        expect(await t.raw.exists(noE.k.e)).toBe(0);
+        expect(await keysOf(t.raw, noE.runId)).toEqual(keysBefore);
+      } finally {
+        await t.cleanup();
+      }
+    }
+  );
+
+  // Catches: a MemoryDB failure swallowed, or answered from Postgres.
+  containerTest(
+    "throws the snapshot store's write error on a MemoryDB failure",
+    async ({ prisma, redisOptions }) => {
+      const t = await setup(prisma, redisOptions);
+      const closed = new RedisSnapshotStore({ redisOptions, completedTtlMs: 60_000 });
+      try {
+        const { runId, k } = await t.born();
+        await closed.quit();
+        const broken = t.decorate(closed);
+        const input = checkpointInput(t.env);
+        const callsBefore = t.recorder.calls.length;
+        const error = await rejectionOf(
+          broken.createStateHeldCheckpoint(input, runId, routeFor(t.env))
+        );
+        expect(t.recorder.calls.length).toBe(callsBefore);
+        expect(error).toBeInstanceOf(SnapshotWriteUnavailableError);
+        expect((error as SnapshotWriteUnavailableError).runId).toBe(runId);
+        expect(((error as SnapshotWriteUnavailableError).cause as Error).message).toBe(
+          "Connection is closed."
+        );
+        expect(await prisma.taskRunCheckpoint.count({ where: { id: input.id } })).toBe(0);
+        expect(await t.raw.hexists(k.e, `${input.id}#cp`)).toBe(0);
+      } finally {
+        await t.cleanup();
+      }
+    }
+  );
+
+  // Catches: a store-level retry of a write that may have applied, here one that timed out in flight.
+  containerTest(
+    "does not replay a write that times out in flight, which still applies after the caller's error",
+    async ({ prisma, redisOptions }) => {
+      const t = await setup(prisma, redisOptions);
+      const client = createRedisClient(
+        { ...redisOptions, commandTimeout: 200 },
+        { onError: () => {} }
+      );
+      try {
+        const { runId, k } = await t.born();
+        const timing = t.decorate(new RedisSnapshotStore({ client, completedTtlMs: 60_000 }));
+        // Load the script first, so the paused command is the EVALSHA itself.
+        await timing.createStateHeldCheckpoint(checkpointInput(t.env), runId, routeFor(t.env));
+
+        const input = checkpointInput(t.env);
+        const before = await commandCalls(t.raw);
+        // The pause outlasts any slow worker; the test ends it once it has seen the write held.
+        await t.raw.call("CLIENT", "PAUSE", "30000", "WRITE");
+        const error = await rejectionOf(
+          timing.createStateHeldCheckpoint(input, runId, routeFor(t.env))
+        );
+        expect(error).toBeInstanceOf(SnapshotWriteUnavailableError);
+        expect(((error as SnapshotWriteUnavailableError).cause as Error).message).toContain(
+          "Command timed out"
+        );
+        expect(await t.raw.hexists(k.e, `${input.id}#cp`)).toBe(0);
+        await t.raw.call("CLIENT", "UNPAUSE");
+
+        // The server runs the paused write once the pause ends: the orphan the write accepts.
+        const deadline = Date.now() + 5_000;
+        while ((await t.raw.hexists(k.e, `${input.id}#cp`)) === 0) {
+          expect(Date.now()).toBeLessThan(deadline);
+          await new Promise((resolve) => setTimeout(resolve, 50));
+        }
+        const after = await commandCalls(t.raw);
+        const sent = callsBetween(before, after, "evalsha") + callsBetween(before, after, "eval");
+        expect(sent).toBe(1);
+      } finally {
+        await t.raw.call("CLIENT", "UNPAUSE").catch(() => undefined);
+        await client.quit();
+        await t.cleanup();
+      }
+    }
+  );
+
+  // Catches: an entry or a read dropping the state-held record beside its checkpointId.
+  containerTest(
+    "a snapshot entry carries the state-held record and the reads return it",
+    async ({ prisma, redisOptions }) => {
+      const t = await setup(prisma, redisOptions);
+      try {
+        const { runId, birthId } = await t.born();
+        const input = checkpointInput(t.env);
+        await t.decorator.createStateHeldCheckpoint(input, runId, routeFor(t.env));
+        const suspendedId = await t.snapshot(runId, birthId, "SUSPENDED", {
+          checkpointId: input.id,
+          checkpointStore: "state",
+        });
+
+        const latest = await t.store.getLatest(runId);
+        expect(latest?.raw).toContain('"checkpointStore":"state"');
+        const since = await t.store.getSinceCreatedAt(runId, new Date(0));
+        const sinceEntry =
+          since.kind === "hit" ? since.entries.find((e) => e.id === suspendedId) : undefined;
+        for (const read of [latest, await t.store.getById(runId, suspendedId), sinceEntry]) {
+          expect(read?.entry.checkpointStore).toBe("state");
+          expect(read?.entry.checkpointId).toBe(input.id);
+        }
+
+        for (const read of [
+          await t.decorator.findLatestExecutionSnapshot(runId),
+          await t.decorator.findExecutionSnapshot(
+            { where: { runId, id: suspendedId } },
+            undefined,
+            routeFor(t.env)
+          ),
+        ]) {
+          expect(read?.checkpointStore).toBe("state");
+          expect(read?.checkpointId).toBe(input.id);
+        }
+      } finally {
+        await t.cleanup();
+      }
+    }
+  );
+
+  // Catches: an entry without the record, or with any value but "state", read as anything but a Postgres checkpoint.
+  containerTest(
+    "an entry without the record reads its Postgres checkpoint as today",
+    async ({ prisma, redisOptions }) => {
+      const t = await setup(prisma, redisOptions);
+      try {
+        const { runId, birthId } = await t.born();
+        const checkpoint = await createCheckpoint(t.postgres, runId, t.env);
+        const suspendedId = await t.snapshot(runId, birthId, "SUSPENDED", {
+          checkpointId: checkpoint.id,
+        });
+
+        expect((await t.store.getLatest(runId))?.raw).not.toContain("checkpointStore");
+        for (const read of [
+          await t.decorator.findLatestExecutionSnapshot(runId),
+          await t.decorator.findExecutionSnapshot(
+            { where: { runId, id: suspendedId } },
+            undefined,
+            routeFor(t.env)
+          ),
+        ]) {
+          expect("checkpointStore" in read!).toBe(false);
+          expect(read?.checkpoint?.id).toBe(checkpoint.id);
+          expect(read?.checkpoint?.location).toBe("s3://bucket/checkpoint");
+        }
+
+        // A value other than "state" (no build writes one) is not a state-held record.
+        const otherId = await t.snapshot(runId, suspendedId, "SUSPENDED", {
+          checkpointId: checkpoint.id,
+          checkpointStore: "postgres" as unknown as "state",
+        });
+        expect((await t.store.getLatest(runId))?.raw).toContain('"checkpointStore":"postgres"');
+        for (const read of [
+          await t.decorator.findLatestExecutionSnapshot(runId),
+          await t.decorator.findExecutionSnapshot(
+            { where: { runId, id: otherId } },
+            undefined,
+            routeFor(t.env)
+          ),
+        ]) {
+          expect("checkpointStore" in read!).toBe(false);
+          expect(read?.checkpoint?.id).toBe(checkpoint.id);
+        }
+      } finally {
+        await t.cleanup();
+      }
+    }
+  );
+
+  // Catches: a state-held checkpoint outliving its run's snapshot state after the run ends.
+  containerTest(
+    "expires with the run state after a terminal entry",
+    async ({ prisma, redisOptions }) => {
+      const t = await setup(prisma, redisOptions, 3_000);
+      try {
+        const { runId, birthId, k } = await t.born();
+        for (let i = 0; i < 2; i++) {
+          await t.decorator.createStateHeldCheckpoint(
+            checkpointInput(t.env),
+            runId,
+            routeFor(t.env)
+          );
+        }
+        await t.snapshot(runId, birthId, "FINISHED");
+        const deadline = Date.now() + 8_000;
+        await t.decorator.createStateHeldCheckpoint(checkpointInput(t.env), runId, routeFor(t.env));
+        const pttl = await t.raw.pttl(k.e);
+        expect(pttl).toBeGreaterThan(0);
+        expect(pttl).toBeLessThanOrEqual(3_000);
+
+        while ((await t.raw.exists(k.e)) === 1) {
+          expect(Date.now()).toBeLessThan(deadline);
+          await new Promise((resolve) => setTimeout(resolve, 100));
+        }
+        expect(await keysOf(t.raw, runId)).toEqual([residencyKey(runId)]);
+      } finally {
+        await t.cleanup();
+      }
+    }
+  );
+
+  // Catches: a state-held checkpoint kept outside :e, so removing the run leaves it behind.
+  containerTest("is removed with the run state", async ({ prisma, redisOptions }) => {
+    const t = await setup(prisma, redisOptions);
+    try {
+      const { runId, k } = await t.born();
+      await t.decorator.createStateHeldCheckpoint(checkpointInput(t.env), runId, routeFor(t.env));
+      await t.store.dropRun(runId);
+      expect(await t.raw.exists(k.e)).toBe(0);
+      expect(await keysOf(t.raw, runId)).toEqual([residencyKey(runId)]);
+    } finally {
+      await t.cleanup();
+    }
+  });
 });

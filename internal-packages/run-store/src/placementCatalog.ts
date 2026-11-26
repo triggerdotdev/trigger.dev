@@ -119,6 +119,12 @@ export const PLACEMENT_SITES: readonly PlacementSite[] = [
     routes: ["#route(ownerRunId)"],
   },
   {
+    method: "createStateHeldCheckpoint",
+    basis: "owner-id",
+    missMode: "silent",
+    routes: ["#route(ownerRunId)"],
+  },
+  {
     method: "blockRunWithWaitpointEdges",
     basis: "owner-id",
     missMode: "silent",

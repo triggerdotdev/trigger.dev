@@ -34,6 +34,7 @@ import type {
   SnapshotReadWaitpoint,
   RescheduleSnapshotInput,
   RunStore,
+  StateHeldCheckpointInput,
   TaskRunWithWaitpoint,
 } from "./types.js";
 import { deriveDistinctIds, deriveOrder } from "./redisSnapshotStore.js";
@@ -66,6 +67,7 @@ import {
   snapshotRouteFromSnapshot,
   type SnapshotReadContext,
   type SnapshotRoute,
+  type SnapshotRouteWire,
 } from "./snapshotResidency.js";
 
 const PROTOCOL_VERSION = 1;
@@ -760,6 +762,47 @@ export class TaskRunExecutionSnapshotStore extends DelegatingRunStore {
       (store) => store.createExecutionSnapshot(input),
       residency
     );
+  }
+
+  // The route decides, with no lookup: only a MemoryDB-only run gets a state-held checkpoint. One
+  // MemoryDB command, no SQL, no retry and no Postgres fallback.
+  override async createStateHeldCheckpoint(
+    data: StateHeldCheckpointInput,
+    ownerRunId: string,
+    snapshotRoute: SnapshotRouteWire
+  ): Promise<Prisma.TaskRunCheckpointGetPayload<{}>> {
+    if (snapshotRoute.residency !== "redis-primary") {
+      return super.createStateHeldCheckpoint(data, ownerRunId, snapshotRoute);
+    }
+    const now = new Date();
+    const row = {
+      id: data.id,
+      friendlyId: data.friendlyId,
+      type: data.type,
+      location: data.location,
+      imageRef: data.imageRef ?? null,
+      reason: data.reason ?? null,
+      metadata: data.metadata ?? null,
+      projectId: data.projectId,
+      runtimeEnvironmentId: data.runtimeEnvironmentId,
+      createdAt: now,
+      updatedAt: now,
+    };
+    let written: boolean;
+    try {
+      written = await this.#store.writeCheckpoint(ownerRunId, data.id, JSON.stringify(row));
+    } catch (error) {
+      throw new SnapshotWriteUnavailableError(ownerRunId, "checkpoint write failed", {
+        cause: error,
+      });
+    }
+    if (!written) {
+      throw new SnapshotWriteUnavailableError(
+        ownerRunId,
+        "checkpoint write: snapshot state missing"
+      );
+    }
+    return row;
   }
 
   override async lockRunToWorker(
@@ -1474,6 +1517,7 @@ export class TaskRunExecutionSnapshotStore extends DelegatingRunStore {
       batchId?: string;
       attemptNumber?: number;
       checkpointId?: string;
+      checkpointStore?: string;
       workerId?: string;
       runnerId?: string;
       metadata?: Prisma.JsonValue;
@@ -1547,6 +1591,7 @@ export class TaskRunExecutionSnapshotStore extends DelegatingRunStore {
       updatedAt: createdAt,
       lastHeartbeatAt: null,
       metadata: entry.metadata ?? null,
+      ...(entry.checkpointStore === "state" && { checkpointStore: "state" as const }),
     };
   }
 

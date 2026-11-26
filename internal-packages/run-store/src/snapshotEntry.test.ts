@@ -119,6 +119,39 @@ describe("snapshotEntry derived values", () => {
     expect(JSON.parse(JSON.stringify(entry))).toEqual(entry);
   });
 
+  // Catches: a builder dropping the state-held record, or writing a checkpointStore key when none was passed.
+  it("copies a state-held checkpoint record from the input and adds no key without one", () => {
+    const lockInput = {
+      id: "snap_1",
+      previousSnapshotId: "snap_0",
+      completedWaitpointIds: [],
+      completedWaitpointOrder: [],
+      checkpointId: "cp_1",
+      ...scope,
+    };
+    const createInput = {
+      run: { id: "run_1", status: "EXECUTING" as const, attemptNumber: 1 },
+      snapshot: { executionStatus: "SUSPENDED" as const, description: "d" },
+      checkpointId: "cp_1",
+      ...scope,
+    };
+
+    for (const entry of [
+      entryFromLock(ctx, { ...lockInput, checkpointStore: "state" }),
+      entryFromCreateExecutionSnapshot(ctx, { ...createInput, checkpointStore: "state" }),
+    ]) {
+      expect(entry.checkpointId).toBe("cp_1");
+      expect(entry.checkpointStore).toBe("state");
+    }
+    for (const entry of [
+      entryFromLock(ctx, lockInput),
+      entryFromCreateExecutionSnapshot(ctx, createInput),
+    ]) {
+      expect(entry.checkpointId).toBe("cp_1");
+      expect("checkpointStore" in entry).toBe(false);
+    }
+  });
+
   it("reports a FINISHED entry as terminal and any other as not", () => {
     const finished = entryFromCompletion(ctx, {
       executionStatus: "FINISHED",

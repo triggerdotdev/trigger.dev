@@ -5,6 +5,7 @@ import type {
   PrismaClientOrTransaction,
   PrismaReplicaClient,
   TaskRun,
+  TaskRunCheckpointType,
   TaskRunStatus,
   TaskRunExecutionStatus,
   RuntimeEnvironmentType,
@@ -153,6 +154,7 @@ export type LockSnapshotInput = {
   projectId: string;
   organizationId: string;
   checkpointId?: string;
+  checkpointStore?: "state";
   batchId?: string;
   completedWaitpointIds: string[];
   completedWaitpointOrder: string[];
@@ -373,6 +375,7 @@ export type CreateExecutionSnapshotInput = {
   projectId: string;
   organizationId: string;
   checkpointId?: string;
+  checkpointStore?: "state";
   workerId?: string;
   runnerId?: string;
   completedWaitpoints?: { id: string; index?: number }[];
@@ -474,7 +477,20 @@ void _pgWaitpointSatisfiesSnapshotRead;
  */
 export type LatestExecutionSnapshotRead = Prisma.TaskRunExecutionSnapshotGetPayload<{
   include: { checkpoint: true };
-}> & { completedWaitpoints: SnapshotReadWaitpoint[] };
+}> & { completedWaitpoints: SnapshotReadWaitpoint[]; checkpointStore?: "state" };
+
+/** The checkpoint data `createStateHeldCheckpoint` writes, as `createTaskRunCheckpoint` takes it. */
+export type StateHeldCheckpointInput = {
+  id: string;
+  friendlyId: string;
+  type: TaskRunCheckpointType;
+  location: string;
+  imageRef?: string | null;
+  reason?: string | null;
+  metadata?: string | null;
+  projectId: string;
+  runtimeEnvironmentId: string;
+};
 
 export interface RunStore {
   /** Canonical configured owning database, including declared shard aliases. No I/O. */
@@ -983,6 +999,14 @@ export interface RunStore {
     ownerRunId: string,
     client?: ReadClient
   ): Promise<Prisma.TaskRunCheckpointGetPayload<{}> | null>;
+
+  // Writes the checkpoint into the owning run's snapshot state, only for a MemoryDB-only run. A
+  // store with no snapshot state refuses it.
+  createStateHeldCheckpoint(
+    data: StateHeldCheckpointInput,
+    ownerRunId: string,
+    snapshotRoute: SnapshotRouteWire
+  ): Promise<Prisma.TaskRunCheckpointGetPayload<{}>>;
 
   // --- BatchTaskRun (run-ops) ---
   // Batch row is born on the run-ops store at create. `findBatchTaskRunById`
