@@ -33,7 +33,6 @@ export const FEATURE_FLAG = {
   workerQueueCompatibility: "workerQueueCompatibility",
   workerQueueChannel: "workerQueueChannel",
   workerQueueEnvironmentOverrides: "workerQueueEnvironmentOverrides",
-  sessionVersionFloor: "sessionVersionFloor",
   internalApiOriginEnabled: "internalApiOriginEnabled",
   realtimeBackend: "realtimeBackend",
   computeMigrationEnabled: "computeMigrationEnabled",
@@ -110,11 +109,6 @@ const WorkerQueueEnvironmentOverrideKey = z
     "must be PRODUCTION, STAGING, PREVIEW or an environment id"
   );
 
-export const SessionVersionFloor = z.object({
-  minVersion: z.string().min(1),
-});
-export type SessionVersionFloor = z.infer<typeof SessionVersionFloor>;
-
 export const FeatureFlagCatalog = {
   [FEATURE_FLAG.waitpointStoreEnabled]: z.boolean(),
   // Standalone wait tokens go to the waitpoint store only when waitpointStoreEnabled is on too.
@@ -169,7 +163,6 @@ export const FeatureFlagCatalog = {
     WorkerQueueEnvironmentOverrideKey,
     WorkerQueueEnvironmentOverride
   ),
-  [FEATURE_FLAG.sessionVersionFloor]: z.record(z.string(), SessionVersionFloor),
   // Routes deployed runs' TRIGGER_API_URL to INTERNAL_API_ORIGIN. Per-org, with
   // INTERNAL_API_ORIGIN_ENABLED as the global default (org wins). No-op unless
   // INTERNAL_API_ORIGIN is set.
@@ -301,7 +294,6 @@ export const GLOBAL_LOCKED_FLAGS: FeatureFlagKey[] = [
   FEATURE_FLAG.workerQueueCompatibility,
   FEATURE_FLAG.workerQueueChannel,
   FEATURE_FLAG.workerQueueEnvironmentOverrides,
-  FEATURE_FLAG.sessionVersionFloor,
   // Grace stamps are computed server-side. An editable control here would discard what it saves.
   FEATURE_FLAG.runOpsMintKindPrev,
   FEATURE_FLAG.runOpsMintKindFlippedAt,

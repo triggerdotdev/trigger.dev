@@ -1380,6 +1380,27 @@ paths:
                   shortCode:
                     type: string
                     description: The short code for the deployment
+                  skewProtectionThresholdCleared:
+                    type: object
+                    description: Present when the promoted version is below a skew protection threshold (the environment's, or a task's own), which the promote cleared.
+                    properties:
+                      threshold:
+                        type: object
+                        nullable: true
+                        description: The environment's threshold, when it was cleared; null when only task thresholds were.
+                        properties:
+                          version:
+                            type: string
+                            description: The threshold's version before it was cleared
+                      tasks:
+                        type: object
+                        description: Each task threshold that was cleared, by task id.
+                        additionalProperties:
+                          type: object
+                          properties:
+                            version:
+                              type: string
+                              description: The task threshold's version before it was cleared
         "400":
           description: Invalid request
           content:
@@ -1416,6 +1437,136 @@ paths:
             curl -X POST "https://api.trigger.dev/api/v1/deployments/20250228.1/promote" \
               -H "Authorization: Bearer tr_dev_sk_1234" \
               -H "Content-Type: application/json"
+
+  "/api/v1/deployments/skew-protection-threshold":
+    get:
+      x-trigger-access: read:deployments
+      operationId: get_skew_protection_threshold_v1
+      summary: Get skew protection threshold
+      description: Get the environment's skew protection threshold, each task's own threshold, and the current deployment version.
+      responses:
+        "200":
+          description: The environment's skew protection state
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/SkewProtectionThresholdState"
+        "401":
+          description: Unauthorized. The API key is missing or invalid, or isn't a secret key
+        "403":
+          description: The API key can't read deployments
+      tags:
+        - deployments
+      security:
+        - secretKey: []
+      x-codeSamples:
+        - lang: curl
+          source: |-
+            curl "https://api.trigger.dev/api/v1/deployments/skew-protection-threshold" \
+              -H "Authorization: Bearer tr_prod_sk_1234"
+    put:
+      x-trigger-access: write:deployments
+      operationId: set_skew_protection_threshold_v1
+      summary: Set skew protection threshold
+      description: Set or move the environment's skew protection threshold, or with `task` the threshold of that one task. Sessions on versions before it move to the current deployment the next time they're used. The version must be deployed in this environment and at or below the current deployment. Setting the version that is already the threshold changes nothing. Use a secret key from a deployed environment, such as staging or production. Development environments return 400.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - version
+              properties:
+                version:
+                  type: string
+                  maxLength: 64
+                  description: A deployed version in this environment, at or below the current deployment (e.g. "20261109.22").
+                task:
+                  type: string
+                  minLength: 1
+                  maxLength: 256
+                  description: A task id. The threshold then covers only that task's sessions, and the task must exist in the current deployment. Leave it out to cover every session in the environment.
+      responses:
+        "200":
+          description: The environment's skew protection state after the change
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/SkewProtectionThresholdState"
+        "400":
+          description: The version isn't digits and dots or is over 64 characters, `task` is empty or over 256 characters, the body is invalid, or the key belongs to a development environment
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/SkewProtectionThresholdError"
+        "401":
+          description: Unauthorized. The API key is missing or invalid, or isn't a secret key
+        "403":
+          description: The API key can't write deployments
+        "404":
+          description: No deployed deployment with this version in the environment, or `task` isn't in the current deployment
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/SkewProtectionThresholdError"
+        "409":
+          description: The version is above the current deployment, the environment has no current deployment, or 50 tasks already have their own threshold
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/SkewProtectionThresholdError"
+      tags:
+        - deployments
+      security:
+        - secretKey: []
+      x-codeSamples:
+        - lang: curl
+          source: |-
+            curl -X PUT "https://api.trigger.dev/api/v1/deployments/skew-protection-threshold" \
+              -H "Authorization: Bearer tr_prod_sk_1234" \
+              -H "Content-Type: application/json" \
+              -d '{"version":"20261109.22"}'
+    delete:
+      x-trigger-access: write:deployments
+      operationId: clear_skew_protection_threshold_v1
+      summary: Clear skew protection threshold
+      description: Clear the environment's skew protection threshold, or with `task` the threshold of that one task. Sessions already moved stay on their new runs; the others keep their versions and stored pins. Clearing a threshold that isn't set changes nothing. Use a secret key from a deployed environment, such as staging or production. Development environments return 400.
+      parameters:
+        - in: query
+          name: task
+          required: false
+          schema:
+            type: string
+            minLength: 1
+            maxLength: 256
+          description: A task id. Clears that task's own threshold and leaves the environment's. Leave it out to clear the environment's threshold and leave each task's.
+      responses:
+        "200":
+          description: The environment's skew protection state after the change
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/SkewProtectionThresholdState"
+        "400":
+          description: The key belongs to a development environment, or `task` is empty or over 256 characters
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/SkewProtectionThresholdError"
+        "401":
+          description: Unauthorized. The API key is missing or invalid, or isn't a secret key
+        "403":
+          description: The API key can't write deployments
+      tags:
+        - deployments
+      security:
+        - secretKey: []
+      x-codeSamples:
+        - lang: curl
+          source: |-
+            curl -X DELETE "https://api.trigger.dev/api/v1/deployments/skew-protection-threshold" \
+              -H "Authorization: Bearer tr_prod_sk_1234"
 
   "/api/v1/query":
     post:
@@ -5716,6 +5867,52 @@ components:
         other API operations. For session tokens see the [session scopes](/management/authentication#session-scopes).
 
   schemas:
+    SkewProtectionThreshold:
+      type: object
+      properties:
+        version:
+          type: string
+          example: "20261109.22"
+        deploymentId:
+          type: string
+          nullable: true
+          description: The ID of the deployment with this version.
+          example: deployment_exv9bt4gdbuun6mc24iuq
+        setAt:
+          type: string
+          format: date-time
+        setBy:
+          type: object
+          nullable: true
+          properties:
+            type:
+              type: string
+              enum: [user, api, migrated]
+              description: "`user` from the dashboard, `api` through this API, `migrated` when Trigger.dev set it for you."
+    SkewProtectionThresholdState:
+      type: object
+      properties:
+        currentVersion:
+          type: string
+          nullable: true
+          description: The current deployment's version, or null when nothing is current.
+          example: "20261109.22"
+        threshold:
+          description: The environment's skew protection threshold, or null when none is set.
+          anyOf:
+            - "$ref": "#/components/schemas/SkewProtectionThreshold"
+            - type: "null"
+        tasks:
+          type: object
+          description: Each task's own skew protection threshold, by task id. Empty when no task has one.
+          additionalProperties:
+            "$ref": "#/components/schemas/SkewProtectionThreshold"
+    SkewProtectionThresholdError:
+      type: object
+      properties:
+        error:
+          type: string
+          example: No deployed deployment with version 99999999.1 in this environment.
     DashboardRevision:
       type: string
       description: The `revision` from the dashboard you last read. Send it to reject the write with a 409 if someone else changed the dashboard in the meantime.

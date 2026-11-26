@@ -285,6 +285,8 @@ LIMIT ${pageSize} OFFSET ${pageSize * (page - 1)};`;
       organizationId: environment.organizationId,
       environmentId: environment.id,
       environmentType: environment.type,
+      // For the rows' skew protection threshold badges.
+      skewProtectionThresholds: environment.skewProtectionThresholds,
       currentPage: page,
       totalPages: Math.ceil(totalCount / pageSize),
       hasAnyDeployments,

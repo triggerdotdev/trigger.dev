@@ -48,6 +48,7 @@ describe("findRollbackTarget", () => {
     expect(await findRollbackTarget(prisma, { ...lookup, userId: user.id })).toEqual({
       environmentId: environment.id,
       workerId: null,
+      version: "20261119.1",
     });
     expect(await findRollbackTarget(prisma, { ...lookup, userId: outsider.id })).toBeNull();
   });

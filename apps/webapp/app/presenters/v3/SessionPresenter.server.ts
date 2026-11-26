@@ -93,7 +93,7 @@ export class SessionPresenter {
         ? runStore.findRuns(
             {
               where: { id: { in: boundedIn(runIds) } },
-              select: { id: true, friendlyId: true, status: true },
+              select: { id: true, friendlyId: true, status: true, taskVersion: true },
             },
             this.replica
           )
@@ -108,7 +108,7 @@ export class SessionPresenter {
           return runStore.findRun(
             { id: session.currentRunId! },
             {
-              select: { id: true, friendlyId: true, status: true },
+              select: { id: true, friendlyId: true, status: true, taskVersion: true },
             },
             this.replica
           );
@@ -161,7 +161,11 @@ export class SessionPresenter {
       updatedAt: session.updatedAt.toISOString(),
       environment: displayableEnvironment,
       currentRun: currentRun
-        ? { friendlyId: currentRun.friendlyId, status: currentRun.status }
+        ? {
+            friendlyId: currentRun.friendlyId,
+            status: currentRun.status,
+            version: currentRun.taskVersion,
+          }
         : null,
       runs: sessionRuns.map((r) => {
         const run = runsById.get(r.runId);
@@ -170,7 +174,9 @@ export class SessionPresenter {
           runFriendlyId: RunId.toFriendlyId(r.runId),
           reason: r.reason,
           triggeredAt: r.triggeredAt.toISOString(),
-          run: run ? { friendlyId: run.friendlyId, status: run.status } : null,
+          run: run
+            ? { friendlyId: run.friendlyId, status: run.status, version: run.taskVersion }
+            : null,
         };
       }),
       agentView: {

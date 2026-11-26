@@ -1,3 +1,4 @@
+import { ShieldCheckIcon } from "@heroicons/react/20/solid";
 import { type ReactNode } from "react";
 import { AIPenIcon } from "~/assets/icons/AIPenIcon";
 import { BatchesIcon } from "~/assets/icons/BatchesIcon";
@@ -29,6 +30,7 @@ import {
   limitsPath,
   queryPath,
   regionsPath,
+  sessionUpgradesPath,
   v3ApiKeysPath,
   v3BatchesPath,
   v3BulkActionsPath,
@@ -92,7 +94,8 @@ export function buildSideMenuSections({
 }: {
   organization: OrgForPath;
   project: ProjectForPath;
-  environment: EnvironmentForPath;
+  /** Without a type (the customize modal) every item is listed. */
+  environment: EnvironmentForPath & { type?: string };
   isAdmin: boolean;
   alertsConfigured: boolean;
   featureFlags: {
@@ -244,6 +247,19 @@ export function buildSideMenuSections({
         to: regionsPath(organization, project, environment),
         dataAction: "regions",
       },
+      // Thresholds don't apply in development.
+      ...(environment.type !== "DEVELOPMENT"
+        ? [
+            {
+              id: "session-upgrades",
+              name: "Session upgrades",
+              icon: ShieldCheckIcon,
+              activeIconColor: "text-blue-500",
+              to: sessionUpgradesPath(organization, project, environment),
+              dataAction: "session-upgrades",
+            } satisfies SideMenuItemConfig,
+          ]
+        : []),
     ],
   });
 

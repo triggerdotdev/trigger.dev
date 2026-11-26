@@ -205,11 +205,27 @@ export async function findCurrentWorkerFromEnvironment(
   }
 }
 
+/**
+ * The deployment promoted as current in an environment (its version and worker), or undefined if
+ * nothing is promoted. One small read: not the worker's tasks.
+ */
+export async function findCurrentDeployment(
+  environmentId: string,
+  prismaClient?: PrismaClientOrTransaction
+): Promise<{ version: string; workerId: string | null; createdAt: Date } | undefined> {
+  const promotion = await (prismaClient ?? prisma).workerDeploymentPromotion.findFirst({
+    where: { environmentId, label: CURRENT_DEPLOYMENT_LABEL },
+    select: { deployment: { select: { version: true, workerId: true, createdAt: true } } },
+  });
+  return promotion?.deployment;
+}
+
 /** The version promoted as current in an environment, or undefined if nothing is promoted. */
-async function findCurrentDeploymentVersion(
+export async function findCurrentDeploymentVersion(
   environmentId: string,
   prismaClient?: PrismaClientOrTransaction
 ): Promise<string | undefined> {
+  // Two reads (promotion, deployment).
   const promotion = await (prismaClient ?? prisma).workerDeploymentPromotion.findFirst({
     where: { environmentId, label: CURRENT_DEPLOYMENT_LABEL },
     select: { deployment: { select: { version: true } } },

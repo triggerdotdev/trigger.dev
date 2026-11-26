@@ -9,6 +9,7 @@ import { logger } from "~/services/logger.server";
 import { swapSessionRun } from "~/services/realtime/sessionRunManager.server";
 import { resolveSessionByIdOrExternalId } from "~/services/realtime/sessions.server";
 import { anyResource, createActionApiRoute } from "~/services/routeBuilders/apiBuilder.server";
+import { SESSION_RUN_REASONS } from "~/utils/sessionMove";
 import { runStore } from "~/v3/runStore.server";
 
 const ParamsSchema = z.object({
@@ -104,13 +105,7 @@ const { action, loader } = createActionApiRoute(
       // Body's `reason` is free-form for forward-compat (audit metadata
       // only); narrow into the closed `EnsureRunReason` set, defaulting
       // to `"manual"` for unknown labels.
-      const reason: "initial" | "continuation" | "upgrade" | "manual" =
-        body.reason === "upgrade" ||
-        body.reason === "continuation" ||
-        body.reason === "initial" ||
-        body.reason === "manual"
-          ? body.reason
-          : "manual";
+      const reason = SESSION_RUN_REASONS.find((known) => known === body.reason) ?? "manual";
 
       const result = await swapSessionRun({
         session,

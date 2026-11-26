@@ -25,6 +25,8 @@ import { canAccessQueueMetricsUi } from "~/v3/canAccessQueueMetricsUi.server";
 import { canUseAlertsList } from "~/v3/canUseAlertsList.server";
 import { findCurrentVersion } from "~/v3/models/workerDeployment.server";
 import { engine } from "~/v3/runEngine.server";
+import { showsUpgradeSessions } from "~/presenters/v3/SkewProtectionThresholdPresenter.server";
+import { canWriteDeployments } from "~/services/canWriteDeployments.server";
 
 const TaskPageParamsSchema = EnvironmentParamSchema.extend({
   taskParam: z.string(),
@@ -77,23 +79,34 @@ export async function loadTaskDetailPage({
   });
   if (!task) throwNotFound("Task not found");
 
-  const [auth, alertsEnabled, queueMetricsUi, currentVersion, queueResult] = await Promise.all([
-    rbac.authenticateSession(request, {
-      userId,
-      organizationId: project.organizationId,
-      projectId: project.id,
-    }),
-    canUseAlertsList({
-      orgFeatureFlags: (project.organization.featureFlags as Record<string, unknown>) ?? {},
-      user,
-    }),
-    canAccessQueueMetricsUi({ request, userId, organizationSlug }),
-    // One lookup per page load for the header, the rail and every version label in the tables.
-    findCurrentVersion(environment, $replica),
-    task.queue
-      ? new QueueRetrievePresenter().call({ environment, queueInput: task.queue.friendlyId })
-      : undefined,
-  ]);
+  const [auth, alertsEnabled, queueMetricsUi, currentVersion, queueResult, upgradeSessions] =
+    await Promise.all([
+      rbac.authenticateSession(request, {
+        userId,
+        organizationId: project.organizationId,
+        projectId: project.id,
+      }),
+      canUseAlertsList({
+        orgFeatureFlags: (project.organization.featureFlags as Record<string, unknown>) ?? {},
+        user,
+      }),
+      canAccessQueueMetricsUi({ request, userId, organizationSlug }),
+      // One lookup per page load for the header, the rail and every version label in the tables.
+      findCurrentVersion(environment, $replica),
+      task.queue
+        ? new QueueRetrievePresenter().call({ environment, queueInput: task.queue.friendlyId })
+        : undefined,
+      // The header's Upgrade sessions button. An agent always has it (outside development); another
+      // task once it has had a session in the environment.
+      showsUpgradeSessions($replica, {
+        environment,
+        taskIdentifier: task.slug,
+        onlyIfTaskHasSessions: triggerSource !== "AGENT",
+      }),
+    ]);
+
+  // The same display check as the Deployments page; the resource route is the real gate.
+  const canWriteDeploymentsHere = upgradeSessions && canWriteDeployments(auth);
 
   const canWriteTasks = auth.ok && auth.ability.can("write", { type: "tasks" });
   const canManageBilling = auth.ok && auth.ability.can("manage", { type: "billing" });
@@ -183,6 +196,9 @@ export async function loadTaskDetailPage({
       alertsEnabled,
       canWriteTasks,
       canManageBilling,
+      upgradeSessions,
+      canWriteDeployments: canWriteDeploymentsHere,
+      environmentId: environment.id,
       queue,
       queueFullName,
       queuedRunsPeriod: QUEUED_RUNS_PERIOD,

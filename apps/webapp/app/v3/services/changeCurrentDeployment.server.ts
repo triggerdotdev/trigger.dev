@@ -1,7 +1,7 @@
 import { BackgroundWorkerMetadata, tryCatch } from "@trigger.dev/core/v3";
 import { CURRENT_DEPLOYMENT_LABEL } from "@trigger.dev/core/v3/isomorphic";
 import type { PrismaClientOrTransaction, WorkerDeployment } from "@trigger.dev/database";
-import { webhookPrisma } from "~/db.server";
+import { $transaction, webhookPrisma } from "~/db.server";
 import { logger } from "~/services/logger.server";
 import { syncTaskIdentifiers } from "~/services/taskIdentifierRegistry.server";
 import {
@@ -15,8 +15,35 @@ import { BaseService, ServiceValidationError } from "./baseService.server";
 import { syncDeclarativeSchedules, syncDeclarativeWebhooks } from "./createBackgroundWorker.server";
 import { compareDeploymentVersions } from "../utils/deploymentVersions";
 import { computeOnlyEnabled } from "../computeOnlyFlag.server";
+import {
+  clearSkewProtectionThresholdsAbove,
+  type SkewProtectionThresholdsCleared,
+} from "./skewProtectionThreshold.server";
 
 export type ChangeCurrentDeploymentDirection = "promote" | "rollback";
+
+export type ChangeCurrentDeploymentOptions = {
+  /** Skip the check that a promote moves forward and a rollback moves back. */
+  disableVersionCheck?: boolean;
+  /**
+   * Who makes the change, recorded on the skew protection threshold history: a dashboard user, or
+   * through the API, the key's name (see `apiKeyActorName`).
+   */
+  actor?: { userId: string } | { apiKeyName: string };
+  /**
+   * The organization's `featureFlags` when the caller already loaded them. Without them, a
+   * deployment with no compute template costs one read to check the organization.
+   */
+  organizationFeatureFlags?: unknown;
+};
+
+export type ChangeCurrentDeploymentResult = {
+  /**
+   * The skew protection thresholds this change cleared (the environment's and each task's),
+   * because the new current version is below them.
+   */
+  skewProtectionThresholdsCleared?: SkewProtectionThresholdsCleared;
+};
 
 export class ChangeCurrentDeploymentService extends BaseService {
   private readonly _taskMetaCache: TaskMetadataCache;
@@ -33,13 +60,9 @@ export class ChangeCurrentDeploymentService extends BaseService {
   public async call(
     deployment: WorkerDeployment,
     direction: ChangeCurrentDeploymentDirection,
-    disableVersionCheck?: boolean,
-    /**
-     * The organization's `featureFlags` when the caller already loaded them. Without them, a
-     * deployment with no compute template costs one read to check the organization.
-     */
-    organizationFeatureFlags?: unknown
-  ) {
+    options: ChangeCurrentDeploymentOptions = {}
+  ): Promise<ChangeCurrentDeploymentResult> {
+    const { disableVersionCheck, actor, organizationFeatureFlags } = options;
     if (!deployment.workerId) {
       throw new ServiceValidationError(
         direction === "promote"
@@ -106,23 +129,46 @@ export class ChangeCurrentDeploymentService extends BaseService {
       }
     }
 
-    //set this deployment as the current deployment for this environment
-    await this._prisma.workerDeploymentPromotion.upsert({
-      where: {
-        environmentId_label: {
+    // Set this deployment as the current deployment for this environment, and in the same
+    // transaction clear every skew protection threshold this deployment is below.
+    const thresholdsCleared = await $transaction(
+      this._prisma,
+      "changeCurrentDeployment",
+      async (tx) => {
+        await tx.workerDeploymentPromotion.upsert({
+          where: {
+            environmentId_label: {
+              environmentId: deployment.environmentId,
+              label: CURRENT_DEPLOYMENT_LABEL,
+            },
+          },
+          create: {
+            deploymentId: deployment.id,
+            environmentId: deployment.environmentId,
+            label: CURRENT_DEPLOYMENT_LABEL,
+          },
+          update: {
+            deploymentId: deployment.id,
+          },
+        });
+
+        return clearSkewProtectionThresholdsAbove(tx, {
           environmentId: deployment.environmentId,
-          label: CURRENT_DEPLOYMENT_LABEL,
-        },
-      },
-      create: {
-        deploymentId: deployment.id,
+          version: deployment.version,
+          ...actor,
+        });
+      }
+    );
+
+    if (thresholdsCleared) {
+      logger.info("Cleared skew protection thresholds: the new current deployment is below them", {
         environmentId: deployment.environmentId,
-        label: CURRENT_DEPLOYMENT_LABEL,
-      },
-      update: {
         deploymentId: deployment.id,
-      },
-    });
+        version: deployment.version,
+        threshold: thresholdsCleared.environment?.version,
+        taskThresholds: thresholdsCleared.tasks.length,
+      });
+    }
 
     const [fetchTasksError, tasks] = await tryCatch(
       this._prisma.backgroundWorkerTask.findMany({
@@ -191,6 +237,8 @@ export class ChangeCurrentDeploymentService extends BaseService {
         error: declarativeSyncError,
       });
     }
+
+    return { skewProtectionThresholdsCleared: thresholdsCleared };
   }
 
   // A compute-only organization's runs can't start on a deployment without a compute template,

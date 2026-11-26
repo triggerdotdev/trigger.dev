@@ -13,6 +13,10 @@ import {
 } from "~/components/primitives/Dialog";
 import { Paragraph } from "~/components/primitives/Paragraph";
 import { SpinnerWhite } from "~/components/primitives/Spinner";
+import {
+  RollbackClearsThresholdWarning,
+  type TaskThreshold,
+} from "~/components/deployments/SkewProtectionThreshold";
 
 // Shared by the deployments list and the deployment page. They live here rather than in the list
 // route so the deployment page doesn't load the whole list page's code.
@@ -54,7 +58,7 @@ export function RollbackDeploymentDialog({
       <DialogDescription>
         This deployment will become the default for all future runs.
       </DialogDescription>
-      <RollbackMissingTasks action={formAction} />
+      <RollbackNotices action={formAction} />
       <DialogFooter>
         <DialogClose asChild>
           <Button variant="tertiary/medium">Cancel</Button>
@@ -80,18 +84,44 @@ export function RollbackDeploymentDialog({
   );
 }
 
+type RollbackNoticesData = {
+  missingTasks: string[];
+  skewProtection?: {
+    targetVersion: string;
+    thresholdVersion?: string;
+    taskThresholds: TaskThreshold[];
+  };
+};
+
 /**
- * The tasks this rollback would drop. Rendered inside the dialog's content, which only mounts
- * while the dialog is open, so it loads on each open and not with the page.
+ * The tasks this rollback would drop, and the skew protection thresholds it would clear. Rendered
+ * inside the dialog's content, which only mounts while the dialog is open, so it loads on each
+ * open and not with the page.
  */
-function RollbackMissingTasks({ action }: { action: string }) {
-  const missingTasksFetcher = useFetcher<{ missingTasks: string[] }>();
+function RollbackNotices({ action }: { action: string }) {
+  const noticesFetcher = useFetcher<RollbackNoticesData>();
   useEffect(() => {
-    missingTasksFetcher.load(action);
+    noticesFetcher.load(action);
     // eslint-disable-next-line react-hooks/exhaustive-deps -- load once per open; the fetcher changes identity on every state change
   }, [action]);
-  const missingTasks = missingTasksFetcher.data?.missingTasks ?? [];
+  const missingTasks = noticesFetcher.data?.missingTasks ?? [];
+  const skewProtection = noticesFetcher.data?.skewProtection;
 
+  return (
+    <>
+      <RollbackMissingTasks missingTasks={missingTasks} />
+      {skewProtection && (
+        <RollbackClearsThresholdWarning
+          targetVersion={skewProtection.targetVersion}
+          thresholdVersion={skewProtection.thresholdVersion}
+          taskThresholds={skewProtection.taskThresholds}
+        />
+      )}
+    </>
+  );
+}
+
+function RollbackMissingTasks({ missingTasks }: { missingTasks: string[] }) {
   if (missingTasks.length === 0) return null;
 
   return (

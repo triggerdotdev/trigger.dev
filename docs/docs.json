@@ -304,6 +304,7 @@
               "deployment/preview-branches",
               "deployment/dev-branches",
               "deployment/atomic-deployment",
+              "deployment/skew-protection-threshold",
               {
                 "group": "Deployment integrations",
                 "pages": ["github-integration", "vercel-integration"]
@@ -568,7 +569,10 @@
               "management/deployments/list",
               "management/deployments/retrieve",
               "management/deployments/get-latest",
-              "management/deployments/promote"
+              "management/deployments/promote",
+              "management/deployments/get-skew-protection-threshold",
+              "management/deployments/set-skew-protection-threshold",
+              "management/deployments/clear-skew-protection-threshold"
             ]
           },
           {

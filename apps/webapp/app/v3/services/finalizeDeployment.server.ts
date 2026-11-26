@@ -213,7 +213,9 @@ export class FinalizeDeploymentService extends BaseService {
     if (typeof body.skipPromotion === "undefined" || !body.skipPromotion) {
       const promotionService = new ChangeCurrentDeploymentService(this._prisma);
 
-      await promotionService.call(finalizedDeployment, "promote", undefined, orgFeatureFlags);
+      await promotionService.call(finalizedDeployment, "promote", {
+        organizationFeatureFlags: orgFeatureFlags,
+      });
     }
 
     try {

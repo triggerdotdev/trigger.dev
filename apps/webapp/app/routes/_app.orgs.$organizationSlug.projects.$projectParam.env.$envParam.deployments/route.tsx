@@ -2,6 +2,8 @@ import { throwPermissionDenied } from "~/utils/permissionDenied";
 import { rbac } from "~/services/rbac.server";
 import { checkPermissions } from "~/services/routeBuilders/permissions.server";
 import { resolveDeploymentOnboardingUi } from "~/v3/services/deploymentOnboardingUi.server";
+import { readSkewProtectionThresholds } from "~/v3/services/skewProtectionThresholds.server";
+import { ThresholdBadges } from "~/components/deployments/SkewProtectionThreshold";
 import { ArrowPathIcon, ArrowUturnLeftIcon, NoSymbolIcon } from "@heroicons/react/20/solid";
 import { Form, useFetcher, useLocation, useNavigate, useNavigation } from "@remix-run/react";
 
@@ -147,7 +149,8 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   }
 
   try {
-    const result = await presenter.call({
+    // The thresholds feed the rows' badges below; they aren't sent as they are.
+    const { skewProtectionThresholds, ...result } = await presenter.call({
       userId,
       organizationSlug,
       projectSlug: projectParam,
@@ -200,9 +203,26 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
       url: new URL(request.url),
     });
 
+    // No query: this loader reruns every few seconds per open tab. Thresholds don't apply in
+    // development. Setting and clearing them is on the Session upgrades page.
+    const thresholds =
+      result.environmentType === "DEVELOPMENT"
+        ? null
+        : readSkewProtectionThresholds(skewProtectionThresholds, result.environmentId);
+    const skewProtection = thresholds
+      ? {
+          thresholdVersion: thresholds.environment?.version,
+          taskThresholds: [...thresholds.tasks].map(([task, threshold]) => ({
+            task,
+            version: threshold.version,
+          })),
+        }
+      : null;
+
     return typedjson({
       ...result,
       ...onboarding,
+      skewProtection,
       canWriteDeployments,
       redeployCutoff,
       selectedDeployment,
@@ -248,6 +268,7 @@ export default function Page() {
     showActivity: savedShowActivity,
     timeZone,
     cliVersionWarning,
+    skewProtection,
   } = useTypedLoaderData<typeof loader>();
   const hasDeployments = hasAnyDeployments;
 
@@ -385,7 +406,16 @@ export default function Page() {
                               )}
                             </div>
                           </TableCell>
-                          <TableCell to={path}>{deployment.version}</TableCell>
+                          <TableCell to={path}>
+                            <div className="flex items-center gap-2">
+                              {deployment.version}
+                              <ThresholdBadges
+                                version={deployment.version}
+                                thresholdVersion={skewProtection?.thresholdVersion}
+                                taskThresholds={skewProtection?.taskThresholds ?? []}
+                              />
+                            </div>
+                          </TableCell>
                           <TableCell to={path}>
                             <DeploymentStatus
                               status={deploymentDisplayStatus(
@@ -557,6 +587,21 @@ function DeploymentActionsCell({
 }) {
   const location = useLocation();
   const project = useProject();
+  const navigation = useNavigation();
+
+  // A rollback or promote changes this row's menu items (the row becomes current), which unmounts
+  // the dialog it was submitted from, so the dialog can't close the menu. Remount the menu, closed,
+  // once any of this row's deployment actions has settled.
+  const isActionPending =
+    navigation.formAction?.startsWith(
+      `/resources/${project.id}/deployments/${deployment.shortCode}/`
+    ) ?? false;
+  const [menuKey, setMenuKey] = useState(0);
+  const wasActionPending = useRef(false);
+  useEffect(() => {
+    if (wasActionPending.current && !isActionPending) setMenuKey((key) => key + 1);
+    wasActionPending.current = isActionPending;
+  }, [isActionPending]);
 
   const canBeMadeCurrent = !deployment.isCurrent && deployment.isDeployed;
   const canBeRolledBack =
@@ -581,6 +626,7 @@ function DeploymentActionsCell({
 
   return (
     <TableCellMenu
+      key={menuKey}
       isSticky
 
       // oxlint-disable-next-line react/no-unstable-nested-components -- Render prop: the menu primitive passes its close handler so the redeploy dialog can dismiss the menu.

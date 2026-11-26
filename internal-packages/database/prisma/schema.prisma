@@ -503,6 +503,13 @@ model RuntimeEnvironment {
   /// Allows us to customize the built-in environment variables for a specific environment, like TRIGGER_OTEL_SPAN_ATTRIBUTE_VALUE_LENGTH_LIMIT
   builtInEnvironmentVariableOverrides Json?
 
+  /// The skew protection thresholds: { environment?: T, tasks?: { <task id>: T } } with
+  /// T = { version, setAt, setBy? }. Null when none is set. A session on a version before its
+  /// threshold (the higher of the environment's and its task's) moves to the current deployment
+  /// the next time it's used. Read on every session append, through the authenticated environment.
+  skewProtectionThresholds Json?
+  skewProtectionThresholdChanges SkewProtectionThresholdChange[]
+
   tunnelId String?
 
   backgroundWorkers          BackgroundWorker[]
@@ -1322,6 +1329,8 @@ model Session {
   @@unique([runtimeEnvironmentId, externalId])
   @@index([expiresAt])
   @@index([currentRunId])
+  /// Answers "has this task had a session in this environment" for the task sidebar.
+  @@index([runtimeEnvironmentId, taskIdentifier])
 }
 
 /// Historical record of every run a Session has owned. Append-only —
@@ -2890,6 +2899,34 @@ model TaskScheduleInstance {
   @@unique([taskScheduleId, environmentId])
   @@index([environmentId])
   @@index([projectId, active])
+}
+
+/// One row per change to a skew protection threshold (the environment's, or one task's): set,
+/// moved or cleared. Written in the same transaction as the change. Read by the Deployments
+/// History popover.
+model SkewProtectionThresholdChange {
+  id String @id @default(cuid())
+
+  environment   RuntimeEnvironment @relation(fields: [environmentId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  environmentId String
+
+  /// The task whose threshold changed. Null for the environment's threshold.
+  taskIdentifier String?
+
+  /// "set" | "cleared" | "cleared-by-rollback"
+  kind           String
+  /// The threshold version the row is about (for a clear, the version that was cleared).
+  version        String
+  /// The current deployment's version when the change was made.
+  currentVersion String?
+  /// "dashboard" | "api" | "rollback" | "migrated"
+  source         String
+  userId         String?
+  apiKeyName     String?
+
+  createdAt DateTime @default(now())
+
+  @@index([environmentId, createdAt(sort: Desc)])
 }
 
 model RuntimeEnvironmentSession {

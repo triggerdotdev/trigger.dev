@@ -20,7 +20,7 @@ function compareVersionsDescending(a: string, b: string): number {
   return compareVersionParts(b, a) || b.localeCompare(a);
 }
 
-export function compareVersionParts(a: string, b: string): number {
+function compareVersionParts(a: string, b: string): number {
   const partsA = parseVersionParts(a);
   const partsB = parseVersionParts(b);
   const maxLen = Math.max(partsA.length, partsB.length);

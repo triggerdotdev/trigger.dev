@@ -39,6 +39,7 @@ export const ORGANIZATION_SPECIFIC_PAGES = [
   "deployments",
   "logs",
   "query",
+  "session-upgrades",
   "dashboards/queues",
   "settings/integrations",
 ];

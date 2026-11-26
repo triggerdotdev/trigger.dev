@@ -354,6 +354,7 @@ export class PassthroughControlPlaneResolver implements ControlPlaneResolver {
       // Coerce Prisma's Decimal to a plain number — mirrors toAuthenticated().
       concurrencyLimitBurstFactor: env.concurrencyLimitBurstFactor.toNumber(),
       builtInEnvironmentVariableOverrides: env.builtInEnvironmentVariableOverrides,
+      skewProtectionThresholds: env.skewProtectionThresholds,
       createdAt: env.createdAt,
       updatedAt: env.updatedAt,
       project: {

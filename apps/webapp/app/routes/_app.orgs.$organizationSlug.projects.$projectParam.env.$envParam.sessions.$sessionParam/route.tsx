@@ -83,6 +83,7 @@ import { useSessionTraceSelection } from "~/components/sessions/v1/trace/useSess
 import {
   SESSION_TREE_AUTOSAVE_ID,
   resolveSessionPageView,
+  sessionRunTitle,
   type SessionPageView,
 } from "~/components/sessions/v1/trace/sessionTraceView";
 import { getResizableSnapshot } from "~/services/resizablePanel.server";
@@ -1265,6 +1266,8 @@ function OverviewTab({
   const isAdmin = useHasAdminAccess();
   // Closing reloads this page as it is: same tab, view and selection.
   const { pathname, search } = useLocation();
+  const lockToVersion = sessionLockToVersion(session.triggerConfig);
+  const currentVersion = details.currentRun?.version;
 
   return (
     <div className="flex flex-col gap-4">
@@ -1353,6 +1356,14 @@ function OverviewTab({
                     disableHoverableContent
                     buttonClassName="w-fit"
                   />
+                ) : null}
+                {currentVersion ? (
+                  <span className="text-xs text-text-dimmed">
+                    On <span className="tabular-nums text-text-bright">{currentVersion}</span>
+                    {lockToVersion && lockToVersion !== currentVersion
+                      ? `. The skew protection threshold moved it past the lockToVersion pin (${lockToVersion}).`
+                      : null}
+                  </span>
                 ) : null}
               </span>
             </Property.Value>
@@ -1486,10 +1497,16 @@ function RunsTab({
               friendlyId: entry.run.friendlyId,
             })
           : undefined;
+        const title = sessionRunTitle(entry.reason);
         return (
           <TimelineRow key={entry.id} isLast={isLast}>
-            <span className="text-sm font-medium text-text-bright">
-              <span className="capitalize">{entry.reason}</span> run
+            <span
+              className={cn(
+                "text-sm font-medium text-text-bright",
+                title.capitalize && "capitalize"
+              )}
+            >
+              {title.text}
             </span>
             <span className="text-xs text-text-dimmed">
               <DateTime date={entry.triggeredAt} />
@@ -1559,4 +1576,9 @@ function TimelineRow({
       </div>
     </div>
   );
+}
+
+function sessionLockToVersion(triggerConfig: unknown): string | undefined {
+  const value = (triggerConfig as { lockToVersion?: unknown } | null)?.lockToVersion;
+  return typeof value === "string" ? value : undefined;
 }

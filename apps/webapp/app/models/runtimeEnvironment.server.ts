@@ -70,6 +70,7 @@ export function toAuthenticated(
     // doing arithmetic. Lossless at this scale (Decimal(4,2)).
     concurrencyLimitBurstFactor: env.concurrencyLimitBurstFactor.toNumber(),
     builtInEnvironmentVariableOverrides: env.builtInEnvironmentVariableOverrides,
+    skewProtectionThresholds: env.skewProtectionThresholds,
     createdAt: env.createdAt,
     updatedAt: env.updatedAt,
     project: {

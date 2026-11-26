@@ -1,9 +1,14 @@
 import type { Prisma, Session, TaskRunStatus } from "@trigger.dev/database";
-import { SessionTriggerConfig as SessionTriggerConfigZod, tryCatch } from "@trigger.dev/core/v3";
-import { CURRENT_DEPLOYMENT_LABEL } from "@trigger.dev/core/v3/isomorphic";
+import {
+  SessionTriggerConfig as SessionTriggerConfigZod,
+  TaskRunError,
+  tryCatch,
+} from "@trigger.dev/core/v3";
+import { setTimeout as sleep } from "node:timers/promises";
 import type { z } from "zod";
 import { prisma, $replica, $transaction } from "~/db.server";
 import { runStore } from "~/v3/runStore.server";
+import { findCurrentDeploymentVersion } from "~/v3/models/workerDeployment.server";
 import { engine } from "~/v3/runEngine.server";
 import type { AuthenticatedEnvironment } from "~/services/apiAuth.server";
 import { logger } from "~/services/logger.server";
@@ -29,6 +34,12 @@ import {
   type SessionVersionFloor,
 } from "./sessionVersionFloor.server";
 import { listSessionStreamWaitpoints } from "~/services/sessionStreamWaitpointCache.server";
+import {
+  parseSupersededRunCancelReason,
+  type SessionRunReason,
+  SKEW_THRESHOLD_RUN_REASON,
+  supersededRunCancelReason,
+} from "~/utils/sessionMove";
 
 /**
  * Schema for `Session.triggerConfig` (stored as JSONB). The wire-format
@@ -41,11 +52,15 @@ import { listSessionStreamWaitpoints } from "~/services/sessionStreamWaitpointCa
  * an `isContinuation` flag) come in via the `payloadOverrides` argument
  * to `ensureRunForSession` and shallow-merge on top of `basePayload`.
  */
-const SessionTriggerConfigSchema = SessionTriggerConfigZod;
+export const SessionTriggerConfigSchema = SessionTriggerConfigZod;
 
 export type SessionTriggerConfig = z.infer<typeof SessionTriggerConfigSchema>;
 
-export type EnsureRunReason = "initial" | "continuation" | "upgrade" | "manual";
+/**
+ * Why a session run started. `skew-threshold` replaces a live run below the environment's skew
+ * protection threshold; `ensureRunForSession` sets it itself.
+ */
+export type EnsureRunReason = SessionRunReason;
 
 /**
  * Hard cap on how many times `ensureRunForSession` will recurse on the
@@ -126,11 +141,13 @@ export type EnsureRunResult = {
  *   1. If `currentRunId` is set, probe its status. Alive → return as-is,
  *      unless the environment has a version floor, the run is below it, the
  *      current deployment is at or above it and the run is idle: then it is
- *      superseded by the new run.
+ *      superseded by the new run. Cancelled by a move → another append is
+ *      moving the session: wait for its claim and use its run.
  *   2. Trigger a new run upfront (cheap to cancel if we lose the race).
  *      A superseded run is cancelled now, before the new run becomes visible
  *      through the claim. If that cancel fails, cancel the new run and keep
- *      the superseded one.
+ *      the superseded one. If the superseded run was executing, wait (up to
+ *      about 5 s) for its process to stop, so it can't read the next append.
  *   3. Atomic claim via `updateMany` keyed on `currentRunVersion`.
  *      - Won (the SessionRun row is written in the same transaction): return
  *        new runId.
@@ -161,11 +178,21 @@ export async function ensureRunForSession(
     );
   }
 
-  const floor = sessionVersionFloorFor(environment);
+  const floor = sessionVersionFloorFor(environment, session.taskIdentifier);
 
   // 1. Probe currentRunId.
   let priorRunFriendlyId: string | undefined;
-  let superseded: { runId: string; taskVersion: string | null; status: TaskRunStatus } | undefined;
+  // A move in flight that never claimed its run: cancelled once this call's own claim wins.
+  let unclaimedSuccessor: string | undefined;
+  let superseded:
+    | {
+        runId: string;
+        taskVersion: string | null;
+        status: TaskRunStatus;
+        floor: SessionVersionFloor;
+        movedToVersion: string;
+      }
+    | undefined;
   if (session.currentRunId) {
     let probe = probeOnWriter ? null : await getCurrentRunProbe(session.currentRunId);
     if (!probe) {
@@ -181,16 +208,32 @@ export async function ensureRunForSession(
         prisma
       );
     }
+    // Under a floor a cancelled current run can be another append's move in flight: it cancelled
+    // this run and claims its own once the run has stopped. Triggering here would skip that wait
+    // and race the claim, so wait for the claim and use it.
+    if (floor && probe?.status === "CANCELED") {
+      const wait = await waitForMoveInFlight({ id: session.id, runId: session.currentRunId });
+      if (wait?.session) {
+        return ensureRunForSession({
+          session: wait.session,
+          environment,
+          reason,
+          payloadOverrides,
+          _attempt: _attempt + 1,
+        });
+      }
+      unclaimedSuccessor = wait?.unclaimedSuccessor;
+    }
     if (probe && !isFinalRunStatus(probe.status)) {
-      if (
-        !floor ||
-        !(await supersedesLiveRun(session, environment, floor, {
-          id: session.currentRunId,
-          taskVersion: probe.taskVersion,
-          createdAt: probe.createdAt,
-          startedWithMessage: basePayloadHasMessage(session.triggerConfig),
-        }))
-      ) {
+      const moveTarget = floor
+        ? await liveRunMoveTarget(session, environment, floor, {
+            id: session.currentRunId,
+            taskVersion: probe.taskVersion,
+            createdAt: probe.createdAt,
+            startedWithMessage: basePayloadHasMessage(session.triggerConfig),
+          })
+        : undefined;
+      if (!floor || !moveTarget) {
         return {
           runId: session.currentRunId,
           triggered: false,
@@ -201,6 +244,8 @@ export async function ensureRunForSession(
         runId: session.currentRunId,
         taskVersion: probe.taskVersion,
         status: probe.status,
+        floor,
+        movedToVersion: moveTarget.currentVersion,
       };
     }
     // The prior run is gone (probe null on the writer too), final, or below
@@ -273,7 +318,17 @@ export async function ensureRunForSession(
   });
 
   if (superseded) {
-    const [cancelError] = await tryCatch(cancelSupersededRun(superseded.runId));
+    const [cancelError, cancelResult] = await tryCatch(
+      cancelSessionRun(
+        superseded.runId,
+        supersededRunCancelReason({
+          // A pin at or above the threshold is kept, so the replacement can run below current.
+          movedToVersion: triggered.taskVersion ?? superseded.movedToVersion,
+          newRunFriendlyId: triggered.friendlyId,
+          taskIdentifier: superseded.floor.taskIdentifier,
+        })
+      )
+    );
     if (cancelError && !(await isRunFinalOnWriter(superseded.runId))) {
       logger.warn("Failed to cancel a session run below the session version floor; keeping it", {
         sessionId: session.id,
@@ -291,6 +346,33 @@ export async function ensureRunForSession(
         triggered: false,
         pendingVersion: isPendingVersionStatus(superseded.status),
       };
+    }
+    // Two appends can both see the old run live and both cancel it. The first cancel's reason
+    // names the run the notice links to, so only that append claims; the other drops its run and
+    // waits for that claim.
+    const move = await readMoveOnWriter(superseded.runId);
+    if (move && move.newRunFriendlyId !== triggered.friendlyId) {
+      cancelUnclaimedRun({
+        runId: triggered.id,
+        sessionId: session.id,
+        reason: "Another append is moving this session",
+        failureMessage: "Failed to cancel an unused session run",
+      });
+      return ensureRunForSession({
+        session,
+        environment,
+        reason,
+        payloadOverrides,
+        probeOnWriter: true,
+        _attempt: _attempt + 1,
+      });
+    }
+    // A warm run reads `.in` in its own process. The cancel only asked its worker to stop, so
+    // without this the message the caller appends next could still start a turn in the old run.
+    // A cancel that ended the run and then threw may not have reached the worker: wait the same way
+    // (at once when the run had already stopped).
+    if (cancelResult?.pendingCancel || cancelError) {
+      await waitForSupersededRunToStop({ runId: superseded.runId, sessionId: session.id });
     }
   }
 
@@ -311,17 +393,22 @@ export async function ensureRunForSession(
     },
     sessionId: session.id,
     triggered,
-    reason,
+    reason: superseded ? SKEW_THRESHOLD_RUN_REASON : reason,
   });
 
   if (won) {
+    // Our claim moved `currentRunVersion` past the one that move read, so its run can't claim now.
+    if (unclaimedSuccessor) cancelUnclaimedSuccessor(session.id, unclaimedSuccessor);
     if (superseded) {
       logger.info("Superseded a live run below the session version floor", {
         sessionId: session.id,
         runId: superseded.runId,
         taskVersion: superseded.taskVersion,
-        minVersion: floor?.minVersion,
+        minVersion: superseded.floor.minVersion,
+        thresholdTask: superseded.floor.taskIdentifier,
         newRunId: triggered.id,
+        // True: the new run waits for a deployment that has its task, so the chat is silent.
+        pendingVersion: isPendingVersionStatus(triggered.status),
       });
     }
     return {
@@ -344,17 +431,7 @@ export async function ensureRunForSession(
   // version, losing the next claim, until we exhaust max attempts.
   const fresh = await prisma.session.findFirst({
     where: { id: session.id },
-    select: {
-      id: true,
-      friendlyId: true,
-      externalId: true,
-      taskIdentifier: true,
-      triggerConfig: true,
-      currentRunId: true,
-      currentRunVersion: true,
-      streamBasinName: true,
-      closedAt: true,
-    },
+    select: ENSURE_SESSION_SELECT,
   });
 
   if (!fresh) {
@@ -608,12 +685,16 @@ async function triggerSessionRun(params: {
   sessionInFirstSeq?: number;
   /** The `.in` tail when it is already known; read when unset. */
   sessionInSeq?: number;
-}): Promise<{ id: string; friendlyId: string; status: TaskRunStatus; createdAt?: Date }> {
+}): Promise<{
+  id: string;
+  friendlyId: string;
+  status: TaskRunStatus;
+  createdAt?: Date;
+  /** Set at trigger only for a run locked to a version (a pin at or above any threshold). */
+  taskVersion?: string;
+}> {
   const { session, environment, payloadOverrides } = params;
-  const floor = sessionVersionFloorFor(environment);
-  const config = floor
-    ? await dropPinsBelowFloor(params.config, environment, floor)
-    : params.config;
+  const config = await sessionPinsInEffect(params.config, environment, session.taskIdentifier);
 
   const payload = {
     ...config.basePayload,
@@ -658,6 +739,7 @@ async function triggerSessionRun(params: {
     status: result.run.status,
     // A mollified trigger returns a synthetic run: no row yet, so no createdAt.
     createdAt: result.isMollified ? undefined : result.run.createdAt,
+    taskVersion: result.run.taskVersion ?? undefined,
   };
 }
 
@@ -695,7 +777,10 @@ type SwapSessionRunParams = {
   environment: AuthenticatedEnvironment;
   reason: EnsureRunReason;
   payloadOverrides?: Record<string, unknown>;
-  /** Only read when `reason` is `"upgrade"`: a string re-pins the session, absent clears the pin. */
+  /**
+   * Only read when `reason` is `"upgrade"` (`chat.requestUpgrade`): a string re-pins the session,
+   * absent clears the pin.
+   */
   externalDeploymentId?: string | null;
 };
 
@@ -724,7 +809,22 @@ export type SwapSessionRunResult = {
  * run wins the race and `swapped: false` is surfaced.
  */
 export async function swapSessionRun(params: SwapSessionRunParams): Promise<SwapSessionRunResult> {
-  const { session, callingRunId, environment, reason, payloadOverrides } = params;
+  const { callingRunId, environment, payloadOverrides } = params;
+
+  // The route reads the session on the replica, which can be a claim behind (a move or an upgrade
+  // just before) with an older config. Read the row on the writer before triggering, so the run
+  // is built from the stored config and the claim uses the current version: retrying after a lost
+  // claim would mean a second continuation while the first may already be booting. One primary-key
+  // read per handoff.
+  const onWriter = await prisma.session.findFirst({
+    where: { id: params.session.id },
+    select: { currentRunVersion: true, triggerConfig: true },
+  });
+  const session = onWriter ? { ...params.session, ...onWriter } : params.session;
+
+  // Only the server records `skew-threshold`, for its own moves: a caller asking for it gets `manual`.
+  const reason: EnsureRunReason =
+    params.reason === SKEW_THRESHOLD_RUN_REASON ? "manual" : params.reason;
 
   // `callingRunId` is the internal cuid (`Session.currentRunId` stores
   // cuid; the route handler resolves the wire's friendlyId before passing
@@ -755,7 +855,7 @@ export async function swapSessionRun(params: SwapSessionRunParams): Promise<Swap
 
   const storedConfig = SessionTriggerConfigSchema.parse(session.triggerConfig);
 
-  // The upgrade's pin is persisted in the claim below, not applied to this run alone: the next
+  // The `chat.requestUpgrade` pin is persisted in the claim below, not applied to this run alone: the next
   // continuation re-reads the stored config. `lockToVersion` is deliberately untouched.
   const config =
     reason === "upgrade"
@@ -769,25 +869,28 @@ export async function swapSessionRun(params: SwapSessionRunParams): Promise<Swap
     payloadOverrides: mergedPayloadOverrides,
   });
 
-  const won = await claimSessionRun({
-    where: {
-      id: session.id,
-      currentRunId: callingRunId,
-      currentRunVersion: session.currentRunVersion,
-      // Same writer-side guard as the ensure path: a close can commit between
-      // the route's replica read and this update, and a handoff must not start
-      // a continuation on a conversation that is over.
-      closedAt: null,
-    },
-    data: {
-      currentRunId: triggered.id,
-      currentRunVersion: { increment: 1 },
-      ...(reason === "upgrade" ? { triggerConfig: config as Prisma.InputJsonValue } : {}),
-    },
-    sessionId: session.id,
-    triggered,
-    reason,
-  });
+  const claim = (currentRunVersion: number) =>
+    claimSessionRun({
+      where: {
+        id: session.id,
+        currentRunId: callingRunId,
+        currentRunVersion,
+        // Same writer-side guard as the ensure path: a close can commit between
+        // the route's replica read and this update, and a handoff must not start
+        // a continuation on a conversation that is over.
+        closedAt: null,
+      },
+      data: {
+        currentRunId: triggered.id,
+        currentRunVersion: { increment: 1 },
+        ...(reason === "upgrade" ? { triggerConfig: config as Prisma.InputJsonValue } : {}),
+      },
+      sessionId: session.id,
+      triggered,
+      reason,
+    });
+
+  const won = await claim(session.currentRunVersion);
 
   if (won) {
     return {
@@ -870,7 +973,12 @@ async function claimSessionRun(params: {
 
       // Mollified runs have no createdAt yet; the column default (insert time) stands in.
       await tx.sessionRun.create({
-        data: { sessionId, runId: triggered.id, reason, triggeredAt: triggered.createdAt },
+        data: {
+          sessionId,
+          runId: triggered.id,
+          reason,
+          triggeredAt: triggered.createdAt,
+        },
       });
       return true;
     })
@@ -917,6 +1025,19 @@ const CANCELABLE_RUN_SELECT = {
   completedAt: true,
 } as const satisfies Record<keyof CancelableTaskRun, true>;
 
+/** What `ensureRunForSession` needs of a session re-read mid-flight, plus `closedAt`. */
+const ENSURE_SESSION_SELECT = {
+  id: true,
+  friendlyId: true,
+  externalId: true,
+  taskIdentifier: true,
+  triggerConfig: true,
+  currentRunId: true,
+  currentRunVersion: true,
+  streamBasinName: true,
+  closedAt: true,
+} as const satisfies Prisma.SessionSelect;
+
 const CURRENT_RUN_PROBE_SELECT = {
   status: true,
   friendlyId: true,
@@ -945,19 +1066,23 @@ async function getCurrentRunProbe(runId: string): Promise<{
   return row ?? null;
 }
 
-async function supersedesLiveRun(
+/**
+ * Where a live run below the session's version floor moves to: the current deployment's version
+ * when the run should be replaced, undefined when it keeps the session.
+ */
+async function liveRunMoveTarget(
   session: Pick<Session, "id" | "friendlyId" | "externalId" | "streamBasinName">,
   environment: AuthenticatedEnvironment,
   floor: SessionVersionFloor,
   run: { id: string; taskVersion: string | null; createdAt: Date; startedWithMessage: boolean }
-): Promise<boolean> {
+): Promise<{ currentVersion: string } | undefined> {
   const decision = await shouldSupersedeLiveRun(
     floor,
     run,
     session.externalId ?? session.friendlyId,
     liveRunFloorChecks(session, environment)
   );
-  if (decision.supersede) return true;
+  if (decision.supersede) return { currentVersion: decision.currentVersion };
 
   if (decision.reason === "current-below-floor") {
     logger.warn(
@@ -970,6 +1095,17 @@ async function supersedesLiveRun(
         minVersion: floor.minVersion,
       }
     );
+  } else if (decision.reason === "busy") {
+    // The commonest answer to "why didn't this session move": a reply in progress, inside the
+    // grace after one, or S2 unreadable (an S2 warn for the stream sits next to this line).
+    logger.info("Kept a run below the skew protection threshold: busy", {
+      sessionId: session.id,
+      runId: run.id,
+      environmentId: environment.id,
+      taskVersion: run.taskVersion,
+      minVersion: floor.minVersion,
+      thresholdTask: floor.taskIdentifier,
+    });
   } else if (decision.reason === "check-failed") {
     logger.warn("Idle check failed; reusing the run below the version floor", {
       sessionId: session.id,
@@ -978,7 +1114,7 @@ async function supersedesLiveRun(
       error: decision.error.message,
     });
   }
-  return false;
+  return undefined;
 }
 
 function liveRunFloorChecks(
@@ -986,12 +1122,8 @@ function liveRunFloorChecks(
   environment: AuthenticatedEnvironment
 ): LiveRunFloorChecks {
   return {
-    async currentDeploymentVersion() {
-      const promotion = await $replica.workerDeploymentPromotion.findFirst({
-        where: { environmentId: environment.id, label: CURRENT_DEPLOYMENT_LABEL },
-        select: { deployment: { select: { version: true } } },
-      });
-      return promotion?.deployment.version;
+    currentDeploymentVersion() {
+      return findCurrentDeploymentVersion(environment.id, $replica);
     },
     streams() {
       const realtimeStream = getRealtimeStreamInstance(environment, "v2", { session });
@@ -1003,6 +1135,19 @@ function liveRunFloorChecks(
       isWaitpointBlockingRun: waitpointBlockingRunCheck(environment, { engine, runStore }),
     },
   };
+}
+
+/**
+ * The session's pins as the server applies them when it starts a run: a pin below the task's
+ * skew protection threshold is ignored. Returns `config` itself when nothing is dropped.
+ */
+export async function sessionPinsInEffect(
+  config: SessionTriggerConfig,
+  environment: AuthenticatedEnvironment,
+  taskIdentifier: string
+): Promise<SessionTriggerConfig> {
+  const floor = sessionVersionFloorFor(environment, taskIdentifier);
+  return floor ? dropPinsBelowFloor(config, environment, floor) : config;
 }
 
 async function dropPinsBelowFloor(
@@ -1041,10 +1186,6 @@ async function isRunFinalOnWriter(runId: string): Promise<boolean> {
   return !error && run !== null && isFinalRunStatus(run.status);
 }
 
-async function cancelSupersededRun(runId: string): Promise<void> {
-  await cancelSessionRun(runId, "Superseded by session version floor");
-}
-
 /**
  * Resolve a TaskRun cuid to its friendlyId. Used by `swapSessionRun` to
  * forward the calling run's public-form id as `payload.previousRunId` on
@@ -1072,13 +1213,179 @@ function cancelUnclaimedRun(params: {
   });
 }
 
-async function cancelSessionRun(runId: string, reason: string): Promise<void> {
+async function cancelSessionRun(
+  runId: string,
+  reason: string
+): Promise<{ pendingCancel?: boolean } | undefined> {
   // Read on the writer: a lost-race run was just triggered there, and a
   // `$replica` miss would silently no-op the cancel and leak an orphan run
   // that no session is going to claim.
   const run = await runStore.findRun({ id: runId }, { select: CANCELABLE_RUN_SELECT }, prisma);
-  if (!run) return;
-  await new CancelTaskRunService().call(run, { reason });
+  if (!run) return undefined;
+  return new CancelTaskRunService().call(run, { reason });
+}
+
+/** How long a move waits for a cancelled warm run to stop before appending anyway. */
+const SUPERSEDED_RUN_STOP_TIMEOUT_MS = 5_000;
+const SUPERSEDED_RUN_STOP_POLL_MS = [25, 50, 100, 200, 250];
+
+/**
+ * Wait until a run cancelled mid-execution has stopped: its worker killed the process and reported
+ * the attempt. The cancel itself leaves `completedAt` empty; that report sets it, together with
+ * the run's FINISHED execution snapshot, so it is only there once the process is gone. Polled on
+ * the replica with backoff, one primary-key read of that column per poll (a few per move); a
+ * cancel ack can be handled by any webapp instance, so there is no local event to wait on. On
+ * timeout the caller continues as before the wait existed. Every wait is logged with how long it
+ * took and whether it hit the cap.
+ */
+async function waitForSupersededRunToStop(params: {
+  runId: string;
+  sessionId: string;
+}): Promise<void> {
+  const { runId, sessionId } = params;
+  const startedAt = performance.now();
+  const deadline = startedAt + SUPERSEDED_RUN_STOP_TIMEOUT_MS;
+
+  for (let attempt = 0; ; attempt++) {
+    const remainingMs = deadline - performance.now();
+    if (remainingMs <= 0) break;
+    const pollMs =
+      SUPERSEDED_RUN_STOP_POLL_MS[Math.min(attempt, SUPERSEDED_RUN_STOP_POLL_MS.length - 1)];
+    await sleep(Math.min(pollMs, remainingMs));
+
+    const [error, run] = await tryCatch(
+      runStore.findRun({ id: runId }, { select: { completedAt: true } }, $replica)
+    );
+    // A miss is a replica that doesn't have the row yet, not a run that is gone.
+    if (error || !run) continue;
+    if (run.completedAt) {
+      logSupersededRunStopWait({ sessionId, runId, startedAt, hitCap: false });
+      return;
+    }
+  }
+
+  logSupersededRunStopWait({ sessionId, runId, startedAt, hitCap: true });
+}
+
+/**
+ * One line per wait, so the cap can be chosen from real cancel ack times. At the cap the caller
+ * goes ahead while the old run may still be able to read the next message, hence the warn.
+ */
+function logSupersededRunStopWait(params: {
+  sessionId: string;
+  runId: string;
+  startedAt: number;
+  hitCap: boolean;
+}): void {
+  const { sessionId, runId, startedAt, hitCap } = params;
+  const fields = {
+    sessionId,
+    runId,
+    waitedMs: Math.round(performance.now() - startedAt),
+    hitCap,
+    capMs: SUPERSEDED_RUN_STOP_TIMEOUT_MS,
+  };
+  if (hitCap) {
+    logger.warn("Waited for a superseded session run to stop", fields);
+  } else {
+    logger.info("Waited for a superseded session run to stop", fields);
+  }
+}
+
+/**
+ * How long a second append waits for the append that started a move to claim its run. That append
+ * claims at the end of its own wait (at most {@link SUPERSEDED_RUN_STOP_TIMEOUT_MS} after its
+ * cancel), so past this it isn't going to.
+ */
+const MOVE_IN_FLIGHT_CLAIM_TIMEOUT_MS = SUPERSEDED_RUN_STOP_TIMEOUT_MS + 500;
+
+/**
+ * The session's current run is cancelled. If its cancel reason says a move replaced it, another
+ * append is waiting for it to stop and will then claim the run it triggered (a session only keeps
+ * pointing at such a run until that claim): wait for the claim and return the session as it then
+ * is. Returns undefined when the run wasn't cancelled by a move, or the claim didn't come in
+ * time; the caller then carries on as for any dead run.
+ */
+async function waitForMoveInFlight(params: {
+  id: string;
+  runId: string;
+}): Promise<
+  | { session: Prisma.SessionGetPayload<{ select: typeof ENSURE_SESSION_SELECT }> }
+  | { session?: undefined; unclaimedSuccessor: string }
+  | undefined
+> {
+  const { id, runId } = params;
+
+  const move = await readMoveOnWriter(runId);
+  if (!move) return undefined;
+
+  const startedAt = performance.now();
+  const deadline = startedAt + MOVE_IN_FLIGHT_CLAIM_TIMEOUT_MS;
+
+  for (let attempt = 0; ; attempt++) {
+    // The replica is enough: this waits for a change, and lag only makes it a little later.
+    const [pollError, fresh] = await tryCatch(
+      $replica.session.findFirst({ where: { id }, select: ENSURE_SESSION_SELECT })
+    );
+    if (!pollError && fresh) {
+      if (fresh.closedAt) throw new SessionClosedError(`Session ${id} is closed`);
+      if (fresh.currentRunId !== runId) return { session: fresh };
+    }
+
+    const remainingMs = deadline - performance.now();
+    if (remainingMs <= 0) break;
+    const pollMs =
+      SUPERSEDED_RUN_STOP_POLL_MS[Math.min(attempt, SUPERSEDED_RUN_STOP_POLL_MS.length - 1)];
+    await sleep(Math.min(pollMs, remainingMs));
+  }
+
+  // The replica can still be behind at the deadline: decide on the writer.
+  const [writerError, onWriter] = await tryCatch(
+    prisma.session.findFirst({ where: { id }, select: ENSURE_SESSION_SELECT })
+  );
+  if (!writerError && onWriter) {
+    if (onWriter.closedAt) throw new SessionClosedError(`Session ${id} is closed`);
+    if (onWriter.currentRunId !== runId) return { session: onWriter };
+  }
+
+  logger.warn("A session move in flight didn't claim its run in time; starting a new run", {
+    sessionId: id,
+    runId,
+    successorRunId: move.newRunFriendlyId,
+    waitedMs: Math.round(performance.now() - startedAt),
+  });
+  // The append that started the move most likely went away before claiming (a webapp restart
+  // during its stop wait). Its run would wait on `.in` beside the caller's and answer too, but it
+  // can still claim until the caller's claim wins, so the caller cancels it only then.
+  return { unclaimedSuccessor: move.newRunFriendlyId };
+}
+
+/** The move recorded in a run's cancel reason, read on the writer (the run was cancelled moments ago). */
+async function readMoveOnWriter(runId: string) {
+  const [readError, run] = await tryCatch(
+    runStore.findRun({ id: runId }, { select: { error: true } }, prisma)
+  );
+  if (readError || !run) return undefined;
+  const error = TaskRunError.safeParse(run.error);
+  return error.success && error.data.type === "STRING_ERROR"
+    ? parseSupersededRunCancelReason(error.data.raw)
+    : undefined;
+}
+
+/** Cancel the run of a move that never claimed it, once the caller's own claim has won. */
+function cancelUnclaimedSuccessor(sessionId: string, friendlyId: string): void {
+  void (async () => {
+    const [findError, successor] = await tryCatch(
+      runStore.findRun({ friendlyId }, { select: { id: true } }, prisma)
+    );
+    if (findError || !successor) return;
+    cancelUnclaimedRun({
+      runId: successor.id,
+      sessionId,
+      reason: "The session move that started this run never claimed it",
+      failureMessage: "Failed to cancel an unclaimed session move run",
+    });
+  })();
 }
 
 class SessionRunManagerError extends Error {

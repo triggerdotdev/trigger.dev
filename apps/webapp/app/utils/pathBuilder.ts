@@ -1067,6 +1067,14 @@ export function regionsPath(
   return `${v3EnvironmentPath(organization, project, environment)}/regions`;
 }
 
+export function sessionUpgradesPath(
+  organization: OrgForPath,
+  project: ProjectForPath,
+  environment: EnvironmentForPath
+) {
+  return `${v3EnvironmentPath(organization, project, environment)}/session-upgrades`;
+}
+
 export function v3BillingPath(organization: OrgForPath, message?: BillingMessageKey) {
   return `${organizationPath(organization)}/settings/billing${
     message ? `?message=${encodeURIComponent(message)}` : ""

@@ -3,7 +3,7 @@ import { describe, expect, onTestFinished, vi } from "vitest";
 // Points the module-level clients at each test's container database, so code
 // that reads them (task identifier sync on promotion) writes real rows.
 const db = vi.hoisted(() => ({ client: undefined as any }));
-vi.mock("~/db.server", () => {
+vi.mock("~/db.server", async (importOriginal) => {
   const client = new Proxy(
     {},
     {
@@ -14,6 +14,7 @@ vi.mock("~/db.server", () => {
     }
   );
   return {
+    ...(await importOriginal<Record<string, unknown>>()),
     prisma: client,
     $replica: client,
     webhookPrisma: client,

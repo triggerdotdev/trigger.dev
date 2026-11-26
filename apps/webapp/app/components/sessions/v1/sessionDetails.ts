@@ -10,7 +10,7 @@ export type SessionRunEntry = {
   runFriendlyId: string;
   reason: string;
   triggeredAt: string;
-  run: { friendlyId: string; status: TaskRunStatus } | null;
+  run: { friendlyId: string; status: TaskRunStatus; version?: string | null } | null;
 };
 
 /** What the session details show that can change while the page is open. */
@@ -19,7 +19,11 @@ export type SessionDetailsData = {
   closedReason?: string;
   expiresAt?: string;
   updatedAt: string;
-  currentRun: { friendlyId: string; status: TaskRunStatus | null } | null;
+  currentRun: {
+    friendlyId: string;
+    status: TaskRunStatus | null;
+    version?: string | null;
+  } | null;
   runs: SessionRunEntry[];
 };
 
@@ -75,7 +79,7 @@ export function mergeSessionRunEntries(
       triggeredAt: run.triggeredAt,
       // The runs route drops runs outside the session's environment; keep what the page load had.
       run: run.status
-        ? { friendlyId: run.friendlyId, status: run.status }
+        ? { friendlyId: run.friendlyId, status: run.status, version: previous?.run?.version }
         : (previous?.run ?? null),
     });
   }
@@ -90,8 +94,9 @@ function currentRunOf(
   loaded: SessionDetailsData["currentRun"]
 ): SessionDetailsData["currentRun"] {
   if (!friendlyId) return null;
-  const status =
-    runs.find((entry) => entry.runFriendlyId === friendlyId)?.run?.status ??
-    (loaded?.friendlyId === friendlyId ? loaded.status : null);
-  return { friendlyId, status };
+  const run = runs.find((entry) => entry.runFriendlyId === friendlyId)?.run;
+  const sameAsLoaded = loaded?.friendlyId === friendlyId;
+  const status = run?.status ?? (sameAsLoaded ? loaded.status : null);
+  const version = run?.version ?? (sameAsLoaded ? loaded.version : undefined);
+  return { friendlyId, status, version };
 }

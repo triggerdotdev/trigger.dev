@@ -1,11 +1,12 @@
 import type { ActionFunctionArgs } from "@remix-run/server-runtime";
 import { json } from "@remix-run/server-runtime";
 import { z } from "zod";
-import { prisma } from "~/db.server";
+import { $replica, prisma } from "~/db.server";
 import { authenticateApiKeyWithScope } from "~/services/apiAuth.server";
 import { logger } from "~/services/logger.server";
 import { ServiceValidationError } from "~/v3/services/baseService.server";
 import { ChangeCurrentDeploymentService } from "~/v3/services/changeCurrentDeployment.server";
+import { apiKeyActorName } from "~/v3/services/skewProtectionThreshold.server";
 
 const ParamsSchema = z.object({
   deploymentVersion: z.string(),
@@ -57,13 +58,32 @@ export async function action({ request, params }: ActionFunctionArgs) {
 
     try {
       const service = new ChangeCurrentDeploymentService();
-      await service.call(deployment, "promote", allowRollbacks);
+      const result = await service.call(deployment, "promote", {
+        disableVersionCheck: allowRollbacks,
+        actor: {
+          apiKeyName: await apiKeyActorName($replica, authenticationResult.apiKey),
+        },
+      });
 
       return json(
         {
           id: deployment.friendlyId,
           version: deployment.version,
           shortCode: deployment.shortCode,
+          ...(result.skewProtectionThresholdsCleared
+            ? {
+                // The same layout as GET /api/v1/deployments/skew-protection-threshold.
+                skewProtectionThresholdCleared: {
+                  threshold: result.skewProtectionThresholdsCleared.environment ?? null,
+                  tasks: Object.fromEntries(
+                    result.skewProtectionThresholdsCleared.tasks.map(({ task, version }) => [
+                      task,
+                      { version },
+                    ])
+                  ),
+                },
+              }
+            : {}),
         },
         { status: 200 }
       );

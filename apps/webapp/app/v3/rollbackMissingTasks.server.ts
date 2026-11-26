@@ -24,7 +24,7 @@ export async function findRollbackTarget(
       shortCode: deploymentShortCode,
       project: { organization: { members: { some: { userId } } } },
     },
-    select: { environmentId: true, workerId: true },
+    select: { environmentId: true, workerId: true, version: true },
   });
 }
 

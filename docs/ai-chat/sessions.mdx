@@ -74,6 +74,10 @@ One Session spans many runs over its lifetime. The Session row tracks `currentRu
 
 This is what makes a Session the durable identity for a conversation: runs are an execution detail, the Session (and its `externalId`) is what your clients address. See [How it works](/ai-chat/how-it-works) for how `chat.agent` drives this loop.
 
+### New runs of a raw session task
+
+A `task()` that loops on `session.in.wait()` reads the session's input from the start when it gets a new run: after a crash, a cancel, or a move to a newer deployment by the [skew protection threshold](/deployment/skew-protection-threshold). It sees every earlier record again before the new one. `chat.agent` tracks what it has handled and doesn't. Keep your own record of the last input you handled, and skip anything at or before it.
+
 ## When to reach for Sessions directly
 
 `chat.agent` handles 90% of chat-shaped workloads — message accumulation, the turn loop, stop signals, lifecycle hooks. Use the raw `sessions` API when you need any of:

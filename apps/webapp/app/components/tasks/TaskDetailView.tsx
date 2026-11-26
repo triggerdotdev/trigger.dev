@@ -66,6 +66,7 @@ import { useZoomToTimeFilter } from "~/hooks/useZoomToTimeFilter";
 import type { TaskDetailPageData } from "~/presenters/v3/TaskDetailPage.server";
 import type { TaskActivity, TaskDetail } from "~/presenters/v3/TaskDetailPresenter.server";
 import { retryWaits } from "./retryWaits";
+import { UpgradeSessionsButton } from "~/components/sessions/v1/UpgradeSessionsButton";
 import { taskRunsFilters } from "./taskRunsFilters";
 import { cn } from "~/utils/cn";
 import { formatNumber } from "~/utils/numberFormatter";
@@ -267,17 +268,27 @@ function TaskHeader({
         </>
       }
       primaryAction={
-        primaryAction ?? (
-          <LinkButton
-            variant="primary/small"
-            to={testPath}
-            LeadingIcon={BeakerIcon}
-            iconSpacing="gap-x-2"
-            leadingIconClassName="-mx-2"
-          >
-            Test task
-          </LinkButton>
-        )
+        <>
+          {/* Beside the primary action so it stays when narrow widths fold the others away. */}
+          {data.upgradeSessions ? (
+            <UpgradeSessionsButton
+              taskIdentifier={task.slug}
+              environmentId={data.environmentId}
+              canWriteDeployments={data.canWriteDeployments}
+            />
+          ) : null}
+          {primaryAction ?? (
+            <LinkButton
+              variant="primary/small"
+              to={testPath}
+              LeadingIcon={BeakerIcon}
+              iconSpacing="gap-x-2"
+              leadingIconClassName="-mx-2"
+            >
+              Test task
+            </LinkButton>
+          )}
+        </>
       }
     />
   );
