@@ -773,6 +773,49 @@ describe("list_runs dashboard filters", () => {
       expect(textOf(denied)).toBe("Not authorized");
     }
   );
+
+  // Catches: before not forwarded (the newest page comes back) or combined with cursor.
+  containerTestWithClickhouse(
+    "before pages backwards from a later page",
+    async ({ prisma, clickhouseContainer }) => {
+      const { identity, request, scope } = await seedFilterRuns(
+        prisma,
+        clickhouseContainer.getConnectionUrl()
+      );
+      const list = tool(createRunsTools(), "list_runs");
+      const page = async (args: Record<string, unknown>) =>
+        textOf(await list({ ...scope, limit: 1, ...args }, identity, request));
+
+      const cursorIn = (text: string, label: "Next" | "Previous") => {
+        const value = text.match(new RegExp(`${label} cursor: (\\S+)`))?.[1];
+        expect(value, `${label} cursor`).toBeTruthy();
+        return value;
+      };
+
+      const first = await page({});
+      const second = await page({ cursor: cursorIn(first, "Next") });
+      const third = await page({ cursor: cursorIn(second, "Next") });
+      const back = await page({ before: cursorIn(third, "Previous") });
+
+      expect(listedRunIds(back)).toEqual(listedRunIds(second));
+      expect(listedRunIds(back)).not.toEqual(listedRunIds(first));
+
+      // A previous page of several runs reads newest first, like the same page reached going forward.
+      const shownOrder = (text: string) =>
+        [...text.matchAll(/^\d+\. (run-\d+-\d+)/gm)].map((m) => m[1]);
+      const newest = await page({ limit: 2 });
+      const oldest = await page({ limit: 2, cursor: cursorIn(newest, "Next") });
+      const previous = await page({ limit: 2, before: cursorIn(oldest, "Previous") });
+      expect(shownOrder(newest)).toHaveLength(2);
+      expect(shownOrder(oldest)).toHaveLength(2);
+      expect(shownOrder(oldest).filter((id) => shownOrder(newest).includes(id))).toEqual([]);
+      expect(shownOrder(previous)).toEqual(shownOrder(newest));
+
+      const both = await list({ ...scope, cursor: "run_a", before: "run_b" }, identity, request);
+      expect(both.isError).toBe(true);
+      expect(textOf(both)).toContain("pass cursor or before, not both");
+    }
+  );
 });
 
 describe("list_runs version filter", () => {

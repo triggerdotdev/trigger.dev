@@ -302,7 +302,11 @@
                 },
                 "cursor": {
                   "type": "string",
-                  "description": "The cursor to use for pagination, starts with run_"
+                  "description": "The Next cursor from a previous page, passed exactly as returned, to list the next page"
+                },
+                "before": {
+                  "type": "string",
+                  "description": "The Previous cursor from a page, passed exactly as returned, to list the page before it. Do not combine with cursor"
                 },
                 "limit": {
                   "type": "integer",

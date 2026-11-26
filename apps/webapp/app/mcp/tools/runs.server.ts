@@ -236,12 +236,16 @@ export function createRunsTools(options: RunsToolsOptions = {}): McpToolDefiniti
     run: async (input, ctx) => {
       const environment = await resolveToolEnvironment(ctx);
       if (!environment) return errorResult("Environment not found");
+      if (input.cursor !== undefined && input.before !== undefined) {
+        return errorResult("Invalid arguments: pass cursor or before, not both");
+      }
 
       const parsedParams = ApiRunListSearchParams.safeParse(
         Object.fromEntries(
           Object.entries({
             "page[size]": input.limit,
             "page[after]": input.cursor,
+            "page[before]": input.before,
             "filter[status]": input.status,
             "filter[taskIdentifier]": input.taskIdentifier,
             "filter[version]": input.version,
@@ -277,8 +281,13 @@ export function createRunsTools(options: RunsToolsOptions = {}): McpToolDefiniti
       }
 
       try {
-        const result = await listRunsFn(environment, parsedParams.data);
-        return textResult(formatRunList(result as Parameters<typeof formatRunList>[0]));
+        const page = (await listRunsFn(environment, parsedParams.data)) as Parameters<
+          typeof formatRunList
+        >[0];
+        // A previous page comes back oldest first; show it newest first like every other page.
+        return textResult(
+          formatRunList(input.before ? { ...page, data: [...page.data].reverse() } : page)
+        );
       } catch (error) {
         if (error instanceof RunsListQueryError || error instanceof ServiceValidationError) {
           return errorResult(error.message);

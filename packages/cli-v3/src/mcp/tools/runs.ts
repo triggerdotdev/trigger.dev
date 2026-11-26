@@ -426,6 +426,10 @@ export const listRunsTool = {
       );
     }
 
+    if (input.cursor !== undefined && input.before !== undefined) {
+      return respondWithError("Invalid arguments: pass cursor or before, not both");
+    }
+
     const projectRef = await ctx.getProjectRef({
       projectRef: input.projectRef,
       cwd: input.configPath,
@@ -443,6 +447,7 @@ export const listRunsTool = {
 
     const result = await apiClient.listRuns({
       after: input.cursor,
+      before: input.before,
       limit: input.limit,
       status: input.status,
       taskIdentifier: input.taskIdentifier,
@@ -459,7 +464,10 @@ export const listRunsTool = {
       bulkAction: input.bulkAction,
     });
 
-    const formattedRuns = formatRunList(result);
+    // A previous page comes back oldest first; show it newest first like every other page.
+    const formattedRuns = formatRunList(
+      input.before ? { ...result, data: [...result.data].reverse() } : result
+    );
 
     return {
       content: [{ type: "text", text: formattedRuns }],

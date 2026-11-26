@@ -339,7 +339,18 @@ export const GetSpanDetailsInput = CommonRunsInput.extend({
 export type GetSpanDetailsInput = z.output<typeof GetSpanDetailsInput>;
 
 export const ListRunsInput = CommonProjectsInput.extend({
-  cursor: z.string().describe("The cursor to use for pagination, starts with run_").optional(),
+  cursor: z
+    .string()
+    .describe(
+      "The Next cursor from a previous page, passed exactly as returned, to list the next page"
+    )
+    .optional(),
+  before: z
+    .string()
+    .describe(
+      "The Previous cursor from a page, passed exactly as returned, to list the page before it. Do not combine with cursor"
+    )
+    .optional(),
   limit: z
     .number()
     .int()
