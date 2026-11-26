@@ -841,7 +841,10 @@ export class TriggerChatTransport implements ChatTransport<UIMessage> {
   private _onEvent: ((event: ChatTransportEvent) => void) | undefined;
 
   private sessions: Map<string, ChatSessionState> = new Map();
-  private pendingResumeCursors: Map<string, string> = new Map();
+  private pendingResumeCursors: Map<
+    string,
+    { lastEventId: string; lastInEventId: string | undefined }
+  > = new Map();
   private activeStreams: Map<string, AbortController> = new Map();
   private pendingStarts: Map<string, Promise<ChatSessionState>> = new Map();
   // Last turn-producing send per chat — attribution source for the
@@ -1052,9 +1055,11 @@ export class TriggerChatTransport implements ChatTransport<UIMessage> {
     // in that window must find this turn, not an empty slot.
     const turnAbort = this.supersedeActiveStream(chatId);
 
+    // Read before `activeInputSeq` is overwritten below.
+    const replacesUnfinishedTurn = this.replacesUnfinishedTurn(state, inSeq);
     state.activeInputSeq = inSeq;
     state.isStreaming = true;
-    state.turnStart = { lastEventId: state.lastEventId };
+    state.turnStart = this.sendTurnStart(state, replacesUnfinishedTurn);
     state.outstandingTurnAbandoned = false;
     this.notifySessionChange(chatId, state);
 
@@ -1076,6 +1081,7 @@ export class TriggerChatTransport implements ChatTransport<UIMessage> {
       sinceInSeq: inSeq,
       sendStopOnAbort: true,
       ...located,
+      holdUntilBoundary: located.holdUntilBoundary || replacesUnfinishedTurn,
     });
   };
 
@@ -1559,9 +1565,10 @@ export class TriggerChatTransport implements ChatTransport<UIMessage> {
 
     // Mark streaming + persist so a reload mid-action resumes (reconnectToStream
     // no-ops when the persisted session says isStreaming: false).
+    const replacesUnfinishedTurn = this.replacesUnfinishedTurn(state, inSeq);
     state.activeInputSeq = inSeq;
     state.isStreaming = true;
-    state.turnStart = { lastEventId: state.lastEventId };
+    state.turnStart = this.sendTurnStart(state, replacesUnfinishedTurn);
     state.outstandingTurnAbandoned = false;
     this.notifySessionChange(chatId, state);
 
@@ -1582,6 +1589,7 @@ export class TriggerChatTransport implements ChatTransport<UIMessage> {
       sendStopOnAbort: true,
       onSettled: options?.onSettled,
       ...located,
+      holdUntilBoundary: located.holdUntilBoundary || replacesUnfinishedTurn,
     });
   };
 
@@ -1613,12 +1621,14 @@ export class TriggerChatTransport implements ChatTransport<UIMessage> {
    * the first live subscription opens past the persisted history instead of
    * replaying it. Never moves an existing cursor backward: the transcript load
    * is async, so a live `.out` record can already have advanced the session
-   * past the snapshot, and overwriting it would replay those records.
+   * past the snapshot, and overwriting it would replay those records. With a
+   * sent turn outstanding, the transcript's `.in` cursor (`lastInEventId`)
+   * decides (`takesTranscriptCursor`).
    */
-  seedResumeCursor = (chatId: string, lastEventId: string): void => {
+  seedResumeCursor = (chatId: string, lastEventId: string, lastInEventId?: string): void => {
     const existing = this.sessions.get(chatId);
     if (existing?.publicAccessToken) {
-      if (existing.lastEventId === undefined) {
+      if (this.takesTranscriptCursor(existing, lastInEventId)) {
         existing.lastEventId = lastEventId;
         if (existing.turnStart?.lastEventId === undefined && existing.isStreaming) {
           existing.turnStart = { lastEventId };
@@ -1628,16 +1638,39 @@ export class TriggerChatTransport implements ChatTransport<UIMessage> {
       this.pendingResumeCursors.delete(chatId);
       return;
     }
-    this.pendingResumeCursors.set(chatId, lastEventId);
+    this.pendingResumeCursors.set(chatId, { lastEventId, lastInEventId });
   };
 
   private applyPendingResumeCursor(chatId: string, state: ChatSessionState): ChatSessionState {
     const pending = this.pendingResumeCursors.get(chatId);
-    if (pending !== undefined && state.lastEventId === undefined) {
-      state.lastEventId = pending;
+    if (pending !== undefined && this.takesTranscriptCursor(state, pending.lastInEventId)) {
+      state.lastEventId = pending.lastEventId;
     }
     this.pendingResumeCursors.delete(chatId);
     return state;
+  }
+
+  /**
+   * Whether a loaded transcript's `.out` cursor becomes the session's. Only into
+   * an empty cursor, and with a sent turn outstanding only when the transcript was
+   * saved after that send was answered: its `.in` cursor is the highest `.in` seq
+   * the agent had handled. One saved before ends at an earlier boundary, and the
+   * records after it can hold an earlier reply still running ahead of the send (a
+   * send that replaces it persists no cursor), which an agent that writes no turn
+   * markers gives nothing to tell apart. The turn-start lookup places the turn
+   * then. A transcript with no `.in` cursor can't say, and is taken as before.
+   * Deliberately conservative: a send still queued holds that floor below its
+   * seq, so a save whose `.out` cursor would already do is refused until the
+   * agent takes the send, which costs the lookup, not correctness.
+   */
+  private takesTranscriptCursor(
+    state: ChatSessionState,
+    lastInEventId: string | undefined
+  ): boolean {
+    if (state.lastEventId !== undefined) return false;
+    if (state.activeInputSeq === undefined || lastInEventId === undefined) return true;
+    const handledThrough = Number.parseInt(lastInEventId, 10);
+    return Number.isNaN(handledThrough) || handledThrough >= state.activeInputSeq;
   }
 
   setOnSessionChange(
@@ -1959,6 +1992,44 @@ export class TriggerChatTransport implements ChatTransport<UIMessage> {
     init: RequestInit
   ): Promise<Response> {
     return this.fetchOverride ? this.fetchOverride(url, init, ctx) : fetch(url, init);
+  }
+
+  /**
+   * Whether a send now replaces a turn that is still outstanding and was not
+   * stopped: a resumed reply the user stopped reading (which writes no stop), or
+   * a reader the send itself supersedes. That turn keeps writing to `.out`, and
+   * the session's cursor sits partway into it, past its `turn-start` marker, so
+   * its remaining chunks would reach the send's answer. The send's stream holds
+   * them until that turn's boundary instead (`holdUntilBoundary`). A stream error
+   * leaves the turn's `.in` seq set (it may still be running), so a send after
+   * one is held too. A stop arms the gate, which skips them already, and an
+   * abandoned turn is not coming back. With no cursor the send's own lookup
+   * decides (`findTurnStart`), so this is for a send that reads on from one.
+   * Without the send's `.in` seq (an older webapp reports none) a stream can't
+   * tell the turns apart, so holding would only delay the answer. Call before the
+   * send overwrites `activeInputSeq`.
+   */
+  private replacesUnfinishedTurn(state: ChatSessionState, inSeq: number | undefined): boolean {
+    return (
+      inSeq !== undefined &&
+      state.lastEventId !== undefined &&
+      !state.skipToTurnComplete &&
+      !state.outstandingTurnAbandoned &&
+      (state.isStreaming === true || state.activeInputSeq !== undefined)
+    );
+  }
+
+  /**
+   * The resume point persisted for a send's turn. A send that replaces an
+   * unfinished turn reads from partway into it, which a reload must not resume
+   * from: with no cursor it finds where the turn starts the way a cursorless send
+   * does, and drops the earlier turn's records.
+   */
+  private sendTurnStart(
+    state: ChatSessionState,
+    replacesUnfinishedTurn: boolean
+  ): { lastEventId: string | undefined } {
+    return { lastEventId: replacesUnfinishedTurn ? undefined : state.lastEventId };
   }
 
   /**
@@ -2755,11 +2826,23 @@ export class TriggerChatTransport implements ChatTransport<UIMessage> {
               // Skip an earlier turn's turn-complete (see `closesEarlierTurn`), e.g.
               // an undo action that raced this send, or a replayed message's turn.
               if (ownership.closesEarlierTurn(value.headers)) {
-                // Whatever was held before it is that turn's output; the next
-                // read, and a reload mid-turn, start after it.
+                // Whatever was held before it is that turn's output. A reload
+                // mid-turn starts after it only when no earlier reply can still be
+                // ahead: this boundary's `.in` cursor is the send's predecessor's.
+                // A lower one, or none, leaves the resume point where it was, so a
+                // reload repeats the lookup (and the hold) instead of reading the
+                // replies between this boundary and the send as its own.
                 if (holdUntilBoundary) {
                   settleHeld(false);
-                  if (state.turnStart) state.turnStart = { lastEventId: readCursor };
+                  const closedThrough = boundaryInCursor(value.headers);
+                  if (
+                    state.turnStart &&
+                    sinceInSeq !== undefined &&
+                    closedThrough !== undefined &&
+                    closedThrough >= sinceInSeq - 1
+                  ) {
+                    state.turnStart = { lastEventId: readCursor };
+                  }
                 }
                 continue;
               }

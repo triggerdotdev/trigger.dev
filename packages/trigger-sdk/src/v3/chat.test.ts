@@ -8,6 +8,7 @@ import {
   type ChatSessionPersistedState,
   type TriggerChatTransportOptions,
 } from "./chat.js";
+import { seedTranscriptCursor } from "./chat-react.js";
 
 // ───────────────────────────────────────────────────────────────────────────
 // Test helpers
@@ -150,6 +151,15 @@ function chatIdFromUrl(urlStr: string): string | undefined {
 const _DEFAULT_RUN_ID = "run_default";
 const _DEFAULT_SESSION_ID = "session_default";
 const _DEFAULT_SESSION_PAT = "pat_session_default";
+/** The `"chat-x"` cursor the transport reads from, which the persisted one can lag behind. */
+function readCursor(transport: TriggerChatTransport): string | undefined {
+  return (
+    transport as unknown as {
+      sessions: Map<string, { lastEventId?: string }>;
+    }
+  ).sessions.get("chat-x")?.lastEventId;
+}
+
 function defaultAppendResponse(): Response {
   return new Response(JSON.stringify({ ok: true }), {
     status: 200,
@@ -4324,6 +4334,64 @@ describe("TriggerChatTransport without a .out cursor", () => {
       return { session, release };
     }
 
+    // The same window for a session that starts with a saved cursor (after the
+    // earlier turn's boundary): there is no lookup, so the read-back is the first
+    // records request. The messages after the dropped turn's are answered in two
+    // steps, text now and the boundary on `finishAnswer()`, so a stream that holds
+    // until the boundary can be told from one that streams live.
+    function pendingReadBackWithCursor() {
+      let release!: () => void;
+      const until = new Promise<void>((resolve) => (release = resolve));
+      let finishAnswer: () => void = () => {};
+      const session = stubSession({
+        retained,
+        inSeq: 1,
+        holdRecordsCall: { nth: 1, until },
+        onAppend: (inSeq, log) => {
+          if (inSeq <= 2) return;
+          const next = (log.at(-1)?.seq ?? 0) + 1;
+          log.push(
+            { seq: next, chunk: { type: "text-start", id: `t-${next}` } },
+            {
+              seq: next + 1,
+              chunk: { type: "text-delta", id: `t-${next}`, delta: `answer ${inSeq}` },
+            }
+          );
+          finishAnswer = () =>
+            log.push(
+              { seq: log.at(-1)!.seq + 1, chunk: { type: "text-end", id: `t-${next}` } },
+              { seq: log.at(-1)!.seq + 2, boundary: true, inCursor: inSeq }
+            );
+        },
+      });
+      const session0: ChatSessionPersistedState = { publicAccessToken: "p", lastEventId: "4" };
+      return { session, release, session0, finishAnswer: () => finishAnswer() };
+    }
+
+    /**
+     * Reads `stream` as it goes, and waits until it has read `.out` from `cursor`
+     * past the dropped turn's boundary (seq 7): the transport's read position is
+     * then there. Whether the saved resume point moves too is for the caller to
+     * assert. `vi.waitFor` polls on a timer, so the rest of that batch, this send's
+     * answer already on `.out`, has been read too by the time it resolves.
+     */
+    async function readingPastDroppedBoundary(
+      session: { outReads: Array<string | null> },
+      transport: TriggerChatTransport,
+      cursor: string,
+      stream: ReadableStream<UIMessageChunk>
+    ) {
+      const seen: UIMessageChunk[] = [];
+      const done = (async () => {
+        for await (const chunk of stream) seen.push(chunk);
+      })();
+      await vi.waitFor(() => {
+        expect(session.outReads).toContain(cursor);
+        expect(readCursor(transport)).toBe("7");
+      });
+      return { seen, done };
+    }
+
     it("refuses a reconnect, and the send still finishes with its own answer", async () => {
       // Catches: a reconnect opening a second reader on a turn whose boundary the
       // send's stream has already read, or the send losing its answer to it.
@@ -4358,6 +4426,67 @@ describe("TriggerChatTransport without a .out cursor", () => {
       expect(texts(await drainChunks(resumed!))).toEqual(["dropped"]);
       release();
       await sentChunks;
+    });
+
+    it("answers only the send made after a reload that followed a Stop during the read-back, with a saved cursor", async () => {
+      // Catches: the reload losing the stop gate while the saved cursor sits just
+      // before the dropped turn's boundary, and the send after it reading on in live
+      // mode (or not dropping that boundary as an earlier turn's): it must read in hold
+      // mode from just before the boundary, drop it, and deliver only its own answer.
+      const { session, release, session0, finishAnswer } = pendingReadBackWithCursor();
+      const transport = makeTransport(session0);
+
+      const sent = await send(transport);
+      const sentChunks = drainChunks(sent);
+      await vi.waitFor(() => expect(session.recordsCalls()).toBe(1));
+      expect(await transport.stopGeneration("chat-x")).toBe(true);
+      const saved = transport.getSession("chat-x")!;
+      expect(saved.lastEventId).toBe("6");
+
+      const reloaded = makeTransport(saved);
+      const retry = await send(reloaded);
+      const { seen, done } = await readingPastDroppedBoundary(session, reloaded, "6", retry);
+      // Held: the dropped turn's boundary is dropped as an earlier turn's and the
+      // answer, already on `.out`, waits for its own boundary.
+      expect(texts(seen)).toEqual([]);
+      // The Stop took seq 3, so that boundary (`.in` cursor 2) is not the retry's
+      // (seq 4) predecessor's: the resume point stays unpromoted and a reload
+      // repeats the lookup.
+      expect(reloaded.getSession("chat-x")?.lastEventId).toBeUndefined();
+      finishAnswer();
+      await done;
+
+      expect(texts(seen)).toEqual(["answer 4"]);
+      release();
+      await sentChunks;
+    });
+
+    it("answers only a send that replaces the turn during the read-back, saving no cursor while it runs", async () => {
+      // Catches: a send over a turn whose read-back is pending (saved cursor just
+      // before its boundary) reading in live mode, or saving that cursor as its turn's
+      // resume point: it must hold from just before the boundary, drop it as an
+      // earlier turn's, save no cursor mid-send, and deliver only its own answer.
+      const { session, release, session0, finishAnswer } = pendingReadBackWithCursor();
+      const transport = makeTransport(session0);
+
+      const first = await send(transport);
+      const firstChunks = drainChunks(first);
+      await vi.waitFor(() => expect(session.recordsCalls()).toBe(1));
+      const replacing = await send(transport);
+
+      expect(transport.getSession("chat-x")?.lastEventId).toBeUndefined();
+      // Having dropped the earlier turn's boundary (seq 7), its turn starts after it.
+      const { seen, done } = await readingPastDroppedBoundary(session, transport, "6", replacing);
+      expect(texts(seen)).toEqual([]);
+      // That boundary's cursor (2) is the send's predecessor's (seq 3), so the
+      // resume point moves past it.
+      expect(transport.getSession("chat-x")?.lastEventId).toBe("7");
+      finishAnswer();
+      await done;
+
+      expect(texts(seen)).toEqual(["answer 3"]);
+      release();
+      await firstChunks;
     });
   });
 
@@ -4621,4 +4750,611 @@ describe("TriggerChatTransport without a .out cursor", () => {
     expect(session.outReads).toHaveLength(1);
     expect(session.recordsCalls()).toBe(1);
   });
+});
+
+describe("TriggerChatTransport sending over a reply that is still running", () => {
+  // The reply of an earlier message is still being written to `.out` when the next
+  // message is sent, and nobody stopped it: Stop on a reply the page resumed after
+  // a reload only stops reading, and a send replaces a reader it aborts itself.
+  // The new message's stream starts from a cursor partway into that reply.
+  type Item = { headers: Array<[string, string]>; chunk?: unknown };
+
+  const data = (chunk: Record<string, unknown>): Item => ({ headers: [], chunk });
+  const turnStart = (inSeq: number): Item => ({
+    headers: [
+      ["trigger-control", "turn-start"],
+      ["turn-start-in-seq", String(inSeq)],
+    ],
+  });
+  const turnJoin = (inSeq: number, injectionId: string): Item => ({
+    headers: [
+      ["trigger-control", "turn-join"],
+      ["turn-start-in-seq", String(inSeq)],
+      ["turn-join-injection-id", injectionId],
+    ],
+  });
+  const boundary = (inCursor: number): Item => ({
+    headers: [
+      ["trigger-control", "turn-complete"],
+      ["session-in-event-id", String(inCursor)],
+    ],
+  });
+  /** A text part: `start`, one `delta` per entry, `end`. */
+  const textPart = (id: string, ...deltas: string[]): Item[] => [
+    data({ type: "text-start", id }),
+    ...deltas.map((delta) => data({ type: "text-delta", id, delta })),
+    data({ type: "text-end", id }),
+  ];
+
+  const texts = (chunks: UIMessageChunk[]) =>
+    chunks
+      .filter((c): c is Extract<UIMessageChunk, { type: "text-delta" }> => c.type === "text-delta")
+      .map((c) => c.delta);
+
+  let originalFetch: typeof global.fetch;
+
+  beforeEach(() => {
+    originalFetch = global.fetch;
+  });
+
+  afterEach(() => {
+    global.fetch = originalFetch;
+    vi.restoreAllMocks();
+  });
+
+  /**
+   * A session that keeps `.out` the way the server does and stays open: a read
+   * gets the records after its cursor, then whatever `push` writes next.
+   * `.in/append` hands out the next `.in` seq, and `.out/records` serves the
+   * drain a reload uses to find where its turn starts. With `reportsInSeq: false`
+   * the append answers as an older webapp does, with no seq.
+   */
+  function liveSession(options: { inSeq: number; reportsInSeq?: boolean }) {
+    type Written = Item & { seq: number };
+    const log: Written[] = [];
+    const readers = new Set<(records: Written[]) => void>();
+    const outReads: Array<string | null> = [];
+    const appendBodies: string[] = [];
+    let inSeq = options.inSeq;
+
+    const batch = (records: Written[]) =>
+      `event: batch\ndata: ${JSON.stringify({
+        records: records.map((r) => ({
+          body: r.chunk === undefined ? "" : JSON.stringify({ data: r.chunk, id: `p-${r.seq}` }),
+          seq_num: r.seq,
+          timestamp: r.seq,
+          headers: r.headers,
+        })),
+      })}\n\n`;
+
+    global.fetch = vi.fn().mockImplementation(async (url: string | URL, init?: RequestInit) => {
+      const urlStr = typeof url === "string" ? url : url.toString();
+      if (urlStr.includes("/out/records")) {
+        const after = Number(new URL(urlStr).searchParams.get("afterEventId") ?? 0);
+        return Response.json({
+          records: log
+            .filter((r) => r.seq > after)
+            .map((r) => ({
+              data: r.chunk ?? "",
+              id: String(r.seq),
+              seqNum: r.seq,
+              ...(r.headers.length ? { headers: r.headers } : {}),
+            })),
+        });
+      }
+      if (isSessionStreamAppendUrl(urlStr)) {
+        const body = String(init?.body ?? "");
+        appendBodies.push(body);
+        if (/"kind":"stop"/.test(body)) return defaultAppendResponse();
+        if (options.reportsInSeq === false) return defaultAppendResponse();
+        inSeq += 1;
+        return new Response(JSON.stringify({ ok: true, seq: inSeq }), { status: 200 });
+      }
+      if (isSessionOutSubscribeUrl(urlStr)) {
+        const lastEventId = new Headers(init?.headers).get("Last-Event-ID");
+        outReads.push(lastEventId);
+        const after = lastEventId ? Number(lastEventId) : 0;
+        const encoder = new TextEncoder();
+        const signal = init?.signal;
+        let reader: ((records: Written[]) => void) | undefined;
+        const body = new ReadableStream<Uint8Array>({
+          start(controller) {
+            const existing = log.filter((r) => r.seq > after);
+            if (existing.length) controller.enqueue(encoder.encode(batch(existing)));
+            reader = (records) => {
+              try {
+                controller.enqueue(encoder.encode(batch(records)));
+              } catch {
+                /* the read ended */
+              }
+            };
+            readers.add(reader);
+            const onAbort = () => {
+              readers.delete(reader!);
+              const err = new Error("aborted");
+              err.name = "AbortError";
+              try {
+                controller.error(err);
+              } catch {
+                /* already errored */
+              }
+            };
+            if (signal?.aborted) onAbort();
+            else signal?.addEventListener("abort", onAbort, { once: true });
+          },
+        });
+        return new Response(body, {
+          status: 200,
+          headers: { "content-type": "text/event-stream", "X-Stream-Version": "v2" },
+        });
+      }
+      throw new Error(`Unexpected URL: ${urlStr}`);
+    });
+
+    return {
+      outReads,
+      appendBodies,
+      /** Writes records to `.out`; returns the seq of each. */
+      push(...items: Item[]): number[] {
+        const written = items.map((item): Written => ({ ...item, seq: log.length + 1 }));
+        // Number them one by one as they land.
+        written.forEach((record, i) => {
+          record.seq += i;
+        });
+        log.push(...written);
+        for (const read of readers) read(written);
+        return written.map((record) => record.seq);
+      },
+    };
+  }
+
+  const makeTransport = (session: ChatSessionPersistedState) =>
+    new TriggerChatTransport({
+      task: "my-chat-task",
+      accessToken: () => "pat",
+      sessions: { "chat-x": session },
+    });
+
+  const send = (transport: TriggerChatTransport, abortSignal?: AbortSignal) =>
+    transport.sendMessages({
+      trigger: "submit-message",
+      chatId: "chat-x",
+      messageId: undefined,
+      messages: [createUserMessage("next")],
+      abortSignal,
+    });
+
+  /** Reads a stream to its end, and renders the same chunks the way `useChat` does. */
+  async function drainAndRender(stream: ReadableStream<UIMessageChunk>) {
+    const [forChunks, forRender] = stream.tee();
+    const rendered = (async () => {
+      let last: UIMessage | undefined;
+      for await (const message of readUIMessageStream({ stream: forRender })) last = message;
+      return last?.parts.map((part) => (part.type === "text" ? part.text : "")).join("");
+    })();
+    const chunks = await drainChunks(forChunks);
+    return { chunks, text: await rendered };
+  }
+
+  /**
+   * Resume the reply to message 1 after a reload, read part of it, and let the
+   * consumer drop the stream (Stop on a resumed reply: no stop is written).
+   */
+  async function resumeAndStopReading(
+    session: ReturnType<typeof liveSession>,
+    transport: TriggerChatTransport,
+    options: { withMarker: boolean }
+  ) {
+    session.push(
+      ...(options.withMarker ? [turnStart(1)] : []),
+      data({ type: "text-start", id: "a" }),
+      data({ type: "text-delta", id: "a", delta: "A1" })
+    );
+    const abort = new AbortController();
+    const resumed = await transport.reconnectToStream({
+      chatId: "chat-x",
+      abortSignal: abort.signal,
+    });
+    const reader = resumed!.getReader();
+    const seen: UIMessageChunk[] = [];
+    while (!seen.some((c) => c.type === "text-delta")) {
+      const next = await reader.read();
+      if (next.done) break;
+      seen.push(next.value);
+    }
+    abort.abort();
+    expect(session.appendBodies).toEqual([]);
+  }
+
+  const resumedSession: ChatSessionPersistedState = {
+    publicAccessToken: "p",
+    isStreaming: true,
+    activeInputSeq: 1,
+    lastEventId: "0",
+  };
+
+  for (const via of ["sendMessages", "sendAction"] as const) {
+    it(`does not hand the rest of an unstopped earlier reply to the next message (${via})`, async () => {
+      // Catches: a send after Stop on a resumed reply streaming from a cursor partway
+      // into the old reply. Its remaining chunks reached the new answer, and `useChat`
+      // failed on a `text-delta` whose `text-start` it never saw; an action that
+      // becomes a turn opens its stream the same way.
+      const session = liveSession({ inSeq: 1 });
+      const transport = makeTransport(resumedSession);
+      await resumeAndStopReading(session, transport, { withMarker: true });
+
+      const stream =
+        via === "sendMessages" ? await send(transport) : await transport.sendAction("chat-x", {});
+      session.push(
+        data({ type: "text-delta", id: "a", delta: "A2" }),
+        data({ type: "text-end", id: "a" }),
+        boundary(1),
+        turnStart(2),
+        ...textPart("b", "B1"),
+        boundary(2)
+      );
+      const { chunks, text } = await drainAndRender(stream);
+
+      expect(texts(chunks)).toEqual(["B1"]);
+      expect(text).toBe("B1");
+    });
+  }
+
+  it("drops the old reply's tail at its boundary for an agent that writes no markers", async () => {
+    // Catches: the same bug with an agent that writes no turn markers. Nothing marks
+    // the old reply's tail as another's, so it is held until its boundary says so,
+    // and the new reply (not marked either) is delivered at its own boundary.
+    const session = liveSession({ inSeq: 1 });
+    const transport = makeTransport(resumedSession);
+    await resumeAndStopReading(session, transport, { withMarker: false });
+
+    const stream = await send(transport);
+    session.push(
+      data({ type: "text-delta", id: "a", delta: "A2" }),
+      data({ type: "text-end", id: "a" }),
+      boundary(1),
+      ...textPart("b", "B1"),
+      boundary(2)
+    );
+    const { chunks, text } = await drainAndRender(stream);
+
+    expect(texts(chunks)).toEqual(["B1"]);
+    expect(text).toBe("B1");
+  });
+
+  it("gives a message folded into the running reply the rest of it from the injection on", async () => {
+    // Catches: holding the send's stream back when the agent folds the message into
+    // the reply still running: the join must hand the message the rest of that reply
+    // (and the old tail before the join must not reach it).
+    const session = liveSession({ inSeq: 1 });
+    const transport = makeTransport(resumedSession);
+    await resumeAndStopReading(session, transport, { withMarker: true });
+
+    const stream = await send(transport);
+    session.push(
+      data({ type: "text-delta", id: "a", delta: "A2" }),
+      turnJoin(2, "inj-1"),
+      data({ type: "data-pending-message-injected", id: "inj-1", data: {} }),
+      ...textPart("b", "rest of the reply"),
+      boundary(2)
+    );
+    const { chunks, text } = await drainAndRender(stream);
+
+    expect(texts(chunks)).toEqual(["rest of the reply"]);
+    expect(text).toBe("rest of the reply");
+  });
+
+  it("streams a send live when no earlier reply is outstanding", async () => {
+    // Catches: holding every send until its boundary: a send over a finished reply
+    // must keep streaming as chunks arrive, and move the cursor with them.
+    const session = liveSession({ inSeq: 1 });
+    const earlier = session.push(...textPart("a", "A1"), boundary(1));
+    const transport = makeTransport({
+      publicAccessToken: "p",
+      lastEventId: String(earlier.at(-1)),
+    });
+
+    const stream = await send(transport);
+    const [, deltaSeq] = session.push(...textPart("b", "B1").slice(0, 2));
+    const reader = stream.getReader();
+    const live = await Promise.race([
+      reader.read().then((next) => next.value),
+      new Promise((resolve) => setTimeout(() => resolve("held"), 500)),
+    ]);
+
+    expect(live).toEqual({ type: "text-start", id: "b" });
+    expect(session.outReads).toEqual([String(earlier.at(-1))]);
+    await vi.waitFor(() => expect(readCursor(transport)).toBe(String(deltaSeq)));
+    reader.releaseLock();
+    session.push(...textPart("b", "B1").slice(2), boundary(2));
+  });
+
+  it("streams a send live after a stop, whose gate already skips the stopped reply", async () => {
+    // Catches: holding the send of a stopped reply too: the stop gate skips that
+    // reply to its boundary, so the new answer must stream live after it, not wait
+    // for its own boundary.
+    const session = liveSession({ inSeq: 1 });
+    const transport = makeTransport(resumedSession);
+    await resumeAndStopReading(session, transport, { withMarker: false });
+    expect(await transport.stopGeneration("chat-x")).toBe(true);
+
+    const reader = (await send(transport)).getReader();
+    session.push(
+      data({ type: "text-delta", id: "a", delta: "A2" }),
+      boundary(1),
+      data({ type: "text-start", id: "b" })
+    );
+    const live = await Promise.race([
+      reader.read().then((next) => next.value),
+      new Promise((resolve) => setTimeout(() => resolve("held"), 500)),
+    ]);
+
+    expect(live).toEqual({ type: "text-start", id: "b" });
+    reader.releaseLock();
+    session.push(data({ type: "text-end", id: "b" }), boundary(2));
+  });
+
+  it("streams a send live when the webapp reports no `.in` seq for it", async () => {
+    // Catches: holding a send the webapp gave no `.in` seq. Without it the stream
+    // can't tell the turns apart, so holding would only delay its answer to a
+    // boundary, and it reads on live as before.
+    const session = liveSession({ inSeq: 1, reportsInSeq: false });
+    const transport = makeTransport(resumedSession);
+    await resumeAndStopReading(session, transport, { withMarker: true });
+
+    const reader = (await send(transport)).getReader();
+    session.push(data({ type: "text-delta", id: "a", delta: "A2" }));
+    const live = await Promise.race([
+      reader.read().then((next) => next.value),
+      new Promise((resolve) => setTimeout(() => resolve("held"), 500)),
+    ]);
+
+    expect(live).toEqual({ type: "text-delta", id: "a", delta: "A2" });
+    reader.releaseLock();
+    session.push(data({ type: "text-end", id: "a" }), boundary(1));
+  });
+
+  it("drops all of an earlier reply when the send starts from where that reply began", async () => {
+    // Catches: holding mode breaking the marker path: a send whose cursor was
+    // rewound to the old reply's start must drop that reply by its marker, and
+    // render only its own.
+    const session = liveSession({ inSeq: 1 });
+    session.push(
+      turnStart(1),
+      ...textPart("a", "A1", "A2"),
+      boundary(1),
+      turnStart(2),
+      ...textPart("b", "B1"),
+      boundary(2)
+    );
+    const transport = makeTransport(resumedSession);
+
+    const { chunks, text } = await drainAndRender(await send(transport));
+
+    expect(texts(chunks)).toEqual(["B1"]);
+    expect(text).toBe("B1");
+  });
+
+  it("gives a send made while an earlier cursorless send is still holding only its own answer", async () => {
+    // Catches: a send made before the session has any cursor, while an earlier
+    // cursorless send's stream is still holding an agent's unmarked output (an
+    // owed earlier answer ahead of it), taking that output or the earlier send's
+    // answer as its own instead of holding until its own boundary.
+    const session = liveSession({ inSeq: 2 });
+    session.push(...textPart("z", "Z1"), boundary(1));
+    const transport = makeTransport({ publicAccessToken: "p" });
+
+    // Message 2 is still owed an answer, so this send's lookup holds.
+    await send(transport);
+    session.push(...textPart("b", "answer 2"));
+    expect(readCursor(transport)).toBeUndefined();
+
+    const stream = await send(transport);
+    session.push(
+      boundary(2),
+      ...textPart("c", "answer 3"),
+      boundary(3),
+      ...textPart("d", "answer 4"),
+      boundary(4)
+    );
+    const { chunks, text } = await drainAndRender(stream);
+
+    expect(texts(chunks)).toEqual(["answer 4"]);
+    expect(text).toBe("answer 4");
+  });
+
+  describe("a reload while the send is waiting out the old reply", () => {
+    // Catches (both): a reload resuming from a cursor partway into the old reply,
+    // which replays its tail into the new answer.
+    async function sendOverResumedReply(withMarker: boolean) {
+      const session = liveSession({ inSeq: 1 });
+      const transport = makeTransport(resumedSession);
+      await resumeAndStopReading(session, transport, { withMarker });
+      const abort = new AbortController();
+      const stream = await send(transport, abort.signal);
+      return { session, transport, stream, abort };
+    }
+
+    it("replays nothing of the old reply from the persisted cursor before its boundary", async () => {
+      const { session, transport, abort } = await sendOverResumedReply(true);
+      session.push(
+        data({ type: "text-delta", id: "a", delta: "A2" }),
+        data({ type: "text-end", id: "a" })
+      );
+      await vi.waitFor(() => expect(readCursor(transport)).toBe("3"));
+
+      const reloaded = makeTransport({
+        ...(transport.getSession("chat-x") as ChatSessionPersistedState),
+      });
+      const resumed = await reloaded.reconnectToStream({ chatId: "chat-x" });
+      session.push(boundary(1), turnStart(2), ...textPart("b", "B1"), boundary(2));
+      const { chunks, text } = await drainAndRender(resumed!);
+      abort.abort();
+
+      expect(texts(chunks)).toEqual(["B1"]);
+      expect(text).toBe("B1");
+    });
+
+    it("persists the old reply's boundary as the resume point once it is read", async () => {
+      const { session, transport, abort } = await sendOverResumedReply(false);
+      const seqs = session.push(
+        data({ type: "text-delta", id: "a", delta: "A2" }),
+        data({ type: "text-end", id: "a" }),
+        boundary(1)
+      );
+      const boundarySeq = String(seqs.at(-1));
+      await vi.waitFor(() => expect(transport.getSession("chat-x")?.lastEventId).toBe(boundarySeq));
+
+      const reloaded = makeTransport({
+        ...(transport.getSession("chat-x") as ChatSessionPersistedState),
+      });
+      const resumed = await reloaded.reconnectToStream({ chatId: "chat-x" });
+      session.push(...textPart("b", "B1"), boundary(2));
+      const { chunks } = await drainAndRender(resumed!);
+      abort.abort();
+
+      expect(texts(chunks)).toEqual(["B1"]);
+      expect(session.outReads.at(-1)).toBe(boundarySeq);
+    });
+
+    it("replays nothing of an earlier reply (B) after a reload once a later send (C) read A's boundary", async () => {
+      // Catches: A running, B then C sent, an agent that writes no markers. C's stream
+      // dropped A's boundary and promoted the resume point to it though B was still
+      // ahead; a reload before B closed restored that cursor, so the lookup (and the
+      // hold) was skipped and B's chunks reached C's stream: ["B1", "C1"].
+      const session = liveSession({ inSeq: 1 });
+      const transport = makeTransport(resumedSession);
+      await resumeAndStopReading(session, transport, { withMarker: false });
+      await send(transport); // B, `.in` seq 2: superseded by C below
+      const abort = new AbortController();
+      await send(transport, abort.signal); // C, `.in` seq 3
+      const seqs = session.push(
+        data({ type: "text-delta", id: "a", delta: "A2" }),
+        data({ type: "text-end", id: "a" }),
+        boundary(1)
+      );
+      const boundarySeq = String(seqs.at(-1));
+      // C's stream has read A's boundary (its in-memory cursor is there); what a
+      // reload sees is the saved resume point, which must not skip B.
+      await vi.waitFor(() => expect(readCursor(transport)).toBe(boundarySeq));
+
+      const reloaded = makeTransport({
+        ...(transport.getSession("chat-x") as ChatSessionPersistedState),
+      });
+      const resumed = await reloaded.reconnectToStream({ chatId: "chat-x" });
+      session.push(...textPart("b", "B1"), boundary(2), ...textPart("c", "C1"), boundary(3));
+      const { chunks } = await drainAndRender(resumed!);
+      abort.abort();
+
+      expect(texts(chunks)).toEqual(["C1"]);
+    });
+
+    // `useLoadTranscript` seeds the transcript's cursors. In this window chat.agent's
+    // last save is the old reply's turn-start: `.out` at the boundary before that
+    // reply, and `.in` carried from that save's predecessor, below the new send's seq.
+    const transcriptCursors = { lastOutEventId: "0", lastInEventId: "0" };
+
+    /** The page reloads with the session the send persisted, before the old reply ends. */
+    async function persistedMidReply(withMarker: boolean) {
+      const sent = await sendOverResumedReply(withMarker);
+      sent.session.push(
+        data({ type: "text-delta", id: "a", delta: "A2" }),
+        data({ type: "text-end", id: "a" })
+      );
+      const persisted = { ...(sent.transport.getSession("chat-x") as ChatSessionPersistedState) };
+      expect(persisted.lastEventId).toBeUndefined();
+      return { ...sent, persisted };
+    }
+
+    async function resumeAfterReload(
+      session: ReturnType<typeof liveSession>,
+      reloaded: TriggerChatTransport,
+      withMarker: boolean
+    ) {
+      const resumed = await reloaded.reconnectToStream({ chatId: "chat-x" });
+      session.push(
+        boundary(1),
+        ...(withMarker ? [turnStart(2)] : []),
+        ...textPart("b", "B1"),
+        boundary(2)
+      );
+      return drainAndRender(resumed!);
+    }
+
+    for (const withMarker of [false, true]) {
+      it(`replays nothing of the old reply when a loaded transcript seeds the cursor (${
+        withMarker ? "with" : "no"
+      } turn markers)`, async () => {
+        // Catches: the transcript's cursor filling the empty one the send persisted.
+        // The resume then read from before the old reply with nothing to hold it, and
+        // an agent that writes no markers gave nothing to drop it by either.
+        const { session, persisted, abort } = await persistedMidReply(withMarker);
+
+        const reloaded = makeTransport(persisted);
+        seedTranscriptCursor(reloaded, "chat-x", transcriptCursors);
+        const { chunks, text } = await resumeAfterReload(session, reloaded, withMarker);
+        abort.abort();
+
+        expect(texts(chunks)).toEqual(["B1"]);
+        expect(text).toBe("B1");
+      });
+    }
+
+    it("replays nothing of the old reply when the transcript loads before the session is restored", async () => {
+      // Catches: the same cursor held until `setSession`, which applied it to the
+      // restored session the same way.
+      const { session, persisted, abort } = await persistedMidReply(false);
+
+      const reloaded = new TriggerChatTransport({ task: "my-chat-task", accessToken: () => "pat" });
+      seedTranscriptCursor(reloaded, "chat-x", transcriptCursors);
+      reloaded.setSession("chat-x", persisted);
+      const { chunks, text } = await resumeAfterReload(session, reloaded, false);
+      abort.abort();
+
+      expect(texts(chunks)).toEqual(["B1"]);
+      expect(text).toBe("B1");
+    });
+  });
+
+  for (const withMarker of [false, true]) {
+    it(`replays nothing on top of a transcript that already holds the outstanding reply (${
+      withMarker ? "with" : "no"
+    } turn markers)`, async () => {
+      // Catches: refusing the transcript's cursor whenever a send is outstanding. A
+      // new chat's first send persists no cursor; the tab closes mid-reply and opens
+      // after the reply ended, with the transcript saved at that reply's boundary.
+      // The resume must read from there, not replay the reply the transcript shows.
+      const session = liveSession({ inSeq: 1 });
+      const seqs = session.push(
+        ...(withMarker ? [turnStart(1)] : []),
+        ...textPart("a", "A1"),
+        boundary(1)
+      );
+      const replyBoundary = String(seqs.at(-1));
+      const transport = makeTransport({
+        publicAccessToken: "p",
+        activeInputSeq: 1,
+        isStreaming: true,
+      });
+      seedTranscriptCursor(transport, "chat-x", {
+        lastOutEventId: replyBoundary,
+        lastInEventId: "1",
+      });
+
+      const abort = new AbortController();
+      const resumed = await transport.reconnectToStream({
+        chatId: "chat-x",
+        abortSignal: abort.signal,
+      });
+      const reader = resumed!.getReader();
+      const first = await Promise.race([
+        reader.read().then((next) => next.value),
+        new Promise((resolve) => setTimeout(() => resolve("nothing"), 300)),
+      ]);
+      abort.abort();
+
+      expect(first).toBe("nothing");
+      expect(session.outReads).toEqual([replyBoundary]);
+    });
+  }
 });

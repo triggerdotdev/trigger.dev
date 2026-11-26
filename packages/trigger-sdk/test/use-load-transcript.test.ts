@@ -55,4 +55,78 @@ describe("seedTranscriptCursor + TriggerChatTransport resume cursor", () => {
 
     expect(transport.getSession("chat-1")?.lastEventId).toBe("50");
   });
+
+  describe("with a send outstanding and no cursor", () => {
+    // A send over a reply still running persists no cursor, so a reload finds where
+    // its turn starts. A transcript saved before that send was answered ends before
+    // the old reply, and reading from there would replay it into the new answer.
+    it("leaves the cursor to the turn-start lookup when the transcript hasn't answered the send", () => {
+      // Catches: the transcript's cursor filling the empty one either way.
+      const transport = transportWithStart();
+
+      transport.setSession("chat-1", {
+        publicAccessToken: "pat",
+        activeInputSeq: 5,
+        isStreaming: true,
+      });
+      seedTranscriptCursor(transport, "chat-1", { lastOutEventId: "14", lastInEventId: "4" });
+
+      expect(transport.getSession("chat-1")?.lastEventId).toBeUndefined();
+    });
+
+    it("takes the cursor of a transcript saved after the send was answered", () => {
+      // Catches: refusing it there too, which replays the finished reply on top of
+      // the transcript that holds it.
+      const transport = transportWithStart();
+
+      transport.setSession("chat-1", {
+        publicAccessToken: "pat",
+        activeInputSeq: 5,
+        isStreaming: true,
+      });
+      seedTranscriptCursor(transport, "chat-1", { lastOutEventId: "14", lastInEventId: "5" });
+
+      expect(transport.getSession("chat-1")?.lastEventId).toBe("14");
+    });
+
+    it("takes the cursor of a transcript that carries no `.in` cursor, as before", () => {
+      // Catches: refusing a cursor the transport can't place: with no `.in` cursor
+      // there is no telling whether the send was answered.
+      const transport = transportWithStart();
+
+      transport.setSession("chat-1", {
+        publicAccessToken: "pat",
+        activeInputSeq: 5,
+        isStreaming: true,
+      });
+      seedTranscriptCursor(transport, "chat-1", { lastOutEventId: "14" });
+
+      expect(transport.getSession("chat-1")?.lastEventId).toBe("14");
+    });
+
+    it("takes the cursor for a session restored mid-turn with no `.in` seq", () => {
+      // Catches: treating a streaming session as a send outstanding: without the
+      // send's seq there is no lookup to leave it to.
+      const transport = transportWithStart();
+
+      transport.setSession("chat-1", { publicAccessToken: "pat", isStreaming: true });
+      seedTranscriptCursor(transport, "chat-1", { lastOutEventId: "14", lastInEventId: "4" });
+
+      expect(transport.getSession("chat-1")?.lastEventId).toBe("14");
+    });
+
+    it("decides a cursor seeded before the session is restored the same way", () => {
+      // Catches: the pending path applying the cursor without the check.
+      const transport = transportWithStart();
+
+      seedTranscriptCursor(transport, "chat-1", { lastOutEventId: "14", lastInEventId: "4" });
+      transport.setSession("chat-1", {
+        publicAccessToken: "pat",
+        activeInputSeq: 5,
+        isStreaming: true,
+      });
+
+      expect(transport.getSession("chat-1")?.lastEventId).toBeUndefined();
+    });
+  });
 });
