@@ -94,7 +94,7 @@ const GithubAppEnvSchema = z.preprocess(
       z.object({
         GITHUB_APP_ENABLED: z.literal("1"),
         GITHUB_APP_ID: z.string(),
-        GITHUB_APP_PRIVATE_KEY: z.string(),
+        GITHUB_APP_PRIVATE_KEY: z.string().transform((key) => key.replace(/\\n/g, "\n")),
         GITHUB_APP_WEBHOOK_SECRET: z.string(),
         GITHUB_APP_SLUG: z.string(),
         GITHUB_APP_CLIENT_ID: z.string().min(1).optional(),
