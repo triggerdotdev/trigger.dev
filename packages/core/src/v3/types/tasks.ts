@@ -16,7 +16,7 @@ import type {
   OnStartAttemptHookFunction,
 } from "../lifecycleHooks/types.js";
 import type { RunTags } from "../schemas/api.js";
-import type { EnvVarGrant } from "../schemas/executionPolicy.js";
+import type { EnvVarGrant, SandboxNetwork } from "../schemas/executionPolicy.js";
 import type {
   MachineCpu,
   MachineMemory,
@@ -193,6 +193,13 @@ type CommonTaskOptions<
         envVars?: EnvVarGrant;
         /** Additional API scopes. Use `basic` to inspect/manage this run and exchange messages with its session, `oidc` for OIDC tokens, or explicit scope strings. */
         scopes?: string | string[];
+        /**
+         * Outbound internet access. Defaults to `"restricted"`: only Trigger.dev's own services, plus
+         * the allowed domains of any granted Vault (proxy-only) variables. `{ allow: [...] }` also
+         * allows HTTPS to the listed hosts (`"api.example.com"` or `"*.example.com"`). Restricted
+         * sandboxes can only make outbound connections on port 443.
+         */
+        network?: SandboxNetwork;
       };
 
   /** The retry settings when an uncaught error is thrown.

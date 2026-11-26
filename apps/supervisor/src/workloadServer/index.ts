@@ -682,6 +682,8 @@ export class WorkloadServer extends EventEmitter<WorkloadServerEvents> {
                         ...body,
                         isWarmStart: placement?.isWarmStart ?? body.isWarmStart,
                         supportsSecretProxy,
+                        // The trusted Runner's interceptor and CNI policy restrict this VM.
+                        supportsNetworkPolicy: !!placement?.restrictedNetwork,
                         workerCell: this.workerStamp.workerCell,
                         workerLane: this.workerStamp.workerLane,
                       },
@@ -1089,6 +1091,9 @@ export class WorkloadServer extends EventEmitter<WorkloadServerEvents> {
                   {
                     retryBudget: this.continueRetryBudget,
                     supportsSecretProxy: !!placement || !!tracked,
+                    supportsNetworkPolicy: tracked
+                      ? !!proxy?.restrictsNetwork(params.runFriendlyId)
+                      : !!placement?.restrictedNetwork,
                     sandboxRunId: auth.sandboxRunId,
                     workloadToken: auth.workloadToken,
                   }

@@ -451,7 +451,8 @@ engineTest(
         triggerAction: "trigger",
         rootTriggerSource: "sdk",
         executionMode: "SANDBOX",
-        executionPolicy: sandboxExecutionPolicy({ envVars: ["GRANTED"] }),
+        // An unrestricted VM: the restricted network is covered by the interceptor tests.
+        executionPolicy: sandboxExecutionPolicy({ envVars: ["GRANTED"], network: "unrestricted" }),
       },
       singleUse: true,
     });

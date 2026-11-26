@@ -328,13 +328,17 @@ export class SupervisorHttpClient {
     options?: {
       retryBudget?: ContinueRetryBudget;
       supportsSecretProxy?: boolean;
+      supportsNetworkPolicy?: boolean;
       sandboxRunId?: string;
       workloadToken?: string;
     }
   ): Promise<
     ApiResult<WorkerApiContinueRunExecutionResponseBody> & { retry?: ContinueRetrySummary }
   > {
-    const query = options?.supportsSecretProxy ? "?supportsSecretProxy=1" : "";
+    const params = new URLSearchParams();
+    if (options?.supportsSecretProxy) params.set("supportsSecretProxy", "1");
+    if (options?.supportsNetworkPolicy) params.set("supportsNetworkPolicy", "1");
+    const query = params.size ? `?${params}` : "";
     const continueRun = (retry: ZodFetchOptions["retry"], signal?: AbortSignal) =>
       this.request(
         "continue_run_execution",

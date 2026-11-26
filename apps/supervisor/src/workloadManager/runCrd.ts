@@ -16,6 +16,7 @@ import type {
 } from "@trigger.dev/core/v3";
 import {
   formatComputeCheckpointLocation,
+  hasRestrictedNetwork,
   isSandboxRun,
   parseComputeCheckpointLocation,
 } from "@trigger.dev/core/v3";
@@ -1560,6 +1561,8 @@ export function runnerBodyFor(
     restore?: RunnerRestore;
   }
 ) {
+  const restrictedNetwork =
+    opts.workloadNetwork === "proxy" && hasRestrictedNetwork(opts.annotations);
   return {
     apiVersion: `${GROUP}/${VERSION}`,
     kind: "Runner",
@@ -1610,9 +1613,11 @@ export function runnerBodyFor(
       // Carried, not derived: it decides affinity for every run this runner
       // later serves.
       ...(isScheduledRun(opts) ? { isScheduledRun: true } : {}),
-      ...(opts.hasPrivateLink ? { hasPrivateLink: true } : {}),
+      // A restricted network reaches only HTTPS, so not the org's private endpoints either.
+      ...(opts.hasPrivateLink && !restrictedNetwork ? { hasPrivateLink: true } : {}),
       ...(isSandboxRun(opts.annotations) ? { singleUse: true } : {}),
       ...(opts.workloadNetwork === "proxy" ? { networkPlugin: true } : {}),
+      ...(restrictedNetwork ? { restrictedNetwork: true } : {}),
       ...(meta.restore ? { restore: meta.restore } : {}),
     },
   };

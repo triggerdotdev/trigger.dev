@@ -61,6 +61,7 @@ describe("WorkloadServer attempt start", () => {
       {
         isWarmStart: true,
         supportsSecretProxy: false,
+        supportsNetworkPolicy: false,
         workerCell: "cell-a",
         workerLane: "microvm",
       },
@@ -71,18 +72,24 @@ describe("WorkloadServer attempt start", () => {
     );
   });
 
-  it("does not let the runner choose its own cell or lane", async () => {
+  it("does not let the runner choose its own cell, lane or capabilities", async () => {
     const res = await startAttempt({
       workerCell: "spoofed",
       workerLane: "container",
       supportsSecretProxy: true,
+      supportsNetworkPolicy: true,
     });
 
     expect(res.status).toBe(200);
     expect(startRunAttempt).toHaveBeenLastCalledWith(
       "run_1",
       "snapshot_1",
-      { supportsSecretProxy: false, workerCell: "cell-a", workerLane: "microvm" },
+      {
+        supportsSecretProxy: false,
+        supportsNetworkPolicy: false,
+        workerCell: "cell-a",
+        workerLane: "microvm",
+      },
       "runner_1",
       undefined,
       undefined,

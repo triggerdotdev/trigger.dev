@@ -442,6 +442,9 @@ const EnvironmentSchema = z
     ENCRYPTION_KEYRING: z.string().transform(parseEncryptionKeyring).optional(),
     SECRET_PROXY_ENABLED: BoolEnv.default(false),
     SECRET_PROXY_RESOLVER_ENABLED: BoolEnv.default(false),
+    // Comma-separated HTTPS hosts every restricted sandbox may reach, beyond those derived from the
+    // platform's own URLs (API, streams, object storage, OTel).
+    SANDBOX_NETWORK_PLATFORM_HOSTS: z.string().optional(),
     SECRET_PROXY_PLACEHOLDER_KEYS: z.preprocess(
       (value) => (value === "" ? undefined : value),
       z.string().optional()

@@ -19,15 +19,50 @@ export const EnvVarGrant = z.union([
 ]);
 export type EnvVarGrant = z.infer<typeof EnvVarGrant>;
 
+export const MAX_NETWORK_ALLOW_HOSTS = 100;
+const HOST_LABEL = "[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?";
+// Lowercase DNS names with at least two labels, optionally `*.` for any subdomain. No IP literals.
+const NETWORK_HOST = new RegExp(`^(?:\\*\\.)?(?:${HOST_LABEL}\\.)+${HOST_LABEL}$`);
+
+export function isNetworkAllowHost(host: string): boolean {
+  return host.length <= 253 && NETWORK_HOST.test(host) && !/^[0-9.]+$/.test(host);
+}
+
+export const NetworkAllowHost = z.string().refine(isNetworkAllowHost, {
+  message: 'Expected a lowercase hostname such as "api.example.com" or "*.example.com"',
+});
+
+/**
+ * Outbound internet access. `"restricted"` allows only Trigger.dev's own services; `allow` adds the
+ * listed HTTPS hosts. Hosts of granted proxy-only variables are always reachable through the
+ * secret proxy.
+ */
+export const SandboxNetwork = z.union([
+  z.literal("restricted"),
+  z.literal("unrestricted"),
+  z.object({ allow: z.array(NetworkAllowHost).max(MAX_NETWORK_ALLOW_HOSTS) }).strict(),
+]);
+export type SandboxNetwork = z.infer<typeof SandboxNetwork>;
+
+/** Stored form: `"restricted"` is `{ allow: [] }`. */
+export const RunNetworkPolicy = z.union([
+  z.literal("unrestricted"),
+  z.object({ allow: z.array(NetworkAllowHost).max(MAX_NETWORK_ALLOW_HOSTS) }).strict(),
+]);
+export type RunNetworkPolicy = z.infer<typeof RunNetworkPolicy>;
+
 /**
  * What a run may access. Absent means the standard behaviour: root key, admin run token and every
  * environment variable. Scopes may contain `$run` and `$session`, filled in when the token is minted.
+ * An absent `network` is restricted, so a reader that drops the field (an older webapp replica or
+ * a stale cache entry) fails closed. New sandbox policies always set it.
  */
 export const RunExecutionPolicy = z.object({
   version: z.literal(1),
   rootKey: z.boolean(),
   scopes: z.array(z.string().min(1)).max(MAX_POLICY_SCOPES),
   envVars: EnvVarGrant,
+  network: RunNetworkPolicy.optional(),
 });
 export type RunExecutionPolicy = z.infer<typeof RunExecutionPolicy>;
 
@@ -38,6 +73,7 @@ export const SandboxTaskConfig = z.object({
     .array(z.string().min(1))
     .max(MAX_POLICY_SCOPES - SANDBOX_BASELINE_SCOPES.length)
     .optional(),
+  network: SandboxNetwork.optional(),
   // Preserves the task's original trigger source.
   triggerSource: z.string().optional(),
 });
@@ -49,7 +85,32 @@ export function sandboxExecutionPolicy(config: SandboxTaskConfig): RunExecutionP
     rootKey: false,
     scopes: [...SANDBOX_BASELINE_SCOPES, ...(config.scopes ?? [])],
     envVars: config.envVars ?? [],
+    network:
+      config.network === undefined || config.network === "restricted"
+        ? { allow: [] }
+        : config.network,
   };
+}
+
+/**
+ * The hosts a pinned policy restricts outbound HTTPS to, or undefined when the network is
+ * unrestricted. Standard runs (no policy) are unrestricted.
+ */
+export function restrictedNetwork(
+  policy: Pick<RunExecutionPolicy, "network"> | undefined
+): { allow: string[] } | undefined {
+  if (!policy || policy.network === "unrestricted") return undefined;
+  return policy.network ?? { allow: [] };
+}
+
+/** True when stored run annotations pin a policy that restricts the network. */
+export function hasRestrictedNetwork(annotations: unknown): boolean {
+  if (!hasPinnedExecutionPolicy(annotations)) return false;
+  const parsed = RunExecutionPolicy.safeParse(
+    (annotations as Record<string, unknown>).executionPolicy
+  );
+  // An unreadable policy fails closed here; attempt start refuses it anyway.
+  return !parsed.success || restrictedNetwork(parsed.data) !== undefined;
 }
 
 /** Fills in placeholders. Scopes whose placeholder has no value are dropped, never minted literally. */

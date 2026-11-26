@@ -14,7 +14,12 @@ import type {
   TaskRunExecutionResult,
 } from "@trigger.dev/core/v3";
 import { getMeter } from "@internal/tracing";
-import { requiresSecretProxy, SemanticInternalAttributes } from "@trigger.dev/core/v3";
+import {
+  hasRestrictedNetwork,
+  requiresSecretProxy,
+  SemanticInternalAttributes,
+} from "@trigger.dev/core/v3";
+import { runNetworkAllow } from "./runNetworkPolicy.server";
 import { fromFriendlyId } from "@trigger.dev/core/v3/isomorphic";
 import {
   WORKER_HEADERS,
@@ -84,6 +89,14 @@ const authenticatedWorkerInstanceCache = singleton(
   "authenticatedWorkerInstanceCache",
   createAuthenticatedWorkerInstanceCache
 );
+
+// Retryable: the run requeues for a worker whose interceptor and CNI policy enforce it.
+function networkPolicyUnsupported() {
+  return json(
+    { error: "This run's network policy needs a worker that enforces it" },
+    { status: 409 }
+  );
+}
 
 function secretProxyPlacementRequired() {
   return json({ error: "Run requires secret proxy placement" }, { status: 409 });
@@ -750,6 +763,7 @@ export class AuthenticatedWorkerInstance extends WithRunEngine {
     supportsRootKeyFreeExecution,
     supportsSecretProxy,
     startVersion,
+    supportsNetworkPolicy,
   }: {
     runFriendlyId: string;
     snapshotFriendlyId: string;
@@ -764,6 +778,7 @@ export class AuthenticatedWorkerInstance extends WithRunEngine {
     supportsRootKeyFreeExecution?: boolean;
     supportsSecretProxy?: boolean;
     startVersion?: WorkerActionTokenStartVersion;
+    supportsNetworkPolicy?: boolean;
   }): Promise<
     StartRunAttemptResult & {
       envVars: Record<string, string>;
@@ -791,6 +806,9 @@ export class AuthenticatedWorkerInstance extends WithRunEngine {
       });
     }
     if (secretProxyRequired && !supportsSecretProxy) throw secretProxyPlacementRequired();
+    const networkAllow = runNetworkAllow(pinned);
+    if (networkAllow && (!supportsNetworkPolicy || !supportsSecretProxy))
+      throw networkPolicyUnsupported();
     const requiresRunToken = rootKeyInjectionDisabled(environment);
 
     const runTokenSupported = supportsRunTokenRefresh === true && environmentId === environment.id;
@@ -845,13 +863,15 @@ export class AuthenticatedWorkerInstance extends WithRunEngine {
           env.CONTROL_PLANE_DEQUEUE_READS_FROM_REPLICA === "1" ? this._replica : this._prisma
         )
       : undefined;
-    const proxyHosts = await proxy?.preflightRuntime(
-      environment.projectId,
-      environment.id,
-      prepared.proxyValues,
-      runTokenAvailable,
-      supportsSecretProxy === true
-    );
+    const proxyHosts =
+      (await proxy?.preflightRuntime(
+        environment.projectId,
+        environment.id,
+        prepared.proxyValues,
+        runTokenAvailable,
+        supportsSecretProxy === true
+      )) ?? [];
+    const delivery = proxy ?? (networkAllow ? secretProxy(this._replica) : undefined);
 
     const stamped = acceptsWorkerStamp(this.type);
 
@@ -892,14 +912,19 @@ export class AuthenticatedWorkerInstance extends WithRunEngine {
         runnerId,
       });
     }
-    if (proxy && runToken) {
-      const delivery = proxy.finalizeRuntime(prepared.proxyValues, proxyHosts!, {
-        runId: engineResult.execution.run.id,
-        attempt: engineResult.execution.attempt.number,
-        expiresAtMs: decodeJwt(runToken).exp! * 1000,
-      });
-      secretProxyMetadata = delivery.secretProxy;
-      variables = [...variables, ...delivery.placeholders];
+    if (delivery && runToken) {
+      const finalized = delivery.finalizeRuntime(
+        prepared.proxyValues,
+        proxyHosts,
+        {
+          runId: engineResult.execution.run.id,
+          attempt: engineResult.execution.attempt.number,
+          expiresAtMs: decodeJwt(runToken).exp! * 1000,
+        },
+        networkAllow
+      );
+      secretProxyMetadata = finalized.secretProxy;
+      variables = [...variables, ...finalized.placeholders];
     }
 
     const usageAuth = this.initialUsageAuthFor({
@@ -1150,6 +1175,7 @@ export class AuthenticatedWorkerInstance extends WithRunEngine {
     runnerId,
     environmentId,
     supportsSecretProxy,
+    supportsNetworkPolicy,
     sandboxRunId,
   }: {
     runFriendlyId: string;
@@ -1157,16 +1183,24 @@ export class AuthenticatedWorkerInstance extends WithRunEngine {
     runnerId?: string;
     environmentId?: string;
     supportsSecretProxy?: boolean;
+    supportsNetworkPolicy?: boolean;
     sandboxRunId?: string;
   }) {
-    await this.assertCreatedAtGate({
-      runId: fromFriendlyId(runFriendlyId),
-      environmentId,
-      action: "continue",
-    });
+    const runId = fromFriendlyId(runFriendlyId);
+    await this.assertCreatedAtGate({ runId, environmentId, action: "continue" });
+    // A restore can land on a worker that cannot enforce the network, so check before continuing.
+    // Only sandbox runs can be restricted, and start already requires their verified run claim.
+    if (sandboxRunId === runFriendlyId && (!supportsNetworkPolicy || !supportsSecretProxy)) {
+      const where = { id: runId };
+      const select = { select: { annotations: true } };
+      const run =
+        (await this._engine.runStore.findRun(where, select)) ??
+        (await this._engine.runStore.findRunOnPrimary(where, select));
+      if (run && hasRestrictedNetwork(run.annotations)) throw networkPolicyUnsupported();
+    }
 
     const result = await this._engine.continueRunExecution({
-      runId: fromFriendlyId(runFriendlyId),
+      runId,
       snapshotId: fromFriendlyId(snapshotFriendlyId),
       workerId: this.workerInstanceId,
       runnerId,
@@ -1195,12 +1229,13 @@ export class AuthenticatedWorkerInstance extends WithRunEngine {
     sandboxRunId?: string
   ): Promise<{ runToken?: string; secretProxy?: SecretProxyExecutionMetadata }> {
     const { environment, pinned } = await this.findAttemptEnvironment(result.run.id, environmentId);
+    const networkAllow = runNetworkAllow(pinned);
     const resolved = await resolveAttemptVariables(
       environment,
       environment.parentEnvironment ?? undefined,
       { grant: pinned?.policy.envVars }
     );
-    if (!resolved.proxyValues.length || !result.run.attemptNumber) return {};
+    if ((!resolved.proxyValues.length && !networkAllow) || !result.run.attemptNumber) return {};
     const proxy = secretProxy(
       env.CONTROL_PLANE_DEQUEUE_READS_FROM_REPLICA === "1" ? this._replica : this._prisma
     );
@@ -1231,11 +1266,16 @@ export class AuthenticatedWorkerInstance extends WithRunEngine {
       true,
       true
     );
-    const { secretProxy: metadata } = proxy.finalizeRuntime(resolved.proxyValues, hosts, {
-      runId: result.run.friendlyId,
-      attempt: result.run.attemptNumber,
-      expiresAtMs: decodeJwt(runToken).exp! * 1000,
-    });
+    const { secretProxy: metadata } = proxy.finalizeRuntime(
+      resolved.proxyValues,
+      hosts,
+      {
+        runId: result.run.friendlyId,
+        attempt: result.run.attemptNumber,
+        expiresAtMs: decodeJwt(runToken).exp! * 1000,
+      },
+      networkAllow
+    );
     return { runToken, secretProxy: metadata };
   }
 

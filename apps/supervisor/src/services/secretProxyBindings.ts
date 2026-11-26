@@ -82,6 +82,7 @@ const Runner = z.object({
     bootstrap: z.object({ runFriendlyID: z.string() }),
     restore: z.unknown().optional(),
     singleUse: z.boolean().optional(),
+    restrictedNetwork: z.boolean().optional(),
   }),
 });
 
@@ -106,6 +107,8 @@ const Allocation = z.object({
   bindingId: z.string().min(1),
   empty: z.boolean(),
   hasBeenBound: z.boolean(),
+  /** Absent from interceptors that cannot restrict, which then never serve a restricted Runner. */
+  restrictedNetwork: z.boolean().optional(),
   binding: SecretProxyExecution.extend({
     bindingId: z.string().min(1),
     sourceIp: z.string(),
@@ -126,6 +129,8 @@ type Identity = {
   deploymentId: string;
   singleUseAttempt?: number;
   pinned?: boolean;
+  /** The trusted Runner asked for a restricted VM, which its interceptor and CNI enforce. */
+  restrictedNetwork?: boolean;
 };
 
 export type SecretProxyPlacement = Pick<
@@ -141,6 +146,7 @@ export type SecretProxyPlacement = Pick<
   | "deploymentId"
   | "singleUseAttempt"
   | "pinned"
+  | "restrictedNetwork"
 > & { isWarmStart: boolean; continuing?: boolean };
 
 export type SecretProxyStartResult = {
@@ -244,6 +250,18 @@ export function isSecretProxyHostname(host: string): boolean {
   );
 }
 
+function isNetworkHostPattern(host: string): boolean {
+  return isSecretProxyHostname(host.startsWith("*.") ? host.slice(2) : host);
+}
+
+function validProxyHosts(proxy: Pick<SecretProxyExecution, "allowedHosts" | "network">): boolean {
+  return (
+    proxy.allowedHosts.every(isSecretProxyHostname) &&
+    (proxy.network?.allow.every(isNetworkHostPattern) ?? true) &&
+    (proxy.allowedHosts.length > 0 || proxy.network !== undefined)
+  );
+}
+
 function matchesPlacementCaller(
   identity: Pick<Identity, "runnerId" | "sourceIp" | "environmentId" | "deploymentId">,
   caller: SecretProxyCaller
@@ -344,6 +362,7 @@ export function trustedSecretProxyIdentity(
     bootstrapAttempt: attempt,
     singleUseAttempt: runner.spec.singleUse && !runner.spec.restore ? attempt : undefined,
     pinned: !!runner.spec.singleUse,
+    restrictedNetwork: !!runner.spec.restrictedNetwork,
     runnerId: runner.metadata.name,
     runnerUid: runner.metadata.uid,
     environmentId: runner.spec.owner.envID,
@@ -577,6 +596,10 @@ export class SecretProxyBindings {
     return this.bindings.has(runId) || this.recoverable.has(runId);
   }
 
+  restrictsNetwork(runId: string): boolean {
+    return !!this.bindings.get(runId)?.restrictedNetwork;
+  }
+
   private async finishRevocations(runId: string, waitForRestart = true): Promise<void> {
     const bindingIds = this.pendingRevocations.get(runId);
     if (!bindingIds) return;
@@ -660,7 +683,8 @@ export class SecretProxyBindings {
       !allocation.attached ||
       allocation.pod?.uid !== placement.podUid ||
       sourceIp(allocation.pod.ip) !== placement.sourceIp ||
-      (publishedGuestId && allocation.guestId !== publishedGuestId)
+      (publishedGuestId && allocation.guestId !== publishedGuestId) ||
+      !!allocation.restrictedNetwork !== !!placement.restrictedNetwork
     )
       return denied();
     if (!recovering) await this.requireEmpty(allocation, placement);
@@ -696,7 +720,7 @@ export class SecretProxyBindings {
       if (
         recovered.bindingId !== placement.bindingId ||
         recovered.sourceIp !== placement.sourceIp ||
-        recovered.allowedHosts.some((host) => !isSecretProxyHostname(host))
+        !validProxyHosts(recovered)
       )
         return denied();
       if (this.bindings.has(caller.runId)) return;
@@ -861,7 +885,8 @@ export class SecretProxyBindings {
         !allocation.attached ||
         allocation.allocationId !== cached.allocationId ||
         allocation.runId !== cached.bootstrapRunId ||
-        allocation.attempt !== cached.bootstrapAttempt
+        allocation.attempt !== cached.bootstrapAttempt ||
+        !!allocation.restrictedNetwork !== !!cached.restrictedNetwork
       )
         return;
       cached.hasBeenBound ||= allocation.hasBeenBound;
@@ -964,6 +989,8 @@ export class SecretProxyBindings {
       (placement.singleUseAttempt !== undefined &&
         execution.attempt.number !== placement.singleUseAttempt) ||
       this.starting.get(placement.allocationId) !== placement ||
+      // A restricted VM serves only restricted executions: anything else would run without internet.
+      (placement.restrictedNetwork && !response.secretProxy?.network) ||
       this.bindings.get(caller.runId)?.busy ||
       (protectedStart && this.atCapacity(caller.runId))
     )
@@ -1129,7 +1156,9 @@ export class SecretProxyBindings {
       proxy.attempt !== binding.attempt ||
       proxy.expiresAtMs > expiry ||
       proxy.expiresAtMs <= Date.now() ||
-      proxy.allowedHosts.some((host) => !isSecretProxyHostname(host))
+      !validProxyHosts(proxy) ||
+      // Only a VM created restricted can serve a restricted execution, and only that.
+      !!proxy.network !== !!binding.restrictedNetwork
     )
       return denied();
     binding.proxy = proxy;
@@ -1455,6 +1484,7 @@ export class SecretProxyBindings {
       runToken,
       expiresAtMs: binding.expiresAtMs,
       allowedHosts: binding.proxy!.allowedHosts,
+      ...(binding.proxy!.network ? { network: binding.proxy!.network } : {}),
     });
   }
 

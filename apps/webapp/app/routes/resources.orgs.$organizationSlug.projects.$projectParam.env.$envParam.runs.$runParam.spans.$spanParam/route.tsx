@@ -13,7 +13,11 @@ import {
 } from "@heroicons/react/20/solid";
 import { useParams } from "@remix-run/react";
 import { type LoaderFunctionArgs } from "@remix-run/server-runtime";
-import { formatDurationMilliseconds, type RunExecutionPolicy } from "@trigger.dev/core/v3";
+import {
+  formatDurationMilliseconds,
+  restrictedNetwork,
+  type RunExecutionPolicy,
+} from "@trigger.dev/core/v3";
 import { assertNever } from "assert-never";
 import { useEffect } from "react";
 import { typedjson, useTypedFetcher } from "remix-typedjson";
@@ -1449,8 +1453,19 @@ function ExecutionPolicyProperties({
               : policy.envVars.join(", ")}
         </Property.Value>
       </Property.Item>
+      <Property.Item>
+        <Property.Label>Network</Property.Label>
+        <Property.Value>{networkDescription(policy)}</Property.Value>
+      </Property.Item>
     </>
   );
+}
+
+function networkDescription(policy: RunExecutionPolicy): string {
+  const network = restrictedNetwork(policy);
+  if (!network) return "Unrestricted";
+  const allowed = network.allow.length ? `, plus HTTPS to ${network.allow.join(", ")}` : "";
+  return `Restricted: Trigger.dev and Vault variable domains only${allowed}`;
 }
 
 function ExternalDeploymentIdValue({

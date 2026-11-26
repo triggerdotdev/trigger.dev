@@ -195,7 +195,7 @@ describe.each([
   });
 
   it.runIf(proxy)("advertises a first-call continue placement", async () => {
-    prepareStart.mockResolvedValueOnce({ bindingId: "binding_1" });
+    prepareStart.mockResolvedValueOnce({ bindingId: "binding_1", restrictedNetwork: true });
     const res = await fetch(`${base}/continue`, {
       headers: {
         [WORKLOAD_HEADERS.DEPLOYMENT_ID]: token,
@@ -206,6 +206,7 @@ describe.each([
     expect(prepareStart).toHaveBeenCalledOnce();
     expect((continueRunExecution.mock.calls[0] as unknown[])[4]).toMatchObject({
       supportsSecretProxy: true,
+      supportsNetworkPolicy: true,
     });
   });
 

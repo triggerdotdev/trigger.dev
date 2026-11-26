@@ -252,13 +252,14 @@ function sandboxTaskMetadata({
 > {
   if (sandbox === undefined || sandbox === false) return { triggerSource };
 
-  const { envVars, scopes } = sandbox === true ? {} : sandbox;
+  const { envVars, scopes, network } = sandbox === true ? {} : sandbox;
   const requestedScopes = typeof scopes === "string" ? [scopes] : (scopes ?? []);
   return {
     triggerSource: SANDBOX_TRIGGER_SOURCE,
     sandbox: {
       triggerSource,
       envVars,
+      network,
       scopes: requestedScopes.flatMap((scope) => {
         switch (scope) {
           case "basic":

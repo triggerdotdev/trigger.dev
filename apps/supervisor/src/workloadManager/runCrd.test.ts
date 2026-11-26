@@ -1,5 +1,6 @@
 import { setTimeout } from "node:timers/promises";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import type { RunExecutionPolicy } from "@trigger.dev/core/v3";
 import { generateFriendlyId } from "@trigger.dev/core/v3/isomorphic";
 import {
   RESTORE_LABEL,
@@ -243,6 +244,30 @@ describe("runnerBodyFor", () => {
       }
     }
   );
+
+  // Catches: a restricted sandbox's VM created without the CNI label and interceptor restriction, or
+  // keeping a PrivateLink punchthrough it must not have.
+  it.each<[RunExecutionPolicy["network"], boolean]>([
+    [{ allow: [] }, true],
+    ["unrestricted", false],
+  ])("restricts the VM only for a restricted policy (%j)", (network, restricted) => {
+    const opts = createOptions({
+      workloadNetwork: "proxy",
+      hasPrivateLink: true,
+      annotations: {
+        triggerSource: "api",
+        triggerAction: "trigger",
+        rootTriggerSource: "api",
+        executionMode: "SANDBOX",
+        executionPolicy: { version: 1, rootKey: false, scopes: [], envVars: [], network },
+      },
+    });
+    for (const restore of [undefined, { snapshotID: "snap-abc", node: "node-a" }]) {
+      const spec = runnerBodyFor(opts, { ...meta, runtime: "microvm", restore }).spec;
+      expect(spec.restrictedNetwork).toBe(restricted ? true : undefined);
+      expect(spec.hasPrivateLink).toBe(restricted ? undefined : true);
+    }
+  });
 
   it("omits the token reference when no token was issued", () => {
     expect(runnerBodyFor(createOptions(), meta).spec.deployment).not.toHaveProperty("token");

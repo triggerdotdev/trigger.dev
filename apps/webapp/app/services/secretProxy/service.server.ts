@@ -51,6 +51,8 @@ export type SecretProxyExecutionMetadata = {
   attempt: number;
   expiresAtMs: number;
   allowedHosts: string[];
+  /** Present only for a restricted network: the hosts it may reach directly. */
+  network?: { allow: string[] };
 };
 type RunState = {
   friendlyId: string;
@@ -195,14 +197,19 @@ export class SecretProxyService {
   finalizeRuntime(
     values: EffectiveEnvironmentVariable[],
     allowedHosts: string[],
-    execution: { runId: string; attempt: number; expiresAtMs: number }
+    execution: { runId: string; attempt: number; expiresAtMs: number },
+    networkAllow?: string[]
   ) {
     return {
       placeholders: values.map((value) => ({
         key: value.key,
         value: placeholderForVariable(this.options.keyring!, execution, value.variableId),
       })),
-      secretProxy: { ...execution, allowedHosts },
+      secretProxy: {
+        ...execution,
+        allowedHosts,
+        ...(networkAllow ? { network: { allow: networkAllow } } : {}),
+      },
     };
   }
 

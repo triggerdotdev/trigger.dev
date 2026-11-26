@@ -11,7 +11,7 @@ import type {
 } from "./workloadManager/types.js";
 import Docker from "dockerode";
 import { z } from "zod";
-import { type DequeuedMessage, isSandboxRun } from "@trigger.dev/core/v3";
+import { type DequeuedMessage, hasRestrictedNetwork, isSandboxRun } from "@trigger.dev/core/v3";
 import {
   DockerResourceMonitor,
   KubernetesResourceMonitor,
@@ -627,8 +627,9 @@ class ManagedSupervisor {
             const { checkpoint, ...rest } = message;
 
             if (
-              message.run.annotations?.secretProxyRequired &&
-              (!this.runCrdManager ||
+              this.workloadNetworkFor(message) === "proxy" &&
+              (!env.SECRET_PROXY_INTERCEPTOR_SOCKET ||
+                !this.runCrdManager ||
                 env.KUBERNETES_RUNNER_RUNTIME !== "microvm" ||
                 env.WORKLOAD_TOKEN_ENFORCEMENT !== "enforce" ||
                 (checkpoint && !this.runCrdManager.restores(checkpoint)))
@@ -1159,8 +1160,12 @@ class ManagedSupervisor {
     }
   }
 
+  /** Restricted networks are enforced by the secret proxy's interceptor, so they need it too. */
   private workloadNetworkFor(message: DequeuedMessage) {
-    return message.run.annotations?.secretProxyRequired ? ("proxy" as const) : undefined;
+    return message.run.annotations?.secretProxyRequired ||
+      hasRestrictedNetwork(message.run.annotations)
+      ? ("proxy" as const)
+      : undefined;
   }
 
   /** Gives back a run that needs the secret proxy, which this worker cannot provide. */
