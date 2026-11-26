@@ -51,12 +51,23 @@ export class SimpleQueue<TMessageCatalog extends MessageCatalogSchema> {
     schema,
     redisOptions,
     logger,
+    maxRetriesPerRequest,
   }: {
     name: string;
     schema: TMessageCatalog;
     redisOptions: RedisOptions;
     logger?: Logger;
+    maxRetriesPerRequest?: number;
   }) {
+    if (
+      maxRetriesPerRequest !== undefined &&
+      !(Number.isSafeInteger(maxRetriesPerRequest) && maxRetriesPerRequest >= 0)
+    ) {
+      throw new Error(
+        `maxRetriesPerRequest must be a non-negative integer, got ${maxRetriesPerRequest}`
+      );
+    }
+
     this.name = name;
     this.logger = logger ?? new Logger("SimpleQueue", "debug");
 
@@ -68,7 +79,7 @@ export class SimpleQueue<TMessageCatalog extends MessageCatalogSchema> {
           const delay = Math.min(times * 50, 1000);
           return delay;
         },
-        maxRetriesPerRequest: 20,
+        maxRetriesPerRequest: maxRetriesPerRequest ?? 20,
       },
       {
         onError: (error) => {

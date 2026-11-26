@@ -711,3 +711,43 @@ describe("SimpleQueue", () => {
     }
   );
 });
+
+describe("SimpleQueue maxRetriesPerRequest", () => {
+  redisTest(
+    "defaults to 20 and honors an explicit value",
+    { timeout: 20_000 },
+    async ({ redisContainer }) => {
+      const redisOptions = {
+        host: redisContainer.getHost(),
+        port: redisContainer.getPort(),
+        password: redisContainer.getPassword(),
+      };
+      const schema = { test: z.object({ value: z.number() }) };
+
+      const byDefault = new SimpleQueue({ name: "retries-default", schema, redisOptions });
+      const explicit = new SimpleQueue({
+        name: "retries-explicit",
+        schema,
+        redisOptions: { ...redisOptions, maxRetriesPerRequest: 1 },
+        maxRetriesPerRequest: 60,
+      });
+      try {
+        expect((byDefault as any).redis.options.maxRetriesPerRequest).toBe(20);
+        expect((explicit as any).redis.options.maxRetriesPerRequest).toBe(60);
+        for (const bad of [-1, 1.5, Number.NaN, Number.POSITIVE_INFINITY]) {
+          expect(
+            () =>
+              new SimpleQueue({
+                name: "retries-bad",
+                schema,
+                redisOptions,
+                maxRetriesPerRequest: bad,
+              })
+          ).toThrow(/non-negative integer/);
+        }
+      } finally {
+        await Promise.all([byDefault.close(), explicit.close()]);
+      }
+    }
+  );
+});
