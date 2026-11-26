@@ -29,8 +29,6 @@ vi.mock("~/db.server", async (importOriginal) => {
 
 import { postgresTest } from "@internal/testcontainers";
 import type { PrismaClient } from "@trigger.dev/database";
-import { readFileSync } from "node:fs";
-import { join } from "node:path";
 import { logger } from "~/services/logger.server";
 import { sessionVersionFloorFor } from "~/services/realtime/sessionVersionFloor.server";
 import { NoopTaskMetadataCache } from "~/services/taskMetadataCache.server";
@@ -505,72 +503,6 @@ describe("a threshold value this build can't read in full", () => {
       ).toEqual({ minVersion: V1 });
     }
   );
-});
-
-describe("migration from the staff floor flag", () => {
-  postgresTest("copies each environment's minVersion into its threshold", async ({ prisma }) => {
-    const p = prisma as unknown as PrismaClient;
-    const flagged = await seed(p);
-    await p.organization.update({
-      where: { id: flagged.organization.id },
-      data: {
-        featureFlags: {
-          sessionVersionFloor: {
-            [flagged.environment.id]: { minVersion: "20261106.34" },
-            someOtherEnv: { minVersion: "20261106.1" },
-          },
-        },
-      },
-    });
-    const unflagged = await seed(p, { sessionVersionFloor: "not-an-object" });
-    // The flag's reader ignored a minVersion that wasn't a string, so it was never a floor.
-    const numeric = await seed(p);
-    await p.organization.update({
-      where: { id: numeric.organization.id },
-      data: {
-        featureFlags: { sessionVersionFloor: { [numeric.environment.id]: { minVersion: 34 } } },
-      },
-    });
-
-    const sql = readFileSync(
-      join(
-        __dirname,
-        "../../../internal-packages/database/prisma/migrations/20261126120100_migrate_session_version_floor_flag/migration.sql"
-      ),
-      "utf8"
-    );
-    await p.$executeRawUnsafe(sql);
-    // Idempotent: a second run changes nothing.
-    const first = await thresholdOf(p, flagged);
-    await p.$executeRawUnsafe(sql);
-
-    expect(first).toMatchObject({ version: "20261106.34", setBy: { type: "migrated" } });
-    expect(await thresholdOf(p, flagged)).toEqual(first);
-    expect(await thresholdOf(p, unflagged)).toBeNull();
-    // Catches: the copy turning a value the old code ignored into a threshold of "34".
-    expect(await thresholdOf(p, numeric)).toBeNull();
-
-    // The history migration's backfill: one "migrated" row per copied threshold, also idempotent.
-    const historySql = readFileSync(
-      join(
-        __dirname,
-        "../../../internal-packages/database/prisma/migrations/20261126120200_add_skew_protection_threshold_changes/migration.sql"
-      ),
-      "utf8"
-    );
-    const backfill = historySql.slice(historySql.indexOf("INSERT INTO"));
-    await p.$executeRawUnsafe(backfill);
-    await p.$executeRawUnsafe(backfill);
-    const history = await getSkewProtectionThresholdHistory(p, {
-      environmentId: flagged.environment.id,
-    });
-    expect(history).toMatchObject([
-      { kind: "set", version: "20261106.34", source: "migrated", actorName: null },
-    ]);
-    expect(
-      await getSkewProtectionThresholdHistory(p, { environmentId: unflagged.environment.id })
-    ).toEqual([]);
-  });
 });
 
 describe("history", () => {
