@@ -86,9 +86,28 @@ export class ConcurrencySystem {
       ) => {
         return findQueueFromInput(this.db, environment, queue)
           .andThen((queue) => guardQueueVersion(queue, opts))
-          .andThen((queue) => resetQueueConcurrencyLimit(this.db, queue))
-          .andThen((queue) => syncQueueConcurrencyToEngine(environment, queue))
-          .andThen((queue) => healAfterSync(this.db, environment, queue))
+          .andThen((queue) => syncQueueConcurrencyResetToEngine(environment, queue))
+          .andThen((queue) => {
+            const applied = effectivePerKeyLimit({
+              paused: queue.paused,
+              concurrencyLimit: queue.concurrencyLimitBase,
+            });
+            return resetQueueConcurrencyLimit(this.db, queue)
+              .orElse((error) =>
+                resyncPerKeyFromRow(this.db, environment, queue.id, applied)
+                  .orElse((resyncError) => {
+                    logger.error("Failed to restore the engine after a failed reset", {
+                      queueId: queue.id,
+                      error: resyncError.cause,
+                    });
+                    return okAsync(undefined);
+                  })
+                  .andThen(() => errAsync(error))
+              )
+              .andThen((reset) =>
+                resyncPerKeyFromRow(this.db, environment, reset.id, applied).map(() => reset)
+              );
+          })
           .andThen((queue) => getQueueStats(environment, queue));
       },
       overrideTotalConcurrencyLimit: (
@@ -364,7 +383,74 @@ function overrideQueueConcurrencyLimit(
   );
 }
 
-function resetQueueConcurrencyLimit(db: PrismaClientOrTransaction, queue: TaskQueue) {
+/**
+ * Enforce first, then persist, like the total-limit reset: an engine failure leaves
+ * the override marker set, so a retry (or the dashboard's remove action) converges.
+ * A paused queue gets 0 written too, so a pause whose own engine write failed is enforced.
+ */
+function syncQueueConcurrencyResetToEngine(
+  environment: AuthenticatedEnvironment,
+  queue: TaskQueue
+) {
+  if (queue.concurrencyLimitOverriddenAt === null) {
+    return errAsync({ type: "queue_not_overridden" as const });
+  }
+
+  const target = effectivePerKeyLimit({
+    paused: queue.paused,
+    concurrencyLimit: queue.concurrencyLimitBase,
+  });
+  return fromPromise(
+    target === null
+      ? removeQueueConcurrencyLimits(environment, queue.name)
+      : updateQueueConcurrencyLimits(environment, queue.name, target),
+    (error) => ({ type: "sync_queue_concurrency_to_engine_failed" as const, cause: error })
+  ).map(() => queue);
+}
+
+const effectivePerKeyLimit = (queue: Pick<TaskQueue, "paused" | "concurrencyLimit">) =>
+  queue.paused ? 0 : queue.concurrencyLimit;
+
+/**
+ * The enforce-first write came from the pre-persist read, so a pause, override or failed
+ * persist may leave the engine off the row. Re-sync only the per-key limit from fresh reads
+ * until the row holds still; `applied` is what the engine was given, so a match writes nothing.
+ */
+function resyncPerKeyFromRow(
+  db: PrismaClientOrTransaction,
+  environment: AuthenticatedEnvironment,
+  queueId: string,
+  applied: number | null
+) {
+  return fromPromise(
+    (async () => {
+      let last = applied;
+      for (let i = 0; i < 3; i++) {
+        const fresh = await db.taskQueue.findFirst({ where: { id: queueId } });
+        if (!fresh) return;
+        const target = effectivePerKeyLimit(fresh);
+        if (target === last) return;
+        if (target === null) {
+          await removeQueueConcurrencyLimits(environment, fresh.name);
+        } else {
+          await updateQueueConcurrencyLimits(environment, fresh.name, target);
+        }
+        last = target;
+      }
+    })(),
+    (error) => ({ type: "sync_queue_concurrency_to_engine_failed" as const, cause: error })
+  );
+}
+
+function resetQueueConcurrencyLimit(
+  db: PrismaClientOrTransaction,
+  queue: TaskQueue
+): ResultAsync<
+  TaskQueue,
+  | { type: "queue_not_overridden" }
+  | { type: "concurrent_modification"; message: string }
+  | { type: "queue_update_failed"; cause: unknown }
+> {
   if (queue.concurrencyLimitOverriddenAt === null) {
     return errAsync({ type: "queue_not_overridden" as const });
   }
