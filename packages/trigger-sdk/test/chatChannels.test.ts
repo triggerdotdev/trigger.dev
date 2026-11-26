@@ -2573,3 +2573,286 @@ describe("chat.agent channel control", () => {
     }
   });
 });
+
+describe("chat.agent channel reply text", () => {
+  const usage = {
+    inputTokens: { total: 10, noCache: 10, cacheRead: undefined, cacheWrite: undefined },
+    outputTokens: { total: 10, text: 10, reasoning: undefined },
+  };
+
+  // One model step: optional text, then optional tool call, then optional trailing parts.
+  function stepStream(opts: {
+    text?: string;
+    tool?: { id: string; name: string; input: unknown };
+    error?: Error;
+  }) {
+    const chunks: LanguageModelV3StreamPart[] = [];
+    if (opts.text) {
+      chunks.push(
+        { type: "text-start", id: "t1" },
+        { type: "text-delta", id: "t1", delta: opts.text },
+        { type: "text-end", id: "t1" }
+      );
+    }
+    if (opts.error) {
+      chunks.push({ type: "error", error: opts.error });
+      return simulateReadableStream({ chunks });
+    }
+    if (opts.tool) {
+      const input = JSON.stringify(opts.tool.input);
+      chunks.push(
+        { type: "tool-input-start", id: opts.tool.id, toolName: opts.tool.name },
+        { type: "tool-input-delta", id: opts.tool.id, delta: input },
+        { type: "tool-input-end", id: opts.tool.id },
+        { type: "tool-call", toolCallId: opts.tool.id, toolName: opts.tool.name, input }
+      );
+    }
+    chunks.push({
+      type: "finish",
+      finishReason: opts.tool
+        ? { unified: "tool-calls", raw: "tool_calls" }
+        : { unified: "stop", raw: "stop" },
+      usage,
+    });
+    return simulateReadableStream({ chunks });
+  }
+
+  function steppedModel(steps: Array<Parameters<typeof stepStream>[0]>) {
+    let call = 0;
+    return new MockLanguageModelV3({
+      doStream: async () => ({ stream: stepStream(steps[call++] ?? {}) }),
+    });
+  }
+
+  const lookupOrder = tool({
+    description: "Look up an order.",
+    inputSchema: z.object({ orderId: z.string() }),
+    execute: async () => ({ status: "shipped" }),
+  });
+
+  // Catches: the final reply gluing the note written before a tool call onto the answer.
+  it("posts only the text after the last tool call, not the notes before it", async () => {
+    const model = steppedModel([
+      {
+        text: "Let me look that up.",
+        tool: { id: "tc1", name: "lookupOrder", input: { orderId: "o-1" } },
+      },
+      { text: "Your order shipped yesterday." },
+    ]);
+    const replies: string[] = [];
+    const channel = recordingChannelConnector({
+      outbound: (reply) => {
+        if (reply.final) replies.push(reply.text);
+        return reply.text ? { text: reply.text } : null;
+      },
+    });
+    const agent = chat.agent({
+      id: "chatChannels.reply-text-last-run",
+      channels: [channel],
+      run: async ({ messages, signal }) =>
+        streamText({
+          model,
+          messages,
+          tools: { lookupOrder },
+          stopWhen: stepCountIs(5),
+          abortSignal: signal,
+        }),
+    });
+    const harness = mockChatAgent(agent, { chatId: "chan-last-run" });
+    try {
+      await harness.sendChannelEvent({ event: { text: "where is o-1", threadId: "t-last-run" } });
+      expect(channel.finalText()).toBe("Your order shipped yesterday.");
+      expect(replies).toEqual(["Your order shipped yesterday."]);
+    } finally {
+      await harness.close();
+    }
+  });
+
+  // Catches: a turn paused on a pending tool posting every earlier step's note with its preamble.
+  it("posts the text written just before a pending tool, not the notes from earlier steps", async () => {
+    const requestApproval = tool({
+      description: "Request human approval before acting.",
+      inputSchema: z.object({ action: z.string() }),
+    });
+    const model = steppedModel([
+      {
+        text: "Checking the order.",
+        tool: { id: "tc1", name: "lookupOrder", input: { orderId: "o-2" } },
+      },
+      {
+        text: "It shipped late, so I'd like to credit you.",
+        tool: { id: "tc2", name: "requestApproval", input: { action: "credit" } },
+      },
+    ]);
+    const pendingReplies: Array<{ text: string; pending?: boolean }> = [];
+    const channel = recordingChannelConnector({
+      renderInteraction: () => ({ text: "Approve credit?" }),
+      outbound: (reply) => {
+        if (reply.final) pendingReplies.push({ text: reply.text, pending: reply.pending });
+        return reply.text ? { text: reply.text } : null;
+      },
+    });
+    const agent = chat.agent({
+      id: "chatChannels.reply-text-pending",
+      channels: [channel],
+      run: async ({ messages, signal }) =>
+        streamText({
+          model,
+          messages,
+          tools: { lookupOrder, requestApproval },
+          stopWhen: stepCountIs(5),
+          abortSignal: signal,
+        }),
+    });
+    const harness = mockChatAgent(agent, { chatId: "chan-pending-run" });
+    try {
+      await harness.sendChannelEvent({
+        event: { text: "o-2 was late", threadId: "t-pending-run" },
+      });
+      expect(pendingReplies).toEqual([
+        { text: "It shipped late, so I'd like to credit you.", pending: true },
+      ]);
+    } finally {
+      await harness.close();
+    }
+  });
+
+  // Catches: a tool result arriving between two deltas of one answer cutting off its opening.
+  // AI SDK 7 runs tools after the step's stream ends, so a result can't land mid-answer there.
+  it.skipIf(process.env.AI_SDK_MAJOR === "7")(
+    "keeps the whole answer when a tool result lands between its deltas",
+    async () => {
+      let releaseTool!: () => void;
+      const toolGate = new Promise<void>((resolve) => (releaseTool = resolve));
+      let toolDone!: () => void;
+      const toolFinished = new Promise<void>((resolve) => (toolDone = resolve));
+      const slowLookup = tool({
+        description: "Look up an order.",
+        inputSchema: z.object({ orderId: z.string() }),
+        execute: async () => {
+          await toolGate;
+          setTimeout(toolDone, 20);
+          return { status: "shipped" };
+        },
+      });
+      let call = 0;
+      const model = new MockLanguageModelV3({
+        doStream: async () => {
+          if (call++ > 0) return { stream: stepStream({}) };
+          const input = JSON.stringify({ orderId: "o-5" });
+          const stream = new ReadableStream<LanguageModelV3StreamPart>({
+            async start(controller) {
+              controller.enqueue({ type: "stream-start", warnings: [] });
+              controller.enqueue({
+                type: "tool-call",
+                toolCallId: "tc1",
+                toolName: "lookupOrder",
+                input,
+              });
+              controller.enqueue({ type: "text-start", id: "t1" });
+              controller.enqueue({ type: "text-delta", id: "t1", delta: "Your order shipped " });
+              releaseTool();
+              await toolFinished;
+              controller.enqueue({ type: "text-delta", id: "t1", delta: "yesterday." });
+              controller.enqueue({ type: "text-end", id: "t1" });
+              controller.enqueue({
+                type: "finish",
+                finishReason: { unified: "tool-calls", raw: "tool_calls" },
+                usage,
+              });
+              controller.close();
+            },
+          });
+          return { stream };
+        },
+      });
+      const channel = recordingChannelConnector();
+      const agent = chat.agent({
+        id: "chatChannels.reply-text-interleaved-result",
+        channels: [channel],
+        run: async ({ messages, signal }) =>
+          streamText({
+            model,
+            messages,
+            tools: { lookupOrder: slowLookup },
+            stopWhen: stepCountIs(5),
+            abortSignal: signal,
+          }),
+      });
+      const harness = mockChatAgent(agent, { chatId: "chan-interleaved" });
+      try {
+        await harness.sendChannelEvent({ event: { text: "o-5", threadId: "t-interleaved" } });
+        expect(channel.finalText()).toBe("Your order shipped yesterday.");
+      } finally {
+        await harness.close();
+      }
+    }
+  );
+
+  it("falls back to the text before the tool when nothing follows the last tool call", async () => {
+    const model = steppedModel([
+      {
+        text: "Looking up o-3.",
+        tool: { id: "tc1", name: "lookupOrder", input: { orderId: "o-3" } },
+      },
+      {},
+    ]);
+    const channel = recordingChannelConnector();
+    const agent = chat.agent({
+      id: "chatChannels.reply-text-no-trailing",
+      channels: [channel],
+      run: async ({ messages, signal }) =>
+        streamText({
+          model,
+          messages,
+          tools: { lookupOrder },
+          stopWhen: stepCountIs(5),
+          abortSignal: signal,
+        }),
+    });
+    const harness = mockChatAgent(agent, { chatId: "chan-no-trailing" });
+    try {
+      await harness.sendChannelEvent({ event: { text: "o-3", threadId: "t-no-trailing" } });
+      expect(channel.finalText()).toBe("Looking up o-3.");
+    } finally {
+      await harness.close();
+    }
+  });
+
+  // Catches: an errored turn's partial text gluing notes from before the tool call.
+  it("ends a turn that failed after a tool step with the last text and the error line", async () => {
+    const model = steppedModel([
+      {
+        text: "Let me check.",
+        tool: { id: "tc1", name: "lookupOrder", input: { orderId: "o-4" } },
+      },
+      { text: "Your order is", error: new Error("rate limited") },
+    ]);
+    const seen: ChannelErrorContext[] = [];
+    const channel = recordingChannelConnector();
+    (channel as { errorMessage?: ChannelErrorMessage }).errorMessage = (ctx) => {
+      seen.push(ctx);
+      return ctx.defaultMessage;
+    };
+    const agent = chat.agent({
+      id: "chatChannels.reply-text-error",
+      channels: [channel],
+      run: async ({ messages, signal }) =>
+        streamText({
+          model,
+          messages,
+          tools: { lookupOrder },
+          stopWhen: stepCountIs(5),
+          abortSignal: signal,
+        }),
+    });
+    const harness = mockChatAgent(agent, { chatId: "chan-error-run" });
+    try {
+      await harness.sendChannelEvent({ event: { text: "o-4", threadId: "t-error-run" } });
+      expect(channel.finalText()).toBe(`Your order is\n\n${CHANNEL_TURN_ERROR_MESSAGE}`);
+      expect(seen.map((c) => c.partialText)).toEqual(["Your order is"]);
+    } finally {
+      await harness.close();
+    }
+  });
+});

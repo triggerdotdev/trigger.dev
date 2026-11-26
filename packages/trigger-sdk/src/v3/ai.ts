@@ -6985,7 +6985,17 @@ export type ChannelMessage = { text: string; [key: string]: unknown };
 // What outbound() receives: enough to decide what (or whether, null) to post. For "stream", `text` is
 // the accumulated text so far.
 export type ChannelReply = {
+  /**
+   * The reply to post. On a final reply, the turn's last non-empty run of text, where tool calls
+   * split the text into runs: usually the answer after the last tool call, without the notes the
+   * model wrote before its tool calls. When nothing follows the last tool call, it is the text before
+   * that call. A turn with no tools gives all its text. Use `message` for every part.
+   */
   text: string;
+  /**
+   * The turn's response message, with every part. When the turn threw, there is no response message
+   * and this holds only the error line as one text part; check `error` to tell the two apart.
+   */
   message: UIMessage;
   final: boolean;
   stopped: boolean;
@@ -7349,7 +7359,10 @@ export const CHANNEL_TURN_ERROR_MESSAGE = "Something went wrong answering this. 
 export type ChannelErrorContext<TEvent = unknown> = {
   /** The failure: the model or stream error, or what the turn threw. */
   error: Error;
-  /** The text the turn streamed before it failed; empty when it failed before answering. */
+  /**
+   * The answer in progress when the turn failed: its last run of text, after any tool calls (see
+   * {@link ChannelReply.text}). Empty when it failed before answering.
+   */
   partialText: string;
   /** The event that started the turn; undefined on a turn the channel did not start (an action turn, a browser message). */
   event: TEvent | undefined;
@@ -7933,32 +7946,55 @@ function channelUserMessage(
 }
 
 /**
- * The assistant's closing text for a channel reply: the text after the last tool part in the message,
- * so a pre-tool preamble (e.g. the HITL "I'll need approval first" line, or a "let me look that up")
- * is dropped and only the answer is posted. Falls back to all text when there's no trailing text or no
- * tool parts (an ordinary turn), so a plain reply is unchanged.
+ * A channel reply's text: the last run of text, where tool calls split the turn's text into runs.
+ * Notes the model wrote before a tool call ("let me look that up", the HITL "I'll need approval
+ * first") are dropped and only the answer after the last tool is posted. A turn paused on a pending
+ * tool gives the text written just before it. When nothing follows the last tool call, the last
+ * non-empty run is posted, so a note written before that call can be the reply. Falls back to all
+ * text when no run has any.
+ * `segments` is the turn in order: a string for text, `null` for a tool boundary.
  */
+function lastTextRun(segments: Iterable<string | null>): string {
+  const runs: string[] = [""];
+  for (const segment of segments) {
+    if (segment === null) runs.push("");
+    else runs[runs.length - 1] += segment;
+  }
+  for (let i = runs.length - 1; i >= 0; i--) {
+    if (runs[i]!.trim().length > 0) return runs[i]!;
+  }
+  return runs.join("");
+}
+
+/** {@link lastTextRun} over a message's parts. */
 function channelReplyText(message: UIMessage): string {
-  const parts = (message.parts ?? []) as any[];
-  const isTool = (p: any) => {
-    const t = p?.type;
-    return typeof t === "string" && (t.startsWith("tool-") || t === "dynamic-tool");
-  };
-  let lastToolIdx = -1;
-  parts.forEach((p, i) => {
-    if (isTool(p)) lastToolIdx = i;
-  });
-  const textFrom = (from: number) =>
-    parts
-      .slice(from)
-      .map((p) =>
-        p && typeof p === "object" && (p as { type?: unknown }).type === "text"
-          ? String((p as { text: unknown }).text)
-          : ""
-      )
-      .join("");
-  const trailing = textFrom(lastToolIdx + 1);
-  return trailing.trim().length > 0 ? trailing : textFrom(0);
+  return lastTextRun(
+    ((message.parts ?? []) as Array<{ type?: unknown; text?: unknown }>).map((p) => {
+      const t = p?.type;
+      if (t === "text") return String(p.text);
+      return typeof t === "string" && (t.startsWith("tool-") || t === "dynamic-tool") ? null : "";
+    })
+  );
+}
+
+/**
+ * {@link lastTextRun} over a turn's streamed chunks: text deltas, split where a tool call first
+ * appears. Later chunks for a call already seen (its input, approval or result) are not a split: a
+ * tool result can arrive between two deltas of the same answer.
+ */
+function channelTurnReplyText(chunks: UIMessageChunk[]): string {
+  const seenCalls = new Set<string>();
+  return lastTextRun(
+    chunks.map((chunk) => {
+      const c = chunk as { type?: string; delta?: unknown; toolCallId?: unknown };
+      if (c.type === "text-delta" && typeof c.delta === "string") return c.delta;
+      if (typeof c.type !== "string" || !c.type.startsWith("tool-")) return "";
+      if (typeof c.toolCallId !== "string") return null;
+      if (seenCalls.has(c.toolCallId)) return "";
+      seenCalls.add(c.toolCallId);
+      return null;
+    })
+  );
 }
 
 /**
@@ -13359,14 +13395,7 @@ function chatAgent<
                       | { errorText?: string }
                       | undefined;
                     channelStreamErrorText = errorChunk?.errorText;
-                    channelTurnText = turnBufferedChunks
-                      .map((chunk) => {
-                        const c = chunk as { type?: string; delta?: unknown };
-                        return c.type === "text-delta" && typeof c.delta === "string"
-                          ? c.delta
-                          : "";
-                      })
-                      .join("");
+                    channelTurnText = channelTurnReplyText(turnBufferedChunks);
                     turnBufferedChunks.length = 0;
                   }
 
