@@ -116,3 +116,19 @@ export function zoomWindow(
   // A little room at the end, like a zoomed run gets, so a mark at the last moment shows.
   return { startMs: 0, endMs: axis.totalMs * AXIS_END_PAD };
 }
+
+/** Most tick labels the header shows; the last one is never drawn. */
+const MAX_AXIS_TICKS = 5;
+
+/**
+ * How many ticks fit a header `widthPx` wide without labels overlapping. The first label is
+ * left-aligned and the rest centred, so the first gap needs room for one and a half labels.
+ * Only 5, 3 or 2, so every label sits on one of the rows' quarter gridlines.
+ */
+export function axisTickCount(widthPx: number, withSeconds: boolean): number {
+  const labelPx = withSeconds ? 64 : 52;
+  const gapPx = 12;
+  const fits = Math.floor(widthPx / (labelPx * 1.5 + gapPx)) + 1;
+  if (fits >= MAX_AXIS_TICKS) return MAX_AXIS_TICKS;
+  return fits >= 3 ? 3 : 2;
+}

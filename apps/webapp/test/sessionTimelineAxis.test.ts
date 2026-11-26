@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  axisTickCount,
   buildSessionAxis,
   showsWholeSession,
   timelineZoomReducer,
@@ -146,5 +147,21 @@ describe("session timeline zoom", () => {
     expect(zoomWindow(run("gone"), axis, extentOf)).toEqual(
       zoomWindow(WHOLE_SESSION, axis, extentOf)
     );
+  });
+
+  // Catches: the first two tick labels printed on top of each other in a narrow timeline.
+  it("shows fewer ticks when the header is too narrow for five labels", () => {
+    expect(axisTickCount(700, true)).toBe(5);
+    expect(axisTickCount(320, true)).toBe(3);
+    expect(axisTickCount(150, true)).toBe(2);
+    expect(axisTickCount(450, false)).toBe(5);
+  });
+
+  // Catches: labels at thirds while the rows' gridlines sit at quarters.
+  it("only picks counts whose labels land on the quarter gridlines", () => {
+    for (let width = 100; width <= 900; width += 10) {
+      expect([2, 3, 5]).toContain(axisTickCount(width, false));
+      expect([2, 3, 5]).toContain(axisTickCount(width, true));
+    }
   });
 });

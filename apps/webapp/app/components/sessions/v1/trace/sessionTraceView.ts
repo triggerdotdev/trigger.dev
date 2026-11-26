@@ -4,7 +4,8 @@ import type { SessionTraceRun } from "./sessionTraceTypes";
 export type SessionPageView = "trace" | "conversation";
 
 /** Cookie the Trace tab's tree/timeline split is saved under; the session loader reads it. */
-export const SESSION_TREE_AUTOSAVE_ID = "panel-session-tree";
+// v2: layouts saved before the session-wide timeline could leave it a few px wide.
+export const SESSION_TREE_AUTOSAVE_ID = "panel-session-tree-v2";
 
 /**
  * Which left-hand tab the session page shows. Trace is the default when the feature is on;

@@ -93,6 +93,7 @@ import {
 import { traceFilterKey } from "~/components/runs/v3/trace/traceFilterKey";
 import { SessionTimelineRow, type RowPlacement } from "./SessionTimelineRow";
 import {
+  axisTickCount,
   buildSessionAxis,
   clampWindow,
   showsWholeSession,
@@ -1384,8 +1385,10 @@ function SessionTraceTree({
         </Button>
       </div>
       <ResizablePanelGroup autosaveId={SESSION_TREE_AUTOSAVE_ID} snapshot={treeSnapshot}>
-        <ResizablePanel id="session-tree" default="60%" min="380px">
-          <div className="relative grid h-full grid-rows-[2rem_1fr] overflow-hidden">
+        {/* Tree + handle + timeline minimums fit the Trace pane's own 300px minimum; the run row
+            drops its date when narrow. */}
+        <ResizablePanel id="session-tree" default="60%" min="175px">
+          <div className="@container/session-tree relative grid h-full grid-rows-[2rem_1fr] overflow-hidden">
             {pillText && (
               <span className="absolute bottom-3 left-1/2 z-10 flex -translate-x-1/2 shadow-md duration-150 animate-in fade-in-0">
                 <Button
@@ -1487,7 +1490,7 @@ function SessionTraceTree({
           </div>
         </ResizablePanel>
         <ResizableHandle id="session-tree-handle" />
-        <ResizablePanel id="session-timeline" default="40%" min="50px">
+        <ResizablePanel id="session-timeline" default="40%" min="120px">
           <SessionTimelineColumn
             axis={axis}
             axisWindow={axisWindow}
@@ -1697,7 +1700,6 @@ function runScale(run: SessionTraceRun, snapshot: RunTraceSnapshot | undefined, 
   });
 }
 
-const AXIS_TICK_COUNT = 5;
 /**
  * Where a run's trace time starts, in real time: span offsets count from here. With queue time
  * taken off, that's when the run started; otherwise when its root span started.
@@ -1789,7 +1791,7 @@ function SessionTimelineColumn({
       >
         <SessionCursorLine axis={axis} axisWindow={axisWindow} />
         <Timeline.Row className="grid h-full grid-rows-[2rem_1fr]">
-          <SessionAxisHeader axis={axis} axisWindow={axisWindow} />
+          <SessionAxisHeader axis={axis} axisWindow={axisWindow} widthPx={width} />
           <Timeline.Row className="overflow-hidden">{children}</Timeline.Row>
         </Timeline.Row>
         {drag && (
@@ -1807,15 +1809,24 @@ function SessionTimelineColumn({
 }
 
 /** Clock times along the axis, like the run page's tick labels. The date is on the cursor line. */
-function SessionAxisHeader({ axis, axisWindow }: { axis: SessionAxis; axisWindow: AxisWindow }) {
+function SessionAxisHeader({
+  axis,
+  axisWindow,
+  widthPx,
+}: {
+  axis: SessionAxis;
+  axisWindow: AxisWindow;
+  widthPx: number;
+}) {
   const timeZone = useUserTimeZone();
   const locales = useLocales();
   const withSeconds = axis.toReal(axisWindow.endMs) - axis.toReal(axisWindow.startMs) < 10 * 60_000;
+  const tickCount = axisTickCount(widthPx, withSeconds);
   return (
     <Timeline.Row className="h-full">
-      <Timeline.EquallyDistribute count={AXIS_TICK_COUNT}>
+      <Timeline.EquallyDistribute count={tickCount}>
         {(ms: number, index: number) =>
-          index === AXIS_TICK_COUNT - 1 ? null : (
+          index === tickCount - 1 ? null : (
             <Timeline.Point
               ms={ms}
               className="relative top-2.5 text-xxs leading-3 text-text-dimmed"
@@ -2142,7 +2153,8 @@ function RunRowContent({
         )
       )}
       <span className="ml-auto flex shrink-0 items-center gap-3 pr-2 text-xs tabular-nums text-text-dimmed">
-        <span className="text-text-faint">
+        {/* A narrow tree drops the date first, so duration and status stay readable. */}
+        <span className="hidden text-text-faint @sm/session-tree:inline">
           <DateTime
             date={run.startedAt ?? run.triggeredAt}
             // The year only when it isn't this one, like most dashboards.
@@ -2171,12 +2183,15 @@ function RunRowContent({
           )}
         </span>
         {/* The run page's status: an icon at the row's end, its name on hover. */}
-        {run.status && (
+        {run.status ? (
           <SimpleTooltip
             button={<TaskRunStatusIcon status={run.status} className="size-4" />}
             content={runStatusTitle(run.status)}
             disableHoverableContent
           />
+        ) : (
+          // Keeps the date and duration lined up with rows that have a status.
+          <span className="size-4" />
         )}
       </span>
     </>
