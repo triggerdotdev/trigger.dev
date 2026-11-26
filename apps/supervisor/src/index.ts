@@ -331,7 +331,11 @@ class ManagedSupervisor {
         });
       }
     } else if (this.isKubernetes) {
-      this.workloadManager = new KubernetesWorkloadManager(workloadManagerOptions);
+      this.workloadManager = new KubernetesWorkloadManager({
+        ...workloadManagerOptions,
+        podTokenSecretEnabled: env.KUBERNETES_POD_TOKEN_SECRET_ENABLED,
+        tokenSecretSettleMs: env.KUBERNETES_RUNNER_TOKEN_SECRET_SETTLE_MS,
+      });
       this.workloadManagerBackend = "kubernetes";
     } else {
       this.workloadManager = new DockerWorkloadManager(workloadManagerOptions);

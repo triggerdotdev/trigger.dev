@@ -21,11 +21,11 @@ import {
   restoreOutcome,
   runnerBodyFor,
   runnerStartFailure,
-  runnerTokenSecretName,
   settleRestoreFailure,
   suspendOutcome,
   type RestoreOutcomeReport,
 } from "./runCrd.js";
+import { runnerTokenSecretName } from "./tokenSecret.js";
 import {
   ListWatch,
   type KubernetesObject,
@@ -765,6 +765,20 @@ describe("RunCrdWorkloadManager.create", () => {
 
       await vi.waitFor(() => expect(deleteSecret).toHaveBeenCalled());
       expect(patchObject).not.toHaveBeenCalled();
+    });
+
+    it("is adopted later when an unclear error first shows a Runner of another Secret", async () => {
+      const lost = new Error("socket hang up");
+      createRunner.mockRejectedValue(lost);
+      getRunner
+        .mockResolvedValueOnce(taken("runner-abc123-token-other"))
+        .mockResolvedValue(taken(SECRET));
+
+      await expect(manager().create(withToken())).rejects.toBe(lost);
+
+      expect(deleteSecret).not.toHaveBeenCalled();
+      await vi.waitFor(() => expect(patchObject).toHaveBeenCalled());
+      expect(deleteSecret).not.toHaveBeenCalled();
     });
 
     it("is looked at again when its Runner cannot be read at first, and adopted then", async () => {

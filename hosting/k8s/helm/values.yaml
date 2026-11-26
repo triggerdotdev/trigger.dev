@@ -310,6 +310,7 @@ supervisor:
       # the create 404s without them. Also grants the two writes the backend
       # needs, a Secret for the deployment token and the Runner itself.
       runCrdEnabled: false
+      podTokenSecretEnabled: false
       # Which isolation lane a Runner asks for: "container", or "microvm" for a
       # Firecracker guest. Only read when runCrdEnabled is on, since the pod
       # backends have no guest lane. Cell-wide rather than per run, because the
