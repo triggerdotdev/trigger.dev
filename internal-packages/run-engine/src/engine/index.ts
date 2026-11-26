@@ -105,6 +105,7 @@ import {
   type RunStore,
   type SnapshotRoute,
   PENDING_UNIT_IN_PROGRESS_REASON,
+  isPendingUnitInProgress,
   PostgresRunStore,
   SnapshotReadUnavailableError,
   snapshotRouteFromSnapshot,
@@ -3351,6 +3352,13 @@ export class RunEngine {
       );
       return executionDataFromSnapshot(snapshot);
     } catch (e) {
+      // Rethrown, not null, so the route can answer a retriable 503.
+      if (isPendingUnitInProgress(e)) {
+        this.logger.warn("getRunExecutionData: pending unit transaction in progress, retriable", {
+          runId,
+        });
+        throw e;
+      }
       this.logger.error("Failed to getRunExecutionData", {
         message: e instanceof Error ? e.message : e,
       });

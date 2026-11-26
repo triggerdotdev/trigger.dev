@@ -1,5 +1,6 @@
 import type { TypedResponse } from "@remix-run/server-runtime";
 import { json } from "@remix-run/server-runtime";
+import { isPendingUnitInProgress } from "@internal/run-store";
 import { RunId } from "@trigger.dev/core/v3/isomorphic";
 import type { WorkerApiRunLatestSnapshotResponseBody } from "@trigger.dev/core/v3/workers";
 import { z } from "zod";
@@ -21,7 +22,7 @@ export const loader = createLoaderApiRoute(
   async ({
     authentication,
     params,
-  }): Promise<TypedResponse<WorkerApiRunLatestSnapshotResponseBody>> => {
+  }): Promise<TypedResponse<WorkerApiRunLatestSnapshotResponseBody | { error: string }>> => {
     logger.debug("dev: Get latest snapshot", {
       environmentId: authentication.environment.id,
       params,
@@ -51,6 +52,10 @@ export const loader = createLoaderApiRoute(
 
       return json({ execution: executionData });
     } catch (error) {
+      // Returned, not thrown: the route builder logs every thrown value as an error.
+      if (isPendingUnitInProgress(error)) {
+        return json({ error: "Snapshot read temporarily unavailable" }, { status: 503 });
+      }
       logger.error("Failed to get latest snapshot", {
         environmentId: authentication.environment.id,
         error,

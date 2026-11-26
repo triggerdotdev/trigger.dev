@@ -1,5 +1,6 @@
 import type { TypedResponse } from "@remix-run/server-runtime";
 import { json } from "@remix-run/server-runtime";
+import { isPendingUnitInProgress } from "@internal/run-store";
 import { RunId, SnapshotId } from "@trigger.dev/core/v3/isomorphic";
 import type { WorkloadHeartbeatResponseBody } from "@trigger.dev/core/v3/workers";
 import { z } from "zod";
@@ -23,7 +24,7 @@ const { action } = createActionApiRoute(
     authentication,
     body,
     params,
-  }): Promise<TypedResponse<WorkloadHeartbeatResponseBody>> => {
+  }): Promise<TypedResponse<WorkloadHeartbeatResponseBody | { error: string }>> => {
     const { runFriendlyId, snapshotFriendlyId } = params;
 
     try {
@@ -47,6 +48,10 @@ const { action } = createActionApiRoute(
 
       return json({ ok: true });
     } catch (error) {
+      // Returned, not thrown: the route builder logs every thrown value as an error.
+      if (isPendingUnitInProgress(error)) {
+        return json({ error: "Snapshot read temporarily unavailable" }, { status: 503 });
+      }
       logger.error("Failed to heartbeat dev run", {
         environmentId: authentication.environment.id,
         error,

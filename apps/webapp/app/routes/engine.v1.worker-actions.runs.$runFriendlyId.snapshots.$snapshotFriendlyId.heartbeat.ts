@@ -1,5 +1,6 @@
 import type { TypedResponse } from "@remix-run/server-runtime";
 import { json } from "@remix-run/server-runtime";
+import { isPendingUnitInProgress } from "@internal/run-store";
 import {
   WorkerApiRunHeartbeatRequestBody,
   type WorkerApiRunHeartbeatResponseBody,
@@ -25,19 +26,30 @@ export const action = createActionWorkerApiRoute(
     runnerId,
     environmentId,
     sandboxRunId,
-  }): Promise<TypedResponse<WorkerApiRunHeartbeatResponseBody>> => {
+  }): Promise<TypedResponse<WorkerApiRunHeartbeatResponseBody | { error: string }>> => {
     const { runFriendlyId, snapshotFriendlyId } = params;
 
-    const { runToken, usageJwt, usageJwtError } = await authenticatedWorker.heartbeatRun({
-      runFriendlyId,
-      snapshotFriendlyId,
-      runnerId,
-      environmentId,
-      sandboxRunId,
-      runTokenReport: body.runToken,
-      usageJwtReport: body.usageJwt,
-    });
+    let heartbeat: Awaited<ReturnType<typeof authenticatedWorker.heartbeatRun>>;
+    try {
+      heartbeat = await authenticatedWorker.heartbeatRun({
+        runFriendlyId,
+        snapshotFriendlyId,
+        runnerId,
+        environmentId,
+        sandboxRunId,
+        runTokenReport: body.runToken,
+        usageJwtReport: body.usageJwt,
+      });
+    } catch (error) {
+      // Returned, not thrown: the route builder logs every thrown value as an error. The engine has
+      // already extended the heartbeat and logged a warn; other retriable reasons stay errors.
+      if (isPendingUnitInProgress(error)) {
+        return json({ error: "Snapshot read temporarily unavailable" }, { status: 503 });
+      }
+      throw error;
+    }
 
+    const { runToken, usageJwt, usageJwtError } = heartbeat;
     return json({ ok: true, runToken, usageJwt, usageJwtError });
   }
 );

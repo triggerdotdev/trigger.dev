@@ -148,6 +148,14 @@ export class SnapshotReadUnavailableError extends Error {
   }
 }
 
+/** The pending-unit commit race: harmless, clears on retry, so callers log it at warn. */
+export function isPendingUnitInProgress(error: unknown): error is SnapshotReadUnavailableError {
+  return (
+    error instanceof SnapshotReadUnavailableError &&
+    error.reason === PENDING_UNIT_IN_PROGRESS_REASON
+  );
+}
+
 /**
  * A redis-primary run whose MemoryDB state has expired. Only a FINISHED entry arms the TTL, so the
  * state never comes back: NOT retriable. It extends SnapshotReadUnavailableError, so fail-closed
