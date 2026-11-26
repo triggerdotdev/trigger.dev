@@ -7,11 +7,14 @@ import { auditLogSummarySearch } from "~/components/auditLogs/auditLogSummarySea
 import { AuditLogDetail } from "~/components/auditLogs/AuditLogDetail";
 import { AuditLogFilterBar } from "~/components/auditLogs/AuditLogFilters";
 import { AuditLogTable } from "~/components/auditLogs/AuditLogTable";
-import { PageBody, PageContainer } from "~/components/layout/AppLayout";
+import { ListCheckedIcon } from "~/assets/icons/ListCheckedIcon";
+import { Feedback } from "~/components/Feedback";
+import { MainCenteredContainer, PageBody, PageContainer } from "~/components/layout/AppLayout";
 import { Callout } from "~/components/primitives/Callout";
-import { Button } from "~/components/primitives/Buttons";
+import { Button, LinkButton } from "~/components/primitives/Buttons";
 import { NavBar, PageAccessories, PageTitle } from "~/components/primitives/PageHeader";
 import { Header3 } from "~/components/primitives/Headers";
+import { InfoPanel } from "~/components/primitives/InfoPanel";
 import { Paragraph } from "~/components/primitives/Paragraph";
 import {
   collapsibleHandleClassName,
@@ -21,6 +24,8 @@ import {
   ResizablePanelGroup,
 } from "~/components/primitives/Resizable";
 import { $replica } from "~/db.server";
+import { useCanManageBilling, useOrganization } from "~/hooks/useOrganizations";
+import { useShowSelfServe } from "~/hooks/useShowSelfServe";
 import {
   auditLogFilters,
   AuditLogPresenter,
@@ -34,9 +39,11 @@ import {
   AUDIT_LOG_PAGE_AUTHORIZATION,
   auditLogPageContext,
 } from "~/services/auditLogs/auditLogPageAccess.server";
+import { auditLogsOnPlan } from "~/services/auditLogs/auditEventsApi.server";
 import { auditLogs, getAuditLogController } from "~/services/auditLogs/auditLogs.server";
 import { dashboardLoader } from "~/services/routeBuilders/dashboardBuilder";
 import { pageMeta } from "~/utils/pageTitle";
+import { v3BillingPath } from "~/utils/pathBuilder";
 
 export const meta = pageMeta("Audit log");
 
@@ -56,7 +63,10 @@ export const loader = dashboardLoader(
 
     // Without the audit log plugin (self-hosted) nothing is ever recorded.
     if (!(await getAuditLogController())) {
-      return typedjson({ available: false as const });
+      return typedjson({ available: false as const, reason: "self_hosted" as const });
+    }
+    if (!(await auditLogsOnPlan(organizationId))) {
+      return typedjson({ available: false as const, reason: "plan" as const });
     }
 
     const url = new URL(request.url);
@@ -123,6 +133,8 @@ export default function Page() {
       <PageBody scrollable={false}>
         {data.available ? (
           <AuditLog />
+        ) : data.reason === "plan" ? (
+          <AuditLogUpgradePanel />
         ) : (
           // As the Roles page says it for a self-hosted deployment without the plugin.
           <div className="flex flex-col items-center gap-2 p-8 text-center">
@@ -135,6 +147,56 @@ export default function Page() {
         )}
       </PageBody>
     </PageContainer>
+  );
+}
+
+/** As the Branches page asks a plan without preview branches to upgrade. */
+function AuditLogUpgradePanel() {
+  const organization = useOrganization();
+  const showSelfServe = useShowSelfServe();
+  // Admins can view the audit log but not billing.
+  const canManageBilling = useCanManageBilling();
+
+  return (
+    <MainCenteredContainer className="max-w-md">
+      <InfoPanel
+        title="Upgrade to get audit logs"
+        icon={ListCheckedIcon}
+        panelClassName="max-w-full"
+        accessory={
+          !showSelfServe ? (
+            <Feedback
+              button={<Button variant="secondary/small">Request more</Button>}
+              defaultValue="enterprise"
+            />
+          ) : canManageBilling ? (
+            <LinkButton variant="primary/small" to={v3BillingPath(organization)}>
+              Upgrade
+            </LinkButton>
+          ) : (
+            // A Button, not a disabled LinkButton: its tooltip still shows while disabled.
+            <Button
+              variant="primary/small"
+              disabled
+              tooltip="You don't have permission to manage billing"
+            >
+              Upgrade
+            </Button>
+          )
+        }
+      >
+        <Paragraph variant="small" spacing={showSelfServe && !canManageBilling}>
+          See who changed credentials, environment variables and members in your organization, and
+          from where.
+        </Paragraph>
+        {/* The disabled button's tooltip can't be reached by keyboard, so say it here too. */}
+        {showSelfServe && !canManageBilling ? (
+          <Paragraph variant="small">
+            Someone who can manage billing for your organization can upgrade.
+          </Paragraph>
+        ) : null}
+      </InfoPanel>
+    </MainCenteredContainer>
   );
 }
 

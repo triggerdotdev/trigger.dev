@@ -1,5 +1,8 @@
 import type { AuditLogEventSummary, AuditLogEventSummaryQuery } from "@trigger.dev/plugins";
-import { clampToVisibilityWindow } from "~/services/auditLogs/auditEventsApi.server";
+import {
+  auditLogVisibilityDays,
+  clampToVisibilityWindow,
+} from "~/services/auditLogs/auditEventsApi.server";
 import { logger } from "~/services/logger.server";
 import { credentialFilter, parseCredentialReference } from "./auditLogCredentials.server";
 import {
@@ -27,7 +30,9 @@ export type AuditLogCredentialSummaryResult = {
 export async function auditLogCredentialSummary(
   organizationId: string,
   searchParams: AuditLogSearchParams,
-  summarizeEvents: SummarizeEvents
+  summarizeEvents: SummarizeEvents,
+  /** Days of history the org's plan shows; null for no limit. Defaults to the plan, from billing. */
+  visibilityDays: (organizationId: string) => Promise<number | null> = auditLogVisibilityDays
 ): Promise<AuditLogCredentialSummaryResult> {
   const none = { summary: null, noEvents: false };
   // Never throws: the loader starts it before awaiting the events.
@@ -41,7 +46,7 @@ export async function auditLogCredentialSummary(
       limit: _limit,
       ...query
     } = auditLogQuery(organizationId, filters, searchParams);
-    const { from, to } = await clampToVisibilityWindow(organizationId, query);
+    const { from, to } = await clampToVisibilityWindow(organizationId, query, { visibilityDays });
     if (from >= to) return none;
 
     const summary = await summarizeEvents({

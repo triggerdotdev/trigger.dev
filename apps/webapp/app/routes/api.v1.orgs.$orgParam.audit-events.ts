@@ -4,6 +4,7 @@ import { prisma } from "~/db.server";
 import {
   AuditEventsSearchParams,
   auditLogErrorKind,
+  auditLogsOnPlan,
   toAuditEventsResponse,
   toAuditLogEventQuery,
 } from "~/services/auditLogs/auditEventsApi.server";
@@ -58,6 +59,13 @@ export const loader = createLoaderPATApiRoute(
           code: "audit_logs_not_available",
         },
         { status: 501 }
+      );
+    }
+
+    if (!(await auditLogsOnPlan(organization.id))) {
+      return json(
+        { error: "Audit logs aren't available on your plan.", code: "plan_upgrade_required" },
+        { status: 403 }
       );
     }
 

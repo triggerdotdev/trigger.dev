@@ -6,6 +6,7 @@ import type {
   AuditLogSource,
 } from "@trigger.dev/plugins";
 import { z } from "zod";
+import type { AuditLogVisibility } from "./auditLogVisibility.server";
 
 /** Every category the public API can filter by: all but `auth`, which is never listed. */
 const LISTED_CATEGORIES = [
@@ -126,21 +127,63 @@ export type AuditEventsSearchParams = z.infer<typeof AuditEventsSearchParams>;
 
 export type TimeRange = { from: Date; to: Date };
 
-/** Before any audit event: an unbounded start until a visibility window applies. */
+/** Before any audit event: the start of an unbounded range. */
 export const EARLIEST_EVENT = new Date("2000-01-01T00:00:00.000Z");
 
+const DAY_MS = 24 * 60 * 60 * 1000;
+
 /**
- * The single place the plan's visibility window is enforced, for the public API and the audit log
- * page. Returns the part of the requested range the organization may see.
- *
- * TODO(TRI-15844): no window is decided yet, so this passes the range through unchanged. When one
- * is, move `from` forward to the start of the organization's window here.
+ * Days of history the organization's plan shows, or null when nothing limits it (self-hosted). As
+ * SSO does, a plan that can't be read counts as one without audit logs.
+ */
+export async function auditLogVisibilityDays(
+  organizationId: string,
+  readVisibility: (organizationId: string) => Promise<AuditLogVisibility> = readPlanVisibility
+): Promise<number | null> {
+  const visibility = await readVisibility(organizationId);
+  if (visibility === "unlimited") return null;
+  if (visibility === "unknown") return 0;
+  return visibility.days;
+}
+
+// Imported when first used, so loading this module doesn't load billing, env and the database.
+async function readPlanVisibility(organizationId: string): Promise<AuditLogVisibility> {
+  const { getAuditLogVisibility } = await import("~/services/platform.v3.server");
+  return getAuditLogVisibility(organizationId);
+}
+
+/** Whether the organization's plan includes audit logs at all. */
+export async function auditLogsOnPlan(organizationId: string): Promise<boolean> {
+  return (await auditLogVisibilityDays(organizationId)) !== 0;
+}
+
+export type VisibilityWindowOptions = {
+  now?: Date;
+  /** Defaults to the organization's plan, from billing. */
+  visibilityDays?: (organizationId: string) => Promise<number | null>;
+};
+
+/**
+ * The single place the plan's visibility window is enforced. Returns the part of the requested
+ * range the organization may see: a `from` before the window moves up to its start, and a range
+ * that ends before the window is empty (`from` equals `to`). With no limit nothing is cut.
  */
 export async function clampToVisibilityWindow(
-  _organizationId: string,
-  requested: TimeRange
+  organizationId: string,
+  requested: TimeRange,
+  { now = new Date(), visibilityDays = auditLogVisibilityDays }: VisibilityWindowOptions = {}
 ): Promise<TimeRange> {
-  return requested;
+  const days = await visibilityDays(organizationId);
+  if (days === null) return requested;
+
+  const windowStart = new Date(now.getTime() - days * DAY_MS);
+  if (requested.to <= windowStart) {
+    return { from: requested.to, to: requested.to };
+  }
+  return {
+    from: requested.from < windowStart ? windowStart : requested.from,
+    to: requested.to,
+  };
 }
 
 /** The plugin query for one organization. `organizationId` is the caller's, from the path. */
@@ -157,7 +200,7 @@ export async function toAuditLogEventQuery(
     return { error: "filter[occurredAt][from] must be before filter[occurredAt][to]" };
   }
 
-  const { from, to } = await clampToVisibilityWindow(organizationId, requested);
+  const { from, to } = await clampToVisibilityWindow(organizationId, requested, { now });
 
   return {
     organizationId,

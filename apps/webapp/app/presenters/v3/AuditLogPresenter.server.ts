@@ -23,6 +23,7 @@ import { dateFromString, timeFilterFromTo } from "~/components/runs/v3/SharedFil
 import type { PrismaReplicaClient } from "~/db.server";
 import {
   auditLogErrorKind,
+  auditLogVisibilityDays,
   clampToVisibilityWindow,
   EARLIEST_EVENT,
 } from "~/services/auditLogs/auditEventsApi.server";
@@ -237,7 +238,11 @@ export function auditLogClient(source: AuditLogListedEvent["source"]): string {
 export class AuditLogPresenter {
   constructor(
     private readonly replica: PrismaReplicaClient,
-    private readonly listEvents: ListEvents
+    private readonly listEvents: ListEvents,
+    /** Days of history the org's plan shows; null for no limit. Defaults to the plan, from billing. */
+    private readonly visibilityDays: (
+      organizationId: string
+    ) => Promise<number | null> = auditLogVisibilityDays
   ) {}
 
   async call(
@@ -247,14 +252,25 @@ export class AuditLogPresenter {
     const filters = auditLogFilters(searchParams);
     const query = auditLogQuery(organizationId, filters, searchParams);
     const range = { from: query.from.getTime(), to: query.to.getTime() };
-    const { from, to } = await clampToVisibilityWindow(organizationId, query);
-    if (from >= to) {
+    if (query.from >= query.to) {
       return {
         filters,
         range,
         events: [],
         nextCursor: null,
         error: "The start of the time range must be before its end.",
+      };
+    }
+    const { from, to } = await clampToVisibilityWindow(organizationId, query, {
+      visibilityDays: this.visibilityDays,
+    });
+    if (from >= to) {
+      return {
+        filters,
+        range,
+        events: [],
+        nextCursor: null,
+        error: "This time range is older than the audit log history your plan includes.",
       };
     }
 
@@ -305,10 +321,11 @@ export class AuditLogPresenter {
     organizationId: string,
     credential: NonNullable<AuditLogEventQuery["credential"]>
   ): Promise<boolean> {
-    const { from, to } = await clampToVisibilityWindow(organizationId, {
-      from: EARLIEST_EVENT,
-      to: new Date(),
-    });
+    const { from, to } = await clampToVisibilityWindow(
+      organizationId,
+      { from: EARLIEST_EVENT, to: new Date() },
+      { visibilityDays: this.visibilityDays }
+    );
     try {
       const page = await this.listEvents({
         organizationId,

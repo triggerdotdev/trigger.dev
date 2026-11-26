@@ -10,6 +10,7 @@ import {
   AUDIT_LOG_PAGE_AUTHORIZATION,
   auditLogPageContext,
 } from "~/services/auditLogs/auditLogPageAccess.server";
+import { auditLogsOnPlan } from "~/services/auditLogs/auditEventsApi.server";
 import { auditLogs, getAuditLogController } from "~/services/auditLogs/auditLogs.server";
 import { logger } from "~/services/logger.server";
 import { dashboardLoader } from "~/services/routeBuilders/dashboardBuilder";
@@ -33,7 +34,7 @@ export const loader = dashboardLoader(
     // Never an error response: the page loads this with a fetcher, and a thrown error would replace
     // the page with its error boundary. A summary that can't be loaded is simply left out.
     try {
-      if (!(await getAuditLogController())) {
+      if (!(await getAuditLogController()) || !(await auditLogsOnPlan(organizationId))) {
         return typedjson({ search, summary: null, noEvents: false, keyStatus: null });
       }
       const searchParams = AuditLogSearchParams.parse(

@@ -32,7 +32,12 @@ function recordingSummarizer(result: AuditLogEventSummary | null | Error = SUMMA
 }
 
 const resultFor = (params: Record<string, string>, summarize = recordingSummarizer()) =>
-  auditLogCredentialSummary("org_1", AuditLogSearchParams.parse(params), summarize.summarize);
+  auditLogCredentialSummary(
+    "org_1",
+    AuditLogSearchParams.parse(params),
+    summarize.summarize,
+    async () => null
+  );
 const summaryFor = async (params: Record<string, string>, summarize = recordingSummarizer()) =>
   (await resultFor(params, summarize)).summary;
 

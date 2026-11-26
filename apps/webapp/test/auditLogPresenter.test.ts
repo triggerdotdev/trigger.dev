@@ -31,6 +31,9 @@ import { obfuscateApiKey } from "~/utils/apiKeys";
 import { seedTestUser } from "./helpers/seedTestPAT";
 import { seedTestUserProject } from "./helpers/seedTestUserProject";
 
+/** No plan window: these tests are about filters and names, not the plan. */
+const noVisibilityWindow = async () => null;
+
 // The audit log page's data: the query it sends the plugin, and the names it shows for what the
 // plugin returns, against a real database. The plugin is a function that records queries.
 
@@ -61,10 +64,14 @@ function listedEvent(
 
 function recordingPresenter(prisma: PrismaClient, events: AuditLogListedEvent[] = []) {
   const queries: AuditLogEventQuery[] = [];
-  const presenter = new AuditLogPresenter(prisma, async (query) => {
-    queries.push(query);
-    return { events, nextCursor: "cursor_2" };
-  });
+  const presenter = new AuditLogPresenter(
+    prisma,
+    async (query) => {
+      queries.push(query);
+      return { events, nextCursor: "cursor_2" };
+    },
+    noVisibilityWindow
+  );
   return { presenter, queries };
 }
 
@@ -642,11 +649,15 @@ describe("AuditLogPresenter", () => {
   // Catches: a ClickHouse outage or a stale cursor crashing the page instead of explaining.
   postgresTest("explains a store failure and a rejected query", async ({ prisma }) => {
     const failWith = (name: string) =>
-      new AuditLogPresenter(prisma, async () => {
-        const error = new Error("detail that stays internal");
-        error.name = name;
-        throw error;
-      });
+      new AuditLogPresenter(
+        prisma,
+        async () => {
+          const error = new Error("detail that stays internal");
+          error.name = name;
+          throw error;
+        },
+        noVisibilityWindow
+      );
 
     const unavailable = await failWith("AuditLogReadError").call("org_1", {});
     expect(unavailable).toMatchObject({ events: [], nextCursor: null });
@@ -716,19 +727,23 @@ describe("AuditLogPresenter", () => {
     const monthAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
     // A store that filters like the plugin does: by credential and time range.
     const presenterOver = (events: AuditLogListedEvent[]) =>
-      new AuditLogPresenter(prisma, async (query) => ({
-        events: events
-          .filter(
-            (event) =>
-              !!event.credential &&
-              !!query.credential?.kinds.includes(event.credential.kind) &&
-              event.credential?.id === query.credential?.id &&
-              event.occurredAt >= query.from &&
-              event.occurredAt < query.to
-          )
-          .slice(0, query.limit),
-        nextCursor: null,
-      }));
+      new AuditLogPresenter(
+        prisma,
+        async (query) => ({
+          events: events
+            .filter(
+              (event) =>
+                !!event.credential &&
+                !!query.credential?.kinds.includes(event.credential.kind) &&
+                event.credential?.id === query.credential?.id &&
+                event.occurredAt >= query.from &&
+                event.occurredAt < query.to
+            )
+            .slice(0, query.limit),
+          nextCursor: null,
+        }),
+        noVisibilityWindow
+      );
     const used = listedEvent(organization.id, {
       occurredAt: monthAgo,
       actor: { type: "user", id: user.id },

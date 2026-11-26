@@ -1,7 +1,7 @@
 import type { AuditLogEvent, AuditLogEventQuery } from "@trigger.dev/plugins";
 import type { PrismaClient } from "@trigger.dev/database";
 import type { rbac as Rbac } from "~/services/rbac.server";
-import { afterEach, describe, expect, vi } from "vitest";
+import { afterEach, describe, expect, test, vi } from "vitest";
 
 // GET /api/v1/orgs/:orgParam/audit-events against a real database. The PAT is validated by the
 // real RBAC fallback; only the ability is replaced, standing in for the enterprise RBAC plugin's
@@ -71,6 +71,11 @@ vi.mock("~/services/rbac.server", async (importOriginal) => {
 
 import { postgresTest } from "@internal/testcontainers";
 import { loader } from "~/routes/api.v1.orgs.$orgParam.audit-events";
+import {
+  auditLogVisibilityDays,
+  clampToVisibilityWindow,
+} from "~/services/auditLogs/auditEventsApi.server";
+import type { AuditLogVisibility } from "~/services/auditLogs/auditLogVisibility.server";
 import { installAuditLogPlugin, uninstallAuditLogPlugin } from "./helpers/auditLogPlugin";
 import { seedTestPAT } from "./helpers/seedTestPAT";
 
@@ -336,6 +341,7 @@ describe("GET /api/v1/orgs/:orgParam/audit-events", () => {
 
     expect(queries).toHaveLength(1);
     expect(queries[0].limit).toBe(20);
+    // No billing in tests, so no plan is known and nothing is cut.
     expect(queries[0].from.toISOString()).toBe("2000-01-01T00:00:00.000Z");
     expect(queries[0].to.getTime()).toBeGreaterThanOrEqual(before);
     expect(queries[0].to.getTime()).toBeLessThanOrEqual(Date.now());
@@ -436,5 +442,60 @@ describe("GET /api/v1/orgs/:orgParam/audit-events", () => {
     // Auth still comes first: no answer about the instance to a caller who can't view audit logs.
     ctx.auditReaders.clear();
     expect((await get(organization.slug, "", token)).status).toBe(403);
+  });
+});
+
+describe("clampToVisibilityWindow", () => {
+  const now = new Date("2026-11-19T12:00:00.000Z");
+  const everything = { from: new Date("2000-01-01T00:00:00.000Z"), to: now };
+
+  function clamp(days: number | null, requested = everything) {
+    return clampToVisibilityWindow("org_1", requested, { now, visibilityDays: async () => days });
+  }
+
+  test("moves an earlier `from` up to the start of the plan's window", async () => {
+    expect(await clamp(1)).toEqual({ from: new Date("2026-11-18T12:00:00.000Z"), to: now });
+    expect(await clamp(30)).toEqual({ from: new Date("2026-10-20T12:00:00.000Z"), to: now });
+  });
+
+  test("cuts nothing when nothing limits the organization", async () => {
+    expect(await clamp(null)).toEqual(everything);
+  });
+
+  test("keeps a range already inside the window", async () => {
+    const lastHour = { from: new Date("2026-11-19T11:00:00.000Z"), to: now };
+    expect(await clamp(1, lastHour)).toEqual(lastHour);
+  });
+
+  test("is empty when the range ends before the window starts", async () => {
+    const lastWeek = {
+      from: new Date("2026-11-10T00:00:00.000Z"),
+      to: new Date("2026-11-12T00:00:00.000Z"),
+    };
+    const clamped = await clamp(1, lastWeek);
+    expect(clamped.from.getTime()).toBe(clamped.to.getTime());
+  });
+
+  test("is empty for a plan without audit logs", async () => {
+    const clamped = await clamp(0);
+    expect(clamped.from.getTime()).toBe(clamped.to.getTime());
+  });
+});
+
+describe("auditLogVisibilityDays", () => {
+  const days = (visibility: AuditLogVisibility) =>
+    auditLogVisibilityDays("org_1", async () => visibility);
+
+  test("is the plan's days, 0 included", async () => {
+    expect(await days({ days: 30 })).toBe(30);
+    expect(await days({ days: 0 })).toBe(0);
+  });
+
+  test("is unlimited without billing", async () => {
+    expect(await days("unlimited")).toBeNull();
+  });
+
+  test("counts an unreadable plan as one without audit logs, as SSO does", async () => {
+    expect(await days("unknown")).toBe(0);
   });
 });
