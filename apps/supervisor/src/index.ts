@@ -628,8 +628,7 @@ class ManagedSupervisor {
 
             if (
               this.workloadNetworkFor(message) === "proxy" &&
-              (!env.SECRET_PROXY_INTERCEPTOR_SOCKET ||
-                !this.runCrdManager ||
+              (!this.runCrdManager ||
                 env.KUBERNETES_RUNNER_RUNTIME !== "microvm" ||
                 env.WORKLOAD_TOKEN_ENFORCEMENT !== "enforce" ||
                 (checkpoint && !this.runCrdManager.restores(checkpoint)))
