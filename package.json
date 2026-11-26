@@ -77,13 +77,12 @@
   },
   "packageManager": "pnpm@10.33.2",
   "dependencies": {
-    "@changesets/cli": "2.26.2",
+    "@changesets/cli": "3.0.3",
     "@remix-run/changelog-github": "^0.0.5",
     "agentcrumbs": "^0.5.0"
   },
   "pnpm": {
     "patchedDependencies": {
-      "@changesets/assemble-release-plan@5.2.4": "patches/@changesets__assemble-release-plan@5.2.4.patch",
       "engine.io-parser@5.2.2": "patches/engine.io-parser@5.2.2.patch",
       "redlock@5.0.0-beta.2": "patches/redlock@5.0.0-beta.2.patch",
       "@kubernetes/client-node@1.0.0": "patches/@kubernetes__client-node@1.0.0.patch",
