@@ -223,13 +223,14 @@ export function timeFilterFromTo(props: {
   defaultPeriod: string;
 }): { from: Date; to: Date; isDefault: boolean } {
   const time = timeFilters(props);
+  const now = Date.now();
 
   const periodMs = time.period ? parse(time.period) : undefined;
 
   if (periodMs) {
     return {
-      from: new Date(Date.now() - periodMs),
-      to: new Date(),
+      from: new Date(now - periodMs),
+      to: new Date(now),
       isDefault: time.isDefault,
     };
   }
@@ -245,15 +246,15 @@ export function timeFilterFromTo(props: {
   if (time.from) {
     return {
       from: time.from,
-      to: new Date(),
+      to: new Date(now),
       isDefault: time.isDefault,
     };
   }
 
   const defaultPeriodMs = parse(props.defaultPeriod) ?? 24 * 60 * 60 * 1_000;
   return {
-    from: new Date(Date.now() - defaultPeriodMs),
-    to: time.to ?? new Date(),
+    from: new Date(now - defaultPeriodMs),
+    to: time.to ?? new Date(now),
     isDefault: time.isDefault,
   };
 }
