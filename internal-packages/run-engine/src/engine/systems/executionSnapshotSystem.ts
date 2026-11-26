@@ -47,6 +47,7 @@ export interface EnhancedExecutionSnapshot extends TaskRunExecutionSnapshot {
   friendlyId: string;
   runFriendlyId: string;
   checkpoint: TaskRunCheckpoint | null;
+  checkpointStore?: "state";
   completedWaitpoints: CompletedWaitpoint[];
 }
 
@@ -617,6 +618,7 @@ export class ExecutionSnapshotSystem {
       projectId,
       organizationId,
       checkpointId,
+      checkpointStore,
       workerId,
       runnerId,
       completedWaitpoints,
@@ -643,6 +645,7 @@ export class ExecutionSnapshotSystem {
       projectId: string;
       organizationId: string;
       checkpointId?: string;
+      checkpointStore?: "state";
       workerId?: string;
       runnerId?: string;
       completedWaitpoints?: {
@@ -678,6 +681,7 @@ export class ExecutionSnapshotSystem {
         projectId,
         organizationId,
         checkpointId,
+        checkpointStore,
         workerId,
         runnerId,
         completedWaitpoints,

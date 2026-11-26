@@ -3985,6 +3985,7 @@ export class RunEngine {
             orgId: latestSnapshot.organizationId,
             projectId: latestSnapshot.projectId,
             checkpointId: latestSnapshot.checkpointId ?? undefined,
+            checkpointStore: latestSnapshot.checkpointStore,
             completedWaitpoints: latestSnapshot.completedWaitpoints,
             batchId: latestSnapshot.batchId ?? undefined,
             error: {

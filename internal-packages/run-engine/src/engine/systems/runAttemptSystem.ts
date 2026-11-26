@@ -1804,6 +1804,7 @@ export class RunAttemptSystem {
     workerId,
     runnerId,
     checkpointId,
+    checkpointStore,
     completedWaitpoints,
     batchId,
     resetQueueAttempts = false,
@@ -1828,6 +1829,7 @@ export class RunAttemptSystem {
     workerId?: string;
     runnerId?: string;
     checkpointId?: string;
+    checkpointStore?: "state";
     tx?: PrismaClientOrTransaction;
     completedWaitpoints?: {
       id: string;
@@ -1900,6 +1902,7 @@ export class RunAttemptSystem {
         workerId,
         runnerId,
         checkpointId,
+        checkpointStore,
         completedWaitpoints,
         batchId,
         previousSnapshotId,
@@ -2037,6 +2040,7 @@ export class RunAttemptSystem {
             orgId: latestSnapshot.organizationId,
             projectId: latestSnapshot.projectId,
             checkpointId: latestSnapshot.checkpointId ?? undefined,
+            checkpointStore: latestSnapshot.checkpointStore,
             completedWaitpoints: latestSnapshot.completedWaitpoints,
             batchId: latestSnapshot.batchId ?? undefined,
             workerId,
@@ -2168,6 +2172,7 @@ export class RunAttemptSystem {
         orgId: latestSnapshot.organizationId,
         projectId: latestSnapshot.projectId,
         checkpointId: latestSnapshot.checkpointId ?? undefined,
+        checkpointStore: latestSnapshot.checkpointStore,
         completedWaitpoints: latestSnapshot.completedWaitpoints,
         batchId: latestSnapshot.batchId ?? undefined,
         workerId,

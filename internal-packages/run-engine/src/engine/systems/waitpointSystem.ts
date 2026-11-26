@@ -2502,6 +2502,7 @@ export class WaitpointSystem {
             })),
             resolveCompletedWaitpointRecords,
             checkpoint: snapshot.checkpoint,
+            checkpointStore: snapshot.checkpointStore,
           });
 
           this.$.logger.debug(`continueRunIfUnblocked: run goes to QUEUED`, {

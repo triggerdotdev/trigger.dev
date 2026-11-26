@@ -6,13 +6,16 @@ import {
   TaskRunExecutionSnapshotStore,
   type SnapshotStoreDial,
   type RunStore,
+  snapshotRouteFromSnapshot,
 } from "@internal/run-store";
 import { createRedisClient, type RedisOptions } from "@internal/redis";
-import type { PrismaClient } from "@trigger.dev/database";
+import { CheckpointId } from "@trigger.dev/core/v3/isomorphic";
+import type { PrismaClient, TaskRunCheckpointType } from "@trigger.dev/database";
 import { expect, vi } from "vitest";
 import { RunEngine } from "../../index.js";
 import type { LockRetryConfig } from "../../locking.js";
 import { createCompletedWaitpointResolver } from "../../systems/completedWaitpointResolver.js";
+import { getLatestExecutionSnapshot } from "../../systems/executionSnapshotSystem.js";
 import { StoreWaitpointCoordinator } from "../../waitpointCoordinator/storeWaitpointCoordinator.js";
 import { WaitpointStoreCoordinator } from "../../waitpointCoordinator/storeCoordinator.js";
 import type { setupAuthenticatedEnvironment } from "../setup.js";
@@ -177,6 +180,53 @@ export async function dequeueAndStart(engine: RunEngine, consumerId: string) {
     runId: dequeued[0]!.run.id,
     snapshotId: dequeued[0]!.snapshot.id,
   });
+}
+
+// Suspends a blocked MemoryDB-only run as a flagged suspend will: checkpoint in its snapshot state.
+export async function suspendWithStateHeldCheckpoint(
+  engine: RunEngine,
+  prisma: PrismaClient,
+  runId: string,
+  snapshotId: string,
+  checkpoint: { type: TaskRunCheckpointType; location: string; imageRef?: string; reason?: string }
+) {
+  const latest = await getLatestExecutionSnapshot(prisma, runId, engine.runStore);
+  expect(latest.id).toBe(snapshotId);
+  expect(latest.executionStatus).toBe("EXECUTING_WITH_WAITPOINTS");
+  const run = await engine.runStore.suspendForCheckpoint(runId, { include: {} }, prisma);
+  const route = snapshotRouteFromSnapshot(latest);
+  expect(route.residency).toBe("redis-primary");
+  const row = await engine.runStore.createStateHeldCheckpoint(
+    {
+      ...CheckpointId.generate(),
+      ...checkpoint,
+      projectId: latest.projectId,
+      runtimeEnvironmentId: latest.environmentId,
+    },
+    runId,
+    route
+  );
+  const suspended = await engine.executionSnapshotSystem.createExecutionSnapshot(prisma, {
+    run,
+    snapshot: {
+      executionStatus: "SUSPENDED",
+      description: "Run was suspended after creating a checkpoint.",
+      metadata: latest.metadata,
+    },
+    previousSnapshotId: latest.id,
+    previousSnapshot: latest,
+    snapshotRoute: route,
+    batchId: latest.batchId ?? undefined,
+    completedWaitpoints: latest.completedWaitpoints.map((w) => ({ id: w.id, index: w.index })),
+    environmentId: latest.environmentId,
+    environmentType: latest.environmentType,
+    projectId: latest.projectId,
+    organizationId: latest.organizationId,
+    checkpointId: row.id,
+    checkpointStore: "state",
+  });
+  await engine.runQueue.releaseAllConcurrency(latest.organizationId, runId);
+  return { checkpoint: row, suspended };
 }
 
 // The waitpoint store has its own real Redis user, so failures cannot affect snapshot/queue clients.

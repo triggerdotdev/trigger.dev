@@ -321,6 +321,7 @@ export class DequeueSystem {
                   projectId: snapshot.projectId,
                   organizationId: snapshot.organizationId,
                   checkpointId: snapshot.checkpointId ?? undefined,
+                  checkpointStore: snapshot.checkpointStore,
                   completedWaitpoints: snapshot.completedWaitpoints,
                   error: `Tried to dequeue a run that is not in a valid state to be dequeued.`,
                   workerId,
@@ -836,6 +837,7 @@ export class DequeueSystem {
                     projectId: snapshot.projectId,
                     organizationId: snapshot.organizationId,
                     checkpointId: snapshot.checkpointId ?? undefined,
+                    checkpointStore: snapshot.checkpointStore,
                     batchId: snapshot.batchId ?? undefined,
                     completedWaitpointIds: snapshot.completedWaitpoints.map((w) => w.id),
                     completedWaitpointOrder: snapshot.completedWaitpoints
@@ -1128,6 +1130,7 @@ export class DequeueSystem {
               orgId,
               projectId: run.projectId,
               checkpointId: snapshot.checkpointId ?? undefined,
+              checkpointStore: snapshot.checkpointStore,
               completedWaitpoints: snapshot.completedWaitpoints,
               batchId: snapshot.batchId ?? undefined,
               error: dequeueMaxRetriesError,
