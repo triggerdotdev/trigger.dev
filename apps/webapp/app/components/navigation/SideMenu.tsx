@@ -2307,21 +2307,32 @@ function ResizeHandle({
   );
 }
 
-/** Shows the project ref (used by the CLI, SDK config and docs samples) and copies it on click. */
+/** Copies the project ref (used by the CLI, SDK config and docs samples) and shows it on hover. */
 function CopyProjectRefMenuItem({ projectRef }: { projectRef: string }) {
   const { copy, copied } = useCopy(projectRef);
   return (
-    <PopoverMenuItem
-      onClick={copy}
-      title={
-        <span className="flex w-full items-center justify-between gap-3">
-          <span>{copied ? "Copied" : "Copy project ref"}</span>
-          <span className="font-mono text-xs text-text-dimmed">{projectRef}</span>
-        </span>
+    <SimpleTooltip
+      asChild
+      side="right"
+      content={<span className="font-mono">{projectRef}</span>}
+      button={
+        // The popover focuses this item on open; only show the tooltip for keyboard focus.
+        <div onFocus={(e) => !e.target.matches(":focus-visible") && e.preventDefault()}>
+          <PopoverMenuItem
+            onClick={copy}
+            title={
+              <>
+                {copied ? "Copied!" : "Copy project ref"}
+                {/* The tooltip describes the wrapper, not this button, so screen readers get the ref here. */}
+                <span className="sr-only"> {projectRef}</span>
+              </>
+            }
+            icon={copied ? CheckIcon : ClipboardDocumentIcon}
+            leadingIconClassName={SIDE_MENU_POPOVER_ITEM_ICON}
+            className={SIDE_MENU_POPOVER_ITEM_LABEL}
+          />
+        </div>
       }
-      icon={copied ? CheckIcon : ClipboardDocumentIcon}
-      leadingIconClassName={SIDE_MENU_POPOVER_ITEM_ICON}
-      className={SIDE_MENU_POPOVER_ITEM_LABEL}
     />
   );
 }
