@@ -120,6 +120,11 @@ function fakeStore(slot: Slot, log: Call[], config: FakeConfig = {}): FakeStore 
       return Promise.resolve((args.create ?? {}) as never);
     }) as FakeStore["upsertWaitpoint"],
 
+    updateBatchTaskRun: ((_args: unknown) => {
+      record("updateBatchTaskRun");
+      return Promise.resolve({ slot } as never);
+    }) as FakeStore["updateBatchTaskRun"],
+
     upsertWaitpointTag: ((data: { name: string }) => {
       record("upsertWaitpointTag");
       return Promise.resolve({ id: `tag_${slot}`, name: data.name } as never);
@@ -618,6 +623,45 @@ describe("RoutingRunStore probe at N", () => {
     });
     await expect(router.findRun({ spanId: "span_x" })).rejects.toThrow("shard a is down");
   });
+
+  // Catches: a two-store id-less look-up that asks the legacy store after the run-ops store failed.
+  it("fails an id-less look-up at once on the first store's error at two stores", async () => {
+    const { router, newStore, log } = buildRouter();
+    (newStore as { findRun: unknown }).findRun = () => Promise.reject(new Error("new is down"));
+    await expect(router.findRun({ spanId: "span_x" })).rejects.toThrow("new is down");
+    expect(trace(log)).toEqual([]);
+  });
+
+  // Catches: a three-store id-less look-up that lets the legacy store's hit beat the run-ops store's.
+  it("returns the run-ops store's hit over the legacy store's at three stores", async () => {
+    const log: Call[] = [];
+    const router = new RoutingRunStore({
+      new: fakeStore("new", log, { runs: [{ id: "r_new" }] }),
+      legacy: fakeStore("legacy", log, { runs: [{ id: "r_legacy" }] }),
+      shards: [{ key: "a", store: fakeStore("a", log) }],
+      resolveShard: (id: string) => id.split(":")[0]!,
+    });
+    await expect(router.findRun({ spanId: "span_x" })).resolves.toEqual({ id: "r_new" });
+  });
+
+  // Catches: a sum over stores that swallows one store's error and returns a partial count.
+  it("fails an id-less idempotency-key clear on any one store's error, at two and three stores", async () => {
+    for (const [shards, failing] of [
+      [[], "legacy"],
+      [[], "new"],
+      [["a"], "legacy"],
+      [["a"], "a"],
+    ] as const) {
+      const { router, byKey } = buildNShardRouter([...shards]);
+      (byKey[failing] as { clearIdempotencyKey: unknown }).clearIdempotencyKey = () =>
+        Promise.reject(new Error(`${failing} is down`));
+      await expect(
+        router.clearIdempotencyKey({
+          byPredicate: { runtimeEnvironmentId: "env_1", idempotencyKey: "k" },
+        } as never)
+      ).rejects.toThrow(`${failing} is down`);
+    }
+  });
 });
 
 describe("RoutingRunStore merge precedence and duplicate alarm", () => {
@@ -879,6 +923,42 @@ describe("RoutingRunStore waitpoint probes at N", () => {
     expect(falls).toEqual([["legacy", "new"]]);
   });
 
+  // Catches: a waitpoint write or tag upsert naming an unconfigured shard that lands on another store.
+  it("raises UnknownShardKey for a waitpoint write or tag naming an unconfigured shard, reaching no store", async () => {
+    const { router, log } = buildNShardRouter(["a"]);
+    const tag = { environmentId: "env_1", name: "tag", projectId: "proj_1" };
+
+    await expect(
+      router.updateWaitpoint({ where: { id: "z:w1" }, data: {} } as never)
+    ).rejects.toBeInstanceOf(UnknownShardKey);
+    // createWaitpoint and upsertWaitpointTag are not async: they throw before returning a promise.
+    expect(() => router.createWaitpoint({ data: { id: "z:w1" } } as never)).toThrow(
+      UnknownShardKey
+    );
+    expect(() =>
+      router.createWaitpoint({ data: { id: "z:w1", completedByTaskRunId: "z:run_1" } } as never)
+    ).toThrow(UnknownShardKey);
+    expect(() => router.upsertWaitpointTag(tag as never, undefined, "NEW", "z")).toThrow(
+      UnknownShardKey
+    );
+    expect(trace(log)).toEqual([]);
+  });
+
+  // Catches: the shard look-up moving ahead of the co-location check for an id-less owned create.
+  it("throws the plain co-location error, not UnknownShardKey, for an id-less create owned on an unconfigured shard", () => {
+    const { router, log } = buildNShardRouter(["a"]);
+    let thrown: unknown;
+    try {
+      router.createWaitpoint({ data: { completedByTaskRunId: "z:run_1" } } as never);
+    } catch (error) {
+      thrown = error;
+    }
+    expect(thrown).toBeInstanceOf(Error);
+    expect(thrown).not.toBeInstanceOf(UnknownShardKey);
+    expect((thrown as Error).message).toContain("refusing to co-locate waitpoint");
+    expect(trace(log)).toEqual([]);
+  });
+
   it("lets a gen-2 waitpoint id beat the cross-tree legacy pin", async () => {
     const { router, log } = buildNShardRouter(["a", "b"]);
     const store = await router.forWaitpointCompletion("b:w1", {
@@ -953,6 +1033,34 @@ describe("RoutingRunStore gen-2 shard refuses a co-located cuid waitpoint", () =
     });
     expect(trace(log)).toEqual(["legacy:createWaitpoint"]);
   });
+
+  // Catches: a waitpoint whose id names configured shard b written beside its owner on shard a.
+  it("refuses a create or upsert owned on shard a whose id names configured shard b", () => {
+    const { router, log } = buildNShardRouter(["a", "b"]);
+    expect(() =>
+      router.createWaitpoint({ data: { id: "b:w1", completedByTaskRunId: "a:run_1" } } as never)
+    ).toThrow("refusing to co-locate waitpoint");
+    expect(() =>
+      router.upsertWaitpoint(
+        { create: { id: "b:w1" }, update: {}, where: { id: "b:w1" } } as never,
+        undefined,
+        { coLocateWithRunId: "a:run_1" }
+      )
+    ).toThrow("refusing to co-locate waitpoint");
+    expect(trace(log)).toEqual([]);
+  });
+
+  // Catches: a create or upsert by a legacy id that probes the run-ops store first.
+  it("sends a create or upsert by a legacy id with no owner or residency to legacy alone", async () => {
+    const { router, log } = coLocateRouter();
+    await router.createWaitpoint({ data: { id: "cuid_w1" } } as never);
+    await router.upsertWaitpoint({
+      create: { id: "cuid_w2" },
+      update: {},
+      where: { id: "cuid_w2" },
+    } as never);
+    expect(trace(log)).toEqual(["legacy:createWaitpoint", "legacy:upsertWaitpoint"]);
+  });
 });
 
 describe("RoutingRunStore id-less read/route defaults hold at N (never a gen-2 shard)", () => {
@@ -980,6 +1088,24 @@ describe("RoutingRunStore id-less read/route defaults hold at N (never a gen-2 s
     const { router, log } = buildNShardRouter(["a", "b"]);
     await router.createWaitpoint({ data: {} } as never);
     expect(trace(log)).toEqual(["legacy:createWaitpoint"]);
+  });
+
+  // Catches: an id-less waitpoint upsert or batch update whose default store changes.
+  it("sends an id-less waitpoint upsert to legacy and an id-less batch update to new, at two and three stores", async () => {
+    for (const shards of [[], ["a"]]) {
+      const { router, log } = buildNShardRouter(shards);
+      await router.upsertWaitpoint({
+        create: {},
+        update: {},
+        where: { idempotencyKey: "k" },
+      } as never);
+      await router.updateBatchTaskRun({
+        where: { runtimeEnvironmentId: "env_1" },
+        data: {},
+        select: { id: true },
+      } as never);
+      expect(trace(log)).toEqual(["legacy:upsertWaitpoint", "new:updateBatchTaskRun"]);
+    }
   });
 });
 

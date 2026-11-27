@@ -5,6 +5,7 @@
 import type { PrismaClient } from "@trigger.dev/database";
 import { postgresTest } from "@internal/testcontainers";
 import { describe, expect, it, vi } from "vitest";
+import type * as DbServerModule from "~/db.server";
 import type { PrismaClientOrTransaction } from "~/db.server";
 import {
   FEATURE_FLAG,
@@ -14,9 +15,26 @@ import {
   hasUnreadableTurnEvalsOverride,
   parseStoredOrgFlags,
 } from "~/v3/featureFlags";
-import { makeFlag, makeSetFlag } from "~/v3/featureFlags.server";
+import { flags, makeFlag, makeSetFlag } from "~/v3/featureFlags.server";
 
 vi.setConfig({ testTimeout: 60_000 });
+
+const db = vi.hoisted(() => ({ client: null as unknown as PrismaClient }));
+
+// `flags` is built on the app's default client: forward it to the current test's database.
+vi.mock("~/db.server", async (importOriginal) => {
+  const actual = await importOriginal<typeof DbServerModule>();
+  const client = new Proxy(
+    {},
+    {
+      get(_target, prop) {
+        const value = (db.client as any)[prop];
+        return typeof value === "function" ? value.bind(db.client) : value;
+      },
+    }
+  );
+  return { ...actual, prisma: client };
+});
 
 const KEY = FEATURE_FLAG.dashboardAgentTurnEvalsEnabled;
 
@@ -98,6 +116,22 @@ describe("flag() override resolution", () => {
 
     expect(result).toBe(true);
     expect(calls.findFirst).toBe(1);
+  });
+});
+
+describe("flags()", () => {
+  // Catches: flags() returning a stored key outside the catalogue, or a value its schema rejects.
+  postgresTest("returns only catalogue keys whose stored value parses", async ({ prisma }) => {
+    db.client = prisma;
+    await prisma.featureFlag.createMany({
+      data: [
+        { key: FEATURE_FLAG.waitpointStoreEnabled, value: true },
+        { key: "notInTheCatalogue", value: true },
+        { key: FEATURE_FLAG.realtimeBackend, value: "not-a-backend" },
+      ],
+    });
+
+    expect(await flags()).toEqual({ [FEATURE_FLAG.waitpointStoreEnabled]: true });
   });
 });
 

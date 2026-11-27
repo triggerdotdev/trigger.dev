@@ -9,6 +9,7 @@ import { LegacyPostgresWaitpointCoordinator } from "./legacyPostgresCoordinator.
 const GEN2_RUN = `${"a".repeat(24)}a2`;
 const GEN1_RUN = `${"a".repeat(24)}01`;
 const GEN2_BATCH = `${"d".repeat(24)}b2`;
+const GEN1_BATCH = `${"d".repeat(24)}01`;
 
 type Captured = { id?: string; friendlyId?: string };
 
@@ -19,6 +20,11 @@ function coordinatorCapturing(captured: Captured) {
       captured.id = args.create.id;
       captured.friendlyId = args.create.friendlyId;
       return { id: args.create.id } as unknown as Waitpoint;
+    },
+    createWaitpoint: async (args: { data: Captured }) => {
+      captured.id = args.data.id;
+      captured.friendlyId = args.data.friendlyId;
+      return { id: args.data.id } as unknown as Waitpoint;
     },
   } as unknown as RunStore;
 
@@ -76,6 +82,18 @@ describe("createManualWaitpoint stamps the anchor's shard", () => {
     expect(captured.id?.[25]).toBe("2");
   });
 
+  // Catches: a manual waitpoint anchored on a gen-1 run minted on a shard instead of as a cuid.
+  it("a gen-1 run anchor keeps a cuid", async () => {
+    const captured: Captured = {};
+    await coordinatorCapturing(captured).createManualWaitpoint({
+      runId: GEN1_RUN,
+      projectId: "proj",
+      environmentId: "env",
+    });
+
+    expect(captured.id).toHaveLength(25);
+  });
+
   it("a standalone token mints by the environment's shard, not by an anchor", async () => {
     const captured: Captured = {};
     await coordinatorCapturing(captured).createManualWaitpoint({
@@ -110,6 +128,29 @@ describe("createManualWaitpoint stamps the anchor's shard", () => {
     });
 
     expect(captured.id?.[24]).toBe("a");
+  });
+});
+
+describe("createBatchWaitpoint stamps the batch's shard", () => {
+  // Catches: a batch waitpoint that stops taking a gen-2 batch's shard, or mints one for a gen-1 batch.
+  it("a gen-2 batch yields a waitpoint id on its shard, a gen-1 batch a cuid", async () => {
+    const onShard: Captured = {};
+    await coordinatorCapturing(onShard).createBatchWaitpoint({
+      batchId: GEN2_BATCH,
+      projectId: "proj",
+      environmentId: "env",
+    });
+    expect(onShard.id).toHaveLength(26);
+    expect(onShard.id?.[24]).toBe("b");
+    expect(onShard.id?.[25]).toBe("2");
+
+    const cuid: Captured = {};
+    await coordinatorCapturing(cuid).createBatchWaitpoint({
+      batchId: GEN1_BATCH,
+      projectId: "proj",
+      environmentId: "env",
+    });
+    expect(cuid.id).toHaveLength(25);
   });
 });
 

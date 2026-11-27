@@ -37,4 +37,12 @@ describe("deriveRunWaitpointId", () => {
       deriveRunWaitpointId("cltest00000000000000000001")
     );
   });
+
+  // Catches: a RUN store waitpoint id that stops keeping a shard-7 or shard-m anchor's core, or its rw tail.
+  it("derives a RUN store waitpoint id from a version-2 anchor on shard 7 or m: same core, then rw", () => {
+    for (const anchor of [generateRunOpsIdV2("7"), generateRunOpsIdV2("m")]) {
+      const id = deriveRunWaitpointId(`run_${anchor}`);
+      expect(id).toBe(`${anchor.slice(0, 24)}rw`);
+    }
+  });
 });

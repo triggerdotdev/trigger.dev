@@ -191,6 +191,38 @@ describe("replaceGlobalFeatureFlags — the admin page cannot bypass the stamp",
     );
   });
 
+  // Catches: a co-submitted flag re-stamping, or dropping the stamp of, a resubmitted mint kind.
+  postgresTest(
+    "a co-submitted flag does not disturb a resubmitted mint kind",
+    async ({ prisma }) => {
+      await replaceGlobalFeatureFlags(prisma, {
+        requestedFlags: { [FEATURE_FLAG.runOpsMintKind]: "runOpsId" },
+        catalogKeys: CATALOG_KEYS,
+        ...SELF_HOSTED,
+        graceMs: 60_000,
+      });
+      const first = await readFlags(prisma, MINT_KIND_KEYS);
+
+      await replaceGlobalFeatureFlags(prisma, {
+        requestedFlags: {
+          [FEATURE_FLAG.runOpsMintKind]: "runOpsId",
+          [FEATURE_FLAG.mollifierEnabled]: true,
+        },
+        catalogKeys: CATALOG_KEYS,
+        ...SELF_HOSTED,
+        graceMs: 60_000,
+      });
+
+      const m = await readFlags(prisma, MINT_KIND_KEYS);
+      expect(m[FEATURE_FLAG.runOpsMintKind]).toBe("runOpsId");
+      expect(first[FEATURE_FLAG.runOpsMintKindFlippedAt]).toEqual(expect.any(String));
+      expect(m[FEATURE_FLAG.runOpsMintKindPrev]).toBe(first[FEATURE_FLAG.runOpsMintKindPrev]);
+      expect(m[FEATURE_FLAG.runOpsMintKindFlippedAt]).toBe(
+        first[FEATURE_FLAG.runOpsMintKindFlippedAt]
+      );
+    }
+  );
+
   postgresTest(
     "omitting the list DELETES it, so unset still turns minting off",
     async ({ prisma }) => {

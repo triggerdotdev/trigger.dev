@@ -100,6 +100,12 @@ async function callV1(handler: unknown, orgId: string, body?: unknown) {
   })) as Response;
 }
 
+const STAMPED = {
+  runOpsMintKind: "runOpsId",
+  runOpsMintKindPrev: "cuid",
+  runOpsMintKindFlippedAt: "2026-01-01T00:00:00.000Z",
+};
+
 const MIXED = {
   hasLogsPageAccess: true,
   taskEventRepository: "clickhouse",
@@ -221,6 +227,41 @@ describe("v2 org flags action", () => {
     expect(typeof stored.runOpsMintKindFlippedAt).toBe("string");
   });
 
+  // Catches: the v2 route storing a mint grace stamp the caller sent instead of computing it.
+  postgresTest("does not store a body-supplied mint grace stamp", async ({ prisma }) => {
+    const orgId = await seedOrg(prisma, { hasLogsPageAccess: true });
+
+    const res = await callV2Action(orgId, {
+      hasLogsPageAccess: true,
+      runOpsMintKindPrev: "runOpsId",
+      runOpsMintKindFlippedAt: "2026-01-01T00:00:00.000Z",
+    });
+
+    expect(res.status).toBe(200);
+    expect(await storedFlags(prisma, orgId)).toEqual({ hasLogsPageAccess: true });
+  });
+
+  // Catches: a v2 save that resends the same mint kind re-stamping or dropping the grace stamp.
+  postgresTest("a save with the same runOpsMintKind keeps the stamps", async ({ prisma }) => {
+    const orgId = await seedOrg(prisma, STAMPED);
+
+    await callV2Action(orgId, { runOpsMintKind: "runOpsId", hasQueryAccess: true });
+
+    expect(await storedFlags(prisma, orgId)).toEqual({ ...STAMPED, hasQueryAccess: true });
+  });
+
+  // Catches: a v2 save that removes runOpsMintKind but leaves its grace stamp behind.
+  postgresTest(
+    "a save without runOpsMintKind removes the kind and both stamps",
+    async ({ prisma }) => {
+      const orgId = await seedOrg(prisma, { ...STAMPED, hasQueryAccess: true });
+
+      await callV2Action(orgId, { hasQueryAccess: true });
+
+      expect(await storedFlags(prisma, orgId)).toEqual({ hasQueryAccess: true });
+    }
+  );
+
   postgresTest("clear-all clears every known flag", async ({ prisma }) => {
     const orgId = await seedOrg(prisma, {
       hasLogsPageAccess: true,
@@ -303,5 +344,39 @@ describe("v1 org flags API", () => {
 
     expect(res.status).toBe(400);
     expect(await storedFlags(prisma, orgId)).toEqual({ hasLogsPageAccess: true });
+  });
+
+  // Catches: a v1 mint kind change that is not grace-stamped.
+  postgresTest("a runOpsMintKind change is grace-stamped", async ({ prisma }) => {
+    const orgId = await seedOrg(prisma, { runOpsMintKind: "cuid" });
+
+    await callV1(v1Action, orgId, { runOpsMintKind: "runOpsId" });
+
+    const stored = (await storedFlags(prisma, orgId)) as Record<string, unknown>;
+    expect(stored.runOpsMintKind).toBe("runOpsId");
+    expect(stored.runOpsMintKindPrev).toBe("cuid");
+    expect(typeof stored.runOpsMintKindFlippedAt).toBe("string");
+  });
+
+  // Catches: the v1 route storing a mint grace stamp the caller sent instead of computing it.
+  postgresTest("does not store a body-supplied mint grace stamp", async ({ prisma }) => {
+    const orgId = await seedOrg(prisma, { hasLogsPageAccess: true });
+
+    const res = await callV1(v1Action, orgId, {
+      runOpsMintKindPrev: "runOpsId",
+      runOpsMintKindFlippedAt: "2026-01-01T00:00:00.000Z",
+    });
+
+    expect(res.status).toBe(200);
+    expect(await storedFlags(prisma, orgId)).toEqual({ hasLogsPageAccess: true });
+  });
+
+  // Catches: a v1 save that resends the same mint kind re-stamping or dropping the grace stamp.
+  postgresTest("a save with the same runOpsMintKind keeps the stamps", async ({ prisma }) => {
+    const orgId = await seedOrg(prisma, STAMPED);
+
+    await callV1(v1Action, orgId, { runOpsMintKind: "runOpsId" });
+
+    expect(await storedFlags(prisma, orgId)).toEqual(STAMPED);
   });
 });

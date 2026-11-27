@@ -200,34 +200,37 @@ describe("readThroughRun (legacy replica + new DB)", () => {
   heteroPostgresTest(
     "gen-2 id on an UNCONFIGURED shard key logs an error and returns not-found, never throws",
     async ({ prisma14, prisma17 }) => {
-      const logger = collectingLogger();
-      const throwingLegacy = throwingClient("the legacy replica");
-      const newRead = vi.fn((c: PrismaReplicaClient) => realRead(c, true));
+      // Catches: a shard-m (generation 3) id read from some store instead of answered as an unconfigured shard.
+      for (const shardKey of ["m", "z"]) {
+        const logger = collectingLogger();
+        const throwingLegacy = throwingClient("the legacy replica");
+        const newRead = vi.fn((c: PrismaReplicaClient) => realRead(c, true));
 
-      // Shard "z" is not configured. A 500 here would be inducible by any caller that
-      // guesses a shard char, so the layer must degrade rather than throw.
-      const result = await readThroughRun({
-        id: SHARD_Z_RUN_ID,
-        idKind: "run",
-        environmentId: "env_1",
-        readNew: newRead,
-        readLegacy: throwingLegacy,
-        deps: {
-          splitEnabled: true,
-          newClient: prisma17 as unknown as PrismaReplicaClient,
-          legacyReplica: prisma14 as unknown as PrismaReplicaClient,
-          shardReplicas: new Map([["a", prisma17 as unknown as PrismaReplicaClient]]),
-          logger,
-        },
-      });
+        // Shard "z" is not configured. A 500 here would be inducible by any caller that
+        // guesses a shard char, so the layer must degrade rather than throw.
+        const result = await readThroughRun({
+          id: shardKey === "z" ? SHARD_Z_RUN_ID : "run_" + "c".repeat(24) + `${shardKey}2`,
+          idKind: "run",
+          environmentId: "env_1",
+          readNew: newRead,
+          readLegacy: throwingLegacy,
+          deps: {
+            splitEnabled: true,
+            newClient: prisma17 as unknown as PrismaReplicaClient,
+            legacyReplica: prisma14 as unknown as PrismaReplicaClient,
+            shardReplicas: new Map([["a", prisma17 as unknown as PrismaReplicaClient]]),
+            logger,
+          },
+        });
 
-      expect(result.found).toBe(false);
-      expect(result.found === false && result.reason).toBe("not-found");
-      expect(logger.errors).toHaveLength(1);
-      expect(logger.errors[0].meta).toMatchObject({ shardKey: "z", configured: ["a"] });
-      // It must not silently fall back onto a gen-1 store.
-      expect(newRead).not.toHaveBeenCalled();
-      expect(throwingLegacy).not.toHaveBeenCalled();
+        expect(result.found).toBe(false);
+        expect(result.found === false && result.reason).toBe("not-found");
+        expect(logger.errors).toHaveLength(1);
+        expect(logger.errors[0].meta).toMatchObject({ shardKey, configured: ["a"] });
+        // It must not silently fall back onto a gen-1 store.
+        expect(newRead).not.toHaveBeenCalled();
+        expect(throwingLegacy).not.toHaveBeenCalled();
+      }
     }
   );
 

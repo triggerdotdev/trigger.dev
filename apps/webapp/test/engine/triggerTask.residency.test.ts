@@ -1,4 +1,5 @@
 import { describe, expect, onTestFinished, vi } from "vitest";
+import type * as ResolveRunMintTargetModule from "~/v3/runOpsMigration/resolveRunMintTarget.server";
 
 // db.server + splitMode are mocked so the idempotency dedup client resolves to
 // the container prisma passed into the concern (split stays off).
@@ -19,6 +20,11 @@ vi.mock("~/services/platform.v3.server", async (importOriginal) => {
   };
 });
 
+vi.mock("~/v3/runOpsMigration/resolveRunMintTarget.server", async (importOriginal) => {
+  const actual = await importOriginal<typeof ResolveRunMintTargetModule>();
+  return { ...actual, resolveRunMintTarget: vi.fn(actual.resolveRunMintTarget) };
+});
+
 import { RunEngine } from "@internal/run-engine";
 import { setupAuthenticatedEnvironment, setupBackgroundWorker } from "@internal/run-engine/tests";
 import { containerTest } from "@internal/testcontainers";
@@ -32,6 +38,7 @@ import {
 import { IdempotencyKeyConcern } from "~/runEngine/concerns/idempotencyKeys.server";
 import { DefaultQueueManager } from "~/runEngine/concerns/queues.server";
 import { RunEngineTriggerTaskService } from "../../app/runEngine/services/triggerTask.server";
+import { resolveRunMintTarget } from "~/v3/runOpsMigration/resolveRunMintTarget.server";
 import {
   MockPayloadProcessor,
   MockTraceEventConcern,
@@ -44,7 +51,11 @@ describe("RunEngineTriggerTaskService — child run residency inheritance", () =
   // Helper: stand up an engine + service wired for a single (real) Postgres/Redis
   // pair. Returns the service plus the authenticated environment and a registered
   // task identifier.
-  async function setupResidencyService(prisma: any, redisOptions: any) {
+  async function setupResidencyService(
+    prisma: any,
+    redisOptions: any,
+    idempotencyKeyConcernOverride?: IdempotencyKeyConcern
+  ) {
     const engine = new RunEngine({
       prisma,
       worker: { redis: redisOptions, workers: 1, tasksPerWorker: 10, pollIntervalMs: 100 },
@@ -71,11 +82,9 @@ describe("RunEngineTriggerTaskService — child run residency inheritance", () =
     await setupBackgroundWorker(engine, authenticatedEnvironment, taskIdentifier);
 
     const queuesManager = new DefaultQueueManager(prisma, engine);
-    const idempotencyKeyConcern = new IdempotencyKeyConcern(
-      prisma,
-      engine,
-      new MockTraceEventConcern()
-    );
+    const idempotencyKeyConcern =
+      idempotencyKeyConcernOverride ??
+      new IdempotencyKeyConcern(prisma, engine, new MockTraceEventConcern());
 
     const triggerTaskService = new RunEngineTriggerTaskService({
       engine,
@@ -188,6 +197,41 @@ describe("RunEngineTriggerTaskService — child run residency inheritance", () =
 
       // Caller-supplied id wins verbatim — NOT re-minted to run-ops id despite the NEW parent.
       expect(result!.run.friendlyId).toBe(explicitFriendlyId);
+    }
+  );
+
+  // Catches: a root minted after the idempotency check, or from flags other than the environment's.
+  containerTest(
+    "a root's id is minted before the idempotency check, from the environment's flags",
+    async ({ prisma, redisOptions }) => {
+      let captured: string | undefined;
+      const idempotencyKeyConcern = {
+        handleTriggerRequest: async (request: { friendlyId: string }) => {
+          captured = request.friendlyId;
+          throw new Error("stop at the idempotency check");
+        },
+      } as unknown as IdempotencyKeyConcern;
+      const { authenticatedEnvironment, taskIdentifier, triggerTaskService } =
+        await setupResidencyService(prisma, redisOptions, idempotencyKeyConcern);
+      const featureFlags = { marker: "environment flags" };
+      const environment = {
+        ...authenticatedEnvironment,
+        organization: { ...authenticatedEnvironment.organization, featureFlags },
+      };
+      const mint = vi.mocked(resolveRunMintTarget);
+      mint.mockClear();
+
+      await expect(
+        triggerTaskService.call({
+          taskId: taskIdentifier,
+          environment,
+          body: { payload: { test: "root" } },
+        })
+      ).rejects.toThrow("stop at the idempotency check");
+
+      expect(captured).toMatch(/^run_/);
+      expect(mint).toHaveBeenCalledTimes(1);
+      expect(mint.mock.calls[0]![0].environment.orgFeatureFlags).toBe(featureFlags);
     }
   );
 });

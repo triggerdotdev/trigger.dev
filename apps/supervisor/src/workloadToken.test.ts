@@ -53,10 +53,10 @@ function runIdCreatedAt(ms: number) {
   }
 }
 
-function gen2RunIdCreatedAt(ms: number) {
+function gen2RunIdCreatedAt(ms: number, shard = "a") {
   const now = vi.spyOn(Date, "now").mockReturnValue(ms);
   try {
-    return `run_${generateRunOpsIdV2("a")}`;
+    return `run_${generateRunOpsIdV2(shard)}`;
   } finally {
     now.mockRestore();
   }
@@ -246,6 +246,45 @@ describe("checkPreviousKeyRunCutoff", () => {
 
     expect(checkPreviousKeyRunCutoff(before, CUTOFF_MS)).toBe("pass");
     expect(checkPreviousKeyRunCutoff(after, CUTOFF_MS)).toBe("fail");
+  });
+
+  // Catches: a parser change that stops reading an `m`-shard version-2 id as run-ops, or reads another version char as one.
+  it("parses a shard-m version-2 id as run-ops with its mint time, and versions 0, 3, 4 and z as legacy", () => {
+    const mintedAt = Date.UTC(2026, 4, 31, 12, 0, 0, 123);
+    const shardM = gen2RunIdCreatedAt(mintedAt, "m");
+
+    expect(shardM).toHaveLength("run_".length + 26);
+    expect(parseRunId(shardM)).toEqual({
+      format: "b32hexV2",
+      table: "partitioned",
+      shard: "m",
+      version: "2",
+      timestamp: new Date(mintedAt),
+    });
+
+    const core = shardM.slice("run_".length, "run_".length + 24);
+    for (const version of ["0", "3", "4", "z"]) {
+      expect(parseRunId(`run_${core}a${version}`).format).toBe("legacy");
+    }
+  });
+
+  // Catches: the cutoff check treating an `m`-shard id differently from any other shard's id.
+  it("gives a shard-m id the same cutoff answer as a shard-a id of the same mint time", async () => {
+    const { checkPreviousKeyRunCutoff } = await loadWorkloadToken({
+      WORKLOAD_TOKEN_SECRET_PREVIOUS: PREVIOUS_SECRET,
+    });
+
+    for (const [mintedAt, expected] of [
+      [CUTOFF_MS - 1, "pass"],
+      [CUTOFF_MS, "fail"],
+    ] as const) {
+      expect(checkPreviousKeyRunCutoff(gen2RunIdCreatedAt(mintedAt, "m"), CUTOFF_MS)).toBe(
+        expected
+      );
+      expect(checkPreviousKeyRunCutoff(gen2RunIdCreatedAt(mintedAt, "a"), CUTOFF_MS)).toBe(
+        expected
+      );
+    }
   });
 
   it("fails an id without the run_ prefix, even one that parseRunId calls legacy", async () => {

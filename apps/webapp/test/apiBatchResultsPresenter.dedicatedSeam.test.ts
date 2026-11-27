@@ -414,69 +414,163 @@ describe("ApiBatchResultsPresenter split mode — real run-ops dedicated schema 
   oneShardTest(
     "a gen-2 member on an unconfigured shard is dropped without being read from a gen-1 store",
     async ({ legacyPrisma, newPrisma, shardPrismas }) => {
+      // Catches: a shard-m (generation 3) member read from a gen-1 store instead of dropped.
+      for (const shardKey of ["m", "z"]) {
+        const shardPrisma = shardPrismas[0]!;
+        const ctx = await seedLegacyEnv(legacyPrisma, `gen2-unconfigured-${shardKey}`);
+        await relaxLegacyAttemptFk(legacyPrisma);
+        await relaxNewBatchItemFk(newPrisma);
+
+        // Neither "m" nor "z" is in the configured map; shard "a" is.
+        const unconfiguredId = generateRunOpsIdV2(shardKey);
+        const legacyMemberId = generateLegacyCuid();
+
+        await seedNewMember(
+          shardPrisma,
+          { envId: ctx.environment.id, orgId: ctx.organization.id, projectId: ctx.project.id },
+          {
+            id: unconfiguredId,
+            friendlyId: `run_unconfigured_${shardKey}`,
+            status: "COMPLETED_SUCCESSFULLY",
+          }
+        );
+        await seedLegacyMember(legacyPrisma, ctx, {
+          id: legacyMemberId,
+          friendlyId: `run_legacy_member_${shardKey}`,
+          status: "COMPLETED_SUCCESSFULLY",
+        });
+
+        const batchFriendlyId = `batch_gen2_unconfigured_${shardKey}`;
+        await seedBatchOnNew(newPrisma, ctx.environment.id, batchFriendlyId, [
+          unconfiguredId,
+          legacyMemberId,
+        ]);
+
+        // A closure-based recorder, not a mock: it records the id sets each store is asked for,
+        // so the assertion is about real reads rather than about a test double's behaviour.
+        const askedOf = (label: string, target: RunOpsPrismaClient | PrismaClient) => {
+          const asked: string[][] = [];
+          const handle = {
+            ...target,
+            taskRun: {
+              findMany: (args: { where?: { id?: { in?: string[] } } }) => {
+                asked.push(args.where?.id?.in ?? []);
+                return (target as unknown as PrismaReplicaClient).taskRun.findMany(args as never);
+              },
+            },
+          } as unknown as PrismaReplicaClient;
+          return { label, asked, handle };
+        };
+        const genOneNew = askedOf("new", newPrisma);
+        const legacy = askedOf("legacy", legacyPrisma);
+
+        const presenter = new ApiBatchResultsPresenter(throwingPrisma, throwingPrisma, {
+          splitEnabled: true,
+          newClient: genOneNew.handle,
+          legacyReplica: legacy.handle,
+          shardReplicas: new Map([["a", shardPrisma as unknown as PrismaReplicaClient]]),
+        });
+
+        const result = await presenter.call(batchFriendlyId, env(ctx));
+
+        // The legacy member still resolves; the unconfigured gen-2 member is dropped.
+        expect(result).toBeDefined();
+        expect(result!.items).toHaveLength(1);
+        expect(result!.items[0]).toMatchObject({ ok: true, id: `run_legacy_member_${shardKey}` });
+
+        // The unconfigured id was never asked of a gen-1 store.
+        for (const store of [genOneNew, legacy]) {
+          for (const ids of store.asked) {
+            expect(ids).not.toContain(unconfiguredId);
+          }
+        }
+      }
+    },
+    180_000
+  );
+
+  // Catches: a batch id on shard m or z read from a configured shard's database instead of answered not found.
+  oneShardTest(
+    "a batch id on an unconfigured shard gives undefined, with split on and off",
+    async ({ legacyPrisma, newPrisma, shardPrismas }) => {
       const shardPrisma = shardPrismas[0]!;
-      const ctx = await seedLegacyEnv(legacyPrisma, "gen2-unconfigured");
-      await relaxLegacyAttemptFk(legacyPrisma);
-      await relaxNewBatchItemFk(newPrisma);
+      const ctx = await seedLegacyEnv(legacyPrisma, "gen2-unconfigured-batch");
+      const shardReplicas = new Map([["a", shardPrisma as unknown as PrismaReplicaClient]]);
 
-      // Shard "z" is not in the configured map; shard "a" is.
-      const unconfiguredId = generateRunOpsIdV2("z");
-      const legacyMemberId = generateLegacyCuid();
+      for (const shardKey of ["m", "z"]) {
+        // The row sits only on configured shard "a": a read routed there would find it.
+        const batchFriendlyId = `batch_${generateRunOpsIdV2(shardKey)}`;
+        await shardPrisma.batchTaskRun.create({
+          data: {
+            friendlyId: batchFriendlyId,
+            runtimeEnvironmentId: ctx.environment.id,
+            runCount: 0,
+            runIds: [],
+            batchVersion: "runengine:v2",
+          },
+        });
 
-      await seedNewMember(
-        shardPrisma,
-        { envId: ctx.environment.id, orgId: ctx.organization.id, projectId: ctx.project.id },
-        { id: unconfiguredId, friendlyId: "run_unconfigured", status: "COMPLETED_SUCCESSFULLY" }
-      );
-      await seedLegacyMember(legacyPrisma, ctx, {
-        id: legacyMemberId,
-        friendlyId: "run_legacy_member",
-        status: "COMPLETED_SUCCESSFULLY",
-      });
+        for (const splitEnabled of [true, false]) {
+          const presenter = splitEnabled
+            ? new ApiBatchResultsPresenter(throwingPrisma, throwingPrisma, {
+                splitEnabled: true,
+                newClient: newPrisma as unknown as PrismaReplicaClient,
+                legacyReplica: legacyPrisma as unknown as PrismaReplicaClient,
+                shardReplicas,
+              })
+            : new ApiBatchResultsPresenter(
+                newPrisma as unknown as PrismaReplicaClient,
+                newPrisma as unknown as PrismaReplicaClient,
+                { splitEnabled: false, shardReplicas }
+              );
 
-      const batchFriendlyId = "batch_gen2_unconfigured";
-      await seedBatchOnNew(newPrisma, ctx.environment.id, batchFriendlyId, [
-        unconfiguredId,
-        legacyMemberId,
-      ]);
+          expect(await presenter.call(batchFriendlyId, env(ctx))).toBeUndefined();
+        }
+      }
+    },
+    180_000
+  );
 
-      // A closure-based recorder, not a mock: it records the id sets each store is asked for,
-      // so the assertion is about real reads rather than about a test double's behaviour.
-      const askedOf = (label: string, target: RunOpsPrismaClient | PrismaClient) => {
-        const asked: string[][] = [];
-        const handle = {
-          ...target,
-          taskRun: {
-            findMany: (args: { where?: { id?: { in?: string[] } } }) => {
-              asked.push(args.where?.id?.in ?? []);
-              return (target as unknown as PrismaReplicaClient).taskRun.findMany(args as never);
+  // Catches: a change in which stores, and in what order, a batch id on shard m or z is read from.
+  oneShardTest(
+    "a batch id on an unconfigured shard is read from new then the legacy replica (the replica alone with split off)",
+    async ({ legacyPrisma, newPrisma, shardPrismas }) => {
+      const ctx = await seedLegacyEnv(legacyPrisma, "gen2-unconfigured-batch-order");
+      const reads: string[] = [];
+      const recording = (label: string, target: RunOpsPrismaClient | PrismaClient) =>
+        ({
+          batchTaskRun: {
+            findFirst: (args: unknown) => {
+              reads.push(label);
+              return (target as unknown as PrismaReplicaClient).batchTaskRun.findFirst(
+                args as never
+              );
             },
           },
-        } as unknown as PrismaReplicaClient;
-        return { label, asked, handle };
-      };
-      const genOneNew = askedOf("new", newPrisma);
-      const legacy = askedOf("legacy", legacyPrisma);
+        }) as unknown as PrismaReplicaClient;
+      const shardReplicas = new Map([["a", recording("shard-a", shardPrismas[0]!)]]);
 
-      const presenter = new ApiBatchResultsPresenter(throwingPrisma, throwingPrisma, {
-        splitEnabled: true,
-        newClient: genOneNew.handle,
-        legacyReplica: legacy.handle,
-        shardReplicas: new Map([["a", shardPrisma as unknown as PrismaReplicaClient]]),
-      });
+      for (const shardKey of ["m", "z"]) {
+        const batchFriendlyId = `batch_${generateRunOpsIdV2(shardKey)}`;
 
-      const result = await presenter.call(batchFriendlyId, env(ctx));
+        reads.length = 0;
+        const split = new ApiBatchResultsPresenter(throwingPrisma, throwingPrisma, {
+          splitEnabled: true,
+          newClient: recording("new", newPrisma),
+          legacyReplica: recording("legacy-replica", legacyPrisma),
+          shardReplicas,
+        });
+        expect(await split.call(batchFriendlyId, env(ctx))).toBeUndefined();
+        expect(reads).toEqual(["new", "legacy-replica"]);
 
-      // The legacy member still resolves; the unconfigured gen-2 member is dropped.
-      expect(result).toBeDefined();
-      expect(result!.items).toHaveLength(1);
-      expect(result!.items[0]).toMatchObject({ ok: true, id: "run_legacy_member" });
-
-      // The unconfigured id was never asked of a gen-1 store.
-      for (const store of [genOneNew, legacy]) {
-        for (const ids of store.asked) {
-          expect(ids).not.toContain(unconfiguredId);
-        }
+        reads.length = 0;
+        const passthrough = new ApiBatchResultsPresenter(
+          throwingPrisma,
+          recording("replica", newPrisma),
+          { splitEnabled: false, shardReplicas }
+        );
+        expect(await passthrough.call(batchFriendlyId, env(ctx))).toBeUndefined();
+        expect(reads).toEqual(["replica"]);
       }
     },
     180_000

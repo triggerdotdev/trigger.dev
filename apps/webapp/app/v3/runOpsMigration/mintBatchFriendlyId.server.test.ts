@@ -1,5 +1,9 @@
 import { describe, expect, it, vi } from "vitest";
-import { batchIdForMintKind, resolveBatchMintKind } from "./mintBatchFriendlyId.server";
+import {
+  batchIdForMintKind,
+  mintBatchFriendlyId,
+  resolveBatchMintKind,
+} from "./mintBatchFriendlyId.server";
 import { classifyKind } from "@trigger.dev/core/v3/isomorphic";
 
 describe("batchIdForMintKind (pure)", () => {
@@ -146,5 +150,26 @@ describe("resolveBatchMintKind", () => {
       },
     });
     expect(target).toEqual({ kind: "runOpsId", shardChar: "a" });
+  });
+});
+
+describe("mintBatchFriendlyId", () => {
+  // Catches: a composed batch mint that stops inheriting a gen-2 parent's shard or asks the org setting.
+  it("mints a batch id on a gen-2 parent's shard without asking either resolver", async () => {
+    const resolveRunIdMintKind = vi.fn();
+    const resolveMintShard = vi.fn();
+    for (const shard of ["a", "c"]) {
+      const minted = await mintBatchFriendlyId({
+        environment: { organizationId: "org_1", id: "env_1", orgFeatureFlags: {} },
+        parentRunFriendlyId: `run_${"a".repeat(24)}${shard}2`,
+        deps: { resolveRunIdMintKind, resolveMintShard },
+      });
+
+      expect(minted.id[24]).toBe(shard);
+      expect(minted.id[25]).toBe("2");
+      expect(minted.friendlyId.startsWith("batch_")).toBe(true);
+    }
+    expect(resolveRunIdMintKind).not.toHaveBeenCalled();
+    expect(resolveMintShard).not.toHaveBeenCalled();
   });
 });

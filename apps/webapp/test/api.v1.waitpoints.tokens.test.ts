@@ -1,8 +1,76 @@
-import { describe, expect, vi } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 // Store-routed engine create/get seam + the residency-keyed id contract behind
 // the create route (not its HTTP action). A standalone MANUAL token is cuid →
 // LEGACY; NEW residency is reached only by co-locating the token with a run-ops run.
+
+// The placement tests below drive the real token route and webhook waiter ports with the
+// placement inputs (mint kind, shard) and the writers (engine, tag model, run store) replaced by
+// spies. The engine-seam tests build their own RunEngine and import none of these modules.
+const H = vi.hoisted(() => ({
+  environment: undefined as any,
+  mintKind: "cuid" as "cuid" | "runOpsId",
+  shardKey: undefined as string | undefined,
+  storeEnabled: false,
+  createManualWaitpoint: undefined as any,
+  readExistingStoreDateTimeWaitpointByKey: undefined as any,
+  createWaitpointTag: undefined as any,
+  findWaitpoint: undefined as any,
+}));
+
+vi.mock("~/db.server", async () => {
+  const { Prisma } = await import("@trigger.dev/database");
+  return {
+    prisma: {},
+    $replica: {},
+    runOpsNewReplicaClient: {},
+    runOpsLegacyReplica: {},
+    runOpsSplitReadEnabled: false,
+    sqlDatabaseSchema: Prisma.sql([`public`]),
+  };
+});
+
+vi.mock("~/services/rbac.server", () => ({
+  rbac: {
+    authenticateBearer: async () => ({
+      ok: true,
+      environment: H.environment,
+      subject: { type: "private" },
+      ability: { can: () => true, canSuper: () => true },
+      jwt: undefined,
+    }),
+  },
+}));
+
+vi.mock("~/v3/engineVersion.server", () => ({
+  resolveRunIdMintKind: async () => H.mintKind,
+}));
+
+vi.mock("~/v3/runOpsMigration/runOpsMintShard.server", () => ({
+  resolveMintShard: async () => H.shardKey,
+}));
+
+vi.mock("~/models/runtimeEnvironment.server", () => ({
+  findEnvironmentById: async () => H.environment,
+}));
+
+vi.mock("~/v3/runEngine.server", () => ({
+  engine: {
+    createManualWaitpoint: (...args: unknown[]) => H.createManualWaitpoint(...args),
+    readExistingStoreDateTimeWaitpointByKey: (...args: unknown[]) =>
+      H.readExistingStoreDateTimeWaitpointByKey(...args),
+    waitpointSystem: { isWaitpointStoreEnabled: async () => H.storeEnabled },
+  },
+}));
+
+vi.mock("~/models/waitpointTag.server", () => ({
+  MAX_TAGS_PER_WAITPOINT: 10,
+  createWaitpointTag: (...args: unknown[]) => H.createWaitpointTag(...args),
+}));
+
+vi.mock("~/v3/runStore.server", () => ({
+  runStore: { findWaitpoint: (...args: unknown[]) => H.findWaitpoint(...args) },
+}));
 
 import { RunEngine } from "@internal/run-engine";
 import { setupAuthenticatedEnvironment } from "@internal/run-engine/tests";
@@ -24,6 +92,8 @@ import {
 } from "@trigger.dev/core/v3/isomorphic";
 import type { Prisma, PrismaClient } from "@trigger.dev/database";
 import { trace } from "@opentelemetry/api";
+import { action as createTokenAction } from "~/routes/api.v1.waitpoints.tokens";
+import { webhookWaitpoints } from "~/v3/webhookWaitpoints.server";
 
 vi.setConfig({ testTimeout: 60_000 });
 
@@ -371,4 +441,119 @@ describe("waitpoint-token create engine seam — NEW residency via a run-ops run
       }
     }
   );
+});
+
+const PLACEMENTS = [
+  { mintKind: "cuid", shard: undefined, residency: "LEGACY", shardKey: undefined },
+  { mintKind: "runOpsId", shard: "new", residency: "NEW", shardKey: "new" },
+  { mintKind: "runOpsId", shard: "a", residency: "NEW", shardKey: "a" },
+] as const;
+
+function placementEnvironment() {
+  return {
+    id: "env_placement",
+    type: "PRODUCTION",
+    slug: "prod",
+    apiKey: "tr_prod_placement",
+    organizationId: "org_placement",
+    projectId: "proj_placement",
+    organization: {
+      id: "org_placement",
+      slug: "org-placement",
+      title: "Placement",
+      featureFlags: {},
+    },
+    project: { id: "proj_placement", name: "Placement", externalRef: "proj_placement" },
+  };
+}
+
+function resetPlacement(placement: (typeof PLACEMENTS)[number]) {
+  H.environment = placementEnvironment();
+  H.mintKind = placement.mintKind;
+  H.shardKey = placement.shard;
+  H.storeEnabled = false;
+  H.createManualWaitpoint = vi.fn(async () => ({
+    waitpoint: { id: "c".repeat(25) },
+    isCached: false,
+  }));
+  H.readExistingStoreDateTimeWaitpointByKey = vi.fn(async () => undefined);
+  H.createWaitpointTag = vi.fn(async ({ tag }: { tag: string }) => ({
+    id: `tag_${tag}`,
+    name: tag,
+  }));
+  H.findWaitpoint = vi.fn(async () => null);
+}
+
+describe("standalone token, tag and webhook waiter placement", () => {
+  // Catches: a token or its tag placed on a store other than the mint kind and shard placement give.
+  it("the token create route passes the placement's residency and shard key to the token and its tag", async () => {
+    for (const placement of PLACEMENTS) {
+      resetPlacement(placement);
+      const body = JSON.stringify({ tags: ["t1"] });
+      const response = await createTokenAction({
+        request: new Request("http://localhost/api/v1/waitpoints/tokens", {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${H.environment.apiKey}`,
+            "content-type": "application/json",
+            "content-length": String(body.length),
+          },
+          body,
+        }),
+        params: {},
+        context: {},
+      } as any);
+
+      expect(response.status).toBe(200);
+      const token = H.createManualWaitpoint.mock.calls[0][0];
+      expect({ residency: token.standaloneResidency, shardKey: token.standaloneShardKey }).toEqual({
+        residency: placement.residency,
+        shardKey: placement.shardKey,
+      });
+      const tag = H.createWaitpointTag.mock.calls[0][0];
+      expect({ residency: tag.residency, shardKey: tag.shardKey }).toEqual({
+        residency: placement.residency,
+        shardKey: placement.shardKey,
+      });
+    }
+  });
+
+  // Catches: a webhook waiter placed, or looked up, somewhere other than the token route would put it.
+  it("webhook waiters create and find with the placement's residency and shard key, co-locating except on a gen-2 shard", async () => {
+    for (const placement of PLACEMENTS) {
+      resetPlacement(placement);
+      await webhookWaitpoints.create({
+        environmentId: H.environment.id,
+        projectId: H.environment.projectId,
+        idempotencyKey: "key_1",
+        idempotencyKeyExpiresAt: undefined,
+        timeoutAt: undefined,
+        tags: ["t1"],
+      } as any);
+
+      const token = H.createManualWaitpoint.mock.calls[0][0];
+      expect({ residency: token.standaloneResidency, shardKey: token.standaloneShardKey }).toEqual({
+        residency: placement.residency,
+        shardKey: placement.shardKey,
+      });
+      const tag = H.createWaitpointTag.mock.calls[0][0];
+      expect({ residency: tag.residency, shardKey: tag.shardKey }).toEqual({
+        residency: placement.residency,
+        shardKey: placement.shardKey,
+      });
+
+      // The store look-up runs only with the waitpoint flag on, so turn it on to see its placement.
+      H.storeEnabled = true;
+      await webhookWaitpoints.find({ environmentId: H.environment.id, idempotencyKey: "key_1" });
+
+      expect(H.findWaitpoint.mock.calls[0][2]).toEqual(
+        placement.shard === "a" ? undefined : { residency: placement.residency }
+      );
+      const lookup = H.readExistingStoreDateTimeWaitpointByKey.mock.calls[0][0];
+      expect({
+        residency: lookup.standaloneResidency,
+        shardKey: lookup.standaloneShardKey,
+      }).toEqual({ residency: placement.residency, shardKey: placement.shardKey });
+    }
+  });
 });

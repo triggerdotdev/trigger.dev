@@ -1,7 +1,7 @@
 import { setTimeout } from "node:timers/promises";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { RunExecutionPolicy } from "@trigger.dev/core/v3";
-import { generateFriendlyId } from "@trigger.dev/core/v3/isomorphic";
+import { generateFriendlyId, generateRunOpsIdV2 } from "@trigger.dev/core/v3/isomorphic";
 import {
   RESTORE_LABEL,
   RunCrdWorkloadManager,
@@ -444,6 +444,21 @@ describe("runnerBodyFor builds a resume", () => {
     expect(name).not.toBe(getRunnerId(run));
     expect(name).toMatch(DNS1123);
     expect(runnerTokenSecretName(name, "tok")).toMatch(DNS1123);
+  });
+
+  // Catches: a runner or restore name built from a shard-m version-2 run id that is not a legal pod name.
+  it("names runners and restores of a shard-m version-2 run legally for a pod", () => {
+    const POD_NAME = /^[a-z]([a-z0-9-]{0,61}[a-z0-9])?$/;
+    const run = `run_${generateRunOpsIdV2("m")}`;
+
+    for (const name of [
+      getRunnerId(run, 1),
+      getRunnerId(run, 3),
+      getRestoreRunnerId(run, generateFriendlyId("checkpoint")),
+    ]) {
+      expect(name).toMatch(POD_NAME);
+      expect(name.length).toBeLessThanOrEqual(63);
+    }
   });
 });
 

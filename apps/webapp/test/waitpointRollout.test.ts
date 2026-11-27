@@ -54,6 +54,25 @@ describe("waitpoint rollout", () => {
     }
   );
 
+  // Catches: an unreadable org override of waitpointStoreEnabled turning the flag on or off by itself.
+  postgresTest(
+    "an org override the schema rejects resolves to the global value",
+    async ({ prisma }) => {
+      const org = await prisma.organization.create({
+        data: {
+          title: "Waitpoints",
+          slug: "waitpoints",
+          featureFlags: { waitpointStoreEnabled: "yes" },
+        },
+      });
+      let global: { waitpointStoreEnabled?: boolean } | undefined = { waitpointStoreEnabled: true };
+      const enabled = createWaitpointStoreEnabledResolver(() => global, prisma);
+      expect(await enabled(org.id)).toBe(true);
+      global = { waitpointStoreEnabled: false };
+      expect(await enabled(org.id)).toBe(false);
+    }
+  );
+
   postgresTest(
     "active and queued key transactions remain available while HTTP drains after process signals",
     async ({ postgresContainer }) => {

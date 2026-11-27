@@ -528,6 +528,10 @@ containerTestWithIsolatedRedis(
       expect(session.appended).toHaveLength(2);
       expect(session.appended[1].partId).toBe(`${replay.deliveryId}:agent-x:order-events`);
       expect(task.runsByKey.size).toBe(2);
+      // Catches: a replayed task run keyed so that it dedups onto the original run or another replay.
+      expect(task.calls.filter((c) => c.taskId === "orders").at(-1)?.idempotencyKey).toBe(
+        `${endpoint.id}:replay:${replay.deliveryId}`
+      );
 
       const single = await engine.replayDelivery({
         id: original.id,
