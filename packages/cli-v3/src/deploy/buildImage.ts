@@ -1040,6 +1040,9 @@ export function bunCompileArgs(
   compiledRunWorker: NonNullable<GenerateContainerfileOptions["compiledRunWorker"]>
 ) {
   return [
+    "env",
+    // Bun inlines process.env.NODE_ENV when compiling the deployed worker.
+    "NODE_ENV=production",
     "bun",
     "build",
     "--compile",
