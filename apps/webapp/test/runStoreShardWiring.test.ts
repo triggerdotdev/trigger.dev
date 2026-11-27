@@ -96,10 +96,13 @@ describe("buildRunStore MemoryDB slot", () => {
 
     expect(decorated).toEqual(["new", "legacy", "shard:a"]);
     expect(await store.findRun({ id: generateRunOpsIdV2(MEMORYDB_SHARD_KEY) })).toBe(found);
-    // A merge keeps the row from the store last in precedence; an aliased store is not asked.
-    expect(await store.findRuns({ where: { status: "PENDING" } })).toEqual([
-      { id: "dup", from: "m" },
-    ]);
+    // A merge keeps the row from the store last in precedence; an aliased store is not asked. The
+    // generation 3 batch id opens the gate, so the id-less read also asks the store under m.
+    expect(
+      await store.findRuns({
+        where: { status: "PENDING", batchId: generateRunOpsIdV2(MEMORYDB_SHARD_KEY) },
+      })
+    ).toEqual([{ id: "dup", from: "m" }]);
   });
 
   // Catches: a store under m registered when no memoryDbStore is passed.
