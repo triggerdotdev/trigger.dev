@@ -456,7 +456,8 @@ export class EnvironmentVariablesRepository implements Repository {
   /**
    * Writes one variable's value to each of the environments, inside the caller's transaction: the
    * save path of `create` and `copyValues`. `isSecret` set changes the kind of an existing value;
-   * left out, an existing value keeps its kind and a new one takes its parent environment's.
+   * left out, an existing value keeps its kind and a new one takes its parent environment's,
+   * then `newValueIsSecret`.
    * Returns the variable and, per environment written, what the write did.
    */
   async #writeVariable(
@@ -467,6 +468,7 @@ export class EnvironmentVariablesRepository implements Repository {
       value,
       environmentIds,
       isSecret,
+      newValueIsSecret,
       vaultHosts,
       parentEnvironmentId,
       lastUpdatedBy,
@@ -478,6 +480,7 @@ export class EnvironmentVariablesRepository implements Repository {
       value: string;
       environmentIds: string[];
       isSecret?: boolean;
+      newValueIsSecret?: boolean;
       vaultHosts?: string[];
       parentEnvironmentId?: string;
       lastUpdatedBy?: EnvironmentVariableUpdater;
@@ -531,7 +534,7 @@ export class EnvironmentVariablesRepository implements Repository {
       }
     }
 
-    const effectiveIsSecret = isSecret ?? inheritedIsSecret;
+    const effectiveIsSecret = isSecret ?? inheritedIsSecret ?? newValueIsSecret;
     const vaultFields = vaultHosts
       ? { isProxyOnly: true, proxyConfig: { allowedHosts: vaultHosts } }
       : {};
@@ -822,6 +825,7 @@ export class EnvironmentVariablesRepository implements Repository {
             value: variable.value,
             environmentIds: options.environmentIds,
             isSecret: options.isSecret,
+            newValueIsSecret: options.newValueIsSecret,
             vaultHosts: options.vaultHosts,
             parentEnvironmentId: options.parentEnvironmentId,
             lastUpdatedBy: options.lastUpdatedBy,

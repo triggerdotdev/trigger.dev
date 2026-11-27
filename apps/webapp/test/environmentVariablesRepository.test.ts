@@ -441,6 +441,64 @@ describe("EnvironmentVariablesRepository empty values", () => {
     expect(values.get(`${environment.id}:EMPTY_SECRET`)).toBe("");
   });
 
+  postgresTest(
+    "create() with newValueIsSecret makes new values secret and keeps replaced values' kind",
+    async ({ prisma }) => {
+      const { user, organization, project } = await createTestOrgProjectWithMember(prisma);
+      const environment = await createRuntimeEnvironment(prisma, {
+        projectId: project.id,
+        organizationId: organization.id,
+        type: "PRODUCTION",
+      });
+
+      const repository = new EnvironmentVariablesRepository(prisma, prisma);
+      const lastUpdatedBy = { type: "user" as const, userId: user.id };
+
+      await repository.create(project.id, {
+        override: true,
+        environmentIds: [environment.id],
+        variables: [
+          { key: "VIEWABLE", value: "a" },
+          { key: "ALREADY_SECRET", value: "b" },
+        ],
+        isSecret: false,
+        lastUpdatedBy,
+      });
+      await repository.create(project.id, {
+        override: true,
+        environmentIds: [environment.id],
+        variables: [{ key: "ALREADY_SECRET", value: "b" }],
+        isSecret: true,
+        lastUpdatedBy,
+      });
+
+      const result = await repository.create(project.id, {
+        override: true,
+        environmentIds: [environment.id],
+        variables: [
+          { key: "VIEWABLE", value: "a2" },
+          { key: "ALREADY_SECRET", value: "b2" },
+          { key: "BRAND_NEW", value: "c" },
+        ],
+        newValueIsSecret: true,
+        lastUpdatedBy,
+      });
+      expect(result.success).toBe(true);
+
+      const rows = await prisma.environmentVariableValue.findMany({
+        where: { environmentId: environment.id },
+        select: { isSecret: true, variable: { select: { key: true } } },
+      });
+      const kinds = Object.fromEntries(rows.map((r) => [r.variable.key, r.isSecret]));
+      expect(kinds).toEqual({ VIEWABLE: false, ALREADY_SECRET: true, BRAND_NEW: true });
+
+      const values = await repository.getVariableValuesForKeys(project.id, [
+        { environmentId: environment.id, key: "VIEWABLE" },
+      ]);
+      expect(values.get(`${environment.id}:VIEWABLE`)).toBe("a2");
+    }
+  );
+
   postgresTest("edit() stores a whitespace-only value verbatim", async ({ prisma }) => {
     const { user, organization, project } = await createTestOrgProjectWithMember(prisma);
     const environment = await createRuntimeEnvironment(prisma, {

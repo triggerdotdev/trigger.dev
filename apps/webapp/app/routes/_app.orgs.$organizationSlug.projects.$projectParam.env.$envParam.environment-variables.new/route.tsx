@@ -8,6 +8,7 @@ import {
   NEW_VARIABLE_ENVIRONMENT_PARAM,
   NEW_VARIABLE_FILL_KEY_PARAM,
   NEW_VARIABLE_PICK_BRANCH_PARAM,
+  NEW_VARIABLE_NOT_SECRET,
   NEW_VARIABLE_SECRET_PARAM,
   keyPanelViewSearch,
   KEY_PANEL_BRANCH_PAGE_PARAM,
@@ -115,6 +116,8 @@ const schema = z.object({
     if (i === "true") return true;
     return false;
   }, z.boolean()),
+  // Whether the user changed the secret switch from where the dialog started it.
+  secretTouched: z.preprocess((i) => i === "true", z.boolean()),
   vault: z.preprocess((i) => i === "true", z.boolean()),
   domains: z.string().optional(),
   environmentIds: z.preprocess(
@@ -214,7 +217,10 @@ export const action = dashboardAction(
       return json(submission.reply({ formErrors: ["Project not found"] }));
     }
 
-    const { vault, domains, ...createOptions } = submission.value;
+    const { vault, domains, secretTouched, isSecret, ...rest } = submission.value;
+    // An untouched switch only sets new values: replaced values keep their kind.
+    const createOptions =
+      secretTouched || vault ? { ...rest, isSecret } : { ...rest, newValueIsSecret: isSecret };
     let vaultHosts: string[] | undefined;
     if (vault) {
       if (!project.secretProxyEnabled) {
@@ -369,7 +375,11 @@ export default function Page() {
   const location = useLocation();
   const { keyParam } = useParams();
   const searchParams = new URLSearchParams(location.search);
-  const [isSecret, setIsSecret] = useState(() => searchParams.has(NEW_VARIABLE_SECRET_PARAM));
+  // Secret by default; the key panel passes "0" to match a non-secret key.
+  const [isSecret, setIsSecret] = useState(
+    () => searchParams.get(NEW_VARIABLE_SECRET_PARAM) !== NEW_VARIABLE_NOT_SECRET
+  );
+  const [secretTouched, setSecretTouched] = useState(false);
   // The view this dialog sits on: the list with its filter, search and page, or the key panel
   // open on it.
   const attentionPath = attentionPagePath(location.pathname);
@@ -704,11 +714,15 @@ export default function Page() {
             )}
             <InputGroup fullWidth>
               {vault && <input type="hidden" name="isSecret" value="true" />}
+              {secretTouched && <input type="hidden" name="secretTouched" value="true" />}
               <Switch
                 name={vault ? undefined : "isSecret"}
                 variant="medium"
                 checked={vault || isSecret}
-                onCheckedChange={setIsSecret}
+                onCheckedChange={(checked) => {
+                  setIsSecret(checked);
+                  setSecretTouched(true);
+                }}
                 disabled={vault}
                 value="true"
                 className="-ml-2 inline-flex w-fit"
