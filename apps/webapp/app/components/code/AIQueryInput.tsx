@@ -1,9 +1,12 @@
 import { CheckIcon, PencilSquareIcon, PlusIcon, XMarkIcon } from "@heroicons/react/20/solid";
 import { AnimatePresence, motion } from "framer-motion";
+import { ClipboardCheckIcon, ClipboardIcon } from "lucide-react";
 import { Suspense, useCallback, useEffect, useRef, useState } from "react";
+import { CrossIcon } from "~/assets/icons/CrossIcon";
 import { Button } from "~/components/primitives/Buttons";
 import { Spinner } from "~/components/primitives/Spinner";
 import { StreamdownRenderer } from "~/components/code/StreamdownRenderer";
+import { useCopy } from "~/hooks/useCopy";
 import { useEnvironment } from "~/hooks/useEnvironment";
 import { useOrganization } from "~/hooks/useOrganizations";
 import { useProject } from "~/hooks/useProject";
@@ -379,16 +382,21 @@ export function AIQueryInput({
                       Cancel
                     </Button>
                   ) : (
-                    <Button
-                      variant="minimal/small"
-                      onClick={() => {
-                        setShowThinking(false);
-                        setThinking("");
-                      }}
-                      className="text-xs"
-                    >
-                      Dismiss
-                    </Button>
+                    <div className="flex items-center gap-1">
+                      <AIReplyCopyButton text={thinking} />
+                      <Button
+                        variant="minimal/small"
+                        className={iconButtonClassName}
+                        aria-label="Dismiss"
+                        tooltip="Dismiss"
+                        tooltipDelay={500}
+                        onClick={() => {
+                          setShowThinking(false);
+                          setThinking("");
+                        }}
+                        LeadingIcon={<CrossIcon className="size-4 text-text-dimmed" />}
+                      />
+                    </div>
                   )}
                 </div>
                 <div className="streamdown-container max-h-96 overflow-y-auto text-xs text-text-dimmed scrollbar-thin scrollbar-track-transparent scrollbar-thumb-surface-control">
@@ -402,5 +410,29 @@ export function AIQueryInput({
         )}
       </AnimatePresence>
     </div>
+  );
+}
+
+const iconButtonClassName = "aspect-square h-6 p-1";
+
+export function AIReplyCopyButton({ text }: { text: string }) {
+  const { copy, copied } = useCopy(text);
+  if (!text) return null;
+  return (
+    <Button
+      variant="minimal/small"
+      className={iconButtonClassName}
+      aria-label={copied ? "Copied" : "Copy"}
+      tooltip={copied ? "Copied!" : "Copy"}
+      tooltipDelay={500}
+      onClick={copy}
+      LeadingIcon={
+        copied ? (
+          <ClipboardCheckIcon className="size-4 text-green-500" />
+        ) : (
+          <ClipboardIcon className="size-4 text-text-dimmed" />
+        )
+      }
+    />
   );
 }
