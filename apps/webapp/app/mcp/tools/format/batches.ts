@@ -1,6 +1,7 @@
 import { isRunFriendlyId } from "~/components/dashboard-agent/run-id";
 import { BATCH_ID, BATCH_LIST_CURSOR, BATCH_STATUSES } from "../schemas/batches";
 import { untrusted } from "./logFields";
+import { formatStatus } from "./runs";
 
 const ID_CHARS = 128;
 const KEY_CHARS = 256;
@@ -67,7 +68,7 @@ export type BatchDetail = {
 export function renderBatchDetail(batch: BatchDetail): string[] {
   const lines = [
     `Batch ${batchId(batch.friendlyId)}`,
-    `Status: ${status(batch.status)}`,
+    `Status: ${status(batch.status)}${!batch.isV2 && batch.status === "COMPLETED" ? " (legacy batch: its runs may not have finished)" : ""}`,
     `Version: ${batch.isV2 ? "v2 (Run Engine)" : "v1 (Legacy)"}`,
     `Total runs: ${batch.runCount}`,
     ...(batch.isV2
@@ -136,7 +137,7 @@ export function renderBatchItem(id: string, run: BatchItemRun | undefined): stri
   const error = errorText(run.error);
   return [
     `- ${runId(run.friendlyId)}`,
-    `status ${RUN_STATUS.test(run.status) ? run.status : untrusted(run.status, "batch-run-status", ID_CHARS)}`,
+    `status ${RUN_STATUS.test(run.status) ? formatStatus(run.status) : untrusted(run.status, "batch-run-status", ID_CHARS)}`,
     `task ${untrusted(run.taskIdentifier, "batch-run-task", ID_CHARS)}`,
     ...(error ? [`error ${untrusted(error, "batch-run-error", ERROR_CHARS)}`] : []),
   ].join(" | ");

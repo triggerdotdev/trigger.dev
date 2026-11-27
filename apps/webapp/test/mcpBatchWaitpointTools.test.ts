@@ -464,6 +464,20 @@ describe("list_batches and get_batch_details", () => {
     }
   );
 
+  // Catches: a batch's run lines showing the raw DB status (PENDING) where run tools say queued.
+  containerTest(
+    "names a queued run's status as the run tools do",
+    async ({ prisma, redisOptions }) => {
+      const { own, call, createRun, createBatch } = await seed(prisma, redisOptions);
+      const run = await createRun(own, { status: "PENDING" });
+      const batch = await createBatch(own, { runCount: 1, runIds: [run.friendlyId] });
+
+      const text = textOf(await call("get_batch_details", { batchId: batch.friendlyId }));
+
+      expect(text).toContain(`- ${run.friendlyId} | status queued | task`);
+    }
+  );
+
   // Catches: created runs numbered or described as if in item order, a run read outside the environment, an error or task shown unfenced or uncapped, or no cursor for the next runs.
   containerTest(
     "shows the batch with its creation errors and its created runs in order, fenced and paged",
@@ -521,8 +535,8 @@ describe("list_batches and get_batch_details", () => {
         [
           ...header,
           "Created runs 1-2 of 3, in the order the batch recorded them (run, status, task, error):",
-          `- ${ok.friendlyId} | status COMPLETED_SUCCESSFULLY | task ${fence("batch-run-task", "my-task")}`,
-          `- ${failed.friendlyId} | status COMPLETED_WITH_ERRORS | task ${fence("batch-run-task", HOSTILE_FENCED)} | error ${fence("batch-run-error", `Error: ${"x".repeat(493)}\n… (truncated, 607 characters in total)`)}`,
+          `- ${ok.friendlyId} | status completed | task ${fence("batch-run-task", "my-task")}`,
+          `- ${failed.friendlyId} | status failed | task ${fence("batch-run-task", HOSTILE_FENCED)} | error ${fence("batch-run-error", `Error: ${"x".repeat(493)}\n… (truncated, 607 characters in total)`)}`,
           failedNote,
           "More created runs exist. Pass cursor 2 to show the next ones.",
         ].join("\n")
@@ -590,7 +604,7 @@ describe("list_batches and get_batch_details", () => {
         ],
         shown: [
           "Created runs 1-1 of 1, in the order the batch recorded them (run, status, task, error):",
-          `- ${run.friendlyId} | status COMPLETED_SUCCESSFULLY | task ${fence("batch-run-task", "my-task")}`,
+          `- ${run.friendlyId} | status completed | task ${fence("batch-run-task", "my-task")}`,
         ],
       });
     }
@@ -610,6 +624,26 @@ describe("list_batches and get_batch_details", () => {
           `Batch ${batch.friendlyId} was not found in this environment. Use list_batches to see the batches in this environment.`;
       }
       expect(outcomes).toEqual(expected);
+    }
+  );
+
+  // Catches: a legacy batch shown as plain COMPLETED while its runs may still be queued, or the note leaking onto v2.
+  containerTest(
+    "says a completed legacy batch does not guarantee its runs finished",
+    async ({ prisma, redisOptions }) => {
+      const { own, call, createBatch } = await seed(prisma, redisOptions);
+      const legacy = await createBatch(own, { batchVersion: "v3", runCount: 1 });
+      const current = await createBatch(own, { runCount: 1 });
+      const statusOf = async (id: string) =>
+        textOf(await call("get_batch_details", { batchId: id })).match(/^Status: .*$/m)?.[0];
+
+      expect({
+        legacy: await statusOf(legacy.friendlyId),
+        current: await statusOf(current.friendlyId),
+      }).toEqual({
+        legacy: "Status: COMPLETED (legacy batch: its runs may not have finished)",
+        current: "Status: COMPLETED",
+      });
     }
   );
 

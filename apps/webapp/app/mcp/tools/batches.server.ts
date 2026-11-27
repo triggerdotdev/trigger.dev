@@ -8,6 +8,8 @@ import {
   runOpsSplitReadEnabled,
   type PrismaClientOrTransaction,
 } from "~/db.server";
+import { CURRENT_API_VERSION } from "~/api/versions";
+import { ApiRetrieveRunPresenter } from "~/presenters/v3/ApiRetrieveRunPresenter.server";
 import { BatchListPresenter } from "~/presenters/v3/BatchListPresenter.server";
 import { BatchPresenter } from "~/presenters/v3/BatchPresenter.server";
 import { logger } from "~/services/logger.server";
@@ -104,7 +106,19 @@ async function readItems(
           where: { friendlyId: { in: boundedIn(ids) }, runtimeEnvironmentId: environmentId },
           select: { friendlyId: true, status: true, taskIdentifier: true, error: true },
         });
-  return { ids, total: runIds.length, runs: new Map(runs.map((run) => [run.friendlyId, run])) };
+  return {
+    ids,
+    total: runIds.length,
+    runs: new Map(
+      runs.map((run) => [
+        run.friendlyId,
+        {
+          ...run,
+          status: ApiRetrieveRunPresenter.apiStatusFromRunStatus(run.status, CURRENT_API_VERSION),
+        },
+      ])
+    ),
+  };
 }
 
 const RUNS_HIDDEN = "not shown, this needs read:runs";

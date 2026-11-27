@@ -349,7 +349,7 @@ describe("mcp write tools", () => {
         expect.objectContaining({ payload: { email: "a@b.c" } }),
         "mcp-remote"
       );
-      expect(text).toContain("Task my-task triggered and run with ID created: run_new.");
+      expect(text).toContain("Triggered my-task: run run_new created.");
     }
   );
 
@@ -383,7 +383,7 @@ describe("mcp write tools", () => {
     expect(denied.isError).toBe(true);
     expect(triggerTask).not.toHaveBeenCalled();
 
-    expect(textOf(await call(["trigger:tasks"]))).toContain("ID created: run_new");
+    expect(textOf(await call(["trigger:tasks"]))).toContain("run run_new created.");
     expect(triggerTask).toHaveBeenCalledTimes(1);
   });
 
@@ -417,7 +417,7 @@ describe("mcp write tools", () => {
         identity,
         request
       );
-      expect(textOf(allowed)).toContain("ID created: run_new");
+      expect(textOf(allowed)).toContain("run run_new created.");
 
       const denied = await trigger(
         { ...scope, taskId: "other-task", payload: {} },
@@ -465,7 +465,7 @@ describe("mcp write tools", () => {
       expect(bodies).toEqual([]);
 
       await approveAll();
-      expect(textOf(await trigger(args, identity, request))).toContain("ID created: run_new");
+      expect(textOf(await trigger(args, identity, request))).toContain("run run_new created.");
       expect(bodies).toEqual([options]);
     }
   );

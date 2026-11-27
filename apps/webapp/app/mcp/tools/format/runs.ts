@@ -6,7 +6,9 @@ import type {
   RetrieveRunTraceResponseBody,
   RetrieveSpanDetailResponseBody,
 } from "@trigger.dev/core/v3/schemas";
+import { isRunFriendlyId } from "~/components/dashboard-agent/run-id";
 import { fenceUntrusted } from "../../gate/fence.server";
+import { untrusted } from "./logFields";
 
 const METADATA_CHARS = 4_000;
 
@@ -41,7 +43,14 @@ function fencedError(error: NonNullable<RunShape["error"]>, extra: string[] = []
 
 export function formatRun(
   run: RetrieveRunResponse,
-  queueing: { priorityMs?: number; concurrencyKey?: string | null } = {}
+  queueing: {
+    priorityMs?: number;
+    concurrencyKey?: string | null;
+    payload?: string | null;
+    payloadType?: string | null;
+    output?: string | null;
+    outputType?: string | null;
+  } = {}
 ): string {
   const lines: string[] = [];
 
@@ -112,14 +121,20 @@ export function formatRun(
     );
   }
 
-  if (run.payload) {
-    lines.push(`Payload: ${fenceUntrusted(JSON.stringify(run.payload, null, 2), "run-payload")}`);
+  const payload = decodedValue(run.payload, queueing.payload, queueing.payloadType);
+  if (payload !== undefined) {
+    lines.push(`Payload: ${fenceUntrusted(JSON.stringify(payload, null, 2), "run-payload")}`);
   } else if (run.payloadPresignedUrl) {
     lines.push(`Payload: (large payload available via presigned URL: ${run.payloadPresignedUrl})`);
   }
 
-  if (run.output) {
-    lines.push(`Output: ${fenceUntrusted(JSON.stringify(run.output, null, 2), "run-output")}`);
+  const output = decodedValue(
+    run.output,
+    run.status === "COMPLETED" ? queueing.output : undefined,
+    queueing.outputType
+  );
+  if (output !== undefined) {
+    lines.push(`Output: ${fenceUntrusted(JSON.stringify(output, null, 2), "run-output")}`);
   } else if (run.outputPresignedUrl) {
     lines.push(`Output: (large output available via presigned URL: ${run.outputPresignedUrl})`);
   }
@@ -143,7 +158,7 @@ export function formatRunShape(run: RunShape): string {
   lines.push(`Task: ${run.taskIdentifier}`);
   lines.push(`Status: ${formatStatus(run.status)}`);
 
-  if (run.output) {
+  if (run.output !== undefined) {
     lines.push(`Output: ${fenceUntrusted(JSON.stringify(run.output, null, 2), "run-output")}`);
   }
 
@@ -166,7 +181,33 @@ export function formatRunShape(run: RunShape): string {
   return lines.join("\n");
 }
 
-function formatStatus(status: string): string {
+// parsePacketAsJson drops empty data, but the SDK stores "" as an empty text/plain packet.
+function decodedValue(
+  decoded: unknown,
+  raw: string | null | undefined,
+  type: string | null | undefined
+): unknown {
+  return decoded === undefined && raw === "" && type === "text/plain" ? "" : decoded;
+}
+
+const SPAN_ID = /^[0-9a-f]{16}$/;
+const fencedRunId = (id: string) =>
+  id.length <= 128 && isRunFriendlyId(id) ? id : untrusted(id, "run-id", 128);
+
+/** Names the run asked for and where to find the right id, only in this environment. */
+export const runNotFound = (id: string) =>
+  `Run ${fencedRunId(id)} was not found in this environment. Use list_runs to find it.`;
+
+export const invalidTraceCursor = (id: string) =>
+  `The cursor is not valid for run ${fencedRunId(id)}. Call get_run_details without a cursor to start from the first page.`;
+
+export const traceNotFound = (id: string) =>
+  `The trace of run ${fencedRunId(id)} was not found. Call get_run_details without a cursor to see the run details.`;
+
+export const spanNotFound = (spanId: string, runId: string) =>
+  `Span ${SPAN_ID.test(spanId) ? spanId : untrusted(spanId, "span-id", 64)} was not found in run ${fencedRunId(runId)}. Use get_run_details to list its spans.`;
+
+export function formatStatus(status: string): string {
   return status.toLowerCase().replace(/_/g, " ");
 }
 
@@ -212,17 +253,18 @@ function formatRelatedRuns(relatedRuns: RetrieveRunResponse["relatedRuns"]): str
   const parts: string[] = [];
 
   if (relatedRuns.parent) {
-    parts.push(`parent: ${relatedRuns.parent.id} (${relatedRuns.parent.status.toLowerCase()})`);
+    parts.push(`parent: ${relatedRuns.parent.id} (${formatStatus(relatedRuns.parent.status)})`);
   }
 
   if (relatedRuns.root && relatedRuns.root.id !== relatedRuns.parent?.id) {
-    parts.push(`root: ${relatedRuns.root.id} (${relatedRuns.root.status.toLowerCase()})`);
+    parts.push(`root: ${relatedRuns.root.id} (${formatStatus(relatedRuns.root.status)})`);
   }
 
   if (relatedRuns.children && relatedRuns.children.length > 0) {
     const childStatuses = relatedRuns.children.reduce(
       (acc, child) => {
-        acc[child.status.toLowerCase()] = (acc[child.status.toLowerCase()] || 0) + 1;
+        const status = formatStatus(child.status);
+        acc[status] = (acc[status] || 0) + 1;
         return acc;
       },
       {} as Record<string, number>

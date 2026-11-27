@@ -32,20 +32,20 @@ import { runStore } from "~/v3/runStore.server";
 import { getTaskEventStoreTableForRun } from "~/v3/taskEventStore.server";
 import { fenceUntrusted } from "../gate/fence.server";
 import type { McpToolDefinition } from "../registry.server";
-import {
-  dashboardUrl,
-  defineReadTool,
-  errorResult,
-  resolveToolEnvironment,
-  textResult,
-} from "./define.server";
+import { dashboardUrl, defineReadTool, resolveToolEnvironment, textResult } from "./define.server";
 import {
   formatRun,
   formatRunList,
   formatRunShape,
   formatRunTrace,
   formatSpanDetail,
+  invalidTraceCursor,
+  runNotFound,
+  spanNotFound,
+  traceNotFound,
 } from "./format/runs";
+import { plainError } from "./format/insights";
+import { untrusted } from "./format/logFields";
 import { friendlyIdPattern } from "./schemas/bulkActions";
 import {
   GetRunDetailsInput,
@@ -59,6 +59,26 @@ const MAX_WAIT_MS = 60_000;
 const INITIAL_POLL_MS = 500;
 const MAX_POLL_MS = 5_000;
 const MAX_TRACE_PAGE_LINES = 2_000;
+const MESSAGE_CHARS = 300;
+
+const LIST_RUNS_QUERY_KEYS = {
+  limit: "page[size]",
+  cursor: "page[after]",
+  before: "page[before]",
+  status: "filter[status]",
+  taskIdentifier: "filter[taskIdentifier]",
+  version: "filter[version]",
+  tag: "filter[tag]",
+  from: "filter[createdAt][from]",
+  to: "filter[createdAt][to]",
+  period: "filter[createdAt][period]",
+  machine: "filter[machine]",
+  region: "filter[region]",
+  queue: "filter[queue]",
+  batch: "filter[batch]",
+  schedule: "filter[schedule]",
+  bulkAction: "filter[bulkAction]",
+} as const;
 
 type ListRuns = (
   environment: AuthenticatedEnvironment,
@@ -235,36 +255,32 @@ export function createRunsTools(options: RunsToolsOptions = {}): McpToolDefiniti
     auth: { action: "read", subject: "runs" },
     run: async (input, ctx) => {
       const environment = await resolveToolEnvironment(ctx);
-      if (!environment) return errorResult("Environment not found");
+      if (!environment) return plainError("Environment not found");
       if (input.cursor !== undefined && input.before !== undefined) {
-        return errorResult("Invalid arguments: pass cursor or before, not both");
+        return plainError("Invalid arguments: pass cursor or before, not both");
       }
 
       const parsedParams = ApiRunListSearchParams.safeParse(
         Object.fromEntries(
-          Object.entries({
-            "page[size]": input.limit,
-            "page[after]": input.cursor,
-            "page[before]": input.before,
-            "filter[status]": input.status,
-            "filter[taskIdentifier]": input.taskIdentifier,
-            "filter[version]": input.version,
-            "filter[tag]": input.tag,
-            "filter[createdAt][from]": input.from,
-            "filter[createdAt][to]": input.to,
-            "filter[createdAt][period]": input.period,
-            "filter[machine]": input.machine,
-            "filter[region]": input.region,
-            "filter[queue]": input.queue,
-            "filter[batch]": input.batch,
-            "filter[schedule]": input.schedule,
-            "filter[bulkAction]": input.bulkAction,
-          }).filter(([, value]) => value !== undefined)
+          Object.entries(LIST_RUNS_QUERY_KEYS)
+            .map(([arg, key]) => [key, input[arg as keyof typeof LIST_RUNS_QUERY_KEYS]])
+            .filter(([, value]) => value !== undefined)
         )
       );
 
       if (!parsedParams.success) {
-        return errorResult(parsedParams.error.issues.map((issue) => issue.message).join("; "));
+        const argOf = new Map<string, string>(
+          Object.entries(LIST_RUNS_QUERY_KEYS).map(([arg, key]) => [key, arg])
+        );
+        const fields = new Set(
+          parsedParams.error.issues.map(
+            (issue) => argOf.get(String(issue.path[0])) ?? "an argument"
+          )
+        );
+        const details = parsedParams.error.issues.map((issue) => issue.message).join("; ");
+        return plainError(
+          `Invalid arguments: ${[...fields].join(", ")}. Check each value against the tool's input schema. Details: ${untrusted(details, "run-list-error", MESSAGE_CHARS)}`
+        );
       }
 
       for (const [name, prefix] of [
@@ -274,7 +290,7 @@ export function createRunsTools(options: RunsToolsOptions = {}): McpToolDefiniti
       ] as const) {
         const value = input[name];
         if (value !== undefined && !friendlyIdPattern(prefix).test(value)) {
-          return errorResult(
+          return plainError(
             `Invalid arguments: ${name} must be lowercase ${prefix}_ followed by letters and digits`
           );
         }
@@ -289,8 +305,11 @@ export function createRunsTools(options: RunsToolsOptions = {}): McpToolDefiniti
           formatRunList(input.before ? { ...page, data: [...page.data].reverse() } : page)
         );
       } catch (error) {
-        if (error instanceof RunsListQueryError || error instanceof ServiceValidationError) {
-          return errorResult(error.message);
+        if (error instanceof RunsListQueryError) return plainError(error.message);
+        if (error instanceof ServiceValidationError) {
+          return plainError(
+            `The runs could not be listed: ${untrusted(error.message, "run-list-error", MESSAGE_CHARS)}`
+          );
         }
         throw error;
       }
@@ -306,16 +325,16 @@ export function createRunsTools(options: RunsToolsOptions = {}): McpToolDefiniti
     auth: { action: "read", subject: "runs" },
     run: async (input, ctx) => {
       const environment = await resolveToolEnvironment(ctx);
-      if (!environment) return errorResult("Environment not found");
+      if (!environment) return plainError("Environment not found");
 
       const offset = input.cursor ? decodeTraceCursor(input.cursor, input.runId) : 0;
-      if (offset === null) return errorResult("Invalid cursor");
+      if (offset === null) return plainError(invalidTraceCursor(input.runId));
 
       const found = await ApiRetrieveRunPresenter.findRun(input.runId, environment);
-      if (!found) return errorResult("Run not found");
+      if (!found) return plainError(runNotFound(input.runId));
 
       const trace = await loadTrace(input.runId, environment);
-      if (!trace && offset > 0) return errorResult("Trace not found");
+      if (!trace && offset > 0) return plainError(traceNotFound(input.runId));
 
       const allLines = trace ? formatRunTrace(trace).split("\n") : [];
       const end = offset + Math.min(Math.max(input.maxTraceLines, 1), MAX_TRACE_PAGE_LINES);
@@ -367,10 +386,10 @@ export function createRunsTools(options: RunsToolsOptions = {}): McpToolDefiniti
     auth: { action: "read", subject: "runs" },
     run: async (input, ctx) => {
       const environment = await resolveToolEnvironment(ctx);
-      if (!environment) return errorResult("Environment not found");
+      if (!environment) return plainError("Environment not found");
 
       const span = await loadSpan(input.runId, input.spanId, environment);
-      if (!span) return errorResult("Span not found");
+      if (!span) return plainError(spanNotFound(input.spanId, input.runId));
 
       return textResult(
         [
@@ -391,7 +410,7 @@ export function createRunsTools(options: RunsToolsOptions = {}): McpToolDefiniti
     auth: { action: "read", subject: "runs" },
     run: async (input, ctx) => {
       const environment = await resolveToolEnvironment(ctx);
-      if (!environment) return errorResult("Environment not found");
+      if (!environment) return plainError("Environment not found");
 
       const boundMs = Math.min(Math.max(input.timeoutInSeconds, 0) * 1000, maxWaitMs);
       const deadline = Date.now() + boundMs;
@@ -416,7 +435,7 @@ export function createRunsTools(options: RunsToolsOptions = {}): McpToolDefiniti
         found = await ApiRetrieveRunPresenter.findRun(input.runId, environment);
       }
 
-      if (!found) return errorResult("Run not found");
+      if (!found) return plainError(runNotFound(input.runId));
 
       const run = await new ApiRetrieveRunPresenter(CURRENT_API_VERSION).call(found, environment);
       const prefix = completed
@@ -436,10 +455,10 @@ export function createRunsTools(options: RunsToolsOptions = {}): McpToolDefiniti
     auth: { action: "read", subject: "runs" },
     run: async (input, ctx) => {
       const environment = await resolveToolEnvironment(ctx);
-      if (!environment) return errorResult("Environment not found");
+      if (!environment) return plainError("Environment not found");
 
       if (!parseDuration(input.period, "ms")) {
-        return errorResult(`Invalid arguments: period=${input.period}`);
+        return plainError("Invalid arguments: period must be a duration such as 7d, 12h or 30m");
       }
 
       try {
@@ -464,7 +483,7 @@ export function createRunsTools(options: RunsToolsOptions = {}): McpToolDefiniti
         }
         return textResult(lines.join("\n"));
       } catch (error) {
-        if (error instanceof RunsListQueryError) return errorResult(error.message);
+        if (error instanceof RunsListQueryError) return plainError(error.message);
         throw error;
       }
     },

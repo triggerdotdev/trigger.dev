@@ -156,7 +156,7 @@ describe("trigger_task through the run engine", () => {
           identity,
           request
         );
-        const runId = result.content[0]!.text!.match(/ID created: (run_\w+)/)![1];
+        const runId = result.content[0]!.text!.match(/run (run_\w+) created\./)![1];
         return prisma.taskRun.findFirstOrThrow({ where: { friendlyId: runId } });
       };
 

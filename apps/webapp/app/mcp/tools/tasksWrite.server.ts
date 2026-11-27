@@ -132,7 +132,7 @@ export function createTasksWriteTools(options: TasksWriteOptions = {}): McpToolD
         if (!run) return fencedError("Task not found", "trigger-error");
 
         const contents = [
-          `Task ${input.taskId} triggered and run with ID created: ${run.id}.`,
+          `Triggered ${input.taskId}: run ${run.id} created.`,
           `View the run in the dashboard: ${dashboardUrl(`/projects/v3/${environment.project.externalRef}/runs/${run.id}`)}`,
           `The run is now executing in the background. Do not wait for it to complete unless the user asked you to. If they did, use the wait_for_run_to_complete tool. Otherwise, use the get_run_details tool to check on it when needed.`,
         ];
