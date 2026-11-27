@@ -20,7 +20,7 @@ export function escapeText(text: string): string {
   );
 }
 
-const escapeLayout = (text: string) =>
+export const escapeLayout = (text: string) =>
   text.replace(INVISIBLE_LAYOUT, (c) => `\\u${c.charCodeAt(0).toString(16).padStart(4, "0")}`);
 
 export const formatValue = (value: unknown) => escapeLayout(canonicalJson(value) ?? "undefined");

@@ -44,6 +44,7 @@ const REMOTE_ONLY: Record<string, string> = {
   get_bulk_action: "the CLI has no tool for it yet",
   create_bulk_action: "the CLI has no tool for it yet",
   abort_bulk_action: "the CLI has no tool for it yet",
+  batch_trigger_tasks: "the CLI has no tool for it yet",
   search_webhook_endpoints:
     "the public endpoints API has no subscriber, source, status or text filters",
   get_task_webhook: "no public API returns a webhook task's file path and subscribed endpoints",
@@ -133,6 +134,7 @@ const WRITE_TOOL_APPROVAL: Record<string, "required" | "configurable" | { none: 
   create_bulk_action: "required",
   abort_bulk_action: "configurable",
   trigger_task: "configurable",
+  batch_trigger_tasks: "required",
   create_alert: "configurable",
   resolve_alert: "configurable",
   update_alert: "configurable",

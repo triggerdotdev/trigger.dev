@@ -174,6 +174,26 @@ export const TriggerTaskInput = CommonProjectsInput.extend({
 
 export type TriggerTaskInput = z.output<typeof TriggerTaskInput>;
 
+export const BATCH_TRIGGER_MAX_ITEMS = 20;
+
+export const BatchTriggerTasksInput = CommonProjectsInput.extend({
+  items: z
+    .array(
+      z.object({
+        taskId: TriggerTaskInput.shape.taskId,
+        payload: TriggerTaskInput.shape.payload,
+        options: TriggerTaskInput.shape.options,
+      })
+    )
+    .min(1)
+    .max(BATCH_TRIGGER_MAX_ITEMS)
+    .describe(
+      `The runs to create, one per item, each with the same fields and options as trigger_task. Up to ${BATCH_TRIGGER_MAX_ITEMS} items.`
+    ),
+});
+
+export type BatchTriggerTasksInput = z.output<typeof BatchTriggerTasksInput>;
+
 export const ReplayRunInput = CommonRunsInput.extend({
   payload: z
     .any()

@@ -353,6 +353,11 @@ const TOOLS: Array<{
   { tool: "deactivate_schedule", args: sched, scope: "write:tasks" },
   { tool: "delete_schedule", args: sched, scope: "write:tasks" },
   {
+    tool: "batch_trigger_tasks",
+    args: { ...project, items: [{ taskId: "my-task", payload: {} }] },
+    scope: "write:tasks",
+  },
+  {
     tool: "cancel_webhook_waiter",
     args: { ...endpoint, waiterId: "waitpoint_1" },
     scope: "write:waitpoints",

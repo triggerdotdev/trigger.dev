@@ -23,12 +23,17 @@ export type McpConfirmSpec<A = unknown> = {
   /**
    * The ability is undefined for `user: true` tools; a check that relies on it must deny then.
    * Return `{ action, subject, id? }` to name the missing permission; `id` narrows the token-scope check only.
+   * Return `{ refuse }` to deny with that text.
    */
   precheck?: (
     args: A,
     ability: RbacAbility | undefined,
     subject: McpSubject | null
-  ) => McpPrecheckDenial | void | Promise<McpPrecheckDenial | void>;
+  ) =>
+    | McpPrecheckDenial
+    | McpPreviewRefusal
+    | void
+    | Promise<McpPrecheckDenial | McpPreviewRefusal | void>;
   preview: (
     args: A,
     subject: McpSubject | null,
@@ -44,6 +49,8 @@ export type McpToolAuth =
   | {
       action: string;
       subject: string;
+      /** The token scope that grants the action, when it is not `action:subject` itself. */
+      scope?: string;
       confirm?: boolean | McpConfirmSpec;
       /** A project-wide subject passes when the right holds in any environment type; the tool checks each. */
       anyEnvType?: true;

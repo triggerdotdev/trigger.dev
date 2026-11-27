@@ -1,7 +1,12 @@
 import { UrlElicitationRequiredError } from "@modelcontextprotocol/server";
 import { RuntimeEnvironmentType } from "@trigger.dev/database";
 import type { RbacResource } from "@trigger.dev/plugins";
-import { buildJwtAbility, CAPLESS_USER_ACTOR_SCOPES, type RbacAbility } from "@trigger.dev/rbac";
+import {
+  buildJwtAbility,
+  CAPLESS_USER_ACTOR_SCOPES,
+  type RbacAbility,
+  withActionAliases,
+} from "@trigger.dev/rbac";
 import { logger } from "~/services/logger.server";
 import { resolveAndRecheckUserActorClaims } from "~/services/personalAccessToken.server";
 import { MCP_SCOPES, mcpResource } from "~/services/oauth/metadata.server";
@@ -89,8 +94,8 @@ const errorText = (text: string): McpToolResult => ({
   isError: true,
 });
 
-const requiredScopes = (auth: { action: string; subject: string }) => [
-  `${auth.action}:${auth.subject}`,
+const requiredScopes = (auth: { action: string; subject: string; scope?: string }) => [
+  auth.scope ?? `${auth.action}:${auth.subject}`,
 ];
 
 export function missingScopes(
@@ -101,9 +106,10 @@ export function missingScopes(
   if ("public" in auth || identity.kind !== "uat") return [];
   const cap = identity.cap ?? CAPLESS_USER_ACTOR_SCOPES;
   const scope = requiredScopes(auth)[0];
+  const ability = withActionAliases(buildJwtAbility(cap));
   const allowed = resource
-    ? buildJwtAbility(cap).can(auth.action, resource)
-    : buildJwtAbility(cap).can(auth.action, { type: auth.subject }) ||
+    ? ability.can(auth.action, resource)
+    : ability.can(auth.action, { type: auth.subject }) ||
       cap.some((s) => s.startsWith(`${scope}:`));
   return allowed ? [] : [scope];
 }
@@ -307,6 +313,10 @@ export function withMcpToolAuth<TArgs>(
           typeof approval === "object"
             ? await approval.precheck?.(args, authorization.ability, subject)
             : undefined;
+        if (precheck && typeof precheck === "object" && "refuse" in precheck) {
+          outcome = "forbidden";
+          return errorText(precheck.refuse);
+        }
         if (precheck !== undefined) {
           const named = precheck === "forbidden" ? null : namedPermission(precheck);
           if (!named && precheck !== "forbidden") {

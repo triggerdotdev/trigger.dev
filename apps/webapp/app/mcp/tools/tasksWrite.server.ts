@@ -56,6 +56,15 @@ function parsePayload(payload: unknown) {
   }
 }
 
+export function describeConcurrency(limits: string[] | undefined) {
+  if (!limits) return undefined;
+  const change =
+    limits.length === 0
+      ? "Removes all of the task's named concurrency limits for this run"
+      : `Replaces the task's named concurrency limits for this run with: ${limits.join(", ")}`;
+  return `${change}. The task's inline concurrency limit still applies.`;
+}
+
 export function createTasksWriteTools(options: TasksWriteOptions = {}): McpToolDefinition[] {
   const triggerTask = options.triggerTask ?? defaultTriggerTask;
   const isDevConnected = options.isDevConnected ?? defaultIsDevConnected;
@@ -81,13 +90,8 @@ export function createTasksWriteTools(options: TasksWriteOptions = {}): McpToolD
               refuse: `This trigger is too large to confirm in full (the limit is ${PREVIEW_LIMIT} characters). Send a smaller payload or metadata; nothing changed.`,
             };
           }
-          const limits = input.options?.concurrency;
-          if (!limits) return result.preview;
-          const change =
-            limits.length === 0
-              ? "Removes all of the task's named concurrency limits for this run"
-              : `Replaces the task's named concurrency limits for this run with: ${limits.join(", ")}`;
-          return `${result.preview}\n${change}. The task's inline concurrency limit still applies.`;
+          const change = describeConcurrency(input.options?.concurrency);
+          return change ? `${result.preview}\n${change}` : result.preview;
         },
       },
       run: async (input, ctx) => {

@@ -6345,6 +6345,204 @@
             }
           },
           {
+            "name": "batch_trigger_tasks",
+            "title": "Batch Trigger Tasks",
+            "description": "Trigger up to 20 runs in one batch, each item with its own task, payload and the same options as trigger_task. Every call needs the user's approval, which shows every item. Returns the batch ID and the run IDs. The runs execute in the background.",
+            "inputSchema": {
+              "type": "object",
+              "$schema": "https://json-schema.org/draft/2020-12/schema",
+              "properties": {
+                "projectRef": {
+                  "type": "string",
+                  "description": "The trigger.dev project ref, starts with proj_. We will attempt to automatically detect the project ref if running inside a directory that includes a trigger.config.ts file, or if you pass the --project-ref option to the MCP server."
+                },
+                "configPath": {
+                  "type": "string",
+                  "description": "The path to the trigger.config.ts file. Only used when the trigger.config.ts file is not at the root dir (like in a monorepo setup). If not provided, we will try to find the config file in the current working directory"
+                },
+                "environment": {
+                  "default": "dev",
+                  "type": "string",
+                  "enum": ["dev", "staging", "prod", "preview"],
+                  "description": "The environment to get tasks for"
+                },
+                "branch": {
+                  "type": "string",
+                  "description": "The branch to get tasks for, only used for preview environments and branchable development environments"
+                },
+                "items": {
+                  "minItems": 1,
+                  "maxItems": 20,
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "taskId": {
+                        "type": "string",
+                        "description": "The ID/slug of the task to trigger. Use the get_tasks tool to get a list of tasks and ask the user to select one if it's not clear which one to use."
+                      },
+                      "payload": {
+                        "description": "The payload to trigger the task with. Should match the task's payload schema. Not a JSON string, but the actual payload object"
+                      },
+                      "options": {
+                        "type": "object",
+                        "properties": {
+                          "queue": {
+                            "type": "object",
+                            "properties": {
+                              "name": {
+                                "type": "string",
+                                "description": "The name of the queue to trigger the task in, by default will use the queue configured in the task"
+                              }
+                            },
+                            "required": ["name"]
+                          },
+                          "delay": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "string",
+                                "format": "date-time",
+                                "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z))$"
+                              }
+                            ],
+                            "description": "The delay before the task run is executed"
+                          },
+                          "idempotencyKey": {
+                            "type": "string",
+                            "description": "The idempotency key to use for the task run"
+                          },
+                          "idempotencyKeyTTL": {
+                            "type": "string",
+                            "pattern": "^\\d+[smhd]$",
+                            "description": "How long the idempotency key returns the same run instead of a new one: a number followed by s, m, h or d, like 30m or 1d. Defaults to 30 days. Only used with idempotencyKey"
+                          },
+                          "concurrencyKey": {
+                            "type": "string",
+                            "maxLength": 1024,
+                            "description": "Gives each value of this key its own copy of the run's queue, so the queue's concurrency limit applies per key, e.g. per user id. It also keys the run's named concurrency limits"
+                          },
+                          "concurrency": {
+                            "maxItems": 2,
+                            "type": "array",
+                            "items": {
+                              "type": "string",
+                              "pattern": "^[a-zA-Z0-9_-]{1,122}$"
+                            },
+                            "description": "Replaces the task's declared named concurrency limits for this run with these limit names, up to 2. An empty array removes all of them. The task's own inline concurrency limit still applies"
+                          },
+                          "debounce": {
+                            "type": "object",
+                            "properties": {
+                              "key": {
+                                "type": "string",
+                                "maxLength": 512,
+                                "description": "Triggers of this task with the same key are collapsed into one run"
+                              },
+                              "delay": {
+                                "type": "string",
+                                "maxLength": 64,
+                                "pattern": "^(\\d+(w|d|hr|h|m|s))+$",
+                                "description": "How long the run waits before it starts, as a duration like 5s, 1m or 2h30m. Each new trigger with the same key moves the start to that trigger's time plus this delay"
+                              },
+                              "mode": {
+                                "type": "string",
+                                "enum": ["leading", "trailing"],
+                                "description": "leading (the default) runs with the first trigger's data. trailing updates the run from each later trigger: payload, metadata, tags, maxAttempts, maxDuration and machine"
+                              },
+                              "maxDelay": {
+                                "type": "string",
+                                "maxLength": 64,
+                                "pattern": "^(\\d+(w|d|hr|h|m|s))+$",
+                                "description": "The longest the start can be pushed back from the first trigger, as a duration longer than delay, like 5m. Without it, steady triggers keep pushing the run back"
+                              }
+                            },
+                            "required": ["key", "delay"],
+                            "description": "Debounce triggers of this task that share a key into one run"
+                          },
+                          "lockToVersion": {
+                            "type": "string",
+                            "pattern": "^\\d{8}\\.\\d{1,9}$",
+                            "description": "Run on this deployed version, e.g. 20250101.1, instead of the version that is current when the run starts"
+                          },
+                          "machine": {
+                            "type": "string",
+                            "enum": [
+                              "micro",
+                              "small-1x",
+                              "small-2x",
+                              "medium-1x",
+                              "medium-2x",
+                              "large-1x",
+                              "large-2x"
+                            ],
+                            "description": "The machine preset to use for the task run"
+                          },
+                          "maxAttempts": {
+                            "type": "integer",
+                            "minimum": -9007199254740991,
+                            "maximum": 9007199254740991,
+                            "description": "The maximum number of attempts to retry the task run"
+                          },
+                          "maxDuration": {
+                            "type": "number",
+                            "description": "The maximum duration in seconds of the task run"
+                          },
+                          "metadata": {
+                            "type": "object",
+                            "propertyNames": {
+                              "type": "string"
+                            },
+                            "additionalProperties": {},
+                            "description": "Metadata to attach to the task run, as a JSON object"
+                          },
+                          "priority": {
+                            "type": "number",
+                            "description": "Priority as a time offset in seconds: the run is dequeued as if triggered this many seconds earlier, so higher values run sooner. The server clamps very large values"
+                          },
+                          "region": {
+                            "type": "string",
+                            "description": "The region to run the task in, overriding the default region set for the project. Available regions are listed on the Regions page in the dashboard, and this has no effect in the dev environment"
+                          },
+                          "tags": {
+                            "type": "array",
+                            "items": {
+                              "type": "string"
+                            },
+                            "description": "Tags to add to the task run. Must be less than 128 characters and cannot have more than 5"
+                          },
+                          "ttl": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "integer",
+                                "minimum": 0,
+                                "maximum": 9007199254740991
+                              }
+                            ],
+                            "description": "The time to live of the task run. If the run doesn't start executing within this time, it will be automatically cancelled. When omitted, the task's own ttl applies, otherwise 10 minutes in dev. If the server sets a maximum ttl (14 days on Trigger.dev Cloud), a run without a ttl gets that maximum and longer ttls are capped at it; without a maximum it never expires."
+                          }
+                        }
+                      }
+                    },
+                    "required": ["taskId", "payload"]
+                  },
+                  "description": "The runs to create, one per item, each with the same fields and options as trigger_task. Up to 20 items."
+                }
+              },
+              "required": ["items"]
+            },
+            "annotations": {
+              "title": "Batch Trigger Tasks",
+              "readOnlyHint": false,
+              "destructiveHint": true
+            }
+          },
+          {
             "name": "create_schedule",
             "title": "Create Schedule",
             "description": "Create a schedule that triggers a scheduled task (one defined with schedules.task) on a cron, in this environment only. It is active at once and starts runs on its own until it is deactivated or deleted. Outside development environments it counts toward the project's schedule limit.",
