@@ -1,12 +1,11 @@
-import { BookOpenIcon } from "@heroicons/react/24/solid";
 import { type LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import { QuestionMarkIcon } from "~/assets/icons/QuestionMarkIcon";
+import { DocsHeaderButton } from "~/components/DocsPanel";
 import { InlineCode } from "~/components/code/InlineCode";
 import { ListPagination } from "~/components/ListPagination";
 import { AdminDebugTooltip } from "~/components/admin/debugTooltip";
 import { MainCenteredContainer, PageBody } from "~/components/layout/AppLayout";
-import { LinkButton } from "~/components/primitives/Buttons";
 import { NavBar, PageAccessories, PageTitle } from "~/components/primitives/PageHeader";
 import { Paragraph } from "~/components/primitives/Paragraph";
 import { SimpleTooltip } from "~/components/primitives/Tooltip";
@@ -21,7 +20,7 @@ import { getSessionFiltersFromRequest } from "~/presenters/SessionFilters.server
 import { SessionListPresenter } from "~/presenters/v3/SessionListPresenter.server";
 import { clickhouseFactory } from "~/services/clickhouse/clickhouseFactoryInstance.server";
 import { requireUserId } from "~/services/session.server";
-import { docsPath, EnvironmentParamSchema } from "~/utils/pathBuilder";
+import { EnvironmentParamSchema } from "~/utils/pathBuilder";
 import { throwNotFound } from "~/utils/httpErrors";
 import { sessionsAgentPageContext } from "~/components/dashboard-agent/suggested-prompts";
 import { WhenAgentUnavailable } from "~/components/dashboard-agent/WhenAgentUnavailable";
@@ -83,13 +82,7 @@ export default function Page() {
         <PageAccessories>
           <AdminDebugTooltip />
           <WhenAgentUnavailable>
-            <LinkButton
-              variant={"docs/small"}
-              LeadingIcon={BookOpenIcon}
-              to={docsPath("ai-chat/sessions")}
-            >
-              Sessions docs
-            </LinkButton>
+            <DocsHeaderButton path="ai-chat/sessions">Sessions docs</DocsHeaderButton>
           </WhenAgentUnavailable>
         </PageAccessories>
       </NavBar>

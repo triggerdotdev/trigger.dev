@@ -80,7 +80,7 @@ export function createSnapshotStoreRuntime(options: {
         resolvePrimaryReadClient: () => leaf.primaryReadClient,
         resolvePending: async (runId, recoveryOptions) => {
           await options.connection.ready();
-          await recoveryWorker().resolveEntry({ id: "", fields: { runId } }, recoveryOptions);
+          return recoveryWorker().resolveEntry({ id: "", fields: { runId } }, recoveryOptions);
         },
         resolveCompletedWaitpointsWithContext: (args, context) => {
           completedWaitpoints ??= createStoreRunCompletedWaitpointResolver(

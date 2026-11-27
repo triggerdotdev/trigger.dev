@@ -4,7 +4,6 @@ import type {
   PrismaClientOrTransaction,
   Project,
 } from "@trigger.dev/database";
-import { tryCatch } from "@trigger.dev/core/utils";
 import { z } from "zod";
 import { Prisma as PrismaNamespace, type Prisma, prisma } from "~/db.server";
 import {
@@ -19,6 +18,7 @@ import { enqueueAttioMemberSync } from "~/services/attio.server";
 import { logger } from "~/services/logger.server";
 import { getDefaultEnvironmentConcurrencyLimit } from "~/services/platform.v3.server";
 import { rbac } from "~/services/rbac.server";
+import { deleteMembership } from "./orgMember.server";
 import { ssoController } from "~/services/sso.server";
 import {
   auditRoleName,
@@ -31,6 +31,10 @@ import { boundedIn } from "@trigger.dev/database";
 export const INVITE_NOT_FOUND = "Invite not found";
 const INVITE_BLOCKED_DIRECTORY_MANAGED =
   "Membership for this organization is managed by Directory Sync, so invites can't be accepted.";
+const INVITE_ROLE_UNAVAILABLE =
+  "This invite's role isn't available in the organization anymore. Ask for a new invite.";
+const INVITE_JOIN_FAILED =
+  "We couldn't finish adding you to the organization. Please try accepting the invite again.";
 export const ENV_SETUP_INCOMPLETE =
   "You joined the organization, but we couldn't finish setting up your development environments. Please try accepting the invite again, or contact support if this persists.";
 
@@ -67,6 +71,8 @@ export function isAcceptInviteFormError(error: unknown): error is Error {
     error instanceof Error &&
     (error.message === INVITE_NOT_FOUND ||
       error.message === ENV_SETUP_INCOMPLETE ||
+      error.message === INVITE_ROLE_UNAVAILABLE ||
+      error.message === INVITE_JOIN_FAILED ||
       error.message === INVITE_BLOCKED_DIRECTORY_MANAGED)
   );
 }
@@ -443,101 +449,99 @@ async function provisionInviteDevelopmentEnvironments(args: {
 }
 
 /**
- * Whether this call assigned the invite's role. The role is recorded by the request that assigned
- * it: in `invite.accepted` when that request consumed the invite, otherwise here as
- * `member.role_changed` (`recordRoleChange`). Concurrent accepts of one invite can consume it in one
- * request and assign the role in another, in either order.
+ * Writes the invite's role unless the member already has one assigned, and returns whether this call
+ * wrote it. If it can't be written, undoes a membership this request created and throws the message
+ * the invitee sees.
  */
-async function assignInviteRbacRole({
-  userId,
+async function writeInviteRole({
   organizationId,
   rbacRoleId,
-  onlyWhenUnassigned,
-  recordRoleChange,
+  userId,
+  memberId,
+  membershipCreated,
 }: {
-  userId: string;
   organizationId: string;
   rbacRoleId: string;
-  onlyWhenUnassigned: boolean;
-  /** The member the role change event names, when this request didn't consume the invite. */
-  recordRoleChange?: { memberId: string; email: string };
+  userId: string;
+  memberId: string;
+  membershipCreated: boolean;
 }): Promise<boolean> {
-  try {
-    let roleBefore: { id: string; name: string } | null = null;
-    if (onlyWhenUnassigned) {
-      const currentRole = await rbac.getUserRole({ userId, organizationId });
-      if (currentRole !== null) {
-        return false;
-      }
-    } else if (recordRoleChange && auditLogs.isRecordingEnabled()) {
-      // Best-effort, like setOrgMemberRole: a failed read records an unknown "before".
-      const [roleBeforeError, currentRole] = await tryCatch(
-        rbac.getUserRole({ userId, organizationId })
-      );
-      if (roleBeforeError) {
-        logger.warn("acceptInvite: failed to read the role before assigning the invite's role", {
-          organizationId,
-          userId,
-          error: roleBeforeError,
-        });
-      }
-      roleBefore = currentRole ?? null;
-    }
-
-    const roleResult = await rbac.setUserRole({
-      userId,
-      organizationId,
-      roleId: rbacRoleId,
-    });
-    if (roleResult.ok && recordRoleChange && roleBefore?.id !== rbacRoleId) {
-      recordMemberAuditEventInBackground(
-        async () => ({
-          category: "members",
-          action: "member.role_changed",
-          organizationId,
-          target: memberAuditTarget({
-            id: recordRoleChange.memberId,
-            user: { email: recordRoleChange.email },
-          }),
-          changes: {
-            role: {
-              before: roleBefore?.name ?? null,
-              after: await auditRoleName(organizationId, rbacRoleId),
-            },
-          },
-        }),
-        { action: "member.role_changed", organizationId }
-      );
-    }
-    if (!roleResult.ok) {
-      if (roleResult.code === "last_owner") {
-        logger.info("acceptInvite: kept last Owner, skipped RBAC role assignment", {
-          organizationId,
-          userId,
-          rbacRoleId,
-        });
-      } else {
-        logger.warn("acceptInvite: skipped RBAC role assignment", {
-          organizationId,
-          userId,
-          rbacRoleId,
-          reason: roleResult.error,
-        });
-      }
-    }
-    return roleResult.ok;
-  } catch (error) {
-    logger.error("acceptInvite: RBAC role assignment threw", {
-      organizationId,
-      userId,
-      rbacRoleId,
-      error:
-        error instanceof Error
-          ? { name: error.name, message: error.message, stack: error.stack }
-          : String(error),
-    });
-    return false;
+  const result = await rbac
+    .setUserRole({ userId, organizationId, roleId: rbacRoleId, onlyIfUnassigned: true })
+    .catch((error) => ({ ok: false as const, error: String(error), code: undefined }));
+  if (result.ok) {
+    return !result.kept;
   }
+
+  logger.warn("acceptInvite: couldn't assign the invite's role", {
+    organizationId,
+    userId,
+    rbacRoleId,
+    reason: result.error,
+  });
+  // Undone the way a removal does it (member lock, development keys rotated). A membership already
+  // removed needs no undo.
+  if (membershipCreated && result.code !== "not_a_member") {
+    await deleteMembership(memberId, organizationId).catch((error) =>
+      logger.error("acceptInvite: couldn't undo a membership whose role failed", {
+        organizationId,
+        userId,
+        error: String(error),
+      })
+    );
+  }
+  // "Ask for a new invite" only when the role really is gone; anything else is worth a retry.
+  const available = await isInviteRoleAvailable(organizationId, rbacRoleId).catch(() => true);
+  throw new Error(available ? INVITE_JOIN_FAILED : INVITE_ROLE_UNAVAILABLE);
+}
+
+/**
+ * Whether the invite's role can still be assigned, by the rules setUserRole applies: a built-in role
+ * the org's plan offers, or a custom role that still exists in the org. Always true without the
+ * plugin.
+ */
+async function isInviteRoleAvailable(organizationId: string, roleId: string): Promise<boolean> {
+  const systemRoles = await rbac.systemRoles(organizationId);
+  // Without the plugin no role is enforced, so none is unavailable.
+  if (!systemRoles) {
+    return true;
+  }
+  const builtIn = systemRoles.find((role) => role.id === roleId);
+  if (builtIn) {
+    return builtIn.available;
+  }
+  return (await rbac.allRoles(organizationId)).some((role) => role.id === roleId);
+}
+
+/**
+ * Records an invite's role as member.role_changed, for a request that wrote it but didn't consume
+ * the invite. No "before": the member just joined, and the legacy fallback they resolved to until
+ * the write was never theirs.
+ */
+function recordInviteRoleChange({
+  organizationId,
+  member,
+  rbacRoleId,
+}: {
+  organizationId: string;
+  member: { id: string; email: string };
+  rbacRoleId: string;
+}) {
+  recordMemberAuditEventInBackground(
+    async () => ({
+      category: "members",
+      action: "member.role_changed",
+      organizationId,
+      target: memberAuditTarget({ id: member.id, user: { email: member.email } }),
+      changes: {
+        role: {
+          before: null,
+          after: await auditRoleName(organizationId, rbacRoleId),
+        },
+      },
+    }),
+    { action: "member.role_changed", organizationId }
+  );
 }
 
 async function tryRecoverIncompleteInviteAccept({
@@ -663,8 +667,33 @@ export async function acceptInvite({
   });
 
   let membershipCreated = false;
+  const usingRbacPlugin = await rbac.isUsingPlugin();
 
   if (!member) {
+    // An explicit role outranks the invite's, so a role left over from an earlier membership would
+    // come back on rejoin (e.g. a former Owner re-invited without a role). Clear it before joining,
+    // and refuse the accept if that fails.
+    const cleared = await rbac.removeFormerMemberRoles({
+      userId: user.id,
+      organizationId: invite.organizationId,
+    });
+    if (!cleared.ok) {
+      logger.warn("acceptInvite: couldn't clear a former member's roles before joining", {
+        organizationId: invite.organizationId,
+        userId: user.id,
+        reason: cleared.error,
+      });
+      throw new Error(INVITE_JOIN_FAILED);
+    }
+    // Refuse before joining when the invite's role is no longer available (say after a plan
+    // change), so no membership exists that a concurrent accept could consume the invite for.
+    if (
+      invite.rbacRoleId &&
+      !(await isInviteRoleAvailable(invite.organizationId, invite.rbacRoleId))
+    ) {
+      throw new Error(INVITE_ROLE_UNAVAILABLE);
+    }
+
     try {
       member = await prisma.orgMember.create({
         data: {
@@ -697,13 +726,49 @@ export async function acceptInvite({
     }
   }
 
-  await provisionInviteDevelopmentEnvironments({
-    inviteId,
-    member,
-    organization: invite.organization,
-    projects: invite.organization.projects,
-    maximumConcurrencyLimit,
-  });
+  // Until the invite's role is written, the member resolves to the legacy fallback (Admin), so write
+  // it before environment setup, and never consume the invite without it. That's the request that
+  // created the membership, or one retrying an accept of this invite: a member who joined by invite
+  // while this invite still exists joined through it (an invite can't be sent to a member). A member
+  // who joined another way (e.g. SSO) keeps their role. Written only if no role is assigned yet, so
+  // a role an Owner set in the meantime stays, and only one request writes it.
+  const retryOfThisInvite =
+    !membershipCreated && member.joinMethod === ("invite" satisfies OrgMemberJoinMethod);
+  // The invite's role when this request wrote it, so this request records it.
+  const assignedRoleId =
+    usingRbacPlugin &&
+    invite.rbacRoleId &&
+    (membershipCreated || retryOfThisInvite) &&
+    (await writeInviteRole({
+      organizationId: invite.organizationId,
+      rbacRoleId: invite.rbacRoleId,
+      userId: user.id,
+      memberId: member.id,
+      membershipCreated,
+    }))
+      ? invite.rbacRoleId
+      : null;
+
+  try {
+    await provisionInviteDevelopmentEnvironments({
+      inviteId,
+      member,
+      organization: invite.organization,
+      projects: invite.organization.projects,
+      maximumConcurrencyLimit,
+    });
+  } catch (error) {
+    // The role written above stays, but this request won't reach the audit events below, and a
+    // retry finds it already in place. Record it now, as a role change.
+    if (assignedRoleId) {
+      recordInviteRoleChange({
+        organizationId: invite.organizationId,
+        member: { id: member.id, email: user.email },
+        rbacRoleId: assignedRoleId,
+      });
+    }
+    throw error;
+  }
 
   // Consume the invite only after development environments are provisioned so
   // a failed setup can be retried from /invites.
@@ -724,17 +789,15 @@ export async function acceptInvite({
     }
   }
 
-  const assignedRoleId =
-    invite.rbacRoleId &&
-    (await assignInviteRbacRole({
-      userId: user.id,
-      organizationId: invite.organization.id,
-      rbacRoleId: invite.rbacRoleId,
-      onlyWhenUnassigned: !membershipCreated,
-      recordRoleChange: inviteConsumed ? undefined : { memberId: member.id, email: user.email },
-    }))
-      ? invite.rbacRoleId
-      : null;
+  // The request that wrote the role records it: with invite.accepted when it consumed the invite,
+  // otherwise as a role change.
+  if (assignedRoleId && !inviteConsumed) {
+    recordInviteRoleChange({
+      organizationId: invite.organizationId,
+      member: { id: member.id, email: user.email },
+      rbacRoleId: assignedRoleId,
+    });
+  }
 
   // Only the request that consumed the invite records it, with the invite's role when this request
   // assigned it. A concurrent accept that assigns it instead records member.role_changed.

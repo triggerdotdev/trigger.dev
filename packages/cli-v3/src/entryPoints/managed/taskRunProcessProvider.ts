@@ -80,6 +80,7 @@ export interface TaskRunProcessProviderOptions {
 export interface GetProcessOptions {
   taskRunEnv: Record<string, string>;
   isWarmStart?: boolean;
+  requiresRunToken?: boolean;
 }
 
 export class TaskRunProcessProvider {
@@ -141,7 +142,10 @@ export class TaskRunProcessProvider {
     }
 
     // If process keep-alive is enabled and we have a healthy persistent process, reuse it
-    if (this.shouldReusePersistentProcess()) {
+    if (
+      this.shouldReusePersistentProcess() &&
+      !(opts.requiresRunToken && this.persistentProcess?.hasReceivedRootKey)
+    ) {
       this.sendDebugLog("Reusing persistent TaskRunProcess", {
         executionCount: this.executionCount,
       });

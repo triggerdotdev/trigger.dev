@@ -1,6 +1,6 @@
 {
   "name": "@trigger.dev/react-hooks",
-  "version": "4.8.7",
+  "version": "4.8.10",
   "description": "trigger.dev react hooks",
   "license": "MIT",
   "publishConfig": {
@@ -32,12 +32,12 @@
     "clean": "rimraf dist .tshy .tshy-build .turbo",
     "build": "tshy && pnpm run update-version",
     "dev": "tshy --watch",
-    "typecheck": "tsc --noEmit",
+    "typecheck": "tsrs --fast --noEmit",
     "update-version": "tsx ../../scripts/updateVersion.ts",
     "check-exports": "attw --pack ."
   },
   "dependencies": {
-    "@trigger.dev/core": "workspace:^4.8.7",
+    "@trigger.dev/core": "workspace:^4.8.10",
     "swr": "^2.2.5"
   },
   "devDependencies": {

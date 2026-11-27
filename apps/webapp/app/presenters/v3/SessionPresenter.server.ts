@@ -1,3 +1,4 @@
+import { RunId } from "@trigger.dev/core/v3/isomorphic";
 import { type Span } from "@opentelemetry/api";
 import { type PrismaClientOrTransaction, boundedIn } from "@trigger.dev/database";
 import { env } from "~/env.server";
@@ -6,7 +7,12 @@ import {
   DASHBOARD_TRANSCRIPT_PAGE,
   readSessionTranscriptSeed,
 } from "~/services/realtime/transcriptSeed.server";
-import { findSessionRunsPage } from "~/services/realtime/sessionRunPage.server";
+import { findSessionRunsPage, type SessionRunRow } from "~/services/realtime/sessionRunPage.server";
+import {
+  handoverRun,
+  parseSessionRunHandover,
+  sessionHandover,
+} from "~/components/sessions/v1/sessionHandoverData";
 import { resolveSessionByIdOrExternalId } from "~/services/realtime/sessions.server";
 import { LEGACY_PLAYGROUND_TAG } from "~/services/sessionsRepository/sessionsRepository.server";
 import { runStore } from "~/v3/runStore.server";
@@ -24,6 +30,8 @@ export class SessionPresenter {
     environmentSlug: string;
     /** Off when the page opens on the Trace tab: the Conversation tab fetches it when shown. */
     readTranscript: boolean;
+    /** Runs before each query after the first; throwing stops the call. */
+    beforeRead?: () => void;
   }) {
     return startActiveSpan("SessionPresenter.call", (span) => this.#call(args, span), {
       attributes: {
@@ -41,6 +49,7 @@ export class SessionPresenter {
       projectExternalRef,
       environmentSlug,
       readTranscript,
+      beforeRead,
     }: {
       userId: string;
       environmentId: string;
@@ -48,6 +57,7 @@ export class SessionPresenter {
       projectExternalRef: string;
       environmentSlug: string;
       readTranscript: boolean;
+      beforeRead?: () => void;
     },
     rootSpan: Span
   ) {
@@ -61,6 +71,7 @@ export class SessionPresenter {
     rootSpan.setAttribute("session.found", true);
     rootSpan.setAttribute("session.id", session.id);
 
+    beforeRead?.();
     const displayableEnvironment = await startActiveSpan(
       "SessionPresenter.findDisplayableEnvironment",
       () => findDisplayableEnvironment(environmentId, userId)
@@ -72,6 +83,7 @@ export class SessionPresenter {
     // Run history is append-only; latest first matches the runs list.
     // 50 covers the vast majority of sessions; longer histories link out
     // to the runs page via tag filter.
+    beforeRead?.();
     const sessionRuns = await startActiveSpan("SessionPresenter.findSessionRuns", async (span) => {
       const rows = await findSessionRunsPage(this.replica, { sessionId: session.id, take: 50 });
       span.setAttribute("sessionRuns.count", rows.length);
@@ -79,31 +91,44 @@ export class SessionPresenter {
     });
 
     const runIds = sessionRuns.map((r) => r.runId);
+    beforeRead?.();
     const runs = await startActiveSpan("SessionPresenter.findRuns", async (span) => {
       span.setAttribute("runIds.count", runIds.length);
       return runIds.length > 0
         ? runStore.findRuns(
             {
               where: { id: { in: boundedIn(runIds) } },
-              select: { id: true, friendlyId: true, status: true },
+              select: { id: true, friendlyId: true, status: true, taskVersion: true },
             },
             this.replica
           )
         : [];
     });
     const runsById = new Map(runs.map((r) => [r.id, r] as const));
+    // Rows are newest first, so the run that handed a reply over is the next row.
+    const handoverOf = (row: SessionRunRow, previous: SessionRunRow | undefined) => {
+      const handover = parseSessionRunHandover(row.handover);
+      if (!handover) return undefined;
+      return sessionHandover(
+        handover,
+        row,
+        previous ? handoverRun(previous.runId, runsById.get(previous.runId)) : null,
+        handoverRun(row.runId, runsById.get(row.runId))
+      );
+    };
 
     const currentRun = session.currentRunId
       ? (runsById.get(session.currentRunId) ??
-        (await startActiveSpan("SessionPresenter.findCurrentRunFallback", () =>
-          runStore.findRun(
+        (await startActiveSpan("SessionPresenter.findCurrentRunFallback", () => {
+          beforeRead?.();
+          return runStore.findRun(
             { id: session.currentRunId! },
             {
-              select: { id: true, friendlyId: true, status: true },
+              select: { id: true, friendlyId: true, status: true, taskVersion: true },
             },
             this.replica
-          )
-        )))
+          );
+        })))
       : null;
 
     // The dashboard SSE route is cookie-authed, so `publicAccessToken` is
@@ -152,15 +177,23 @@ export class SessionPresenter {
       updatedAt: session.updatedAt.toISOString(),
       environment: displayableEnvironment,
       currentRun: currentRun
-        ? { friendlyId: currentRun.friendlyId, status: currentRun.status }
+        ? {
+            friendlyId: currentRun.friendlyId,
+            status: currentRun.status,
+            version: currentRun.taskVersion,
+          }
         : null,
-      runs: sessionRuns.map((r) => {
+      runs: sessionRuns.map((r, index) => {
         const run = runsById.get(r.runId);
         return {
           id: r.id,
+          runFriendlyId: RunId.toFriendlyId(r.runId),
           reason: r.reason,
           triggeredAt: r.triggeredAt.toISOString(),
-          run: run ? { friendlyId: run.friendlyId, status: run.status } : null,
+          run: run
+            ? { friendlyId: run.friendlyId, status: run.status, version: run.taskVersion }
+            : null,
+          handover: handoverOf(r, sessionRuns[index + 1]),
         };
       }),
       agentView: {

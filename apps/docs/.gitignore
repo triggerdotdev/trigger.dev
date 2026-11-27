@@ -1,0 +1,6 @@
+.next/
+.source/
+next-env.d.ts
+*.tsbuildinfo
+.generated/
+public/

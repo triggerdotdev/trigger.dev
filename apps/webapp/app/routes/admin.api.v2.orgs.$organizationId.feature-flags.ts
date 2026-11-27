@@ -8,7 +8,12 @@ import { prisma } from "~/db.server";
 import { noteAdminRequest } from "~/services/adminAudit/adminAuditContext.server";
 import { requireUser } from "~/services/session.server";
 import { controlPlaneResolver } from "~/v3/runOpsMigration/controlPlaneResolver.server";
-import { selectMintBaselineSource, stampMintKindFlip } from "~/v3/runOpsMigration/mintFlipGrace";
+import {
+  selectMintBaselineSource,
+  stampBooleanFlagGroups,
+  stampMintKindFlip,
+  withoutBooleanFlagStamps,
+} from "~/v3/runOpsMigration/mintFlipGrace";
 import { flags as getGlobalFlags } from "~/v3/featureFlags.server";
 import {
   FEATURE_FLAG,
@@ -166,16 +171,24 @@ async function handleAction({ request, params }: ActionFunctionArgs) {
       runOpsMintKindPrev: _ignoredPrev,
       runOpsMintKindFlippedAt: _ignoredFlippedAt,
       ...requestedFlags
-    } = merged.flags;
+    } = withoutBooleanFlagStamps(merged.flags);
 
     // Anchor the flip stamp to the control-plane DB clock (see the v1 route), not this process's.
     const [{ now: controlPlaneNow }] = await tx.$queryRaw<{ now: Date }[]>`SELECT now() AS now`;
 
-    const stamped = stampMintKindFlip(
+    const mintStamped = stampMintKindFlip(
       selectMintBaselineSource(existingRaw, globalFlags),
       requestedFlags,
       controlPlaneNow.getTime(),
       env.RUN_OPS_MINT_FLIP_GRACE_MS
+    );
+    const stamped = stampBooleanFlagGroups(
+      existingRaw,
+      globalFlags,
+      mintStamped,
+      controlPlaneNow.getTime(),
+      env.RUN_OPS_MINT_FLIP_GRACE_MS,
+      { replace: true }
     );
 
     await tx.organization.update({

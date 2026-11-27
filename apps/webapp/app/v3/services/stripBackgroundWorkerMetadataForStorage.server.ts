@@ -11,7 +11,8 @@ import type { Prisma } from "@trigger.dev/database";
  * webhookSubscribers into syncDeclarativeWebhooks. packageVersion, contentHash,
  * and tasks[].filePath are kept solely to satisfy BackgroundWorkerMetadata's
  * required fields when the column is parsed back. warmupCommand is read by the
- * template prebuild (templatePrebuild.server.ts).
+ * template prebuild (templatePrebuild.server.ts). machines is read by the CLI,
+ * which builds their images (api.v1.deployments.$deploymentId.ts).
  */
 export function stripBackgroundWorkerMetadataForStorage(
   metadata: BackgroundWorkerMetadata
@@ -31,5 +32,6 @@ export function stripBackgroundWorkerMetadataForStorage(
       | Prisma.InputJsonValue[]
       | undefined,
     warmupCommand: metadata.warmupCommand,
+    machines: metadata.machines,
   };
 }

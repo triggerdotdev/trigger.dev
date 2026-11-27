@@ -25,12 +25,14 @@ rules:
   - apiGroups: [""]
     resources: ["pods"]
     verbs: ["create", "delete", "deletecollection", "get", "list", "watch"]
-{{- if .Values.supervisor.config.kubernetes.runCrdEnabled }}
+{{- if or .Values.supervisor.config.kubernetes.runCrdEnabled .Values.supervisor.config.kubernetes.podTokenSecretEnabled }}
   - apiGroups: [""]
     resources: ["secrets"]
     # delete is for taking back a Secret whose Runner create was rejected, which
     # is guarded by that object's uid. Still no get: nothing here reads a token.
     verbs: ["create", "delete", "patch"]
+{{- end }}
+{{- if .Values.supervisor.config.kubernetes.runCrdEnabled }}
   - apiGroups: ["compute.trigger.dev"]
     resources: ["runners"]
     # get and patch are a suspend: the request is an annotation on the Runner
@@ -193,11 +195,16 @@ spec:
               value: {{ .Values.supervisor.config.kubernetes.forceEnabled | quote }}
             - name: KUBERNETES_RUN_CRD_ENABLED
               value: {{ .Values.supervisor.config.kubernetes.runCrdEnabled | quote }}
+            - name: KUBERNETES_POD_TOKEN_SECRET_ENABLED
+              value: {{ .Values.supervisor.config.kubernetes.podTokenSecretEnabled | quote }}
             - name: KUBERNETES_RUNNER_RUNTIME
               value: {{ .Values.supervisor.config.kubernetes.runnerRuntime | quote }}
             {{- range .Values.supervisor.extraEnvVars }}
             {{- if eq .name "KUBERNETES_RUN_CRD_ENABLED" }}
             {{- fail "Set supervisor.config.kubernetes.runCrdEnabled rather than overriding KUBERNETES_RUN_CRD_ENABLED through extraEnvVars. extraEnvVars is rendered last, so the override would win and enable the backend while the Role still lacks the two writes it needs, giving a 403 on every cold start." }}
+            {{- end }}
+            {{- if eq .name "KUBERNETES_POD_TOKEN_SECRET_ENABLED" }}
+            {{- fail "Set supervisor.config.kubernetes.podTokenSecretEnabled rather than overriding KUBERNETES_POD_TOKEN_SECRET_ENABLED through extraEnvVars. extraEnvVars is rendered last, so the override would win while the Role still lacks the Secret writes it needs." }}
             {{- end }}
             {{- if eq .name "KUBERNETES_RUNNER_RUNTIME" }}
             {{- fail "Set supervisor.config.kubernetes.runnerRuntime rather than overriding KUBERNETES_RUNNER_RUNTIME through extraEnvVars. extraEnvVars is rendered last, so the override would win and ask for a lane the chart has not checked." }}

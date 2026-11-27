@@ -3,8 +3,9 @@ import { type MetaFunction } from "@remix-run/react";
 import { type ActionFunctionArgs, type LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { typeddefer, useTypedLoaderData } from "remix-typedjson";
 import { WebhookIcon } from "~/assets/icons/WebhookIcon";
+import { DocsHeaderButton, useDocsLink } from "~/components/DocsPanel";
 import { CodeBlock } from "~/components/code/CodeBlock";
-import { MainCenteredContainer, PageBody } from "~/components/layout/AppLayout";
+import { MainCenteredContainer, PageBody, PageContainer } from "~/components/layout/AppLayout";
 import { DirectionSchema, ListPagination } from "~/components/ListPagination";
 import { LinkButton } from "~/components/primitives/Buttons";
 import { InfoPanel } from "~/components/primitives/InfoPanel";
@@ -31,7 +32,7 @@ import {
 } from "~/services/dashboardPreferences.server";
 import { requireUser } from "~/services/session.server";
 import { telemetry } from "~/services/telemetry.server";
-import { docsPath, EnvironmentParamSchema } from "~/utils/pathBuilder";
+import { EnvironmentParamSchema } from "~/utils/pathBuilder";
 import { webhookIngressUrl } from "~/utils/webhookIngressUrl.server";
 import { hasWebhooksAccess } from "~/v3/webhooksAccess.server";
 
@@ -137,18 +138,20 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
 export default function Page() {
   const data = useTypedLoaderData<typeof loader>();
 
-  if ("betaAccess" in data) {
-    return (
-      <WebhooksBetaAccess
-        key={data.organizationId}
-        requested={data.requested}
-        previewEndpoints={data.previewEndpoints}
-        previewActivity={data.previewActivity}
-      />
-    );
-  }
-
-  return <Endpoints data={data} />;
+  return (
+    <PageContainer>
+      {"betaAccess" in data ? (
+        <WebhooksBetaAccess
+          key={data.organizationId}
+          requested={data.requested}
+          previewEndpoints={data.previewEndpoints}
+          previewActivity={data.previewActivity}
+        />
+      ) : (
+        <Endpoints data={data} />
+      )}
+    </PageContainer>
+  );
 }
 
 type EndpointsData = Exclude<
@@ -164,13 +167,7 @@ function Endpoints({ data }: { data: EndpointsData }) {
       <NavBar>
         <PageTitle title="Webhooks" />
         <PageAccessories>
-          <LinkButton
-            variant="docs/small"
-            LeadingIcon={BookOpenIcon}
-            to={docsPath("webhooks/overview")}
-          >
-            Webhooks docs
-          </LinkButton>
+          <DocsHeaderButton path="webhooks/overview">Webhooks docs</DocsHeaderButton>
         </PageAccessories>
       </NavBar>
       <PageBody scrollable={false}>
@@ -204,6 +201,7 @@ function Endpoints({ data }: { data: EndpointsData }) {
 }
 
 function NoEndpoints() {
+  const docsLink = useDocsLink();
   return (
     <MainCenteredContainer className="max-w-2xl">
       <InfoPanel
@@ -213,7 +211,7 @@ function NoEndpoints() {
         panelClassName="max-w-2xl"
         accessory={
           <LinkButton
-            to={docsPath("webhooks/overview")}
+            {...docsLink("webhooks/overview")}
             variant="docs/small"
             LeadingIcon={BookOpenIcon}
           >

@@ -13,9 +13,9 @@ import {
   useRouteError,
 } from "@remix-run/react";
 import { randomBytes, timingSafeEqual } from "node:crypto";
-import { CodeBlock } from "~/components/code/CodeBlock";
 import { LoginPageLayout } from "~/components/LoginPageLayout";
 import { Button } from "~/components/primitives/Buttons";
+import { CopyButton } from "~/components/primitives/CopyButton";
 import { Header1 } from "~/components/primitives/Headers";
 import { Paragraph } from "~/components/primitives/Paragraph";
 import { describeMcpSubject } from "~/mcp/confirm/confirmation.server";
@@ -73,7 +73,24 @@ export async function loader({ request, params }: LoaderFunctionArgs) {
   );
 }
 
-export async function action({ request, params }: ActionFunctionArgs) {
+// The root error handler logs at debug only, so an approve or deny that fails is logged here;
+// ignoreError keeps it out of Sentry, which gets the rethrown exception once.
+export async function action(args: ActionFunctionArgs) {
+  try {
+    return await decide(args);
+  } catch (error) {
+    if (!(error instanceof Response)) {
+      logger.error("mcp.confirmation failed", {
+        confirmationId: args.params.confirmationId,
+        error: error instanceof Error ? error.name : typeof error,
+        ignoreError: true,
+      });
+    }
+    throw error;
+  }
+}
+
+async function decide({ request, params }: ActionFunctionArgs) {
   if (request.method !== "POST") {
     throw new Response("Method not allowed", { status: 405, headers: { Allow: "POST" } });
   }
@@ -125,6 +142,20 @@ export async function action({ request, params }: ActionFunctionArgs) {
   return json({ approved: true, denied: false, error: undefined }, { headers: noStore });
 }
 
+function PreviewBlock({ preview }: { preview: string }) {
+  return (
+    <div className="relative mb-4 w-full rounded-md border border-grid-bright bg-background-bright">
+      <CopyButton value={preview} variant="icon" className="absolute right-2 top-2" />
+      <pre
+        translate="no"
+        className="whitespace-pre-wrap break-all p-3 pr-10 font-mono text-xs leading-relaxed text-text-bright"
+      >
+        {preview}
+      </pre>
+    </div>
+  );
+}
+
 export default function Page() {
   const { tool, target, client, preview, approved, denied, truncated, csrf } =
     useLoaderData<typeof loader>();
@@ -152,19 +183,18 @@ export default function Page() {
   }
 
   return (
-    <Shell title={`Approve "${tool}"?`}>
+    <Shell
+      title={
+        <>
+          Approve "<span translate="no">{tool}</span>"?
+        </>
+      }
+    >
       <Paragraph spacing className="text-center">
-        {client} wants to run <strong>{tool}</strong> on {target}.
+        <span translate="no">{client}</span> wants to run <strong translate="no">{tool}</strong> on{" "}
+        <span translate="no">{target}</span>.
       </Paragraph>
-      <CodeBlock
-        code={preview}
-        language="json"
-        showLineNumbers={false}
-        showOpenInModal={false}
-        wrap
-        maxLines={12}
-        className="mb-4 w-full"
-      />
+      <PreviewBlock preview={preview} />
       {truncated ? (
         <Paragraph className="text-center">{TOO_LARGE}</Paragraph>
       ) : (
@@ -209,10 +239,10 @@ export function ErrorBoundary() {
   );
 }
 
-function Shell({ title, children }: { title: string; children: React.ReactNode }) {
+function Shell({ title, children }: { title: React.ReactNode; children: React.ReactNode }) {
   return (
     <LoginPageLayout scrollable singleColumn>
-      <div className="flex w-full flex-col items-center py-8">
+      <div className="flex w-full flex-col items-center py-8 [overflow-wrap:anywhere]">
         <Header1 className="pb-4 text-center font-semibold leading-tight text-2xl">{title}</Header1>
         {children}
       </div>

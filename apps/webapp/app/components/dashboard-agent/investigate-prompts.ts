@@ -40,6 +40,10 @@ export function waitingRunPrompt(runFriendlyId: string, queueName?: string): str
     : `Why is run ${runFriendlyId} waiting to start?`;
 }
 
+export function pendingVersionRunPrompt(runFriendlyId: string): string {
+  return `Why is run ${runFriendlyId} waiting for a version, and what will start it?`;
+}
+
 export function errorGroupPrompt(errorFriendlyId: string, taskIdentifier?: string): string {
   const subject = taskIdentifier
     ? `error ${errorFriendlyId} in ${taskIdentifier}`

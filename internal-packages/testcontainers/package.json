@@ -29,7 +29,7 @@
     "tinyexec": "^1.2.4"
   },
   "scripts": {
-    "typecheck": "tsc --noEmit",
+    "typecheck": "tsrs --fast --noEmit",
     "test": "vitest --sequence.concurrent=false --no-file-parallelism"
   }
 }

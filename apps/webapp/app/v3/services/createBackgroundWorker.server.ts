@@ -39,7 +39,7 @@ import { sanitizeQueueName } from "~/models/taskQueue.server";
 import type { AuthenticatedEnvironment } from "~/services/apiAuth.server";
 import { logger } from "~/services/logger.server";
 import { organizationHasWebhooksAccess } from "~/v3/webhooksAccess.server";
-import { sandboxTasksEnabled } from "~/v3/sandboxTasksFlag.server";
+import { namedMachinesEnabled, sandboxTasksEnabled } from "~/v3/sandboxTasksFlag.server";
 import { safeEnvironmentLogFields } from "~/services/safeEnvironmentLog";
 import { syncTaskIdentifiers } from "~/services/taskIdentifierRegistry.server";
 import {
@@ -303,7 +303,11 @@ export class CreateBackgroundWorkerService extends BaseService {
           environment.id,
           project.id,
           backgroundWorker.id,
-          body.metadata.tasks.map((t) => ({ id: t.id, triggerSource: t.triggerSource }))
+          body.metadata.tasks.map((task) => ({
+            id: task.id,
+            triggerSource: taskTriggerSource(task),
+          })),
+          "$transaction" in this._prisma ? this._prisma : undefined
         )
       );
 
@@ -661,12 +665,13 @@ async function createWorkerTask(
       );
     }
 
+    const triggerSource = taskTriggerSource(task);
     resolvedTriggerSource =
-      task.triggerSource === "schedule"
+      triggerSource === "schedule"
         ? ("SCHEDULED" as const)
-        : task.triggerSource === "agent"
+        : triggerSource === "agent"
           ? ("AGENT" as const)
-          : task.triggerSource === "webhook"
+          : triggerSource === "webhook"
             ? ("WEBHOOK" as const)
             : ("STANDARD" as const);
 
@@ -792,11 +797,17 @@ async function createWorkerQueues(
   return allQueues;
 }
 
-/** Rejects a sandbox whose config an older CLI dropped, or whose organization lacks the flag. */
-export function validateSandboxTask(
-  task: Pick<TaskResource, "id" | "triggerSource" | "sandbox">,
-  environment: AuthenticatedEnvironment
-): void {
+function taskTriggerSource(task: TaskResource): string | undefined {
+  return task.triggerSource === SANDBOX_TRIGGER_SOURCE
+    ? task.sandbox?.triggerSource
+    : task.triggerSource;
+}
+
+/**
+ * Rejects a sandbox whose config was dropped, or a sandbox or named machine whose organization
+ * lacks the flag.
+ */
+export function validateSandboxTask(task: TaskResource, environment: AuthenticatedEnvironment) {
   if (task.triggerSource === SANDBOX_TRIGGER_SOURCE && !task.sandbox) {
     throw new ServiceValidationError(
       `Task "${task.id}" is a sandbox, but this CLI version dropped its sandbox configuration. Update the trigger.dev CLI and deploy again.`
@@ -805,6 +816,11 @@ export function validateSandboxTask(
   if (task.sandbox && !sandboxTasksEnabled(environment.organization.featureFlags)) {
     throw new ServiceValidationError(
       `Task "${task.id}" is a sandbox, but sandbox tasks are not enabled for this organization.`
+    );
+  }
+  if (task.machine?.name && !namedMachinesEnabled(environment.organization.featureFlags)) {
+    throw new ServiceValidationError(
+      `Task "${task.id}" uses machine "${task.machine.name}" from defineMachine(), but named machines are not enabled for this organization.`
     );
   }
 }

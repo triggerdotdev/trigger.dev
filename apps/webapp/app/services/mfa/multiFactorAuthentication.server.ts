@@ -8,6 +8,7 @@ import { createOTP } from "@better-auth/utils/otp";
 import { base32 } from "@better-auth/utils/base32";
 import { z } from "zod";
 import { scheduleEmail } from "../scheduleEmail.server";
+import { endSessionsIssuedBefore } from "../sessionDuration.server";
 import { checkMfaRateLimit } from "./mfaRateLimiterGlobal.server";
 import type { MfaRateLimiters } from "./mfaRateLimiter.server";
 
@@ -83,24 +84,23 @@ export class MultiFactorAuthenticationService {
       };
     }
 
-    // Delete the MFA secret
-    await secretStore.deleteSecret(user.mfaSecretReference.key);
-
-    // Delete the MFA backup codes
-    await this.#prismaClient.mfaBackupCode.deleteMany({
-      where: {
-        userId,
-      },
-    });
-
-    await this.#prismaClient.user.update({
-      where: { id: userId },
-      data: {
-        mfaEnabledAt: null,
-        mfaSecretReference: {
-          delete: true,
+    const changedAt = new Date();
+    const secretReference = user.mfaSecretReference;
+    await $transaction(this.#prismaClient, "disableTotp", async (tx) => {
+      await tx.mfaBackupCode.deleteMany({ where: { userId } });
+      await tx.user.update({
+        where: { id: userId },
+        data: {
+          mfaEnabledAt: null,
+          mfaSecretReference: {
+            delete: true,
+          },
         },
-      },
+      });
+      await endSessionsIssuedBefore(userId, changedAt, tx);
+      await getSecretStore(secretReference.provider, { prismaClient: tx }).deleteSecret(
+        secretReference.key
+      );
     });
 
     await scheduleEmail({
@@ -111,6 +111,7 @@ export class MultiFactorAuthenticationService {
 
     return {
       success: true,
+      changedAt,
     };
   }
 
@@ -235,13 +236,15 @@ export class MultiFactorAuthenticationService {
     }
 
     const recoveryCodes = Array.from({ length: 9 }, () => generateRandomString(16, "a-z", "0-9"));
+    const changedAt = new Date();
 
     await $transaction(this.#prismaClient, "validateTotpSetup", async (tx) => {
       // Only activate the secret we verified, not a concurrent replacement.
       await tx.user.update({
         where: { id: userId, mfaSecretReferenceId: user.mfaSecretReferenceId },
-        data: { mfaEnabledAt: new Date() },
+        data: { mfaEnabledAt: changedAt },
       });
+      await endSessionsIssuedBefore(userId, changedAt, tx);
 
       await tx.mfaBackupCode.deleteMany({ where: { userId } });
 
@@ -262,6 +265,7 @@ export class MultiFactorAuthenticationService {
     return {
       success: true,
       recoveryCodes,
+      changedAt,
     };
   }
 

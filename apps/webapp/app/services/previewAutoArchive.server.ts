@@ -12,6 +12,7 @@ import {
   type PreviewBranchActivity,
 } from "~/utils/previewAutoArchive";
 import { archiveBranchesMutation } from "./branchArchiveMutation.server";
+import { deleteEnvironmentSignalStreams } from "./realtime/environmentSignals.server";
 import { logger } from "./logger.server";
 import { trail } from "agentcrumbs"; // @crumbs
 
@@ -53,6 +54,8 @@ type DuePolicy = {
   previewAutoArchiveNextCheckAt: Date;
   previewAutoArchiveCursorCreatedAt: Date | null;
   previewAutoArchiveCursorId: string | null;
+  organizationId: string;
+  organizationStreamBasinName: string | null;
   projectDeletedAt: Date | null;
   organizationDeletedAt: Date | null;
 };
@@ -67,6 +70,7 @@ function previewArchiveDueQuery(now: Date) {
   return Prisma.sql`
     SELECT e.id, e."previewAutoArchiveAfterDays", e."previewAutoArchiveExcludedBranches",
       e."previewAutoArchiveNextCheckAt", e."previewAutoArchiveCursorCreatedAt", e."previewAutoArchiveCursorId",
+      e."organizationId", o."streamBasinName" AS "organizationStreamBasinName",
       p."deletedAt" AS "projectDeletedAt", o."deletedAt" AS "organizationDeletedAt"
     FROM "RuntimeEnvironment" e
     JOIN "Project" p ON p.id = e."projectId"
@@ -113,6 +117,7 @@ export async function previewAutoArchiveCount(
         scheduled: 0,
         inProgress: 0,
         protectedBranches: [] as string[],
+        ready: [] as string[],
         partial: branches.length > PREVIEW_LIMIT,
       };
       for (const branch of sample) {
@@ -132,6 +137,7 @@ export async function previewAutoArchiveCount(
             break;
           case "ready":
             result.count++;
+            result.ready.push(branch.branchName!);
             break;
           case "scheduled":
             result.scheduled++;
@@ -152,25 +158,38 @@ export async function savePreviewAutoArchivePolicy(
   prisma: PrismaClient,
   parentId: string,
   input: { days: number | null; excludedBranches: string[] },
-  now = new Date()
-) {
+  now = new Date(),
+  /** When set, saves only if this is still the stored policy. */
+  expected?: { days: number | null; excludedBranches: string[] }
+): Promise<{ stale: true } | undefined> {
   const { days, excludedBranches } = PreviewAutoArchivePolicy.parse(input);
-  await prisma.runtimeEnvironment.update({
+  const where = {
+    id: parentId,
+    type: "PREVIEW" as const,
+    parentEnvironmentId: null,
+    isBranchableEnvironment: true,
+    archivedAt: null,
+  };
+  const data = {
+    previewAutoArchiveAfterDays: days,
+    previewAutoArchiveExcludedBranches: excludedBranches,
+    previewAutoArchiveNextCheckAt: days === null ? null : now,
+    previewAutoArchiveCursorCreatedAt: null,
+    previewAutoArchiveCursorId: null,
+  };
+  if (!expected) {
+    await prisma.runtimeEnvironment.update({ where, data });
+    return;
+  }
+  const written = await prisma.runtimeEnvironment.updateMany({
     where: {
-      id: parentId,
-      type: "PREVIEW",
-      parentEnvironmentId: null,
-      isBranchableEnvironment: true,
-      archivedAt: null,
+      ...where,
+      previewAutoArchiveAfterDays: expected.days,
+      previewAutoArchiveExcludedBranches: { equals: expected.excludedBranches },
     },
-    data: {
-      previewAutoArchiveAfterDays: days,
-      previewAutoArchiveExcludedBranches: excludedBranches,
-      previewAutoArchiveNextCheckAt: days === null ? null : now,
-      previewAutoArchiveCursorCreatedAt: null,
-      previewAutoArchiveCursorId: null,
-    },
+    data,
   });
+  return written.count === 0 ? { stale: true } : undefined;
 }
 
 /** At most four database pages globally, even with duplicate jobs or many webapp
@@ -210,7 +229,14 @@ export async function processPreviewAutoArchivePage(
               previewAutoArchiveCursorId: null,
             },
           });
-          return { parentId: parent.id, scanned: 0, candidates: 0, archived: [], complete: true };
+          return {
+            parentId: parent.id,
+            scanned: 0,
+            candidates: 0,
+            archived: [],
+            archivedStreams: [],
+            complete: true,
+          };
         }
         const cutoff = new Date(
           now.getTime() - parent.previewAutoArchiveAfterDays * PREVIEW_AUTO_ARCHIVE_DAY_MS
@@ -286,11 +312,23 @@ export async function processPreviewAutoArchivePage(
           scanned: scanned.length,
           candidates: ids.length,
           archived,
+          // Slugs from before the archive renamed them: the signal stream is named by the old one.
+          archivedStreams: eligible
+            .filter(({ id }) => archived.some((row) => row.id === id))
+            .map(({ id, slug }) => ({
+              id,
+              slug,
+              organization: {
+                id: parent.organizationId,
+                streamBasinName: parent.organizationStreamBasinName,
+              },
+            })),
           complete,
         };
       },
       { isolationLevel: "ReadCommitted", timeout: 5_000, maxWait: 1_000 }
     );
+    if (result) await deleteEnvironmentSignalStreams(result.archivedStreams);
     if (result)
       logger.debug("Preview archive page completed", {
         parentId: result.parentId,

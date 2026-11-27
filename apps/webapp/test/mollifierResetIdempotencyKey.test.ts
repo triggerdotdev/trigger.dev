@@ -17,6 +17,11 @@ vi.mock("~/v3/mollifier/mollifierBuffer.server", () => ({
   getMollifierBuffer: () => bufferMock.current,
 }));
 
+const mintKindMock: { current: "cuid" | "runOpsId" } = { current: "cuid" };
+vi.mock("~/v3/engineVersion.server", () => ({
+  resolveRunIdMintKind: async () => mintKindMock.current,
+}));
+
 import { ResetIdempotencyKeyService } from "~/v3/services/resetIdempotencyKey.server";
 import { ServiceValidationError } from "~/v3/services/baseService.server";
 
@@ -154,5 +159,54 @@ describe("ResetIdempotencyKeyService — buffer-outage handling", () => {
     //     catching the now-materialised row.
     expect(resetIdempotency).toHaveBeenCalledOnce();
     expect(updateManyCalls).toBe(2);
+  });
+
+  // Catches: a reset that clears on the wrong store for the environment's mint kind, first or on re-check.
+  it("clears by predicate with residency NEW only when the mint kind is runOpsId, on both clears", async () => {
+    bufferMock.current = null;
+    const orgEnv = {
+      id: "env_a",
+      organizationId: "org_1",
+      organization: { id: "org_1", featureFlags: {} },
+    } as unknown as Parameters<ResetIdempotencyKeyService["call"]>[2];
+
+    for (const [mintKind, environment, residency] of [
+      ["runOpsId", orgEnv, "NEW"],
+      ["cuid", orgEnv, "LEGACY"],
+      ["runOpsId", env, "LEGACY"],
+    ] as const) {
+      mintKindMock.current = mintKind;
+      // Nothing cleared on the first pass, so the hand-off re-check runs and clears one run.
+      let clears = 0;
+      const clearIdempotencyKey = vi.fn(async (_params: unknown) => ({
+        count: clears++ === 0 ? 0 : 1,
+      }));
+      const prisma = makePrisma(0);
+      const service = new ResetIdempotencyKeyService(
+        prisma as never,
+        prisma as never,
+        { clearIdempotencyKey } as never
+      );
+
+      await expect(service.call("ikey", "task", environment)).resolves.toEqual({ id: "ikey" });
+      expect(clearIdempotencyKey.mock.calls.map(([params]) => params)).toEqual([
+        {
+          byPredicate: {
+            idempotencyKey: "ikey",
+            taskIdentifier: "task",
+            runtimeEnvironmentId: "env_a",
+            residency,
+          },
+        },
+        {
+          byPredicate: {
+            idempotencyKey: "ikey",
+            taskIdentifier: "task",
+            runtimeEnvironmentId: "env_a",
+            residency,
+          },
+        },
+      ]);
+    }
   });
 });

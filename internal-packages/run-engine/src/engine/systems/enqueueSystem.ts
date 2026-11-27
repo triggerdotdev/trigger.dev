@@ -47,6 +47,7 @@ export class EnqueueSystem {
     snapshotRoute,
     batchId,
     checkpoint,
+    checkpointStore,
     completedWaitpoints,
     resolveCompletedWaitpointRecords,
     workerId,
@@ -73,6 +74,7 @@ export class EnqueueSystem {
     snapshotRoute?: SnapshotRouteWire;
     batchId?: string;
     checkpoint?: Pick<TaskRunCheckpoint, "id" | "type">;
+    checkpointStore?: "state";
     completedWaitpoints?: {
       id: string;
       index?: number;
@@ -124,6 +126,7 @@ export class EnqueueSystem {
           projectId: env.project.id,
           organizationId: env.organization.id,
           checkpointId: checkpoint?.id,
+          checkpointStore,
           completedWaitpoints,
           resolveCompletedWaitpointRecords,
           workerId,
@@ -167,7 +170,7 @@ export class EnqueueSystem {
     /** See `enqueueRun`. */
     enableFastPath?: boolean;
   }) {
-    const workerQueue = workerQueueForPublish(run, env, checkpoint);
+    const workerQueue = workerQueueForPublish(run, env, checkpoint, this.$.legacyToV2WorkerQueues);
 
     const queuePositionMs = (run.queueTimestamp ?? run.createdAt).getTime();
     const timestamp = queuePositionMs - run.priorityMs;

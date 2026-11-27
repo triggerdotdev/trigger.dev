@@ -398,6 +398,10 @@ if (controlValue === "upgrade-required") {
   // by the time this arrives — subsequent chunks are from the new run...
   continue;
 }
+// Any other control record (`turn-start`, `turn-join`, and subtypes added
+// later): its body is empty, so never parse it. Ignore it, or use it as
+// described under "Which turn a record belongs to".
+if (controlValue) continue;
 
 // Otherwise: data record. Parse the body, dispatch the UIMessageChunk.
 const { data: chunk } = JSON.parse(record.body);
@@ -565,7 +569,7 @@ for await (const ev of readSessionOut(sseUrl, publicAccessToken)) {
 
 ### Chunk types
 
-Data records on the stream carry a `UIMessageChunk` from the [AI SDK](https://ai-sdk.dev/docs/ai-sdk-ui/ui-message-stream). Two Trigger.dev-specific control events ride alongside as **header-form control records** (see [Records on session.out](#records-on-session-out)).
+Data records on the stream carry a `UIMessageChunk` from the [AI SDK](https://ai-sdk.dev/docs/ai-sdk-ui/ui-message-stream). Trigger.dev-specific control events ride alongside as **header-form control records** (see [Records on session.out](#records-on-session-out)).
 
 Within a single assistant turn the AI SDK chunk types you'll typically see, in order:
 
@@ -580,7 +584,7 @@ Within a single assistant turn the AI SDK chunk types you'll typically see, in o
 | `data-subagent` | `{ type: "data-subagent", transient: true, data: { toolCallId, seq, chunks } }` | A batch of a sub-agent's chunks written by [`chat.forwardSubAgent`](/ai-chat/patterns/sub-agents). `seq` counts from 0 per `toolCallId`; skip batches you have already applied when you resume. |
 | `finish-step` / `finish` | end markers for the assistant message | Followed by the `turn-complete` control record. |
 
-Refer to the AI SDK docs linked above for the full union — only the two control records below are Trigger.dev-specific.
+Refer to the AI SDK docs linked above for the full union — only the control records below are Trigger.dev-specific.
 
 ### `turn-complete` control record
 
@@ -626,6 +630,69 @@ When you receive this record:
 2. Optionally surface a "switched to vN.N+1" indicator in your UI.
 
 The built-in clients handle this transparently.
+
+### Which turn a record belongs to
+
+`session.out` can carry more than one turn: a replacement run answering several unanswered messages in order, a message another client sent just before yours, or the retained tail of an earlier turn when you read without a cursor. Two control records say whose turn the records after them belong to. A custom reader that doesn't need this can ignore both (they have empty bodies, like every control record), as the built-in clients did before them.
+
+```
+headers:
+  ["trigger-control", "turn-start"]
+  ["turn-start-in-seq", "<seq>"]    // optional
+body: ""
+```
+
+`turn-start` is the first record the agent writes for a turn. `turn-start-in-seq` is the `.in` seq of the message that turn answers, the same number your `.in/append` returned for it. It is absent for a turn that answers no `.in` message (one started from the run's start payload, such as a head start), which is nobody's own turn. A reader waiting on its own send keeps the records after a `turn-start` whose seq equals its own and drops the records after any other, up to the next `turn-complete`.
+
+```
+headers:
+  ["trigger-control", "turn-join"]
+  ["turn-start-in-seq", "<seq>,<seq>"]
+  ["turn-join-injection-id", "<id>"]    // optional
+body: ""
+```
+
+`turn-join` is written in the middle of a turn when [pending messages](/ai-chat/pending-messages) are folded into it: those messages get no turn of their own, and what the turn writes from here on answers them. The header lists their `.in` seqs. The previous step's last records can still arrive just after it, `start-step` included, because the record is appended directly while the step's chunks are batched. `turn-join-injection-id` is the `id` of the `data-pending-message-injected` chunk the agent writes into the turn for those messages, between the previous step and the one that follows the injection. When the turn's output goes out through the agent's managed response (a `streamText` result returned from `run`, or from a `chat.createSession` turn), that chunk is ordered with the step's own chunks, so a reader that takes the rest of the turn should start right after it. The agent writes the header only then. With `chat.pipe`, or an agent that pipes the model output itself, the chunk goes out on a separate pipe and can land after the step it should precede, so the header is absent: start at the next `start-step` chunk instead, as you do for an older agent's join. The turn's `turn-complete` is the reader's boundary from then on, even when its `session-in-event-id` is below the joined seqs (an earlier input or a queued action is still owed): the turn answers the joined messages either way.
+
+Only agents on a recent SDK version write these. Against an older agent a reader sees neither, and has to fall back to the `turn-complete` correlation described above.
+
+### `session-closed` control record
+
+Signals that the session was closed by [`chat.close()`](/ai-chat/backend) and accepts no more messages.
+
+```
+headers:
+  ["trigger-control", "session-closed"]
+  ["session-closed-reason", "Monthly budget reached"]   // optional
+body: ""
+```
+
+| Header | Description |
+| --- | --- |
+| `trigger-control: session-closed` | Always present on this record. |
+| `session-closed-reason: <text>` (optional) | The `reason` passed to `chat.close({ reason })`. Omitted when no reason was given. |
+
+This record is written after the turn's `turn-complete`, so a reader that stops on `turn-complete` won't see it; it's there for reconnects and replay. When the close is decided before the turn ends, that `turn-complete` also carries `["session-closed", "true"]` and the optional `session-closed-reason` header.
+
+When you receive this record:
+1. Stop reading and stop sending. Further `.in` appends are refused with `409`, and a closed session can't be reopened.
+2. Optionally show the reason in your UI.
+
+### `pending-version` control record
+
+Signals that the agent handed the chat to a new run (for example after [`chat.requestUpgrade()`](/ai-chat/patterns/version-upgrades)) and that run is parked waiting for its deployment to land.
+
+```
+headers:
+  ["trigger-control", "pending-version"]
+body: ""
+```
+
+When you receive this record:
+1. Treat it as informational and keep the stream open. Messages you send meanwhile are durable and answered once the deployment lands.
+2. Optionally show a "deploy in progress" indicator in your UI.
+
+`TriggerChatTransport` surfaces this as a [`run-pending-version`](/ai-chat/reference#transport-events) event.
 
 ### Resuming a stream
 

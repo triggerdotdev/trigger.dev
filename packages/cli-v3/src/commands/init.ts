@@ -208,11 +208,15 @@ async function _initCommand(dir: string, options: InitCommandOptions) {
       log.step("Welcome to the Trigger.dev MCP server install wizard 🧙");
 
       const [installError] = await tryCatch(
-        installMcpServer({
-          yolo: false,
-          tag: options.tag,
-          logLevel: options.logLevel,
-        })
+        installMcpServer(
+          { yolo: false, tag: options.tag, logLevel: options.logLevel },
+          {
+            source: "init",
+            skipTelemetry: options.skipTelemetry,
+            profile: options.profile,
+            apiUrl: options.apiUrl,
+          }
+        )
       );
 
       if (installError) {

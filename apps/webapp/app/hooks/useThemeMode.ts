@@ -15,10 +15,7 @@ const LIGHT_THEMES = new Set<string>(SystemLightTheme.options);
 export function useThemeMode(): ThemeMode {
   const [mode, setMode] = useState<ThemeMode>("dark");
   useEffect(() => {
-    const resolve = () => {
-      const theme = document.documentElement.getAttribute("data-theme");
-      setMode(theme !== null && LIGHT_THEMES.has(theme) ? "light" : "dark");
-    };
+    const resolve = () => setMode(currentThemeMode());
     resolve();
     const observer = new MutationObserver(resolve);
     observer.observe(document.documentElement, {
@@ -28,4 +25,10 @@ export function useThemeMode(): ThemeMode {
     return () => observer.disconnect();
   }, []);
   return mode;
+}
+
+/** The active theme's mode right now; client only. */
+export function currentThemeMode(): ThemeMode {
+  const theme = document.documentElement.getAttribute("data-theme");
+  return theme !== null && LIGHT_THEMES.has(theme) ? "light" : "dark";
 }

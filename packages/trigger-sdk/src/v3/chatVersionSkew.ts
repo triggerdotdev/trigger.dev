@@ -1,6 +1,6 @@
 import { tryCatch } from "@trigger.dev/core/v3";
 
-export type ChatVersionSkewPolicy = "follow" | "hold";
+export type ChatVersionSkewPolicy = "follow" | "hold" | "follow-mid-turn";
 
 export type SessionVersionPin = {
   externalDeploymentId?: string | null;

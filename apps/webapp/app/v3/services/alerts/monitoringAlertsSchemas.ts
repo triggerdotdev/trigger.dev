@@ -61,7 +61,7 @@ const queryOnlyForCustomQuery = {
   },
 };
 
-const MonitoringAlertsMemberBodySchema = AlertDraftBodySchema.strict().refine(
+export const MonitoringAlertsMemberBodySchema = AlertDraftBodySchema.strict().refine(
   queryOnlyForCustomQuery.check,
   queryOnlyForCustomQuery.issue
 );

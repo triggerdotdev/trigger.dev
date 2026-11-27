@@ -101,6 +101,7 @@ export const WorkerToExecutorMessageCatalog = {
       metadata: ServerBackgroundWorker,
       metrics: TaskRunExecutionMetrics.optional(),
       env: z.record(z.string(), z.string()).optional(),
+      requiresRunToken: z.boolean().optional(),
       isWarmStart: z.boolean().optional(),
     }),
   },

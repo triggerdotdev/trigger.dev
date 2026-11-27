@@ -2,6 +2,7 @@ import { parseWithZod } from "~/utils/conform";
 import { useLocation } from "@remix-run/react";
 import { json } from "@remix-run/server-runtime";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
+import { useDocsLink } from "~/components/DocsPanel";
 import { InlineCode } from "~/components/code/InlineCode";
 import { EnvironmentIcon } from "~/components/environments/EnvironmentLabel";
 import { PageBody, PageContainer } from "~/components/layout/AppLayout";
@@ -31,7 +32,7 @@ import {
 } from "~/services/trustedDeploys/settings.server";
 import { cn } from "~/utils/cn";
 import { pageMeta } from "~/utils/pageTitle";
-import { docsPath, EnvironmentParamSchema, v3TrustedPublishingPath } from "~/utils/pathBuilder";
+import { EnvironmentParamSchema, v3TrustedPublishingPath } from "~/utils/pathBuilder";
 import { EnvironmentForm, RepositoryForm } from "./forms";
 import { publishingPolicyFromForm, EnvironmentFormSchema, RepositoryFormSchema } from "./schemas";
 
@@ -161,6 +162,7 @@ export default function TrustedPublishingPage() {
   const { settings, environmentType, canManage } = useTypedLoaderData<typeof loader>();
   const environment = settings?.environment;
   const grant = environment?.trustedDeployGrant;
+  const docsLink = useDocsLink();
 
   return (
     <PageContainer>
@@ -168,7 +170,7 @@ export default function TrustedPublishingPage() {
         <PageTitle title="Trusted publishing" />
         <PageAccessories>
           <LinkButton
-            to={docsPath("deployment/trusted-publishing")}
+            {...docsLink("deployment/trusted-publishing")}
             variant="secondary/small"
             target="_blank"
           >

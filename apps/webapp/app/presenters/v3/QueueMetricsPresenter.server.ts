@@ -44,11 +44,14 @@ export class QueueMetricsPresenter {
     queueNames,
     from,
     to,
+    readLimit,
   }: {
     environment: AuthenticatedEnvironment;
     queueNames: string[];
     from: Date;
     to: Date;
+    /** Caps each query's run time; callers without a deadline leave it off. */
+    readLimit?: { maxExecutionSeconds: number };
   }): Promise<QueueListMetrics> {
     const grid = computeSparklineGrid(from, to);
     const { bucketSeconds, bucketIntervalMs, bucketStartMs } = grid;
@@ -80,9 +83,12 @@ export class QueueMetricsPresenter {
         endTime: formatClickhouseDateTime(new Date(endMs)),
       };
 
+      const capped = readLimit
+        ? { params: { clickhouse_settings: { max_execution_time: readLimit.maxExecutionSeconds } } }
+        : undefined;
       const [summaryResult, sparklineResult] = await Promise.all([
-        clickhouse.queueMetrics.listSummary(ids),
-        clickhouse.queueMetrics.depthSparklines({ ...ids, bucketSeconds }),
+        clickhouse.queueMetrics.listSummary(ids, capped),
+        clickhouse.queueMetrics.depthSparklines({ ...ids, bucketSeconds }, capped),
       ]);
 
       const [summaryError, summaryRows] = summaryResult;

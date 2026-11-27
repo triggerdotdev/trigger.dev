@@ -50,6 +50,10 @@ import { logger } from "~/services/logger.server";
 import { newProjectPath, organizationBillingPath } from "~/utils/pathBuilder";
 import { singleton } from "~/utils/singleton";
 import { RedisCacheStore } from "./unkey/redisCacheStore.server";
+import {
+  type AuditLogVisibility,
+  readAuditLogVisibility,
+} from "./auditLogs/auditLogVisibility.server";
 import { $replica } from "~/db.server";
 import {
   enqueueGithubBuildWithClient,
@@ -215,6 +219,11 @@ function initializePlatformCache() {
       fresh: 60_000,
       stale: 120_000,
     }),
+    auditLogVisibilityDays: new Namespace<number>(ctx, {
+      stores: [memory, redisCacheStore],
+      fresh: 60_000,
+      stale: 120_000,
+    }),
     // Own context: getCachedPlans' loader throws on failure, and the default context would
     // leave a failed background refresh as an unhandled rejection.
     plans: new Namespace<PlansResult>(
@@ -236,6 +245,7 @@ function invalidateBillingLimitCaches(organizationId: string) {
   platformCache.billingLimit.remove(organizationId).catch(() => {});
   platformCache.entitlement.remove(organizationId).catch(() => {});
   platformCache.ssoEntitlement.remove(organizationId).catch(() => {});
+  platformCache.auditLogVisibilityDays.remove(organizationId).catch(() => {});
 }
 
 export function bustBillingLimitCaches(organizationId: string) {
@@ -244,12 +254,13 @@ export function bustBillingLimitCaches(organizationId: string) {
 
 /**
  * Clears the caches whose value is derived from the org's plan. Call after a
- * plan change — a downgrade can revoke SSO, and serving the previous decision
+ * plan change — a downgrade can revoke SSO or audit logs, and serving the previous decision
  * for the stale TTL would keep a surface open that the new plan doesn't allow.
  */
 export function invalidatePlanDerivedCaches(organizationId: string) {
   platformCache.entitlement.remove(organizationId).catch(() => {});
   platformCache.ssoEntitlement.remove(organizationId).catch(() => {});
+  platformCache.auditLogVisibilityDays.remove(organizationId).catch(() => {});
 }
 
 // Clear the cached promo-credits read so a just-granted code shows on the usage
@@ -1072,6 +1083,14 @@ export async function getSsoEntitlement(organizationId: string): Promise<SsoEnti
     recordPlatformFailure("getSsoEntitlement", "caught");
     return "unknown";
   }
+}
+
+export async function getAuditLogVisibility(organizationId: string): Promise<AuditLogVisibility> {
+  return readAuditLogVisibility(organizationId, {
+    currentPlan: client ? (id) => client.currentPlan(id) : undefined,
+    cache: platformCache.auditLogVisibilityDays,
+    onFailure: (kind) => recordPlatformFailure("getAuditLogVisibility", kind),
+  });
 }
 
 export type PromoCreditsData = {

@@ -1,4 +1,5 @@
 import { parseWaitpointId } from "@trigger.dev/core/v3/isomorphic";
+import { isStandaloneStoreWaitpoint } from "@internal/run-engine";
 import { engine } from "~/v3/runEngine.server";
 import { logger, type RuntimeEnvironmentType } from "@trigger.dev/core/v3";
 import { type RunEngineVersion } from "@trigger.dev/database";
@@ -27,7 +28,9 @@ export class ApiWaitpointPresenter extends BasePresenter {
     private readonly runStore = defaultRunStore,
     private readonly getStoreWaitpoint = (
       scope: Parameters<typeof engine.getStoreDateTimeWaitpoint>[0]
-    ) => engine.getStoreDateTimeWaitpoint(scope)
+    ) => engine.getStoreDateTimeWaitpoint(scope),
+    private readonly isWaitpointStoreEnabled = (organizationId?: string) =>
+      engine.waitpointSystem.isWaitpointStoreEnabled(organizationId)
   ) {
     super(prismaClient, replicaClient);
   }
@@ -70,9 +73,7 @@ export class ApiWaitpointPresenter extends BasePresenter {
         tags: true,
       } as const;
 
-      const parsed = (await engine.waitpointSystem.isWaitpointStoreEnabled(
-        environment.organizationId
-      ))
+      const parsed = (await this.isWaitpointStoreEnabled(environment.organizationId))
         ? parseWaitpointId(waitpointId)
         : undefined;
       let waitpoint;
@@ -81,12 +82,24 @@ export class ApiWaitpointPresenter extends BasePresenter {
         parsed.format !== "legacy" &&
         (parsed.type === "DATETIME" || parsed.type === "MANUAL")
       ) {
-        waitpoint = await this.getStoreWaitpoint({
+        const stored = await this.getStoreWaitpoint({
           waitpointId,
           environmentId: environment.id,
           projectId: environment.project.id,
           organizationId: environment.organizationId,
         });
+        // A standalone token shows only the customer's own key, as list items do, and the Postgres
+        // column default for an output type that is not set until completion.
+        waitpoint =
+          stored && isStandaloneStoreWaitpoint(stored)
+            ? {
+                ...stored,
+                idempotencyKey: stored.userProvidedIdempotencyKey
+                  ? stored.idempotencyKey
+                  : undefined,
+                outputType: stored.outputType ?? "application/json",
+              }
+            : stored;
       } else {
         waitpoint = await this.runStore.findWaitpoint({ where, select });
 

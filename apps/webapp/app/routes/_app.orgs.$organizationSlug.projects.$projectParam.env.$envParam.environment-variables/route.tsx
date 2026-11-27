@@ -1,8 +1,22 @@
+import {
+  EditVaultValueButton,
+  SealedInVault,
+  VaultBanner,
+  VaultDomains,
+  VaultValueDialog,
+} from "./Vault";
+import { hasAgentVault } from "~/v3/featureFlags";
+import {
+  canDisableProjectVault,
+  projectHasVaultValues,
+} from "~/services/secretProxy/projectVault.server";
+import { proxyConfigHosts } from "~/services/secretProxy/placeholder.server";
+import { isInVault } from "~/services/secretProxy/variables.server";
+import { QuestionMarkIcon } from "~/assets/icons/QuestionMarkIcon";
 import * as Ariakit from "@ariakit/react";
 import { parseEnvironmentVariableForm } from "~/v3/environmentVariables/forms";
 import {
   ArrowsRightLeftIcon,
-  BookOpenIcon,
   ExclamationCircleIcon,
   InformationCircleIcon,
   PlusIcon,
@@ -33,6 +47,7 @@ import {
 } from "react";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import { z } from "zod";
+import { DocsHeaderButton } from "~/components/DocsPanel";
 import {
   EnvironmentCombo,
   EnvironmentIcon,
@@ -40,7 +55,7 @@ import {
   environmentTextClassName,
 } from "~/components/environments/EnvironmentLabel";
 import { PageBody, PageContainer } from "~/components/layout/AppLayout";
-import { LinkButton } from "~/components/primitives/Buttons";
+import { Button, LinkButton } from "~/components/primitives/Buttons";
 import { Checkbox } from "~/components/primitives/Checkbox";
 import { Header2 } from "~/components/primitives/Headers";
 import { NavBar, PageAccessories, PageTitle } from "~/components/primitives/PageHeader";
@@ -72,6 +87,7 @@ import {
   TableRow,
 } from "~/components/primitives/Table";
 import { SimpleTooltip } from "~/components/primitives/Tooltip";
+import { TruncatedText } from "~/components/primitives/TruncatedText";
 import { CopyKeyButton } from "./CopyKeyButton";
 import { prisma } from "~/db.server";
 import { useEnvironment } from "~/hooks/useEnvironment";
@@ -82,7 +98,9 @@ import { redirectWithSuccessMessage } from "~/models/message.server";
 import { EnvironmentVariableKeyPresenter } from "~/presenters/v3/EnvironmentVariableKeyPresenter.server";
 import { EnvironmentVariablesPresenter } from "~/presenters/v3/EnvironmentVariablesPresenter.server";
 import { type EnvironmentVariablesEnvironment } from "~/presenters/v3/environmentVariablesEnvironments.server";
+import { hasAuditLogsAccess } from "~/services/auditLogs/auditLogsAccess.server";
 import { recordDashboardEnvironmentVariablesListed } from "~/services/auditLogs/envVarReadAudit.server";
+import { getImpersonationState } from "~/services/impersonation.server";
 import { logger } from "~/services/logger.server";
 import { resolveProjectAuthScope } from "~/services/projectAuthScope.server";
 import { requireRecentMfa } from "~/services/mfa/mfaPolicy.server";
@@ -91,7 +109,7 @@ import { VercelIntegrationService } from "~/services/vercelIntegration.server";
 import { cn } from "~/utils/cn";
 import {
   EnvironmentParamSchema,
-  docsPath,
+  organizationAuditLogPath,
   v3EnvironmentVariableKeyPath,
   v3EnvironmentVariablesAttentionPath,
   v3EnvironmentVariablesComparePath,
@@ -220,6 +238,8 @@ export const loader = dashboardLoader(
     try {
       const presenter = new EnvironmentVariablesPresenter();
       const {
+        vaultEnabled,
+        vaultAvailable,
         environmentVariables,
         environments,
         filter,
@@ -275,7 +295,23 @@ export const loader = dashboardLoader(
         });
       }
 
+      // "View history": shown where the org has the audit log, enabled for roles that can read it.
+      const { isImpersonating, isViewingAsUser } = await getImpersonationState(request, user.id);
+      const auditLog =
+        context.organizationId &&
+        (await hasAuditLogsAccess({ admin: user.admin, isImpersonating }, context.organizationId))
+          ? { canView: ability.can("manage", { type: "audit-logs" }) }
+          : null;
+
       return typedjson({
+        vaultEnabled,
+        canEnableVault: vaultAvailable && ability.can("manage", { type: "project" }),
+        // Platform admins only, usually impersonating, and only while Vault is on. Hidden while
+        // "viewing as user". Can't disable with values in it.
+        vaultDisable:
+          vaultEnabled && !isViewingAsUser && (await canDisableProjectVault(request, user))
+            ? { blocked: await projectHasVaultValues(prisma, projectId) }
+            : null,
         environmentVariables: masked,
         allowEmptyEnvironmentVariableValues,
         environments,
@@ -290,6 +326,7 @@ export const loader = dashboardLoader(
         writableEnvironmentIds,
         pagination,
         search: searchParams.search,
+        auditLog,
       });
     } catch (error) {
       console.error(error);
@@ -324,7 +361,11 @@ export const action = dashboardAction(
 
     const project = await prisma.project.findFirst({
       where: { id: projectId, organization: { members: { some: { userId } } } },
-      select: { id: true },
+      select: {
+        id: true,
+        secretProxyEnabled: true,
+        organization: { select: { featureFlags: true } },
+      },
     });
     if (!project) {
       throw new Response("Not Found", { status: 404 });
@@ -335,6 +376,83 @@ export const action = dashboardAction(
     }
 
     const formData = await request.formData();
+    if (formData.get("action") === "enable-vault") {
+      if (
+        !hasAgentVault(project.organization.featureFlags) ||
+        !ability.can("manage", { type: "project" })
+      ) {
+        throw new Response("Forbidden", { status: 403 });
+      }
+      await prisma.project.update({ where: { id: projectId }, data: { secretProxyEnabled: true } });
+      return json({ success: true });
+    }
+    if (formData.get("action") === "remove-from-vault") {
+      const environmentId = String(formData.get("environmentId") ?? "");
+      const targets = await findTargetEnvironments(prisma, projectId, [environmentId]);
+      const [env] = targets;
+      if (
+        !env ||
+        // A Development environment is its owner's only, as on every other write.
+        findUnauthorizedEnvironmentId(targets, [environmentId], userId) ||
+        !ability.can("write", { type: "envvars", envType: env.type }) ||
+        !ability.can("read", { type: "envvars", envType: env.type })
+      ) {
+        return json({ error: "You can't change this value." }, { status: 403 });
+      }
+      const result = await new EnvironmentVariablesRepository(prisma).removeFromVault(projectId, {
+        environmentId,
+        id: String(formData.get("id") ?? ""),
+        userId,
+      });
+      return result.success
+        ? json({ success: true })
+        : json({ error: result.error }, { status: 400 });
+    }
+    if (formData.get("action") === "save-vault") {
+      const environmentId = String(formData.get("environmentId") ?? "");
+      const id = String(formData.get("id") ?? "");
+      const [env] = await findTargetEnvironments(prisma, projectId, [environmentId]);
+      const current = await prisma.environmentVariableValue.findFirst({
+        where: { variableId: id, environmentId, variable: { projectId } },
+        select: { id: true },
+      });
+      const inVault = current ? await isInVault(prisma, projectId, id, [environmentId]) : false;
+      if (
+        !current ||
+        !project.secretProxyEnabled ||
+        !env ||
+        env.type === "DEVELOPMENT" ||
+        !ability.can("write", { type: "envvars", envType: env.type }) ||
+        !ability.can("read", { type: "envvars", envType: env.type })
+      ) {
+        return json({ error: "You can't use Agent Vault for this value." }, { status: 403 });
+      }
+      const hosts = proxyConfigHosts({
+        allowedHosts: String(formData.get("domains") ?? "")
+          .toLowerCase()
+          .split(","),
+      });
+      if (!hosts.length)
+        return json(
+          { error: "Enter exact domain names without protocols, paths, or wildcards." },
+          { status: 400 }
+        );
+      const submittedValue = formData.get("value");
+      const value =
+        inVault && typeof submittedValue === "string" && submittedValue !== ""
+          ? submittedValue
+          : undefined;
+      const result = await new EnvironmentVariablesRepository(prisma).saveVaultValue(projectId, {
+        environmentId,
+        id,
+        allowedHosts: hosts,
+        value,
+        userId,
+      });
+      return result.success
+        ? json({ success: true })
+        : json({ error: result.error }, { status: 400 });
+    }
     const submission = parseEnvironmentVariableForm(formData, schema);
 
     if (submission.status !== "success") {
@@ -563,6 +681,7 @@ type GroupedEnvironmentVariable = MaskedEnvironmentVariable & {
   /** For a Preview branch's row: whether the key has a Preview value the branch falls back to. */
   previewBase: PreviewBaseState;
   /** Whether the row gets a checkbox: the user can read and write this environment's values. */
+  canSeal: boolean;
   selectable: boolean;
 };
 
@@ -601,6 +720,7 @@ function EnvironmentVariablesListPage({
     search,
     writableEnvironmentIds,
     attentionCount,
+    auditLog,
   } = loaderData;
   const location = useLocation();
   const hasSearch = Boolean(search);
@@ -623,6 +743,18 @@ function EnvironmentVariablesListPage({
   // can't be sorted ignores the param.
   const currentSearchParams = new URLSearchParams(location.search);
   const isSortableView = canSortView(currentSearchParams);
+  // The environments the list shows, from the URL like the sort: "View history" covers these, not
+  // the route's environment, which picking another environment doesn't change.
+  const shownEnvironmentIds = selectEnvironmentVariablesFilter({
+    environments,
+    requested: parseEnvironmentVariablesFilter(currentSearchParams.get("env")),
+    requestedBranches: currentSearchParams.getAll("branch"),
+    currentEnvironmentId: environment.id,
+    currentEnvironmentType: environment.type,
+  }).environmentIds;
+  // The audit log filters by one environment: several shown (All, Preview branches) is the project.
+  const historyEnvironmentId =
+    shownEnvironmentIds.length === 1 ? shownEnvironmentIds[0] : undefined;
   const selectedSort = isSortableView
     ? parseEnvironmentVariablesSort(currentSearchParams.get("sort"))
     : undefined;
@@ -845,6 +977,7 @@ function EnvironmentVariablesListPage({
         occurences: totalOccurrences,
         // The delete's own rule: a value the role can read, in an environment it can write.
         // Archived branches aren't listed at all.
+        canSeal: !!loaderData.vaultEnabled && variable.environment.type !== "DEVELOPMENT",
         selectable:
           !variable.permissionDenied && writableEnvironmentIds.includes(variable.environment.id),
         previewBase: listedPreviewBase(
@@ -855,7 +988,13 @@ function EnvironmentVariablesListPage({
         ),
       };
     });
-  }, [filteredItems, environments, filterEnvironmentIds, writableEnvironmentIds]);
+  }, [
+    filteredItems,
+    environments,
+    filterEnvironmentIds,
+    writableEnvironmentIds,
+    loaderData.vaultEnabled,
+  ]);
 
   // The selection is this page's rows only: the ticked ones that are listed and still selectable.
   const { selectedItems, has, select, deselect, toggle, deselectAll } = useSelectedItems();
@@ -966,16 +1105,48 @@ function EnvironmentVariablesListPage({
   return (
     <PageContainer>
       <NavBar>
-        <PageTitle title="Environment variables" />
+        <PageTitle
+          title="Environment variables"
+          accessory={
+            loaderData.canEnableVault || loaderData.vaultEnabled ? (
+              <SimpleTooltip
+                button={
+                  <QuestionMarkIcon className="size-4 text-text-dimmed transition hover:text-text-bright" />
+                }
+                side="bottom"
+                className="max-w-sm p-3"
+                content="Agent Vault is a secure way to keep sensitive secrets out of task runs. Instead of inserting them as environment variables, they are inserted at request-time to configured destinations. This lets your tasks and agents reach configured services without having direct access to credentials."
+              />
+            ) : undefined
+          }
+        />
         <PageAccessories>
+          {auditLog ? (
+            auditLog.canView ? (
+              <LinkButton
+                to={organizationAuditLogPath(organization, {
+                  category: "envvars",
+                  project: project.id,
+                  environment: historyEnvironmentId,
+                })}
+                variant="secondary/small"
+              >
+                View history
+              </LinkButton>
+            ) : (
+              <Button
+                variant="secondary/small"
+                disabled
+                tooltip="You don't have permission to view the audit log"
+              >
+                View history
+              </Button>
+            )
+          ) : null}
           <WhenAgentUnavailable>
-            <LinkButton
-              LeadingIcon={BookOpenIcon}
-              to={docsPath("v3/deploy-environment-variables")}
-              variant="docs/small"
-            >
+            <DocsHeaderButton path="v3/deploy-environment-variables">
               Environment variables docs
-            </LinkButton>
+            </DocsHeaderButton>
           </WhenAgentUnavailable>
         </PageAccessories>
       </NavBar>
@@ -983,6 +1154,12 @@ function EnvironmentVariablesListPage({
         <ResizablePanelGroup orientation="horizontal" className="max-h-full">
           <ResizablePanel id="environment-variables-main" min={"100px"}>
             <div className={cn("flex h-full min-h-0 flex-col")}>
+              {(loaderData.canEnableVault || loaderData.vaultEnabled) && (
+                <VaultBanner
+                  enabled={!!loaderData.vaultEnabled}
+                  disable={loaderData.vaultDisable}
+                />
+              )}
               {/* One row that wraps when the key panel leaves it too little room. The search,
                   filter and branch picker wrap one by one and stay next to each other; Reveal values
                   and Add new stay together at the right end of their line. */}
@@ -1152,7 +1329,7 @@ function EnvironmentVariablesListPage({
                           Key
                         </TableHeaderCell>
                         <TableHeaderCell
-                          className={vercelIntegration?.enabled ? "w-[32%]" : "w-[37%]"}
+                          className={cn("pl-0", vercelIntegration?.enabled ? "w-[32%]" : "w-[37%]")}
                         >
                           Value
                         </TableHeaderCell>
@@ -1465,7 +1642,14 @@ function EnvironmentVariableTableRow({
         actionClassName={cn("font-mono", isKeyTicked && "text-text-bright")}
         trailingContent={variable.isFirstTime ? <CopyKeyButton value={variable.key} /> : undefined}
       >
-        {variable.isFirstTime ? variable.key : null}
+        {variable.isFirstTime ? (
+          <TruncatedText
+            text={variable.key}
+            className="relative max-w-md"
+            tooltip={<span className="block max-w-md break-all font-mono">{variable.key}</span>}
+          />
+        ) : null}
+        {variable.vaultHosts && <VaultDomains hosts={variable.vaultHosts} />}
       </TableCell>
       <TableCell
         className={cn(cellClassName, borderedCellClassName, "relative after:left-3", tickClassName)}
@@ -1475,7 +1659,11 @@ function EnvironmentVariableTableRow({
         <RowLink to={path} />
         {/* Above the row's link, and only the value's own controls take clicks. */}
         <div className="pointer-events-none relative w-full [&_button]:pointer-events-auto [&_input]:pointer-events-auto">
-          <EnvironmentVariableValue variable={variable} revealAll={revealAll} />
+          {variable.vaultHosts ? (
+            <SealedInVault />
+          ) : (
+            <EnvironmentVariableValue variable={variable} revealAll={revealAll} />
+          )}
         </div>
       </TableCell>
 
@@ -1530,7 +1718,19 @@ function EnvironmentVariableTableRow({
           // is withheld, and the action enforces write:envvars independently.
           variable.permissionDenied ? undefined : (
             <>
-              <EditEnvironmentVariablePanel variable={variable} revealAll={revealAll} />
+              {variable.vaultHosts ? (
+                variable.selectable && <EditVaultValueButton variable={variable} />
+              ) : (
+                <>
+                  {variable.selectable && variable.canSeal && (
+                    <VaultValueDialog
+                      variable={variable}
+                      trigger={<Button variant="secondary/small">To Agent Vault…</Button>}
+                    />
+                  )}
+                  <EditEnvironmentVariablePanel variable={variable} revealAll={revealAll} />
+                </>
+              )}
               {/* Only where the role can write, the same rule as the row's checkbox. */}
               {variable.selectable && (
                 <DeleteEnvironmentVariableButton

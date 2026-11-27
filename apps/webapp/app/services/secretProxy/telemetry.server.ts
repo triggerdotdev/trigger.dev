@@ -17,7 +17,7 @@ export type SecretProxyFailureReason =
   | "signing"
   | "requeue";
 
-type FailureOperation = "metadata" | "guard" | "preflight" | "resolve" | "signing";
+type FailureOperation = "metadata" | "preflight" | "resolve" | "signing";
 
 function telemetry() {
   return singleton("secretProxyTelemetry", () => {
@@ -27,7 +27,6 @@ function telemetry() {
     });
     const reasons: Record<FailureOperation, readonly SecretProxyFailureReason[]> = {
       metadata: ["dependency"],
-      guard: ["policy"],
       preflight: [
         "disabled",
         "capability",

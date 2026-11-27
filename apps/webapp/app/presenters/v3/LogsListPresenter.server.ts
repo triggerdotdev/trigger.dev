@@ -497,6 +497,7 @@ export class LogsListPresenter extends BasePresenter {
       pagination: {
         next: nextCursor,
         previous: undefined, // For now, only support forward pagination
+        cursorApplied: cursor ? useCursorAnchor : undefined,
       },
       pageSize: effectivePageSize,
       searchProgress: {

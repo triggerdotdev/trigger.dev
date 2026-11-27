@@ -6,6 +6,13 @@ import {
   type RedisOptions,
 } from "ioredis";
 import { Logger } from "@trigger.dev/core/logger";
+import {
+  createStartupNodeLookup,
+  keepClusterConnecting,
+  type StartupNodeLookupOptions,
+} from "./startupNodeLookup.js";
+
+export { type StartupNodeLookupOptions, type StartupNodeSkipSummary } from "./startupNodeLookup.js";
 
 export {
   Redis,
@@ -101,6 +108,12 @@ export type RedisClusterClientOptions = {
    * request path, where a queued command means a hung request rather than a slow one.
    */
   failFast?: boolean;
+  /**
+   * For a startup hostname that resolves to every node in the cluster: connect to a random node
+   * each attempt, skipping nodes that recently failed, instead of always the first DNS record. Also
+   * reconnects a client that ioredis left closed with no retry scheduled. `true` uses the defaults.
+   */
+  spreadStartupNodes?: boolean | StartupNodeLookupOptions;
 };
 
 /**
@@ -111,6 +124,11 @@ export function createRedisClusterClient(
   options: RedisClusterClientOptions,
   handlers?: { onError?: (err: Error) => void }
 ): Cluster {
+  const startupNodeLookup = options.spreadStartupNodes
+    ? createStartupNodeLookup(
+        options.spreadStartupNodes === true ? undefined : options.spreadStartupNodes
+      )
+    : undefined;
   const client = new Redis.Cluster(options.nodes, {
     // The offline queue is a CLUSTER-level setting, separate from the per-node one below. While a
     // cluster cannot refresh its slot cache it queues commands here, so a caller that wants a
@@ -118,12 +136,28 @@ export function createRedisClusterClient(
     // matching ioredis, so only a caller that asks for it changes behaviour.
     ...(options.failFast && { enableOfflineQueue: false }),
     ...options.clusterOptions,
+    ...(startupNodeLookup && { dnsLookup: startupNodeLookup.dnsLookup }),
     redisOptions: {
       ...defaultOptions,
       ...(options.failFast && { enableOfflineQueue: false }),
       ...options.redisOptions,
     },
   });
+
+  if (startupNodeLookup) {
+    // A failed slot-map read from a startup node arrives here keyed by the address it was given.
+    client.on("node error", (_error: Error, node: string) => startupNodeLookup.markFailed(node));
+    keepClusterConnecting(client);
+    client.on("ready", () => {
+      const summary = startupNodeLookup.takeSkipSummary();
+      if (!summary) return;
+      // warn: once per connect, and it means the startup hostname still lists a failed node.
+      logger.warn("Redis cluster client connected after skipping recently failed nodes", summary);
+      if (typeof options.spreadStartupNodes === "object") {
+        options.spreadStartupNodes.onSkipSummary?.(summary);
+      }
+    });
+  }
 
   if (process.env.VITEST) {
     client.on("error", () => {});

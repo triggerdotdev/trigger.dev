@@ -2,7 +2,7 @@ import { type LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { z } from "zod";
 import { $replica } from "~/db.server";
 import { mapRunToLiveFields } from "~/presenters/v3/mapRunToLiveFields.server";
-import { getRunFiltersFromRequest } from "~/presenters/RunFilters.server";
+import { getRunFiltersFromRequest, newRunsFilters } from "~/presenters/RunFilters.server";
 import { clickhouseFactory } from "~/services/clickhouse/clickhouseFactoryInstance.server";
 import { loadProjectEnvironmentFromRequest } from "~/services/loadProjectEnvironmentFromRequest.server";
 import { RunsRepository } from "~/services/runsRepository/runsRepository.server";
@@ -68,21 +68,7 @@ export async function loader({ request, params }: LoaderFunctionArgs) {
             organizationId: project.organizationId,
             projectId: project.id,
             environmentId: environment.id,
-            tasks: filters.tasks,
-            versions: filters.versions,
-            statuses: filters.statuses,
-            tags: filters.tags,
-            scheduleId: filters.scheduleId,
-            period: filters.period,
-            from: Math.max(filters.from ?? 0, newRunsSince + 1),
-            to: filters.to,
-            rootOnly: filters.rootOnly,
-            batchId: filters.batchId,
-            runId: filters.runId,
-            bulkId: filters.bulkId,
-            queues: filters.queues,
-            machines: filters.machines,
-            errorId: filters.errorId,
+            ...newRunsFilters(filters, newRunsSince),
             page: { size: 100 },
           });
 

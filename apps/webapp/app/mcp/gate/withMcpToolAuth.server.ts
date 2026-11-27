@@ -1,5 +1,12 @@
 import { UrlElicitationRequiredError } from "@modelcontextprotocol/server";
-import { buildJwtAbility, CAPLESS_USER_ACTOR_SCOPES, type RbacAbility } from "@trigger.dev/rbac";
+import { RuntimeEnvironmentType } from "@trigger.dev/database";
+import type { RbacResource } from "@trigger.dev/plugins";
+import {
+  buildJwtAbility,
+  CAPLESS_USER_ACTOR_SCOPES,
+  type RbacAbility,
+  withActionAliases,
+} from "@trigger.dev/rbac";
 import { logger } from "~/services/logger.server";
 import { resolveAndRecheckUserActorClaims } from "~/services/personalAccessToken.server";
 import { MCP_SCOPES, mcpResource } from "~/services/oauth/metadata.server";
@@ -13,7 +20,15 @@ import {
   describeMcpSubject,
 } from "../confirm/confirmation.server";
 import type { McpConfirmationStore } from "../confirm/store.server";
+import {
+  MCP_SESSION_HEADER,
+  sanitizeMcpSessionId,
+  sessionHandling,
+  toolCalledProperties,
+  userAgentOf,
+} from "../sessionTelemetry";
 import { requiresApproval } from "./approval.server";
+import { reportToolCall } from "./reportToolCall.server";
 import { fenceUntrusted } from "./fence.server";
 import { resolveMcpSubject } from "./resolveSubject.server";
 import type {
@@ -79,21 +94,22 @@ const errorText = (text: string): McpToolResult => ({
   isError: true,
 });
 
-const requiredScopes = (auth: { action: string; subject: string }) => [
-  `${auth.action}:${auth.subject}`,
+const requiredScopes = (auth: { action: string; subject: string; scope?: string }) => [
+  auth.scope ?? `${auth.action}:${auth.subject}`,
 ];
 
 export function missingScopes(
   auth: McpToolAuth,
   identity: McpIdentity,
-  resource?: { type: string; id?: string }
+  resource?: RbacResource | RbacResource[]
 ): string[] {
   if ("public" in auth || identity.kind !== "uat") return [];
   const cap = identity.cap ?? CAPLESS_USER_ACTOR_SCOPES;
   const scope = requiredScopes(auth)[0];
+  const ability = withActionAliases(buildJwtAbility(cap));
   const allowed = resource
-    ? buildJwtAbility(cap).can(auth.action, resource)
-    : buildJwtAbility(cap).can(auth.action, { type: auth.subject }) ||
+    ? ability.can(auth.action, resource)
+    : ability.can(auth.action, { type: auth.subject }) ||
       cap.some((s) => s.startsWith(`${scope}:`));
   return allowed ? [] : [scope];
 }
@@ -201,11 +217,11 @@ async function authorize(
   if (!ability) return { denial: "denied", subject };
 
   const id = auth.resourceId?.(args);
-  const resource = {
-    type: auth.subject,
-    ...(id ? { id } : {}),
-    ...(subject.environmentType ? { envType: subject.environmentType } : {}),
-  };
+  const base = { type: auth.subject, ...(id ? { id } : {}) };
+  const resource =
+    auth.anyEnvType && !subject.environmentType
+      ? Object.values(RuntimeEnvironmentType).map((envType) => ({ ...base, envType }))
+      : { ...base, ...(subject.environmentType ? { envType: subject.environmentType } : {}) };
   if (ability.can(auth.action, resource)) return { denial: null, subject, ability };
   const denial = missingScopes(auth, identity, resource).length
     ? "insufficient_scope"
@@ -219,7 +235,8 @@ async function confirm(
   spec: true | McpConfirmSpec,
   args: unknown,
   identity: McpIdentity,
-  subject: McpSubject | null
+  subject: McpSubject | null,
+  ability?: RbacAbility
 ): Promise<
   | { approved: true; id: string; preview: string }
   | { approved: false; id: string; url: string; message: string }
@@ -236,7 +253,15 @@ async function confirm(
   const consumed = await store.consumeApproved(lookup);
   if (consumed) return { approved: true, id: consumed.id, preview: consumed.preview };
 
-  const preview = await confirmationPreview(tool, spec, args, subject);
+  const preview = await confirmationPreview(
+    tool,
+    spec,
+    args,
+    subject,
+    undefined,
+    ability,
+    identity
+  );
   if ("refuse" in preview) return { approved: false, refused: preview.refuse };
 
   const created = await store.createPending({
@@ -288,6 +313,10 @@ export function withMcpToolAuth<TArgs>(
           typeof approval === "object"
             ? await approval.precheck?.(args, authorization.ability, subject)
             : undefined;
+        if (precheck && typeof precheck === "object" && "refuse" in precheck) {
+          outcome = "forbidden";
+          return errorText(precheck.refuse);
+        }
         if (precheck !== undefined) {
           const named = precheck === "forbidden" ? null : namedPermission(precheck);
           if (!named && precheck !== "forbidden") {
@@ -308,7 +337,15 @@ export function withMcpToolAuth<TArgs>(
           return denialResult(outcome, named ?? auth);
         }
         const { store, mode } = await confirmationDefaults(options);
-        const check = await confirm(store, tool, approval, args, identity, subject);
+        const check = await confirm(
+          store,
+          tool,
+          approval,
+          args,
+          identity,
+          subject,
+          authorization.ability
+        );
         if ("refused" in check) {
           outcome = "refused";
           return errorText(check.refused);
@@ -361,7 +398,32 @@ export function withMcpToolAuth<TArgs>(
       logger.error("mcp.tool failed", { tool, error });
       return failed();
     } finally {
+      const handling = sessionHandling(extra.era, request.headers);
+      const denyReason = outcome in DENY_REASONS ? DENY_REASONS[outcome as Denial] : undefined;
+      const durationMs = Math.round(performance.now() - startedAt);
+      reportToolCall({
+        userId: identity.userId,
+        organizationId: subject?.organizationId,
+        projectId: subject?.projectId,
+        properties: toolCalledProperties({
+          mcpSessionId: handling.mcpSessionId,
+          tool,
+          outcome,
+          durationMs,
+          args,
+          environmentType: subject?.environmentType,
+          denyReason,
+          tokenKind: identity.kind,
+          clientId: identity.kind === "uat" ? identity.clientId : undefined,
+          userAgent: userAgentOf(request.headers),
+          client: extra.client,
+        }),
+        stitch: handling.stitch
+          ? { client: extra.client, userAgent: userAgentOf(request.headers) }
+          : undefined,
+      });
       logger.info("mcp.tool", {
+        mcpSessionId: sanitizeMcpSessionId(request.headers.get(MCP_SESSION_HEADER)),
         userId: identity.userId,
         tokenKind: identity.kind,
         tokenId: identity.kind === "pat" ? identity.tokenId : identity.sourceTokenId,
@@ -371,10 +433,10 @@ export function withMcpToolAuth<TArgs>(
         projectId: subject?.projectId,
         environmentId: subject?.environmentId,
         environmentType: subject?.environmentType,
-        denyReason: outcome in DENY_REASONS ? DENY_REASONS[outcome as Denial] : undefined,
+        denyReason,
         confirmationId,
         outcome,
-        durationMs: Math.round(performance.now() - startedAt),
+        durationMs,
       });
     }
   };

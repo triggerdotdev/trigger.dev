@@ -588,7 +588,12 @@ describe("RunEngine reportRestoreOutcome", () => {
 });
 
 // Dequeues a fresh run, leaving the PENDING_EXECUTING snapshot of a cold start with no checkpoint.
-async function dequeueColdStart(engine: RunEngine, prisma: PrismaClient, workerId?: string) {
+async function dequeueColdStart(
+  engine: RunEngine,
+  prisma: PrismaClient,
+  workerId?: string,
+  annotations?: { computeOnly?: true; executionMode?: "SANDBOX" }
+) {
   const authenticatedEnvironment = await setupAuthenticatedEnvironment(prisma, "PRODUCTION");
   const taskIdentifier = "test-task";
   await setupBackgroundWorker(engine, authenticatedEnvironment, taskIdentifier);
@@ -609,6 +614,12 @@ async function dequeueColdStart(engine: RunEngine, prisma: PrismaClient, workerI
       queue: "task/test-task",
       isTest: false,
       tags: [],
+      annotations: annotations && {
+        triggerSource: "sdk",
+        triggerAction: "trigger",
+        rootTriggerSource: "sdk",
+        ...annotations,
+      },
     },
     prisma
   );
@@ -720,6 +731,45 @@ describe("RunEngine reportRestoreOutcome for a cold start", () => {
         expect(redelivered[0].run.id).toBe(run.id);
         expect(redelivered[0].checkpoint).toBeUndefined();
         expect(redelivered[0].run.attemptNumber).toBe(start.run.attemptNumber);
+      } finally {
+        await engine.quit();
+      }
+    }
+  );
+
+  // Catches: a compute-only or sandbox run moved to a container lane on a cold-start miss.
+  containerTest.for([
+    { name: "compute-only", annotations: { computeOnly: true as const } },
+    { name: "sandbox", annotations: { executionMode: "SANDBOX" as const } },
+  ])(
+    "fallback requeues a $name run in place",
+    async ({ annotations }, { prisma, redisOptions }) => {
+      const engine = createEngine(prisma, redisOptions);
+
+      try {
+        const { authenticatedEnvironment, run, start } = await dequeueColdStart(
+          engine,
+          prisma,
+          undefined,
+          annotations
+        );
+
+        const result = await engine.reportRestoreOutcome({
+          runId: run.id,
+          snapshotId: start.snapshot.id,
+          outcome: "fallback",
+          reason: "TemplateNotFound",
+          fallbackWorkerQueue: () => "containers",
+        });
+        expect(result).toEqual({ ok: true, outcome: "fallback" });
+
+        const kept = await prisma.taskRun.findUniqueOrThrow({ where: { id: run.id } });
+        expect(kept.workerQueue).toBe("main");
+
+        const redelivered = await dequeue(engine, authenticatedEnvironment.id);
+        expect(redelivered.length).toBe(1);
+        assertNonNullable(redelivered[0]);
+        expect(redelivered[0].run.id).toBe(run.id);
       } finally {
         await engine.quit();
       }

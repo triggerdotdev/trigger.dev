@@ -85,6 +85,8 @@ export type WorkerConcurrencyOptions = {
 type WorkerOptions<TCatalog extends WorkerCatalog> = {
   name: string;
   redisOptions: RedisOptions;
+  /** Queue client only; `redisOptions.maxRetriesPerRequest` does not reach it. Defaults to 20. */
+  queueMaxRetriesPerRequest?: number;
   catalog: TCatalog;
   jobs: {
     [K in keyof TCatalog]: JobHandlerFor<TCatalog, K>;
@@ -159,6 +161,7 @@ class Worker<TCatalog extends WorkerCatalog> {
       redisOptions: options.redisOptions,
       logger: this.logger,
       schema,
+      maxRetriesPerRequest: options.queueMaxRetriesPerRequest,
     });
 
     this.jobs = options.jobs;

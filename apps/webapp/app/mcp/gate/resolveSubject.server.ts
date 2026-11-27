@@ -10,7 +10,25 @@ const ENVIRONMENT_SLUGS: Record<string, string> = {
   preview: "preview",
 };
 
-const environmentSelect = { id: true, type: true } as const;
+const environmentSelect = { id: true, type: true, archivedAt: true } as const;
+
+/** The name as given first, so a listed name like `refs/heads/x` round-trips, then as a git ref. */
+export function branchLookupNames(raw: string): string[] {
+  const normalized = sanitizeBranchName(raw);
+  return normalized && normalized !== raw ? [raw, normalized] : [raw];
+}
+
+/** The first non-null lookup, trying the names in order. */
+export async function firstBranchMatch<T>(
+  names: string[],
+  find: (name: string) => Promise<T | null>
+): Promise<T | null> {
+  for (const name of names) {
+    const found = await find(name);
+    if (found) return found;
+  }
+  return null;
+}
 
 async function findProject(where: Prisma.ProjectWhereInput) {
   const select = { id: true, organizationId: true } as const;
@@ -20,11 +38,19 @@ async function findProject(where: Prisma.ProjectWhereInput) {
   );
 }
 
-async function findEnvironment(where: Prisma.RuntimeEnvironmentWhereInput) {
-  return (
-    (await $replica.runtimeEnvironment.findFirst({ where, select: environmentSelect })) ??
-    (await prisma.runtimeEnvironment.findFirst({ where, select: environmentSelect }))
-  );
+async function findEnvironment(
+  where: Prisma.RuntimeEnvironmentWhereInput,
+  orderBy?: Prisma.RuntimeEnvironmentOrderByWithRelationInput
+) {
+  // A lagging replica can still show only an archived predecessor, so archived hits ask the primary.
+  const replica = await $replica.runtimeEnvironment.findFirst({
+    where,
+    orderBy,
+    select: environmentSelect,
+  });
+  return replica && !replica.archivedAt
+    ? replica
+    : await prisma.runtimeEnvironment.findFirst({ where, orderBy, select: environmentSelect });
 }
 
 export async function resolveMcpSubject(
@@ -61,13 +87,18 @@ export async function resolveMcpSubject(
   const branchName = typeof branch === "string" ? sanitizeBranchName(branch) : null;
   const isDefaultBranch = slug === "dev" && !!branchName && isDefaultDevBranch(branchName);
   if (runtimeEnvironment && branch !== undefined && !isDefaultBranch) {
-    if ((slug !== "preview" && slug !== "dev") || !branchName) return null;
-    runtimeEnvironment = await findEnvironment({
-      projectId: project.id,
-      parentEnvironmentId: runtimeEnvironment.id,
-      branchName,
-      archivedAt: null,
-    });
+    if ((slug !== "preview" && slug !== "dev") || typeof branch !== "string" || !branch) {
+      return null;
+    }
+    const parentEnvironmentId = runtimeEnvironment.id;
+    // The first name that exists decides, even when archived, so a listed name never falls through.
+    const found = await firstBranchMatch(branchLookupNames(branch), (branchName) =>
+      findEnvironment(
+        { projectId: project.id, parentEnvironmentId, branchName },
+        { archivedAt: { sort: "desc", nulls: "first" } }
+      )
+    );
+    runtimeEnvironment = found?.archivedAt ? null : found;
   }
   if (!runtimeEnvironment) return null;
 

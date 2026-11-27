@@ -54,6 +54,12 @@ export type ResolvedEngineEnv = {
  * whatever `resolveEnv` has cached.
  */
 /** A deployment's status and when it started deploying, read from the authoritative source. */
+/** A deployment's image of one of its named machines. */
+export type ResolvedDeploymentMachine = {
+  imageReference: string;
+  templateKey: string | null;
+};
+
 export type ResolvedDeploymentStatus = {
   status: WorkerDeploymentStatus;
   /** When the deployment entered DEPLOYING (`builtAt`), else when it was created. */
@@ -200,6 +206,16 @@ export interface ControlPlaneResolver {
    * `null` when the deployment does not exist.
    */
   resolveDeploymentStatus(deploymentId: string): Promise<ResolvedDeploymentStatus | null>;
+  /**
+   * A deployment's image of a named machine from `defineMachine()`, or `null` when it has none.
+   * Dequeue reads it only for a task on a named machine. `fromPrimary` skips any replica, for a
+   * miss that would fail the run.
+   */
+  resolveDeploymentMachine(
+    deploymentId: string,
+    machineId: string,
+    options?: { fromPrimary?: boolean }
+  ): Promise<ResolvedDeploymentMachine | null>;
   resolveAuthenticatedEnv(environmentId: string): Promise<ResolvedAuthenticatedEnv | null>;
   resolveWorkerVersion(
     args: {
@@ -298,6 +314,16 @@ export class PassthroughControlPlaneResolver implements ControlPlaneResolver {
       : null;
   }
 
+  async resolveDeploymentMachine(
+    deploymentId: string,
+    machineId: string
+  ): Promise<ResolvedDeploymentMachine | null> {
+    return this.#prisma.workerDeploymentMachine.findFirst({
+      where: { deploymentId, machineId },
+      select: { imageReference: true, templateKey: true },
+    });
+  }
+
   async resolveEnvDeletionState(environmentId: string): Promise<EnvDeletionState | null> {
     const env = await this.#prisma.runtimeEnvironment.findFirst({
       where: { id: environmentId },
@@ -354,6 +380,7 @@ export class PassthroughControlPlaneResolver implements ControlPlaneResolver {
       // Coerce Prisma's Decimal to a plain number — mirrors toAuthenticated().
       concurrencyLimitBurstFactor: env.concurrencyLimitBurstFactor.toNumber(),
       builtInEnvironmentVariableOverrides: env.builtInEnvironmentVariableOverrides,
+      skewProtectionThresholds: env.skewProtectionThresholds,
       createdAt: env.createdAt,
       updatedAt: env.updatedAt,
       project: {

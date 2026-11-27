@@ -1,4 +1,6 @@
 import {
+  MEMORYDB_SHARD_KEY,
+  type MemoryDbGate,
   PostgresRunStore,
   RoutingRunStore,
   type RoutingStoreMetrics,
@@ -33,6 +35,7 @@ import { logger } from "~/services/logger.server";
 import { createWaitpointResultRunStore } from "@internal/run-engine";
 import { createWaitpointStoreEnabledResolver } from "./utils/waitpointStoreEnabled.server";
 import { waitpointStoreConnection } from "./waitpointStore.server";
+import { createRunResidencyGate } from "./utils/runResidencyGate.server";
 
 type BuildRunStoreDeps = {
   /** Wraps each leaf store, for example in the snapshot-store decorator. */
@@ -58,6 +61,10 @@ type BuildRunStoreDeps = {
   singleResilience?: TransactionResilienceConfig;
   newResilience?: TransactionResilienceConfig;
   legacyResilience?: TransactionResilienceConfig;
+  /** The store registered under the MemoryDB key; no production caller yet. */
+  memoryDbStore?: RunStore;
+  /** Decides when an id-less operation also asks memoryDbStore; required with it. */
+  memoryDbGate?: MemoryDbGate;
 };
 
 /**
@@ -83,6 +90,9 @@ export function buildRunStore(deps: BuildRunStoreDeps): RunStore {
 
   if (!deps.newWriter || !deps.newReplica || !deps.legacyWriter || !deps.legacyReplica) {
     throw new Error("buildRunStore: split is enabled but run-ops store handles are missing");
+  }
+  if (deps.memoryDbStore && !deps.memoryDbGate) {
+    throw new Error("buildRunStore: memoryDbStore needs memoryDbGate");
   }
   // NEW uses the dedicated subset schema (FK-free scalars, explicit join models). LEGACY uses the
   // full schema.
@@ -122,12 +132,17 @@ export function buildRunStore(deps: BuildRunStoreDeps): RunStore {
     aliasOf: shard.aliasOf,
   }));
 
+  const routedShards = deps.memoryDbStore
+    ? [...shardStores, { key: MEMORYDB_SHARD_KEY, store: deps.memoryDbStore }]
+    : shardStores;
+
   return new RoutingRunStore({
     new: newStore,
     legacy: legacyStore,
-    shards: shardStores.length > 0 ? shardStores : undefined,
+    shards: routedShards.length > 0 ? routedShards : undefined,
     resolveShard: deps.resolveShard ?? resolveShard,
     metrics: routingStoreMetrics,
+    memoryDbGate: deps.memoryDbGate,
   });
 }
 
@@ -196,6 +211,10 @@ function tryResolveRunOpsHandles() {
   }
 }
 
+// True when `runStore` is the routing store, which routes a look-up by the id's shard. Split reads do
+// not affect it: both run-ops URLs set is enough.
+export const runStoreRoutesByShard = ROUTING_ENABLED && tryResolveRunOpsHandles() !== null;
+
 export const snapshotStoreRuntime = singleton("SnapshotStoreRuntime", () => {
   const endpoint = env.RUN_ENGINE_SNAPSHOT_STORE_REDIS_URL;
   if (!endpoint) return undefined;
@@ -218,6 +237,11 @@ export const snapshotStoreRuntime = singleton("SnapshotStoreRuntime", () => {
     metrics: metrics.decorator,
   });
 });
+
+// Whether the runStore singleton registers a store under the MemoryDB key; read by the root residency decision.
+const memoryDbRegistration = singleton("RunStoreMemoryDbRegistration", () => ({
+  registered: false,
+}));
 
 export const runStore: RunStore = singleton("RunStore", () => {
   const decorateResults = (store: RunStore) =>
@@ -243,24 +267,44 @@ export const runStore: RunStore = singleton("RunStore", () => {
       })
     );
   }
-  const { shardHandles, ...storeHandles } = handles;
-  return decorateResults(
-    buildRunStore({
-      decorateLeaf: snapshotStoreRuntime?.decorate,
-      splitEnabled: true,
-      ...storeHandles,
-      shards: shardHandles.map((shard) => ({
-        key: shard.key,
-        writer: shard.writer,
-        replica: shard.replica,
-        aliasOf: shard.aliasOf,
-        resilience: resilienceForClient(shard.writer),
-      })),
-      singleWriter: prisma,
-      singleReplica: $replica,
-      singleResilience: resilienceForClient(prisma),
-      newResilience: resilienceForClient(handles.newWriter),
-      legacyResilience: resilienceForClient(handles.legacyWriter),
-    })
-  );
+  const deps = splitRunStoreDeps(handles);
+  memoryDbRegistration.registered = deps.memoryDbStore !== undefined;
+  return decorateResults(buildRunStore(deps));
 });
+
+export function memoryDbStoreRegistered(): boolean {
+  return memoryDbRegistration.registered;
+}
+
+/** What the runStore singleton passes to buildRunStore once the run-ops handles resolve. */
+export function splitRunStoreDeps(
+  handles: NonNullable<ReturnType<typeof tryResolveRunOpsHandles>>
+): BuildRunStoreDeps {
+  const { shardHandles, ...storeHandles } = handles;
+  const memoryDbGate = createRunResidencyGate({
+    readGlobalFlags: () => globalFlagsRegistry.current(),
+    // Dynamic: the resolver's module imports runtimeEnvironment.server, which imports this module.
+    resolveAuthenticatedEnv: async (environmentId) =>
+      (
+        await import("./runOpsMigration/controlPlaneResolver.server")
+      ).controlPlaneResolver.resolveAuthenticatedEnv(environmentId),
+  });
+  return {
+    decorateLeaf: snapshotStoreRuntime?.decorate,
+    splitEnabled: true,
+    ...storeHandles,
+    shards: shardHandles.map((shard) => ({
+      key: shard.key,
+      writer: shard.writer,
+      replica: shard.replica,
+      aliasOf: shard.aliasOf,
+      resilience: resilienceForClient(shard.writer),
+    })),
+    singleWriter: prisma,
+    singleReplica: $replica,
+    singleResilience: resilienceForClient(prisma),
+    newResilience: resilienceForClient(handles.newWriter),
+    legacyResilience: resilienceForClient(handles.legacyWriter),
+    memoryDbGate,
+  };
+}

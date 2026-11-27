@@ -123,6 +123,7 @@ export function entryFromLock(
     ...(snapshot.attemptNumber !== undefined && { attemptNumber: snapshot.attemptNumber }),
     ...(snapshot.batchId !== undefined && { batchId: snapshot.batchId }),
     ...(snapshot.checkpointId !== undefined && { checkpointId: snapshot.checkpointId }),
+    ...(snapshot.checkpointStore !== undefined && { checkpointStore: snapshot.checkpointStore }),
     environmentId: snapshot.environmentId,
     environmentType: snapshot.environmentType,
     projectId: snapshot.projectId,
@@ -151,6 +152,7 @@ export function entryFromCreateExecutionSnapshot(
     projectId: input.projectId,
     organizationId: input.organizationId,
     ...(input.checkpointId !== undefined && { checkpointId: input.checkpointId }),
+    ...(input.checkpointStore !== undefined && { checkpointStore: input.checkpointStore }),
     ...(input.workerId !== undefined && { workerId: input.workerId }),
     ...(input.runnerId !== undefined && { runnerId: input.runnerId }),
     ...((input.snapshotMetadata ?? input.snapshot.metadata) != null && {

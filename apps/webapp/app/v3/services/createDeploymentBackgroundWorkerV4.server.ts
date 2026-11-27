@@ -19,8 +19,10 @@ import { findOrCreateBackgroundWorker } from "./createDeploymentBackgroundWorker
 import { TimeoutDeploymentService } from "./timeoutDeployment.server";
 import { checkDeployAccess, deniedMessage } from "../deploymentAccess.server";
 import { acceptedCliVersion } from "../cliVersion";
+import { checkCliVersion, UNSUPPORTED_CLI_VERSION_ERROR } from "../cliVersionPolicy.server";
+import { deployCliVersionPolicy } from "../cliVersionPolicyInstance.server";
 import { assertSourceFilesWithinLimits } from "../workerSourceFiles.server";
-import { recordDeploymentFinished } from "./recordDeploymentFinished.server";
+import { announceDeploymentFailure } from "./failDeployment.server";
 import { env } from "~/env.server";
 import { webhookPrisma } from "~/db.server";
 import { DeploymentService } from "./deployment.server";
@@ -34,6 +36,7 @@ export class CreateDeploymentBackgroundWorkerServiceV4 extends BaseService {
   private readonly _taskMetaCache: TaskMetadataCache;
   private readonly _deploymentIndexStore: DeploymentIndexStore | undefined;
   private readonly _deploymentAccess: DeploymentAccessController | null | undefined;
+  private readonly _cliVersionPolicy: typeof deployCliVersionPolicy;
 
   constructor(
     prisma?: PrismaClientOrTransaction,
@@ -41,12 +44,14 @@ export class CreateDeploymentBackgroundWorkerServiceV4 extends BaseService {
     taskMetaCache: TaskMetadataCache = taskMetadataCacheInstance,
     deploymentIndexStore: DeploymentIndexStore | undefined = getDeploymentIndexStore(),
     // Tests inject the access controller; production loads the plugin.
-    deploymentAccess?: DeploymentAccessController | null
+    deploymentAccess?: DeploymentAccessController | null,
+    cliVersionPolicy: typeof deployCliVersionPolicy = deployCliVersionPolicy
   ) {
     super(prisma, replica);
     this._taskMetaCache = taskMetaCache;
     this._deploymentIndexStore = deploymentIndexStore;
     this._deploymentAccess = deploymentAccess;
+    this._cliVersionPolicy = cliVersionPolicy;
   }
 
   public async call(
@@ -139,6 +144,25 @@ export class CreateDeploymentBackgroundWorkerServiceV4 extends BaseService {
           projectId: environment.projectId,
         });
         return;
+      }
+
+      const builtWith = body.metadata.cliPackageVersion;
+      const { verdict, rejection } = checkCliVersion(
+        this._cliVersionPolicy(environment.organization),
+        builtWith,
+        deployment.createdAt
+      );
+      if (verdict === "unknown") {
+        logger.warn("Worker upload has no valid CLI version, skipping the CLI version check", {
+          deploymentId: deployment.id,
+          cliPackageVersion: builtWith?.slice(0, 128),
+        });
+      }
+      if (rejection) {
+        const serviceError = new ServiceValidationError(rejection);
+        serviceError.name = UNSUPPORTED_CLI_VERSION_ERROR;
+        await this.#failBackgroundWorkerDeployment(deployment, serviceError, environment);
+        throw serviceError;
       }
 
       // The task count is only known here. A refusal fails the deployment the way other
@@ -443,20 +467,11 @@ export class CreateDeploymentBackgroundWorkerServiceV4 extends BaseService {
       // BUILDING → DEPLOYING transition.
       await TimeoutDeploymentService.dequeue(deployment.id, this._prisma);
 
-      recordDeploymentFinished({
-        status: "FAILED",
-        deployment: { ...deployment, status: "FAILED", failedAt, errorData },
-        environment: {
-          organizationId: environment.organizationId,
-          organizationSlug: environment.organization.slug,
-          projectId: environment.projectId,
-          projectName: environment.project.name,
-          projectRef: environment.project.externalRef,
-          environmentId: environment.id,
-          environmentType: environment.type,
-        },
-        reason: error.message,
-      });
+      await announceDeploymentFailure(
+        environment,
+        { ...deployment, status: "FAILED", failedAt, errorData },
+        error.message
+      );
     }
 
     throw error;

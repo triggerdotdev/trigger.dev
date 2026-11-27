@@ -4,6 +4,7 @@ import type { AuthenticatedEnvironment } from "~/services/apiAuth.server";
 import { OutOfEntitlementError } from "~/v3/outOfEntitlementError.server";
 import { MCP_REMOTE_TRIGGER_SOURCE } from "~/utils/triggerSource";
 import { ServiceValidationError } from "~/v3/services/common.server";
+import { confirmationPreview, PREVIEW_LIMIT } from "../confirm/confirmation.server";
 import type { McpToolDefinition } from "../registry.server";
 import { defineWriteTool, fencedError } from "./defineWrite.server";
 import { dashboardUrl, resolveToolEnvironment, textResult } from "./define.server";
@@ -55,6 +56,15 @@ function parsePayload(payload: unknown) {
   }
 }
 
+export function describeConcurrency(limits: string[] | undefined) {
+  if (!limits) return undefined;
+  const change =
+    limits.length === 0
+      ? "Removes all of the task's named concurrency limits for this run"
+      : `Replaces the task's named concurrency limits for this run with: ${limits.join(", ")}`;
+  return `${change}. The task's inline concurrency limit still applies.`;
+}
+
 export function createTasksWriteTools(options: TasksWriteOptions = {}): McpToolDefinition[] {
   const triggerTask = options.triggerTask ?? defaultTriggerTask;
   const isDevConnected = options.isDevConnected ?? defaultIsDevConnected;
@@ -71,6 +81,18 @@ export function createTasksWriteTools(options: TasksWriteOptions = {}): McpToolD
         action: "trigger",
         subject: "tasks",
         resourceId: (input: { taskId: string }) => input.taskId,
+      },
+      confirm: {
+        preview: async (input, subject) => {
+          const result = await confirmationPreview("trigger_task", true, input, subject);
+          if (result.truncated) {
+            return {
+              refuse: `This trigger is too large to confirm in full (the limit is ${PREVIEW_LIMIT} characters). Send a smaller payload or metadata; nothing changed.`,
+            };
+          }
+          const change = describeConcurrency(input.options?.concurrency);
+          return change ? `${result.preview}\n${change}` : result.preview;
+        },
       },
       run: async (input, ctx) => {
         const environment = await resolveToolEnvironment(ctx);
@@ -110,7 +132,7 @@ export function createTasksWriteTools(options: TasksWriteOptions = {}): McpToolD
         if (!run) return fencedError("Task not found", "trigger-error");
 
         const contents = [
-          `Task ${input.taskId} triggered and run with ID created: ${run.id}.`,
+          `Triggered ${input.taskId}: run ${run.id} created.`,
           `View the run in the dashboard: ${dashboardUrl(`/projects/v3/${environment.project.externalRef}/runs/${run.id}`)}`,
           `The run is now executing in the background. Do not wait for it to complete unless the user asked you to. If they did, use the wait_for_run_to_complete tool. Otherwise, use the get_run_details tool to check on it when needed.`,
         ];

@@ -44,20 +44,43 @@ const mintCache = singleton(
     )
 );
 
+// PURE: the grace must outlast every cache a flag change drains through before every process sees it.
+export function isFlipGraceTooShort(params: {
+  graceMs: number;
+  mintFlagCacheTtlMs: number;
+  controlPlaneCacheTtlMs: number;
+  globalFlagsReloadIntervalMs: number;
+}): boolean {
+  return (
+    params.graceMs <=
+    params.mintFlagCacheTtlMs + params.controlPlaneCacheTtlMs + params.globalFlagsReloadIntervalMs
+  );
+}
+
 // BOOT-TIME SAFETY CHECK (warning only, never throws): the grace window only collapses
-// the cross-process divergence window if it outlasts BOTH caches a flag flip has to drain
-// through — this process's own mint-flag cache AND the org-flags control-plane cache a
-// stale process might still be reading through. If it doesn't, warn loudly but keep booting.
+// the cross-process divergence window if it outlasts EVERY cache a flag flip has to drain
+// through — this process's own mint-flag cache, the org-flags control-plane cache a
+// stale process might still be reading through, and the in-memory global flags' reload
+// interval. If it doesn't, warn loudly but keep booting.
 const controlPlaneCacheTtlMs = env.CONTROL_PLANE_CACHE_TTL_MS ?? DEFAULT_CP_CACHE_TTL_MS;
-if (env.RUN_OPS_MINT_FLIP_GRACE_MS <= env.RUN_OPS_MINT_FLAG_CACHE_TTL_MS + controlPlaneCacheTtlMs) {
+if (
+  isFlipGraceTooShort({
+    graceMs: env.RUN_OPS_MINT_FLIP_GRACE_MS,
+    mintFlagCacheTtlMs: env.RUN_OPS_MINT_FLAG_CACHE_TTL_MS,
+    controlPlaneCacheTtlMs,
+    globalFlagsReloadIntervalMs: env.GLOBAL_FLAGS_RELOAD_INTERVAL_MS,
+  })
+) {
   logger.warn(
     "[runOpsMintKind] RUN_OPS_MINT_FLIP_GRACE_MS does not exceed the sum of " +
-      "RUN_OPS_MINT_FLAG_CACHE_TTL_MS and the control-plane cache TTL; a flag flip can still " +
-      "cross-DB-duplicate a concurrent root trigger during the divergence window",
+      "RUN_OPS_MINT_FLAG_CACHE_TTL_MS, the control-plane cache TTL and " +
+      "GLOBAL_FLAGS_RELOAD_INTERVAL_MS; a flag flip can still cross-DB-duplicate a concurrent " +
+      "root trigger during the divergence window",
     {
       RUN_OPS_MINT_FLIP_GRACE_MS: env.RUN_OPS_MINT_FLIP_GRACE_MS,
       RUN_OPS_MINT_FLAG_CACHE_TTL_MS: env.RUN_OPS_MINT_FLAG_CACHE_TTL_MS,
       controlPlaneCacheTtlMs,
+      GLOBAL_FLAGS_RELOAD_INTERVAL_MS: env.GLOBAL_FLAGS_RELOAD_INTERVAL_MS,
     }
   );
 }

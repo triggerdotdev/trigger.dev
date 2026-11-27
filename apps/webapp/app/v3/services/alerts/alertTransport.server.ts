@@ -21,6 +21,17 @@ import { safeWebhookFetch, UnsafeWebhookUrlError } from "./safeWebhookFetch.serv
 
 export class SkipRetryError extends Error {}
 
+const deliveryFailureReasons = new WeakMap<object, string>();
+
+function withReason(error: Error, reason: string) {
+  deliveryFailureReasons.set(error, reason);
+  return error;
+}
+
+export function getDeliveryFailureReason(error: object): string | undefined {
+  return deliveryFailureReasons.get(error);
+}
+
 const PERMANENT_WEBHOOK_STATUSES = [401, 403, 404, 410];
 
 export async function findSlackIntegration(
@@ -70,38 +81,42 @@ export async function postSlackMessage(
       unfurl_media: false,
     });
   } catch (error) {
-    if (isWebAPIRateLimitedError(error)) {
-      logger.warn("[alertTransport] Slack rate limited", { error, message });
-      throw new Error("Slack rate limited");
-    }
-
-    if (isWebAPIHTTPError(error)) {
-      logger.warn("[alertTransport] Slack HTTP error", { error, message });
-      throw new Error("Slack HTTP error");
-    }
-
-    if (isWebAPIRequestError(error)) {
-      logger.warn("[alertTransport] Slack request error", { error, message });
-      throw new Error("Slack request error");
-    }
-
-    if (isWebAPIPlatformError(error)) {
-      logger.warn("[alertTransport] Slack platform error", { error, message });
-
-      if (error.data.error === "invalid_blocks") {
-        throw new SkipRetryError("Slack invalid blocks");
-      }
-
-      if (error.data.error === "account_inactive") {
-        throw new SkipRetryError("Slack account inactive");
-      }
-
-      throw new Error("Slack platform error");
-    }
-
-    logger.warn("[alertTransport] Failed to send slack message", { error, message });
-    throw error;
+    throw toSlackSendError(error, message);
   }
+}
+
+export function toSlackSendError(error: unknown, message?: ChatPostMessageArguments): unknown {
+  if (isWebAPIRateLimitedError(error)) {
+    logger.warn("[alertTransport] Slack rate limited", { error, message });
+    return withReason(new Error("Slack rate limited"), "rate_limited");
+  }
+
+  if (isWebAPIHTTPError(error)) {
+    logger.warn("[alertTransport] Slack HTTP error", { error, message });
+    return withReason(new Error("Slack HTTP error"), "http_error");
+  }
+
+  if (isWebAPIRequestError(error)) {
+    logger.warn("[alertTransport] Slack request error", { error, message });
+    return withReason(new Error("Slack request error"), "request_error");
+  }
+
+  if (isWebAPIPlatformError(error)) {
+    logger.warn("[alertTransport] Slack platform error", { error, message });
+
+    if (error.data.error === "invalid_blocks") {
+      return new SkipRetryError("Slack invalid blocks");
+    }
+
+    if (error.data.error === "account_inactive") {
+      return new SkipRetryError("Slack account inactive");
+    }
+
+    return withReason(new Error("Slack platform error"), error.data.error);
+  }
+
+  logger.warn("[alertTransport] Failed to send slack message", { error, message });
+  return error;
 }
 
 export async function deliverWebhookPayload(params: {
@@ -152,7 +167,7 @@ export async function deliverWebhookPayload(params: {
     if (PERMANENT_WEBHOOK_STATUSES.includes(response.status)) {
       throw new SkipRetryError(message);
     }
-    throw new Error(message);
+    throw withReason(new Error(message), `http_${response.status}`);
   }
 
   return response;

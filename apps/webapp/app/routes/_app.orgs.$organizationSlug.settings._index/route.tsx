@@ -48,7 +48,10 @@ import { useFeatures } from "~/hooks/useFeatures";
 import { redirectWithErrorMessage, redirectWithSuccessMessage } from "~/models/message.server";
 import { resolveOrgIdFromSlug } from "~/models/organization.server";
 import { clearCurrentProject } from "~/services/dashboardPreferences.server";
-import { DeleteOrganizationService } from "~/services/deleteOrganization.server";
+import {
+  DeleteOrganizationService,
+  deleteOrganizationErrorMessage,
+} from "~/services/deleteOrganization.server";
 import { logger } from "~/services/logger.server";
 import { requireUser } from "~/services/session.server";
 import {
@@ -251,7 +254,7 @@ export const action = dashboardAction(
             return redirectWithErrorMessage(
               organizationSettingsPath({ slug: organizationSlug }),
               request,
-              errorMessage
+              deleteOrganizationErrorMessage(error)
             );
           }
         }

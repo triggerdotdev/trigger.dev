@@ -1,6 +1,5 @@
 import {
   ArrowUturnLeftIcon,
-  BookOpenIcon,
   InformationCircleIcon,
   LockOpenIcon,
   StopCircleIcon,
@@ -13,6 +12,7 @@ import { useState } from "react";
 import { redirect } from "remix-typedjson";
 import { ChevronExtraSmallDown } from "~/assets/icons/ChevronExtraSmallDown";
 import { ChevronExtraSmallUp } from "~/assets/icons/ChevronExtraSmallUp";
+import { DocsHeaderButton } from "~/components/DocsPanel";
 import { DevDisconnectedBanner, useCrossEngineIsConnected } from "~/components/DevPresence";
 import { AdminDebugTooltip } from "~/components/admin/debugTooltip";
 import { PageBody } from "~/components/layout/AppLayout";
@@ -37,6 +37,9 @@ import { ReplayRunDialog } from "~/components/runs/v3/ReplayRunDialog";
 import { getRunFiltersFromSearchParams } from "~/components/runs/v3/RunFilters";
 import { resizableSettings } from "~/components/runs/v3/trace/resizableSettings";
 import { RunRelationshipsHeader } from "~/components/runs/v3/trace/ShowParentOrRootLinks";
+import { RunContinuationButtons } from "~/components/sessions/v1/SessionHandover";
+import { SESSION_RUN_PARAM } from "~/components/sessions/v1/trace/sessionTraceSelection";
+import { AIChatIcon } from "~/assets/icons/AIChatIcon";
 import { TasksTreeView } from "~/components/runs/v3/trace/TasksTreeView";
 import {
   AdjacentRunsShortcuts,
@@ -76,13 +79,13 @@ import { WhenAgentUnavailable } from "~/components/dashboard-agent/WhenAgentUnav
 import { cn } from "~/utils/cn";
 import type { Handle } from "~/utils/handle";
 import {
-  docsPath,
   v3BillingPath,
   v3RunParamsSchema,
   v3RunPath,
   v3RunRedirectPath,
   v3RunSpanPath,
   v3RunsPath,
+  v3SessionPath,
 } from "~/utils/pathBuilder";
 import { canUseAlertsList } from "~/v3/canUseAlertsList.server";
 import type { SpanOverride } from "~/v3/eventRepository/eventRepository.types";
@@ -303,7 +306,8 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
       const tree = await getResizableSnapshot(request, resizableSettings.tree.autosaveId);
 
       return json({
-        run: buffered.run,
+        // A run still in the mollifier buffer has no session yet.
+        run: { ...buffered.run, session: undefined },
         trace: buffered.trace,
         maximumLiveReloadingSetting: env.MAXIMUM_LIVE_RELOADING_EVENTS,
         resizable: { parent, tree },
@@ -412,6 +416,7 @@ export default function Page() {
   const filters = getRunFiltersFromSearchParams(tableStateSearchParams);
   const tabParam = value("tab") ?? undefined;
   const spanParam = value("span") ?? undefined;
+  const runSession = run.session;
 
   const [previousRunPath, nextRunPath] = useAdjacentRunPaths({
     organization,
@@ -521,10 +526,18 @@ export default function Page() {
               </Property.Item>
             </Property.Table>
           </AdminDebugTooltip>
-          <WhenAgentUnavailable>
-            <LinkButton variant={"docs/small"} LeadingIcon={BookOpenIcon} to={docsPath("/runs")}>
-              Run docs
+          {runSession ? (
+            <LinkButton
+              variant="secondary/small"
+              LeadingIcon={AIChatIcon}
+              leadingIconClassName="text-sessions"
+              to={`${v3SessionPath(organization, project, environment, runSession.session)}?${SESSION_RUN_PARAM}=${run.friendlyId}`}
+            >
+              View session
             </LinkButton>
+          ) : null}
+          <WhenAgentUnavailable>
+            <DocsHeaderButton path="/runs">Run docs</DocsHeaderButton>
           </WhenAgentUnavailable>
           {alertsEnabled && !isFinalRunStatus(run.status) ? (
             <RunCreateAlertButton
@@ -599,6 +612,8 @@ function TraceView({
     onRunDataStale: () => revalidator.revalidate(),
   });
 
+  const runSession = run.session;
+
   const changeToSpan = useDebounce((selectedSpan: string) => {
     replaceSearchParam("span", selectedSpan, { replace: true });
   }, 250);
@@ -669,7 +684,18 @@ function TraceView({
                 queuedDuration={queuedDuration}
                 environmentType={run.environment.type}
                 header={
-                  <RunRelationshipsHeader rootRun={run.rootTaskRun} parentRun={run.parentTaskRun} />
+                  <>
+                    <RunRelationshipsHeader
+                      rootRun={run.rootTaskRun}
+                      parentRun={run.parentTaskRun}
+                    />
+                    {runSession ? (
+                      <RunContinuationButtons
+                        handedOverTo={runSession.handedOverTo}
+                        continuedFrom={runSession.continuedFrom}
+                      />
+                    ) : null}
+                  </>
                 }
                 showRootBadge={!run.rootTaskRun}
                 shortcutHints={{

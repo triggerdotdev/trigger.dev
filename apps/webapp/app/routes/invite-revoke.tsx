@@ -3,7 +3,8 @@ import { json } from "@remix-run/server-runtime";
 import { z } from "zod";
 import { $replica } from "~/db.server";
 import { revokeInvite } from "~/models/member.server";
-import { redirectWithSuccessMessage } from "~/models/message.server";
+import { redirectWithErrorMessage, redirectWithSuccessMessage } from "~/models/message.server";
+import { logger } from "~/services/logger.server";
 import { dashboardAction } from "~/services/routeBuilders/dashboardBuilder";
 import { organizationTeamPath } from "~/utils/pathBuilder";
 
@@ -27,7 +28,7 @@ export const action = dashboardAction(
       });
       return org ? { organizationId: org.id } : {};
     },
-    authorization: { action: "manage", resource: { type: "members" } },
+    authorization: { action: "write", resource: { type: "members" } },
   },
   async ({ request, user }) => {
     const formData = await request.formData();
@@ -49,8 +50,17 @@ export const action = dashboardAction(
         request,
         `Invite revoked for ${email}`
       );
-    } catch (error: any) {
-      return json({ errors: { body: error.message } }, { status: 400 });
+    } catch (error) {
+      // The Team page doesn't render this action's result, so the refusal goes back there as a toast.
+      logger.warn("invite-revoke: couldn't revoke the invite", {
+        inviteId: submission.value.inviteId,
+        error: error instanceof Error ? error.message : String(error),
+      });
+      return redirectWithErrorMessage(
+        organizationTeamPath({ slug: submission.value.slug }),
+        request,
+        "Couldn't revoke the invite. Please try again."
+      );
     }
   }
 );

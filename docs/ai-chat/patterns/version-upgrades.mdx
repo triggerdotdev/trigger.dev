@@ -1,12 +1,21 @@
 ---
 title: "Version upgrades"
 sidebarTitle: "Version upgrades"
-description: "Gracefully migrate chat agents to a new deployment using chat.requestUpgrade(), chat.endAndContinue(), and the continuation mechanism."
+description: "Move chat agent sessions to a new deployment: follow the pin with versionSkew (follow, follow-mid-turn, hold), upgrade on your own rule with chat.requestUpgrade(), or hand over with chat.endAndContinue()."
 ---
 
 Chat agent runs are pinned to the worker version they started on. When you deploy a new version, suspended runs resume on the **old** code. If your deploy includes breaking changes (new tools, changed schemas, updated API contracts), this can cause issues.
 
 `chat.requestUpgrade()` is the managed upgrade signal for `chat.agent()` and the `chat.createSession()` iterator. Fully hand-rolled custom agents use `chat.endAndContinue()` between turns to immediately hand the Session to a new run.
+
+## Which tool to use
+
+| Tool | Moves a session when | Use it for |
+| --- | --- | --- |
+| [Version skew protection](/deployment/atomic-deployment#chat-sessions) | The app re-pins the session to the deployment its build names | Keeping each conversation on the agent version its frontend expects |
+| [`versionSkew`](#staying-put) | `"follow"` (default): at the next turn after the pin changes. `"follow-mid-turn"`: also [moves a running turn](/ai-chat/patterns/mid-turn-handover) below the threshold. `"hold"`: never on its own | Choosing, per agent, how eagerly it follows |
+| [`chat.requestUpgrade()`](#how-it-works) | Your code decides | Your own rule, like a [contract version](#contract-versioning) |
+| [Skew protection threshold](/deployment/skew-protection-threshold) | Once, for every session below a version | Moving everything older after a deployment that fixes a break |
 
 <Note>
   If your sessions are pinned by [version skew
@@ -15,24 +24,28 @@ Chat agent runs are pinned to the worker version they started on. When you deplo
   `externalDeploymentId` stops naming the deployment a run is on, the agent hands over at the next
   turn boundary. Set [`versionSkew: "hold"`](#staying-put) to turn that off for one agent.
 
-  Read on for the cases that are still yours to decide — leaving a pin for a version nobody named,
+  Read on for the cases that are still yours to decide: leaving a pin for a version nobody named,
   a session that was never pinned, and hand-rolled custom agents.
 </Note>
+
+To move every older session in an environment to the current deployment once, whatever it's pinned
+to (after a deployment that fixes a break, for example), set the [skew protection
+threshold](/deployment/skew-protection-threshold).
 
 ## How it works
 
 When `chat.requestUpgrade()` is called in `onTurnStart` or `onValidateMessages`:
 
-1. `run()` is **skipped** — no response is generated on old code
+1. `run()` is **skipped**, so no response is generated on old code
 2. The agent calls the server-side `endAndContinueSession` endpoint, which atomically swaps the Session's `currentRunId` to a freshly-triggered run on the latest deployment (optimistic-claim against `currentRunVersion`)
 3. The new run picks up the conversation and produces the response
-4. The transport's existing SSE subscription to `session.out` keeps receiving chunks across the swap — no client-side reconnect
+4. The transport's existing SSE subscription to `session.out` keeps receiving chunks across the swap, with no client-side reconnect
 
 The new run lives on the **same Session** as the old one. `chatId` is the durable identity; only the underlying `currentRunId` rotates. The audit log records the new run with `reason: "upgrade"`.
 
 ### What "the latest deployment" means
 
-The handoff clears the session's [external deployment id](/deployment/atomic-deployment#chat-sessions) so the new run can land on the current version — re-applying the pin the agent just rejected would make the upgrade impossible. The cleared pin is persisted on the session, so the next continuation doesn't fall back to it either.
+The handoff clears the session's [external deployment id](/deployment/atomic-deployment#chat-sessions) so the new run can land on the current version: re-applying the pin the agent just rejected would make the upgrade impossible. The cleared pin is persisted on the session, so the next continuation doesn't fall back to it either.
 
 To move to a specific deployment rather than to whatever is current, name it:
 
@@ -45,11 +58,11 @@ That is usually what you want when the client told you which build it is on: it 
 <Warning>
   `lockToVersion` is a different thing and is **never** cleared. A session started with an explicit
   `lockToVersion` re-applies it on every run including upgrade handoffs, so `chat.requestUpgrade()`
-  cannot escape it — the new run lands on the same version the old one did. Use the external
+  cannot escape it: the new run lands on the same version the old one did. Use the external
   deployment id if you want a pin an agent can opt out of.
 </Warning>
 
-When called from inside `run()` or `chat.defer()`, the current turn completes normally first and the run exits afterward. The next message triggers the continuation on the same session.
+Called during a turn (from `run()`, a tool or `chat.defer()`), the turn stops after the step it is on and the new run continues the same reply, as described in [moving a running turn](/ai-chat/patterns/mid-turn-handover). If no step follows, or `streamText` doesn't get the agent's step hook, the turn finishes and the next message starts the continuation on the same session.
 
 ```mermaid
 sequenceDiagram
@@ -75,7 +88,7 @@ sequenceDiagram
 
 Define an explicit version for the contract between your frontend and agent. The frontend sends a `protocolVersion` via `clientData`, and the agent declares which versions it supports. When a breaking change ships (new tools, changed data parts, updated response format), bump the version.
 
-This gives you full control — the frontend can be backwards-compatible across multiple agent versions, and the agent only upgrades when it sees a version it doesn't support.
+This gives you full control: the frontend can be backwards-compatible across multiple agent versions, and the agent only upgrades when it sees a version it doesn't support.
 
 ```tsx title="app/components/Chat.tsx"
 import { useTriggerChatTransport } from "@trigger.dev/sdk/chat/react";
@@ -127,7 +140,7 @@ export const myChat = chat
   });
 ```
 
-The transport includes `clientData` in every payload — both the initial trigger and subsequent records on the session's `.in` channel — so the agent always has the current value.
+The transport includes `clientData` in every payload (the initial trigger and subsequent records on the session's `.in` channel), so the agent always has the current value.
 
 This pattern is useful when:
 - Your frontend is backwards-compatible across several agent versions, but occasionally ships breaking changes
@@ -139,7 +152,7 @@ This pattern is useful when:
 <Warning>
   You probably don't need this any more. If your sessions are pinned, following the pin is the
   built-in behaviour and it needs no `clientData` and no `chat.local`. Reach for the recipe below
-  only when you want to upgrade on a signal the pin doesn't carry — a frontend build id that moves
+  only when you want to upgrade on a signal the pin doesn't carry: a frontend build id that moves
   independently of the deployment your app names.
 </Warning>
 
@@ -193,8 +206,8 @@ This upgrades on **every** deploy, not just breaking changes. Good for fast-movi
 
 ## Staying put
 
-A pinned session follows its pin by default. To keep one agent where it is — a long tool chain you
-don't want interrupted, or a conversation you'd rather move on your own terms — set `versionSkew`:
+A pinned session follows its pin by default. To keep one agent where it is (a long tool chain you
+don't want interrupted, or a conversation you'd rather move on your own terms), set `versionSkew`:
 
 ```ts
 export const myChat = chat.agent({
@@ -207,7 +220,7 @@ export const myChat = chat.agent({
 `"hold"` only stops the automatic handoff. `chat.requestUpgrade()` still works, so you can keep the
 decision and still get the seamless swap.
 
-Two cases never hand over automatically, whatever `versionSkew` says:
+Two cases never follow a pin automatically, whatever `versionSkew` says:
 
 - **A session with no pin.** There is nothing to compare against, and an unpinned session already
   lands on the current version every time it starts a run.
@@ -215,9 +228,40 @@ Two cases never hand over automatically, whatever `versionSkew` says:
   `chat.requestUpgrade()` cannot escape it, so handing over would land on the same version and
   repeat.
 
+A running turn moved by the [skew protection threshold](#moving-a-running-turn) is a different
+path: it moves pinned and unpinned sessions alike.
+
+## Moving a running turn
+
+By default a turn that is already running finishes on the version it started on, and the
+conversation moves at the next message. With `versionSkew: "follow-mid-turn"`, a turn running below
+the [skew protection threshold](/deployment/skew-protection-threshold) stops after the step it is
+on, and a run on the current deployment continues the same reply:
+
+```ts
+export const support = chat.agent({
+  id: "support",
+  versionSkew: "follow-mid-turn",
+  run: async ({ messages, signal }) =>
+    streamText({
+      ...chat.toStreamTextOptions(),
+      model: anthropic("claude-sonnet-5-5"),
+      messages,
+      abortSignal: signal,
+    }),
+});
+```
+
+[Mid-turn handover](/ai-chat/patterns/mid-turn-handover) covers what your code sees, the SDK
+versions it needs, and the contract a `chat.createSession()` loop has to follow.
+
 <Note>
   Following the pin costs one session read per turn on pinned chats, and the handoff happens at a
-  turn boundary — never mid-turn. If the pin names a deployment that hasn't landed yet, the successor
+  turn boundary. A turn that is running moves only below the [skew protection
+  threshold](/deployment/skew-protection-threshold) with [`versionSkew:
+  "follow-mid-turn"`](/ai-chat/patterns/mid-turn-handover), or when your code calls
+  [`chat.requestUpgrade()`](#how-it-works) during the turn. If the pin names a deployment that
+  hasn't landed yet, the successor
   parks: your messages stay durable, and the transport emits `run-pending-version` with
   `source: "upgrade"` so you can say so in the UI. See [parked
   chats](/deployment/atomic-deployment#chat-sessions).
@@ -238,7 +282,7 @@ await chat.endAndContinue();
 return;
 ```
 
-The continuation uses the same durable Session and receives `.in` records that the old run has not consumed. It starts on the latest deployed task version only if the Session is unpinned — a Session carrying `lockToVersion` or an `externalDeploymentId` re-applies that pin, so the continuation lands where the Session says rather than on the newest build.
+The continuation uses the same durable Session and receives `.in` records that the old run has not consumed. It starts on the latest deployed task version only if the Session is unpinned. A Session carrying `lockToVersion` or an `externalDeploymentId` re-applies that pin, so the continuation lands where the Session says rather than on the newest build.
 
 If input has been dispatched to the old run but should be processed by the continuation, detach the old listeners and skip the final `chat.writeTurnComplete()`. A turn-complete boundary acknowledges the latest input dispatched to the old run, so writing one after that dispatch would cause the continuation to resume past the input.
 
@@ -248,14 +292,16 @@ If input has been dispatched to the old run but should be processed by the conti
 
 ## Interaction with recovery boot
 
-When `chat.requestUpgrade()` is handled before a turn starts, the SDK immediately hands the Session to a new run, which processes the same input on the latest version. When it is requested during a turn, including through `chat.createSession()`, the current turn finishes and the old run exits; the next input starts the continuation run.
+When `chat.requestUpgrade()` is handled before a turn starts, the SDK immediately hands the Session to a new run, which processes the same input on the latest version. When it is requested during a turn, including through `chat.createSession()`, the turn stops after the step it is on and the new run continues the same reply. If no step follows, the turn finishes and the old run exits; the next input starts the continuation run.
 
-Both are graceful exits. [`onRecoveryBoot`](/ai-chat/patterns/recovery-boot) does not fire — the hook is reserved for mid-stream interruptions (cancel, crash, or OOM) where a partial assistant exists on the tail.
+Both are graceful exits. [`onRecoveryBoot`](/ai-chat/patterns/recovery-boot) does not fire: the hook is reserved for mid-stream interruptions (cancel, crash, or OOM) where a partial assistant exists on the tail.
 
 ## See also
 
-- [Version skew protection](/deployment/atomic-deployment#chat-sessions) — pin a session to the deployment matching the app build that started it
-- [Lifecycle hooks](/ai-chat/lifecycle-hooks) — where `onTurnStart` and `onChatResume` fit in the turn cycle
-- [Recovery boot](/ai-chat/patterns/recovery-boot) — the sibling hook for mid-stream interruptions (does NOT fire on `requestUpgrade`)
-- [Database persistence](/ai-chat/patterns/database-persistence) — how continuations interact with session state
-- [Client Protocol](/ai-chat/client-protocol#step-4-handle-continuations) — how clients handle continuations at the wire level
+- [Version skew protection](/deployment/atomic-deployment#chat-sessions): pin a session to the deployment matching the app build that started it
+- [Skew protection threshold](/deployment/skew-protection-threshold): move every older session in an environment to the current deployment
+- [Mid-turn handover](/ai-chat/patterns/mid-turn-handover): move a turn that is still running
+- [Lifecycle hooks](/ai-chat/lifecycle-hooks): where `onTurnStart` and `onChatResume` fit in the turn cycle
+- [Recovery boot](/ai-chat/patterns/recovery-boot): the sibling hook for mid-stream interruptions (does NOT fire on `requestUpgrade`)
+- [Database persistence](/ai-chat/patterns/database-persistence): how continuations interact with session state
+- [Client Protocol](/ai-chat/client-protocol#continuations): how clients handle continuations at the wire level

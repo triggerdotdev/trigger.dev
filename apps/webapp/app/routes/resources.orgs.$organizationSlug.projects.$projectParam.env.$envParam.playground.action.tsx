@@ -4,6 +4,7 @@ import { z } from "zod";
 import type { Prisma } from "@trigger.dev/database";
 import { SessionId } from "@trigger.dev/core/v3/isomorphic";
 import { prisma } from "~/db.server";
+import { deletePlaygroundConversation } from "~/models/playgroundConversation.server";
 import { findProjectBySlug } from "~/models/project.server";
 import { findEnvironmentBySlug } from "~/models/runtimeEnvironment.server";
 import { requireUserId } from "~/services/session.server";
@@ -310,12 +311,10 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
         return json({ error: "deleteConversationId is required" }, { status: 400 });
       }
 
-      await prisma.playgroundConversation.deleteMany({
-        where: {
-          id: deleteConversationId,
-          runtimeEnvironmentId: environment.id,
-          userId,
-        },
+      await deletePlaygroundConversation({
+        id: deleteConversationId,
+        runtimeEnvironmentId: environment.id,
+        userId,
       });
 
       return json({ ok: true });

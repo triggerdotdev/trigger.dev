@@ -3,7 +3,13 @@ import type { UnkeyCache } from "@internal/cache";
 import type { StreamIngestor, StreamRecord, StreamResponder, StreamResponseOptions } from "./types";
 import type { LogLevel } from "@trigger.dev/core/logger";
 import { Logger } from "@trigger.dev/core/logger";
-import { headerValue, SESSION_IN_CONSUMED_ID_HEADER } from "@trigger.dev/core/v3";
+import {
+  headerValue,
+  SESSION_IN_CONSUMED_ID_HEADER,
+  SESSION_IN_EVENT_ID_HEADER,
+  TURN_HANDOVER_STEPS_HEADER,
+  TURN_HANDOVER_UPGRADE_HEADER,
+} from "@trigger.dev/core/v3";
 import { randomUUID } from "node:crypto";
 import { setTimeout as sleep } from "node:timers/promises";
 import { ServiceValidationError } from "~/v3/services/common.server";
@@ -23,15 +29,56 @@ import { ServiceValidationError } from "~/v3/services/common.server";
 const S2_MAX_METERED_BYTES = 1024 * 1024; // 1 MiB
 const S2_RECORD_BASE_OVERHEAD_BYTES = 8;
 const S2_PEEK_TIMEOUT_MS = 2000;
+// Appends and stream config on the deploy and threshold paths: a hung S2 call can't hold a promote
+// or a dashboard action open.
+const S2_WRITE_TIMEOUT_MS = 5000;
+// The `.out` tail peek reads this many records first. At steady state the tail is
+// `[turn-complete, trim]`, and the peek runs on every reconnect, so it stays small.
+const PEEK_TAIL_RECORDS = 2;
+// When those hold only S2 command records (the agent trimmed more than once after its last real
+// record), the peek walks back one record per read until it finds a real one. It looks at this many
+// records at most, the first window included, so at most this many minus two extra reads. Past
+// that the answer is "commands-only": the tail is not worth more reads on every reconnect.
+const PEEK_TAIL_MAX_RECORDS = 6;
+// The walk back past command records stops this long after it starts, or at the peek's own
+// deadline, whichever comes first. The reads before it (the first window, and the tail check and
+// newest-record read after a short read) use the peek's deadline alone. A walk that runs out of
+// budget before it finds a real record is a failed read ("unknown"), not "commands-only".
+const PEEK_WALK_BUDGET_MS = 500;
 
+type PeekedRecord = {
+  body: string;
+  seq_num: number;
+  timestamp: number;
+  headers?: Array<[string, string]>;
+};
+
+/**
+ * What the tail of a session's `.out` holds. "unknown" is a failed read (S2 did not answer or the
+ * body did not parse), which a later read can fix. "commands-only" is an answer: the stream holds
+ * records, but none of them can be read as a turn: the last few are all S2 command records, or a
+ * trim deleted every record. The last turn cannot be read and nothing will change that until the
+ * agent writes again. Callers treat both as "no record to go on"; only the run-end check tells
+ * them apart, by retrying "unknown" and not "commands-only".
+ */
 export type SessionOutTail =
   | { kind: "empty" }
   | { kind: "unknown" }
+  | { kind: "commands-only" }
   | {
       kind: "record";
       control: string | undefined;
       timestamp: number;
       inConsumedSeq: number | undefined;
+      /**
+       * The `.in` cursor the run committed at this turn boundary: every record at or below it was
+       * handled, anything past it is unread. Present on every SDK that writes the cursor at all.
+       */
+      inEventId?: number;
+      /** On a `turn-handover` marker: the steps of the reply finished before it was handed over. */
+      handoverSteps?: number;
+      /** On a `turn-handover` marker for `chat.requestUpgrade()`: the target, "" for current. */
+      handoverUpgrade?: string;
     };
 
 /**
@@ -283,9 +330,16 @@ export class S2RealtimeStreams implements StreamResponder, StreamIngestor {
   async readRecords(
     runId: string,
     streamId: string,
-    afterSeqNum?: number
+    afterSeqNum?: number,
+    limit?: number
   ): Promise<StreamRecord[]> {
-    return this.#readRecordsByName(this.toStreamName(runId, streamId), afterSeqNum);
+    return this.#readRecordsByName(this.toStreamName(runId, streamId), afterSeqNum, limit);
+  }
+
+  async listRunStreams(runId: string): Promise<string[]> {
+    const prefix = this.toStreamName(runId, "");
+    const names = await this.#s2ListStreamNames(prefix);
+    return names.map((name) => name.slice(prefix.length)).filter((streamId) => streamId);
   }
 
   /**
@@ -306,9 +360,12 @@ export class S2RealtimeStreams implements StreamResponder, StreamIngestor {
     );
   }
 
-  async listSessionChannels(friendlyId: string): Promise<string[]> {
+  async listSessionChannels(
+    friendlyId: string,
+    opts?: { beforeRead?: () => void }
+  ): Promise<string[]> {
     const prefix = `${this.streamPrefix}/sessions/${friendlyId}/channels/`;
-    const names = await this.#s2ListStreamNames(prefix);
+    const names = await this.#s2ListStreamNames(prefix, opts?.beforeRead);
     const channels = new Set<string>();
     for (const name of names) {
       const rest = name.slice(prefix.length);
@@ -318,11 +375,12 @@ export class S2RealtimeStreams implements StreamResponder, StreamIngestor {
     return [...channels];
   }
 
-  async #s2ListStreamNames(prefix: string): Promise<string[]> {
+  async #s2ListStreamNames(prefix: string, beforeRead?: () => void): Promise<string[]> {
     const names: string[] = [];
     let startAfter: string | undefined;
 
     for (let page = 0; page < 100; page++) {
+      if (page > 0) beforeRead?.();
       const qs = new URLSearchParams();
       qs.set("prefix", prefix);
       if (startAfter) qs.set("start_after", startAfter);
@@ -509,6 +567,7 @@ export class S2RealtimeStreams implements StreamResponder, StreamIngestor {
               data: parsedBody?.data ?? "",
               id: parsedBody?.id ?? "",
               seqNum: record.seq_num,
+              timestamp: record.timestamp,
               headers: record.headers,
             });
           }
@@ -596,6 +655,157 @@ export class S2RealtimeStreams implements StreamResponder, StreamIngestor {
     });
   }
 
+  // ---------- Environment-level streams (signals) ----------
+
+  /** An environment-level stream under this environment's prefix, e.g. `signals`. */
+  public toEnvironmentStreamName(name: string): string {
+    return `${this.streamPrefix}/${name}`;
+  }
+
+  /**
+   * The last record of a stream and the seq the next append gets, without waiting. On a basin
+   * that creates streams on read this creates an empty stream that didn't exist.
+   */
+  async readLastRecord(s2Stream: string): Promise<{
+    nextSeq: number;
+    record?: { seq: number; body: string; headers: Array<[string, string]> };
+  }> {
+    const res = await fetch(
+      `${this.baseUrl}/streams/${encodeURIComponent(s2Stream)}/records?tail_offset=1&clamp=true&wait=0`,
+      {
+        method: "GET",
+        headers: {
+          Authorization: `Bearer ${this.token}`,
+          Accept: "application/json",
+          "S2-Format": "raw",
+          "S2-Basin": this.basin,
+        },
+        signal: AbortSignal.timeout(S2_PEEK_TIMEOUT_MS),
+      }
+    );
+    if (res.status === 416 || res.status === 404) {
+      const body = (await res.json().catch(() => undefined)) as
+        | { tail?: { seq_num?: number } }
+        | undefined;
+      return { nextSeq: body?.tail?.seq_num ?? 0 };
+    }
+    if (!res.ok) {
+      await cancelResponseBody(res);
+      throw new Error(`S2 read last record failed: ${res.status} ${res.statusText}`);
+    }
+    const json = (await res.json()) as {
+      records?: Array<{ seq_num: number; body: string; headers?: Array<[string, string]> }>;
+      tail?: { seq_num: number };
+    };
+    const last = json.records?.at(-1);
+    if (!last) return { nextSeq: json.tail?.seq_num ?? 0 };
+    return {
+      nextSeq: json.tail?.seq_num ?? last.seq_num + 1,
+      record: { seq: last.seq_num, body: last.body, headers: last.headers ?? [] },
+    };
+  }
+
+  /**
+   * Append records only if the stream's next seq is still `matchSeqNum`. Returns the first
+   * record's seq, or the actual next seq when another append got there first.
+   */
+  async appendIfNextSeq(
+    s2Stream: string,
+    records: Array<{ body: Uint8Array | string; headers?: Array<[string, string]> }>,
+    matchSeqNum: number
+  ): Promise<{ ok: true; startSeq: number } | { ok: false; nextSeq: number }> {
+    const b64 = (value: Uint8Array | string) => Buffer.from(value).toString("base64");
+    const res = await fetch(`${this.baseUrl}/streams/${encodeURIComponent(s2Stream)}/records`, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${this.token}`,
+        "Content-Type": "application/json",
+        "S2-Format": "base64",
+        "S2-Basin": this.basin,
+      },
+      body: JSON.stringify({
+        records: records.map((record) => ({
+          ...(record.headers
+            ? { headers: record.headers.map(([name, value]) => [b64(name), b64(value)]) }
+            : {}),
+          body: b64(record.body),
+        })),
+        match_seq_num: matchSeqNum,
+      }),
+      signal: AbortSignal.timeout(S2_WRITE_TIMEOUT_MS),
+    });
+    if (res.status === 412) {
+      const body = (await res.json().catch(() => undefined)) as
+        | { seq_num_mismatch?: number }
+        | undefined;
+      return { ok: false, nextSeq: body?.seq_num_mismatch ?? matchSeqNum };
+    }
+    if (!res.ok) {
+      const text = await res.text().catch(() => "");
+      throw Object.assign(new Error(`S2 append failed: ${res.status} ${text}`.trim()), {
+        status: res.status,
+      });
+    }
+    const ack = (await res.json()) as S2AppendAck;
+    return { ok: true, startSeq: ack.start.seq_num };
+  }
+
+  /**
+   * Keep a stream's records until they are trimmed, whatever the basin's age retention. Creates
+   * the stream if it doesn't exist.
+   */
+  async keepStreamUntilTrimmed(s2Stream: string): Promise<void> {
+    const config = { retention_policy: { infinite: {} } };
+    const headers = {
+      Authorization: `Bearer ${this.token}`,
+      "Content-Type": "application/json",
+      "S2-Basin": this.basin,
+    };
+    const patch = await fetch(`${this.baseUrl}/streams/${encodeURIComponent(s2Stream)}`, {
+      method: "PATCH",
+      headers,
+      body: JSON.stringify(config),
+      signal: AbortSignal.timeout(S2_WRITE_TIMEOUT_MS),
+    });
+    if (patch.ok) return void (await cancelResponseBody(patch));
+    await cancelResponseBody(patch);
+    if (patch.status !== 404) {
+      throw new Error(`S2 reconfigure stream failed: ${patch.status} ${patch.statusText}`);
+    }
+    const create = await fetch(`${this.baseUrl}/streams`, {
+      method: "POST",
+      headers,
+      body: JSON.stringify({ stream: s2Stream, config }),
+      signal: AbortSignal.timeout(S2_WRITE_TIMEOUT_MS),
+    });
+    await cancelResponseBody(create);
+    if (!create.ok && create.status !== 409) {
+      throw new Error(`S2 create stream failed: ${create.status} ${create.statusText}`);
+    }
+  }
+
+  /** Delete a stream. A stream that doesn't exist counts as deleted. */
+  async deleteStream(s2Stream: string): Promise<void> {
+    const res = await fetch(`${this.baseUrl}/streams/${encodeURIComponent(s2Stream)}`, {
+      method: "DELETE",
+      headers: { Authorization: `Bearer ${this.token}`, "S2-Basin": this.basin },
+      signal: AbortSignal.timeout(S2_WRITE_TIMEOUT_MS),
+    });
+    await cancelResponseBody(res);
+    if (!res.ok && res.status !== 404) {
+      throw new Error(`S2 delete stream failed: ${res.status} ${res.statusText}`);
+    }
+  }
+
+  /** Serve SSE from an environment-level stream. */
+  async streamResponseFromEnvironmentStream(
+    name: string,
+    signal: AbortSignal,
+    options?: StreamResponseOptions
+  ): Promise<Response> {
+    return this.#streamResponseByName(this.toEnvironmentStreamName(name), signal, options);
+  }
+
   async peekSessionOutTail(addressingKey: string): Promise<SessionOutTail> {
     return this.#peekTail(this.toSessionStreamName(addressingKey, "out"));
   }
@@ -609,21 +819,22 @@ export class S2RealtimeStreams implements StreamResponder, StreamIngestor {
     return this.#readTailSeq(this.toSessionStreamName(addressingKey, "out"));
   }
 
-  async #readTailSeq(s2Stream: string): Promise<number | undefined> {
-    const res = await this.#getTail(s2Stream, "records/tail", "S2 read tail", [404]);
-    if (res === "missing") return 0;
+  async #readTailSeq(
+    s2Stream: string,
+    signal: AbortSignal = AbortSignal.timeout(S2_PEEK_TIMEOUT_MS)
+  ): Promise<number | undefined> {
+    const res = await this.#fetchTail(s2Stream, "records/tail", "S2 read tail", signal);
     if (!res) return undefined;
-
-    try {
-      const json = (await res.json()) as { tail?: { seq_num?: unknown } };
-      const seqNum = json.tail?.seq_num;
-      return typeof seqNum === "number" ? seqNum : undefined;
-    } catch (error) {
-      this.logger.warn(
-        isTimeoutError(error) ? "S2 read tail: timed out" : "S2 read tail: parse failed"
-      );
+    if (res.status === 404) return 0;
+    if (res.status < 200 || res.status >= 300) {
+      this.logger.warn("S2 read tail failed", { status: res.status, stream: s2Stream });
       return undefined;
     }
+    const seqNum = parseTailSeq(res.body);
+    if (seqNum === undefined) {
+      this.logger.warn("S2 read tail: no seq_num in the response", { stream: s2Stream });
+    }
+    return seqNum;
   }
 
   /**
@@ -638,87 +849,147 @@ export class S2RealtimeStreams implements StreamResponder, StreamIngestor {
 
   /**
    * Read the most recent non-command record of a stream. The agent appends
-   * an S2 `trim` command record immediately after every turn-complete to
-   * keep `.out` bounded, so we read two tail records and walk past any trim
-   * command to find the turn-complete underneath.
+   * an S2 `trim` command record after every turn-complete to keep `.out`
+   * bounded, so the tail can be `[turn-complete, trim]`, or several trims.
+   * Read the last two records first (the cheap read every reconnect pays).
+   * When S2 returns fewer than two, it may have cut the read at its size cap
+   * before the newest record, so the tail seq confirms it and the newest
+   * record is read alone. When both are command records, walk back one record per read (S2 caps
+   * one read at 1 MiB, so a wider read could stop before the newest records
+   * and answer with an older one) until a real record turns up, looking at 6
+   * records at most. When none does, or the stream is trimmed below the walk,
+   * the answer is "commands-only": the stream was read, and it has no record
+   * to report. A read that failed is "unknown", and so is a walk that ran out
+   * of its 500 ms budget before finding a real record (the budget covers the
+   * walk only, not the reads before it). Every read shares one deadline, so the
+   * whole peek takes at most the peek timeout.
    */
   async #peekTail(s2Stream: string): Promise<SessionOutTail> {
-    const qs = new URLSearchParams();
-    // `tail_offset=2` rewinds two seq positions; `count=2` caps it to
-    // those two records. At steady state these are `[turn-complete, trim]`.
-    // `wait=0` returns immediately with no long-poll.
-    qs.set("tail_offset", "2");
-    qs.set("count", "2");
-    qs.set("wait", "0");
+    const signal = AbortSignal.timeout(S2_PEEK_TIMEOUT_MS);
 
-    // 404: stream has never been written to. 416: range not
-    // satisfiable (empty stream). Both mean "nothing to peek."
-    const res = await this.#getTail(s2Stream, `records?${qs}`, "S2 peek last record", [404, 416], {
-      "S2-Format": "raw",
-    });
-    if (res === "missing") return { kind: "empty" };
-    if (!res) return { kind: "unknown" };
+    const narrow = await this.#readRecords(
+      s2Stream,
+      { tail_offset: String(PEEK_TAIL_RECORDS), count: String(PEEK_TAIL_RECORDS) },
+      signal
+    );
+    if (narrow.kind === "no-records") return this.#tailAfterNoRecords(s2Stream, signal);
+    if (narrow.kind !== "records") return narrow;
 
-    let records: Array<{
-      body: string;
-      seq_num: number;
-      timestamp: number;
-      headers?: Array<[string, string]>;
-    }>;
-    try {
-      const json = (await res.json()) as {
-        records?: Array<{
-          body: string;
-          seq_num: number;
-          timestamp: number;
-          headers?: Array<[string, string]>;
-        }>;
-      };
-      records = json.records ?? [];
-    } catch (error) {
-      this.logger.warn(
-        isTimeoutError(error)
-          ? "S2 peek last record: timed out"
-          : "S2 peek last record: parse failed"
-      );
-      return { kind: "unknown" };
-    }
-
-    if (records.length === 0) {
-      return { kind: "empty" };
-    }
-
-    // Walk from most-recent backward, skipping S2 command records
-    // (`headers[0][0] === ""`). The first non-command record is the
-    // real tail.
-    for (let i = records.length - 1; i >= 0; i--) {
-      const record = records[i]!;
-      if (record.headers?.[0]?.[0] === "") {
-        continue;
+    let window = narrow.records;
+    if (window.length < PEEK_TAIL_RECORDS) {
+      // Fewer records than asked for: the stream holds fewer, or S2 cut the read at its size cap
+      // and the newest record is beyond it. Only the tail seq tells them apart (one extra read,
+      // only here). When the newest record is missing, read it alone and walk back from there.
+      const tailSeq = await this.#readTailSeq(s2Stream, signal);
+      if (tailSeq === undefined) return { kind: "unknown" };
+      const last = window[window.length - 1]!;
+      if (last.seq_num < tailSeq - 1) {
+        const newest = await this.#readRecords(
+          s2Stream,
+          { seq_num: String(tailSeq - 1), count: "1" },
+          signal
+        );
+        if (newest.kind === "no-records") return { kind: "unknown" };
+        if (newest.kind !== "records") return newest;
+        // Keep the records already read when they run up to the newest one, so the walk does not
+        // read them again (one of them can be close to 1 MiB).
+        window =
+          newest.records[0]!.seq_num === last.seq_num + 1
+            ? [...window, ...newest.records]
+            : newest.records;
       }
-      const headers = record.headers ?? undefined;
-      const consumed = headerValue(headers, SESSION_IN_CONSUMED_ID_HEADER);
-      const inConsumedSeq = consumed !== undefined && consumed !== "" ? Number(consumed) : NaN;
-      return {
-        kind: "record",
-        control: headerValue(headers, "trigger-control"),
-        timestamp: record.timestamp,
-        inConsumedSeq: Number.isInteger(inConsumedSeq) ? inConsumedSeq : undefined,
-      };
     }
-    return { kind: "unknown" };
+    const found = tailRecordFrom(window);
+    if (found) return found;
+
+    // Only commands so far. `seq` is the oldest record looked at: read the one before it. The walk
+    // has its own budget on top of the peek's deadline, created only here, so a peek that found its
+    // record makes no timer for it.
+    const walkSignal = AbortSignal.any([signal, AbortSignal.timeout(PEEK_WALK_BUDGET_MS)]);
+    let seq = window[0]!.seq_num;
+    let looked = window.length;
+    while (looked < PEEK_TAIL_MAX_RECORDS && seq > 0) {
+      const older = await this.#readRecords(
+        s2Stream,
+        { seq_num: String(seq - 1), count: "1" },
+        walkSignal
+      );
+      if (older.kind === "unknown") return older;
+      // A 416 (S2 has no record there) or no records: trimmed below `seq`.
+      if (older.kind !== "records") break;
+      const record = older.records[0]!;
+      // S2 starts a read below the trim point at the first record it still holds.
+      if (record.seq_num !== seq - 1) break;
+      const olderFound = tailRecordFrom([record]);
+      if (olderFound) return olderFound;
+      seq = record.seq_num;
+      looked++;
+    }
+
+    this.logger.warn("S2 peek last record: only command records in the tail", {
+      stream: s2Stream,
+      looked,
+    });
+    return { kind: "commands-only" };
   }
 
-  async #getTail(
+  /** A read of `.out` records (`wait=0`, so it never long-polls), classified. */
+  async #readRecords(
+    s2Stream: string,
+    query: Record<string, string>,
+    signal: AbortSignal
+  ): Promise<
+    | { kind: "records"; records: PeekedRecord[] }
+    | { kind: "no-records" }
+    | { kind: "empty" }
+    | { kind: "commands-only" }
+    | { kind: "unknown" }
+  > {
+    const qs = new URLSearchParams({ ...query, wait: "0" });
+    const label = "S2 peek last record";
+    const res = await this.#fetchTail(s2Stream, `records?${qs}`, label, signal, {
+      "S2-Format": "raw",
+    });
+    if (!res) return { kind: "unknown" };
+
+    const answer = classifyTailRead(res.status, res.body);
+    if (answer.kind === "unknown") {
+      if (answer.reason === "parse-failed") {
+        this.logger.warn(`${label}: parse failed`, { stream: s2Stream });
+      } else {
+        this.logger.warn(`${label} failed`, { status: res.status, stream: s2Stream });
+      }
+      return { kind: "unknown" };
+    }
+    return answer;
+  }
+
+  /**
+   * A 200 with no records is a stream trimmed past its tail, or one that never held a record, so the
+   * tail seq decides: past 0 means records were written and are gone, which is not "never written".
+   * One extra read, only here.
+   */
+  async #tailAfterNoRecords(s2Stream: string, signal: AbortSignal): Promise<SessionOutTail> {
+    const tailSeq = await this.#readTailSeq(s2Stream, signal);
+    if (tailSeq === undefined) return { kind: "unknown" };
+    if (tailSeq === 0) return { kind: "empty" };
+    this.logger.warn("S2 peek last record: every record was trimmed", { stream: s2Stream });
+    return { kind: "commands-only" };
+  }
+
+  /**
+   * GET one of a stream's read endpoints with the whole body read, under the caller's deadline.
+   * Undefined when S2 did not answer in time or the connection failed.
+   */
+  async #fetchTail(
     s2Stream: string,
     path: string,
     label: string,
-    missingStatuses: number[],
+    signal: AbortSignal,
     extraHeaders?: Record<string, string>
-  ): Promise<Response | "missing" | undefined> {
-    let res: Response;
+  ): Promise<{ status: number; body: string } | undefined> {
     try {
-      res = await fetch(`${this.baseUrl}/streams/${encodeURIComponent(s2Stream)}/${path}`, {
+      const res = await fetch(`${this.baseUrl}/streams/${encodeURIComponent(s2Stream)}/${path}`, {
         method: "GET",
         headers: {
           Authorization: `Bearer ${this.token}`,
@@ -726,22 +997,16 @@ export class S2RealtimeStreams implements StreamResponder, StreamIngestor {
           ...extraHeaders,
           "S2-Basin": this.basin,
         },
-        signal: AbortSignal.timeout(S2_PEEK_TIMEOUT_MS),
+        signal,
       });
-    } catch {
-      this.logger.warn(`${label}: fetch failed`);
+      return { status: res.status, body: await res.text() };
+    } catch (error) {
+      this.logger.warn(isTimeoutError(error) ? `${label}: timed out` : `${label}: fetch failed`, {
+        stream: s2Stream,
+        error: errorFields(error),
+      });
       return undefined;
     }
-
-    if (res.ok) return res;
-
-    await cancelResponseBody(res);
-    if (missingStatuses.includes(res.status)) return "missing";
-    this.logger.warn(`${label} failed`, {
-      status: res.status,
-      statusText: res.statusText,
-    });
-    return undefined;
   }
 
   async #streamResponseByName(
@@ -1021,6 +1286,88 @@ function describeFetchError(err: unknown): Record<string, unknown> {
   return out;
 }
 
+/** Name and message only: a timeout and a refused connection read differently. */
+function errorFields(error: unknown): { name: string; message: string; code?: string } {
+  if (!(error instanceof Error)) return { name: "unknown", message: String(error) };
+  // undici's "fetch failed" keeps the reason (ECONNREFUSED, ETIMEDOUT) on its cause.
+  const code = (error.cause as { code?: unknown } | undefined)?.code;
+  return {
+    name: error.name,
+    message: error.message,
+    ...(typeof code === "string" ? { code } : {}),
+  };
+}
+
 function isTimeoutError(error: unknown): boolean {
   return error instanceof Error && error.name === "TimeoutError";
+}
+
+/**
+ * The most recent non-command record of a window of records (oldest first), skipping S2 command
+ * records (`headers[0][0] === ""`, e.g. `trim`). Undefined when the window holds only commands.
+ */
+function tailRecordFrom(records: PeekedRecord[]): SessionOutTail | undefined {
+  for (let i = records.length - 1; i >= 0; i--) {
+    const record = records[i]!;
+    if (record.headers?.[0]?.[0] === "") continue;
+    const headers = record.headers ?? undefined;
+    const consumed = headerValue(headers, SESSION_IN_CONSUMED_ID_HEADER);
+    const inConsumedSeq = consumed !== undefined && consumed !== "" ? Number(consumed) : NaN;
+    const eventId = headerValue(headers, SESSION_IN_EVENT_ID_HEADER);
+    const inEventId = eventId !== undefined && eventId !== "" ? Number(eventId) : NaN;
+    const steps = headerValue(headers, TURN_HANDOVER_STEPS_HEADER);
+    const handoverSteps = steps !== undefined && steps !== "" ? Number(steps) : NaN;
+    const handoverUpgrade = headerValue(headers, TURN_HANDOVER_UPGRADE_HEADER);
+    return {
+      kind: "record",
+      control: headerValue(headers, "trigger-control"),
+      timestamp: record.timestamp,
+      inConsumedSeq: Number.isInteger(inConsumedSeq) ? inConsumedSeq : undefined,
+      inEventId: Number.isInteger(inEventId) ? inEventId : undefined,
+      ...(Number.isInteger(handoverSteps) ? { handoverSteps } : {}),
+      ...(handoverUpgrade !== undefined ? { handoverUpgrade } : {}),
+    };
+  }
+  return undefined;
+}
+
+/**
+ * What a read of a stream's records answered, from its status and body. "no-records" is a 200 with
+ * none, which only the stream's tail seq can place. A 416 is what hosted S2 answers to a read with
+ * no record to return, with the stream's tail in the body: past 0 the records were trimmed away,
+ * and at 0 the stream never held one. A 416 whose tail cannot be read is a failed read, not an
+ * empty stream.
+ */
+export type TailReadAnswer =
+  | { kind: "records"; records: PeekedRecord[] }
+  | { kind: "no-records" }
+  | { kind: "empty" }
+  | { kind: "commands-only" }
+  | { kind: "unknown"; reason: "status" | "parse-failed" };
+
+export function classifyTailRead(status: number, body: string): TailReadAnswer {
+  if (status === 404) return { kind: "empty" };
+  if (status === 416) {
+    const tailSeq = parseTailSeq(body);
+    if (tailSeq === undefined) return { kind: "unknown", reason: "parse-failed" };
+    return tailSeq === 0 ? { kind: "empty" } : { kind: "commands-only" };
+  }
+  if (status < 200 || status >= 300) return { kind: "unknown", reason: "status" };
+  try {
+    const json = JSON.parse(body) as { records?: PeekedRecord[] };
+    const records = json.records ?? [];
+    return records.length > 0 ? { kind: "records", records } : { kind: "no-records" };
+  } catch {
+    return { kind: "unknown", reason: "parse-failed" };
+  }
+}
+
+/** The tail seq in a `records/tail` body (also in a 416's), undefined when it is not a number. */
+export function parseTailSeq(body: string): number | undefined {
+  try {
+    const seqNum = (JSON.parse(body) as { tail?: { seq_num?: unknown } } | null)?.tail?.seq_num;
+    return typeof seqNum === "number" ? seqNum : undefined;
+  } catch {
+    return undefined;
+  }
 }

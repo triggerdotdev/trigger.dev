@@ -1,4 +1,4 @@
-import { createHmac, timingSafeEqual } from "node:crypto";
+import { createHmac } from "node:crypto";
 import { isIP } from "node:net";
 import { z } from "zod";
 import type { EffectiveEnvironmentVariable } from "./variables.server";
@@ -65,13 +65,6 @@ export function placeholderForVariable(
   return `trsec_v1_${keyId}_${digest}`;
 }
 
-export function serviceTokenMatches(supplied: string | null, expected: string | undefined) {
-  if (!supplied || !expected) return false;
-  const actual = Buffer.from(supplied);
-  const wanted = Buffer.from(expected);
-  return actual.length === wanted.length && timingSafeEqual(actual, wanted);
-}
-
 export function isCanonicalProxyHostname(hostname: string): boolean {
   return (
     hostname.length <= 253 &&
@@ -81,7 +74,9 @@ export function isCanonicalProxyHostname(hostname: string): boolean {
   );
 }
 
-export function secretProxyExecutionHosts(values: EffectiveEnvironmentVariable[]) {
+export function secretProxyExecutionHosts(
+  values: Array<Pick<EffectiveEnvironmentVariable, "proxyAllowedHosts">>
+) {
   const destinations = new Set<string>();
   for (const value of values) {
     const hosts = ProxyAllowedHosts.safeParse(value.proxyAllowedHosts);

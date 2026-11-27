@@ -13,7 +13,9 @@ const SECRET = "test-user-actor-secret";
 
 vi.setConfig({ testTimeout: 60_000 });
 
-vi.hoisted(() => {
+await vi.hoisted(async () => {
+  const { pointAllRedisAt } = await import("./helpers/redisEnv");
+  pointAllRedisAt("127.0.0.1", 1);
   Object.assign(process.env, {
     DATABASE_URL: "postgresql://unused:unused@localhost:5432/unused",
     DIRECT_URL: "postgresql://unused:unused@localhost:5432/unused",
@@ -29,6 +31,7 @@ vi.hoisted(() => {
 const mocks = vi.hoisted(() => ({
   db: undefined as unknown as Record<string | symbol, unknown>,
   rbac: undefined as unknown as Record<string, (...args: any[]) => any>,
+  runStore: undefined as unknown as Record<string | symbol, unknown>,
 }));
 
 vi.mock("~/mcp/confirm/storeInstance.server", () => import("./helpers/mcpConfirm"));
@@ -40,9 +43,60 @@ vi.mock("~/db.server", () => {
     webhookPrisma: db(),
     webhookReplica: db(),
     webhookPartitionPrisma: db(),
+    runOpsNewReplicaClient: undefined,
+    runOpsLegacyReplicaClient: undefined,
+    runOpsSplitReadEnabled: false,
+    runOpsShardHandles: [],
   };
 });
+vi.mock("~/v3/runEngine.server", () => ({
+  engine: {
+    waitpointSystem: { isWaitpointStoreEnabled: async () => false },
+    canReadStoreManualWaitpoints: () => false,
+    lengthOfQueues: async () => ({}),
+    currentConcurrencyOfQueues: async () => ({}),
+    totalConcurrencyOfQueues: async () => ({}),
+    gateQueuedCountOfQueues: async () => ({}),
+    lengthOfEnvQueue: async () => 0,
+    concurrencyOfEnvQueue: async () => 0,
+  },
+}));
+vi.mock("~/v3/runStore.server", () => ({
+  runStore: new Proxy(
+    {},
+    {
+      get: (_, prop) => {
+        const value = mocks.runStore[prop];
+        return typeof value === "function" ? value.bind(mocks.runStore) : value;
+      },
+    }
+  ),
+}));
 vi.mock("~/v3/webhookEngine.server", () => ({ webhookEngine: {} }));
+vi.mock("~/services/clickhouse/clickhouseFactoryInstance.server", () => ({
+  clickhouseFactory: {
+    getClickhouseForOrganization: async () => {
+      throw new Error("no ClickHouse in this test");
+    },
+  },
+}));
+vi.mock("~/presenters/v3/LimitsPresenter.server", () => ({
+  LimitsPresenter: class {
+    async call() {
+      const rate = { config: { type: "fixedWindow", window: "10s", tokens: 1 }, currentTokens: 1 };
+      return {
+        planName: null,
+        rateLimits: { api: { name: "API", ...rate }, batch: { name: "Batch", ...rate } },
+        quotas: {},
+        features: {
+          hasStagingEnvironment: { name: "Staging", enabled: false },
+          support: { name: "Support", enabled: true, value: "Community" },
+          includedUsage: { name: "Included", enabled: false, value: 0 },
+        },
+      };
+    }
+  },
+}));
 vi.mock("~/services/rbac.server", () => ({
   rbac: new Proxy(
     {},
@@ -55,6 +109,7 @@ vi.mock("~/services/rbac.server", () => ({
   ),
 }));
 
+import { PostgresRunStore } from "@internal/run-store";
 import { resetConfirmations } from "./helpers/mcpConfirm";
 import { mcpTools } from "~/mcp/registry.server";
 import { mcpResource } from "~/services/oauth/metadata.server";
@@ -62,8 +117,104 @@ import { mcpResource } from "~/services/oauth/metadata.server";
 const project = { environment: "prod" };
 const endpoint = { ...project, endpointId: "payments" };
 const prompt = { ...project, slug: "my-prompt" };
+const sched = { ...project, scheduleId: "sched_1" };
+const errorGroup = { ...project, errorId: "error_abc123" };
+const queue = { ...project, queueId: "queue_1" };
 
-const TOOLS: Array<{ tool: string; args: Record<string, unknown>; scope: string }> = [
+const notBranchable =
+  "This environment has no branches. Use preview (with preview branches enabled in the dashboard) or dev; nothing changed.";
+const deploymentNotFound =
+  "Deployment abc was not found in this environment. Use list_deploys to see the deployments in this environment.";
+const regionsOff = "Regions are not available on this server.";
+// autoApprove consumes a placeholder preview, so a tool that rebuilds its preview answers stale and changes nothing.
+const stale =
+  "What this change would do has changed since it was approved. Call the tool again to get a new confirmation.";
+
+const TOOLS: Array<{
+  tool: string;
+  args: Record<string, unknown>;
+  scope: string;
+  ownText?: string;
+  served?: string | RegExp;
+}> = [
+  {
+    tool: "list_environments",
+    args: {},
+    scope: "read:environments",
+    ownText:
+      "Found 2 environments\n\n- preview (PREVIEW) | current deployment not shown: needs read:deployments\n- prod (PRODUCTION) | current deployment not shown: needs read:deployments",
+  },
+  {
+    tool: "list_branches",
+    args: { environment: "preview" },
+    scope: "read:branches",
+    ownText:
+      "This project has no branchable preview environment. Enable preview branches in the dashboard first.",
+  },
+  { tool: "list_regions", args: {}, scope: "read:projects", ownText: regionsOff },
+  {
+    tool: "promote_deployment",
+    args: { ...project, shortCode: "abc" },
+    scope: "write:deployments",
+    ownText: deploymentNotFound,
+  },
+  {
+    tool: "rollback_deployment",
+    args: { ...project, shortCode: "abc" },
+    scope: "write:deployments",
+    ownText: deploymentNotFound,
+  },
+  {
+    tool: "cancel_deployment",
+    args: { ...project, shortCode: "abc" },
+    scope: "write:deployments",
+    ownText: deploymentNotFound,
+  },
+  {
+    tool: "redeploy_deployment",
+    args: { ...project, shortCode: "abc" },
+    scope: "write:deployments",
+    ownText: deploymentNotFound,
+  },
+  {
+    tool: "deploy_tracked_branch",
+    args: { ...project },
+    scope: "write:deployments",
+    ownText:
+      "The Deploy now feature is not enabled for this organization, and it can't be enabled from here; nothing changed.",
+  },
+  {
+    tool: "create_branch",
+    args: { environment: "preview", branchName: "x" },
+    scope: "write:branches",
+    ownText: notBranchable,
+  },
+  {
+    tool: "archive_branch",
+    args: { environment: "preview", branchName: "x" },
+    scope: "write:branches",
+    ownText: notBranchable,
+  },
+  {
+    tool: "set_preview_auto_archive",
+    args: { days: 7 },
+    scope: "write:branches",
+    ownText:
+      "This project has no branchable preview environment. Enable preview branches in the dashboard first; nothing changed.",
+  },
+  {
+    tool: "set_default_region",
+    args: { region: "us-east-1" },
+    scope: "manage:project",
+    ownText: regionsOff,
+  },
+  {
+    tool: "rename_project",
+    args: { name: "Renamed project" },
+    scope: "manage:project",
+    ownText: stale,
+  },
+  { tool: "delete_project", args: {}, scope: "manage:project", ownText: stale },
   { tool: "get_current_worker", args: project, scope: "read:deployments" },
   { tool: "get_task_schema", args: { ...project, taskSlug: "my-task" }, scope: "read:deployments" },
   {
@@ -71,19 +222,112 @@ const TOOLS: Array<{ tool: string; args: Record<string, unknown>; scope: string 
     args: { ...project, runId: "run_1", timeoutInSeconds: 1 },
     scope: "read:runs",
   },
+  { tool: "list_run_tags", args: project, scope: "read:runs" },
+  { tool: "read_run_stream", args: { ...project, runId: "run_1" }, scope: "read:runs" },
+  { tool: "search_logs", args: project, scope: "read:runs" },
+  { tool: "get_log", args: { ...project, logId: "t::s::run_1::0" }, scope: "read:runs" },
   { tool: "list_deploys", args: project, scope: "read:deployments" },
+  {
+    tool: "get_deployment_details",
+    args: { ...project, deploymentId: "abcd1234" },
+    scope: "read:deployments",
+  },
+  { tool: "reset_run_idempotency_key", args: { ...project, runId: "run_1" }, scope: "write:runs" },
+  {
+    tool: "update_run_metadata",
+    args: { ...project, runId: "run_1", metadata: { a: 1 } },
+    scope: "write:runs",
+  },
+  { tool: "add_run_tags", args: { ...project, runId: "run_1", tags: ["a"] }, scope: "write:runs" },
+  {
+    tool: "reschedule_run",
+    args: { ...project, runId: "run_1", delay: "1h" },
+    scope: "write:runs",
+  },
+  { tool: "list_bulk_actions", args: project, scope: "read:runs" },
+  { tool: "get_bulk_action", args: { ...project, bulkActionId: "bulk_1" }, scope: "read:runs" },
+  {
+    tool: "create_bulk_action",
+    args: { ...project, action: "cancel", runIds: ["run_1"] },
+    scope: "write:runs",
+  },
+  { tool: "abort_bulk_action", args: { ...project, bulkActionId: "bulk_1" }, scope: "write:runs" },
   { tool: "get_query_schema", args: { ...project, table: "runs" }, scope: "read:query" },
   { tool: "list_dashboards", args: project, scope: "read:query" },
+  { tool: "get_dashboard", args: { ...project, dashboardId: "dashboard_1" }, scope: "read:query" },
+  { tool: "list_query_history", args: project, scope: "read:query" },
+  { tool: "list_models", args: project, scope: "read:query" },
+  { tool: "get_model", args: { ...project, modelId: "llm_model_1" }, scope: "read:query" },
+  { tool: "get_model_usage", args: project, scope: "read:query" },
+  {
+    tool: "update_dashboard_widget",
+    args: { ...project, dashboardId: "dashboard_1", widgetId: "w1", title: "x" },
+    scope: "write:query",
+  },
+  {
+    tool: "update_dashboard",
+    args: { ...project, dashboardId: "dashboard_1", title: "x" },
+    scope: "write:query",
+  },
+  {
+    tool: "delete_dashboard",
+    args: { ...project, dashboardId: "dashboard_1" },
+    scope: "write:query",
+  },
   { tool: "get_prompt_versions", args: prompt, scope: "read:prompts" },
+  { tool: "get_prompt", args: prompt, scope: "read:prompts" },
+  { tool: "list_prompt_generations", args: prompt, scope: "read:prompts" },
   { tool: "list_agents", args: project, scope: "read:deployments" },
+  {
+    tool: "get_agent_details",
+    args: { ...project, agentSlug: "my-agent" },
+    scope: "read:deployments",
+  },
   {
     tool: "read_session_channel",
     args: { ...project, sessionId: "session_1" },
     scope: "read:sessions",
   },
+  { tool: "list_sessions", args: project, scope: "read:sessions" },
+  {
+    tool: "get_session_details",
+    args: { ...project, sessionId: "session_1" },
+    scope: "read:sessions",
+  },
+  {
+    tool: "read_session_transcript",
+    args: { ...project, sessionId: "session_1" },
+    scope: "read:sessions",
+  },
+  {
+    tool: "update_session",
+    args: { ...project, sessionId: "session_1", tags: ["a"] },
+    scope: "write:sessions",
+  },
+  { tool: "close_session", args: { ...project, sessionId: "session_1" }, scope: "write:sessions" },
+  {
+    tool: "list_playground_conversations",
+    args: { ...project, agentSlug: "my-agent" },
+    scope: "read:sessions",
+  },
+  {
+    tool: "delete_playground_conversation",
+    args: { ...project, chatId: "chat_1" },
+    scope: "write:sessions",
+  },
   { tool: "list_alert_capabilities", args: project, scope: "read:alerts" },
+  { tool: "get_alert_details", args: { ...project, alertId: "alert_1" }, scope: "read:alerts" },
+  { tool: "list_alert_channels", args: project, scope: "read:alerts" },
+  { tool: "list_errors", args: project, scope: "read:errors" },
+  { tool: "get_error_details", args: errorGroup, scope: "read:errors" },
+  { tool: "resolve_error", args: errorGroup, scope: "write:errors" },
+  { tool: "ignore_error", args: errorGroup, scope: "write:errors" },
+  { tool: "unresolve_error", args: errorGroup, scope: "write:errors" },
   { tool: "list_webhook_endpoints", args: project, scope: "read:webhooks" },
   { tool: "get_webhook_endpoint_details", args: endpoint, scope: "read:webhooks" },
+  { tool: "search_webhook_endpoints", args: project, scope: "read:webhooks" },
+  { tool: "get_task_webhook", args: { ...project, taskId: "orders" }, scope: "read:webhooks" },
+  { tool: "list_webhook_waiters", args: endpoint, scope: "read:webhooks" },
   { tool: "list_webhook_deliveries", args: project, scope: "read:webhooks" },
   {
     tool: "get_webhook_delivery",
@@ -102,6 +346,25 @@ const TOOLS: Array<{ tool: string; args: Record<string, unknown>; scope: string 
     },
     scope: "write:alerts",
   },
+  {
+    tool: "update_alert",
+    args: { ...project, alertId: "alert_1", name: "x" },
+    scope: "write:alerts",
+  },
+  { tool: "stop_alert", args: { ...project, alertId: "alert_1" }, scope: "write:alerts" },
+  { tool: "activate_alert", args: { ...project, alertId: "alert_1" }, scope: "write:alerts" },
+  { tool: "delete_alert", args: { ...project, alertId: "alert_1" }, scope: "write:alerts" },
+  {
+    tool: "create_alert_group",
+    args: {
+      ...project,
+      name: "group",
+      notifiers: [{ type: "channel", channelId: "chan_1" }],
+      memberAlertIds: ["alert_1", "alert_2"],
+    },
+    scope: "write:alerts",
+  },
+  { tool: "ungroup_alert", args: { ...project, alertId: "alert_1" }, scope: "write:alerts" },
   { tool: "promote_prompt_version", args: { ...prompt, version: 1 }, scope: "update:prompts" },
   {
     tool: "create_prompt_override",
@@ -120,6 +383,134 @@ const TOOLS: Array<{ tool: string; args: Record<string, unknown>; scope: string 
   },
   { tool: "generate_webhook_secret", args: endpoint, scope: "write:webhooks" },
   { tool: "set_webhook_secret", args: { ...endpoint, secret: "whsec_x" }, scope: "write:webhooks" },
+  { tool: "remove_webhook_secret", args: endpoint, scope: "write:webhooks" },
+  { tool: "generate_webhook_verify_token", args: endpoint, scope: "write:webhooks" },
+  { tool: "pause_webhook_endpoint", args: endpoint, scope: "write:webhooks" },
+  { tool: "resume_webhook_endpoint", args: endpoint, scope: "write:webhooks" },
+  { tool: "list_tasks", args: project, scope: "read:tasks" },
+  { tool: "list_schedules", args: project, scope: "read:tasks" },
+  { tool: "list_environment_variables", args: {}, scope: "read:envvars" },
+  { tool: "get_schedule_details", args: sched, scope: "read:tasks" },
+  {
+    tool: "create_schedule",
+    args: { ...project, taskId: "nightly", cron: "0 9 * * *" },
+    scope: "write:tasks",
+  },
+  { tool: "update_schedule", args: { ...sched, cron: "0 9 * * *" }, scope: "write:tasks" },
+  { tool: "activate_schedule", args: sched, scope: "write:tasks" },
+  { tool: "deactivate_schedule", args: sched, scope: "write:tasks" },
+  { tool: "delete_schedule", args: sched, scope: "write:tasks" },
+  { tool: "list_queues", args: project, scope: "read:queues", served: /^No queues match\./ },
+  {
+    tool: "get_queue_details",
+    args: queue,
+    scope: "read:queues",
+    served:
+      "Queue queue_1 was not found in this environment. Use list_queues to see the queues in this environment.",
+  },
+  {
+    tool: "get_environment_concurrency",
+    args: project,
+    scope: "read:queues",
+    served: /^## Environment concurrency\n/,
+  },
+  { tool: "get_limits", args: project, scope: "read:projects", served: /^## Limits\n/ },
+  {
+    tool: "pause_queue",
+    args: queue,
+    scope: "write:tasks",
+    served: "Upgrade to v4+ to pause/resume queues; nothing changed.",
+  },
+  {
+    tool: "resume_queue",
+    args: queue,
+    scope: "write:tasks",
+    served: "Upgrade to v4+ to pause/resume queues; nothing changed.",
+  },
+  {
+    tool: "override_queue_concurrency",
+    args: { ...queue, limit: 1 },
+    scope: "write:tasks",
+    served:
+      "Queue queue_1 was not found in this environment. Use list_queues to see the queues in this environment; nothing changed.",
+  },
+  {
+    tool: "reset_queue_concurrency",
+    args: queue,
+    scope: "write:tasks",
+    served:
+      "Queue queue_1 was not found in this environment. Use list_queues to see the queues in this environment; nothing changed.",
+  },
+  {
+    tool: "archive_queue",
+    args: queue,
+    scope: "write:tasks",
+    served:
+      "Queue queue_1 was not found in this environment. Use list_queues to see the queues in this environment; nothing changed.",
+  },
+  {
+    tool: "unarchive_queue",
+    args: queue,
+    scope: "write:tasks",
+    served:
+      "Queue queue_1 was not found in this environment. Use list_queues to see the queues in this environment; nothing changed.",
+  },
+  {
+    tool: "pause_environment",
+    args: project,
+    scope: "write:tasks",
+    served:
+      "What this change would do has changed since it was approved. Call the tool again to get a new confirmation.",
+  },
+  {
+    tool: "resume_environment",
+    args: project,
+    scope: "write:tasks",
+    served: "This environment is not paused; nothing changed.",
+  },
+  {
+    tool: "batch_trigger_tasks",
+    args: { ...project, items: [{ taskId: "my-task", payload: {} }] },
+    scope: "write:tasks",
+  },
+  {
+    tool: "cancel_webhook_waiter",
+    args: { ...endpoint, waiterId: "waitpoint_1" },
+    scope: "write:waitpoints",
+  },
+  {
+    tool: "list_batches",
+    args: project,
+    scope: "read:batch",
+    ownText:
+      "No batches match these filters in the last 7d (the default period). Pass a longer period, such as 90d, to look further back.",
+  },
+  {
+    tool: "get_batch_details",
+    args: { ...project, batchId: "batch_1" },
+    scope: "read:batch",
+    ownText:
+      "Batch batch_1 was not found in this environment. Use list_batches to see the batches in this environment.",
+  },
+  {
+    tool: "list_waitpoint_tokens",
+    args: project,
+    scope: "read:waitpoints",
+    ownText: "Waitpoint tokens need SDK version 4 or later in this project.",
+  },
+  {
+    tool: "get_waitpoint_token",
+    args: { ...project, waitpointId: "waitpoint_1" },
+    scope: "read:waitpoints",
+    ownText:
+      "Waitpoint waitpoint_1 was not found in this environment. Use list_waitpoint_tokens to see the waitpoint tokens in this environment.",
+  },
+  {
+    tool: "complete_waitpoint_token",
+    args: { ...project, waitpointId: "waitpoint_1", action: "timeout" },
+    scope: "write:waitpoints",
+    ownText: "Waitpoint waitpoint_1 was not found in this environment; nothing changed.",
+  },
 ];
 
 function call(name: string) {
@@ -149,6 +540,11 @@ const bearer = (token: string) =>
 
 async function seed(prisma: PrismaClient) {
   mocks.db = prisma as unknown as Record<string | symbol, unknown>;
+  mocks.runStore = new PostgresRunStore({
+    prisma,
+    readOnlyPrisma: prisma,
+    schemaVariant: "legacy",
+  }) as unknown as Record<string | symbol, unknown>;
   mocks.rbac = plugin.create(
     { primary: prisma, replica: prisma },
     { forceFallback: true, userActorSecret: SECRET }
@@ -162,6 +558,12 @@ async function seed(prisma: PrismaClient) {
     organizationId: a.organization.id,
     type: "PRODUCTION",
     slug: "prod",
+  });
+  await createRuntimeEnvironment(prisma, {
+    projectId: a.project.id,
+    organizationId: a.organization.id,
+    type: "PREVIEW",
+    slug: "preview",
   });
 
   const outsiderPat = await pat(prisma, outsider.user.id);
@@ -214,9 +616,11 @@ describe("mcp tools authorization matrix", () => {
     const { uatCall } = await seed(prisma);
     const all = [...new Set(TOOLS.map((t) => t.scope))];
 
-    const outcomes: Record<string, { own: boolean; withoutOwn: string }> = {};
-    for (const { tool, args, scope } of TOOLS) {
+    const outcomes: Record<string, { own: boolean | string; withoutOwn: string }> = {};
+    const served: Record<string, string> = {};
+    for (const { tool, args, scope, ownText, served: expected } of TOOLS) {
       const own = textOf(await uatCall(tool, args, [scope]));
+      if (expected !== undefined) served[tool] = own;
       const withoutOwn = textOf(
         await uatCall(
           tool,
@@ -224,16 +628,24 @@ describe("mcp tools authorization matrix", () => {
           all.filter((s) => s !== scope)
         )
       );
-      outcomes[tool] = { own: !/^(Not authorized|Insufficient scope)/.test(own), withoutOwn };
+      outcomes[tool] = {
+        own: ownText === undefined ? !/^(Not authorized|Insufficient scope)/.test(own) : own,
+        withoutOwn,
+      };
     }
 
     expect(outcomes).toEqual(
       Object.fromEntries(
-        TOOLS.map(({ tool, scope }) => [
+        TOOLS.map(({ tool, scope, ownText }) => [
           tool,
-          { own: true, withoutOwn: `Insufficient scope: this tool requires ${scope}` },
+          { own: ownText ?? true, withoutOwn: `Insufficient scope: this tool requires ${scope}` },
         ])
       )
     );
+    for (const { tool, served: expected } of TOOLS) {
+      if (expected === undefined) continue;
+      if (typeof expected === "string") expect(served[tool], tool).toBe(expected);
+      else expect(served[tool], tool).toMatch(expected);
+    }
   });
 });

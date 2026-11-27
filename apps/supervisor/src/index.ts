@@ -11,7 +11,7 @@ import type {
 } from "./workloadManager/types.js";
 import Docker from "dockerode";
 import { z } from "zod";
-import { type DequeuedMessage, isSandboxRun } from "@trigger.dev/core/v3";
+import { type DequeuedMessage, hasRestrictedNetwork, isSandboxRun } from "@trigger.dev/core/v3";
 import {
   DockerResourceMonitor,
   KubernetesResourceMonitor,
@@ -27,7 +27,7 @@ import {
   settleRestoreFailure,
   type RunnerStartFailure,
 } from "./workloadManager/runCrd.js";
-import { workerLaneFor, type WorkloadManagerBackend } from "./workerLane.js";
+import { mayWarmStart, workerLaneFor, type WorkloadManagerBackend } from "./workerLane.js";
 import { RestoreWatcher, type RestoreFailure } from "./services/restoreWatcher.js";
 import {
   ColdStartHeartbeats,
@@ -331,7 +331,11 @@ class ManagedSupervisor {
         });
       }
     } else if (this.isKubernetes) {
-      this.workloadManager = new KubernetesWorkloadManager(workloadManagerOptions);
+      this.workloadManager = new KubernetesWorkloadManager({
+        ...workloadManagerOptions,
+        podTokenSecretEnabled: env.KUBERNETES_POD_TOKEN_SECRET_ENABLED,
+        tokenSecretSettleMs: env.KUBERNETES_RUNNER_TOKEN_SECRET_SETTLE_MS,
+      });
       this.workloadManagerBackend = "kubernetes";
     } else {
       this.workloadManager = new DockerWorkloadManager(workloadManagerOptions);
@@ -622,6 +626,18 @@ class ManagedSupervisor {
 
             const { checkpoint, ...rest } = message;
 
+            if (
+              this.workloadNetworkFor(message) === "proxy" &&
+              (!this.runCrdManager ||
+                env.KUBERNETES_RUNNER_RUNTIME !== "microvm" ||
+                env.WORKLOAD_TOKEN_ENFORCEMENT !== "enforce" ||
+                (checkpoint && !this.runCrdManager.restores(checkpoint)))
+            ) {
+              setExtra(fromContext(), "path_taken", "secret_proxy_unavailable");
+              await this.requeueWithoutSecretProxy(message);
+              return;
+            }
+
             if (this.runCrdManager && (await this.refuseWithoutTemplateKey(message))) {
               setExtra(fromContext(), "path_taken", "no_template_key");
               return;
@@ -792,7 +808,9 @@ class ManagedSupervisor {
       throw new Error("Image is missing");
     }
 
+    const workloadNetwork = this.workloadNetworkFor(message);
     const deploymentToken = await mintDeploymentToken({
+      workload_network: workloadNetwork,
       deployment: message.deployment.friendlyId,
       deployment_version: message.backgroundWorker.version,
       environment_id: message.environment.id,
@@ -820,6 +838,7 @@ class ManagedSupervisor {
       deploymentVersion: message.backgroundWorker.version,
       runtime: message.backgroundWorker.runtime,
       deploymentToken,
+      workloadNetwork,
       runId: message.run.id,
       runFriendlyId: message.run.friendlyId,
       version: message.version,
@@ -1140,12 +1159,40 @@ class ManagedSupervisor {
     }
   }
 
+  /** Restricted networks are enforced by the secret proxy's interceptor, so they need it too. */
+  private workloadNetworkFor(message: DequeuedMessage) {
+    return message.run.annotations?.secretProxyRequired ||
+      hasRestrictedNetwork(message.run.annotations)
+      ? ("proxy" as const)
+      : undefined;
+  }
+
+  /** Gives back a run that needs the secret proxy, which this worker cannot provide. */
+  private async requeueWithoutSecretProxy(message: DequeuedMessage) {
+    const result = await this.workerSession.httpClient.reportRestoreOutcome(
+      message.run.friendlyId,
+      message.snapshot.friendlyId,
+      { outcome: "requeue", reason: "SecretProxyUnavailable" },
+      undefined,
+      message.environment.id
+    );
+    this.logger.error("Run requires secret proxy on a microVM worker, requeued", {
+      runId: message.run.friendlyId,
+      requeued: result.success,
+      error: result.success ? undefined : result.error,
+    });
+  }
+
   private async tryWarmStart(
     dequeuedMessage: DequeuedMessage,
     traceparent: string | undefined
   ): Promise<boolean> {
-    // A sandbox never reuses a process or VM another run has used.
-    if (!this.warmStartUrl || dequeuedMessage.run.annotations?.executionMode === "SANDBOX") {
+    // Warm runners are keyed by deployment and machine size, not image.
+    if (
+      !this.warmStartUrl ||
+      dequeuedMessage.machineName ||
+      !mayWarmStart(dequeuedMessage.run.annotations)
+    ) {
       return false;
     }
 
@@ -1176,7 +1223,12 @@ class ManagedSupervisor {
       const res = await fetch(warmStartUrlWithPath.href, {
         method: "POST",
         headers,
-        body: JSON.stringify({ dequeuedMessage }),
+        body: JSON.stringify({
+          dequeuedMessage: {
+            ...dequeuedMessage,
+            workloadNetwork: this.workloadNetworkFor(dequeuedMessage),
+          },
+        }),
       });
 
       if (!res.ok) {

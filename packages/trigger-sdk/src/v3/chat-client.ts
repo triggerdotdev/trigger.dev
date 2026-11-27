@@ -28,14 +28,25 @@ import {
   SDK_CREDENTIAL_REASON_HEADER,
   SSEStreamSubscription,
   TRIGGER_CONTROL_SUBTYPE,
+  TRIGGER_TURN_MARKER_SUBTYPE,
 } from "@trigger.dev/core/v3";
 import type { ChatInputChunk, ChatTaskWirePayload } from "./ai-shared.js";
 import {
+  appendedInSeq,
+  boundaryInCursor,
   chatRunTags,
   MAX_EOF_RESUBSCRIBES,
   slimSubmitMessageForWire,
   waitBeforeEofResubscribe,
 } from "./ai-shared.js";
+import {
+  drainOutRecordsPage,
+  OutRecordsUnsupportedWarning,
+  readTurnBack,
+  searchTurnStart,
+  sessionOutUrl,
+  TurnOwnership,
+} from "./chat-turn-reader.js";
 import { triggerConcurrencyBody } from "./concurrency-shared.js";
 import { sessions, type SessionTriggerConfigInput } from "./sessions.js";
 
@@ -289,6 +300,28 @@ export class ChatStream {
 
 // ─── Internal ──────────────────────────────────────────────────────
 
+/**
+ * The earlier of two event ids, where no id is the start of the retained
+ * output, before every id.
+ */
+function earlierEventId(a: string | undefined, b: string | undefined): string | undefined {
+  if (a === undefined || b === undefined) return undefined;
+  const x = Number(a);
+  const y = Number(b);
+  return Number.isNaN(x) || Number.isNaN(y) || x <= y ? a : b;
+}
+
+/**
+ * The later of two event ids, so a cursor never moves backwards when streams of
+ * one instance advance it out of order. Ids that aren't numbers take the newer.
+ */
+function laterEventId(current: string | undefined, next: string): string {
+  if (current === undefined) return next;
+  const a = Number(current);
+  const b = Number(next);
+  return Number.isNaN(a) || Number.isNaN(b) || b >= a ? next : current;
+}
+
 type SessionState = {
   lastEventId?: string;
   skipToTurnComplete?: boolean;
@@ -304,6 +337,19 @@ type SessionState = {
    * created with for the rest of its life.
    */
   pinRefreshed: boolean;
+  /**
+   * True when THIS instance created the session, so its `.out` held nothing
+   * before our first send. Any other session may retain earlier turns, which a
+   * read that has no cursor replays ahead of the turn it asked for.
+   */
+  outStartedEmpty?: boolean;
+  /** `.in` seq of the last send this instance made, until that turn's boundary is read. */
+  activeInputSeq?: number;
+  /**
+   * The last turn boundary this instance read, with the `.in` cursor it carried:
+   * proof of where the agent stood when it ended, for the send that follows.
+   */
+  boundaryProof?: { eventId: string; inCursor: number };
 };
 
 // ─── AgentChat ─────────────────────────────────────────────────────
@@ -340,6 +386,19 @@ export class AgentChat<TAgent = unknown> {
   private readonly fetchOverride: AgentChatFetchOverride | undefined;
 
   private state: SessionState;
+  /** The records endpoint is unsupported on this path; warned once. */
+  private readonly outRecordsUnsupported = new OutRecordsUnsupportedWarning(
+    "AgentChat",
+    "a send without `session.lastEventId`",
+    "Pass `session.lastEventId`"
+  );
+  /**
+   * Where each response stream still reading began. Streams of one instance
+   * share `state.lastEventId`, which one of them advances past records another
+   * has yet to read, so a stream opened while others are live starts from the
+   * earliest of them and picks out its own turn from there.
+   */
+  private readonly streamStarts = new Map<number, string | undefined>();
   /**
    * Which subscription armed `skipToTurnComplete`, so only that stream ends at
    * the gated boundary. A later stream reads the same boundary as stale history
@@ -460,9 +519,20 @@ export class AgentChat<TAgent = unknown> {
       metadata: this.clientData,
     } as ChatTaskWirePayload;
 
-    await this.appendInputChunk(serializeInputChunk({ kind: "message", payload }));
+    const inSeq = await this.appendInputChunk(serializeInputChunk({ kind: "message", payload }));
+    // An earlier send of this instance whose boundary has not been read (still
+    // streaming, or cancelled mid-turn): the cursor may sit inside its turn, so
+    // unmarked chunks ahead of this send's own turn can belong to it.
+    const earlierSendUnread = this.state.activeInputSeq !== undefined;
+    this.state.activeInputSeq = inSeq;
+    const holdUntilBoundary =
+      (await this.locateTurnStart(inSeq, options?.abortSignal)) || earlierSendUnread;
 
-    return this.subscribeToSessionStream(options?.abortSignal, { resumeAfterEof: true });
+    return this.subscribeToSessionStream(options?.abortSignal, {
+      resumeAfterEof: true,
+      sinceInSeq: inSeq,
+      holdUntilBoundary,
+    });
   }
 
   /** Send a steering message during an active stream. */
@@ -582,14 +652,24 @@ export class AgentChat<TAgent = unknown> {
       metadata: this.clientData,
     };
 
+    let inSeq: number | undefined;
     try {
-      await this.appendInputChunk(serializeInputChunk({ kind: "message", payload }));
+      inSeq = await this.appendInputChunk(serializeInputChunk({ kind: "message", payload }));
     } catch {
       throw new Error("Failed to send action. The session may have ended.");
     }
+    // An earlier send of this instance whose boundary has not been read (still
+    // streaming, or cancelled mid-turn): the cursor may sit inside its turn, so
+    // unmarked chunks ahead of this send's own turn can belong to it.
+    const earlierSendUnread = this.state.activeInputSeq !== undefined;
+    this.state.activeInputSeq = inSeq;
+    const holdUntilBoundary =
+      (await this.locateTurnStart(inSeq, options?.abortSignal)) || earlierSendUnread;
 
     const rawStream = this.subscribeToSessionStream(options?.abortSignal, {
       resumeAfterEof: true,
+      sinceInSeq: inSeq,
+      holdUntilBoundary,
     });
     return new ChatStream(rawStream);
   }
@@ -634,6 +714,8 @@ export class AgentChat<TAgent = unknown> {
     return this.subscribeToSessionStream(abortSignal, {
       sendStopOnAbort: false,
       peekSettled: true,
+      // Resuming a turn this instance sent: keep to that turn's boundary.
+      sinceInSeq: this.state.activeInputSeq,
     });
   }
 
@@ -651,7 +733,94 @@ export class AgentChat<TAgent = unknown> {
     return this.fetchOverride ? this.fetchOverride(url, init, ctx) : fetch(url, init);
   }
 
-  private async appendInputChunk(body: string): Promise<void> {
+  /**
+   * A send with no cursor on a session this instance did not create would read
+   * `.out` from the oldest retained record, replaying earlier turns ahead of
+   * its own. Drain the retained records once (`wait=0`, bounded pages) and find
+   * the last boundary of a turn before this send's `.in` seq: that becomes the
+   * cursor, so the stream starts where the unanswered work does.
+   *
+   * Returns whether the stream must hold unmarked chunks until a boundary says
+   * whose they are. That is the case for an agent that doesn't mark where each
+   * turn starts, when something unanswered may sit between the last earlier
+   * boundary and this send (its `session-in-event-id` is below the send's seq
+   * minus one), or when the drain can't tell: it failed, the server predates
+   * record headers, a boundary carries no `.in` cursor, or the search ran past
+   * its deadline. A server with no records endpoint on this path (a proxy that
+   * only forwards the stream) holds too, with one warning. A caller abort ends
+   * the search at once and also holds; the stream then posts the stop, as for
+   * any abort.
+   */
+  private async locateTurnStart(
+    inSeq: number | undefined,
+    abortSignal: AbortSignal | undefined
+  ): Promise<boolean> {
+    const state = this.state;
+    if (inSeq === undefined) return false;
+    // The session was created by this instance and nothing has been read yet:
+    // nothing earlier exists.
+    if (state.outStartedEmpty && state.lastEventId === undefined) return false;
+    if (state.lastEventId !== undefined) {
+      // A saved cursor says where the reader stopped, not whose turn comes next:
+      // a replacement run can have replayed other messages' turns after it. An
+      // agent that marks its turns says so as it goes. For one that doesn't, the
+      // records are this send's only with proof, which this instance has when its
+      // own last boundary is the cursor and the agent had answered everything
+      // before this send's message by then. Without it the stream holds unmarked
+      // records until a boundary says whose they are.
+      const proof = state.boundaryProof;
+      return !(proof && proof.eventId === state.lastEventId && proof.inCursor === inSeq - 1);
+    }
+    // A stop is outstanding: the stream below skips records up to the stopped
+    // turn's boundary, which is only right when it reads from before that
+    // boundary. A cursor past it would have the gate swallow this turn instead.
+    if (state.skipToTurnComplete) return true;
+    // The drain does its own `fetch`; a caller routing `.out` through its own
+    // fetch gets the fallback rather than a request that skips it.
+    if (this.fetchOverride) return true;
+
+    const found = await searchTurnStart(inSeq, abortSignal, this.readOutRecordsPage);
+    // A stop can land while the drain is in flight, after the check above; the
+    // cursor it found may then sit past the stopped turn's boundary. A caller
+    // abort is the same: the stream below posts the stop for it.
+    if (state.skipToTurnComplete || abortSignal?.aborted) return true;
+    if (found.kind === "unsupported") {
+      this.outRecordsUnsupported.warnOnce();
+      // Nothing proves which records are this send's, so unmarked ones are held
+      // until a turn-start marker or a boundary says whose they are.
+      return true;
+    }
+    if (found.kind === "failed") return true;
+    // Another stream of this instance may have moved the cursor while the drain
+    // ran; it only ever moves forward.
+    if (found.cursor !== undefined) {
+      state.lastEventId = laterEventId(state.lastEventId, String(found.cursor));
+    }
+    return found.hold;
+  }
+
+  /**
+   * One page of this chat's `.out/records`, for the turn-start search and the
+   * read-back of a dropped turn (`chat-turn-reader.ts`).
+   */
+  private readonly readOutRecordsPage = (afterEventId: string | undefined, signal: AbortSignal) => {
+    const headers: Record<string, string> = {
+      ...apiClientManager.clientOrThrow().getAuthenticationHeaders("readSessionStreamRecords"),
+      "x-trigger-source": "sdk",
+    };
+    const branch = apiClientManager.branchName;
+    if (branch) headers["x-trigger-branch"] = branch;
+    return drainOutRecordsPage({
+      outUrl: sessionOutUrl(this.resolveBaseURL("out"), this.chatId),
+      afterEventId,
+      headers,
+      signal,
+      fetchClient: fetch,
+    });
+  };
+
+  /** Resolves to the appended record's `.in` seq, when the server reports one. */
+  private async appendInputChunk(body: string): Promise<number | undefined> {
     const authHeaders = apiClientManager
       .clientOrThrow()
       .getAuthenticationHeaders("appendToSessionStream");
@@ -684,6 +853,8 @@ export class AgentChat<TAgent = unknown> {
       err.status = response.status;
       throw err;
     }
+    const data = (await response.json().catch(() => undefined)) as { seq?: unknown } | undefined;
+    return appendedInSeq(data);
   }
 
   /**
@@ -749,6 +920,7 @@ export class AgentChat<TAgent = unknown> {
     const wasInitialStart = !this.state.started;
     this.state.started = true;
     this.state.pinRefreshed = true;
+    if (wasInitialStart) this.state.outStartedEmpty = created.isCached === false;
 
     // `onTriggered` is documented as the initial start, so a restored session
     // refreshing its config does not fire it: the caller handed us that
@@ -764,10 +936,42 @@ export class AgentChat<TAgent = unknown> {
 
   private subscribeToSessionStream(
     abortSignal: AbortSignal | undefined,
-    options?: { sendStopOnAbort?: boolean; peekSettled?: boolean; resumeAfterEof?: boolean }
+    options?: {
+      sendStopOnAbort?: boolean;
+      peekSettled?: boolean;
+      resumeAfterEof?: boolean;
+      /** `.in` seq of the send this stream answers; boundaries below it are earlier turns'. */
+      sinceInSeq?: number;
+      /** Hold chunks until a boundary says whose they are (see `locateTurnStart`). */
+      holdUntilBoundary?: boolean;
+    }
   ): ReadableStream<UIMessageChunk> {
     const state = this.state;
     const streamId = ++this.streamSeq;
+    const sinceInSeq = options?.sinceInSeq;
+    // Without a cursor the read starts at the oldest retained record, so it
+    // replays earlier turns ahead of this one. Chunks carry no turn marker, so
+    // the fallback is to hold them until a boundary says whose they are: an
+    // earlier turn's are dropped, this turn's flushed. A send first tries to
+    // find where its turn starts (`locateTurnStart`) and streams live from
+    // there; a session this instance just created has nothing earlier.
+    let startCursor = state.lastEventId;
+    for (const other of this.streamStarts.values())
+      startCursor = earlierEventId(startCursor, other);
+    this.streamStarts.set(streamId, startCursor);
+    const holdUntilBoundary =
+      (options?.holdUntilBoundary ??
+        (sinceInSeq !== undefined && state.lastEventId === undefined && !state.outStartedEmpty)) ||
+      // Reading from before this instance's own cursor, past records of a send it
+      // already made: unmarked chunks there are not necessarily this send's.
+      (sinceInSeq !== undefined && startCursor !== state.lastEventId);
+    // Whose turn the records being read belong to, and what is held until a
+    // boundary says (see `TurnOwnership`).
+    const ownership = new TurnOwnership<UIMessageChunk>(sinceInSeq, holdUntilBoundary);
+    // While holding, the position the next read resumes from. `state.lastEventId`
+    // is the caller's persisted cursor and must not move past chunks that were
+    // never delivered, so it only catches up when they are flushed or dropped.
+    let readCursor = startCursor;
     // A stop was outstanding when I subscribed and it isn't mine: my window
     // replays the stopped turn's tail, so I drop records up to and including
     // its boundary. Captured per subscription — the stopped stream is still
@@ -830,207 +1034,333 @@ export class AgentChat<TAgent = unknown> {
       internalAbort.abort();
     };
     abortSignal?.addEventListener("abort", onExternalAbort, { once: true });
+    // Aborted before this subscription (while the turn's start was being
+    // located): the listener never fires, but the turn is already on `.in`.
+    if (abortSignal?.aborted) onExternalAbort();
 
-    const streamUrl = `${this.resolveBaseURL("out")}/realtime/v1/sessions/${encodeURIComponent(chatId)}/out`;
+    const streamUrl = sessionOutUrl(this.resolveBaseURL("out"), chatId);
 
-    return new ReadableStream<UIMessageChunk>({
-      start: async (controller) => {
-        let eofResubscribes = 0;
-        let sawLiveTurn = false;
-        const closeController = () => {
-          try {
-            controller.close();
-          } catch {
-            // Controller may already be closed
-          }
-        };
-        const openSubscription = () =>
-          new SSEStreamSubscription(streamUrl, {
-            headers: {
-              // Preview-env sessions are branch-scoped (see appendInputChunk).
-              ...(apiClientManager.branchName
-                ? { "x-trigger-branch": apiClientManager.branchName }
-                : {}),
-              ...(options?.peekSettled ? { "X-Peek-Settled": "1" } : {}),
-            },
-            signal: combinedSignal,
-            timeoutInSeconds: this.streamTimeoutSeconds,
-            lastEventId: state.lastEventId,
-            fetchClient: sseFetchClient,
-          });
+    // Resolved when the consumer reads what is queued, or the stream is
+    // cancelled or aborted. No timer: nothing outlives a consumer that goes away.
+    let notifyDrained: (() => void) | undefined;
 
+    const run = async (controller: ReadableStreamDefaultController<UIMessageChunk>) => {
+      // Waits for the consumer to read everything queued, so a stream that must
+      // end in an error delivers what it already produced first (an error
+      // discards what is still queued).
+      const untilDrained = () =>
+        new Promise<void>((resolve) => {
+          if ((controller.desiredSize ?? 1) >= 1 || combinedSignal.aborted) return resolve();
+          notifyDrained = resolve;
+          combinedSignal.addEventListener("abort", () => resolve(), { once: true });
+        });
+      let eofResubscribes = 0;
+      let sawLiveTurn = false;
+      const closeController = () => {
         try {
-          while (true) {
-            const subscription = openSubscription();
-            const sseStream = await subscription.subscribe();
-            const reader = sseStream.getReader();
+          controller.close();
+        } catch {
+          // Controller may already be closed
+        }
+      };
+      // Nothing is undelivered past the cursor once held chunks are resolved.
+      const settleHeld = (deliver: boolean) => {
+        const held = ownership.takeHeld();
+        if (deliver) for (const chunk of held) controller.enqueue(chunk);
+        if (holdUntilBoundary && readCursor !== undefined) {
+          state.lastEventId = laterEventId(state.lastEventId, readCursor);
+        }
+      };
+      const openSubscription = () =>
+        new SSEStreamSubscription(streamUrl, {
+          headers: {
+            // Preview-env sessions are branch-scoped (see appendInputChunk).
+            ...(apiClientManager.branchName
+              ? { "x-trigger-branch": apiClientManager.branchName }
+              : {}),
+            ...(options?.peekSettled ? { "X-Peek-Settled": "1" } : {}),
+          },
+          signal: combinedSignal,
+          timeoutInSeconds: this.streamTimeoutSeconds,
+          lastEventId: readCursor,
+          fetchClient: sseFetchClient,
+        });
 
-            try {
-              while (true) {
-                const next = await reader.read();
-                if (next.done) {
-                  break;
-                }
+      try {
+        while (true) {
+          const subscription = openSubscription();
+          const sseStream = await subscription.subscribe();
+          const reader = sseStream.getReader();
 
-                if (combinedSignal.aborted) {
-                  internalAbort.abort();
-                  await reader.cancel();
-                  closeController();
-                  return;
-                }
-
-                const value = next.value;
-
-                if (value.id) state.lastEventId = value.id;
-                // Any record re-earns the resubscribe budget: a clean EOF is
-                // the normal end of every long-poll window, so a long turn
-                // spanning many windows must not exhaust it.
-                eofResubscribes = 0;
-
-                // Trigger control records (turn-complete, upgrade-required)
-                // route by header — see `client-protocol.mdx`. Their bodies
-                // are empty; everything substantive is on `value.headers`.
-                //
-                // Cross-version bridge: an old agent SDK still writing
-                // turn-complete / upgrade-required as `chunk.type` data
-                // records would otherwise stall this loop. Fall back to
-                // the legacy chunk-type form when no header is present
-                // so the deploy-skew window between an `AgentChat`
-                // consumer and a not-yet-redeployed agent doesn't hang.
-                let controlValue = controlSubtype(value.headers);
-                if (!controlValue && value.chunk && typeof value.chunk === "object") {
-                  const chunk = value.chunk as { type?: unknown };
-                  if (chunk.type === "trigger:turn-complete") {
-                    controlValue = TRIGGER_CONTROL_SUBTYPE.TURN_COMPLETE;
-                  } else if (chunk.type === "trigger:upgrade-required") {
-                    controlValue = TRIGGER_CONTROL_SUBTYPE.UPGRADE_REQUIRED;
-                  } else if (typeof chunk.type === "string" && chunk.type.startsWith("trigger:")) {
-                    // Future / unknown `trigger:*` legacy control type —
-                    // drop so it doesn't leak as a UIMessageChunk.
-                    continue;
-                  }
-                }
-
-                // Stale tail of a turn someone else stopped: swallow it and
-                // keep reading to my own turn.
-                if (skipStaleBoundary) {
-                  if (controlValue === TRIGGER_CONTROL_SUBTYPE.TURN_COMPLETE) {
-                    skipStaleBoundary = false;
-                    state.skipToTurnComplete = false;
-                  }
-                  continue;
-                }
-
-                // I am the stopped stream, so this turn is over at its
-                // boundary: close rather than resume into windows it will
-                // never fill. Keyed on the id alone, so it holds however far
-                // the follow-up subscription has got.
-                if (this.stoppedStreamId === streamId) {
-                  if (controlValue === TRIGGER_CONTROL_SUBTYPE.TURN_COMPLETE) {
-                    state.skipToTurnComplete = false;
-                    this.stoppedStreamId = undefined;
-                    internalAbort.abort();
-                    closeController();
-                    return;
-                  }
-                  continue;
-                }
-
-                // Both handover markers mean the turn carries on in a
-                // successor run, so they count as a live turn: its chunks
-                // may only arrive in a later window.
-                if (controlValue === TRIGGER_CONTROL_SUBTYPE.UPGRADE_REQUIRED) {
-                  // Server has already triggered the new run via
-                  // `end-and-continue`; v2's chunks arrive on the same
-                  // S2 stream. Filter the marker for cleanliness and
-                  // keep reading.
-                  sawLiveTurn = true;
-                  continue;
-                }
-
-                if (controlValue === TRIGGER_CONTROL_SUBTYPE.PENDING_VERSION) {
-                  sawLiveTurn = true;
-                  continue;
-                }
-
-                // A standalone session-closed record is written after
-                // turn-complete, so only a reconnect ever reads it. The
-                // conversation is over: end the stream, no stop, no error.
-                if (controlValue === TRIGGER_CONTROL_SUBTYPE.SESSION_CLOSED) {
-                  internalAbort.abort();
-                  closeController();
-                  return;
-                }
-
-                if (controlValue === TRIGGER_CONTROL_SUBTYPE.TURN_COMPLETE) {
-                  // Customer's callback may be async (e.g. persisting
-                  // lastEventId to a DB). Wrap so a rejected Promise
-                  // doesn't surface as an unhandled rejection — that
-                  // would crash Node under `--unhandled-rejections=throw`.
-                  Promise.resolve(
-                    onTurnComplete?.({
-                      chatId,
-                      lastEventId: state.lastEventId,
-                    })
-                  ).catch(() => {});
-                  internalAbort.abort();
-                  closeController();
-                  return;
-                }
-
-                // Data record — `value.chunk` is the parsed UIMessageChunk
-                // (the SSE parser does the JSON envelope unwrap). Drop
-                // empty/malformed payloads defensively.
-                if (value.chunk == null) continue;
-                // Parts and the handover markers above are the only evidence of
-                // a live turn. Unknown control records stay neutral: they are no
-                // reason for a reconnect to pin another long-poll window.
-                sawLiveTurn = true;
-                controller.enqueue(value.chunk as UIMessageChunk);
+          try {
+            while (true) {
+              const next = await reader.read();
+              if (next.done) {
+                break;
               }
-            } catch (readError) {
-              reader.releaseLock();
-              throw readError;
-            }
-            reader.releaseLock();
 
-            // The body ended without a turn-complete. A turn is in flight
-            // either by construction (the send paths) or because records have
-            // already flowed on this stream — so unless the server says the
-            // session settled we lost the window mid-turn, and resubscribing
-            // from the last event id beats truncating the turn. A `reconnect()`
-            // that never saw a record can't tell a live turn from a dead
-            // session, so it closes rather than pin another long-poll window.
-            const turnInFlight = options?.resumeAfterEof || sawLiveTurn;
-            if (!turnInFlight || subscription.sessionSettled || combinedSignal.aborted) {
-              closeController();
-              return;
+              if (combinedSignal.aborted) {
+                internalAbort.abort();
+                await reader.cancel();
+                closeController();
+                return;
+              }
+
+              const value = next.value;
+
+              if (value.id) {
+                readCursor = value.id;
+                // One live stream reads ids in order, so the shared cursor needs no
+                // comparison; with several, one may be behind another.
+                if (!holdUntilBoundary) {
+                  state.lastEventId =
+                    this.streamStarts.size === 1
+                      ? value.id
+                      : laterEventId(state.lastEventId, value.id);
+                }
+              }
+              // Any record re-earns the resubscribe budget: a clean EOF is
+              // the normal end of every long-poll window, so a long turn
+              // spanning many windows must not exhaust it.
+              eofResubscribes = 0;
+
+              // Trigger control records (turn-complete, upgrade-required)
+              // route by header — see `client-protocol.mdx`. Their bodies
+              // are empty; everything substantive is on `value.headers`.
+              //
+              // Cross-version bridge: an old agent SDK still writing
+              // turn-complete / upgrade-required as `chunk.type` data
+              // records would otherwise stall this loop. Fall back to
+              // the legacy chunk-type form when no header is present
+              // so the deploy-skew window between an `AgentChat`
+              // consumer and a not-yet-redeployed agent doesn't hang.
+              let controlValue = controlSubtype(value.headers);
+              if (!controlValue && value.chunk && typeof value.chunk === "object") {
+                const chunk = value.chunk as { type?: unknown };
+                if (chunk.type === "trigger:turn-complete") {
+                  controlValue = TRIGGER_CONTROL_SUBTYPE.TURN_COMPLETE;
+                } else if (chunk.type === "trigger:upgrade-required") {
+                  controlValue = TRIGGER_CONTROL_SUBTYPE.UPGRADE_REQUIRED;
+                } else if (typeof chunk.type === "string" && chunk.type.startsWith("trigger:")) {
+                  // Future / unknown `trigger:*` legacy control type —
+                  // drop so it doesn't leak as a UIMessageChunk.
+                  continue;
+                }
+              }
+
+              // A boundary of an earlier turn (see `closesEarlierTurn`): not mine
+              // to close on, and what was held before it is that turn's output. It
+              // also is the stale tail the gate below waits for, when a stop left
+              // one outstanding.
+              if (
+                controlValue === TRIGGER_CONTROL_SUBTYPE.TURN_COMPLETE &&
+                ownership.closesEarlierTurn(value.headers)
+              ) {
+                settleHeld(false);
+                if (skipStaleBoundary) {
+                  skipStaleBoundary = false;
+                  state.skipToTurnComplete = false;
+                }
+                continue;
+              }
+
+              // Stale tail of a turn someone else stopped: swallow it and
+              // keep reading to my own turn.
+              if (skipStaleBoundary) {
+                if (controlValue === TRIGGER_CONTROL_SUBTYPE.TURN_COMPLETE) {
+                  skipStaleBoundary = false;
+                  state.skipToTurnComplete = false;
+                }
+                continue;
+              }
+
+              // I am the stopped stream, so this turn is over at its
+              // boundary: close rather than resume into windows it will
+              // never fill. Keyed on the id alone, so it holds however far
+              // the follow-up subscription has got.
+              if (this.stoppedStreamId === streamId) {
+                if (controlValue === TRIGGER_CONTROL_SUBTYPE.TURN_COMPLETE) {
+                  state.skipToTurnComplete = false;
+                  this.stoppedStreamId = undefined;
+                  if (state.activeInputSeq === sinceInSeq) state.activeInputSeq = undefined;
+                  settleHeld(false);
+                  internalAbort.abort();
+                  closeController();
+                  return;
+                }
+                continue;
+              }
+
+              // The agent says whose turn the records that follow belong to, or
+              // which messages it folded into the running one.
+              if (controlValue === TRIGGER_TURN_MARKER_SUBTYPE.TURN_START) {
+                ownership.turnStart(value.headers, value.id);
+                continue;
+              }
+              if (controlValue === TRIGGER_TURN_MARKER_SUBTYPE.TURN_JOIN) {
+                ownership.turnJoin(value.headers);
+                continue;
+              }
+
+              // Both handover markers mean the turn carries on in a
+              // successor run, so they count as a live turn: its chunks
+              // may only arrive in a later window.
+              if (controlValue === TRIGGER_CONTROL_SUBTYPE.UPGRADE_REQUIRED) {
+                // Server has already triggered the new run via
+                // `end-and-continue`; v2's chunks arrive on the same
+                // S2 stream. Filter the marker for cleanliness and
+                // keep reading.
+                sawLiveTurn = true;
+                continue;
+              }
+
+              if (controlValue === TRIGGER_CONTROL_SUBTYPE.PENDING_VERSION) {
+                sawLiveTurn = true;
+                continue;
+              }
+
+              // A standalone session-closed record is written after
+              // turn-complete, so only a reconnect ever reads it. The
+              // conversation is over: end the stream, no stop, no error.
+              if (controlValue === TRIGGER_CONTROL_SUBTYPE.SESSION_CLOSED) {
+                internalAbort.abort();
+                closeController();
+                return;
+              }
+
+              if (controlValue === TRIGGER_CONTROL_SUBTYPE.TURN_COMPLETE) {
+                settleHeld(true);
+                // The turn I dropped as someone else's closed past my message, so it
+                // answered mine (folded in with no marker I could match: a failed
+                // marker write, a message the agent read from a recovery). Read its
+                // records back, so I end with that turn's output rather than nothing.
+                const droppedFrom = ownership.droppedTurnStart();
+                if (droppedFrom !== undefined) {
+                  const end = Number(value.id);
+                  for (const chunk of await readTurnBack(
+                    droppedFrom,
+                    end,
+                    combinedSignal,
+                    this.readOutRecordsPage
+                  )) {
+                    controller.enqueue(chunk);
+                  }
+                }
+                // Only my own turn's state: a send made since is still pending.
+                if (state.activeInputSeq === sinceInSeq) state.activeInputSeq = undefined;
+                const settledCursor = boundaryInCursor(value.headers);
+                state.boundaryProof =
+                  settledCursor !== undefined && value.id
+                    ? { eventId: value.id, inCursor: settledCursor }
+                    : undefined;
+                // Customer's callback may be async (e.g. persisting
+                // lastEventId to a DB). Wrap so a rejected Promise
+                // doesn't surface as an unhandled rejection — that
+                // would crash Node under `--unhandled-rejections=throw`.
+                Promise.resolve(
+                  onTurnComplete?.({
+                    chatId,
+                    lastEventId: state.lastEventId,
+                  })
+                ).catch(() => {});
+                internalAbort.abort();
+                closeController();
+                return;
+              }
+
+              // Data record — `value.chunk` is the parsed UIMessageChunk
+              // (the SSE parser does the JSON envelope unwrap). Drop
+              // empty/malformed payloads defensively.
+              if (value.chunk == null) continue;
+              // Parts and the handover markers above are the only evidence of
+              // a live turn. Unknown control records stay neutral: they are no
+              // reason for a reconnect to pin another long-poll window.
+              sawLiveTurn = true;
+              const route = ownership.route(value.chunk);
+              if (route === "hold") ownership.hold(value.chunk as UIMessageChunk);
+              else if (route === "deliver") {
+                controller.enqueue(value.chunk as UIMessageChunk);
+                // Delivered live in hold mode (a marker made it mine): nothing
+                // held is behind this record, so the saved cursor can pass it and
+                // a `reconnect()` doesn't hand it out again.
+                if (holdUntilBoundary && readCursor !== undefined) {
+                  state.lastEventId = laterEventId(state.lastEventId, readCursor);
+                }
+              }
             }
-            if (eofResubscribes >= MAX_EOF_RESUBSCRIBES) {
-              throw new Error(
-                "Chat stream ended before the turn completed (reconnect budget exhausted)."
-              );
-            }
-            eofResubscribes++;
-            await waitBeforeEofResubscribe(eofResubscribes, combinedSignal);
-            if (combinedSignal.aborted) {
-              closeController();
-              return;
-            }
+          } catch (readError) {
+            reader.releaseLock();
+            throw readError;
           }
-        } catch (error) {
-          if (error instanceof Error && error.name === "AbortError") {
+          reader.releaseLock();
+
+          // The body ended without a turn-complete. A turn is in flight
+          // either by construction (the send paths) or because records have
+          // already flowed on this stream — so unless the server says the
+          // session settled we lost the window mid-turn, and resubscribing
+          // from the last event id beats truncating the turn. A `reconnect()`
+          // that never saw a record can't tell a live turn from a dead
+          // session, so it closes rather than pin another long-poll window.
+          const turnInFlight = options?.resumeAfterEof || sawLiveTurn;
+          if (!turnInFlight || subscription.sessionSettled || combinedSignal.aborted) {
+            // No boundary came to say whose they are; a consumer that is still
+            // there gets them, as it would have before they were held.
+            if (!combinedSignal.aborted) settleHeld(true);
             closeController();
             return;
           }
-          controller.error(error);
-        } finally {
-          abortSignal?.removeEventListener("abort", onExternalAbort);
+          if (eofResubscribes >= MAX_EOF_RESUBSCRIBES) {
+            // The run is gone mid-turn: what was held back is the partial
+            // answer, which a consumer gets ahead of the error as it would
+            // had the chunks streamed live.
+            if (ownership.holding) {
+              settleHeld(true);
+              await untilDrained();
+              // The caller went away while the chunks were unread: nothing is
+              // waiting for an error.
+              if (combinedSignal.aborted) {
+                closeController();
+                return;
+              }
+            }
+            throw new Error(
+              "Chat stream ended before the turn completed (reconnect budget exhausted)."
+            );
+          }
+          eofResubscribes++;
+          await waitBeforeEofResubscribe(eofResubscribes, combinedSignal);
+          if (combinedSignal.aborted) {
+            closeController();
+            return;
+          }
         }
+      } catch (error) {
+        if (error instanceof Error && error.name === "AbortError") {
+          closeController();
+          return;
+        }
+        controller.error(error);
+      } finally {
+        abortSignal?.removeEventListener("abort", onExternalAbort);
+        this.streamStarts.delete(streamId);
+      }
+    };
+
+    return new ReadableStream<UIMessageChunk>({
+      start: (controller) => {
+        void run(controller);
       },
       // A consumer that stops reading must also stop the resubscribe loop —
       // otherwise it keeps reopening a subscription nobody is draining.
+      pull: () => {
+        notifyDrained?.();
+        notifyDrained = undefined;
+      },
       cancel: () => {
+        // Not still reading from this moment, not when its loop unwinds: a stream
+        // opened right after (a `reconnect()`) must start from the shared cursor,
+        // not from where this one began.
+        this.streamStarts.delete(streamId);
         internalAbort.abort();
       },
     });

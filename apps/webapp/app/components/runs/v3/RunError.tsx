@@ -4,12 +4,19 @@ import {
   type TaskRunErrorCause,
   taskRunErrorEnhancer,
 } from "@trigger.dev/core/v3";
+import type { TaskRunStatus } from "@trigger.dev/database";
 import { Button } from "~/components/primitives/Buttons";
-import { Callout } from "~/components/primitives/Callout";
+import { Callout, variantClasses } from "~/components/primitives/Callout";
 import { CodeBlock } from "~/components/code/CodeBlock";
 import { Header3 } from "~/components/primitives/Headers";
 import { Paragraph } from "~/components/primitives/Paragraph";
+import { TextLink } from "~/components/primitives/TextLink";
 import { Feedback } from "~/components/Feedback";
+import { v3RunPathFromFriendlyId } from "~/utils/pathBuilder";
+import {
+  parseSupersededRunCancelReason,
+  type SupersededRunCancelReason,
+} from "~/utils/sessionMove";
 
 type EnhancedRunError = ReturnType<typeof taskRunErrorEnhancer>;
 
@@ -31,13 +38,44 @@ function errorTitle(error: EnhancedRunError): string {
   }
 }
 
-export function RunError({ error }: { error: TaskRunError }) {
+/**
+ * `status` is the run's status. The "Session moved" notice needs `CANCELED`: only the session run
+ * manager cancels with that reason, but a task can throw the same text and fail.
+ */
+export function RunError({ error, status }: { error: TaskRunError; status?: TaskRunStatus }) {
+  const moved =
+    status === "CANCELED" && error.type === "STRING_ERROR"
+      ? parseSupersededRunCancelReason(error.raw)
+      : undefined;
+  if (moved) return <SessionMovedNotice reason={moved} />;
+
   const enhancedError = taskRunErrorEnhancer(error);
 
   return (
     <div className={panelClassName}>
       <Header3 className="text-rose-500">{errorTitle(enhancedError)}</Header3>
       <RunErrorBody error={enhancedError} />
+    </div>
+  );
+}
+
+/**
+ * A run canceled because its session moved to a newer version. Nothing failed, so it is shown as
+ * information, with a link to the run the session continued in.
+ */
+function SessionMovedNotice({ reason }: { reason: SupersededRunCancelReason }) {
+  return (
+    <div className={panelClassName}>
+      <Header3>Session moved</Header3>
+      <Callout variant="info">
+        <Paragraph variant="small" className={variantClasses.info.textColor}>
+          Moved to {reason.movedToVersion} by the skew protection threshold
+          {reason.taskIdentifier ? ` for ${reason.taskIdentifier}` : ""}. Continued in{" "}
+          <TextLink to={v3RunPathFromFriendlyId(reason.newRunFriendlyId)}>
+            {reason.newRunFriendlyId}
+          </TextLink>
+        </Paragraph>
+      </Callout>
     </div>
   );
 }

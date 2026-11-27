@@ -1,4 +1,4 @@
-import { createCipheriv, createDecipheriv, hkdfSync, randomBytes } from "node:crypto";
+import { createCipheriv, createDecipheriv, createHmac, hkdfSync, randomBytes } from "node:crypto";
 import { z } from "zod";
 import { EncryptedValueSchema } from "~/utils/encryptionKeyring.server";
 
@@ -8,6 +8,8 @@ const KEY_BYTES = 32;
 const SALT_BYTES = 16;
 const NONCE_BYTES = 12;
 const TAG_BYTES = 16;
+// Node's hkdfSync (and WebCrypto HKDF) reject info longer than this; RFC 5869 has no such limit.
+const NODE_HKDF_MAX_INFO_BYTES = 1024;
 const hex = (bytes: number) => z.string().regex(new RegExp(`^[a-f0-9]{${bytes * 2}}$`));
 
 const EnvironmentEncryptedValueSchema = z
@@ -66,7 +68,21 @@ function contextBytes(context: ObjectContext): Buffer {
 
 function objectKey(key: Buffer, salt: Buffer, context: ObjectContext): Buffer {
   if (key.length !== KEY_BYTES) throw new Error("Invalid environment encryption key length");
-  return Buffer.from(hkdfSync("sha256", key, salt, contextBytes(context), KEY_BYTES));
+  const info = contextBytes(context);
+  if (info.length <= NODE_HKDF_MAX_INFO_BYTES) {
+    return Buffer.from(hkdfSync("sha256", key, salt, info, KEY_BYTES));
+  }
+  return hkdfSha256SingleBlock(key, salt, info);
+}
+
+// RFC 5869 HKDF-SHA256 for an output of exactly one hash block: OKM = T(1) = HMAC(PRK, info || 0x01).
+export function hkdfSha256SingleBlock(key: Buffer, salt: Buffer, info: Buffer): Buffer {
+  const prk = createHmac("sha256", salt).update(key).digest();
+  try {
+    return createHmac("sha256", prk).update(info).update(Buffer.of(1)).digest();
+  } finally {
+    prk.fill(0);
+  }
 }
 
 function aad(keyId: string, context: ObjectContext): Buffer {

@@ -48,6 +48,10 @@ export type AuthenticatedEnvironment = {
   // Prisma JSON column. Specific flags read it with their own narrower
   // types. Pass-through for legacy override paths in marqs / sharedQueue.
   builtInEnvironmentVariableOverrides: unknown;
+  // Prisma JSON column: the environment's skew protection thresholds (its own and its
+  // tasks'). Read on every session append, so it rides here instead of costing a lookup.
+  // Parsed by the webapp's session floor reader.
+  skewProtectionThresholds: unknown;
   // Bookkeeping timestamps. Prisma rows always have them; non-Prisma
   // plugins can fill in with `new Date()` or whatever's appropriate.
   createdAt: Date;
@@ -61,6 +65,7 @@ export type AuthenticatedEnvironment = {
     engine: RunEngineVersion;
     deletedAt: Date | null;
     defaultWorkerGroupId: string | null;
+    secretProxyEnabled?: boolean;
     // Same id as env.organizationId — present on Prisma's Project row
     // and read by deployment services that operate on the project alone.
     organizationId: string;

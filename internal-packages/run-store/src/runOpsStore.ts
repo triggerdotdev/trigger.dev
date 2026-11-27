@@ -31,6 +31,7 @@ import type {
   RescheduleSnapshotInput,
   RewriteDebouncedRunData,
   RunStore,
+  StateHeldCheckpointInput,
   TaskRunWithWaitpoint,
   WaitpointColocationOptions,
 } from "./types.js";
@@ -39,6 +40,7 @@ import {
   snapshotResidencyFromMetadata,
   type SnapshotReadContext,
   type SnapshotRoute,
+  type SnapshotRouteWire,
 } from "./snapshotResidency.js";
 import { isReadReplicaClient } from "./readReplicaClient.js";
 import { CONNECTED_RUNS_LIMIT } from "./PostgresRunStore.js";
@@ -50,6 +52,10 @@ import { boundedIn } from "@trigger.dev/database";
 // never collide with them.
 const NEW_SHARD: ShardKey = "new";
 const LEGACY_SHARD: ShardKey = "legacy";
+// The routing key of the MemoryDB store, which no Postgres shard may use.
+export const MEMORYDB_SHARD_KEY: ShardKey = "m";
+// The archive's reserved key. It is multi-char, so no id resolves to it.
+const ARCHIVE_SHARD: ShardKey = "archive";
 
 /**
  * Run-ops routing substrate for the TaskRun-core method group. Implements {@link RunStore} over a
@@ -89,6 +95,22 @@ export class UnknownShardKey extends Error {
   }
 }
 
+/**
+ * The decision whether an id-less operation also asks the store under {@link MEMORYDB_SHARD_KEY}.
+ * `bornHere()` answers whether the call creates a generation 3 run, `organizationOpens()` whether
+ * the caller's organisation opens it. Both read the caller's context, so the routing passes no
+ * argument. `archiveFlagsOn()` answers whether the caller's organisation has the archive's flag and
+ * the read path's flag on; it is asked only when an archive is registered, the gate is open and the
+ * operation is a read.
+ */
+export type MemoryDbGate = {
+  bornHere(): boolean;
+  organizationOpens(): Promise<boolean>;
+  archiveFlagsOn(): Promise<boolean>;
+};
+
+type Legs = ReadonlyArray<{ key: ShardKey; store: RunStore }>;
+
 export class RoutingRunStore implements RunStore {
   readonly #shards: ReadonlyMap<ShardKey, RunStore>;
   // Sequential probe for a lookup with no routable id. The first non-null result wins, and the LAST
@@ -99,7 +121,13 @@ export class RoutingRunStore implements RunStore {
   readonly #precedence: readonly ShardKey[];
   // One entry per distinct database, in precedence order. A fan-out sum iterates this, never #shards.
   readonly #waitpointKeyAliasShards: ReadonlyArray<{ key: ShardKey; aliasOf?: ShardKey }>;
-  readonly #distinctStores: ReadonlyArray<{ key: ShardKey; store: RunStore }>;
+  readonly #distinctStores: Legs;
+  // An id-less operation asks the store under m only when #gatedStores opens the gate.
+  readonly #memoryDbGate: MemoryDbGate | undefined;
+  readonly #hasMemoryDb: boolean;
+  readonly #storesWithoutMemoryDb: Legs;
+  // #distinctStores with the archive at its rank; undefined when no archive is registered.
+  readonly #storesWithArchive: Legs | undefined;
   // The two id-less defaults. They differ by role on purpose: a route with no id lands on the
   // steady-state home, a waitpoint read with no id lands on the legacy store.
   readonly #idlessRouteShard: ShardKey;
@@ -120,6 +148,8 @@ export class RoutingRunStore implements RunStore {
     classify?: (id: string) => Residency;
     resolveShard?: (id: string) => ShardKey;
     shards?: ReadonlyArray<{ key: ShardKey; store: RunStore; aliasOf?: ShardKey }>;
+    memoryDbGate?: MemoryDbGate;
+    archive?: RunStore;
     metrics?: RoutingStoreMetrics;
     logger?: Logger;
   }) {
@@ -128,7 +158,8 @@ export class RoutingRunStore implements RunStore {
     // "legacy" would overwrite the reserved #shards entry; a repeated custom key would appear twice
     // in #precedence and #distinctStores, so a fan-out would query one database twice.
     const shardKeys = [NEW_SHARD, LEGACY_SHARD, ...shards.map((s) => s.key)];
-    if (new Set(shardKeys).size !== shardKeys.length) {
+    const uniqueKeys = options.archive ? [...shardKeys, ARCHIVE_SHARD] : shardKeys;
+    if (new Set(uniqueKeys).size !== uniqueKeys.length) {
       throw new Error(
         "RoutingRunStore: shard keys must be unique and cannot reuse the reserved 'new' or 'legacy' keys"
       );
@@ -160,9 +191,15 @@ export class RoutingRunStore implements RunStore {
       [NEW_SHARD, options.new],
       [LEGACY_SHARD, options.legacy],
       ...shards.map((s) => [s.key, s.store] as const),
+      ...(options.archive ? [[ARCHIVE_SHARD, options.archive] as const] : []),
     ]);
 
     const gen2Keys = shards.map((s) => s.key);
+    if (options.archive) {
+      // The archive ranks directly below m, so m's row wins a merge.
+      const atM = gen2Keys.indexOf(MEMORYDB_SHARD_KEY);
+      gen2Keys.splice(atM === -1 ? gen2Keys.length : atM, 0, ARCHIVE_SHARD);
+    }
     this.#probeOrder = [NEW_SHARD, LEGACY_SHARD, ...gen2Keys];
     this.#precedence = [LEGACY_SHARD, NEW_SHARD, ...gen2Keys];
     this.#idlessRouteShard = NEW_SHARD;
@@ -185,9 +222,16 @@ export class RoutingRunStore implements RunStore {
     // an unassigned #metrics at construction, in every deployment, at boot.
     this.#metrics = options.metrics ?? noopRoutingStoreMetrics;
 
-    this.#distinctStores = this.#precedence
+    const legs = this.#precedence
       .filter((key) => !aliasedKeys.has(key))
       .map((key) => ({ key, store: this.#shards.get(key)! }));
+    // Only #gatedStores hands out the archive's leg: every call site reads #distinctStores directly
+    // when no store is under m.
+    this.#storesWithArchive = options.archive ? legs : undefined;
+    this.#distinctStores = options.archive ? legs.filter((s) => s.key !== ARCHIVE_SHARD) : legs;
+    this.#memoryDbGate = options.memoryDbGate;
+    this.#hasMemoryDb = this.#distinctStores.some((s) => s.key === MEMORYDB_SHARD_KEY);
+    this.#storesWithoutMemoryDb = this.#distinctStores.filter((s) => s.key !== MEMORYDB_SHARD_KEY);
     this.#logger = options.logger ?? new Logger("RoutingRunStore", "warn");
   }
 
@@ -331,13 +375,50 @@ export class RoutingRunStore implements RunStore {
     }
   }
 
-  // #distinctStores sorted by `order`. Shared by #probeFirst and #fanOut so every ordered walk
-  // over the distinct-store set goes through one sort.
-  #orderedLegs(order: readonly ShardKey[]): ReadonlyArray<{ key: ShardKey; store: RunStore }> {
-    const rank = new Map(order.map((key, i) => [key, i]));
-    return [...this.#distinctStores].sort(
-      (a, b) => (rank.get(a.key) ?? 0) - (rank.get(b.key) ?? 0)
+  // Whether the operation names a generation 3 id: a top-level `id`, `friendlyId` or `…Id` field of
+  // `where` (as a string, `{ equals }` or `{ in }`), or one of `ids`. Nothing nested is read.
+  #namesMemoryDbId(where: unknown, ids: ReadonlyArray<unknown> = []): boolean {
+    const candidates: unknown[] = [...ids];
+    if (where && typeof where === "object") {
+      for (const [key, value] of Object.entries(where)) {
+        if (key !== "id" && key !== "friendlyId" && !key.endsWith("Id")) continue;
+        candidates.push(value);
+        if (value && typeof value === "object") {
+          const { equals, in: list } = value as { equals?: unknown; in?: unknown };
+          candidates.push(equals, ...(Array.isArray(list) ? list : []));
+        }
+      }
+    }
+    return candidates.some(
+      (id) => typeof id === "string" && this.#shardKeyOfSafe(id) === MEMORYDB_SHARD_KEY
     );
+  }
+
+  // The legs of one id-less operation when a store is under m. The gate opens on a generation 3 id
+  // in the predicate, then `bornHere()`, then `organizationOpens()`, each asked only if the one
+  // before did not open it. A rejection of `organizationOpens()` fails the operation. An open read
+  // also asks the registered archive when `archiveFlagsOn()` resolves true; its rejection fails it too.
+  async #gatedStores(
+    where: unknown,
+    ids?: ReadonlyArray<unknown>,
+    operation: "read" | "write" = "read"
+  ): Promise<Legs> {
+    const open =
+      this.#namesMemoryDbId(where, ids) ||
+      this.#memoryDbGate?.bornHere() === true ||
+      (await this.#memoryDbGate?.organizationOpens()) === true;
+    if (!open) return this.#storesWithoutMemoryDb;
+    if (this.#storesWithArchive === undefined || operation === "write") return this.#distinctStores;
+    return (await this.#memoryDbGate?.archiveFlagsOn()) === true
+      ? this.#storesWithArchive
+      : this.#distinctStores;
+  }
+
+  // `stores` sorted by `order`. Shared by #probeFirst and #fanOut so every ordered walk over a
+  // leg list goes through one sort.
+  #orderedLegs(stores: Legs, order: readonly ShardKey[]): Legs {
+    const rank = new Map(order.map((key, i) => [key, i]));
+    return [...stores].sort((a, b) => (rank.get(a.key) ?? 0) - (rank.get(b.key) ?? 0));
   }
 
   // A lookup with no routable id. At two distinct stores this is the sequential short circuit,
@@ -345,10 +426,11 @@ export class RoutingRunStore implements RunStore {
   // a sequential walk would cost N round trips, so every leg is issued in parallel and the winner
   // comes from #precedence. `isLast` marks the leg that owns the canonical not-found throw.
   async #probeFirst<R>(
+    stores: Legs,
     fn: (store: RunStore, key: ShardKey, isLast: boolean) => Promise<R>,
     opts?: { alarmOnDuplicate?: boolean }
   ): Promise<R> {
-    const legs = this.#orderedLegs(this.#probeOrder);
+    const legs = this.#orderedLegs(stores, this.#probeOrder);
     const lastIndex = legs.length - 1;
 
     if (legs.length <= 2) {
@@ -417,18 +499,20 @@ export class RoutingRunStore implements RunStore {
   // Run `fn` on every DISTINCT store in parallel. `order` selects the ordering; membership is
   // always one entry per database, so an aliased key never contributes a second leg.
   #fanOut<R>(
+    stores: Legs,
     order: readonly ShardKey[],
     fn: (store: RunStore, key: ShardKey) => Promise<R>
   ): Promise<R[]> {
-    const legs = this.#orderedLegs(order);
+    const legs = this.#orderedLegs(stores, order);
     return Promise.all(legs.map(({ store, key }) => fn(store, key)));
   }
 
   // Apply `fn` to every shard and sum the counts. A sum is order-independent, so this takes no order.
   async #sumCounts(
+    stores: Legs,
     fn: (store: RunStore, key: ShardKey) => Promise<{ count: number }>
   ): Promise<Prisma.BatchPayload> {
-    const legs = await this.#fanOut(this.#probeOrder, fn);
+    const legs = await this.#fanOut(stores, this.#probeOrder, fn);
     return { count: legs.reduce((sum, leg) => sum + leg.count, 0) };
   }
 
@@ -464,8 +548,8 @@ export class RoutingRunStore implements RunStore {
   // Every distinct store other than `key`'s, in precedence order. With the compat constructor this
   // yields exactly one entry, which is why each caller may take the first. At more than two shards
   // a caller MUST fan out over all of them instead.
-  #shardsExcept(key: ShardKey): Array<{ key: ShardKey; store: RunStore }> {
-    return this.#distinctStores.filter((s) => s.key !== key);
+  #shardsExcept(stores: Legs, key: ShardKey): Array<{ key: ShardKey; store: RunStore }> {
+    return stores.filter((s) => s.key !== key);
   }
 
   // A `findRuns` caller bound to the given store (preserves `this`; the overload set isn't
@@ -533,6 +617,20 @@ export class RoutingRunStore implements RunStore {
     const canonical =
       this.#waitpointKeyAliasShards.find((shard) => shard.key === key)?.aliasOf ?? key;
     return canonical === NEW_SHARD || canonical === LEGACY_SHARD ? canonical : `shard:${canonical}`;
+  }
+
+  getWaitpointKeyScopes(): string[] {
+    // The archive ranks in #probeOrder for run reads only; no waitpoint key is ever published under it.
+    const scopes = this.#probeOrder
+      .filter((key) => key !== ARCHIVE_SHARD)
+      .map((key) => {
+        const canonical =
+          this.#waitpointKeyAliasShards.find((shard) => shard.key === key)?.aliasOf ?? key;
+        return canonical === NEW_SHARD || canonical === LEGACY_SHARD
+          ? canonical
+          : `shard:${canonical}`;
+      });
+    return [...new Set(scopes)];
   }
 
   runInWaitpointKeyTransaction<R>(
@@ -674,7 +772,8 @@ export class RoutingRunStore implements RunStore {
     onPrimary: boolean
   ): Promise<unknown> {
     const method = onPrimary ? "findRunOnPrimary" : "findRun";
-    return this.#probeFirst((store) =>
+    const stores = this.#hasMemoryDb ? await this.#gatedStores(where) : this.#distinctStores;
+    return this.#probeFirst(stores, (store) =>
       (store[method] as (...rest: unknown[]) => Promise<unknown>)(where, args)
     );
   }
@@ -770,7 +869,8 @@ export class RoutingRunStore implements RunStore {
   async #findRunsOpen(args: FindRunsArgs, client?: ReadClient): Promise<unknown[]> {
     const { args: selArgs, addedFields } = ensureProjected(args);
     const fan = widenForMerge(selArgs);
-    const legs = await this.#fanOut(this.#precedence, async (store, key) => ({
+    const stores = this.#hasMemoryDb ? await this.#gatedStores(args.where) : this.#distinctStores;
+    const legs = await this.#fanOut(stores, this.#precedence, async (store, key) => ({
       key,
       rows: (await this.#findManyOn(store, client)(fan)) as Record<string, unknown>[],
     }));
@@ -840,7 +940,8 @@ export class RoutingRunStore implements RunStore {
     if (args.idempotencyKeys.length === 0) {
       return [];
     }
-    const legs = await this.#fanOut(this.#precedence, (store, key) =>
+    const stores = this.#hasMemoryDb ? await this.#gatedStores(undefined) : this.#distinctStores;
+    const legs = await this.#fanOut(stores, this.#precedence, (store, key) =>
       store
         .findRunsByIdempotencyKeys(args, RoutingRunStore.#ownPrimary(store, client))
         .then((rows) => ({ key, rows }))
@@ -918,12 +1019,22 @@ export class RoutingRunStore implements RunStore {
       if (fromNew.count > 0) {
         return fromNew;
       }
+      const stores = this.#hasMemoryDb
+        ? await this.#gatedStores(undefined, undefined, "write")
+        : this.#distinctStores;
       const rest = await Promise.all(
-        this.#shardsExcept(NEW_SHARD).map(({ store }) => store.clearIdempotencyKey(params))
+        this.#shardsExcept(stores, NEW_SHARD).map(({ store }) => store.clearIdempotencyKey(params))
       );
       return { count: rest.reduce((sum, leg) => sum + leg.count, fromNew.count) };
     }
-    return this.#sumCounts((store) => store.clearIdempotencyKey(params));
+    const stores = this.#hasMemoryDb
+      ? await this.#gatedStores(
+          undefined,
+          "byFriendlyIds" in params ? params.byFriendlyIds : undefined,
+          "write"
+        )
+      : this.#distinctStores;
+    return this.#sumCounts(stores, (store) => store.clearIdempotencyKey(params));
   }
 
   // ---------------------------------------------------------------------------
@@ -1185,8 +1296,9 @@ export class RoutingRunStore implements RunStore {
     onPrimary: boolean
   ): Promise<unknown> {
     const probe = onPrimary ? "findRunOnPrimary" : "findRun";
+    const stores = this.#hasMemoryDb ? await this.#gatedStores(where) : this.#distinctStores;
     // The last probe leg owns the canonical not-found throw when every shard misses.
-    return this.#probeFirst((store, _key, isLast) =>
+    return this.#probeFirst(stores, (store, _key, isLast) =>
       isLast
         ? // The client goes second when there is no field list: the Postgres store reads it from there.
           (store.findRunOrThrow as (...rest: unknown[]) => Promise<unknown>)(
@@ -1329,7 +1441,8 @@ export class RoutingRunStore implements RunStore {
         organizationId
       );
     }
-    return this.#probeFirst((store) =>
+    const stores = this.#hasMemoryDb ? await this.#gatedStores(args.where) : this.#distinctStores;
+    return this.#probeFirst(stores, (store) =>
       store.findExecutionSnapshot(args, RoutingRunStore.#ownPrimary(store, client), organizationId)
     );
   }
@@ -1349,7 +1462,8 @@ export class RoutingRunStore implements RunStore {
         organizationId
       );
     }
-    const legs = await this.#fanOut(this.#probeOrder, (store) =>
+    const stores = this.#hasMemoryDb ? await this.#gatedStores(args.where) : this.#distinctStores;
+    const legs = await this.#fanOut(stores, this.#probeOrder, (store) =>
       store.findManyExecutionSnapshots(
         args,
         RoutingRunStore.#ownPrimary(store, client),
@@ -1402,7 +1516,8 @@ export class RoutingRunStore implements RunStore {
         organizationId
       );
     }
-    const legs = await this.#fanOut(this.#probeOrder, (store) =>
+    const stores = this.#hasMemoryDb ? await this.#gatedStores(undefined) : this.#distinctStores;
+    const legs = await this.#fanOut(stores, this.#probeOrder, (store) =>
       store.findSnapshotCompletedWaitpointIds(
         snapshotId,
         RoutingRunStore.#ownPrimary(store, client),
@@ -1430,7 +1545,8 @@ export class RoutingRunStore implements RunStore {
         organizationId
       );
     }
-    const legs = await this.#fanOut(this.#probeOrder, (store) =>
+    const stores = this.#hasMemoryDb ? await this.#gatedStores(undefined) : this.#distinctStores;
+    const legs = await this.#fanOut(stores, this.#probeOrder, (store) =>
       store.findSnapshotCompletedWaitpointIdsWithPresence(
         snapshotId,
         RoutingRunStore.#ownPrimary(store, client),
@@ -1450,7 +1566,8 @@ export class RoutingRunStore implements RunStore {
   // row on each leg. Each sub-store already caps at CONNECTED_RUNS_LIMIT, but a disjoint run set on
   // each side can still make the union exceed it, so slice again after the merge.
   async findWaitpointConnectedRunIds(waitpointId: string, client?: ReadClient): Promise<string[]> {
-    const legs = await this.#fanOut(this.#probeOrder, (store) =>
+    const stores = this.#hasMemoryDb ? await this.#gatedStores(undefined) : this.#distinctStores;
+    const legs = await this.#fanOut(stores, this.#probeOrder, (store) =>
       store.findWaitpointConnectedRunIds(waitpointId, RoutingRunStore.#ownPrimary(store, client))
     );
     return uniqueStrings(legs.flat()).slice(0, CONNECTED_RUNS_LIMIT);
@@ -1486,7 +1603,8 @@ export class RoutingRunStore implements RunStore {
       // No run id to partition on: query every distinct store and UNION by id, matching the routed
       // path below. A drain-mirrored cuid pending on both gen-1 stores must count once, not twice —
       // summing raw counts here would reintroduce the double count this method exists to remove.
-      const legs = await this.#fanOut(this.#probeOrder, (store) =>
+      const stores = this.#hasMemoryDb ? await this.#gatedStores(undefined) : this.#distinctStores;
+      const legs = await this.#fanOut(stores, this.#probeOrder, (store) =>
         store.countPendingWaitpointsWithPresence(
           waitpointIds,
           RoutingRunStore.#ownPrimary(store, client)
@@ -1558,7 +1676,8 @@ export class RoutingRunStore implements RunStore {
     waitpointIds: string[],
     client?: ReadClient
   ): Promise<{ pendingIds: string[]; presentIds: string[] }> {
-    const legs = await this.#fanOut(this.#probeOrder, (store) =>
+    const stores = this.#hasMemoryDb ? await this.#gatedStores(undefined) : this.#distinctStores;
+    const legs = await this.#fanOut(stores, this.#probeOrder, (store) =>
       store.countPendingWaitpointsWithPresence(
         waitpointIds,
         RoutingRunStore.#ownPrimary(store, client)
@@ -1670,8 +1789,9 @@ export class RoutingRunStore implements RunStore {
             args,
             coLocatedDedup ? store.primaryReadClient : RoutingRunStore.#ownPrimary(store, client)
           )) as Record<string, unknown> | null)
-        : ((await this.#probeFirst((probed) =>
-            probed.findWaitpoint(args, RoutingRunStore.#ownPrimary(probed, client))
+        : ((await this.#probeFirst(
+            this.#hasMemoryDb ? await this.#gatedStores(args.where) : this.#distinctStores,
+            (probed) => probed.findWaitpoint(args, RoutingRunStore.#ownPrimary(probed, client))
           )) as Record<string, unknown> | null);
     return row as Prisma.WaitpointGetPayload<T> | null;
   }
@@ -1713,7 +1833,8 @@ export class RoutingRunStore implements RunStore {
   async #collectManyWaitpoints(
     scalarArgs: Record<string, unknown>,
     client: ReadClient | undefined,
-    runId: string | undefined
+    runId: string | undefined,
+    stores?: Legs
   ): Promise<Record<string, unknown>[]> {
     if (runId !== undefined) {
       const requestedIds = idListFromWhere((scalarArgs.where ?? {}) as Prisma.TaskRunWhereInput);
@@ -1758,7 +1879,12 @@ export class RoutingRunStore implements RunStore {
     // A token mirrored onto both DBs during drain appears in BOTH legs; #mergeById dedups by id in
     // #precedence order, so the highest-authority copy wins. Without this, edge-waitpoint hydration
     // could read a stale LEGACY status and strand the run.
-    const legs = await this.#fanOut(this.#precedence, async (store, key) => ({
+    const fanStores =
+      stores ??
+      (this.#hasMemoryDb
+        ? await this.#gatedStores(scalarArgs.where, [runId])
+        : this.#distinctStores);
+    const legs = await this.#fanOut(fanStores, this.#precedence, async (store, key) => ({
       key,
       rows: (await store.findManyWaitpoints(
         scalarArgs as Prisma.WaitpointFindManyArgs,
@@ -1864,6 +1990,9 @@ export class RoutingRunStore implements RunStore {
     const taskRunId = whereFieldString(
       (args.where as { taskRunId?: Prisma.TaskRunWhereInput["id"] } | undefined)?.taskRunId
     );
+    // One gate decision per call, shared by the fan-out and the waitpoint hydration.
+    let decision: Promise<Legs> | undefined;
+    const gatedStores = () => (decision ??= this.#gatedStores(args.where));
     let edges: Record<string, unknown>[];
     if (taskRunId !== undefined) {
       const store = this.#routeOrNew(taskRunId);
@@ -1872,7 +2001,8 @@ export class RoutingRunStore implements RunStore {
         RoutingRunStore.#ownPrimary(store, client)
       )) as Record<string, unknown>[];
     } else {
-      const legs = await this.#fanOut(this.#precedence, async (store, key) => ({
+      const stores = this.#hasMemoryDb ? await gatedStores() : this.#distinctStores;
+      const legs = await this.#fanOut(stores, this.#precedence, async (store, key) => ({
         key,
         rows: (await store.findManyTaskRunWaitpoints(
           scalarArgs as typeof args,
@@ -1883,7 +2013,7 @@ export class RoutingRunStore implements RunStore {
     }
 
     if (waitpoint) {
-      await this.#hydrateEdgeWaitpointsCrossDb(edges, waitpoint, client);
+      await this.#hydrateEdgeWaitpointsCrossDb(edges, waitpoint, client, gatedStores);
     }
     return edges as Prisma.TaskRunWaitpointGetPayload<T>[];
   }
@@ -1894,16 +2024,20 @@ export class RoutingRunStore implements RunStore {
   async #hydrateEdgeWaitpointsCrossDb(
     edges: Record<string, unknown>[],
     projection: SubProjection,
-    client?: ReadClient
+    client: ReadClient | undefined,
+    gatedStores: () => Promise<Legs>
   ): Promise<void> {
     const ids = uniqueStrings(edges.map((e) => e.waitpointId));
     if (ids.length === 0) {
       return;
     }
-    const waitpoints = (await this.findManyWaitpoints(
+    const stores = this.#hasMemoryDb ? await gatedStores() : this.#distinctStores;
+    const waitpoints = await this.#collectManyWaitpoints(
       { where: { id: { in: boundedIn(ids) } } },
-      client
-    )) as Record<string, unknown>[];
+      client,
+      undefined,
+      stores
+    );
     const byId = new Map(waitpoints.map((w) => [w.id as string, w]));
     for (const edge of edges) {
       const id = edge.waitpointId as string | undefined;
@@ -1932,7 +2066,10 @@ export class RoutingRunStore implements RunStore {
     if (taskRunId !== undefined) {
       return (await this.#routeOrNewForWrite(taskRunId)).deleteManyTaskRunWaitpoints(args);
     }
-    return this.#sumCounts((store) => store.deleteManyTaskRunWaitpoints(args));
+    const stores = this.#hasMemoryDb
+      ? await this.#gatedStores(args.where, undefined, "write")
+      : this.#distinctStores;
+    return this.#sumCounts(stores, (store) => store.deleteManyTaskRunWaitpoints(args));
   }
 
   findTaskRunAttempt<T extends Prisma.TaskRunAttemptFindFirstArgs>(
@@ -1955,7 +2092,8 @@ export class RoutingRunStore implements RunStore {
     args: Prisma.SelectSubset<T, Prisma.TaskRunAttemptFindFirstArgs>,
     client?: ReadClient
   ): Promise<Prisma.TaskRunAttemptGetPayload<T> | null> {
-    return this.#probeFirst((store) =>
+    const stores = this.#hasMemoryDb ? await this.#gatedStores(args.where) : this.#distinctStores;
+    return this.#probeFirst(stores, (store) =>
       store.findTaskRunAttempt(args, RoutingRunStore.#ownPrimary(store, client))
     );
   }
@@ -1990,6 +2128,15 @@ export class RoutingRunStore implements RunStore {
       ownerRunId,
       RoutingRunStore.#ownPrimary(store, client)
     );
+  }
+
+  async createStateHeldCheckpoint(
+    data: StateHeldCheckpointInput,
+    ownerRunId: string,
+    snapshotRoute: SnapshotRouteWire
+  ): Promise<Prisma.TaskRunCheckpointGetPayload<{}>> {
+    const store = this.#route(ownerRunId);
+    return store.createStateHeldCheckpoint(data, ownerRunId, snapshotRoute);
   }
 
   // ---------------------------------------------------------------------------
@@ -2041,7 +2188,11 @@ export class RoutingRunStore implements RunStore {
   ): Promise<Prisma.BatchTaskRunGetPayload<{ include: T }> | null> {
     // Never forward the caller's client verbatim (a cross-DB probe with one shared client can
     // only reach one DB); its presence resolves each leg to that store's OWN primary.
+    const stores = this.#hasMemoryDb
+      ? await this.#gatedStores(undefined, [id])
+      : this.#distinctStores;
     return this.#probeFirst(
+      stores,
       (store) => store.findBatchTaskRunById(id, args, RoutingRunStore.#ownPrimary(store, client)),
       { alarmOnDuplicate: false }
     );
@@ -2056,7 +2207,11 @@ export class RoutingRunStore implements RunStore {
   ): Promise<Prisma.BatchTaskRunGetPayload<{ include: T }> | null> {
     // Never forward the caller's client verbatim; its presence resolves each leg to that
     // store's OWN primary.
+    const stores = this.#hasMemoryDb
+      ? await this.#gatedStores(undefined, [friendlyId])
+      : this.#distinctStores;
     return this.#probeFirst(
+      stores,
       (store) =>
         store.findBatchTaskRunByFriendlyId(
           friendlyId,
@@ -2083,7 +2238,9 @@ export class RoutingRunStore implements RunStore {
   ): Promise<Prisma.BatchTaskRunGetPayload<{ include: T }> | null> {
     // Never forward the caller's client verbatim; its presence resolves each leg to that
     // store's OWN primary.
+    const stores = this.#hasMemoryDb ? await this.#gatedStores(undefined) : this.#distinctStores;
     return this.#probeFirst(
+      stores,
       (store) =>
         store.findBatchTaskRunByIdempotencyKey(
           environmentId,
@@ -2105,7 +2262,10 @@ export class RoutingRunStore implements RunStore {
       const store = this.#routeOrNew(id);
       return store.updateManyBatchTaskRun(args, undefined);
     }
-    return this.#sumCounts((store) => store.updateManyBatchTaskRun(args));
+    const stores = this.#hasMemoryDb
+      ? await this.#gatedStores(args.where, undefined, "write")
+      : this.#distinctStores;
+    return this.#sumCounts(stores, (store) => store.updateManyBatchTaskRun(args));
   }
 
   // Items co-reside with their batch — route by `batchTaskRunId`, no fan-out.
@@ -2198,7 +2358,8 @@ export class RoutingRunStore implements RunStore {
       skip: 0,
       ...(args.take != null ? { take: skip + args.take } : {}),
     };
-    const legs = await this.#fanOut(this.#precedence, async (store, key) => ({
+    const stores = this.#hasMemoryDb ? await this.#gatedStores(args.where) : this.#distinctStores;
+    const legs = await this.#fanOut(stores, this.#precedence, async (store, key) => ({
       key,
       rows: (await store.findManyWaitpointTags(
         perLeg,

@@ -5,6 +5,21 @@ import { sanitizeQueueName } from "~/models/taskQueue.server";
  * they can never collide with a user's queue names. */
 export const CONCURRENCY_LIMIT_QUEUE_PREFIX = "limit/";
 
+/** Rows of tasks' anonymous inline limits. */
+export const ANONYMOUS_LIMIT_PREFIX = `${CONCURRENCY_LIMIT_QUEUE_PREFIX}task/`;
+
+/** A boundless anonymous inline limit; a retired limit and an active unbounded gate look the same. */
+export const isUnlistedInlineLimit = (queue: {
+  role: string;
+  name: string;
+  concurrencyLimit: number | null;
+  totalConcurrencyLimit: number | null;
+}) =>
+  queue.role === "LIMIT" &&
+  queue.name.startsWith(ANONYMOUS_LIMIT_PREFIX) &&
+  queue.concurrencyLimit === null &&
+  queue.totalConcurrencyLimit === null;
+
 /**
  * Row name for a task's anonymous inline limit. Task ids are not charset-restricted,
  * so when sanitization would be lossy (or the name would overflow the 128-char queue

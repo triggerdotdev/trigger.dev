@@ -307,3 +307,120 @@ export async function ecrImageExists(
 
   return "found";
 }
+
+/** What the deployment's tag points to in the registry. */
+export type ResolvedImage =
+  | { kind: "found"; digest: string; mediaType: string | undefined }
+  /** Not there, even after waiting for a push that just finished. */
+  | { kind: "missing" }
+  /** The registry couldn't be asked: not ECR, an unparseable reference, or an API error. */
+  | { kind: "unknown" };
+
+/**
+ * Looks up the digest and manifest type the deployment's tag points to. A tag read right after its
+ * push can come back missing for a moment, so a miss is asked again a few times before it counts.
+ * `_send` and `_retryDelaysMs` are test seams.
+ */
+export async function resolveEcrImageDigest(
+  { imageReference, registryConfig }: { imageReference: string; registryConfig: RegistryConfig },
+  _send: BatchGetImageSender = sendBatchGetImage,
+  _retryDelaysMs: { min: number; max: number } = { min: 250, max: 1500 }
+): Promise<ResolvedImage> {
+  if (!isEcrRegistry(registryConfig.host)) {
+    return { kind: "unknown" };
+  }
+
+  const parsed = parseEcrImageReference(imageReference, registryConfig.host);
+  if (!parsed) {
+    logger.warn("Could not parse deployment image reference to resolve its digest", {
+      imageReference,
+    });
+    return { kind: "unknown" };
+  }
+
+  const { accountId, region } = parseEcrRegistryDomain(registryConfig.host);
+  const assumeRole = registryConfig.ecrAssumeRoleArn
+    ? {
+        roleArn: registryConfig.ecrAssumeRoleArn,
+        externalId: registryConfig.ecrAssumeRoleExternalId,
+      }
+    : undefined;
+
+  class NotYet extends Error {}
+
+  const [error, image] = await tryCatch(
+    pRetry(
+      async () => {
+        const response = await _send({
+          region,
+          assumeRole,
+          registryId: accountId,
+          repositoryName: parsed.repositoryName,
+          imageIds: [{ imageTag: parsed.tag }],
+        }).catch((err) => {
+          if (err instanceof RepositoryNotFoundException) throw new AbortError(err);
+          throw err;
+        });
+        const found = response.images?.[0];
+        if (found?.imageId?.imageDigest) return found;
+        if (interpretBatchGetImageResponse(response) === "missing")
+          throw new NotYet("not found yet");
+        throw new AbortError("no image and no not-found failure");
+      },
+      {
+        retries: 4,
+        minTimeout: _retryDelaysMs.min,
+        maxTimeout: _retryDelaysMs.max,
+        onFailedAttempt: (e) => {
+          logger.info("Retrying the deployment image digest lookup", {
+            imageReference,
+            attempt: e.attemptNumber,
+            error: e.message,
+          });
+        },
+      }
+    )
+  );
+
+  if (error) {
+    const cause = error instanceof AbortError ? error.originalError : error;
+    if (cause instanceof RepositoryNotFoundException || cause instanceof NotYet) {
+      return { kind: "missing" };
+    }
+    logger.error("Failed to resolve the deployment image digest", {
+      imageReference,
+      repositoryName: parsed.repositoryName,
+      error: cause instanceof Error ? cause.message : String(cause),
+    });
+    return { kind: "unknown" };
+  }
+
+  const digest = image.imageId?.imageDigest;
+  if (!digest || !SHA256_DIGEST.test(digest)) {
+    return { kind: "unknown" };
+  }
+  return {
+    kind: "found",
+    digest,
+    mediaType: image.imageManifestMediaType ?? manifestMediaType(image.imageManifest),
+  };
+}
+
+/**
+ * The mediaType a manifest declares, when ECR didn't report one. Undefined unless it is a plain
+ * image manifest.
+ */
+export function manifestMediaType(manifest: string | undefined): string | undefined {
+  if (!manifest) return undefined;
+  try {
+    const parsed = JSON.parse(manifest) as {
+      mediaType?: unknown;
+      layers?: unknown;
+      manifests?: unknown;
+    };
+    if (!Array.isArray(parsed.layers) || parsed.manifests !== undefined) return undefined;
+    return typeof parsed.mediaType === "string" ? parsed.mediaType : undefined;
+  } catch {
+    return undefined;
+  }
+}

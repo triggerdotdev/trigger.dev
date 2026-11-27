@@ -12,6 +12,7 @@ import type {
   RoleBaseAccessController,
   RoleMutationResult,
   UserActorAuthResult,
+  UserRoleAssignmentResult,
 } from "@trigger.dev/plugins";
 import {
   FULL_ACCESS_PRESET_ID,
@@ -417,12 +418,17 @@ class RoleBaseAccessFallbackController implements RoleBaseAccessController {
     return new Map(userIds.map((id) => [id, null]));
   }
 
-  async setUserRole(): Promise<RoleAssignmentResult> {
+  async setUserRole(): Promise<UserRoleAssignmentResult> {
     return { ok: false, error: "RBAC plugin not installed" };
   }
 
   async removeUserRole(): Promise<RoleAssignmentResult> {
     return { ok: false, error: "RBAC plugin not installed" };
+  }
+
+  // No role assignments exist without the plugin, so there is nothing to clear.
+  async removeFormerMemberRoles(): Promise<RoleAssignmentResult> {
+    return { ok: true };
   }
 
   async getTokenRole(): Promise<Role | null> {

@@ -1,3 +1,4 @@
+import type { OrganizationAccessTokenType } from "@trigger.dev/database";
 import { z } from "zod";
 import { prisma } from "~/db.server";
 import { logger } from "./logger.server";
@@ -13,6 +14,8 @@ export type OrganizationAccessTokenAuthenticationResult = {
   organizationId: string;
   /** The token's row id. */
   tokenId: string;
+  /** `SYSTEM` for tokens the platform mints for itself, such as a build's credentials. */
+  type: OrganizationAccessTokenType;
 };
 
 const AuthorizationHeaderSchema = z.string().regex(/^Bearer .+$/);
@@ -84,6 +87,7 @@ export async function authenticateOrganizationAccessToken(
   return {
     organizationId: organizationAccessToken.organizationId,
     tokenId: organizationAccessToken.id,
+    type: organizationAccessToken.type,
   };
 }
 

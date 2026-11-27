@@ -12,7 +12,7 @@ We provide multiple tools to help AI coding assistants write correct Trigger.dev
 <Steps>
 
 <Step title="Install the MCP Server">
-  Give your AI assistant direct access to Trigger.dev tools — search docs, trigger tasks, deploy projects, and monitor runs. Works with Claude Code, Cursor, Windsurf, VS Code (Copilot), and Zed.
+  Give your AI assistant direct access to Trigger.dev tools — search docs, trigger tasks, deploy projects, and monitor runs. Works with Claude Code, Codex, Cursor, VS Code (Copilot), Gemini CLI, Zed and other MCP clients.
 
   ```bash
   npx trigger.dev@latest install-mcp
@@ -53,13 +53,13 @@ If you prefer a lightweight/passive approach, paste the snippet below into a con
 
 | File | Read by |
 |:-----|:--------|
+| `AGENTS.md` | Most coding agents, including Codex, Cursor, GitHub Copilot, Devin Desktop, Cline, Jules and opencode |
 | `CLAUDE.md` | Claude Code |
-| `AGENTS.md` | OpenAI Codex, Jules, OpenCode |
 | `.cursor/rules/*.md` | Cursor |
 | `.github/copilot-instructions.md` | GitHub Copilot |
-| `CONVENTIONS.md` | Windsurf, Cline, and others |
+| `CONVENTIONS.md` | Aider (load it with `aider --read CONVENTIONS.md`) |
 
-Create the file that matches your AI tool (or multiple files if your team uses different tools) and paste the snippet below. This gives the AI essential Trigger.dev context without installing anything.
+`AGENTS.md` covers most tools, so start there and add `CLAUDE.md` if your team uses Claude Code. Create the file that matches your AI tool (or multiple files if your team uses different tools) and paste the snippet below. This gives the AI essential Trigger.dev context without installing anything.
 
 <Accordion title="Copy the snippet">
 
@@ -86,7 +86,7 @@ export const myTask = task({
     maxTimeoutInMs: 30_000,
   },
   run: async (payload: { url: string }) => {
-    // No timeouts — runs can take as long as needed
+    // Runs can take as long as needed, up to the maxDuration you set
     return { success: true };
   },
 });
@@ -192,11 +192,12 @@ await wait.until({ date: new Date("2025-01-01") });
 `trigger.config.ts` lives at the project root:
 
 ```ts
-import { defineConfig } from "@trigger.dev/sdk/build";
+import { defineConfig } from "@trigger.dev/sdk";
 
 export default defineConfig({
   project: "<your-project-ref>",
   dirs: ["./trigger"],
+  maxDuration: 3600, // Required: default max compute time, in seconds
 });
 ```
 
@@ -208,10 +209,33 @@ export default defineConfig({
 4. **Calling `task.trigger()` directly** — use `tasks.trigger<typeof myTask>("task-id", payload)` from your backend
 5. **Using `triggerAndWait` result as output** — it returns a `Result` object; check `result.ok` then access `result.output`, or use `.unwrap()`
 6. **Wrapping waits/triggerAndWait in `Promise.all`** — not supported in Trigger.dev tasks
-7. **Adding timeouts to tasks** — tasks have no built-in timeout; use `maxDuration` in config if needed
+7. **Leaving out `maxDuration`** — `trigger.config.ts` must set a default `maxDuration` in seconds (minimum 5). Override it per task with the `maxDuration` option, or use `timeout.None` from `@trigger.dev/sdk` for no limit
 ````
 
 </Accordion>
+
+## Docs MCP server
+
+The docs have their own MCP server at `https://trigger.dev/docs/mcp`. It needs no login or API key, and gives your AI tool two tools: search the docs, and read a page as markdown. Use it when you only want the docs, or alongside the [MCP Server](/mcp-introduction), which works with your projects.
+
+<CardGroup cols={2}>
+  <Card title="Add to Cursor" icon="plug" href="cursor://anysphere.cursor-deeplink/mcp/install?name=trigger-docs&config=eyJ1cmwiOiJodHRwczovL3RyaWdnZXIuZGV2L2RvY3MvbWNwIn0=">
+    Opens Cursor and adds the docs MCP server.
+  </Card>
+  <Card title="Add to VS Code" icon="plug" href="vscode:mcp/install?%7B%22name%22%3A%22trigger-docs%22%2C%22type%22%3A%22http%22%2C%22url%22%3A%22https%3A%2F%2Ftrigger.dev%2Fdocs%2Fmcp%22%7D">
+    Opens VS Code and adds the docs MCP server for Copilot.
+  </Card>
+</CardGroup>
+
+In Claude Code, run:
+
+```bash
+claude mcp add --transport http trigger-docs https://trigger.dev/docs/mcp
+```
+
+Other MCP clients take the same URL as a remote (streamable HTTP) server.
+
+Every guide and quick start also has a **Copy prompt** button at the top of the page. It copies the page as instructions your AI coding assistant can follow in your project.
 
 ## llms.txt
 
@@ -220,7 +244,7 @@ We also publish machine-readable documentation for LLM consumption:
 - [trigger.dev/docs/llms.txt](https://trigger.dev/docs/llms.txt) — concise overview
 - [trigger.dev/docs/llms-full.txt](https://trigger.dev/docs/llms-full.txt) — full documentation
 
-These follow the [llms.txt standard](https://llmstxt.org) and can be fed directly into any LLM context window.
+These follow the [llms.txt standard](https://llmstxt.org) and can be fed directly into any LLM context window. Any page is also available as markdown: add `.md` to its URL, for example [trigger.dev/docs/tasks/overview.md](https://trigger.dev/docs/tasks/overview.md). Agents that discover agent skills find the docs skill at `https://trigger.dev/docs/.well-known/agent-skills/index.json`; the skill itself is `https://trigger.dev/docs/skill.md`.
 
 
 ## Troubleshooting

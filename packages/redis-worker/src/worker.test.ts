@@ -189,6 +189,63 @@ describe("Worker", () => {
     }
   );
 
+  // Catches: the worker no longer passing each retry its attempt, or no longer logging an error
+  // marked `logLevel: "warn"` at warn. Jobs rely on both to keep expected retries out of error
+  // reporting while still reporting retries that go on too long.
+  redisTest(
+    "passes each retry its attempt and logs errors marked logLevel warn at warn",
+    { timeout: 30_000 },
+    async ({ redisContainer }) => {
+      const logs: Record<string, unknown>[] = [];
+      Logger.onLog = (log) => logs.push(log);
+      const attempts: number[] = [];
+      const worker = new Worker({
+        name: "test-worker",
+        redisOptions: {
+          host: redisContainer.getHost(),
+          port: redisContainer.getPort(),
+          password: redisContainer.getPassword(),
+        },
+        catalog: {
+          testJob: {
+            schema: z.object({ value: z.number() }),
+            visibilityTimeoutMs: 1000,
+            retry: { maxAttempts: 3, minTimeoutInMs: 10, maxTimeoutInMs: 50, randomize: false },
+          },
+        },
+        jobs: {
+          testJob: async ({ attempt }) => {
+            attempts.push(attempt);
+            const error = new Error("not ready yet");
+            throw attempt < 1 ? Object.assign(error, { logLevel: "warn" as const }) : error;
+          },
+        },
+        concurrency: { workers: 1, tasksPerWorker: 1 },
+        pollIntervalMs: 50,
+        logger: new Logger("test", "warn"),
+      }).start();
+
+      try {
+        await worker.enqueue({ id: "marked-retry", job: "testJob", payload: { value: 1 } });
+        await expect
+          .poll(() => worker.queue.sizeOfDeadLetterQueue(), {
+            timeout: 10_000,
+            interval: 50,
+            message: "the failing item never reached the dead-letter queue",
+          })
+          .toBe(1);
+
+        expect(attempts).toEqual([0, 1, 2]);
+        expect(
+          logs.filter((l) => l.message === "Worker error processing item").map((l) => l.level)
+        ).toEqual(["warn", "error", "error"]);
+      } finally {
+        Logger.onLog = undefined;
+        await worker.stop();
+      }
+    }
+  );
+
   redisTest(
     "Redrive an item from DLQ and process it successfully",
     { timeout: 30_000 },

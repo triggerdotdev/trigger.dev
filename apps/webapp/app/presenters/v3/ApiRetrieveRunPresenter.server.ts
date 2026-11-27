@@ -10,6 +10,7 @@ import {
   createJsonErrorObject,
   logger,
 } from "@trigger.dev/core/v3";
+import type { IOPacket } from "@trigger.dev/core/v3/utils/ioSerialization";
 import { parsePacketAsJson } from "@trigger.dev/core/v3/utils/ioSerialization";
 import { BatchId } from "@trigger.dev/core/v3/isomorphic";
 import { getUserProvidedIdempotencyKey } from "@trigger.dev/core/v3/serverOnly";
@@ -85,6 +86,8 @@ type CommonRelatedRunWithVersion = CommonRelatedRun & {
 // buffer-synthesis helper below can match this shape under unit test.
 export type FoundRun = CommonRelatedRunWithVersion & {
   traceId: string;
+  priorityMs: number;
+  concurrencyKey: string | null;
   payload: string;
   payloadType: string;
   output: string | null;
@@ -121,6 +124,8 @@ export class ApiRetrieveRunPresenter {
         select: {
           ...commonRunSelect,
           traceId: true,
+          priorityMs: true,
+          concurrencyKey: true,
           payload: true,
           payloadType: true,
           output: true,
@@ -244,7 +249,7 @@ export class ApiRetrieveRunPresenter {
           });
         }
       } else {
-        $payload = await parsePacketAsJson(payloadPacket);
+        $payload = await parseRunPacket(payloadPacket);
       }
 
       if (taskRun.status === "COMPLETED_SUCCESSFULLY") {
@@ -273,7 +278,7 @@ export class ApiRetrieveRunPresenter {
             });
           }
         } else {
-          $output = await parsePacketAsJson(outputPacket);
+          $output = await parseRunPacket(outputPacket);
         }
       }
 
@@ -583,6 +588,11 @@ async function createCommonRunStructure(
   };
 }
 
+async function parseRunPacket(packet: IOPacket) {
+  if (packet.data === "" && packet.dataType === "text/plain") return "";
+  return parsePacketAsJson(packet);
+}
+
 function resolveTriggerFunction(run: CommonRelatedRun): TriggerFunction {
   if (run.batch) {
     return run.resumeParentOnCompletion ? "batchTriggerAndWait" : "batchTrigger";
@@ -730,6 +740,8 @@ export function synthesiseFoundRunFromBuffer(buffered: SyntheticRun): FoundRun {
       : null,
     runTags: buffered.tags,
     traceId: buffered.traceId ?? "",
+    priorityMs: buffered.priorityMs ?? 0,
+    concurrencyKey: buffered.concurrencyKey ?? null,
     payload: synthesisePayload(buffered),
     payloadType: buffered.payloadType ?? "application/json",
     output: null,

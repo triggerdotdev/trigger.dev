@@ -27,54 +27,118 @@ import {
   waitpointBlockingRunCheck,
 } from "~/services/realtime/sessionVersionFloor.server";
 
-const ENV_ID = "cmenv00000000000000000001";
 const NOW = 1_800_000_000_000;
 
 function turnComplete(ageMs: number, inConsumedSeq: number | undefined): SessionOutTail {
   return { kind: "record", control: "turn-complete", timestamp: NOW - ageMs, inConsumedSeq };
 }
 
-function environment(featureFlags: unknown, type = "PRODUCTION") {
-  return { id: ENV_ID, type, organization: { featureFlags } };
+// `threshold` is the environment's own; `tasks` the per-task map as stored.
+function environment(threshold: unknown, type = "PRODUCTION", tasks?: unknown) {
+  return {
+    type,
+    skewProtectionThresholds:
+      threshold === null || threshold === undefined
+        ? tasks === undefined
+          ? threshold
+          : { tasks }
+        : { environment: threshold, ...(tasks === undefined ? {} : { tasks }) },
+  };
 }
 
+const THRESHOLD = { version: "20261108.2", setAt: "2026-11-08T09:40:12.000Z" };
+const TASK = "support-agent";
+
 describe("sessionVersionFloorFor", () => {
-  it("returns undefined when the org has no floor for the environment", () => {
-    expect(sessionVersionFloorFor(environment(null))).toBeUndefined();
-    expect(sessionVersionFloorFor(environment({}))).toBeUndefined();
-    expect(
-      sessionVersionFloorFor(
-        environment({ sessionVersionFloor: { otherEnv: { minVersion: "20261108.1" } } })
-      )
-    ).toBeUndefined();
+  it("returns undefined when the environment has no threshold", () => {
+    expect(sessionVersionFloorFor(environment(null), TASK)).toBeUndefined();
+    expect(sessionVersionFloorFor(environment(undefined), TASK)).toBeUndefined();
   });
 
-  it("ignores an invalid or empty entry instead of throwing", () => {
-    for (const entry of [{ minVersion: 5 }, { minVersion: "" }, {}, "20261108.2"]) {
+  it("ignores an invalid value instead of throwing", () => {
+    for (const value of ["20261108.2", 5, [], {}, { version: "" }, { version: 5 }]) {
+      expect(sessionVersionFloorFor(environment(value), TASK)).toBeUndefined();
+      expect(sessionVersionFloorFor(environment(null, "PRODUCTION", value), TASK)).toBeUndefined();
       expect(
-        sessionVersionFloorFor(environment({ sessionVersionFloor: { [ENV_ID]: entry } }))
+        sessionVersionFloorFor(environment(null, "PRODUCTION", { [TASK]: value }), TASK)
+      ).toBeUndefined();
+      expect(
+        sessionVersionFloorFor({ type: "PRODUCTION", skewProtectionThresholds: value }, TASK)
       ).toBeUndefined();
     }
-    expect(sessionVersionFloorFor(environment({ sessionVersionFloor: "x" }))).toBeUndefined();
   });
 
-  it("reads the environment's minVersion", () => {
-    expect(
-      sessionVersionFloorFor(
-        environment({ sessionVersionFloor: { [ENV_ID]: { minVersion: "20261108.2" } } })
-      )
-    ).toEqual({ minVersion: "20261108.2" });
+  it("reads the threshold's version", () => {
+    expect(sessionVersionFloorFor(environment(THRESHOLD), TASK)).toEqual({
+      minVersion: "20261108.2",
+    });
+  });
+
+  it("keeps the threshold when the rest of the value isn't what this build expects", () => {
+    // Catches: a field written by a newer build during a rollout, or a bad setBy, switching the
+    // floor off for every session in the environment.
+    for (const value of [
+      { ...THRESHOLD, somethingNew: true },
+      { ...THRESHOLD, setBy: { type: "robot" } },
+      { version: THRESHOLD.version },
+      { version: THRESHOLD.version, setAt: 5 },
+    ]) {
+      expect(sessionVersionFloorFor(environment(value), TASK)).toEqual({
+        minVersion: "20261108.2",
+      });
+      expect(
+        sessionVersionFloorFor(environment(null, "PRODUCTION", { [TASK]: value }), TASK)
+      ).toEqual({ minVersion: "20261108.2", taskIdentifier: TASK });
+    }
   });
 
   it("never applies to a development environment", () => {
+    expect(sessionVersionFloorFor(environment(THRESHOLD, "DEVELOPMENT"), TASK)).toBeUndefined();
     expect(
-      sessionVersionFloorFor(
-        environment(
-          { sessionVersionFloor: { [ENV_ID]: { minVersion: "20261108.2" } } },
-          "DEVELOPMENT"
-        )
-      )
+      sessionVersionFloorFor(environment(null, "DEVELOPMENT", { [TASK]: THRESHOLD }), TASK)
     ).toBeUndefined();
+  });
+
+  it("holds a task's sessions to the higher of its own threshold and the environment's", () => {
+    const at = (version: string) => ({ version, setAt: THRESHOLD.setAt });
+    const floor = (threshold: unknown, taskThreshold: unknown, task = TASK) =>
+      sessionVersionFloorFor(environment(threshold, "PRODUCTION", { [TASK]: taskThreshold }), task);
+
+    // Catches: a task threshold moving another task's sessions.
+    expect(floor(null, at("20261108.3"), "other-agent")).toBeUndefined();
+    expect(floor(at("20261108.2"), at("20261108.3"), "other-agent")).toEqual({
+      minVersion: "20261108.2",
+    });
+
+    expect(floor(null, at("20261108.3"))).toEqual({
+      minVersion: "20261108.3",
+      taskIdentifier: TASK,
+    });
+    expect(floor(at("20261108.2"), at("20261108.3"))).toEqual({
+      minVersion: "20261108.3",
+      taskIdentifier: TASK,
+    });
+    // Catches: a lower task threshold shielding the task from the environment's. Compared as
+    // versions, not text: .10 is above .9.
+    expect(floor(at("20261108.10"), at("20261108.9"))).toEqual({ minVersion: "20261108.10" });
+    expect(floor(at("20261108.3"), at("20261108.3"))).toEqual({ minVersion: "20261108.3" });
+  });
+
+  it("only reads a task's own entry, whatever the task is called", () => {
+    // Catches: a session of a task named like an Object.prototype member picking up a "threshold"
+    // from the prototype chain, or crashing the append.
+    for (const task of ["constructor", "toString", "__proto__", "hasOwnProperty"]) {
+      expect(
+        sessionVersionFloorFor(environment(null, "PRODUCTION", { [TASK]: THRESHOLD }), task)
+      ).toBeUndefined();
+    }
+    // As stored JSON arrives: `__proto__` is an ordinary own key after JSON.parse.
+    const tasks = JSON.parse(`{ "__proto__": ${JSON.stringify(THRESHOLD)} }`);
+    expect(sessionVersionFloorFor(environment(null, "PRODUCTION", tasks), "__proto__")).toEqual({
+      minVersion: "20261108.2",
+      taskIdentifier: "__proto__",
+    });
+    expect(sessionVersionFloorFor(environment(null, "PRODUCTION", tasks), TASK)).toBeUndefined();
   });
 });
 
@@ -191,6 +255,7 @@ describe("shouldSupersedeLiveRun", () => {
       const { reads, value } = checks({ current });
       await expect(shouldSupersedeLiveRun(floor, oldRun, "chat_1", value, NOW)).resolves.toEqual({
         supersede: true,
+        currentVersion: current,
       });
       expect(reads).toEqual(["streams", "current"]);
     }
@@ -217,7 +282,7 @@ describe("shouldSupersedeLiveRun", () => {
     const waiting = checks({ outTail: midReply, waitingRunIds: [oldRun.id] });
     await expect(
       shouldSupersedeLiveRun(floor, oldRun, "chat_1", waiting.value, NOW)
-    ).resolves.toEqual({ supersede: true });
+    ).resolves.toEqual({ supersede: true, currentVersion: expect.any(String) });
   });
 
   it("keeps the run as check-failed when listing the .in waitpoints hangs", async () => {
@@ -285,6 +350,7 @@ describe("shouldSupersedeLiveRun", () => {
     const { value } = checks({ outTail: midReply, waitpointIds });
     await expect(shouldSupersedeLiveRun(floor, oldRun, "chat_1", value, NOW)).resolves.toEqual({
       supersede: true,
+      currentVersion: expect.any(String),
     });
   });
 

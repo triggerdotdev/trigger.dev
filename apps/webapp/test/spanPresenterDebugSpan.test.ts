@@ -22,7 +22,7 @@ vi.mock("~/v3/eventRepository/index.server", () => ({
 }));
 
 import { ClickHouse } from "@internal/clickhouse";
-import { PostgresRunStore } from "@internal/run-store";
+import { organizationContext, PostgresRunStore } from "@internal/run-store";
 import { containerTestWithClickhouse } from "@internal/testcontainers";
 import { SpanPresenter } from "~/presenters/v3/SpanPresenter.server";
 import {
@@ -273,6 +273,136 @@ describe("SpanPresenter debug spans", () => {
           data: { status: "EXECUTING", completedAt: null },
         });
         expect(await call()).toMatchObject({ type: "span", span: { isPartial: false } });
+      } finally {
+        await Promise.all([
+          (repository as any)._flushScheduler.shutdown(),
+          (repository as any)._llmMetricsFlushScheduler.shutdown(),
+          (repository as any)._otlpMetricsFlushScheduler.shutdown(),
+        ]);
+      }
+    }
+  );
+  containerTestWithClickhouse(
+    "reads by spanId and parentSpanId in the run's environment context",
+    async ({ prisma, clickhouseContainer }) => {
+      const user = await prisma.user.create({
+        data: { email: "span-ctx@example.com", authenticationMethod: "MAGIC_LINK" },
+      });
+      const organization = await prisma.organization.create({
+        data: { title: "span-ctx", slug: "span-ctx" },
+      });
+      await prisma.orgMember.create({
+        data: { organizationId: organization.id, userId: user.id, role: "MEMBER" },
+      });
+      const project = await prisma.project.create({
+        data: {
+          name: "span-ctx",
+          slug: "span-ctx",
+          organizationId: organization.id,
+          externalRef: "proj_span_ctx",
+        },
+      });
+      const environment = await prisma.runtimeEnvironment.create({
+        data: {
+          slug: "prod",
+          type: "PRODUCTION",
+          projectId: project.id,
+          organizationId: organization.id,
+          apiKey: "tr_prod_span_ctx",
+          pkApiKey: "pk_prod_span_ctx",
+          shortcode: "sc-span-ctx",
+        },
+      });
+
+      const traceId = "f".repeat(32);
+      const createdAt = new Date(Date.now() - 60_000);
+      await prisma.taskRun.create({
+        data: {
+          friendlyId: "run_span_ctx",
+          taskIdentifier: "my-task",
+          status: "COMPLETED_SUCCESSFULLY",
+          payload: "{}",
+          payloadType: "application/json",
+          traceId,
+          spanId: "rootspan00000003",
+          queue: "task/my-task",
+          runtimeEnvironmentId: environment.id,
+          projectId: project.id,
+          organizationId: organization.id,
+          environmentType: "PRODUCTION",
+          engine: "V2",
+          taskEventStore: "clickhouse_v2",
+          createdAt,
+          completedAt: new Date(createdAt.getTime() + 10_000),
+        },
+      });
+
+      const clickhouse = new ClickHouse({
+        url: clickhouseContainer.getConnectionUrl(),
+        name: "test",
+      });
+      const repository = new ClickhouseEventRepository({
+        clickhouse,
+        version: "v2",
+        insertStrategy: "insert",
+      });
+      const startTime = new Date(createdAt.getTime() + 1_000);
+      const [insertError] = await clickhouse.taskEventsV2.insert([
+        {
+          environment_id: environment.id,
+          organization_id: organization.id,
+          project_id: project.id,
+          task_identifier: "my-task",
+          run_id: "run_span_ctx",
+          start_time: `${clickhouseDate(startTime).slice(0, 19)}.${String(
+            startTime.getUTCMilliseconds() * 1_000_000
+          ).padStart(9, "0")}`,
+          inserted_at: convertDateToClickhouseDateTime(startTime),
+          duration: "1000000",
+          trace_id: traceId,
+          span_id: "childspan0000003",
+          parent_span_id: "rootspan00000003",
+          message: "child span",
+          kind: "SPAN",
+          status: "OK",
+          attributes: {},
+          metadata: "{}",
+          expires_at: clickhouseDate(new Date(Date.now() + 86_400_000)),
+        },
+      ]);
+      expect(insertError).toBeNull();
+
+      // The environment each run-store read sees in the organisation context.
+      const seen: Record<"findRun" | "findRuns", Array<string | undefined>> = {
+        findRun: [],
+        findRuns: [],
+      };
+      const store = new PostgresRunStore({ prisma, readOnlyPrisma: prisma });
+      for (const name of ["findRun", "findRuns"] as const) {
+        const original = (store[name] as (...args: unknown[]) => unknown).bind(store);
+        (store as unknown as Record<string, unknown>)[name] = (...args: unknown[]) => {
+          seen[name].push(organizationContext.get()?.environmentId);
+          return original(...args);
+        };
+      }
+      wiring.runStore = store;
+      wiring.eventRepository = repository;
+
+      try {
+        // The request middleware opens an empty context, as for the span panel's own request.
+        const result = await organizationContext.run({}, () =>
+          new SpanPresenter(prisma, prisma).call({
+            userId: user.id,
+            projectSlug: project.slug,
+            envSlug: environment.slug,
+            spanId: "childspan0000003",
+            runFriendlyId: "run_span_ctx",
+          })
+        );
+        expect(result).toMatchObject({ type: "span", span: { spanId: "childspan0000003" } });
+        // The parent read names its run; the read by spanId and by parentSpanId name none.
+        expect(seen.findRun).toEqual([undefined, environment.id]);
+        expect(seen.findRuns).toEqual([environment.id]);
       } finally {
         await Promise.all([
           (repository as any)._flushScheduler.shutdown(),

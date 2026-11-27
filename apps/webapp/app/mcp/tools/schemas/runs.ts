@@ -42,7 +42,18 @@ export const GetSpanDetailsInput = CommonRunsInput.extend({
 export type GetSpanDetailsInput = z.output<typeof GetSpanDetailsInput>;
 
 export const ListRunsInput = CommonProjectsInput.extend({
-  cursor: z.string().describe("The cursor to use for pagination, starts with run_").optional(),
+  cursor: z
+    .string()
+    .describe(
+      "The Next cursor from a previous page, passed exactly as returned, to list the next page"
+    )
+    .optional(),
+  before: z
+    .string()
+    .describe(
+      "The Previous cursor from a page, passed exactly as returned, to list the page before it. Do not combine with cursor"
+    )
+    .optional(),
   limit: z
     .number()
     .int()
@@ -52,14 +63,24 @@ export const ListRunsInput = CommonProjectsInput.extend({
   taskIdentifier: z.string().describe("Filter for runs that match this task identifier").optional(),
   version: z
     .string()
-    .describe("Filter for runs that match this version, e.g. 20250808.3")
+    .describe(
+      "Filter for runs that match this version, e.g. 20250808.3. Separate several versions with commas, e.g. 20250808.3,20250809.1"
+    )
     .optional(),
   tag: z.string().describe("Filter for runs that include this tag").optional(),
-  from: z.string().describe("Filter for runs created after this ISO 8601 timestamp").optional(),
-  to: z.string().describe("Filter for runs created before this ISO 8601 timestamp").optional(),
+  from: z
+    .string()
+    .describe("Filter for runs created after this ISO 8601 timestamp. Ignored when period is set")
+    .optional(),
+  to: z
+    .string()
+    .describe("Filter for runs created before this ISO 8601 timestamp. Ignored when period is set")
+    .optional(),
   period: z
     .string()
-    .describe("Filter for runs created in the last N time period. e.g. 7d, 30d, 365d")
+    .describe(
+      "Filter for runs created in the last N time period. e.g. 7d, 30d, 365d. Takes precedence: when period is set, from and to are ignored"
+    )
     .optional(),
   machine: MachinePresetName.describe("Filter for runs that match this machine preset").optional(),
   region: z
@@ -68,6 +89,36 @@ export const ListRunsInput = CommonProjectsInput.extend({
       "Filter for runs that executed in this region (the worker instance group masterQueue identifier, e.g. 'us-east-1' or 'main')"
     )
     .optional(),
+  queue: z
+    .string()
+    .describe("Filter for runs in this queue, e.g. task/my-task or a custom queue name")
+    .optional(),
+  batch: z.string().describe("Filter for runs in this batch, starts with batch_").optional(),
+  schedule: z
+    .string()
+    .describe("Filter for runs triggered by this schedule, starts with sched_")
+    .optional(),
+  bulkAction: z
+    .string()
+    .describe("Filter for runs in this bulk action, starts with bulk_")
+    .optional(),
 });
 
 export type ListRunsInput = z.output<typeof ListRunsInput>;
+
+export const ListRunTagsInput = CommonProjectsInput.extend({
+  name: z.string().describe("Only list tags that contain this text (case-insensitive)").optional(),
+  period: z
+    .string()
+    .describe("Only list tags used on runs created in the last N time period, e.g. 1d, 7d, 30d")
+    .default("7d"),
+  limit: z
+    .number()
+    .int()
+    .min(1)
+    .max(100)
+    .describe("The number of tags to list. Up to 100, defaults to 25")
+    .default(25),
+});
+
+export type ListRunTagsInput = z.output<typeof ListRunTagsInput>;

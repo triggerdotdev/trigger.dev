@@ -7,6 +7,7 @@ const TOOL_LABELS: Record<string, string> = {
   list_runs: "Looking through runs",
   get_run: "Reading the run",
   get_run_trace: "Reading the run's trace",
+  search_logs: "Searching logs",
   list_errors: "Looking through errors",
   get_error: "Reading the error",
   get_query_schema: "Reading the data schema",

@@ -2,7 +2,7 @@
   "$schema": "https://mintlify.com/docs.json",
   "theme": "maple",
   "name": "Trigger.dev",
-  "description": "Trigger.dev is an open source background jobs framework that lets you write reliable workflows in plain async code. Run long-running AI tasks, handle complex background jobs, and build AI agents with built-in queuing, automatic retries, and real-time monitoring. No timeouts, elastic scaling, and zero infrastructure management required.",
+  "description": "Build and run durable AI agents and workflows in TypeScript. Long-running tasks with retries, queues, webhooks, observability, and elastic scaling. Open source and self-hostable.",
   "colors": {
     "primary": "#A8FF53",
     "light": "#A8FF53",
@@ -21,92 +21,7 @@
         "groups": [
           {
             "group": "Getting started",
-            "pages": [
-              "introduction",
-              "quick-start",
-              "manual-setup",
-              "video-walkthrough",
-              "how-it-works",
-              "limits"
-            ]
-          },
-          {
-            "group": "Fundamentals",
-            "pages": [
-              {
-                "group": "Tasks",
-                "pages": ["tasks/overview", "tasks/schemaTask", "tasks/scheduled"]
-              },
-              "triggering",
-              "runs",
-              {
-                "group": "Runs",
-                "hidden": true,
-                "searchable": true,
-                "pages": ["runs/list-best-practices"]
-              },
-              {
-                "group": "API keys",
-                "pages": ["apikeys", "apikeys/custom-access"]
-              },
-              {
-                "group": "OIDC",
-                "pages": [
-                  "oidc",
-                  "oidc/aws",
-                  "oidc/azure",
-                  "oidc/gcp",
-                  "oidc/anthropic",
-                  "oidc/vault",
-                  "oidc/infisical",
-                  "oidc/doppler",
-                  "oidc/snowflake",
-                  "oidc/databricks",
-                  "oidc/hugging-face",
-                  "oidc/openrouter",
-                  "oidc/custom"
-                ]
-              }
-            ]
-          },
-          {
-            "group": "Building with AI",
-            "pages": [
-              "building-with-ai",
-              {
-                "group": "MCP Server",
-                "pages": ["mcp-introduction", "mcp-remote", "mcp-tools"]
-              },
-              "skills",
-              "mcp-agent-rules"
-            ]
-          },
-          {
-            "group": "Writing tasks",
-            "pages": [
-              "writing-tasks-introduction",
-              "logging",
-              "errors-retrying",
-              {
-                "group": "Wait",
-                "pages": ["wait", "wait-for", "wait-until", "wait-for-token"]
-              },
-              "queues",
-              "concurrency",
-              "versioning",
-              "machines",
-              "idempotency",
-              "runs/max-duration",
-              "runs/heartbeats",
-              "tags",
-              "runs/metadata",
-              "tasks/streams",
-              "run-usage",
-              "context",
-              "runs/priority",
-              "hidden-tasks",
-              "runs/bulk-actions"
-            ]
+            "pages": ["introduction", "quick-start", "manual-setup", "how-it-works", "limits"]
           },
           {
             "group": "Agents",
@@ -161,11 +76,20 @@
                 "pages": [
                   "ai-chat/patterns/sub-agents",
                   "ai-chat/patterns/version-upgrades",
+                  "ai-chat/patterns/mid-turn-handover",
                   "ai-chat/patterns/database-persistence",
                   "ai-chat/patterns/persistence-and-replay",
                   "ai-chat/patterns/branching-conversations",
                   "ai-chat/patterns/code-sandbox",
                   "ai-chat/patterns/human-in-the-loop",
+                  {
+                    "group": "Tool permissions",
+                    "pages": [
+                      "ai-chat/patterns/tool-permissions",
+                      "ai-chat/patterns/tool-permissions-chat",
+                      "ai-chat/patterns/tool-permissions-outside-chat"
+                    ]
+                  },
                   "ai-chat/patterns/tool-result-auditing",
                   "ai-chat/patterns/large-payloads",
                   "ai-chat/patterns/skills",
@@ -183,10 +107,88 @@
                   "ai-chat/client-protocol",
                   "ai-chat/testing",
                   "ai-chat/mcp",
-                  "ai-chat/upgrade-guide",
-                  "ai-chat/changelog"
+                  "ai-chat/upgrade-guide"
                 ]
               }
+            ]
+          },
+          {
+            "group": "Fundamentals",
+            "pages": [
+              {
+                "group": "Tasks",
+                "pages": ["tasks/overview", "tasks/schemaTask", "tasks/scheduled"]
+              },
+              "triggering",
+              "runs",
+              {
+                "group": "Runs",
+                "hidden": true,
+                "searchable": true,
+                "pages": ["runs/list-best-practices"]
+              },
+              {
+                "group": "API keys",
+                "pages": ["apikeys", "apikeys/custom-access"]
+              },
+              {
+                "group": "OIDC",
+                "pages": [
+                  "oidc",
+                  "oidc/aws",
+                  "oidc/azure",
+                  "oidc/gcp",
+                  "oidc/anthropic",
+                  "oidc/vault",
+                  "oidc/infisical",
+                  "oidc/doppler",
+                  "oidc/snowflake",
+                  "oidc/databricks",
+                  "oidc/hugging-face",
+                  "oidc/openrouter",
+                  "oidc/custom"
+                ]
+              }
+            ]
+          },
+          {
+            "group": "Building with AI",
+            "pages": [
+              "building-with-ai",
+              {
+                "group": "MCP Server",
+                "pages": ["mcp-introduction", "mcp-tools"]
+              },
+              "skills",
+              "mcp-agent-rules"
+            ]
+          },
+          {
+            "group": "Writing tasks",
+            "pages": [
+              "writing-tasks-introduction",
+              "logging",
+              "errors-retrying",
+              {
+                "group": "Wait",
+                "pages": ["wait", "wait-for", "wait-until", "wait-for-token"]
+              },
+              "queues",
+              "concurrency",
+              "versioning",
+              "machines",
+              "idempotency",
+              "runs/max-duration",
+              "runs/heartbeats",
+              "tags",
+              "runs/metadata",
+              "tasks/streams",
+              "tasks/signals",
+              "run-usage",
+              "context",
+              "runs/priority",
+              "hidden-tasks",
+              "runs/bulk-actions"
             ]
           },
           {
@@ -306,11 +308,13 @@
             "pages": [
               "deployment/overview",
               "deploy-environment-variables",
+              "vault",
               "github-actions",
               "deployment/trusted-publishing",
               "deployment/preview-branches",
               "deployment/dev-branches",
               "deployment/atomic-deployment",
+              "deployment/skew-protection-threshold",
               {
                 "group": "Deployment integrations",
                 "pages": ["github-integration", "vercel-integration"]
@@ -384,7 +388,12 @@
           },
           {
             "group": "Observability",
-            "pages": ["observability/query", "observability/dashboards", "reports"]
+            "pages": [
+              "observability/logs",
+              "observability/query",
+              "observability/dashboards",
+              "reports"
+            ]
           },
           {
             "group": "Using the Dashboard",
@@ -570,7 +579,10 @@
               "management/deployments/list",
               "management/deployments/retrieve",
               "management/deployments/get-latest",
-              "management/deployments/promote"
+              "management/deployments/promote",
+              "management/deployments/get-skew-protection-threshold",
+              "management/deployments/set-skew-protection-threshold",
+              "management/deployments/clear-skew-protection-threshold"
             ]
           },
           {
@@ -622,37 +634,34 @@
             "pages": ["guides/introduction"]
           },
           {
+            "group": "AI agents",
+            "pages": [
+              "guides/ai-agents/overview",
+              "guides/ai-agents/chat-agent",
+              "guides/ai-agents/deploy-a-breaking-change",
+              "guides/ai-agents/generate-translate-copy",
+              "guides/ai-agents/route-question",
+              "guides/ai-agents/respond-and-check-content",
+              "guides/ai-agents/translate-and-refine",
+              "guides/ai-agents/verify-news-article",
+              "guides/ai-agents/claude-code-trigger"
+            ]
+          },
+          {
             "group": "Frameworks",
             "pages": [
-              "guides/frameworks/bun",
               "guides/frameworks/nextjs",
               "guides/frameworks/nodejs",
-              "guides/frameworks/remix",
+              "guides/frameworks/bun",
               "guides/frameworks/nextjs-webhooks",
-              "guides/frameworks/remix-webhooks",
-              "guides/community/sveltekit"
+              "guides/community/sveltekit",
+              "guides/frameworks/remix",
+              "guides/frameworks/remix-webhooks"
             ]
           },
           {
             "group": "Guides",
             "pages": [
-              {
-                "group": "AI Agents",
-                "icon": {
-                  "name": "microchip-ai",
-                  "style": "regular"
-                },
-                "pages": [
-                  "guides/ai-agents/overview",
-                  "guides/ai-agents/chat-agent",
-                  "guides/ai-agents/generate-translate-copy",
-                  "guides/ai-agents/route-question",
-                  "guides/ai-agents/respond-and-check-content",
-                  "guides/ai-agents/translate-and-refine",
-                  "guides/ai-agents/verify-news-article"
-                ]
-              },
-              "guides/ai-agents/claude-code-trigger",
               "guides/frameworks/drizzle",
               "guides/frameworks/prisma",
               "guides/frameworks/nango",
@@ -673,10 +682,6 @@
             ]
           },
           {
-            "group": "Migration guides",
-            "pages": ["migrating-from-v3", "migration-mergent", "migration-n8n"]
-          },
-          {
             "group": "Use cases",
             "pages": [
               "guides/use-cases/overview",
@@ -694,23 +699,22 @@
               "guides/example-projects/batch-llm-evaluator",
               "guides/example-projects/claude-changelog-generator",
               "guides/example-projects/claude-github-wiki",
-              "guides/example-projects/claude-thinking-chatbot",
               "guides/example-projects/clickhouse-chat-agent",
               "guides/example-projects/cursor-background-agent",
               "guides/example-projects/elevenlabs-voice-agent",
+              "guides/example-projects/granola-meeting-agent",
               "guides/example-projects/grok-ai-teammates",
               "guides/example-projects/human-in-the-loop-workflow",
               "guides/example-projects/mastra-agents-with-memory",
-              "guides/example-projects/meme-generator-human-in-the-loop",
               "guides/example-projects/openai-agents-sdk-typescript-playground",
               "guides/example-projects/product-image-generator",
               "guides/example-projects/realtime-csv-importer",
               "guides/example-projects/realtime-fal-ai",
+              "guides/example-projects/recall-meeting-agent",
               "guides/example-projects/resend-email-agent",
               "guides/example-projects/smart-spreadsheet",
               "guides/example-projects/turborepo-monorepo-prisma",
-              "guides/example-projects/vercel-ai-sdk-deep-research",
-              "guides/example-projects/vercel-ai-sdk-image-generator"
+              "guides/example-projects/vercel-ai-sdk-deep-research"
             ]
           },
           {
@@ -726,7 +730,6 @@
           {
             "group": "Example tasks",
             "pages": [
-              "guides/examples/dall-e3-generate-image",
               "guides/examples/deepgram-transcribe-audio",
               "guides/examples/fal-ai-image-to-cartoon",
               "guides/examples/fal-ai-realtime",
@@ -759,6 +762,18 @@
               "guides/community/fatima",
               "guides/community/rate-limiter",
               "guides/community/sveltekit"
+            ]
+          },
+          {
+            "group": "Migration guides",
+            "pages": [
+              "migration-n8n",
+              {
+                "group": "Legacy",
+                "hidden": true,
+                "searchable": true,
+                "pages": ["migrating-from-v3"]
+              }
             ]
           }
         ]
@@ -1080,7 +1095,7 @@
     },
     {
       "source": "/frontend/react-hooks/realtime",
-      "destination": "/realtime/react-hooks/realtime"
+      "destination": "/realtime/react-hooks/subscribe"
     },
     {
       "source": "/frontend/react-hooks/triggering",

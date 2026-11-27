@@ -12,7 +12,9 @@ import {
 } from "ai";
 import { MockLanguageModelV3 } from "ai/test";
 import { z } from "zod";
+import { once } from "node:events";
 import { mkdir, writeFile } from "node:fs/promises";
+import { createServer } from "node:http";
 import { join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
@@ -1063,6 +1065,83 @@ describe("a turn that read source", () => {
   it("still judges a turn that only read platform data", async () => {
     expect(await turnCalling("list_errors", "chat_no_source")).toHaveLength(1);
   });
+
+  it("does not send a follow-up quoting earlier logs to the judge", async () => {
+    process.env.DASHBOARD_AGENT_EVAL_SAMPLE_RATE = "1";
+    const { store } = fakeStore();
+    const { trigger, calls } = fakeEvalTrigger();
+    const timestamp = "2026-10-01T12:00:00.000Z";
+    const excerpt = "Checkout provider rejected transaction";
+    const api = createServer((req, res) => {
+      if (req.url === "/api/v1/projects/proj_ref/prod/jwt") {
+        res.setHeader("Content-Type", "application/json");
+        res.end(JSON.stringify({ token: "env-token", environmentId: "env_prod" }));
+      } else if (req.url === "/api/v1/dashboard-agent/logs/search") {
+        res.setHeader("Content-Type", "application/json");
+        res.end(
+          JSON.stringify({
+            logs: [{ taskIdentifier: "checkout", level: "ERROR", timestamp, message: excerpt }],
+            range: { from: timestamp, to: timestamp },
+            searchedFrom: timestamp,
+            complete: true,
+            retentionClamped: false,
+            timedOut: false,
+            stopped: false,
+            expired: false,
+            cursorIgnored: false,
+            budgetSpent: false,
+          })
+        );
+      } else {
+        res.writeHead(404).end();
+      }
+    });
+    api.listen(0, "127.0.0.1");
+    await once(api, "listening");
+    const address = api.address();
+    if (!address || typeof address === "string") throw new Error("No test API port");
+    vi.stubEnv("DASHBOARD_AGENT_API_ORIGIN", `http://127.0.0.1:${address.port}`);
+
+    try {
+      harness = mockChatAgent(dashboardAgent, {
+        chatId: "chat_log_followup",
+        clientData: {
+          ...CLIENT_DATA,
+          userActorToken: "user-token",
+          projectRef: "proj_ref",
+          environmentName: "prod",
+          environmentId: "env_prod",
+        },
+        setupLocals: ({ set }) => {
+          set(dashboardAgentStoreKey, store);
+          set(
+            dashboardAgentModelKey,
+            mockModel([
+              toolCallStep("search_logs", {}),
+              textStep("Found an error."),
+              textStep(excerpt),
+            ])
+          );
+          set(dashboardAgentEvalTriggerKey, trigger);
+          set(dashboardAgentEvalPolicyKey, fakeEvalPolicy());
+        },
+      });
+
+      const first = await harness.sendMessage(userMessage("Show me the logs"));
+      expect(first.chunks.find((c) => c.type === "tool-output-available")).toMatchObject({
+        output: { logs: [{ message: expect.stringContaining(excerpt) }] },
+      });
+      const followUp = await harness.sendMessage(userMessage("Quote the error", "u2"));
+      expect(executedTool(followUp.chunks)).toBe(false);
+      expect(collectText(followUp.chunks)).toContain(excerpt);
+      // onTurnComplete runs after the client sees the final chunk.
+      await new Promise((resolve) => setTimeout(resolve, 30));
+      expect(calls).toEqual([]);
+    } finally {
+      vi.unstubAllEnvs();
+      api.close();
+    }
+  });
 });
 
 describe("a turn that ends in an error", () => {
@@ -1270,6 +1349,7 @@ describe("buildDashboardAgentTools", () => {
         "run_query",
         "render_view",
         "search_docs",
+        "search_logs",
         "submit_feedback",
       ].sort()
     );

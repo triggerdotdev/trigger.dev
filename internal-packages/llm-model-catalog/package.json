@@ -11,11 +11,11 @@
   },
   "devDependencies": {
     "@internal/testcontainers": "workspace:*",
-    "vitest": "4.1.11"
+    "vitest": "4.1.12"
   },
   "scripts": {
     "test": "vitest --sequence.concurrent=false --no-file-parallelism",
-    "typecheck": "tsc --noEmit",
+    "typecheck": "tsrs --fast --noEmit",
     "generate": "node scripts/generate.mjs",
     "sync-prices": "bash scripts/sync-model-prices.sh && node scripts/generate.mjs",
     "sync-prices:check": "bash scripts/sync-model-prices.sh --check",

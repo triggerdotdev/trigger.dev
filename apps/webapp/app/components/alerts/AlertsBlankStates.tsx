@@ -1,4 +1,5 @@
 import { BellAlertIcon, BookOpenIcon, PlusIcon } from "@heroicons/react/20/solid";
+import { useDocsLink } from "~/components/DocsPanel";
 import { EnvironmentSelector } from "~/components/navigation/EnvironmentSelector";
 import { InfoPanel } from "~/components/primitives/InfoPanel";
 import { LinkButton } from "~/components/primitives/Buttons";
@@ -6,9 +7,10 @@ import { Paragraph } from "~/components/primitives/Paragraph";
 import { useEnvironment } from "~/hooks/useEnvironment";
 import { useOrganization } from "~/hooks/useOrganizations";
 import { useProject } from "~/hooks/useProject";
-import { docsPath, v3NewProjectAlertPath } from "~/utils/pathBuilder";
+import { v3NewProjectAlertPath } from "~/utils/pathBuilder";
 
 export function AlertsNoneDev() {
+  const docsLink = useDocsLink();
   return (
     <div className="space-y-8">
       <InfoPanel
@@ -26,7 +28,7 @@ export function AlertsNoneDev() {
         </Paragraph>
         <div className="flex gap-3">
           <LinkButton
-            to={docsPath("troubleshooting-alerts")}
+            {...docsLink("troubleshooting-alerts")}
             variant="docs/medium"
             LeadingIcon={BookOpenIcon}
             className="inline-flex"
@@ -41,6 +43,7 @@ export function AlertsNoneDev() {
 }
 
 export function AlertsNoneDeployed() {
+  const docsLink = useDocsLink();
   const organization = useOrganization();
   const project = useProject();
   const environment = useEnvironment();
@@ -60,7 +63,7 @@ export function AlertsNoneDeployed() {
 
         <div className="flex items-center justify-between gap-3">
           <LinkButton
-            to={docsPath("troubleshooting-alerts")}
+            {...docsLink("troubleshooting-alerts")}
             variant="docs/medium"
             LeadingIcon={BookOpenIcon}
             className="inline-flex"

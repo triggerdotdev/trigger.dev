@@ -27,12 +27,17 @@ import { measureExecutionMetrics } from "./executionMetrics.js";
 import type { SupervisorSocket } from "./controller.js";
 import { RunNotifier } from "./notifier.js";
 import { forkEnvFromRunEnv, type TaskRunProcessProvider } from "./taskRunProcessProvider.js";
-import { RunTokenRefresher, type RunTokenUpdate } from "./runTokenRefresh.js";
+import { hasUsableRunToken, RunTokenRefresher, type RunTokenUpdate } from "./runTokenRefresh.js";
 import { SecretEnv } from "./secretEnv.js";
 import { UsageJwtRefresher } from "./usageJwtRefresh.js";
-import { redactSecrets } from "./redact.js";
 
-const USAGE_JWT_RESUME_RETRY_DELAYS_MS = [0, 1_000, 3_000];
+const CREDENTIAL_RESUME_RETRY_DELAYS_MS = [0, 1_000, 3_000];
+
+// Only for a platform whose continue response doesn't carry the new snapshot. Gaps before each
+// fetch of it: snapshots/since can be served from a read replica that hasn't got it yet. Replica
+// lag is usually well under 100ms, so the first fetch nearly always finds it; the second, 600ms
+// after continue, covers a slow replica. Then the poll or a notification takes over.
+const CONTINUED_SNAPSHOT_FETCH_DELAYS_MS = [100, 500];
 
 class ExecutionAbortError extends Error {
   constructor(message: string) {
@@ -86,6 +91,7 @@ export class RunExecution {
 
   private taskRunProcess?: TaskRunProcess;
   private runToken?: RunTokenRefresher;
+  private requiresRunToken = false;
   private usageJwt?: UsageJwtRefresher;
   private heartbeatInFlight?: ReturnType<RunExecution["performHeartbeat"]>;
   private snapshotPoller?: RunExecutionSnapshotPoller;
@@ -385,6 +391,11 @@ export class RunExecution {
         }
 
         await this.refreshBeforeResume();
+        if (!(await this.ensureRunTokenBeforeResume())) {
+          this.sendDebugLog("Cannot resume: no usable run token installed");
+          this.abortExecution();
+          return;
+        }
         for (const waitpoint of completedWaitpoints) {
           this.taskRunProcess.waitpointCompleted(waitpoint);
         }
@@ -431,7 +442,12 @@ export class RunExecution {
     const start = await this.httpClient.startRunAttempt(
       this.runFriendlyId,
       this.snapshotManager.snapshotId,
-      { isWarmStart, supportsRunTokenRefresh: true, supportsUsageJwtRefresh: true }
+      {
+        isWarmStart,
+        supportsRunTokenRefresh: true,
+        supportsUsageJwtRefresh: true,
+        supportsRootKeyFreeExecution: true,
+      }
     );
 
     if (!start.success && start.shouldRetry === false) this.requiresRunnerExit = true;
@@ -452,6 +468,7 @@ export class RunExecution {
 
     // Also set or update the attempt number - we do this to detect illegal attempt number changes, e.g. from stalled runners coming back online
     const attemptNumber = start.data.run.attemptNumber;
+    this.requiresRunToken = start.data.requiresRunToken === true;
     if (attemptNumber && attemptNumber > 0) {
       this.currentAttemptNumber = attemptNumber;
       // Replaced per attempt, so late refreshes for an earlier attempt can't reach this one.
@@ -494,7 +511,9 @@ export class RunExecution {
     });
 
     this.sendDebugLog("started attempt", {
-      start: { ...start.data, envVars: redactSecrets(start.data.envVars) },
+      attemptNumber: start.data.run.attemptNumber,
+      taskId: start.data.execution.task.id,
+      envVarCount: Object.keys(start.data.envVars).length,
     });
 
     this.currentTaskRunEnv = forkEnvFromRunEnv(start.data.envVars);
@@ -666,11 +685,16 @@ export class RunExecution {
 
     const taskRunEnv = this.currentTaskRunEnv;
 
+    if (this.requiresRunToken && this.taskRunProcess?.hasReceivedRootKey) {
+      await this.taskRunProcess.kill("SIGKILL");
+      this.taskRunProcess = undefined;
+    }
     if (!this.taskRunProcess || this.taskRunProcess.isBeingKilled) {
       this.sendDebugLog("getting new task run process", { runId: execution.run.id });
       this.taskRunProcess = await this.taskRunProcessProvider.getProcess({
         taskRunEnv: { ...taskRunEnv, TRIGGER_PROJECT_REF: execution.project.ref },
         isWarmStart,
+        requiresRunToken: this.requiresRunToken,
       });
     } else {
       this.sendDebugLog("using prepared task run process", { runId: execution.run.id });
@@ -696,6 +720,14 @@ export class RunExecution {
     const env = this.attemptEnv.toRecord();
     this.attemptEnv.zero();
 
+    if (
+      this.requiresRunToken &&
+      (Object.hasOwn(env, "TRIGGER_SECRET_KEY") ||
+        !hasUsableRunToken(env.TRIGGER_RUN_TOKEN, execution.run.id, execution.attempt.number))
+    ) {
+      throw new Error("Cannot start execution: required run token is missing or invalid");
+    }
+
     const completion = await this.taskRunProcess.execute(
       {
         payload: {
@@ -705,6 +737,7 @@ export class RunExecution {
         },
         messageId: run.friendlyId,
         env,
+        requiresRunToken: this.requiresRunToken,
       },
       isWarmStart
     );
@@ -865,6 +898,8 @@ export class RunExecution {
       throw new Error("Cannot restore: missing run or snapshot manager");
     }
 
+    const continuedFromSnapshotId = this.snapshotManager.snapshotId;
+
     // Short delay to give websocket time to reconnect
     await sleep(100);
 
@@ -876,7 +911,7 @@ export class RunExecution {
     // No billing report here: the restored runner does not own the suspended snapshot yet.
     if (this.runToken?.isDue) await this.sendHeartbeat("restore", { reportUsageJwt: false });
 
-    const continuationResult = await this.httpClient.continueRunExecution(
+    let continuationResult = await this.httpClient.continueRunExecution(
       this.runFriendlyId,
       this.snapshotManager.snapshotId
     );
@@ -896,6 +931,8 @@ export class RunExecution {
         if (!retryResult.success) {
           throw new Error(retryResult.error);
         }
+
+        continuationResult = retryResult;
       } else {
         throw new Error(continuationResult.error);
       }
@@ -903,6 +940,42 @@ export class RunExecution {
 
     // Track restore count
     this.restoreCount++;
+
+    // Continuing created the EXECUTING snapshot that carries the completed waitpoints. Take it in
+    // now instead of leaving it to the next poll, which can be seconds away, or to a notification
+    // a restored runner may not be subscribed to yet. Not awaited: we are inside the snapshot
+    // queue, which processes it once this change is done.
+    const { executionData } = continuationResult.data;
+
+    if (executionData) {
+      this.enqueueSnapshotChangesAndWait([executionData]).catch((error) => {
+        this.sendDebugLog("restore: failed to process the continued snapshot", {
+          error: error instanceof Error ? error.message : String(error),
+        });
+      });
+      return;
+    }
+
+    // An older platform doesn't return it, so fetch it.
+    this.fetchContinuedSnapshot(continuedFromSnapshotId).catch(() => {});
+  }
+
+  /**
+   * Fetches snapshot changes until the snapshot manager moves past the snapshot the run was
+   * continued from. snapshots/since can be served from a read replica that doesn't have the
+   * snapshot continue created yet, and then returns an empty list. After the last try the poll or
+   * a notification takes over, as for any other snapshot change.
+   */
+  private async fetchContinuedSnapshot(continuedFromSnapshotId: string) {
+    for (const delayMs of CONTINUED_SNAPSHOT_FETCH_DELAYS_MS) {
+      await sleep(delayMs);
+
+      if (this.isShuttingDown || this.currentSnapshotFriendlyId !== continuedFromSnapshotId) {
+        return;
+      }
+
+      await this.fetchAndProcessSnapshotChanges("continue");
+    }
   }
 
   private async exitTaskRunProcessWithoutFailingRun({
@@ -916,6 +989,15 @@ export class RunExecution {
 
     // No services should be left running after this line - let's make sure of it
     this.shutdownExecution(`exitTaskRunProcessWithoutFailingRun: ${reason}`);
+  }
+
+  /**
+   * Called by the RunController when it replaces its socket after a restore under a different
+   * supervisor, so run notifications are received on the new socket.
+   */
+  public updateSupervisorSocket(supervisorSocket: SupervisorSocket) {
+    this.supervisorSocket = supervisorSocket;
+    this.notifier?.updateSocket(supervisorSocket);
   }
 
   /**
@@ -956,8 +1038,8 @@ export class RunExecution {
     }
 
     this.sendDebugLog(`[override] processing: ${reason}`, {
-      overrides: redactSecrets(overrides),
-      currentEnv: redactSecrets(this.env.rawForLogging),
+      overrideKeys: Object.keys(overrides),
+      currentEnv: this.env.rawForLogging,
     });
 
     // Override the env with the new values
@@ -1027,9 +1109,20 @@ export class RunExecution {
     this.lastHeartbeat = new Date();
   }
 
+  private async ensureRunTokenBeforeResume() {
+    if (!this.requiresRunToken || (this.runToken?.hasUsableToken && !this.runToken.isDue))
+      return true;
+    for (const delayMs of CREDENTIAL_RESUME_RETRY_DELAYS_MS) {
+      if (delayMs) await sleep(delayMs);
+      await this.sendHeartbeat("restore");
+      if (this.runToken?.hasUsableToken && !this.runToken.isDue) return true;
+    }
+    return this.runToken?.hasUsableToken === true;
+  }
+
   private async refreshBeforeResume() {
     if (!this.usageJwt?.isDue) return;
-    for (const delayMs of USAGE_JWT_RESUME_RETRY_DELAYS_MS) {
+    for (const delayMs of CREDENTIAL_RESUME_RETRY_DELAYS_MS) {
       if (delayMs) await sleep(delayMs);
       await this.sendHeartbeat("restore");
       if (!this.usageJwt.isDue) return;

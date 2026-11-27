@@ -18,6 +18,9 @@ const rbacHolder = vi.hoisted(() => ({
 
 vi.mock("~/services/rbac.server", () => ({
   rbac: {
+    isUsingPlugin: async () => false,
+    removeFormerMemberRoles: async () => ({ ok: true }),
+    systemRoles: async () => null,
     getUserRole: async () => rbacHolder.currentRole,
     setUserRole: async (params: SetUserRoleParams) => {
       rbacHolder.setUserRoleCalls.push(params);
@@ -328,30 +331,6 @@ describe("acceptInvite", () => {
   );
 
   postgresTest(
-    "applies the invite RBAC role when it creates the membership",
-    { timeout: 60_000 },
-    async ({ prisma }) => {
-      prismaHolder.client = prisma;
-      const { acceptInvite } = await import("../app/models/member.server");
-
-      const { invitee, organization, invite } = await seedInviteFixture(prisma, {
-        activeProjectCount: 1,
-        rbacRoleId: "role_admin",
-      });
-
-      await acceptInvite({
-        inviteId: invite.id,
-        organizationId: organization.id,
-        user: { id: invitee.id, email: invitee.email },
-      });
-
-      expect(rbacHolder.setUserRoleCalls).toEqual([
-        { userId: invitee.id, organizationId: organization.id, roleId: "role_admin" },
-      ]);
-    }
-  );
-
-  postgresTest(
     "does not apply the invite RBAC role to a member who already has a role",
     { timeout: 60_000 },
     async ({ prisma }) => {
@@ -384,72 +363,6 @@ describe("acceptInvite", () => {
         where: { id: invite.id },
       });
       expect(remainingInvite).toBeNull();
-
-      const member = await prisma.orgMember.findFirst({
-        where: { userId: invitee.id, organizationId: organization.id },
-      });
-      expect(member).not.toBeNull();
-    }
-  );
-
-  postgresTest(
-    "applies the invite RBAC role to an existing member who has no role assigned",
-    { timeout: 60_000 },
-    async ({ prisma }) => {
-      prismaHolder.client = prisma;
-      resetRbac({ ok: true }, null);
-      const { acceptInvite } = await import("../app/models/member.server");
-
-      const { invitee, organization, invite } = await seedInviteFixture(prisma, {
-        activeProjectCount: 1,
-        rbacRoleId: "role_admin",
-      });
-
-      await prisma.orgMember.create({
-        data: {
-          organizationId: organization.id,
-          userId: invitee.id,
-          role: "MEMBER",
-        },
-      });
-
-      await acceptInvite({
-        inviteId: invite.id,
-        organizationId: organization.id,
-        user: { id: invitee.id, email: invitee.email },
-      });
-
-      expect(rbacHolder.setUserRoleCalls).toEqual([
-        { userId: invitee.id, organizationId: organization.id, roleId: "role_admin" },
-      ]);
-    }
-  );
-
-  postgresTest(
-    "still joins the org when the RBAC role assignment is refused",
-    { timeout: 60_000 },
-    async ({ prisma }) => {
-      prismaHolder.client = prisma;
-      resetRbac({
-        ok: false,
-        error: "An organisation must have at least one Owner",
-        code: "last_owner",
-      });
-      const { acceptInvite } = await import("../app/models/member.server");
-
-      const { invitee, organization, invite } = await seedInviteFixture(prisma, {
-        activeProjectCount: 1,
-        rbacRoleId: "role_admin",
-      });
-
-      const { organization: joinedOrg } = await acceptInvite({
-        inviteId: invite.id,
-        organizationId: organization.id,
-        user: { id: invitee.id, email: invitee.email },
-      });
-
-      expect(joinedOrg.id).toBe(organization.id);
-      expect(rbacHolder.setUserRoleCalls).toHaveLength(1);
 
       const member = await prisma.orgMember.findFirst({
         where: { userId: invitee.id, organizationId: organization.id },

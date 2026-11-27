@@ -108,14 +108,10 @@ export const ExportTraceServiceRequest = {
     return obj;
   },
 
-  create<I extends Exact<DeepPartial<ExportTraceServiceRequest>, I>>(
-    base?: I
-  ): ExportTraceServiceRequest {
-    return ExportTraceServiceRequest.fromPartial(base ?? ({} as any));
+  create(base?: DeepPartial<ExportTraceServiceRequest>): ExportTraceServiceRequest {
+    return ExportTraceServiceRequest.fromPartial(base ?? {});
   },
-  fromPartial<I extends Exact<DeepPartial<ExportTraceServiceRequest>, I>>(
-    object: I
-  ): ExportTraceServiceRequest {
+  fromPartial(object: DeepPartial<ExportTraceServiceRequest>): ExportTraceServiceRequest {
     const message = createBaseExportTraceServiceRequest();
     message.resourceSpans = object.resourceSpans?.map((e) => ResourceSpans.fromPartial(e)) || [];
     return message;
@@ -176,14 +172,10 @@ export const ExportTraceServiceResponse = {
     return obj;
   },
 
-  create<I extends Exact<DeepPartial<ExportTraceServiceResponse>, I>>(
-    base?: I
-  ): ExportTraceServiceResponse {
-    return ExportTraceServiceResponse.fromPartial(base ?? ({} as any));
+  create(base?: DeepPartial<ExportTraceServiceResponse>): ExportTraceServiceResponse {
+    return ExportTraceServiceResponse.fromPartial(base ?? {});
   },
-  fromPartial<I extends Exact<DeepPartial<ExportTraceServiceResponse>, I>>(
-    object: I
-  ): ExportTraceServiceResponse {
+  fromPartial(object: DeepPartial<ExportTraceServiceResponse>): ExportTraceServiceResponse {
     const message = createBaseExportTraceServiceResponse();
     message.partialSuccess =
       object.partialSuccess !== undefined && object.partialSuccess !== null
@@ -261,14 +253,10 @@ export const ExportTracePartialSuccess = {
     return obj;
   },
 
-  create<I extends Exact<DeepPartial<ExportTracePartialSuccess>, I>>(
-    base?: I
-  ): ExportTracePartialSuccess {
-    return ExportTracePartialSuccess.fromPartial(base ?? ({} as any));
+  create(base?: DeepPartial<ExportTracePartialSuccess>): ExportTracePartialSuccess {
+    return ExportTracePartialSuccess.fromPartial(base ?? {});
   },
-  fromPartial<I extends Exact<DeepPartial<ExportTracePartialSuccess>, I>>(
-    object: I
-  ): ExportTracePartialSuccess {
+  fromPartial(object: DeepPartial<ExportTracePartialSuccess>): ExportTracePartialSuccess {
     const message = createBaseExportTracePartialSuccess();
     message.rejectedSpans = object.rejectedSpans ?? BigInt("0");
     message.errorMessage = object.errorMessage ?? "";
@@ -320,11 +308,6 @@ type DeepPartial<T> = T extends Builtin
       : T extends {}
         ? { [K in keyof T]?: DeepPartial<T[K]> }
         : Partial<T>;
-
-type KeysOfUnion<T> = T extends T ? keyof T : never;
-type Exact<P, I extends P> = P extends Builtin
-  ? P
-  : P & { [K in keyof P]: Exact<P[K], I[K]> } & { [K in Exclude<keyof I, KeysOfUnion<P>>]: never };
 
 function longToBigint(long: Long) {
   return BigInt(long.toString());

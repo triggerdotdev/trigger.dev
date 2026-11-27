@@ -140,6 +140,7 @@ async function authenticateRunTokenBearer(request: Request): Promise<HostBearerA
     subject: {
       type: "runToken",
       runId: result.claims.run_id,
+      attemptNumber: result.claims.attempt,
       environmentId: result.environment.id,
       organizationId: result.environment.organizationId,
       projectId: result.environment.projectId,

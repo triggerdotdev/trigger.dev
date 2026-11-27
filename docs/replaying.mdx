@@ -1,6 +1,6 @@
 ---
 title: "Replaying"
-description: "A replay is a copy of a run with the same payload but against the latest version in that environment. This is useful if something went wrong and you want to try again with the latest version of your code."
+description: "A replay is a copy of a run with the same payload that runs on the current version of the environment. This is useful if something went wrong and you want to try again with your current code."
 ---
 
 ### Replaying from the UI
@@ -9,14 +9,12 @@ description: "A replay is a copy of a run with the same payload but against the 
   <Tab title="From a run">
     <Steps>
       <Step title="Click the Replay button in the top right">
-        ![Select a task, then in the bottom right
-        click "Replay"](/images/replay-run-action.png)
+        ![The Replay run button in the top right of the run page](/images/replay-run-action.png)
       </Step>
       <Step title="Confirm replay settings">
         You can edit the payload <Icon icon="circle-1" iconType="solid" size={20} color="F43F47" /> (if available) and choose the environment <Icon icon="circle-2" iconType="solid" size={20} color="F43F47" /> to replay the run in.
         
-        ![Select a task, then in the bottom right
-        click "Replay"](/images/replay-run-modal.png)
+        ![The Replay this run dialog with the payload and environment](/images/replay-run-modal.png)
       </Step>
     </Steps>
   </Tab>
@@ -70,7 +68,7 @@ const replayedRun = await runs.replay(run.id, {
 });
 ```
 
-The options use the same names as [`trigger()` options](/triggering): `payload`, `metadata`, `tags`, `queue`, `concurrencyKey`, `machine`, `version`, `region`, `delay`, `ttl`, `idempotencyKey`, `idempotencyKeyTTL`, `maxAttempts`, `maxDuration`, and `priority`. If you leave out `payload`, `metadata`, `tags`, `queue`, `concurrencyKey`, or `machine`, the new run uses the original run's value. The other options fall back to the task's current defaults, and without `version` the replay runs on the current version. The replay always runs in the same environment as the original run.
+The options use the same names as [`trigger()` options](/triggering): `payload`, `metadata`, `tags`, `queue`, `concurrencyKey`, `machine`, `version`, `region`, `delay`, `ttl`, `idempotencyKey`, `idempotencyKeyTTL`, `maxAttempts`, `maxDuration`, and `priority`. If you leave out `payload`, `metadata`, `tags`, `queue`, `concurrencyKey`, or `machine`, the new run uses the original run's value. The other options fall back to the task's current defaults, and without `version` the replay runs on the [current version](/deployment/overview#current-version) (the promoted one, which isn't always the newest deploy). The replay always runs in the same environment as the original run.
 
 A `queue` must already exist in the environment, and a `version` must be a version deployed to it. Otherwise the replay fails with an error and no run is created.
 

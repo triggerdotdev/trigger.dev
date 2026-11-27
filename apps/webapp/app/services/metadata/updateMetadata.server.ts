@@ -29,7 +29,7 @@ import {
   type MetadataOperationBuffer,
 } from "./operationBuffer.server";
 
-const RUN_UPDATABLE_WINDOW_MS = 60 * 60 * 1000; // 1 hour
+export const RUN_UPDATABLE_WINDOW_MS = 60 * 60 * 1000; // 1 hour
 
 const MAX_DRAIN_BATCHES_PER_TICK = 100;
 const MAX_DROPS_LOGGED = 20;

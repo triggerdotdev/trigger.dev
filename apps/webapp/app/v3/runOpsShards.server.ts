@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { isValidShardChar } from "@trigger.dev/core/v3/isomorphic";
+import { MEMORYDB_SHARD_KEY } from "@internal/run-store";
 import { isValidDatabaseUrl } from "~/utils/db";
 
 const KnobsSchema = z
@@ -31,7 +32,13 @@ const ReplicationSchema = z.object({
 
 const DescriptorSchema = z
   .object({
-    key: z.string().refine(isValidShardChar, "shard key must be a single [a-z0-9] char"),
+    key: z
+      .string()
+      .refine(isValidShardChar, "shard key must be a single [a-z0-9] char")
+      .refine(
+        (key) => key !== MEMORYDB_SHARD_KEY,
+        `shard key "${MEMORYDB_SHARD_KEY}" is reserved for the MemoryDB store`
+      ),
     region: z.string().min(1),
     url: z.string().refine(isValidDatabaseUrl, "url is invalid").optional(),
     replicaUrl: z.string().refine(isValidDatabaseUrl, "replicaUrl is invalid").optional(),

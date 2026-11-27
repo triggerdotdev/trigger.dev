@@ -51,7 +51,7 @@ const batch = await myTask.batchTrigger([
 
 </CodeGroup>
 
-This will create a run with the tags `user_123456` and `org_abcdefg`. They look like this in the runs table:
+This will create a run with the tags `user_123456` and `org_abcdefg`. Tags that use a colon, like `org:acme_123`, show the prefix and the value separately in the runs table:
 
 ![How tags appear in the dashboard](/images/tags-org-user.png)
 
@@ -102,7 +102,7 @@ You can filter runs by tags in the dashboard and in the SDK.
 
 ### In the dashboard
 
-On the Runs page open the filter menu, choose "Tags" and then start typing in the name of the tag you want to filter by. You can select it and it will restrict the results to only runs with that tag. You can add multiple tags to filter by more than one.
+On the Runs page open **More filters**, choose "Tags" and then start typing in the name of the tag you want to filter by. You can select it and it will restrict the results to only runs with that tag. You can add multiple tags to filter by more than one.
 
 ![Filter by tags](/images/tags-filtering.png)
 

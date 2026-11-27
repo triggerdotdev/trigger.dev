@@ -1,14 +1,10 @@
 import type { FlatTree, FlatTreeItem } from "~/components/primitives/TreeView/TreeView";
 import type { SessionTraceRun, SessionTraceSpan } from "./sessionTraceTypes";
 
-/** Quiet periods longer than this between two runs fold into one row. */
-export const GAP_FOLD_MS = 10 * 60_000;
-
 export type SessionTreeRow<TSpanData> =
   | { kind: "session"; runCount: number }
   | { kind: "loadEarlier"; count: number }
   | { kind: "notLoaded"; count: number; olderRunFriendlyId: string; newerRunFriendlyId: string }
-  | { kind: "gap"; durationMs: number }
   | { kind: "run"; run: SessionTraceRun; spansLoaded: boolean }
   | { kind: "span"; runFriendlyId: string; spanId: string; span: TSpanData };
 
@@ -100,11 +96,6 @@ export function buildSessionTree<TSpanData>({
           olderRunFriendlyId: previous.friendlyId,
           newerRunFriendlyId: run.friendlyId,
         });
-      } else {
-        const gapMs = quietGapMs(previous, run);
-        if (gapMs !== undefined && gapMs > GAP_FOLD_MS) {
-          addSessionChild(`gap:${run.friendlyId}`, { kind: "gap", durationMs: gapMs });
-        }
       }
     }
 
@@ -128,11 +119,6 @@ function uniqueRunsOldestFirst(runs: SessionTraceRun[]) {
   const byId = new Map<string, SessionTraceRun>();
   for (const run of runs) byId.set(run.friendlyId, run);
   return [...byId.values()].sort((a, b) => a.number - b.number);
-}
-
-function quietGapMs(previous: SessionTraceRun, next: SessionTraceRun) {
-  if (!previous.finishedAt || !next.createdAt) return undefined;
-  return new Date(next.createdAt).getTime() - new Date(previous.finishedAt).getTime();
 }
 
 type GraftedSpans = { nodes: SessionTreeNode<unknown>[]; topLevelIds: string[]; shape: number };

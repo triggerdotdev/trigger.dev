@@ -81,17 +81,19 @@ export type UseLoadTranscriptOptions = {
  * `lastOutEventId`, so the live subscription opens just past the persisted
  * history. Applied to the session now if it exists, otherwise held by the
  * transport until the session is created, so a load that resolves before the
- * session exists still moves the cursor. A no-op when the transcript carries
- * no cursor. Returns whether a cursor was provided.
+ * session exists still moves the cursor. The `.in` cursor goes with it, so the
+ * transport can tell whether the transcript was saved after a send it still has
+ * outstanding was answered. A no-op when the transcript carries no `.out`
+ * cursor. Returns whether a cursor was provided.
  */
 export function seedTranscriptCursor(
   transport: Pick<TriggerChatTransport, "seedResumeCursor">,
   chatId: string,
-  cursors: { lastOutEventId?: string } | undefined
+  cursors: { lastOutEventId?: string; lastInEventId?: string } | undefined
 ): boolean {
   const lastEventId = cursors?.lastOutEventId;
   if (!lastEventId) return false;
-  transport.seedResumeCursor(chatId, lastEventId);
+  transport.seedResumeCursor(chatId, lastEventId, cursors?.lastInEventId);
   return true;
 }
 

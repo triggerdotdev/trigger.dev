@@ -473,6 +473,30 @@ heteroPostgresTest(
   }
 );
 
+// Catches: the cached authenticated environment dropping or staling its organisation's flags.
+heteroPostgresTest(
+  "resolveAuthenticatedEnv carries the organisation's feature flags, first and cached",
+  async ({ prisma14 }) => {
+    const { environment, org } = await seedControlPlane(prisma14);
+    const featureFlags = { runOpsMintKind: "runOpsId", hasQueryAccess: true };
+    await prisma14.organization.update({ where: { id: org.id }, data: { featureFlags } });
+    const { client: counting, reads } = countQueries(prisma14);
+    const resolver = new ControlPlaneResolver({
+      controlPlaneReplica: counting,
+      controlPlanePrimary: counting,
+      cache: new ControlPlaneCache({ ttlMs: 60_000, maxEntries: 100 }),
+      splitEnabled: () => true,
+    });
+
+    const first = await resolver.resolveAuthenticatedEnv(environment.id);
+    const cached = await resolver.resolveAuthenticatedEnv(environment.id);
+
+    expect(first!.organization.featureFlags).toEqual(featureFlags);
+    expect(cached!.organization.featureFlags).toEqual(featureFlags);
+    expect(reads()).toBe(1);
+  }
+);
+
 heteroPostgresTest(
   "resolveAuthenticatedEnv populates parentEnvironment { id, apiKey } for a branch env",
   async ({ prisma14 }) => {

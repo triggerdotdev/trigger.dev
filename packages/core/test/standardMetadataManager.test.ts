@@ -10,9 +10,21 @@ describe("StandardMetadataManager", () => {
   let server: Awaited<ReturnType<typeof createTestHttpServer>>;
   let metadataUpdates: Array<UpdateMetadataRequestBody> = [];
   let manager: StandardMetadataManager;
+  /** While set, each update request is held until it settles (a slow round trip to the server). */
+  let holdUpdates: Promise<void> | undefined;
+  let updatesReceived = 0;
+  /** The most update requests the server was handling at once. */
+  let maxConcurrentUpdates = 0;
+  /** How long the server takes to answer each update request. */
+  let updateDelayMs = 0;
 
   beforeEach(async () => {
     metadataUpdates = [];
+    holdUpdates = undefined;
+    updatesReceived = 0;
+    maxConcurrentUpdates = 0;
+    updateDelayMs = 0;
+    let concurrentUpdates = 0;
     const store = {};
 
     server = await createTestHttpServer({
@@ -20,6 +32,12 @@ describe("StandardMetadataManager", () => {
         router.put("/api/v1/runs/:runId/metadata", async ({ req }) => {
           const body = await req.json();
           const parsedBody = UpdateMetadataRequestBody.parse(body);
+          updatesReceived++;
+          concurrentUpdates++;
+          maxConcurrentUpdates = Math.max(maxConcurrentUpdates, concurrentUpdates);
+          await holdUpdates;
+          if (updateDelayMs > 0) await new Promise((r) => setTimeout(r, updateDelayMs));
+          concurrentUpdates--;
 
           metadataUpdates.push(parsedBody);
 
@@ -37,7 +55,229 @@ describe("StandardMetadataManager", () => {
   });
 
   afterEach(async () => {
+    manager.stopPeriodicFlush();
     await server.close();
+  });
+
+  const appendedEvents = () =>
+    metadataUpdates.flatMap((u) =>
+      (u.operations ?? []).flatMap((op) => (op.type === "append" ? [op.value] : []))
+    );
+
+  const waitUntil = async (check: () => boolean, timeoutMs = 2_000) => {
+    const start = Date.now();
+    while (!check() && Date.now() - start < timeoutMs) {
+      await new Promise((r) => setTimeout(r, 5));
+    }
+  };
+
+  /** A gate for the update requests received from now on, opened by the returned function. */
+  const holdFromNow = () => {
+    let release!: () => void;
+    holdUpdates = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    return release;
+  };
+
+  const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+  test("a flush called while a request is in flight returns at once and sends nothing extra", async () => {
+    // Catches: a flush called during an in-flight request waiting for it, or
+    // starting a request of its own, which would make an awaited `metadata.flush()`
+    // slower or let requests overlap. The periodic flush sends what it leaves queued.
+    const release = holdFromNow();
+    manager.append("events", "first");
+    const earlier = manager.flush();
+    await waitUntil(() => updatesReceived === 1);
+
+    manager.append("events", "second");
+    const outcome = await Promise.race([
+      manager.flush().then(() => "returned" as const),
+      sleep(100).then(() => "waiting" as const),
+    ]);
+    release();
+    await earlier;
+    await sleep(50);
+
+    expect(outcome).toBe("returned");
+    expect(updatesReceived).toBe(1);
+    expect(appendedEvents()).toEqual(["first"]);
+  });
+
+  test("the next periodic tick sends a change a flush left queued during an in-flight request", async () => {
+    // Catches: a periodic tick that lands on an in-flight request stopping the
+    // periodic flush, so a change whose own flush returned during that request is
+    // never sent (until the run ends).
+    manager.startPeriodicFlush(20);
+    const release = holdFromNow();
+    manager.append("events", "first");
+    const slow = manager.flush();
+    await waitUntil(() => updatesReceived === 1);
+    manager.append("events", "second");
+    await manager.flush();
+    // Several ticks land on the held request.
+    await sleep(100);
+    release();
+    await slow;
+
+    await waitUntil(() => appendedEvents().includes("second"), 500);
+
+    expect(appendedEvents()).toEqual(["first", "second"]);
+  });
+
+  test("the periodic flush keeps running after a tick lands on an in-flight flush", async () => {
+    // Catches: a periodic tick that finds another flush in flight returning
+    // without scheduling the next tick, which stops periodic flushing for the
+    // rest of the run, so a change appended later is never sent.
+    const release = holdFromNow();
+    manager.startPeriodicFlush(20);
+
+    manager.append("events", "first");
+    const slow = manager.flush();
+    await waitUntil(() => updatesReceived === 1);
+    // Several ticks fire while the explicit flush is held.
+    await sleep(100);
+    release();
+    await slow;
+    holdUpdates = undefined;
+
+    manager.append("events", "second");
+    await waitUntil(() => appendedEvents().includes("second"), 500);
+
+    expect(appendedEvents()).toEqual(["first", "second"]);
+  });
+
+  test("a burst of flushes during in-flight requests loses no change, and the next tick sends the rest", async () => {
+    // Catches: changes whose flush returned during an in-flight request being
+    // dropped, sent twice or out of order, or left unsent after the last request.
+    updateDelayMs = 30;
+    manager.startPeriodicFlush(20);
+
+    const ops = Array.from({ length: 30 }, (_, i) => `op-${i}`);
+    for (const op of ops) {
+      manager.append("events", op);
+      void manager.flush();
+      await sleep(5);
+    }
+    // The last request takes 30 ms, the tick after it at most 20 ms more.
+    await waitUntil(() => appendedEvents().length >= ops.length, 500);
+
+    expect(appendedEvents()).toEqual(ops);
+    expect(maxConcurrentUpdates).toBe(1);
+  });
+
+  test("a periodic tick in flight at run end does not send what the completion carries", async () => {
+    // Catches: the periodic flush restarting after `stopAndReturnLastFlush()` when
+    // its tick's request lands, and sending a change the completion packet already
+    // carries, so it is applied twice.
+    const release = holdFromNow();
+    manager.startPeriodicFlush(10);
+    manager.append("events", "sent-by-tick");
+    await waitUntil(() => updatesReceived === 1);
+    manager.append("events", "in-completion");
+
+    const packet = await manager.stopAndReturnLastFlush();
+    release();
+    await sleep(100);
+
+    expect(packet.data).toContain("in-completion");
+    expect(updatesReceived).toBe(1);
+    expect(appendedEvents()).toEqual(["sent-by-tick"]);
+  });
+
+  test("after reset, the next run's first flush sends at once while the previous run's request is in flight", async () => {
+    // Catches: `reset()` (a warm start reusing the process) keeping the previous
+    // run's in-flight request as this run's, so the next run's first flush finds a
+    // request in flight and returns without sending.
+    const release = holdFromNow();
+    manager.append("events", "previous-run");
+    const previous = manager.flush();
+    await waitUntil(() => updatesReceived === 1);
+    // Only the previous run's request is held.
+    holdUpdates = undefined;
+
+    manager.reset();
+    manager.runId = "next-run";
+    manager.append("events", "next-run");
+    await manager.flush();
+    const sentBeforeRelease = appendedEvents();
+    release();
+    await previous;
+
+    expect(sentBeforeRelease).toEqual(["next-run"]);
+    expect(appendedEvents()).toEqual(["next-run", "previous-run"]);
+  });
+
+  test("the previous run's request settling after reset does not let the next run's requests overlap", async () => {
+    // Catches: the previous run's in-flight request, settling after `reset()`,
+    // clearing the next run's in-flight state, so the next flush starts a request
+    // while the next run's own is still in flight.
+    const releaseA = holdFromNow();
+    manager.append("events", "a-1");
+    const runA = manager.flush();
+    await waitUntil(() => updatesReceived === 1);
+
+    manager.reset();
+    manager.runId = "run-b";
+    const releaseB = holdFromNow();
+    manager.append("events", "b-1");
+    const runB = manager.flush();
+    await waitUntil(() => updatesReceived === 2);
+
+    releaseA();
+    await runA;
+    manager.append("events", "b-2");
+    const runBLater = manager.flush();
+    await sleep(50);
+    expect(updatesReceived).toBe(2);
+
+    releaseB();
+    await Promise.all([runB, runBLater]);
+    await manager.flush();
+
+    expect(updatesReceived).toBe(3);
+    expect(appendedEvents()).toEqual(["a-1", "b-1", "b-2"]);
+  });
+
+  test("the previous run's late response does not become the next run's metadata", async () => {
+    // Catches: a response to the previous run's request, arriving after the next
+    // run entered with its own metadata, replacing it, so the next run reads the
+    // previous run's values and a `set` to one of them is never sent.
+    const releaseA = holdFromNow();
+    manager.set("status", "done");
+    const runA = manager.flush();
+    await waitUntil(() => updatesReceived === 1);
+
+    manager.reset();
+    manager.runId = "run-b";
+    manager.enterWithMetadata({});
+    holdUpdates = undefined;
+    releaseA();
+    await runA;
+
+    expect(manager.current()).toEqual({});
+    manager.set("status", "done");
+    await manager.flush();
+
+    expect(updatesReceived).toBe(2);
+  });
+
+  test("stopping the periodic flush stops it while a tick's own request is in flight", async () => {
+    // Catches: a tick whose request was in flight when `stopPeriodicFlush()` ran
+    // scheduling the next tick when it lands, so periodic flushing outlives the stop.
+    const release = holdFromNow();
+    manager.startPeriodicFlush(20);
+    manager.append("events", "first");
+    await waitUntil(() => updatesReceived === 1);
+    manager.stopPeriodicFlush();
+    release();
+    await sleep(20);
+
+    manager.append("events", "after-stop");
+    await sleep(100);
+
+    expect(appendedEvents()).toEqual(["first"]);
   });
 
   test("should initialize with empty store", () => {

@@ -176,7 +176,7 @@ v3 (engine V1: MarQS + Graphile worker) is end-of-life and its execution code ha
 
 ### Documentation
 
-Docs live in `docs/` as a Mintlify site (MDX format). See `docs/AGENTS.md` for conventions.
+Docs live in `docs/` as MDX, rendered by the docs site in `apps/docs`. See `docs/AGENTS.md` for conventions and checks.
 
 ### Reference Projects
 

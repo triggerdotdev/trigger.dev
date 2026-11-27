@@ -1,10 +1,10 @@
-import { BookOpenIcon, PlusIcon } from "@heroicons/react/20/solid";
+import { PlusIcon } from "@heroicons/react/20/solid";
 import { NoSymbolIcon } from "@heroicons/react/24/solid";
-import { Outlet, useParams } from "@remix-run/react";
 import { type LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { tryCatch } from "@trigger.dev/core";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import { z } from "zod";
+import { DocsHeaderButton } from "~/components/DocsPanel";
 import { AdminDebugTooltip } from "~/components/admin/debugTooltip";
 import { BulkActionsNone } from "~/components/BlankStatePanels";
 import { MainCenteredContainer, PageBody, PageContainer } from "~/components/layout/AppLayout";
@@ -14,13 +14,6 @@ import { Dialog, DialogTrigger } from "~/components/primitives/Dialog";
 import { NavBar, PageAccessories, PageTitle } from "~/components/primitives/PageHeader";
 import { PaginationControls } from "~/components/primitives/Pagination";
 import { Paragraph } from "~/components/primitives/Paragraph";
-import {
-  RESIZABLE_PANEL_ANIMATION,
-  ResizableHandle,
-  ResizablePanel,
-  ResizablePanelGroup,
-  collapsibleHandleClassName,
-} from "~/components/primitives/Resizable";
 import {
   Table,
   TableBlankRow,
@@ -34,6 +27,7 @@ import {
 import { TruncatedCopyableValue } from "~/components/primitives/TruncatedCopyableValue";
 import { AbortBulkActionDialog } from "~/components/runs/v3/AbortBulkActionDialog";
 import { BulkActionStatusCombo, BulkActionTypeCombo } from "~/components/runs/v3/BulkAction";
+import { BulkActionFilters, BulkActionListFilters } from "~/components/runs/v3/BulkActionFilters";
 import { UserAvatar } from "~/components/UserProfilePhoto";
 import { useEnvironment } from "~/hooks/useEnvironment";
 import { useOrganization } from "~/hooks/useOrganizations";
@@ -49,7 +43,6 @@ import { checkPermissions } from "~/services/routeBuilders/permissions.server";
 import { requireUserId } from "~/services/session.server";
 import { cn } from "~/utils/cn";
 import {
-  docsPath,
   EnvironmentParamSchema,
   v3BulkActionPath,
   v3CreateBulkActionPath,
@@ -65,7 +58,7 @@ import { pageMeta } from "~/utils/pageTitle";
 
 export const meta = pageMeta("Bulk actions");
 
-const SearchParamsSchema = z.object({
+const SearchParamsSchema = BulkActionListFilters.extend({
   page: z.coerce.number().optional(),
 });
 
@@ -86,13 +79,21 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
 
   try {
     const url = new URL(request.url);
-    const { page } = SearchParamsSchema.parse(Object.fromEntries(url.searchParams));
+    const { page, types, statuses, users } = SearchParamsSchema.parse({
+      page: url.searchParams.get("page") ?? undefined,
+      types: url.searchParams.getAll("types"),
+      statuses: url.searchParams.getAll("statuses"),
+      users: url.searchParams.getAll("users"),
+    });
 
     const presenter = new BulkActionListPresenter();
     const [error, data] = await tryCatch(
       presenter.call({
         environmentId: environment.id,
         page,
+        types,
+        statuses,
+        users,
       })
     );
 
@@ -129,12 +130,12 @@ export default function Page() {
     totalPages,
     totalCount: _totalCount,
     canAbort,
+    users,
+    hasFilters,
   } = useTypedLoaderData<typeof loader>();
   const organization = useOrganization();
   const project = useProject();
   const environment = useEnvironment();
-  const { bulkActionParam } = useParams();
-  const isShowingInspector = bulkActionParam !== undefined;
 
   return (
     <PageContainer>
@@ -143,13 +144,7 @@ export default function Page() {
         <PageAccessories>
           <AdminDebugTooltip />
           <WhenAgentUnavailable>
-            <LinkButton
-              variant={"docs/small"}
-              LeadingIcon={BookOpenIcon}
-              to={docsPath("/bulk-actions")}
-            >
-              Bulk actions docs
-            </LinkButton>
+            <DocsHeaderButton path="/bulk-actions">Bulk actions docs</DocsHeaderButton>
           </WhenAgentUnavailable>
           <LinkButton
             variant="primary/small"
@@ -164,67 +159,37 @@ export default function Page() {
         </PageAccessories>
       </NavBar>
       <PageBody scrollable={false}>
-        {bulkActions.length === 0 ? (
+        {bulkActions.length === 0 && !hasFilters ? (
           <MainCenteredContainer className="max-w-prose">
             <BulkActionsNone />
           </MainCenteredContainer>
         ) : (
-          <ResizablePanelGroup orientation="horizontal" className="max-h-full">
-            <ResizablePanel id="bulk-actions-main" min={"100px"}>
-              <div
-                className={cn(
-                  "grid max-h-full min-h-full overflow-x-auto",
-                  totalPages > 1 ? "grid-rows-[auto_1fr_auto]" : "grid-rows-[1fr]"
-                )}
-              >
-                {totalPages > 1 && (
-                  <div className="flex items-center justify-end gap-x-2 p-2">
-                    <PaginationControls
-                      currentPage={currentPage}
-                      totalPages={totalPages}
-                      showPageNumbers={false}
-                    />
-                  </div>
-                )}
+          <div
+            className={cn(
+              "grid max-h-full min-h-full overflow-x-auto",
+              totalPages > 1 ? "grid-rows-[auto_1fr_auto]" : "grid-rows-[auto_1fr]"
+            )}
+          >
+            <div className="flex items-center justify-between gap-x-2 p-2">
+              <BulkActionFilters users={users} />
+              <PaginationControls
+                currentPage={currentPage}
+                totalPages={totalPages}
+                showPageNumbers={false}
+              />
+            </div>
 
-                <BulkActionsTable
-                  bulkActions={bulkActions}
-                  totalPages={totalPages}
-                  canAbort={canAbort}
-                />
-                {totalPages > 1 && (
-                  <div
-                    className={cn(
-                      "flex min-h-full",
-                      totalPages > 1 && "justify-end border-t border-grid-dimmed px-2 py-3"
-                    )}
-                  >
-                    <PaginationControls currentPage={currentPage} totalPages={totalPages} />
-                  </div>
-                )}
-              </div>
-            </ResizablePanel>
-            <ResizableHandle
-              id="bulk-actions-handle"
-              className={collapsibleHandleClassName(isShowingInspector)}
+            <BulkActionsTable
+              bulkActions={bulkActions}
+              totalPages={totalPages}
+              canAbort={canAbort}
             />
-            <ResizablePanel
-              id="bulk-actions-inspector"
-              default="500px"
-              min="500px"
-              max="800px"
-              className="overflow-hidden"
-              collapsible
-              collapsed={!isShowingInspector}
-              onCollapseChange={() => {}}
-              collapsedSize="0px"
-              collapseAnimation={RESIZABLE_PANEL_ANIMATION}
-            >
-              <div className="h-full" style={{ minWidth: 500 }}>
-                <Outlet />
+            {totalPages > 1 && (
+              <div className="flex min-h-full justify-end border-t border-grid-dimmed px-2 py-3">
+                <PaginationControls currentPage={currentPage} totalPages={totalPages} />
               </div>
-            </ResizablePanel>
-          </ResizablePanelGroup>
+            )}
+          </div>
         )}
       </PageBody>
     </PageContainer>
@@ -243,8 +208,6 @@ function BulkActionsTable({
   const organization = useOrganization();
   const project = useProject();
   const environment = useEnvironment();
-  const { bulkActionParam } = useParams();
-
   return (
     <Table containerClassName={cn(totalPages === 1 && "border-t-0")}>
       <TableHeader>
@@ -300,13 +263,8 @@ function BulkActionsTable({
         ) : (
           bulkActions.map((bulkAction) => {
             const path = v3BulkActionPath(organization, project, environment, bulkAction);
-            const isSelected = bulkActionParam === bulkAction.friendlyId;
-
             return (
-              <TableRow
-                key={bulkAction.friendlyId}
-                className={isSelected ? "bg-grid-dimmed" : undefined}
-              >
+              <TableRow key={bulkAction.friendlyId}>
                 <TableCell to={path} isTabbableCell>
                   <TruncatedCopyableValue value={bulkAction.friendlyId} />
                 </TableCell>

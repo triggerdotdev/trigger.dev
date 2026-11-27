@@ -17,10 +17,9 @@ import { Label } from "~/components/primitives/Label";
 import { Select, SelectItem } from "~/components/primitives/Select";
 import { ButtonSpinner } from "~/components/primitives/Spinner";
 import { prisma } from "~/db.server";
-import { authenticator } from "~/services/auth.server";
 import { logger } from "~/services/logger.server";
 import { canConnectIntegration } from "~/v3/deploymentAccess.server";
-import { requireUserId } from "~/services/session.server";
+import { logout, requireUserId } from "~/services/session.server";
 import { ssoRedirectForEmail } from "~/services/ssoAutoDiscovery.server";
 import { confirmBasicDetailsPath, newProjectPath } from "~/utils/pathBuilder";
 import { redirectWithErrorMessage } from "~/models/message.server";
@@ -227,12 +226,12 @@ export async function action({ request }: ActionFunctionArgs) {
       // route's already-authenticated guard — silently dropping the install.
       // Destroy the current session first (mirroring the OAuth callbacks,
       // which never commit a session when SSO is required) so `/login/sso`
-      // accepts them. `authenticator.logout` redirects to `ssoRedirect`
+      // accepts them. `logout` redirects to `ssoRedirect`
       // verbatim — unlike the `/logout` route it doesn't run the redirect
       // sanitizer, which would otherwise reject the non-navigable
       // `/login/sso` target. The resume URL rides along as `redirectTo` and
       // survives the SSO round-trip.
-      return authenticator.logout(request, { redirectTo: ssoRedirect });
+      return logout(request, ssoRedirect);
     }
   }
 

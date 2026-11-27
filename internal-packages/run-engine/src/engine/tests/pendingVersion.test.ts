@@ -673,6 +673,7 @@ function bindPassthrough(passthrough: PassthroughControlPlaneResolver): ControlP
     resolveEnv: passthrough.resolveEnv.bind(passthrough),
     resolveEnvDeletionState: passthrough.resolveEnvDeletionState.bind(passthrough),
     resolveDeploymentStatus: passthrough.resolveDeploymentStatus.bind(passthrough),
+    resolveDeploymentMachine: passthrough.resolveDeploymentMachine.bind(passthrough),
     resolveAuthenticatedEnv: passthrough.resolveAuthenticatedEnv.bind(passthrough),
     resolveWorkerVersion: passthrough.resolveWorkerVersion.bind(passthrough),
     resolveWorkerVersionFromPrimary: passthrough.resolveWorkerVersionFromPrimary.bind(passthrough),

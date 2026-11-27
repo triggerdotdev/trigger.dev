@@ -10,6 +10,7 @@ export type SessionRunRow = {
   runId: string;
   reason: string;
   triggeredAt: Date;
+  handover: unknown;
 };
 
 // Row comparisons on `(triggeredAt, id)` give one tight range on the
@@ -41,7 +42,7 @@ export function sessionRunsPageQuery(params: SessionRunsPageParams): Prisma.Sql 
   const beforeFilter = positionFilter(params);
 
   return Prisma.sql`
-    SELECT id, "runId", reason, "triggeredAt"
+    SELECT id, "runId", reason, "triggeredAt", handover
     FROM "SessionRun"
     WHERE "sessionId" = ${params.sessionId} ${beforeFilter}
     ORDER BY "triggeredAt" DESC, id DESC

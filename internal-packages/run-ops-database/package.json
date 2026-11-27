@@ -21,7 +21,7 @@
   },
   "devDependencies": {
     "rimraf": "6.0.1",
-    "vitest": "4.1.11"
+    "vitest": "4.1.12"
   },
   "scripts": {
     "clean": "rimraf dist",
@@ -36,7 +36,7 @@
     "db:migrate:status": "node scripts/migrate.mjs status",
     "db:push": "pnpm run env prisma db push",
     "test": "vitest run",
-    "typecheck": "tsc --noEmit",
+    "typecheck": "tsrs --fast --noEmit",
     "build": "pnpm run clean && tsc -p tsconfig.build.json",
     "dev": "tsc --noEmit false --outDir dist --declaration --watch",
     "db:studio": "pnpm run env prisma studio",

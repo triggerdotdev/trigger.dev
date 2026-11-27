@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   ControlPlaneCache,
+  DEFAULT_CP_CACHE_TTL_MS,
   type ResolvedAuthenticatedEnv,
   type ResolvedEnv,
   type ResolvedRunLockedWorker,
@@ -233,5 +234,12 @@ describe("ControlPlaneCache", () => {
     cache.invalidateOrganization("org_1");
 
     expect(cache.getEnv("env_absent")).toBeNull();
+  });
+});
+
+describe("DEFAULT_CP_CACHE_TTL_MS", () => {
+  // Catches: a change to the 30-second window that the brief's switch propagation relies on.
+  it("is 30 seconds", () => {
+    expect(DEFAULT_CP_CACHE_TTL_MS).toBe(30_000);
   });
 });

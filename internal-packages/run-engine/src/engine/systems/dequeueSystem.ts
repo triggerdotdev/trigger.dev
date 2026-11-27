@@ -1,7 +1,14 @@
 import { type Counter, startSpan } from "@internal/tracing";
 import { assertExhaustive, tryCatch } from "@trigger.dev/core";
 import type { DequeuedMessage, TaskRunInternalError } from "@trigger.dev/core/v3";
-import { isSandboxRun, RetryOptions, RunAnnotations } from "@trigger.dev/core/v3";
+import {
+  computeOnlyReason,
+  isSandboxRun,
+  machineNameOf,
+  resolveTaskImage,
+  RetryOptions,
+  RunAnnotations,
+} from "@trigger.dev/core/v3";
 import { getMaxDuration, SnapshotId } from "@trigger.dev/core/v3/isomorphic";
 import { placementTag } from "@trigger.dev/core/v3/serverOnly";
 import type {
@@ -18,7 +25,10 @@ import type {
   ResolvedWorkerDeployment,
   ResolvedWorkerTask,
 } from "../controlPlaneResolver.js";
-import { CONTINUED_WHILST_EXECUTING_DESCRIPTION } from "../consts.js";
+import {
+  COMPUTE_FALLBACKS_REFUSED_COUNTER,
+  CONTINUED_WHILST_EXECUTING_DESCRIPTION,
+} from "../consts.js";
 import { deletedEnvironmentReason, MISSING_ENVIRONMENT_REASON } from "../controlPlaneResolver.js";
 
 import { sendNotificationToWorker } from "../eventBus.js";
@@ -158,6 +168,7 @@ export class DequeueSystem {
   private readonly deploymentWaitMaxMs: number;
   private readonly deploymentStatusMode: () => DeploymentStatusMode;
   private readonly deploymentNotDeployedCounter: Counter;
+  private readonly computeFallbacksRefusedCounter: Counter;
 
   constructor(private readonly options: DequeueSystemOptions) {
     this.$ = options.resources;
@@ -174,6 +185,10 @@ export class DequeueSystem {
           "Dequeues of a run whose deployment hasn't finished deploying, by what enforce mode does (or would do in shadow mode): fail, fail_stalled or wait",
         unit: "runs",
       }
+    );
+    this.computeFallbacksRefusedCounter = this.$.meter.createCounter(
+      COMPUTE_FALLBACKS_REFUSED_COUNTER.name,
+      { description: COMPUTE_FALLBACKS_REFUSED_COUNTER.description, unit: "runs" }
     );
   }
 
@@ -308,6 +323,7 @@ export class DequeueSystem {
                   projectId: snapshot.projectId,
                   organizationId: snapshot.organizationId,
                   checkpointId: snapshot.checkpointId ?? undefined,
+                  checkpointStore: snapshot.checkpointStore,
                   completedWaitpoints: snapshot.completedWaitpoints,
                   error: `Tried to dequeue a run that is not in a valid state to be dequeued.`,
                   workerId,
@@ -718,20 +734,75 @@ export class DequeueSystem {
                 }
               }
 
+              // A task on a named machine runs on that machine's image and template. Only those
+              // tasks read the machine's row.
+              const machineName = machineNameOf(result.task.machineConfig);
+              const taskImage = result.deployment
+                ? resolveTaskImage(
+                    result.deployment,
+                    machineName,
+                    machineName
+                      ? await this.#resolveDeploymentMachine(result.deployment.id, machineName)
+                      : undefined
+                  )
+                : undefined;
+
+              // A deployment stores its machine images at finalize, after its worker indexes, so a
+              // run pinned to a version that is still deploying waits for them.
+              if (
+                taskImage &&
+                !taskImage.ok &&
+                result.deployment &&
+                result.deployment.status !== "DEPLOYED" &&
+                !UNDEPLOYABLE_DEPLOYMENT_STATUSES.has(result.deployment.status)
+              ) {
+                span.setAttribute("result", "MACHINE_IMAGE_WAIT");
+                await this.$.runQueue.nackMessage({
+                  orgId,
+                  messageId: runId,
+                  retryAt: Date.now() + this.deploymentWaitRetryMs,
+                  incrementAttemptCount: false,
+                });
+                return;
+              }
+
+              if (taskImage && !taskImage.ok) {
+                span.setAttribute("result", "MACHINE_IMAGE_MISSING");
+                await this.runAttemptSystem.systemFailure({
+                  runId,
+                  organizationId: orgId,
+                  error: {
+                    type: "INTERNAL_ERROR",
+                    code: "CONFIGURED_INCORRECTLY",
+                    message: `Task ${result.task.slug} runs on machine "${taskImage.machineName}", but version ${result.worker.version} has no image for it.`,
+                  },
+                  tx: prisma,
+                });
+                return;
+              }
+
               if (
                 templateFallbackWorkerQueue &&
                 result.environmentType !== "DEVELOPMENT" &&
                 !snapshot.checkpointId &&
-                !result.deployment?.templateKey
+                !taskImage?.templateKey
               ) {
+                // A run that must stay on compute (a sandbox, or a compute-only org's run)
+                // waits for a template instead of moving to a container lane.
+                const why = computeOnlyReason(result.run.annotations);
+                if (why) {
+                  this.computeFallbacksRefusedCounter.add(1, { site: "dequeue", why });
+                  this.$.logger.info(
+                    "RunEngine.dequeueFromWorkerQueue(): No template, kept on compute",
+                    { runId, workerQueue, why }
+                  );
+                }
                 const outcome = await this.#moveToTemplateFallback({
                   orgId,
                   runId,
                   workerQueue,
-                  // A sandbox must not leave compute, so it waits for a template instead.
-                  fallbackWorkerQueue: isSandboxRun(result.run.annotations)
-                    ? undefined
-                    : templateFallbackWorkerQueue(workerQueue),
+                  fallbackWorkerQueue: why ? undefined : templateFallbackWorkerQueue(workerQueue),
+                  pinnedToCompute: !!why,
                   tx: prisma,
                 });
                 span.setAttribute("result", outcome);
@@ -815,6 +886,7 @@ export class DequeueSystem {
                     projectId: snapshot.projectId,
                     organizationId: snapshot.organizationId,
                     checkpointId: snapshot.checkpointId ?? undefined,
+                    checkpointStore: snapshot.checkpointStore,
                     batchId: snapshot.batchId ?? undefined,
                     completedWaitpointIds: snapshot.completedWaitpoints.map((w) => w.id),
                     completedWaitpointOrder: snapshot.completedWaitpoints
@@ -945,8 +1017,9 @@ export class DequeueSystem {
                   description: "Run was dequeued for execution",
                   createdAt: snapshotCreatedAt,
                 },
-                image: result.deployment?.imageReference ?? undefined,
-                templateKey: result.deployment?.templateKey ?? undefined,
+                image: taskImage?.imageReference ?? undefined,
+                templateKey: taskImage?.templateKey ?? undefined,
+                machineName: taskImage?.machineName,
                 checkpoint: dequeueCheckpointFromRow(snapshot.checkpoint),
                 completedWaitpoints: snapshot.completedWaitpoints,
                 backgroundWorker: {
@@ -1107,6 +1180,7 @@ export class DequeueSystem {
               orgId,
               projectId: run.projectId,
               checkpointId: snapshot.checkpointId ?? undefined,
+              checkpointStore: snapshot.checkpointStore,
               completedWaitpoints: snapshot.completedWaitpoints,
               batchId: snapshot.batchId ?? undefined,
               error: dequeueMaxRetriesError,
@@ -1140,12 +1214,15 @@ export class DequeueSystem {
     runId,
     workerQueue,
     fallbackWorkerQueue,
+    pinnedToCompute = false,
     tx,
   }: {
     orgId: string;
     runId: string;
     workerQueue: string;
     fallbackWorkerQueue: string | undefined;
+    /** The run executes only on microVM compute, so it can never start without a template. */
+    pinnedToCompute?: boolean;
     tx: PrismaClientOrTransaction;
   }): Promise<"TEMPLATE_FALLBACK" | "TEMPLATE_WAIT"> {
     if (fallbackWorkerQueue && fallbackWorkerQueue !== workerQueue) {
@@ -1185,7 +1262,9 @@ export class DequeueSystem {
         error: {
           type: "INTERNAL_ERROR",
           code: "TASK_RUN_DEQUEUED_MAX_RETRIES",
-          message: "The run's deployment is not ready to start on this worker queue.",
+          message: pinnedToCompute
+            ? "This run couldn't start. Deploy again, then replay the run."
+            : "The run's deployment is not ready to start on this worker queue.",
         },
         tx,
       });
@@ -1364,6 +1443,17 @@ export class DequeueSystem {
         error: promoteError,
       });
     }
+  }
+
+  // A miss fails the run, and the replica can lag a worker version read from the primary, so
+  // confirm it there.
+  async #resolveDeploymentMachine(deploymentId: string, machineName: string) {
+    return (
+      (await this.$.controlPlaneResolver.resolveDeploymentMachine(deploymentId, machineName)) ??
+      (await this.$.controlPlaneResolver.resolveDeploymentMachine(deploymentId, machineName, {
+        fromPrimary: true,
+      }))
+    );
   }
 
   async #getRunWithBackgroundWorkerTasks(

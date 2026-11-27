@@ -414,12 +414,16 @@ This hook is executed when a run completes, regardless of whether it succeeded o
 ```ts /trigger/on-complete.ts
 export const taskWithOnComplete = task({
   id: "task-with-on-complete",
-  onComplete: async ({ payload, output, ctx }) => {
-  if (result.ok) {
-    console.log("Run succeeded", result.data);
-  } else {
-    console.log("Run failed", result.error);
-  }
+  onComplete: async ({ payload, result, ctx }) => {
+    if (result.ok) {
+      console.log("Run succeeded", result.data);
+    } else {
+      console.log("Run failed", result.error);
+    }
+  },
+  run: async (payload: any, { ctx }) => {
+    //...
+  },
 });
 ```
 
@@ -428,7 +432,7 @@ You can also define a global `onComplete` function using `tasks.onComplete()`.
 ```ts init.ts
 import { tasks } from "@trigger.dev/sdk";
 
-tasks.onComplete(({ ctx, payload, output }) => {
+tasks.onComplete(({ ctx, payload, result }) => {
   console.log("Task completed", ctx.task.id);
 });
 ```

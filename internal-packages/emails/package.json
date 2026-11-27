@@ -7,23 +7,23 @@
   "types": "./src/index.tsx",
   "scripts": {
     "dev": "PORT=3080 email dev",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsrs --fast --noEmit"
   },
   "dependencies": {
     "@aws-sdk/client-sesv2": "^3.716.0",
     "@react-email/components": "1.0.12",
     "@react-email/render": "^2.0.8",
-    "nodemailer": "^10.1.2",
+    "nodemailer": "^10.1.4",
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
     "resend": "^3.2.0",
-    "zod": "4.5.4"
+    "zod": "4.6.7"
   },
   "devDependencies": {
-    "@react-email/ui": "6.11.3",
+    "@react-email/ui": "6.11.16",
     "@types/react": "18.2.69",
     "@types/react-dom": "18.2.7",
-    "react-email": "^6.11.3"
+    "react-email": "6.11.16"
   },
   "engines": {
     "node": ">=18.0.0"

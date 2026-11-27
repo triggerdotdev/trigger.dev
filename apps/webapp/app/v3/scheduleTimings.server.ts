@@ -34,6 +34,8 @@ export type ScheduleTiming = {
   nextRunEffectiveAt: Date;
   /** Only ever set when the caller asked for it AND the schedule is active. */
   lastRun: Date | undefined;
+  /** The cron time `lastRun` belongs to; set only with `includeLastRunFiredAt`. */
+  lastRunFiredAt?: Date;
 };
 
 export type ResolveScheduleTimingsOptions = {
@@ -44,6 +46,8 @@ export type ResolveScheduleTimingsOptions = {
    * don't show the column (the public API) leave this off and skip the walk.
    */
   includeLastRun: boolean;
+  /** Also return the cron time each `lastRun` belongs to. Needs `includeLastRun`. */
+  includeLastRunFiredAt?: boolean;
   /**
    * Fixed reference point for the whole batch. Pinning it once is what makes
    * the cron walks cacheable across rows, and it stops rows in one response
@@ -85,7 +89,12 @@ export type ResolveScheduleTimingsOptions = {
  */
 export function resolveScheduleTimings(
   inputs: ScheduleTimingInput[],
-  { phaseSecret, includeLastRun, now = new Date() }: ResolveScheduleTimingsOptions
+  {
+    phaseSecret,
+    includeLastRun,
+    includeLastRunFiredAt = false,
+    now = new Date(),
+  }: ResolveScheduleTimingsOptions
 ): ScheduleTiming[] {
   const nominalCache = new Map<string, Date[]>();
   const previousCache = new Map<
@@ -134,18 +143,22 @@ export function resolveScheduleTimings(
       minimumWindowDurationSeconds: input.minimumWindowDurationSeconds,
     });
 
+    const lastRun = includeLastRun
+      ? resolveLastRun(input, now, nominalAt, phase, window, previousCache)
+      : undefined;
+
     return {
       nextRun: nominalAt,
       nextRunEffectiveAt: effectiveAt,
-      lastRun: includeLastRun
-        ? resolveLastRun(input, now, nominalAt, phase, window, previousCache)
-        : undefined,
+      lastRun: lastRun?.startedAt,
+      ...(includeLastRunFiredAt && lastRun ? { lastRunFiredAt: lastRun.firedAt } : {}),
     };
   });
 }
 
 /**
- * Approximates "last run" from the most recent effective schedule time.
+ * Approximates "last run" from the most recent effective schedule time, with the cron time it
+ * belongs to.
  *
  * Skips inactive schedules and effective times that predate `updatedAt`. Best-effort by design;
  * the runs page is the source of truth.
@@ -157,7 +170,7 @@ function resolveLastRun(
   phase: number,
   window: NormalizedScheduleWindow | undefined,
   cache: Map<string, { latestNominal: Date; previousNominal?: Date } | undefined>
-): Date | undefined {
+): { startedAt: Date; firedAt: Date } | undefined {
   if (!input.active) {
     return undefined;
   }
@@ -192,7 +205,9 @@ function resolveLastRun(
     minimumWindowDurationSeconds: input.minimumWindowDurationSeconds,
   }).effectiveAt;
   if (latestEffective.getTime() <= now.getTime()) {
-    return latestEffective.getTime() > input.updatedAt.getTime() ? latestEffective : undefined;
+    return latestEffective.getTime() > input.updatedAt.getTime()
+      ? { startedAt: latestEffective, firedAt: nominalTimes.latestNominal }
+      : undefined;
   }
 
   if (!nominalTimes.previousNominal) {
@@ -210,7 +225,9 @@ function resolveLastRun(
     minimumWindowDurationSeconds: input.minimumWindowDurationSeconds,
   }).effectiveAt;
 
-  return previousEffective.getTime() > input.updatedAt.getTime() ? previousEffective : undefined;
+  return previousEffective.getTime() > input.updatedAt.getTime()
+    ? { startedAt: previousEffective, firedAt: nominalTimes.previousNominal }
+    : undefined;
 }
 
 /**

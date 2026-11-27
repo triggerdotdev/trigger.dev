@@ -83,10 +83,12 @@ describe("schedule window persistence", () => {
     expect(first).toEqual({
       nominalAt: new Date("2026-08-11T10:00:00.000Z"),
       effectiveAt: new Date("2026-08-11T10:00:45.000Z"),
+      rangeEndAt: new Date("2026-08-11T10:01:30.000Z"),
     });
     expect(second).toEqual({
       nominalAt: new Date("2026-08-11T10:05:00.000Z"),
       effectiveAt: new Date("2026-08-11T10:05:45.000Z"),
+      rangeEndAt: new Date("2026-08-11T10:06:30.000Z"),
     });
   });
 
@@ -176,6 +178,7 @@ describe("schedule window persistence", () => {
     expect(first).toEqual({
       nominalAt: new Date("2026-08-11T10:00:00.000Z"),
       effectiveAt: new Date("2026-08-11T10:30:00.000Z"),
+      rangeEndAt: new Date("2026-08-11T11:00:00.000Z"),
     });
   });
 

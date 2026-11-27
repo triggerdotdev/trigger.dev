@@ -8,7 +8,10 @@ import { findEnvironmentBySlug } from "~/models/runtimeEnvironment.server";
 import { logger } from "~/services/logger.server";
 import { S2RealtimeStreams } from "~/services/realtime/s2realtimeStreams.server";
 import { completeSessionStreamWaitpoints } from "~/services/realtime/sessionChannelAppend.server";
-import { ensureRunForSession } from "~/services/realtime/sessionRunManager.server";
+import {
+  ensureRunForSession,
+  reviveReusedRunIfEnded,
+} from "~/services/realtime/sessionRunManager.server";
 import {
   canonicalSessionAddressingKey,
   resolveSessionByIdOrExternalId,
@@ -89,7 +92,7 @@ export async function action({ request, params }: ActionFunctionArgs) {
   // Probe + ensure a live run before appending (mirrors public route).
   // Best-effort: failure here doesn't block the append — the record is
   // durable; the next append retries the ensure.
-  const [ensureError] = await tryCatch(
+  const [ensureError, ensured] = await tryCatch(
     ensureRunForSession({
       session,
       environment,
@@ -119,6 +122,17 @@ export async function action({ request, params }: ActionFunctionArgs) {
       return json({ ok: false, error: appendError.message }, { status: appendError.status ?? 422 });
     }
     return json({ ok: false, error: appendError.message }, { status: 500 });
+  }
+
+  // The ensure above probed the run before the record landed: look at it again now.
+  if (io === "in" && ensured) {
+    await reviveReusedRunIfEnded({
+      session,
+      environment,
+      reason: "continuation",
+      ensured,
+      appendedSeq: appendSeq ?? undefined,
+    });
   }
 
   // Drain any waitpoints registered for this channel — same as the

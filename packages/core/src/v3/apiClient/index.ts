@@ -128,6 +128,7 @@ import {
   WaitpointTokenItem,
 } from "../schemas/index.js";
 import { controlSubtype, type ControlEvent } from "../sessionStreams/wireProtocol.js";
+
 import type { AsyncIterableStream } from "../streams/asyncIterableStream.js";
 import { taskContext } from "../task-context-api.js";
 import type { AnyRunTypes, TriggerJwtOptions } from "../types/tasks.js";
@@ -176,6 +177,20 @@ import type {
   UpdateEnvironmentVariableParams,
 } from "./types.js";
 import { API_VERSION, API_VERSION_HEADER_NAME } from "./version.js";
+
+const SendSignalResponseBody = z.object({ seq: z.number() });
+const ClearSignalResponseBody = z.object({ cleared: z.boolean(), seq: z.number().optional() });
+const LatestSignalResponseBody = z.object({
+  signal: z
+    .object({
+      name: z.string(),
+      task: z.string().optional(),
+      payload: z.unknown(),
+      sentAt: z.string(),
+      seq: z.number(),
+    })
+    .nullable(),
+});
 
 export type CreateWaitpointTokenResponse = Prettify<
   CreateWaitpointTokenResponseBody & {
@@ -1809,6 +1824,98 @@ export class ApiClient {
           controller.enqueue(part.chunk as T);
         },
       })
+    );
+  }
+
+  /**
+   * Subscribe to the environment's signal stream (SSE). A fresh subscription starts at the
+   * stream's last record, whose latest map holds the newest signal of every name; with
+   * `lastEventId` it resumes after that record. Unstable.
+   */
+  async subscribeToEnvironmentSignals(options?: {
+    signal?: AbortSignal;
+    baseUrl?: string;
+    timeoutInSeconds?: number;
+    lastEventId?: string;
+    /** Statuses that fail the subscription instead of reconnecting. */
+    nonRetryableStatuses?: readonly number[];
+    onPart?: (part: SSEStreamPart<unknown>) => void;
+  }): Promise<AsyncIterableStream<unknown>> {
+    const subscription = new SSEStreamSubscription(
+      `${options?.baseUrl ?? this.baseUrl}/realtime/v1/signals`,
+      {
+        headers: this.#getHeaders(false, undefined, "subscribeToEnvironmentSignals"),
+        fetchClient: this.#requestFetch("subscribeToEnvironmentSignals"),
+        resolveHeaders: this.#resolveStreamHeaders("subscribeToEnvironmentSignals"),
+        signal: options?.signal,
+        timeoutInSeconds: options?.timeoutInSeconds,
+        lastEventId: options?.lastEventId,
+        nonRetryableStatuses: options?.nonRetryableStatuses,
+        from: "latest",
+      }
+    );
+    const stream = await subscription.subscribe();
+    const onPart = options?.onPart;
+    return stream.pipeThrough(
+      new TransformStream<SSEStreamPart, unknown>({
+        transform(part, controller) {
+          onPart?.(part);
+          controller.enqueue(part.chunk);
+        },
+      })
+    );
+  }
+
+  /** Send a signal to the environment's executing runs. Secret key only. Unstable. */
+  async sendSignal(
+    body: { name: string; payload?: unknown; task?: string },
+    requestOptions?: ZodFetchOptions
+  ) {
+    return zodfetch(
+      SendSignalResponseBody,
+      `${this.baseUrl}/api/v1/signals`,
+      {
+        method: "POST",
+        headers: this.#getHeaders(false, undefined, "sendSignal"),
+        body: JSON.stringify(body),
+      },
+      this.#requestOptions("sendSignal", requestOptions)
+    );
+  }
+
+  /**
+   * Remove the latest signal of a name (and task) from the environment, so runs that listen later
+   * don't get it and it frees a place under the cap. Secret key only. Unstable.
+   */
+  async clearSignal(body: { name: string; task?: string }, requestOptions?: ZodFetchOptions) {
+    return zodfetch(
+      ClearSignalResponseBody,
+      `${this.baseUrl}/api/v1/signals/clear`,
+      {
+        method: "POST",
+        headers: this.#getHeaders(false, undefined, "clearSignal"),
+        body: JSON.stringify(body),
+      },
+      this.#requestOptions("clearSignal", requestOptions)
+    );
+  }
+
+  /**
+   * The latest signal of a name (sent with `task`, if given), or null. With `includeUntasked`, the
+   * newer of that and the untasked one. Secret key only. Unstable.
+   */
+  async getLatestSignal(
+    query: { name: string; task?: string; includeUntasked?: boolean },
+    requestOptions?: ZodFetchOptions
+  ) {
+    const params = new URLSearchParams({ name: query.name });
+    if (query.task !== undefined) params.set("task", query.task);
+    if (query.includeUntasked) params.set("includeUntasked", "true");
+    return zodfetch(
+      LatestSignalResponseBody,
+      `${this.baseUrl}/api/v1/signals/latest?${params}`,
+      { method: "GET", headers: this.#getHeaders(false, undefined, "getLatestSignal") },
+      this.#requestOptions("getLatestSignal", requestOptions)
     );
   }
 

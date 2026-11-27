@@ -1,4 +1,6 @@
 import type { InitializeBatchOptions } from "@internal/run-engine";
+import { MEMORYDB_SHARD_KEY, organizationContext } from "@internal/run-store";
+import { resolveShard } from "@trigger.dev/core/v3/isomorphic";
 import { type CreateBatchRequestBody, type CreateBatchResponse } from "@trigger.dev/core/v3";
 import { type BatchTaskRun, Prisma } from "@trigger.dev/database";
 import { Evt } from "evt";
@@ -8,7 +10,11 @@ import { batchStreamGrants } from "../concerns/batchStreamGrantsInstance.server"
 import type { AuthenticatedEnvironment } from "~/services/apiAuth.server";
 import { logger } from "~/services/logger.server";
 import { controlPlaneResolver } from "~/v3/runOpsMigration/controlPlaneResolver.server";
-import { mintBatchFriendlyId } from "~/v3/runOpsMigration/mintBatchFriendlyId.server";
+import {
+  batchIdForMintKind,
+  mintBatchFriendlyId,
+} from "~/v3/runOpsMigration/mintBatchFriendlyId.server";
+import { rootResidency } from "~/v3/runOpsMigration/resolveRootResidency.server";
 import { ServiceValidationError, WithRunEngine } from "../../v3/services/baseService.server";
 import { BatchRateLimitExceededError, getBatchLimits } from "../concerns/batchLimits.server";
 import { DefaultQueueManager } from "../concerns/queues.server";
@@ -62,14 +68,23 @@ export class CreateBatchService extends WithRunEngine {
         "createBatch()",
         environment,
         async (span) => {
-          const { id, friendlyId } = await mintBatchFriendlyId({
-            environment: {
-              organizationId: environment.organizationId,
-              id: environment.id,
-              orgFeatureFlags: environment.organization.featureFlags,
-            },
-            parentRunFriendlyId: body.parentRunId,
-          });
+          const { id, friendlyId } =
+            !body.parentRunId &&
+            (await rootResidency.allowsRootBatch(environment.organization.featureFlags, {
+              endpoint: "streaming",
+            }))
+              ? batchIdForMintKind({ kind: "runOpsId", shardChar: MEMORYDB_SHARD_KEY })
+              : await mintBatchFriendlyId({
+                  environment: {
+                    organizationId: environment.organizationId,
+                    id: environment.id,
+                    orgFeatureFlags: environment.organization.featureFlags,
+                  },
+                  parentRunFriendlyId: body.parentRunId,
+                });
+          if (resolveShard(friendlyId) === MEMORYDB_SHARD_KEY) {
+            organizationContext.markBornHere();
+          }
 
           span.setAttribute("batchId", friendlyId);
           span.setAttribute("runCount", body.runCount);

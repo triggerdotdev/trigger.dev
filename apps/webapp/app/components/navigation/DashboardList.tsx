@@ -1,6 +1,5 @@
 import { IconChartHistogram } from "@tabler/icons-react";
 import { GripVerticalIcon } from "lucide-react";
-import ReactGridLayout from "react-grid-layout";
 import { AIMetricsIcon } from "~/assets/icons/AIMetricsIcon";
 import { ChartArrowIcon } from "~/assets/icons/ChartArrowIcon";
 import { type MatchedOrganization, useCustomDashboards } from "~/hooks/useOrganizations";
@@ -10,6 +9,7 @@ import { v3BuiltInDashboardPath, v3CustomDashboardPath } from "~/utils/pathBuild
 import { type SideMenuEnvironment, type SideMenuProject } from "./SideMenu";
 import { SideMenuItem } from "./SideMenuItem";
 import { TreeConnectorBranch, TreeConnectorEnd } from "./TreeConnectors";
+import { LoadedGridLayout, useGridLayoutReady } from "./lazyGridLayout";
 import { useReorderableList } from "./useReorderableList";
 
 type SideMenuUser = Pick<UserWithDashboardPreferences, "dashboardPreferences"> & {
@@ -100,10 +100,12 @@ export function DashboardList({
     isImpersonating: user.isImpersonating,
   });
 
+  const gridReady = useGridLayoutReady(canReorder);
+
   return (
     <div ref={containerRef}>
-      {canReorder ? (
-        <ReactGridLayout
+      {canReorder && gridReady ? (
+        <LoadedGridLayout
           layout={layout}
           width={gridWidth}
           gridConfig={{
@@ -132,7 +134,7 @@ export function DashboardList({
               </div>
             );
           })}
-        </ReactGridLayout>
+        </LoadedGridLayout>
       ) : (
         orderedItems.map((item, index) => (
           <DashboardChildMenuItem
@@ -140,6 +142,7 @@ export function DashboardList({
             item={item}
             isCollapsed={isCollapsed}
             isLast={index === orderedItems.length - 1}
+            showDragHandle={canReorder}
           />
         ))
       )}

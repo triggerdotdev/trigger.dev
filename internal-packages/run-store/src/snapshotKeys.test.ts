@@ -39,6 +39,14 @@ describe("runToPartition", () => {
     expect(runToPartition("run_1")).toBe(runToPartition("run_1"));
   });
 
+  // Catches: a partition function that treats an `m`-shard run id differently from any other id.
+  it("puts a fixed shard-m version-2 run id on its pinned partition and pNNN tag", () => {
+    const partition = runToPartition("run_0123456789abcdefghijklmnm2");
+
+    expect(partition).toBe(227);
+    expect(partitionTag(partition)).toBe("p227");
+  });
+
   it("spreads runs across many partitions (not a constant)", () => {
     const seen = new Set<number>();
     for (let n = 0; n < 5000; n++) seen.add(runToPartition(`run_${n}`));

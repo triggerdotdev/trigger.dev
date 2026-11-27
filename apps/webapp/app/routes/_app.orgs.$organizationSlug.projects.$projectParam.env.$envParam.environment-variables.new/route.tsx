@@ -8,6 +8,7 @@ import {
   NEW_VARIABLE_ENVIRONMENT_PARAM,
   NEW_VARIABLE_FILL_KEY_PARAM,
   NEW_VARIABLE_PICK_BRANCH_PARAM,
+  NEW_VARIABLE_NOT_SECRET,
   NEW_VARIABLE_SECRET_PARAM,
   keyPanelViewSearch,
   KEY_PANEL_BRANCH_PAGE_PARAM,
@@ -93,6 +94,8 @@ import { findTargetEnvironments } from "~/v3/environmentVariables/targetEnvironm
 import { viewAfterCreate } from "~/v3/environmentVariables/viewAfterCreate.server";
 import { findUnauthorizedEnvironmentId } from "~/v3/writableEnvironments";
 import { pageMeta } from "~/utils/pageTitle";
+import { DomainInput } from "~/routes/_app.orgs.$organizationSlug.projects.$projectParam.env.$envParam.environment-variables/Vault";
+import { proxyConfigHosts } from "~/services/secretProxy/placeholder.server";
 
 export const meta = pageMeta("New environment variable");
 
@@ -113,6 +116,10 @@ const schema = z.object({
     if (i === "true") return true;
     return false;
   }, z.boolean()),
+  // Whether the user changed the secret switch from where the dialog started it.
+  secretTouched: z.preprocess((i) => i === "true", z.boolean()),
+  vault: z.preprocess((i) => i === "true", z.boolean()),
+  domains: z.string().optional(),
   environmentIds: z.preprocess(
     (i) => {
       if (typeof i === "string") return [i];
@@ -202,11 +209,49 @@ export const action = dashboardAction(
       where: { id: projectId, organization: { members: { some: { userId } } } },
       select: {
         id: true,
+        secretProxyEnabled: true,
         organization: { select: { featureFlags: true } },
       },
     });
     if (!project) {
       return json(submission.reply({ formErrors: ["Project not found"] }));
+    }
+
+    const { vault, domains, secretTouched, isSecret, ...rest } = submission.value;
+    // An untouched switch only sets new values: replaced values keep their kind.
+    const createOptions =
+      secretTouched || vault ? { ...rest, isSecret } : { ...rest, newValueIsSecret: isSecret };
+    let vaultHosts: string[] | undefined;
+    if (vault) {
+      if (!project.secretProxyEnabled) {
+        return json(
+          submission.reply({ formErrors: ["Agent Vault isn't enabled for this project."] })
+        );
+      }
+      if (targetEnvironments.some((env) => env.type === "DEVELOPMENT")) {
+        return json(
+          submission.reply({
+            fieldErrors: { environmentIds: ["Agent Vault isn't available in Development."] },
+          })
+        );
+      }
+      if (createOptions.variables.length !== 1) {
+        return json(
+          submission.reply({ formErrors: ["Add one variable at a time to Agent Vault."] })
+        );
+      }
+      vaultHosts = proxyConfigHosts({
+        allowedHosts: (domains ?? "").toLowerCase().split(",").filter(Boolean),
+      });
+      if (!vaultHosts.length) {
+        return json(
+          submission.reply({
+            fieldErrors: {
+              domains: ["Enter exact domain names without protocols, paths, or wildcards."],
+            },
+          })
+        );
+      }
     }
 
     // The submitted `environmentIds` are user-supplied. Shared env types are
@@ -237,7 +282,8 @@ export const action = dashboardAction(
 
     const repository = new EnvironmentVariablesRepository(prisma);
     const result = await repository.create(project.id, {
-      ...submission.value,
+      ...createOptions,
+      ...(vaultHosts && { isSecret: true, vaultHosts }),
       lastUpdatedBy: {
         type: "user",
         userId,
@@ -314,7 +360,10 @@ export default function Page() {
     hasStaging,
     writableEnvironmentIds,
     allowEmptyEnvironmentVariableValues,
+    vaultEnabled,
   } = parentData;
+  const [vault, setVault] = useState(false);
+  const [domains, setDomains] = useState<string[]>([]);
   // Creating a variable is a write, so gate the targets on write access.
   const writableEnvironmentIdSet = new Set(writableEnvironmentIds);
   const lastSubmission = useActionData();
@@ -326,6 +375,11 @@ export default function Page() {
   const location = useLocation();
   const { keyParam } = useParams();
   const searchParams = new URLSearchParams(location.search);
+  // Secret by default; the key panel passes "0" to match a non-secret key.
+  const [isSecret, setIsSecret] = useState(
+    () => searchParams.get(NEW_VARIABLE_SECRET_PARAM) !== NEW_VARIABLE_NOT_SECRET
+  );
+  const [secretTouched, setSecretTouched] = useState(false);
   // The view this dialog sits on: the list with its filter, search and page, or the key panel
   // open on it.
   const attentionPath = attentionPagePath(location.pathname);
@@ -417,7 +471,9 @@ export default function Page() {
       variables: [{ key: initialKey, value: "" }],
     },
   });
-  const { environmentIds, variables } = fields;
+  const { environmentIds, variables, domains: domainsField } = fields;
+  // Every row counts, blank ones too: the server takes one variable at a time into Vault.
+  const hasSeveralRows = variables.getFieldList().length > 1;
 
   const handleEnvironmentChange = (
     environmentId: string,
@@ -637,11 +693,37 @@ export default function Page() {
               </InputGroup>
             )}
 
-            <InputGroup className="w-auto">
+            {vaultEnabled && (
+              <InputGroup fullWidth>
+                <Switch
+                  name="vault"
+                  variant="medium"
+                  value="true"
+                  checked={vault}
+                  onCheckedChange={setVault}
+                  disabled={!vault && hasSeveralRows}
+                  className="-ml-2 inline-flex w-fit"
+                  label={<span className="text-text-bright">Agent Vault</span>}
+                />
+                <Hint className="-mt-1">
+                  {!vault && hasSeveralRows
+                    ? "Agent Vault adds one variable at a time. Remove the other rows to use it."
+                    : "This makes the value secret, only inserted into configured requests, and unavailable at build time."}
+                </Hint>
+              </InputGroup>
+            )}
+            <InputGroup fullWidth>
+              {vault && <input type="hidden" name="isSecret" value="true" />}
+              {secretTouched && <input type="hidden" name="secretTouched" value="true" />}
               <Switch
-                name="isSecret"
+                name={vault ? undefined : "isSecret"}
                 variant="medium"
-                defaultChecked={searchParams.has(NEW_VARIABLE_SECRET_PARAM)}
+                checked={vault || isSecret}
+                onCheckedChange={(checked) => {
+                  setIsSecret(checked);
+                  setSecretTouched(true);
+                }}
+                disabled={vault}
                 value="true"
                 className="-ml-2 inline-flex w-fit"
                 label={<span className="text-text-bright">Secret value</span>}
@@ -652,9 +734,9 @@ export default function Page() {
             </InputGroup>
             <InputGroup fullWidth>
               <FieldLayout>
-                <Label>Keys</Label>
+                <Label>Key</Label>
                 <div className="flex justify-between gap-1">
-                  <Label>Values</Label>
+                  <Label>Value</Label>
                   <Switch
                     variant="small"
                     label="Reveal"
@@ -670,6 +752,13 @@ export default function Page() {
                 formId={form.id}
                 form={form}
                 variablesFields={variables}
+                vault={vault}
+                vaultFields={
+                  <InputGroup fullWidth className="pt-3.5">
+                    <DomainInput domains={domains} onChange={setDomains} />
+                    <FormError id={domainsField.errorId}>{domainsField.errors}</FormError>
+                  </InputGroup>
+                }
               />
               <FormError id={variables.errorId}>{variables.errors}</FormError>
             </InputGroup>
@@ -722,6 +811,8 @@ function VariableFields({
   formId,
   variablesFields,
   form,
+  vault,
+  vaultFields,
 }: {
   /** The first row's key, when the dialog was opened for one. */
   initialKey: string;
@@ -731,6 +822,10 @@ function VariableFields({
   formId?: string;
   variablesFields: FieldMetadata<Variable[]>;
   form: FormMetadata<any>;
+  /** Agent Vault values are added one at a time. */
+  vault: boolean;
+  /** Shown in place of the paste tip and Add another while Agent Vault is on. */
+  vaultFields: React.ReactNode;
 }) {
   const {
     items,
@@ -742,7 +837,7 @@ function VariableFields({
 
   const handlePaste = (index: number, e: React.ClipboardEvent<HTMLInputElement>) => {
     const clipboardData = e.clipboardData;
-    if (!clipboardData) return;
+    if (!clipboardData || vault) return;
 
     let text = clipboardData.getData("text");
     if (!text) return;
@@ -791,22 +886,31 @@ function VariableFields({
           />
         );
       })}
-      <div className="flex items-center justify-between gap-4">
-        <Paragraph variant="extra-small">
-          Tip: Paste all your .env values at once into this form to populate it.
-        </Paragraph>
-        <Button
-          variant="tertiary/medium"
-          className="w-fit"
-          type="button"
-          onClick={() => {
-            form.insert({ name: variablesFields.name });
-            append([{ key: "", value: "" }]);
-          }}
-          LeadingIcon={PlusIcon}
+      {/* Both stay laid out in one cell, so toggling Agent Vault doesn't resize the dialog. */}
+      <div className="grid">
+        <div
+          className={cn(
+            "col-start-1 row-start-1 flex items-start justify-between gap-4",
+            vault && "invisible"
+          )}
         >
-          Add another
-        </Button>
+          <Paragraph variant="extra-small" className="pt-2">
+            Tip: Paste all your .env values at once into this form to populate it.
+          </Paragraph>
+          <Button
+            variant="tertiary/medium"
+            className="w-fit"
+            type="button"
+            onClick={() => {
+              form.insert({ name: variablesFields.name });
+              append([{ key: "", value: "" }]);
+            }}
+            LeadingIcon={PlusIcon}
+          >
+            Add another
+          </Button>
+        </div>
+        <div className={cn("col-start-1 row-start-1", !vault && "invisible")}>{vaultFields}</div>
       </div>
     </>
   );

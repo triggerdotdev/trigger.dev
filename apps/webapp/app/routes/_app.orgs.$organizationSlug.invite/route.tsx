@@ -39,6 +39,7 @@ import { ssoController } from "~/services/sso.server";
 import { dashboardAction, dashboardLoader } from "~/services/routeBuilders/dashboardBuilder";
 import { acceptInvitePath, organizationTeamPath, v3BillingPath } from "~/utils/pathBuilder";
 import { isAtOrBelow } from "~/utils/inviteRoleLadder";
+import { canInviteWithRole, INVITE_ROLE_ABOVE_INVITER } from "~/services/inviteRole.server";
 import { PurchaseSeatsModal } from "../_app.orgs.$organizationSlug.settings.team/route";
 import { pageMeta } from "~/utils/pageTitle";
 
@@ -56,7 +57,7 @@ export const loader = dashboardLoader(
       return organizationId ? { organizationId } : {};
     },
     authorization: {
-      action: "manage",
+      action: "write",
       resource: { type: "members" },
       message: "With your current role, you can't invite team members.",
     },
@@ -153,7 +154,7 @@ export const action = dashboardAction(
       const organizationId = await resolveOrgIdFromSlug(params.organizationSlug);
       return organizationId ? { organizationId } : {};
     },
-    authorization: { action: "manage", resource: { type: "members" } },
+    authorization: { action: "write", resource: { type: "members" } },
   },
   async ({ request, params, user, context }) => {
     const userId = user.id;
@@ -178,6 +179,57 @@ export const action = dashboardAction(
       }
     }
 
+    // Resolve the RBAC role choice. NO_RBAC_ROLE / undefined / unknown
+    // role → don't pass one through; the runtime fallback handles it.
+    // Validation: the chosen role must be in the org's assignable set
+    // (plan-tier), then at or below the inviter's own level (below).
+    let resolvedRbacRoleId: string | null = null;
+    // Loaded for a chosen role, and reused by the role ceiling check below.
+    let loadedSystemRoles: Awaited<ReturnType<typeof rbac.systemRoles>> | undefined;
+    const submittedRbacRoleId = submission.value.rbacRoleId;
+    if (submittedRbacRoleId && submittedRbacRoleId !== NO_RBAC_ROLE) {
+      const org = await $replica.organization.findFirst({
+        where: { slug: organizationSlug },
+        select: { id: true },
+      });
+      if (!org) {
+        return json({ errors: { body: "Organization not found" } }, { status: 404 });
+      }
+      const [assignableRoleIds, systemRoles] = await Promise.all([
+        rbac.getAssignableRoleIds(org.id),
+        rbac.systemRoles(org.id),
+      ]);
+      loadedSystemRoles = systemRoles;
+      if (!systemRoles) {
+        // No plugin installed but the form somehow submitted a role id —
+        // ignore it (fall through to legacy behaviour rather than 400).
+        resolvedRbacRoleId = null;
+      } else {
+        const assignable = new Set(assignableRoleIds);
+        if (!assignable.has(submittedRbacRoleId)) {
+          return json(
+            { errors: { body: "You can't invite someone with this role on your current plan" } },
+            { status: 400 }
+          );
+        }
+        resolvedRbacRoleId = submittedRbacRoleId;
+      }
+    }
+    // At or below the inviter's own role. An invite without a role joins as Admin, so it counts
+    // as Admin.
+    if (
+      context.organizationId &&
+      !(await canInviteWithRole({
+        userId,
+        organizationId: context.organizationId,
+        rbacRoleId: resolvedRbacRoleId,
+        legacyRole: "MEMBER",
+        systemRoles: loadedSystemRoles,
+      }))
+    ) {
+      return json({ errors: { body: INVITE_ROLE_ABOVE_INVITER } }, { status: 403 });
+    }
+
     // Every invite emails the address, so cap per-org and per-inviter sends
     // (same limiter as the invite-create API). With no org scope the
     // slug didn't resolve and inviteMembers rejects anyway.
@@ -192,47 +244,6 @@ export const action = dashboardAction(
           );
         }
         throw error;
-      }
-    }
-
-    // Resolve the RBAC role choice. NO_RBAC_ROLE / undefined / unknown
-    // role → don't pass one through; the runtime fallback handles it.
-    // Validation: the chosen role must be in the org's assignable set
-    // (plan-tier) and at or below the inviter's own level.
-    let resolvedRbacRoleId: string | null = null;
-    const submittedRbacRoleId = submission.value.rbacRoleId;
-    if (submittedRbacRoleId && submittedRbacRoleId !== NO_RBAC_ROLE) {
-      const org = await $replica.organization.findFirst({
-        where: { slug: organizationSlug },
-        select: { id: true },
-      });
-      if (!org) {
-        return json({ errors: { body: "Organization not found" } }, { status: 404 });
-      }
-      const [inviterRole, assignableRoleIds, systemRoles] = await Promise.all([
-        rbac.getUserRole({ userId, organizationId: org.id }),
-        rbac.getAssignableRoleIds(org.id),
-        rbac.systemRoles(org.id),
-      ]);
-      if (!systemRoles) {
-        // No plugin installed but the form somehow submitted a role id —
-        // ignore it (fall through to legacy behaviour rather than 400).
-        resolvedRbacRoleId = null;
-      } else {
-        const assignable = new Set(assignableRoleIds);
-        if (!assignable.has(submittedRbacRoleId)) {
-          return json(
-            { errors: { body: "You can't invite someone with this role on your current plan" } },
-            { status: 400 }
-          );
-        }
-        if (!isAtOrBelow(systemRoles, inviterRole?.id ?? null, submittedRbacRoleId)) {
-          return json(
-            { errors: { body: "You can only invite members at or below your own role" } },
-            { status: 403 }
-          );
-        }
-        resolvedRbacRoleId = submittedRbacRoleId;
       }
     }
 

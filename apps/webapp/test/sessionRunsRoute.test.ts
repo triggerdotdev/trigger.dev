@@ -8,7 +8,6 @@ const AUTH = vi.hoisted(() => ({
   userId: "",
   admin: false,
   canReadSessions: true,
-  isManagedCloud: true,
 }));
 const dbHolder = vi.hoisted(() => ({ client: undefined as any }));
 
@@ -45,10 +44,6 @@ vi.mock("~/services/session.server", () => ({
   requireUserId: async () => AUTH.userId,
 }));
 
-vi.mock("~/features.server", () => ({
-  featuresForRequest: () => ({ isManagedCloud: AUTH.isManagedCloud }),
-}));
-
 const storeHolder = vi.hoisted(() => ({ store: undefined as any }));
 vi.mock("~/v3/runStore.server", () => ({
   runStore: new Proxy(
@@ -69,14 +64,14 @@ const { loader } =
 
 let seq = 0;
 
-async function seed(prisma: PrismaClient, featureFlags: object = { sessionTraceEnabled: true }) {
+async function seed(prisma: PrismaClient) {
   dbHolder.client = prisma;
   storeHolder.store = new PostgresRunStore({ prisma, readOnlyPrisma: prisma });
-  Object.assign(AUTH, { admin: false, canReadSessions: true, isManagedCloud: true });
+  Object.assign(AUTH, { admin: false, canReadSessions: true });
 
   const suffix = `route${seq++}`;
   const organization = await prisma.organization.create({
-    data: { title: `Org ${suffix}`, slug: `org-${suffix}`, featureFlags },
+    data: { title: `Org ${suffix}`, slug: `org-${suffix}` },
   });
   const project = await prisma.project.create({
     data: {
@@ -205,6 +200,7 @@ async function expectNotFound(response: Response) {
 }
 
 describe("session runs route", () => {
+  // Catches: the Trace tab's runs going back behind an org flag. The org has no flags set.
   postgresTest("returns the page for a member", async ({ prisma }) => {
     const ctx = await seed(prisma);
 
@@ -213,6 +209,7 @@ describe("session runs route", () => {
     const body = await response.json();
     expect(body.totalCount).toBe(1);
     expect(body.data[0]).toMatchObject({ number: 1, friendlyId: `run_${ctx.runId}` });
+    expect(body.session).toMatchObject({ closedAt: null, currentRunFriendlyId: null });
   });
 
   postgresTest("a bad cursor is a 400", async ({ prisma }) => {
@@ -240,20 +237,6 @@ describe("session runs route", () => {
     await expectNotFound(await ctx.call(ctx.outsider.id, "prod", ctx.prodSession.friendlyId));
     await expectNotFound(await ctx.call(ctx.teammate.id, "dev", ctx.devSession.friendlyId));
     await expectNotFound(await ctx.call(ctx.owner.id, "dev", ctx.prodSession.friendlyId));
-
-    AUTH.isManagedCloud = false;
-    AUTH.admin = true;
-    await expectNotFound(await ctx.call(ctx.teammate.id, "prod", ctx.prodSession.friendlyId));
-  });
-
-  postgresTest("flag off is a 404 for members but not for admins", async ({ prisma }) => {
-    const ctx = await seed(prisma, {});
-
-    await expectNotFound(await ctx.call(ctx.teammate.id, "prod", ctx.prodSession.friendlyId));
-
-    AUTH.admin = true;
-    const response = await ctx.call(ctx.teammate.id, "prod", ctx.prodSession.friendlyId);
-    expect(response.status).toBe(200);
   });
 
   postgresTest("a role without read:sessions is denied", async ({ prisma }) => {

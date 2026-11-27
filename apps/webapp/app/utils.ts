@@ -15,7 +15,12 @@ const NON_NAVIGABLE_EXACT = new Set([
   "/login/sso",
 ]);
 
+// Resource routes that are real destinations after login: "Sign in" from the docs logs in, then
+// this route sends the reader back to the docs page.
+const NAVIGABLE_RESOURCES = new Set(["/resources/docs/signin"]);
+
 function isNavigablePath(pathname: string): boolean {
+  if (NAVIGABLE_RESOURCES.has(pathname)) return true;
   if (NON_NAVIGABLE_EXACT.has(pathname)) return false;
   return !NON_NAVIGABLE_PREFIXES.some((prefix) => pathname.startsWith(prefix));
 }

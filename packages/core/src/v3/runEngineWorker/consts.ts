@@ -9,6 +9,7 @@ export const WORKER_HEADERS = {
   // Run claim of a verified sandbox deployment token. Set by the supervisor only when enforcing;
   // the platform starts a pinned run, or refreshes its token, only for its own sandbox token.
   SANDBOX_RUN_ID: "x-trigger-worker-sandbox-run-id",
+  WORKLOAD_TOKEN: "x-trigger-worker-workload-token",
 };
 
 export const WORKLOAD_HEADERS = {

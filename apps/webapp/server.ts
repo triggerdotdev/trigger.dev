@@ -181,6 +181,13 @@ async function startServer() {
   if (viteDevServer) {
     app.use(viteDevServer.middlewares);
   } else if (servesStaticFiles(apiOnlyServiceMode)) {
+    app.use("/assets", (req, res, next) => {
+      if (isSourceMapPath(req.path)) {
+        res.status(404).end();
+        return;
+      }
+      next();
+    });
     // Vite fingerprints its assets so we can cache forever.
     app.use("/assets", express.static("build/client/assets", { immutable: true, maxAge: "1y" }));
     // Stale clients can request an old hashed asset; hard-404 instead of falling
@@ -190,7 +197,10 @@ async function startServer() {
     });
     // Everything else (like favicon.ico) is cached for an hour. You may want to be
     // more aggressive with this caching.
-    app.use(express.static("build/client", { maxAge: "1h" }));
+    const serveClientFiles = express.static("build/client", { maxAge: "1h" });
+    app.use((req, res, next) =>
+      isSourceMapPath(req.path) ? next() : serveClientFiles(req, res, next)
+    );
   }
 
   // On high-volume machine-ingest services (e.g. otel) the per-request access
@@ -430,4 +440,12 @@ async function startServer() {
   } else {
     console.log(`✅ app ready (skipping http server)`);
   }
+}
+
+// express.static decodes the path before reading the file, so match the decoded form.
+function isSourceMapPath(path: string): boolean {
+  try {
+    path = decodeURIComponent(path);
+  } catch {}
+  return /\.map\/*$/i.test(path);
 }

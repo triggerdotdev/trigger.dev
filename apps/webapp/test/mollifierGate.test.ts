@@ -473,6 +473,29 @@ describe("resolveMollifierFlag — hot path", () => {
     expect(fromNull).toBe(false);
     expect(fromUnrelatedKeys).toBe(false);
   });
+
+  // Catches: a change in how a non-boolean mollifierEnabled override is read (today it is coerced).
+  it("coerces a non-boolean override: truthy values enable, falsy values disable", async () => {
+    const resolve = makeResolveMollifierFlag();
+
+    for (const [override, expected] of [
+      ["yes", true],
+      [1, true],
+      ["false", true],
+      [0, false],
+      ["", false],
+    ] as const) {
+      expect(
+        await resolve({
+          envId: "e",
+          orgId: "o",
+          taskId: "t",
+          orgFeatureFlags: { mollifierEnabled: override },
+        }),
+        JSON.stringify(override)
+      ).toBe(expected);
+    }
+  });
 });
 
 describe("evaluateGate — fail open on evaluator error", () => {

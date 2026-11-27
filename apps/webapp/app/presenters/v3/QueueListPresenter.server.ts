@@ -4,8 +4,10 @@ import { TaskQueueType, boundedIn } from "@trigger.dev/database";
 import { type PrismaClientOrTransaction } from "~/db.server";
 import { type AuthenticatedEnvironment } from "~/services/apiAuth.server";
 import { clickhouseFactory } from "~/services/clickhouse/clickhouseFactoryInstance.server";
+import { readLimitOptions, type ReadLimit } from "./clickhouseReadLimit";
 import { logger } from "~/services/logger.server";
 import { engine } from "~/v3/runEngine.server";
+import { ANONYMOUS_LIMIT_PREFIX } from "~/v3/services/concurrencyLimitNames.server";
 import { BasePresenter } from "./basePresenter.server";
 import { toQueueItem, toQueueLimits } from "./QueueRetrievePresenter.server";
 import type { QueueLimits } from "~/components/queues/queue-limits";
@@ -126,7 +128,7 @@ function buildQueueListWhere(
         {
           role: "LIMIT" as const,
           OR: [
-            { name: { not: { startsWith: "limit/task/" } } },
+            { name: { not: { startsWith: ANONYMOUS_LIMIT_PREFIX } } },
             { concurrencyLimit: { not: null } },
             { totalConcurrencyLimit: { not: null } },
           ],
@@ -165,6 +167,7 @@ export class QueueListPresenter extends BasePresenter {
     includeLimits = false,
     archived = "include",
     detectArchivedActivity = false,
+    readLimit,
   }: {
     environment: AuthenticatedEnvironment;
     query?: string;
@@ -176,6 +179,8 @@ export class QueueListPresenter extends BasePresenter {
     archived?: QueueListArchived;
     /** Dashboard only: find archived queues that still have runs, for the alert and badges. */
     detectArchivedActivity?: boolean;
+    /** Caps each ranking query's run time; callers without a deadline leave it off. */
+    readLimit?: ReadLimit | (() => ReadLimit);
   }): Promise<QueueListResult> {
     const result = await this.list({
       environment,
@@ -185,6 +190,7 @@ export class QueueListPresenter extends BasePresenter {
       sort,
       includeLimits,
       archived,
+      readLimit,
     });
 
     if (!detectArchivedActivity) {
@@ -205,6 +211,7 @@ export class QueueListPresenter extends BasePresenter {
     sort,
     includeLimits,
     archived,
+    readLimit,
   }: {
     environment: AuthenticatedEnvironment;
     query?: string;
@@ -213,6 +220,7 @@ export class QueueListPresenter extends BasePresenter {
     sort: QueueListSort;
     includeLimits: boolean;
     archived: QueueListArchived;
+    readLimit?: ReadLimit | (() => ReadLimit);
   }): Promise<QueueListResult> {
     const hasFilters = Boolean(query?.trim()) || type !== undefined;
 
@@ -226,7 +234,8 @@ export class QueueListPresenter extends BasePresenter {
           type,
           sort,
           includeLimits,
-          archived
+          archived,
+          readLimit
         );
         if (ranked) {
           return ranked;
@@ -285,11 +294,15 @@ export class QueueListPresenter extends BasePresenter {
     type: "task" | "custom" | undefined,
     sort: Exclude<QueueListSort, "name">,
     includeLimits: boolean,
-    archived: QueueListArchived
+    archived: QueueListArchived,
+    readLimit?: ReadLimit | (() => ReadLimit)
   ) {
     if (type !== undefined) {
       return null;
     }
+    // Evaluated per query, so one that starts late gets the time that is left then.
+    const capped = () =>
+      readLimitOptions(typeof readLimit === "function" ? readLimit() : readLimit);
 
     const clickhouse = await clickhouseFactory.getClickhouseForOrganization(
       environment.organizationId,
@@ -317,13 +330,16 @@ export class QueueListPresenter extends BasePresenter {
     }
 
     // One scan returns the page and the total ranked count (window function).
-    const [pageError, pageRows] = await clickhouse.queueMetrics.ranking({
-      ...rankingArgs,
-      excludeNames,
-      byQueuedOnly: sort === "queued" ? 1 : 0,
-      limit: this.perPage,
-      offset,
-    });
+    const [pageError, pageRows] = await clickhouse.queueMetrics.ranking(
+      {
+        ...rankingArgs,
+        excludeNames,
+        byQueuedOnly: sort === "queued" ? 1 : 0,
+        limit: this.perPage,
+        offset,
+      },
+      capped()
+    );
     if (pageError) {
       throw pageError;
     }
@@ -331,10 +347,10 @@ export class QueueListPresenter extends BasePresenter {
     let ranked = pageRows?.[0]?.ranked_total ?? 0;
     if (ranked === 0 && offset > 0) {
       // Empty page past the ranked head: fetch the count alone for the tail slot math.
-      const [countError, countRows] = await clickhouse.queueMetrics.rankingCount({
-        ...rankingArgs,
-        excludeNames,
-      });
+      const [countError, countRows] = await clickhouse.queueMetrics.rankingCount(
+        { ...rankingArgs, excludeNames },
+        capped()
+      );
       if (countError) {
         throw countError;
       }
@@ -361,11 +377,10 @@ export class QueueListPresenter extends BasePresenter {
     if (tailNeeded > 0) {
       let excludedNames: string[] = [];
       if (ranked > 0) {
-        const [allError, allRows] = await clickhouse.queueMetrics.rankingNames({
-          ...rankingArgs,
-          excludeNames,
-          limit: MAX_RANKED_QUEUES,
-        });
+        const [allError, allRows] = await clickhouse.queueMetrics.rankingNames(
+          { ...rankingArgs, excludeNames, limit: MAX_RANKED_QUEUES },
+          capped()
+        );
         if (allError) {
           throw allError;
         }

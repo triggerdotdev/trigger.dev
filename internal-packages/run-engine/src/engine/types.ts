@@ -93,6 +93,8 @@ export type RunEngineOptions = {
     organizationId: string,
     organizationFlags?: unknown
   ) => boolean | Promise<boolean>;
+  /** Read once per suspend of a MemoryDB-only run. Omitted means every checkpoint is written to Postgres. */
+  checkpointStoreEnabled?: (organizationId: string) => boolean | Promise<boolean>;
   prisma: PrismaClient;
   readOnlyPrisma?: PrismaReplicaClient;
   /** Optional RunStore implementation to inject. Defaults to a PostgresRunStore
@@ -345,6 +347,8 @@ export type RunEngineOptions = {
    * should inject a ClickHouse-backed implementation.
    */
   pendingVersionRunIdLookup?: PendingVersionRunIdLookup;
+  /** Legacy worker queues whose runs publish to their v2 container stable queues instead. */
+  legacyWorkerQueuesOnV2?: readonly string[];
   /**
    * When the pending-version lookup returns zero candidates, schedule
    * one more attempt after this delay to cover ClickHouse replication

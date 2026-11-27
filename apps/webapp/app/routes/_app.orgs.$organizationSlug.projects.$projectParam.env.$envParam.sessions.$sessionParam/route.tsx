@@ -1,11 +1,12 @@
 import { BoltIcon, BoltSlashIcon } from "@heroicons/react/20/solid";
-import { BookOpenIcon, CheckIcon } from "@heroicons/react/24/solid";
-import { useLocation } from "@remix-run/react";
+import { CheckIcon } from "@heroicons/react/24/solid";
+import { useLoaderData, useLocation, useParams } from "@remix-run/react";
 import { type LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { Clipboard, ClipboardCheck } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
+import { useIsPast } from "~/hooks/useIsPast";
 import simplur from "simplur";
 import { z } from "zod";
 import { AIChatIcon } from "~/assets/icons/AIChatIcon";
@@ -15,6 +16,7 @@ import { MoveToBottomIcon } from "~/assets/icons/MoveToBottomIcon";
 import { MoveToTopIcon } from "~/assets/icons/MoveToTopIcon";
 import { TextInlineIcon } from "~/assets/icons/TextInlineIcon";
 import { TextWrapIcon } from "~/assets/icons/TextWrapIcon";
+import { DocsHeaderButton } from "~/components/DocsPanel";
 import { CodeBlock } from "~/components/code/CodeBlock";
 import { PageBody } from "~/components/layout/AppLayout";
 import { Button, LinkButton } from "~/components/primitives/Buttons";
@@ -54,6 +56,7 @@ import {
 } from "~/components/sessions/v1/useConversationTranscript";
 import { CloseSessionDialog } from "~/components/sessions/v1/CloseSessionDialog";
 import { SessionStatusCombo } from "~/components/sessions/v1/SessionStatus";
+import { HandoverRunsTabDetail } from "~/components/sessions/v1/SessionHandover";
 import { $replica } from "~/db.server";
 import { useEnvironment } from "~/hooks/useEnvironment";
 import { useOrganization } from "~/hooks/useOrganizations";
@@ -61,19 +64,25 @@ import { useProject } from "~/hooks/useProject";
 import { useSearchParams } from "~/hooks/useSearchParam";
 import { useHasAdminAccess } from "~/hooks/useUser";
 import { redirectWithErrorMessage } from "~/models/message.server";
-import { findProjectWithOrgFlagsBySlug } from "~/models/project.server";
+import { findProjectBySlug } from "~/models/project.server";
 import { findEnvironmentBySlug } from "~/models/runtimeEnvironment.server";
 import { SessionPresenter } from "~/presenters/v3/SessionPresenter.server";
-import { featuresForRequest } from "~/features.server";
-import { canAccessSessionTrace } from "~/v3/canAccessSessionTrace.server";
 import { SessionTraceTab } from "~/components/sessions/v1/trace/SessionTraceTab";
 import { useSessionViewAnalytics } from "~/components/sessions/v1/trace/useSessionViewAnalytics";
 import { SessionRunInspector } from "~/components/sessions/v1/trace/SessionRunInspector";
-import { SessionPanelStoreProvider } from "~/components/sessions/v1/trace/sessionPanelStore";
+import {
+  SessionPanelStoreProvider,
+  useSessionRead,
+} from "~/components/sessions/v1/trace/sessionPanelStore";
+import {
+  currentSessionDetails,
+  type SessionDetailsData,
+} from "~/components/sessions/v1/sessionDetails";
 import { useSessionTraceSelection } from "~/components/sessions/v1/trace/useSessionTraceSelection";
 import {
   SESSION_TREE_AUTOSAVE_ID,
   resolveSessionPageView,
+  sessionRunTitle,
   type SessionPageView,
 } from "~/components/sessions/v1/trace/sessionTraceView";
 import { getResizableSnapshot } from "~/services/resizablePanel.server";
@@ -94,7 +103,6 @@ import { type SessionStatus } from "~/services/sessionsRepository/sessionsReposi
 import { cn } from "~/utils/cn";
 import { throwNotFound } from "~/utils/httpErrors";
 import {
-  docsPath,
   EnvironmentParamSchema,
   v3RunPath,
   v3RunsPath,
@@ -126,16 +134,10 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   const userId = user.id;
   const { projectParam, organizationSlug, envParam, sessionParam } = ParamsSchema.parse(params);
 
-  const project = await findProjectWithOrgFlagsBySlug(organizationSlug, projectParam, userId);
+  const project = await findProjectBySlug(organizationSlug, projectParam, userId);
   if (!project) {
     return redirectWithErrorMessage("/", request, "Project not found");
   }
-
-  const sessionTraceEnabled = await canAccessSessionTrace({
-    isManagedCloud: featuresForRequest(request).isManagedCloud,
-    isAdmin: user.admin,
-    orgFeatureFlags: project.organization.featureFlags,
-  });
 
   const environment = await findEnvironmentBySlug(project.id, envParam, userId);
   if (!environment) {
@@ -149,7 +151,6 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
       view: searchParams.get("view") ?? undefined,
       raw: searchParams.get("raw") ?? undefined,
       channel: searchParams.get("channel") ?? undefined,
-      traceEnabled: sessionTraceEnabled,
     }) === "conversation";
 
   const presenter = new SessionPresenter($replica);
@@ -189,30 +190,40 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
     }
   }
 
-  const traceTreeSnapshot = sessionTraceEnabled
-    ? await getResizableSnapshot(request, SESSION_TREE_AUTOSAVE_ID)
-    : undefined;
+  const traceTreeSnapshot = await getResizableSnapshot(request, SESSION_TREE_AUTOSAVE_ID);
 
   return typedjson({
     session,
     channels,
     transcriptRead: opensOnConversation,
-    sessionTraceEnabled,
     traceTreeSnapshot,
     loadedAt: Date.now(),
   });
 };
 
 export default function Page() {
-  const { session, channels, transcriptRead, sessionTraceEnabled, traceTreeSnapshot, loadedAt } =
+  // The store is shared by the Trace tab and the side panel, so the page reads it below the provider.
+  // A link to another session (a sub-agent's) keeps this route mounted: start a new store for it.
+  const { sessionParam } = useParams();
+  return (
+    <SessionPanelStoreProvider key={sessionParam}>
+      <SessionPage />
+    </SessionPanelStoreProvider>
+  );
+}
+
+function SessionPage() {
+  const { session, channels, transcriptRead, traceTreeSnapshot, loadedAt } =
     useTypedLoaderData<typeof loader>();
   const organization = useOrganization();
   const project = useProject();
   const environment = useEnvironment();
 
-  const isExpired = session.expiresAt != null && new Date(session.expiresAt).getTime() < loadedAt;
+  // On the Trace tab, its runs polls keep the session details current; the newer read wins.
+  const details = currentSessionDetails(session, useSessionRead(useLoaderData<typeof loader>()));
+  const isExpired = useIsPast(details.expiresAt, loadedAt);
   const status: SessionStatus =
-    session.closedAt != null ? "CLOSED" : isExpired ? "EXPIRED" : "ACTIVE";
+    details.closedAt != null ? "CLOSED" : isExpired ? "EXPIRED" : "ACTIVE";
 
   const displayId = session.externalId ?? session.friendlyId;
   const sessionsPath = v3SessionsPath(organization, project, environment);
@@ -231,47 +242,36 @@ export default function Page() {
         />
         <PageAccessories>
           <WhenAgentUnavailable>
-            <LinkButton
-              variant={"docs/small"}
-              LeadingIcon={BookOpenIcon}
-              to={docsPath("/ai-chat/sessions")}
-            >
-              Sessions docs
-            </LinkButton>
+            <DocsHeaderButton path="/ai-chat/sessions">Sessions docs</DocsHeaderButton>
           </WhenAgentUnavailable>
         </PageAccessories>
       </NavBar>
       <PageBody scrollable={false}>
-        <SessionPanelStoreProvider>
-          <ResizablePanelGroup orientation="horizontal" className="max-h-full">
-            <ResizablePanel id="session-conversation" min={"300px"}>
-              {sessionTraceEnabled ? (
-                <SessionLeftPane
-                  session={session}
-                  channels={channels}
-                  transcriptRead={transcriptRead}
-                  traceTreeSnapshot={traceTreeSnapshot}
-                />
-              ) : (
-                <StandaloneConversationPane session={session} channels={channels} />
-              )}
-            </ResizablePanel>
-            <ResizableHandle id="session-handle" />
-            <ResizablePanel
-              id="session-inspector"
-              min="380px"
-              default="420px"
-              className="overflow-hidden"
-            >
-              <InspectorPane
-                session={session}
-                status={status}
-                isExpired={isExpired}
-                sessionTraceEnabled={sessionTraceEnabled}
-              />
-            </ResizablePanel>
-          </ResizablePanelGroup>
-        </SessionPanelStoreProvider>
+        <ResizablePanelGroup orientation="horizontal" className="max-h-full">
+          <ResizablePanel id="session-conversation" min={"300px"}>
+            <SessionLeftPane
+              session={session}
+              channels={channels}
+              transcriptRead={transcriptRead}
+              traceTreeSnapshot={traceTreeSnapshot}
+              sessionOpen={status === "ACTIVE"}
+            />
+          </ResizablePanel>
+          <ResizableHandle id="session-handle" />
+          <ResizablePanel
+            id="session-inspector"
+            min="380px"
+            default="420px"
+            className="overflow-hidden"
+          >
+            <InspectorPane
+              session={session}
+              details={details}
+              status={status}
+              isExpired={isExpired}
+            />
+          </ResizablePanel>
+        </ResizablePanelGroup>
       </PageBody>
     </>
   );
@@ -279,23 +279,26 @@ export default function Page() {
 
 type LoadedSession = ReturnType<typeof useTypedLoaderData<typeof loader>>["session"];
 
-// Trace and Conversation tabs, shown when the session trace is enabled.
+// Trace and Conversation tabs.
 function SessionLeftPane({
   session,
   channels,
   transcriptRead,
   traceTreeSnapshot,
+  sessionOpen,
 }: {
   session: LoadedSession;
   channels: string[];
   transcriptRead: boolean;
   traceTreeSnapshot: ResizableSnapshot | undefined;
+  /** Closed and expired sessions start no more runs. */
+  sessionOpen: boolean;
 }) {
   const organization = useOrganization();
   const project = useProject();
   const environment = useEnvironment();
   const { replace } = useSearchParams();
-  const view = useSessionPageView(true);
+  const view = useSessionPageView();
   const track = useSessionViewAnalytics();
   // Kept here so switching tabs doesn't fetch it again.
   const transcript = useSessionTranscript({
@@ -356,8 +359,10 @@ function SessionLeftPane({
             <SessionTraceTab
               key={session.friendlyId}
               runsPath={v3SessionRunsPath(organization, project, environment, session)}
+              taskIdentifier={session.taskIdentifier}
               treeSnapshot={traceTreeSnapshot}
               active={view === "trace"}
+              sessionOpen={sessionOpen}
             />
           </SessionTabPanel>
         )}
@@ -367,7 +372,6 @@ function SessionLeftPane({
               session={session}
               channels={channels}
               transcript={transcript}
-              pinConversationView
               active={view === "conversation"}
             />
           </SessionTabPanel>
@@ -459,38 +463,15 @@ function useSessionTranscript({
   });
 }
 
-// The page without the Trace tab: the loader always reads the transcript.
-function StandaloneConversationPane({
-  session,
-  channels,
-}: {
-  session: LoadedSession;
-  channels: string[];
-}) {
-  const transcript = useSessionTranscript({ session, channels, transcriptRead: true, shown: true });
-
-  return (
-    <ConversationPane
-      session={session}
-      channels={channels}
-      transcript={transcript}
-      pinConversationView={false}
-    />
-  );
-}
-
 function ConversationPane({
   session,
   channels,
   transcript,
-  pinConversationView,
   active = true,
 }: {
   session: LoadedSession;
   channels: string[];
   transcript: ConversationTranscript;
-  /** Keep `?view=conversation` so clearing Raw or a channel doesn't switch to the Trace tab. */
-  pinConversationView: boolean;
   active?: boolean;
 }) {
   const organization = useOrganization();
@@ -501,19 +482,21 @@ function ConversationPane({
   const channelParam = value("channel");
   const activeChannel = channelParam && channels.includes(channelParam) ? channelParam : undefined;
 
+  const handovers = session.runs.flatMap((entry) => (entry.handover ? [entry.handover] : []));
+
   const sessionId = session.agentView.sessionId;
   const encodedSession = encodeURIComponent(sessionId);
   const sessionResourceBase = `/resources/orgs/${organization.slug}/projects/${project.slug}/env/${environment.slug}/sessions/${encodedSession}/realtime/v1`;
 
-  const conversationView = pinConversationView ? "conversation" : undefined;
+  // Both keep `?view=conversation` so clearing Raw or a channel doesn't switch to the Trace tab.
   const setView = useCallback(
     (raw: boolean) =>
-      replace({ raw: raw ? "1" : undefined, channel: undefined, view: conversationView }),
-    [replace, conversationView]
+      replace({ raw: raw ? "1" : undefined, channel: undefined, view: "conversation" }),
+    [replace]
   );
   const selectChannel = useCallback(
-    (channel: string) => replace({ channel, raw: undefined, view: conversationView }),
-    [replace, conversationView]
+    (channel: string) => replace({ channel, raw: undefined, view: "conversation" }),
+    [replace]
   );
 
   const utilityBarProps = {
@@ -571,6 +554,7 @@ function ConversationPane({
                 key={session.agentView.sessionId}
                 agentView={{ ...session.agentView, transcriptSeed: transcript.seed }}
                 paused={!active}
+                handovers={handovers}
               />
             ) : (
               <div className="flex items-center justify-center gap-2 py-6">
@@ -1113,34 +1097,33 @@ function MergedStreamRow({
 }
 
 /** The tab the URL asks for; the loader works it out from the request the same way. */
-function useSessionPageView(traceEnabled: boolean) {
+function useSessionPageView() {
   const { value } = useSearchParams();
   return resolveSessionPageView({
     view: value("view"),
     raw: value("raw"),
     channel: value("channel"),
-    traceEnabled,
   });
 }
 
 function InspectorPane({
   session,
+  details,
   status,
   isExpired,
-  sessionTraceEnabled,
 }: {
   session: LoadedSession;
+  details: SessionDetailsData;
   status: SessionStatus;
   isExpired: boolean;
-  sessionTraceEnabled: boolean;
 }) {
-  // A selected run or span replaces the session details; without the trace, the params mean nothing.
+  // A selected run or span replaces the session details.
   const { selection, setSelection } = useSessionTraceSelection();
   const organization = useOrganization();
   const project = useProject();
   const environment = useEnvironment();
-  const onTraceTab = useSessionPageView(sessionTraceEnabled) === "trace";
-  if (sessionTraceEnabled && selection.kind !== "session") {
+  const onTraceTab = useSessionPageView() === "trace";
+  if (selection.kind !== "session") {
     return (
       <SessionRunInspector
         selection={selection}
@@ -1151,15 +1134,19 @@ function InspectorPane({
     );
   }
 
-  return <SessionDetailsPane session={session} status={status} isExpired={isExpired} />;
+  return (
+    <SessionDetailsPane session={session} details={details} status={status} isExpired={isExpired} />
+  );
 }
 
 function SessionDetailsPane({
   session,
+  details,
   status,
   isExpired,
 }: {
   session: LoadedSession;
+  details: SessionDetailsData;
   status: SessionStatus;
   isExpired: boolean;
 }) {
@@ -1211,9 +1198,9 @@ function SessionDetailsPane({
       </div>
       <div className="overflow-y-auto px-3 py-3 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-surface-control">
         {tab === "overview" ? (
-          <OverviewTab session={session} status={status} isExpired={isExpired} />
+          <OverviewTab session={session} details={details} status={status} isExpired={isExpired} />
         ) : tab === "runs" ? (
-          <RunsTab session={session} status={status} allRunsPath={allRunsPath} />
+          <RunsTab runs={details.runs} status={status} allRunsPath={allRunsPath} />
         ) : (
           <MetadataTab session={session} />
         )}
@@ -1224,10 +1211,12 @@ function SessionDetailsPane({
 
 function OverviewTab({
   session,
+  details,
   status,
   isExpired,
 }: {
   session: LoadedSession;
+  details: SessionDetailsData;
   status: SessionStatus;
   isExpired: boolean;
 }) {
@@ -1237,6 +1226,8 @@ function OverviewTab({
   const isAdmin = useHasAdminAccess();
   // Closing reloads this page as it is: same tab, view and selection.
   const { pathname, search } = useLocation();
+  const lockToVersion = sessionLockToVersion(session.triggerConfig);
+  const currentVersion = details.currentRun?.version;
 
   return (
     <div className="flex flex-col gap-4">
@@ -1305,25 +1296,35 @@ function OverviewTab({
           initiallyAvailable={!!session.agentView.transcriptSeed}
           resourcePath={`/resources/orgs/${organization.slug}/projects/${project.slug}/env/${environment.slug}/sessions/${encodeURIComponent(session.friendlyId)}/transcript-download`}
         />
-        {session.currentRun ? (
+        {details.currentRun ? (
           <Property.Item>
             <Property.Label>Current run</Property.Label>
             <Property.Value>
               <span className="flex flex-col gap-0.5">
                 <TextLink
                   to={v3RunPath(organization, project, environment, {
-                    friendlyId: session.currentRun.friendlyId,
+                    friendlyId: details.currentRun.friendlyId,
                   })}
                   className="font-mono text-sm"
                 >
-                  {session.currentRun.friendlyId}
+                  {details.currentRun.friendlyId}
                 </TextLink>
-                <SimpleTooltip
-                  button={<TaskRunStatusCombo status={session.currentRun.status} />}
-                  content={descriptionForTaskRunStatus(session.currentRun.status)}
-                  disableHoverableContent
-                  buttonClassName="w-fit"
-                />
+                {details.currentRun.status ? (
+                  <SimpleTooltip
+                    button={<TaskRunStatusCombo status={details.currentRun.status} />}
+                    content={descriptionForTaskRunStatus(details.currentRun.status)}
+                    disableHoverableContent
+                    buttonClassName="w-fit"
+                  />
+                ) : null}
+                {currentVersion ? (
+                  <span className="text-xs text-text-dimmed">
+                    On <span className="tabular-nums text-text-bright">{currentVersion}</span>
+                    {lockToVersion && lockToVersion !== currentVersion
+                      ? `. The skew protection threshold moved it past the lockToVersion pin (${lockToVersion}).`
+                      : null}
+                  </span>
+                ) : null}
               </span>
             </Property.Value>
           </Property.Item>
@@ -1351,30 +1352,30 @@ function OverviewTab({
         <Property.Item>
           <Property.Label>Updated</Property.Label>
           <Property.Value>
-            <DateTime date={session.updatedAt} />
+            <DateTime date={details.updatedAt} />
           </Property.Value>
         </Property.Item>
-        {session.expiresAt ? (
+        {details.expiresAt ? (
           <Property.Item>
             <Property.Label>{isExpired ? "Expired" : "Expires"}</Property.Label>
             <Property.Value>
-              <DateTime date={session.expiresAt} />
+              <DateTime date={details.expiresAt} />
             </Property.Value>
           </Property.Item>
         ) : null}
-        {session.closedAt ? (
+        {details.closedAt ? (
           <Property.Item>
             <Property.Label>Closed</Property.Label>
             <Property.Value>
-              <DateTime date={session.closedAt} />
+              <DateTime date={details.closedAt} />
             </Property.Value>
           </Property.Item>
         ) : null}
-        {session.closedReason ? (
+        {details.closedReason ? (
           <Property.Item>
             <Property.Label>Close reason</Property.Label>
             <Property.Value>
-              <span className="text-xs">{session.closedReason}</span>
+              <span className="text-xs">{details.closedReason}</span>
             </Property.Value>
           </Property.Item>
         ) : null}
@@ -1421,11 +1422,11 @@ function MetadataTab({ session }: { session: LoadedSession }) {
 }
 
 function RunsTab({
-  session,
+  runs,
   status,
   allRunsPath,
 }: {
-  session: LoadedSession;
+  runs: SessionDetailsData["runs"];
   status: SessionStatus;
   allRunsPath: string;
 }) {
@@ -1433,7 +1434,7 @@ function RunsTab({
   const project = useProject();
   const environment = useEnvironment();
 
-  if (session.runs.length === 0) {
+  if (runs.length === 0) {
     return <Paragraph variant="small/dimmed">No runs yet.</Paragraph>;
   }
 
@@ -1449,21 +1450,31 @@ function RunsTab({
           View all runs
         </LinkButton>
       </TimelineRow>
-      {session.runs.map((entry, idx) => {
-        const isLast = idx === session.runs.length - 1;
+      {runs.map((entry, idx) => {
+        const isLast = idx === runs.length - 1;
         const runPath = entry.run
           ? v3RunPath(organization, project, environment, {
               friendlyId: entry.run.friendlyId,
             })
           : undefined;
+        const handover = entry.handover;
+        const title = handover
+          ? { text: "Moved mid-reply", capitalize: false }
+          : sessionRunTitle(entry.reason);
         return (
           <TimelineRow key={entry.id} isLast={isLast}>
-            <span className="text-sm font-medium text-text-bright">
-              <span className="capitalize">{entry.reason}</span> run
+            <span
+              className={cn(
+                "text-sm font-medium text-text-bright",
+                title.capitalize && "capitalize"
+              )}
+            >
+              {title.text}
             </span>
             <span className="text-xs text-text-dimmed">
               <DateTime date={entry.triggeredAt} />
             </span>
+            {handover ? <HandoverRunsTabDetail handover={handover} /> : null}
             {entry.run && runPath ? (
               <>
                 <SimpleTooltip
@@ -1529,4 +1540,9 @@ function TimelineRow({
       </div>
     </div>
   );
+}
+
+function sessionLockToVersion(triggerConfig: unknown): string | undefined {
+  const value = (triggerConfig as { lockToVersion?: unknown } | null)?.lockToVersion;
+  return typeof value === "string" ? value : undefined;
 }

@@ -29,6 +29,7 @@ import {
   runtime,
   runTimelineMetrics,
   sessionStreams,
+  signals,
   taskContext,
   TaskRunContext,
   TaskRunErrorCodes,
@@ -60,6 +61,7 @@ import {
   StandardResourceCatalog,
   StandardRunTimelineMetricsManager,
   StandardSessionStreamManager,
+  StandardSignalsManager,
   StandardTraceContextManager,
   StandardWaitUntilManager,
   TaskExecutor,
@@ -197,6 +199,14 @@ const standardSessionStreamManager = new StandardSessionStreamManager(
     false
 );
 sessionStreams.setGlobalManager(standardSessionStreamManager);
+
+const standardSignalsManager = new StandardSignalsManager(
+  apiClientManager.clientOrThrow(),
+  getEnvVar("TRIGGER_STREAM_URL", getEnvVar("TRIGGER_API_URL")) ?? "https://api.trigger.dev",
+  () => taskContext.ctx?.task.id,
+  getEnvVar("TRIGGER_STREAMS_DEBUG") === "1" || getEnvVar("TRIGGER_STREAMS_DEBUG") === "true"
+);
+signals.setGlobalManager(standardSignalsManager);
 
 const waitUntilTimeoutInMs = getNumberEnvVar("TRIGGER_WAIT_UNTIL_TIMEOUT_MS", 60_000);
 const waitUntilManager = new StandardWaitUntilManager(waitUntilTimeoutInMs);
@@ -374,6 +384,7 @@ function resetExecutionEnvironment() {
   standardRealtimeStreamsManager.reset();
   standardInputStreamManager.reset();
   standardSessionStreamManager.reset();
+  standardSignalsManager.reset();
   waitUntilManager.reset();
   _sharedWorkerRuntime?.reset();
   durableClock.reset();
@@ -638,6 +649,9 @@ const zodIpc = new ZodIpcConnection({
           }
         } finally {
           standardHeartbeatsManager.stopHeartbeat();
+          // A listener the task never stopped would keep its signal subscription open, and its
+          // handler running, while a kept-alive process waits for the next run.
+          standardSignalsManager.reset();
           resourceCatalog.clearCurrentFileContext();
 
           _execution = undefined;

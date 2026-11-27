@@ -42,7 +42,7 @@ export const myChat = chat.agent({
 });
 ```
 
-The hook fires per turn. `incomingMessages` is the new wire message (0-or-1-length, see [v4.5 wire format change](/ai-chat/upgrade-guide#v45-wire-format-change)). For each new tool result on that message, write one audit row. Then return the canonical chain from your DB.
+The hook fires per turn. `incomingMessages` is the new wire message (0-or-1-length, see [v4.5 wire format change](/ai-chat/upgrade-guide#v4-5-wire-format-change)). For each new tool result on that message, write one audit row. Then return the canonical chain from your DB.
 
 `extractNewToolResults` compares the message against the current `chat.history` chain and returns only tool parts whose `toolCallId` is **not** already resolved. For results already present in that history:
 

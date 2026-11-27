@@ -90,7 +90,13 @@ export const PLACEMENT_SITES: readonly PlacementSite[] = [
     method: "clearIdempotencyKey",
     basis: "fan-out",
     missMode: "silent",
-    routes: ["#route(params.byId.runId)", "#shardStore(NEW_SHARD)", "#shardsExcept(NEW_SHARD)"],
+    routes: [
+      "#route(params.byId.runId)",
+      "#shardStore(NEW_SHARD)",
+      "await this.#gatedStores(undefined",
+      ": this.#distinctStores",
+      "#shardsExcept(stores, NEW_SHARD)",
+    ],
     why: "Routes by run id when the caller has one. The predicate arm has no id at all, so it checks NEW and then every remaining store, gen-2 shards included: a key minted before an org flipped still lives on a run in another store, and missing it leaves a stale key deduping forever.",
   },
   {
@@ -119,6 +125,12 @@ export const PLACEMENT_SITES: readonly PlacementSite[] = [
     routes: ["#route(ownerRunId)"],
   },
   {
+    method: "createStateHeldCheckpoint",
+    basis: "owner-id",
+    missMode: "silent",
+    routes: ["#route(ownerRunId)"],
+  },
+  {
     method: "blockRunWithWaitpointEdges",
     basis: "owner-id",
     missMode: "silent",
@@ -130,7 +142,9 @@ export const PLACEMENT_SITES: readonly PlacementSite[] = [
     missMode: "silent",
     routes: [
       "#routeOrNewForWrite(taskRunId)",
-      "#sumCounts((store) => store.deleteManyTaskRunWaitpoints(args))",
+      "await this.#gatedStores(args.where",
+      ": this.#distinctStores",
+      "#sumCounts(stores, (store) => store.deleteManyTaskRunWaitpoints(args))",
     ],
     why: "Routes by the owning run id when the filter names one; otherwise sums across every store, so a delete cannot quietly skip a shard.",
   },
@@ -156,7 +170,12 @@ export const PLACEMENT_SITES: readonly PlacementSite[] = [
     method: "updateManyBatchTaskRun",
     basis: "fan-out",
     missMode: "silent",
-    routes: ["#routeOrNew(id)", "#sumCounts((store) => store.updateManyBatchTaskRun(args))"],
+    routes: [
+      "#routeOrNew(id)",
+      "await this.#gatedStores(args.where",
+      ": this.#distinctStores",
+      "#sumCounts(stores, (store) => store.updateManyBatchTaskRun(args))",
+    ],
     why: "Routes by batch id when the filter names one, and otherwise sums across every store. An updateMany reports zero rows rather than failing, so the fan-out is what keeps a filtered update from silently skipping a shard.",
   },
   {
@@ -199,6 +218,7 @@ export const PLACEMENT_SITES: readonly PlacementSite[] = [
 /** Listed so the union covers the interface: a `getOrCreateThing` must not pass as a read. */
 export const READ_ONLY_METHODS: readonly string[] = [
   "getWaitpointKeyScope",
+  "getWaitpointKeyScopes",
   "findRun",
   "findRunOrThrow",
   "findRunOnPrimary",

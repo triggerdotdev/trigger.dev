@@ -16,10 +16,12 @@ import type {
   OnStartAttemptHookFunction,
 } from "../lifecycleHooks/types.js";
 import type { RunTags } from "../schemas/api.js";
+import type { EnvVarGrant, SandboxNetwork } from "../schemas/executionPolicy.js";
 import type {
   MachineCpu,
   MachineMemory,
   MachinePresetName,
+  NamedMachine,
   RetryOptions,
   PromptMetadata,
   TaskMetadata,
@@ -170,6 +172,32 @@ export type HandleErrorArgs = {
 
 export type HandleErrorFunction = AnyOnCatchErrorHookFunction;
 
+/** Task options in preview, accepted by `task()` from `@trigger.dev/sdk/preview`. */
+export type PreviewTaskOptions = {
+  /**
+   * Run deployed tasks in a sandbox with access to only their own payload and output by default.
+   * `trigger dev` still runs locally with development credentials and is not an isolation boundary.
+   */
+  sandbox?:
+    | boolean
+    | {
+        /** Environment variables to grant. Defaults to none. */
+        envVars?: EnvVarGrant;
+        /** Additional API scopes. Use `basic` to inspect/manage this run and exchange messages with its session, `oidc` for OIDC tokens, or explicit scope strings. */
+        scopes?: string | string[];
+        /**
+         * Outbound internet access. Defaults to `"restricted"`: only Trigger.dev's own services, plus
+         * the allowed domains of any granted Vault (proxy-only) variables. `{ allow: [...] }` also
+         * allows HTTPS to the listed hosts (`"api.example.com"` or `"*.example.com"`). Restricted
+         * sandboxes can only make outbound connections on port 443.
+         */
+        network?: SandboxNetwork;
+      };
+
+  /** A preset or size, or a machine from `defineMachine()`: the task runs on its image. */
+  machine?: CommonTaskOptions<string>["machine"] | NamedMachine;
+};
+
 type CommonTaskOptions<
   TIdentifier extends string,
   TPayload = void,
@@ -283,6 +311,8 @@ type CommonTaskOptions<
 
         /** Preset to use for the machine. Defaults to small-1x */
         preset?: MachinePresetName;
+        /** A machine from `defineMachine()` is set from `@trigger.dev/sdk/preview`. */
+        id?: never;
       }
     | MachinePresetName;
 
@@ -407,7 +437,7 @@ type CommonTaskOptions<
   triggerSource?: string;
 
   /** @internal Agent configuration, only set when `triggerSource` is `"agent"`. */
-  agentConfig?: { type: string };
+  agentConfig?: { type: string; versionSkew?: string; turnHandover?: boolean };
 };
 
 /**
@@ -639,9 +669,10 @@ export interface Task<TIdentifier extends string, TInput = void, TOutput = any> 
   /**
    * Batch trigger multiple task runs with the given payloads, and continue without waiting for the results. If you want to wait for the results, use `batchTriggerAndWait`. Returns the id of the triggered batch.
    * @param items - Array, AsyncIterable, or ReadableStream of batch items
-   * @returns InvokeBatchHandle
+   * @returns BatchRunHandle
    * - `batchId` - The id of the triggered batch.
-   * - `runs` - The ids of the triggered task runs.
+   * - `runCount` - The number of runs in the batch.
+   * - `publicAccessToken` - A JWT that can be used to access the batch and its runs.
    */
   batchTrigger: (
     items:
@@ -1179,20 +1210,24 @@ export type BatchRunHandleFromTypes<TRunTypes extends AnyRunTypes> = TRunTypes e
   : never;
 
 /**
- * A BatchRunHandle can be used to retrieve the runs of a batch trigger in a typesafe manner.
+ * The handle returned by `batch.triggerByTask()`.
+ *
+ * Batch runs are created asynchronously after the call returns, so the handle does not include
+ * the run IDs. `batch.retrieve(handle.batchId)` returns the batch as it is when you call it, so
+ * its `runs` can be empty or partial right after triggering. If you need every run ID, poll it
+ * until `processing.completedAt` is set and check `processing.errors` for items that failed to
+ * create a run, or use `batch.triggerByTaskAndWait()` to get typed results for each run.
+ *
+ * Earlier versions of this type also declared `runs`, `isCached` and `idempotencyKey`. Those
+ * fields were never returned at runtime and have been removed.
  */
-export type BatchTasksRunHandle<TTasks extends readonly AnyTask[]> = BrandedRun<
+export type BatchTasksRunHandle<_TTasks extends readonly AnyTask[]> = BrandedRun<
   {
+    /** The ID of the triggered batch. */
     batchId: string;
-    isCached: boolean;
-    idempotencyKey?: string;
-    runs: {
-      [K in keyof TTasks]: BatchedRunHandle<
-        TaskIdentifier<TTasks[K]>,
-        TaskPayload<TTasks[K]>,
-        TaskOutput<TTasks[K]>
-      >;
-    };
+    /** The number of runs in the batch. */
+    runCount: number;
+    /** An auto-generated JWT that can be used to access the batch and its runs. */
     publicAccessToken: string;
   },
   any,

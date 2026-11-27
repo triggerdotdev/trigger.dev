@@ -16,6 +16,11 @@ export type CancelTaskRunServiceOptions = {
 type CancelTaskRunServiceResult = {
   id: string;
   alreadyFinished: boolean;
+  /**
+   * The run was executing, so the cancel only asked its worker to stop: the attempt is still
+   * running until the worker reports it, and the run's execution reaches FINISHED after that.
+   */
+  pendingCancel?: boolean;
 };
 
 export type CancelableTaskRun = Pick<
@@ -82,6 +87,8 @@ export class CancelTaskRunService extends BaseService {
     return {
       id: result.run.id,
       alreadyFinished: result.alreadyFinished,
+      pendingCancel:
+        !result.alreadyFinished && result.snapshot?.executionStatus === "PENDING_CANCEL",
     };
   }
 }

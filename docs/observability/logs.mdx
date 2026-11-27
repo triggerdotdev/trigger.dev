@@ -1,0 +1,110 @@
+---
+title: "Logs page"
+sidebarTitle: "Logs"
+description: "What the dashboard Logs page shows, how search matches text, the filters and log levels, and the limits on a search."
+---
+
+**The Logs page lists the logs and spans from every run in one environment, newest first, with search across messages and attributes.** Each row links to the run and span it came from. For example, set the level to ERROR, pick a task, and search `orderId:ord_123` to see what went wrong for one order, then open the run at that span.
+
+To write logs and spans from a task, see [Logging, tracing & metrics](/logging). Attributes are the object you pass as the second argument to [`logger`](/logging#logger), for example `{ orderId: "ord_123" }`, and they're searchable.
+
+<Note>
+Self-hosted instances need extra setup before the Logs page appears. See [Logs page](/self-hosting/env/webapp#logs-page).
+</Note>
+
+## Open the Logs page
+
+The Logs page is under **Observability** in the dashboard sidebar, after you select a project and environment. It shows logs for the selected environment only. Switch environments to search another one.
+
+## Log list
+
+Rows are sorted by the Time column, newest first.
+
+| Column  | Description                                                                         |
+| :------ | :---------------------------------------------------------------------------------- |
+| Time    | When the log was written, or when the span ended, in your dashboard time zone (your browser's by default). |
+| Run     | The ID of the run the row came from.                                                |
+| Task    | The task identifier.                                                                |
+| Level   | TRACE, DEBUG, INFO, WARN, or ERROR. See [Log levels](#log-levels).                  |
+| Message | The log message. For an error, the error message.                                   |
+
+Spans are listed once they finish. To watch a span in progress, open its run page. Hover a row and click **View run** to open the run page at the span the row belongs to.
+
+## Log detail panel
+
+Click a row to open it in a side panel. The panel shows:
+
+- The run ID, the run's current status, and **View full run** (shortcut `V`), which opens the run page at the span the row belongs to
+- The task, level, and timestamp
+- The full message
+- The attributes, as JSON
+
+Press `Esc` to close the panel.
+
+## Search syntax
+
+Search runs when you press Enter. It's case-insensitive and searches one block of text: the message, followed by the attributes as JSON, keys included. There are no operators: quotes, `*`, `OR`, and a leading `-` are searched as text or ignored.
+
+| You type                                     | What it matches                                          | Example                                                                      |
+| :------------------------------------------- | :------------------------------------------------------- | :--------------------------------------------------------------------------- |
+| One word made only of the letters a to z     | That whole word                                          | `timeout` finds "Request timeout", `request_timeout` and a `timeout_ms` key, but not "timeouts". A word cut short, like `declin`, finds nothing |
+| Anything else                                | That exact text, anywhere, including inside longer words | `payment failed` finds "Payment failed" but not "payment has failed". `ord_12` finds `ord_123` |
+| `key:value`                                  | An attribute, as text                                    | `orderId:ord_123` finds `logger.info("Order placed", { orderId: "ord_123" })` |
+
+- To match part of a word, include a digit or one of `_ . / : @ + -`, as in `ord_12`. Other punctuation doesn't count, so the `*` in `declin*` has no effect and it's still a whole-word search for `declin`.
+- "Anything else" covers several words, numbers, IDs (`run_abc123`), paths (`/api/orders/42`), email addresses, and words with accents or non-Latin characters.
+- Punctuation other than `_ . / : @ + -` counts as a space, so `payment, failed` and `payment failed` find the same logs.
+- `key:value` is a text match, not a field comparison: `status_code:500` also finds `http_status_code:500`, `status_code:5000`, and the same text in a message. Spaces around the colon are ignored, and the value can contain spaces: `note:payment failed`.
+- For a nested attribute, join the keys with colons: `order:id:ord_123` finds `{ order: { id: "ord_123" } }`. Dotted keys, such as OpenTelemetry attributes, are stored nested, so search `http.status_code` as `http:status_code:500`.
+
+## Filters
+
+Filters combine with search.
+
+| Filter | Shortcut | Description                                                                   |
+| :----- | :------- | :---------------------------------------------------------------------------- |
+| Task   | `T`      | Logs from one or more tasks.                                                  |
+| Run ID | `I`      | Logs from one run. Takes a run ID starting with `run_`.                       |
+| Level  | `L`      | Logs at one or more levels.                                                   |
+| Time   |          | A preset period or a custom date range. See [Time range](#time-range).        |
+
+There's no run status filter. To list failed runs, use the **Runs** page, then filter the Logs page by run ID.
+
+Click the **X** after the filters to clear all filters and the search.
+
+Filters, the search term, and the selected log are stored in the page URL, so you can copy the URL to share a search.
+
+## Time range
+
+The page shows the last day by default. You can choose a longer period, up to your plan's log retention: 1 day on Free, 7 days on Hobby, and 30 days on Pro. See [log retention limits](/limits#log-retention).
+
+When a search over the default last day finds nothing and your plan keeps logs for longer, the page offers to widen it to 7 days, or to your full retention if that's shorter.
+
+## Log levels
+
+The level filter matches these rows:
+
+| Level | What it includes                                                                                                                   |
+| :---- | :--------------------------------------------------------------------------------------------------------------------------------- |
+| TRACE | Spans, from automatic tracing and from [`logger.trace()`](/logging#add-custom-traces). A span that ended with an error is under ERROR instead. |
+| DEBUG | `logger.debug()`                                                                                                                   |
+| INFO  | `logger.info()` and `logger.log()`                                                                                                 |
+| WARN  | `logger.warn()`                                                                                                                    |
+| ERROR | `logger.error()`, any span or log with an error status, and span events. A span event keeps its own INFO badge.                    |
+
+Cancelled spans appear only when no level filter is set.
+
+## Search limits
+
+- A search needs at least 3 characters.
+- Search covers the first 2 KB of a message and the first 6 KB of its attributes, measured as JSON, keys included. A large attribute, such as a prompt or a tool result, can use up the 6 KB, so keys stored after it aren't searchable. These search limits don't apply to the detail panel, which shows the log as it was stored. To make a value searchable on a large span, log it on its own line with a small attributes object.
+- Results load newest first as you scroll. **Searched back to** under the list shows how far the search has reached, and **Showing all** means the whole time range has been searched.
+- If a search runs for 20 seconds without filling the page, it pauses and shows **Keep searching**. Click it to continue.
+- Large searches run in time slices, and a slice that times out is retried on a smaller one when it can be split. If part of a search still times out, the page keeps what it found and shows **Search incomplete**. A very broad search can also return an error instead. Shorten the time range or add a filter to complete it.
+
+## Related
+
+- [Logging, tracing & metrics](/logging)
+- [Query](/observability/query)
+- [Dashboards](/observability/dashboards)
+- [Log retention limits](/limits#log-retention)

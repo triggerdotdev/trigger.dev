@@ -272,4 +272,68 @@ describe("replaySessionOutTail", () => {
     // The valid turn after the malformed one must still surface.
     expect(result.find((m) => m.id === "a-1")).toBeTruthy();
   });
+
+  describe("handed-over turns", () => {
+    const marker = (steps: number) => ({
+      data: "",
+      headers: [
+        ["trigger-control", "turn-handover"],
+        ["turn-handover-steps", String(steps)],
+      ],
+    });
+    const toolStep = (toolCallId: string): UIMessageChunk[] => [
+      { type: "start-step" } as UIMessageChunk,
+      {
+        type: "tool-input-available",
+        toolCallId,
+        toolName: "lookup",
+        input: {},
+      } as UIMessageChunk,
+      { type: "tool-output-available", toolCallId, output: { ok: true } } as UIMessageChunk,
+      { type: "finish-step" } as UIMessageChunk,
+    ];
+    function stubRecords(entries: unknown[]) {
+      const records = entries.map((entry, i) =>
+        entry && typeof entry === "object" && "headers" in entry
+          ? { ...(entry as object), id: `evt-${i + 1}`, seqNum: i + 1 }
+          : { data: entry, id: `evt-${i + 1}`, seqNum: i + 1 }
+      );
+      vi.spyOn(apiClientManager, "clientOrThrow").mockReturnValue({
+        readSessionStreamRecords: vi.fn(async () => ({ records })),
+      } as never);
+    }
+    const start = { type: "start", messageId: "a-1" } as UIMessageChunk;
+
+    // Catches: a reply handed over twice (v1 to v2 to v3) replaying as two messages, or losing
+    // the steps the middle run wrote.
+    it("merges a reply handed over twice into one partial", async () => {
+      stubRecords([start, ...toolStep("tc-1"), marker(1), start, ...toolStep("tc-2"), marker(1)]);
+      const result = (await replaySessionOutTail("twice")) as unknown as Array<{
+        id: string;
+        parts: Array<{ type: string; toolCallId?: string }>;
+      }>;
+      expect(result).toHaveLength(1);
+      expect(result[0]!.id).toBe("a-1");
+      expect(result[0]!.parts.flatMap((p) => (p.toolCallId ? [p.toolCallId] : []))).toEqual([
+        "tc-1",
+        "tc-2",
+      ]);
+    });
+
+    // Catches: a steering marker the continuing run writes before its `start` splitting the
+    // reply into two messages at the next replay.
+    it("keeps a reply whole when the continuing run writes data before its start", async () => {
+      stubRecords([
+        start,
+        ...toolStep("tc-1"),
+        marker(1),
+        { type: "data-pending-message-injected", id: "inj-1", data: { messageIds: ["u-2"] } },
+        start,
+        ...toolStep("tc-2"),
+        marker(1),
+      ]);
+      const result = await replaySessionOutTail("steered");
+      expect(result.map((m) => m.id)).toEqual(["a-1"]);
+    });
+  });
 });

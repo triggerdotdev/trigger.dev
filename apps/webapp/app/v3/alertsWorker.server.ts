@@ -11,6 +11,7 @@ import { ErrorAlertEvaluator } from "./services/alerts/errorAlertEvaluator.serve
 import { prisma } from "~/db.server";
 import { DeliverAlertEventPayload } from "./services/alerts/delivery/deliverAlertEventPayload";
 import { deliverAlertEvent } from "./services/alerts/delivery/deliverAlertEvent.server";
+import { enqueueAlertEventDelivery } from "./services/alerts/delivery/enqueueAlertEventDelivery.server";
 import { gateAlertJob } from "./services/alerts/engine/gateAlertJob";
 import { PerformDeploymentAlertsService } from "./services/alerts/performDeploymentAlerts.server";
 import { PerformTaskRunAlertsService } from "./services/alerts/performTaskRunAlerts.server";
@@ -161,7 +162,15 @@ function initializeWorker() {
       "v3.deliverDashboardAgentWatchAlert": async () => {},
       "v3.deliverDashboardAgentWatchAlertChannel": async () => {},
       "v3.deliverAlertEvent": gateAlertJob(alertsConfigured, async ({ payload }) => {
-        await deliverAlertEvent(payload.eventId, payload.eventAt, { db: prisma });
+        await deliverAlertEvent(payload.eventId, payload.eventAt, {
+          db: prisma,
+          scheduleRetry: (availableAt) =>
+            enqueueAlertEventDelivery({
+              eventId: payload.eventId,
+              eventAt: payload.eventAt,
+              availableAt,
+            }),
+        });
       }),
     },
   });

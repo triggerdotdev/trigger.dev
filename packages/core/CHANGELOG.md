@@ -1,5 +1,26 @@
 # internal-platform
 
+## 4.8.10
+
+### Patch Changes
+
+- `trigger deploy` with GitHub OIDC authentication now also warns when deploys from your CLI version will soon stop being supported, with the last day they still work and the command to upgrade. The warning never blocks a deploy. ([`1da6293b9`](https://github.com/triggerdotdev/trigger.dev/commit/1da6293b924c569a390325fa7cf87850288a6290))
+- `trigger deploy` warns when deploys from your CLI version will soon stop being supported, with the last day they still work and the command to upgrade. The warning never blocks a deploy and shows on every build path, including `--native-build`, `--local-build` and `--depot-build`. Deploys that authenticate with GitHub OIDC don't show it. ([`1b3b19c31`](https://github.com/triggerdotdev/trigger.dev/commit/1b3b19c310153a44aec4852303b6728a35a5cc9a))
+- Metrics from OpenTelemetry instrumentations in `trigger.config.ts` (such as HTTP, undici and pg) are now recorded and exported. Previously they were silently dropped. If you worked around this by calling `instrumentation.setMeterProvider(metrics.getMeterProvider())` in `init`, remove that call when you upgrade: rebinding again can register duplicate observable callbacks and skew values such as event loop utilization. ([`a94244120`](https://github.com/triggerdotdev/trigger.dev/commit/a942441201a8d195d2b4100dfea74679cb3665f6))
+
+## 4.8.9
+
+### Patch Changes
+
+- The `ListRunResponse` schema accepts an optional `appliedFilters` field. The runs list API returns it with the `createdAt` window the list used, so you can see when the default 7-day period applied. ([`e614f357e`](https://github.com/triggerdotdev/trigger.dev/commit/e614f357e2c4819c45445de15ec279205efb3d9f))
+
+## 4.8.8
+
+### Patch Changes
+
+- When OIDC token requests are still throttled after retries, `auth.getOIDCToken()` now throws `RateLimitError` with code `RATE_LIMIT_EXCEEDED` for both per-run and shared API limits. If you catch these errors with `instanceof OIDCTokenError`, check for `RateLimitError` instead. Other OIDC errors and retry behavior are unchanged. ([`04b139db7`](https://github.com/triggerdotdev/trigger.dev/commit/04b139db725afe0be06ef02aff590f072c8a6033))
+- Stop losing a run's suspend when the supervisor's first attempt to hand it off fails unexpectedly. ([`9e5ddbecf`](https://github.com/triggerdotdev/trigger.dev/commit/9e5ddbecfd3dde2a0e1d09ea192be74a20a06015))
+
 ## 4.8.7
 
 ### Patch Changes

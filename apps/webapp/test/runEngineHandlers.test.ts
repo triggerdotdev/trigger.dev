@@ -232,6 +232,32 @@ describe("runEngineHandlers read-through", () => {
     const run = await readRunForEvent("run_missing", "env_x", EVENT_SELECT, deps);
     expect(run).toBeNull();
   });
+
+  // Catches: a completion event read that reads some store for a run on shard m or z.
+  it("answers a run id on shard m or z with null, reading no store", async () => {
+    const exploding = new Proxy(
+      {},
+      {
+        get() {
+          throw new Error("no store may be read for an unconfigured shard key");
+        },
+      }
+    );
+    const deps: EventReadDeps = {
+      store: exploding as never,
+      newReplica: exploding as never,
+      legacyReplica: exploding as never,
+      splitEnabled: true,
+    };
+
+    for (const shard of ["m", "z"]) {
+      const runId = `run_${"c".repeat(24)}${shard}2`;
+      expect(await readRunForEvent(runId, "env_1", EVENT_SELECT, deps)).toBeNull();
+      await expect(readRunForEventOrThrow(runId, "env_1", EVENT_SELECT, deps)).rejects.toThrow(
+        "Task run not found"
+      );
+    }
+  });
 });
 
 describe("runEngineHandlers read-through cross-version", () => {
@@ -560,13 +586,20 @@ describe("runEngineHandlers batch residency routing", () => {
   });
 
   it("an unconfigured shard key fails loud rather than writing elsewhere", async () => {
-    await expect(
-      resolveBatchRunOpsWriter(`${"a".repeat(24)}z2`, {
-        newWriter: {} as never,
-        legacyWriter: {} as never,
-        shards: [{ key: "a", writer: {} as never }],
-      })
-    ).rejects.toThrow(/shard/i);
+    // Catches: a batch on shard m (generation 3) written to some store instead of failing as unconfigured.
+    for (const shard of ["m", "z"]) {
+      const batchId = `${"a".repeat(24)}${shard}2`;
+      await expect(
+        resolveBatchRunOpsWriter(batchId, {
+          newWriter: {} as never,
+          legacyWriter: {} as never,
+          shards: [{ key: "a", writer: {} as never }],
+        })
+      ).rejects.toHaveProperty(
+        "message",
+        `resolveBatchRunOpsWriter: batch "${batchId}" names shard "${shard}", which is not configured`
+      );
+    }
   });
 
   // True single-DB invariant: the topology's cpFallback makes newWriter and

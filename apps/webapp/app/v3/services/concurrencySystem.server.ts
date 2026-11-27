@@ -1,6 +1,11 @@
 import type { TaskQueue, User } from "@trigger.dev/database";
 import { errAsync, fromPromise, okAsync, type ResultAsync } from "neverthrow";
-import { Prisma, type PrismaClientOrTransaction } from "~/db.server";
+import {
+  $transaction,
+  Prisma,
+  sqlDatabaseSchema,
+  type PrismaClientOrTransaction,
+} from "~/db.server";
 import type { AuthenticatedEnvironment } from "~/services/apiAuth.server";
 import { logger } from "~/services/logger.server";
 import {
@@ -73,7 +78,14 @@ export class ConcurrencySystem {
         return findQueueFromInput(this.db, environment, queue)
           .andThen((queue) => guardQueueVersion(queue, opts))
           .andThen((queue) =>
-            overrideQueueConcurrencyLimit(this.db, environment, queue, override, overriddenBy)
+            overrideQueueConcurrencyLimit(
+              this.db,
+              environment,
+              queue,
+              override,
+              overriddenBy,
+              opts?.expectedUpdatedAt
+            )
           )
           .andThen((queue) => syncQueueConcurrencyToEngine(environment, queue))
           .andThen((queue) => healAfterSync(this.db, environment, queue))
@@ -84,18 +96,72 @@ export class ConcurrencySystem {
         queue: QueueInput,
         opts?: QueueMutationOpts
       ) => {
+        const expectedUpdatedAt = opts?.expectedUpdatedAt;
+        if (expectedUpdatedAt) {
+          return (
+            findQueueFromInput(this.db, environment, queue)
+              .andThen((queue) => guardQueueVersion(queue, opts))
+              .andThen((queue) =>
+                lockedQueueWrite(this.db, environment, queue, expectedUpdatedAt, "resetPerKey")
+              )
+              // The reset is saved: like healAfterSync, a failed re-sync is logged, not surfaced. It
+              // compares with what the engine holds, as a percent recalculation that read the
+              // uncommitted row can write the old limit after ours.
+              .andThen((reset) =>
+                fromPromise(
+                  engine.runQueue.getQueueConcurrencyLimit(environment, reset.name),
+                  (error) => ({
+                    type: "sync_queue_concurrency_to_engine_failed" as const,
+                    cause: error,
+                  })
+                )
+                  .andThen((live) =>
+                    resyncPerKeyFromRow(this.db, environment, reset.id, live ?? null)
+                  )
+                  .orElse((error) => {
+                    logger.error("Failed to re-sync the engine after a reset", {
+                      queueId: reset.id,
+                      error: error.cause,
+                    });
+                    return okAsync(undefined);
+                  })
+                  .map(() => reset)
+              )
+              .andThen((queue) => getQueueStats(environment, queue))
+          );
+        }
         return findQueueFromInput(this.db, environment, queue)
           .andThen((queue) => guardQueueVersion(queue, opts))
-          .andThen((queue) => resetQueueConcurrencyLimit(this.db, queue))
-          .andThen((queue) => syncQueueConcurrencyToEngine(environment, queue))
-          .andThen((queue) => healAfterSync(this.db, environment, queue))
+          .andThen((queue) => syncQueueConcurrencyResetToEngine(environment, queue))
+          .andThen((queue) => {
+            const applied = effectivePerKeyLimit({
+              paused: queue.paused,
+              concurrencyLimit: queue.concurrencyLimitBase,
+            });
+            return resetQueueConcurrencyLimit(this.db, queue)
+              .orElse((error) =>
+                resyncPerKeyFromRow(this.db, environment, queue.id, applied)
+                  .orElse((resyncError) => {
+                    logger.error("Failed to restore the engine after a failed reset", {
+                      queueId: queue.id,
+                      error: resyncError.cause,
+                    });
+                    return okAsync(undefined);
+                  })
+                  .andThen(() => errAsync(error))
+              )
+              .andThen((reset) =>
+                resyncPerKeyFromRow(this.db, environment, reset.id, applied).map(() => reset)
+              );
+          })
           .andThen((queue) => getQueueStats(environment, queue));
       },
       overrideTotalConcurrencyLimit: (
         environment: AuthenticatedEnvironment,
         queue: QueueInput,
         totalConcurrencyLimit: number,
-        overriddenBy?: User
+        overriddenBy?: User,
+        opts?: QueueMutationOpts
       ) => {
         return findQueueFromInput(this.db, environment, queue)
           .andThen((queue) =>
@@ -104,14 +170,53 @@ export class ConcurrencySystem {
               environment,
               queue,
               totalConcurrencyLimit,
-              overriddenBy
+              overriddenBy,
+              opts?.expectedUpdatedAt
             )
           )
           .andThen((queue) => syncQueueTotalConcurrencyToEngine(environment, queue))
           .andThen((queue) => healAfterSync(this.db, environment, queue))
           .andThen((queue) => getQueueStats(environment, queue));
       },
-      resetTotalConcurrencyLimit: (environment: AuthenticatedEnvironment, queue: QueueInput) => {
+      resyncPerKeyConcurrencyLimit: (
+        environment: AuthenticatedEnvironment,
+        queue: QueueInput,
+        opts: { expectedUpdatedAt: Date }
+      ) => {
+        return findQueueFromInput(this.db, environment, queue)
+          .andThen((queue) =>
+            lockedQueueWrite(this.db, environment, queue, opts.expectedUpdatedAt, "resyncPerKey")
+          )
+          .andThen((queue) => healAfterSync(this.db, environment, queue))
+          .andThen((queue) => getQueueStats(environment, queue));
+      },
+      resyncTotalConcurrencyLimit: (
+        environment: AuthenticatedEnvironment,
+        queue: QueueInput,
+        opts: { expectedUpdatedAt: Date }
+      ) => {
+        return findQueueFromInput(this.db, environment, queue)
+          .andThen((queue) =>
+            lockedQueueWrite(this.db, environment, queue, opts.expectedUpdatedAt, "resyncTotal")
+          )
+          .andThen((queue) => healAfterSync(this.db, environment, queue))
+          .andThen((queue) => getQueueStats(environment, queue));
+      },
+      resetTotalConcurrencyLimit: (
+        environment: AuthenticatedEnvironment,
+        queue: QueueInput,
+        opts?: QueueMutationOpts
+      ) => {
+        const expectedUpdatedAt = opts?.expectedUpdatedAt;
+        if (expectedUpdatedAt) {
+          return findQueueFromInput(this.db, environment, queue)
+            .andThen((queue) =>
+              lockedQueueWrite(this.db, environment, queue, expectedUpdatedAt, "resetTotal")
+            )
+            .andThen((queue) => syncCommittedTotal(this.db, environment, queue))
+            .andThen((queue) => healAfterSync(this.db, environment, queue))
+            .andThen((queue) => getQueueStats(environment, queue));
+        }
         return findQueueFromInput(this.db, environment, queue)
           .andThen((queue) => syncQueueTotalConcurrencyResetToEngine(environment, queue))
           .andThen((queue) =>
@@ -209,7 +314,178 @@ function findQueueFromInput(
  * queue-level concurrency, so mutating one here would succeed invisibly. The
  * dashboard's own actions pass no opts and keep working on every version.
  */
-type QueueMutationOpts = { v1Only?: boolean };
+type QueueMutationOpts = {
+  v1Only?: boolean;
+  /** Write only while the row is still at this `updatedAt`; otherwise `concurrent_modification`. */
+  expectedUpdatedAt?: Date;
+};
+
+const atRevision = (expectedUpdatedAt: Date | undefined) =>
+  expectedUpdatedAt ? { updatedAt: expectedUpdatedAt } : {};
+
+const ENGINE_SYNC_FAILED = "engine sync failed";
+
+type LockedWriteKind = "resetTotal" | "resyncTotal" | "resetPerKey" | "resyncPerKey";
+
+const isPerKey = (kind: LockedWriteKind) => kind === "resetPerKey" || kind === "resyncPerKey";
+
+/** The engine write for a locked write: the total limit, or the effective per-key limit (0 when paused). */
+function syncLockedToEngine(
+  environment: AuthenticatedEnvironment,
+  row: TaskQueue,
+  kind: LockedWriteKind
+) {
+  if (!isPerKey(kind)) return syncQueueTotalConcurrencyToEngine(environment, row);
+  const target = effectivePerKeyLimit(row);
+  return fromPromise(
+    target === null
+      ? removeQueueConcurrencyLimits(environment, row.name)
+      : updateQueueConcurrencyLimits(environment, row.name, target),
+    (error) => ({ type: "sync_queue_concurrency_to_engine_failed" as const, cause: error })
+  ).map(() => row);
+}
+
+/**
+ * A queue-limit write at an expected revision: a reset of the total or per-key override, or a
+ * resync of the stored total. Under one row lock the revision is checked, the reset saved, and
+ * the engine written, so a concurrent writer waits for the result, a moved row refuses before the
+ * engine is touched, and an engine failure rolls the row back.
+ */
+function lockedQueueWrite(
+  db: PrismaClientOrTransaction,
+  environment: AuthenticatedEnvironment,
+  queue: TaskQueue,
+  expectedUpdatedAt: Date,
+  kind: LockedWriteKind
+) {
+  const marker =
+    kind === "resetTotal"
+      ? queue.totalConcurrencyLimitOverriddenAt
+      : kind === "resetPerKey"
+        ? queue.concurrencyLimitOverriddenAt
+        : undefined;
+  if (marker === null) {
+    return errAsync({ type: "queue_not_overridden" as const });
+  }
+  // Only a failure once the engine write started may have changed Redis and needs compensating.
+  const progress: { engineWriteStarted: boolean; applied: number | null } = {
+    engineWriteStarted: false,
+    applied: null,
+  };
+  return fromPromise(
+    $transaction(
+      db,
+      "concurrencySystem.lockedQueueWrite",
+      async (tx) => {
+        const [locked] = await tx.$queryRaw<{ updatedAt: Date }[]>`
+          SELECT "updatedAt" FROM ${sqlDatabaseSchema}."TaskQueue" WHERE id = ${queue.id} FOR UPDATE`;
+        if (!locked || locked.updatedAt.getTime() !== expectedUpdatedAt.getTime()) return null;
+        if (kind === "resetTotal") {
+          const { count } = await tx.taskQueue.updateMany({
+            where: {
+              id: queue.id,
+              totalConcurrencyLimitOverriddenAt: queue.totalConcurrencyLimitOverriddenAt,
+            },
+            data: {
+              totalConcurrencyLimit: queue.totalConcurrencyLimitBase,
+              totalConcurrencyLimitBase: null,
+              totalConcurrencyLimitOverriddenAt: null,
+              totalConcurrencyLimitOverriddenBy: null,
+              archivedAt: queue.totalConcurrencyLimitBase === 0 ? null : undefined,
+            },
+          });
+          if (count === 0) return null;
+        }
+        if (kind === "resetPerKey") {
+          const { count } = await tx.taskQueue.updateMany({
+            where: {
+              id: queue.id,
+              concurrencyLimitOverriddenAt: queue.concurrencyLimitOverriddenAt,
+            },
+            data: {
+              concurrencyLimitOverriddenAt: null,
+              concurrencyLimit: queue.concurrencyLimitBase,
+              concurrencyLimitBase: null,
+              concurrencyLimitOverridePercent: null,
+              concurrencyLimitOverriddenBy: null,
+              archivedAt: queue.concurrencyLimitBase === 0 ? null : undefined,
+            },
+          });
+          if (count === 0) return null;
+        }
+        const row = await tx.taskQueue.findFirstOrThrow({ where: { id: queue.id } });
+        progress.engineWriteStarted = true;
+        progress.applied = effectivePerKeyLimit(row);
+        const synced = await syncLockedToEngine(environment, row, kind);
+        if (synced.isErr()) throw new Error(ENGINE_SYNC_FAILED, { cause: synced.error });
+        return row;
+      },
+      { timeout: 10_000 }
+    ),
+    (error) =>
+      error instanceof Error && error.message === ENGINE_SYNC_FAILED
+        ? { type: "sync_queue_concurrency_to_engine_failed" as const, cause: error.cause }
+        : { type: "queue_update_failed" as const, cause: error }
+  )
+    .andThen((row) =>
+      row
+        ? okAsync(row)
+        : errAsync({
+            type: "concurrent_modification" as const,
+            message: "The queue's concurrency was changed by another request; retry.",
+          })
+    )
+    .orElse((error) =>
+      // A failure after the engine write rolled the row back: put the engine back from it.
+      error.type === "concurrent_modification" || !progress.engineWriteStarted
+        ? errAsync(error)
+        : isPerKey(kind)
+          ? resyncPerKeyFromRow(db, environment, queue.id, progress.applied)
+              .orElse(() => okAsync(undefined))
+              .andThen(() => errAsync(error))
+          : healTotalConcurrencyFromRow(db, environment, queue.id)
+              .orElse(() => okAsync(undefined))
+              .andThen(() => errAsync(error))
+    );
+}
+
+/** Whether the engine enforces the total limit the queue's row stores now; false when unreadable. */
+function totalEnforced(
+  db: PrismaClientOrTransaction,
+  environment: AuthenticatedEnvironment,
+  queueId: string
+) {
+  return fromPromise(
+    (async () => {
+      const row = await db.taskQueue.findFirst({ where: { id: queueId } });
+      if (!row) return false;
+      const live = await engine.runQueue.getQueueTotalConcurrencyLimit(environment, row.name);
+      return (live ?? null) === row.totalConcurrencyLimit;
+    })(),
+    () => false
+  ).orElse(() => okAsync(false));
+}
+
+/**
+ * After a locked total write commits, sync again from the committed row: a writer that read the
+ * row before the commit can sync its old cap after the in-transaction write. If that sync fails,
+ * repair from the row once and succeed only when the engine is confirmed to match it.
+ */
+function syncCommittedTotal(
+  db: PrismaClientOrTransaction,
+  environment: AuthenticatedEnvironment,
+  queue: TaskQueue
+) {
+  return syncQueueTotalConcurrencyToEngine(environment, queue).orElse((error) =>
+    healTotalConcurrencyFromRow(db, environment, queue.id)
+      .andThen(() => totalEnforced(db, environment, queue.id))
+      .andThen((enforced) =>
+        enforced
+          ? okAsync(queue)
+          : errAsync({ type: "saved_engine_not_synced" as const, cause: error.cause })
+      )
+  );
+}
 
 function guardQueueVersion(queue: TaskQueue, opts: QueueMutationOpts | undefined) {
   if (opts?.v1Only && queue.concurrencyVersion === "V2") {
@@ -297,7 +573,8 @@ function overrideQueueConcurrencyLimit(
   environment: AuthenticatedEnvironment,
   queue: TaskQueue,
   override: ConcurrencyLimitOverride,
-  overriddenBy?: User
+  overriddenBy?: User,
+  expectedUpdatedAt?: Date
 ) {
   const maximum = environment.maximumConcurrencyLimit;
 
@@ -349,6 +626,7 @@ function overrideQueueConcurrencyLimit(
       where: {
         id: queue.id,
         concurrencyLimitOverriddenAt: queue.concurrencyLimitOverriddenAt,
+        ...atRevision(expectedUpdatedAt),
       },
       data: {
         concurrencyLimit: newConcurrencyLimit,
@@ -364,7 +642,74 @@ function overrideQueueConcurrencyLimit(
   );
 }
 
-function resetQueueConcurrencyLimit(db: PrismaClientOrTransaction, queue: TaskQueue) {
+/**
+ * Enforce first, then persist, like the total-limit reset: an engine failure leaves
+ * the override marker set, so a retry (or the dashboard's remove action) converges.
+ * A paused queue gets 0 written too, so a pause whose own engine write failed is enforced.
+ */
+function syncQueueConcurrencyResetToEngine(
+  environment: AuthenticatedEnvironment,
+  queue: TaskQueue
+) {
+  if (queue.concurrencyLimitOverriddenAt === null) {
+    return errAsync({ type: "queue_not_overridden" as const });
+  }
+
+  const target = effectivePerKeyLimit({
+    paused: queue.paused,
+    concurrencyLimit: queue.concurrencyLimitBase,
+  });
+  return fromPromise(
+    target === null
+      ? removeQueueConcurrencyLimits(environment, queue.name)
+      : updateQueueConcurrencyLimits(environment, queue.name, target),
+    (error) => ({ type: "sync_queue_concurrency_to_engine_failed" as const, cause: error })
+  ).map(() => queue);
+}
+
+const effectivePerKeyLimit = (queue: Pick<TaskQueue, "paused" | "concurrencyLimit">) =>
+  queue.paused ? 0 : queue.concurrencyLimit;
+
+/**
+ * The enforce-first write came from the pre-persist read, so a pause, override or failed
+ * persist may leave the engine off the row. Re-sync only the per-key limit from fresh reads
+ * until the row holds still; `applied` is what the engine was given, so a match writes nothing.
+ */
+function resyncPerKeyFromRow(
+  db: PrismaClientOrTransaction,
+  environment: AuthenticatedEnvironment,
+  queueId: string,
+  applied: number | null
+) {
+  return fromPromise(
+    (async () => {
+      let last = applied;
+      for (let i = 0; i < 3; i++) {
+        const fresh = await db.taskQueue.findFirst({ where: { id: queueId } });
+        if (!fresh) return;
+        const target = effectivePerKeyLimit(fresh);
+        if (target === last) return;
+        if (target === null) {
+          await removeQueueConcurrencyLimits(environment, fresh.name);
+        } else {
+          await updateQueueConcurrencyLimits(environment, fresh.name, target);
+        }
+        last = target;
+      }
+    })(),
+    (error) => ({ type: "sync_queue_concurrency_to_engine_failed" as const, cause: error })
+  );
+}
+
+function resetQueueConcurrencyLimit(
+  db: PrismaClientOrTransaction,
+  queue: TaskQueue
+): ResultAsync<
+  TaskQueue,
+  | { type: "queue_not_overridden" }
+  | { type: "concurrent_modification"; message: string }
+  | { type: "queue_update_failed"; cause: unknown }
+> {
   if (queue.concurrencyLimitOverriddenAt === null) {
     return errAsync({ type: "queue_not_overridden" as const });
   }
@@ -414,7 +759,8 @@ function overrideQueueTotalConcurrencyLimit(
   environment: AuthenticatedEnvironment,
   queue: TaskQueue,
   totalConcurrencyLimit: number,
-  overriddenBy?: User
+  overriddenBy?: User,
+  expectedUpdatedAt?: Date
 ) {
   const maximum = environment.maximumConcurrencyLimit;
 
@@ -441,6 +787,7 @@ function overrideQueueTotalConcurrencyLimit(
       where: {
         id: queue.id,
         totalConcurrencyLimitOverriddenAt: queue.totalConcurrencyLimitOverriddenAt,
+        ...atRevision(expectedUpdatedAt),
       },
       data: {
         totalConcurrencyLimit,

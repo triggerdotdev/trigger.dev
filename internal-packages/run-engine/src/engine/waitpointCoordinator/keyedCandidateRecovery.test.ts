@@ -348,4 +348,43 @@ describe("keyedCandidateRecovery", () => {
       }
     }
   );
+
+  // Catches: the original keyed-release command accepting a timed pending MANUAL record during a rolling deploy, or the timed-manual command rejecting it.
+  redisTest(
+    "only the timed-manual release accepts a pending MANUAL record with a timeout",
+    async ({ redisOptions }) => {
+      const store = new WaitpointStoreCoordinator({ redisOptions });
+      const redis = createRedisClient(redisOptions);
+      registerWaitpointCommands(redis);
+      const id = generateWaitpointId("MANUAL");
+      const keys = waitpointKeys(id);
+      try {
+        await store.createIfAbsent({
+          record: {
+            id,
+            type: "MANUAL",
+            projectId: "p",
+            environmentId: "e",
+            createdAt: new Date().toISOString(),
+            updatedAt: new Date().toISOString(),
+            friendlyId: `waitpoint_${id}`,
+            tags: [],
+            userProvidedIdempotencyKey: true,
+            completedAfter: new Date(Date.now() + 60_000).toISOString(),
+          },
+          status: "PENDING",
+        });
+        await redis.hset(keys.record, "ka", "1");
+        const args = [keys.record, keys.fanout, "related", "1000", "pending-manual"] as const;
+        // Old images rely on this name keeping main's contract.
+        await expect(redis.wpReleaseKeyedCandidate(...args)).rejects.toThrow("not completed");
+        expect(await redis.hexists(keys.record, "ka")).toBe(1);
+        expect(await redis.wpReleaseKeyedCandidateTimedManual(...args)).toEqual(["released"]);
+        expect(await redis.hexists(keys.record, "ka")).toBe(0);
+      } finally {
+        redis.disconnect();
+        await store.quit();
+      }
+    }
+  );
 });

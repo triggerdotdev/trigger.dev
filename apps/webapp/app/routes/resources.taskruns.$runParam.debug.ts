@@ -2,7 +2,7 @@ import { type LoaderFunctionArgs } from "@remix-run/node";
 import { typedjson } from "remix-typedjson";
 import { z } from "zod";
 import { prisma } from "~/db.server";
-import { requireUserId } from "~/services/session.server";
+import { requireUser } from "~/services/session.server";
 import { engine } from "~/v3/runEngine.server";
 import { runStore } from "~/v3/runStore.server";
 import { controlPlaneResolver } from "~/v3/runOpsMigration/controlPlaneResolver.server";
@@ -13,7 +13,11 @@ const ParamSchema = z.object({
 });
 
 export async function loader({ request, params }: LoaderFunctionArgs) {
-  const userId = await requireUserId(request);
+  const user = await requireUser(request);
+  if (!user.admin && !user.isImpersonating) {
+    throw new Response("Not Found", { status: 404 });
+  }
+
   const { runParam } = ParamSchema.parse(params);
 
   // Run-ops read keyed by friendlyId only (routes to the owning DB by residency). The
@@ -47,7 +51,7 @@ export async function loader({ request, params }: LoaderFunctionArgs) {
   // unresolvable project) is indistinguishable from not-found (both 404), matching the
   // original scoped where.
   const authorizedProject = await prisma.project.findFirst({
-    where: { id: run.projectId, organization: { members: { some: { userId } } } },
+    where: { id: run.projectId, organization: { members: { some: { userId: user.id } } } },
     select: { id: true },
   });
 
@@ -67,7 +71,6 @@ export async function loader({ request, params }: LoaderFunctionArgs) {
     return typedjson({
       engine: "V1" as const,
       run,
-      environment,
     });
   } else {
     const queueConcurrencyLimit = await engine.runQueue.getQueueConcurrencyLimit(
@@ -125,7 +128,6 @@ export async function loader({ request, params }: LoaderFunctionArgs) {
     return typedjson({
       engine: "V2" as const,
       run,
-      environment,
       queueConcurrencyLimit,
       envConcurrencyLimit,
       queueCurrentConcurrency,

@@ -112,6 +112,18 @@ export async function handlePublicTokenRequest(
     );
   }
 
+  // Legacy public tokens can read raw packets regardless of their requested scopes.
+  if (
+    authResult.subject.type === "runToken" &&
+    !authResult.ability.can("read", { type: "packets" })
+  ) {
+    telemetryRecorder.recordPublicTokenMint("rejected", "scope_not_allowed");
+    return json(
+      { error: "Run tokens need packet read access to mint public tokens" },
+      { status: 403 }
+    );
+  }
+
   const expirationTime = parsedBody.data.expirationTime ?? "15m";
   const now = Math.floor(Date.now() / 1000);
   const expiresAt = expirationTimestamp(expirationTime, now);

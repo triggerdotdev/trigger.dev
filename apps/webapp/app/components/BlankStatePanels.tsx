@@ -25,14 +25,11 @@ import { useProject } from "~/hooks/useProject";
 import { type MinimumEnvironment } from "~/presenters/SelectBestEnvironmentPresenter.server";
 import { type BranchableEnvironmentToken } from "~/utils/branchableEnvironment";
 import { NewBranchPanel } from "~/components/branches/NewBranchPanel";
-import { GitHubSettingsPanel } from "~/routes/resources.orgs.$organizationSlug.projects.$projectParam.env.$envParam.github";
 import { deployNowPath } from "~/routes/resources.orgs.$organizationSlug.projects.$projectParam.env.$envParam.deploy-now";
 import { VercelAtomicDeploymentNotice } from "~/components/deployments/VercelAtomicDeploymentNotice";
-import { GitHubDeploymentOnboardingPanel } from "~/components/deployments/GitHubDeploymentOnboardingPanel";
 import { type DeploymentEventStream } from "~/hooks/useOnboardingDeploymentLogs";
 import { type WorkerDeploymentStatus } from "@trigger.dev/database";
 import {
-  docsPath,
   v3BillingPath,
   v3CreateBulkActionPath,
   v3DeploymentPath,
@@ -51,9 +48,11 @@ import { ClientTabsContent } from "./primitives/ClientTabs";
 import { Header1 } from "./primitives/Headers";
 import { InfoPanel } from "./primitives/InfoPanel";
 import { Paragraph } from "./primitives/Paragraph";
-import { SpinnerWhite } from "./primitives/Spinner";
+import { LazyLoad, lazyWithRetry } from "./primitives/LazyLoad";
+import { Spinner, SpinnerWhite } from "./primitives/Spinner";
 import { StepNumber } from "./primitives/StepNumber";
 import { TextLink } from "./primitives/TextLink";
+import { useDocsLink } from "./DocsPanel";
 import { useToast } from "./primitives/Toast";
 import { SimpleTooltip } from "./primitives/Tooltip";
 import { SettingsRow } from "./primitives/SettingsLayout";
@@ -66,6 +65,19 @@ import {
 } from "./SetupCommands";
 import { StepContentContainer } from "./StepContentContainer";
 
+// The GitHub panels bring CodeMirror (ignored-paths editor) and the S2 log client. Most pages
+// import this file for a blank state they don't show, so these load only when rendered.
+const GitHubSettingsPanel = lazyWithRetry(() =>
+  import("~/routes/resources.orgs.$organizationSlug.projects.$projectParam.env.$envParam.github").then(
+    (module) => ({ default: module.GitHubSettingsPanel })
+  )
+);
+const GitHubDeploymentOnboardingPanel = lazyWithRetry(() =>
+  import("~/components/deployments/GitHubDeploymentOnboardingPanel").then((module) => ({
+    default: module.GitHubDeploymentOnboardingPanel,
+  }))
+);
+
 /**
  * What the agent is asked when it's opened from a deployment setup panel. The panel is the docs
  * answer; the agent is for the part the docs can't answer — this project, this environment.
@@ -75,6 +87,7 @@ const ASK_AGENT_DEPLOY_PROMPT =
 
 /** The docs links the deployment panels offer to anyone without the agent. */
 function DeployDocsLinks() {
+  const docsLink = useDocsLink();
   return (
     <>
       <SimpleTooltip
@@ -88,7 +101,7 @@ function DeployDocsLinks() {
               variant="small-menu-item"
               LeadingIcon={BookOpenIcon}
               leadingIconClassName="text-blue-500"
-              to={docsPath("deployment/overview")}
+              {...docsLink("deployment/overview")}
               aria-label="Deploy docs"
             />
           </span>
@@ -104,7 +117,7 @@ function DeployDocsLinks() {
               variant="small-menu-item"
               LeadingIcon={QuestionMarkCircleIcon}
               leadingIconClassName="text-blue-500"
-              to={docsPath("troubleshooting#deployment")}
+              {...docsLink("troubleshooting#deployment")}
               aria-label="Troubleshooting docs"
             />
           </span>
@@ -264,6 +277,7 @@ export function HasNoTasksDeployed({
 }
 
 export function BatchesNone() {
+  const docsLink = useDocsLink();
   return (
     <InfoPanel
       title="Triggering batches"
@@ -271,7 +285,7 @@ export function BatchesNone() {
       iconClassName="text-batches"
       panelClassName="max-w-full"
       accessory={
-        <LinkButton to={docsPath("triggering")} variant="docs/small" LeadingIcon={BookOpenIcon}>
+        <LinkButton {...docsLink("triggering")} variant="docs/small" LeadingIcon={BookOpenIcon}>
           How to trigger batches
         </LinkButton>
       }
@@ -285,6 +299,7 @@ export function BatchesNone() {
 }
 
 export function SessionsNone() {
+  const docsLink = useDocsLink();
   return (
     <InfoPanel
       title="Sessions"
@@ -293,7 +308,7 @@ export function SessionsNone() {
       panelClassName="max-w-full"
       accessory={
         <LinkButton
-          to={docsPath("ai-chat/sessions")}
+          {...docsLink("ai-chat/sessions")}
           variant="docs/small"
           LeadingIcon={BookOpenIcon}
         >
@@ -341,6 +356,39 @@ export function TestHasNoTasks() {
         Before testing a task, you must first create one. Follow the instructions on the{" "}
         <TextLink to={v3EnvironmentPath(organization, project, environment)}>Tasks page</TextLink>{" "}
         to create a task, then return here to test it.
+      </Paragraph>
+    </InfoPanel>
+  );
+}
+
+/** The Test page for a task this environment doesn't have, e.g. from a docs "Test in dashboard" link. */
+export function TestTaskNotFound({ taskIdentifier }: { taskIdentifier: string }) {
+  const docsLink = useDocsLink();
+  const environment = useEnvironment();
+  const isDev = environment.type === "DEVELOPMENT";
+  return (
+    <InfoPanel
+      title="This task isn't in this environment"
+      icon={BeakerIcon}
+      iconClassName="text-tests"
+      panelClassName="max-w-full"
+    >
+      <Paragraph spacing variant="small">
+        No version in {environmentFullTitle(environment)} has the task{" "}
+        <InlineCode variant="small">{taskIdentifier}</InlineCode>.{" "}
+        {isDev
+          ? "Run the dev server in the project that defines it, then reload this page."
+          : "Deploy the project that defines it to this environment, then reload this page."}
+      </Paragraph>
+      <PackageManagerProvider>
+        {isDev ? <TriggerDevStepV3 /> : <TriggerDeployStep environment={environment} />}
+      </PackageManagerProvider>
+      <Paragraph variant="small">
+        Read more about the{" "}
+        <TextLink {...docsLink(isDev ? "cli-dev-commands" : "cli-deploy-commands")}>
+          {isDev ? "dev" : "deploy"} command
+        </TextLink>
+        .
       </Paragraph>
     </InfoPanel>
   );
@@ -436,6 +484,7 @@ export function DeploymentsNoneDev({ enhanced = false }: { enhanced?: boolean } 
 }
 
 export function NoWaitpointTokens() {
+  const docsLink = useDocsLink();
   return (
     <InfoPanel
       title="You don't have any waitpoint tokens"
@@ -443,7 +492,7 @@ export function NoWaitpointTokens() {
       iconClassName="text-sky-500"
       panelClassName="max-w-md"
       accessory={
-        <LinkButton to={docsPath("wait-for-token")} variant="docs/small" LeadingIcon={BookOpenIcon}>
+        <LinkButton {...docsLink("wait-for-token")} variant="docs/small" LeadingIcon={BookOpenIcon}>
           Waitpoint docs
         </LinkButton>
       }
@@ -642,6 +691,7 @@ export function BulkActionsNone() {
 }
 
 function DeploymentOnboardingSteps(props: DeployNowProps = {}) {
+  const docsLink = useDocsLink();
   const environment = useEnvironment();
   const organization = useOrganization();
   const project = useProject();
@@ -708,23 +758,31 @@ function DeploymentOnboardingSteps(props: DeployNowProps = {}) {
         }
       >
         <ClientTabsContent value={"github"}>
-          {githubOnboarding ?? (
-            <>
-              <StepNumber stepNumber="1" title="Connect your GitHub repository" />
-              <StepContentContainer>
-                <Paragraph spacing>
-                  Deploy automatically with every push. Read the{" "}
-                  <TextLink to={docsPath("github-integration")}>full guide</TextLink>.
-                </Paragraph>
-                <GitHubSettingsPanel
-                  organizationSlug={organization.slug}
-                  projectSlug={project.slug}
-                  environmentSlug={environment.slug}
-                  billingPath={v3BillingPath({ slug: organization.slug })}
-                />
-              </StepContentContainer>
-            </>
-          )}
+          <LazyLoad
+            fallback={
+              <div className="flex justify-center py-8">
+                <Spinner className="size-5" />
+              </div>
+            }
+          >
+            {githubOnboarding ?? (
+              <>
+                <StepNumber stepNumber="1" title="Connect your GitHub repository" />
+                <StepContentContainer>
+                  <Paragraph spacing>
+                    Deploy automatically with every push. Read the{" "}
+                    <TextLink {...docsLink("github-integration")}>full guide</TextLink>.
+                  </Paragraph>
+                  <GitHubSettingsPanel
+                    organizationSlug={organization.slug}
+                    projectSlug={project.slug}
+                    environmentSlug={environment.slug}
+                    billingPath={v3BillingPath({ slug: organization.slug })}
+                  />
+                </StepContentContainer>
+              </>
+            )}
+          </LazyLoad>
         </ClientTabsContent>
         <ClientTabsContent value={"cli"}>
           {props.atomicVercelUrl ? (
@@ -738,7 +796,7 @@ function DeploymentOnboardingSteps(props: DeployNowProps = {}) {
                 <Paragraph spacing>
                   This will deploy your tasks to the {environmentFullTitle(environment)}{" "}
                   environment. Read the{" "}
-                  <TextLink to={docsPath("deployment/overview")}>full guide</TextLink>.
+                  <TextLink {...docsLink("deployment/overview")}>full guide</TextLink>.
                 </Paragraph>
                 <TriggerDeployStep environment={environment} />
               </StepContentContainer>
@@ -755,7 +813,7 @@ function DeploymentOnboardingSteps(props: DeployNowProps = {}) {
               <StepNumber stepNumber="1" title="Deploy using GitHub Actions" />
               <StepContentContainer>
                 <Paragraph spacing>
-                  Read the <TextLink to={docsPath("github-actions")}>GitHub Actions guide</TextLink>{" "}
+                  Read the <TextLink {...docsLink("github-actions")}>GitHub Actions guide</TextLink>{" "}
                   to get started.
                 </Paragraph>
               </StepContentContainer>
@@ -800,6 +858,7 @@ function DeploymentMethodPanel({
   method: "manual" | "github-actions";
   environment: MinimumEnvironment & { branchName?: string | null };
 }) {
+  const docsLink = useDocsLink();
   const manual = method === "manual";
   return (
     <div className="min-w-0">
@@ -828,7 +887,7 @@ function DeploymentMethodPanel({
         action={
           <LinkButton
             variant="secondary/small"
-            to={docsPath(manual ? "deployment/overview" : "github-actions")}
+            {...docsLink(manual ? "deployment/overview" : "github-actions")}
           >
             {manual ? "Deployment guide" : "GitHub Actions guide"}
           </LinkButton>
@@ -908,6 +967,7 @@ function DeployNowButton({
 }
 
 export function PromptsNone() {
+  const docsLink = useDocsLink();
   return (
     <InfoPanel
       title="Define your first prompt"
@@ -915,7 +975,7 @@ export function PromptsNone() {
       iconClassName="text-aiPrompts"
       panelClassName="max-w-lg"
       accessory={
-        <LinkButton to={docsPath("ai/prompts")} variant="docs/small" LeadingIcon={BookOpenIcon}>
+        <LinkButton {...docsLink("ai/prompts")} variant="docs/small" LeadingIcon={BookOpenIcon}>
           Prompts docs
         </LinkButton>
       }

@@ -2,6 +2,7 @@ import type { PrismaClient } from "@trigger.dev/database";
 import { prisma } from "~/db.server";
 import { engine } from "~/v3/runEngine.server";
 import { controlPlaneResolver } from "~/v3/runOpsMigration/controlPlaneResolver.server";
+import { deleteEnvironmentSignalStreams } from "./realtime/environmentSignals.server";
 
 type Options = ({ projectId: string } | { projectSlug: string }) & {
   userId: string;
@@ -62,6 +63,13 @@ export class DeleteProjectService {
     for (const environment of project.environments) {
       controlPlaneResolver.invalidateEnvironment(environment.id);
     }
+
+    // Archived branches lost theirs when they were archived (and have since been renamed).
+    await deleteEnvironmentSignalStreams(
+      project.environments
+        .filter((environment) => !environment.archivedAt)
+        .map((environment) => ({ ...environment, organization: project.organization }))
+    );
   }
 
   async #getProjectId(options: Options) {

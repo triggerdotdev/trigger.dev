@@ -161,6 +161,8 @@ export const createAlertTool = {
       behavior: input.behavior,
       notifiers: input.notifiers,
       name: input.name,
+      query: input.query,
+      signal: input.signal,
     });
 
     if (!result.success) {

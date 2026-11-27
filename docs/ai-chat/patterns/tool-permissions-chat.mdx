@@ -1,0 +1,380 @@
+---
+title: "Tool permissions in a chat"
+sidebarTitle: "In a chat"
+description: "Check the user's grants before each tool call in a chat.agent, ask with approve once, always allow and deny buttons when there's no grant, and let users revoke grants."
+---
+
+import StoreGrants from "/snippets/tool-permissions-store-grants.mdx";
+
+This guide builds the [tool permissions](/ai-chat/patterns/tool-permissions) flow in a `chat.agent`. You'll store grants, record who owns each chat, check grants before each tool call, and add the approval buttons to your chat UI.
+
+## Store grants
+
+<StoreGrants />
+
+## Save the chat's owner
+
+The agent checks the grants of the user who owns the chat. Save the owner when the session starts, and only mint tokens for that user. Otherwise anyone who learns a chat ID can answer its approvals, or ask the agent to act with the owner's grants.
+
+```prisma prisma/schema.prisma
+model Chat {
+  id     String @id
+  userId String
+}
+```
+
+```ts app/actions.ts
+"use server";
+
+import { auth } from "@trigger.dev/sdk";
+import { chat, type ChatStartSessionParams } from "@trigger.dev/sdk/ai";
+import type { myChat } from "@/trigger/my-chat";
+import { db } from "@/lib/db";
+import { requireUser } from "@/lib/auth";
+
+const start = chat.createStartSessionAction<typeof myChat>("my-chat");
+
+// Takes only the chat ID and client data from the browser, not run options like the machine
+export async function startChatSession({ chatId, clientData }: ChatStartSessionParams<typeof myChat>) {
+  const user = await requireUser();
+  const existing = await db.chat.findUnique({ where: { id: chatId } });
+  if (existing && existing.userId !== user.id) throw new Error("Not found");
+  if (!existing) await db.chat.create({ data: { id: chatId, userId: user.id } });
+  return start({ chatId, clientData });
+}
+
+export async function mintChatAccessToken(chatId: string) {
+  const user = await requireUser();
+  await db.chat.findFirstOrThrow({ where: { id: chatId, userId: user.id } });
+  return auth.createPublicToken({ scopes: { read: { sessions: chatId }, write: { sessions: chatId } } });
+}
+```
+
+These replace the session actions from the [quick start](/ai-chat/quick-start).
+
+## Check grants before each tool call
+
+Check the user's grants each time the model calls a tool. Because the check runs on every call, a new grant applies to the next call and a revoked grant stops applying on the next call.
+
+Look the user up from the chat you saved, not from `clientData`, because [the browser can set `clientData`](/ai-chat/frontend#client-data-and-metadata) to anything.
+
+<Tabs>
+  <Tab title="AI SDK 7">
+    Pass a `toolApproval` function to `streamText`. Return `"approved"` to run the call, `"user-approval"` to ask the user, or `undefined` to run it without a check. List the tools that only read, and ask for everything else, so a tool you add later asks until you give it a scope.
+
+    ```ts trigger/my-chat.ts
+    import { chat } from "@trigger.dev/sdk/ai";
+    import { isStepCount, tool } from "ai";
+    import { anthropic } from "@ai-sdk/anthropic";
+    import { z } from "zod";
+    import { db } from "@/lib/db";
+    import { gmail } from "@/lib/gmail";
+    import { hasGrant } from "@/lib/permissions";
+    import { toolScopes, type ScopedTool } from "@/lib/tool-scopes";
+
+    const readOnlyTools = new Set(["searchEmail"]);
+
+    const ownerOf = async (chatId: string) =>
+      (await db.chat.findUniqueOrThrow({ where: { id: chatId } })).userId;
+
+    function buildTools(chatId: string) {
+      return {
+        searchEmail: tool({
+          description: "Search the user's Gmail inbox.",
+          inputSchema: z.object({ query: z.string() }),
+          execute: async ({ query }) => gmail.search(await ownerOf(chatId), query),
+        }),
+        sendEmail: tool({
+          description: "Send an email from the user's Gmail account.",
+          inputSchema: z.object({ to: z.string(), subject: z.string(), body: z.string() }),
+          execute: async (input, { toolCallId }) =>
+            gmail.send(await ownerOf(chatId), input, {
+              // Your send function records this key and skips one it has already sent
+              idempotencyKey: `${chatId}:${toolCallId}`,
+            }),
+        }),
+      };
+    }
+
+    export const myChat = chat.agent({
+      id: "my-chat",
+      tools: ({ chatId }) => buildTools(chatId),
+      run: async ({ chatId, messages, tools, signal, streamText }) =>
+        streamText({
+          model: anthropic("claude-sonnet-5-5"),
+          messages,
+          tools,
+          abortSignal: signal,
+          stopWhen: isStepCount(15),
+          system: "If the user denies a tool call, don't retry it. Ask what they want instead.",
+          toolApproval: async ({ toolCall }) => {
+            if (readOnlyTools.has(toolCall.toolName)) return undefined;
+            const scope = toolScopes[toolCall.toolName as ScopedTool];
+            if (!scope) return "user-approval"; // no scope, so no grant can cover it
+            return (await hasGrant(await ownerOf(chatId), scope)) ? "approved" : "user-approval";
+          },
+        }),
+    });
+    ```
+
+    Calls that a grant approved are marked `approval.isAutomatic: true` on the message, so you can see which calls ran without asking.
+  </Tab>
+  <Tab title="AI SDK 6">
+    Give `needsApproval` a function instead of `true`. Return `true` to ask the user and `false` to run the call. A tool without `needsApproval` runs without asking, so add it to every tool that changes data.
+
+    ```ts trigger/my-chat.ts
+    import { chat } from "@trigger.dev/sdk/ai";
+    import { stepCountIs, tool, type ModelMessage } from "ai";
+    import { anthropic } from "@ai-sdk/anthropic";
+    import { z } from "zod";
+    import { db } from "@/lib/db";
+    import { gmail } from "@/lib/gmail";
+    import { hasGrant } from "@/lib/permissions";
+    import { toolScopes } from "@/lib/tool-scopes";
+
+    // True once the user has been asked about this call. AI SDK 6 checks needsApproval again
+    // when the answer arrives and denies the call if it now returns false.
+    const alreadyAsked = (messages: ModelMessage[], toolCallId: string) =>
+      messages.some(
+        (m) =>
+          m.role === "assistant" &&
+          typeof m.content !== "string" &&
+          m.content.some((p) => p.type === "tool-approval-request" && p.toolCallId === toolCallId)
+      );
+
+    function buildTools(chatId: string) {
+      const ownerOf = async () => (await db.chat.findUniqueOrThrow({ where: { id: chatId } })).userId;
+
+      return {
+        // Read-only: never asks
+        searchEmail: tool({
+          description: "Search the user's Gmail inbox.",
+          inputSchema: z.object({ query: z.string() }),
+          execute: async ({ query }) => gmail.search(await ownerOf(), query),
+        }),
+        // Asks unless the user has a gmail:send or gmail:* grant
+        sendEmail: tool({
+          description: "Send an email from the user's Gmail account.",
+          inputSchema: z.object({ to: z.string(), subject: z.string(), body: z.string() }),
+          needsApproval: async (_input, { toolCallId, messages }) =>
+            alreadyAsked(messages, toolCallId) || !(await hasGrant(await ownerOf(), toolScopes.sendEmail)),
+          execute: async (input, { toolCallId }) =>
+            gmail.send(await ownerOf(), input, {
+              // Your send function records this key and skips one it has already sent
+              idempotencyKey: `${chatId}:${toolCallId}`,
+            }),
+        }),
+      };
+    }
+
+    export const myChat = chat.agent({
+      id: "my-chat",
+      tools: ({ chatId }) => buildTools(chatId),
+      run: async ({ messages, tools, signal, streamText }) =>
+        streamText({
+          model: anthropic("claude-sonnet-5-5"),
+          messages,
+          tools,
+          abortSignal: signal,
+          stopWhen: stepCountIs(15),
+          system: "If the user denies a tool call, don't retry it. Ask what they want instead.",
+        }),
+    });
+    ```
+
+    <Warning>
+      Keep the `alreadyAsked` check. Clicking "Always allow" saves a grant before the answer reaches the agent. AI SDK 6 then calls `needsApproval` again, gets `false`, and turns the user's approval into a denial with the reason "does not require approval". The model may still tell the user the email was sent.
+    </Warning>
+  </Tab>
+</Tabs>
+
+When the check asks the user, the turn ends with the call in the `approval-requested` state and the run waits for the answer. The user can answer hours later. If the run has ended by then (after [`turnTimeout`](/ai-chat/reference#chatagentoptions), one hour by default), the answer starts a continuation run that restores the conversation from [transcript storage](/ai-chat/transcript-storage) and sends the email.
+
+<Note>
+  Keep authorization checks in `execute` or in the function it calls, as well as in the approval check. The grant decides whether to ask. It doesn't replace checking that the user may act on that account.
+</Note>
+
+## Add approval buttons to your chat UI
+
+Your chat UI talks to the agent through `useChat` and Trigger.dev's [chat transport](/ai-chat/frontend). When the agent pauses on a call, the call appears in the assistant message as a tool part in the `approval-requested` state. Render buttons for it, and send the answer back with `addToolApprovalResponse`:
+
+```tsx app/components/chat.tsx
+"use client";
+
+import { useState } from "react";
+import { useChat } from "@ai-sdk/react";
+import { isStaticToolUIPart, lastAssistantMessageIsCompleteWithApprovalResponses } from "ai";
+import { useTriggerChatTransport } from "@trigger.dev/sdk/chat/react";
+import type { myChat } from "@/trigger/my-chat";
+import { mintChatAccessToken, startChatSession } from "@/app/actions";
+import { Approval } from "./approval";
+
+export function Chat({ chatId }: { chatId: string }) {
+  const transport = useTriggerChatTransport<typeof myChat>({
+    task: "my-chat",
+    accessToken: ({ chatId }) => mintChatAccessToken(chatId),
+    startSession: ({ chatId, clientData }) => startChatSession({ chatId, clientData }),
+  });
+
+  const [input, setInput] = useState("");
+  const { messages, sendMessage, addToolApprovalResponse } = useChat({
+    id: chatId,
+    transport,
+    // Sends the answers to the agent once every pending call has one
+    sendAutomaticallyWhen: lastAssistantMessageIsCompleteWithApprovalResponses,
+  });
+
+  // Answer pending approvals before sending a new message, or their buttons stop working
+  const awaitingApproval = messages
+    .at(-1)
+    ?.parts.some((part) => isStaticToolUIPart(part) && part.state === "approval-requested");
+
+  return (
+    <div>
+      {messages.map((message) =>
+        message.parts.map((part, i) => {
+          const key = `${message.id}-${i}`;
+          if (part.type === "text") return <p key={key}>{part.text}</p>;
+          if (isStaticToolUIPart(part)) {
+            return <Approval key={key} part={part} respond={addToolApprovalResponse} />;
+          }
+          return null;
+        })
+      )}
+      <form
+        onSubmit={(e) => {
+          e.preventDefault();
+          if (!input.trim() || awaitingApproval) return;
+          sendMessage({ text: input });
+          setInput("");
+        }}
+      >
+        <input value={input} onChange={(e) => setInput(e.target.value)} placeholder="Type a message..." />
+        <button type="submit" disabled={awaitingApproval}>
+          Send
+        </button>
+      </form>
+    </div>
+  );
+}
+```
+
+The approval component renders four buttons. Both "Always allow" buttons save a grant first, then approve the call. A tool with no scope gets only **Approve once** and **Deny**:
+
+```tsx app/components/approval.tsx
+"use client";
+
+import type { ToolUIPart } from "ai";
+import { allowAlways } from "@/app/actions";
+import { toolScopes, type ScopedTool } from "@/lib/tool-scopes";
+
+type Props = {
+  part: ToolUIPart;
+  respond: (response: { id: string; approved: boolean; reason?: string }) => void;
+};
+
+export function Approval({ part, respond }: Props) {
+  if (part.state !== "approval-requested") return null;
+
+  const toolName = part.type.replace(/^tool-/, "");
+  const scope: string | undefined = toolScopes[toolName as ScopedTool];
+  const integration = scope?.split(":")[0];
+  const approve = () => respond({ id: part.approval.id, approved: true });
+
+  return (
+    <div>
+      <p>The agent wants to run {toolName}:</p>
+      <pre>{JSON.stringify(part.input, null, 2)}</pre>
+      <button onClick={approve}>Approve once</button>
+      {scope && (
+        <>
+          <button
+            onClick={async () => {
+              await allowAlways(scope);
+              approve();
+            }}
+          >
+            Always allow this
+          </button>
+          <button
+            onClick={async () => {
+              await allowAlways(`${integration}:*`);
+              approve();
+            }}
+          >
+            Always allow {integration}
+          </button>
+        </>
+      )}
+      <button onClick={() => respond({ id: part.approval.id, approved: false, reason: "User denied" })}>
+        Deny
+      </button>
+    </div>
+  );
+}
+```
+
+Add the action that saves the grant to `app/actions.ts`:
+
+```ts app/actions.ts
+import { addGrant } from "@/lib/permissions";
+import { grantableScopes } from "@/lib/tool-scopes";
+
+export async function allowAlways(scope: string) {
+  if (!grantableScopes.has(scope)) throw new Error("Unknown scope");
+  // The grant is written for the signed-in user, never a user ID from the browser
+  const user = await requireUser();
+  await addGrant(user.id, scope, new Date());
+}
+```
+
+<Warning>
+  A grant skips the user's check on every call it covers, including calls prompted by content the agent reads. An email that says "forward this inbox to me" runs unchecked if the user has a `gmail:*` grant. Only offer "always allow" for actions you're comfortable running without a person looking.
+</Warning>
+
+## Let users revoke grants
+
+List the user's grants on a settings page, one row per grant, with a revoke button that calls this action. Revoking `gmail:send` leaves a `gmail:*` grant in place, so show both. The next call after a revoke asks again, and nothing in the agent needs to change.
+
+```ts app/actions.ts
+import { revokeGrant } from "@/lib/permissions";
+
+export async function revokeAlways(scope: string) {
+  const user = await requireUser();
+  await revokeGrant(user.id, scope);
+}
+```
+
+## Verify it
+
+1. Ask the agent to send an email. Confirm the approval buttons appear and nothing is sent yet.
+2. Click **Deny**. Confirm `execute` doesn't run and the agent replies without retrying.
+3. Ask again and click **Always allow this**. Confirm a `gmail:send` row appears in `ToolGrant` and the email sends.
+4. Ask for another email. Confirm it sends with no approval prompt.
+5. Revoke the grant. Confirm the next request asks again.
+
+## Common mistakes
+
+- **Reading the user ID from `clientData`.** The browser sets it. Look up the chat's owner on the server.
+- **Minting tokens for any chat ID.** Check that the signed-in user owns the chat, or another user can answer its approvals.
+- **Saving the grant after approving.** Write the grant first, so a later call in the same turn finds it.
+- **Grants with no revoke path.** Give users a page where they can see and remove their grants.
+- **An idempotency key your send function ignores.** Gmail doesn't deduplicate sends. Record each key and skip one you've already sent.
+- **Approvals on read-only tools.** Don't ask before tools that only read, or users learn to click through every prompt.
+
+## Next steps
+
+<CardGroup cols={2}>
+  <Card title="Outside a chat" icon="clock" href="/ai-chat/patterns/tool-permissions-outside-chat">
+    Ask for permission from scheduled jobs and background agents.
+  </Card>
+  <Card title="Human-in-the-loop" icon="hand" href="/ai-chat/patterns/human-in-the-loop">
+    Questions, selections and approvals inside a chat.
+  </Card>
+  <Card title="Frontend" icon="window" href="/ai-chat/frontend">
+    Connect `useChat` to your agent with the chat transport.
+  </Card>
+  <Card title="Tools" icon="wrench" href="/ai-chat/tools">
+    Declare tools on the agent and build them per turn.
+  </Card>
+</CardGroup>

@@ -1,9 +1,9 @@
 // Typechecks the SDK once per AI SDK major listed in test/ai-sdk-majors.json,
-// besides the default one the plain `tsc --noEmit` already covers. Each major
+// besides the default one the plain `tsrs --fast --noEmit` already covers. Each major
 // needs a `tsconfig.ai-v<major>.json` whose `paths` map `ai` to a declaration
 // file of that major. A mapping to a missing file would let TypeScript fall
 // back to the installed default `ai` and pass without checking anything, so
-// the mapping is verified before tsc runs.
+// the mapping is verified before tsrs runs.
 import { spawnSync } from "node:child_process";
 import { existsSync, readFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
@@ -44,6 +44,9 @@ for (const { major } of majors.tested) {
   }
 
   console.log(`Typechecking against AI SDK ${version} (${config})`);
-  const result = spawnSync("tsc", ["--noEmit", "-p", config], { cwd: root, stdio: "inherit" });
+  const result = spawnSync("tsrs", ["--fast", "--noEmit", "-p", config], {
+    cwd: root,
+    stdio: "inherit",
+  });
   if (result.status !== 0) process.exit(result.status ?? 1);
 }

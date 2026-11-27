@@ -118,7 +118,7 @@ All these commands work with the Trigger.dev cloud and/or your self-hosted insta
 
 ```sh
 npx trigger.dev@latest login --profile <profile> -a https://trigger.example.com # Log in to a specific profile into a self-hosted instance
-npx trigger.dev@latest dev --profile <profile> # Initialize Trigger.dev in your project
+npx trigger.dev@latest dev --profile <profile> # Run your tasks locally
 npx trigger.dev@latest deploy --profile <profile> # Deploy your tasks to the Trigger.dev instance
 ```
 
@@ -194,7 +194,7 @@ export const childTask = task({
     console.log("Starting child task with data:", payload.data);
 
     // Simulate some work
-    await sleep(5);
+    await wait.for({ seconds: 5 });
 
     return "Child task result";
   },
@@ -408,7 +408,7 @@ When you run `npx trigger.dev@latest deploy` or `npx trigger.dev@latest dev`, we
 
 - **Bundled by default**: Code + dependencies are bundled and tree-shaked by default.
 - **Build extensions**: Use and write custom build extensions to transform your code or the resulting docker image.
-- **ESM ouput**: We output to ESM, which allows tree-shaking and better performance.
+- **ESM output**: We output to ESM, which allows tree-shaking and better performance.
 
 You can review the build output by running deploy with the `--dry-run` flag, which will output the Containerfile and the build output.
 
@@ -451,6 +451,9 @@ import { AwsInstrumentation } from "@opentelemetry/instrumentation-aws-sdk";
 
 export default defineConfig({
   project: "<your-project-ref>",
-  instrumentations: [new PrismaInstrumentation(), new AwsInstrumentation()],
+  maxDuration: 3600,
+  telemetry: {
+    instrumentations: [new PrismaInstrumentation(), new AwsInstrumentation()],
+  },
 });
 ```

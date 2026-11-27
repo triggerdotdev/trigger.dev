@@ -228,6 +228,7 @@ export function TabButton({
   shortcut,
   variant = "underline",
   size = "base",
+  className,
   ...props
 }: {
   isActive: boolean;
@@ -256,7 +257,7 @@ export function TabButton({
       className={cn(
         "group/tab flex flex-col items-center focus-custom",
         title ? "h-full" : "pt-1",
-        props.className,
+        className,
         props.disabled && "pointer-events-none opacity-50"
       )}
       type="button"

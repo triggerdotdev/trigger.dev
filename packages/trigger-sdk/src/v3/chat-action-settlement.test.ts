@@ -84,6 +84,12 @@ describe("action settlement", () => {
     output = (response) => sse(response, [complete(11, "5")]);
     server = createServer((request, response) => {
       if (request.method === "GET") {
+        // The `wait=0` drain a send makes when it has no `.out` cursor: nothing retained.
+        if (request.url?.includes("/out/records")) {
+          response.writeHead(200, { "Content-Type": "application/json" });
+          response.end(JSON.stringify({ records: [] }));
+          return;
+        }
         output(response);
         return;
       }

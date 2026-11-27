@@ -21,8 +21,11 @@ export const NEW_VARIABLE_FILL_KEY_PARAM = "fillKey";
  */
 export const NEW_VARIABLE_PICK_BRANCH_PARAM = "pickBranch";
 
-/** The create dialog's search param for starting with the secret switch on. */
+/** The create dialog's search param for the secret switch: on unless set to NEW_VARIABLE_NOT_SECRET. */
 export const NEW_VARIABLE_SECRET_PARAM = "secret";
+
+/** NEW_VARIABLE_SECRET_PARAM's value for starting with the secret switch off. */
+export const NEW_VARIABLE_NOT_SECRET = "0";
 
 /**
  * The search params that describe the list view with the key panel open on it, as a query

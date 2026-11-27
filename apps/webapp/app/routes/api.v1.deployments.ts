@@ -15,6 +15,7 @@ import { createLoaderApiRoute } from "~/services/routeBuilders/apiBuilder.server
 import { ServiceValidationError } from "~/v3/services/baseService.server";
 import { env } from "~/env.server";
 import { resolveDeployBaseImages } from "~/v3/deployBaseImages.server";
+import { cliCanFollowDeploymentLogs } from "~/v3/deploymentLogsS2.server";
 import { InitializeDeploymentService } from "~/v3/services/initializeDeployment.server";
 import { DeploymentAccessError } from "~/v3/deploymentAccess.server";
 import { acceptedCliVersion } from "~/v3/cliVersion";
@@ -65,6 +66,7 @@ export async function action({ request, params }: ActionFunctionArgs) {
       version: deployment.version,
       imageTag: imageRef,
       imagePlatform: deployment.imagePlatform,
+      supportsMachineImages: true,
       externalId: deployment.externalId ?? undefined,
       outcome: result.outcome,
       ...(result.outcome === "created"
@@ -75,7 +77,7 @@ export async function action({ request, params }: ActionFunctionArgs) {
               base: env.DEPLOY_BASE_IMAGES,
               buildBase: env.DEPLOY_BUILD_BASE_IMAGES,
             }),
-            eventStream: result.eventStream,
+            eventStream: cliCanFollowDeploymentLogs() ? result.eventStream : undefined,
             canceledDeployments: result.canceledDeployments,
           }
         : { isPromoted: result.isPromoted }),

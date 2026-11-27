@@ -2,10 +2,17 @@ import stableStringify from "json-stable-stringify";
 import { z } from "zod";
 import { DeployBuildPath } from "@trigger.dev/core/v3";
 
+export function hasAgentVault(flags: unknown) {
+  return !!flags && typeof flags === "object" && "agentVault" in flags && flags.agentVault === true;
+}
+
 export const FEATURE_FLAG = {
   waitpointStoreEnabled: "waitpointStoreEnabled",
+  checkpointStoreEnabled: "checkpointStoreEnabled",
+  waitpointStoreStandaloneTokens: "waitpointStoreStandaloneTokens",
   snapshotStoreMode: "snapshotStoreMode",
   allowEmptyEnvironmentVariableValues: "allowEmptyEnvironmentVariableValues",
+  agentVault: "agentVault",
   environmentEncryptionEnabled: "environmentEncryptionEnabled",
   defaultWorkerInstanceGroupId: "defaultWorkerInstanceGroupId",
   taskEventRepository: "taskEventRepository",
@@ -22,14 +29,15 @@ export const FEATURE_FLAG = {
   hasPrivateConnections: "hasPrivateConnections",
   hasSso: "hasSso",
   hasThemeSwitcher: "hasThemeSwitcher",
+  hasDocsPanel: "hasDocsPanel",
   mollifierEnabled: "mollifierEnabled",
   workerQueueCompatibility: "workerQueueCompatibility",
   workerQueueChannel: "workerQueueChannel",
   workerQueueEnvironmentOverrides: "workerQueueEnvironmentOverrides",
-  sessionVersionFloor: "sessionVersionFloor",
   internalApiOriginEnabled: "internalApiOriginEnabled",
   realtimeBackend: "realtimeBackend",
   computeMigrationEnabled: "computeMigrationEnabled",
+  computeOnlyDeploys: "computeOnlyDeploys",
   computeMigrationFreePercentage: "computeMigrationFreePercentage",
   computeMigrationPaidPercentage: "computeMigrationPaidPercentage",
   computeTemplatePrebuildWait: "computeTemplatePrebuildWait",
@@ -48,6 +56,10 @@ export const FEATURE_FLAG = {
   runOpsMintShardSetFlippedAt: "runOpsMintShardSetFlippedAt",
   // Fleet-wide pin for the complete cutover. Beats every per-org and per-env pin.
   runOpsMintShardOverride: "runOpsMintShardOverride",
+  runResidencyEnabled: "runResidencyEnabled",
+  // Grace stamp carried alongside runResidencyEnabled on change. See mintFlipGrace.ts.
+  runResidencyEnabledPrev: "runResidencyEnabledPrev",
+  runResidencyEnabledFlippedAt: "runResidencyEnabledFlippedAt",
   queueMetricsUiEnabled: "queueMetricsUiEnabled",
   // Build path for CLI deploys, resolved by DeploymentService.getDeploySettings.
   deployBuildPath: "deployBuildPath",
@@ -57,6 +69,7 @@ export const FEATURE_FLAG = {
   deployBuildPathPreview: "deployBuildPathPreview",
   deployBuildPathStaging: "deployBuildPathStaging",
   deployBuildPathProduction: "deployBuildPathProduction",
+  deployCliVersionEnforcedFrom: "deployCliVersionEnforcedFrom",
   scheduleDefaultWindowEnabled: "scheduleDefaultWindowEnabled",
   deployNowEnabled: "deployNowEnabled",
   apiRateLimitMetricsEnabled: "apiRateLimitMetricsEnabled",
@@ -64,15 +77,16 @@ export const FEATURE_FLAG = {
   runTokenInjection: "runTokenInjection",
   externalOidc: "externalOidc",
   trustedDeploysEnabled: "trustedDeploysEnabled",
-  sessionTraceEnabled: "sessionTraceEnabled",
   sandboxTasks: "sandboxTasks",
+  namedMachines: "namedMachines",
+  computeOnly: "computeOnly",
   auditLogsRecording: "auditLogsRecording",
   hasAuditLogsAccess: "hasAuditLogsAccess",
 } as const;
 
 // Mirrors the core worker-queue enums; defined here because this module is imported client-side.
 const WorkerQueueCompatibilityFlag = z.enum(["any", "container", "compute"]);
-const WorkerQueueChannelFlag = z.enum(["stable", "canary", "proxy"]);
+const WorkerQueueChannelFlag = z.enum(["stable", "canary"]);
 
 export const WORKER_QUEUE_OVERRIDE_ENVIRONMENT_TYPES = [
   "PRODUCTION",
@@ -100,16 +114,16 @@ const WorkerQueueEnvironmentOverrideKey = z
     "must be PRODUCTION, STAGING, PREVIEW or an environment id"
   );
 
-export const SessionVersionFloor = z.object({
-  minVersion: z.string().min(1),
-});
-export type SessionVersionFloor = z.infer<typeof SessionVersionFloor>;
-
 export const FeatureFlagCatalog = {
   [FEATURE_FLAG.waitpointStoreEnabled]: z.boolean(),
+  // Organization override, then global default, then off. Strict: coercion reads "false" as true.
+  [FEATURE_FLAG.checkpointStoreEnabled]: z.boolean(),
+  // Standalone wait tokens go to the waitpoint store only when waitpointStoreEnabled is on too.
+  [FEATURE_FLAG.waitpointStoreStandaloneTokens]: z.boolean(),
   // Organization override, then global default, then off.
   [FEATURE_FLAG.snapshotStoreMode]: z.enum(["off", "dual-write", "redis-read", "redis-only"]),
   [FEATURE_FLAG.allowEmptyEnvironmentVariableValues]: z.boolean(),
+  [FEATURE_FLAG.agentVault]: z.boolean(),
   [FEATURE_FLAG.environmentEncryptionEnabled]: z.boolean(),
   [FEATURE_FLAG.defaultWorkerInstanceGroupId]: z.string(),
   [FEATURE_FLAG.taskEventRepository]: z.enum(["clickhouse", "clickhouse_v2", "postgres"]),
@@ -139,10 +153,15 @@ export const FeatureFlagCatalog = {
   // `suggested-prompts/promotedPrompt.server.ts`.
   [FEATURE_FLAG.promotedDashboardAgentPrompt]: z.string(),
   [FEATURE_FLAG.hasComputeAccess]: z.coerce.boolean(),
+  // Set by the deploy path, never by hand: the org's deployed runs execute only on compute
+  // (microVM) lanes, with no container fallback. Org-scoped only. Strict z.boolean().
+  [FEATURE_FLAG.computeOnly]: z.boolean(),
   [FEATURE_FLAG.hasPrivateConnections]: z.coerce.boolean(),
   [FEATURE_FLAG.hasSso]: z.coerce.boolean(),
   // Gates the Interface theme setting in /account. Off by default.
   [FEATURE_FLAG.hasThemeSwitcher]: z.coerce.boolean(),
+  // Docs links that opt in open the docs in a panel beside the page instead of a new tab.
+  [FEATURE_FLAG.hasDocsPanel]: z.coerce.boolean(),
   [FEATURE_FLAG.mollifierEnabled]: z.coerce.boolean(),
   [FEATURE_FLAG.workerQueueCompatibility]: WorkerQueueCompatibilityFlag,
   [FEATURE_FLAG.workerQueueChannel]: WorkerQueueChannelFlag,
@@ -151,7 +170,6 @@ export const FeatureFlagCatalog = {
     WorkerQueueEnvironmentOverrideKey,
     WorkerQueueEnvironmentOverride
   ),
-  [FEATURE_FLAG.sessionVersionFloor]: z.record(z.string(), SessionVersionFloor),
   // Routes deployed runs' TRIGGER_API_URL to INTERNAL_API_ORIGIN. Per-org, with
   // INTERNAL_API_ORIGIN_ENABLED as the global default (org wins). No-op unless
   // INTERNAL_API_ORIGIN is set.
@@ -167,6 +185,10 @@ export const FeatureFlagCatalog = {
   // way if written as a string via the admin PAT route. The admin toggle sends a real
   // boolean, so this only rejects the dangerous stringified case.
   [FEATURE_FLAG.computeMigrationEnabled]: z.boolean(),
+  // Global only. When on, the deployment access plugin may allow an organization it would
+  // otherwise deny, with its deployed runs limited to compute (microVM) lanes. Off: it denies as before.
+  // Read from the global flag snapshot and sent with each deploy access check. Strict z.boolean().
+  [FEATURE_FLAG.computeOnlyDeploys]: z.boolean(),
   [FEATURE_FLAG.computeMigrationFreePercentage]: z.coerce.number().int().min(0).max(100),
   [FEATURE_FLAG.computeMigrationPaidPercentage]: z.coerce.number().int().min(0).max(100),
   // When on, deploy finalisation waits (up to a timeout) for the compute template
@@ -227,6 +249,13 @@ export const FeatureFlagCatalog = {
   [FEATURE_FLAG.runOpsMintShardOverride]: z
     .string()
     .refine((v) => v === "new" || /^[a-z0-9]$/.test(v), 'must be a single [a-z0-9] char, or "new"'),
+  // Whether an organisation's new root runs are born in MemoryDB. Org override wins over the global
+  // value, off by default. Strict z.boolean(): coercion reads the string "false" as true.
+  [FEATURE_FLAG.runResidencyEnabled]: z.boolean(),
+  // Grace stamp: the previously-effective value and the change time, written by
+  // stampBooleanFlip on a change. Display-only (see ORG_LOCKED_FLAGS).
+  [FEATURE_FLAG.runResidencyEnabledPrev]: z.boolean(),
+  [FEATURE_FLAG.runResidencyEnabledFlippedAt]: z.string().datetime(),
   // Per-org access to the Queue Metrics dashboard UI (view only; emission is global and
   // separate). Off unless enabled for the org.
   [FEATURE_FLAG.queueMetricsUiEnabled]: z.coerce.boolean(),
@@ -235,6 +264,8 @@ export const FeatureFlagCatalog = {
   [FEATURE_FLAG.deployBuildPathPreview]: DeployBuildPath,
   [FEATURE_FLAG.deployBuildPathStaging]: DeployBuildPath,
   [FEATURE_FLAG.deployBuildPathProduction]: DeployBuildPath,
+  // Moves DEPLOY_MIN_CLI_VERSION_ENFORCED_FROM later for one org; an earlier date is ignored.
+  [FEATURE_FLAG.deployCliVersionEnforcedFrom]: z.string().datetime({ offset: true }),
   [FEATURE_FLAG.scheduleDefaultWindowEnabled]: z.boolean(),
   // Strict z.boolean() (not z.coerce.boolean()): coercion reads the string
   // "false" as true, which would enable an off-by-default gate.
@@ -247,11 +278,12 @@ export const FeatureFlagCatalog = {
   [FEATURE_FLAG.runTokenInjection]: z.boolean(),
   // Org override wins over the global value; off by default.
   [FEATURE_FLAG.externalOidc]: z.boolean(),
+  // Lets tasks be sandboxes. Org override wins over the global value; off by default.
   [FEATURE_FLAG.sandboxTasks]: z.boolean(),
+  // Lets tasks run on a machine from defineMachine(). Org override wins over the global value; off
+  // by default.
+  [FEATURE_FLAG.namedMachines]: z.boolean(),
   [FEATURE_FLAG.trustedDeploysEnabled]: z.boolean(),
-  // Shows the session page's Trace tab and serves its routes. Org override wins over the global
-  // value; off by default. Admins always have it.
-  [FEATURE_FLAG.sessionTraceEnabled]: z.boolean(),
   // Records the org's audit events, behind the AUDIT_LOGS_RECORDING_ENABLED master switch. Org
   // override wins over the global value; off by default. Strict z.boolean(): coercion reads the
   // string "false" as true, which would record for an org meant to be off.
@@ -277,13 +309,15 @@ export const GLOBAL_LOCKED_FLAGS: FeatureFlagKey[] = [
   FEATURE_FLAG.workerQueueCompatibility,
   FEATURE_FLAG.workerQueueChannel,
   FEATURE_FLAG.workerQueueEnvironmentOverrides,
-  FEATURE_FLAG.sessionVersionFloor,
   // Grace stamps are computed server-side. An editable control here would discard what it saves.
   FEATURE_FLAG.runOpsMintKindPrev,
   FEATURE_FLAG.runOpsMintKindFlippedAt,
   FEATURE_FLAG.runOpsMintShardSetPrev,
   FEATURE_FLAG.runOpsMintShardSetFlippedAt,
-  FEATURE_FLAG.sandboxTasks,
+  FEATURE_FLAG.runResidencyEnabledPrev,
+  FEATURE_FLAG.runResidencyEnabledFlippedAt,
+  FEATURE_FLAG.deployCliVersionEnforcedFrom,
+  FEATURE_FLAG.computeOnly,
 ];
 
 // Flags that are read-only on the org-level dialog.
@@ -298,8 +332,12 @@ export const ORG_LOCKED_FLAGS: FeatureFlagKey[] = [
   FEATURE_FLAG.runOpsMintShardSetPrev,
   FEATURE_FLAG.runOpsMintShardSetFlippedAt,
   FEATURE_FLAG.runOpsMintShardOverride,
+  FEATURE_FLAG.runResidencyEnabledPrev,
+  FEATURE_FLAG.runResidencyEnabledFlippedAt,
   // Read per dequeue from the global flag snapshot only; the org's flags aren't loaded there.
   FEATURE_FLAG.deploymentStatusMode,
+  // Read per deploy access check from the global flag snapshot only.
+  FEATURE_FLAG.computeOnlyDeploys,
 ];
 
 export type OrgLockedFlagEffect = "live" | "ignored" | "derived";
@@ -318,8 +356,11 @@ export const ORG_LOCKED_FLAG_EFFECT: Partial<Record<FeatureFlagKey, OrgLockedFla
   [FEATURE_FLAG.runOpsMintShardSetFlippedAt]: "ignored",
   [FEATURE_FLAG.runOpsMintShardOverride]: "ignored",
   [FEATURE_FLAG.deploymentStatusMode]: "ignored",
+  [FEATURE_FLAG.computeOnlyDeploys]: "ignored",
   [FEATURE_FLAG.runOpsMintKindPrev]: "derived",
   [FEATURE_FLAG.runOpsMintKindFlippedAt]: "derived",
+  [FEATURE_FLAG.runResidencyEnabledPrev]: "derived",
+  [FEATURE_FLAG.runResidencyEnabledFlippedAt]: "derived",
 };
 
 /**
@@ -330,6 +371,9 @@ export const ORG_LOCKED_FLAG_EFFECT: Partial<Record<FeatureFlagKey, OrgLockedFla
 export const GRACED_FLAG_GROUPS: ReadonlyArray<{
   primary: FeatureFlagKey;
   derived: readonly FeatureFlagKey[];
+  // A boolean primary, stamped by stampBooleanFlagGroups. "keepOn": once a stamp records on, a
+  // later save keeps it, and removing the primary keeps its stamps.
+  booleanRule?: "keepOn";
 }> = [
   {
     primary: FEATURE_FLAG.runOpsMintKind,
@@ -339,12 +383,17 @@ export const GRACED_FLAG_GROUPS: ReadonlyArray<{
     primary: FEATURE_FLAG.runOpsMintShardSet,
     derived: [FEATURE_FLAG.runOpsMintShardSetPrev, FEATURE_FLAG.runOpsMintShardSetFlippedAt],
   },
+  {
+    primary: FEATURE_FLAG.runResidencyEnabled,
+    derived: [FEATURE_FLAG.runResidencyEnabledPrev, FEATURE_FLAG.runResidencyEnabledFlippedAt],
+    booleanRule: "keepOn",
+  },
 ];
 
-/** The stamps deleted alongside `primary`. Empty unless `primary` is a graced primary. */
+/** The stamps deleted alongside `primary`. Empty unless `primary` is a graced primary; a "keepOn" group keeps them. */
 export function derivedFlagsClearedWith(primary: string): FeatureFlagKey[] {
   const group = GRACED_FLAG_GROUPS.find((g) => g.primary === primary);
-  return group ? [...group.derived] : [];
+  return group && group.booleanRule !== "keepOn" ? [...group.derived] : [];
 }
 
 /**

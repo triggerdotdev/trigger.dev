@@ -29,6 +29,7 @@ import {
   runtime,
   runTimelineMetrics,
   sessionStreams,
+  signals,
   stringifyIO,
   taskContext,
   TaskRunContext,
@@ -62,6 +63,7 @@ import {
   StandardResourceCatalog,
   StandardRunTimelineMetricsManager,
   StandardSessionStreamManager,
+  StandardSignalsManager,
   StandardTraceContextManager,
   StandardWaitUntilManager,
   TaskExecutor,
@@ -77,6 +79,7 @@ import sourceMapSupport from "source-map-support";
 import { env } from "std-env";
 import { normalizeImportPath } from "../utilities/normalizeImportPath.js";
 import { dropInheritedRunToken, installRunToken } from "./runTokenEnv.js";
+import { hasUsableRunToken } from "./managed/runTokenRefresh.js";
 import { installUsageJwt } from "./usageJwt.js";
 import { WARMUP_FLAG } from "./warmupCommand.js";
 import {
@@ -159,6 +162,7 @@ let runMetadataManager!: StandardMetadataManager;
 let standardRealtimeStreamsManager!: StandardRealtimeStreamsManager;
 let standardInputStreamManager!: StandardInputStreamManager;
 let standardSessionStreamManager!: StandardSessionStreamManager;
+let standardSignalsManager!: StandardSignalsManager;
 
 // The API URL and secret key these capture arrive with the first EXECUTE_TASK_RUN, not the fork env.
 function initializeApiManagers() {
@@ -192,6 +196,14 @@ function initializeApiManagers() {
       false
   );
   sessionStreams.setGlobalManager(standardSessionStreamManager);
+
+  standardSignalsManager = new StandardSignalsManager(
+    apiClientManager.clientOrThrow(),
+    getEnvVar("TRIGGER_STREAM_URL", getEnvVar("TRIGGER_API_URL")) ?? "https://api.trigger.dev",
+    () => taskContext.ctx?.task.id,
+    getEnvVar("TRIGGER_STREAMS_DEBUG") === "1" || getEnvVar("TRIGGER_STREAMS_DEBUG") === "true"
+  );
+  signals.setGlobalManager(standardSignalsManager);
 }
 
 const waitUntilTimeoutInMs = getNumberEnvVar("TRIGGER_WAIT_UNTIL_TIMEOUT_MS", 60_000);
@@ -387,6 +399,7 @@ function resetExecutionEnvironment() {
   standardRealtimeStreamsManager.reset();
   standardInputStreamManager.reset();
   standardSessionStreamManager.reset();
+  standardSignalsManager.reset();
   _sharedWorkerRuntime?.reset();
   durableClock.reset();
   taskContext.disable();
@@ -413,7 +426,7 @@ const zodIpc = new ZodIpcConnection({
   process,
   handlers: {
     EXECUTE_TASK_RUN: async (
-      { execution, traceContext, metadata, metrics, env, isWarmStart },
+      { execution, traceContext, metadata, metrics, env, isWarmStart, requiresRunToken },
       sender
     ) => {
       const startupEnvNotApplied = env ? startupOnlyEnvNotApplied(_startupEnv, env) : [];
@@ -428,11 +441,34 @@ const zodIpc = new ZodIpcConnection({
         _lastEnv = env;
       }
 
+      if (
+        requiresRunToken &&
+        (Object.hasOwn(process.env, "TRIGGER_SECRET_KEY") ||
+          !hasUsableRunToken(
+            process.env.TRIGGER_RUN_TOKEN,
+            execution.run.id,
+            execution.attempt.number
+          ))
+      ) {
+        await sender.send("TASK_RUN_COMPLETED", {
+          execution,
+          result: {
+            ok: false,
+            id: execution.run.id,
+            error: { type: "STRING_ERROR", raw: "Cannot install the required run token" },
+          },
+        });
+        return;
+      }
+
       initializeApiManagers();
 
-      console.log(
-        `[${new Date().toISOString()}] Received EXECUTE_TASK_RUN isWarmStart ${String(isWarmStart)}`
-      );
+      console.log(`[${new Date().toISOString()}] Received EXECUTE_TASK_RUN`, {
+        runId: execution.run.id,
+        attemptNumber: execution.attempt.number,
+        taskId: execution.task.id,
+        isWarmStart,
+      });
 
       if (_lastFlushPromise) {
         const now = performance.now();
@@ -462,8 +498,6 @@ const zodIpc = new ZodIpcConnection({
       });
 
       standardRunTimelineMetricsManager.registerMetricsFromExecution(metrics, isWarmStart);
-
-      console.log(`[${new Date().toISOString()}] Received EXECUTE_TASK_RUN`, execution);
 
       if (_isRunning) {
         console.error("Worker is already running a task");
@@ -676,6 +710,9 @@ const zodIpc = new ZodIpcConnection({
           }
         } finally {
           standardHeartbeatsManager.stopHeartbeat();
+          // A listener the task never stopped would keep its signal subscription open, and its
+          // handler running, while a kept-alive process waits for the next run.
+          standardSignalsManager.reset();
           resourceCatalog.clearCurrentFileContext();
 
           _execution = undefined;

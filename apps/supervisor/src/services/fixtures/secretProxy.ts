@@ -27,8 +27,6 @@ const K3S_IMAGE =
   "rancher/k3s:v1.32.4-k3s1@sha256:1b71c68b063364bab469452eb9cc27edcb2767273f1aca5582db3586a3927483";
 const PAUSE_IMAGE =
   "rancher/mirrored-pause:3.6@sha256:74c4244427b7312c5b901fe0f67cbc53683d06f4f24c6faee65d4182bf0fa893";
-// Never pullable, so its container stays waiting: a Pod with an IP and no running container.
-const UNPULLABLE_IMAGE = "registry.invalid/secret-proxy/never-pulled:0";
 const STARTUP_TIMEOUT_MS = 180_000;
 const INTERCEPTOR_GRACE_MS = 5_000;
 const INTERCEPTOR_EXIT_TIMEOUT_MS = 10_000;
@@ -110,6 +108,8 @@ function runnerName(runId: string, attempt?: number, checkpoint?: string) {
 export type FixtureAllocation = {
   allocationId: string;
   guestId: string;
+  podUid?: string;
+  podIp?: string;
   runId: string;
   attempt: number;
 };
@@ -172,7 +172,13 @@ export class AllocationOwner {
   }
 
   async register(allocation: FixtureAllocation, listen = "127.0.0.1:0"): Promise<string> {
-    const response = await this.command({ op: "register", ...allocation, listen });
+    const { podUid, podIp, ...registration } = allocation;
+    const response = await this.command({
+      op: "register",
+      ...registration,
+      listen,
+      env: { TRIGGER_POD_UID: podUid, TRIGGER_POD_IP: podIp },
+    });
     if (typeof response.listen !== "string") throw new Error("Missing allocation listener address");
     return response.listen;
   }
@@ -212,6 +218,8 @@ export class SecretProxyFixture {
   private owner?: AllocationOwner;
   private readonly placementsByRunner = new Map<string, FixtureAllocation>();
   private readonly allocations = new Map<string, { metadata: FixtureAllocation; listen: string }>();
+
+  constructor(private readonly podStatus: "kubelet" | "manual" = "kubelet") {}
 
   async start() {
     try {
@@ -254,7 +262,9 @@ export class SecretProxyFixture {
         "--disable",
         "coredns",
         "--disable-network-policy",
-        "--kubelet-arg=max-pods=160",
+        ...(this.podStatus === "manual"
+          ? ["--disable-agent", "--egress-selector-mode=disabled"]
+          : ["--kubelet-arg=max-pods=160"]),
       ],
       { timeout: STARTUP_TIMEOUT_MS }
     );
@@ -282,12 +292,20 @@ export class SecretProxyFixture {
       this.custom = this.config.makeApiClient(CustomObjectsApi);
       this.nodeName = await waitFor(async () => {
         const nodes = await this.core.listNode();
+        if (this.podStatus === "manual") {
+          // Register a node so the controller does not garbage-collect its Pods.
+          const name = "secret-proxy-fixture";
+          if (!nodes.items.some((node) => node.metadata?.name === name)) {
+            await this.core.createNode({ body: { metadata: { name } } });
+          }
+          return name;
+        }
         return nodes.items.find((node) =>
           node.status?.conditions?.some(
             (condition) => condition.type === "Ready" && condition.status === "True"
           )
         )?.metadata?.name;
-      }, "ready k3s node");
+      }, "k3s placement node");
       const crds = this.config.makeApiClient(ApiextensionsV1Api);
       const runnerDefinition = loadYaml<V1CustomResourceDefinition>(
         await readFile(runnerCrd, "utf8")
@@ -324,6 +342,7 @@ export class SecretProxyFixture {
   }
 
   private async startInterceptor() {
+    const buildStartedAt = performance.now();
     await exec(
       cargo,
       [
@@ -340,6 +359,9 @@ export class SecretProxyFixture {
         timeout: 600_000,
         env: { ...process.env, PATH: `${dirname(cargo)}:${process.env.PATH}` },
       }
+    );
+    console.info(
+      `Built native secret proxy fixture in ${Math.round(performance.now() - buildStartedAt)}ms`
     );
     this.directory = await mkdtemp(join(tmpdir(), "sp-real-"));
     await chmod(this.directory, 0o700);
@@ -382,7 +404,7 @@ export class SecretProxyFixture {
         caFile,
         relayUrl: "https://localhost:1",
         relayRootCa: certPath,
-        nodeTokenFile: tokenPath,
+        relayTokenFile: tokenPath,
       })
     );
     this.interceptor = spawn(join(fcrunDirectory, "target/debug/fcrun-interceptor"), [configPath], {
@@ -405,18 +427,26 @@ export class SecretProxyFixture {
     );
   }
 
-  /**
-   * A Runner and Pod whose container never starts (unpullable image), so the Pod has an IP but
-   * no running container: the state a guest can call start in before kubelet publishes status.
-   */
+  /** A missing required volume keeps kubelet from creating the sandbox. */
   async pendingPlacement(runId: string, claims = deploymentClaims): Promise<SecretProxyCaller> {
     const name = runnerName(runId);
-    await this.createPlacement(name, runId, claims, UNPULLABLE_IMAGE);
-    const pod = await waitFor(async () => {
-      const current = await this.core.readNamespacedPod({ name, namespace: this.namespace });
-      return current.status?.podIP ? current : undefined;
-    }, "pending placement Pod IP");
-    return { runId, runnerId: name, claims, sourceIp: pod.status!.podIP! };
+    await this.createPlacement(name, runId, claims, PAUSE_IMAGE, {
+      holdSandbox: true,
+    });
+    const pod = await this.core.readNamespacedPod({
+      name,
+      namespace: this.namespace,
+    });
+    const ip = "192.0.2.10";
+    this.placementsByRunner.set(name, {
+      allocationId: randomUUID(),
+      guestId: randomUUID(),
+      runId,
+      attempt: 1,
+      podUid: pod.metadata!.uid!,
+      podIp: ip,
+    });
+    return { runId, runnerId: name, claims, sourceIp: ip };
   }
 
   private async createPlacement(
@@ -424,7 +454,17 @@ export class SecretProxyFixture {
     runId: string,
     claims: typeof deploymentClaims,
     image: string,
-    { singleUse, checkpoint }: { singleUse?: boolean; checkpoint?: string } = {}
+    {
+      singleUse,
+      checkpoint,
+      sourceIp,
+      holdSandbox,
+    }: {
+      singleUse?: boolean;
+      checkpoint?: string;
+      sourceIp?: string;
+      holdSandbox?: boolean;
+    } = {}
   ) {
     const runner = (await this.custom.createNamespacedCustomObject({
       group: "compute.trigger.dev",
@@ -457,6 +497,7 @@ export class SecretProxyFixture {
         },
       },
     })) as { metadata: { uid: string } };
+    const containerName = "run-controller";
     await this.core.createNamespacedPod({
       namespace: this.namespace,
       body: {
@@ -474,12 +515,52 @@ export class SecretProxyFixture {
         },
         spec: {
           nodeName: this.nodeName,
+          restartPolicy: "Never",
+          volumes: holdSandbox
+            ? [{ name: "missing", configMap: { name: "absent-configmap" } }]
+            : undefined,
           terminationGracePeriodSeconds: 0,
           containers: [
             {
-              name: "run-controller",
+              name: containerName,
               image,
+              env: [
+                {
+                  name: "TRIGGER_POD_UID",
+                  valueFrom: { fieldRef: { fieldPath: "metadata.uid" } },
+                },
+                {
+                  name: "TRIGGER_POD_IP",
+                  valueFrom: { fieldRef: { fieldPath: "status.podIP" } },
+                },
+              ],
+              volumeMounts: holdSandbox ? [{ name: "missing", mountPath: "/missing" }] : undefined,
               resources: { requests: { cpu: "1m", memory: "2Mi" } },
+            },
+          ],
+        },
+      },
+    });
+    if (this.podStatus !== "manual") return;
+    if (!sourceIp) throw new Error("Manual Pod status requires a source IP");
+    await this.core.replaceNamespacedPodStatus({
+      name,
+      namespace: this.namespace,
+      body: {
+        metadata: { name },
+        status: {
+          phase: "Running",
+          podIP: sourceIp,
+          podIPs: [{ ip: sourceIp }],
+          containerStatuses: [
+            {
+              name: containerName,
+              image,
+              imageID: image,
+              containerID: `containerd://${randomUUID()}`,
+              ready: true,
+              restartCount: 0,
+              state: { running: { startedAt: new Date() } },
             },
           ],
         },
@@ -488,17 +569,32 @@ export class SecretProxyFixture {
   }
 
   async placements(
-    requests: { runId: string; attempt?: number; singleUse?: boolean; checkpoint?: string }[],
+    requests: {
+      runId: string;
+      attempt?: number;
+      singleUse?: boolean;
+      checkpoint?: string;
+      sourceIp?: string;
+    }[],
     claims = deploymentClaims
   ): Promise<SecretProxyCaller[]> {
     for (let offset = 0; offset < requests.length; offset += 8) {
       await Promise.all(
-        requests.slice(offset, offset + 8).map(({ runId, attempt, singleUse, checkpoint }) =>
-          this.createPlacement(runnerName(runId, attempt, checkpoint), runId, claims, PAUSE_IMAGE, {
-            singleUse,
-            checkpoint,
-          })
-        )
+        requests
+          .slice(offset, offset + 8)
+          .map(({ runId, attempt, singleUse, checkpoint, sourceIp }) =>
+            this.createPlacement(
+              runnerName(runId, attempt, checkpoint),
+              runId,
+              claims,
+              PAUSE_IMAGE,
+              {
+                singleUse,
+                checkpoint,
+                sourceIp,
+              }
+            )
+          )
       );
     }
     const pods = await waitFor(async () => {
@@ -517,6 +613,8 @@ export class SecretProxyFixture {
       const pod = pods.get(runnerId)!;
       this.placementsByRunner.set(runnerId, {
         allocationId: randomUUID(),
+        podUid: pod.metadata!.uid!,
+        podIp: pod.status!.podIP!,
         guestId: pod.status!.containerStatuses![0]!.containerID!.replace(/^containerd:\/\//, ""),
         runId,
         // A restored allocation has no attempt until its first binding.

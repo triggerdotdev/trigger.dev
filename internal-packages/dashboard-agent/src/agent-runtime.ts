@@ -1,6 +1,8 @@
 import {
   createDashboardAgentDb,
   ensureChat,
+  chatAllowsEval,
+  markChatReadLogs,
   setChatTitleIfDefault,
   seedInvestigation,
   settleInvestigationStateAndCloseCard,
@@ -73,6 +75,8 @@ export { resolveDashboardAgentModel } from "./model-provider";
 // `locals` and never need a real database.
 export interface DashboardAgentStore {
   ensureChat(args: Parameters<typeof ensureChat>[1]): Promise<unknown>;
+  markChatReadLogs(args: Parameters<typeof markChatReadLogs>[1]): Promise<boolean>;
+  chatAllowsEval(args: Parameters<typeof chatAllowsEval>[1]): Promise<boolean>;
   /**
    * The conversation itself. `chat.agent` drives this: every message, the runtime's
    * state and the resume cursors reach the rows through it, and the panel reads the
@@ -246,6 +250,8 @@ export function getStore(): DashboardAgentStore {
   const { db } = getDb();
   return locals.set(dashboardAgentStoreKey, {
     ensureChat: (args) => ensureChat(db, args),
+    markChatReadLogs: (args) => markChatReadLogs(db, args),
+    chatAllowsEval: (args) => chatAllowsEval(db, args),
     transcript: dashboardAgentTranscriptStorage(db),
     settleTurnInvestigations: (args) => settleTurnInvestigations(db, args),
     setChatTitleIfDefault: (args) => setChatTitleIfDefault(db, args),
@@ -473,6 +479,14 @@ export function buildTurnTools(
       ...(clientData ?? {}),
       apiOrigin: agentApiOrigin(),
       chatId,
+      markChatReadLogs: clientData
+        ? () =>
+            getStore().markChatReadLogs({
+              chatId,
+              organizationId: clientData.organizationId,
+              userId: clientData.userId,
+            })
+        : undefined,
       investigations: {
         // Every committed revision is tracked, so the settle guard knows whether
         // the turn left a card running.

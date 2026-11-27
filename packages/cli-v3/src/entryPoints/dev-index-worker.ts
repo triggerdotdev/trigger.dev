@@ -133,7 +133,10 @@ if (await reportTaskIdCollisions(safeSend)) {
   process.exit(0);
 }
 
-let tasks = await convertSchemasToJsonSchemas(resourceCatalog.listTaskManifests());
+// Tasks run on this machine in dev, so a named machine's image does not apply.
+let tasks = (await convertSchemasToJsonSchemas(resourceCatalog.listTaskManifests())).map(
+  ({ namedMachine: _, ...task }) => task
+);
 
 // If the config has retry defaults, we need to apply them to all tasks that don't have any retry settings
 if (config.retries?.default) {
@@ -184,6 +187,7 @@ if (typeof config.machine === "string") {
       return {
         ...task,
         machine: {
+          ...task.machine,
           preset: config.machine,
         },
       } satisfies TaskManifest;

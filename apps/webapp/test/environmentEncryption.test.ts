@@ -2,10 +2,11 @@ import { postgresTest } from "@internal/testcontainers";
 import { $transaction } from "~/db.server";
 import { type PrismaClient, type PrismaTransactionClient } from "@trigger.dev/database";
 import { describe, expect, it } from "vitest";
-import { randomBytes } from "node:crypto";
+import { hkdfSync, randomBytes } from "node:crypto";
 import {
   decryptEnvironmentValue,
   encryptEnvironmentValue,
+  hkdfSha256SingleBlock,
   StoredEnvironmentValueSchema,
   parseStoredEnvironmentValue,
 } from "~/services/environmentEncryption/crypto.server";
@@ -553,6 +554,44 @@ describe("environment encryption", () => {
       parseStoredEnvironmentValue(encryptValue("legacy", keyring), ENVIRONMENT_SECRET_VERSION)
     ).toThrow();
     expect(() => parseStoredEnvironmentValue(value, "2")).toThrow();
+  });
+
+  // Catches: long object ids exceeding Node's 1024-byte HKDF info limit and failing to encrypt.
+  it("round-trips values whose object id makes the HKDF info exceed 1024 bytes", () => {
+    const key = randomBytes(32);
+    const context = {
+      environmentId: "env",
+      purpose: "environment-variable" as const,
+      objectId: `secret:${"A".repeat(1200)}`,
+    };
+    const value = encryptEnvironmentValue("secret", "key-a", key, context);
+    expect(decryptEnvironmentValue(value, key, context)).toBe("secret");
+    expect(() =>
+      decryptEnvironmentValue(value, key, { ...context, objectId: `${context.objectId}B` })
+    ).toThrow();
+  });
+
+  // Catches: the long-info fallback deriving different keys from native HKDF-SHA256.
+  it("derives the same keys as native HKDF-SHA256", () => {
+    for (const infoBytes of [0, 1, 31, 32, 33, 64, 1023, 1024]) {
+      const key = randomBytes(32);
+      const salt = randomBytes(16);
+      const info = randomBytes(infoBytes);
+      expect(hkdfSha256SingleBlock(key, salt, info)).toEqual(
+        Buffer.from(hkdfSync("sha256", key, salt, info, 32))
+      );
+    }
+  });
+
+  // Catches: the long-info fallback ignoring or truncating info beyond 1024 bytes.
+  it("matches an OpenSSL HKDF-SHA256 vector for 1300-byte info", () => {
+    const key = Buffer.alloc(32, 0x0b);
+    const salt = Buffer.from(Array.from({ length: 16 }, (_, i) => i));
+    const info = Buffer.from(Array.from({ length: 1300 }, (_, i) => i % 256));
+    // openssl kdf -keylen 32 -kdfopt digest:SHA256 -kdfopt hexkey:... -kdfopt hexsalt:... -kdfopt hexinfo:... HKDF
+    expect(hkdfSha256SingleBlock(key, salt, info).toString("hex")).toBe(
+      "0dfe7ca2fe5dffaf25d423e1c95aa03baa7451825f267fa2e7a4ee6209c49837"
+    );
   });
 
   // Catches: concurrent first writes creating competing active keys, and bulk cold reads unwrapping per value.

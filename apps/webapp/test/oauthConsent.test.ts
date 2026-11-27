@@ -39,6 +39,8 @@ vi.mock("~/services/rbac.server", () => ({ rbac: {} }));
 
 import { MCP_SCOPES } from "~/services/oauth/metadata.server";
 import { getCsrfToken } from "~/services/csrf.server";
+import { MFA_VERIFIED_AT_SESSION_KEY } from "~/services/mfa/mfaPolicy.server";
+import { commitSession, getUserSession } from "~/services/sessionStorage.server";
 import {
   createOAuthAuthorizationCode,
   oauthCodeKey,
@@ -51,6 +53,7 @@ import {
   describeScopes,
   describeOAuthClientName,
   loadOAuthConsent,
+  requireEnvVarConsentMfa,
 } from "~/services/oauth/consent.server";
 import { AUTHORIZATION_CODE_TTL_MS } from "~/services/personalAccessToken.server";
 
@@ -73,6 +76,7 @@ type CodeOverrides = Partial<{
   createdAt: Date;
   approvedByUserId: string;
   requestedByUserId: string | null;
+  scope: string[];
 }>;
 
 async function seedCode(
@@ -120,6 +124,12 @@ async function csrfSession() {
   return { token, post };
 }
 
+/** The route's approval hook: recent MFA when the code asks for read:envvars. */
+const beforeApprove =
+  (request: Request, userId: string) =>
+  ({ scope }: { scope: string[] }) =>
+    requireEnvVarConsentMfa(request, { scope, userId });
+
 async function decide(
   code: { code: string },
   userId: string,
@@ -128,13 +138,24 @@ async function decide(
 ) {
   const { token, post } = await csrfSession();
   const { request, formData } = post({ csrfToken: token, decision });
-  return decideOAuthConsent(request, { code: code.code, userId, formData, state });
+  return decideOAuthConsent(request, {
+    code: code.code,
+    userId,
+    formData,
+    state,
+    beforeApprove: beforeApprove(request, userId),
+  });
 }
 
 describe("OAuth consent", () => {
   it("labels every MCP scope readably, not as a raw id", () => {
     const labels = describeScopes([...MCP_SCOPES]);
     expect(labels.filter((label, i) => label === MCP_SCOPES[i])).toEqual([]);
+  });
+
+  // Catches: a manage:project grant that does not tell the user it can delete projects.
+  it("says manage:project can rename and delete projects", () => {
+    expect(describeScopes(["manage:project"])[0]).toMatch(/rename and delete projects/);
   });
 
   postgresTest(
@@ -260,6 +281,7 @@ describe("OAuth consent", () => {
         code: code.code,
         userId: user.id,
         formData,
+        beforeApprove: beforeApprove(request, user.id),
       });
       expect(result.status).toBe("csrf");
     }
@@ -323,6 +345,7 @@ describe("OAuth consent", () => {
         code: code.code,
         userId: user.id,
         formData,
+        beforeApprove: beforeApprove(request, user.id),
       });
       expect(result.status).toBe("bad_request");
     }
@@ -364,6 +387,7 @@ describe("OAuth consent", () => {
       userId: user.id,
       formData,
       isImpersonating: true,
+      beforeApprove: beforeApprove(request, user.id),
     });
 
     expect(result.status).toBe("impersonating");
@@ -461,6 +485,55 @@ describe("OAuth consent", () => {
       status: "not_oauth",
     });
   });
+});
+
+describe("consent approval with read:envvars", () => {
+  // Mutation: the approval hook never asks for MFA, or asks but approves anyway.
+  postgresTest(
+    "is refused without a recent MFA check and approved with one",
+    async ({ prisma }) => {
+      const user = await seedUser(prisma);
+      await prisma.user.update({ where: { id: user.id }, data: { mfaEnabledAt: new Date() } });
+      await prisma.organization.create({
+        data: {
+          slug: `org-${suffix()}`,
+          title: "Org",
+          mfaStepUpActions: ["environmentVariables"],
+          members: { create: { userId: user.id, role: "MEMBER" } },
+        },
+      });
+      const approve = async (mfaVerified: boolean) => {
+        const code = await seedCode(prisma, user, preregistered(), { scope: ["read:envvars"] });
+        const { token, setCookie } = await getCsrfToken(new Request(PAGE));
+        const session = await getUserSession(
+          new Request(PAGE, { headers: { Cookie: setCookie!.split(";")[0] } })
+        );
+        if (mfaVerified) session.set(MFA_VERIFIED_AT_SESSION_KEY, Date.now());
+        const cookie = (await commitSession(session)).split(";")[0];
+        const request = new Request(PAGE, { method: "POST", headers: { Cookie: cookie } });
+        const formData = new FormData();
+        formData.set("csrfToken", token);
+        formData.set("decision", "approve");
+        const outcome = await decideOAuthConsent(request, {
+          code: code.code,
+          userId: user.id,
+          formData,
+          beforeApprove: beforeApprove(request, user.id),
+        }).then(
+          (decision) => decision.status,
+          (thrown: unknown) =>
+            thrown instanceof Response ? thrown.headers.get("Location")?.split("?")[0] : thrown
+        );
+        const row = await prisma.authorizationCode.findFirstOrThrow({ where: { id: code.id } });
+        return { outcome, approved: row.approvedByUserId === user.id };
+      };
+
+      expect({ without: await approve(false), with: await approve(true) }).toEqual({
+        without: { outcome: "/mfa/verify", approved: false },
+        with: { outcome: "redirect", approved: true },
+      });
+    }
+  );
 });
 
 describe("consent document headers", () => {

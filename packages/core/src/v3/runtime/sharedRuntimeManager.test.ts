@@ -1,5 +1,5 @@
 import { setTimeout } from "node:timers/promises";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, onTestFinished, vi } from "vitest";
 import {
   ExecutorToWorkerMessageCatalog,
   WorkerToExecutorMessageCatalog,
@@ -47,5 +47,38 @@ describe("SharedRuntimeManager", () => {
     ]);
 
     await expect(next).resolves.toMatchObject({ ok: true });
+  });
+
+  it("logs waitpoint identifiers but not the waitpoint output or idempotency key", async () => {
+    const manager = new SharedRuntimeManager(ipc, false);
+    const send = vi.spyOn(ipc, "send").mockResolvedValue(undefined);
+    onTestFinished(() => send.mockRestore());
+
+    manager.resolveWaitpoints([
+      {
+        id: "waitpoint_c",
+        friendlyId: "waitpoint_c",
+        type: "MANUAL",
+        completedAt: new Date(),
+        outputIsError: false,
+        idempotencyKey: "idempotency-value-6c3f",
+        output: JSON.stringify({ result: "output-value-4e7a" }),
+        outputType: "application/json",
+      },
+    ]);
+    await setTimeout(10);
+
+    const debugLogs = send.mock.calls.filter(([type]) => type === "SEND_DEBUG_LOG");
+    expect(debugLogs).toContainEqual([
+      "SEND_DEBUG_LOG",
+      expect.objectContaining({
+        message: "no resolver found for resolverId",
+        properties: expect.objectContaining({
+          waitpoint: expect.objectContaining({ id: "waitpoint_c", type: "MANUAL" }),
+        }),
+      }),
+    ]);
+    expect(JSON.stringify(debugLogs)).not.toContain("output-value-4e7a");
+    expect(JSON.stringify(debugLogs)).not.toContain("idempotency-value-6c3f");
   });
 });

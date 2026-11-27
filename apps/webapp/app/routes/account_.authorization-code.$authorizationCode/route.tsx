@@ -30,6 +30,7 @@ import {
   consentDocumentHeaders,
   decideOAuthConsent,
   loadOAuthConsent,
+  requireEnvVarConsentMfa,
 } from "~/services/oauth/consent.server";
 import {
   createPersonalAccessTokenFromAuthorizationCode,
@@ -38,6 +39,7 @@ import {
 import { getIpLocation } from "~/services/platform.v3.server";
 import { scheduleEmail } from "~/services/scheduleEmail.server";
 import { requireRecentMfa } from "~/services/mfa/mfaPolicy.server";
+import { consentPath } from "~/services/oauth/authorize.server";
 import { cn } from "~/utils/cn";
 import { requireUser } from "~/services/session.server";
 import { extractClientIp } from "~/utils/extractClientIp.server";
@@ -94,6 +96,7 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
     return typedjson({ status: "oauth-invalid" as const, impersonating: true });
   }
   if (oauth.status === "consent") {
+    await requireEnvVarConsentMfa(request, { scope: oauth.requestedScope, userId: user.id });
     return typedjson(
       {
         status: "oauth-consent" as const,
@@ -161,13 +164,21 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
   const { authorizationCode } = parseParams(params);
   const { source, clientName } = parseSearch(request);
   const formData = await request.formData();
+  const state = new URL(request.url).searchParams.get("state");
 
   const decision = await decideOAuthConsent(request, {
     code: authorizationCode,
     userId,
     formData,
     isImpersonating: user.isImpersonating,
-    state: new URL(request.url).searchParams.get("state"),
+    state,
+    // The consent page sends no referrer, so name the page to come back to.
+    beforeApprove: ({ scope }) =>
+      requireEnvVarConsentMfa(request, {
+        scope,
+        userId,
+        returnTo: consentPath(authorizationCode, state),
+      }),
   });
   if (decision.status === "csrf") {
     throw new Response(undefined, { status: 403, statusText: "Invalid CSRF token" });

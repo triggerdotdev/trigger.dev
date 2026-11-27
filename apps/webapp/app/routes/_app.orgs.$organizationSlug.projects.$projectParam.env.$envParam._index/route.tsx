@@ -1,15 +1,13 @@
 import { env } from "~/env.server";
 import { OnboardingAutoRefresh } from "~/components/deployments/OnboardingAutoRefresh";
-import { BookOpenIcon, ExclamationTriangleIcon } from "@heroicons/react/20/solid";
+import { ExclamationTriangleIcon } from "@heroicons/react/20/solid";
 import { json } from "@remix-run/node";
 
 import { useFetcher, useRevalidator } from "@remix-run/react";
 import { type ActionFunctionArgs, type LoaderFunctionArgs } from "@remix-run/server-runtime";
-import type { TaskRunStatus } from "@trigger.dev/database";
 import type { PanelHandle } from "@window-splitter/react";
-import { Fragment, Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ClientOnly } from "remix-utils/client-only";
-import { Bar, type TooltipProps } from "recharts";
 import { TypedAwait, typeddefer, useTypedLoaderData } from "remix-typedjson";
 import { BeakerIcon } from "~/assets/icons/BeakerIcon";
 import { ClockIcon } from "~/assets/icons/ClockIcon";
@@ -27,8 +25,7 @@ import { HasNoTasksDeployed, HasNoTasksDev } from "~/components/BlankStatePanels
 import { MainCenteredContainer, PageBody, PageContainer } from "~/components/layout/AppLayout";
 import { Badge } from "~/components/primitives/Badge";
 import { Button, LinkButton } from "~/components/primitives/Buttons";
-import { formatDateTime } from "~/components/primitives/DateTime";
-import { Header2, Header3 } from "~/components/primitives/Headers";
+import { Header2 } from "~/components/primitives/Headers";
 import { NavBar, PageAccessories, PageTitle } from "~/components/primitives/PageHeader";
 import { PaginationControls } from "~/components/primitives/Pagination";
 import { Paragraph } from "~/components/primitives/Paragraph";
@@ -55,18 +52,16 @@ import {
   TableRow,
 } from "~/components/primitives/Table";
 import { SimpleTooltip } from "~/components/primitives/Tooltip";
-import TooltipPortal from "~/components/primitives/TooltipPortal";
 import {
-  ActivityBarChart,
   ActivityBarChartBlankState,
   ACTIVITY_CHART_HEIGHT,
-} from "~/components/metrics/ActivityBarChart";
+} from "~/components/metrics/ActivityBarChartBlankState";
 import { TaskFileName } from "~/components/runs/v3/TaskPath";
-import { TaskRunStatusCombo } from "~/components/runs/v3/TaskRunStatus";
 import {
   TaskTriggerSourceIcon,
   taskTriggerSourceDescription,
 } from "~/components/runs/v3/TaskTriggerSource";
+import { ACTIVITY_CELL_WIDTH, TaskActivityGraph } from "~/components/tasks/TaskActivityGraph";
 import { useEnvironment } from "~/hooks/useEnvironment";
 import { useEventSource } from "~/hooks/useEventSource";
 import { useFeatureFlags } from "~/hooks/useFeatureFlags";
@@ -97,10 +92,8 @@ import {
 } from "~/presenters/v3/UnifiedTaskListPresenter.server";
 import { requireUserId } from "~/services/session.server";
 import { cn } from "~/utils/cn";
-import { formatNumberCompact } from "~/utils/numberFormatter";
 import { useLatchedDeploymentOnboarding } from "~/hooks/useLatchedDeploymentOnboarding";
 import {
-  docsPath,
   EnvironmentParamSchema,
   v3AgentTaskPath,
   v3DeploymentPath,
@@ -114,6 +107,7 @@ import {
 } from "~/utils/pathBuilder";
 import { sectionAgentPageContext } from "~/components/dashboard-agent/suggested-prompts";
 import { WhenAgentUnavailable } from "~/components/dashboard-agent/WhenAgentUnavailable";
+import { DocsHeaderButton } from "~/components/DocsPanel";
 import type { Handle } from "~/utils/handle";
 
 export const handle: Handle = {
@@ -393,13 +387,7 @@ export default function Page() {
         <PageAccessories>
           <AdminDebugTooltip />
           <WhenAgentUnavailable>
-            <LinkButton
-              variant={"docs/small"}
-              LeadingIcon={BookOpenIcon}
-              to={docsPath("/tasks/overview")}
-            >
-              Task docs
-            </LinkButton>
+            <DocsHeaderButton path="/tasks/overview">Task docs</DocsHeaderButton>
           </WhenAgentUnavailable>
         </PageAccessories>
       </NavBar>
@@ -790,86 +778,6 @@ function formatAgentType(type: string): string {
   }
 }
 
-const STATUS_BARS: { status: TaskRunStatus; fill: string }[] = [
-  { status: "DELAYED", fill: "var(--color-run-delayed)" },
-  { status: "PENDING", fill: "var(--color-run-pending)" },
-  { status: "PENDING_VERSION", fill: "var(--color-run-pending-version)" },
-  { status: "EXECUTING", fill: "var(--color-run-executing)" },
-  { status: "RETRYING_AFTER_FAILURE", fill: "var(--color-run-retrying-after-failure)" },
-  { status: "WAITING_TO_RESUME", fill: "var(--color-run-waiting-to-resume)" },
-  { status: "COMPLETED_SUCCESSFULLY", fill: "var(--color-run-completed-successfully)" },
-  { status: "CANCELED", fill: "var(--color-run-canceled)" },
-  { status: "COMPLETED_WITH_ERRORS", fill: "var(--color-run-completed-with-errors)" },
-  { status: "INTERRUPTED", fill: "var(--color-run-interrupted)" },
-  { status: "SYSTEM_FAILURE", fill: "var(--color-run-system-failure)" },
-  { status: "PAUSED", fill: "var(--color-run-paused)" },
-  { status: "CRASHED", fill: "var(--color-run-crashed)" },
-  { status: "EXPIRED", fill: "var(--color-run-expired)" },
-  { status: "TIMED_OUT", fill: "var(--color-run-timed-out)" },
-];
-
-// chart (112) + gap-1.5 (6) + count min-w (28). Reserved so the column stays put while the chart unmounts.
-const ACTIVITY_CELL_WIDTH = 146;
-
-function TaskActivityGraph({ activity }: { activity: HourlyTaskActivity[string] }) {
-  const maxTotal = Math.max(...activity.map((d) => d.total));
-
-  return (
-    <ActivityBarChart
-      data={activity}
-      max={maxTotal}
-      tooltip={<TaskActivityTooltip />}
-      peak={formatNumberCompact(maxTotal)}
-      peakTooltip="Peak runs in a single hour"
-    >
-      {STATUS_BARS.map(({ status, fill }) => (
-        <Bar
-          key={status}
-          dataKey={status}
-          stackId="a"
-          fill={fill}
-          strokeWidth={0}
-          isAnimationActive={false}
-        />
-      ))}
-    </ActivityBarChart>
-  );
-}
-
-const TaskActivityTooltip = ({ active, payload }: TooltipProps<number, string>) => {
-  if (active && payload && payload.length > 0) {
-    const entry = payload[0].payload as { date: Date; total: number } & Partial<
-      Record<TaskRunStatus, number>
-    >;
-    const date = entry.date instanceof Date ? entry.date : new Date(entry.date);
-    const formattedDate = formatDateTime(date, "UTC", [], false, true);
-    const items = STATUS_BARS.filter(({ status }) => (entry[status] ?? 0) > 0).map(
-      ({ status }) => ({ status, value: entry[status] ?? 0 })
-    );
-
-    return (
-      <TooltipPortal active={active}>
-        <div className="rounded-sm border border-grid-bright bg-background-dimmed px-3 py-2">
-          <Header3 className="border-b border-b-border-bright pb-2">{formattedDate}</Header3>
-          {items.length === 0 ? (
-            <div className="mt-2 text-xs text-text-dimmed">No runs</div>
-          ) : (
-            <div className="mt-2 grid grid-cols-[1fr_auto] gap-2 text-xs text-text-bright">
-              {items.map((item) => (
-                <Fragment key={item.status}>
-                  <TaskRunStatusCombo status={item.status} />
-                  <p className="tabular-nums">{item.value}</p>
-                </Fragment>
-              ))}
-            </div>
-          )}
-        </div>
-      </TooltipPortal>
-    );
-  }
-  return null;
-};
-
 function FailedToLoadStats() {
   return (
     <SimpleTooltip
@@ -968,7 +876,7 @@ export const myChat = chat.agent({
   run: async ({ messages, signal }) => {
     return streamText({
       ...chat.toStreamTextOptions(),
-      model: anthropic("claude-sonnet-4-5"),
+      model: anthropic("claude-sonnet-5-5"),
       messages,
       abortSignal: signal,
       stopWhen: stepCountIs(15),

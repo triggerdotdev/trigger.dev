@@ -2,6 +2,7 @@ export type {
   RoleBasedAccessControlPlugin,
   RoleBaseAccessController,
   RoleAssignmentResult,
+  UserRoleAssignmentResult,
   RoleMutationResult,
   Permission,
   Role,
@@ -120,6 +121,8 @@ export type {
   AuditLogEvent,
   AuditLogEventPage,
   AuditLogEventQuery,
+  AuditLogEventSummary,
+  AuditLogEventSummaryQuery,
   AuditLogFingerprintedCredentialKind,
   AuditLogInput,
   AuditLogIpLocation,
@@ -131,6 +134,7 @@ export type {
   AuditLogPlugin,
   AuditLogPluginConfig,
   AuditLogSource,
+  AuditLogSummaryIp,
   AuditLogTarget,
 } from "./auditLog.js";
 export { resolveAuditEventAttribution } from "./auditLog.js";
@@ -215,6 +219,7 @@ export type {
   DeploymentAccessPluginConfig,
   DeploymentAccessStage,
   DeploymentIntegrationAccess,
+  DeploymentPlacement,
   SlidingWindowHitResult,
 } from "./deploymentAccess.js";
 
@@ -232,6 +237,7 @@ export type {
 
 export type {
   AccessPolicyController,
+  AccessPolicyBanCredentialChanges,
   AccessPolicyPlugin,
   AccessPolicyPluginConfig,
   AdminAction,

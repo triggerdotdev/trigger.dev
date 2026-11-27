@@ -62,7 +62,7 @@ describe("sessionRowPassesFilter", () => {
     expect(
       sessionRowPassesFilter(filter, { kind: "run", run: run(1), spansLoaded: true } as Row)
     ).toBe(false);
-    expect(sessionRowPassesFilter(filter, { kind: "gap", durationMs: 1 } as Row)).toBe(false);
+    expect(sessionRowPassesFilter(filter, { kind: "loadEarlier", count: 1 } as Row)).toBe(false);
   });
 
   it("matches spans on their message, ignoring its case, and on errors", () => {

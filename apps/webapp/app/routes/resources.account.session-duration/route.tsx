@@ -7,12 +7,12 @@ import {
   setErrorMessage,
   setSuccessMessage,
 } from "~/models/message.server";
-import { requireUserId } from "~/services/session.server";
+import { requireUser } from "~/services/session.server";
 import {
-  commitAuthenticatedSession,
   getAllowedSessionOptions,
   getEffectiveSessionDuration,
   isAllowedSessionDuration,
+  shortenAuthenticatedSession,
 } from "~/services/sessionDuration.server";
 import { getUserSession } from "~/services/sessionStorage.server";
 
@@ -31,7 +31,11 @@ async function redirectWithError(request: Request, message: string) {
 }
 
 export async function action({ request }: ActionFunctionArgs) {
-  const userId = await requireUserId(request);
+  const user = await requireUser(request);
+  if (user.isImpersonating) {
+    return redirectWithError(request, "You can't change the session duration while impersonating.");
+  }
+  const userId = user.id;
 
   const formData = await request.formData();
   const parsed = FormSchema.safeParse(Object.fromEntries(formData));
@@ -60,11 +64,9 @@ export async function action({ request }: ActionFunctionArgs) {
     data: { sessionDuration },
   });
 
-  // Re-issue the cookie with the new maxAge and reset issuedAt so the user
-  // gets a fresh window matching their new selection right away. This also
-  // restamps `User.nextSessionEnd` against the new effective duration.
+  // A shorter duration applies to the current sessions now; a longer one from the next login.
   const authSession = await getUserSession(request);
-  const authCookie = await commitAuthenticatedSession(authSession, userId);
+  const authCookie = await shortenAuthenticatedSession(authSession, userId);
 
   const messageSession = await getMessageSession(request.headers.get("cookie"));
   setSuccessMessage(messageSession, "Session duration updated.");

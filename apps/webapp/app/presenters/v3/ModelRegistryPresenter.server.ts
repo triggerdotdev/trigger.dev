@@ -1,4 +1,5 @@
 import type { ClickHouse } from "@internal/clickhouse";
+import { readLimitOptions, type ReadLimit } from "./clickhouseReadLimit";
 import { modelCatalog } from "@internal/llm-model-catalog";
 import type { PrismaClientOrTransaction } from "~/db.server";
 import { BasePresenter } from "./basePresenter.server";
@@ -507,7 +508,8 @@ export class ModelRegistryPresenter extends BasePresenter {
     projectId: string,
     environmentId: string,
     startTime: Date,
-    endTime: Date
+    endTime: Date,
+    limit?: ReadLimit
   ): Promise<UserModelMetrics> {
     const summaryQuery = this.clickhouse.reader.query({
       name: "modelRegistryUserSummary",
@@ -572,8 +574,8 @@ export class ModelRegistryPresenter extends BasePresenter {
     };
 
     const [summaryResult, taskResult] = await Promise.all([
-      summaryQuery(queryParams),
-      taskQuery(queryParams),
+      summaryQuery(queryParams, readLimitOptions(limit)),
+      taskQuery(queryParams, readLimitOptions(limit)),
     ]);
 
     const [summaryError, summaryRows] = summaryResult;
@@ -672,7 +674,8 @@ export class ModelRegistryPresenter extends BasePresenter {
     projectId: string,
     environmentId: string,
     startTime: Date,
-    endTime: Date
+    endTime: Date,
+    limit?: ReadLimit
   ): Promise<ProjectModelUsageItem[]> {
     const queryFn = this.clickhouse.reader.query({
       name: "modelRegistryProjectUsage",
@@ -707,12 +710,15 @@ export class ModelRegistryPresenter extends BasePresenter {
       schema: ProjectModelUsageRow,
     });
 
-    const [error, rows] = await queryFn({
-      projectId,
-      environmentId,
-      startTime: formatDateForCH(startTime),
-      endTime: formatDateForCH(endTime),
-    });
+    const [error, rows] = await queryFn(
+      {
+        projectId,
+        environmentId,
+        startTime: formatDateForCH(startTime),
+        endTime: formatDateForCH(endTime),
+      },
+      readLimitOptions(limit)
+    );
 
     if (error || !rows) return [];
 

@@ -4,7 +4,7 @@ import { type Tracer } from "@internal/tracing";
 import { type Logger, type LogLevel } from "@trigger.dev/core/logger";
 import { MachinePresetName } from "@trigger.dev/core/v3";
 import { BulkActionId, RunId } from "@trigger.dev/core/v3/isomorphic";
-import { type Prisma, TaskRunStatus } from "@trigger.dev/database";
+import { boundedIn, type Prisma, TaskRunStatus } from "@trigger.dev/database";
 import parseDuration from "parse-duration";
 import { z } from "zod";
 import { timeFilters } from "~/components/runs/v3/SharedFilters";
@@ -347,6 +347,38 @@ export class RunsRepository implements IRunsRepository {
   }
 }
 
+/** Slack around the bounds, in case the two stores round a timestamp differently. */
+const RUN_ID_BOUNDS_MARGIN_MS = 1000;
+
+/**
+ * The earliest and latest creation time of the given runs in an environment, or undefined when
+ * none of them is found there.
+ */
+export async function runIdCreatedAtBounds(
+  runIds: string[],
+  environmentId: string,
+  store: RunStore = defaultRunStore
+): Promise<{ from: number; to: number } | undefined> {
+  const runs = await store.findRuns({
+    where: {
+      friendlyId: { in: boundedIn(runIds.map((runId) => RunId.toFriendlyId(runId))) },
+      runtimeEnvironmentId: environmentId,
+    },
+    select: { createdAt: true },
+  });
+  if (runs.length === 0) return undefined;
+
+  let from = Infinity;
+  let to = -Infinity;
+  for (const run of runs) {
+    const createdAt = run.createdAt.getTime();
+    if (createdAt < from) from = createdAt;
+    if (createdAt > to) to = createdAt;
+  }
+
+  return { from: from - RUN_ID_BOUNDS_MARGIN_MS, to: to + RUN_ID_BOUNDS_MARGIN_MS };
+}
+
 export function parseRunListInputOptions(data: any): RunListInputOptions {
   return RunListInputOptionsSchema.parse(data);
 }
@@ -361,13 +393,30 @@ export async function convertRunListInputOptionsToFilterRunsOptions(
     period: undefined,
   };
 
-  // Convert time period to ms
-  const time = timeFilters({
-    period: options.period,
-    from: options.from,
-    to: options.to,
-  });
-  convertedOptions.period = time.period ? (parseDuration(time.period) ?? undefined) : undefined;
+  // Convert time period to ms. Explicit run IDs target existing runs, so they get no default
+  // period: only a period/from/to the caller asked for. Without one, the query is bounded to
+  // the creation times of the runs themselves, so ClickHouse reads the parts those runs are in
+  // and not the environment's whole history.
+  const hasExplicitTime = options.period !== undefined || options.from || options.to;
+  const runIdBounds =
+    options.runId?.length && !hasExplicitTime
+      ? await runIdCreatedAtBounds(options.runId, options.environmentId, store)
+      : undefined;
+  if (runIdBounds) {
+    convertedOptions.period = undefined;
+    convertedOptions.from = runIdBounds.from;
+    convertedOptions.to = runIdBounds.to;
+    // The bounds are creation times.
+    convertedOptions.filterByCompletedAt = false;
+  } else {
+    // Also where none of the IDs is a run in this environment (yet): the default period.
+    const time = timeFilters({
+      period: options.period,
+      from: options.from,
+      to: options.to,
+    });
+    convertedOptions.period = time.period ? (parseDuration(time.period) ?? undefined) : undefined;
+  }
 
   // Cross-DB resolution: BatchTaskRun is a RUN-OPS table. A run-ops batch resident on the
   // dedicated run-ops DB must resolve via the store's NEW->LEGACY probe — a single control-plane

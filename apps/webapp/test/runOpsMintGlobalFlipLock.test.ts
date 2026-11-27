@@ -37,6 +37,56 @@ describe("applyGlobalGracedFlips — transactional stamp + serialized flips", ()
     expect(typeof m[FEATURE_FLAG.runOpsMintKindFlippedAt]).toBe("string");
   });
 
+  // Catches: the JSON writer setting the switch without its stamp, or a change to off recording off.
+  postgresTest("a switch change stamps it, and a change to off records on", async ({ prisma }) => {
+    const readSwitch = async () => {
+      const rows = await prisma.featureFlag.findMany({
+        where: {
+          key: {
+            in: [
+              FEATURE_FLAG.runResidencyEnabled,
+              FEATURE_FLAG.runResidencyEnabledPrev,
+              FEATURE_FLAG.runResidencyEnabledFlippedAt,
+            ],
+          },
+        },
+        select: { key: true, value: true },
+      });
+      return Object.fromEntries(rows.map((row) => [row.key, row.value]));
+    };
+    await makeSetMultipleFlags(prisma)({ [FEATURE_FLAG.runResidencyEnabled]: false });
+
+    await applyGlobalGracedFlips(prisma, { [FEATURE_FLAG.runResidencyEnabled]: true }, 60_000);
+    const on = await readSwitch();
+    expect(on[FEATURE_FLAG.runResidencyEnabled]).toBe(true);
+    expect(on[FEATURE_FLAG.runResidencyEnabledPrev]).toBe(false);
+    expect(typeof on[FEATURE_FLAG.runResidencyEnabledFlippedAt]).toBe("string");
+
+    await applyGlobalGracedFlips(prisma, { [FEATURE_FLAG.runResidencyEnabled]: false }, 60_000);
+    const off = await readSwitch();
+    expect(off[FEATURE_FLAG.runResidencyEnabled]).toBe(false);
+    expect(off[FEATURE_FLAG.runResidencyEnabledPrev]).toBe(true);
+    expect(typeof off[FEATURE_FLAG.runResidencyEnabledFlippedAt]).toBe("string");
+  });
+
+  // Catches: the JSON writer treating an omitted switch as removed and stamping it.
+  postgresTest(
+    "a mint-kind-only save writes no stamps onto a stored on switch",
+    async ({ prisma }) => {
+      await makeSetMultipleFlags(prisma)({ [FEATURE_FLAG.runResidencyEnabled]: true });
+
+      await applyGlobalGracedFlips(prisma, { [FEATURE_FLAG.runOpsMintKind]: "runOpsId" }, 60_000);
+
+      const rows = await prisma.featureFlag.findMany({
+        where: { key: { startsWith: FEATURE_FLAG.runResidencyEnabled } },
+        select: { key: true, value: true },
+      });
+      expect(Object.fromEntries(rows.map((row) => [row.key, row.value]))).toEqual({
+        [FEATURE_FLAG.runResidencyEnabled]: true,
+      });
+    }
+  );
+
   postgresTest(
     "concurrent flips serialize and keep one coherent grace stamp",
     async ({ prisma }) => {

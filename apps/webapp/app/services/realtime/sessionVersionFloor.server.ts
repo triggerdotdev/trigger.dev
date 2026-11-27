@@ -2,41 +2,69 @@ import type { RunEngine } from "@internal/run-engine";
 import type { RunStore } from "@internal/run-store";
 import { tryCatch } from "@trigger.dev/core/v3";
 import { isStoreDateTimeWaitpoint } from "~/services/dashboardDateTimeWaitpoint.server";
-import { compareVersionParts } from "~/utils/semver";
-import { FEATURE_FLAG, isPlainFlagObject, SessionVersionFloor } from "~/v3/featureFlags";
+import { compareDeploymentVersions } from "~/v3/utils/deploymentVersions";
+import { isPlainFlagObject } from "~/v3/featureFlags";
 import type { SessionOutTail } from "./s2realtimeStreams.server";
 
-export type { SessionVersionFloor };
-
-type FloorEnvironment = {
-  id: string;
-  type: string;
-  organization: { featureFlags: unknown };
+/**
+ * The floor a session's runs and pins are held to: the higher of the environment's skew protection
+ * threshold and the threshold of the session's task.
+ */
+export type SessionVersionFloor = {
+  minVersion: string;
+  /** Set when the floor is the task's own threshold: that task's id. */
+  taskIdentifier?: string;
 };
 
+type FloorEnvironment = {
+  type: string;
+  skewProtectionThresholds: unknown;
+};
+
+function thresholdVersion(threshold: unknown): string | undefined {
+  if (!isPlainFlagObject(threshold)) return undefined;
+  const version = threshold.version;
+  return typeof version === "string" && version.length > 0 ? version : undefined;
+}
+
+/**
+ * The floor for one task's sessions: the higher of the environment's skew protection threshold and
+ * the task's own. Reads only the environment already in hand.
+ *
+ * Reads the versions and nothing else, not through the `SkewProtectionThreshold` schema: a
+ * field this build doesn't know (written by a newer one during a rollout) or a bad `setBy` must
+ * not switch the floor off for every session. Task ids are data, so only an own key counts.
+ */
 export function sessionVersionFloorFor(
-  environment: FloorEnvironment
+  environment: FloorEnvironment,
+  taskIdentifier: string
 ): SessionVersionFloor | undefined {
   if (environment.type === "DEVELOPMENT") return undefined;
 
-  const flags = environment.organization.featureFlags;
-  if (!isPlainFlagObject(flags)) return undefined;
+  const thresholds = environment.skewProtectionThresholds;
+  if (!isPlainFlagObject(thresholds)) return undefined;
 
-  const floors = flags[FEATURE_FLAG.sessionVersionFloor];
-  if (!isPlainFlagObject(floors)) return undefined;
+  const environmentVersion = thresholdVersion(thresholds.environment);
+  const tasks = thresholds.tasks;
+  const taskVersion =
+    isPlainFlagObject(tasks) && Object.hasOwn(tasks, taskIdentifier)
+      ? thresholdVersion(tasks[taskIdentifier])
+      : undefined;
 
-  const entry = floors[environment.id];
-  if (entry === undefined) return undefined;
-
-  const parsed = SessionVersionFloor.safeParse(entry);
-  return parsed.success ? parsed.data : undefined;
+  if (
+    taskVersion &&
+    (!environmentVersion || compareDeploymentVersions(taskVersion, environmentVersion) > 0)
+  ) {
+    return { minVersion: taskVersion, taskIdentifier };
+  }
+  return environmentVersion ? { minVersion: environmentVersion } : undefined;
 }
 
 export function isVersionBelowSessionVersionFloor(
   version: string,
   floor: SessionVersionFloor
 ): boolean {
-  return compareVersionParts(version, floor.minVersion) < 0;
+  return compareDeploymentVersions(version, floor.minVersion) < 0;
 }
 
 export const TURN_COMPLETE_GRACE_MS = 10_000;
@@ -169,7 +197,7 @@ export type LiveRunFloorChecks = {
 };
 
 export type SupersedeDecision =
-  | { supersede: true }
+  | { supersede: true; currentVersion: string }
   | { supersede: false; reason: "at-or-above" | "busy" }
   | { supersede: false; reason: "current-below-floor"; currentVersion: string | undefined }
   | { supersede: false; reason: "check-failed"; error: Error };
@@ -201,5 +229,5 @@ export async function shouldSupersedeLiveRun(
     return { supersede: false, reason: "current-below-floor", currentVersion };
   }
 
-  return { supersede: true };
+  return { supersede: true, currentVersion };
 }

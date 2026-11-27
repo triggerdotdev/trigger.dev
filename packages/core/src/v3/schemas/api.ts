@@ -15,6 +15,7 @@ import { DequeuedMessage, MachineResources } from "./runEngine.js";
 import { QueueTypeName } from "./queues.js";
 import { ScheduleWindow } from "./schemas.js";
 import { BuildRuntime } from "./build.js";
+import { MachineImageDigests, NamedMachines } from "./machines.js";
 
 export const RunEngineVersion = z.union([z.literal("V1"), z.literal("V2")]);
 
@@ -779,6 +780,8 @@ export type StartDeploymentIndexingResponseBody = z.infer<
 export const FinalizeDeploymentRequestBody = z.object({
   skipPromotion: z.boolean().optional(),
   imageDigest: z.string().optional(),
+  /** Each named machine's image digest, by machine id. */
+  machineImageDigests: MachineImageDigests.optional(),
   skipPushToRegistry: z.boolean().optional(),
 });
 
@@ -927,6 +930,8 @@ export const InitializeDeploymentResponseBody = z.object({
   isPromoted: z.boolean().optional(),
   externalBuildData: ExternalBuildData.optional().nullable(),
   baseImages: DeployBaseImages.optional(),
+  /** The server stores and runs images of machines from `defineMachine()`. */
+  supportsMachineImages: z.boolean().optional(),
   canceledDeployments: z.array(z.object({ version: z.string(), shortCode: z.string() })).optional(),
   eventStream: z
     .object({
@@ -1023,8 +1028,17 @@ export const DeployBuildPath = z.enum(["depot", "native", "native_local_bundle"]
 
 export type DeployBuildPath = z.infer<typeof DeployBuildPath>;
 
+export const CliVersionPolicy = z.object({
+  minimum: z.string(),
+  enforced_from: z.string().datetime({ offset: true }),
+});
+
+export type CliVersionPolicy = z.infer<typeof CliVersionPolicy>;
+
 export const GetDeploySettingsResponseBody = z.object({
   build_path: DeployBuildPath,
+  // A malformed policy must never cost a client its build path.
+  cli_version_policy: CliVersionPolicy.optional().catch(undefined),
 });
 
 export type GetDeploySettingsResponseBody = z.infer<typeof GetDeploySettingsResponseBody>;
@@ -1105,8 +1119,11 @@ export const GetDeploymentResponseBody = z.object({
    * attach-to-existing-deployment path (`cli-v3/src/commands/deploy.ts:1156`).
    */
   externalId: z.string().optional(),
+  createdAt: z.string().optional(),
   externalBuildData: ExternalBuildData.optional().nullable(),
   baseImages: DeployBaseImages.optional(),
+  /** The server stores and runs images of machines from `defineMachine()`. */
+  supportsMachineImages: z.boolean().optional(),
   errorData: DeploymentErrorData.nullish(),
   canceledReason: z.string().nullish(),
   worker: z
@@ -1121,6 +1138,8 @@ export const GetDeploymentResponseBody = z.object({
           exportName: z.string().optional(),
         })
       ),
+      /** The machines the worker's tasks use, which the CLI builds images for. */
+      machines: NamedMachines.optional(),
     })
     .optional(),
   integrationDeployments: z
@@ -1636,6 +1655,23 @@ export const ListRunResponse = z.object({
     next: z.string().optional(),
     previous: z.string().optional(),
   }),
+  /**
+   * The filters the list was run with, including defaults the request didn't set. With no
+   * `filter[createdAt]` period, from or to, runs created in the last 7 days are listed and
+   * `createdAt.isDefault` is true.
+   */
+  appliedFilters: z
+    .object({
+      createdAt: z
+        .object({
+          period: z.string().optional(),
+          from: z.coerce.date().optional(),
+          to: z.coerce.date().optional(),
+          isDefault: z.boolean(),
+        })
+        .optional(),
+    })
+    .optional(),
 });
 
 export type ListRunResponse = z.infer<typeof ListRunResponse>;
@@ -2216,6 +2252,17 @@ export type RetrieveSessionResponseBody = z.infer<typeof RetrieveSessionResponse
  * server triggers a new run, atomically swaps `currentRunId`, and the
  * caller exits.
  */
+/**
+ * A reply handed over mid-turn: the steps the run handing over had finished, the reply's message
+ * id, and the skew protection threshold that asked for the move (absent for `chat.requestUpgrade()`).
+ */
+export const SessionRunHandover = z.object({
+  afterSteps: z.number().int().nonnegative(),
+  messageId: z.string().max(256).optional(),
+  thresholdVersion: z.string().max(64).optional(),
+});
+export type SessionRunHandover = z.infer<typeof SessionRunHandover>;
+
 export const EndAndContinueSessionRequestBody = z.object({
   /** The friendlyId of the run requesting the handoff. */
   callingRunId: z.string(),
@@ -2226,6 +2273,8 @@ export const EndAndContinueSessionRequestBody = z.object({
    * `"upgrade"`. `lockToVersion` is never cleared.
    */
   externalDeploymentId: ExternalDeploymentId,
+  /** Set when the calling run stopped partway through a reply and the new run continues it. */
+  handover: SessionRunHandover.optional(),
 });
 export type EndAndContinueSessionRequestBody = z.infer<typeof EndAndContinueSessionRequestBody>;
 

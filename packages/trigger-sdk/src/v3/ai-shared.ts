@@ -16,6 +16,12 @@
  */
 
 import type { Task, AnyTask } from "@trigger.dev/core/v3";
+import {
+  headerValue,
+  SESSION_IN_EVENT_ID_HEADER,
+  TURN_JOIN_INJECTION_ID_HEADER,
+  TURN_START_IN_SEQ_HEADER,
+} from "@trigger.dev/core/v3";
 import type { InferUITools, ToolSet, UIDataTypes, UIMessage } from "ai";
 
 /**
@@ -450,6 +456,88 @@ export function chatRunTags(chatId: string, userTags: string[] = []): string[] {
  * empty stream can't spin.
  */
 export const MAX_EOF_RESUBSCRIBES = 5;
+
+/**
+ * Does this `turn-complete` boundary belong to a turn before the send whose
+ * `.in/append` returned `sinceInSeq`? A boundary carries the `.in` seq the
+ * agent had committed when its turn ended (`session-in-event-id`); one below
+ * the send's seq closed an earlier turn, whatever order the records reached us
+ * in. A boundary with no cursor (a turn started from the session's start
+ * payload) is never judged earlier, so it still closes the turn.
+ *
+ * Both clients key a send's response stream on this, so a stream that replays
+ * earlier turns (a cursorless read, an action that raced the send) doesn't end
+ * on, or hand back, someone else's turn.
+ */
+export function isBoundaryBeforeSend(
+  headers: ReadonlyArray<readonly [string, string]> | undefined,
+  sinceInSeq: number | undefined
+): boolean {
+  if (sinceInSeq === undefined) return false;
+  const cursor = boundaryInCursor(headers);
+  return cursor !== undefined && cursor < sinceInSeq;
+}
+
+/**
+ * The `.in` seq a `turn-complete` boundary committed (`session-in-event-id`), or
+ * `undefined` when it carries none (a turn started from the session's start
+ * payload) or an unreadable one.
+ */
+export function boundaryInCursor(
+  headers: ReadonlyArray<readonly [string, string]> | undefined
+): number | undefined {
+  const raw = headerValue(headers, SESSION_IN_EVENT_ID_HEADER);
+  if (raw === undefined) return undefined;
+  const cursor = Number.parseInt(raw, 10);
+  return Number.isNaN(cursor) ? undefined : cursor;
+}
+
+/**
+ * The `.in` seq a `turn-start` record names: the message the turn that follows
+ * answers. `undefined` when it names none (a turn started from the run's start
+ * payload) or an unreadable one, and no reader's own send is such a turn.
+ */
+export function turnStartInSeq(
+  headers: ReadonlyArray<readonly [string, string]> | undefined
+): number | undefined {
+  const raw = headerValue(headers, TURN_START_IN_SEQ_HEADER);
+  if (raw === undefined) return undefined;
+  const seq = Number.parseInt(raw, 10);
+  return Number.isNaN(seq) ? undefined : seq;
+}
+
+/**
+ * Whether a `turn-join` record names `.in` seq `seq` among the messages folded
+ * into the running turn.
+ */
+export function turnJoinCovers(
+  headers: ReadonlyArray<readonly [string, string]> | undefined,
+  seq: number
+): boolean {
+  const raw = headerValue(headers, TURN_START_IN_SEQ_HEADER);
+  if (raw === undefined) return false;
+  return raw.split(",").some((part) => Number.parseInt(part, 10) === seq);
+}
+
+/**
+ * The id of the injection chunk a `turn-join` record points at
+ * (`TURN_JOIN_INJECTION_ID_HEADER`), or `undefined` when it names none.
+ */
+export function turnJoinInjectionId(
+  headers: ReadonlyArray<readonly [string, string]> | undefined
+): string | undefined {
+  const raw = headerValue(headers, TURN_JOIN_INJECTION_ID_HEADER);
+  return raw === undefined || raw === "" ? undefined : raw;
+}
+
+/**
+ * The `.in` seq an `.in/append` response reports for the record it wrote, used
+ * to correlate the response stream to the send. Absent from older webapps and
+ * from an append whose idempotency claim was lost.
+ */
+export function appendedInSeq(body: { seq?: unknown } | undefined): number | undefined {
+  return typeof body?.seq === "number" ? body.seq : undefined;
+}
 
 /**
  * Backoff before the nth (1-based) EOF resubscribe, jittered so many clients

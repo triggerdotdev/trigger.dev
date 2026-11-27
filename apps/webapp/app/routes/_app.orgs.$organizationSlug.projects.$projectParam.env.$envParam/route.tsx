@@ -1,10 +1,12 @@
 import { countChatsWithUnreadWork } from "@internal/dashboard-agent-db";
-import { Outlet, useLoaderData } from "@remix-run/react";
+import { Outlet, type ShouldRevalidateFunction, useLoaderData } from "@remix-run/react";
 import { redirect, type LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { RouteErrorDisplay } from "~/components/ErrorDisplay";
 import { DashboardAgent } from "~/components/dashboard-agent/DashboardAgent";
+import { DocsPanel } from "~/components/DocsPanel";
 import { prisma } from "~/db.server";
 import { dashboardAgentDb } from "~/services/dashboardAgentDb.server";
+import { docsOrigin } from "~/services/docsReader.server";
 import { getSecurityNoticeBanner } from "~/services/securityNotices.server";
 import { updateCurrentProjectEnvironmentId } from "~/services/dashboardPreferences.server";
 import { logger } from "~/services/logger.server";
@@ -13,11 +15,17 @@ import {
   hasAdminDisplayAccess,
   requireUser,
 } from "~/services/session.server";
+import { organizationContext } from "~/services/organizationContext.server";
 import { tenantContext } from "~/services/tenantContext.server";
 import { selectAccessibleEnvironment } from "~/utils/environmentAccess";
+import { onlyDetailTabChanged } from "~/utils/detailTabRevalidation";
 import { EnvironmentParamSchema, v3ProjectPath } from "~/utils/pathBuilder";
 import { getPromotedDashboardAgentPrompt } from "~/components/dashboard-agent/suggested-prompts/promotedPrompt.server";
 import { canAccessDashboardAgent } from "~/v3/canAccessDashboardAgent.server";
+
+// A detail page tab switch: this loader doesn't read `?tab=`.
+export const shouldRevalidate: ShouldRevalidateFunction = (args) =>
+  onlyDetailTabChanged(args) ? false : args.defaultShouldRevalidate;
 
 export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   const user = await requireUser(request);
@@ -79,6 +87,11 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
     envId: environmentId,
     envType: environmentType,
   });
+  organizationContext.enrich({
+    organizationId: project.organization.id,
+    environmentId,
+    featureFlags: project.organization.featureFlags,
+  });
 
   await updateCurrentProjectEnvironmentId({ user: user, projectId: project.id, environmentId });
 
@@ -135,20 +148,27 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
     hasDashboardAgentAccess,
     promotedDashboardAgentPrompt,
     dashboardAgentUnreadWork,
+    docsOrigin: docsOrigin(),
   };
 };
 
 export default function Page() {
-  const { hasDashboardAgentAccess, promotedDashboardAgentPrompt, dashboardAgentUnreadWork } =
-    useLoaderData<typeof loader>();
+  const {
+    hasDashboardAgentAccess,
+    promotedDashboardAgentPrompt,
+    dashboardAgentUnreadWork,
+    docsOrigin,
+  } = useLoaderData<typeof loader>();
   return (
-    <DashboardAgent
-      hasAccess={hasDashboardAgentAccess}
-      promotedPrompt={promotedDashboardAgentPrompt ?? undefined}
-      initialUnreadWork={dashboardAgentUnreadWork}
-    >
-      <Outlet />
-    </DashboardAgent>
+    <DocsPanel docsOrigin={docsOrigin}>
+      <DashboardAgent
+        hasAccess={hasDashboardAgentAccess}
+        promotedPrompt={promotedDashboardAgentPrompt ?? undefined}
+        initialUnreadWork={dashboardAgentUnreadWork}
+      >
+        <Outlet />
+      </DashboardAgent>
+    </DocsPanel>
   );
 }
 

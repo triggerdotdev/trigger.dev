@@ -33,10 +33,14 @@ vi.mock("~/services/routeBuilders/apiBuilder.server", () => ({
     H.handlers.push({ config, handler });
     return { action: vi.fn(), loader: vi.fn() };
   },
+  createActionWorkerApiRoute: (config: any, handler: any) => {
+    H.handlers.push({ config, handler });
+    return vi.fn();
+  },
 }));
 
 import { RoutingRunStore, type RunStore } from "@internal/run-store";
-import { WaitpointId } from "@trigger.dev/core/v3/isomorphic";
+import { generateRunOpsIdV2, RunId, WaitpointId } from "@trigger.dev/core/v3/isomorphic";
 import { action as callbackAction } from "~/routes/api.v1.waitpoints.tokens.$waitpointFriendlyId.callback.$hash";
 
 // 24-char base32hex core + shard char "z" + version "2": a well-formed gen-2 id whose shard the
@@ -102,5 +106,42 @@ describe("waitpoint-token routes with an id naming an unconfigured shard", () =>
     } as any);
 
     expect(response.status).toBe(404);
+    expect(response.headers.get("x-should-retry")).toBe("false");
+  });
+
+  // Catches: the snapshot-release route answering a run on shard m or z with anything but a final 409.
+  it("answers 409, not retryable, on the worker snapshot-release route", async () => {
+    H.store = routerWithNoShards();
+    await import("~/routes/engine.v1.worker-actions.runs.$runFriendlyId.snapshots.$snapshotFriendlyId.release");
+    const entry = H.handlers.find((h) => Boolean(h.config?.params?.shape?.snapshotFriendlyId));
+    if (!entry) throw new Error("snapshot-release handler was not captured");
+
+    for (const shard of ["m", "z"]) {
+      // The release reads the run through the routing store, as the engine's release does.
+      const authenticatedWorker = {
+        releaseRun: async ({ runFriendlyId }: { runFriendlyId: string }) =>
+          H.store.findRun({ id: RunId.fromFriendlyId(runFriendlyId) }),
+      };
+      const thrown = await entry
+        .handler({
+          authenticatedWorker,
+          params: {
+            runFriendlyId: `run_${generateRunOpsIdV2(shard)}`,
+            snapshotFriendlyId: "snapshot_1",
+          },
+          body: { reason: "test" },
+          runnerId: "runner_1",
+          environmentId: "env_1",
+        })
+        .then(
+          (response: Response) => response,
+          (error: unknown) => error
+        );
+
+      expect(thrown).toBeInstanceOf(Response);
+      expect((thrown as Response).status).toBe(409);
+      expect((thrown as Response).headers.get("x-should-retry")).toBe("false");
+      expect(await (thrown as Response).json()).toEqual({ error: "Run not found" });
+    }
   });
 });

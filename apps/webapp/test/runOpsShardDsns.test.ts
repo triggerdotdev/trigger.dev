@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { MEMORYDB_SHARD_KEY } from "@internal/run-store";
 // The entrypoint calls this file with plain `node`, so it takes no path alias and no bundler.
 import { shardMigrationDsns } from "../../../docker/scripts/runOpsShardDsns.mjs";
 
@@ -42,6 +43,22 @@ describe("shardMigrationDsns", () => {
   it("skips an aliased shard, because its target's invocation already migrates it", () => {
     const aliased = { key: "z", region: "us-east-1", aliasOf: "new" };
     expect(shardMigrationDsns(JSON.stringify([shardA, aliased]))).toEqual(["postgres://h/a"]);
+  });
+
+  // Catches: the entrypoint migrating a shard under the MemoryDB key, or its literal drifting from the constant.
+  it("rejects the MemoryDB key, so the entrypoint stops before it migrates", () => {
+    const memoryDb = { ...shardA, key: MEMORYDB_SHARD_KEY };
+    let dsns: string[] | undefined;
+    let message: string | undefined;
+    try {
+      dsns = shardMigrationDsns(JSON.stringify([shardA, memoryDb]));
+    } catch (error) {
+      message = (error as Error).message;
+    }
+    expect({ dsns, message }).toEqual({
+      dsns: undefined,
+      message: 'RUN_OPS_SHARDS[m]: key "m" is reserved for the MemoryDB store',
+    });
   });
 
   it("rejects a descriptor with neither url nor aliasOf", () => {

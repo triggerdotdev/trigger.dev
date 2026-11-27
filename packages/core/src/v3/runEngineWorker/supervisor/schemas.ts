@@ -9,7 +9,7 @@ import {
   CompleteRunAttemptResult,
   RunExecutionData,
   CheckpointInput,
-  ExecutionResult,
+  ContinueRunExecutionResult,
 } from "../../schemas/runEngine.js";
 import { RunTokenHeartbeatReport } from "../runTokenRefresh.js";
 
@@ -54,7 +54,7 @@ export const WorkerApiSuspendRunResponseBody = z.object({
 });
 export type WorkerApiSuspendRunResponseBody = z.infer<typeof WorkerApiSuspendRunResponseBody>;
 
-export const WorkerApiContinueRunExecutionRequestBody = ExecutionResult;
+export const WorkerApiContinueRunExecutionRequestBody = ContinueRunExecutionResult;
 export type WorkerApiContinueRunExecutionRequestBody = z.infer<
   typeof WorkerApiContinueRunExecutionRequestBody
 >;
@@ -154,12 +154,15 @@ export const WorkerApiRunAttemptStartRequestBody = z.object({
   isWarmStart: z.boolean().optional(),
   /** Set by the supervisor only when this runner can receive a secret proxy binding. */
   supportsSecretProxy: z.boolean().optional(),
+  /** Set by the supervisor only when this runner's interceptor enforces a restricted network. */
+  supportsNetworkPolicy: z.boolean().optional(),
   // Set by the supervisor, not the runner. A value this webapp cannot accept drops the stamp, never the attempt.
   workerCell: z.string().max(64).optional().catch(undefined),
   workerLane: z.string().max(32).optional().catch(undefined),
   /** Set by runners that report and install run-token refreshes, so the attempt can get a short-lived token. */
   supportsRunTokenRefresh: z.boolean().optional().catch(undefined),
   supportsUsageJwtRefresh: z.boolean().optional().catch(undefined),
+  supportsRootKeyFreeExecution: z.boolean().optional().catch(undefined),
 });
 export type WorkerApiRunAttemptStartRequestBody = z.infer<
   typeof WorkerApiRunAttemptStartRequestBody
@@ -169,11 +172,14 @@ export const SecretProxyExecution = z.object({
   runId: z.string().min(1),
   attempt: z.number().int().positive(),
   expiresAtMs: z.number().int().positive(),
-  allowedHosts: z.array(z.string().min(1).max(253)).min(1).max(256),
+  /** Proxy-only variable hosts. Empty only for a restricted network with no proxy-only variables. */
+  allowedHosts: z.array(z.string().min(1).max(253)).max(256),
+  /** Present only for a restricted network: the HTTPS hosts (exact or `*.`) it may reach. */
+  network: z.object({ allow: z.array(z.string().min(1).max(253)).max(256) }).optional(),
 });
 export type SecretProxyExecution = z.infer<typeof SecretProxyExecution>;
 
-export const WorkerApiContinueRunExecutionResponseBody = ExecutionResult.extend({
+export const WorkerApiContinueRunExecutionResponseBody = ContinueRunExecutionResult.extend({
   runToken: z.string().optional(),
   secretProxy: SecretProxyExecution.optional(),
 });
@@ -184,6 +190,7 @@ export type WorkerApiContinueRunExecutionResponseBody = z.infer<
 export const WorkerApiRunAttemptStartResponseBody = StartRunAttemptResult.and(
   z.object({
     envVars: z.record(z.string(), z.string()),
+    requiresRunToken: z.boolean().optional(),
     secretProxy: SecretProxyExecution.optional(),
   })
 );

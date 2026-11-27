@@ -2,11 +2,14 @@ import { parseWithZod } from "~/utils/conform";
 import { json } from "@remix-run/node";
 import { z } from "zod";
 import { $replica, prisma } from "~/db.server";
+import { resolveOrgIdFromProjectId } from "~/models/project.server";
 import { redirectWithErrorMessage, redirectWithSuccessMessage } from "~/models/message.server";
 import { logger } from "~/services/logger.server";
-import { dashboardAction } from "~/services/routeBuilders/dashboardBuilder";
+import { dashboardAction, dashboardLoader } from "~/services/routeBuilders/dashboardBuilder";
 import { sanitizeRedirectPath } from "~/utils";
 import { ChangeCurrentDeploymentService } from "~/v3/services/changeCurrentDeployment.server";
+import { findRollbackTarget, findTasksMissingFromTarget } from "~/v3/rollbackMissingTasks.server";
+import { getSkewProtectionThresholdsForRollback } from "~/presenters/v3/SkewProtectionThresholdPresenter.server";
 
 export const rollbackSchema = z.object({
   redirectUrl: z.string(),
@@ -17,20 +20,45 @@ const ParamSchema = z.object({
   deploymentShortCode: z.string(),
 });
 
-async function resolveOrgIdFromProjectId(projectId: string): Promise<string | null> {
-  const project = await $replica.project.findFirst({
-    where: { id: projectId },
-    select: { organizationId: true },
-  });
-  return project?.organizationId ?? null;
-}
+// The rollback dialog loads the tasks this rollback would drop when it opens.
+export const loader = dashboardLoader(
+  {
+    params: ParamSchema,
+    context: async (params) => {
+      const organizationId = await resolveOrgIdFromProjectId(params.projectId);
+      return organizationId ? { organizationId, projectId: params.projectId } : {};
+    },
+    authorization: { action: "read", resource: { type: "deployments" } },
+  },
+  async ({ params, user }) => {
+    const deployment = await findRollbackTarget($replica, {
+      projectId: params.projectId,
+      deploymentShortCode: params.deploymentShortCode,
+      userId: user.id,
+    });
+    if (!deployment) {
+      throw new Response("Deployment not found", { status: 404 });
+    }
+
+    const [missingTasks, skewProtection] = await Promise.all([
+      findTasksMissingFromTarget($replica, deployment),
+      getSkewProtectionThresholdsForRollback($replica, deployment.environmentId),
+    ]);
+
+    return json({
+      missingTasks,
+      // A rollback below a threshold clears it; the dialog says which ones.
+      skewProtection: { targetVersion: deployment.version, ...skewProtection },
+    });
+  }
+);
 
 export const action = dashboardAction(
   {
     params: ParamSchema,
     context: async (params) => {
       const organizationId = await resolveOrgIdFromProjectId(params.projectId);
-      return organizationId ? { organizationId } : {};
+      return organizationId ? { organizationId, projectId: params.projectId } : {};
     },
     authorization: { action: "write", resource: { type: "deployments" } },
   },
@@ -76,9 +104,23 @@ export const action = dashboardAction(
       }
 
       const rollbackService = new ChangeCurrentDeploymentService();
-      await rollbackService.call(deployment, "rollback");
+      const result = await rollbackService.call(deployment, "rollback", {
+        actor: { userId: user.id },
+      });
+      const cleared = result.skewProtectionThresholdsCleared;
+      const clearedCount = (cleared?.environment ? 1 : 0) + (cleared?.tasks.length ?? 0);
 
-      return redirectWithSuccessMessage(redirectUrl, request, "Rolled back deployment");
+      return redirectWithSuccessMessage(
+        redirectUrl,
+        request,
+        !cleared
+          ? "Rolled back deployment"
+          : clearedCount > 1
+            ? `Rolled back deployment. ${clearedCount} skew protection thresholds were cleared.`
+            : cleared.environment
+              ? `Rolled back deployment. The skew protection threshold (${cleared.environment.version}) was cleared.`
+              : `Rolled back deployment. The skew protection threshold for ${cleared.tasks[0].task} (${cleared.tasks[0].version}) was cleared.`
+      );
     } catch (error) {
       if (error instanceof Error) {
         logger.error("Failed to roll back deployment", {

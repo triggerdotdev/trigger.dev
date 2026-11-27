@@ -61,21 +61,89 @@ export const SESSION_IN_CONSUMED_ID_HEADER = "session-in-consumed-id" as const;
 export const SESSION_CLOSED_HEADER = "session-closed" as const;
 
 /**
+ * Header on `turn-start` records: the `.in` seq of the message the turn
+ * answers (a comma-separated list of seqs on `turn-join` records). Readers compare it with the seq their own append returned to tell
+ * their turn from someone else's without waiting for the turn's boundary.
+ * Omitted when the turn answers no `.in` message (one started from the run's
+ * start payload, such as a head start), which is no reader's own turn.
+ */
+export const TURN_START_IN_SEQ_HEADER = "turn-start-in-seq" as const;
+
+/**
+ * Header on `turn-join` records: the `id` of the `data-pending-message-injected`
+ * chunk the agent writes for the messages the record names. Written only when
+ * that chunk is ordered with the step's other chunks (the turn's output goes out
+ * through the agent's managed response); a reader taking the rest of the turn
+ * starts right after it. Absent when it isn't (the output is piped on its own,
+ * as with `chat.pipe`, and the chunk can land after the step it should precede),
+ * or when the agent injects nothing: the reader then starts at the next
+ * `start-step`.
+ */
+export const TURN_JOIN_INJECTION_ID_HEADER = "turn-join-injection-id" as const;
+
+/**
  * Header on `session-closed` records carrying the reason the session was
  * closed, as supplied to `chat.close({ reason })` / `sessions.close()`.
  * Omitted when no reason was given.
  */
 export const SESSION_CLOSED_REASON_HEADER = "session-closed-reason" as const;
 
+/**
+ * Header on `turn-handover` records: how many steps of the reply the run that
+ * wrote it had finished. The run that continues the turn starts at the next one.
+ */
+export const TURN_HANDOVER_STEPS_HEADER = "turn-handover-steps" as const;
+
+/**
+ * Header on `turn-handover` records: the id of the user message the handed-over
+ * reply answers, so the run that continues it doesn't take a later message for it.
+ */
+export const TURN_HANDOVER_ANSWERED_HEADER = "turn-handover-answered" as const;
+
+/**
+ * Header on `turn-handover` records written for `chat.requestUpgrade()`: the deployment the turn
+ * moves to, empty for the current one. Absent on a skew protection move. Lets the server continue
+ * the turn as the same move when the run couldn't start the next run itself.
+ */
+export const TURN_HANDOVER_UPGRADE_HEADER = "turn-handover-upgrade" as const;
+
 export const TRIGGER_CONTROL_SUBTYPE = {
   TURN_COMPLETE: "turn-complete",
   UPGRADE_REQUIRED: "upgrade-required",
+  /**
+   * A run stopped at a step boundary partway through a turn and handed the
+   * turn to a new run, which continues the same reply. Not a turn boundary:
+   * readers keep reading.
+   */
+  TURN_HANDOVER: "turn-handover",
   SESSION_CLOSED: "session-closed",
   PENDING_VERSION: "pending-version",
 } as const;
 
 export type TriggerControlSubtype =
   (typeof TRIGGER_CONTROL_SUBTYPE)[keyof typeof TRIGGER_CONTROL_SUBTYPE];
+
+/**
+ * Control records that say whose turn the records around them belong to. Kept
+ * apart from {@link TRIGGER_CONTROL_SUBTYPE} so its public union type doesn't
+ * widen: code that switches over `TriggerControlSubtype` exhaustively keeps
+ * compiling. Readers that don't know these skip them like any other control
+ * record.
+ */
+export const TRIGGER_TURN_MARKER_SUBTYPE = {
+  /**
+   * First record of a turn on `.out`: marks whose turn the records up to the
+   * next `turn-complete` belong to (see {@link TURN_START_IN_SEQ_HEADER}).
+   */
+  TURN_START: "turn-start",
+  /**
+   * Written mid-turn when pending (steering) messages are folded into the turn
+   * that is running: the records that follow also answer those messages. Names
+   * them in {@link TURN_START_IN_SEQ_HEADER} as a comma-separated list of `.in`
+   * seqs.
+   */
+  TURN_JOIN: "turn-join",
+} as const;
 
 /** Read a single header value by name. Returns the first match. */
 export function headerValue(

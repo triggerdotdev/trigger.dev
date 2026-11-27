@@ -1,6 +1,6 @@
 {
   "name": "@trigger.dev/python",
-  "version": "4.8.7",
+  "version": "4.8.10",
   "description": "Python runtime and build extension for Trigger.dev",
   "license": "MIT",
   "publishConfig": {
@@ -40,12 +40,12 @@
     "clean": "rimraf dist",
     "build": "tshy && pnpm run update-version",
     "dev": "tshy --watch",
-    "typecheck": "tsc --noEmit -p tsconfig.src.json",
+    "typecheck": "tsrs --fast --noEmit -p tsconfig.src.json",
     "update-version": "tsx ../../scripts/updateVersion.ts",
     "check-exports": "attw --pack ."
   },
   "dependencies": {
-    "@trigger.dev/core": "workspace:4.8.7",
+    "@trigger.dev/core": "workspace:4.8.10",
     "tinyexec": "^0.3.2"
   },
   "devDependencies": {
@@ -55,12 +55,12 @@
     "typescript": "catalog:",
     "tsx": "4.17.0",
     "@arethetypeswrong/cli": "^0.18.5",
-    "@trigger.dev/build": "workspace:4.8.7",
-    "@trigger.dev/sdk": "workspace:4.8.7"
+    "@trigger.dev/build": "workspace:4.8.10",
+    "@trigger.dev/sdk": "workspace:4.8.10"
   },
   "peerDependencies": {
-    "@trigger.dev/sdk": "workspace:^4.8.7",
-    "@trigger.dev/build": "workspace:^4.8.7"
+    "@trigger.dev/sdk": "workspace:^4.8.10",
+    "@trigger.dev/build": "workspace:^4.8.10"
   },
   "engines": {
     "node": ">=18.20.0"

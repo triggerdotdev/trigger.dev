@@ -4,7 +4,7 @@ import type { LanguageModelV3StreamPart } from "@ai-sdk/provider";
 import type { UIMessage } from "ai";
 import { streamText } from "ai";
 import { MockLanguageModelV3 } from "ai/test";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { __setTranscriptStorageForTests, chat } from "../src/v3/ai.js";
 import {
   memoryTranscriptStorage,
@@ -292,4 +292,57 @@ describe("chat.agent turn-start transcript save", () => {
       await harness.close();
     }
   }, 30_000);
+  it("starts the output gate's wait at the first output write, not when run() starts", async () => {
+    // Catches: the turn-start marker's early wait on the gate starting the gate's
+    // 10 s budget when run() starts, so a save that outlasts that budget (12 s here,
+    // with run() taking 5 s to produce its stream) lets the answer out at 10 s
+    // instead of at the end of the wait that begins with the first write.
+    const chatId = "turn-start-gate-budget";
+    const slow = gate();
+    const slowStorage: TranscriptStorage<unknown> = {
+      async load(scope, opts) {
+        return storage.load(scope, opts);
+      },
+      async save(ctx, changeset) {
+        if (changeset.reason === "turn-start") await slow.promise;
+        return storage.save(ctx, changeset);
+      },
+    };
+    __setTranscriptStorageForTests(slowStorage);
+    const open = gate();
+    open.release();
+    const model = gatedModel([open], () => {});
+    const agent = chat.agent({
+      id: chatId,
+      run: async ({ messages, signal }) => {
+        await new Promise((resolve) => setTimeout(resolve, 5_000));
+        return streamText({ model, messages, abortSignal: signal });
+      },
+    });
+    const harness = mockChatAgent(agent, { chatId });
+    const answerRecords = () => harness.outRecords.filter((r) => r.chunk !== undefined).length;
+
+    try {
+      // Let the run boot on real timers, then drive the turn on a fake clock.
+      await new Promise((resolve) => setTimeout(resolve, 100));
+      vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "Date"] });
+      await harness.deliverInput(
+        {
+          kind: "message",
+          payload: { chatId, trigger: "submit-message", message: userMessage("hi", "u1") },
+        },
+        1
+      );
+      await vi.advanceTimersByTimeAsync(12_000);
+      // The save is still running 12 s in: nothing of the answer is out yet.
+      expect(answerRecords()).toBe(0);
+
+      slow.release();
+      await vi.advanceTimersByTimeAsync(200);
+      expect(answerRecords()).toBeGreaterThan(0);
+    } finally {
+      vi.useRealTimers();
+      await harness.close();
+    }
+  });
 });

@@ -9,6 +9,7 @@ import { logger } from "~/services/logger.server";
 import { resolveOrganizationForApiUser } from "~/services/organizationApiAccess.server";
 import { createActionPATApiRoute } from "~/services/routeBuilders/apiBuilder.server";
 import { scheduleEmail } from "~/services/scheduleEmail.server";
+import { canInviteWithRole, INVITE_ROLE_ABOVE_INVITER } from "~/services/inviteRole.server";
 import { ssoController } from "~/services/sso.server";
 import { acceptInvitePath } from "~/utils/pathBuilder";
 
@@ -33,7 +34,7 @@ export const action = createActionPATApiRoute(
     params: ParamsSchema,
     body: InviteRequestBody,
     // Resolve the org (id only, no membership) so the plugin can compute the
-    // caller's role floor for the manage:members gate below.
+    // caller's role floor for the write:members gate below.
     context: async ({ orgParam }) => {
       const org = await prisma.organization.findFirst({
         where: { OR: [{ id: orgParam }, { slug: orgParam }], deletedAt: null },
@@ -41,7 +42,7 @@ export const action = createActionPATApiRoute(
       });
       return org ? { organizationId: org.id } : {};
     },
-    authorization: { action: "manage", resource: () => ({ type: "members" }) },
+    authorization: { action: "write", resource: () => ({ type: "members" }) },
   },
   async ({ params, body, authentication }) => {
     // Membership floor: a non-member gets a 404.
@@ -59,6 +60,18 @@ export const action = createActionPATApiRoute(
     const policy = await ssoController.getMembershipPolicy(organization.id);
     if (policy.isOk() && !policy.value.manualMembershipAllowed) {
       return json({ error: "Membership is managed by Directory Sync" }, { status: 403 });
+    }
+
+    // API invites carry no role, so they join as Admin: refuse an inviter below that.
+    if (
+      !(await canInviteWithRole({
+        userId: authentication.userId,
+        organizationId: organization.id,
+        rbacRoleId: null,
+        legacyRole: "MEMBER",
+      }))
+    ) {
+      return json({ error: INVITE_ROLE_ABOVE_INVITER }, { status: 403 });
     }
 
     // Every invite emails the address, so cap per-org and per-inviter sends.

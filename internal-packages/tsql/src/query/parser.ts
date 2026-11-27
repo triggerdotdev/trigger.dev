@@ -1289,23 +1289,28 @@ export class TSQLParseTreeConverter implements TSQLParserVisitor<any> {
   }
 
   visitColumnExprAnd(ctx: ColumnExprAndContext): And {
-    const left = this.visitAsExpr(ctx.columnExpr(0));
-    const leftArray = "exprs" in left && left.exprs ? left.exprs : [left];
-
-    const right = this.visitAsExpr(ctx.columnExpr(1));
-    const rightArray = "exprs" in right && right.exprs ? right.exprs : [right];
-
-    return { expression_type: "and", exprs: [...leftArray, ...rightArray] };
+    return {
+      expression_type: "and",
+      exprs: [
+        ...this.flattenInto("and", this.visitAsExpr(ctx.columnExpr(0))),
+        ...this.flattenInto("and", this.visitAsExpr(ctx.columnExpr(1))),
+      ],
+    };
   }
 
   visitColumnExprOr(ctx: ColumnExprOrContext): Or {
-    const left = this.visitAsExpr(ctx.columnExpr(0));
-    const leftArray = "exprs" in left && left.exprs ? left.exprs : [left];
+    return {
+      expression_type: "or",
+      exprs: [
+        ...this.flattenInto("or", this.visitAsExpr(ctx.columnExpr(0))),
+        ...this.flattenInto("or", this.visitAsExpr(ctx.columnExpr(1))),
+      ],
+    };
+  }
 
-    const right = this.visitAsExpr(ctx.columnExpr(1));
-    const rightArray = "exprs" in right && right.exprs ? right.exprs : [right];
-
-    return { expression_type: "or", exprs: [...leftArray, ...rightArray] };
+  // Only merge a child of the same operator; a mixed child keeps its grouping
+  private flattenInto(type: "and" | "or", expr: Expression): Expression[] {
+    return expr.expression_type === type ? (expr as And | Or).exprs : [expr];
   }
 
   visitColumnExprTupleAccess(ctx: ColumnExprTupleAccessContext): TupleAccess {

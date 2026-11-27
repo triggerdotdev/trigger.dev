@@ -19,7 +19,12 @@ import { deliverAlertEvent, type DeliverAlertEventDeps } from "./deliverAlertEve
 import { DeliverAlertEventPayload } from "./deliverAlertEventPayload";
 import { env } from "~/env.server";
 import { logger } from "~/services/logger.server";
-import { SkipRetryError } from "../alertTransport.server";
+import { ErrorCode } from "@slack/web-api";
+import { deliverWebhookPayload, SkipRetryError, toSlackSendError } from "../alertTransport.server";
+import { enqueueAlertEventDelivery } from "./enqueueAlertEventDelivery.server";
+import { alertsWorker } from "~/v3/alertsWorker.server";
+import { encryptSecret } from "~/services/secrets/secretStore.server";
+import { resolveEncryptionKeyring } from "~/utils/encryptionKeyring.server";
 import type { NotifierRef } from "@internal/alert-contracts";
 
 let pg: Awaited<ReturnType<typeof startAlertsPostgres>>;
@@ -123,6 +128,8 @@ function makeDeps(overrides?: Partial<Omit<DeliverAlertEventDeps, "db">>): Deliv
     loadAlertContext: overrides?.loadAlertContext ?? vi.fn().mockResolvedValue(ALERT_CONTEXT),
     isOrganizationEnabled: overrides?.isOrganizationEnabled ?? vi.fn().mockResolvedValue(true),
     retryCap: overrides?.retryCap,
+    scheduleRetry: overrides?.scheduleRetry ?? vi.fn().mockResolvedValue(undefined),
+    random: overrides?.random,
   };
 }
 
@@ -184,10 +191,157 @@ describe("deliverAlertEvent", () => {
     expect(error).toBeInstanceOf(AggregateError);
     expect(error.errors).toHaveLength(1);
     expect(error.errors[0]).toEqual(expect.objectContaining({ message: "SMTP timeout" }));
+    expect(error.message).toBe("1 deliveries failed: EMAIL: Error");
 
     const pending = await listPendingDeliveriesForEvent(db, event.id, event.at);
     expect(pending).toHaveLength(1);
     expect(pending[0]!.status).toBe("pending");
+  });
+
+  it("reports a failure by class name and safe code only, never its message", async () => {
+    const nullPrototype = Object.create(null);
+    const throwingCode = Object.defineProperty(new TypeError("x"), "code", {
+      get() {
+        throw new Error("boom");
+      },
+    });
+    const cases: [unknown, string][] = [
+      [new Error("550 5.1.1 <o'brien@customer.example>: rejected"), "Error"],
+      [Object.assign(new Error("x"), { reason: "customer_identifier" }), "Error"],
+      [Object.assign(new TypeError("x"), { code: "P2024" }), "TypeError P2024"],
+      [Object.assign(new TypeError("x"), { code: "abc123" }), "TypeError"],
+      [Object.assign(new TypeError("x"), { code: "internalhost" }), "TypeError"],
+      [throwingCode, "unknown"],
+      [
+        Object.assign(new TypeError("fetch failed"), { code: "ECONNREFUSED" }),
+        "TypeError ECONNREFUSED",
+      ],
+      [new TypeError("fetch failed", { cause: { code: "ETIMEDOUT" } }), "TypeError ETIMEDOUT"],
+      [Object.assign(new TypeError("fetch failed"), { code: "not a code" }), "TypeError"],
+      [Object.assign(new TypeError("fetch failed"), { code: "jane@corp.example" }), "TypeError"],
+      [Object.assign(new TypeError("fetch failed"), { code: "E".repeat(200) }), "TypeError"],
+      ["rejected jane@corp.example", "unknown"],
+      [undefined, "unknown"],
+      [{ message: 42 }, "unknown"],
+      [nullPrototype, "unknown"],
+    ];
+
+    for (const [thrown, reason] of cases) {
+      await resetAlerts();
+      const { event } = await seedAlertWithLease({
+        notifiers: [
+          { type: "channel", channelId: "chan_email" },
+          { type: "channel", channelId: "chan_email_2" },
+        ],
+      });
+      const findChannel = vi
+        .fn()
+        .mockImplementation(async ({ id }: { id: string }) => mockChannel(id, "EMAIL"));
+      const sendEmail = vi.fn().mockRejectedValueOnce(thrown).mockResolvedValue(undefined);
+
+      const error = (await deliverAlertEvent(
+        event.id,
+        event.at,
+        makeDeps({ findChannel, sendEmail })
+      ).catch((e) => e)) as AggregateError;
+
+      expect(error.message).toBe(`1 deliveries failed: EMAIL: ${reason}`);
+      expect(error.errors[0]).toBe(thrown);
+      expect(sendEmail).toHaveBeenCalledTimes(2);
+    }
+  });
+
+  it("reports a retryable webhook HTTP failure by status, without the host", async () => {
+    const keyring = resolveEncryptionKeyring(undefined, "0123456789abcdef0123456789abcdef");
+    const { event } = await seedAlertWithLease({
+      notifiers: [{ type: "channel", channelId: "chan_webhook" }],
+    });
+    const findChannel = vi.fn().mockResolvedValue({
+      ...mockChannel("chan_webhook", "WEBHOOK"),
+      properties: {
+        url: "https://hooks.customer.example/alerts",
+        secret: await encryptSecret(keyring, "whsec_test"),
+      },
+    });
+    const deliverWebhook: DeliverAlertEventDeps["deliverWebhook"] = (params) =>
+      deliverWebhookPayload({
+        ...params,
+        encryptionKey: keyring,
+        fetchWebhook: vi.fn().mockResolvedValue(new Response(null, { status: 500 })),
+      });
+
+    const error = (await deliverAlertEvent(
+      event.id,
+      event.at,
+      makeDeps({ findChannel, deliverWebhook })
+    ).catch((e) => e)) as AggregateError;
+
+    expect(error.message).toBe("1 deliveries failed: WEBHOOK: http_500");
+    expect(error.errors[0].message).toBe("Failed to send alert webhook to hooks.customer.example");
+  });
+
+  it("reports a retryable Slack failure by its code or label", async () => {
+    const slackError = (code: ErrorCode, extra: Record<string, unknown> = {}) =>
+      Object.assign(new Error("An API error occurred"), { code, ...extra });
+    const cases: [unknown, string][] = [
+      [
+        slackError(ErrorCode.PlatformError, { data: { ok: false, error: "ratelimited" } }),
+        "ratelimited",
+      ],
+      [slackError(ErrorCode.RateLimitedError, { retryAfter: 30 }), "rate_limited"],
+      [slackError(ErrorCode.HTTPError, { statusCode: 503 }), "http_error"],
+      [slackError(ErrorCode.RequestError), "request_error"],
+    ];
+
+    for (const [sdkError, reason] of cases) {
+      await resetAlerts();
+      const { event } = await seedAlertWithLease({
+        notifiers: [{ type: "channel", channelId: "chan_slack" }],
+      });
+
+      const error = (await deliverAlertEvent(
+        event.id,
+        event.at,
+        makeDeps({
+          findChannel: vi.fn().mockResolvedValue(mockChannel("chan_slack", "SLACK")),
+          findSlackIntegration: vi.fn().mockResolvedValue({ id: "int_1" } as any),
+          sendSlackMessage: async () => {
+            throw toSlackSendError(sdkError);
+          },
+        })
+      ).catch((e) => e)) as AggregateError;
+
+      expect(error.message).toBe(`1 deliveries failed: SLACK: ${reason}`);
+    }
+  });
+
+  it("enqueues the delivery job with the given availableAt", async () => {
+    const eventAt = new Date("2026-01-01T00:00:00Z");
+    const availableAt = new Date("2026-01-01T00:01:00Z");
+    const enqueue = vi.mocked(alertsWorker.enqueue);
+    enqueue.mockClear();
+
+    await enqueueAlertEventDelivery({ eventId: "evt_1", eventAt, availableAt });
+    await enqueueAlertEventDelivery({ eventId: "evt_2", eventAt });
+
+    expect(enqueue.mock.calls).toEqual([
+      [
+        {
+          id: "alert-event:evt_1",
+          job: "v3.deliverAlertEvent",
+          payload: { eventId: "evt_1", eventAt },
+          availableAt,
+        },
+      ],
+      [
+        {
+          id: "alert-event:evt_2",
+          job: "v3.deliverAlertEvent",
+          payload: { eventId: "evt_2", eventAt },
+          availableAt: undefined,
+        },
+      ],
+    ]);
   });
 
   it("a retryable failure on one notifier does not stop delivery to the others", async () => {
@@ -331,25 +485,211 @@ describe("deliverAlertEvent", () => {
     });
   });
 
-  it("rate-limited delivery is released for a retry, not failed", async () => {
-    const { event } = await seedAlertWithLease({
+  async function deliverRateLimited(opts: {
+    eventId: string;
+    eventAt: Date;
+    retryAfter: number;
+    random?: () => number;
+    retryCap?: DeliverAlertEventDeps["retryCap"];
+  }) {
+    const scheduleRetry = vi.fn().mockResolvedValue(undefined);
+    const sendEmail = vi.fn().mockResolvedValue(undefined);
+    const before = Date.now();
+    await deliverAlertEvent(
+      opts.eventId,
+      opts.eventAt,
+      makeDeps({
+        findChannel: vi.fn().mockResolvedValue(mockChannel("chan_email", "EMAIL")),
+        sendEmail,
+        checkRateLimit: vi.fn().mockResolvedValue({ allowed: false, retryAfter: opts.retryAfter }),
+        scheduleRetry,
+        random: opts.random,
+        retryCap: opts.retryCap,
+      })
+    );
+    const delays = scheduleRetry.mock.calls.map(([at]: [Date]) => ({
+      min: at.getTime() - Date.now(),
+      max: at.getTime() - before,
+    }));
+    return { scheduleRetry, sendEmail, delays };
+  }
+
+  it("a rate-limited delivery is rescheduled after retryAfter, not failed", async () => {
+    const { event, deliveries } = await seedAlertWithLease({
       notifiers: [{ type: "channel", channelId: "chan_email" }],
     });
 
-    const findChannel = vi.fn().mockResolvedValue(mockChannel("chan_email", "EMAIL"));
-    const sendEmail = vi.fn().mockResolvedValue(undefined);
-    const checkRateLimit = vi.fn().mockResolvedValue({ allowed: false });
-    const error = await deliverAlertEvent(
+    const { scheduleRetry, sendEmail, delays } = await deliverRateLimited({
+      eventId: event.id,
+      eventAt: event.at,
+      retryAfter: 20_000,
+      random: () => 0.999,
+    });
+
+    expect(sendEmail).not.toHaveBeenCalled();
+    expect(scheduleRetry).toHaveBeenCalledTimes(1);
+    expect(delays[0]!.max).toBeGreaterThanOrEqual(20_000 + 4995);
+    expect(delays[0]!.min).toBeLessThan(25_000);
+    const [row] = await rawSql<{ status: string; attempts: number }[]>`
+      SELECT status, attempts FROM "AlertDelivery" WHERE id = ${deliveries[0]!.id}`;
+    expect(row).toEqual({ status: "pending", attempts: 0 });
+  });
+
+  it("throws only real errors and does not reschedule when a delivery also failed", async () => {
+    const { event } = await seedAlertWithLease({
+      notifiers: [
+        { type: "channel", channelId: "chan_email" },
+        { type: "channel", channelId: "chan_slack" },
+        { type: "channel", channelId: "chan_webhook" },
+      ],
+    });
+
+    const findChannel = vi.fn().mockImplementation(async ({ id }: { id: string }) => {
+      if (id === "chan_email") return mockChannel("chan_email", "EMAIL");
+      if (id === "chan_slack") return mockChannel("chan_slack", "SLACK");
+      return mockChannel("chan_webhook", "WEBHOOK");
+    });
+    const checkRateLimit = vi
+      .fn()
+      .mockImplementation(async (channelId: string) =>
+        channelId === "chan_webhook" ? { allowed: false, retryAfter: 5000 } : { allowed: true }
+      );
+    const sendSlackMessage = vi.fn().mockRejectedValue(new Error("slack timeout"));
+    const findSlackIntegration = vi.fn().mockResolvedValue({ id: "int_1" } as any);
+    const scheduleRetry = vi.fn().mockResolvedValue(undefined);
+
+    const error = (await deliverAlertEvent(
       event.id,
       event.at,
-      makeDeps({ findChannel, sendEmail, checkRateLimit })
-    ).catch((e) => e);
+      makeDeps({
+        findChannel,
+        checkRateLimit,
+        sendSlackMessage,
+        findSlackIntegration,
+        scheduleRetry,
+      })
+    ).catch((e) => e)) as AggregateError;
 
     expect(error).toBeInstanceOf(AggregateError);
-    expect(sendEmail).not.toHaveBeenCalled();
-    const pending = await listPendingDeliveriesForEvent(db, event.id, event.at);
-    expect(pending).toHaveLength(1);
-    expect(pending[0]!.status).toBe("pending");
+    expect(error.errors).toHaveLength(1);
+    expect(error.message).toBe("1 deliveries failed: SLACK: Error");
+    expect(scheduleRetry).not.toHaveBeenCalled();
+    const statuses = Object.fromEntries(
+      (await deliveriesForEvent(event.id)).map((d) => [d.notifierId, d.status])
+    );
+    expect(statuses).toEqual({
+      "channel:chan_email": "delivered",
+      "channel:chan_slack": "pending",
+      "channel:chan_webhook": "pending",
+    });
+  });
+
+  it("grows the rate-limit delay with the wait, with a 1 s floor", async () => {
+    const hour = 60 * 60_000;
+    const retryCap = { maxAttempts: 10, maxAgeMs: 24 * hour };
+    const cases: { retryAfter: number; waitedMs: number; expected: number; slack?: number }[] = [
+      { retryAfter: 0, waitedMs: 0, expected: 1000 },
+      { retryAfter: 10 * 60_000, waitedMs: 0, expected: 600_000 },
+      { retryAfter: Number.NaN, waitedMs: 0, expected: 1000 },
+      { retryAfter: 2000, waitedMs: 2 * 60_000, expected: 30_000 },
+      { retryAfter: 2000, waitedMs: 60 * 60_000, expected: 900_000 },
+      { retryAfter: 2000, waitedMs: 20 * hour, expected: 4 * hour - 60_000, slack: 1000 },
+      { retryAfter: 2000, waitedMs: 24 * hour - 30_000, expected: (24 * hour - 30_000) / 4 },
+      { retryAfter: 5 * hour, waitedMs: 20 * hour, expected: 5 * hour },
+    ];
+
+    for (const { retryAfter, waitedMs, expected, slack = 0 } of cases) {
+      await resetAlerts();
+      const { event, deliveries } = await seedAlertWithLease({
+        notifiers: [{ type: "channel", channelId: "chan_email" }],
+      });
+      if (waitedMs > 0) {
+        await rawSql`UPDATE "AlertDelivery" SET "firstAttemptAt" = ${new Date(Date.now() - waitedMs)}
+          WHERE id = ${deliveries[0]!.id}`;
+      }
+
+      const { delays } = await deliverRateLimited({
+        eventId: event.id,
+        eventAt: event.at,
+        retryAfter,
+        random: () => 0,
+        retryCap,
+      });
+
+      expect(delays[0]!.max, `retryAfter ${retryAfter}, waited ${waitedMs}`).toBeGreaterThanOrEqual(
+        expected - slack
+      );
+      expect(delays[0]!.min, `retryAfter ${retryAfter}, waited ${waitedMs}`).toBeLessThan(
+        expected + 1000
+      );
+    }
+  });
+
+  it("schedules a shared retry ahead of the earliest delivery deadline", async () => {
+    const maxAgeMs = 24 * 60 * 60_000;
+    const { event, deliveries } = await seedAlertWithLease({
+      notifiers: [
+        { type: "channel", channelId: "chan_email" },
+        { type: "channel", channelId: "chan_email_2" },
+      ],
+    });
+    const earlierStart = new Date(Date.now() - maxAgeMs + 10 * 60_000);
+    const laterStart = new Date(earlierStart.getTime() + 2 * 60_000);
+    await rawSql`UPDATE "AlertDelivery" SET "firstAttemptAt" = ${earlierStart}
+      WHERE id = ${deliveries[0]!.id}`;
+    await rawSql`UPDATE "AlertDelivery" SET "firstAttemptAt" = ${laterStart}
+      WHERE id = ${deliveries[1]!.id}`;
+
+    const { scheduleRetry } = await deliverRateLimited({
+      eventId: event.id,
+      eventAt: event.at,
+      retryAfter: 2000,
+      random: () => 0,
+      retryCap: { maxAttempts: 10, maxAgeMs },
+    });
+
+    const [stored] = await rawSql<{ first_attempt_at: Date }[]>`
+      SELECT "firstAttemptAt" AS first_attempt_at FROM "AlertDelivery"
+      WHERE id = ${deliveries[0]!.id}`;
+    const latest = stored!.first_attempt_at.getTime() + maxAgeMs - 60_000;
+    expect(scheduleRetry).toHaveBeenCalledTimes(1);
+    const at = (scheduleRetry.mock.calls[0]![0] as Date).getTime();
+    expect(at).toBeLessThan(latest + 1000);
+    expect(at).toBeGreaterThan(latest - 1000);
+  });
+
+  it("keeps firstAttemptAt across rate-limited releases so an old delivery ends exhausted", async () => {
+    const { event, deliveries } = await seedAlertWithLease({
+      notifiers: [{ type: "channel", channelId: "chan_email" }],
+    });
+    const retryCap = { maxAttempts: 10, maxAgeMs: 24 * 60 * 60_000 };
+    const firstAttemptAt = async () => {
+      const [row] = await rawSql<{ first_attempt_at: Date | null }[]>`
+        SELECT "firstAttemptAt" AS first_attempt_at FROM "AlertDelivery"
+        WHERE id = ${deliveries[0]!.id}`;
+      return row!.first_attempt_at;
+    };
+
+    await deliverRateLimited({ eventId: event.id, eventAt: event.at, retryAfter: 0, retryCap });
+    const first = await firstAttemptAt();
+    expect(first).not.toBeNull();
+    await deliverRateLimited({ eventId: event.id, eventAt: event.at, retryAfter: 0, retryCap });
+    expect(await firstAttemptAt()).toEqual(first);
+
+    await rawSql`UPDATE "AlertDelivery" SET "firstAttemptAt" = NOW() - INTERVAL '25 hours'
+      WHERE id = ${deliveries[0]!.id}`;
+    const { scheduleRetry } = await deliverRateLimited({
+      eventId: event.id,
+      eventAt: event.at,
+      retryAfter: 0,
+      retryCap,
+    });
+
+    expect(scheduleRetry).not.toHaveBeenCalled();
+    const [row] = await rawSql<{ status: string; failure_reason: string }[]>`
+      SELECT status, "failureReason" AS failure_reason FROM "AlertDelivery"
+      WHERE id = ${deliveries[0]!.id}`;
+    expect(row).toEqual({ status: "failed", failure_reason: "retries_exhausted" });
   });
 
   it("second run for same event delivers nothing new (dedup)", async () => {

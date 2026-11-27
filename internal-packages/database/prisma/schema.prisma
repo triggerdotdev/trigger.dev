@@ -68,6 +68,11 @@ model User {
   /// piggybacks on the User fetch that requireUser already does.
   nextSessionEnd DateTime?
 
+  /// Sessions issued before this are ended, except the one that set it.
+  sessionsValidAfter DateTime?
+  /// Issue times of sessions that were signed out.
+  revokedSessions    DateTime[] @default([])
+
   invitationCode       InvitationCode?       @relation(fields: [invitationCodeId], references: [id])
   invitationCodeId     String?
   personalAccessTokens PersonalAccessToken[]
@@ -441,6 +446,8 @@ model RuntimeEnvironment {
   apiKey             String    @unique
   /// Non-null prevents the root API key from being returned to users.
   rootApiKeyHiddenAt DateTime?
+  /// Non-null disables automatic root key injection into new deployed attempts.
+  rootKeyInjectionDisabledAt DateTime?
 
   /// @deprecated was for v2
   pkApiKey String @unique
@@ -495,6 +502,13 @@ model RuntimeEnvironment {
 
   /// Allows us to customize the built-in environment variables for a specific environment, like TRIGGER_OTEL_SPAN_ATTRIBUTE_VALUE_LENGTH_LIMIT
   builtInEnvironmentVariableOverrides Json?
+
+  /// The skew protection thresholds: { environment?: T, tasks?: { <task id>: T } } with
+  /// T = { version, setAt, setBy? }. Null when none is set. A session on a version before its
+  /// threshold (the higher of the environment's and its task's) moves to the current deployment
+  /// the next time it's used. Read on every session append, through the authenticated environment.
+  skewProtectionThresholds Json?
+  skewProtectionThresholdChanges SkewProtectionThresholdChange[]
 
   tunnelId String?
 
@@ -635,6 +649,9 @@ model Project {
 
   defaultWorkerGroup   WorkerInstanceGroup? @relation("ProjectDefaultWorkerGroup", fields: [defaultWorkerGroupId], references: [id])
   defaultWorkerGroupId String?
+
+  /// Newly triggered deployed runs require the secret proxy (pinned in their annotations).
+  secretProxyEnabled Boolean @default(false)
 
   /// The master queues they are allowed to use (impacts what they can set as default and trigger runs with)
   allowedWorkerQueues String[] @default([]) @map("allowedMasterQueues")
@@ -1312,6 +1329,8 @@ model Session {
   @@unique([runtimeEnvironmentId, externalId])
   @@index([expiresAt])
   @@index([currentRunId])
+  /// Answers "has this task had a session in this environment" for the task sidebar.
+  @@index([runtimeEnvironmentId, taskIdentifier])
 }
 
 /// Historical record of every run a Session has owned. Append-only —
@@ -1330,6 +1349,9 @@ model SessionRun {
   /// Plain string for forward-compat with future trigger reasons.
   reason      String
   triggeredAt DateTime @default(now())
+  /// Set when this run continues a reply the previous run handed over mid-turn:
+  /// `{ afterSteps, messageId?, thresholdVersion? }`.
+  handover    Json?
 
   session Session @relation(fields: [sessionId], references: [id], onDelete: Cascade)
 
@@ -1987,8 +2009,10 @@ model WorkerInstanceGroup {
   description String?
   hidden      Boolean @default(false)
 
-  token   WorkerGroupToken @relation(fields: [tokenId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  token   WorkerGroupToken @relation("WorkerGroupPrimaryToken", fields: [tokenId], references: [id], onDelete: Cascade, onUpdate: Cascade)
   tokenId String           @unique
+
+  childTokens WorkerGroupToken[] @relation("WorkerGroupChildTokens")
 
   workers           WorkerInstance[]
   backgroundWorkers BackgroundWorker[]
@@ -2030,7 +2054,12 @@ model WorkerGroupToken {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  workerGroup WorkerInstanceGroup?
+  workerGroup WorkerInstanceGroup? @relation("WorkerGroupPrimaryToken")
+
+  childOf       WorkerInstanceGroup? @relation("WorkerGroupChildTokens", fields: [workerGroupId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  workerGroupId String?
+
+  @@index([workerGroupId])
 }
 
 model TaskRunTag {
@@ -2736,6 +2765,7 @@ model WorkerDeployment {
   updatedAt DateTime @updatedAt
 
   promotions             WorkerDeploymentPromotion[]
+  machines               WorkerDeploymentMachine[]
   alerts                 ProjectAlert[]
   workerInstance         WorkerInstance[]
   integrationDeployments IntegrationDeployment[]
@@ -2761,6 +2791,26 @@ enum WorkerDeploymentStatus {
   CANCELED
   /// This is the status when the image is built and indexing does not finish in time
   TIMED_OUT
+}
+
+/// The image of a machine from defineMachine() that a deployment built, and its microVM template
+model WorkerDeploymentMachine {
+  id String @id @default(cuid())
+
+  deployment   WorkerDeployment @relation(fields: [deploymentId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  deploymentId String
+
+  /// The id given to defineMachine(), e.g. "coding-box"
+  machineId      String
+  /// Pinned by digest
+  imageReference String
+  /// Key of the microVM template prebuilt from this image, set when the builder succeeds
+  templateKey    String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([deploymentId, machineId])
 }
 
 model WorkerDeploymentPromotion {
@@ -2873,6 +2923,34 @@ model TaskScheduleInstance {
   @@unique([taskScheduleId, environmentId])
   @@index([environmentId])
   @@index([projectId, active])
+}
+
+/// One row per change to a skew protection threshold (the environment's, or one task's): set,
+/// moved or cleared. Written in the same transaction as the change. Read by the Deployments
+/// History popover.
+model SkewProtectionThresholdChange {
+  id String @id @default(cuid())
+
+  environment   RuntimeEnvironment @relation(fields: [environmentId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  environmentId String
+
+  /// The task whose threshold changed. Null for the environment's threshold.
+  taskIdentifier String?
+
+  /// "set" | "cleared" | "cleared-by-rollback"
+  kind           String
+  /// The threshold version the row is about (for a clear, the version that was cleared).
+  version        String
+  /// The current deployment's version when the change was made.
+  currentVersion String?
+  /// "dashboard" | "api" | "rollback" | "migrated"
+  source         String
+  userId         String?
+  apiKeyName     String?
+
+  createdAt DateTime @default(now())
+
+  @@index([environmentId, createdAt(sort: Desc)])
 }
 
 model RuntimeEnvironmentSession {
@@ -3156,6 +3234,9 @@ model BulkActionItem {
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+
+  /// A bulk action's items in the order they were recorded (its failed runs, a page at a time)
+  @@index([groupId, createdAt])
 }
 
 enum BulkActionItemStatus {

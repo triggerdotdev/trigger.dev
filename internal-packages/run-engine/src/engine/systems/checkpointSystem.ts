@@ -1,7 +1,7 @@
 import type {
   CheckpointInput,
+  ContinueRunExecutionResult,
   CreateCheckpointResult,
-  ExecutionResult,
 } from "@trigger.dev/core/v3";
 import { validateCheckpointLocation } from "@trigger.dev/core/v3";
 import { encodeCheckpointMetadata } from "../checkpointMetadata.js";
@@ -12,11 +12,12 @@ import { isCheckpointable, isPendingExecuting } from "../statuses.js";
 import type { ExecutionSnapshotSystem } from "./executionSnapshotSystem.js";
 import {
   getLatestExecutionSnapshot,
+  executionDataFromSnapshot,
   executionResultFromSnapshot,
 } from "./executionSnapshotSystem.js";
 import type { SystemResources } from "./systems.js";
 import { snapshotRouteFromSnapshot } from "@internal/run-store";
-import { ServiceValidationError } from "../errors.js";
+import { LatestExecutionSnapshotNotFoundError, ServiceValidationError } from "../errors.js";
 import type { EnqueueSystem } from "./enqueueSystem.js";
 import { cycleAnchorSnapshotId } from "./waitpointSystem.js";
 
@@ -28,6 +29,7 @@ export type CheckpointSystemOptions = {
   executionSnapshotSystem: ExecutionSnapshotSystem;
   enqueueSystem: EnqueueSystem;
   waitpointStoreEnabled?: (organizationId: string) => boolean | Promise<boolean>;
+  checkpointStoreEnabled?: (organizationId: string) => boolean | Promise<boolean>;
 };
 
 export class CheckpointSystem {
@@ -51,6 +53,7 @@ export class CheckpointSystem {
     checkpoint,
     workerId,
     runnerId,
+    environmentId,
     tx,
   }: {
     runId: string;
@@ -58,12 +61,16 @@ export class CheckpointSystem {
     checkpoint: CheckpointInput;
     workerId?: string;
     runnerId?: string;
+    environmentId?: string;
     tx?: PrismaClientOrTransaction;
   }): Promise<CreateCheckpointResult> {
     const prisma = tx ?? this.$.prisma;
 
     return await this.$.runLock.lock("createCheckpoint", [runId], async () => {
       const snapshot = await getLatestExecutionSnapshot(prisma, runId, this.$.runStore);
+      if (environmentId !== undefined && snapshot.environmentId !== environmentId) {
+        throw new LatestExecutionSnapshotNotFoundError(runId);
+      }
 
       const isValidSnapshot =
         // Case 1: The provided snapshotId matches the current snapshot
@@ -163,6 +170,12 @@ export class CheckpointSystem {
         };
       }
 
+      // The checkpoint flag's own lookup, only for a MemoryDB-only run, after the discard checks.
+      const snapshotRoute = snapshotRouteFromSnapshot(snapshot);
+      const stateHeld =
+        snapshotRoute.residency === "redis-primary" &&
+        (await this.options.checkpointStoreEnabled?.(snapshot.organizationId)) === true;
+
       // Get the run (run-ops scalars only) and update the status; the control-plane env is
       // resolved separately so the run-ops DB can split without a cross-provider join.
       const run = await this.$.runStore.suspendForCheckpoint(
@@ -220,22 +233,19 @@ export class CheckpointSystem {
       // Create the checkpoint through the run-ops store (routed by owning run id). When a caller
       // supplied a tx distinct from the base client, pass it through so the write stays atomic with
       // that transaction; otherwise the store resolves it on its own client (passthrough in single-DB).
-      const taskRunCheckpoint = await this.$.runStore.createTaskRunCheckpoint(
-        {
-          data: {
-            ...CheckpointId.generate(),
-            type: checkpoint.type,
-            location: checkpoint.location,
-            imageRef: checkpoint.imageRef,
-            reason: checkpoint.reason,
-            metadata: encodeCheckpointMetadata(checkpoint.digest),
-            runtimeEnvironmentId: env.id,
-            projectId: env.projectId,
-          },
-        },
-        run.id,
-        tx ? prisma : undefined
-      );
+      const data = {
+        ...CheckpointId.generate(),
+        type: checkpoint.type,
+        location: checkpoint.location,
+        imageRef: checkpoint.imageRef,
+        reason: checkpoint.reason,
+        metadata: encodeCheckpointMetadata(checkpoint.digest),
+        runtimeEnvironmentId: env.id,
+        projectId: env.projectId,
+      };
+      const taskRunCheckpoint = stateHeld
+        ? await this.$.runStore.createStateHeldCheckpoint(data, run.id, snapshotRoute)
+        : await this.$.runStore.createTaskRunCheckpoint({ data }, run.id, tx ? prisma : undefined);
 
       if (snapshot.executionStatus === "QUEUED_EXECUTING") {
         // Enqueue the run again
@@ -250,13 +260,14 @@ export class CheckpointSystem {
           },
           previousSnapshotId: snapshot.id,
           previousSnapshot: snapshot,
-          snapshotRoute: snapshotRouteFromSnapshot(snapshot),
+          snapshotRoute,
           batchId: snapshot.batchId ?? undefined,
           completedWaitpoints: snapshot.completedWaitpoints.map((waitpoint) => ({
             id: waitpoint.id,
             index: waitpoint.index,
           })),
           checkpoint: taskRunCheckpoint,
+          checkpointStore: stateHeld ? "state" : undefined,
         });
 
         this.$.logger.debug("Releasing concurrency for run because it was checkpointed", {
@@ -302,7 +313,7 @@ export class CheckpointSystem {
           },
           previousSnapshotId: snapshot.id,
           previousSnapshot: snapshot,
-          snapshotRoute: snapshotRouteFromSnapshot(snapshot),
+          snapshotRoute,
           batchId: snapshot.batchId ?? undefined,
           completedWaitpoints: snapshot.completedWaitpoints.map((waitpoint) => ({
             id: waitpoint.id,
@@ -313,6 +324,7 @@ export class CheckpointSystem {
           projectId: snapshot.projectId,
           organizationId: snapshot.organizationId,
           checkpointId: taskRunCheckpoint.id,
+          checkpointStore: stateHeld ? "state" : undefined,
           workerId,
           runnerId,
         });
@@ -355,7 +367,7 @@ export class CheckpointSystem {
     runnerId?: string;
     environmentId?: string;
     tx?: PrismaClientOrTransaction;
-  }): Promise<ExecutionResult> {
+  }): Promise<ContinueRunExecutionResult> {
     const prisma = tx ?? this.$.prisma;
 
     return await this.$.runLock.lock("continueRunExecution", [runId], async () => {
@@ -389,7 +401,10 @@ export class CheckpointSystem {
           await this.executionSnapshotSystem.enqueueHeartbeatIfNeeded(snapshot);
           await sendNotificationToWorker({ runId, snapshot, eventBus: this.$.eventBus });
 
-          return executionResultFromSnapshot(snapshot);
+          return {
+            ...executionResultFromSnapshot(snapshot),
+            executionData: executionDataFromSnapshot(snapshot),
+          } satisfies ContinueRunExecutionResult;
         }
 
         throw new ServiceValidationError(
@@ -488,7 +503,14 @@ export class CheckpointSystem {
 
       return {
         ...executionResultFromSnapshot(newSnapshot),
-      } satisfies ExecutionResult;
+        // What `snapshots/since` would return for the new snapshot, read from the primary, so the
+        // runner can resume without fetching it. It carries the waitpoints it was created with.
+        executionData: executionDataFromSnapshot({
+          ...newSnapshot,
+          checkpoint: null,
+          completedWaitpoints: snapshot.completedWaitpoints,
+        }),
+      } satisfies ContinueRunExecutionResult;
     });
   }
 }

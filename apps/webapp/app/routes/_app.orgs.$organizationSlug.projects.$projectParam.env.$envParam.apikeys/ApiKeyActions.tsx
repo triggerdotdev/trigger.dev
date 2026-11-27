@@ -1,19 +1,11 @@
 import { NoSymbolIcon } from "@heroicons/react/20/solid";
 import { DialogClose } from "@radix-ui/react-dialog";
 import { Form } from "@remix-run/react";
-import { useState } from "react";
-import { InlineCode } from "~/components/code/InlineCode";
 import { Button } from "~/components/primitives/Buttons";
-import { Callout } from "~/components/primitives/Callout";
 import { Dialog, DialogContent, DialogHeader, DialogTrigger } from "~/components/primitives/Dialog";
 import { FormButtons } from "~/components/primitives/FormButtons";
-import { Input } from "~/components/primitives/Input";
-import { InputGroup } from "~/components/primitives/InputGroup";
 import { Paragraph } from "~/components/primitives/Paragraph";
-import {
-  DISABLE_ROOT_API_KEY_VISIBILITY_CONFIRMATION,
-  type StoredApiKeyAccess,
-} from "~/utils/apiKeyAccess";
+import { type StoredApiKeyAccess } from "~/utils/apiKeyAccess";
 import { type ApiKeyUsageView } from "~/utils/apiKeyUsage";
 import { type EditableApiKey } from "./EditApiKeyAccessDialog";
 
@@ -44,91 +36,6 @@ export function editableApiKey(apiKey: ApiKeyRow, usage?: ApiKeyUsageView | null
     matchesPreset: apiKey.access.matchesPreset,
     usage,
   };
-}
-
-/** Without an `appearance`, renders as a small secondary button (the migration steps). */
-export function DisableRootApiKeyButton({
-  canWrite,
-  appearance,
-}: {
-  canWrite: boolean;
-  appearance?: ActionAppearance;
-}) {
-  const [confirmation, setConfirmation] = useState("");
-
-  return (
-    <Dialog>
-      <DialogTrigger asChild>
-        <Button
-          {...(appearance
-            ? actionButtonProps(appearance)
-            : { variant: "secondary/small" as const })}
-          LeadingIcon={NoSymbolIcon}
-          leadingIconClassName={appearance ? "text-error" : undefined}
-          disabled={!canWrite}
-          tooltip={
-            canWrite ? undefined : "You don't have permission to disable root API key visibility"
-          }
-        >
-          Stop using the root key…
-        </Button>
-      </DialogTrigger>
-      <DialogContent className="max-w-md">
-        <DialogHeader>Stop using the root API key</DialogHeader>
-        <Form method="post" className="flex flex-col gap-4 pt-3">
-          <input type="hidden" name="action" value="disable-root" />
-          <Callout variant="warning">
-            The current root key will stop working in 24 hours. Anything still using it will fail to
-            authenticate after that.
-          </Callout>
-          <div className="space-y-2">
-            <Paragraph variant="small">
-              Before continuing, set <InlineCode variant="small">TRIGGER_SECRET_KEY</InlineCode> to
-              an API key in every app that triggers your tasks. Existing API keys are not affected.
-            </Paragraph>
-            <Paragraph variant="small">
-              This generates a new hidden root key and permanently disables full root key
-              visibility. This can't be reversed.
-            </Paragraph>
-          </div>
-          <InputGroup className="max-w-full">
-            <Paragraph variant="small/bright">
-              Enter{" "}
-              <InlineCode variant="small">
-                {DISABLE_ROOT_API_KEY_VISIBILITY_CONFIRMATION}
-              </InlineCode>{" "}
-              to confirm:
-            </Paragraph>
-            <Input
-              name="confirmation"
-              type="text"
-              placeholder={DISABLE_ROOT_API_KEY_VISIBILITY_CONFIRMATION}
-              autoComplete="off"
-              fullWidth
-              value={confirmation}
-              onChange={(event) => setConfirmation(event.target.value)}
-            />
-          </InputGroup>
-          <FormButtons
-            confirmButton={
-              <Button
-                type="submit"
-                variant="danger/medium"
-                disabled={confirmation !== DISABLE_ROOT_API_KEY_VISIBILITY_CONFIRMATION}
-              >
-                Hide root key and start 24-hour expiry
-              </Button>
-            }
-            cancelButton={
-              <DialogClose asChild>
-                <Button variant="secondary/medium">Cancel</Button>
-              </DialogClose>
-            }
-          />
-        </Form>
-      </DialogContent>
-    </Dialog>
-  );
 }
 
 export type ActionAppearance = "menu" | "button";

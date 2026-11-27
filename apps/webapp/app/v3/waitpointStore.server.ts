@@ -10,6 +10,7 @@ export const waitpointStoreConnection = singleton("WaitpointStoreConnection", ()
   return endpoint
     ? createWaitpointStoreConnection(endpoint, {
         meter,
+        completedTtlMs: env.RUN_ENGINE_WAITPOINT_STORE_COMPLETED_TTL_MS,
         onError: (error) => logger.error("Waitpoint connection error", { error }),
       })
     : undefined;

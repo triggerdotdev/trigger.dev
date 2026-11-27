@@ -21,7 +21,7 @@ We deploy your tasks and scale them up and down when they are triggered. So any 
 </Step>
 
 <Step title="Add your environment variables">
-  You can add values for your local dev environment, staging and prod. ![Environment variables
+  Choose the environments the variables apply to (Development, Staging, Production or Preview), then add each key and value. Use **Add another** for more rows. ![Environment variables
   page](/images/environment-variables-panel.jpg)
 </Step>
 
@@ -34,12 +34,16 @@ We deploy your tasks and scale them up and down when they are triggered. So any 
 
 ### Secret environment variables
 
-When creating an environment variable, you can mark it as a **Secret**. Secret values are hidden in the dashboard and cannot be viewed after creation.
+When creating an environment variable, you can mark it as a **Secret**. Secret values are hidden in the dashboard and cannot be viewed after creation. In the **New environment variable** dialog, **Secret value** is on by default: turn it off to create a variable whose value stays viewable.
 
 <Warning>
   Marking a variable as a Secret is irreversible and can only be done when creating the variable. To
   change this setting, you must delete the variable and create a new one.
 </Warning>
+
+### Agent Vault
+
+[Agent Vault](/vault) is coming soon. Vault secrets aren't injected into builds or task runs. Trigger.dev adds them only to outbound requests to hosts you register.
 
 ### Editing environment variables
 

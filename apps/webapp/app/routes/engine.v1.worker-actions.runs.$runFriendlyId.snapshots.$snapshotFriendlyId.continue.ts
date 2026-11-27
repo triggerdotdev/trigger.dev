@@ -13,7 +13,11 @@ export const loader = createLoaderWorkerApiRoute(
       runFriendlyId: z.string(),
       snapshotFriendlyId: z.string(),
     }),
-    searchParams: z.object({ supportsSecretProxy: z.literal("1").optional() }),
+    searchParams: z.object({
+      supportsSecretProxy: z.literal("1").optional(),
+      supportsNetworkPolicy: z.literal("1").optional(),
+    }),
+    workerActionToken: "continue",
   },
   async ({
     authenticatedWorker,
@@ -34,6 +38,7 @@ export const loader = createLoaderWorkerApiRoute(
         runnerId,
         environmentId,
         supportsSecretProxy: searchParams.supportsSecretProxy === "1",
+        supportsNetworkPolicy: searchParams.supportsNetworkPolicy === "1",
         sandboxRunId,
       });
 

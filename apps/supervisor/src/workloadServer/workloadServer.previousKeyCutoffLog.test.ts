@@ -24,7 +24,7 @@ const AFTER_CUTOFF_MS = Date.UTC(2026, 9, 1);
 const { WorkloadServer } = await import("./index.js");
 const { register } = await import("../metrics.js");
 
-const PORT = 18734;
+const PORT = 18737;
 const BASE = `http://127.0.0.1:${PORT}`;
 
 const claims = {

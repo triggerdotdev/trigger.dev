@@ -1,7 +1,7 @@
-import { PostgresRunStore } from "@internal/run-store";
+import { PostgresRunStore, RoutingRunStore, type RunStore } from "@internal/run-store";
 import { postgresTest } from "@internal/testcontainers";
 import type { PrismaClient } from "@trigger.dev/database";
-import { RunId, WaitpointId } from "@trigger.dev/core/v3/isomorphic";
+import { generateRunOpsIdV2, RunId, WaitpointId } from "@trigger.dev/core/v3/isomorphic";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { buildJwtAbility } from "@trigger.dev/plugins";
 import { seedTestEnvironment } from "./helpers/seedTestEnvironment";
@@ -34,7 +34,9 @@ vi.mock("~/db.server", () => {
     runOpsLegacyReplica: prisma,
     runOpsNewPrisma: prisma,
     runOpsNewReplica: prisma,
-    runOpsSplitReadEnabled: false,
+    // Split reads on, so a gen-2 waitpoint id reaches the read-through's unconfigured-shard
+    // branch. Every client is the one test database, so the cuid cases read the same rows.
+    runOpsSplitReadEnabled: true,
   };
 });
 
@@ -118,8 +120,13 @@ async function seedRun(
   return run;
 }
 
-async function seedWaitpoint(prisma: PrismaClient, environmentId: string, projectId: string) {
-  const waitpoint = WaitpointId.generate();
+async function seedWaitpoint(
+  prisma: PrismaClient,
+  environmentId: string,
+  projectId: string,
+  id?: string
+) {
+  const waitpoint = id ? { id, friendlyId: WaitpointId.toFriendlyId(id) } : WaitpointId.generate();
   await prisma.waitpoint.create({
     data: {
       id: waitpoint.id,
@@ -232,4 +239,87 @@ describe("waitpoint-token wait run authorization", () => {
       ]);
     }
   );
+
+  // Catches: the wait route, with split reads on, reading a waitpoint id on shard m or z from a gen-1
+  // store (a row with that id there would attach) or answering it with anything but a retryable 404.
+  postgresTest(
+    "answers a waitpoint id on shard m or z with a retryable 404",
+    async ({ prisma }) => {
+      const seed = await seedTestEnvironment(prisma);
+      const run = await seedRun(prisma, seed.environment);
+
+      H.prisma = prisma;
+      H.store = new PostgresRunStore({ prisma, readOnlyPrisma: prisma });
+      const handler = await routeHandler();
+
+      for (const shard of ["m", "z"]) {
+        // A matching row in the one gen-1 database: a read of any gen-1 store finds it and attaches.
+        const waitpoint = await seedWaitpoint(
+          prisma,
+          seed.environment.id,
+          seed.project.id,
+          generateRunOpsIdV2(shard)
+        );
+        const response = await handler({
+          ability: buildJwtAbility(["admin"]),
+          authentication: {
+            environment: {
+              ...seed.environment,
+              project: seed.project,
+              organization: seed.organization,
+            },
+          },
+          params: {
+            runFriendlyId: run.friendlyId,
+            waitpointFriendlyId: waitpoint.friendlyId,
+          },
+        }).then(
+          (result) => result,
+          (error) => error
+        );
+
+        expect(response).toBeInstanceOf(Response);
+        expect(response.status).toBe(404);
+        expect(response.headers.get("x-should-retry")).toBe("true");
+        expect(await response.json()).toEqual({ error: "Waitpoint not found" });
+      }
+      expect(H.engineCalls).toHaveLength(0);
+    }
+  );
+
+  // Catches: a change in how the wait route answers a run id whose shard has no store.
+  it("answers a run id on shard m or z with its own 500", async () => {
+    const unreachable = new Proxy(
+      {},
+      {
+        get() {
+          throw new Error("no sub-store should be reached for an unconfigured shard key");
+        },
+      }
+    ) as RunStore;
+    H.store = new RoutingRunStore({ new: unreachable, legacy: unreachable });
+    const handler = await routeHandler();
+
+    for (const shard of ["m", "z"]) {
+      const response = await handler({
+        ability: buildJwtAbility(["admin"]),
+        authentication: {
+          environment: { id: "env_1", project: { id: "proj_1" }, organization: { id: "org_1" } },
+        },
+        params: {
+          runFriendlyId: `run_${generateRunOpsIdV2(shard)}`,
+          waitpointFriendlyId: "waitpoint_target",
+        },
+      }).then(
+        (result) => result,
+        (error) => error
+      );
+
+      expect(response).toBeInstanceOf(Response);
+      expect(response.status).toBe(500);
+      expect(response.headers.get("x-should-retry")).toBeNull();
+      expect(await response.json()).toEqual({ error: "Failed to wait for waitpoint token" });
+    }
+    expect(H.engineCalls).toHaveLength(0);
+  });
 });

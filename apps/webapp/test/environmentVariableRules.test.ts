@@ -3,6 +3,8 @@ import type { EnvironmentVariable } from "../app/v3/environmentVariables/reposit
 import {
   isBlacklistedVariable,
   isReservedForExternalSync,
+  MAX_ENVIRONMENT_VARIABLE_KEY_LENGTH,
+  newKeysOverMaxLength,
   removeBlacklistedVariables,
 } from "~/v3/environmentVariableRules.server";
 import { SKEW_PROTECTION_ENV_VAR_KEY } from "~/v3/vercel/vercelProjectIntegrationSchema";
@@ -115,5 +117,18 @@ describe("isReservedForExternalSync", () => {
   it("does not reserve ordinary user keys", () => {
     expect(isReservedForExternalSync("DATABASE_URL")).toBe(false);
     expect(isReservedForExternalSync("MY_API_KEY")).toBe(false);
+  });
+});
+
+describe("newKeysOverMaxLength", () => {
+  const atLimit = "K".repeat(MAX_ENVIRONMENT_VARIABLE_KEY_LENGTH);
+  const overLimit = "K".repeat(MAX_ENVIRONMENT_VARIABLE_KEY_LENGTH + 1);
+
+  it("returns new keys longer than the cap", () => {
+    expect(newKeysOverMaxLength(["API_KEY", atLimit, overLimit], new Set())).toEqual([overLimit]);
+  });
+
+  it("leaves out keys the project already has", () => {
+    expect(newKeysOverMaxLength([overLimit], new Set([overLimit]))).toEqual([]);
   });
 });

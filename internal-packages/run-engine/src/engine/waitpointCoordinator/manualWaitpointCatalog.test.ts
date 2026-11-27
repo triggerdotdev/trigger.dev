@@ -58,6 +58,119 @@ function setup(redisOptions: Parameters<typeof createRedisClient>[0]) {
 
 const input = { organizationId: ORG, environmentId: ENV, direction: "forward" as const, limit: 2 };
 
+const OTHER_ENV = "env_catalog_other";
+const at = (seconds: number) => new Date(Date.parse(CREATED) + seconds * 1_000).toISOString();
+type ListInput = Parameters<ManualWaitpointCatalog["list"]>[0];
+type Page = Awaited<ReturnType<ManualWaitpointCatalog["list"]>>;
+type Tokens = { record: WaitpointRecordInput; outputIsError?: boolean }[];
+
+async function seed({ store, catalog, publish }: ReturnType<typeof setup>, tokens: Tokens) {
+  for (let offset = 0; offset < tokens.length; offset += 100)
+    await Promise.all(
+      tokens.slice(offset, offset + 100).map(async ({ record, outputIsError }) => {
+        await publish(record);
+        if (outputIsError === undefined) return;
+        await catalog.publishCompletedCandidate(record, outputIsError);
+        await store.complete({
+          waitpointId: record.id,
+          completion: {
+            completedAt: CREATED,
+            outputType: "application/json",
+            outputIsError,
+            output: null,
+          },
+        });
+      })
+    );
+}
+
+// Token n is created n seconds in, so a higher id is newer. "common" is held by the newest 300 and
+// the 6 oldest; of those only the 6 oldest are completed. "rare-a" and "rare-b" are on the oldest.
+// "even" and "eighth" are tag streams that advance at different rates through the same ids.
+function catalogTokens(environmentId: string, size: number): Tokens {
+  return Array.from({ length: size }, (_, n) => {
+    const completed = n < 6 || (n < size - 300 && n % 3 !== 0);
+    return {
+      record: record(`${environmentId}_${String(n).padStart(5, "0")}`, {
+        environmentId,
+        createdAt: at(n),
+        idempotencyKey: n % 7 === 0 ? `key-${n}` : undefined,
+        tags: [
+          `t${n % 200}`,
+          ...(n < 6 ? [n < 3 ? "rare-a" : "rare-b"] : []),
+          ...(n < 6 || n >= size - 300 ? ["common"] : []),
+          ...(n % 2 === 0 ? ["even"] : []),
+          ...(n % 8 === 0 ? ["eighth"] : []),
+        ],
+      }),
+      outputIsError: completed ? n % 2 === 1 : undefined,
+    };
+  });
+}
+
+function filterSet(environmentId: string, size: number): Record<string, Partial<ListInput>> {
+  return {
+    none: {},
+    id: { id: `${environmentId}_00005` },
+    otherEnvironmentId: { id: `${OTHER_ENV}_00001` },
+    pending: { statuses: ["PENDING"] },
+    success: { statuses: ["COMPLETED"], outputIsError: false },
+    error: { outputIsError: true },
+    pendingOrCompleted: { statuses: ["PENDING", "COMPLETED"] },
+    idempotencyKey: { idempotencyKey: "key-14" },
+    oneTag: { tags: ["common"] },
+    threeTags: { tags: ["rare-a", "rare-b", "t7"] },
+    twoTagsPending: { tags: ["even", "eighth"], statuses: ["PENDING"] },
+    manyTags: { tags: Array.from({ length: 150 }, (_, n) => `t${n}`) },
+    createdAtGte: { createdAtGte: at(size / 2) },
+    createdAtLte: { createdAtLte: at(size / 3) },
+    window: { createdAtGte: at(size / 3), createdAtLte: at(size / 2) },
+    windowHoldingAll: { createdAtGte: at(-1_000), createdAtLte: at(size + 1_000) },
+    tagWithAbsentStatus: { tags: ["rare-b"], statuses: ["PENDING"] },
+    commonTagCompleted: { tags: ["common"], statuses: ["COMPLETED"] },
+    combined: {
+      idempotencyKey: "key-0",
+      tags: ["rare-a"],
+      statuses: ["COMPLETED"],
+      createdAtGte: at(0),
+      createdAtLte: at(10),
+    },
+  };
+}
+
+/** CONFIG RESETSTAT before the call, INFO commandstats after it, without the config and info entries. */
+async function commandCount<T>(
+  redis: ReturnType<typeof createRedisClient>,
+  call: () => Promise<T>
+) {
+  await redis.config("RESETSTAT");
+  const result = await call();
+  let commands = 0;
+  for (const [, name, calls] of (await redis.info("commandstats")).matchAll(
+    /^cmdstat_([^:]+):calls=(\d+)/gm
+  ))
+    if (!/^(config|info)\b/.test(name!)) commands += Number(calls);
+  return { result, commands };
+}
+
+/** Continue from continueCursor if set, else from the last id of a full page, else stop. */
+function nextCursor(page: Page, limit: number) {
+  return (
+    page.continueCursor ??
+    (page.records.length === limit ? page.records.at(-1)!.record.id : undefined)
+  );
+}
+
+async function walk(catalog: ManualWaitpointCatalog, filter: ListInput) {
+  const pages: Page[] = [];
+  let cursor: string | undefined;
+  do {
+    pages.push(await catalog.list({ ...filter, cursor }));
+    cursor = nextCursor(pages.at(-1)!, filter.limit);
+  } while (cursor);
+  return { pages, ids: pages.flatMap((page) => page.records.map((item) => item.record.id)) };
+}
+
 // Real isolated Redis, including failure injection through real Redis WRONGTYPE errors. No workers.
 describe("ManualWaitpointCatalog", () => {
   isolatedRedisTest(
@@ -130,15 +243,17 @@ describe("ManualWaitpointCatalog", () => {
           record("y", { organizationId: "org_other", idempotencyKey: "original", tags: ["red"] })
         );
         expect(
-          (await catalog.list({ ...input, idempotencyKey: "original", tags: ["red", "blue"] })).map(
-            (item) => item.record.id
-          )
+          (
+            await catalog.list({ ...input, idempotencyKey: "original", tags: ["red", "blue"] })
+          ).records.map((item) => item.record.id)
         ).toEqual(["b", "a"]);
         expect(
-          (await catalog.list({ ...input, tags: ["blue", "red"] })).map((item) => item.record.id)
+          (await catalog.list({ ...input, tags: ["blue", "red"] })).records.map(
+            (item) => item.record.id
+          )
         ).toEqual(["c", "b"]);
         expect(
-          (await catalog.list({ ...input, tags: ["red", "blue"], cursor: "b" })).map(
+          (await catalog.list({ ...input, tags: ["red", "blue"], cursor: "b" })).records.map(
             (item) => item.record.id
           )
         ).toEqual(["a"]);
@@ -150,13 +265,13 @@ describe("ManualWaitpointCatalog", () => {
               cursor: "a",
               direction: "backward",
             })
-          ).map((item) => item.record.id)
+          ).records.map((item) => item.record.id)
         ).toEqual(["b", "c"]);
         // A selective key must not even read the broad environment index.
         await redis.del(index("ids"));
         await redis.set(index("ids"), "unusable broad index");
         expect(
-          (await catalog.list({ ...input, idempotencyKey: "original" })).map(
+          (await catalog.list({ ...input, idempotencyKey: "original" })).records.map(
             (item) => item.record.id
           )
         ).toEqual(["b", "a"]);
@@ -177,7 +292,7 @@ describe("ManualWaitpointCatalog", () => {
         for (const value of [pending, success, error]) await publish(value);
         await catalog.publishCompletedCandidate(pending, true);
         expect(
-          await catalog.list({ ...input, statuses: ["COMPLETED"], outputIsError: true })
+          (await catalog.list({ ...input, statuses: ["COMPLETED"], outputIsError: true })).records
         ).toEqual([]);
         for (const [value, outputIsError] of [
           [success, false],
@@ -196,10 +311,10 @@ describe("ManualWaitpointCatalog", () => {
           });
         }
         expect(
-          (await catalog.list({ ...input, id: success.id }))[0]?.completion?.output
+          (await catalog.list({ ...input, id: success.id })).records[0]?.completion?.output
         ).toBeNull();
         expect(
-          (await catalog.list({ ...input, statuses: ["COMPLETED"] })).every(
+          (await catalog.list({ ...input, statuses: ["COMPLETED"] })).records.every(
             (item) => item.completion?.output === null
           )
         ).toBe(true);
@@ -214,18 +329,24 @@ describe("ManualWaitpointCatalog", () => {
         expect(await redis.zrange(index("status:error"), 0, -1)).toEqual(["error", "pending"]);
         expect(await redis.zrange(index("status:success"), 0, -1)).toEqual(["success"]);
         expect(
-          (await catalog.list({ ...input, statuses: ["PENDING"] })).map((item) => item.record.id)
-        ).toEqual(["pending"]);
-        expect(
-          (await catalog.list({ ...input, statuses: ["COMPLETED"], outputIsError: false })).map(
+          (await catalog.list({ ...input, statuses: ["PENDING"] })).records.map(
             (item) => item.record.id
           )
+        ).toEqual(["pending"]);
+        expect(
+          (
+            await catalog.list({ ...input, statuses: ["COMPLETED"], outputIsError: false })
+          ).records.map((item) => item.record.id)
         ).toEqual(["success"]);
         expect(
-          (await catalog.list({ ...input, outputIsError: true })).map((item) => item.record.id)
+          (await catalog.list({ ...input, outputIsError: true })).records.map(
+            (item) => item.record.id
+          )
         ).toEqual(["error"]);
         expect(
-          (await catalog.list({ ...input, outputIsError: false })).map((item) => item.record.id)
+          (await catalog.list({ ...input, outputIsError: false })).records.map(
+            (item) => item.record.id
+          )
         ).toEqual(["success", "pending"]);
 
         // Maintenance replays an interrupted candidate publication for an untimed live source.
@@ -307,17 +428,22 @@ describe("ManualWaitpointCatalog", () => {
           createdAtGte: CREATED,
           createdAtLte: "2026-01-01T00:02:20.000Z",
         };
-        expect((await catalog.list(filter)).map((item) => item.record.id)).toEqual(["139", "138"]);
+        expect((await catalog.list(filter)).records.map((item) => item.record.id)).toEqual([
+          "139",
+          "138",
+        ]);
         expect(
-          (await catalog.list({ ...filter, cursor: "138" })).map((item) => item.record.id)
+          (await catalog.list({ ...filter, cursor: "138" })).records.map((item) => item.record.id)
         ).toEqual(["137", "136"]);
         expect(
-          (await catalog.list({ ...filter, createdAtGte: "2026-01-01T00:02:19.000Z" })).map(
+          (await catalog.list({ ...filter, createdAtGte: "2026-01-01T00:02:19.000Z" })).records.map(
             (item) => item.record.id
           )
         ).toEqual(["001", "000"]);
         expect(
-          (await catalog.list({ ...filter, direction: "backward" })).map((item) => item.record.id)
+          (await catalog.list({ ...filter, direction: "backward" })).records.map(
+            (item) => item.record.id
+          )
         ).toEqual(["000", "001"]);
       } finally {
         await redis.quit();
@@ -388,6 +514,153 @@ describe("ManualWaitpointCatalog", () => {
         expect(await redis.zscore(owner, source.id)).toBeNull();
       } finally {
         await redis.quit();
+      }
+    }
+  );
+
+  // Catches: a list call with a command ceiling of 100 issuing more than 100 store commands.
+  isolatedRedisTest(
+    "a command ceiling bounds the first two calls of every filtered walk at 300 and 3,000 tokens",
+    async ({ redisOptions }) => {
+      const context = setup(redisOptions);
+      try {
+        const sizes = { env_ceiling_300: 300, env_ceiling_3000: 3_000 };
+        await seed(context, [
+          ...Object.entries(sizes).flatMap(([env, size]) => catalogTokens(env, size)),
+          ...catalogTokens(OTHER_ENV, 5),
+        ]);
+        for (const [environmentId, size] of Object.entries(sizes))
+          for (const [name, filter] of Object.entries(filterSet(environmentId, size)))
+            for (const direction of ["forward", "backward"] as const)
+              for (const limit of [26, 101]) {
+                const list = { ...input, ...filter, environmentId, direction, limit };
+                let cursor: string | undefined;
+                for (let call = 1; call <= 2; call++) {
+                  const { result, commands } = await commandCount(context.redis, () =>
+                    context.catalog.list({ ...list, cursor, commandCeiling: 100 })
+                  );
+                  const label = `${size} ${name} ${direction} ${limit} call ${call}`;
+                  expect(commands, label).toBeGreaterThan(0);
+                  expect(commands, label).toBeLessThanOrEqual(100);
+                  cursor = nextCursor(result, limit);
+                  if (!cursor) break;
+                }
+              }
+      } finally {
+        await context.redis.quit();
+      }
+    }
+  );
+
+  // Catches: the ceiling's stop filter changing a list made without a ceiling, which every caller
+  // outside the standalone token list still makes.
+  isolatedRedisTest(
+    "a list without a command ceiling returns the newest matches of several tags and statuses",
+    async ({ redisOptions }) => {
+      const context = setup(redisOptions);
+      try {
+        const tokens = catalogTokens(ENV, 600);
+        await seed(context, tokens);
+        const filters = {
+          twoTagsPending: { tags: ["even", "eighth"], statuses: ["PENDING" as const] },
+          twoTagsAnyStatus: {
+            tags: ["even", "eighth"],
+            statuses: ["PENDING" as const, "COMPLETED" as const],
+          },
+        };
+        for (const [name, filter] of Object.entries(filters))
+          for (const direction of ["forward", "backward"] as const) {
+            const matching = tokens
+              .filter(
+                ({ record, outputIsError }) =>
+                  filter.tags.some((tag) => record.tags.includes(tag)) &&
+                  filter.statuses.includes(outputIsError === undefined ? "PENDING" : "COMPLETED")
+              )
+              .map(({ record }) => record.id)
+              .sort();
+            if (direction === "forward") matching.reverse();
+            expect(matching.length, name).toBeGreaterThan(64);
+            const page = await context.catalog.list({ ...input, ...filter, direction, limit: 26 });
+            expect(
+              page.records.map((item) => item.record.id),
+              `${name} ${direction}`
+            ).toEqual(matching.slice(0, 26));
+            expect(page.continueCursor).toBeUndefined();
+          }
+      } finally {
+        await context.redis.quit();
+      }
+    }
+  );
+
+  // Catches: a walk with a command ceiling skipping, repeating or reordering tokens.
+  isolatedRedisTest(
+    "a walk with a command ceiling returns the same tokens in the same order as one without",
+    async ({ redisOptions }) => {
+      const context = setup(redisOptions);
+      try {
+        await seed(context, [...catalogTokens(ENV, 600), ...catalogTokens(OTHER_ENV, 5)]);
+        let continued = 0;
+        for (const [name, filter] of Object.entries(filterSet(ENV, 600)))
+          for (const direction of ["forward", "backward"] as const) {
+            const list = { ...input, ...filter, direction, limit: 26 };
+            const unbounded = await walk(context.catalog, list);
+            const bounded = await walk(context.catalog, { ...list, commandCeiling: 100 });
+            expect(bounded.ids, `${name} ${direction}`).toEqual(unbounded.ids);
+            expect(unbounded.pages.every((page) => page.continueCursor === undefined)).toBe(true);
+            continued += bounded.pages.filter((page) => page.continueCursor).length;
+          }
+        expect(continued).toBeGreaterThan(0);
+      } finally {
+        await context.redis.quit();
+      }
+    }
+  );
+
+  // Catches: a ceiling walk to a rare match stalling on a cursor or missing a match, and a ceiling
+  // too small for any progress not being refused.
+  isolatedRedisTest(
+    "a rare tag and status match behind large indexes is reached through advancing cursors",
+    async ({ redisOptions }) => {
+      const context = setup(redisOptions);
+      try {
+        // Ids interleave: rare token j is 2j, untagged completed token k is 2k + 1.
+        const id = (n: number) => `rare_${String(n).padStart(5, "0")}`;
+        await seed(context, [
+          ...Array.from({ length: 305 }, (_, j) => ({
+            record: record(id(2 * j), { tags: ["rare"] }),
+            outputIsError: j < 5 ? false : undefined,
+          })),
+          ...Array.from({ length: 300 }, (_, k) => ({
+            record: record(id(2 * k + 1)),
+            outputIsError: false,
+          })),
+        ]);
+        const rareTag = `tag:${createHash("sha256").update("rare").digest("hex")}`;
+        for (const facet of [rareTag, "status:success", "status:COMPLETED"])
+          expect(await context.redis.zcard(index(facet))).toBeGreaterThanOrEqual(300);
+        const list = {
+          ...input,
+          tags: ["rare"],
+          statuses: ["COMPLETED" as const],
+          outputIsError: false,
+          limit: 26,
+        };
+        for (const commandCeiling of [100, 2]) {
+          const { pages, ids } = await walk(context.catalog, { ...list, commandCeiling });
+          expect(pages[0]!.records.length).toBeLessThan(26);
+          expect(pages[0]!.continueCursor).toBeDefined();
+          const cursors = pages.flatMap((page) => page.continueCursor ?? []);
+          for (let n = 1; n < cursors.length; n++)
+            expect(cursors[n]! < cursors[n - 1]!, `${commandCeiling} ${n}`).toBe(true);
+          expect(pages.at(-1)!.continueCursor).toBeUndefined();
+          expect(ids).toEqual([8, 6, 4, 2, 0].map(id));
+        }
+        await expect(context.catalog.list({ ...list, commandCeiling: 1 })).rejects.toThrow(
+          /command ceiling/
+        );
+      } finally {
+        await context.redis.quit();
       }
     }
   );

@@ -23,10 +23,21 @@ export type DeploymentAccessCheck = {
   taskCount?: number;
   triggeredVia?: string;
   cliVersion?: string;
+  /**
+   * The host's switch for compute-only deploys. On: the plugin may allow an organization it would
+   * otherwise deny, with `placement: "microvm"`. Off: it denies as before.
+   */
+  computeOnlyDeploys: boolean;
 };
 
+/**
+ * Where an allowed deploy's runs may execute. microvm: only on microVM cells, never on a container
+ * lane. Absent: the host's normal placement.
+ */
+export type DeploymentPlacement = "microvm";
+
 export type DeploymentAccessDecision =
-  | { allowed: true }
+  | { allowed: true; placement?: DeploymentPlacement }
   | {
       allowed: false;
       /**
@@ -67,8 +78,8 @@ export interface DeploymentAccessController {
   checkDeploy(check: DeploymentAccessCheck): Promise<DeploymentAccessDecision>;
   integrationAccess(organizationId: string): Promise<DeploymentIntegrationAccess>;
   /**
-   * Whether the organization has an override that hasn't expired, whatever it sets. Optional: a
-   * plugin without it reports none.
+   * Whether the organization has an override that hasn't expired and changes its deploy access.
+   * Optional: a plugin without it reports none.
    */
   hasActiveOverride?(organizationId: string): Promise<boolean>;
 }

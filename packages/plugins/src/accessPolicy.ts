@@ -23,9 +23,13 @@ export type SessionDecision =
       valid: true;
       /**
        * The user's session deadline, when the plugin read it alongside its own check so the
-       * host need not. Omitted: the host reads it itself.
+       * host need not. Omitted (or any of the three fields omitted): the host reads them itself.
        */
       nextSessionEnd?: Date | null;
+      /** The user's `sessionsValidAfter`, read alongside `nextSessionEnd`. */
+      sessionsValidAfter?: Date | null;
+      /** The user's `revokedSessions`, read alongside `nextSessionEnd`. */
+      revokedSessions?: Date[];
     }
   | { valid: false };
 
@@ -87,6 +91,42 @@ export interface AccessPolicyController {
 
 export type EnvironmentPauseState = { paused: boolean; pauseSource: string | null };
 
+/**
+ * What an organization ban rotated and revoked, for the host's audit log. Ids, names and last 4s
+ * only: never a key, a token or its hash. Org access tokens are left out: only the platform makes
+ * them, and customers never see them.
+ */
+export type AccessPolicyBanCredentialChanges = {
+  organizationId: string;
+  bannedAt: Date;
+  /** The Trigger.dev staff member who banned the organization. */
+  staffUserId: string;
+  rotatedRootKeys: {
+    environmentId: string;
+    projectId: string;
+    environmentType: string;
+    previousKeyLast4: string;
+    newKeyLast4: string;
+  }[];
+  /** Root keys rotated before the ban that still worked in their grace period, until the ban. */
+  graceEndedRootKeys: {
+    environmentId: string;
+    projectId: string;
+    environmentType: string;
+    keyLast4: string;
+  }[];
+  /** Only the keys and tokens that still worked: expired ones changed nothing for the customer. */
+  revokedApiKeys: {
+    id: string;
+    name: string;
+    last4: string;
+    environmentId: string;
+    projectId: string;
+    environmentType: string;
+  }[];
+  revokedPersonalAccessTokens: { id: string; name: string; last4: string; userId: string }[];
+};
+
 export type AccessPolicyPluginConfig = {
   database: PluginDatabaseConfig;
   /** New root keys for an environment of this type, in the host's key format. */
@@ -108,6 +148,11 @@ export type AccessPolicyPluginConfig = {
     organizationId: string,
     environmentType: string
   ): Promise<EnvironmentPauseState | "unknown">;
+  /**
+   * Records a committed ban's credential changes in the audit log. Called once per ban, alongside
+   * the fingerprint marks; a host without it records nothing. A rejection is logged, never thrown.
+   */
+  onBanCredentialsChanged?(changes: AccessPolicyBanCredentialChanges): Promise<void>;
 };
 
 export interface AccessPolicyPlugin {

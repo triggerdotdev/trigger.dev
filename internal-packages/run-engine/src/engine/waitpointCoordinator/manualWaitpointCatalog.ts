@@ -13,9 +13,13 @@ export type ManualWaitpointCatalogManifest = {
   environmentId: string;
   waitpointId: string;
   idempotencyKey?: string;
+  /** The reservation namespace of a standalone token's `idempotencyKey`; absent otherwise. */
+  idempotencyKeyScope?: string;
   tags: string[];
   createdAt: string;
   acceptUntil: number;
+  /** Copied from the record: a MANUAL token minted with no run. Absent otherwise. */
+  standalone?: true;
 };
 
 /** A hash field per source, in the SAME slot as its existing organization discovery owner. */
@@ -31,10 +35,12 @@ export function parseManualWaitpointCatalogManifest(raw: string): ManualWaitpoin
     typeof value.environmentId !== "string" ||
     typeof value.waitpointId !== "string" ||
     (value.idempotencyKey !== undefined && typeof value.idempotencyKey !== "string") ||
+    (value.idempotencyKeyScope !== undefined && typeof value.idempotencyKeyScope !== "string") ||
     !Array.isArray(value.tags) ||
     !value.tags.every((tag) => typeof tag === "string") ||
     !Number.isFinite(Date.parse(value.createdAt)) ||
-    !Number.isFinite(value.acceptUntil)
+    !Number.isFinite(value.acceptUntil) ||
+    (value.standalone !== undefined && value.standalone !== true)
   )
     throw new Error("Invalid MANUAL waitpoint catalog manifest");
   return value;
@@ -54,6 +60,9 @@ export type ManualWaitpointCatalogListInput = {
   cursor?: string;
   direction: "forward" | "backward";
   limit: number;
+  /** The most index and record reads one call may issue, not counting beforeCommand's connection
+   * upkeep; a short page then returns continueCursor. */
+  commandCeiling?: number;
 };
 
 type Options = {
@@ -126,7 +135,11 @@ export class ManualWaitpointCatalog {
   }
 
   /** Must precede EVERY catalog write and canonical source publication. Replay is idempotent. */
-  async publish(record: WaitpointRecordInput, acceptUntil: number): Promise<void> {
+  async publish(
+    record: WaitpointRecordInput,
+    acceptUntil: number,
+    idempotencyKeyScope?: string
+  ): Promise<void> {
     if (record.type !== "MANUAL" || !record.organizationId)
       throw new Error("MANUAL catalog publication requires organization ownership");
     const manifest: ManualWaitpointCatalogManifest = {
@@ -135,9 +148,15 @@ export class ManualWaitpointCatalog {
       environmentId: record.environmentId,
       waitpointId: record.id,
       idempotencyKey: record.idempotencyKey,
+      // Only a standalone token's retirement releases its key. JSON.stringify drops undefined, so
+      // every other manifest is written exactly as before.
+      idempotencyKeyScope:
+        record.standalone && record.idempotencyKey !== undefined ? idempotencyKeyScope : undefined,
       tags: [...new Set(record.tags)].sort(),
       createdAt: record.createdAt,
       acceptUntil,
+      // JSON drops undefined, so a run-bound manifest is written exactly as before.
+      standalone: record.standalone,
     };
     const serialized = JSON.stringify(manifest);
     parseManualWaitpointCatalogManifest(serialized);
@@ -286,9 +305,18 @@ export class ManualWaitpointCatalog {
     return result === 1;
   }
 
-  async list(input: ManualWaitpointCatalogListInput): Promise<WaitpointStoredRecord[]> {
+  async list(
+    input: ManualWaitpointCatalogListInput
+  ): Promise<{ records: WaitpointStoredRecord[]; continueCursor?: string }> {
     if (!Number.isSafeInteger(input.limit) || input.limit < 1)
       throw new Error("Invalid MANUAL catalog limit");
+    // 2 is the least that makes progress: one index page read and one record read.
+    if (
+      input.commandCeiling !== undefined &&
+      (!Number.isSafeInteger(input.commandCeiling) || input.commandCeiling < 2)
+    )
+      throw new Error("Invalid MANUAL catalog command ceiling");
+    let budget = input.commandCeiling ?? Infinity;
     const matches = (item: WaitpointStoredRecord) => {
       const record = item.record;
       const created = Date.parse(record.createdAt);
@@ -314,7 +342,7 @@ export class ManualWaitpointCatalog {
       item.completion ? { ...item, completion: { ...item.completion, output: null } } : item;
     if (input.id) {
       const record = (await this.options.readRecords([input.id])).get(input.id);
-      return record && matches(record) ? [metadataOnly(record)] : [];
+      return { records: record && matches(record) ? [metadataOnly(record)] : [] };
     }
     const prefix = base(input.organizationId, input.environmentId);
     type Driver = { keys: string[]; date?: boolean; count: number };
@@ -339,11 +367,19 @@ export class ManualWaitpointCatalog {
       candidates.push({ keys: [`${prefix}:status:${[...statuses][0]}`] });
     const dateMin = input.createdAtGte ? `[${datePrefix(input.createdAtGte)}:` : "-";
     const dateMax = input.createdAtLte ? `[${datePrefix(input.createdAtLte)}:\xff` : "+";
-    if (input.createdAtGte !== undefined || input.createdAtLte !== undefined)
+    // The creation index is not in ID order, so a ceiling cannot stop part-way through it.
+    if (
+      input.commandCeiling === undefined &&
+      (input.createdAtGte !== undefined || input.createdAtLte !== undefined)
+    )
       candidates.push({ keys: [`${prefix}:created`], date: true });
     if (!candidates.length) candidates.push({ keys: [`${prefix}:ids`] });
     let driver: Driver | undefined;
     for (const candidate of candidates) {
+      const width = candidate.keys.length;
+      // Count only if two commands per stream remain for this candidate and the current driver.
+      if (budget < width + 2 * Math.max(width, driver?.keys.length ?? 0)) continue;
+      budget -= width;
       let count = 0;
       for (const key of candidate.keys)
         count += await this.#command(() =>
@@ -353,9 +389,16 @@ export class ManualWaitpointCatalog {
         );
       if (!driver || count < driver.count) driver = { ...candidate, count };
     }
-    if (!driver || driver.count === 0) return [];
+    // Only a ceiling skips every candidate: the environment index then filters through matches.
+    driver ??= { keys: [`${prefix}:ids`], count: Infinity };
+    if (driver.count === 0) return { records: [] };
     const result = new Map<string, WaitpointStoredRecord>();
     const compare = (a: string, b: string) => (a < b ? -1 : a > b ? 1 : 0);
+    const listedBefore = (a: string, b: string) => (input.direction === "forward" ? a > b : a < b);
+    // Each stream spends an equal share. Every match up to the least advanced position of a
+    // stream that stopped early has been examined; continueCursor resumes after it.
+    const share = Math.floor(budget / driver.keys.length);
+    let frontier: string | undefined;
     // Tags/status ORs are independent ordered streams. Each keeps only the best limit IDs; union
     // duplicates never occupy extra output slots. Date order differs from ID order, so that driver
     // visits the matching time window in bounded pages and retains only the best limit IDs.
@@ -368,22 +411,25 @@ export class ManualWaitpointCatalog {
             ? "+"
             : "-";
       let streamMatches = 0;
+      let streamBudget = share;
       while (true) {
+        const size = Math.min(PAGE_SIZE, streamBudget - 1);
         const descending = !driver.date && input.direction === "forward";
         const members = await this.#command(() =>
           descending
-            ? this.options.redis.zrevrangebylex(key, boundary, "-", "LIMIT", 0, PAGE_SIZE)
+            ? this.options.redis.zrevrangebylex(key, boundary, "-", "LIMIT", 0, size)
             : this.options.redis.zrangebylex(
                 key,
                 boundary,
                 driver!.date ? dateMax : "+",
                 "LIMIT",
                 0,
-                PAGE_SIZE
+                size
               )
         );
         if (!members.length) break;
         const ids = driver.date ? members.map((member) => member.slice(18)) : members;
+        streamBudget -= 1 + ids.length; // readRecords issues one HMGET per id.
         const records = await this.options.readRecords(ids);
         for (const id of ids) {
           const record = records.get(id);
@@ -397,14 +443,22 @@ export class ManualWaitpointCatalog {
             );
           }
         }
-        if (members.length < PAGE_SIZE || (!driver.date && streamMatches >= input.limit)) break;
-        boundary = `(${members[members.length - 1]}`;
+        if (members.length < size) break;
+        const last = members[members.length - 1]!;
+        if ((!driver.date && streamMatches >= input.limit) || streamBudget < 2) {
+          if (frontier === undefined || listedBefore(last, frontier)) frontier = last;
+          break;
+        }
+        boundary = `(${last}`;
       }
     }
-    return [...result.values()].sort((a, b) =>
-      input.direction === "forward"
-        ? compare(b.record.id, a.record.id)
-        : compare(a.record.id, b.record.id)
-    );
+    const records = [...result.values()]
+      .filter((item) => frontier === undefined || !listedBefore(frontier, item.record.id))
+      .sort((a, b) =>
+        input.direction === "forward"
+          ? compare(b.record.id, a.record.id)
+          : compare(a.record.id, b.record.id)
+      );
+    return { records, continueCursor: records.length < input.limit ? frontier : undefined };
   }
 }

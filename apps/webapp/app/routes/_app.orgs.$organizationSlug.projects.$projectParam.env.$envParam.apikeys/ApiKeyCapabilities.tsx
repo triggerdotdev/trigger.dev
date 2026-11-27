@@ -610,6 +610,7 @@ export function TaskScopeControl({
           items={availableTasks}
           filter
           heading="Search tasks"
+          clearSearchOnSelection={false}
           empty={
             <div className="p-3 text-xs text-text-dimmed">
               {availableTasks.length === 0

@@ -115,7 +115,9 @@ describe("RedisSnapshotStore read retry", () => {
 
   redisTest("getById returns the entry after one command timeout", async ({ redisOptions }) => {
     await withStore(redisOptions, async (store, client) => {
-      const spy = vi.spyOn(client, "readSnapshotById").mockRejectedValueOnce(commandTimeout());
+      const spy = vi
+        .spyOn(client, "readSnapshotByIdOrAbsent")
+        .mockRejectedValueOnce(commandTimeout());
       const read = await store.getById("run_1", "snap_1");
       expect(read?.entry).toMatchObject({ id: "snap_1" });
       expect(attempts(spy, client)).toBe(2);
@@ -125,7 +127,7 @@ describe("RedisSnapshotStore read retry", () => {
   redisTest("getById with retry off rejects on the first timeout", async ({ redisOptions }) => {
     await withStore(redisOptions, async (store, client) => {
       const timeout = commandTimeout();
-      const spy = vi.spyOn(client, "readSnapshotById").mockRejectedValueOnce(timeout);
+      const spy = vi.spyOn(client, "readSnapshotByIdOrAbsent").mockRejectedValueOnce(timeout);
       await expect(store.getById("run_1", "snap_1", { retry: false })).rejects.toBe(timeout);
       expect(attempts(spy, client)).toBe(1);
     });
@@ -143,6 +145,20 @@ describe("RedisSnapshotStore read retry", () => {
           store.getSnapshotCompletedWaitpoints("run_1", "snap_1", { retry: false })
         ).rejects.toBe(timeout);
         expect(attempts(spy, client)).toBe(1);
+      });
+    }
+  );
+
+  // Catches: the state-held checkpoint read failing on a transient client error instead of retrying.
+  redisTest(
+    "readCheckpoint returns the stored checkpoint after one command timeout",
+    async ({ redisOptions }) => {
+      await withStore(redisOptions, async (store, client) => {
+        const raw = '{"id":"cp_1"}';
+        expect(await store.writeCheckpoint("run_1", "cp_1", raw)).toBe(true);
+        const spy = vi.spyOn(client, "hget").mockRejectedValueOnce(commandTimeout());
+        expect(await store.readCheckpoint("run_1", "cp_1")).toBe(raw);
+        expect(attempts(spy, client)).toBe(2);
       });
     }
   );

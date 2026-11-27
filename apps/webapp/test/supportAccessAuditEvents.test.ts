@@ -350,7 +350,20 @@ describe("Support Access audit events", () => {
       expect(startedOther.headers.get("location")).toBe(`/orgs/${other.slug}`);
       await auditLogs.flush();
 
-      expect(recorded.map(({ input }) => input)).toEqual([
+      // Each session's event is written in the background, so the two orgs' events can land in
+      // either order: compare them in a fixed order.
+      const orgOrder = [home.id, other.id];
+      const inOrgOrder = (action: string) =>
+        recorded
+          .map(({ input }) => input)
+          .filter((input) => input.action === action)
+          .sort(
+            (a, b) =>
+              orgOrder.indexOf(a.organizationId ?? "") - orgOrder.indexOf(b.organizationId ?? "")
+          );
+
+      expect(recorded).toHaveLength(2);
+      expect(inOrgOrder("support.session_started")).toEqual([
         support("support.session_started", {
           organizationId: home.id,
           customerId: customer.id,
@@ -370,7 +383,9 @@ describe("Support Access audit events", () => {
           },
         }),
       ]);
-      expect((recorded[1]!.input.changes as { reason: string }).reason).toHaveLength(500);
+      expect(
+        (inOrgOrder("support.session_started")[1]!.changes as { reason: string }).reason
+      ).toHaveLength(500);
 
       // Catches: an end that doesn't say why, or says another organization's why.
       const stop = async (startResponse: Response) =>
@@ -384,7 +399,8 @@ describe("Support Access audit events", () => {
       await stop(startedOther);
       await auditLogs.flush();
 
-      expect(recorded.slice(2).map(({ input }) => input)).toEqual([
+      expect(recorded).toHaveLength(4);
+      expect(inOrgOrder("support.session_ended")).toEqual([
         support("support.session_ended", {
           organizationId: home.id,
           customerId: customer.id,
@@ -791,10 +807,14 @@ describe("Support Access audit events", () => {
       const scoped = await startSession(prisma, staff, customer, home.slug);
       const allowed = await startSession(prisma, staff, customer, other.slug);
       await auditLogs.flush();
-      expect(recorded.map(({ input }) => input.changes)).toEqual([
-        { reason: "Ticket 4824", expiresAt: approval.expiresAt.toISOString() },
-        null,
-      ]);
+      // Each org's event clears the recording gate on its own, so they can land in either order.
+      expect(recorded).toHaveLength(2);
+      expect(
+        Object.fromEntries(recorded.map(({ input }) => [input.organizationId, input.changes]))
+      ).toEqual({
+        [home.id]: { reason: "Ticket 4824", expiresAt: approval.expiresAt.toISOString() },
+        [other.id]: null,
+      });
 
       // Half an hour later, staff turn on "View as user", which commits the cookie again.
       const toggledAt = new Date(startedAt.getTime() + 30 * 60 * 1000);

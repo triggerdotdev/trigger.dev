@@ -15,6 +15,8 @@ You can use `console.log()`, `console.error()`, etc as normal and they will be s
 
 We recommend that you use our `logger` object which creates structured logs. Structured logs will make it easier for you to search the logs to quickly find runs.
 
+To search the logs from every run in an environment, use the [Logs page](/observability/logs) in the dashboard.
+
 ```ts /trigger/logging.ts
 import { task, logger } from "@trigger.dev/sdk";
 
@@ -47,7 +49,7 @@ Trigger.dev uses OpenTelemetry tracing under the hood. With automatic tracing fo
 
 ![The run log](/images/auto-instrumentation.png)
 
-You can [add instrumentations](/config/config-file#instrumentations). The Prisma one above will automatically trace all Prisma queries.
+You can [add instrumentations](/config/config-file#instrumentations) to trace libraries like Prisma, HTTP clients or OpenAI automatically. The run above shows HTTP requests traced this way.
 
 ### Add custom traces
 

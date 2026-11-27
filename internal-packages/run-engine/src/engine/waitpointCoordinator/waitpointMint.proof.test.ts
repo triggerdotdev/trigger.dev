@@ -59,6 +59,19 @@ function expectedMints(file: string): Map<string, number> {
   return expected;
 }
 
+// The declaration in errors.ts is not a call.
+const REFUSAL_CALL = /(?<!function )refusePostgresWaitpointOnMemoryDbAnchor\(/g;
+
+function expectedRefusals(file: string): Map<string, number> {
+  const expected = new Map<string, number>();
+  for (const site of WAITPOINT_MINT_SITES.filter((s) => s.site === file)) {
+    if ("call" in site.refusal) {
+      expected.set(site.refusal.call, (expected.get(site.refusal.call) ?? 0) + 1);
+    }
+  }
+  return expected;
+}
+
 function escapeRegExp(value: string): string {
   return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
@@ -120,5 +133,59 @@ describe("waitpoint mint census — the catalog matches the source", () => {
     for (const site of WAITPOINT_MINT_SITES) {
       expect(site.symbol).not.toMatch(/:\d+/);
     }
+  });
+});
+
+describe("waitpoint mint census — every Postgres waitpoint mint refuses a MemoryDB anchor", () => {
+  // Catches: a Postgres waitpoint create site added or removed without its refusal being decided.
+  it("lists exactly the eight Postgres waitpoint create sites", () => {
+    expect(WAITPOINT_MINT_SITES.map((s) => s.id).sort()).toEqual(
+      [
+        "coordinator.datetime",
+        "coordinator.manual",
+        "coordinator.associated.mint",
+        "coordinator.associated.create",
+        "coordinator.batch",
+        "engine.batch",
+        "runStore.createRun.nested",
+        "runStore.createRun.dedicated",
+      ].sort()
+    );
+  });
+
+  // Catches: an anchored mint catalogued with no refusal of its own.
+  it("every anchored mint has a refusal call, and every via names one", () => {
+    const byId = new Map(WAITPOINT_MINT_SITES.map((s) => [s.id, s]));
+    for (const site of WAITPOINT_MINT_SITES) {
+      if (site.mints.some((m) => m.startsWith("mintWaitpointIdFor("))) {
+        expect({ site: site.id, call: "call" in site.refusal }).toEqual({
+          site: site.id,
+          call: true,
+        });
+      }
+      if ("via" in site.refusal) {
+        const target = byId.get(site.refusal.via);
+        expect({ site: site.id, viaHasCall: !!target && "call" in target.refusal }).toEqual({
+          site: site.id,
+          viaHasCall: true,
+        });
+      }
+    }
+  });
+
+  // Catches: a refusal dropped from a site, given the wrong anchor, or added without a catalogue entry.
+  it.each(SCANNED)("%s has exactly the refusal calls the catalog claims", (file) => {
+    const source = read(file);
+    const expected = expectedRefusals(file);
+
+    for (const [expr, n] of expected) {
+      expect({ expr, found: count(source, new RegExp(escapeRegExp(expr), "g")) }).toEqual({
+        expr,
+        found: n,
+      });
+    }
+
+    const accounted = [...expected.values()].reduce((a, b) => a + b, 0);
+    expect(count(source, REFUSAL_CALL)).toBe(accounted);
   });
 });

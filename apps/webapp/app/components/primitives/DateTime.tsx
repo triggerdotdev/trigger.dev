@@ -60,6 +60,8 @@ type DateTimeProps = {
   includeSeconds?: boolean;
   includeTime?: boolean;
   includeDate?: boolean;
+  /** False drops the year from the date, for compact labels; the tooltip still has it. */
+  includeYear?: boolean;
   showTimezone?: boolean;
   showTooltip?: boolean;
   hideDate?: boolean;
@@ -73,6 +75,7 @@ export const DateTime = ({
   includeSeconds = true,
   includeTime = true,
   includeDate = true,
+  includeYear = true,
   showTimezone = false,
   showTooltip = true,
   hour12 = true,
@@ -91,7 +94,8 @@ export const DateTime = ({
         includeSeconds,
         includeTime,
         includeDate,
-        hour12
+        hour12,
+        includeYear
       ).replace(/\s/g, String.fromCharCode(32))}
       {showTimezone ? ` (${timeZone ?? "UTC"})` : null}
     </span>
@@ -124,10 +128,11 @@ export function formatDateTime(
   includeSeconds: boolean,
   includeTime: boolean,
   includeDate: boolean = true,
-  hour12: boolean = true
+  hour12: boolean = true,
+  includeYear: boolean = true
 ): string {
   return new Intl.DateTimeFormat(locales, {
-    year: includeDate ? "numeric" : undefined,
+    year: includeDate && includeYear ? "numeric" : undefined,
     month: includeDate ? "short" : undefined,
     day: includeDate ? "numeric" : undefined,
     hour: includeTime ? "numeric" : undefined,

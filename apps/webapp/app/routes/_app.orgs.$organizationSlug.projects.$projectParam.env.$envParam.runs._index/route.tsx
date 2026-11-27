@@ -1,5 +1,9 @@
+import { DocsHeaderButton, useDocsLink } from "~/components/DocsPanel";
+import { CurrentVersionProvider } from "~/components/versions/VersionLabel";
+import { findCurrentVersion } from "~/v3/models/workerDeployment.server";
 import { BeakerIcon, BookOpenIcon } from "@heroicons/react/24/solid";
-import { runFiltersSchema } from "@internal/dashboard-agent-contracts";
+// The subpath keeps the rest of the agent contracts (and their schemas) out of this page's bundle.
+import { runFiltersSchema } from "@internal/dashboard-agent-contracts/run-filters";
 import { useLocation, useNavigation, useRevalidator } from "@remix-run/react";
 
 import { type LoaderFunctionArgs } from "@remix-run/server-runtime";
@@ -65,7 +69,6 @@ import { checkPermissions } from "~/services/routeBuilders/permissions.server";
 import { cn } from "~/utils/cn";
 import type { Handle } from "~/utils/handle";
 import {
-  docsPath,
   EnvironmentParamSchema,
   v3ProjectPath,
   v3TestPath,
@@ -154,9 +157,13 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
       })
     : { canCancelRuns: true, canReplayRuns: true };
 
+  // One lookup per page load for every version label in the table.
+  const currentVersion = await findCurrentVersion(environment, $replica);
+
   return typeddefer(
     {
       data: list,
+      currentVersion,
       rootOnlyDefault: filters.rootOnly,
       filters,
       ...runPermissions,
@@ -166,7 +173,7 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
 };
 
 export default function Page() {
-  const { data, rootOnlyDefault, filters, canCancelRuns, canReplayRuns } =
+  const { data, currentVersion, rootOnlyDefault, filters, canCancelRuns, canReplayRuns } =
     useTypedLoaderData<typeof loader>();
   const { isConnected } = useDevPresence();
   const environment = useEnvironment();
@@ -179,52 +186,48 @@ export default function Page() {
         <PageAccessories>
           <AdminDebugTooltip />
           <WhenAgentUnavailable>
-            <LinkButton
-              variant={"docs/small"}
-              LeadingIcon={BookOpenIcon}
-              to={docsPath("/runs-and-attempts")}
-            >
-              Runs docs
-            </LinkButton>
+            <DocsHeaderButton path="/runs-and-attempts">Runs docs</DocsHeaderButton>
           </WhenAgentUnavailable>
         </PageAccessories>
       </NavBar>
       <PageBody scrollable={false}>
-        <SelectedItemsProvider
-          initialSelectedItems={[]}
-          maxSelectedItemCount={BULK_ACTION_RUN_LIMIT}
-        >
-          {({ selectedItems }) => (
-            <Suspense
-              fallback={
-                <div className="grid h-full max-h-full grid-rows-[2.5rem_auto] overflow-hidden">
-                  <div className="border-b border-grid-bright" />
-                  <div className="my-2 flex items-center justify-center">
-                    <div className="mx-auto flex items-center gap-2">
-                      <Spinner />
-                      <Paragraph variant="small">Loading runs</Paragraph>
+        <CurrentVersionProvider currentVersion={currentVersion}>
+          <SelectedItemsProvider
+            initialSelectedItems={[]}
+            maxSelectedItemCount={BULK_ACTION_RUN_LIMIT}
+          >
+            {({ selectedItems }) => (
+              <Suspense
+                fallback={
+                  <div className="grid h-full max-h-full grid-rows-[2.5rem_auto] overflow-hidden">
+                    <div className="border-b border-grid-bright" />
+                    <div className="my-2 flex items-center justify-center">
+                      <div className="mx-auto flex items-center gap-2">
+                        <Spinner />
+                        <Paragraph variant="small">Loading runs</Paragraph>
+                      </div>
                     </div>
                   </div>
-                </div>
-              }
-            >
-              <TypedAwait resolve={data} errorElement={<RunsListErrorState />}>
-                {(list) => {
-                  return (
-                    <RunsList
-                      list={list}
-                      selectedItems={selectedItems}
-                      rootOnlyDefault={rootOnlyDefault}
-                      filters={filters}
-                      canCancelRuns={canCancelRuns}
-                      canReplayRuns={canReplayRuns}
-                    />
-                  );
-                }}
-              </TypedAwait>
-            </Suspense>
-          )}
-        </SelectedItemsProvider>
+                }
+              >
+                <TypedAwait resolve={data} errorElement={<RunsListErrorState />}>
+                  {(list) => {
+                    return (
+                      <RunsList
+                        list={list}
+                        selectedItems={selectedItems}
+                        rootOnlyDefault={rootOnlyDefault}
+                        filters={filters}
+                        canCancelRuns={canCancelRuns}
+                        canReplayRuns={canReplayRuns}
+                      />
+                    );
+                  }}
+                </TypedAwait>
+              </Suspense>
+            )}
+          </SelectedItemsProvider>
+        </CurrentVersionProvider>
       </PageBody>
     </>
   );
@@ -330,7 +333,7 @@ function RunsList({
               />
             )
           ) : (
-            <div className={cn("grid h-full max-h-full grid-rows-[auto_1fr] overflow-hidden")}>
+            <div className="grid h-full max-h-full grid-rows-[auto_1fr] overflow-hidden">
               <div className="flex items-start justify-between gap-x-2 p-2">
                 <RunsFilters
                   possibleTasks={list.possibleTasks}
@@ -410,6 +413,7 @@ function RunsList({
                 rootOnlyDefault={rootOnlyDefault}
                 canCancelRuns={canCancelRuns}
                 canReplayRuns={canReplayRuns}
+                canWidenPeriod
               />
             </div>
           )}
@@ -472,6 +476,7 @@ function CreateFirstTaskInstructions() {
 }
 
 function RunTaskInstructions({ task }: { task?: { slug: string } }) {
+  const docsLink = useDocsLink();
   const organization = useOrganization();
   const project = useProject();
   const environment = useEnvironment();
@@ -509,7 +514,7 @@ function RunTaskInstructions({ task }: { task?: { slug: string } }) {
           Performing a real run depends on the type of trigger your task is using.
         </Paragraph>
         <LinkButton
-          to={docsPath("/triggering")}
+          {...docsLink("/triggering")}
           variant="docs/medium"
           LeadingIcon={BookOpenIcon}
           className="inline-flex"
@@ -522,6 +527,7 @@ function RunTaskInstructions({ task }: { task?: { slug: string } }) {
 }
 
 function RunsHelpTooltip() {
+  const project = useProject();
   return (
     <SimpleTooltip
       button={
@@ -544,6 +550,15 @@ function RunsHelpTooltip() {
               automatically retry on failure.
             </Paragraph>
           </div>
+          {project.secretProxyEnabled && (
+            <div>
+              <Paragraph variant="small/bright">Agent Vault</Paragraph>
+              <Paragraph variant="small" className="mt-1">
+                For sealed variables, task code gets a placeholder instead of the secret. Only
+                runtime requests to allowed domains receive the real value.
+              </Paragraph>
+            </div>
+          )}
           <div className="flex flex-col gap-2.5 border-t border-grid-dimmed pt-3">
             <div>
               <Paragraph variant="small/bright">

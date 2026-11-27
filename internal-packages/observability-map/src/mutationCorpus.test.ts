@@ -261,13 +261,6 @@ describeCorpus("mutation corpus over the real route tree", { timeout: ENTRY_TIME
     baseline = measure(files);
   }, ENTRY_TIMEOUT_MS);
 
-  /**
-   * The one documented exclusion from the population assertion below. `admin.tsx`'s handler is a
-   * concise arrow with no block for a block wrapper to wrap, which is a limit of the rewrite rather
-   * than a gap in the enumeration. Named rather than counted so a second one cannot appear silently.
-   */
-  const CONCISE_ARROW_BODIES = new Set(["admin.tsx"]);
-
   it("wraps a body in every non-delegating entry point the scanner finds", () => {
     const wrap = MUTATIONS.find((m) => m.id === "wrap-body-in-rethrow")!;
     const root = materialize(files);
@@ -280,7 +273,7 @@ describeCorpus("mutation corpus over the real route tree", { timeout: ENTRY_TIME
 
     const byName = new Map(files.map((f) => [f.relativeName, f.source]));
     const untouched = entryPoints
-      .filter((ep) => !ep.delegating && !CONCISE_ARROW_BODIES.has(ep.fileName))
+      .filter((ep) => !ep.delegating)
       .filter((ep) => wrap.apply(ep.fileName, byName.get(ep.fileName)!) === null)
       .map((ep) => ep.fileName);
 

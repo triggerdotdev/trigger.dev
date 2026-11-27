@@ -2,7 +2,8 @@ import { parseWithZod } from "~/utils/conform";
 import { json } from "@remix-run/node";
 import { errAsync, fromPromise, okAsync } from "neverthrow";
 import { z } from "zod";
-import { $replica, prisma } from "~/db.server";
+import { prisma } from "~/db.server";
+import { resolveOrgIdFromProjectId } from "~/models/project.server";
 import { redirectWithErrorMessage, redirectWithSuccessMessage } from "~/models/message.server";
 import { logger } from "~/services/logger.server";
 import { dashboardAction } from "~/services/routeBuilders/dashboardBuilder";
@@ -17,20 +18,12 @@ const ParamSchema = z.object({
   deploymentShortCode: z.string(),
 });
 
-async function resolveOrgIdFromProjectId(projectId: string): Promise<string | null> {
-  const project = await $replica.project.findFirst({
-    where: { id: projectId },
-    select: { organizationId: true },
-  });
-  return project?.organizationId ?? null;
-}
-
 export const action = dashboardAction(
   {
     params: ParamSchema,
     context: async (params) => {
       const organizationId = await resolveOrgIdFromProjectId(params.projectId);
-      return organizationId ? { organizationId } : {};
+      return organizationId ? { organizationId, projectId: params.projectId } : {};
     },
     authorization: { action: "write", resource: { type: "deployments" } },
   },

@@ -8,6 +8,8 @@ import { setTimeout } from "node:timers/promises";
 import { expect } from "vitest";
 import { RunEngine } from "../index.js";
 import type { RunEngineOptions } from "../types.js";
+import { WaitpointStoreCoordinator } from "../waitpointCoordinator/storeCoordinator.js";
+import { StoreWaitpointCoordinator } from "../waitpointCoordinator/storeWaitpointCoordinator.js";
 import {
   organizationFlagResolver,
   organizationQueryCounter,
@@ -225,6 +227,133 @@ describe("waitpoint flag lookups per operation", () => {
         );
       } finally {
         await engine.quit();
+        await counter.client.$disconnect();
+      }
+    }
+  );
+});
+
+describe("waitpoint flag lookups of a suspend", () => {
+  const checkpoint = {
+    type: "KUBERNETES" as const,
+    reason: "TEST_CHECKPOINT",
+    location: "test-location",
+    imageRef: "test-image-ref",
+  };
+
+  // The engine's resolver, wrapped to read the environment's checkpoint row count (on the engine's
+  // own client) each time it is called.
+  function countingResolver(prisma: PrismaClient, client: PrismaClient, env: Env) {
+    const resolve = organizationFlagResolver(client);
+    const rowsSeen: number[] = [];
+    const resolver: NonNullable<RunEngineOptions["waitpointStoreEnabled"]> = async (
+      organizationId,
+      organizationFlags
+    ) => {
+      rowsSeen.push(
+        await prisma.taskRunCheckpoint.count({ where: { runtimeEnvironmentId: env.id } })
+      );
+      return resolve(organizationId, organizationFlags);
+    };
+    return { resolver, rowsSeen };
+  }
+
+  // Waitpoint routing and store wired as the webapp wires them. The suspend's own flag lookup runs
+  // only behind the routing, and the store adds one lookup to every latest-snapshot read.
+  function routedEngine(
+    prisma: PrismaClient,
+    redisOptions: RunEngineOptions["queue"]["redis"],
+    resolver: NonNullable<RunEngineOptions["waitpointStoreEnabled"]>
+  ) {
+    const store = new WaitpointStoreCoordinator({ redisOptions });
+    const engine = engineWith(prisma, redisOptions, {
+      waitpointStoreEnabled: resolver,
+      waitpointRouting: {
+        store: new StoreWaitpointCoordinator({ store }),
+        mintPolicy: { resolveMintMode: () => "redis", isCapabilityReady: () => true },
+      },
+      waitpointStore: store,
+      waitpointFanoutStore: store,
+    });
+    return { engine, store };
+  }
+
+  // Catches: a suspend of a waiting run resolving the flag again after the checkpoint insert, or not
+  // at all; or a discarded suspend resolving it beyond its latest read.
+  containerTest(
+    "a suspend of a waiting run makes one lookup after the checkpoint insert, and a discarded one only its latest read's",
+    async ({ prisma, postgresContainer, redisOptions }) => {
+      const counter = organizationQueryCounter(postgresContainer.getConnectionUri());
+      const env = await environment(prisma, false);
+      const { resolver, rowsSeen } = countingResolver(prisma, counter.client, env);
+      const { engine, store } = routedEngine(prisma, redisOptions, resolver);
+      try {
+        const { run, blocked } = await blockedRun(engine, env, prisma);
+        expect(blocked.executionStatus).toBe("EXECUTING_WITH_WAITPOINTS");
+
+        rowsSeen.length = 0;
+        const suspend = await counter.measure(() =>
+          engine.createCheckpoint({ runId: run.id, snapshotId: blocked.id, checkpoint })
+        );
+        expect(suspend.result.ok).toBe(true);
+        if (!suspend.result.ok) return;
+        expect(suspend.result.snapshot.executionStatus).toBe("SUSPENDED");
+        // The latest read's lookup (no checkpoint row yet), then the suspend's own (one row).
+        expect(suspend.lookups).toBe(2);
+        expect(rowsSeen).toEqual([0, 1]);
+
+        rowsSeen.length = 0;
+        const discarded = await counter.measure(() =>
+          engine.createCheckpoint({
+            runId: run.id,
+            snapshotId: suspend.result.ok ? suspend.result.snapshot.id : "",
+            checkpoint,
+          })
+        );
+        expect(discarded.result).toEqual({
+          ok: false,
+          error: "Status SUSPENDED is not checkpointable",
+        });
+        // Only the latest read's lookup; no row is added.
+        expect(discarded.lookups).toBe(1);
+        expect(rowsSeen).toEqual([1]);
+        expect(
+          await prisma.taskRunCheckpoint.count({ where: { runtimeEnvironmentId: env.id } })
+        ).toBe(1);
+      } finally {
+        await engine.quit();
+        await store.quit();
+        await counter.client.$disconnect();
+      }
+    }
+  );
+
+  // Catches: a suspend of an executing run resolving the waitpoint flag after the checkpoint insert.
+  containerTest(
+    "a suspend of an executing run makes no lookup after the checkpoint insert and is accepted",
+    async ({ prisma, postgresContainer, redisOptions }) => {
+      const counter = organizationQueryCounter(postgresContainer.getConnectionUri());
+      const env = await environment(prisma, false);
+      const { resolver, rowsSeen } = countingResolver(prisma, counter.client, env);
+      const { engine, store } = routedEngine(prisma, redisOptions, resolver);
+      try {
+        const { run, attempt } = await executingRun(engine, env, prisma);
+        expect(attempt.snapshot.executionStatus).toBe("EXECUTING");
+
+        rowsSeen.length = 0;
+        const suspend = await counter.measure(() =>
+          engine.createCheckpoint({ runId: run.id, snapshotId: attempt.snapshot.id, checkpoint })
+        );
+        expect(suspend.result.ok).toBe(true);
+        // Only the latest read's lookup, before the insert.
+        expect(suspend.lookups).toBe(1);
+        expect(rowsSeen).toEqual([0]);
+        expect(
+          await prisma.taskRunCheckpoint.count({ where: { runtimeEnvironmentId: env.id } })
+        ).toBe(1);
+      } finally {
+        await engine.quit();
+        await store.quit();
         await counter.client.$disconnect();
       }
     }

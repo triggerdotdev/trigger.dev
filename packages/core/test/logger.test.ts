@@ -111,6 +111,24 @@ describe("Logger redaction", () => {
     expect(line.normalField).toBe("just some text");
   });
 
+  it("redacts a JWT under any key, and a deploymentToken key", () => {
+    const logger = new Logger("test", "info");
+    const jwt = "eyJhbGciOiJFZERTQSJ9.eyJkZXBsb3ltZW50IjoiZCJ9.c2lnbmF0dXJl";
+
+    const line = captureLogLine(() =>
+      logger.info("jwt check", {
+        socketData: { deploymentId: jwt },
+        env: [`TRIGGER_DEPLOYMENT_ID=${jwt}`],
+        deploymentToken: "opaque",
+        version: "20261027.1.2",
+      })
+    );
+
+    expect(JSON.stringify(line)).not.toContain("c2lnbmF0dXJl");
+    expect(line.deploymentToken).toMatch(/^\[filtered/);
+    expect(line.version).toBe("20261027.1.2");
+  });
+
   it("redacts a structured message before assigning it to $message", () => {
     const logger = new Logger("test", "info");
 
@@ -218,6 +236,17 @@ describe("redact()", () => {
 
     expect(result.packet).toMatch(/^\[filtered/);
     expect(JSON.stringify(result)).not.toContain("customer-payload");
+  });
+
+  it("scans a long run of JWT-like prefixes in linear time", () => {
+    const body = "-eyJ".repeat(25_000);
+
+    const started = performance.now();
+    const result = redact({ body }) as Record<string, unknown>;
+    const elapsedMs = performance.now() - started;
+
+    expect(result.body).toContain("[truncated");
+    expect(elapsedMs).toBeLessThan(500);
   });
 
   it("merges in caller-supplied filteredKeys", () => {

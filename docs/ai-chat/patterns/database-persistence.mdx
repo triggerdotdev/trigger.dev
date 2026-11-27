@@ -184,7 +184,7 @@ chat.agent({
 
 ## Alternative: `hydrateMessages` (deprecated)
 
-For apps that need the backend to be the single source of truth for message history — abuse prevention, branching conversations, or rollback support — the recommended path is a [transcript storage](/ai-chat/transcript-storage#owning-the-models-context) with `loadContext`. The deprecated [`hydrateMessages`](/ai-chat/lifecycle-hooks#hydratemessages) hook does the same job without the runtime writing to your store.
+For apps that need the backend to be the single source of truth for message history — abuse prevention, branching conversations, or rollback support — the recommended path is a [transcript storage](/ai-chat/transcript-storage#owning-the-model’s-context) with `loadContext`. The deprecated [`hydrateMessages`](/ai-chat/lifecycle-hooks#hydratemessages) hook does the same job without the runtime writing to your store.
 
 With hydration, the hook loads messages from your database on every turn. The frontend's messages are ignored (except for the new user message, which arrives in `incomingMessages`):
 

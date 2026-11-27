@@ -1,0 +1,257 @@
+@import "tailwindcss";
+@import "fumadocs-ui/css/lib/default-colors.css";
+@import "fumadocs-ui/css/preset.css";
+@import "fumadocs-openapi/css/preset.css";
+@import "fumadocs-twoslash/twoslash.css";
+@import "../.generated/shiki-tokens.css";
+@import "../.generated/choices.css";
+@import "non.geist";
+@import "non.geist/mono";
+@import "./dashboard-figures.css";
+
+@source "../components";
+
+/* Dashboard palette (apps/webapp/app/tailwind.css), copied: the docs app doesn't import the webapp. */
+@theme {
+  --font-sans: "Geist Variable", "Helvetica Neue", Helvetica, Arial, sans-serif;
+  --font-mono: "Geist Mono Variable", monaco, Consolas, "Lucida Console", monospace;
+
+  --color-charcoal-100: #e8e9ec;
+  --color-charcoal-200: #d7d9dd;
+  --color-charcoal-300: #b5b8c0;
+  --color-charcoal-400: #878c99;
+  --color-charcoal-500: #5f6570;
+  --color-charcoal-550: #4d525b;
+  --color-charcoal-600: #3b3e45;
+  --color-charcoal-650: #2c3034;
+  --color-charcoal-700: #272a2e;
+  --color-charcoal-750: #212327;
+  --color-charcoal-775: #1c1e21;
+  --color-charcoal-800: #1a1b1f;
+  --color-charcoal-850: #15171a;
+  --color-charcoal-900: #121317;
+  --color-charcoal-950: #0d0e12;
+
+  --color-apple-100: #e4ffc9;
+  --color-apple-300: #bfff81;
+  --color-apple-500: #a8ff53;
+  --color-apple-600: #82d134;
+  --color-apple-700: #6fb12f;
+  --color-apple-800: #45711a;
+  --color-apple-900: #20370a;
+  --color-apple-950: #152506;
+
+  --color-lavender-300: #bab2ff;
+  --color-lavender-400: #826dff;
+  --color-lavender-600: #6532f5;
+  --color-lavender-800: #481abd;
+}
+
+/*
+  Semantic layer, the same names the dashboard uses. Callout colors per kind:
+  tone is the border/icon accent, tint the background, ink the title.
+*/
+:root {
+  --color-text-bright: #1a1b1f;
+  --color-text-dimmed: var(--color-charcoal-500);
+  --color-text-faint: var(--color-charcoal-400);
+  --color-text-link: var(--color-apple-800);
+  --color-surface-hover: #f2f3f5;
+
+  --callout-note: #3b82f6;
+  --callout-note-tint: #eff6ff;
+  --callout-warning: #d97706;
+  --callout-warning-tint: #fffbeb;
+  --callout-tip: var(--color-lavender-600);
+  --callout-tip-tint: #f4f2ff;
+  --callout-check: #1b9e48;
+  --callout-check-tint: #f0fdf4;
+
+  --color-fd-background: #ffffff;
+  --color-fd-foreground: #1a1b1f;
+  --color-fd-muted: #f1f2f4;
+  --color-fd-muted-foreground: #5f6570;
+  --color-fd-popover: #ffffff;
+  --color-fd-popover-foreground: #1a1b1f;
+  --color-fd-card: #fbfbfc;
+  --color-fd-card-foreground: #1a1b1f;
+  --color-fd-border: #e2e4e9;
+  --color-fd-primary: var(--color-apple-800);
+  --color-fd-primary-foreground: #ffffff;
+  --color-fd-secondary: #f1f2f4;
+  --color-fd-secondary-foreground: #1a1b1f;
+  --color-fd-accent: #eff0f2;
+  --color-fd-accent-foreground: #1a1b1f;
+  --color-fd-ring: var(--color-apple-700);
+  --color-fd-overlay: rgb(18 19 23 / 0.3);
+}
+
+.dark {
+  --color-text-bright: var(--color-charcoal-200);
+  --color-text-dimmed: var(--color-charcoal-400);
+  --color-text-faint: var(--color-charcoal-500);
+  --color-text-link: var(--color-apple-500);
+  --color-surface-hover: var(--color-charcoal-750);
+
+  --callout-note: #60a5fa;
+  --callout-note-tint: rgb(59 130 246 / 0.08);
+  --callout-warning: #f59e0b;
+  --callout-warning-tint: rgb(245 158 11 / 0.08);
+  --callout-tip: var(--color-lavender-400);
+  --callout-tip-tint: rgb(130 109 255 / 0.1);
+  --callout-check: #28bf5c;
+  --callout-check-tint: rgb(40 191 92 / 0.08);
+
+  --color-fd-background: var(--color-charcoal-900);
+  --color-fd-foreground: var(--color-charcoal-200);
+  --color-fd-muted: var(--color-charcoal-800);
+  --color-fd-muted-foreground: var(--color-charcoal-400);
+  --color-fd-popover: var(--color-charcoal-800);
+  --color-fd-popover-foreground: var(--color-charcoal-200);
+  --color-fd-card: var(--color-charcoal-850);
+  --color-fd-card-foreground: var(--color-charcoal-200);
+  --color-fd-border: var(--color-charcoal-700);
+  --color-fd-primary: var(--color-apple-500);
+  --color-fd-primary-foreground: var(--color-charcoal-900);
+  --color-fd-secondary: var(--color-charcoal-800);
+  --color-fd-secondary-foreground: var(--color-charcoal-200);
+  --color-fd-accent: var(--color-charcoal-750);
+  --color-fd-accent-foreground: var(--color-charcoal-100);
+  --color-fd-ring: var(--color-apple-600);
+  --color-fd-overlay: rgb(0 0 0 / 0.5);
+}
+
+@layer base {
+  html {
+    -webkit-font-smoothing: antialiased;
+  }
+  ::selection {
+    background: color-mix(in srgb, var(--color-fd-primary) 30%, transparent);
+  }
+}
+
+/* Prose: dashboard type scale, links in brand green, headings tight like the dashboard. */
+.prose {
+  --tw-prose-body: color-mix(in srgb, var(--color-fd-foreground) 88%, transparent);
+  --tw-prose-headings: var(--color-text-bright);
+  --tw-prose-links: var(--color-text-link);
+  font-size: 0.9375rem;
+  line-height: 1.7;
+}
+.prose :where(h1, h2, h3, h4):not(:where(.not-prose *)) {
+  letter-spacing: -0.015em;
+  font-weight: 600;
+}
+.prose :where(a):not(:where(.not-prose *)) {
+  text-decoration-color: color-mix(in srgb, var(--color-text-link) 40%, transparent);
+  text-underline-offset: 3px;
+  font-weight: 500;
+}
+.prose :where(a):not(:where(.not-prose *)):hover {
+  text-decoration-color: var(--color-text-link);
+}
+/* Inline code: a quiet chip, not a second link color. */
+.prose :where(:not(pre) > code):not(:where(.not-prose *)) {
+  border: 1px solid var(--color-fd-border);
+  background: var(--color-fd-muted);
+  border-radius: 4px;
+  padding: 0.1em 0.35em;
+  font-size: 0.85em;
+  font-weight: 450;
+}
+
+/* Code blocks sit on the page color with a border, like the dashboard's code panels. */
+figure.shiki {
+  background: var(--color-fd-background);
+}
+.dark figure.shiki {
+  background: var(--color-charcoal-900);
+}
+figure.shiki pre,
+figure.shiki code {
+  font-family: var(--font-mono);
+  font-size: 0.8125rem;
+  line-height: 1.65;
+  font-variant-ligatures: none; /* show => and !== as typed */
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    transition-duration: 0ms !important;
+    animation-duration: 0ms !important;
+  }
+}
+
+/* One-row header from 1280px: the section tabs sit in the top bar (components/header-tabs.tsx),
+   so hide the notebook layout's second tab row and give back its height. */
+@media (width >= 80rem) {
+  #nd-notebook-layout:has(> #nd-subnav) {
+    --fd-header-height: 3.5rem;
+  }
+  #nd-subnav [data-header-tabs] {
+    display: none;
+  }
+}
+
+/* Type hovers on SDK code samples (fumadocs-twoslash): the popup uses the fd tokens above. */
+.twoslash .twoslash-hover:focus-visible {
+  border-radius: 2px;
+  outline: 2px solid var(--color-fd-ring);
+  outline-offset: 1px;
+}
+.fd-twoslash-popover {
+  border-radius: var(--radius-lg);
+  max-width: min(560px, 96vw);
+  font-size: 0.8125rem;
+  box-shadow: 0 8px 24px rgb(0 0 0 / 0.25);
+}
+.fd-twoslash-popover .twoslash-popup-code,
+.fd-twoslash-popover pre {
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  white-space: pre-wrap;
+}
+/* Multi-line types come through the MDX code block: show them bare, wrapped, without a copy button. */
+.fd-twoslash-popover .twoslash.shiki,
+.fd-twoslash-popover figure {
+  margin: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+}
+.fd-twoslash-popover figure > div:has(> button) {
+  display: none;
+}
+.fd-twoslash-popover figure > div {
+  padding: 0;
+  overflow: visible;
+  max-height: none;
+}
+.fd-twoslash-popover .shiki .line {
+  padding: 0;
+}
+.fd-twoslash-popover figure pre {
+  width: auto;
+}
+.fd-twoslash-popover .twoslash-popup-docs {
+  border-top: 1px solid var(--color-fd-border);
+  padding-top: 0.5rem;
+  color: var(--color-fd-muted-foreground);
+}
+
+/* Search result highlights (components/search-highlight.tsx): the query's words, one quiet tint. */
+.search-hits mark {
+  border-radius: 3px;
+  padding: 0 1px;
+  background: color-mix(in srgb, var(--color-fd-primary) 16%, transparent);
+  color: var(--color-fd-foreground);
+  box-decoration-break: clone;
+}
+
+/* "On this page" active item and indicator bar: indigo-500 in light and dark (Eric). */
+#nd-toc,
+[data-toc-popover] {
+  --color-fd-primary: var(--color-indigo-500);
+}

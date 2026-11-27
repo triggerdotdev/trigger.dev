@@ -1,4 +1,5 @@
 import { json } from "@remix-run/server-runtime";
+import { isPendingUnitInProgress } from "@internal/run-store";
 import type { RbacResource } from "@trigger.dev/plugins";
 import { z } from "zod";
 import { $replica } from "~/db.server";
@@ -33,10 +34,15 @@ export const loader = createLoaderApiRoute(
         (await runStore.findRunOnPrimary(where, select));
       if (!run) return null;
 
-      const execution = await engine.getRunExecutionData({
-        runId: run.id,
-        environmentId: authentication.environment.id,
-      });
+      const execution = await engine
+        .getRunExecutionData({ runId: run.id, environmentId: authentication.environment.id })
+        .catch((error) => {
+          // A thrown Response is returned as is; anything else is logged as an error.
+          if (isPendingUnitInProgress(error)) {
+            throw json({ error: "Snapshot read temporarily unavailable" }, { status: 503 });
+          }
+          throw error;
+        });
       const waitpoint = execution?.completedWaitpoints.find(
         (completed) => completed.friendlyId === params.waitpointId
       );

@@ -96,6 +96,7 @@ export type RbacSubject =
   | {
       type: "runToken";
       runId: string;
+      attemptNumber: number;
       environmentId: string;
       organizationId: string;
       projectId?: string;
@@ -227,6 +228,8 @@ export type RbacScopeAction = "read" | "write" | "trigger" | "batchTrigger" | "a
 
 export type RbacScopeResourceType =
   | "runs"
+  | "runPayloads"
+  | "runOutputs"
   | "tasks"
   | "batch"
   | "queues"
@@ -244,6 +247,7 @@ export type RbacScopeResourceType =
   | "query"
   | "errors"
   | "webhooks"
+  | "signals"
   | "devWorkers";
 
 /**
@@ -836,17 +840,30 @@ export interface RoleBaseAccessController {
   // null. The default fallback returns a Map of all userIds → null.
   getUserRoles(userIds: string[], organizationId: string): Promise<Map<string, Role | null>>;
 
+  // `onlyIfUnassigned` skips the write when the user already holds an assigned role in that scope
+  // (the legacy fallback doesn't count), returning ok with that role as `previousRole`,
+  // `changed: false` and `kept: true`.
   setUserRole(params: {
     userId: string;
     organizationId: string;
     roleId: string;
     projectId?: string;
-  }): Promise<RoleAssignmentResult>;
+    onlyIfUnassigned?: boolean;
+  }): Promise<UserRoleAssignmentResult>;
 
   removeUserRole(params: {
     userId: string;
     organizationId: string;
     projectId?: string;
+  }): Promise<RoleAssignmentResult>;
+
+  // Deletes every role assignment (org and project scoped) the user holds in
+  // the org, but only while they are not a member, checked in the same
+  // statement. Clears roles left behind by an earlier membership without
+  // touching a membership that exists by the time it runs.
+  removeFormerMemberRoles(params: {
+    userId: string;
+    organizationId: string;
   }): Promise<RoleAssignmentResult>;
 
   getTokenRole(tokenId: string): Promise<Role | null>;
@@ -895,10 +912,17 @@ export type RoleMutationResult = { ok: true; role: Role } | { ok: false; error: 
 // `code` is an optional machine-readable reason so callers can branch on
 // expected outcomes (e.g. `last_owner`, the guard that keeps an org from
 // losing its final Owner) instead of matching the free-text `error`.
-type RoleAssignmentErrorCode = "last_owner";
+type RoleAssignmentErrorCode = "last_owner" | "not_a_member";
 export type RoleAssignmentResult =
   | { ok: true }
   | { ok: false; error: string; code?: RoleAssignmentErrorCode };
+
+// `setUserRole`'s result. On success, `previousRole` is the user's effective role in that scope
+// before the write (null if they had none) and `changed` is whether the write changed it, both read
+// in the write's transaction. Refuses a user who isn't a member of the organization (`not_a_member`).
+export type UserRoleAssignmentResult =
+  | { ok: true; previousRole: Role | null; changed: boolean; kept?: true }
+  | Extract<RoleAssignmentResult, { ok: false }>;
 
 import type { PluginDatabaseConfig } from "./databaseConfig.js";
 import type { ApiKeyCapabilityCatalogue, ApiKeyCapabilityMap } from "./apiKeyCapabilities.js";

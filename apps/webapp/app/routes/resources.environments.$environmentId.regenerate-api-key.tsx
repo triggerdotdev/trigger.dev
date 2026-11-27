@@ -17,9 +17,11 @@ export const action = dashboardAction(
     context: async (params) => {
       const environment = await $replica.runtimeEnvironment.findFirst({
         where: { id: params.environmentId },
-        select: { organizationId: true },
+        select: { organizationId: true, projectId: true },
       });
-      return environment ? { organizationId: environment.organizationId } : {};
+      return environment
+        ? { organizationId: environment.organizationId, projectId: environment.projectId }
+        : {};
     },
     // Env-tier write:apiKeys is enforced in the handler — the target
     // environment's tier isn't known until we resolve it from the id.
@@ -53,14 +55,13 @@ export const action = dashboardAction(
     const formData = await request.formData();
     const syncToVercel = formData.get("syncToVercel") === "on";
     const revokeImmediately = formData.get("previousKey") === "revoke";
-    const allowHidden = formData.get("rootApiKeyHidden") === "true";
 
     try {
       const updatedEnvironment = await regenerateApiKey({
         userId: user.id,
         environmentId,
         revokeImmediately,
-        allowHidden,
+        allowHidden: true,
       });
 
       // Sync the regenerated API key to Vercel only when requested and not for DEVELOPMENT

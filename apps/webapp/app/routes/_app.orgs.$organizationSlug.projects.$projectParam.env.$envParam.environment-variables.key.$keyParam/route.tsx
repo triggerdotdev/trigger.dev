@@ -47,6 +47,10 @@ import {
   useEnvironmentVariablesPageData,
   type MaskedEnvironmentVariable,
 } from "~/routes/_app.orgs.$organizationSlug.projects.$projectParam.env.$envParam.environment-variables/EnvironmentVariableControls";
+import {
+  EditVaultValueButton,
+  VaultDomain,
+} from "~/routes/_app.orgs.$organizationSlug.projects.$projectParam.env.$envParam.environment-variables/Vault";
 import type { EnvironmentVariablesOutletContext } from "~/routes/_app.orgs.$organizationSlug.projects.$projectParam.env.$envParam.environment-variables/route";
 import { recordDashboardEnvironmentVariableKeyRead } from "~/services/auditLogs/envVarReadAudit.server";
 import { resolveProjectAuthScope } from "~/services/projectAuthScope.server";
@@ -72,6 +76,7 @@ import {
   NEW_VARIABLE_ENVIRONMENT_PARAM,
   NEW_VARIABLE_FILL_KEY_PARAM,
   NEW_VARIABLE_PICK_BRANCH_PARAM,
+  NEW_VARIABLE_NOT_SECRET,
   NEW_VARIABLE_SECRET_PARAM,
   keyPanelViewSearch,
   navigationKeepsKeyPanel,
@@ -227,12 +232,12 @@ export default function Page() {
   // The create dialog, over the panel. With an environment it starts on this key there; with
   // fillKey it starts on this key and leaves the environments as the list has them.
   // With addOverride it starts on this key in Preview, on its branch picker, with the secret
-  // switch on when the Preview base value is secret.
+  // switch matching the Preview base value when there is one.
   const newVariablePath = (
     start?:
       | { environmentId: string }
       | { fillKey: true }
-      | { addOverride: { previewEnvironmentId: string; isSecret: boolean } }
+      | { addOverride: { previewEnvironmentId: string; isSecret?: boolean } }
   ) => {
     const params = new URLSearchParams(
       outletContext.attention
@@ -247,8 +252,8 @@ export default function Page() {
     } else if (start && "addOverride" in start) {
       params.set(NEW_VARIABLE_ENVIRONMENT_PARAM, start.addOverride.previewEnvironmentId);
       params.set(NEW_VARIABLE_PICK_BRANCH_PARAM, "1");
-      if (start.addOverride.isSecret) {
-        params.set(NEW_VARIABLE_SECRET_PARAM, "1");
+      if (start.addOverride.isSecret === false) {
+        params.set(NEW_VARIABLE_SECRET_PARAM, NEW_VARIABLE_NOT_SECRET);
       }
     } else if (start) {
       params.set(NEW_VARIABLE_FILL_KEY_PARAM, "1");
@@ -349,6 +354,10 @@ export default function Page() {
   const oidcEnvironment =
     project.environments.find((e) => e.id === oidcEnvironmentId) ?? environment;
   const { pagination } = detail.branches;
+  const vaultRows = [
+    ...detail.environments.flatMap((row) => (row.variable ? [row.variable] : [])),
+    ...detail.branches.variables,
+  ].filter((variable) => variable.vaultHosts);
   const branchPagePath = (page: number) => {
     const params = new URLSearchParams(location.search);
     if (page > 1) {
@@ -495,7 +504,7 @@ export default function Page() {
                             to={newVariablePath({
                               addOverride: {
                                 previewEnvironmentId: previewBaseRow.environment.id,
-                                isSecret: previewBaseRow.variable?.isSecret === true,
+                                isSecret: previewBaseRow.variable?.isSecret,
                               },
                             })}
                             variant="tertiary/small"
@@ -564,6 +573,29 @@ export default function Page() {
                     />
                   </nav>
                 )}
+              </Section>
+            )}
+
+            {vaultRows.length > 0 && (
+              <Section title="Agent Vault">
+                <Property.Table className="px-3">
+                  {vaultRows.map((variable) => (
+                    <Property.Item key={variable.environment.id}>
+                      <Property.Label className="flex min-w-0 items-center gap-1">
+                        <EnvironmentCombo environment={variable.environment} className="text-sm" />
+                      </Property.Label>
+                      <Property.Value>
+                        <ul className="flex flex-wrap gap-1 py-1">
+                          {variable.vaultHosts?.map((host) => (
+                            <li key={host}>
+                              <VaultDomain host={host} />
+                            </li>
+                          ))}
+                        </ul>
+                      </Property.Value>
+                    </Property.Item>
+                  ))}
+                </Property.Table>
               </Section>
             )}
           </>
@@ -828,14 +860,18 @@ function PanelValue({
       <div className={"flex shrink-0 items-center"}>
         {!variable.permissionDenied && !isReadOnly && (
           <>
-            <Button
-              ref={editButtonRef}
-              type="button"
-              variant="small-menu-item"
-              LeadingIcon={PencilSquareIcon}
-              aria-label={`Edit ${variable.key} in ${environmentFullTitle(variable.environment)}`}
-              onClick={() => editing.setEditingEnvironmentId(variable.environment.id)}
-            />
+            {variable.vaultHosts ? (
+              <EditVaultValueButton variable={variable} />
+            ) : (
+              <Button
+                ref={editButtonRef}
+                type="button"
+                variant="small-menu-item"
+                LeadingIcon={PencilSquareIcon}
+                aria-label={`Edit ${variable.key} in ${environmentFullTitle(variable.environment)}`}
+                onClick={() => editing.setEditingEnvironmentId(variable.environment.id)}
+              />
+            )}
             <DeleteEnvironmentVariableButton
               variable={variable}
               previewBase={counts.previewBase === "set" ? "set" : "unset"}

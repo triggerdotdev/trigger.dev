@@ -3,7 +3,7 @@ import { runTokenSelectionReason } from "../runToken.js";
 import { taskContext } from "../task-context-api.js";
 import { getEnvVar } from "../utils/getEnv.js";
 import { zodfetch, type ApiRequestOptions } from "./core.js";
-import { ApiError } from "./errors.js";
+import { ApiError, RateLimitError } from "./errors.js";
 
 export type GetOIDCTokenOptions = {
   audience: string;
@@ -95,6 +95,15 @@ export async function requestOIDCToken(
     );
   } catch (error) {
     if (error instanceof OIDCTokenError) throw error;
+    if (error instanceof RateLimitError) {
+      throw new RateLimitError(
+        error.status,
+        { code: "RATE_LIMIT_EXCEEDED", message: error.message },
+        undefined,
+        error.headers,
+        error.body
+      );
+    }
     if (error instanceof ApiError) {
       throw new OIDCTokenError(error.code ?? "OIDC_REQUEST_FAILED", error.message, error);
     }

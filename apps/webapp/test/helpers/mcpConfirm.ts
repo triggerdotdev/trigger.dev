@@ -101,10 +101,17 @@ export async function approveAll() {
 
 /** Asserts the call was held for confirmation and returns the pending id. */
 export async function expectPending(call: Promise<unknown>): Promise<string> {
+  let outcome = "";
   const error = await call.then(
-    () => null,
-    (e: unknown) => e
+    (result) => {
+      outcome = `resolved instead: ${JSON.stringify(result)}`;
+      return null;
+    },
+    (e: unknown) => {
+      outcome = `rejected with: ${e instanceof Error ? e.message : String(e)}`;
+      return e;
+    }
   );
-  expect(error).toBeInstanceOf(UrlElicitationRequiredError);
+  expect(error, outcome).toBeInstanceOf(UrlElicitationRequiredError);
   return (error as UrlElicitationRequiredError).elicitations[0]!.elicitationId as string;
 }

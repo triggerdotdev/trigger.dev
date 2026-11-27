@@ -29,6 +29,18 @@ describe("resolvePinToFollow", () => {
     expect(target).toBeUndefined();
   });
 
+  // Catches: "follow-mid-turn" not following the pin at a turn boundary the way "follow" does.
+  it("follows the pin with follow-mid-turn too", async () => {
+    const target = await resolvePinToFollow({
+      policy: "follow-mid-turn",
+      deployedExternalId: "rel-v1",
+      upgradeAlreadyRequested: false,
+      readPin: readPin({ externalDeploymentId: "rel-v2" }),
+    });
+
+    expect(target).toBe("rel-v2");
+  });
+
   it("does not read the session when the policy is hold", async () => {
     const read = readPin({ externalDeploymentId: "rel-v2" });
 

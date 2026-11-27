@@ -1,6 +1,7 @@
 import { type LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import type { QueueItem } from "@trigger.dev/core/v3/schemas";
+import { useDocsLink } from "~/components/DocsPanel";
 import type { QueueLimits } from "~/components/queues/queue-limits";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import { z } from "zod";
@@ -63,12 +64,7 @@ import { rbac } from "~/services/rbac.server";
 import { resolveProjectAuthScope } from "~/services/projectAuthScope.server";
 import { dashboardAction } from "~/services/routeBuilders/dashboardBuilder";
 import { requireUserId } from "~/services/session.server";
-import {
-  docsPath,
-  EnvironmentParamSchema,
-  v3AlertCreatePath,
-  v3RunsPath,
-} from "~/utils/pathBuilder";
+import { EnvironmentParamSchema, v3AlertCreatePath, v3RunsPath } from "~/utils/pathBuilder";
 import { useOrganization } from "~/hooks/useOrganizations";
 import { useProject } from "~/hooks/useProject";
 import { useEnvironment } from "~/hooks/useEnvironment";
@@ -691,6 +687,7 @@ type CkBreakdown = {
 // Standard empty state for a queue that has no concurrency keys (no live keys and no CK history).
 // Small, centered panel — same pattern as the runs page's "Create your first task" state.
 function ConcurrencyKeysBlankState() {
+  const docsLink = useDocsLink();
   return (
     <MainCenteredContainer className="max-w-md">
       <InfoPanel
@@ -700,7 +697,7 @@ function ConcurrencyKeysBlankState() {
         title="No concurrency keys configured"
         accessory={
           <LinkButton
-            to={docsPath("/queue-concurrency")}
+            {...docsLink("/queue-concurrency")}
             variant="docs/small"
             LeadingIcon={BookOpenIcon}
           >

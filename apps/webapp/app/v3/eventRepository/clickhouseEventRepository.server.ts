@@ -84,6 +84,7 @@ import type {
   TraceSummary,
 } from "./eventRepository.types";
 import { insertLogsSearchRows } from "./insertLogsSearchRows.server";
+import { DEFAULT_EVENT_RETENTION_DAYS, eventExpiresAt } from "./eventRetention";
 import {
   insertWithBadRowSkip,
   type JsonParseRecoveryOutcome,
@@ -181,6 +182,8 @@ export type ClickhouseEventRepositoryConfig = {
   logsSearchDualWriteMaxConcurrency?: number;
   logsSearchDualWriteMaxPending?: number;
   logsSearchInsertAsync?: boolean;
+  /** Days until a written row expires; the table TTL deletes it 7 days after that. */
+  retentionDays?: number;
 };
 
 /**
@@ -196,6 +199,7 @@ export class ClickhouseEventRepository implements IEventRepository {
   private readonly _otlpMetricsFlushScheduler: DynamicFlushScheduler<MetricsV1Input>;
   private _tracer: Tracer;
   private _version: "v1" | "v2";
+  private readonly _retentionDays: number;
   /**
    * Counts batches where every row was un-ingestable, so nothing landed. Only
    * incremented when ClickHouse's summary says so exactly (`written_rows === 0`);
@@ -243,6 +247,7 @@ export class ClickhouseEventRepository implements IEventRepository {
     this._config = config;
     this._tracer = config.tracer ?? trace.getTracer("clickhouseEventRepo", "0.0.1");
     this._version = config.version ?? "v1";
+    this._retentionDays = config.retentionDays ?? DEFAULT_EVENT_RETENTION_DAYS;
 
     const meter = config.meter ?? getMeter("ingest-flush");
     this._droppedBatchesCounter = meter.createCounter("ingest.flush.batches_dropped", {
@@ -392,6 +397,10 @@ export class ClickhouseEventRepository implements IEventRepository {
   /** Exposed for tests and metrics — rows skipped as un-ingestable (a lower bound). */
   get permanentlyDroppedRows() {
     return this._permanentlyDroppedRows;
+  }
+
+  #expiresAt(): string {
+    return convertDateToClickhouseDateTime(eventExpiresAt(this._retentionDays));
   }
 
   /**
@@ -931,9 +940,7 @@ export class ClickhouseEventRepository implements IEventRepository {
           event.resourceProperties
         ),
         metadata: this.createEventToTaskEventV1InputMetadata(event),
-        expires_at: convertDateToClickhouseDateTime(
-          new Date(Date.now() + 365 * 24 * 60 * 60 * 1000) // 1 year
-        ),
+        expires_at: this.#expiresAt(),
         machine_id: event.machineId ?? "",
       },
       ...this.spanEventsToTaskEventV1Input(event),
@@ -1008,9 +1015,7 @@ export class ClickhouseEventRepository implements IEventRepository {
       metadata: JSON.stringify({
         exception: spanEvent.properties.exception,
       }), // Events have no metadata
-      expires_at: convertDateToClickhouseDateTime(
-        new Date(Date.now() + 365 * 24 * 60 * 60 * 1000) // 1 year
-      ),
+      expires_at: this.#expiresAt(),
     };
   }
 
@@ -1038,9 +1043,7 @@ export class ClickhouseEventRepository implements IEventRepository {
       metadata: JSON.stringify({
         reason: spanEvent.properties.reason,
       }), // Events have no metadata
-      expires_at: convertDateToClickhouseDateTime(
-        new Date(Date.now() + 365 * 24 * 60 * 60 * 1000) // 1 year
-      ),
+      expires_at: this.#expiresAt(),
     };
   }
 
@@ -1072,9 +1075,7 @@ export class ClickhouseEventRepository implements IEventRepository {
         },
       },
       metadata: JSON.stringify(spanEvent.properties),
-      expires_at: convertDateToClickhouseDateTime(
-        new Date(Date.now() + 365 * 24 * 60 * 60 * 1000) // 1 year
-      ),
+      expires_at: this.#expiresAt(),
     };
   }
 
@@ -1100,9 +1101,7 @@ export class ClickhouseEventRepository implements IEventRepository {
       status: "OK",
       attributes: {},
       metadata: JSON.stringify(unflattenAttributes(spanEvent.properties as Attributes)),
-      expires_at: convertDateToClickhouseDateTime(
-        new Date(Date.now() + 365 * 24 * 60 * 60 * 1000) // 1 year
-      ),
+      expires_at: this.#expiresAt(),
     };
   }
 
@@ -1268,8 +1267,7 @@ export class ClickhouseEventRepository implements IEventRepository {
         ? this.createEventToTaskEventV1InputAttributes(options.attributes.properties)
         : undefined,
       metadata: JSON.stringify(metadata),
-      // TODO: make sure configurable and by org
-      expires_at: convertDateToClickhouseDateTime(new Date(Date.now() + 365 * 24 * 60 * 60 * 1000)),
+      expires_at: this.#expiresAt(),
     };
 
     this._flushScheduler.addToBatch([event]);
@@ -1369,8 +1367,7 @@ export class ClickhouseEventRepository implements IEventRepository {
         ? this.createEventToTaskEventV1InputAttributes(options.attributes.properties)
         : {},
       metadata: JSON.stringify(metadata),
-      // TODO: make sure configurable and by org
-      expires_at: convertDateToClickhouseDateTime(new Date(Date.now() + 365 * 24 * 60 * 60 * 1000)),
+      expires_at: this.#expiresAt(),
     };
 
     const events = [event];
@@ -1398,10 +1395,7 @@ export class ClickhouseEventRepository implements IEventRepository {
         metadata: JSON.stringify({
           exception: createExceptionPropertiesFromError(failedWithError),
         }),
-        // TODO: make sure configurable and by org
-        expires_at: convertDateToClickhouseDateTime(
-          new Date(Date.now() + 365 * 24 * 60 * 60 * 1000)
-        ),
+        expires_at: this.#expiresAt(),
       });
     }
 
@@ -1424,9 +1418,6 @@ export class ClickhouseEventRepository implements IEventRepository {
 
     const clampedCreatedAt = this.#clampStartTimeDate(run.createdAt);
     const startTime = convertDateToNanoseconds(clampedCreatedAt);
-    const expiresAt = convertDateToClickhouseDateTime(
-      new Date(run.createdAt.getTime() + 30 * 24 * 60 * 60 * 1000)
-    );
 
     const event: TaskEventV1Input = {
       environment_id: run.runtimeEnvironmentId,
@@ -1446,7 +1437,7 @@ export class ClickhouseEventRepository implements IEventRepository {
       status: "OK",
       attributes: {},
       metadata: "{}",
-      expires_at: expiresAt,
+      expires_at: this.#expiresAt(),
     };
 
     this.addToBatch(event);
@@ -1475,9 +1466,6 @@ export class ClickhouseEventRepository implements IEventRepository {
 
     const clampedSpanCreatedAt = this.#clampStartTimeDate(spanCreatedAt);
     const startTime = convertDateToNanoseconds(clampedSpanCreatedAt);
-    const expiresAt = convertDateToClickhouseDateTime(
-      new Date(run.createdAt.getTime() + 30 * 24 * 60 * 60 * 1000)
-    );
 
     const event: TaskEventV1Input = {
       environment_id: run.runtimeEnvironmentId,
@@ -1497,7 +1485,7 @@ export class ClickhouseEventRepository implements IEventRepository {
       status: isError ? "ERROR" : "OK",
       attributes: {},
       metadata: "{}",
-      expires_at: expiresAt,
+      expires_at: this.#expiresAt(),
     };
 
     this.addToBatch(event);
@@ -1518,9 +1506,6 @@ export class ClickhouseEventRepository implements IEventRepository {
 
     const clampedCreatedAt = this.#clampStartTimeDate(run.createdAt);
     const startTime = convertDateToNanoseconds(clampedCreatedAt);
-    const expiresAt = convertDateToClickhouseDateTime(
-      new Date(run.createdAt.getTime() + 30 * 24 * 60 * 60 * 1000)
-    );
 
     const event: TaskEventV1Input = {
       environment_id: run.runtimeEnvironmentId,
@@ -1546,7 +1531,7 @@ export class ClickhouseEventRepository implements IEventRepository {
         },
       },
       metadata: "{}",
-      expires_at: expiresAt,
+      expires_at: this.#expiresAt(),
     };
 
     this.addToBatch(event);
@@ -1567,9 +1552,6 @@ export class ClickhouseEventRepository implements IEventRepository {
 
     const clampedCreatedAt = this.#clampStartTimeDate(run.createdAt);
     const startTime = convertDateToNanoseconds(clampedCreatedAt);
-    const expiresAt = convertDateToClickhouseDateTime(
-      new Date(run.createdAt.getTime() + 30 * 24 * 60 * 60 * 1000)
-    );
 
     const event: TaskEventV1Input = {
       environment_id: run.runtimeEnvironmentId,
@@ -1593,7 +1575,7 @@ export class ClickhouseEventRepository implements IEventRepository {
         },
       },
       metadata: "{}",
-      expires_at: expiresAt,
+      expires_at: this.#expiresAt(),
     };
 
     this.addToBatch(event);
@@ -1616,9 +1598,6 @@ export class ClickhouseEventRepository implements IEventRepository {
 
     const clampedEndTime = this.#clampStartTimeDate(endTime ?? new Date());
     const startTime = convertDateToNanoseconds(clampedEndTime);
-    const expiresAt = convertDateToClickhouseDateTime(
-      new Date(run.createdAt.getTime() + 30 * 24 * 60 * 60 * 1000)
-    );
 
     const event: TaskEventV1Input = {
       environment_id: run.runtimeEnvironmentId,
@@ -1640,7 +1619,7 @@ export class ClickhouseEventRepository implements IEventRepository {
         attemptNumber,
         runId: run.friendlyId,
       }),
-      expires_at: expiresAt,
+      expires_at: this.#expiresAt(),
     };
 
     this.addToBatch(event);
@@ -1661,9 +1640,6 @@ export class ClickhouseEventRepository implements IEventRepository {
 
     const clampedCreatedAt = this.#clampStartTimeDate(run.createdAt);
     const startTime = convertDateToNanoseconds(clampedCreatedAt);
-    const expiresAt = convertDateToClickhouseDateTime(
-      new Date(run.createdAt.getTime() + 30 * 24 * 60 * 60 * 1000)
-    );
 
     const event: TaskEventV1Input = {
       environment_id: run.runtimeEnvironmentId,
@@ -1685,7 +1661,7 @@ export class ClickhouseEventRepository implements IEventRepository {
       metadata: JSON.stringify({
         reason,
       }),
-      expires_at: expiresAt,
+      expires_at: this.#expiresAt(),
     };
 
     this.addToBatch(event);

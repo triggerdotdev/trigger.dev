@@ -4,6 +4,7 @@ import { webhookPrisma } from "~/db.server";
 import { findWebhookEndpointResource } from "~/presenters/v3/ApiWebhookEndpointPresenter.server";
 import { webhookEndpointLookup } from "~/v3/webhookEndpointLookup";
 import { createActionApiRoute } from "~/services/routeBuilders/apiBuilder.server";
+import { setWebhookEndpointEnabled } from "~/v3/webhookEndpointStatus.server";
 
 const ParamsSchema = z.object({ endpointId: z.string() });
 
@@ -23,10 +24,7 @@ const { action, loader } = createActionApiRoute(
     });
     if (!endpoint) return json({ error: "Not found" }, { status: 404 });
 
-    await webhookPrisma.webhookEndpoint.update({
-      where: { id: endpoint.id },
-      data: { status: "ACTIVE", manuallyDeactivatedAt: null },
-    });
+    await setWebhookEndpointEnabled(endpoint.id, true);
 
     return json(await findWebhookEndpointResource(authentication, endpoint.friendlyId));
   }

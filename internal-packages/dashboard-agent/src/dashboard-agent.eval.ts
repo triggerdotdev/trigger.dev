@@ -39,6 +39,8 @@ const CLIENT_DATA = {
 };
 const NOOP_STORE: DashboardAgentStore = {
   ensureChat: async () => {},
+  markChatReadLogs: async () => false,
+  chatAllowsEval: async () => true,
   transcript: memoryTranscriptStorage(),
   settleTurnInvestigations: async () => ({ settled: [], cards: [] }),
   setChatTitleIfDefault: async () => {},

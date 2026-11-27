@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import { SimpleStructuredLogger } from "@trigger.dev/core/v3/utils/structuredLogger";
 import {
   type WorkloadManager,
@@ -23,7 +24,9 @@ import {
   withNodeSelector,
 } from "./kubernetesPodSpec.js";
 import { rewriteImageRegistry } from "./imageRegistry.js";
+import { createLogFields } from "./createLogFields.js";
 import { k8sCreateRefused, k8sErrorMessage, WorkloadNotCreatedError } from "./createErrors.js";
+import { runnerTokenSecretName, type TokenSecretHolder, TokenSecrets } from "./tokenSecret.js";
 
 type ResourceQuantities = {
   [K in "cpu" | "memory" | "ephemeral-storage"]?: string;
@@ -49,6 +52,11 @@ const memoryRequestRatioByMachinePreset: Record<MachinePresetName, number | unde
   "large-2x": env.KUBERNETES_MEMORY_REQUEST_RATIO_LARGE_2X,
 };
 
+export type KubernetesWorkloadManagerOptions = WorkloadManagerOptions & {
+  podTokenSecretEnabled?: boolean;
+  tokenSecretSettleMs?: number;
+};
+
 export class KubernetesWorkloadManager implements WorkloadManager {
   private readonly logger = new SimpleStructuredLogger("kubernetes-workload-provider");
   private k8s: K8sApi;
@@ -62,8 +70,22 @@ export class KubernetesWorkloadManager implements WorkloadManager {
   private readonly memoryRequestRatio = env.KUBERNETES_MEMORY_REQUEST_RATIO;
   private readonly memoryOverheadGb = env.KUBERNETES_MEMORY_OVERHEAD_GB;
 
-  constructor(private opts: WorkloadManagerOptions) {
+  private readonly tokenSecrets?: TokenSecrets;
+
+  constructor(private opts: KubernetesWorkloadManagerOptions) {
     this.k8s = createK8sApi();
+    if (opts.podTokenSecretEnabled) {
+      this.tokenSecrets = new TokenSecrets({
+        k8s: this.k8s,
+        namespace: this.namespace,
+        logger: this.logger,
+        logPrefix: "[KubernetesWorkloadManager]",
+        owner: { apiVersion: "v1", kind: "Pod" },
+        settleMs: opts.tokenSecretSettleMs ?? 2 * 60_000,
+        releaseUnstartedRuns: opts.releaseUnstartedRuns ?? false,
+        readHolder: (name) => this.#readTokenHolder(name),
+      });
+    }
     this.placementTagProcessor = new PlacementTagProcessor({
       enabled: env.PLACEMENT_TAGS_ENABLED,
       prefix: env.PLACEMENT_TAGS_PREFIX,
@@ -116,10 +138,19 @@ export class KubernetesWorkloadManager implements WorkloadManager {
   }
 
   async create(opts: WorkloadManagerCreateOptions) {
-    this.logger.verbose("[KubernetesWorkloadManager] Creating container", { opts });
+    this.logger.verbose("[KubernetesWorkloadManager] Creating container", createLogFields(opts));
 
     const runnerId = getRunnerId(opts.runFriendlyId, opts.nextAttemptNumber);
 
+    const token =
+      this.tokenSecrets && opts.deploymentToken
+        ? await this.tokenSecrets.ensure(
+            runnerTokenSecretName(runnerId, opts.deploymentToken, randomUUID()),
+            opts.deploymentToken
+          )
+        : undefined;
+
+    let created: k8s.V1Pod;
     try {
       const orgOverride = env.KUBERNETES_ORG_PLACEMENT_OVERRIDES?.[opts.orgId];
       const taggedPodSpec = this.addPlacementTags(this.#defaultPodSpec, opts.placementTags);
@@ -149,7 +180,7 @@ export class KubernetesWorkloadManager implements WorkloadManager {
         env.KUBERNETES_POD_RESERVED_SOURCE_PORTS
       );
 
-      await this.k8s.core.createNamespacedPod({
+      created = await this.k8s.core.createNamespacedPod({
         namespace: this.namespace,
         body: {
           metadata: {
@@ -203,10 +234,15 @@ export class KubernetesWorkloadManager implements WorkloadManager {
                     name: "TRIGGER_ENV_ID",
                     value: opts.envId,
                   },
-                  {
-                    name: "TRIGGER_DEPLOYMENT_ID",
-                    value: opts.deploymentToken ?? opts.deploymentFriendlyId,
-                  },
+                  token
+                    ? {
+                        name: "TRIGGER_DEPLOYMENT_ID",
+                        valueFrom: { secretKeyRef: { name: token.name, key: token.key } },
+                      }
+                    : {
+                        name: "TRIGGER_DEPLOYMENT_ID",
+                        value: opts.deploymentToken ?? opts.deploymentFriendlyId,
+                      },
                   {
                     // Plain friendlyId for telemetry (worker.id), not the opaque token in DEPLOYMENT_ID.
                     name: "TRIGGER_DEPLOYMENT_FRIENDLY_ID",
@@ -321,8 +357,29 @@ export class KubernetesWorkloadManager implements WorkloadManager {
         },
       });
     } catch (err: unknown) {
-      this.#handleK8sError(err);
+      await this.tokenSecrets?.settle(token, runnerId, err);
+      return this.#handleK8sError(err);
     }
+
+    const podUid = created.metadata?.uid;
+    if (this.tokenSecrets && token && podUid) {
+      await this.tokenSecrets.adopt(
+        token.name,
+        { name: runnerId, uid: podUid },
+        opts.deploymentToken
+      );
+    }
+  }
+
+  async #readTokenHolder(podName: string): Promise<TokenSecretHolder> {
+    const pod = await this.k8s.core.readNamespacedPod({ name: podName, namespace: this.namespace });
+    const deploymentId = pod.spec?.containers
+      .find((container) => container.name === "run-controller")
+      ?.env?.find((entry) => entry.name === "TRIGGER_DEPLOYMENT_ID");
+    return {
+      uid: pod.metadata?.uid,
+      secretName: deploymentId?.valueFrom?.secretKeyRef?.name,
+    };
   }
 
   #throwUnlessRecord(candidate: unknown): asserts candidate is Record<string, unknown> {

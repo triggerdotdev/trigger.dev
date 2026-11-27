@@ -1,4 +1,5 @@
 import type { ClickHouse } from "@internal/clickhouse";
+import { readLimitOptions, type ReadLimit } from "./clickhouseReadLimit";
 import type { PrismaClientOrTransaction } from "~/db.server";
 import { BasePresenter } from "./basePresenter.server";
 import { z } from "zod";
@@ -223,6 +224,7 @@ export class PromptPresenter extends BasePresenter {
     responseModels?: string[];
     operations?: string[];
     providers?: string[];
+    limit?: ReadLimit;
   }): Promise<{ generations: GenerationRow[]; pagination: GenerationsPagination }> {
     const pageSize = options.pageSize ?? 25;
     const decodedCursor = options.cursor ? decodeCursor(options.cursor) : null;
@@ -320,7 +322,7 @@ export class PromptPresenter extends BasePresenter {
       queryParams.providers = options.providers;
     }
 
-    const [error, rows] = await queryFn(queryParams as any);
+    const [error, rows] = await queryFn(queryParams as any, readLimitOptions(options.limit));
 
     if (error) {
       console.error("Prompt generations query failed:", error);

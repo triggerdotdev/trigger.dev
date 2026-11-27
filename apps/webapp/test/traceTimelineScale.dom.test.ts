@@ -5,7 +5,6 @@ import { act } from "react-dom/test-utils";
 import { afterEach, describe, expect, it } from "vitest";
 import * as Timeline from "~/components/primitives/Timeline";
 import {
-  TraceTimelineRowScale,
   TraceTimelineScaleProvider,
   type TraceTimelineScale,
 } from "~/components/runs/v3/trace/timelineScale";
@@ -84,21 +83,6 @@ const scale = (seconds: number): TraceTimelineScale => ({
 });
 
 describe("SpanTimelineRow scale", () => {
-  it("places the same offset differently on two rows with different scales", () => {
-    const node = span("a", 2 * SECOND_NS, 1 * SECOND_NS);
-    const el = render([
-      createElement(TraceTimelineRowScale, { key: "short", scale: scale(4) }, row(node)),
-      createElement(TraceTimelineRowScale, { key: "long", scale: scale(40) }, row(node)),
-    ]);
-
-    const [short, long] = bars(el);
-    // 2s of a 4s run (shown as 4.2s with headroom) vs 2s of a 40s run (42s)
-    expect(short.left).toBeCloseTo((2 / 4.2) * 100, 3);
-    expect(long.left).toBeCloseTo((2 / 42) * 100, 3);
-    expect(short.width).toBeCloseTo((1 / 4.2) * 100, 3);
-    expect(long.width).toBeCloseTo((1 / 42) * 100, 3);
-  });
-
   it("uses the surrounding Timeline.Root range under a plain provider", () => {
     const el = render(
       createElement(
@@ -113,25 +97,15 @@ describe("SpanTimelineRow scale", () => {
     expect(bar.width).toBeCloseTo(5, 3);
   });
 
-  it("keeps bars finite on a run with no duration yet", () => {
-    const el = render(
-      createElement(TraceTimelineRowScale, { scale: scale(0) }, row(span("d", 0, 0)))
-    );
-
-    const [bar] = bars(el);
-    expect(Number.isFinite(bar.left)).toBe(true);
-    expect(Number.isFinite(bar.width)).toBe(true);
-  });
-
   it("clamps an in-progress span to its own run's duration", () => {
     const running = { ...span("c", 1 * SECOND_NS, 0) };
     const el = render(
-      createElement(TraceTimelineRowScale, { scale: scale(3) }, row(running as TraceEvent))
+      createElement(TraceTimelineScaleProvider, { scale: scale(3) }, row(running as TraceEvent))
     );
 
     const [bar] = bars(el);
-    // runs from 1s to the run's 3s end
-    expect(bar.left).toBeCloseTo((1 / 3.15) * 100, 3);
-    expect(bar.width).toBeCloseTo((2 / 3.15) * 100, 3);
+    // runs from 1s to the run's 3s end, on the 100s Timeline.Root
+    expect(bar.left).toBeCloseTo(1, 3);
+    expect(bar.width).toBeCloseTo(2, 3);
   });
 });

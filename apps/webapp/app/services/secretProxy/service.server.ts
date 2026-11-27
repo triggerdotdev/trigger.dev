@@ -15,9 +15,9 @@ import {
   type SecretProxySelection,
   SECRET_PROXY_MAX_CREDENTIAL_BYTES,
   SECRET_PROXY_MAX_RESPONSE_BYTES,
-  serviceTokenMatches,
   type PlaceholderKeyring,
 } from "./placeholder.server";
+import { serviceCallerAuthenticated, type ServiceCaller } from "../workloadIdentity.server";
 import {
   effectiveProxyValues,
   MAX_PROXY_VARIABLES,
@@ -51,6 +51,8 @@ export type SecretProxyExecutionMetadata = {
   attempt: number;
   expiresAtMs: number;
   allowedHosts: string[];
+  /** Present only for a restricted network: the hosts it may reach directly. */
+  network?: { allow: string[] };
 };
 type RunState = {
   friendlyId: string;
@@ -78,7 +80,8 @@ type Options = {
   encryption: EnvironmentEncryptionService;
   enabled: boolean;
   keyring?: PlaceholderKeyring;
-  serviceToken?: string;
+  /** Who may call the resolver: the relay. */
+  caller?: ServiceCaller;
   issuer?: string;
   publicJwks: () => Promise<PublicJwks>;
   findRun: (
@@ -91,8 +94,10 @@ type Options = {
 export class SecretProxyService {
   constructor(private readonly options: Options) {}
 
-  serviceAuthenticated(token: string | null) {
-    return serviceTokenMatches(token, this.options.serviceToken);
+  /** Throws WorkloadIdentityUnavailableError when the caller's identity cannot be checked. */
+  async serviceAuthenticated(bearer: string | undefined) {
+    if (!this.options.caller) return false;
+    return serviceCallerAuthenticated(bearer, this.options.caller);
   }
 
   #assertConfigured() {
@@ -100,7 +105,7 @@ export class SecretProxyService {
       !this.options.enabled ||
       !this.options.keyring ||
       !this.options.issuer ||
-      !this.options.serviceToken
+      !this.options.caller
     ) {
       throw new SecretProxyDeniedError("Secret proxy is disabled", "disabled");
     }
@@ -192,21 +197,25 @@ export class SecretProxyService {
   finalizeRuntime(
     values: EffectiveEnvironmentVariable[],
     allowedHosts: string[],
-    execution: { runId: string; attempt: number; expiresAtMs: number }
+    execution: { runId: string; attempt: number; expiresAtMs: number },
+    networkAllow?: string[]
   ) {
     return {
       placeholders: values.map((value) => ({
         key: value.key,
         value: placeholderForVariable(this.options.keyring!, execution, value.variableId),
       })),
-      secretProxy: { ...execution, allowedHosts },
+      secretProxy: {
+        ...execution,
+        allowedHosts,
+        ...(networkAllow ? { network: { allow: networkAllow } } : {}),
+      },
     };
   }
 
-  async resolve(serviceToken: string | null, token: string, input: unknown) {
+  /** The caller must already have passed serviceAuthenticated. */
+  async resolve(token: string, input: unknown) {
     const startedAt = Date.now();
-    if (!this.serviceAuthenticated(serviceToken))
-      throw new SecretProxyDeniedError("Invalid service credential", "service_auth");
     const request = ResolveSecretProxyRequest.parse(input);
     const claims = await this.#claims(token);
     const expiresAtMs = Math.min(

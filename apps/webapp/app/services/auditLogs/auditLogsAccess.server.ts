@@ -49,3 +49,21 @@ export function permissionsShownToOrg<T extends { name: string }>(
   if (auditLogsAccess) return permissions;
   return permissions.filter((permission) => permission.name !== AUDIT_LOG_PERMISSION);
 }
+
+/**
+ * The org whose audit log this user may open: one they're a member of, by slug, that has audit
+ * log access (admins and impersonators always do). Undefined otherwise, which the routes answer
+ * with 404.
+ */
+export async function auditLogPageOrganizationId(
+  client: PrismaClientOrTransaction,
+  organizationSlug: string,
+  user: { id: string; admin: boolean; isImpersonating: boolean }
+): Promise<string | undefined> {
+  const org = await client.organization.findFirst({
+    where: { slug: organizationSlug, deletedAt: null, members: { some: { userId: user.id } } },
+    select: { id: true },
+  });
+  if (!org) return undefined;
+  return (await hasAuditLogsAccess(user, org.id, client)) ? org.id : undefined;
+}

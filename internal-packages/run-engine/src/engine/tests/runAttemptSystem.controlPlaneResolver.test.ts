@@ -330,6 +330,7 @@ describe("runAttemptSystem.resolveTaskRunContext controlPlaneResolver (single-DB
         resolveEnv: passthrough.resolveEnv.bind(passthrough),
         resolveEnvDeletionState: passthrough.resolveEnvDeletionState.bind(passthrough),
         resolveDeploymentStatus: passthrough.resolveDeploymentStatus.bind(passthrough),
+        resolveDeploymentMachine: passthrough.resolveDeploymentMachine.bind(passthrough),
         resolveWorkerVersion: passthrough.resolveWorkerVersion.bind(passthrough),
         resolveWorkerVersionFromPrimary:
           passthrough.resolveWorkerVersionFromPrimary.bind(passthrough),

@@ -12,9 +12,6 @@ import { isRunReadSettled } from "~/components/sessions/v1/trace/sessionRunLoads
 const TRIGGERED_AT = "2026-10-29T10:00:00.000Z";
 const triggeredMs = new Date(TRIGGERED_AT).getTime();
 const facts = (overrides: Partial<RunFacts> = {}): RunFacts => ({
-  number: 20,
-  reason: "continuation",
-  afterCrash: false,
   triggeredAt: TRIGGERED_AT,
   unavailable: undefined,
   ...overrides,
@@ -89,7 +86,7 @@ describe("what a read found", () => {
 });
 
 describe("the run panel's link", () => {
-  // Catches: "Open run page" in the panel of a run that never started (its run page 404s).
+  // Catches: "View run" in the panel of a run that never started (its run page 404s).
   it("links to the run page except for a run that never started", () => {
     expect(panelLinksToRunPage(undefined)).toBe(true);
     expect(panelLinksToRunPage({ kind: "starting" })).toBe(true);

@@ -1,7 +1,11 @@
 import { PerformDeploymentAlertsService } from "./alerts/performDeploymentAlerts.server";
 import { BaseService } from "./baseService.server";
 import { logger } from "~/services/logger.server";
-import { boundedIn, type WorkerDeploymentStatus } from "@trigger.dev/database";
+import {
+  boundedIn,
+  type WorkerDeployment,
+  type WorkerDeploymentStatus,
+} from "@trigger.dev/database";
 import { type FailDeploymentRequestBody } from "@trigger.dev/core/v3/schemas";
 import { type AuthenticatedEnvironment } from "~/services/apiAuth.server";
 import { DeploymentService } from "./deployment.server";
@@ -77,38 +81,46 @@ export class FailDeploymentService extends BaseService {
       return;
     }
 
-    recordDeploymentFinished({
-      status: "FAILED",
-      deployment: failedDeployment,
-      environment: {
-        organizationId: authenticatedEnv.organizationId,
-        organizationSlug: authenticatedEnv.organization.slug,
-        projectId: authenticatedEnv.projectId,
-        projectName: authenticatedEnv.project.name,
-        projectRef: authenticatedEnv.project.externalRef,
-        environmentId: authenticatedEnv.id,
-        environmentType: authenticatedEnv.type,
-      },
-      reason: params.error.message,
-    });
-
-    const deploymentService = new DeploymentService();
-    await deploymentService
-      .appendToEventLog(authenticatedEnv.project, failedDeployment, [
-        {
-          type: "finalized",
-          data: {
-            result: "failed",
-            message: params.error.message,
-          },
-        },
-      ])
-      .orTee((error) => {
-        logger.error("Failed to append failed deployment event to event log", { error });
-      });
-
-    await PerformDeploymentAlertsService.enqueue(failedDeployment.id);
+    await announceDeploymentFailure(authenticatedEnv, failedDeployment, params.error.message);
 
     return failedDeployment;
+  }
+}
+
+export async function announceDeploymentFailure(
+  environment: AuthenticatedEnvironment,
+  deployment: WorkerDeployment,
+  message: string
+) {
+  recordDeploymentFinished({
+    status: "FAILED",
+    deployment,
+    environment: {
+      organizationId: environment.organizationId,
+      organizationSlug: environment.organization.slug,
+      projectId: environment.projectId,
+      projectName: environment.project.name,
+      projectRef: environment.project.externalRef,
+      environmentId: environment.id,
+      environmentType: environment.type,
+    },
+    reason: message,
+  });
+
+  await new DeploymentService()
+    .appendToEventLog(environment.project, deployment, [
+      { type: "finalized", data: { result: "failed", message } },
+    ])
+    .orTee((error) => {
+      logger.error("Failed to append failed deployment event to event log", { error });
+    });
+
+  try {
+    await PerformDeploymentAlertsService.enqueue(deployment.id);
+  } catch (error) {
+    logger.error("Failed to enqueue deployment failure alerts", {
+      error,
+      deploymentId: deployment.id,
+    });
   }
 }

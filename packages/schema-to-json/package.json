@@ -1,6 +1,6 @@
 {
   "name": "@trigger.dev/schema-to-json",
-  "version": "4.8.7",
+  "version": "4.8.10",
   "description": "Convert various schema validation libraries to JSON Schema",
   "license": "MIT",
   "publishConfig": {
@@ -35,7 +35,7 @@
     "build": "pnpm run clean && pnpm run build:tshy && pnpm run update-version",
     "build:tshy": "tshy",
     "dev": "tshy --watch",
-    "typecheck": "tsc -p tsconfig.src.json --noEmit",
+    "typecheck": "tsrs --fast -p tsconfig.src.json --noEmit",
     "test": "vitest",
     "update-version": "tsx ../../scripts/updateVersion.ts",
     "check-exports": "attw --pack ."

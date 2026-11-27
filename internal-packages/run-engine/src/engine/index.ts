@@ -16,6 +16,7 @@ import { tryCatch } from "@trigger.dev/core/utils";
 import {
   type CheckpointInput,
   type CompleteRunAttemptResult,
+  type ContinueRunExecutionResult,
   type CreateCheckpointResult,
   type DequeuedMessage,
   type ExecutionResult,
@@ -67,9 +68,11 @@ import { QUEUED_SNAPSHOT_DESCRIPTION, QUEUED_SNAPSHOT_STATUS } from "./consts.js
 import {
   ExecutionSnapshotNotFoundError,
   NotImplementedError,
+  refusePostgresWaitpointOnMemoryDbAnchor,
   RunDuplicateIdempotencyKeyError,
   RunOneTimeUseTokenError,
   ServiceValidationError,
+  WaitpointCompletionNotCommittedError,
 } from "./errors.js";
 import type { EventBus, EventBusEvents } from "./eventBus.js";
 import { RunLocker } from "./locking.js";
@@ -79,6 +82,7 @@ import {
   StaleCompletionNotes,
 } from "./staleCompletions.js";
 import { getFinalRunStatuses } from "./statuses.js";
+import { legacyToV2WorkerQueues } from "./workerQueueRouting.js";
 import { BatchSystem } from "./systems/batchSystem.js";
 import { CheckpointSystem } from "./systems/checkpointSystem.js";
 import { DebounceSystem } from "./systems/debounceSystem.js";
@@ -103,7 +107,10 @@ import type { SystemResources } from "./systems/systems.js";
 import {
   type RunStore,
   type SnapshotRoute,
+  PENDING_UNIT_IN_PROGRESS_REASON,
+  isPendingUnitInProgress,
   PostgresRunStore,
+  SnapshotReadUnavailableError,
   snapshotRouteFromSnapshot,
   toWireRoute,
 } from "@internal/run-store";
@@ -136,6 +143,9 @@ import {
   executeShutdownPhases,
   type RunEngineShutdownFailure,
 } from "./shutdown.js";
+
+/** The fanout delivery attempt that reports a still-uncommitted completion as an error, once. */
+export const WAITPOINT_FANOUT_REPORT_ATTEMPT = 5;
 
 export class RunEngine {
   private runLockRedis: Redis;
@@ -331,7 +341,7 @@ export class RunEngine {
             else if (id) await this.worker.queue.ack(id, deduplicationKey);
           });
         },
-        deliverWaitpointFanout: async ({ id, payload, deduplicationKey }) => {
+        deliverWaitpointFanout: async ({ id, payload, deduplicationKey, attempt }) => {
           if (!(await this.waitpointSystem.isWaitpointStoreEnabled(payload.organizationId))) return;
           const parsed = parseWaitpointId(payload.waitpointId);
           const completionLockedSource =
@@ -350,7 +360,9 @@ export class RunEngine {
               !expiredSource &&
               (completion.outcome !== "exists" || completion.status !== "COMPLETED")
             ) {
-              throw new Error("Waitpoint completion has not committed");
+              // Delivery often runs before its completion commits, so retries log at warn. See the
+              // report below for the one attempt logged as an error.
+              throw new WaitpointCompletionNotCommittedError(true);
             }
             this.waitpointFanout ??= new WaitpointFanoutWorker({
               coordinator: options.waitpointFanoutStore,
@@ -412,14 +424,26 @@ export class RunEngine {
             // The outer fenced ack cannot remove a replacement published after lock release.
             if (completionLockedSource && id) await this.worker.queue.ack(id, deduplicationKey);
           };
-          return completionLockedSource
-            ? this.waitpointSystem.withWaitpointCompletionLock(payload.waitpointId, async () => {
-                // Admission may have waited behind a producer while the org was disabled.
-                if (!(await this.waitpointSystem.isWaitpointStoreEnabled(payload.organizationId)))
-                  return;
-                return deliver();
-              })
-            : deliver();
+          try {
+            return await (completionLockedSource
+              ? this.waitpointSystem.withWaitpointCompletionLock(payload.waitpointId, async () => {
+                  // Admission may have waited behind a producer while the org was disabled.
+                  if (!(await this.waitpointSystem.isWaitpointStoreEnabled(payload.organizationId)))
+                    return;
+                  return deliver();
+                })
+              : deliver());
+          } catch (error) {
+            // Attempt WAITPOINT_FANOUT_REPORT_ATTEMPT (about 30-60 seconds of backoff) reports a stuck
+            // delivery as an error once. Unmark it only after the completion lock is released, so the
+            // worker logs it and RunLocker does not log it a second time.
+            if (
+              error instanceof WaitpointCompletionNotCommittedError &&
+              (attempt ?? 0) === WAITPOINT_FANOUT_REPORT_ATTEMPT
+            )
+              throw new WaitpointCompletionNotCommittedError(false);
+            throw error;
+          }
         },
         recoverRunWaitpoint: async ({ payload }) => {
           if (!(await this.waitpointSystem.isWaitpointStoreEnabled(payload.organizationId))) return;
@@ -678,6 +702,7 @@ export class RunEngine {
       raceSimulationSystem: this.raceSimulationSystem,
       pendingVersionRunIdLookup:
         options.pendingVersionRunIdLookup ?? new NoopPendingVersionRunIdLookup(),
+      legacyToV2WorkerQueues: legacyToV2WorkerQueues(options.legacyWorkerQueuesOnV2 ?? []),
     };
     this.#resources = resources;
 
@@ -695,6 +720,7 @@ export class RunEngine {
       resources,
       waitpointStoreEnabled: (organizationId) =>
         this.waitpointSystem.isStoreRoutingEnabled(organizationId),
+      checkpointStoreEnabled: options.checkpointStoreEnabled,
       executionSnapshotSystem: this.executionSnapshotSystem,
       enqueueSystem: this.enqueueSystem,
     });
@@ -2745,6 +2771,7 @@ export class RunEngine {
     tags,
     standaloneResidency,
     standaloneShardKey,
+    standaloneStoreEligible,
   }: {
     /** The run that blocks on this waitpoint. The waitpoint goes on that run's database. */
     runId?: string;
@@ -2758,6 +2785,8 @@ export class RunEngine {
     /** Database for a token with no owning run. Ignored when `runId` is set. */
     standaloneResidency?: "NEW" | "LEGACY";
     standaloneShardKey?: ShardKey;
+    /** Standalone token only (no `runId`): eligible for the waitpoint store when the flag is on. Ignored when `runId` is set. The caller sets it from the organization's standalone tokens flag. */
+    standaloneStoreEligible?: boolean;
   }): Promise<{ waitpoint: Waitpoint; isCached: boolean }> {
     return this.waitpointSystem.createManualWaitpoint({
       runId,
@@ -2770,6 +2799,7 @@ export class RunEngine {
       tags,
       standaloneResidency,
       standaloneShardKey,
+      standaloneStoreEligible,
     });
   }
 
@@ -2802,6 +2832,7 @@ export class RunEngine {
       });
       if (native !== undefined) return native;
     }
+    refusePostgresWaitpointOnMemoryDbAnchor(batchId);
     const createWaitpointInput: Parameters<RunStore["createWaitpoint"]>[0] = {
       data: {
         // From the batch, not the blocked run: the create passes only completedByBatchId,
@@ -2971,6 +3002,17 @@ export class RunEngine {
     return this.waitpointSystem.readStoreWaitpointRelatedRunIds(params);
   }
 
+  /** Up to `limit` of a native token's history run ids from one store read, for approval checks. */
+  async getStoreWaitpointRelatedRunIdsSnapshot(params: {
+    waitpointId: string;
+    environmentId: string;
+    projectId: string;
+    organizationId?: string;
+    limit: number;
+  }): Promise<string[]> {
+    return this.waitpointSystem.readStoreWaitpointRelatedRunIdsSnapshot(params);
+  }
+
   /**
    * Ids of the waitpoints the run is blocked on now (not yet completed), from both stores.
    * An organization without the waitpoint store gets [] after the flag check and nothing else.
@@ -2997,6 +3039,7 @@ export class RunEngine {
     idempotencyKey: string;
     standaloneResidency?: "NEW" | "LEGACY";
     standaloneShardKey?: ShardKey;
+    standaloneStoreEligible?: boolean;
   }): Promise<Waitpoint | null> {
     return this.waitpointSystem.readExistingStoreDateTimeWaitpointByKey(params);
   }
@@ -3167,6 +3210,7 @@ export class RunEngine {
     checkpoint,
     workerId,
     runnerId,
+    environmentId,
     tx,
   }: {
     runId: string;
@@ -3174,6 +3218,7 @@ export class RunEngine {
     checkpoint: CheckpointInput;
     workerId?: string;
     runnerId?: string;
+    environmentId?: string;
     tx?: PrismaClientOrTransaction;
   }): Promise<CreateCheckpointResult> {
     return this.checkpointSystem.createCheckpoint({
@@ -3182,6 +3227,7 @@ export class RunEngine {
       checkpoint,
       workerId,
       runnerId,
+      environmentId,
       tx,
     });
   }
@@ -3201,7 +3247,7 @@ export class RunEngine {
     runnerId?: string;
     environmentId?: string;
     tx?: PrismaClientOrTransaction;
-  }): Promise<ExecutionResult> {
+  }): Promise<ContinueRunExecutionResult> {
     return this.checkpointSystem.continueRunExecution({
       runId,
       snapshotId,
@@ -3299,6 +3345,7 @@ export class RunEngine {
     runId,
     snapshotId,
     organizationId,
+    environmentId,
     workerId,
     runnerId,
     tx,
@@ -3306,6 +3353,7 @@ export class RunEngine {
     runId: string;
     snapshotId: string;
     organizationId?: string;
+    environmentId?: string;
     workerId?: string;
     runnerId?: string;
     tx?: PrismaClientOrTransaction;
@@ -3314,6 +3362,7 @@ export class RunEngine {
       runId,
       snapshotId,
       organizationId,
+      environmentId,
       workerId,
       runnerId,
       tx,
@@ -3342,6 +3391,13 @@ export class RunEngine {
       );
       return executionDataFromSnapshot(snapshot);
     } catch (e) {
+      // Rethrown, not null, so the route can answer a retriable 503.
+      if (isPendingUnitInProgress(e)) {
+        this.logger.warn("getRunExecutionData: pending unit transaction in progress, retriable", {
+          runId,
+        });
+        throw e;
+      }
       this.logger.error("Failed to getRunExecutionData", {
         message: e instanceof Error ? e.message : e,
       });
@@ -3353,6 +3409,7 @@ export class RunEngine {
     return this.runAttemptSystem.resolveTaskRunContext(runId);
   }
 
+  /** Throws `ExecutionSnapshotNotFoundError` when the since snapshot does not exist for this run. */
   async getSnapshotsSince({
     runId,
     snapshotId,
@@ -3405,6 +3462,7 @@ export class RunEngine {
             return result;
           } catch (replicaRetryError) {
             if (!(replicaRetryError instanceof ExecutionSnapshotNotFoundError)) {
+              this.#rethrowIfSnapshotReadRetriable(replicaRetryError, runId, snapshotId);
               this.logger.error("Failed to getSnapshotsSince", {
                 message:
                   replicaRetryError instanceof Error
@@ -3428,6 +3486,15 @@ export class RunEngine {
           });
           return result;
         } catch (retryError) {
+          if (retryError instanceof ExecutionSnapshotNotFoundError) {
+            this.logger.error("getSnapshotsSince: since snapshot not found", {
+              runId,
+              snapshotId,
+              failedDuring: "primary_fallback",
+            });
+            throw retryError;
+          }
+          this.#rethrowIfSnapshotReadRetriable(retryError, runId, snapshotId);
           this.logger.error("Failed to getSnapshotsSince", {
             message: retryError instanceof Error ? retryError.message : retryError,
             runId,
@@ -3438,6 +3505,13 @@ export class RunEngine {
         }
       }
 
+      // Logged apart from failed reads so it alerts on its own: runners only send snapshot IDs the
+      // engine gave them, so a miss means a forged or corrupted request. Alerting matches this exact message.
+      if (e instanceof ExecutionSnapshotNotFoundError) {
+        this.logger.error("getSnapshotsSince: since snapshot not found", { runId, snapshotId });
+        throw e;
+      }
+      this.#rethrowIfSnapshotReadRetriable(e, runId, snapshotId);
       this.logger.error("Failed to getSnapshotsSince", {
         message: e instanceof Error ? e.message : e,
         runId,
@@ -3445,6 +3519,27 @@ export class RunEngine {
       });
       return null;
     }
+  }
+
+  // Retriable reads are rethrown so the route answers 503. Only the pending-unit commit race leaves
+  // "Failed to getSnapshotsSince" (which alerting matches): other retriable reasons, such as a
+  // quarantine or a dangling cycle, may not clear on retry and must stay alertable.
+  #rethrowIfSnapshotReadRetriable(error: unknown, runId: string, snapshotId: string) {
+    if (!(error instanceof SnapshotReadUnavailableError && error.retriable)) return;
+    if (error.reason === PENDING_UNIT_IN_PROGRESS_REASON) {
+      this.logger.warn("getSnapshotsSince: pending unit transaction in progress, retriable", {
+        runId,
+        snapshotId,
+      });
+    } else {
+      this.logger.error("Failed to getSnapshotsSince", {
+        message: error.message,
+        runId,
+        snapshotId,
+        retriable: true,
+      });
+    }
+    throw error;
   }
 
   async registerRacepointForRun({ runId, waitInterval }: { runId: string; waitInterval: number }) {
@@ -3933,6 +4028,7 @@ export class RunEngine {
             orgId: latestSnapshot.organizationId,
             projectId: latestSnapshot.projectId,
             checkpointId: latestSnapshot.checkpointId ?? undefined,
+            checkpointStore: latestSnapshot.checkpointStore,
             completedWaitpoints: latestSnapshot.completedWaitpoints,
             batchId: latestSnapshot.batchId ?? undefined,
             error: {

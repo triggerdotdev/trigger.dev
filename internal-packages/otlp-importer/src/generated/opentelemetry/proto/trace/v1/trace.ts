@@ -550,10 +550,10 @@ const TracesData = {
     return obj;
   },
 
-  create<I extends Exact<DeepPartial<TracesData>, I>>(base?: I): TracesData {
-    return TracesData.fromPartial(base ?? ({} as any));
+  create(base?: DeepPartial<TracesData>): TracesData {
+    return TracesData.fromPartial(base ?? {});
   },
-  fromPartial<I extends Exact<DeepPartial<TracesData>, I>>(object: I): TracesData {
+  fromPartial(object: DeepPartial<TracesData>): TracesData {
     const message = createBaseTracesData();
     message.resourceSpans = object.resourceSpans?.map((e) => ResourceSpans.fromPartial(e)) || [];
     return message;
@@ -639,10 +639,10 @@ export const ResourceSpans = {
     return obj;
   },
 
-  create<I extends Exact<DeepPartial<ResourceSpans>, I>>(base?: I): ResourceSpans {
-    return ResourceSpans.fromPartial(base ?? ({} as any));
+  create(base?: DeepPartial<ResourceSpans>): ResourceSpans {
+    return ResourceSpans.fromPartial(base ?? {});
   },
-  fromPartial<I extends Exact<DeepPartial<ResourceSpans>, I>>(object: I): ResourceSpans {
+  fromPartial(object: DeepPartial<ResourceSpans>): ResourceSpans {
     const message = createBaseResourceSpans();
     message.resource =
       object.resource !== undefined && object.resource !== null
@@ -733,10 +733,10 @@ export const ScopeSpans = {
     return obj;
   },
 
-  create<I extends Exact<DeepPartial<ScopeSpans>, I>>(base?: I): ScopeSpans {
-    return ScopeSpans.fromPartial(base ?? ({} as any));
+  create(base?: DeepPartial<ScopeSpans>): ScopeSpans {
+    return ScopeSpans.fromPartial(base ?? {});
   },
-  fromPartial<I extends Exact<DeepPartial<ScopeSpans>, I>>(object: I): ScopeSpans {
+  fromPartial(object: DeepPartial<ScopeSpans>): ScopeSpans {
     const message = createBaseScopeSpans();
     message.scope =
       object.scope !== undefined && object.scope !== null
@@ -1052,10 +1052,10 @@ export const Span = {
     return obj;
   },
 
-  create<I extends Exact<DeepPartial<Span>, I>>(base?: I): Span {
-    return Span.fromPartial(base ?? ({} as any));
+  create(base?: DeepPartial<Span>): Span {
+    return Span.fromPartial(base ?? {});
   },
-  fromPartial<I extends Exact<DeepPartial<Span>, I>>(object: I): Span {
+  fromPartial(object: DeepPartial<Span>): Span {
     const message = createBaseSpan();
     message.traceId = object.traceId ?? Buffer.alloc(0);
     message.spanId = object.spanId ?? Buffer.alloc(0);
@@ -1180,10 +1180,10 @@ export const Span_Event = {
     return obj;
   },
 
-  create<I extends Exact<DeepPartial<Span_Event>, I>>(base?: I): Span_Event {
-    return Span_Event.fromPartial(base ?? ({} as any));
+  create(base?: DeepPartial<Span_Event>): Span_Event {
+    return Span_Event.fromPartial(base ?? {});
   },
-  fromPartial<I extends Exact<DeepPartial<Span_Event>, I>>(object: I): Span_Event {
+  fromPartial(object: DeepPartial<Span_Event>): Span_Event {
     const message = createBaseSpan_Event();
     message.timeUnixNano = object.timeUnixNano ?? BigInt("0");
     message.name = object.name ?? "";
@@ -1325,10 +1325,10 @@ export const Span_Link = {
     return obj;
   },
 
-  create<I extends Exact<DeepPartial<Span_Link>, I>>(base?: I): Span_Link {
-    return Span_Link.fromPartial(base ?? ({} as any));
+  create(base?: DeepPartial<Span_Link>): Span_Link {
+    return Span_Link.fromPartial(base ?? {});
   },
-  fromPartial<I extends Exact<DeepPartial<Span_Link>, I>>(object: I): Span_Link {
+  fromPartial(object: DeepPartial<Span_Link>): Span_Link {
     const message = createBaseSpan_Link();
     message.traceId = object.traceId ?? Buffer.alloc(0);
     message.spanId = object.spanId ?? Buffer.alloc(0);
@@ -1403,10 +1403,10 @@ export const Status = {
     return obj;
   },
 
-  create<I extends Exact<DeepPartial<Status>, I>>(base?: I): Status {
-    return Status.fromPartial(base ?? ({} as any));
+  create(base?: DeepPartial<Status>): Status {
+    return Status.fromPartial(base ?? {});
   },
-  fromPartial<I extends Exact<DeepPartial<Status>, I>>(object: I): Status {
+  fromPartial(object: DeepPartial<Status>): Status {
     const message = createBaseStatus();
     message.message = object.message ?? "";
     message.code = object.code ?? 0;
@@ -1450,11 +1450,6 @@ type DeepPartial<T> = T extends Builtin
       : T extends {}
         ? { [K in keyof T]?: DeepPartial<T[K]> }
         : Partial<T>;
-
-type KeysOfUnion<T> = T extends T ? keyof T : never;
-type Exact<P, I extends P> = P extends Builtin
-  ? P
-  : P & { [K in keyof P]: Exact<P[K], I[K]> } & { [K in Exclude<keyof I, KeysOfUnion<P>>]: never };
 
 function longToBigint(long: Long) {
   return BigInt(long.toString());

@@ -8,6 +8,8 @@ import { FEATURE_FLAG } from "~/v3/featureFlags";
 
 vi.setConfig({ testTimeout: 60_000 });
 
+const STREAM_HOST = "streams.trigger.test";
+
 // Catches: a standard or warm runner that knows a sandbox run's ids starting it with full access.
 containerTest(
   "a policy run starts only for its own verified sandbox token",
@@ -17,6 +19,7 @@ containerTest(
     process.env.DIRECT_URL = url;
     delete process.env.DATABASE_READ_REPLICA_URL;
     process.env.ENCRYPTION_KEY = "0123456789abcdef0123456789abcdef";
+    process.env.STREAM_ORIGIN = `https://${STREAM_HOST}`;
     process.env.RUN_TOKEN_ISSUER_URL = "https://internal-runs.example.com";
     const { AuthenticatedWorkerInstance } =
       await import("~/v3/services/worker/workerGroupTokenService.server");
@@ -72,7 +75,7 @@ containerTest(
           triggerAction: "trigger",
           rootTriggerSource: "api",
           executionMode: "SANDBOX",
-          executionPolicy: sandboxExecutionPolicy({}),
+          executionPolicy: sandboxExecutionPolicy({ network: { allow: ["*.github.com"] } }),
         },
       },
       prisma
@@ -102,20 +105,39 @@ containerTest(
       workloadType: "MICROVM",
       allowedSubscriptions: [],
     });
-    const start = (sandboxRunId: string | undefined) =>
+    const start = (sandboxRunId: string | undefined, enforcesNetwork = true) =>
       worker.startRunAttempt({
         runFriendlyId: run.friendlyId,
         snapshotFriendlyId: message.snapshot.friendlyId,
         environmentId: environment.id,
         sandboxRunId,
         supportsRunTokenRefresh: true,
+        supportsSecretProxy: enforcesNetwork,
+        supportsNetworkPolicy: enforcesNetwork,
       });
 
     for (const sandboxRunId of [undefined, "run_other"]) {
       await expect(start(sandboxRunId)).rejects.toMatchObject({ status: 409 });
     }
+    // Catches: a restricted sandbox starting on a worker that cannot restrict its network.
+    await expect(start(run.friendlyId, false)).rejects.toMatchObject({ status: 409 });
     const started = await start(run.friendlyId);
     expect(started.run.attemptNumber).toBe(1);
     expect(started.envVars.TRIGGER_RUN_TOKEN).toBeDefined();
+    // The platform's own hosts and the task's allow list reach the interceptor.
+    expect(started.secretProxy?.network?.allow).toEqual(
+      expect.arrayContaining([STREAM_HOST, "*.github.com"])
+    );
+    expect(started.secretProxy?.allowedHosts).toEqual([]);
+    // Catches: a checkpointed restricted run restored on a worker that cannot restrict it.
+    await expect(
+      worker.continueRunExecution({
+        runFriendlyId: run.friendlyId,
+        snapshotFriendlyId: started.snapshot.friendlyId,
+        environmentId: environment.id,
+        sandboxRunId: run.friendlyId,
+        supportsSecretProxy: true,
+      })
+    ).rejects.toMatchObject({ status: 409 });
   }
 );

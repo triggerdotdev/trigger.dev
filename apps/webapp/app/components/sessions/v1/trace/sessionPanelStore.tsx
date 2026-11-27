@@ -1,5 +1,14 @@
-import { createContext, useContext, useState, useSyncExternalStore } from "react";
+import {
+  createContext,
+  useContext,
+  useEffect,
+  useLayoutEffect,
+  useState,
+  useSyncExternalStore,
+} from "react";
+import type { SessionRunsSessionFacts } from "~/presenters/v3/SessionRunsPresenter.server";
 import type { SpanOverride } from "~/v3/eventRepository/eventRepository.types";
+import type { PolledSessionRun, SessionRead } from "../sessionDetails";
 import type { RunFacts, RunLoadNote } from "./sessionRunNote";
 
 /** What the side panel needs from a run's loaded trace. */
@@ -13,13 +22,14 @@ export type RunPanelData = {
  * Hands run data from the Trace tab to the side panel, its sibling. Each reader subscribes to
  * one run, so live spans on other runs don't re-render the panel.
  */
-class SessionPanelStore {
+export class SessionPanelStore {
   #spanIds = new Map<string, string>();
   #runData = new Map<string, RunPanelData>();
   #confirmedSpans = new Set<string>();
   #facts = new Map<string, RunFacts>();
   #loadNotes = new Map<string, RunLoadNote>();
   #settledRuns = new Set<string>();
+  #sessionRead: SessionRead | undefined;
   #listeners = new Set<() => void>();
 
   subscribe = (listener: () => void) => {
@@ -83,6 +93,27 @@ class SessionPanelStore {
     if (same) return;
     this.#settledRuns = new Set(runFriendlyIds);
     this.#notify();
+  }
+
+  /**
+   * The Trace tab's newest read of the session and its runs, for the session details. A read that
+   * changes nothing keeps the old one, so the details don't re-render.
+   */
+  setSessionRead(facts: SessionRunsSessionFacts, runs: readonly PolledSessionRun[]) {
+    const last = this.#sessionRead;
+    if (last && last.runs === runs && JSON.stringify(last.facts) === JSON.stringify(facts)) return;
+    this.#sessionRead = { facts, runs };
+    this.#notify();
+  }
+
+  dropSessionRead() {
+    if (!this.#sessionRead) return;
+    this.#sessionRead = undefined;
+    this.#notify();
+  }
+
+  getSessionRead() {
+    return this.#sessionRead;
   }
 
   isRunSettled(runFriendlyId: string) {
@@ -159,6 +190,21 @@ export function useSpanConfirmed(runFriendlyId: string, spanId: string | undefin
   return useSyncExternalStore(store?.subscribe ?? noSubscribe, read, read);
 }
 
+// Layout effects warn during server rendering, and there's nothing to drop there.
+const useClientLayoutEffect = typeof window === "undefined" ? useEffect : useLayoutEffect;
+
+/**
+ * The Trace tab's last read, dropped when `pageLoad` (the page's loader data) changes by identity:
+ * a page load after the read is newer, even with the session row unchanged (a run that finished
+ * while Conversation was shown and polling was off). Dropped before paint, so no stale frame.
+ */
+export function useSessionRead(pageLoad: unknown) {
+  const store = useSessionPanelStore();
+  useClientLayoutEffect(() => store?.dropSessionRead(), [store, pageLoad]);
+  const read = () => store?.getSessionRead();
+  return useSyncExternalStore(store?.subscribe ?? noSubscribe, read, read);
+}
+
 export function useRunSettled(runFriendlyId: string) {
   const store = useSessionPanelStore();
   const read = () => store?.isRunSettled(runFriendlyId) ?? false;
@@ -176,14 +222,7 @@ export function useRunNote(runFriendlyId: string) {
 }
 
 function sameFacts(a: RunFacts | undefined, b: RunFacts) {
-  return (
-    a !== undefined &&
-    a.number === b.number &&
-    a.reason === b.reason &&
-    a.afterCrash === b.afterCrash &&
-    a.triggeredAt === b.triggeredAt &&
-    a.unavailable === b.unavailable
-  );
+  return a !== undefined && a.triggeredAt === b.triggeredAt && a.unavailable === b.unavailable;
 }
 
 // Field by field: the tab sends these on every chunk.

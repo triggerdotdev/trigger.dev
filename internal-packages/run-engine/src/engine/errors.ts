@@ -1,4 +1,6 @@
+import { MEMORYDB_SHARD_KEY } from "@internal/run-store";
 import { assertExhaustive } from "@trigger.dev/core";
+import { resolveShard } from "@trigger.dev/core/v3/isomorphic";
 import type { TaskRunError } from "@trigger.dev/core/v3";
 import type { RuntimeEnvironmentType, TaskRunStatus } from "@trigger.dev/database";
 
@@ -220,6 +222,8 @@ export class StoreWaitpointBlockOperationIdentityRequired extends Error {
  * Legacy waits do not use this check.
  */
 export class StoreWaitpointBlockCycleAdvanced extends Error {
+  // Every caller catches this fence as an expected outcome, so loggers keep it out of error reporting.
+  readonly logLevel = "warn" as const;
   readonly runId: string;
   readonly waitpointIds: string[];
   readonly expectedCycleAnchor: string;
@@ -240,6 +244,16 @@ export class StoreWaitpointBlockCycleAdvanced extends Error {
     this.waitpointIds = params.waitpointIds;
     this.expectedCycleAnchor = params.expectedCycleAnchor;
     this.currentCycleAnchor = params.currentCycleAnchor;
+  }
+}
+
+/** Fanout delivery ran before its completion was visible; `expected` marks an early retry. */
+export class WaitpointCompletionNotCommittedError extends Error {
+  readonly logLevel?: "warn";
+  constructor(expected: boolean) {
+    super("Waitpoint completion has not committed");
+    this.name = "WaitpointCompletionNotCommittedError";
+    if (expected) this.logLevel = "warn";
   }
 }
 
@@ -319,5 +333,23 @@ export class UnclassifiableWaitpointId extends Error {
     this.waitpointId = waitpointId;
     this.waitpointIdLength = waitpointId.length;
     this.cause = options?.cause;
+  }
+}
+
+export class PostgresWaitpointOnMemoryDbAnchor extends Error {
+  readonly anchorId: string;
+  constructor(anchorId: string) {
+    super(
+      `A Postgres waitpoint cannot be anchored on "${anchorId}": it is a MemoryDB run or batch`
+    );
+    this.name = "PostgresWaitpointOnMemoryDbAnchor";
+    this.anchorId = anchorId;
+  }
+}
+
+/** Reads only the id: a MemoryDB run or batch must never anchor a Postgres waitpoint. */
+export function refusePostgresWaitpointOnMemoryDbAnchor(anchorId: string | undefined): void {
+  if (anchorId !== undefined && resolveShard(anchorId) === MEMORYDB_SHARD_KEY) {
+    throw new PostgresWaitpointOnMemoryDbAnchor(anchorId);
   }
 }

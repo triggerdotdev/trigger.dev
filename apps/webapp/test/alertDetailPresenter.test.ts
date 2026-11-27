@@ -52,6 +52,50 @@ describe("AlertDetailPresenter occurrenceCount", () => {
   });
 });
 
+describe("AlertDetailPresenter live reading", () => {
+  const readingAlert = (name: string) =>
+    createAlert(db, {
+      organizationId: "org_1",
+      projectId: "proj_1",
+      environmentId: "env_1",
+      createdBy: "user_1",
+      capabilityKey: "queue.depth",
+      params: { environmentId: "env_1", scope: { type: "all" } },
+      condition: { kind: "threshold", operator: ">", value: 10, windowSec: 60 },
+      name,
+      notifiers: [],
+    });
+
+  // Catches: skipCurrentReading still starting the live evaluation, awaited or not; and the option never mattering.
+  it.each([
+    { skip: true, evaluations: 0 },
+    { skip: false, evaluations: 1 },
+  ])(
+    "runs the live evaluation $evaluations time(s) when skipCurrentReading is $skip",
+    async ({ skip, evaluations }) => {
+      const alert = await readingAlert(`reading-${skip}`);
+      let evaluated = 0;
+      const presenter = new AlertDetailPresenter(db, db, undefined, undefined, async () => null, {
+        evaluateBinding: async () => {
+          evaluated += 1;
+          return { result: { kind: "stateful", outcome: "met", facts: {} } } as never;
+        },
+      });
+
+      const detail = await presenter.call({
+        id: alert.id,
+        projectId: "proj_1",
+        environmentId: "env_1",
+        skipCurrentReading: skip,
+      });
+      await new Promise((resolve) => setImmediate(resolve));
+
+      expect(detail).toMatchObject({ id: alert.id, name: `reading-${skip}` });
+      expect(evaluated).toBe(evaluations);
+    }
+  );
+});
+
 async function detailWithChannel(
   prisma: PrismaClient,
   environmentTypes: RuntimeEnvironmentType[],

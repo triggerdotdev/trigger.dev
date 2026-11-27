@@ -32,6 +32,7 @@ function staleDeployingResolver(prisma: PrismaClient): ControlPlaneResolver {
     resolveEnv: passthrough.resolveEnv.bind(passthrough),
     resolveEnvDeletionState: passthrough.resolveEnvDeletionState.bind(passthrough),
     resolveDeploymentStatus: passthrough.resolveDeploymentStatus.bind(passthrough),
+    resolveDeploymentMachine: passthrough.resolveDeploymentMachine.bind(passthrough),
     resolveAuthenticatedEnv: passthrough.resolveAuthenticatedEnv.bind(passthrough),
     resolveWorkerVersion: async (args) => {
       const version = await passthrough.resolveWorkerVersion(args);

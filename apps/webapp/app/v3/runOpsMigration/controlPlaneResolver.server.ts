@@ -206,6 +206,25 @@ export class ControlPlaneResolver {
       : null;
   }
 
+  /**
+   * A deployment's image of a named machine. From the replica when split is on, unless
+   * `fromPrimary`: the replica can lag a worker version that dequeue read from the primary.
+   */
+  async resolveDeploymentMachine(
+    deploymentId: string,
+    machineId: string,
+    options?: { fromPrimary?: boolean }
+  ): Promise<{ imageReference: string; templateKey: string | null } | null> {
+    const client =
+      this.splitEnabled() && !options?.fromPrimary
+        ? this.controlPlaneReplica
+        : this.controlPlanePrimary;
+    return client.workerDeploymentMachine.findFirst({
+      where: { deploymentId, machineId },
+      select: { imageReference: true, templateKey: true },
+    });
+  }
+
   async resolveEnvDeletionState(environmentId: string): Promise<EnvDeletionState | null> {
     const env = await this.controlPlanePrimary.runtimeEnvironment.findFirst({
       where: { id: environmentId },

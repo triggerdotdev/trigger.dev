@@ -6,6 +6,7 @@ const SENSITIVE_WORKER_HEADERS = new Set([
   "authorization",
   "cookie",
   WORKER_HEADERS.MANAGED_SECRET.toLowerCase(),
+  WORKER_HEADERS.WORKLOAD_TOKEN.toLowerCase(),
 ]);
 
 /**

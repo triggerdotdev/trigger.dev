@@ -12,6 +12,7 @@ import { backstopPromise } from "~/utils/backstopPromise";
 import { singleton } from "~/utils/singleton";
 import { findCurrentWorkerFromEnvironment } from "~/v3/models/workerDeployment.server";
 import { agentListPresenter, type AgentActiveState } from "./AgentListPresenter.server";
+import { readLimitOptions, type ReadLimit } from "./clickhouseReadLimit";
 import { taskListPresenter, type TaskListItem } from "./TaskListPresenter.server";
 
 export type UnifiedTaskKind = "STANDARD" | "SCHEDULED" | "AGENT" | "WEBHOOK";
@@ -51,6 +52,10 @@ class UnifiedTaskListPresenter {
     projectId: string;
     environmentId: string;
     environmentType: RuntimeEnvironmentType;
+    /** Caps the hourly activity read; Dashboard callers pass none. */
+    readLimit?: ReadLimit | (() => ReadLimit);
+    /** Picks the tasks whose hourly activity is read (default all); Dashboard callers pass none. */
+    activityFor?: (items: UnifiedTaskListItem[]) => UnifiedTaskListItem[];
   }): Promise<{
     items: UnifiedTaskListItem[];
     hourlyActivity: Promise<HourlyTaskActivity>;
@@ -69,7 +74,7 @@ class UnifiedTaskListPresenter {
     ]);
 
     const items = toUnifiedItems(taskResult.tasks, agentResult.agents);
-    const allSlugs = items.map((item) => item.slug);
+    const allSlugs = (args.activityFor ? args.activityFor(items) : items).map((item) => item.slug);
 
     // Backstopped: the route subscribes via typeddefer only after further
     // awaits, so a rejection in that gap would be unhandled.
@@ -82,12 +87,17 @@ class UnifiedTaskListPresenter {
                 args.organizationId,
                 "standard"
               );
-              return getHourlyTaskActivity(clickhouse, {
-                organizationId: args.organizationId,
-                projectId: args.projectId,
-                environmentId: args.environmentId,
-                slugs: allSlugs,
-              });
+              return getHourlyTaskActivity(
+                clickhouse,
+                {
+                  organizationId: args.organizationId,
+                  projectId: args.projectId,
+                  environmentId: args.environmentId,
+                  slugs: allSlugs,
+                },
+                // A function gives the limit left when the query starts, not when the call began.
+                typeof args.readLimit === "function" ? args.readLimit() : args.readLimit
+              );
             })()
           );
 
@@ -113,7 +123,8 @@ async function getHourlyTaskActivity(
     projectId: string;
     environmentId: string;
     slugs: string[];
-  }
+  },
+  readLimit?: ReadLimit
 ): Promise<HourlyTaskActivity> {
   // Align the lower bound to the start of the hour 23h ago so the query
   // returns exactly 24 distinct hour buckets, matching the JS-side key array.
@@ -150,7 +161,7 @@ async function getHourlyTaskActivity(
     }),
   });
 
-  const [error, rows] = await queryFn(args);
+  const [error, rows] = await queryFn(args, readLimitOptions(readLimit));
   if (error) {
     console.error("Unified task list hourly activity query failed:", error);
     return {};

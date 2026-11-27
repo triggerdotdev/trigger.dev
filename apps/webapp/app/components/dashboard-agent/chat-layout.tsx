@@ -1,5 +1,6 @@
 import type { Ref } from "react";
 import { createContext, useContext } from "react";
+import { CopyButton } from "~/components/primitives/CopyButton";
 import { TextShimmer } from "~/components/primitives/TextShimmer";
 import { cn } from "~/utils/cn";
 import { AgentText } from "./AgentText";
@@ -75,6 +76,30 @@ export function ChatTurn({
         {children}
       </div>
     </ChatInsetProvider>
+  );
+}
+
+export function ChatSeries({
+  copyText,
+  children,
+}: {
+  copyText?: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <div className={cn("group/series", TURN_GAP, copyText?.trim() && "last:pb-4")}>
+      {children}
+      {copyText?.trim() ? (
+        <div className={cn("relative flex", TRANSCRIPT_INSET_X)}>
+          <CopyButton
+            value={copyText}
+            variant="icon"
+            size="extra-small"
+            buttonClassName="absolute -top-2 -ml-[5px] cursor-pointer border-transparent bg-transparent opacity-0 transition-opacity group-hover/series:opacity-100 focus-visible:opacity-100 pointer-coarse:opacity-100"
+          />
+        </div>
+      ) : null}
+    </div>
   );
 }
 

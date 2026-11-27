@@ -1,4 +1,5 @@
 import { createHash, createHmac } from "node:crypto";
+import type { RbacAbility } from "@trigger.dev/rbac";
 import { $replica } from "~/db.server";
 import type { McpConfirmSpec, McpIdentity, McpPreviewRefusal, McpSubject } from "../gate/types";
 
@@ -47,7 +48,7 @@ export function confirmationDigest(tool: string, args: unknown, subject: McpSubj
 }
 
 // Lazy so importing the gate doesn't parse env.
-async function defaultFingerprintKey() {
+export async function defaultFingerprintKey() {
   return (await import("~/env.server")).env.SESSION_SECRET;
 }
 
@@ -63,17 +64,21 @@ export async function confirmationPreview(
   spec: true | McpConfirmSpec,
   args: unknown,
   subject: McpSubject | null,
-  fingerprintKey?: string
+  fingerprintKey?: string,
+  ability?: RbacAbility,
+  identity?: McpIdentity
 ): Promise<{ preview: string; truncated: boolean } | McpPreviewRefusal>;
 export async function confirmationPreview(
   tool: string,
   spec: true | McpConfirmSpec,
   args: unknown,
   subject: McpSubject | null,
-  fingerprintKey?: string
+  fingerprintKey?: string,
+  ability?: RbacAbility,
+  identity?: McpIdentity
 ): Promise<{ preview: string; truncated: boolean } | McpPreviewRefusal> {
   if (spec !== true) {
-    const preview = await spec.preview(args, subject);
+    const preview = await spec.preview(args, subject, ability, identity);
     if (typeof preview !== "string") return preview;
     if (preview.length > PREVIEW_LIMIT) {
       return {

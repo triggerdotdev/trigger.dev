@@ -1,15 +1,20 @@
 import { isComputeRegionAccessible, resolveComputeAccess } from "~/v3/regionAccess.server";
 import { BaseService, ServiceValidationError } from "./baseService.server";
 
+export const DEFAULT_REGION_CHANGED = "The project's default region changed in the meantime.";
+
 export class SetDefaultRegionService extends BaseService {
   public async call({
     projectId,
     regionId,
     isAdmin = false,
+    expectedDefaultRegionId,
   }: {
     projectId: string;
     regionId: string;
     isAdmin?: boolean;
+    /** When set, changes the default only if this is still the stored one (null: none). */
+    expectedDefaultRegionId?: string | null;
   }) {
     const workerGroup = await this._prisma.workerInstanceGroup.findFirst({
       where: {
@@ -58,14 +63,22 @@ export class SetDefaultRegionService extends BaseService {
       }
     }
 
-    await this._prisma.project.update({
-      where: {
-        id: projectId,
-      },
-      data: {
-        defaultWorkerGroupId: regionId,
-      },
-    });
+    if (expectedDefaultRegionId === undefined) {
+      await this._prisma.project.update({
+        where: {
+          id: projectId,
+        },
+        data: {
+          defaultWorkerGroupId: regionId,
+        },
+      });
+    } else {
+      const written = await this._prisma.project.updateMany({
+        where: { id: projectId, defaultWorkerGroupId: expectedDefaultRegionId },
+        data: { defaultWorkerGroupId: regionId },
+      });
+      if (written.count === 0) throw new ServiceValidationError(DEFAULT_REGION_CHANGED);
+    }
 
     return {
       id: workerGroup.id,

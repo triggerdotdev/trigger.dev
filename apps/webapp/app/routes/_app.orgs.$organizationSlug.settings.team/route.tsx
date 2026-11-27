@@ -46,6 +46,8 @@ import { removeTeamMember } from "~/models/removeTeamMember.server";
 import { redirectWithSuccessMessage } from "~/models/message.server";
 import { resolveOrgIdFromSlugForUser } from "~/models/organization.server";
 import { getUserId } from "~/services/session.server";
+import { hasAuditLogsAccess } from "~/services/auditLogs/auditLogsAccess.server";
+import { getImpersonationState } from "~/services/impersonation.server";
 import { TeamPresenter } from "~/presenters/TeamPresenter.server";
 import { getCurrentPlan, getSelfServePurchaseBlockReason } from "~/services/platform.v3.server";
 import { ssoController } from "~/services/sso.server";
@@ -54,6 +56,7 @@ import { cn } from "~/utils/cn";
 import { formatCurrency, formatNumber } from "~/utils/numberFormatter";
 import {
   inviteTeamMemberPath,
+  organizationAuditLogPath,
   organizationRolesPath,
   organizationTeamPath,
   resendInvitePath,
@@ -82,7 +85,7 @@ export const loader = dashboardLoader(
     },
     authorization: { action: "read", resource: { type: "members" } },
   },
-  async ({ user, ability, context }) => {
+  async ({ request, user, ability, context }) => {
     const orgId = context.organizationId;
     if (!orgId) {
       throw new Response("Not Found", { status: 404 });
@@ -99,8 +102,11 @@ export const loader = dashboardLoader(
     }
 
     // Pre-compute manage authority server-side so the UI gating matches
-    // the action gating (the action enforces it independently). Seat
-    // purchases are a billing operation, so they gate on manage:billing.
+    // the action gating (the action enforces it independently). Inviting
+    // (write:members) is separate from removing members and changing roles
+    // (manage:members). Seat purchases are a billing operation, so they gate
+    // on manage:billing.
+    const canInviteMembers = ability.can("write", { type: "members" });
     const canManageMembers = ability.can("manage", { type: "members" });
     const canManageBilling = ability.can("manage", { type: "billing" });
 
@@ -110,7 +116,21 @@ export const loader = dashboardLoader(
     const policy = await ssoController.getMembershipPolicy(orgId);
     const manualMembershipAllowed = policy.isOk() ? policy.value.manualMembershipAllowed : true;
 
-    return typedjson({ ...result, canManageMembers, canManageBilling, manualMembershipAllowed });
+    // Each member's "View activity" link: shown where the org has the audit log, enabled for roles
+    // that can read it. The page checks both again.
+    const { isImpersonating } = await getImpersonationState(request, user.id);
+    const auditLog = (await hasAuditLogsAccess({ admin: user.admin, isImpersonating }, orgId))
+      ? { canView: ability.can("manage", { type: "audit-logs" }) }
+      : null;
+
+    return typedjson({
+      ...result,
+      canInviteMembers,
+      canManageMembers,
+      canManageBilling,
+      manualMembershipAllowed,
+      auditLog,
+    });
   }
 );
 
@@ -172,7 +192,7 @@ export const action = dashboardAction(
       if (submission.status !== "success") {
         return json(submission.reply());
       }
-      // The RBAC plugin would assign a role to any user id, member or not.
+      // The RBAC plugin refuses a non-member too; this answers with a clear 400 before calling it.
       const targetMember = await prisma.orgMember.findFirst({
         where: { userId: submission.value.userId, organizationId: orgId },
         select: { id: true },
@@ -349,9 +369,11 @@ export default function Page() {
     assignableRoleIds,
     memberRoles,
     soleOwnerUserId,
+    canInviteMembers,
     canManageMembers,
     canManageBilling,
     manualMembershipAllowed,
+    auditLog,
   } = useTypedLoaderData<typeof loader>();
   // Build a userId → roleId map so the dropdown's defaultValue matches
   // each member's current assignment without re-querying.
@@ -413,9 +435,9 @@ export default function Page() {
               content="Membership is managed by Directory Sync"
               disableHoverableContent
             />
-          ) : !canManageMembers ? (
-            // Gate the invite affordance on manage:members. The action
-            // route enforces this independently — hiding it here just
+          ) : !canInviteMembers ? (
+            // Gate the invite affordance on write:members. The action
+            // route enforces this independently — disabling it here just
             // avoids dead UI for non-managers.
             <SimpleTooltip
               button={
@@ -475,8 +497,13 @@ export default function Page() {
                           </Paragraph>
                         </div>
                         <div className="flex grow items-center justify-end gap-x-2">
-                          <ResendButton invite={invite} canManageMembers={canManageMembers} />
-                          <RevokeButton invite={invite} canManageMembers={canManageMembers} />
+                          <ResendButton
+                            key={new Date(invite.updatedAt).getTime()}
+                            invite={invite}
+                            canInviteMembers={canInviteMembers}
+                            isOwnInvite={invite.inviter.id === user.id}
+                          />
+                          <RevokeButton invite={invite} canInviteMembers={canInviteMembers} />
                         </div>
                       </li>
                     ))}
@@ -523,7 +550,25 @@ export default function Page() {
                       assignableRoleIds={assignableRoleIds}
                       canManageMembers={canManageMembers}
                     />
-                    <div className="justify-self-end">
+                    <div className="flex items-center gap-2 justify-self-end">
+                      {auditLog ? (
+                        auditLog.canView ? (
+                          <LinkButton
+                            to={organizationAuditLogPath(organization, { actor: member.user.id })}
+                            variant="minimal/small"
+                          >
+                            View activity
+                          </LinkButton>
+                        ) : (
+                          <Button
+                            variant="minimal/small"
+                            disabled
+                            tooltip="You don't have permission to view the audit log"
+                          >
+                            View activity
+                          </Button>
+                        )
+                      ) : null}
                       <LeaveRemoveButton
                         userId={user.id}
                         member={member}
@@ -935,22 +980,26 @@ function initialCooldown(updatedAt: Date | string): number {
   return remaining > 0 ? remaining : 0;
 }
 
-function ResendButton({ invite, canManageMembers }: { invite: Invite; canManageMembers: boolean }) {
+function ResendButton({
+  invite,
+  canInviteMembers,
+  isOwnInvite,
+}: {
+  invite: Invite;
+  canInviteMembers: boolean;
+  // resendInvite only resends invites the current user sent.
+  isOwnInvite: boolean;
+}) {
   const navigation = useNavigation();
+  // Pending through the redirect too, until the Team page reloads with the invite's new updatedAt.
   const isSubmitting =
-    navigation.state === "submitting" &&
+    navigation.state !== "idle" &&
     navigation.formAction === resendInvitePath() &&
     navigation.formData?.get("inviteId") === invite.id;
-  const prevSubmitting = useRef(false);
+  // Starts from the invite's updatedAt, which only a resend moves; the caller keys this on it, so a
+  // resend restarts the countdown and a refused one doesn't.
   const [cooldown, setCooldown] = useState(() => initialCooldown(invite.updatedAt));
   const intervalRef = useRef<ReturnType<typeof setInterval>>();
-
-  useEffect(() => {
-    if (prevSubmitting.current && !isSubmitting) {
-      setCooldown(RESEND_COOLDOWN_SECONDS);
-    }
-    prevSubmitting.current = isSubmitting;
-  }, [isSubmitting]);
 
   const cooldownActive = cooldown > 0;
   useEffect(() => {
@@ -969,7 +1018,7 @@ function ResendButton({ invite, canManageMembers }: { invite: Invite; canManageM
     return () => clearInterval(intervalRef.current);
   }, [cooldownActive]);
 
-  const isDisabled = isSubmitting || cooldown > 0 || !canManageMembers;
+  const isDisabled = isSubmitting || cooldown > 0 || !canInviteMembers || !isOwnInvite;
 
   return (
     <Form method="post" action={resendInvitePath()} className="flex">
@@ -978,7 +1027,13 @@ function ResendButton({ invite, canManageMembers }: { invite: Invite; canManageM
         type="submit"
         variant="secondary/small"
         disabled={isDisabled}
-        tooltip={canManageMembers ? undefined : "You don't have permission to manage team members"}
+        tooltip={
+          !canInviteMembers
+            ? "You don't have permission to resend invites"
+            : !isOwnInvite
+              ? "Only the person who sent this invite can resend it"
+              : undefined
+        }
       >
         {isSubmitting ? (
           "Sending…"
@@ -992,7 +1047,7 @@ function ResendButton({ invite, canManageMembers }: { invite: Invite; canManageM
   );
 }
 
-function RevokeButton({ invite, canManageMembers }: { invite: Invite; canManageMembers: boolean }) {
+function RevokeButton({ invite, canInviteMembers }: { invite: Invite; canInviteMembers: boolean }) {
   const organization = useOrganization();
 
   return (
@@ -1007,12 +1062,10 @@ function RevokeButton({ invite, canManageMembers }: { invite: Invite; canManageM
             LeadingIcon={NoSymbolIcon}
             leadingIconClassName="text-white"
             aria-label="Revoke invite"
-            disabled={!canManageMembers}
+            disabled={!canInviteMembers}
           />
         }
-        content={
-          canManageMembers ? "Revoke invite" : "You don't have permission to manage team members"
-        }
+        content={canInviteMembers ? "Revoke invite" : "You don't have permission to revoke invites"}
         disableHoverableContent
         asChild
       />

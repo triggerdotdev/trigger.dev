@@ -18,12 +18,11 @@ import {
   type WorkloadSuspendRunResponseBody,
 } from "@trigger.dev/core/v3/workers";
 import EventEmitter from "node:events";
-import { setTimeout as sleep } from "node:timers/promises";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { type Namespace, Server, type Socket } from "socket.io";
 import { z } from "zod";
 import { tryCatch } from "@trigger.dev/core/utils";
-import { Counter, Histogram } from "prom-client";
+import { Counter } from "prom-client";
 import { env } from "../env.js";
 import { register } from "../metrics.js";
 import {
@@ -36,14 +35,13 @@ import {
   workloadTokenEnforced,
   workloadTokensEnabled,
 } from "../workloadToken.js";
-import type { WorkloadDeploymentTokenClaims } from "@trigger.dev/core/v3";
+import {
+  looksLikeWorkloadDeploymentToken,
+  type WorkloadDeploymentTokenClaims,
+} from "@trigger.dev/core/v3";
 import {
   SecretProxyAllocationBusyError,
-  SecretProxyPlacementPendingError,
-  SecretProxyPlacementSaturatedError,
   type SecretProxyBindings,
-  type SecretProxyCaller,
-  type SecretProxyPlacement,
 } from "../services/secretProxyBindings.js";
 import {
   ComputeSnapshotService,
@@ -64,21 +62,9 @@ interface DefaultEventsMap {
 }
 
 const SECRET_PROXY_ATTACH_RETRY_DELAY_MS = 1_000;
-// A guest can call start or continue before kubelet publishes its Pod status.
-const SECRET_PROXY_PLACEMENT_WAIT_MS = 5_000;
-const SECRET_PROXY_PLACEMENT_RETRY_MS = 250;
-
-const secretProxyPlacementWait = new Histogram({
-  name: "supervisor_secret_proxy_placement_wait_seconds",
-  help: "Time spent waiting for placement after an incomplete Pod status lookup",
-  labelNames: ["route", "outcome"],
-  buckets: [0.25, 0.5, 0.75, 1, 1.5, 2, 3, 4, 5, 6, 8],
-  registers: [register],
-});
-
 const unplacedSecretProxyContinues = new Counter({
   name: "supervisor_secret_proxy_unplaced_continues_total",
-  help: "Continues forwarded without proxy capability on a proxy-configured supervisor",
+  help: "Proxy continues refused because neither placement nor a tracked binding was available",
   registers: [register],
 });
 
@@ -331,12 +317,16 @@ export class WorkloadServer extends EventEmitter<WorkloadServerEvents> {
         ok: true;
         environmentId?: string;
         sandboxRunId?: string;
+        workloadNetwork?: WorkloadDeploymentTokenClaims["workload_network"];
         claims?: WorkloadDeploymentTokenClaims;
+        workloadToken?: string;
       }
     | { ok: false }
   > {
+    const workloadToken = this.workloadTokenToForward(req);
+
     if (!workloadTokensEnabled) {
-      return this.secretProxy ? { ok: false } : { ok: true };
+      return this.secretProxy ? { ok: false } : { ok: true, workloadToken };
     }
 
     const result = await verifyDeploymentIdHeader(this.deploymentIdFromRequest(req), "http");
@@ -365,6 +355,9 @@ export class WorkloadServer extends EventEmitter<WorkloadServerEvents> {
       return { ok: false };
     }
 
+    const verified =
+      workloadTokenEnforced && result.outcome === "jwt_valid" ? result.claims : undefined;
+    const workloadNetwork = verified?.workload_network;
     const isStart = req.url?.split("?")[0]?.endsWith("/attempts/start") === true;
     if (!isStart && this.secretProxy?.tracks(runFriendlyId)) {
       try {
@@ -382,14 +375,19 @@ export class WorkloadServer extends EventEmitter<WorkloadServerEvents> {
       }
     }
 
-    const verified =
-      workloadTokenEnforced && result.outcome === "jwt_valid" ? result.claims : undefined;
     return {
       ok: true,
+      workloadNetwork,
       environmentId: verified?.environment_id,
       sandboxRunId: verified?.execution_mode === "SANDBOX" ? verified.run : undefined,
       claims: result.outcome === "jwt_valid" ? result.claims : undefined,
+      workloadToken,
     };
+  }
+
+  private workloadTokenToForward(req: IncomingMessage): string | undefined {
+    const raw = this.deploymentIdFromRequest(req);
+    return raw && looksLikeWorkloadDeploymentToken(raw) ? raw : undefined;
   }
 
   private previousKeyRunAllowed(runFriendlyId: string, caller: PreviousKeyCaller): boolean {
@@ -624,12 +622,8 @@ export class WorkloadServer extends EventEmitter<WorkloadServerEvents> {
     );
   }
 
-  private withSecretProxy<T>(
-    runId: string,
-    runnerId: string | undefined,
-    operation: () => Promise<T>
-  ): Promise<T> {
-    return this.secretProxy ? this.secretProxy.exclusive(runId, operation, runnerId) : operation();
+  private secretProxyFor(workloadNetwork: WorkloadDeploymentTokenClaims["workload_network"]) {
+    return workloadNetwork === "proxy" ? this.secretProxy : undefined;
   }
 
   private createHttpServer({ host, port }: { host: string; port: number }) {
@@ -673,9 +667,10 @@ export class WorkloadServer extends EventEmitter<WorkloadServerEvents> {
                   claims: auth.claims,
                 };
                 try {
-                  const placement = await this.waitForSecretProxyPlacement(caller);
+                  const proxy = this.secretProxyFor(auth.workloadNetwork);
+                  const placement = await proxy?.prepareStart(caller);
                   const supportsSecretProxy = !!placement;
-                  if (this.secretProxy && !supportsSecretProxy) {
+                  if (proxy && !supportsSecretProxy) {
                     unsupportedSecretProxyStarts.inc({ reason: "unavailable" });
                   }
                   let attachmentFailed = false;
@@ -687,19 +682,21 @@ export class WorkloadServer extends EventEmitter<WorkloadServerEvents> {
                         ...body,
                         isWarmStart: placement?.isWarmStart ?? body.isWarmStart,
                         supportsSecretProxy,
+                        // The trusted Runner's interceptor and CNI policy restrict this VM.
+                        supportsNetworkPolicy: !!placement?.restrictedNetwork,
                         workerCell: this.workerStamp.workerCell,
                         workerLane: this.workerStamp.workerLane,
                       },
                       caller.runnerId,
                       auth.environmentId,
-                      auth.sandboxRunId
+                      auth.sandboxRunId,
+                      auth.workloadToken
                     );
                     if (startResponse.success && (placement || startResponse.data.secretProxy)) {
                       const response = startResponse;
                       try {
-                        if (!placement || !this.secretProxy)
-                          throw new Error("Secret proxy unavailable");
-                        await this.secretProxy.activateStart(caller, placement, response.data);
+                        if (!placement || !proxy) throw new Error("Secret proxy unavailable");
+                        await proxy.activateStart(caller, placement, response.data);
                       } catch {
                         const complete = () =>
                           this.workerClient.completeRunAttempt(
@@ -723,10 +720,11 @@ export class WorkloadServer extends EventEmitter<WorkloadServerEvents> {
                               forceRequeue: true,
                             },
                             caller.runnerId,
-                            auth.environmentId
+                            auth.environmentId,
+                            auth.workloadToken
                           );
-                        if (this.secretProxy && placement) {
-                          await this.secretProxy.failStart(caller, placement.bindingId, complete);
+                        if (proxy && placement) {
+                          await proxy.failStart(caller, placement.bindingId, complete);
                         } else {
                           await complete();
                         }
@@ -743,11 +741,9 @@ export class WorkloadServer extends EventEmitter<WorkloadServerEvents> {
                     return startResponse;
                   };
                   const startResponse =
-                    placement && this.secretProxy
-                      ? await this.secretProxy.withStart(placement, start)
-                      : await start();
+                    placement && proxy ? await proxy.withStart(placement, start) : await start();
                   if (attachmentFailed && placement)
-                    await this.secretProxy?.retryFailedStart(placement.bindingId);
+                    await proxy?.retryFailedStart(placement.bindingId);
 
                   if (!startResponse.success) {
                     this.logger.error("Failed to start run", {
@@ -819,17 +815,19 @@ export class WorkloadServer extends EventEmitter<WorkloadServerEvents> {
                 // snapshot, and no new suspend can be scheduled before this route replies.
                 this.snapshotService?.cancel(params.runFriendlyId, runnerId);
 
+                const proxy = this.secretProxyFor(auth.workloadNetwork);
                 const { attemptNumber, ...completion } = body;
                 const complete = () =>
                   this.workerClient.completeRunAttempt(
                     params.runFriendlyId,
                     params.snapshotFriendlyId,
-                    this.secretProxy ? body : completion,
+                    proxy ? body : completion,
                     runnerId,
-                    auth.environmentId
+                    auth.environmentId,
+                    auth.workloadToken
                   );
-                const completeResponse = this.secretProxy
-                  ? await this.secretProxy.complete(
+                const completeResponse = proxy
+                  ? await proxy.complete(
                       {
                         runId: params.runFriendlyId,
                         runnerId,
@@ -882,27 +880,29 @@ export class WorkloadServer extends EventEmitter<WorkloadServerEvents> {
                   reply.empty(401);
                   return;
                 }
-                const heartbeatResponse = await this.withSecretProxy(
-                  params.runFriendlyId,
-                  this.runnerIdFromRequest(req),
-                  async () => {
-                    const response = await this.workerClient.heartbeatRun(
-                      params.runFriendlyId,
-                      params.snapshotFriendlyId,
-                      body,
-                      this.runnerIdFromRequest(req),
-                      auth.environmentId,
-                      auth.sandboxRunId
-                    );
-                    if (response.success) {
-                      await this.secretProxy?.refresh(params.runFriendlyId, response.data.runToken);
-                    }
-                    return response;
+                const proxy = this.secretProxyFor(auth.workloadNetwork);
+                const runnerId = this.runnerIdFromRequest(req);
+                const heartbeat = async () => {
+                  const response = await this.workerClient.heartbeatRun(
+                    params.runFriendlyId,
+                    params.snapshotFriendlyId,
+                    body,
+                    runnerId,
+                    auth.environmentId,
+                    auth.sandboxRunId,
+                    auth.workloadToken
+                  );
+                  if (response.success) {
+                    await proxy?.refresh(params.runFriendlyId, response.data.runToken);
                   }
-                );
+                  return response;
+                };
+                const heartbeatResponse = await (proxy
+                  ? proxy.exclusive(params.runFriendlyId, heartbeat, runnerId)
+                  : heartbeat());
                 // An execution that lost its binding mid-attempt is bound again by its own VM.
                 if (heartbeatResponse.success) {
-                  await this.secretProxy?.rebindContinued(
+                  await proxy?.rebindContinued(
                     {
                       runId: params.runFriendlyId,
                       runnerId: this.runnerIdFromRequest(req),
@@ -1064,9 +1064,25 @@ export class WorkloadServer extends EventEmitter<WorkloadServerEvents> {
                   sourceIp: req.socket.remoteAddress,
                   claims: auth.claims,
                 };
-                const placement = this.secretProxy?.tracks(params.runFriendlyId)
-                  ? undefined
-                  : await this.waitForSecretProxyPlacement(caller, { continuing: true });
+                const proxy = this.secretProxyFor(auth.workloadNetwork);
+                const tracked = proxy?.tracks(params.runFriendlyId);
+                const placement =
+                  proxy && !tracked
+                    ? await proxy.prepareStart(caller, { continuing: true }).catch(() => undefined)
+                    : undefined;
+                // Fail closed: a proxy VM that continued unbound would run without its secrets.
+                if (auth.workloadNetwork === "proxy" && !placement && !tracked) {
+                  unplacedSecretProxyContinues.inc();
+                  this.logger.error("Not continuing a proxy run without secret proxy placement", {
+                    params,
+                  });
+                  reply.json(
+                    { ok: false, error: "Secret proxy placement unavailable" },
+                    false,
+                    503
+                  );
+                  return;
+                }
                 const continuationResult = await this.workerClient.continueRunExecution(
                   params.runFriendlyId,
                   params.snapshotFriendlyId,
@@ -1074,8 +1090,12 @@ export class WorkloadServer extends EventEmitter<WorkloadServerEvents> {
                   auth.environmentId,
                   {
                     retryBudget: this.continueRetryBudget,
-                    supportsSecretProxy: !!placement,
+                    supportsSecretProxy: !!placement || !!tracked,
+                    supportsNetworkPolicy: tracked
+                      ? !!proxy?.restrictsNetwork(params.runFriendlyId)
+                      : !!placement?.restrictedNetwork,
                     sandboxRunId: auth.sandboxRunId,
+                    workloadToken: auth.workloadToken,
                   }
                 );
 
@@ -1105,21 +1125,35 @@ export class WorkloadServer extends EventEmitter<WorkloadServerEvents> {
                 }
 
                 const { runToken, secretProxy, ...continuation } = continuationResult.data;
-                if (placement && this.secretProxy && secretProxy) {
+                if (placement && proxy && secretProxy) {
                   try {
-                    await this.secretProxy.activateContinue(caller, placement, {
+                    await proxy.activateContinue(caller, placement, {
                       ...continuation,
                       runToken,
                       secretProxy,
                     });
                   } catch (error) {
+                    // Fail closed: the VM waits for this reply, so it stays paused rather than
+                    // running unbound. The runner retries a 5xx, and the platform answers a repeated
+                    // continue from the same snapshot with the same result.
                     this.logger.error("Failed to bind continued secret proxy execution", {
                       params,
                       error,
                     });
+                    reply.json(
+                      { ok: false, error: "Secret proxy binding unavailable" },
+                      false,
+                      503
+                    );
+                    return;
                   }
                 }
-                reply.json(continuation as WorkloadContinueRunExecutionResponseBody);
+                const { executionData } = continuation;
+                reply.json({
+                  ...continuation,
+                  // Same form as `snapshots/since` returns, so the runner can use it instead.
+                  executionData: executionData && legacifyCheckpointType(executionData),
+                } satisfies WorkloadContinueRunExecutionResponseBody);
 
                 await this.cancelCheckpointsAfterReply(params.runFriendlyId);
               }
@@ -1148,7 +1182,8 @@ export class WorkloadServer extends EventEmitter<WorkloadServerEvents> {
                   params.runFriendlyId,
                   params.snapshotFriendlyId,
                   this.runnerIdFromRequest(req),
-                  auth.environmentId
+                  auth.environmentId,
+                  auth.workloadToken
                 );
 
                 if (!sinceSnapshotResponse.success) {
@@ -1295,6 +1330,10 @@ export class WorkloadServer extends EventEmitter<WorkloadServerEvents> {
             : result.outcome === "legacy_bare"
               ? socket.data.deploymentId
               : undefined;
+      } else {
+        const raw = socket.data.deploymentId;
+        socket.data.deploymentFriendlyId =
+          raw && !looksLikeWorkloadDeploymentToken(raw) ? raw : undefined;
       }
 
       this.logger.debug("[WS] handshake complete", {
@@ -1305,14 +1344,11 @@ export class WorkloadServer extends EventEmitter<WorkloadServerEvents> {
       next();
     });
     websocketServer.on("connection", (socket) => {
-      const socketLogger = this.logger.child({
-        socketId: socket.id,
-        socketData: socket.data,
-      });
+      const socketLogger = this.logger.child({ socketId: socket.id });
 
       const getSocketMetadata = () => {
         return {
-          deploymentId: socket.data.deploymentFriendlyId ?? socket.data.deploymentId,
+          deploymentId: socket.data.deploymentFriendlyId,
           runId: socket.data.runFriendlyId,
           snapshotId: socket.data.snapshotId,
           runnerId: socket.data.runnerId,
@@ -1331,7 +1367,7 @@ export class WorkloadServer extends EventEmitter<WorkloadServerEvents> {
           populate: (state) => {
             state.extras.event = event;
             setMeta(state, "run_id", friendlyId);
-            const deploymentId = socket.data.deploymentFriendlyId ?? socket.data.deploymentId;
+            const deploymentId = socket.data.deploymentFriendlyId;
             if (deploymentId) {
               setMeta(state, "deployment_id", deploymentId);
             }
@@ -1511,51 +1547,6 @@ export class WorkloadServer extends EventEmitter<WorkloadServerEvents> {
     });
 
     return websocketServer;
-  }
-
-  private async waitForSecretProxyPlacement(
-    caller: SecretProxyCaller,
-    { continuing = false } = {}
-  ): Promise<SecretProxyPlacement | undefined> {
-    const secretProxy = this.secretProxy;
-    if (!secretProxy) return;
-    const deadline = performance.now() + SECRET_PROXY_PLACEMENT_WAIT_MS;
-    let endWait: ReturnType<typeof secretProxyPlacementWait.startTimer> | undefined;
-    let outcome = "unavailable";
-    let retrying = false;
-    let saturated = false;
-    try {
-      for (;;) {
-        try {
-          const placement = await secretProxy.prepareStart(caller, { continuing, retrying });
-          if (placement) {
-            outcome = "placed";
-            return placement;
-          }
-          break;
-        } catch (error) {
-          if (!(error instanceof SecretProxyPlacementPendingError)) {
-            if (!continuing) throw error;
-            break;
-          }
-          saturated = error instanceof SecretProxyPlacementSaturatedError;
-        }
-        if (performance.now() + SECRET_PROXY_PLACEMENT_RETRY_MS >= deadline) {
-          // "saturated": the wait ended on a full lookup queue, not on kubelet.
-          outcome = saturated ? "saturated" : "timeout";
-          break;
-        }
-        retrying = true;
-        endWait ??= secretProxyPlacementWait.startTimer({
-          route: continuing ? "continue" : "start",
-        });
-        await sleep(SECRET_PROXY_PLACEMENT_RETRY_MS);
-      }
-      if (continuing) unplacedSecretProxyContinues.inc();
-      return;
-    } finally {
-      endWait?.({ outcome });
-    }
   }
 
   private async revokeRunner(

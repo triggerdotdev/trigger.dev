@@ -2,6 +2,10 @@ import { createRedisClient } from "@internal/redis";
 import { redisTest } from "@internal/testcontainers";
 import { expect } from "vitest";
 import { RunLocker, LockAcquisitionTimeoutError } from "../locking.js";
+import {
+  StoreWaitpointBlockCycleAdvanced,
+  WaitpointCompletionNotCommittedError,
+} from "../errors.js";
 import { trace } from "@internal/tracing";
 import { Logger } from "@trigger.dev/core/logger";
 
@@ -58,6 +62,69 @@ describe("RunLocker", () => {
         release();
         await settled;
         await Promise.all([locker.quit(), otherWorker.quit()]);
+      }
+    }
+  );
+
+  // Catches: RunLocker ignoring the level an error declares (sending handled waitpoint-store outcomes
+  // to error reporting), or an unmarked error losing its error log.
+  redisTest(
+    "errors are logged at the level they declare; unmarked errors stay at error",
+    async ({ redisOptions }) => {
+      const logs: Record<string, unknown>[] = [];
+      Logger.onLog = (log) => logs.push(log);
+      const locker = new RunLocker({
+        redis: createRedisClient(redisOptions),
+        logger: new Logger("RunLockLevelTest", "debug"),
+        tracer: trace.getTracer("RunLockLevelTest"),
+      });
+      const levels = () =>
+        logs.filter((l) => l.message === "[RunLocker] Error locking resources").map((l) => l.level);
+      try {
+        const fence = new StoreWaitpointBlockCycleAdvanced({
+          runId: "run_1",
+          waitpointIds: ["w_1"],
+          expectedCycleAnchor: "snapshot_old",
+          currentCycleAnchor: "snapshot_new",
+        });
+        const cases: Array<[label: string, reason: unknown, level: string]> = [
+          ["cycle-advanced fence", fence, "warn"],
+          ["early uncommitted completion", new WaitpointCompletionNotCommittedError(true), "warn"],
+          ["late uncommitted completion", new WaitpointCompletionNotCommittedError(false), "error"],
+          [
+            "another error marked logLevel warn",
+            Object.assign(new Error("marked elsewhere"), { logLevel: "warn" as const }),
+            "warn",
+          ],
+          [
+            "an error marked logLevel info",
+            Object.assign(new Error("marked info"), { logLevel: "info" as const }),
+            "info",
+          ],
+          [
+            "an error marked logLevel debug",
+            Object.assign(new Error("marked debug"), { logLevel: "debug" as const }),
+            "debug",
+          ],
+          [
+            "an error marked an unknown level",
+            Object.assign(new Error("marked unknown"), { logLevel: "loud" }),
+            "error",
+          ],
+          ["plain error", new Error("not expected"), "error"],
+          ["primitive rejection", "primitive reason", "error"],
+        ];
+        for (const [label, reason, level] of cases) {
+          const before = levels().length;
+          await expect(
+            locker.lock("recover", ["run_1"], () => Promise.reject(reason)),
+            label
+          ).rejects.toBe(reason);
+          expect(levels().slice(before), label).toEqual([level]);
+        }
+      } finally {
+        Logger.onLog = undefined;
+        await locker.quit();
       }
     }
   );

@@ -13,11 +13,11 @@
     "rimraf": "6.0.1",
     "tsx": "^4.19.2",
     "typescript": "catalog:",
-    "vitest": "4.1.11"
+    "vitest": "4.1.12"
   },
   "scripts": {
     "clean": "rimraf dist",
-    "typecheck": "tsc --noEmit",
+    "typecheck": "tsrs --fast --noEmit",
     "build": "pnpm run clean && tsc -p tsconfig.build.json",
     "test": "vitest run",
     "test:watch": "vitest",

@@ -1,6 +1,6 @@
 {
   "name": "@trigger.dev/sdk",
-  "version": "4.8.7",
+  "version": "4.8.10",
   "description": "trigger.dev Node.JS SDK",
   "license": "MIT",
   "publishConfig": {
@@ -37,7 +37,8 @@
       "./ai/test": "./src/v3/test/index.ts",
       "./chat": "./src/v3/chat.ts",
       "./chat/react": "./src/v3/chat-react.ts",
-      "./chat-server": "./src/v3/chat-server.ts"
+      "./chat-server": "./src/v3/chat-server.ts",
+      "./preview": "./src/v3/preview.ts"
     },
     "sourceDialects": [
       "@triggerdotdev/source"
@@ -71,6 +72,9 @@
       ],
       "chat-server": [
         "dist/commonjs/v3/chat-server.d.ts"
+      ],
+      "preview": [
+        "dist/commonjs/v3/preview.d.ts"
       ]
     }
   },
@@ -79,7 +83,7 @@
     "build": "tshy && pnpm run update-version && pnpm run bundle-docs",
     "bundle-docs": "tsx ../../scripts/bundleSdkDocs.ts",
     "dev": "tshy --watch",
-    "typecheck": "tsc --noEmit && node scripts/typecheck-ai-majors.mjs",
+    "typecheck": "tsrs --fast --noEmit && node scripts/typecheck-ai-majors.mjs",
     "test": "vitest",
     "update-version": "tsx ../../scripts/updateVersion.ts",
     "check-exports": "attw --pack ."
@@ -87,7 +91,7 @@
   "dependencies": {
     "@opentelemetry/api": "1.9.1",
     "@opentelemetry/semantic-conventions": "1.41.1",
-    "@trigger.dev/core": "workspace:4.8.7",
+    "@trigger.dev/core": "workspace:4.8.10",
     "uncrypto": "^0.1.3"
   },
   "devDependencies": {
@@ -103,7 +107,7 @@
     "tshy": "^4.1.3",
     "tsx": "4.17.0",
     "typescript": "catalog:",
-    "zod": "4.5.4"
+    "zod": "4.6.7"
   },
   "peerDependencies": {
     "@aws-sdk/client-sts": "^3.840.0",
@@ -239,6 +243,17 @@
       "require": {
         "types": "./dist/commonjs/v3/chat-server.d.ts",
         "default": "./dist/commonjs/v3/chat-server.js"
+      }
+    },
+    "./preview": {
+      "import": {
+        "@triggerdotdev/source": "./src/v3/preview.ts",
+        "types": "./dist/esm/v3/preview.d.ts",
+        "default": "./dist/esm/v3/preview.js"
+      },
+      "require": {
+        "types": "./dist/commonjs/v3/preview.d.ts",
+        "default": "./dist/commonjs/v3/preview.js"
       }
     }
   },

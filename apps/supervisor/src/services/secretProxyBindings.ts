@@ -8,6 +8,8 @@ import { randomUUID } from "node:crypto";
 import { lstat } from "node:fs/promises";
 import { request } from "node:http";
 import { isIP } from "node:net";
+import { setTimeout as sleep } from "node:timers/promises";
+import pLimit from "p-limit";
 import { z } from "zod";
 import { Counter, Gauge } from "prom-client";
 import { register } from "../metrics.js";
@@ -27,6 +29,12 @@ const INITIAL_CONTROL_RETRY_MS = CLEANUP_INTERVAL_MS;
 const MAX_CONTROL_RETRY_MS = 60_000;
 const INITIAL_START_FAILURE_RETRY_MS = 1_000;
 const MAX_START_FAILURE_RETRY_MS = 60_000;
+/** How long a control call waits for a restarting interceptor (measured gap: about 2s). */
+const INTERCEPTOR_RESTART_BUDGET_MS = 15_000;
+const INITIAL_RESTART_RETRY_MS = 100;
+const MAX_RESTART_RETRY_MS = 1_000;
+/** Connect errors: the request never reached an interceptor, so repeating it cannot apply it twice. */
+const NOT_LISTENING_CODES = new Set(["ENOENT", "ECONNREFUSED"]);
 
 const RESTORED_ATTEMPT = 0;
 
@@ -74,6 +82,7 @@ const Runner = z.object({
     bootstrap: z.object({ runFriendlyID: z.string() }),
     restore: z.unknown().optional(),
     singleUse: z.boolean().optional(),
+    restrictedNetwork: z.boolean().optional(),
   }),
 });
 
@@ -91,11 +100,15 @@ const Allocation = z.object({
     .max(128)
     .regex(/^[a-zA-Z0-9_-]+$/),
   guestId: z.string().min(1),
+  attached: z.boolean(),
+  pod: z.object({ uid: z.string(), ip: z.string() }).nullish(),
   runId: z.string().min(1),
   attempt: z.number().int().nonnegative().safe(),
   bindingId: z.string().min(1),
   empty: z.boolean(),
   hasBeenBound: z.boolean(),
+  /** Absent from interceptors that cannot restrict, which then never serve a restricted Runner. */
+  restrictedNetwork: z.boolean().optional(),
   binding: SecretProxyExecution.extend({
     bindingId: z.string().min(1),
     sourceIp: z.string(),
@@ -116,6 +129,8 @@ type Identity = {
   deploymentId: string;
   singleUseAttempt?: number;
   pinned?: boolean;
+  /** The trusted Runner asked for a restricted VM, which its interceptor and CNI enforce. */
+  restrictedNetwork?: boolean;
 };
 
 export type SecretProxyPlacement = Pick<
@@ -131,6 +146,7 @@ export type SecretProxyPlacement = Pick<
   | "deploymentId"
   | "singleUseAttempt"
   | "pinned"
+  | "restrictedNetwork"
 > & { isWarmStart: boolean; continuing?: boolean };
 
 export type SecretProxyStartResult = {
@@ -194,17 +210,23 @@ export class SecretProxyAllocationBusyError extends Error {
   }
 }
 
-export class SecretProxyPlacementPendingError extends Error {
-  constructor(readonly matches: (caller: SecretProxyCaller) => boolean) {
-    super("Secret proxy placement waiting for Pod status");
+class InterceptorUnavailableError extends Error {
+  constructor(readonly notListening: boolean) {
+    super("Secret proxy control unavailable");
   }
 }
 
-/** A caller already waiting for Pod status found every lookup slot in use; it keeps waiting. */
-export class SecretProxyPlacementSaturatedError extends SecretProxyPlacementPendingError {
-  constructor() {
-    super(() => true);
-  }
+function controlUnavailable(error?: unknown): InterceptorUnavailableError {
+  const code = (error as NodeJS.ErrnoException | undefined)?.code;
+  return new InterceptorUnavailableError(code !== undefined && NOT_LISTENING_CODES.has(code));
+}
+
+function interceptorNotListening(error: unknown): boolean {
+  return error instanceof InterceptorUnavailableError && error.notListening;
+}
+
+function pinnedKey(placement: Pick<Identity, "allocationId" | "runnerUid">): string {
+  return `${placement.allocationId}/${placement.runnerUid}`;
 }
 
 type CompletionResponse = Awaited<ReturnType<SupervisorHttpClient["completeRunAttempt"]>>;
@@ -228,6 +250,18 @@ export function isSecretProxyHostname(host: string): boolean {
   );
 }
 
+function isNetworkHostPattern(host: string): boolean {
+  return isSecretProxyHostname(host.startsWith("*.") ? host.slice(2) : host);
+}
+
+function validProxyHosts(proxy: Pick<SecretProxyExecution, "allowedHosts" | "network">): boolean {
+  return (
+    proxy.allowedHosts.every(isSecretProxyHostname) &&
+    (proxy.network?.allow.every(isNetworkHostPattern) ?? true) &&
+    (proxy.allowedHosts.length > 0 || proxy.network !== undefined)
+  );
+}
+
 function matchesPlacementCaller(
   identity: Pick<Identity, "runnerId" | "sourceIp" | "environmentId" | "deploymentId">,
   caller: SecretProxyCaller
@@ -244,28 +278,13 @@ function matchesCaller(identity: Identity, caller: SecretProxyCaller): boolean {
   return identity.runId === caller.runId && matchesPlacementCaller(identity, caller);
 }
 
-/** Whether kubelet has published the Pod status placement needs, and whether it matches the caller. */
-function publishedPodStatus(
-  pod: V1Pod,
-  ip: string | undefined
-): "denied" | "pending" | { guestId: string } {
-  const container = pod.spec?.containers[0]?.name;
-  const status = pod.status?.containerStatuses?.find((s) => s.name === container);
-  const guestId = status?.containerID?.match(/^containerd:\/\/([a-zA-Z0-9_-]+)$/)?.[1];
-  const podIP = pod.status?.podIP;
-  if (
-    (podIP && sourceIp(podIP) !== ip) ||
-    (status?.containerID && !guestId) ||
-    status?.state?.terminated ||
-    pod.status?.phase === "Failed" ||
-    pod.status?.phase === "Succeeded"
-  )
-    return "denied";
-  if (!podIP || !guestId || !status?.state?.running) return "pending";
-  return { guestId };
+function hasPodField(pod: V1Pod, name: string, path: string): boolean {
+  const entries = pod.spec?.containers[0]?.env?.filter((e) => e.name === name);
+  return entries?.length === 1 && entries[0]?.valueFrom?.fieldRef?.fieldPath === path;
 }
 
-type CachedPlacement = ReturnType<typeof trustedSecretProxyIdentity> & {
+type CachedPlacement = Omit<ReturnType<typeof trustedSecretProxyIdentity>, "publishedGuestId"> & {
+  guestId: string;
   allocationId: string;
   hasBeenBound: boolean;
   bindingId?: string;
@@ -278,7 +297,8 @@ export function trustedSecretProxyIdentity(
   caller: SecretProxyCaller,
   nodeName: string,
   namespace: string
-): Omit<Identity, "allocationId" | "bindingId" | "runId" | "attempt"> & {
+): Omit<Identity, "allocationId" | "bindingId" | "runId" | "attempt" | "guestId"> & {
+  publishedGuestId?: string;
   bootstrapRunId: string;
   bootstrapAttempt: number;
 } {
@@ -297,6 +317,10 @@ export function trustedSecretProxyIdentity(
     !ip ||
     attempt === undefined ||
     !container ||
+    pod.spec?.containers.length !== 1 ||
+    pod.spec.restartPolicy !== "Never" ||
+    !hasPodField(pod, "TRIGGER_POD_UID", "metadata.uid") ||
+    !hasPodField(pod, "TRIGGER_POD_IP", "status.podIP") ||
     !pod.metadata?.uid ||
     runner.metadata.deletionTimestamp ||
     pod.metadata.deletionTimestamp ||
@@ -320,30 +344,25 @@ export function trustedSecretProxyIdentity(
     pod.spec.hostNetwork
   )
     return denied();
-  const published = publishedPodStatus(pod, ip);
-  if (published === "denied") return denied();
-  if (published === "pending") {
-    const scope = {
-      runnerId: runner.metadata.name,
-      sourceIp: ip,
-      environmentId: runner.spec.owner.envID,
-      deploymentId: runner.spec.deployment.friendlyID,
-    };
-    // A coalesced lookup must not make another caller with different claims wait.
-    throw new SecretProxyPlacementPendingError(
-      (other) =>
-        matchesPlacementCaller(scope, other) &&
-        (!runner.spec.singleUse || other.runId === runner.spec.bootstrap.runFriendlyID)
-    );
-  }
+  const status = pod.status?.containerStatuses?.find((s) => s.name === container);
+  const publishedGuestId = status?.containerID?.match(/^containerd:\/\/([a-zA-Z0-9_-]+)$/)?.[1];
+  if (
+    (pod.status?.podIP && sourceIp(pod.status.podIP) !== ip) ||
+    (status?.containerID && !publishedGuestId) ||
+    status?.state?.terminated ||
+    pod.status?.phase === "Failed" ||
+    pod.status?.phase === "Succeeded"
+  )
+    return denied();
   return {
-    guestId: published.guestId,
+    publishedGuestId,
     podUid: pod.metadata.uid,
     sourceIp: ip,
     bootstrapRunId: runner.spec.bootstrap.runFriendlyID,
     bootstrapAttempt: attempt,
     singleUseAttempt: runner.spec.singleUse && !runner.spec.restore ? attempt : undefined,
     pinned: !!runner.spec.singleUse,
+    restrictedNetwork: !!runner.spec.restrictedNetwork,
     runnerId: runner.metadata.name,
     runnerUid: runner.metadata.uid,
     environmentId: runner.spec.owner.envID,
@@ -391,7 +410,9 @@ async function interceptorRequest(
           : "revoke";
   let outcome: "success" | "error" = "error";
   try {
-    const socket = await lstat(socketPath);
+    const socket = await lstat(socketPath).catch((error) => {
+      throw controlUnavailable(error);
+    });
     if (
       !socket.isSocket() ||
       (socket.mode & 0o077) !== 0 ||
@@ -399,7 +420,7 @@ async function interceptorRequest(
     )
       return denied();
     const result = await new Promise<string>((resolve, reject) => {
-      const fail = () => reject(new Error("Secret proxy control unavailable"));
+      const fail = (error?: Error) => reject(controlUnavailable(error));
       const data = body === undefined ? undefined : JSON.stringify(body);
       const req = request(
         {
@@ -423,7 +444,7 @@ async function interceptorRequest(
               req.destroy(new Error("Control response too large"));
             else chunks.push(chunk);
           });
-          res.on("error", fail);
+          res.on("error", () => fail());
           res.on("end", () => {
             const status = res.statusCode ?? 0;
             const accepted =
@@ -462,14 +483,13 @@ export async function interceptorControl(
   );
 }
 
-async function allocationForGuest(socketPath: string, guestId: string) {
+async function lookupAllocation(socketPath: string, path: string) {
   try {
     return Allocation.parse(
-      JSON.parse(
-        await interceptorRequest(socketPath, `/allocations/${encodeURIComponent(guestId)}`, "GET")
-      )
+      JSON.parse(await interceptorRequest(socketPath, `/allocations/${path}`, "GET"))
     );
-  } catch {
+  } catch (error) {
+    if (interceptorNotListening(error)) throw error;
     return denied();
   }
 }
@@ -492,17 +512,23 @@ export class SecretProxyBindings {
   private readonly retiredStarts = new WeakSet<SecretProxyPlacement | Binding>();
   private readonly placements = new Map<string, CachedPlacement>();
   private readonly runnerPlacements = new Map<string, string>();
+  /**
+   * The attempt a pinned VM was bound to, by allocation ID and runner UID. The interceptor keeps a
+   * VM's binding history but not its attempt, so a placement re-read after a failed start needs it.
+   */
+  private readonly pinnedAttempts = new Map<string, number>();
   private readonly placementLookups = new Map<
     string,
-    { promise: Promise<CachedPlacement | undefined> }
+    { owner: SecretProxyCaller; promise: Promise<CachedPlacement | undefined> }
   >();
   private readonly recoverable = new Map<string, Set<string>>();
   private readonly pendingRevocations = new Map<string, Set<string>>();
   private readonly rebinds = new Map<string, PendingRebind>();
   private discovery?: Promise<void>;
-  private verifying = 0;
+  private readonly lookups = pLimit(MAX_IN_FLIGHT);
   private controlling = 0;
   private readonly controls = new Set<Promise<void>>();
+  private sweeping = false;
   private stopped = false;
   private ready = false;
   private nextControlRetryAt = 0;
@@ -570,11 +596,15 @@ export class SecretProxyBindings {
     return this.bindings.has(runId) || this.recoverable.has(runId);
   }
 
-  private async finishRevocations(runId: string): Promise<void> {
+  restrictsNetwork(runId: string): boolean {
+    return !!this.bindings.get(runId)?.restrictedNetwork;
+  }
+
+  private async finishRevocations(runId: string, waitForRestart = true): Promise<void> {
     const bindingIds = this.pendingRevocations.get(runId);
     if (!bindingIds) return;
     for (const bindingId of bindingIds) {
-      await this.control(bindingId);
+      await this.control(bindingId, undefined, waitForRestart);
       bindingIds.delete(bindingId);
     }
     this.pendingRevocations.delete(runId);
@@ -595,6 +625,11 @@ export class SecretProxyBindings {
 
   private forgetPlacement(placement: CachedPlacement): void {
     if (this.placements.get(placement.podUid) !== placement) return;
+    if (placement.pinned && placement.boundAttempt !== undefined) {
+      if (this.pinnedAttempts.size >= MAX_PLACEMENTS)
+        this.pinnedAttempts.delete(this.pinnedAttempts.keys().next().value!);
+      this.pinnedAttempts.set(pinnedKey(placement), placement.boundAttempt);
+    }
     this.placements.delete(placement.podUid);
     if (this.runnerPlacements.get(placement.runnerId) === placement.podUid)
       this.runnerPlacements.delete(placement.runnerId);
@@ -631,23 +666,31 @@ export class SecretProxyBindings {
     ]);
     if (runner.status === "rejected") throw runner.reason;
     if (pod.status === "rejected") throw pod.reason;
-    const placement = trustedSecretProxyIdentity(
+    const { publishedGuestId, ...placement } = trustedSecretProxyIdentity(
       runner.value,
       pod.value,
       caller,
       this.opts.nodeName,
       this.opts.namespace
     );
-    const allocation = await allocationForGuest(this.opts.socketPath, placement.guestId);
+    const allocation = await lookupAllocation(
+      this.opts.socketPath,
+      `by-pod/${encodeURIComponent(placement.podUid)}`
+    );
     if (
       allocation.runId !== placement.bootstrapRunId ||
       allocation.attempt !== placement.bootstrapAttempt ||
-      allocation.guestId !== placement.guestId
+      !allocation.attached ||
+      allocation.pod?.uid !== placement.podUid ||
+      sourceIp(allocation.pod.ip) !== placement.sourceIp ||
+      (publishedGuestId && allocation.guestId !== publishedGuestId) ||
+      !!allocation.restrictedNetwork !== !!placement.restrictedNetwork
     )
       return denied();
     if (!recovering) await this.requireEmpty(allocation, placement);
     return {
       ...placement,
+      guestId: allocation.guestId,
       allocationId: allocation.allocationId,
       hasBeenBound: allocation.hasBeenBound,
       ...(recovering ? { binding: allocation.binding, bindingId: allocation.bindingId } : {}),
@@ -659,6 +702,9 @@ export class SecretProxyBindings {
     if (previous) this.forgetPlacement(previous);
     if (this.placements.size >= MAX_PLACEMENTS)
       this.forgetPlacement(this.placements.values().next().value!);
+    if (placement.pinned && placement.hasBeenBound)
+      placement.boundAttempt ??= this.pinnedAttempts.get(pinnedKey(placement));
+    this.pinnedAttempts.delete(pinnedKey(placement));
     this.placements.set(placement.podUid, placement);
     this.runnerPlacements.set(placement.runnerId, placement.podUid);
   }
@@ -666,17 +712,15 @@ export class SecretProxyBindings {
   private async recover(caller: SecretProxyCaller): Promise<void> {
     const guests = this.recoverable.get(caller.runId);
     if (!guests || this.bindings.has(caller.runId)) return;
-    if (this.stopped || !caller.runnerId || this.verifying >= MAX_IN_FLIGHT) return denied();
-    this.verifying++;
-    const read = this.readPlacement(caller, true).finally(() => this.verifying--);
-    const found = await withTimeout(read, KUBERNETES_TIMEOUT_MS, "Secret proxy recovery");
+    if (this.stopped || !caller.runnerId) return denied();
+    const found = await this.lookupWithSlot(caller, true);
     if (this.stopped || !guests.has(found.guestId)) return denied();
     const { binding: recovered, ...placement } = found;
     if (recovered && recovered.runId === caller.runId) {
       if (
         recovered.bindingId !== placement.bindingId ||
         recovered.sourceIp !== placement.sourceIp ||
-        recovered.allowedHosts.some((host) => !isSecretProxyHostname(host))
+        !validProxyHosts(recovered)
       )
         return denied();
       if (this.bindings.has(caller.runId)) return;
@@ -701,12 +745,39 @@ export class SecretProxyBindings {
   }
 
   /**
-   * `retrying` marks a caller already told its Pod status is pending: a saturated lookup then
-   * reports pending too, so a burst doesn't end its wait early.
+   * Repeats `operation` while the interceptor is not listening, as between an old process exiting
+   * and its replacement binding the control socket. Waits outside any slot the operation takes.
    */
+  private async whileInterceptorRestarts<T>(operation: () => Promise<T>): Promise<T> {
+    const deadline = performance.now() + INTERCEPTOR_RESTART_BUDGET_MS;
+    for (let delayMs = INITIAL_RESTART_RETRY_MS; ;) {
+      try {
+        return await operation();
+      } catch (error) {
+        if (!interceptorNotListening(error) || performance.now() + delayMs >= deadline) throw error;
+        await sleep(delayMs);
+        if (this.stopped) throw error;
+        delayMs = Math.min(delayMs * 2, MAX_RESTART_RETRY_MS);
+      }
+    }
+  }
+
+  private lookupWithSlot(caller: SecretProxyCaller, recovering = false) {
+    return this.whileInterceptorRestarts(() => {
+      if (this.lookups.pendingCount >= MAX_PLACEMENTS) return denied();
+      const deadline = performance.now() + KUBERNETES_TIMEOUT_MS;
+      const read = this.lookups(() =>
+        this.stopped || performance.now() >= deadline
+          ? denied()
+          : this.readPlacement(caller, recovering)
+      );
+      return withTimeout(read, KUBERNETES_TIMEOUT_MS, "Secret proxy identity");
+    });
+  }
+
   async prepareStart(
     caller: SecretProxyCaller,
-    { continuing = false, retrying = false } = {}
+    { continuing = false } = {}
   ): Promise<SecretProxyPlacement | undefined> {
     if (
       !this.ready ||
@@ -717,7 +788,14 @@ export class SecretProxyBindings {
     )
       return;
     let cached = this.placements.get(this.runnerPlacements.get(caller.runnerId) ?? "");
-    const allocation = cached && (await this.cachedAllocation(cached));
+    let allocation: z.infer<typeof Allocation> | undefined;
+    try {
+      allocation = cached && (await this.cachedAllocation(cached));
+    } catch {
+      // The interceptor stayed down for the whole restart budget: keep the cached placement and
+      // don't wait a second budget on a fresh lookup.
+      return;
+    }
     if (cached && !allocation) {
       this.forgetPlacement(cached);
       cached = undefined;
@@ -737,14 +815,9 @@ export class SecretProxyBindings {
     if (!cached) {
       let pending = this.placementLookups.get(caller.runnerId);
       if (!pending) {
-        if (this.verifying >= MAX_IN_FLIGHT) {
-          if (retrying) throw new SecretProxyPlacementSaturatedError();
-          return;
-        }
-        this.verifying++;
-        const read = this.readPlacement(caller).finally(() => this.verifying--);
         pending = {
-          promise: withTimeout(read, KUBERNETES_TIMEOUT_MS, "Secret proxy identity")
+          owner: caller,
+          promise: this.lookupWithSlot(caller)
             .then((placement) => {
               if (
                 this.stopped ||
@@ -756,14 +829,7 @@ export class SecretProxyBindings {
               return placement;
             })
             .catch((error) => {
-              if (
-                error instanceof SecretProxyAllocationBusyError ||
-                (error instanceof SecretProxyPlacementPendingError &&
-                  !this.stopped &&
-                  this.ready &&
-                  this.placementLookups.get(caller.runnerId!) === pending)
-              )
-                throw error;
+              if (error instanceof SecretProxyAllocationBusyError) throw error;
               return undefined;
             })
             .finally(() => {
@@ -776,7 +842,14 @@ export class SecretProxyBindings {
       try {
         cached = await pending.promise;
       } catch (error) {
-        if (error instanceof SecretProxyPlacementPendingError && !error.matches(caller)) return;
+        const owner = pending.owner;
+        if (
+          owner.runId !== caller.runId ||
+          sourceIp(owner.sourceIp) !== sourceIp(caller.sourceIp) ||
+          owner.claims?.environment_id !== caller.claims.environment_id ||
+          owner.claims?.deployment !== caller.claims.deployment
+        )
+          return;
         throw error;
       }
     }
@@ -805,16 +878,21 @@ export class SecretProxyBindings {
     cached: CachedPlacement
   ): Promise<z.infer<typeof Allocation> | undefined> {
     try {
-      const allocation = await allocationForGuest(this.opts.socketPath, cached.guestId);
+      const allocation = await this.whileInterceptorRestarts(() =>
+        lookupAllocation(this.opts.socketPath, encodeURIComponent(cached.guestId))
+      );
       if (
+        !allocation.attached ||
         allocation.allocationId !== cached.allocationId ||
         allocation.runId !== cached.bootstrapRunId ||
-        allocation.attempt !== cached.bootstrapAttempt
+        allocation.attempt !== cached.bootstrapAttempt ||
+        !!allocation.restrictedNetwork !== !!cached.restrictedNetwork
       )
         return;
       cached.hasBeenBound ||= allocation.hasBeenBound;
       return allocation;
-    } catch {
+    } catch (error) {
+      if (interceptorNotListening(error)) throw error;
       return;
     }
   }
@@ -839,8 +917,12 @@ export class SecretProxyBindings {
           bindingId: allocation.bindingId,
         });
     }
-    await this.control(allocation.bindingId);
-    const current = await allocationForGuest(this.opts.socketPath, allocation.guestId);
+    // Runs inside a placement lookup slot: an interceptor restart is waited out around that slot.
+    await this.control(allocation.bindingId, undefined, false);
+    const current = await lookupAllocation(
+      this.opts.socketPath,
+      encodeURIComponent(allocation.guestId)
+    );
     if (current.allocationId !== allocation.allocationId || !current.empty)
       throw new SecretProxyAllocationBusyError(placement);
   }
@@ -907,6 +989,8 @@ export class SecretProxyBindings {
       (placement.singleUseAttempt !== undefined &&
         execution.attempt.number !== placement.singleUseAttempt) ||
       this.starting.get(placement.allocationId) !== placement ||
+      // A restricted VM serves only restricted executions: anything else would run without internet.
+      (placement.restrictedNetwork && !response.secretProxy?.network) ||
       this.bindings.get(caller.runId)?.busy ||
       (protectedStart && this.atCapacity(caller.runId))
     )
@@ -923,11 +1007,13 @@ export class SecretProxyBindings {
     binding.busy = true;
     cached.bindingId = binding.bindingId;
     try {
-      await interceptorRequest(
-        this.opts.socketPath,
-        `/allocations/${encodeURIComponent(binding.allocationId)}/binding`,
-        "PUT",
-        { bindingId: binding.bindingId }
+      await this.whileInterceptorRestarts(() =>
+        interceptorRequest(
+          this.opts.socketPath,
+          `/allocations/${encodeURIComponent(binding.allocationId)}/binding`,
+          "PUT",
+          { bindingId: binding.bindingId }
+        )
       );
       cached.hasBeenBound = true;
       if (cached.pinned) cached.boundAttempt = execution.attempt.number;
@@ -1000,14 +1086,14 @@ export class SecretProxyBindings {
     });
   }
 
-  async retryFailedStart(bindingId: string): Promise<void> {
+  async retryFailedStart(bindingId: string, waitForRestart = true): Promise<void> {
     const failure = this.failedStarts.get(bindingId);
     if (!failure || failure.busy || this.stopped || Date.now() < failure.nextRetryAtMs) return;
     failure.busy = true;
     const binding = this.bindings.get(failure.runId);
     const recover = async () => {
-      if (binding?.bindingId === bindingId) await this.revokeBinding(binding);
-      else if (failure.revoke) await this.control(bindingId);
+      if (binding?.bindingId === bindingId) await this.revokeBinding(binding, waitForRestart);
+      else if (failure.revoke) await this.control(bindingId, undefined, waitForRestart);
 
       let settled = Date.now() >= failure.expiresAtMs;
       if (!settled) {
@@ -1040,20 +1126,20 @@ export class SecretProxyBindings {
     }
   }
 
-  private async closeBinding(binding: Binding): Promise<void> {
-    await this.control(binding.bindingId);
+  private async closeBinding(binding: Binding, waitForRestart = true): Promise<void> {
+    await this.control(binding.bindingId, undefined, waitForRestart);
     const cached = this.placements.get(binding.podUid);
     if (cached?.bindingId === binding.bindingId) cached.bindingId = undefined;
   }
 
-  private async revokeBinding(binding: Binding): Promise<void> {
+  private async revokeBinding(binding: Binding, waitForRestart = true): Promise<void> {
     if (!binding.completed)
       binding.expiresAtMs = Math.max(
         binding.expiresAtMs,
         Date.now() + (this.opts.completionGraceMs ?? COMPLETION_RETRY_MS)
       );
     binding.completed = true;
-    await this.closeBinding(binding);
+    await this.closeBinding(binding, waitForRestart);
     binding.proxy = undefined;
   }
 
@@ -1070,7 +1156,9 @@ export class SecretProxyBindings {
       proxy.attempt !== binding.attempt ||
       proxy.expiresAtMs > expiry ||
       proxy.expiresAtMs <= Date.now() ||
-      proxy.allowedHosts.some((host) => !isSecretProxyHostname(host))
+      !validProxyHosts(proxy) ||
+      // Only a VM created restricted can serve a restricted execution, and only that.
+      !!proxy.network !== !!binding.restrictedNetwork
     )
       return denied();
     binding.proxy = proxy;
@@ -1135,7 +1223,7 @@ export class SecretProxyBindings {
     await this.finishRevocations(runId);
     const guests = this.recoverable.get(runId);
     for (const guestId of guests ?? []) {
-      const allocation = await allocationForGuest(this.opts.socketPath, guestId);
+      const allocation = await lookupAllocation(this.opts.socketPath, encodeURIComponent(guestId));
       if (allocation.binding?.runId === runId) await this.control(allocation.bindingId);
       guests!.delete(guestId);
     }
@@ -1396,30 +1484,49 @@ export class SecretProxyBindings {
       runToken,
       expiresAtMs: binding.expiresAtMs,
       allowedHosts: binding.proxy!.allowedHosts,
+      ...(binding.proxy!.network ? { network: binding.proxy!.network } : {}),
     });
   }
 
-  private async control(bindingId: string, body?: object): Promise<void> {
-    if (this.controlling >= MAX_IN_FLIGHT) {
-      controlRequests.inc({ operation: body === undefined ? "revoke" : "bind", outcome: "error" });
-      return denied();
-    }
-    this.controlling++;
-    const pending = interceptorControl(this.opts.socketPath, bindingId, body);
-    this.controls.add(pending);
-    try {
-      await pending;
-    } finally {
-      this.controlling--;
-      this.controls.delete(pending);
-    }
+  private control(bindingId: string, body?: object, waitForRestart = true): Promise<void> {
+    const attempt = async () => {
+      if (this.controlling >= MAX_IN_FLIGHT) {
+        controlRequests.inc({
+          operation: body === undefined ? "revoke" : "bind",
+          outcome: "error",
+        });
+        return denied();
+      }
+      this.controlling++;
+      const pending = interceptorControl(this.opts.socketPath, bindingId, body);
+      this.controls.add(pending);
+      try {
+        await pending;
+      } finally {
+        this.controlling--;
+        this.controls.delete(pending);
+      }
+    };
+    return waitForRestart ? this.whileInterceptorRestarts(attempt) : attempt();
   }
 
   private async expire(): Promise<void> {
+    // Control calls can now wait out an interceptor restart, so a sweep may outlast its interval.
+    if (this.sweeping) return;
+    this.sweeping = true;
+    try {
+      await this.sweep();
+    } finally {
+      this.sweeping = false;
+    }
+  }
+
+  // Single attempts only: the sweep reruns every interval, so it never waits out a restart.
+  private async sweep(): Promise<void> {
     if (!this.ready && !this.stopped && Date.now() >= this.nextControlRetryAt) await this.start();
     for (const runId of this.pendingRevocations.keys())
-      await this.finishRevocations(runId).catch(() => {});
-    for (const bindingId of this.failedStarts.keys()) await this.retryFailedStart(bindingId);
+      await this.finishRevocations(runId, false).catch(() => {});
+    for (const bindingId of this.failedStarts.keys()) await this.retryFailedStart(bindingId, false);
     for (const [runId, pending] of this.rebinds)
       if (pending.proxy.expiresAtMs <= Date.now()) this.dropRebind(runId);
     for (const [runId, binding] of this.bindings) {
@@ -1432,7 +1539,7 @@ export class SecretProxyBindings {
       if (binding.expiresAtMs > Date.now()) continue;
       binding.busy = true;
       try {
-        if (binding.proxy) await this.closeBinding(binding);
+        if (binding.proxy) await this.closeBinding(binding, false);
       } catch {
         const cached = this.placements.get(binding.podUid);
         if (cached?.bindingId === binding.bindingId) this.forgetPlacement(cached);

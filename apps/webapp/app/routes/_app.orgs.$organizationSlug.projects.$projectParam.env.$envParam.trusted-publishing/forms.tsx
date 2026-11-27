@@ -10,6 +10,7 @@ import {
 } from "@trigger.dev/core/v3";
 import { GitBranchIcon, TagIcon } from "lucide-react";
 import { useState, type ReactNode } from "react";
+import { useDocsLink } from "~/components/DocsPanel";
 import { InlineCode } from "~/components/code/InlineCode";
 import { OctoKitty } from "~/components/GitHubLoginButton";
 import { Button } from "~/components/primitives/Buttons";
@@ -27,7 +28,6 @@ import {
   SettingsRowTitle,
 } from "~/components/primitives/SettingsLayout";
 import { TextLink } from "~/components/primitives/TextLink";
-import { docsPath } from "~/utils/pathBuilder";
 import {
   ClaimRow,
   EnvironmentFormSchema,
@@ -75,8 +75,6 @@ function identityValue(name: string, id?: string | null) {
   return id ? `${name}@${id}` : name;
 }
 
-const pinningDocsPath = docsPath("deployment/trusted-publishing#pin-github-identities");
-
 type RepositoryIdentity = {
   repositoryOwner: string;
   repositoryName: string;
@@ -91,6 +89,10 @@ export function RepositoryForm({
   repository: RepositoryIdentity | null;
   canManage: boolean;
 }) {
+  const docsLink = useDocsLink();
+  const { to: pinningHref, onClick: openPinningDocs } = docsLink(
+    "deployment/trusted-publishing#pin-github-identities"
+  );
   const [editing, setEditing] = useState(false);
   const lastSubmission = useActionData<SettingsActionData>();
   const navigation = useNavigation();
@@ -187,7 +189,12 @@ export function RepositoryForm({
               Add numeric GitHub IDs, like{" "}
               <InlineCode variant="extra-small">my-org@12345</InlineCode>, so a renamed or
               transferred repository can't inherit this trust.{" "}
-              <TextLink href={pinningDocsPath} target="_blank" rel="noreferrer">
+              <TextLink
+                href={pinningHref}
+                onClick={openPinningDocs}
+                target="_blank"
+                rel="noreferrer"
+              >
                 Find your IDs
               </TextLink>
             </SettingsRowDescription>

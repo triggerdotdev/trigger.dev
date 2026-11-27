@@ -1,5 +1,5 @@
 import { tryCatch } from "@trigger.dev/core/utils";
-import type { RoleAssignmentResult } from "@trigger.dev/plugins";
+import type { UserRoleAssignmentResult } from "@trigger.dev/plugins";
 import { $transaction, Prisma, prisma } from "~/db.server";
 import { deleteOrgMember, prepareMemberRemovalKeys } from "./deleteOrgMember.server";
 import { findOrCreateDirectoryUser } from "./directoryUser.server";
@@ -25,7 +25,8 @@ import {
   revokePersonalAccessToken,
 } from "~/services/personalAccessToken.server";
 
-async function deleteMembership(memberId: string, organizationId: string) {
+/** Removes a membership the way a removal does: development keys rotated, under the member lock. */
+export async function deleteMembership(memberId: string, organizationId: string) {
   const member = { id: memberId, organizationId };
   // The new development keys' fingerprints are saved first: a failed save fails the removal.
   const newKeys = await prepareMemberRemovalKeys(prisma, member, SYSTEM_ACTOR);
@@ -47,55 +48,24 @@ function findAuditMember(userId: string, organizationId: string) {
 }
 
 /**
- * Whether the user was still a member when their role was written, read right after the write and
- * before the change returns, so a removal after the change can't drop its event. The RBAC plugin
- * writes a role for a user who isn't a member, so a removal between the member read and the write
- * would otherwise record a change to a membership that no longer exists.
- *
- * Best-effort: if this read fails, the change is recorded anyway, since the write succeeded and the
- * member read before it saw a member.
- *
- * TODO: https://linear.app/triggerdotdev/issue/TRI-16185 makes `setUserRole` refuse a non-member in
- * its own transaction. Then the write's result (`result.ok`) replaces this inline read, and the
- * member lookup after a failed member read can go too.
- */
-async function wasMemberAtWrite(userId: string, organizationId: string): Promise<boolean> {
-  const [error, member] = await tryCatch(
-    prisma.orgMember.findFirst({ where: { userId, organizationId }, select: { id: true } })
-  );
-  if (error) {
-    logger.warn("setOrgMemberRole: failed to check the member after the change", {
-      userId,
-      organizationId,
-      error,
-    });
-    return true;
-  }
-  return member !== null;
-}
-
-/**
  * Sets a member's org-wide role and records `member.role_changed`. The RBAC plugin commits the
  * change in its own transaction and retries it on serialization failures, so the event is recorded
  * after the call returns: once per change however many attempts it took, and never for a change
- * that failed. Setting the role a member already has, or a role for a user who isn't a member,
- * records nothing. While recording is off, it reads nothing for the event.
+ * that failed. The plugin refuses a user who isn't a member, and reports the role it replaced and
+ * whether the role changed, both read in its transaction, so the event's "before" is exact. "after"
+ * is the role this call wrote, but its name is looked up after the write, so a custom role renamed
+ * or deleted since then shows its new name or null. Setting the role a member already has records
+ * nothing. While recording is off, it reads nothing for the event.
  *
- * "after" is the role this call wrote. "before" is read before the write, outside the plugin's
- * transaction, so it is best-effort: a concurrent change between the read and the write can make it
- * stale, or skip the event when the stale role equals the new one. The proper fix (the plugin
- * returning the previous role from its transaction) is
- * https://linear.app/triggerdotdev/issue/TRI-16184. The member is read before the write too, so the
- * event can name them after a later removal. Whether they were still a member at the write is
- * checked right after it, before this returns (see `wasMemberAtWrite`). Auditing never blocks the
- * role change: a failed read is logged and the change goes ahead.
+ * The member is read before the write, so the event can name them after a later removal. Auditing
+ * never blocks the role change: a failed read is logged and the change goes ahead.
  *
  * `attribution` is for callers with no user behind them, such as the directory sync worker.
  */
 export async function setOrgMemberRole(
   params: { userId: string; organizationId: string; roleId: string },
   attribution?: MemberAuditAttribution
-): Promise<RoleAssignmentResult> {
+): Promise<UserRoleAssignmentResult> {
   const result = await writeOrgMemberRole(params, attribution);
   if (result.ok) {
     await enqueueAttioMemberSync({ organizationId: params.organizationId, userId: params.userId });
@@ -106,48 +76,28 @@ export async function setOrgMemberRole(
 async function writeOrgMemberRole(
   params: { userId: string; organizationId: string; roleId: string },
   attribution?: MemberAuditAttribution
-): Promise<RoleAssignmentResult> {
+): Promise<UserRoleAssignmentResult> {
   const { userId, organizationId, roleId } = params;
 
   if (!auditLogs.isRecordingEnabled()) {
     return rbac.setUserRole({ userId, organizationId, roleId });
   }
 
-  // Both reads run together, so the change waits for one round trip, not two. The role is read even
-  // for a user who turns out not to be a member, where it goes unused.
-  const [[memberReadError, memberBeforeWrite], [roleBeforeError, roleBefore]] = await Promise.all([
-    // Read before the write, so a later removal can't leave the event with nobody to name. If this
-    // read fails, the member is looked up after the write instead.
-    tryCatch(findAuditMember(userId, organizationId)),
-    // If this read fails, the change is recorded with an unknown "before".
-    tryCatch(rbac.getUserRole({ userId, organizationId })),
-  ]);
+  // Read before the write, so a later removal can't leave the event with nobody to name. If this
+  // read fails, the member is looked up after the write instead.
+  const [memberReadError, memberBeforeWrite] = await tryCatch(
+    findAuditMember(userId, organizationId)
+  );
   if (memberReadError) {
     logger.warn("setOrgMemberRole: failed to read the member before the change", {
       userId,
       organizationId,
       error: memberReadError,
     });
-  } else if (!memberBeforeWrite) {
-    // Not a member: the plugin still writes the role, but there's no membership change to record.
-    return rbac.setUserRole({ userId, organizationId, roleId });
-  }
-
-  if (roleBeforeError) {
-    logger.warn("setOrgMemberRole: failed to read the role before the change", {
-      userId,
-      organizationId,
-      error: roleBeforeError,
-    });
   }
 
   const result = await rbac.setUserRole({ userId, organizationId, roleId });
-  if (!result.ok || (!roleBeforeError && roleBefore?.id === roleId)) {
-    return result;
-  }
-
-  // Removed between the member read and the write: there's no membership change to record.
-  if (memberBeforeWrite && !(await wasMemberAtWrite(userId, organizationId))) {
+  if (!result.ok || !result.changed) {
     return result;
   }
 
@@ -155,12 +105,9 @@ async function writeOrgMemberRole(
   // a missing role name is recorded as null.
   recordMemberAuditEventInBackground(
     async () => {
-      let member = memberBeforeWrite;
-      if (!member) {
-        // The read before the write failed. Nobody now: there's no membership to record.
-        member = await findAuditMember(userId, organizationId);
-        if (!member) return null;
-      }
+      // Null when the read before the write found nobody (they joined since) or failed.
+      const member = memberBeforeWrite ?? (await findAuditMember(userId, organizationId));
+      if (!member) return null;
       return {
         category: "members",
         action: "member.role_changed",
@@ -168,7 +115,7 @@ async function writeOrgMemberRole(
         target: memberAuditTarget(member),
         changes: {
           role: {
-            before: roleBefore?.name ?? null,
+            before: result.previousRole?.name ?? null,
             after: await auditRoleName(organizationId, roleId),
           },
         },
@@ -194,6 +141,14 @@ export class OrganizationNotAcceptingMembersError extends Error {
   constructor() {
     super("This organization is not accepting new members.");
     this.name = "OrganizationNotAcceptingMembersError";
+  }
+}
+
+/** The new membership was removed before its role applied, so there is nothing left to provision. */
+export class MemberRemovedDuringProvisionError extends Error {
+  constructor() {
+    super("The membership was removed before its role was applied.");
+    this.name = "MemberRemovedDuringProvisionError";
   }
 }
 
@@ -288,6 +243,14 @@ export async function ensureOrgMember(
     throw new OrganizationNotAcceptingMembersError();
   }
 
+  // A role left from an earlier membership outranks the one this join sets (and the legacy fallback
+  // when it sets none), so a former Owner would rejoin as Owner. Clear it first, and refuse the join
+  // if that fails. Without the plugin this is a no-op.
+  const cleared = await rbac.removeFormerMemberRoles({ userId, organizationId });
+  if (!cleared.ok) {
+    throw new Error(`ensureOrgMember: failed to clear a former member's roles: ${cleared.error}`);
+  }
+
   // Two concurrent JIT/invite flows can both miss the findFirst above and
   // race to create the same (userId, organizationId) row; the unique
   // constraint makes one lose with P2002. Treat that as the idempotent
@@ -327,6 +290,16 @@ export async function ensureOrgMember(
 
   if (roleId !== null) {
     const result = await rbac.setUserRole({ userId, organizationId, roleId });
+    if (!result.ok && result.code === "not_a_member") {
+      // Removed since it was created above: nothing to roll back, and provisioning again would
+      // undo the removal.
+      logger.info("ensureOrgMember: membership removed before its role applied", {
+        source,
+        userId,
+        organizationId,
+      });
+      throw new MemberRemovedDuringProvisionError();
+    }
     if (!result.ok) {
       // The membership was just created with the legacy `MEMBER` enum role as
       // a placeholder; the intended RBAC role failed to apply. Leaving the row
@@ -458,7 +431,8 @@ export async function removeOrgMemberForDirectory(
     target: memberAuditTarget(member),
     ...attribution,
   });
-  const removeRole = await rbac.removeUserRole({ userId, organizationId });
+  // Clears project-scoped roles too, and is a no-op if they've rejoined by now.
+  const removeRole = await rbac.removeFormerMemberRoles({ userId, organizationId });
   if (!removeRole.ok) {
     logger.warn("removeOrgMemberForDirectory: failed to remove RBAC role", {
       userId,

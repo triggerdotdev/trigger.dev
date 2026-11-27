@@ -1,6 +1,7 @@
 import {
   ExternalBuildData,
   type FinalizeDeploymentRequestBody,
+  machineImageTag,
 } from "@trigger.dev/core/v3/schemas";
 import type { AuthenticatedEnvironment } from "~/services/apiAuth.server";
 import { logger } from "~/services/logger.server";
@@ -10,13 +11,15 @@ import { tmpdir } from "node:os";
 import { mkdtemp, writeFile } from "node:fs/promises";
 import { env } from "~/env.server";
 import { depot as execDepot } from "@depot/cli";
-import { FinalizeDeploymentService } from "./finalizeDeployment.server";
+import { FinalizeDeploymentService, failRefusedDeployment } from "./finalizeDeployment.server";
+import { gateDeployment, type DeploymentGateResult } from "../deploymentChecks.server";
 import { remoteBuildsEnabled } from "../remoteImageBuilder.server";
 import { getEcrAuthToken, isEcrRegistry } from "../getDeploymentImageRef.server";
 import { tryCatch } from "@trigger.dev/core";
 import { getRegistryConfig, type RegistryConfig } from "../registryConfig.server";
 import { ecrImageExists } from "./verifyDeploymentImage.server";
-import { TemplatePrebuildService } from "./templatePrebuild.server";
+import { computeOnlyEnabled, loadOrgFeatureFlags } from "~/v3/computeOnlyFlag.server";
+import { type MachineImage, TemplatePrebuildService } from "./templatePrebuild.server";
 
 export class FinalizeDeploymentV2Service extends BaseService {
   public async call(
@@ -68,6 +71,13 @@ export class FinalizeDeploymentV2Service extends BaseService {
       throw new ServiceValidationError("Worker deployment is not in DEPLOYING status");
     }
 
+    // From the primary: initialize may have just set computeOnly, and the authenticated env's
+    // flags come from a replica that can still miss it.
+    const orgFeatureFlags = await loadOrgFeatureFlags(
+      this._prisma,
+      authenticatedEnv.organizationId
+    );
+
     const deploymentDiagnostics = {
       id: deployment.id,
       friendlyId: id,
@@ -97,9 +107,20 @@ export class FinalizeDeploymentV2Service extends BaseService {
       // self-hosted setup). Verify before promoting so we never mark a
       // deployment DEPLOYED when nothing was actually pushed.
       await this.#assertImagePullable(deployment, body);
-      await this.#prebuildTemplate(deployment, id, body, writer);
+      // Runs before the template build.
+      const gate = await this.#gate(authenticatedEnv, deployment, id, body);
+      const checkedBody = withCheckedDigest(body, gate);
+      const machineImages = await this.#storeMachineImages(deployment, body);
+      await this.#prebuildTemplate(
+        deployment,
+        id,
+        checkedBody,
+        computeOnlyEnabled(orgFeatureFlags),
+        writer,
+        machineImages
+      );
 
-      return finalizeService.call(authenticatedEnv, id, body);
+      return finalizeService.call(authenticatedEnv, id, checkedBody, orgFeatureFlags, gate);
     }
 
     const externalBuildData = deployment.externalBuildData
@@ -169,13 +190,91 @@ export class FinalizeDeploymentV2Service extends BaseService {
 
     // Belt and suspenders: confirm the push actually landed before promoting.
     await this.#assertImagePullable(deployment, body);
-    await this.#prebuildTemplate(deployment, id, body, writer);
+    // Runs before the template build.
+    const gate = await this.#gate(authenticatedEnv, deployment, id, body);
+    const checkedBody = withCheckedDigest(body, gate);
+    await this.#prebuildTemplate(
+      deployment,
+      id,
+      checkedBody,
+      computeOnlyEnabled(orgFeatureFlags),
+      writer
+    );
 
-    return finalizeService.call(authenticatedEnv, id, body);
+    return finalizeService.call(authenticatedEnv, id, checkedBody, orgFeatureFlags, gate);
   }
 
-  // Waits for the build when the deployment contains sandbox tasks; the finalizer rejects it
-  // if no template was stored.
+  /** Runs the finalize step; a refused deploy is failed here and the error thrown for the client. */
+  async #gate(
+    authenticatedEnv: AuthenticatedEnvironment,
+    deployment: { id: string; imageReference: string | null; type: string | null },
+    deploymentFriendlyId: string,
+    body: FinalizeDeploymentRequestBody
+  ): Promise<DeploymentGateResult> {
+    const gate = await gateDeployment(
+      {
+        id: deployment.id,
+        friendlyId: deploymentFriendlyId,
+        imageReference: deployment.imageReference,
+        type: deployment.type,
+        organizationId: authenticatedEnv.organizationId,
+        projectRef: authenticatedEnv.project.externalRef,
+      },
+      body.imageDigest
+    );
+    if (gate.kind === "refuse") {
+      await failRefusedDeployment(this._prisma, authenticatedEnv, deploymentFriendlyId, gate.error);
+    }
+    return gate;
+  }
+
+  // Only local builds push machine images, each tagged next to the deployment's image. Verified,
+  // then stored once: a repeated finalize with the same images keeps their template keys.
+  async #storeMachineImages(
+    deployment: { id: string; imageReference: string | null; type: string | null },
+    body: FinalizeDeploymentRequestBody
+  ): Promise<MachineImage[]> {
+    const digests = Object.entries(body.machineImageDigests ?? {});
+    if (!deployment.imageReference || digests.length === 0) {
+      return [];
+    }
+
+    const machines: MachineImage[] = [];
+    for (const [machineId, digest] of digests) {
+      const tag = machineImageTag(deployment.imageReference, machineId);
+      await this.#assertImagePullable(
+        { ...deployment, imageReference: tag },
+        { imageDigest: digest },
+        `Machine "${machineId}" image`
+      );
+      machines.push({ machineId, imageReference: `${tag}@${digest}` });
+    }
+
+    await this._prisma.workerDeploymentMachine.createMany({
+      data: machines.map((machine) => ({ ...machine, deploymentId: deployment.id })),
+      skipDuplicates: true,
+    });
+
+    const stored = await this._prisma.workerDeploymentMachine.findMany({
+      where: { deploymentId: deployment.id },
+      select: { machineId: true, imageReference: true },
+    });
+    const same =
+      stored.length === machines.length &&
+      machines.every((machine) =>
+        stored.some(
+          (row) =>
+            row.machineId === machine.machineId && row.imageReference === machine.imageReference
+        )
+      );
+    if (!same) {
+      throw new ServiceValidationError("This deployment was already finalized with other images");
+    }
+    return machines;
+  }
+
+  // Waits for the build when the deployment contains sandbox tasks or the org is compute-only;
+  // the finalizer rejects it if no template was stored.
   async #prebuildTemplate(
     deployment: {
       id: string;
@@ -184,7 +283,9 @@ export class FinalizeDeploymentV2Service extends BaseService {
     },
     deploymentFriendlyId: string,
     body: FinalizeDeploymentRequestBody,
-    writer?: WritableStreamDefaultWriter
+    computeOnly: boolean,
+    writer?: WritableStreamDefaultWriter,
+    machineImages?: MachineImage[]
   ): Promise<void> {
     if (!deployment.imageReference || !deployment.worker) {
       return;
@@ -203,13 +304,16 @@ export class FinalizeDeploymentV2Service extends BaseService {
       imageDigest: body.imageDigest,
       workerMetadata: deployment.worker.metadata,
       writer,
-      requireTemplate: sandboxTask !== null,
+      requireTemplate: sandboxTask !== null || computeOnly,
+      workerId: deployment.worker.id,
+      machineImages,
     });
   }
 
   async #assertImagePullable(
     deployment: { imageReference: string | null; type: string | null },
-    body: FinalizeDeploymentRequestBody
+    body: Pick<FinalizeDeploymentRequestBody, "imageDigest">,
+    imageName = "Deployment image"
   ): Promise<void> {
     if (!env.DEPLOY_IMAGE_VERIFICATION_ENABLED) {
       return;
@@ -234,13 +338,13 @@ export class FinalizeDeploymentV2Service extends BaseService {
 
     if (result === "missing") {
       throw new ServiceValidationError(
-        "Deployment image was not found in the registry. It may not have been pushed (for example a local build without a push, or a push to a different registry). Aborting the deploy to avoid promoting a version that cannot start."
+        `${imageName} was not found in the registry. It may not have been pushed (for example a local build without a push, or a push to a different registry). Aborting the deploy to avoid promoting a version that cannot start.`
       );
     }
 
     if (result === "nonconformant") {
       throw new ServiceValidationError(
-        "Deployment image is not runnable: it contains zstd-compressed layers inside a Docker (v2s2) manifest, which the container runtime cannot pull. This typically comes from an outdated CLI version. Please upgrade to the latest trigger.dev CLI and re-deploy."
+        `${imageName} is not runnable: it contains zstd-compressed layers inside a Docker (v2s2) manifest, which the container runtime cannot pull. This typically comes from an outdated CLI version. Please upgrade to the latest trigger.dev CLI and re-deploy.`
       );
     }
 
@@ -248,7 +352,7 @@ export class FinalizeDeploymentV2Service extends BaseService {
     // that might not start. Set DEPLOY_IMAGE_VERIFICATION_ENABLED=0 for out-of-band pushes.
     if (result === "unknown") {
       throw new ServiceValidationError(
-        "Could not verify the deployment image exists in the registry. Aborting the deploy."
+        `Could not verify that the ${imageName.toLowerCase()} exists in the registry. Aborting the deploy.`
       );
     }
   }
@@ -425,4 +529,14 @@ function extractLogs(outputs: string[]) {
   const cleanedOutputs = outputs.map((line) => line.trim()).filter((line) => line !== "");
 
   return cleanedOutputs.map((line) => line.trim()).join("\n");
+}
+
+/** The request with the resolved digest in place of the client's, when there is one. */
+function withCheckedDigest(
+  body: FinalizeDeploymentRequestBody,
+  gate: DeploymentGateResult
+): FinalizeDeploymentRequestBody {
+  return gate.kind === "proceed" && gate.checked
+    ? { ...body, imageDigest: gate.imageDigest }
+    : body;
 }

@@ -108,14 +108,10 @@ export const ExportLogsServiceRequest = {
     return obj;
   },
 
-  create<I extends Exact<DeepPartial<ExportLogsServiceRequest>, I>>(
-    base?: I
-  ): ExportLogsServiceRequest {
-    return ExportLogsServiceRequest.fromPartial(base ?? ({} as any));
+  create(base?: DeepPartial<ExportLogsServiceRequest>): ExportLogsServiceRequest {
+    return ExportLogsServiceRequest.fromPartial(base ?? {});
   },
-  fromPartial<I extends Exact<DeepPartial<ExportLogsServiceRequest>, I>>(
-    object: I
-  ): ExportLogsServiceRequest {
+  fromPartial(object: DeepPartial<ExportLogsServiceRequest>): ExportLogsServiceRequest {
     const message = createBaseExportLogsServiceRequest();
     message.resourceLogs = object.resourceLogs?.map((e) => ResourceLogs.fromPartial(e)) || [];
     return message;
@@ -173,14 +169,10 @@ export const ExportLogsServiceResponse = {
     return obj;
   },
 
-  create<I extends Exact<DeepPartial<ExportLogsServiceResponse>, I>>(
-    base?: I
-  ): ExportLogsServiceResponse {
-    return ExportLogsServiceResponse.fromPartial(base ?? ({} as any));
+  create(base?: DeepPartial<ExportLogsServiceResponse>): ExportLogsServiceResponse {
+    return ExportLogsServiceResponse.fromPartial(base ?? {});
   },
-  fromPartial<I extends Exact<DeepPartial<ExportLogsServiceResponse>, I>>(
-    object: I
-  ): ExportLogsServiceResponse {
+  fromPartial(object: DeepPartial<ExportLogsServiceResponse>): ExportLogsServiceResponse {
     const message = createBaseExportLogsServiceResponse();
     message.partialSuccess =
       object.partialSuccess !== undefined && object.partialSuccess !== null
@@ -260,14 +252,10 @@ export const ExportLogsPartialSuccess = {
     return obj;
   },
 
-  create<I extends Exact<DeepPartial<ExportLogsPartialSuccess>, I>>(
-    base?: I
-  ): ExportLogsPartialSuccess {
-    return ExportLogsPartialSuccess.fromPartial(base ?? ({} as any));
+  create(base?: DeepPartial<ExportLogsPartialSuccess>): ExportLogsPartialSuccess {
+    return ExportLogsPartialSuccess.fromPartial(base ?? {});
   },
-  fromPartial<I extends Exact<DeepPartial<ExportLogsPartialSuccess>, I>>(
-    object: I
-  ): ExportLogsPartialSuccess {
+  fromPartial(object: DeepPartial<ExportLogsPartialSuccess>): ExportLogsPartialSuccess {
     const message = createBaseExportLogsPartialSuccess();
     message.rejectedLogRecords = object.rejectedLogRecords ?? BigInt("0");
     message.errorMessage = object.errorMessage ?? "";
@@ -319,11 +307,6 @@ type DeepPartial<T> = T extends Builtin
       : T extends {}
         ? { [K in keyof T]?: DeepPartial<T[K]> }
         : Partial<T>;
-
-type KeysOfUnion<T> = T extends T ? keyof T : never;
-type Exact<P, I extends P> = P extends Builtin
-  ? P
-  : P & { [K in keyof P]: Exact<P[K], I[K]> } & { [K in Exclude<keyof I, KeysOfUnion<P>>]: never };
 
 function longToBigint(long: Long) {
   return BigInt(long.toString());

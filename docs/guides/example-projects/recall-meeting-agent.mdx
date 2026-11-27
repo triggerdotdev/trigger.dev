@@ -1,0 +1,180 @@
+---
+title: "How to connect Trigger.dev AI agents with Recall.ai meeting agents"
+sidebarTitle: "Recall.ai meeting agent"
+description: "Put a Trigger.dev agent in a Google Meet, Zoom or Teams call with Recall.ai. It hears every sentence through a webhook, and speaks and screenshares through a web page you host."
+---
+
+{/* TODO: add the demo recording here once it's re-recorded */}
+
+[Recall.ai meeting agents](https://www.recall.ai/agents) join any Google Meet, Zoom or Teams call. The meeting agent hears the meeting, and it can speak and show video from a web page you host. A Trigger.dev [`chat.agent`](/ai-chat/overview) works well behind it: one session follows the whole meeting, sees every sentence, and only runs the model when it has something to say.
+
+This guide shows the key parts.
+
+## What you need
+
+- A [Trigger.dev](https://cloud.trigger.dev) project
+- A [Recall.ai](https://www.recall.ai) account: an API key, your region, and a workspace secret for signing webhooks
+- An API key for your model (the example uses the [Vercel AI Gateway](https://vercel.com/docs/ai-gateway) for the model and the voice)
+- A public place to host a web page, like Vercel
+
+## How it fits together
+
+![Meet or Zoom connects to the Recall.ai meeting agent. The meeting agent sends each sentence to the Trigger.dev agent as a webhook. The Trigger.dev agent's answers go to a web page, which Recall.ai loads as the meeting agent's video feed. The page sends the meeting agent's voice and a screenshare back into the call.](/images/recall-meeting-agent.svg)
+
+1. Recall.ai puts a meeting agent in the call and sends each finished sentence to a Trigger.dev webhook.
+2. Every sentence goes into the same agent session, which decides whether to answer.
+3. The meeting agent's video feed is a web page. It follows the agent session, speaks the answers and starts a screenshare.
+
+## 1. Receive the transcript as a webhook
+
+Define a hosted endpoint for Recall.ai. It verifies each request with your workspace secret:
+
+```ts src/trigger/endpoints.ts
+import { webhooks } from "@trigger.dev/sdk";
+
+export const recall = webhooks.endpoint.define({
+  id: "recall",
+  source: webhooks.recallai<RecallEvent>(),
+});
+```
+
+Run `npx trigger.dev@latest dev`, then set the secret from the Recall.ai dashboard's API keys page:
+
+```bash
+npx trigger.dev@latest webhooks set-secret recall --env dev
+```
+
+You don't add the endpoint URL in Recall.ai's dashboard. You pass it when you create the meeting agent, as a [real-time endpoint](/webhooks/providers/recall-ai#real-time-events) (step 5).
+
+## 2. Route every sentence into one session
+
+The [`key`](/webhooks/session-routing) decides which agent session a webhook goes to. Same key, same session. Give the transcript a constant key, so every sentence of the meeting lands in one conversation:
+
+```ts src/trigger/agent.ts
+export const meetingSpeech = chat.event({
+  id: "meeting-speech",
+  endpoint: recall,
+  key: MEETING_SESSION, // "live-meeting": a constant, so every sentence goes to one session
+  filter: "event.event == 'transcript.data'",
+  type: "meeting.speech",
+});
+```
+
+A constant key handles one meeting at a time. To run several calls at once, put the meeting agent's ID in the key.
+
+The same key also lets other webhooks join the conversation. Give a [Resend inbox](/webhooks/providers/resend#resend-inboxes) endpoint the same key, and the agent sees new emails next to the meeting.
+
+## 3. Decide when to answer
+
+Each sentence runs the agent's [`onAction`](/ai-chat/actions), which is plain code. To reply, return `chat.turn()`. To stay quiet, return nothing, and the model doesn't run. Simplified from the example:
+
+```ts src/trigger/agent.ts
+onAction: async ({ action }) => {
+  if (action.type === "meeting.speech") {
+    const text = action.event.data.data.words.map((w) => w.text).join(" ");
+    transcript.push(text);
+
+    // Decide here whether the agent should speak, e.g. when someone says its name.
+    const shouldReply = true;
+
+    if (shouldReply) {
+      return chat.turn(text); // reply: the model runs
+    } else {
+      return; // stay quiet: no model call
+    }
+  }
+},
+```
+
+Transcript events keep the run busy for the whole meeting, so set `maxDuration` on the agent to cover a long call.
+
+Pass the transcript to the model on each turn, so it knows what's being said:
+
+```ts src/trigger/agent.ts
+run: async ({ messages, signal, streamText }) =>
+  streamText({
+    model: "anthropic/claude-sonnet-5.5",
+    system: transcript.length
+      ? `${SYSTEM}\n\nWhat has been said in the meeting so far (latest last):\n${transcript.join("\n")}`
+      : SYSTEM,
+    messages,
+    abortSignal: signal,
+    // ...
+  }),
+```
+
+Everything the agent writes is spoken aloud, so keep its system prompt plain and short. In the example, it replies `SILENT` when a sentence wasn't meant for it, and the page skips those.
+
+## 4. Give the agent video and audio (and screen sharing)
+
+Recall.ai can use a web page as the meeting agent's [video feed](https://docs.recall.ai/docs/meeting-agents-share-and-control-an-agents-webpage-via-camera-or-screenshare). Whatever the page shows is the meeting agent's video, and whatever audio it plays is its voice.
+
+The page URL carries a read-only [watch token](/ai-chat/reference#chat-createwatchtoken) for the session:
+
+```ts src/trigger/services.ts
+page.searchParams.set("token", await chat.createWatchToken(MEETING_SESSION, { tokenTTL: "6h" }));
+```
+
+The page follows the agent's output with a `TriggerChatTransport` in watch mode, the same way a chat app shows a reply:
+
+```tsx web/app/page.tsx
+const transport = new TriggerChatTransport({
+  task: "meeting-agent",
+  accessToken: () => token,
+  baseURL: api,
+  watch: true,
+  sessions: { [chatId]: { publicAccessToken: token } },
+});
+
+const stream = await transport.reconnectToStream({ chatId });
+```
+
+When an answer finishes, the page:
+
+1. Turns it into speech in a server route, so your model key stays on the server. The example uses Gemini TTS through the AI Gateway.
+2. Waits until the meeting audio has been quiet for 1.2 seconds. Recall.ai feeds the meeting audio into the page through `getUserMedia()`.
+3. Plays the voice. If the turn has something to show, it also asks Recall.ai's `output_media` API, from a server route, to screenshare a second view of the same page.
+
+<Note>
+  The page has to be public, so Recall.ai can load it, and its routes spend your credits. On Vercel,
+  turn on Deployment Protection, create a **Protection Bypass for Automation** secret, and add it to
+  the URL you give Recall.ai.
+</Note>
+
+## 5. Send the meeting agent to a call
+
+Create the meeting agent with the transcript going to your `recall` endpoint and the page as its video feed (real code, with a few fields cut):
+
+```ts src/trigger/join-meeting.ts
+const bot = await recallApi<{ id: string }>("/api/v1/bot/", {
+  method: "POST",
+  body: {
+    meeting_url: meetingUrl,
+    recording_config: {
+      transcript: {
+        provider: { recallai_streaming: { mode: "prioritize_low_latency", language_code: "en" } },
+      },
+      realtime_endpoints: [{ type: "webhook", url: transcriptUrl, events: ["transcript.data"] }],
+    },
+    output_media: { camera: { kind: "webpage", config: { url: page } } },
+  },
+});
+```
+
+Then tell the Trigger.dev agent which meeting agent it's speaking through, with an action:
+
+```ts src/trigger/join-meeting.ts
+const agent = new AgentChat<typeof meetingAgent>({ agent: AGENT_ID, id: MEETING_SESSION });
+const stream = await agent.sendAction({ type: "meeting.start", botId: bot.id });
+await stream.text(); // settles once onAction has run (it starts no turn)
+```
+
+Trigger `join-meeting` from the **Test** page with a meeting link, admit the meeting agent, and talk to it by name.
+
+## Next steps
+
+- [Recall.ai webhooks](/webhooks/providers/recall-ai): verification and real-time events
+- [Session routing](/webhooks/session-routing): route webhook events into an agent's session
+- [Actions](/ai-chat/actions): `onAction` and `chat.turn()`
+- [Watch tokens](/ai-chat/reference#chat-createwatchtoken): follow a session from another page
+- To deploy, run `npx trigger.dev@latest deploy` and set the same variables and secrets with `--env prod`

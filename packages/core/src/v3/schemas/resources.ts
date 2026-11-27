@@ -9,6 +9,7 @@ import {
 } from "./schemas.js";
 import { MachineConfig } from "./common.js";
 import { SandboxTaskConfig } from "./executionPolicy.js";
+import { NamedMachines } from "./machines.js";
 import {
   WebhookVerifierArtifact,
   WebhookRoutingTarget,
@@ -17,6 +18,10 @@ import {
 
 export const AgentConfig = z.object({
   type: z.string(), // "ai-sdk-chat" initially, extensible for future agent types
+  /** The agent's `versionSkew` setting (`chat.agent` only). */
+  versionSkew: z.string().max(32).optional(),
+  /** True when the agent's SDK can continue a turn handed over mid-turn by an older run. */
+  turnHandover: z.boolean().optional(),
 });
 
 export type AgentConfig = z.infer<typeof AgentConfig>;
@@ -98,6 +103,8 @@ export const BackgroundWorkerMetadata = z.object({
   webhookSubscribers: z.array(WebhookSubscriberResource).optional(),
   queues: z.array(QueueManifest).optional(),
   concurrencyLimits: z.array(ConcurrencyLimitManifest).optional(),
+  /** The machines from `defineMachine()` the tasks use; the CLI builds an image for each. */
+  machines: NamedMachines.optional(),
   sourceFiles: z.array(BackgroundWorkerSourceFileMetadata).optional(),
   runtime: z.string().optional(),
   runtimeVersion: z.string().optional(),

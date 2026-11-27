@@ -250,7 +250,7 @@ function RunBody({
 
               {run.error && (
                 <div className="flex flex-col gap-2">
-                  <RunError error={run.error} />
+                  <RunError error={run.error} status={run.status} />
                 </div>
               )}
 

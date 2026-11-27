@@ -1,6 +1,15 @@
 import type { UIMessage, UIMessageChunk } from "ai";
-import { resourceCatalog, sessionStreams } from "@trigger.dev/core/v3";
-import type { LocalsKey, SessionChannelIO, TranscriptSnapshotV2 } from "@trigger.dev/core/v3";
+import {
+  resourceCatalog,
+  sessionStreams,
+  SKEW_PROTECTION_THRESHOLD_SIGNAL,
+} from "@trigger.dev/core/v3";
+import type {
+  LocalsKey,
+  SessionChannelIO,
+  SkewProtectionThresholdSignalPayload,
+  TranscriptSnapshotV2,
+} from "@trigger.dev/core/v3";
 import { runInMockTaskContext, type MockTaskContextOptions } from "@trigger.dev/core/v3/test";
 import {
   __setSessionCloseImplForTests,
@@ -17,7 +26,11 @@ import {
   __setWriteChatSnapshotImplForTests,
   type ChatSnapshotV1,
 } from "../ai.js";
-import { createTestSessionHandle, type TestSessionOutState } from "./test-session-handle.js";
+import {
+  createTestSessionHandle,
+  type TestOutRecord,
+  type TestSessionOutState,
+} from "./test-session-handle.js";
 import { reduceUIMessageChunks } from "../uiMessageChunks.js";
 
 /** Pre-seed locals before the agent's `run()` starts. */
@@ -85,6 +98,9 @@ export type SeededChannelDelivery = {
     deliveryId?: string;
   };
 };
+
+/** A `stop` record to seed on the `session.in` tail, as a browser's stop button writes it. */
+export type SeededStop = { stop: true; message?: string };
 
 export type MockChatAgentOptions = {
   /** The chat session id passed into every wire payload. Defaults to `"test-chat"`. */
@@ -176,6 +192,23 @@ export type MockChatAgentOptions = {
    * ```
    */
   setupLocals?: SetupLocals;
+  /**
+   * Milliseconds each `.out` append takes to be acknowledged, to model a
+   * network round trip to the stream. Applies to control records, one-shot
+   * appends and the first chunk of each piped stream. Defaults to 0.
+   */
+  outAppendLatencyMs?: number;
+  /**
+   * Milliseconds each piped `.out` chunk lingers before it is acknowledged,
+   * modelling the writer's batching so a direct append (a control record) made
+   * while a step is streaming can land ahead of that step's tail. Defaults to 0.
+   */
+  outPipeLingerMs?: number;
+  /**
+   * Write no turn-start or turn-join records, as an agent on an older SDK version
+   * would, to test a reader against it.
+   */
+  omitTurnMarkers?: boolean;
 };
 
 /**
@@ -304,6 +337,15 @@ export type MockChatAgentHarness = {
   sendStop(message?: string): Promise<void>;
 
   /**
+   * Send the `trigger.skew-protection-threshold` signal the server sends when the environment's
+   * skew protection thresholds change. An agent with `versionSkew: "follow-mid-turn"` whose own
+   * version (set it with `taskContext.ctx.run.version`) is below the threshold for its task hands
+   * its running turn over at the next step boundary; `{}` clears it. Without `midTurnTasks` the
+   * payload lists the run's task (`ctx.task.id`), as a current deployment on the same SDK would. Does not wait.
+   */
+  sendSkewProtectionThresholdSignal(payload: SkewProtectionThresholdSignalPayload): Promise<void>;
+
+  /**
    * Dispatch a `handover` signal — the agent picks up partial assistant
    * messages and continues the turn. Only meaningful when the harness
    * was started with `mode: "handover-prepare"`. Waits for turn-complete.
@@ -361,6 +403,13 @@ export type MockChatAgentHarness = {
   seedSessionOutPartial(partial: UIMessage | undefined): void;
 
   /**
+   * Mark the seeded partial as a reply the previous run handed over after
+   * `steps` finished steps (a `turn-handover` record ends the replay), so the
+   * next boot continues it. Pass `undefined` to clear.
+   */
+  seedSessionOutHandover(steps: number | undefined, answeredId?: string): void;
+
+  /**
    * Pre-seed user messages on the `session.in` tail for the next boot's
    * replay. Each message is paired with a synthetic seq_num (`i + 1`).
    * Used to simulate in-flight users the dead predecessor was supposed
@@ -368,7 +417,7 @@ export type MockChatAgentHarness = {
    *
    * Effective on the next run boot only.
    */
-  seedSessionInTail(entries: Array<UIMessage | SeededChannelDelivery>): void;
+  seedSessionInTail(entries: Array<UIMessage | SeededChannelDelivery | SeededStop>): void;
 
   /**
    * Append a `trigger: "close"` record to `session.in` — what the server does
@@ -403,7 +452,20 @@ export type MockChatAgentHarness = {
    * answered twice, so a seq_num already handed to `seedSessionInTail`
    * (`i + 1`) is the interesting argument.
    */
-  deliverSessionInAtSeq(message: UIMessage, seqNum: number): Promise<void>;
+  deliverSessionInAtSeq(message: UIMessage | SeededStop, seqNum: number): Promise<void>;
+
+  /**
+   * Put an input record on `session.in` at an explicit seq_num (a message, an
+   * action, a stop), the way the server does for an append from any client. It
+   * returns without waiting for a turn, so a test drives several in flight.
+   */
+  deliverInput(chunk: unknown, seqNum: number): Promise<void>;
+
+  /** `.out` as a reader sees it: every record with its seq and headers. */
+  readonly outRecords: ReadonlyArray<TestOutRecord>;
+
+  /** Called for each record written to `.out`, after it is in {@link outRecords}. */
+  onOutRecord(listener: (record: TestOutRecord) => void): () => void;
 
   /**
    * The most recently written snapshot, or `undefined` if no snapshot
@@ -476,7 +538,19 @@ const settlePostTurnChannelEgress = (chatId: string, runEnded: Promise<void>) =>
 const settlePostTurnHooks = (chatId: string, runEnded: Promise<void>) =>
   settleLatch("post-turn hooks", chatId, __waitForPostTurnHooksForTests(chatId), runEnded);
 
-const CONTROL_CHUNK_TYPES = new Set(["trigger:turn-complete", "trigger:upgrade-required"]);
+const CONTROL_CHUNK_TYPES = new Set([
+  "trigger:turn-complete",
+  "trigger:upgrade-required",
+  "trigger:turn-start",
+  "trigger:turn-join",
+  "trigger:turn-handover",
+]);
+
+function isTurnMarkerChunk(chunk: unknown): boolean {
+  if (typeof chunk !== "object" || chunk === null) return false;
+  const type = (chunk as { type?: string }).type;
+  return type === "trigger:turn-start" || type === "trigger:turn-join";
+}
 
 function isControlChunk(chunk: unknown): boolean {
   if (typeof chunk !== "object" || chunk === null) return false;
@@ -562,6 +636,10 @@ export function mockChatAgent(
   const sessionOutState: TestSessionOutState = {
     chunks: [],
     listeners: new Set(),
+    records: [],
+    appendLatencyMs: options.outAppendLatencyMs,
+    pipeLingerMs: options.outPipeLingerMs,
+    omitTurnMarkers: options.omitTurnMarkers,
   };
 
   // Buffers that survive across harness method calls
@@ -577,6 +655,7 @@ export function mockChatAgent(
     metadata?: { id?: string; seqNum?: number }
   ) => Promise<void>;
   let closeSessionInput: ((sessionId: string) => void) | undefined;
+  let sendSignal: (name: string, payload: unknown) => void = () => {};
   let runSignal!: AbortController;
 
   let channelDeliveryCounter = 0;
@@ -605,7 +684,8 @@ export function mockChatAgent(
   let lastWrittenSnapshot: TranscriptSnapshotV2 | undefined;
   let seededReplayChunks: UIMessageChunk[] = [];
   let seededReplayPartial: UIMessage | undefined;
-  let seededSessionInTail: Array<UIMessage | SeededChannelDelivery> = [];
+  let seededReplayHandover: { steps: number; answeredId?: string } | undefined;
+  let seededSessionInTail: Array<UIMessage | SeededChannelDelivery | SeededStop> = [];
   const closeCalls: Array<{ sessionId: string; reason?: string }> = [];
   let failCloseCalls = 0;
 
@@ -636,14 +716,18 @@ export function mockChatAgent(
       settled,
       partial: seededReplayPartial,
       partialRaw: seededReplayPartial,
+      ...(seededReplayPartial && seededReplayHandover ? { handover: seededReplayHandover } : {}),
     } as never;
   });
 
   __setReplaySessionInTailImplForTests(async () => {
     const messages: Array<{ message: UIMessage; metadata: unknown; seqNum: number }> = [];
     const channelEvents: Array<{ channelEvent: unknown; metadata: unknown; seqNum: number }> = [];
+    const stops: number[] = [];
     seededSessionInTail.forEach((entry, i) => {
-      if ("channelEvent" in entry) {
+      if ("stop" in entry) {
+        stops.push(i + 1);
+      } else if ("channelEvent" in entry) {
         channelEvents.push({
           channelEvent: {
             connectorId: entry.channelEvent.connectorId ?? DEFAULT_TEST_CONNECTOR_ID,
@@ -659,7 +743,12 @@ export function mockChatAgent(
         messages.push({ message: entry, metadata: clientData, seqNum: i + 1 });
       }
     });
-    return { messages, channelEvents } as never;
+    return {
+      messages,
+      channelEvents,
+      stops,
+      ...(seededSessionInTail.length > 0 ? { lastSeqNum: seededSessionInTail.length } : {}),
+    } as never;
   });
 
   // Install the session open override so `sessions.open(id)` returns a
@@ -761,10 +850,13 @@ export function mockChatAgent(
       }
     };
     closeSessionInput = drivers.sessions.in.close;
+    sendSignal = drivers.signals.send;
 
     // Record every chunk written to session.out, detect turn-complete.
     const listener = (chunk: unknown) => {
-      allRawChunks.push(chunk);
+      // The turn markers are bookkeeping for readers of `.out` (see
+      // `outRecords`); a test asserting the raw chunk sequence doesn't see them.
+      if (!isTurnMarkerChunk(chunk)) allRawChunks.push(chunk);
       if (!isControlChunk(chunk)) {
         allChunks.push(chunk as UIMessageChunk);
       }
@@ -1002,6 +1094,14 @@ export function mockChatAgent(
       await sendSessionInput(sessionId, { kind: "stop", message });
     },
 
+    async sendSkewProtectionThresholdSignal(payload) {
+      await harnessReady;
+      sendSignal(SKEW_PROTECTION_THRESHOLD_SIGNAL, {
+        ...payload,
+        midTurnTasks: payload.midTurnTasks ?? [options.taskContext?.ctx?.task?.id ?? "test-task"],
+      });
+    },
+
     async sendHandover(args) {
       await harnessReady;
       const before = allRawChunks.length;
@@ -1076,6 +1176,11 @@ export function mockChatAgent(
       seededReplayPartial = partial;
     },
 
+    seedSessionOutHandover(steps, answeredId) {
+      seededReplayHandover =
+        steps === undefined ? undefined : { steps, ...(answeredId ? { answeredId } : {}) };
+    },
+
     seedSessionInTail(entries) {
       seededSessionInTail = entries;
       // The seeded tail occupies seqNums 1..n of the channel, so anything sent
@@ -1085,11 +1190,31 @@ export function mockChatAgent(
       }
     },
 
+    async deliverInput(chunk, seqNum) {
+      await harnessReady;
+      await sendSessionInput(sessionId, chunk, "in", { seqNum });
+    },
+
+    get outRecords() {
+      return sessionOutState.records ?? [];
+    },
+
+    onOutRecord(listener) {
+      const wrapped = () => {
+        const record = sessionOutState.records?.at(-1);
+        if (record) listener(record);
+      };
+      sessionOutState.listeners.add(wrapped);
+      return () => sessionOutState.listeners.delete(wrapped);
+    },
+
     async deliverSessionInAtSeq(message, seqNum) {
       await harnessReady;
       await sendSessionInput(
         sessionId,
-        { kind: "message", payload: { chatId, trigger: "submit-message", message } },
+        "stop" in message
+          ? { kind: "stop", message: message.message }
+          : { kind: "message", payload: { chatId, trigger: "submit-message", message } },
         "in",
         { seqNum }
       );

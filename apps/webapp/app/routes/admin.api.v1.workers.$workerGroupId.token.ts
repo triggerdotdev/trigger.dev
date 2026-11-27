@@ -19,6 +19,13 @@ const RequestBodySchema = z.discriminatedUnion("action", [
   z.object({
     action: z.literal("revoke-previous"),
   }),
+  z.object({
+    action: z.literal("mint-child"),
+  }),
+  z.object({
+    action: z.literal("delete-child"),
+    tokenId: z.string(),
+  }),
 ]);
 
 async function handleAction({ request, params }: ActionFunctionArgs) {
@@ -84,6 +91,31 @@ async function handleAction({ request, params }: ActionFunctionArgs) {
       }
 
       return json({ outcome: "revoked previous worker group token" });
+    }
+    case "mint-child": {
+      const result = await service.createChildToken({ workerGroupId });
+
+      if (!result) {
+        return json({ error: "worker group not found" }, { status: 404 });
+      }
+
+      return json({
+        outcome: "minted child worker group token",
+        tokenId: result.id,
+        token: result.plaintext,
+      });
+    }
+    case "delete-child": {
+      const deleted = await service.deleteChildToken({
+        workerGroupId,
+        tokenId: parsedBody.data.tokenId,
+      });
+
+      if (!deleted) {
+        return json({ error: "child token not found for this worker group" }, { status: 404 });
+      }
+
+      return json({ outcome: "deleted child worker group token" });
     }
   }
 }

@@ -15,8 +15,16 @@ import { checkSession } from "./accessPolicy.server";
 import { noteSessionAuthentication } from "./auditLogs/auditContext.server";
 import { logger } from "./logger.server";
 import { enforceMfaSetup } from "./mfa/mfaPolicy.server";
-import { SESSION_ISSUED_AT_KEY } from "./sessionDuration.server";
-import { getUserSession } from "./sessionStorage.server";
+import {
+  DEFAULT_SESSION_DURATION_SECONDS,
+  getSessionTimes,
+  revokeSession,
+  SESSION_EXPIRES_AT_KEY,
+  SESSION_ISSUED_AT_KEY,
+  sessionEndReason,
+  sessionWindowEnd,
+} from "./sessionDuration.server";
+import { commitSession, getUserSession } from "./sessionStorage.server";
 import { revalidateSsoSession } from "./ssoSessionRevalidation.server";
 
 /**
@@ -143,12 +151,7 @@ export async function getUserId(request: Request): Promise<string | undefined> {
   // touch Redis. Throws redirect("/logout") if the IdP says invalid.
   await revalidateSsoSession(request, authUser);
   if (authUser?.userId) {
-    const decision = await enforceSessionPolicy(request, authUser.userId);
-    // The plugin can return the deadline from its own read, saving one query per request.
-    const user =
-      decision.nextSessionEnd !== undefined
-        ? { nextSessionEnd: decision.nextSessionEnd }
-        : await getSessionAuthState(prisma, authUser.userId);
+    const user = await enforceSessionPolicy(request, authUser.userId);
     if (user) await maybeAutoLogout(request, { id: authUser.userId, ...user });
     await enforceMfaSetup(request, authUser.userId);
     return sessionUserId(request, authUser.userId);
@@ -162,35 +165,99 @@ function sessionUserId(request: Request, userId: string, impersonatorUserId?: st
   return userId;
 }
 
-export type SessionAuthState = { nextSessionEnd: Date | null };
+export type SessionAuthState = {
+  nextSessionEnd: Date | null;
+  sessionsValidAfter: Date | null;
+  revokedSessions: Date[];
+};
 
-/** Reads a user's session deadline. Runs on every authenticated request. */
+/** Reads a user's session deadline and revocations. Runs on every authenticated request. */
 export async function getSessionAuthState(
   client: PrismaClientOrTransaction,
   userId: string
 ): Promise<SessionAuthState | null> {
-  return client.user.findFirst({ where: { id: userId }, select: { nextSessionEnd: true } });
+  return client.user.findFirst({
+    where: { id: userId },
+    select: { nextSessionEnd: true, sessionsValidAfter: true, revokedSessions: true },
+  });
 }
 
-/** Ends the session when the access policy plugin no longer accepts it. */
+/**
+ * Ends the session when the access policy plugin no longer accepts it, when it was signed out or
+ * revoked, or when its own window has closed. Returns the user's session state, or null on /logout.
+ */
 async function enforceSessionPolicy(
   request: Request,
   userId: string
-): Promise<{ nextSessionEnd?: Date | null }> {
-  if (new URL(request.url).pathname === "/logout") return {};
+): Promise<SessionAuthState | null> {
+  const requestPath = new URL(request.url).pathname;
+  if (requestPath === "/logout") return null;
+  const times = getSessionTimes(await getUserSession(request));
+  const decision = await checkSession({ userId, issuedAt: times.issuedAt });
+  if (!decision.valid) {
+    logger.warn("Session ended by access policy", {
+      event: "auth.session_refused",
+      userId,
+      requestPath,
+    });
+    return endSession(request);
+  }
+  // The plugin can return the user's session state from its own read, saving one query per request.
+  const { nextSessionEnd, sessionsValidAfter, revokedSessions } = decision;
+  const state =
+    nextSessionEnd !== undefined &&
+    sessionsValidAfter !== undefined &&
+    revokedSessions !== undefined
+      ? { nextSessionEnd, sessionsValidAfter, revokedSessions }
+      : await getSessionAuthState(prisma, userId);
+  if (!state) return null;
+  const reason = sessionEndReason(state, times, Date.now());
+  if (reason) {
+    logger.info("Session ended", {
+      event: reason === "expired" ? "session.auto_logout" : "auth.revoked_session",
+      userId,
+      requestPath,
+      sourceIp: extractClientIp(request.headers.get("x-forwarded-for")),
+    });
+    return endSession(request);
+  }
+  return state;
+}
+
+/**
+ * Signs out this request's session: the cookie is cleared and the session is no longer accepted.
+ * While impersonating, that is the admin's own session.
+ */
+export async function logout(request: Request, redirectTo: string): Promise<never> {
+  const authUser = await authenticator.isAuthenticated(request);
+  if (authUser?.userId) {
+    const { issuedAt } = getSessionTimes(await getUserSession(request));
+    await revokeSession(authUser.userId, issuedAt);
+  }
+  return authenticator.logout(request, { redirectTo });
+}
+
+/**
+ * Keeps this request's session signed in after an account change set `userId`'s
+ * `sessionsValidAfter` to `changedAt`, which ended their other sessions. Returns the Set-Cookie to
+ * send, or undefined when nothing changed or this request isn't signed in as them.
+ */
+export async function keepCurrentSession(
+  request: Request,
+  userId: string,
+  changedAt: Date | undefined
+): Promise<string | undefined> {
+  if (!changedAt) return undefined;
+  const authUser = await authenticator.isAuthenticated(request);
+  if (authUser?.userId !== userId) return undefined;
   const session = await getUserSession(request);
-  const issuedAt = session.get(SESSION_ISSUED_AT_KEY);
-  const decision = await checkSession({
-    userId,
-    issuedAt: typeof issuedAt === "number" ? issuedAt : undefined,
-  });
-  if (decision.valid) return decision;
-  logger.warn("Session ended by access policy", {
-    event: "auth.session_refused",
-    userId,
-    requestPath: new URL(request.url).pathname,
-  });
-  return endSession(request);
+  const issuedAt = changedAt.getTime();
+  const windowEnd =
+    sessionWindowEnd(getSessionTimes(session)) ??
+    issuedAt + DEFAULT_SESSION_DURATION_SECONDS * 1000;
+  session.set(SESSION_ISSUED_AT_KEY, issuedAt);
+  session.set(SESSION_EXPIRES_AT_KEY, windowEnd);
+  return commitSession(session, { maxAge: DEFAULT_SESSION_DURATION_SECONDS });
 }
 
 export async function getUser(request: Request) {

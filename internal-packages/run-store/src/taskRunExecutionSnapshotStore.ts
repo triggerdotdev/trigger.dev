@@ -21,6 +21,7 @@ import { boundedIn } from "@trigger.dev/database";
 import type { TaskRunError } from "@trigger.dev/core/v3/schemas";
 import { generateInternalId } from "@trigger.dev/core/v3/isomorphic";
 import { DelegatingRunStore } from "./delegatingRunStore.js";
+import type { RecoveryOutcome } from "./pendingRecoveryWorker.js";
 import type {
   CompletionSnapshotInput,
   CreateCancelledRunInput,
@@ -33,6 +34,7 @@ import type {
   SnapshotReadWaitpoint,
   RescheduleSnapshotInput,
   RunStore,
+  StateHeldCheckpointInput,
   TaskRunWithWaitpoint,
 } from "./types.js";
 import { deriveDistinctIds, deriveOrder } from "./redisSnapshotStore.js";
@@ -65,6 +67,7 @@ import {
   snapshotRouteFromSnapshot,
   type SnapshotReadContext,
   type SnapshotRoute,
+  type SnapshotRouteWire,
 } from "./snapshotResidency.js";
 
 const PROTOCOL_VERSION = 1;
@@ -118,6 +121,9 @@ function reasonWithCause(reason: string, cause: unknown): string {
   return `${reason}: ${summary.slice(0, 200)}`;
 }
 
+/** Recovery confirmed the pending unit's Postgres transaction is still in progress; a retry clears it. */
+export const PENDING_UNIT_IN_PROGRESS_REASON = "pending unit unresolved: transaction in progress";
+
 /**
  * A snapshot read that MemoryDB cannot serve authoritatively now: a MemoryDB error, an unsettled
  * pending unit, a quarantine, or a missing redis-primary entry. RETRIABLE: the caller retries and
@@ -142,6 +148,14 @@ export class SnapshotReadUnavailableError extends Error {
     this.cause = options?.cause;
     this.kind = options?.kind;
   }
+}
+
+/** The pending-unit commit race: harmless, clears on retry, so callers log it at warn. */
+export function isPendingUnitInProgress(error: unknown): error is SnapshotReadUnavailableError {
+  return (
+    error instanceof SnapshotReadUnavailableError &&
+    error.reason === PENDING_UNIT_IN_PROGRESS_REASON
+  );
 }
 
 /**
@@ -234,7 +248,7 @@ export type TaskRunExecutionSnapshotStoreOptions = {
   resolvePending?: (
     runId: string,
     options?: { requireSettledTransaction?: boolean }
-  ) => Promise<void>;
+  ) => Promise<RecoveryOutcome | void>;
   /**
    * Expands a completed-waitpoint cycle's records into `CompletedWaitpoint[]`. It lives in
    * run-engine because a `deriveFromRun` record needs a Postgres read. Required to read a
@@ -750,6 +764,47 @@ export class TaskRunExecutionSnapshotStore extends DelegatingRunStore {
     );
   }
 
+  // The route decides, with no lookup: only a MemoryDB-only run gets a state-held checkpoint. One
+  // MemoryDB command, no SQL, no retry and no Postgres fallback.
+  override async createStateHeldCheckpoint(
+    data: StateHeldCheckpointInput,
+    ownerRunId: string,
+    snapshotRoute: SnapshotRouteWire
+  ): Promise<Prisma.TaskRunCheckpointGetPayload<{}>> {
+    if (snapshotRoute.residency !== "redis-primary") {
+      return super.createStateHeldCheckpoint(data, ownerRunId, snapshotRoute);
+    }
+    const now = new Date();
+    const row = {
+      id: data.id,
+      friendlyId: data.friendlyId,
+      type: data.type,
+      location: data.location,
+      imageRef: data.imageRef ?? null,
+      reason: data.reason ?? null,
+      metadata: data.metadata ?? null,
+      projectId: data.projectId,
+      runtimeEnvironmentId: data.runtimeEnvironmentId,
+      createdAt: now,
+      updatedAt: now,
+    };
+    let written: boolean;
+    try {
+      written = await this.#store.writeCheckpoint(ownerRunId, data.id, JSON.stringify(row));
+    } catch (error) {
+      throw new SnapshotWriteUnavailableError(ownerRunId, "checkpoint write failed", {
+        cause: error,
+      });
+    }
+    if (!written) {
+      throw new SnapshotWriteUnavailableError(
+        ownerRunId,
+        "checkpoint write: snapshot state missing"
+      );
+    }
+    return row;
+  }
+
   override async lockRunToWorker(
     runId: string,
     data: LockRunData,
@@ -1030,7 +1085,7 @@ export class TaskRunExecutionSnapshotStore extends DelegatingRunStore {
   }
 
   // A point read of one snapshot (the window cursor lookup). Only a redis-primary run reads
-  // MemoryDB, and a miss fails closed.
+  // MemoryDB. A miss fails closed unless the run's history is whole, which makes it a not-found.
   override async findExecutionSnapshot<T extends Prisma.TaskRunExecutionSnapshotFindFirstArgs>(
     args: Prisma.SelectSubset<T, Prisma.TaskRunExecutionSnapshotFindFirstArgs>,
     client?: ReadClient,
@@ -1067,9 +1122,9 @@ export class TaskRunExecutionSnapshotStore extends DelegatingRunStore {
     }
     const environmentId = environmentIdFromWhere(where);
     await this.#resolvePendingBeforeRead(runId);
-    let read: SnapshotRead | null;
+    let read: SnapshotRead | "absent" | null;
     try {
-      read = await this.#store.getById(
+      read = await this.#store.findById(
         runId,
         snapshotId,
         environmentId ? { environmentId } : undefined
@@ -1077,6 +1132,8 @@ export class TaskRunExecutionSnapshotStore extends DelegatingRunStore {
     } catch (error) {
       throw new SnapshotReadUnavailableError(runId, "getById failed", { cause: error });
     }
+    // The run's history is whole and lacks this snapshot: not-found, as for a Postgres run.
+    if (read === "absent") return null;
     if (read === null) {
       throw await this.#redisPrimaryMissingError(runId, "redis-primary snapshot missing");
     }
@@ -1243,7 +1300,7 @@ export class TaskRunExecutionSnapshotStore extends DelegatingRunStore {
     if (!this.#resolvePending) {
       throw new SnapshotReadUnavailableError(runId, "pending unit and no recovery resolver");
     }
-    await this.#resolvePending(runId);
+    const outcome = await this.#resolvePending(runId);
     let after: { prepared: boolean; quarantined: boolean };
     try {
       after = await this.#store.readPendingState(runId);
@@ -1254,7 +1311,14 @@ export class TaskRunExecutionSnapshotStore extends DelegatingRunStore {
       throw new SnapshotReadUnavailableError(runId, "run is quarantined");
     }
     if (after.prepared) {
-      throw new SnapshotReadUnavailableError(runId, "pending unit unresolved");
+      // Only a confirmed in-progress commit gets its own reason; a failed recovery stays distinct.
+      const inProgress = outcome?.kind === "retry" && outcome.reason === "in-progress";
+      throw new SnapshotReadUnavailableError(
+        runId,
+        inProgress
+          ? PENDING_UNIT_IN_PROGRESS_REASON
+          : `pending unit unresolved: ${outcome ? (outcome.kind === "retry" ? outcome.reason : outcome.kind) : "no recovery outcome"}`
+      );
     }
   }
 
@@ -1375,8 +1439,34 @@ export class TaskRunExecutionSnapshotStore extends DelegatingRunStore {
     return rows;
   }
 
-  // Checkpoints stay in Postgres. The window omits the completed-waitpoint relation to avoid an N×M
-  // join, as the Postgres window does.
+  // A "state" record reads the snapshot state only, with no Postgres fallback; any other, Postgres.
+  async #loadCheckpoint(
+    entry: { checkpointId?: string; checkpointStore?: string },
+    runId: string,
+    client?: ReadClient
+  ): Promise<Prisma.TaskRunCheckpointGetPayload<{}> | null> {
+    if (!entry.checkpointId) return null;
+    if (entry.checkpointStore !== "state") {
+      return this.delegate.findTaskRunCheckpointById(entry.checkpointId, runId, client);
+    }
+    let row:
+      | (Omit<Prisma.TaskRunCheckpointGetPayload<{}>, "createdAt" | "updatedAt"> & {
+          createdAt: string;
+          updatedAt: string;
+        })
+      | null;
+    try {
+      const raw = await this.#store.readCheckpoint(runId, entry.checkpointId);
+      row = raw === null ? null : JSON.parse(raw);
+    } catch (error) {
+      throw new SnapshotReadUnavailableError(runId, "readCheckpoint failed", { cause: error });
+    }
+    if (row === null) return null;
+    return { ...row, createdAt: new Date(row.createdAt), updatedAt: new Date(row.updatedAt) };
+  }
+
+  // The checkpoint is loaded from the store the entry's record names. The window omits the
+  // completed-waitpoint relation to avoid an N×M join, as the Postgres window does.
   async #reproduceWindowRow(
     read: SnapshotRead,
     completedWaitpointOrder: string[],
@@ -1395,15 +1485,14 @@ export class TaskRunExecutionSnapshotStore extends DelegatingRunStore {
       batchId?: string;
       attemptNumber?: number;
       checkpointId?: string;
+      checkpointStore?: string;
       workerId?: string;
       runnerId?: string;
       metadata?: unknown;
       error?: string;
       createdAt: string;
     };
-    const checkpoint = entry.checkpointId
-      ? await this.delegate.findTaskRunCheckpointById(entry.checkpointId, entry.runId, client)
-      : null;
+    const checkpoint = await this.#loadCheckpoint(entry, entry.runId, client);
     const createdAt = new Date(entry.createdAt);
     return {
       id: read.id,
@@ -1434,7 +1523,8 @@ export class TaskRunExecutionSnapshotStore extends DelegatingRunStore {
   }
 
   // Rebuilds a snapshot read from the MemoryDB entry, with its completed-waitpoint cycle as
-  // unenhanced rows and the checkpoint from Postgres. A dangling or incomplete cycle fails closed.
+  // unenhanced rows and the checkpoint from the store the entry's record names. A dangling or
+  // incomplete cycle fails closed.
   async #reproduceSnapshotFromEntry(
     head: SnapshotRead,
     client?: ReadClient,
@@ -1455,6 +1545,7 @@ export class TaskRunExecutionSnapshotStore extends DelegatingRunStore {
       batchId?: string;
       attemptNumber?: number;
       checkpointId?: string;
+      checkpointStore?: string;
       workerId?: string;
       runnerId?: string;
       metadata?: Prisma.JsonValue;
@@ -1497,9 +1588,7 @@ export class TaskRunExecutionSnapshotStore extends DelegatingRunStore {
       completedWaitpointOrder = cw.order;
     }
 
-    const checkpoint = entry.checkpointId
-      ? await this.delegate.findTaskRunCheckpointById(entry.checkpointId, runId, client)
-      : null;
+    const checkpoint = await this.#loadCheckpoint(entry, runId, client);
 
     const createdAt = new Date(entry.createdAt);
     return {
@@ -1528,6 +1617,7 @@ export class TaskRunExecutionSnapshotStore extends DelegatingRunStore {
       updatedAt: createdAt,
       lastHeartbeatAt: null,
       metadata: entry.metadata ?? null,
+      ...(entry.checkpointStore === "state" && { checkpointStore: "state" as const }),
     };
   }
 

@@ -111,14 +111,10 @@ export const ExportMetricsServiceRequest = {
     return obj;
   },
 
-  create<I extends Exact<DeepPartial<ExportMetricsServiceRequest>, I>>(
-    base?: I
-  ): ExportMetricsServiceRequest {
-    return ExportMetricsServiceRequest.fromPartial(base ?? ({} as any));
+  create(base?: DeepPartial<ExportMetricsServiceRequest>): ExportMetricsServiceRequest {
+    return ExportMetricsServiceRequest.fromPartial(base ?? {});
   },
-  fromPartial<I extends Exact<DeepPartial<ExportMetricsServiceRequest>, I>>(
-    object: I
-  ): ExportMetricsServiceRequest {
+  fromPartial(object: DeepPartial<ExportMetricsServiceRequest>): ExportMetricsServiceRequest {
     const message = createBaseExportMetricsServiceRequest();
     message.resourceMetrics =
       object.resourceMetrics?.map((e) => ResourceMetrics.fromPartial(e)) || [];
@@ -180,14 +176,10 @@ export const ExportMetricsServiceResponse = {
     return obj;
   },
 
-  create<I extends Exact<DeepPartial<ExportMetricsServiceResponse>, I>>(
-    base?: I
-  ): ExportMetricsServiceResponse {
-    return ExportMetricsServiceResponse.fromPartial(base ?? ({} as any));
+  create(base?: DeepPartial<ExportMetricsServiceResponse>): ExportMetricsServiceResponse {
+    return ExportMetricsServiceResponse.fromPartial(base ?? {});
   },
-  fromPartial<I extends Exact<DeepPartial<ExportMetricsServiceResponse>, I>>(
-    object: I
-  ): ExportMetricsServiceResponse {
+  fromPartial(object: DeepPartial<ExportMetricsServiceResponse>): ExportMetricsServiceResponse {
     const message = createBaseExportMetricsServiceResponse();
     message.partialSuccess =
       object.partialSuccess !== undefined && object.partialSuccess !== null
@@ -270,14 +262,10 @@ export const ExportMetricsPartialSuccess = {
     return obj;
   },
 
-  create<I extends Exact<DeepPartial<ExportMetricsPartialSuccess>, I>>(
-    base?: I
-  ): ExportMetricsPartialSuccess {
-    return ExportMetricsPartialSuccess.fromPartial(base ?? ({} as any));
+  create(base?: DeepPartial<ExportMetricsPartialSuccess>): ExportMetricsPartialSuccess {
+    return ExportMetricsPartialSuccess.fromPartial(base ?? {});
   },
-  fromPartial<I extends Exact<DeepPartial<ExportMetricsPartialSuccess>, I>>(
-    object: I
-  ): ExportMetricsPartialSuccess {
+  fromPartial(object: DeepPartial<ExportMetricsPartialSuccess>): ExportMetricsPartialSuccess {
     const message = createBaseExportMetricsPartialSuccess();
     message.rejectedDataPoints = object.rejectedDataPoints ?? BigInt("0");
     message.errorMessage = object.errorMessage ?? "";
@@ -329,11 +317,6 @@ type DeepPartial<T> = T extends Builtin
       : T extends {}
         ? { [K in keyof T]?: DeepPartial<T[K]> }
         : Partial<T>;
-
-type KeysOfUnion<T> = T extends T ? keyof T : never;
-type Exact<P, I extends P> = P extends Builtin
-  ? P
-  : P & { [K in keyof P]: Exact<P[K], I[K]> } & { [K in Exclude<keyof I, KeysOfUnion<P>>]: never };
 
 function longToBigint(long: Long) {
   return BigInt(long.toString());

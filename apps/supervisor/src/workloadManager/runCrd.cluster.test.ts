@@ -8,7 +8,8 @@ import { join } from "node:path";
 import * as k8s from "@kubernetes/client-node";
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import { getRunnerId } from "../util.js";
-import { RunCrdWorkloadManager, runnerBodyFor, runnerTokenSecretName } from "./runCrd.js";
+import { RunCrdWorkloadManager, runnerBodyFor } from "./runCrd.js";
+import { runnerTokenSecretName } from "./tokenSecret.js";
 import type { WorkloadManagerCreateOptions } from "./types.js";
 
 /** A kubeconfig for a local kind cluster with the Runner CRD installed; the test makes a namespace of its own. */

@@ -30,6 +30,7 @@ export default defineConfig({
       "app/services/clickhouse/**/*.test.ts",
       "app/utils/**/*.test.ts",
       "app/hooks/**/*.test.ts",
+      "app/components/DocsPanel.dom.test.tsx",
       "app/components/code/**/*.test.ts",
       "app/components/deployments/**/*.test.ts",
       "app/components/runs/**/*.test.ts",

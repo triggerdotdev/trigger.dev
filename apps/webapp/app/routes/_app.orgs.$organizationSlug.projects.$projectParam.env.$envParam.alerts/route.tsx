@@ -1,9 +1,9 @@
 import { parseWithZod } from "~/utils/conform";
-import { BookOpenIcon } from "@heroicons/react/20/solid";
 import { Outlet, useLoaderData, useNavigate, useSearchParams } from "@remix-run/react";
 import { type ActionFunctionArgs, defer, json, redirect } from "@remix-run/server-runtime";
 import { z } from "zod";
 import { useEffect, useRef } from "react";
+import { DocsHeaderButton } from "~/components/DocsPanel";
 import { AlertsList, type AlertsListDeferred } from "~/components/alerts/AlertsList";
 import { hasLegacyAlerts } from "~/components/alerts/hasLegacyAlerts.server";
 import { LegacyAlertChannelsPage } from "~/components/alerts/LegacyAlertChannelsPage";
@@ -19,7 +19,6 @@ import {
 } from "~/components/dashboard-agent/alert-creation/flow-state";
 import { environmentFullTitle } from "~/components/environments/EnvironmentLabel";
 import { PageBody, PageContainer } from "~/components/layout/AppLayout";
-import { LinkButton } from "~/components/primitives/Buttons";
 import { NavBar, PageAccessories, PageTitle } from "~/components/primitives/PageHeader";
 import { prisma } from "~/db.server";
 import { useEnvironment } from "~/hooks/useEnvironment";
@@ -65,7 +64,6 @@ import {
 } from "~/v3/services/alerts/authorizedChannelWrite.server";
 import {
   EnvironmentParamSchema,
-  docsPath,
   v3AlertPath,
   v3AlertCreatePath,
   v3ProjectAlertChannelsPath,
@@ -532,13 +530,7 @@ function NewAlertsPage({
           <PageTitle title="Alerts" />
           <PageAccessories>
             <WhenAgentUnavailable>
-              <LinkButton
-                LeadingIcon={BookOpenIcon}
-                to={docsPath("v3/troubleshooting-alerts")}
-                variant="docs/small"
-              >
-                Alerts docs
-              </LinkButton>
+              <DocsHeaderButton path="v3/troubleshooting-alerts">Alerts docs</DocsHeaderButton>
             </WhenAgentUnavailable>
           </PageAccessories>
         </NavBar>

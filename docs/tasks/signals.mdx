@@ -1,0 +1,161 @@
+---
+title: "Signals"
+description: "Send a small message to every executing run in an environment that listens for it. Use signals to tell running work that a config value, a feature switch or a deployed version changed."
+---
+
+**A signal is a small message sent to an environment: every run executing there that listens for the signal's name receives it.** Each run that starts listening also gets the latest signal of that name sent before it started, so a run that starts late still learns the current state.
+
+<Note>
+  Signals are unstable. The SDK exports them as `unstable_signals`, and names and behavior may
+  change before they are released as stable. Use the SDK rather than the HTTP routes behind it,
+  which may also change.
+</Note>
+
+## Listen for a signal in a task
+
+Call `unstable_signals.on()` inside `run()`. It returns a function that stops listening. This crawler pauses between URLs while `crawl.pause` says so, and carries on when it's switched off:
+
+```ts /trigger/crawler.ts
+import { task, unstable_signals } from "@trigger.dev/sdk";
+
+export const crawler = task({
+  id: "crawler",
+  run: async (payload: { urls: string[] }) => {
+    let paused = false;
+    let resume: (() => void) | undefined;
+
+    // The latest "crawl.pause" sent before this call arrives first, then each new one.
+    const stop = unstable_signals.on<{ paused: boolean }>("crawl.pause", (signal) => {
+      paused = signal.payload.paused;
+      if (!paused) resume?.();
+    });
+
+    const crawled: string[] = [];
+    for (const url of payload.urls) {
+      // Hold here until a "crawl.pause" with paused: false arrives
+      if (paused) await new Promise<void>((resolve) => (resume = resolve));
+      await fetch(url);
+      crawled.push(url);
+    }
+    stop();
+    return { crawled };
+  },
+});
+```
+
+While it's paused, the run is still executing: it keeps its concurrency slot and its machine. A run that waits with `wait.for()` instead can be suspended and free them, but receives no signals until it resumes ([how delivery works](#how-delivery-works)).
+
+The handler receives a `Signal` with `name`, `payload`, `task` (set when the signal was sent to one task), `sentAt` and `seq`. `seq` increases with every signal sent in the environment, but not by one: compare two values to tell which was sent later, don't count with them.
+
+### A run that starts while paused
+
+A crawler triggered after `crawl.pause` was sent with `paused: true` receives that signal without anything new being sent. It arrives once the run's connection for signals opens, usually within a few seconds of the `on()` call, not during it. Work the run does before then isn't paused: in the crawler above, the first URL can be fetched before the signal arrives.
+
+## Send a signal
+
+Send from your backend with the secret key of the environment whose runs should receive it: the production key reaches production runs, and your development key reaches runs of your local `trigger dev`. The SDK reads `TRIGGER_SECRET_KEY`; to pass the key another way, call `configure()` first:
+
+```ts Your backend code
+import { configure, unstable_signals } from "@trigger.dev/sdk";
+
+configure({ accessToken: process.env.TRIGGER_PROD_SECRET_KEY }); // e.g. tr_prod_...
+
+// Every listening run in the environment
+await unstable_signals.send("crawl.pause", { paused: true });
+
+// Only runs of the "crawler" task
+await unstable_signals.send("crawl.pause", { paused: true }, { task: "crawler" });
+```
+
+```json Response
+{ "seq": 718 }
+```
+
+`send()` returns `{ seq }`, the sequence number of the signal. From inside another task, call `send()` without `configure()`: the run's own credentials send to its environment.
+
+### Environment-wide and task-scoped signals are kept apart
+
+The environment keeps the latest signal of each name, and separately the latest of each name and task pair. A send to one task replaces only that task's latest; a send to everyone replaces only the environment-wide latest. A run that starts listening receives both that apply to it, in the order they were sent:
+
+```ts Your backend code
+await unstable_signals.send("crawl.pause", { paused: true }); // seq 718
+await unstable_signals.send("crawl.pause", { paused: false }, { task: "crawler" }); // seq 720
+```
+
+A crawler that starts after these two sends receives `{ paused: true }` (seq 718) and then `{ paused: false }` (seq 720), so it ends up running. A run of any other task receives only `{ paused: true }`. Send `{ paused: true }` to everyone again and every new crawler receives seq 720 and then the new one, and ends up paused. To stop a task-scoped signal from applying, clear it with `{ task }`.
+
+## Read the latest signal
+
+`latest()` reads the current latest signal of a name once, without listening. Use it to check the state before starting work, from a task or from your backend:
+
+```ts /trigger/crawler.ts
+const pause = await unstable_signals.latest<{ paused: boolean }>("crawl.pause");
+if (pause?.payload.paused) {
+  return { skipped: true };
+}
+```
+
+It returns the same `Signal` a listener receives, or `undefined` when none was sent or it was cleared. Inside a run, it returns the later of the environment-wide signal and the one sent to this run's task, the last of what `on()` delivers when it starts. Outside a run, it returns the environment-wide signal, or with `{ task }` the one sent to that task:
+
+```ts Your backend code
+const forCrawler = await unstable_signals.latest("crawl.pause", { task: "crawler" });
+```
+
+## Clear a signal
+
+`clear()` forgets the latest signal of a name, so runs that start listening afterwards don't receive it, and the name stops counting toward the [limit of 32](#limits).
+
+```ts Your backend code
+import { unstable_signals } from "@trigger.dev/sdk";
+
+const { cleared } = await unstable_signals.clear("crawl.pause");
+await unstable_signals.clear("crawl.pause", { task: "crawler" });
+```
+
+`cleared` is `false` when there was nothing to clear. Runs that are already listening aren't told: to switch something off for them, send a payload that means off.
+
+## How delivery works
+
+- Signals are scoped to one environment and delivered in the order they were sent.
+- A run receives signals only while it is executing. A run that is waiting (for example on `wait.for()`) receives nothing while it waits; when it resumes it gets the latest signal of each name it listens for.
+- A signal is a notification, not a queue. There is no acknowledgement and no per-run delivery record. For work that must happen exactly once, [trigger a task](/triggering).
+- A run that never calls `unstable_signals.on()` opens no connection for signals.
+
+## Authentication
+
+| Credential | Send and clear | Listen and read latest |
+| --- | --- | --- |
+| The environment's secret key | Yes | Yes |
+| A task's own credentials (inside `run()`) | Yes | Yes |
+| An API key created with **No restrictions** or **Operator** access | Yes | Yes |
+| An API key with custom access, **Signals: Read & write** | Yes | Yes |
+| An API key with custom access, **Signals: Read** | No (403) | Yes |
+| An API key with any other access | No (403) | No (403) |
+| Public access tokens | No (403) | No (403) |
+
+A key limited to selected tasks can't have Signals access: a signal reaches runs of every task in the environment.
+
+## Limits
+
+| Limit | Value | Response when exceeded |
+| --- | --- | --- |
+| Name | 1 to 128 characters: letters, digits, `.`, `_`, `-` and `:`, starting with a letter or digit | 400 |
+| Payload | 1 KB as JSON | 400 |
+| Names per environment | 32 latest signals, where each name and task pair counts once | 409: clear one with `unstable_signals.clear(name)` first |
+| All latest signals together | About 256 KB | 413: clear some with `unstable_signals.clear(name)` |
+| Sends and clears | 120 per minute per environment | 429 with a `Retry-After` header |
+
+The SDK checks names and payload size before sending. Other errors from `send()` and `clear()`:
+
+- **503** means signals in the environment were busy (many concurrent sends) or briefly unavailable. Retry shortly (after the `Retry-After` delay when the response has one).
+- **501** means the instance has no realtime streams backend for signals. Self-hosted instances need the S2 streams backend.
+
+The rate limit is there because each send goes to every listening run. Send when state changes, not as a stream of messages; for a stream of data from a run use [Streams](/tasks/streams).
+
+## Reserved names
+
+Names that start with `trigger.` are reserved for the platform. `send()` and `clear()` refuse them. Runs can listen for them: `chat.agent` listens for `trigger.skew-protection-threshold` to move a running turn to a newer version (see [Mid-turn handover](/ai-chat/patterns/mid-turn-handover)).
+
+## Data retention
+
+An environment keeps the latest signal of each name until you clear it. When a project or organization is deleted, or a preview branch is archived, its environments' signals are deleted.

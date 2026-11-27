@@ -54,6 +54,7 @@ vi.mock("~/services/logger.server", () => ({
 }));
 
 import { loader } from "~/routes/_app.orgs.$organizationSlug.projects.$projectParam.env.$envParam/route";
+import { organizationContext, type OrganizationContext } from "@internal/run-store";
 
 const PARAMS = {
   organizationSlug: "acme",
@@ -139,5 +140,36 @@ describe("env.$envParam loader — development environment ownership", () => {
     await callLoader();
 
     expect(mocks.updatedEnvironmentIds).toEqual(["env_prod"]);
+  });
+});
+
+describe("env.$envParam loader — organisation context", () => {
+  // Catches: a layout loader that does not enrich the request's organisation context.
+  it("enriches the scope in force with the organisation, the resolved environment and its flags", async () => {
+    const featureFlags = { someFlag: true };
+    mocks.project = {
+      ...projectWith([
+        devEnvironment("env_colleague", "user_colleague"),
+        devEnvironment("env_mine", "user_me"),
+      ]),
+      organization: { id: "org_1", featureFlags },
+    };
+    const ctx: OrganizationContext = {};
+
+    await organizationContext.run(ctx, () => callLoader());
+
+    expect(ctx).toEqual({ organizationId: "org_1", environmentId: "env_mine", featureFlags });
+    expect(ctx.featureFlags).toBe(featureFlags);
+  });
+
+  // Catches: an enrich before the accessible-environment check, on a request that redirects.
+  it("leaves the scope empty when the request redirects", async () => {
+    mocks.project = projectWith([devEnvironment("env_colleague", "user_colleague")]);
+    const ctx: OrganizationContext = {};
+
+    const response = await organizationContext.run(ctx, () => callLoader());
+
+    expect(response.status).toBe(302);
+    expect(ctx).toEqual({});
   });
 });

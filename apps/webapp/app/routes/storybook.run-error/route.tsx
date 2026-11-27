@@ -1,4 +1,5 @@
 import { type TaskRunError } from "@trigger.dev/core/v3";
+import type { TaskRunStatus } from "@trigger.dev/database";
 import { RunError } from "~/components/runs/v3/RunError";
 import { StoryPage, StorySection, StorySubSection } from "../storybook/StoryKit";
 
@@ -37,11 +38,19 @@ function Row({ children }: { children: React.ReactNode }) {
   return <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">{children}</div>;
 }
 
-function Sample({ label, error }: { label: string; error: TaskRunError }) {
+function Sample({
+  label,
+  error,
+  status = "COMPLETED_WITH_ERRORS",
+}: {
+  label: string;
+  error: TaskRunError;
+  status?: TaskRunStatus;
+}) {
   return (
     <div className="flex flex-col gap-1.5">
       <span className="font-mono text-xs text-text-dimmed">{label}</span>
-      <RunError error={error} />
+      <RunError error={error} status={status} />
     </div>
   );
 }
@@ -73,6 +82,22 @@ export default function Story() {
           <Sample
             label='type: "INTERNAL_ERROR"'
             error={internal({ code: "TASK_PROCESS_OOM_KILLED" })}
+          />
+        </Row>
+      </StorySection>
+
+      <StorySection
+        title="A session moved to a newer version"
+        description="The cancel reason on a run below the skew protection threshold that a newer run replaced. Not an error: it renders as information and links the run the session continued in."
+      >
+        <Row>
+          <Sample
+            label="moved by the skew protection threshold"
+            status="CANCELED"
+            error={{
+              type: "STRING_ERROR",
+              raw: "Moved to 20261109.18 by the skew protection threshold. Continued in run_cmw9rwzno00ctjuwmzbelk7x3.",
+            }}
           />
         </Row>
       </StorySection>

@@ -18,4 +18,5 @@ export type {
   WebhookRedisOptions,
   WebhookEngineMetricsHooks,
   WebhookMetricsEnvironment,
+  ReadWebhookWaiterResult,
 } from "./engine/types.js";

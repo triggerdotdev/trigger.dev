@@ -101,14 +101,17 @@ describe("resolveIdempotencyDedupClient", () => {
   });
 
   it("falls back and logs when a gen-2 parent names an unconfigured shard key", async () => {
-    const errors: unknown[] = [];
-    const genTwoParent = RunId.toFriendlyId("f".repeat(24) + "z2");
-    const client = await resolveIdempotencyDedupClient(
-      { environmentForMint: env, parentRunFriendlyId: genTwoParent },
-      makeDeps({ logger: { error: (_m, meta) => errors.push(meta) } })
-    );
-    expect(client).toBe(FALLBACK);
-    expect(errors).toHaveLength(1);
+    // Catches: a shard-m (generation 3) parent given some store's client instead of the logged fallback.
+    for (const shardKey of ["m", "z"]) {
+      const errors: string[] = [];
+      const genTwoParent = RunId.toFriendlyId("f".repeat(24) + `${shardKey}2`);
+      const client = await resolveIdempotencyDedupClient(
+        { environmentForMint: env, parentRunFriendlyId: genTwoParent },
+        makeDeps({ logger: { error: (message) => errors.push(message) } })
+      );
+      expect(client).toBe(FALLBACK);
+      expect(errors).toEqual(["idempotency: no client configured for shard key"]);
+    }
   });
 });
 
@@ -122,12 +125,15 @@ describe("clientForShardKey", () => {
   });
 
   it("returns the fallback and logs for a key the map does not hold", () => {
-    const errors: unknown[] = [];
-    const map = clientMap();
-    const client = clientForShardKey("z", (key) => map.get(key), FALLBACK, {
-      error: (_m, meta) => errors.push(meta),
-    });
-    expect(client).toBe(FALLBACK);
-    expect(errors).toHaveLength(1);
+    // Catches: shard key m given some store's client instead of the logged fallback.
+    for (const shardKey of ["m", "z"]) {
+      const errors: string[] = [];
+      const map = clientMap();
+      const client = clientForShardKey(shardKey, (key) => map.get(key), FALLBACK, {
+        error: (message) => errors.push(message),
+      });
+      expect(client).toBe(FALLBACK);
+      expect(errors).toEqual(["idempotency: no client configured for shard key"]);
+    }
   });
 });

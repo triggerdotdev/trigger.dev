@@ -1,11 +1,12 @@
-import { BookOpenIcon, KeyIcon, SparklesIcon, TrashIcon } from "@heroicons/react/24/solid";
+import { PaperAirplaneIcon } from "@heroicons/react/20/solid";
 import {
-  useFetcher,
-  useNavigation,
-  useRevalidator,
-  useSearchParams,
-  type MetaFunction,
-} from "@remix-run/react";
+  KeyIcon,
+  NoSymbolIcon,
+  PlayIcon,
+  SparklesIcon,
+  TrashIcon,
+} from "@heroicons/react/24/solid";
+import { type ShouldRevalidateFunction, useFetcher } from "@remix-run/react";
 import { type ActionFunctionArgs, type LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { randomBytes } from "node:crypto";
 import {
@@ -14,34 +15,50 @@ import {
   WebhookVerifierArtifact,
 } from "@trigger.dev/core/v3";
 import type { WebhookValueSource } from "@trigger.dev/core/v3";
-import { type MutableRefObject, Suspense, useEffect, useRef, useState } from "react";
-import { TypedAwait, typeddefer, useTypedLoaderData } from "remix-typedjson";
+import { useEffect, useState } from "react";
+import { typeddefer, useTypedLoaderData } from "remix-typedjson";
 import { z } from "zod";
 import type { RuntimeEnvironmentType } from "@trigger.dev/database";
 import { WebhookIcon } from "~/assets/icons/WebhookIcon";
+import { DocsHeaderButton } from "~/components/DocsPanel";
 import { CodeBlock } from "~/components/code/CodeBlock";
-import { PageBody } from "~/components/layout/AppLayout";
-import { DirectionSchema, ListPagination } from "~/components/ListPagination";
-import { Button, LinkButton } from "~/components/primitives/Buttons";
+import { PageBody, PageContainer } from "~/components/layout/AppLayout";
+import { DirectionSchema } from "~/components/ListPagination";
+import { Button } from "~/components/primitives/Buttons";
 import { ClipboardField } from "~/components/primitives/ClipboardField";
 import { CopyableText } from "~/components/primitives/CopyableText";
-import { DateTime } from "~/components/primitives/DateTime";
+import { DateTime, RelativeDateTime } from "~/components/primitives/DateTime";
+import { DeferredContent } from "~/components/primitives/detail/DeferredContent";
+import {
+  DetailHeader,
+  DetailPage,
+  DetailPageTitle,
+  DetailProperty,
+  DetailTabs,
+  PropertyGroup,
+  PropertyPair,
+  PropertyRail,
+  type DetailTab,
+  useDetailTab,
+} from "~/components/primitives/detail/DetailPage";
+import {
+  DangerZone,
+  DetailTabError,
+  DetailTabLoading,
+  DetailTableTab,
+  SettingGroup,
+  SettingRow,
+  SkeletonBone,
+} from "~/components/primitives/detail/DetailSections";
 import { Dialog, DialogContent, DialogHeader, DialogTrigger } from "~/components/primitives/Dialog";
-import { Header2, Header3 } from "~/components/primitives/Headers";
 import { Hint } from "~/components/primitives/Hint";
 import { Input } from "~/components/primitives/Input";
 import { Label } from "~/components/primitives/Label";
-import { NavBar, PageAccessories, PageTitle } from "~/components/primitives/PageHeader";
+import { NavBar, PageAccessories } from "~/components/primitives/PageHeader";
 import { Paragraph } from "~/components/primitives/Paragraph";
-import * as Property from "~/components/primitives/PropertyTable";
 import { Select, SelectItem } from "~/components/primitives/Select";
-import {
-  ResizableHandle,
-  ResizablePanel,
-  ResizablePanelGroup,
-} from "~/components/primitives/Resizable";
-import { Spinner } from "~/components/primitives/Spinner";
-import { TabButton, TabContainer } from "~/components/primitives/Tabs";
+import { SimpleTooltip } from "~/components/primitives/Tooltip";
+import { timeFilterFromTo } from "~/components/runs/v3/SharedFilters";
 import { WebhookComposer } from "~/components/webhookConsole/WebhookComposer";
 import { CopySetupPromptButton } from "~/components/webhookEndpoints/v1/CopySetupPromptButton";
 import { EndpointSubscribersTable } from "~/components/webhookEndpoints/v1/EndpointSubscribers";
@@ -49,11 +66,8 @@ import {
   type EndpointWaiters,
   EndpointWaitersTable,
 } from "~/components/webhookEndpoints/v1/EndpointWaitersTable";
-import { DeliveriesTable } from "~/components/webhookDeliveries/v1/DeliveriesTable";
-import { DeliveryFilters } from "~/components/webhookDeliveries/v1/DeliveryFilters";
+import { DeliveriesTab } from "~/components/webhookDeliveries/v1/DeliveriesTab";
 import { parseDeliveryListFilters } from "~/components/webhookDeliveries/v1/deliveryListFilters";
-import { useDeliveriesLiveReload } from "~/components/webhookDeliveries/v1/useDeliveriesLiveReload";
-import { PulsingDot } from "~/components/primitives/PulsingDot";
 import { EndpointStatusBadge } from "~/components/webhookEndpoints/v1/EndpointStatus";
 import { prisma, $replica } from "~/db.server";
 import { webhookIngressUrl } from "~/utils/webhookIngressUrl.server";
@@ -62,18 +76,22 @@ import { useOrganization } from "~/hooks/useOrganizations";
 import { useProject } from "~/hooks/useProject";
 import { findProjectBySlug } from "~/models/project.server";
 import { findEnvironmentBySlug } from "~/models/runtimeEnvironment.server";
+import { jsonWithErrorMessage, jsonWithSuccessMessage } from "~/models/message.server";
 import {
+  type DeliveryActivity,
   WebhookDetailPresenter,
-  type WebhookDeliveriesList,
   type WebhookEndpointDetail,
 } from "~/presenters/v3/WebhookDetailPresenter.server";
 import { clickhouseFactory } from "~/services/clickhouse/clickhouseFactoryInstance.server";
 import { getSecretStore } from "~/services/secrets/secretStore.server";
 import { requireUser } from "~/services/session.server";
-import { docsPath, EnvironmentParamSchema, v3WebhooksPath } from "~/utils/pathBuilder";
+import { onlyDetailTabChanged } from "~/utils/detailTabRevalidation";
+import { pageMeta } from "~/utils/pageTitle";
+import { EnvironmentParamSchema, v3WebhooksPath } from "~/utils/pathBuilder";
 import { throwPermissionDenied } from "~/utils/permissionDenied";
 import { parseFiniteInt } from "~/utils/searchParams";
 import { webhookEngine, webhookVerifyTokenKey } from "~/v3/webhookEngine.server";
+import { setWebhookEndpointEnabled } from "~/v3/webhookEndpointStatus.server";
 import {
   capturedWebhookSigningSecret,
   clearWebhookSigningSecret,
@@ -88,13 +106,10 @@ const EndpointParamSchema = EnvironmentParamSchema.extend({
   endpointParam: z.string(),
 });
 
-export const meta: MetaFunction<typeof loader> = ({ data }) => {
-  const declaredId = (data as { endpoint?: WebhookEndpointDetail } | undefined)?.endpoint
-    ?.declaredId;
-  return [
-    { title: declaredId ? `${declaredId} | Endpoints | Trigger.dev` : "Endpoint | Trigger.dev" },
-  ];
-};
+export const meta = pageMeta<typeof loader>(({ data, params }) => [
+  data?.endpoint?.declaredId ?? params.endpointParam ?? "Endpoint",
+  "Endpoints",
+]);
 
 // Shared gate + scope resolution for the loader and action.
 async function requireWebhookAccess(request: Request, params: LoaderFunctionArgs["params"]) {
@@ -150,6 +165,18 @@ async function canWriteWebhooks(
   return auth.ok && auth.ability.can("write", { type: "webhooks", envType: scope.environmentType });
 }
 
+const EMPTY_ACTIVITY: DeliveryActivity = {
+  data: [],
+  statuses: [],
+  totals: {},
+  lastDeliveryAt: null,
+};
+
+/**
+ * An endpoint on the detail template. Postgres (the endpoint, its secrets' state, permissions) is
+ * awaited; ClickHouse (deliveries and their chart), the waiters and the test composer's endpoints
+ * are deferred, so every tab's data arrives with the page and switching tabs makes no request.
+ */
 export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   const { user, project, environment, endpointParam } = await requireWebhookAccess(request, params);
 
@@ -190,30 +217,43 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
     : false;
 
   const url = new URL(request.url);
+  const deliveriesTabOpen = (url.searchParams.get("tab") ?? "deliveries") === "deliveries";
   const periodParam = url.searchParams.get("period") ?? undefined;
   const from = parseFiniteInt(url.searchParams.get("from"));
   const to = parseFiniteInt(url.searchParams.get("to"));
   const hasExplicitWindow = Boolean(periodParam || from || to);
   const period = periodParam ?? (hasExplicitWindow ? undefined : "7d");
-  const cursor = url.searchParams.get("cursor") ?? undefined;
-  const directionRaw = url.searchParams.get("direction") ?? undefined;
-  const direction = directionRaw ? DirectionSchema.parse(directionRaw) : undefined;
+  const time = timeFilterFromTo({ period: periodParam, from, to, defaultPeriod: "7d" });
+  const scope = {
+    organizationId: project.organizationId,
+    projectId: project.id,
+    environmentId: environment.id,
+  };
 
   const deliveriesList = presenter
     .listDeliveries({
-      organizationId: project.organizationId,
-      projectId: project.id,
-      environmentId: environment.id,
-      webhookEndpointId: endpoint.id,
+      ...scope,
+      webhookEndpointIds: [endpoint.id],
       period,
       from,
       to,
       hasExplicitWindow,
       filters: parseDeliveryListFilters(url.searchParams),
-      cursor,
-      direction,
+      cursor: deliveriesTabOpen ? (url.searchParams.get("cursor") ?? undefined) : undefined,
+      direction: DirectionSchema.catch("forward").parse(
+        url.searchParams.get("direction") ?? undefined
+      ),
     })
     .catch(() => null);
+
+  const deliveryActivity = presenter
+    .getDeliveryActivity({
+      ...scope,
+      webhookEndpointIds: [endpoint.id],
+      from: time.from,
+      to: time.to,
+    })
+    .catch(() => EMPTY_ACTIVITY);
 
   const waiters: Promise<EndpointWaiters | null> = webhookEngine
     .listWaiters({ endpointId: endpoint.id, limit: 50 })
@@ -250,10 +290,15 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
     verifier: verifier.success ? verifier.data : null,
     hasVerifyToken,
     deliveriesList,
+    deliveryActivity,
     waiters,
     composerEndpoints,
   });
 };
+
+/** Every tab's data is already loaded: switching tabs doesn't run the loader again. */
+export const shouldRevalidate: ShouldRevalidateFunction = (args) =>
+  onlyDetailTabChanged(args) ? false : args.defaultShouldRevalidate;
 
 const PreviousSecretTtlFormField = z.object({
   previousSecretTtlSeconds: z.coerce.number().pipe(WebhookPreviousSecretTtlSeconds).optional(),
@@ -318,6 +363,23 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
   });
   if (!canWrite) throwPermissionDenied(NO_WEBHOOKS_WRITE);
 
+  if (intent === "disable-endpoint" || intent === "enable-endpoint") {
+    const enabled = intent === "enable-endpoint";
+    const changed = await setWebhookEndpointEnabled(endpoint.id, enabled);
+    if (!changed) {
+      return jsonWithErrorMessage(
+        { success: false as const },
+        request,
+        `${endpoint.declaredId} is being deleted`
+      );
+    }
+    return jsonWithSuccessMessage(
+      { success: true as const },
+      request,
+      `${endpoint.declaredId} ${enabled ? "enabled" : "disabled"}`
+    );
+  }
+
   // Generate (integrator-supplied secret): the UI reveals it ONCE for pasting into the provider.
   if (intent === "generate-secret") {
     const ttl = PreviousSecretTtlFormField.safeParse(Object.fromEntries(formData));
@@ -371,401 +433,579 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
   return { success: true as const };
 };
 
-type EndpointTab = "deliveries" | "subscribers" | "waiters" | "test";
+type LoaderData = ReturnType<typeof useTypedLoaderData<typeof loader>>;
+
+/** The page's tabs, in order; the first opens by default. */
+const ENDPOINT_TABS = ["deliveries", "subscribers", "waiters", "test", "settings"] as const;
+type EndpointTab = (typeof ENDPOINT_TABS)[number];
 
 export default function Page() {
-  const {
-    endpoint,
-    ingestUrl,
-    routing,
-    verifier,
-    hasVerifyToken,
-    deliveriesList,
-    waiters,
-    composerEndpoints,
-    canCancelWaiters: canCancel,
-    canWrite,
-    capturedSecret,
-  } = useTypedLoaderData<typeof loader>();
+  const data = useTypedLoaderData<typeof loader>();
+  const { endpoint, routing } = data;
   const organization = useOrganization();
   const project = useProject();
   const environment = useEnvironment();
-  const [searchParams] = useSearchParams();
-  const [tab, setTab] = useState<EndpointTab>(() => {
-    const requested = searchParams.get("tab");
-    return requested === "subscribers" || requested === "waiters" || requested === "test"
-      ? requested
-      : "deliveries";
-  });
+  const [tab, setTab, isPending] = useDetailTab<EndpointTab>(ENDPOINT_TABS);
 
-  const endpointsPath = v3WebhooksPath(organization, project, environment);
+  const tabs: DetailTab<EndpointTab>[] = [
+    { id: "deliveries", label: "Deliveries" },
+    { id: "subscribers", label: "Subscribers", count: String(routing.length) },
+    { id: "waiters", label: "Waiters" },
+    { id: "test", label: "Test" },
+    { id: "settings", label: "Settings" },
+  ];
 
-  // The "N new deliveries" button lives in the filter row, outside the deferred table that detects
-  // them: the count drives its visibility and the ref holds the click action (kept current by
-  // LiveDeliveriesTable).
-  const [newDeliveriesCount, setNewDeliveriesCount] = useState(0);
-  const showNewDeliveriesRef = useRef<() => void>(() => {});
+  const sendTest = (variant: "primary/small" | "secondary/small") => (
+    <Button
+      variant={variant}
+      LeadingIcon={PaperAirplaneIcon}
+      onClick={() => setTab("test", { cursor: undefined, direction: undefined })}
+    >
+      Send test event
+    </Button>
+  );
 
   return (
-    <>
+    <PageContainer>
       <NavBar>
-        <PageTitle
-          backButton={{ to: endpointsPath, text: "Endpoints" }}
-          title={
-            <span className="flex items-center gap-2">
-              <WebhookIcon className="size-4.5 text-webhooks" />
-              <span className="font-mono">{endpoint.declaredId}</span>
-              {endpoint.isDefault ? null : (
-                <span className="font-mono text-text-dimmed">{endpoint.tenantId}</span>
-              )}
-            </span>
-          }
+        <DetailPageTitle
+          title={endpointTitle(endpoint)}
+          backButton={{
+            to: v3WebhooksPath(organization, project, environment),
+            text: "Endpoints",
+          }}
         />
         <PageAccessories>
-          <LinkButton
-            variant="docs/small"
-            LeadingIcon={BookOpenIcon}
-            to={docsPath("webhooks/overview")}
-          >
-            Webhooks docs
-          </LinkButton>
+          <DocsHeaderButton path="webhooks/overview">Webhooks docs</DocsHeaderButton>
         </PageAccessories>
       </NavBar>
       <PageBody scrollable={false}>
-        <ResizablePanelGroup orientation="horizontal" className="max-h-full">
-          <ResizablePanel id="endpoint-deliveries" min="300px">
-            <div className="grid h-full grid-rows-[auto_1fr] overflow-hidden">
-              <div className="flex h-10 items-end border-b border-grid-dimmed bg-background-bright pl-3 pr-2">
-                <TabContainer className="-mb-px">
-                  {(
-                    [
-                      ["deliveries", "Deliveries"],
-                      ["subscribers", "Subscribers"],
-                      ["waiters", "Waiters"],
-                      ["test", "Test"],
-                    ] as const
-                  ).map(([value, label]) => (
-                    <TabButton
-                      key={value}
-                      isActive={tab === value}
-                      layoutId="endpoint-hub-tabs"
-                      onClick={() => setTab(value)}
-                    >
-                      {label}
-                    </TabButton>
-                  ))}
-                </TabContainer>
-              </div>
-              {tab === "deliveries" ? (
-                <div className="grid min-h-0 grid-rows-[auto_1fr] overflow-hidden">
-                  <div className="flex items-start justify-between gap-x-2 p-2">
-                    <DeliveryFilters />
-                    <div className="flex items-center justify-end gap-x-1.5">
-                      {newDeliveriesCount > 0 ? (
-                        <NewDeliveriesButton
-                          count={newDeliveriesCount}
-                          onClick={() => showNewDeliveriesRef.current()}
-                        />
-                      ) : null}
-                      <Suspense fallback={null}>
-                        <TypedAwait resolve={deliveriesList} errorElement={null}>
-                          {(list) => (list ? <ListPagination list={list} /> : null)}
-                        </TypedAwait>
-                      </Suspense>
-                    </div>
-                  </div>
-                  <div className="min-h-0 overflow-y-auto scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600">
-                    <Suspense fallback={<TableLoading />}>
-                      <TypedAwait resolve={deliveriesList} errorElement={<TableLoading />}>
-                        {(list) =>
-                          list ? (
-                            <LiveDeliveriesTable
-                              list={list}
-                              webhookEndpointId={endpoint.id}
-                              onNewDeliveriesCountChange={setNewDeliveriesCount}
-                              showNewDeliveriesRef={showNewDeliveriesRef}
-                            />
-                          ) : (
-                            <TableLoading />
-                          )
-                        }
-                      </TypedAwait>
-                    </Suspense>
-                  </div>
-                </div>
-              ) : (
-                <div className="h-full overflow-y-auto scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600">
-                  {tab === "subscribers" ? (
-                    <EndpointSubscribersTable targets={routing} />
-                  ) : tab === "waiters" ? (
-                    <Suspense fallback={<TableLoading />}>
-                      <TypedAwait resolve={waiters} errorElement={<TableLoading />}>
-                        {(list) => <EndpointWaitersTable list={list} canCancel={canCancel} />}
-                      </TypedAwait>
-                    </Suspense>
-                  ) : (
-                    <Suspense fallback={<TableLoading />}>
-                      <TypedAwait resolve={composerEndpoints} errorElement={<TableLoading />}>
-                        {(endpoints) =>
-                          endpoints.length === 0 ? (
-                            <div className="flex h-full items-center justify-center p-4 text-center text-sm text-text-dimmed">
-                              This endpoint can't be sent to from the dashboard.
-                            </div>
-                          ) : (
-                            <WebhookComposer
-                              endpoints={endpoints}
-                              organizationSlug={organization.slug}
-                              projectSlug={project.slug}
-                              environmentSlug={environment.slug}
-                              isDevEnvironment={environment.type === "DEVELOPMENT"}
-                              environmentLabel={
-                                environment.type.charAt(0) + environment.type.slice(1).toLowerCase()
-                              }
-                              redirectOnSuccess={false}
-                            />
-                          )
-                        }
-                      </TypedAwait>
-                    </Suspense>
-                  )}
-                </div>
-              )}
-            </div>
-          </ResizablePanel>
-
-          <ResizableHandle id="endpoint-detail-handle" />
-          <ResizablePanel
-            id="endpoint-detail"
-            min="320px"
-            default="420px"
-            max="560px"
-            isStaticAtRest
-          >
-            <EndpointSidebar
-              endpoint={endpoint}
-              ingestUrl={ingestUrl}
-              routing={routing}
-              verifier={verifier}
-              hasVerifyToken={hasVerifyToken}
-              capturedSecret={capturedSecret}
-              canWrite={canWrite}
+        <DetailPage
+          id="webhook-endpoint"
+          header={<EndpointHeader data={data} primaryAction={sendTest("primary/small")} />}
+          tabs={
+            <DetailTabs
+              tabs={tabs}
+              activeTab={tab}
+              onTabChange={(next) => setTab(next, { cursor: undefined, direction: undefined })}
+              layoutId="endpoint-tab"
             />
-          </ResizablePanel>
-        </ResizablePanelGroup>
+          }
+          rail={<EndpointRail data={data} />}
+        >
+          {tab === "deliveries" ? (
+            <DeliveriesTab
+              deliveriesList={data.deliveriesList}
+              activity={data.deliveryActivity}
+              webhookEndpointIds={[endpoint.id]}
+              isPending={isPending}
+              emptyAction={sendTest("secondary/small")}
+            />
+          ) : tab === "subscribers" ? (
+            <DetailTableTab>
+              <EndpointSubscribersTable targets={routing} />
+            </DetailTableTab>
+          ) : tab === "waiters" ? (
+            <WaitersTab data={data} />
+          ) : tab === "test" ? (
+            <TestTab data={data} />
+          ) : (
+            <SettingsTab data={data} />
+          )}
+        </DetailPage>
       </PageBody>
-    </>
+    </PageContainer>
   );
 }
 
-type LoaderData = ReturnType<typeof useTypedLoaderData<typeof loader>>;
+function endpointTitle(
+  endpoint: Pick<WebhookEndpointDetail, "declaredId" | "isDefault" | "tenantId">
+) {
+  return endpoint.isDefault ? endpoint.declaredId : `${endpoint.declaredId} · ${endpoint.tenantId}`;
+}
 
-function EndpointSidebar({
-  endpoint,
-  ingestUrl,
-  routing,
-  verifier,
-  hasVerifyToken,
-  capturedSecret,
-  canWrite,
+// ---------- Header ----------
+
+function EndpointHeader({
+  data,
+  primaryAction,
 }: {
-  endpoint: WebhookEndpointDetail;
-  ingestUrl: string;
-  hasVerifyToken: boolean;
-  capturedSecret: LoaderData["capturedSecret"];
-  routing: LoaderData["routing"];
-  verifier: LoaderData["verifier"];
-  canWrite: boolean;
+  data: LoaderData;
+  primaryAction: React.ReactNode;
 }) {
+  const { endpoint } = data;
+  return (
+    <DetailHeader
+      icon={WebhookIcon}
+      iconClassName="text-webhooks"
+      title={endpointTitle(endpoint)}
+      mono
+      friendlyId={endpoint.friendlyId}
+      status={<EndpointStatusBadge status={endpoint.status} />}
+      meta={[
+        <span key="source">
+          Source <span className="font-mono">{endpoint.source}</span>
+        </span>,
+        endpoint.isDefault ? "Default tenant" : `Tenant ${endpoint.tenantId}`,
+        <LastDelivery key="last" activity={data.deliveryActivity} />,
+      ]}
+      secondaryActions={
+        <CopySetupPromptButton
+          endpointFriendlyId={endpoint.friendlyId}
+          source={endpoint.source}
+          variant="secondary/small"
+        />
+      }
+      primaryAction={primaryAction}
+    />
+  );
+}
+
+function LastDelivery({ activity }: { activity: Promise<DeliveryActivity> }) {
+  return (
+    <DeferredContent
+      resolve={activity}
+      fallback={<SkeletonBone className="h-3 w-24" />}
+      errorElement={null}
+    >
+      {(result) =>
+        result.lastDeliveryAt ? (
+          <span>
+            Last delivery <RelativeDateTime date={result.lastDeliveryAt} capitalize={false} />
+          </span>
+        ) : (
+          <span>No deliveries in this period</span>
+        )
+      }
+    </DeferredContent>
+  );
+}
+
+// ---------- Tabs ----------
+
+function WaitersTab({ data }: { data: LoaderData }) {
+  const loading = (
+    <DetailTableTab>
+      <DetailTabLoading
+        columns={[
+          { label: "Waiter" },
+          { label: "Match" },
+          { label: "Filter" },
+          { label: "Expires" },
+        ]}
+        rows={4}
+      />
+    </DetailTableTab>
+  );
+  return (
+    <DeferredContent
+      resolve={data.waiters}
+      fallback={loading}
+      errorElement={
+        <DetailTabError
+          title="Couldn't load waiters"
+          cause="The runs waiting on this endpoint didn't load. Try again in a moment."
+        />
+      }
+    >
+      {(list) => (
+        <DetailTableTab>
+          <EndpointWaitersTable list={list} canCancel={data.canCancelWaiters} />
+        </DetailTableTab>
+      )}
+    </DeferredContent>
+  );
+}
+
+function TestTab({ data }: { data: LoaderData }) {
+  const organization = useOrganization();
+  const project = useProject();
+  const environment = useEnvironment();
+  return (
+    <DeferredContent
+      resolve={data.composerEndpoints}
+      fallback={<DetailTabLoading columns={[{ label: "" }]} rows={6} />}
+      errorElement={
+        <DetailTabError title="Couldn't load the test console" cause="Try again in a moment." />
+      }
+    >
+      {(endpoints) =>
+        endpoints.length === 0 ? (
+          <DetailTabError
+            title="Can't send to this endpoint from the dashboard"
+            cause="Its source signs deliveries in a way the test console can't reproduce."
+          />
+        ) : (
+          <div className="h-full overflow-y-auto scrollbar-thin scrollbar-track-transparent scrollbar-thumb-surface-control">
+            <WebhookComposer
+              endpoints={endpoints}
+              organizationSlug={organization.slug}
+              projectSlug={project.slug}
+              environmentSlug={environment.slug}
+              isDevEnvironment={environment.type === "DEVELOPMENT"}
+              environmentLabel={
+                environment.type.charAt(0) + environment.type.slice(1).toLowerCase()
+              }
+              redirectOnSuccess={false}
+            />
+          </div>
+        )
+      }
+    </DeferredContent>
+  );
+}
+
+/** What it takes to connect the provider, and the controls that change it. */
+function SettingsTab({ data }: { data: LoaderData }) {
+  const { endpoint, verifier, canWrite, hasVerifyToken, capturedSecret, ingestUrl } = data;
   const disabledReason = canWrite
     ? undefined
     : "You don't have permission to change this endpoint.";
+  const { scheme, credentialNoun, credentialLabel, canGenerate, getHandshake, secretCapture } =
+    describeVerifier(data);
+
+  return (
+    <div className="h-full overflow-y-auto px-4 pb-8 pt-6 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-surface-control">
+      <div className="mx-auto flex w-full max-w-3xl flex-col gap-7">
+        <SettingGroup title="Connect">
+          <SettingRow
+            title="Webhook URL"
+            description={`Paste this into ${endpoint.source} as the delivery URL`}
+            value={<CopyableText value={ingestUrl} className="font-mono text-xs" truncate />}
+          />
+          <SettingRow
+            title={credentialLabel}
+            description={
+              scheme === "asymmetric"
+                ? "The provider's public key; deliveries are verified against it"
+                : "Deliveries are verified against it, and rejected without one"
+            }
+            value={<SigningSecretState data={data} />}
+            control={
+              <div className="flex items-center gap-2">
+                <SetSecretDialog
+                  hasSigningSecret={endpoint.hasSigningSecret}
+                  credentialNoun={credentialNoun}
+                  variant={canGenerate ? "tertiary/small" : "secondary/small"}
+                  disabledReason={disabledReason}
+                />
+                {canGenerate ? (
+                  <GenerateSecretDialog
+                    hasSigningSecret={endpoint.hasSigningSecret}
+                    disabledReason={disabledReason}
+                  />
+                ) : null}
+              </div>
+            }
+          />
+          {capturedSecret ? (
+            <div className="border-b border-grid-dimmed py-2.5">
+              <CapturedSecret secret={capturedSecret.secret} />
+            </div>
+          ) : null}
+          {getHandshake ? (
+            <SettingRow
+              title="Verify token"
+              description={`The provider's GET carries it in ${getHandshake.tokenParam} when you save the URL`}
+              value={
+                hasVerifyToken ? (
+                  <StateDot tone="ok">Set</StateDot>
+                ) : (
+                  <StateDot tone="warn">Not set</StateDot>
+                )
+              }
+              control={
+                <GenerateVerifyTokenDialog
+                  hasVerifyToken={hasVerifyToken}
+                  disabledReason={disabledReason}
+                />
+              }
+            />
+          ) : null}
+        </SettingGroup>
+        {verifier ? (
+          <SettingGroup title="Verification">
+            <div className="max-w-[47.5rem] py-2.5">
+              <ProviderSetup verifier={verifier} source={endpoint.source} />
+            </div>
+          </SettingGroup>
+        ) : null}
+        <DangerZone>
+          {endpoint.hasSigningSecret ? (
+            <SettingRow
+              title={`Clear ${credentialNoun}`}
+              description="Every delivery is rejected until a new one is set"
+              control={
+                <ClearSecretDialog
+                  credentialNoun={credentialNoun}
+                  capturesSecret={secretCapture !== undefined}
+                  disabledReason={disabledReason}
+                />
+              }
+            />
+          ) : null}
+          <EnableEndpointRow endpoint={endpoint} disabledReason={disabledReason} />
+        </DangerZone>
+      </div>
+    </div>
+  );
+}
+
+function EnableEndpointRow({
+  endpoint,
+  disabledReason,
+}: {
+  endpoint: WebhookEndpointDetail;
+  disabledReason?: string;
+}) {
+  const fetcher = useFetcher<typeof action>();
+  const [open, setOpen] = useState(false);
+  const isSubmitting = fetcher.state !== "idle";
+  const active = endpoint.status === "ACTIVE";
+
+  useEffect(() => {
+    if (fetcher.state === "idle" && fetcher.data?.success) {
+      // oxlint-disable-next-line react/set-state-in-effect -- This effect intentionally synchronizes route state after an external or lifecycle change.
+      setOpen(false);
+    }
+  }, [fetcher.state, fetcher.data]);
+
+  if (!active) {
+    return (
+      <SettingRow
+        title="Enable endpoint"
+        description="It's disabled: the provider's deliveries get a 404 and aren't recorded"
+        value={<EndpointStatusBadge status={endpoint.status} />}
+        control={
+          <fetcher.Form method="post">
+            <input type="hidden" name="intent" value="enable-endpoint" />
+            <Button
+              type="submit"
+              variant="secondary/small"
+              LeadingIcon={PlayIcon}
+              disabled={disabledReason !== undefined || isSubmitting}
+              tooltip={disabledReason}
+            >
+              {isSubmitting ? "Enabling…" : "Enable"}
+            </Button>
+          </fetcher.Form>
+        }
+      />
+    );
+  }
+
+  return (
+    <SettingRow
+      title="Disable endpoint"
+      description="Stops accepting deliveries until it's enabled again"
+      control={
+        <Dialog open={open} onOpenChange={setOpen}>
+          <DialogTrigger asChild>
+            <Button
+              variant="danger/small"
+              LeadingIcon={NoSymbolIcon}
+              disabled={disabledReason !== undefined}
+              tooltip={disabledReason}
+            >
+              Disable…
+            </Button>
+          </DialogTrigger>
+          <DialogContent>
+            <DialogHeader>Disable {endpoint.declaredId}</DialogHeader>
+            <fetcher.Form method="post" className="flex flex-col gap-3 pt-2">
+              <input type="hidden" name="intent" value="disable-endpoint" />
+              <Paragraph variant="small" className="text-text-dimmed">
+                The webhook URL answers 404 until you enable it again, so the provider's deliveries
+                aren't recorded and nothing runs. Most providers retry for a while, then give up.
+              </Paragraph>
+              <div className="flex justify-end gap-2">
+                <Button
+                  type="button"
+                  variant="tertiary/small"
+                  onClick={() => setOpen(false)}
+                  disabled={isSubmitting}
+                >
+                  Cancel
+                </Button>
+                <Button type="submit" variant="danger/small" disabled={isSubmitting}>
+                  {isSubmitting ? "Disabling…" : "Disable endpoint"}
+                </Button>
+              </div>
+            </fetcher.Form>
+          </DialogContent>
+        </Dialog>
+      }
+    />
+  );
+}
+
+// ---------- Rail ----------
+
+function describeVerifier({ verifier, endpoint }: Pick<LoaderData, "verifier" | "endpoint">) {
+  // Asymmetric endpoints store the provider's PUBLIC KEY, not a shared signing secret.
+  const scheme = verifier && verifier.kind !== "bundle" ? verifier.config.scheme : undefined;
+  return {
+    scheme,
+    credentialNoun: scheme === "asymmetric" ? "public key" : "signing secret",
+    credentialLabel: scheme === "asymmetric" ? "Public key" : "Signing secret",
+    // Generate-and-reveal makes sense when the integrator chooses the secret (and it's an HMAC
+    // shared secret, not a provider public key). "provider" endpoints only paste.
+    canGenerate:
+      scheme !== "asymmetric" &&
+      (endpoint.secretProvisioning === "integrator" || endpoint.secretProvisioning === "either"),
+    getHandshake:
+      verifier && verifier.kind !== "bundle" ? (verifier.getHandshake ?? undefined) : undefined,
+    secretCapture:
+      verifier && verifier.kind !== "bundle" ? (verifier.secretCapture ?? undefined) : undefined,
+  };
+}
+
+function StateDot({ tone, children }: { tone: "ok" | "warn"; children: React.ReactNode }) {
+  return (
+    <span
+      className={
+        tone === "ok" ? "flex items-center gap-1.5" : "flex items-center gap-1.5 text-warning"
+      }
+    >
+      <span
+        className={
+          tone === "ok" ? "size-2 rounded-full bg-success" : "size-2 rounded-full bg-warning"
+        }
+      />
+      <span>{children}</span>
+    </span>
+  );
+}
+
+/** Ready, or what's missing, with the consequence in the tooltip. */
+function SigningSecretState({ data }: { data: LoaderData }) {
+  const { credentialNoun, secretCapture } = describeVerifier(data);
+  if (data.endpoint.hasSigningSecret) return <StateDot tone="ok">Ready</StateDot>;
+  return (
+    <SimpleTooltip
+      content={
+        secretCapture
+          ? "The provider sends its signing secret to this URL when you create the subscription; it's stored automatically."
+          : `Every delivery is rejected until the ${credentialNoun} is set on the Settings tab.`
+      }
+      button={
+        <StateDot tone="warn">
+          {secretCapture ? "Waiting for the provider" : `Needs ${credentialNoun}`}
+        </StateDot>
+      }
+    />
+  );
+}
+
+function EndpointRail({ data }: { data: LoaderData }) {
+  const { endpoint, ingestUrl, verifier, hasVerifyToken } = data;
+  const { credentialLabel, getHandshake } = describeVerifier(data);
   const metadataJson =
     endpoint.metadata != null && Object.keys(endpoint.metadata as object).length > 0
       ? JSON.stringify(endpoint.metadata, null, 2)
       : null;
 
-  // Asymmetric endpoints store the provider's PUBLIC KEY, not a shared signing secret.
-  const scheme = verifier && verifier.kind !== "bundle" ? verifier.config.scheme : undefined;
-  const credentialNoun = scheme === "asymmetric" ? "public key" : "signing secret";
-  const credentialLabel = scheme === "asymmetric" ? "Public key" : "Signing secret";
-
-  // Generate-and-reveal makes sense when the integrator chooses the secret (and it's an HMAC
-  // shared secret, not a provider public key). "provider" endpoints only paste.
-  const canGenerate =
-    scheme !== "asymmetric" &&
-    (endpoint.secretProvisioning === "integrator" || endpoint.secretProvisioning === "either");
-  const getHandshake =
-    verifier && verifier.kind !== "bundle" ? (verifier.getHandshake ?? undefined) : undefined;
-  const secretCapture =
-    verifier && verifier.kind !== "bundle" ? (verifier.secretCapture ?? undefined) : undefined;
-
   return (
-    <div className="grid h-full grid-rows-[auto_1fr] overflow-hidden bg-background-bright">
-      <div className="flex items-center gap-2 border-b border-grid-dimmed py-2 pl-3 pr-2">
-        <Header2 className="flex min-w-0 flex-1 items-center gap-1.5">
-          <WebhookIcon className="size-4.5 shrink-0 text-webhooks" />
-          <span className="truncate font-mono">{endpoint.declaredId}</span>
-        </Header2>
-        <EndpointStatusBadge status={endpoint.status} />
-      </div>
-      <div className="space-y-5 overflow-y-auto px-3 py-3 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600">
-        {/* Connect: the important new bit. Everything an integrator needs to point a provider here. */}
-        <section className="space-y-2">
-          <div className="flex items-center justify-between gap-2">
-            <Header3>Connect</Header3>
-            <CopySetupPromptButton
-              endpointFriendlyId={endpoint.friendlyId}
-              source={endpoint.source}
-            />
-          </div>
-          <Property.Table>
-            <Property.Item>
-              <Property.Label>Webhook URL</Property.Label>
-              <Property.Value>
-                <CopyableText value={ingestUrl} className="font-mono text-xs" truncate />
-              </Property.Value>
-            </Property.Item>
-            <Property.Item>
-              <Property.Label>{credentialLabel}</Property.Label>
-              <Property.Value>
-                <div className="flex flex-col items-start gap-1.5">
-                  {endpoint.hasSigningSecret ? (
-                    <span className="flex items-center gap-1.5">
-                      <span className="size-2 rounded-full bg-success" />
-                      <span>Ready</span>
-                    </span>
-                  ) : secretCapture ? (
-                    <span className="flex items-center gap-1.5 text-warning">
-                      <span className="size-2 rounded-full bg-warning" />
-                      <span>Waiting for the provider's verification request</span>
-                    </span>
-                  ) : (
-                    <span className="flex items-center gap-1.5 text-warning">
-                      <span className="size-2 rounded-full bg-warning" />
-                      <span>Needs {credentialNoun}, all deliveries are rejected</span>
-                    </span>
-                  )}
-                  {secretCapture && !endpoint.hasSigningSecret ? (
-                    <Hint>
-                      The provider sends its signing secret to this URL when you create the
-                      subscription. It's stored automatically and shown here so you can paste it
-                      back into the provider.
-                    </Hint>
-                  ) : null}
-                  {capturedSecret ? <CapturedSecret secret={capturedSecret.secret} /> : null}
-                  <div className="flex flex-wrap items-center gap-2">
-                    {canGenerate ? (
-                      <GenerateSecretDialog
-                        hasSigningSecret={endpoint.hasSigningSecret}
-                        disabledReason={disabledReason}
-                      />
-                    ) : null}
-                    <SetSecretDialog
-                      hasSigningSecret={endpoint.hasSigningSecret}
-                      credentialNoun={credentialNoun}
-                      variant={canGenerate ? "tertiary/small" : "secondary/small"}
-                      disabledReason={disabledReason}
-                    />
-                    {endpoint.hasSigningSecret ? (
-                      <ClearSecretDialog
-                        credentialNoun={credentialNoun}
-                        capturesSecret={secretCapture !== undefined}
-                        disabledReason={disabledReason}
-                      />
-                    ) : null}
-                  </div>
-                </div>
-              </Property.Value>
-            </Property.Item>
-            {getHandshake ? (
-              <Property.Item>
-                <Property.Label>Verify token</Property.Label>
-                <Property.Value>
-                  <div className="flex flex-col items-start gap-1.5">
-                    {hasVerifyToken ? (
-                      <span className="flex items-center gap-1.5">
-                        <span className="size-2 rounded-full bg-success" />
-                        <span>Set</span>
-                      </span>
-                    ) : (
-                      <span className="text-warning">
-                        Not set, the provider cannot verify this URL yet
-                      </span>
-                    )}
-                    <GenerateVerifyTokenDialog
-                      hasVerifyToken={hasVerifyToken}
-                      disabledReason={disabledReason}
-                    />
-                    <Hint>
-                      The provider sends a GET with <code>{getHandshake.tokenParam}</code> when you
-                      save the URL; it must carry this token.
-                    </Hint>
-                  </div>
-                </Property.Value>
-              </Property.Item>
-            ) : null}
-          </Property.Table>
-          <ProviderSetup verifier={verifier} source={endpoint.source} />
-        </section>
-
-        <section className="space-y-2">
-          <Header3>Scope</Header3>
-          <Property.Table>
-            <Property.Item>
-              <Property.Label>ID</Property.Label>
-              <Property.Value>
-                <CopyableText value={endpoint.friendlyId} className="font-mono text-sm" />
-              </Property.Value>
-            </Property.Item>
-            <Property.Item>
-              <Property.Label>Source</Property.Label>
-              <Property.Value>
-                <span className="font-mono text-sm">{endpoint.source}</span>
-              </Property.Value>
-            </Property.Item>
-            <Property.Item>
-              <Property.Label>Tenant</Property.Label>
-              <Property.Value>
-                {endpoint.isDefault ? (
-                  <span className="text-text-dimmed">None</span>
-                ) : (
-                  <span className="font-mono text-sm">{endpoint.tenantId}</span>
-                )}
-              </Property.Value>
-            </Property.Item>
-            <Property.Item>
-              <Property.Label>External ref</Property.Label>
-              <Property.Value>
-                {endpoint.externalRef ? (
-                  <span className="font-mono text-sm">{endpoint.externalRef}</span>
-                ) : (
-                  <span className="text-text-dimmed">None</span>
-                )}
-              </Property.Value>
-            </Property.Item>
-            <Property.Item>
-              <Property.Label>Created</Property.Label>
-              <Property.Value>
-                <DateTime date={endpoint.createdAt} />
-              </Property.Value>
-            </Property.Item>
-            <Property.Item>
-              <Property.Label>Updated</Property.Label>
-              <Property.Value>
-                <DateTime date={endpoint.updatedAt} />
-              </Property.Value>
-            </Property.Item>
-          </Property.Table>
-        </section>
-
-        {metadataJson ? (
-          <section className="space-y-2">
-            <Header3>Metadata</Header3>
-            <CodeBlock code={metadataJson} language="json" showLineNumbers={false} maxLines={20} />
-          </section>
+    <PropertyRail>
+      <PropertyGroup title="Details">
+        <PropertyPair>
+          <DetailProperty label="ID">
+            <CopyableText value={endpoint.friendlyId} className="font-mono text-xs" truncate />
+          </DetailProperty>
+          <DetailProperty label="Status">
+            <EndpointStatusBadge status={endpoint.status} />
+          </DetailProperty>
+          <DetailProperty label="Source">
+            <span className="font-mono text-xs">{endpoint.source}</span>
+          </DetailProperty>
+          <DetailProperty label="Tenant">
+            {endpoint.isDefault ? (
+              <span className="text-text-dimmed">None</span>
+            ) : (
+              <span className="font-mono text-xs">{endpoint.tenantId}</span>
+            )}
+          </DetailProperty>
+          <DetailProperty label="External ref">
+            {endpoint.externalRef ? (
+              <span className="font-mono text-xs">{endpoint.externalRef}</span>
+            ) : (
+              <span className="text-text-dimmed">None</span>
+            )}
+          </DetailProperty>
+          <DetailProperty label="Created">
+            <DateTime date={endpoint.createdAt} />
+          </DetailProperty>
+          <DetailProperty label="Updated">
+            <DateTime date={endpoint.updatedAt} />
+          </DetailProperty>
+        </PropertyPair>
+      </PropertyGroup>
+      <PropertyGroup title="Connect">
+        <DetailProperty label="Webhook URL">
+          <CopyableText value={ingestUrl} className="min-w-0 font-mono text-xs" truncate />
+        </DetailProperty>
+        <DetailProperty label={credentialLabel}>
+          <SigningSecretState data={data} />
+        </DetailProperty>
+        {getHandshake ? (
+          <DetailProperty label="Verify token">
+            {hasVerifyToken ? (
+              <StateDot tone="ok">Set</StateDot>
+            ) : (
+              <SimpleTooltip
+                content="The provider can't verify this URL until a verify token is set on the Settings tab."
+                button={<StateDot tone="warn">Not set</StateDot>}
+              />
+            )}
+          </DetailProperty>
         ) : null}
-      </div>
-    </div>
+      </PropertyGroup>
+      {verifier && verifier.kind !== "bundle" ? (
+        <PropertyGroup title="Signature">
+          <SignatureProperties verifier={verifier} />
+        </PropertyGroup>
+      ) : null}
+      {metadataJson ? (
+        <PropertyGroup title="Metadata">
+          <CodeBlock code={metadataJson} language="json" showLineNumbers={false} maxLines={20} />
+        </PropertyGroup>
+      ) : null}
+    </PropertyRail>
+  );
+}
+
+/** How the provider signs, in brief: the scheme and where the signature travels. */
+function SignatureProperties({
+  verifier,
+}: {
+  verifier: Exclude<NonNullable<LoaderData["verifier"]>, { kind: "bundle" }>;
+}) {
+  const presetName = verifier.kind === "preset" ? verifier.preset : null;
+  const config = verifier.config;
+  return (
+    <PropertyPair>
+      <DetailProperty label="Scheme">
+        <span className="font-mono text-xs">
+          {presetName ? `${presetName} (${config.scheme})` : config.scheme}
+        </span>
+      </DetailProperty>
+      {config.scheme === "hmac" || config.scheme === "asymmetric" ? (
+        <>
+          <DetailProperty label="Header">
+            <span className="truncate font-mono text-xs">{config.signatureHeader}</span>
+          </DetailProperty>
+          <DetailProperty label="Algorithm">
+            <span className="font-mono text-xs">
+              {config.algorithm} / {config.encoding}
+            </span>
+          </DetailProperty>
+        </>
+      ) : (
+        <DetailProperty label="Placement">
+          <span className="font-mono text-xs">{config.placement}</span>
+        </DetailProperty>
+      )}
+    </PropertyPair>
   );
 }
 
@@ -783,102 +1023,46 @@ function ProviderSetup({ verifier, source }: { verifier: LoaderData["verifier"];
   const presetName = verifier.kind === "preset" ? verifier.preset : null;
   const config = verifier.config;
 
+  const rows: { label: string; value: string }[] = [
+    { label: "Scheme", value: presetName ? `${presetName} (${config.scheme})` : config.scheme },
+  ];
+  if (config.scheme === "hmac" || config.scheme === "asymmetric") {
+    rows.push({
+      label: "Signature header",
+      value: [
+        config.signatureHeader,
+        ...(config.scheme === "hmac" ? (config.additionalSignatureHeaders ?? []) : []),
+      ].join(", "),
+    });
+    rows.push({ label: "Algorithm", value: `${config.algorithm} / ${config.encoding}` });
+    if (config.timestamp) {
+      rows.push({ label: "Timestamp", value: describeTimestampSource(config.timestamp.source) });
+    }
+    rows.push({
+      label: "Signing string",
+      value: config.signingString === "raw" ? "raw body" : config.signingString.template,
+    });
+    if (config.scheme === "asymmetric") {
+      rows.push({ label: "Public key", value: config.publicKeyEncoding ?? "pem" });
+    }
+  } else if (config.scheme === "shared-secret") {
+    rows.push({ label: "Placement", value: config.placement });
+    if (config.fieldName) rows.push({ label: "Field name", value: config.fieldName });
+  } else {
+    rows.push({ label: "Placement", value: config.placement });
+    rows.push({ label: "Param name", value: config.paramName });
+  }
+
   return (
-    <div className="space-y-2">
-      <Paragraph variant="extra-small" className="uppercase text-text-dimmed">
-        Provider setup
-      </Paragraph>
-      <Property.Table>
-        <Property.Item>
-          <Property.Label>Scheme</Property.Label>
-          <Property.Value>
-            <span className="font-mono text-sm">
-              {presetName ? `${presetName} (${config.scheme})` : config.scheme}
-            </span>
-          </Property.Value>
-        </Property.Item>
-        {config.scheme === "hmac" || config.scheme === "asymmetric" ? (
-          <>
-            <Property.Item>
-              <Property.Label>Signature header</Property.Label>
-              <Property.Value>
-                <span className="font-mono text-sm">
-                  {[
-                    config.signatureHeader,
-                    ...(config.scheme === "hmac" ? (config.additionalSignatureHeaders ?? []) : []),
-                  ].join(", ")}
-                </span>
-              </Property.Value>
-            </Property.Item>
-            <Property.Item>
-              <Property.Label>Algorithm</Property.Label>
-              <Property.Value>
-                <span className="font-mono text-sm">
-                  {config.algorithm} / {config.encoding}
-                </span>
-              </Property.Value>
-            </Property.Item>
-            {config.timestamp ? (
-              <Property.Item>
-                <Property.Label>Timestamp</Property.Label>
-                <Property.Value>
-                  <span className="font-mono text-xs">
-                    {describeTimestampSource(config.timestamp.source)}
-                  </span>
-                </Property.Value>
-              </Property.Item>
-            ) : null}
-            <Property.Item>
-              <Property.Label>Signing string</Property.Label>
-              <Property.Value>
-                <span className="font-mono text-xs">
-                  {config.signingString === "raw" ? "raw body" : config.signingString.template}
-                </span>
-              </Property.Value>
-            </Property.Item>
-            {config.scheme === "asymmetric" ? (
-              <Property.Item>
-                <Property.Label>Public key</Property.Label>
-                <Property.Value>
-                  <span className="font-mono text-sm">{config.publicKeyEncoding ?? "pem"}</span>
-                </Property.Value>
-              </Property.Item>
-            ) : null}
-          </>
-        ) : config.scheme === "shared-secret" ? (
-          <>
-            <Property.Item>
-              <Property.Label>Placement</Property.Label>
-              <Property.Value>
-                <span className="font-mono text-sm">{config.placement}</span>
-              </Property.Value>
-            </Property.Item>
-            {config.fieldName ? (
-              <Property.Item>
-                <Property.Label>Field name</Property.Label>
-                <Property.Value>
-                  <span className="font-mono text-sm">{config.fieldName}</span>
-                </Property.Value>
-              </Property.Item>
-            ) : null}
-          </>
-        ) : (
-          <>
-            <Property.Item>
-              <Property.Label>Placement</Property.Label>
-              <Property.Value>
-                <span className="font-mono text-sm">{config.placement}</span>
-              </Property.Value>
-            </Property.Item>
-            <Property.Item>
-              <Property.Label>Param name</Property.Label>
-              <Property.Value>
-                <span className="font-mono text-sm">{config.paramName}</span>
-              </Property.Value>
-            </Property.Item>
-          </>
-        )}
-      </Property.Table>
+    <div className="flex flex-col gap-2">
+      <dl className="grid grid-cols-[10rem_minmax(0,1fr)] gap-x-4 gap-y-1.5 text-sm">
+        {rows.map((row) => (
+          <div key={row.label} className="contents">
+            <dt className="text-text-dimmed">{row.label}</dt>
+            <dd className="truncate font-mono text-xs leading-5 text-text-bright">{row.value}</dd>
+          </div>
+        ))}
+      </dl>
       <Hint>
         {config.scheme === "asymmetric"
           ? `${source} signs with its private key; set its public key above.`
@@ -1312,89 +1496,5 @@ function GenerateVerifyTokenDialog({
         )}
       </DialogContent>
     </Dialog>
-  );
-}
-
-function TableLoading() {
-  return (
-    <div className="flex h-full items-center justify-center">
-      <Spinner className="size-6" />
-    </div>
-  );
-}
-
-function NewDeliveriesButton({ count, onClick }: { count: number; onClick: () => void }) {
-  return (
-    <span className="flex duration-150 animate-in fade-in-0">
-      <Button
-        variant="secondary/small"
-        className="text-text-bright"
-        onClick={onClick}
-        LeadingIcon={<PulsingDot className="h-2 w-2" />}
-        tooltip="Refresh to see new deliveries"
-        aria-label="New deliveries received. Refresh to see them."
-      >
-        {count >= 100
-          ? "99+ new deliveries"
-          : `${count} new ${count === 1 ? "delivery" : "deliveries"}`}
-      </Button>
-    </span>
-  );
-}
-
-/**
- * The endpoint's deliveries, with live status updates. Deliveries that arrived since load are
- * surfaced to the filter row's button via `onNewDeliveriesCountChange` and `showNewDeliveriesRef`.
- */
-function LiveDeliveriesTable({
-  list,
-  webhookEndpointId,
-  onNewDeliveriesCountChange,
-  showNewDeliveriesRef,
-}: {
-  list: WebhookDeliveriesList;
-  webhookEndpointId: string;
-  onNewDeliveriesCountChange: (count: number) => void;
-  showNewDeliveriesRef: MutableRefObject<() => void>;
-}) {
-  const organization = useOrganization();
-  const project = useProject();
-  const environment = useEnvironment();
-  const navigation = useNavigation();
-  const revalidator = useRevalidator();
-  const [searchParams, setSearchParams] = useSearchParams();
-
-  const { visibleDeliveries, newDeliveriesCount, dismissNewDeliveries } = useDeliveriesLiveReload({
-    deliveries: list.deliveries,
-    isLoading: navigation.state !== "idle",
-    webhookEndpointId,
-    organizationSlug: organization.slug,
-    projectSlug: project.slug,
-    environmentSlug: environment.slug,
-  });
-
-  // Keep the filter row button's action current, mirror the count up, and clear it on unmount (the
-  // table re-suspends on a filter change, or another tab is picked).
-  useEffect(() => {
-    showNewDeliveriesRef.current = () => {
-      dismissNewDeliveries();
-      if (searchParams.has("cursor") || searchParams.has("direction")) {
-        setSearchParams((prev) => {
-          prev.delete("cursor");
-          prev.delete("direction");
-          return prev;
-        });
-        return;
-      }
-      revalidator.revalidate();
-    };
-  }, [dismissNewDeliveries, revalidator, searchParams, setSearchParams, showNewDeliveriesRef]);
-  useEffect(() => {
-    onNewDeliveriesCountChange(newDeliveriesCount);
-  }, [newDeliveriesCount, onNewDeliveriesCountChange]);
-  useEffect(() => () => onNewDeliveriesCountChange(0), [onNewDeliveriesCountChange]);
-
-  return (
-    <DeliveriesTable deliveries={visibleDeliveries} hasFilters={list.hasFilters} stickyHeader />
   );
 }

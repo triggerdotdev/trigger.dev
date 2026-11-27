@@ -243,7 +243,7 @@ export class CliApiClient {
     });
   }
 
-  async whoAmI(projectRef?: string) {
+  async whoAmI(projectRef?: string, signal?: AbortSignal) {
     if (!this.accessToken) {
       throw new Error("whoAmI: No access token");
     }
@@ -254,12 +254,18 @@ export class CliApiClient {
       url.searchParams.append("projectRef", projectRef);
     }
 
-    return wrapZodFetch(WhoAmIResponseSchema, url.href, {
-      headers: {
-        Authorization: `Bearer ${this.accessToken}`,
-        "Content-Type": "application/json",
+    return wrapZodFetch(
+      WhoAmIResponseSchema,
+      url.href,
+      {
+        headers: {
+          Authorization: `Bearer ${this.accessToken}`,
+          "Content-Type": "application/json",
+        },
+        signal,
       },
-    });
+      signal ? { retry: { maxAttempts: 1 } } : undefined
+    );
   }
 
   async retrieveExternals() {

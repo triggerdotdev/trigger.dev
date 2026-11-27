@@ -9,6 +9,23 @@ import { commonWorker } from "~/v3/commonWorker.server";
 import { enqueueAttioMemberSync } from "./attio.server";
 import { logger } from "./logger.server";
 
+const clientErrorMarker = Symbol("deleteOrganizationClientError");
+
+function clientError(message: string) {
+  return Object.assign(new Error(message), { [clientErrorMarker]: true });
+}
+
+export function isDeleteOrganizationClientError(error: unknown): error is Error {
+  return error instanceof Error && clientErrorMarker in error;
+}
+
+const GENERIC_DELETE_MESSAGE =
+  "The organization could not be deleted. Try again, and contact support if it keeps failing.";
+
+export function deleteOrganizationErrorMessage(error: unknown) {
+  return isDeleteOrganizationClientError(error) ? error.message : GENERIC_DELETE_MESSAGE;
+}
+
 export class DeleteOrganizationService {
   #prismaClient: PrismaClient;
 
@@ -36,11 +53,11 @@ export class DeleteOrganizationService {
     });
 
     if (!organization) {
-      throw new Error("Organization not found");
+      throw clientError("Organization not found");
     }
 
     if (organization.deletedAt) {
-      throw new Error("Organization already deleted");
+      throw clientError("Organization already deleted");
     }
 
     await this.#cancelSubscription(organization.id);
@@ -144,7 +161,7 @@ export class DeleteOrganizationService {
       plan = await getCurrentPlanOrThrow(organizationId);
     } catch (error) {
       logger.error("Failed to load plan before deleting organization", { organizationId, error });
-      throw new Error("Couldn't verify billing state, try again");
+      throw clientError("Couldn't verify billing state, try again");
     }
 
     if (!plan) return;
@@ -156,7 +173,7 @@ export class DeleteOrganizationService {
         error,
         result,
       });
-      throw new Error("Couldn't cancel the subscription, try again");
+      throw clientError("Couldn't cancel the subscription, try again");
     }
   }
 }

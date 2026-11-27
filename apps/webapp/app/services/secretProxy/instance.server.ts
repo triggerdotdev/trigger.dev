@@ -7,6 +7,10 @@ import { environmentEncryption } from "../environmentEncryption/instance.server"
 import { internalRunSigningService } from "../oidc/instance.server";
 import { configuredPlaceholderKeyring } from "./placeholder.server";
 import { SecretProxyService } from "./service.server";
+import type { ServiceCaller } from "../workloadIdentity.server";
+
+/** The audience the relay's projected ServiceAccount token is minted for. */
+const RELAY_AUDIENCE = "secret-proxy-resolver.trigger.dev";
 
 const services = new WeakMap<PrismaClientOrTransaction, SecretProxyService>();
 
@@ -29,7 +33,7 @@ function createService(db: PrismaClientOrTransaction) {
       env.SECRET_PROXY_ENABLED,
       env.SECRET_PROXY_PLACEHOLDER_KEYS
     ),
-    serviceToken: env.SECRET_PROXY_SERVICE_TOKEN,
+    caller: relayCaller(),
     issuer: env.RUN_TOKEN_ISSUER_URL,
     publicJwks: () => internalRunSigningService.getPublicJwks(),
     findRun: (id, runtimeEnvironmentId, projectId) =>
@@ -48,4 +52,20 @@ function createService(db: PrismaClientOrTransaction) {
         }
       ),
   });
+}
+
+function relayCaller(): ServiceCaller | undefined {
+  if (env.WORKLOAD_IDENTITY_ISSUERS.length > 0) {
+    return {
+      kind: "workload",
+      policy: {
+        issuers: env.WORKLOAD_IDENTITY_ISSUERS,
+        audience: RELAY_AUDIENCE,
+        subject: env.SECRET_PROXY_RELAY_SUBJECT,
+      },
+    };
+  }
+  if (env.SECRET_PROXY_SERVICE_TOKEN) {
+    return { kind: "sharedToken", token: env.SECRET_PROXY_SERVICE_TOKEN };
+  }
 }

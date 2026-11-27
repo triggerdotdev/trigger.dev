@@ -1,6 +1,11 @@
 import { describe, expect, it, vi } from "vitest";
-import { batchIdForMintKind, resolveBatchMintKind } from "./mintBatchFriendlyId.server";
+import {
+  batchIdForMintKind,
+  mintBatchFriendlyId,
+  resolveBatchMintKind,
+} from "./mintBatchFriendlyId.server";
 import { classifyKind } from "@trigger.dev/core/v3/isomorphic";
+import { MEMORYDB_SHARD_KEY } from "@internal/run-store";
 
 describe("batchIdForMintKind (pure)", () => {
   it("'runOpsId' kind -> 26-char classifiable NEW batch id (no 21-char ids)", () => {
@@ -17,6 +22,13 @@ describe("batchIdForMintKind (pure)", () => {
     expect(r.id[24]).toBe("a");
     expect(r.id[25]).toBe("2");
     expect(classifyKind(r.id)).toBe("runOpsId");
+  });
+
+  // Catches: the MemoryDB key minting a batch id of a shape other than a generation 3 run id.
+  it("the MemoryDB key mints a generation 3 batch id", () => {
+    const r = batchIdForMintKind({ kind: "runOpsId", shardChar: MEMORYDB_SHARD_KEY });
+    expect(r.id).toMatch(/^[a-z0-9]{24}m2$/);
+    expect(r.friendlyId).toBe(`batch_${r.id}`);
   });
 
   it("cuid -> 25-char classifiable LEGACY batch id", () => {
@@ -146,5 +158,26 @@ describe("resolveBatchMintKind", () => {
       },
     });
     expect(target).toEqual({ kind: "runOpsId", shardChar: "a" });
+  });
+});
+
+describe("mintBatchFriendlyId", () => {
+  // Catches: a composed batch mint that stops inheriting a gen-2 parent's shard or asks the org setting.
+  it("mints a batch id on a gen-2 parent's shard without asking either resolver", async () => {
+    const resolveRunIdMintKind = vi.fn();
+    const resolveMintShard = vi.fn();
+    for (const shard of ["a", "c"]) {
+      const minted = await mintBatchFriendlyId({
+        environment: { organizationId: "org_1", id: "env_1", orgFeatureFlags: {} },
+        parentRunFriendlyId: `run_${"a".repeat(24)}${shard}2`,
+        deps: { resolveRunIdMintKind, resolveMintShard },
+      });
+
+      expect(minted.id[24]).toBe(shard);
+      expect(minted.id[25]).toBe("2");
+      expect(minted.friendlyId.startsWith("batch_")).toBe(true);
+    }
+    expect(resolveRunIdMintKind).not.toHaveBeenCalled();
+    expect(resolveMintShard).not.toHaveBeenCalled();
   });
 });

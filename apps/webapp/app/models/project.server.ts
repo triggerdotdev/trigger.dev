@@ -153,6 +153,15 @@ export async function createProject(
   return project;
 }
 
+/** The project's organization id, for resource routes that only have the project id. */
+export async function resolveOrgIdFromProjectId(projectId: string): Promise<string | null> {
+  const project = await $replica.project.findFirst({
+    where: { id: projectId },
+    select: { organizationId: true },
+  });
+  return project?.organizationId ?? null;
+}
+
 export async function findProjectBySlug(
   orgSlug: string,
   projectSlug: string,

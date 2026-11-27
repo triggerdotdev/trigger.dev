@@ -41,6 +41,7 @@ import { LegacyPostgresWaitpointCoordinator } from "../waitpointCoordinator/lega
 import {
   batchPositionOwner,
   StoreWaitpointBlockRefusedError,
+  isStandaloneStoreWaitpoint,
   waitpointFromStoredRecord,
 } from "../waitpointCoordinator/storeWaitpointCoordinator.js";
 import type { WaitpointStoreCoordinator } from "../waitpointCoordinator/storeCoordinator.js";
@@ -122,8 +123,10 @@ export type WaitpointSystemOptions = {
         | "acknowledgeIdempotencyCandidate"
         | "retirePendingSource"
         | "readRelatedRunIds"
+        | "readRelatedRunIdsSnapshot"
         | "manualCatalog"
         | "retireManualCatalog"
+        | "releaseRemovedIdempotencyKey"
         | "isAwaited"
       >
     >;
@@ -218,8 +221,10 @@ export class WaitpointSystem {
         | "acknowledgeIdempotencyCandidate"
         | "retirePendingSource"
         | "readRelatedRunIds"
+        | "readRelatedRunIdsSnapshot"
         | "manualCatalog"
         | "retireManualCatalog"
+        | "releaseRemovedIdempotencyKey"
         | "isAwaited"
       >
     >;
@@ -751,14 +756,16 @@ export class WaitpointSystem {
 
   public async listStoreManualWaitpoints(
     params: ManualWaitpointCatalogListInput
-  ): Promise<Waitpoint[]> {
+  ): Promise<{ waitpoints: Waitpoint[]; continueCursor?: string }> {
     if (!this.#storeWired || !(await this.isWaitpointStoreEnabled(params.organizationId)))
-      return [];
-    if (params.id && classifyWaitpointCoordinator(params.id) !== "store") return [];
+      return { waitpoints: [] };
+    if (params.id && classifyWaitpointCoordinator(params.id) !== "store") return { waitpoints: [] };
     if (!this.#waitpointStore?.manualCatalog) throw new Error("MANUAL catalog is not wired");
-    return (await this.#waitpointStore.manualCatalog.list(params)).map((stored) =>
-      waitpointFromStoredRecord(stored.record.id, stored)
-    );
+    const { records, continueCursor } = await this.#waitpointStore.manualCatalog.list(params);
+    return {
+      waitpoints: records.map((stored) => waitpointFromStoredRecord(stored.record.id, stored)),
+      continueCursor,
+    };
   }
 
   /** Native DATETIME, MANUAL and BATCH producers serialize with final delivery acknowledgement. */
@@ -956,6 +963,27 @@ export class WaitpointSystem {
         : generateRunOpsIdV2(shard);
   }
 
+  /** Only on the unavailable-winner path: a native MANUAL id whose catalogue manifest is standalone. */
+  async #isRemovedStandaloneToken(
+    waitpointId: string,
+    params: { organizationId?: string }
+  ): Promise<boolean> {
+    const parsed = parseWaitpointId(waitpointId);
+    if (
+      parsed.format !== "b32hexW" ||
+      parsed.type !== "MANUAL" ||
+      !params.organizationId ||
+      !this.#waitpointStore?.manualCatalog ||
+      !this.#waitpointStore.releaseRemovedIdempotencyKey
+    )
+      return false;
+    const manifest = await this.#waitpointStore.manualCatalog.getManifest(
+      params.organizationId,
+      waitpointId
+    );
+    return manifest?.standalone === true;
+  }
+
   /** One claim seam for enabled native token and PG creators sharing the existing raw key. */
   async #createUnderKeyClaim(
     params: {
@@ -967,6 +995,7 @@ export class WaitpointSystem {
       enabled: boolean;
       standaloneResidency?: "NEW" | "LEGACY";
       standaloneShardKey?: ShardKey;
+      standaloneStoreEligible?: boolean;
     },
     create: (
       keyedCreation?: CreateDateTimeWaitpointParams["keyedCreation"],
@@ -998,6 +1027,11 @@ export class WaitpointSystem {
         (!cached.idempotencyKeyExpiresAt || cached.idempotencyKeyExpiresAt.getTime() >= Date.now())
       )
         return { kind: "cached", waitpoint: cached };
+      // The same lookup in MemoryDB: a live reservation under another placement's namespace.
+      if (params.standaloneStoreEligible) {
+        const waitpoint = await this.#readKeyUnderOtherPlacements(params, key, owner);
+        if (waitpoint) return { kind: "cached", waitpoint };
+      }
     }
     await lowLevel.prepareForKeyedCreation?.();
     // Prearm candidate recovery before taking the PG mutex. Even a cached PG winner can
@@ -1029,12 +1063,13 @@ export class WaitpointSystem {
               legacy.idempotencyKeyExpiresAt.getTime() >= Date.now())
           )
             return { kind: "cached", waitpoint: legacy };
-          const claim = await beginClaim({
+          const claimArgs = {
             environmentId: keyedCreation.scope,
             idempotencyKey: key,
             token: keyedCreation.claimToken,
             acceptUntil: keyedCreation.acceptUntil,
-          });
+          };
+          let claim = await beginClaim(claimArgs);
           // Prove the PG mutex still belongs to this exact transaction before any store
           // publication or expiry retirement. A delayed BEGIN never authorizes a dead tx.
           await tx.$queryRaw`SELECT 1`;
@@ -1050,12 +1085,31 @@ export class WaitpointSystem {
               tx
             );
           }
-          if (claim.winnerId) {
-            const waitpoint = await this.#readStoreDateTimeWaitpoint({
-              waitpointId: claim.winnerId,
+          const readWinner = (waitpointId: string) =>
+            this.#readStoreDateTimeWaitpoint({
+              waitpointId,
               environmentId: params.environmentId,
               projectId: params.projectId,
             });
+          if (claim.winnerId) {
+            let waitpoint = await readWinner(claim.winnerId);
+            // A removed standalone token's reservation can outlive its record until its
+            // retirement job. Its manifest's marker frees the key, whatever the flags are now.
+            // The job may also release the key and delete the manifest while this runs, so a
+            // missing MANUAL winner is always claimed once more.
+            const winner = parseWaitpointId(claim.winnerId);
+            if (!waitpoint && winner.format === "b32hexW" && winner.type === "MANUAL") {
+              if (await this.#isRemovedStandaloneToken(claim.winnerId, params))
+                await lowLevel.releaseRemovedIdempotencyKey!(
+                  keyedCreation.scope,
+                  key,
+                  claim.winnerId
+                );
+              claim = await beginClaim(claimArgs);
+              await tx.$queryRaw`SELECT 1`;
+              if (!claim.winnerId) return create(keyedCreation, { store, tx });
+              waitpoint = await readWinner(claim.winnerId);
+            }
             if (!waitpoint) throw new Error("Keyed DATETIME reservation winner is unavailable");
             return { kind: "cached", waitpoint };
           }
@@ -1072,6 +1126,7 @@ export class WaitpointSystem {
     idempotencyKey: string;
     standaloneResidency?: "NEW" | "LEGACY";
     standaloneShardKey?: ShardKey;
+    standaloneStoreEligible?: boolean;
   }): Promise<Waitpoint | null> {
     if (
       !this.#storeWired ||
@@ -1080,9 +1135,38 @@ export class WaitpointSystem {
       !(await this.isWaitpointStoreEnabled(params.organizationId))
     )
       return null;
-    const scope = `${params.environmentId}:${this.$.runStore.getWaitpointKeyScope(this.#keyClaimOwner(params))}`;
+    const owner = this.#keyClaimOwner(params);
+    const scope = `${params.environmentId}:${this.$.runStore.getWaitpointKeyScope(owner)}`;
     const id = await this.#waitpointStore.readIdempotencyKey(scope, params.idempotencyKey);
-    return id ? this.readExistingStoreDateTimeWaitpoint({ ...params, waitpointId: id }) : null;
+    const waitpoint = id
+      ? await this.readExistingStoreDateTimeWaitpoint({ ...params, waitpointId: id })
+      : null;
+    if (waitpoint || !params.standaloneStoreEligible) return waitpoint;
+    return this.#readKeyUnderOtherPlacements(params, params.idempotencyKey, owner);
+  }
+
+  /** A live MemoryDB reservation for the key under another placement's namespace. */
+  async #readKeyUnderOtherPlacements(
+    params: { environmentId: string; projectId: string },
+    key: string,
+    owner: string
+  ): Promise<Waitpoint | null> {
+    const lowLevel = this.#waitpointStore;
+    if (!lowLevel?.readIdempotencyKey) return null;
+    const own = this.$.runStore.getWaitpointKeyScope(owner);
+    for (const scope of this.$.runStore.getWaitpointKeyScopes()) {
+      if (scope === own) continue;
+      const id = await lowLevel.readIdempotencyKey(`${params.environmentId}:${scope}`, key);
+      const waitpoint = id
+        ? await this.#readStoreDateTimeWaitpoint({
+            waitpointId: id,
+            environmentId: params.environmentId,
+            projectId: params.projectId,
+          })
+        : null;
+      if (waitpoint) return waitpoint;
+    }
+    return null;
   }
 
   /** The run's current block edges from both stores, as continuation reads them. */
@@ -1101,7 +1185,27 @@ export class WaitpointSystem {
     const source = await this.readExistingStoreDateTimeWaitpoint(params);
     if (!source) return { runIds: [] };
     return (
-      this.#waitpointStore?.readRelatedRunIds?.(params.waitpointId, params.cursor) ?? { runIds: [] }
+      this.#waitpointStore?.readRelatedRunIds?.(
+        params.waitpointId,
+        params.cursor,
+        isStandaloneStoreWaitpoint(source)
+      ) ?? { runIds: [] }
+    );
+  }
+
+  /** Up to `limit` of a native token's history run ids, read in one command. */
+  public async readStoreWaitpointRelatedRunIdsSnapshot(params: {
+    waitpointId: string;
+    environmentId: string;
+    projectId: string;
+    organizationId?: string;
+    limit: number;
+  }): Promise<string[]> {
+    const source = await this.readExistingStoreDateTimeWaitpoint(params);
+    if (!source) return [];
+    return (
+      (await this.#waitpointStore?.readRelatedRunIdsSnapshot?.(params.waitpointId, params.limit)) ??
+      []
     );
   }
 
@@ -1343,6 +1447,7 @@ export class WaitpointSystem {
     tags,
     standaloneResidency,
     standaloneShardKey,
+    standaloneStoreEligible,
   }: {
     runId?: string;
     environmentId: string;
@@ -1356,6 +1461,9 @@ export class WaitpointSystem {
     // to LEGACY by its cuid id shape. Ignored when `runId` is set.
     standaloneResidency?: "NEW" | "LEGACY";
     standaloneShardKey?: ShardKey;
+    // Standalone token only (no `runId`): eligible for the waitpoint store when the flag is on.
+    // Ignored when `runId` is set. The caller sets it from the organization's standalone tokens flag.
+    standaloneStoreEligible?: boolean;
   }): Promise<{ waitpoint: Waitpoint; isCached: boolean }> {
     const enabled = !!(
       this.#storeWired &&
@@ -1377,7 +1485,7 @@ export class WaitpointSystem {
       });
     } else {
       const mintContext =
-        runId && organizationId
+        (runId || standaloneStoreEligible) && organizationId
           ? { organizationId, eligibleTypes: new Set(["MANUAL"] as const) }
           : undefined;
       const creationCoordinator =
@@ -1416,7 +1524,12 @@ export class WaitpointSystem {
                 }
               : {}),
           },
-          availableAt: timeout ?? new Date(keyedCreation?.acceptUntil ?? creationAcceptUntil!),
+          // A standalone keyed job runs by the window end at the latest, so an interrupted
+          // creation clears early; a pending token then gets the same job id at its timeout.
+          availableAt:
+            keyedCreation && !runId
+              ? new Date(Math.min(timeout?.getTime() ?? Infinity, keyedCreation.acceptUntil))
+              : (timeout ?? new Date(keyedCreation?.acceptUntil ?? creationAcceptUntil!)),
         });
       };
       result = await this.#createUnderKeyClaim(
@@ -1429,6 +1542,7 @@ export class WaitpointSystem {
           enabled,
           standaloneResidency,
           standaloneShardKey,
+          standaloneStoreEligible,
         },
         async (keyedCreation, keyClaim) =>
           (creationCoordinator === this.legacyCoordinator && keyClaim
@@ -2388,6 +2502,7 @@ export class WaitpointSystem {
             })),
             resolveCompletedWaitpointRecords,
             checkpoint: snapshot.checkpoint,
+            checkpointStore: snapshot.checkpointStore,
           });
 
           this.$.logger.debug(`continueRunIfUnblocked: run goes to QUEUED`, {
@@ -2803,7 +2918,12 @@ export class WaitpointSystem {
         } else await acknowledge();
       };
       const manual = payload.manual ? await this.#readStoreDateTimeWaitpoint(payload) : undefined;
-      if (manual && !manual.completedAfter) {
+      // Only a standalone token's job can run before its timeout; a run-bound one runs at it.
+      if (
+        manual &&
+        (!manual.completedAfter ||
+          (isStandaloneStoreWaitpoint(manual) && Date.now() < manual.completedAfter.getTime()))
+      ) {
         // Allocation may finish independently of an untimed token. Fence every foreground
         // publication first, then serialize receipt retirement with completion/final fanout ACK.
         if (Date.now() <= candidate.acceptUntil)
@@ -2811,6 +2931,24 @@ export class WaitpointSystem {
         await this.withWaitpointCompletionLock(payload.waitpointId, async () => {
           if (!(await this.isWaitpointStoreEnabled(payload.organizationId))) return;
           await recover(true);
+          // Settled before its timeout: the same job id, now unkeyed, times the token out on time.
+          // Only a standalone token gets here before its timeout; a run-bound one reads nothing more.
+          const settled = isStandaloneStoreWaitpoint(manual)
+            ? await this.#readStoreDateTimeWaitpoint(payload)
+            : undefined;
+          if (settled?.status === "PENDING" && settled.completedAfter) {
+            const { keyedCreation: _, ...unkeyed } = payload;
+            await this.$.worker.enqueue({
+              id: `recoverDateTimeWaitpoint:${payload.waitpointId}`,
+              job: "recoverDateTimeWaitpoint",
+              payload: {
+                ...unkeyed,
+                completedAfter: settled.completedAfter,
+                creationAcceptUntil: candidate.acceptUntil,
+              },
+              availableAt: settled.completedAfter,
+            });
+          }
         });
       } else await recover();
       return;

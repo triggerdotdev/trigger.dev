@@ -8,6 +8,8 @@ export default {
     ".": {
       entry: [
         "scripts/**/*.{js,mjs,cjs,ts,mts,cts}",
+        // Browser helpers a skill loads into a page, not imported.
+        ".claude/skills/**/*.js",
         "docker/scripts/distrust-cas.cjs",
         "vitest.internal.config.ts",
         "vitest.internal-reports.config.mjs",
@@ -16,6 +18,19 @@ export default {
       lefthook: { config: ["lefthook.yml"] },
       ignoreDependencies: process.env.CI ? ["eslint"] : ["eslint", "lefthook"],
       ignoreBinaries: ["infisical", "prisma"],
+    },
+    "apps/docs": {
+      entry: [
+        // MDX imports these by name: the provider through providerImportSource, the rest as globals.
+        "components/mdx.tsx",
+        "components/mintlify.tsx",
+        // Read by path by the <SdkType> table generator.
+        "lib/sdk-types/index.ts",
+        // Run by path from scripts/check.mjs and the deploy workflows.
+        "scripts/check-*.mjs",
+      ],
+      // Resolved by path for Twoslash hovers.
+      ignoreDependencies: ["@trigger.dev/build", "@trigger.dev/react-hooks"],
     },
     "apps/supervisor": {
       entry: ["vitest.*.config.ts"],
@@ -68,7 +83,8 @@ export default {
     },
     "packages/build": {
       ignoreFiles: ["src/**/*-cjs.cts"],
-      ignoreDependencies: ["@typescript/typescript6"],
+      // loadTypescript.test.ts resolves the compiler aliases dynamically.
+      ignoreDependencies: ["@typescript/typescript6", "typescript5", "typescript7"],
     },
     "packages/cli-v3": {
       entry: [
@@ -104,7 +120,8 @@ export default {
     },
     docs: {
       entry: ["snippets/**/*.jsx"],
-      ignoreFiles: ["style.css"],
+      // Pages are content the docs app loads, not modules; their code samples aren't this repo's imports.
+      ignoreFiles: ["style.css", "**/*.mdx"],
     },
   },
 } satisfies KnipConfig;

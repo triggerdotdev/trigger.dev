@@ -1,4 +1,5 @@
 import type { NextFunction, Request, Response } from "express";
+import { organizationContext } from "@internal/run-store";
 import { tenantContext, type TenantContext } from "./tenantContext.server";
 
 const URL_PATTERN = /^\/orgs\/([^/]+)(?:\/projects\/([^/]+)(?:\/env\/([^/]+))?)?/;
@@ -35,7 +36,7 @@ export function createTenantContextMiddleware(resolver: PathResolver) {
   // slugs. Authenticated loaders (e.g. the `_app` layout) then enrich the
   // same scope with `userId`, so non-tenant pages still get user attribution.
   return function tenantContextMiddleware(req: Request, res: Response, next: NextFunction) {
-    tenantContext.run(resolver(req.path), () => next());
+    organizationContext.run({}, () => tenantContext.run(resolver(req.path), () => next()));
   };
 }
 

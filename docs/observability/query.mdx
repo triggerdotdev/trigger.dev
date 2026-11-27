@@ -42,7 +42,7 @@ The `metrics` table also records how the API rate limiter treated requests made 
 - `api.rate_limit.limit.per_second` (`gauge`): the sustained rate your limit refills at, in requests per second
 - `api.rate_limit.limit.burst` (`gauge`): the most requests the limit admits at once
 
-These rows have no run, task, or machine attributes (`run_id`, `task_identifier`, `machine_id` and so on are empty). Sum the counters over time, take `min()` of `api.rate_limit.remaining_min` and `max()` of the limit gauges. Total attempts in a bucket are `allowed + denied`. To draw the sustained limit for a bucket, multiply `api.rate_limit.limit.per_second` by that bucket's width in seconds; `timeBucket()` picks its width from the query's time range, so use a fixed `toStartOfMinute(bucket_start)` grouping when you want a known width (recording buckets never straddle a minute, so this grouping never splits a bucket; the example assumes a bucket width of at most one minute, which includes the default 10 seconds, and with a wider width you would group by that width and multiply by it instead). The limit gauges only exist in buckets that saw requests, and they follow any change to your limit, so a chart stays correct after an increase. Requests from preview branches share the parent preview environment's rate limit bucket and are recorded against that environment, so query at project scope to see them. Self-hosted instances enable recording with `API_RATE_LIMIT_METRICS_ENABLED=1`, or `allowlist` to record only organizations with the `apiRateLimitMetricsEnabled` feature flag.
+These rows have no run, task, or machine attributes (`run_id`, `task_identifier`, `machine_id` and so on are empty). Sum the counters over time, take `min()` of `api.rate_limit.remaining_min` and `max()` of the limit gauges. Total attempts in a bucket are `allowed + denied`. To draw the sustained limit for a bucket, multiply `api.rate_limit.limit.per_second` by that bucket's width in seconds; `timeBucket()` picks its width from the query's time range, so use a fixed `toStartOfMinute(bucket_start)` grouping when you want a known width (recording buckets never straddle a minute, so this grouping never splits a bucket; the example assumes a bucket width of at most one minute, which includes the default 10 seconds, and with a wider width you would group by that width and multiply by it instead). The limit gauges only exist in buckets that saw requests, and they follow any change to your limit, so a chart stays correct after an increase. Requests from preview branches share the parent preview environment's rate limit bucket and are recorded against that environment, so query them from the dashboard's Query page at project scope. Self-hosted instances enable recording with `API_RATE_LIMIT_METRICS_ENABLED=1`, or `allowlist` to record only organizations with the `apiRateLimitMetricsEnabled` feature flag.
 
 ```sql
 SELECT
@@ -150,8 +150,8 @@ typedResult.results.forEach((row) => {
 import { query } from "@trigger.dev/sdk";
 
 const result = await query.execute("SELECT COUNT(*) as count FROM runs", {
-  // Scope: "environment" (default), "project", or "organization"
-  scope: "project",
+  // Scope: "environment" (default). With an API key every scope reads the key's environment.
+  scope: "environment",
   // Time period using shorthand (e.g., "7d", "30d", "1h")
   period: "7d",
   // Or use explicit time range
@@ -464,18 +464,9 @@ LIMIT 100
 
 ## Query scopes
 
-Control what data your query can access:
+With an API key (the SDK or the REST API), a query reads the key's own environment. The default `scope` is `environment`, and that is what a `project` or `organization` scope runs at too.
 
-- **`environment`** (default) - Query runs in the current environment only
-- **`project`** - Query runs across all environments in the project
-- **`organization`** - Query runs across all projects in the organization
-
-```typescript
-// Query across all environments in a project
-const result = await query.execute("SELECT environment, count() FROM runs GROUP BY environment", {
-  scope: "project",
-});
-```
+To query across all environments in a project, or across all projects in the organization, use the **Query** page in the dashboard and pick the scope there.
 
 ## Time ranges
 

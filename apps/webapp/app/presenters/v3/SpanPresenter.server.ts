@@ -30,8 +30,10 @@ import {
   extractAIToolCallData,
 } from "~/components/runs/v3/ai";
 import { RUNNING_STATUSES } from "~/components/runs/v3/TaskRunStatus";
+import { findRunHandovers } from "./runHandovers.server";
 import { baseWorkerQueue } from "~/runEngine/concerns/workerQueueSplit.server";
 import { logger } from "~/services/logger.server";
+import { organizationContext } from "~/services/organizationContext.server";
 import { safeJsonParse } from "~/utils/json";
 import { rehydrateAttribute } from "~/v3/eventRepository/eventRepository.server";
 import type { IEventRepository } from "~/v3/eventRepository/eventRepository.types";
@@ -207,56 +209,60 @@ export class SpanPresenter extends BasePresenter {
       return { type: "run" as const, run: synth };
     }
 
-    const { traceId } = parentRun;
+    // The span panel is its own resource request with an empty organisation context; the reads
+    // below by spanId and parentSpanId carry no run id, so they need the environment to reach MemoryDB.
+    return organizationContext.withEnvironment(parentRun.runtimeEnvironmentId, async () => {
+      const { traceId } = parentRun;
 
-    const repository = await getEventRepositoryForStore(
-      parentRun.taskEventStore,
-      project.organizationId
-    );
+      const repository = await getEventRepositoryForStore(
+        parentRun.taskEventStore,
+        project.organizationId
+      );
 
-    const eventStore = getTaskEventStoreTableForRun(parentRun);
+      const eventStore = getTaskEventStoreTableForRun(parentRun);
 
-    const run = await this.getRun({
-      eventStore,
-      traceId,
-      eventRepository: repository,
-      spanId,
-      linkedRunId,
-      createdAt: parentRun.createdAt,
-      completedAt: parentRun.completedAt,
-      environmentId: parentRun.runtimeEnvironmentId,
-    });
-    if (run) {
+      const run = await this.getRun({
+        eventStore,
+        traceId,
+        eventRepository: repository,
+        spanId,
+        linkedRunId,
+        createdAt: parentRun.createdAt,
+        completedAt: parentRun.completedAt,
+        environmentId: parentRun.runtimeEnvironmentId,
+      });
+      if (run) {
+        return {
+          type: "run" as const,
+          run,
+        };
+      }
+
+      const span = await this.#getSpan({
+        eventStore,
+        spanId,
+        traceId,
+        environmentId: parentRun.runtimeEnvironmentId,
+        projectId: parentRun.projectId,
+        createdAt: parentRun.createdAt,
+        endCreatedAt: getTraceStartTimeEnd(parentRun),
+        insertedAtEnd: getTraceInsertedAtEnd(parentRun),
+        eventRepository: repository,
+        organizationId: project.organizationId,
+        showDebug,
+        rootRunId: traceRootRunId(parentRun),
+        userId,
+      });
+
+      if (!span) {
+        throw new Error("Span not found");
+      }
+
       return {
-        type: "run" as const,
-        run,
+        type: "span" as const,
+        span,
       };
-    }
-
-    const span = await this.#getSpan({
-      eventStore,
-      spanId,
-      traceId,
-      environmentId: parentRun.runtimeEnvironmentId,
-      projectId: parentRun.projectId,
-      createdAt: parentRun.createdAt,
-      endCreatedAt: getTraceStartTimeEnd(parentRun),
-      insertedAtEnd: getTraceInsertedAtEnd(parentRun),
-      eventRepository: repository,
-      organizationId: project.organizationId,
-      showDebug,
-      rootRunId: traceRootRunId(parentRun),
-      userId,
     });
-
-    if (!span) {
-      throw new Error("Span not found");
-    }
-
-    return {
-      type: "span" as const,
-      span,
-    };
   }
 
   async getRun({
@@ -387,8 +393,11 @@ export class SpanPresenter extends BasePresenter {
       ? await this._replica.sessionRun.findFirst({
           where: { runId: run.id },
           select: {
+            id: true,
+            sessionId: true,
             reason: true,
             triggeredAt: true,
+            handover: true,
             session: {
               select: {
                 friendlyId: true,
@@ -418,6 +427,10 @@ export class SpanPresenter extends BasePresenter {
                 : ("ACTIVE" as const),
           reason: sessionRun.reason,
           triggeredAt: sessionRun.triggeredAt,
+          ...(await findRunHandovers(this._replica, sessionRun, {
+            friendlyId: run.friendlyId,
+            version: lockedWorker?.lockedToVersion?.version ?? null,
+          })),
         }
       : undefined;
 
@@ -431,6 +444,7 @@ export class SpanPresenter extends BasePresenter {
       executedAt: run.executedAt,
       updatedAt: run.updatedAt,
       delayUntil: run.delayUntil,
+      queuedAt: run.queuedAt,
       expiredAt: run.expiredAt,
       completedAt: run.completedAt,
       logsDeletedAt: run.logsDeletedAt,
@@ -448,7 +462,12 @@ export class SpanPresenter extends BasePresenter {
       idempotencyKeyExpiresAt: run.idempotencyKeyExpiresAt,
       idempotencyKeyScope: extractIdempotencyKeyScope(run),
       idempotencyKeyStatus: this.getIdempotencyKeyStatus(run),
-      debounce: run.debounce as { key: string; delay: string; createdAt: Date } | null,
+      debounce: run.debounce as {
+        key: string;
+        delay: string;
+        maxDelay?: string;
+        createdAt: Date;
+      } | null,
       schedule: await this.resolveSchedule(run.scheduleId ?? undefined),
       webhook: await this.resolveWebhook(run.annotations, environment.id),
       queue: {
@@ -456,6 +475,8 @@ export class SpanPresenter extends BasePresenter {
         isCustomQueue: !run.queue.startsWith("task/"),
         concurrencyKey: run.concurrencyKey,
       },
+      /** The named concurrency limits the run also holds; read for the not-started card. */
+      gates: run.gates,
       tags: run.runTags,
       baseCostInCents: run.baseCostInCents,
       costInCents: run.costInCents,
@@ -649,6 +670,7 @@ export class SpanPresenter extends BasePresenter {
           //queue
           queue: true,
           concurrencyKey: true,
+          gates: true,
           //schedule
           scheduleId: true,
           //usage

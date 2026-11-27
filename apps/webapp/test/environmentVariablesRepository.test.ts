@@ -441,6 +441,64 @@ describe("EnvironmentVariablesRepository empty values", () => {
     expect(values.get(`${environment.id}:EMPTY_SECRET`)).toBe("");
   });
 
+  postgresTest(
+    "create() with newValueIsSecret makes new values secret and keeps replaced values' kind",
+    async ({ prisma }) => {
+      const { user, organization, project } = await createTestOrgProjectWithMember(prisma);
+      const environment = await createRuntimeEnvironment(prisma, {
+        projectId: project.id,
+        organizationId: organization.id,
+        type: "PRODUCTION",
+      });
+
+      const repository = new EnvironmentVariablesRepository(prisma, prisma);
+      const lastUpdatedBy = { type: "user" as const, userId: user.id };
+
+      await repository.create(project.id, {
+        override: true,
+        environmentIds: [environment.id],
+        variables: [
+          { key: "VIEWABLE", value: "a" },
+          { key: "ALREADY_SECRET", value: "b" },
+        ],
+        isSecret: false,
+        lastUpdatedBy,
+      });
+      await repository.create(project.id, {
+        override: true,
+        environmentIds: [environment.id],
+        variables: [{ key: "ALREADY_SECRET", value: "b" }],
+        isSecret: true,
+        lastUpdatedBy,
+      });
+
+      const result = await repository.create(project.id, {
+        override: true,
+        environmentIds: [environment.id],
+        variables: [
+          { key: "VIEWABLE", value: "a2" },
+          { key: "ALREADY_SECRET", value: "b2" },
+          { key: "BRAND_NEW", value: "c" },
+        ],
+        newValueIsSecret: true,
+        lastUpdatedBy,
+      });
+      expect(result.success).toBe(true);
+
+      const rows = await prisma.environmentVariableValue.findMany({
+        where: { environmentId: environment.id },
+        select: { isSecret: true, variable: { select: { key: true } } },
+      });
+      const kinds = Object.fromEntries(rows.map((r) => [r.variable.key, r.isSecret]));
+      expect(kinds).toEqual({ VIEWABLE: false, ALREADY_SECRET: true, BRAND_NEW: true });
+
+      const values = await repository.getVariableValuesForKeys(project.id, [
+        { environmentId: environment.id, key: "VIEWABLE" },
+      ]);
+      expect(values.get(`${environment.id}:VIEWABLE`)).toBe("a2");
+    }
+  );
+
   postgresTest("edit() stores a whitespace-only value verbatim", async ({ prisma }) => {
     const { user, organization, project } = await createTestOrgProjectWithMember(prisma);
     const environment = await createRuntimeEnvironment(prisma, {
@@ -998,84 +1056,47 @@ describe("EnvironmentVariablesRepository.deleteValues", () => {
     ).toBe(0);
   });
 
-  // Catches: a delete, single or batch, that removes a proxy-only value; a batch that deletes
-  // its other values before refusing; and a batch refused because one of its keys is proxy-only
-  // in an environment it isn't deleting from.
-  postgresTest(
-    "refuses a proxy-only value, all or nothing, and only where it is being deleted",
-    async ({ prisma }) => {
-      const { user, organization, project } = await createTestOrgProjectWithMember(prisma);
-      const [prod, staging] = await Promise.all(
-        (["PRODUCTION", "STAGING"] as const).map((type) =>
-          createRuntimeEnvironment(prisma, {
-            projectId: project.id,
-            organizationId: organization.id,
-            type,
-          })
-        )
-      );
-      const repository = new EnvironmentVariablesRepository(prisma, prisma);
-      for (const [key, environmentId] of [
-        ["TOKEN", prod.id],
-        ["TOKEN", staging.id],
-        ["PLAIN", prod.id],
-      ]) {
-        await createEnvironmentVariable(repository, project.id, {
-          environmentId,
-          key,
-          value: "x",
-          userId: user.id,
-        });
-      }
-      const variables = await prisma.environmentVariable.findMany({
-        where: { projectId: project.id },
-      });
-      const id = (key: string) => variables.find((variable) => variable.key === key)!.id;
-      await enrollProxyOnlyValue(prisma, {
+  // Catches: a Vault value that can't be deleted, alone or in a batch with ordinary values.
+  postgresTest("deletes Agent Vault values like any other", async ({ prisma }) => {
+    const { user, organization, project } = await createTestOrgProjectWithMember(prisma);
+    const prod = await createRuntimeEnvironment(prisma, {
+      projectId: project.id,
+      organizationId: organization.id,
+      type: "PRODUCTION",
+    });
+    const repository = new EnvironmentVariablesRepository(prisma, prisma);
+    for (const key of ["TOKEN", "PLAIN"]) {
+      await createEnvironmentVariable(repository, project.id, {
         environmentId: prod.id,
-        variableId: id("TOKEN"),
-        allowedHosts: ["api.example.com"],
+        key,
+        value: "x",
+        userId: user.id,
       });
-      const remaining = async () =>
-        (
-          await prisma.environmentVariableValue.findMany({
-            where: { variable: { projectId: project.id } },
-            select: { environmentId: true, variable: { select: { key: true } } },
-          })
-        )
-          .map((value) => `${value.variable.key}@${value.environmentId}`)
-          .sort();
-      const all = await remaining();
-      const refused = { success: false, error: expect.stringContaining("Proxy-only") };
-
-      expect(
-        await repository.deleteValue(project.id, { id: id("TOKEN"), environmentId: prod.id })
-      ).toMatchObject(refused);
-      expect(
-        await repository.deleteValues(project.id, [
-          { id: id("PLAIN"), environmentId: prod.id },
-          { id: id("TOKEN"), environmentId: prod.id },
-        ])
-      ).toMatchObject(refused);
-      expect(await remaining()).toEqual(all);
-      expect(
-        await prisma.secretStore.count({
-          where: { key: { startsWith: `environmentvariable:${project.id}:` } },
-        })
-      ).toBe(all.length);
-
-      // TOKEN is proxy-only in Prod only: its Staging value deletes, also next to a Prod value.
-      const result = await repository.deleteValues(project.id, [
-        { id: id("TOKEN"), environmentId: staging.id },
-        { id: id("PLAIN"), environmentId: prod.id },
-      ]);
-      expect(result.success && result.deleted.map((value) => value.key).sort()).toEqual([
-        "PLAIN",
-        "TOKEN",
-      ]);
-      expect(await remaining()).toEqual([`TOKEN@${prod.id}`]);
     }
-  );
+    const variables = await prisma.environmentVariable.findMany({
+      where: { projectId: project.id },
+    });
+    const id = (key: string) => variables.find((variable) => variable.key === key)!.id;
+    await enrollProxyOnlyValue(prisma, {
+      environmentId: prod.id,
+      variableId: id("TOKEN"),
+      allowedHosts: ["api.example.com"],
+    });
+
+    const result = await repository.deleteValues(project.id, [
+      { id: id("TOKEN"), environmentId: prod.id },
+      { id: id("PLAIN"), environmentId: prod.id },
+    ]);
+    expect(result.success && result.deleted.map((value) => value.key).sort()).toEqual([
+      "PLAIN",
+      "TOKEN",
+    ]);
+    expect(
+      await prisma.secretStore.count({
+        where: { key: { startsWith: `environmentvariable:${project.id}:` } },
+      })
+    ).toBe(0);
+  });
 
   // Catches: a batch delete and a save of the same keys each holding a row the other waits
   // for, which the database ends by failing one of them with a deadlock.
@@ -1354,6 +1375,7 @@ describe("EnvironmentVariablesRepository saves that lose a race", () => {
 describe("EnvironmentVariablesRepository.copyValues", () => {
   async function setup(prisma: Parameters<typeof createTestOrgProjectWithMember>[0]) {
     const { user, organization, project } = await createTestOrgProjectWithMember(prisma);
+    await prisma.project.update({ where: { id: project.id }, data: { secretProxyEnabled: true } });
     const [staging, prod] = await Promise.all(
       (["STAGING", "PRODUCTION"] as const).map((type) =>
         createRuntimeEnvironment(prisma, {
@@ -1553,40 +1575,68 @@ describe("EnvironmentVariablesRepository.copyValues", () => {
     expect(await snapshot()).toEqual(beforeEmpty);
   });
 
-  // Catches: copying onto a proxy-only value, or copying a proxy-only value out by reading it.
-  postgresTest("refuses a proxy-only source or target, all or nothing", async ({ prisma }) => {
-    const { project, staging, prod, repository, set, id, snapshot } = await setup(prisma);
+  // Catches: a Vault value copied into Development, where the proxy refuses every run.
+  postgresTest("refuses to copy an Agent Vault value into Development", async ({ prisma }) => {
+    const { user, organization, project, staging, repository, set, id } = await setup(prisma);
+    const development = await createRuntimeEnvironment(prisma, {
+      projectId: project.id,
+      organizationId: organization.id,
+      type: "DEVELOPMENT",
+    });
+    await set(staging.id, "TOKEN", "secret");
+    await enrollProxyOnlyValue(prisma, {
+      environmentId: staging.id,
+      variableId: await id("TOKEN"),
+      allowedHosts: ["api.example.com"],
+    });
+    expect(
+      await repository.copyValues(project.id, {
+        sourceEnvironmentId: staging.id,
+        targetEnvironmentId: development.id,
+        variableIds: [await id("TOKEN")],
+        lastUpdatedBy: { type: "user", userId: user.id },
+      })
+    ).toMatchObject({ success: false, error: expect.stringContaining("Development") });
+    expect(
+      await prisma.environmentVariableValue.count({
+        where: { environmentId: development.id },
+      })
+    ).toBe(0);
+  });
+
+  // Catches: a copy that takes a value out of Vault, either the copied one or the one it replaces.
+  postgresTest("copies keep Agent Vault values in Agent Vault", async ({ prisma }) => {
+    const { project, staging, prod, repository, set, id } = await setup(prisma);
     await set(staging.id, "PLAIN", "x");
-    await set(staging.id, "TOKEN_IN_PROD", "x");
-    await set(prod.id, "TOKEN_IN_PROD", "proxy");
-    await set(staging.id, "TOKEN_IN_STAGING", "proxy");
+    await set(prod.id, "PLAIN", "vault");
+    await set(staging.id, "TOKEN", "secret");
     await enrollProxyOnlyValue(prisma, {
       environmentId: prod.id,
-      variableId: await id("TOKEN_IN_PROD"),
+      variableId: await id("PLAIN"),
       allowedHosts: ["api.example.com"],
     });
     await enrollProxyOnlyValue(prisma, {
       environmentId: staging.id,
-      variableId: await id("TOKEN_IN_STAGING"),
+      variableId: await id("TOKEN"),
       allowedHosts: ["api.example.com"],
     });
-    const before = await snapshot();
-    const copy = async (key: string) =>
-      repository.copyValues(project.id, {
+    expect(
+      await repository.copyValues(project.id, {
         sourceEnvironmentId: staging.id,
         targetEnvironmentId: prod.id,
-        variableIds: [await id("PLAIN"), await id(key)],
+        variableIds: [await id("PLAIN"), await id("TOKEN")],
+      })
+    ).toMatchObject({ success: true });
+    const inProd = async (key: string) =>
+      prisma.environmentVariableValue.findFirst({
+        where: { variableId: await id(key), environmentId: prod.id },
       });
-
-    expect(await copy("TOKEN_IN_PROD")).toMatchObject({
-      success: false,
-      error: expect.stringMatching(/^Nothing was copied\. Proxy-only/),
+    expect(await inProd("PLAIN")).toMatchObject({ isProxyOnly: true, isSecret: true });
+    expect(await inProd("TOKEN")).toMatchObject({
+      isProxyOnly: true,
+      isSecret: true,
+      proxyConfig: { allowedHosts: ["api.example.com"] },
     });
-    expect(await copy("TOKEN_IN_STAGING")).toMatchObject({
-      success: false,
-      error: expect.stringContaining("TOKEN_IN_STAGING can't be read in Staging."),
-    });
-    expect(await snapshot()).toEqual(before);
   });
 
   // Catches: a source value deleted while the copy waits for the lock, refused as if it were

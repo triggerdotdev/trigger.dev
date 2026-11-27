@@ -1,7 +1,11 @@
 import { json } from "@remix-run/server-runtime";
 import { z } from "zod";
 import { prisma } from "~/db.server";
-import { DeleteOrganizationService } from "~/services/deleteOrganization.server";
+import {
+  DeleteOrganizationService,
+  isDeleteOrganizationClientError,
+} from "~/services/deleteOrganization.server";
+import { logger } from "~/services/logger.server";
 import { resolveOrganizationForApiUser } from "~/services/organizationApiAccess.server";
 import { createActionPATApiRoute } from "~/services/routeBuilders/apiBuilder.server";
 
@@ -53,12 +57,11 @@ export const action = createActionPATApiRoute(
           request,
         });
       } catch (error) {
-        // The service throws Errors with user-facing messages (active
-        // subscription, already deleted, etc.).
-        return json(
-          { error: error instanceof Error ? error.message : "Failed to delete organization" },
-          { status: 400 }
-        );
+        if (isDeleteOrganizationClientError(error)) {
+          return json({ error: error.message }, { status: 400 });
+        }
+        logger.error("Failed to delete organization", { error, organizationId: organization.id });
+        return json({ error: "Internal Server Error" }, { status: 500 });
       }
 
       return json({ id: organization.id });

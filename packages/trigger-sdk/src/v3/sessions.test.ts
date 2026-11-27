@@ -184,3 +184,19 @@ describe("SessionOutputChannel initializeSessionStream cache", () => {
     stubWaitImpl = undefined;
   });
 });
+
+describe("SessionOutputChannel one-shot appends", () => {
+  it("re-mint credentials after a one-shot append fails", async () => {
+    // Catches: a control or trim append that failed on stale credentials (a token
+    // that expired because the run outlived it) leaving them cached, so every later
+    // marker, boundary and trim fails the same way instead of fetching fresh ones.
+    const stub = installStubApiClient(vi.fn(async () => ({ headers: {} })));
+    const channel = new SessionOutputChannel("chat-oneshot");
+
+    await expect(channel.writeControl("turn-start")).rejects.toThrow(/S2 credentials/);
+    await expect(channel.writeControl("turn-complete")).rejects.toThrow(/S2 credentials/);
+    await expect(channel.trimTo(3)).rejects.toThrow(/S2 credentials/);
+
+    expect(stub.initializeSessionStream).toHaveBeenCalledTimes(3);
+  });
+});

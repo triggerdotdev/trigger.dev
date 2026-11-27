@@ -4247,6 +4247,21 @@ describe("mergeGroupKey validation", () => {
     expect(sql).toContain("deltaSumTimestampMerge(started_delta)");
   });
 
+  it("rejects the merge when queue is only filtered inside a bracketed OR", () => {
+    expect(() =>
+      compile(
+        "SELECT deltaSumTimestampMerge(started_delta) AS started FROM metrics WHERE bucket_at > '2024-01-02' AND (queue = 'emails' OR queue = 'webhooks')"
+      )
+    ).toThrowError(/only combine correctly within one queue/);
+  });
+
+  it("allows the merge when queue is pinned next to a bracketed OR", () => {
+    const { sql } = compile(
+      "SELECT deltaSumTimestampMerge(started_delta) AS started FROM metrics WHERE queue = 'emails' AND (bucket_at > '2024-01-02' OR bucket_at < '2024-01-01')"
+    );
+    expect(sql).toContain("deltaSumTimestampMerge(started_delta)");
+  });
+
   it("allows the merge when the enforced clause pins queue to one value", () => {
     const { sql } = compile(
       "SELECT deltaSumTimestampMerge(started_delta) AS started FROM metrics",

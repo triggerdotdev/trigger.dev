@@ -1,4 +1,4 @@
-import type { FinalizeDeploymentRequestBody } from "@trigger.dev/core/v3/schemas";
+import { type FinalizeDeploymentRequestBody, machineNameOf } from "@trigger.dev/core/v3/schemas";
 import type { AuthenticatedEnvironment } from "~/services/apiAuth.server";
 import { logger } from "~/services/logger.server";
 import { updateEnvConcurrencyLimits } from "../runQueue.server";
@@ -15,11 +15,17 @@ import { tryCatch } from "@trigger.dev/core";
 import { externalDeploymentCacheInstance } from "~/services/externalDeploymentCacheInstance.server";
 import type { PrismaClientOrTransaction } from "~/db.server";
 import { queueDeploymentCheck } from "../deploymentChecksWorker.server";
+import { gateDeployment, type DeploymentGateResult } from "../deploymentChecks.server";
+import { computeOnlyEnabled, loadOrgFeatureFlags } from "~/v3/computeOnlyFlag.server";
+
+const COMPUTE_ONLY_MISSING_TEMPLATE_MESSAGE =
+  "This deploy couldn't be completed. Try deploying again, or contact support if it keeps failing.";
 
 export class FinalizeDeploymentService extends BaseService {
   constructor(
     prisma?: PrismaClientOrTransaction,
-    private readonly queueCheck: (deploymentId: string) => Promise<void> = queueDeploymentCheck
+    private readonly queueCheck: (deploymentId: string) => Promise<void> = queueDeploymentCheck,
+    private readonly gate: typeof gateDeployment = gateDeployment
   ) {
     super(prisma);
   }
@@ -27,7 +33,16 @@ export class FinalizeDeploymentService extends BaseService {
   public async call(
     authenticatedEnv: AuthenticatedEnvironment,
     id: string,
-    body: FinalizeDeploymentRequestBody
+    body: FinalizeDeploymentRequestBody,
+    /**
+     * The org's `featureFlags` read from the primary, when the caller already did. Not the
+     * authenticated env's copy, which comes from a replica that can miss a just-set `computeOnly`.
+     */
+    primaryOrgFeatureFlags?: unknown,
+    /**
+     * The finalize-time result, when the caller already ran it. Left out, it runs here.
+     */
+    gated?: DeploymentGateResult
   ) {
     const deployment = await this._prisma.workerDeployment.findFirst({
       where: {
@@ -40,6 +55,7 @@ export class FinalizeDeploymentService extends BaseService {
             tasks: true,
           },
         },
+        machines: { select: { machineId: true, templateKey: true } },
       },
     });
 
@@ -73,17 +89,74 @@ export class FinalizeDeploymentService extends BaseService {
       throw new ServiceValidationError("Worker deployment is not in DEPLOYING status");
     }
 
-    // Sandbox tasks only run on microVMs, so a deployment without a template cannot serve them.
+    const orgFeatureFlags =
+      primaryOrgFeatureFlags === undefined
+        ? await loadOrgFeatureFlags(this._prisma, authenticatedEnv.organizationId)
+        : primaryOrgFeatureFlags;
+
+    // Sandbox tasks and compute-only orgs run only on microVMs, so a deployment without a
+    // template cannot serve them.
     const sandboxTask = deployment.worker.tasks.find((task) => task.executionMode === "SANDBOX");
-    if (sandboxTask && !deployment.templateKey) {
-      const message = `Sandbox task "${sandboxTask.slug}" needs microVM compute, but this deployment has no compute template.`;
-      await new FailDeploymentService().call(authenticatedEnv, deployment.friendlyId, {
-        error: { name: "MissingComputeTemplate", message },
+    if (!deployment.templateKey && (sandboxTask || computeOnlyEnabled(orgFeatureFlags))) {
+      const error = sandboxTask
+        ? {
+            name: "MissingComputeTemplate",
+            message: `Sandbox task "${sandboxTask.slug}" needs microVM compute, but this deployment has no compute template.`,
+          }
+        : { name: "DeploymentFailed", message: COMPUTE_ONLY_MISSING_TEMPLATE_MESSAGE };
+      if (!sandboxTask) {
+        // The reason stays in the log: the user only learns what to do next.
+        logger.warn("Finalize refused: compute-only org's deployment has no template", {
+          organizationId: authenticatedEnv.organizationId,
+          deploymentId: deployment.id,
+        });
+      }
+      await new FailDeploymentService(this._prisma).call(authenticatedEnv, deployment.friendlyId, {
+        error,
       });
-      throw new ServiceValidationError(message);
+      throw new ServiceValidationError(error.message);
     }
 
-    const imageDigest = validatedImageDigest(body.imageDigest);
+    const machineImageError = missingMachineImage(
+      deployment.machines,
+      deployment.worker.tasks,
+      computeOnlyEnabled(orgFeatureFlags)
+    );
+    if (machineImageError) {
+      await failRefusedDeployment(this._prisma, authenticatedEnv, deployment.friendlyId, {
+        name: "MissingMachineImage",
+        message: machineImageError,
+      });
+    }
+
+    // The finalize-time step, on every route.
+    const gate =
+      gated ??
+      (await this.gate(
+        {
+          id: deployment.id,
+          friendlyId: deployment.friendlyId,
+          imageReference: deployment.imageReference,
+          type: deployment.type,
+          organizationId: authenticatedEnv.organizationId,
+          projectRef: authenticatedEnv.project.externalRef,
+        },
+        body.imageDigest
+      ));
+    if (gate.kind === "refuse") {
+      await failRefusedDeployment(
+        this._prisma,
+        authenticatedEnv,
+        deployment.friendlyId,
+        gate.error
+      );
+    }
+
+    // Use the resolved digest when there is one.
+    const imageDigest =
+      gate.kind === "proceed" && gate.checked
+        ? gate.imageDigest
+        : validatedImageDigest(body.imageDigest);
     const deployedAt = new Date();
     const imageReference = imageDigest
       ? `${deployment.imageReference}@${imageDigest}`
@@ -110,8 +183,8 @@ export class FinalizeDeploymentService extends BaseService {
       throw new ServiceValidationError("Worker deployment is not in DEPLOYING status");
     }
 
-    // Queue the check as soon as the deployment is marked DEPLOYED.
-    void this.queueCheck(deployment.id);
+    // Queue the follow-up check unless it already ran.
+    if (!(gate.kind === "proceed" && gate.checked)) void this.queueCheck(deployment.id);
 
     const finalizedDeployment = {
       ...deployment,
@@ -153,7 +226,9 @@ export class FinalizeDeploymentService extends BaseService {
     if (typeof body.skipPromotion === "undefined" || !body.skipPromotion) {
       const promotionService = new ChangeCurrentDeploymentService(this._prisma);
 
-      await promotionService.call(finalizedDeployment, "promote");
+      await promotionService.call(finalizedDeployment, "promote", {
+        organizationFeatureFlags: orgFeatureFlags,
+      });
     }
 
     try {
@@ -205,6 +280,38 @@ export class FinalizeDeploymentService extends BaseService {
     await PerformDeploymentAlertsService.enqueue(deployment.id);
 
     return finalizedDeployment;
+  }
+}
+
+/** Fails a refused deployment with its generic message, and throws it for the client. */
+export async function failRefusedDeployment(
+  prisma: PrismaClientOrTransaction,
+  authenticatedEnv: AuthenticatedEnvironment,
+  deploymentFriendlyId: string,
+  error: { name: string; message: string }
+): Promise<never> {
+  await new FailDeploymentService(prisma).call(authenticatedEnv, deploymentFriendlyId, { error });
+  throw new ServiceValidationError(error.message);
+}
+
+/** Why a task on a named machine could not run on this deployment, if it could not. */
+function missingMachineImage(
+  machines: { machineId: string; templateKey: string | null }[],
+  tasks: { slug: string; machineConfig: unknown; executionMode: string }[],
+  computeOnly: boolean
+): string | undefined {
+  for (const task of tasks) {
+    const machineName = machineNameOf(task.machineConfig);
+    if (!machineName) {
+      continue;
+    }
+    const image = machines.find((machine) => machine.machineId === machineName);
+    if (!image) {
+      return `Task "${task.slug}" runs on machine "${machineName}", which this deployment did not build. Deploy with --native-build or --local-build.`;
+    }
+    if (!image.templateKey && (task.executionMode === "SANDBOX" || computeOnly)) {
+      return `Task "${task.slug}" needs microVM compute, but machine "${machineName}" has no compute template.`;
+    }
   }
 }
 

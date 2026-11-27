@@ -37,7 +37,7 @@ export const loader = createLoaderApiRoute(
     params: ParamsSchema,
     allowJWT: true,
     corsStrategy: "all",
-    findResource: async (params, authentication) => {
+    findResource: async (params, authentication, _searchParams, subject) => {
       const where = {
         friendlyId: params.runId,
         runtimeEnvironmentId: authentication.environment.id,
@@ -58,6 +58,11 @@ export const loader = createLoaderApiRoute(
             packetPath,
             readResources: [
               { type: "runs", id: run.friendlyId },
+              ...(params.field === "payload" &&
+              subject.type === "runToken" &&
+              subject.runId === run.friendlyId
+                ? [{ type: "runPayloads", id: run.friendlyId }]
+                : []),
               { type: "tasks", id: run.taskIdentifier },
               ...run.runTags.map((tag) => ({ type: "tags", id: tag })),
               ...(run.batch ? [{ type: "batch", id: run.batch.friendlyId }] : []),

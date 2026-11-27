@@ -91,6 +91,37 @@ export function organizationSupportAccessPath(organization: OrgForPath) {
   return `${organizationSettingsPath(organization)}/support-access`;
 }
 
+/** Filters the audit log page reads from its URL: ids, and a credential reference for `credential`. */
+export type AuditLogPathFilters = {
+  category?: string;
+  actor?: string;
+  project?: string;
+  environment?: string;
+  credential?: string;
+};
+
+export function organizationAuditLogPath(organization: OrgForPath, filters?: AuditLogPathFilters) {
+  const path = `${organizationSettingsPath(organization)}/audit-log`;
+  const search = new URLSearchParams();
+  for (const [name, value] of Object.entries(filters ?? {})) {
+    if (value) search.set(name, value);
+  }
+  const query = search.toString();
+  return query ? `${path}?${query}` : path;
+}
+
+/**
+ * Everything done with one credential, in any category, project or environment. The reference
+ * (`key:<apiKeyId>`, `root:<environmentId>:<last4>`, ...) already names the key and where it lives.
+ */
+export function organizationAuditLogCredentialPath(organization: OrgForPath, credential: string) {
+  return organizationAuditLogPath(organization, { credential });
+}
+
+export function organizationAuditLogFilterOptionsPath(organization: OrgForPath) {
+  return `/resources/orgs/${organizationParam(organization)}/audit-log/filter-options`;
+}
+
 export function organizationSecurityPath(organization: OrgForPath) {
   return `${organizationSettingsPath(organization)}/security`;
 }
@@ -593,6 +624,18 @@ export function v3ScheduledTaskPath(
   )}`;
 }
 
+export function v3ScheduledTaskSchedulePath(
+  organization: OrgForPath,
+  project: ProjectForPath,
+  environment: EnvironmentForPath,
+  taskSlug: string,
+  schedule: { friendlyId: string }
+) {
+  return `${v3ScheduledTaskPath(organization, project, environment, taskSlug)}/schedules/${encodeURIComponent(
+    schedule.friendlyId
+  )}`;
+}
+
 export function v3RunsPath(
   organization: OrgForPath,
   project: ProjectForPath,
@@ -718,6 +761,18 @@ export function v3SchedulePath(
   return `${v3EnvironmentPath(organization, project, environment)}/schedules/${
     schedule.friendlyId
   }`;
+}
+
+/** The schedule page's Upcoming calendar on its own (it takes `month`, `day` and `view`). */
+export function v3ScheduleCalendarResourcePath(
+  organization: OrgForPath,
+  project: ProjectForPath,
+  environment: EnvironmentForPath,
+  schedule: { friendlyId: string }
+) {
+  return `/resources/orgs/${organizationParam(organization)}/projects/${projectParam(
+    project
+  )}/env/${environmentParam(environment)}/schedules/${schedule.friendlyId}/calendar`;
 }
 
 export function v3EditSchedulePath(
@@ -1010,6 +1065,14 @@ export function regionsPath(
   environment: EnvironmentForPath
 ) {
   return `${v3EnvironmentPath(organization, project, environment)}/regions`;
+}
+
+export function sessionUpgradesPath(
+  organization: OrgForPath,
+  project: ProjectForPath,
+  environment: EnvironmentForPath
+) {
+  return `${v3EnvironmentPath(organization, project, environment)}/session-upgrades`;
 }
 
 export function v3BillingPath(organization: OrgForPath, message?: BillingMessageKey) {

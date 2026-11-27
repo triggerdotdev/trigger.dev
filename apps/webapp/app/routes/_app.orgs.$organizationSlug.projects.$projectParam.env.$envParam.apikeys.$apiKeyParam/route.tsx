@@ -8,7 +8,6 @@ import { ExitIcon } from "~/assets/icons/ExitIcon";
 import { EnvironmentCombo, environmentFullTitle } from "~/components/environments/EnvironmentLabel";
 import { RegenerateApiKeyModal } from "~/components/environments/RegenerateApiKeyModal";
 import { Button, LinkButton } from "~/components/primitives/Buttons";
-import { CopyButton } from "~/components/primitives/CopyButton";
 import { DateTime } from "~/components/primitives/DateTime";
 import { Header2 } from "~/components/primitives/Headers";
 import { Paragraph } from "~/components/primitives/Paragraph";
@@ -28,7 +27,6 @@ import { pageMeta } from "~/utils/pageTitle";
 import { ApiKeyAccessLabel } from "../_app.orgs.$organizationSlug.projects.$projectParam.env.$envParam.apikeys/ApiKeyAccessCell";
 import {
   apiKeyCreator,
-  DisableRootApiKeyButton,
   editableApiKey,
   RevokeApiKeyButton,
   ROOT_API_KEY_PARAM,
@@ -513,26 +511,16 @@ function RootApiKeyInspector({ context }: { context: ApiKeysOutletContext }) {
       title={rootApiKey.name}
       closePath={context.listPath}
       footer={
-        context.canManageRootApiKey ? (
-          <>
-            {context.canWriteApiKeys ? (
-              <RegenerateApiKeyModal
-                id={environment.keyEnvironmentId}
-                title={environmentFullTitle(context.environmentLabel)}
-                hasVercelIntegration={context.hasVercelIntegration}
-                isDevelopment={environment.type === "DEVELOPMENT"}
-                isRootApiKeyHidden={rootApiKey.isHidden}
-                onSwitchToApiKeys={context.openMigration}
-                canLimitAccess={context.isRbacPluginAvailable && context.presets !== null}
-                appearance="button"
-              />
-            ) : null}
-            {rootApiKey.isHidden ? null : (
-              <div className="ml-auto">
-                <DisableRootApiKeyButton canWrite={context.canWriteApiKeys} appearance="button" />
-              </div>
-            )}
-          </>
+        context.canWriteApiKeys ? (
+          <RegenerateApiKeyModal
+            id={environment.keyEnvironmentId}
+            title={environmentFullTitle(context.environmentLabel)}
+            hasVercelIntegration={context.hasVercelIntegration}
+            isDevelopment={environment.type === "DEVELOPMENT"}
+            onSwitchToApiKeys={context.openMigration}
+            canLimitAccess={context.isRbacPluginAvailable && context.presets !== null}
+            appearance="button"
+          />
         ) : null
       }
     >
@@ -554,9 +542,6 @@ function RootApiKeyInspector({ context }: { context: ApiKeysOutletContext }) {
             <Property.Label>Secret key</Property.Label>
             <Property.Value className="flex items-center gap-2">
               <span className="font-mono">{rootApiKey.obfuscated}</span>
-              {rootApiKey.value ? (
-                <CopyButton value={rootApiKey.value} variant="icon" size="small" />
-              ) : null}
             </Property.Value>
           </Property.Item>
         </Property.Table>

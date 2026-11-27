@@ -105,6 +105,7 @@ export class WebhookEndpointsListPresenter {
     search?: string;
     cursor?: string;
     direction?: Direction;
+    includeActivity?: boolean;
   }): Promise<WebhookEndpointsList> {
     const scope = {
       organizationId: params.organizationId,
@@ -188,10 +189,13 @@ export class WebhookEndpointsListPresenter {
     const page = fetched.slice(0, PAGE_SIZE);
     if (backward) page.reverse();
 
-    const activity = this.#activity(
-      scope,
-      page.map((row) => row.endpoint_id)
-    );
+    const activity =
+      params.includeActivity === false
+        ? Promise.resolve<EndpointActivity>({})
+        : this.#activity(
+            scope,
+            page.map((row) => row.endpoint_id)
+          );
     const filterOptions = await this.#filterOptions(scope);
 
     const endpoints: WebhookEndpointsListItem[] = page.map((row) => {

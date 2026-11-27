@@ -39,6 +39,12 @@ export type SnapshotDeleteResult = {
 };
 
 const CANCEL_TIMEOUT_MS = 5_000;
+const SUSPEND_REFUSED_RETRY_MS = 500;
+const SUSPEND_REFUSED_BUDGET_MS = 10_000;
+
+function isConnectionRefused(error: unknown): boolean {
+  return (error as { cause?: { code?: unknown } })?.cause?.code === "ECONNREFUSED";
+}
 
 // Service down or restarting (502/503/504, or no response at all) or rate limited (429).
 const SNAPSHOT_DELETE_RETRY_STATUSES = new Set([429, 502, 503, 504]);
@@ -46,7 +52,15 @@ const SNAPSHOT_DELETE_RETRY_STATUSES = new Set([429, 502, 503, 504]);
 export class CheckpointClient {
   private readonly logger = new SimpleStructuredLogger("checkpoint-client");
 
+  private readonly latestSuspend = new Map<string, string>();
+
   constructor(private readonly opts: CheckpointClientOptions) {}
+
+  private forgetSuspend(runFriendlyId: string, snapshotFriendlyId: string) {
+    if (this.latestSuspend.get(runFriendlyId) === snapshotFriendlyId) {
+      this.latestSuspend.delete(runFriendlyId);
+    }
+  }
 
   async suspendRun({
     runFriendlyId,
@@ -57,25 +71,52 @@ export class CheckpointClient {
     snapshotFriendlyId: string;
     body: Omit<CheckpointServiceSuspendRequestBodyInput, "type">;
   }): Promise<boolean> {
-    const res = await fetch(
-      new URL(
-        `/api/v1/runs/${runFriendlyId}/snapshots/${snapshotFriendlyId}/suspend`,
-        this.opts.apiUrl
-      ),
-      {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          ...(this.opts.managedWorkerSecret
-            ? { [WORKER_HEADERS.MANAGED_SECRET]: this.opts.managedWorkerSecret }
-            : {}),
-        },
-        body: JSON.stringify({
-          type: this.opts.orchestrator,
-          ...body,
-        } satisfies CheckpointServiceSuspendRequestBodyInput),
+    this.latestSuspend.set(runFriendlyId, snapshotFriendlyId);
+    const deadline = Date.now() + SUSPEND_REFUSED_BUDGET_MS;
+    let res: Response;
+    for (;;) {
+      try {
+        res = await fetch(
+          new URL(
+            `/api/v1/runs/${runFriendlyId}/snapshots/${snapshotFriendlyId}/suspend`,
+            this.opts.apiUrl
+          ),
+          {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              ...(this.opts.managedWorkerSecret
+                ? { [WORKER_HEADERS.MANAGED_SECRET]: this.opts.managedWorkerSecret }
+                : {}),
+            },
+            body: JSON.stringify({
+              type: this.opts.orchestrator,
+              ...body,
+            } satisfies CheckpointServiceSuspendRequestBodyInput),
+          }
+        );
+        break;
+      } catch (error) {
+        if (!isConnectionRefused(error) || Date.now() >= deadline) {
+          this.forgetSuspend(runFriendlyId, snapshotFriendlyId);
+          this.logger.error("[CheckpointClient] Suspend request errored", {
+            runFriendlyId,
+            snapshotFriendlyId,
+            error: error instanceof Error ? error.message : String(error),
+          });
+          return false;
+        }
+        await new Promise((resolve) => setTimeout(resolve, SUSPEND_REFUSED_RETRY_MS));
+        if (this.latestSuspend.get(runFriendlyId) !== snapshotFriendlyId) {
+          this.logger.warn("[CheckpointClient] Suspend retry superseded", {
+            runFriendlyId,
+            snapshotFriendlyId,
+          });
+          return false;
+        }
       }
-    );
+    }
+    this.forgetSuspend(runFriendlyId, snapshotFriendlyId);
 
     if (!res.ok) {
       this.logger.error("[CheckpointClient] Suspend request failed", {

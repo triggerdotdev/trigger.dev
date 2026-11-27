@@ -1,5 +1,9 @@
-import { ArrowTopRightOnSquareIcon, ExclamationTriangleIcon } from "@heroicons/react/24/outline";
-import { EllipsisHorizontalIcon } from "@heroicons/react/20/solid";
+import {
+  ArrowTopRightOnSquareIcon,
+  ClipboardDocumentIcon,
+  ExclamationTriangleIcon,
+} from "@heroicons/react/24/outline";
+import { CheckIcon, EllipsisHorizontalIcon } from "@heroicons/react/20/solid";
 import {
   Form,
   useFetcher,
@@ -51,6 +55,7 @@ import { SlackIcon } from "~/assets/icons/SlackIcon";
 import { VercelLogo } from "~/components/integrations/VercelLogo";
 import { Avatar } from "~/components/primitives/Avatar";
 import { UserProfilePhoto } from "~/components/UserProfilePhoto";
+import { useCopy } from "~/hooks/useCopy";
 import { useCopyPublicUrl } from "~/hooks/useCopyPublicUrl";
 import { type MatchedEnvironment } from "~/hooks/useEnvironment";
 import { usePageSwitcher } from "~/hooks/useEnvironmentSwitcher";
@@ -99,7 +104,7 @@ import { FreePlanUsage } from "../billing/FreePlanUsage";
 import { ConnectionIcon, DevPresencePanel, useDevPresence } from "../DevPresence";
 import { BetaBadge } from "../FeatureBadges";
 import { Button, LinkButton } from "../primitives/Buttons";
-import { Dialog, DialogTrigger } from "../primitives/Dialog";
+import { Dialog, DialogContent, DialogTrigger } from "../primitives/Dialog";
 import { type RenderIcon } from "../primitives/Icon";
 import { Paragraph } from "../primitives/Paragraph";
 import { Badge } from "../primitives/Badge";
@@ -112,6 +117,8 @@ import {
   PopoverTrigger,
 } from "../primitives/Popover";
 import { ShortcutKey } from "../primitives/ShortcutKey";
+import { LazyLoad, LazyLoadFailed, lazyWithRetry } from "../primitives/LazyLoad";
+import { Spinner } from "../primitives/Spinner";
 import {
   SimpleTooltip,
   Tooltip,
@@ -123,7 +130,6 @@ import { ShortcutsAutoOpen } from "../Shortcuts";
 import { type FavoritePage } from "~/services/dashboardPreferences.server";
 import { AppearanceMenuItem } from "./AppearanceMenuItem";
 import {
-  CustomizeSidebarDialog,
   type CustomizeSidebarSection,
   type SidebarCustomizationPayload,
 } from "./CustomizeSidebarDialog";
@@ -152,6 +158,11 @@ import {
   SIDE_MENU_POPOVER_ITEM_LABEL,
   type SideMenuSectionId,
 } from "./sideMenuTypes";
+
+// The customize dialog (and the grid library it drags with) loads when it's opened.
+const CustomizeSidebarDialog = lazyWithRetry(() =>
+  import("./CustomizeSidebarDialog").then((module) => ({ default: module.CustomizeSidebarDialog }))
+);
 
 /** Get the collapsed state for a specific side menu section from user preferences */
 function getSectionCollapsed(
@@ -1081,17 +1092,32 @@ export function SideMenu({
       >
         {/* Mounted only while open so the modal state re-seeds from current preferences each time */}
         {isCustomizeOpen && (
-          <CustomizeSidebarDialog
-            sections={customizeSections}
-            prefs={{
-              sectionOrder: sideMenuPrefs?.sectionOrder,
-              hiddenItems: sideMenuPrefs?.hiddenItems,
-              sectionItemOrder: sideMenuPrefs?.sectionItemOrder,
-            }}
-            onConfirm={submitSidebarCustomization}
-            isConfirming={isCustomizeConfirmPending}
-            confirmError={customizeError}
-          />
+          <LazyLoad
+            fallback={
+              <DialogContent>
+                <div className="flex h-40 items-center justify-center">
+                  <Spinner />
+                </div>
+              </DialogContent>
+            }
+            errorFallback={
+              <DialogContent>
+                <LazyLoadFailed />
+              </DialogContent>
+            }
+          >
+            <CustomizeSidebarDialog
+              sections={customizeSections}
+              prefs={{
+                sectionOrder: sideMenuPrefs?.sectionOrder,
+                hiddenItems: sideMenuPrefs?.hiddenItems,
+                sectionItemOrder: sideMenuPrefs?.sectionItemOrder,
+              }}
+              onConfirm={submitSidebarCustomization}
+              isConfirming={isCustomizeConfirmPending}
+              confirmError={customizeError}
+            />
+          </LazyLoad>
         )}
       </Dialog>
     </div>
@@ -1842,6 +1868,7 @@ function ProjectSelector({
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const navigation = useNavigation();
   const { urlForProject } = usePageSwitcher();
+  const selectedRef = organization.projects.find((p) => p.id === project.id)?.externalRef;
 
   useEffect(() => {
     // oxlint-disable-next-line react/set-state-in-effect -- This effect intentionally synchronizes local state after an external or lifecycle change.
@@ -1912,6 +1939,7 @@ function ProjectSelector({
             leadingIconClassName={SIDE_MENU_POPOVER_ITEM_ICON}
             className={SIDE_MENU_POPOVER_ITEM_LABEL}
           />
+          {selectedRef && <CopyProjectRefMenuItem projectRef={selectedRef} />}
         </div>
         <div className="flex flex-col gap-1 border-t border-grid-bright p-1">
           {organization.projects.map((p) => {
@@ -2276,5 +2304,35 @@ function ResizeHandle({
         </TooltipContent>
       </Tooltip>
     </TooltipProvider>
+  );
+}
+
+/** Copies the project ref (used by the CLI, SDK config and docs samples) and shows it on hover. */
+function CopyProjectRefMenuItem({ projectRef }: { projectRef: string }) {
+  const { copy, copied } = useCopy(projectRef);
+  return (
+    <SimpleTooltip
+      asChild
+      side="right"
+      content={<span className="font-mono">{projectRef}</span>}
+      button={
+        // The popover focuses this item on open; only show the tooltip for keyboard focus.
+        <div onFocus={(e) => !e.target.matches(":focus-visible") && e.preventDefault()}>
+          <PopoverMenuItem
+            onClick={copy}
+            title={
+              <>
+                {copied ? "Copied!" : "Copy project ref"}
+                {/* The tooltip describes the wrapper, not this button, so screen readers get the ref here. */}
+                <span className="sr-only"> {projectRef}</span>
+              </>
+            }
+            icon={copied ? CheckIcon : ClipboardDocumentIcon}
+            leadingIconClassName={SIDE_MENU_POPOVER_ITEM_ICON}
+            className={SIDE_MENU_POPOVER_ITEM_LABEL}
+          />
+        </div>
+      }
+    />
   );
 }

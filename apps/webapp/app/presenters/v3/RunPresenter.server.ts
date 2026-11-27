@@ -1,4 +1,6 @@
-import { prisma, type PrismaClient } from "~/db.server";
+import { RunAnnotations } from "@trigger.dev/core/v3";
+import { $replica, prisma, type PrismaClient } from "~/db.server";
+import { findRunSessionHandovers } from "./runHandovers.server";
 import { logger } from "~/services/logger.server";
 import { getUsername } from "~/utils/username";
 import type { SpanSummary } from "~/v3/eventRepository/eventRepository.types";
@@ -98,6 +100,7 @@ export class RunPresenter {
           updatedAt: true,
           logsDeletedAt: true,
           annotations: true,
+          taskVersion: true,
           rootTaskRun: {
             select: {
               friendlyId: true,
@@ -154,6 +157,15 @@ export class RunPresenter {
     const showLogs = showDeletedLogs || !run.logsDeletedAt;
     const triggeredAt = runTriggeredAt(run);
 
+    // Only agent runs can belong to a session.
+    const session =
+      RunAnnotations.safeParse(run.annotations).data?.taskKind === "AGENT"
+        ? await findRunSessionHandovers($replica, run.id, {
+            friendlyId: run.friendlyId,
+            version: run.taskVersion ?? null,
+          })
+        : undefined;
+
     const runData = {
       id: run.id,
       number: run.number,
@@ -169,6 +181,7 @@ export class RunPresenter {
       logsDeletedAt: showDeletedLogs ? null : run.logsDeletedAt,
       rootTaskRun: run.rootTaskRun,
       parentTaskRun: run.parentTaskRun,
+      session,
       environment: {
         id: environment.id,
         organizationId: environment.organizationId,

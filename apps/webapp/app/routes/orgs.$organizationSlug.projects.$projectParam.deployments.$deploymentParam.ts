@@ -10,7 +10,7 @@ const ParamSchema = ProjectParamSchema.extend({
 });
 
 export const loader = async ({ request, params }: LoaderFunctionArgs) => {
-  await requireUserId(request);
+  const userId = await requireUserId(request);
   const { organizationSlug, projectParam, deploymentParam } = ParamSchema.parse(params);
 
   const deployment = await prisma.workerDeployment.findFirst({
@@ -18,6 +18,12 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
       shortCode: deploymentParam,
       project: {
         slug: projectParam,
+        deletedAt: null,
+        organization: {
+          slug: organizationSlug,
+          deletedAt: null,
+          members: { some: { userId } },
+        },
       },
     },
     select: {

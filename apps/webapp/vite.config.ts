@@ -59,7 +59,7 @@ function ssrModulesWithoutInlineSourcemaps(): Plugin {
   };
 }
 
-export default defineConfig({
+export default defineConfig(({ isSsrBuild }) => ({
   plugins: [
     remix({
       ignoredRouteFiles: ["**/.*", "**/*.e2e.test.*"],
@@ -108,10 +108,18 @@ export default defineConfig({
     allowedHosts: ["host.docker.internal"],
   },
   build: {
-    sourcemap: true,
+    // Client maps are generated for upload but not linked from the chunks.
+    sourcemap: isSsrBuild ? true : "hidden",
     rollupOptions: {
       // Prisma wrappers and pg have CJS/native pieces Rollup can't inline
       external: [/^@trigger\.dev\/database$/, /^@internal\/run-ops-database$/, /^pg$/],
+      output: {
+        // Merge side-effect-free chunks under 20 KB into chunks loaded alongside them. Dashboard
+        // pages went from ~260 to ~145 modulepreloads; fewer requests competing with the
+        // stylesheet made pages paint and become interactive 0.5-0.9 s sooner on slow
+        // connections, for 10-20 KB more JS.
+        experimentalMinChunkSize: 20_000,
+      },
     },
   },
   ssr: {
@@ -136,4 +144,4 @@ export default defineConfig({
       include: ["cron-parser"],
     },
   },
-});
+}));

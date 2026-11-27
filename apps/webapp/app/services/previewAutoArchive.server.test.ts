@@ -1,5 +1,5 @@
 import { postgresTest } from "@internal/testcontainers";
-import { expect, test } from "vitest";
+import { expect, test, vi } from "vitest";
 import type { PrismaClient } from "@trigger.dev/database";
 import { copyFile, mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { execFile } from "node:child_process";
@@ -24,6 +24,13 @@ import {
   savePreviewAutoArchivePolicy,
   previewBranchActivity,
 } from "./previewAutoArchive.server";
+
+const { deleteEnvironmentSignalStreams } = vi.hoisted(() => ({
+  deleteEnvironmentSignalStreams: vi.fn(async (_environments: unknown[]) => undefined),
+}));
+vi.mock("~/services/realtime/environmentSignals.server", () => ({
+  deleteEnvironmentSignalStreams,
+}));
 
 const archiveGuard = {
   archiveGuard: {
@@ -87,6 +94,7 @@ postgresTest(
       scheduled: 2,
       inProgress: 1,
       protectedBranches: ["protected-new", "protected-old"],
+      ready: ["ready"],
       partial: false,
     });
     expect(await previewAutoArchiveCount(prisma, parent.id, 30, [], now)).toMatchObject({
@@ -137,6 +145,18 @@ postgresTest(
     const page = await processPreviewAutoArchivePage(prisma, 0, now);
     expect(page?.archived.map(({ id }) => id).sort()).toEqual(
       [never.id, boundary.id, oldFailure.id].sort()
+    );
+    // Catches: auto-archived branches keeping their signal streams, or naming them by the new slug.
+    const streams = deleteEnvironmentSignalStreams.mock.calls.at(-1)![0] as Array<{
+      id: string;
+      slug: string;
+    }>;
+    expect(
+      streams.map(({ id, slug }) => ({ id, slug })).sort((a, b) => a.id.localeCompare(b.id))
+    ).toEqual(
+      [never, boundary, oldFailure]
+        .map(({ id, slug }) => ({ id, slug }))
+        .sort((a, b) => a.id.localeCompare(b.id))
     );
     expect(await processPreviewAutoArchivePage(prisma, 0, now)).toBeNull();
     expect(await previewAutoArchiveCount(prisma, parent.id, 14, ["staging"], now)).toMatchObject({

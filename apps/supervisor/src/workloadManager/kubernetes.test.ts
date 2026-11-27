@@ -3,6 +3,8 @@ import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { ApiException } from "@kubernetes/client-node";
+import { mintWorkloadDeploymentToken } from "@trigger.dev/core/v3";
+import { SimpleStructuredLogger } from "@trigger.dev/core/v3/utils/structuredLogger";
 import { afterAll, describe, expect, it } from "vitest";
 import type { WorkloadManagerCreateOptions } from "./types.js";
 import {
@@ -301,7 +303,11 @@ const createOptions = {
 } as WorkloadManagerCreateOptions;
 
 /** Creates with a Kubernetes API whose pod create raises `error`; resolves to what create threw. */
-async function createFailure(releaseUnstartedRuns: boolean, error: Error): Promise<unknown> {
+async function createFailure(
+  releaseUnstartedRuns: boolean,
+  error: Error,
+  overrides: Partial<WorkloadManagerCreateOptions> = {}
+): Promise<unknown> {
   const manager = new KubernetesWorkloadManager({
     workloadApiProtocol: "http",
     workloadApiPort: 8020,
@@ -317,7 +323,7 @@ async function createFailure(releaseUnstartedRuns: boolean, error: Error): Promi
     },
   };
   Object.assign(manager, { k8s });
-  const thrown = await manager.create(createOptions).then(
+  const thrown = await manager.create({ ...createOptions, ...overrides }).then(
     () => "created",
     (thrown: unknown) => thrown
   );
@@ -345,6 +351,43 @@ describe("KubernetesWorkloadManager create failures", () => {
 
     expect(thrown).not.toBe("created");
     expect(thrown).not.toBeInstanceOf(WorkloadNotCreatedError);
+  });
+
+  it("never logs the deployment token", async () => {
+    const token = await mintWorkloadDeploymentToken(
+      {
+        deployment: "deployment_1",
+        deployment_version: "20261027.1",
+        environment_id: "env_1",
+        environment_type: "PRODUCTION",
+        org_id: "org_1",
+        project_id: "proj_1",
+      },
+      "kubernetes-logging-test-secret",
+      Math.floor(Date.UTC(2032, 0, 1) / 1000)
+    );
+    const logs: Record<string, unknown>[] = [];
+    const previousVerbose = process.env.VERBOSE;
+    process.env.VERBOSE = "1";
+    SimpleStructuredLogger.onLog = (line) => {
+      logs.push(line);
+    };
+    let thrown: unknown;
+    try {
+      thrown = await createFailure(true, apiError(403, "pods is forbidden: exceeded quota"), {
+        deploymentToken: token,
+      });
+    } finally {
+      SimpleStructuredLogger.onLog = undefined;
+      if (previousVerbose === undefined) delete process.env.VERBOSE;
+      else process.env.VERBOSE = previousVerbose;
+    }
+
+    expect(thrown).toBeInstanceOf(WorkloadNotCreatedError);
+    const messages = logs.map((line) => line.message);
+    expect(messages).toContain("[KubernetesWorkloadManager] Creating container");
+    expect(messages).toContain("[KubernetesWorkloadManager] Create refused");
+    for (const line of logs) expect(JSON.stringify(line)).not.toContain(token.split(".")[2]!);
   });
 
   it("throws a refusal's raw body as before, with releases off", async () => {

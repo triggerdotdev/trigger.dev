@@ -1,6 +1,10 @@
-import { isInfrastructureError, type WebhookWaitpointPorts } from "@internal/webhook-engine";
+import { type WebhookWaitpointPorts } from "@internal/webhook-engine";
 import { MAX_INLINE_COMPLETION_OUTPUT_BYTES } from "@internal/run-engine";
-import { webhookPortErrorMessage } from "./webhookPortErrors.server";
+import {
+  completionFailureIsInfrastructure,
+  retryingStoreOutage,
+  webhookPortErrorMessage,
+} from "./webhookPortErrors.server";
 import { stringifyIO } from "@trigger.dev/core/v3";
 import { parseWaitpointId, WaitpointId } from "@trigger.dev/core/v3/isomorphic";
 import { tryCatch } from "@trigger.dev/core/utils";
@@ -14,6 +18,8 @@ import { resolveRunIdMintKind } from "~/v3/engineVersion.server";
 import { engine } from "~/v3/runEngine.server";
 import { resolveMintShard } from "~/v3/runOpsMigration/runOpsMintShard.server";
 import { runStore } from "~/v3/runStore.server";
+import { globalFlagsRegistry } from "~/v3/globalFlagsRegistry.server";
+import { waitpointStoreStandaloneTokensEnabled } from "~/v3/utils/waitpointStoreEnabled.server";
 
 const completionLimit = pLimit(env.WEBHOOK_WAITER_COMPLETION_CONCURRENCY);
 
@@ -21,6 +27,13 @@ async function environmentOrThrow(environmentId: string): Promise<AuthenticatedE
   const environment = await findEnvironmentById(environmentId);
   if (!environment) throw new Error(`Environment ${environmentId} not found`);
   return environment;
+}
+
+function standaloneTokens(environment: AuthenticatedEnvironment) {
+  return waitpointStoreStandaloneTokensEnabled(
+    environment.organization.featureFlags,
+    globalFlagsRegistry.current()
+  );
 }
 
 /**
@@ -54,34 +67,37 @@ async function standalonePlacement(environment: AuthenticatedEnvironment) {
 export const webhookWaitpoints: WebhookWaitpointPorts = {
   async find({ environmentId, idempotencyKey }) {
     const environment = await environmentOrThrow(environmentId);
-    const { colocate, residency, shardKey } = await standalonePlacement(environment);
-    let waitpoint = await runStore.findWaitpoint(
-      { where: { environmentId, idempotencyKey } },
-      undefined,
-      colocate
-    );
-    if (
-      !waitpoint ||
-      (waitpoint.idempotencyKeyExpiresAt && waitpoint.idempotencyKeyExpiresAt < new Date())
-    ) {
-      if (!(await engine.waitpointSystem.isWaitpointStoreEnabled(environment.organizationId)))
-        return undefined;
-      waitpoint = await engine.readExistingStoreDateTimeWaitpointByKey({
-        environmentId,
-        projectId: environment.projectId,
-        organizationId: environment.organizationId,
-        idempotencyKey,
-        standaloneResidency: residency,
-        standaloneShardKey: shardKey,
-      });
-    }
-    if (!waitpoint) return undefined;
-    return {
-      id: WaitpointId.toFriendlyId(waitpoint.id),
-      status: waitpoint.status === "COMPLETED" ? "COMPLETED" : "PENDING",
-      timeoutAt: waitpoint.completedAfter ?? undefined,
-      tags: waitpoint.tags,
-    };
+    return retryingStoreOutage(standaloneTokens(environment), async () => {
+      const { colocate, residency, shardKey } = await standalonePlacement(environment);
+      let waitpoint = await runStore.findWaitpoint(
+        { where: { environmentId, idempotencyKey } },
+        undefined,
+        colocate
+      );
+      if (
+        !waitpoint ||
+        (waitpoint.idempotencyKeyExpiresAt && waitpoint.idempotencyKeyExpiresAt < new Date())
+      ) {
+        if (!(await engine.waitpointSystem.isWaitpointStoreEnabled(environment.organizationId)))
+          return undefined;
+        waitpoint = await engine.readExistingStoreDateTimeWaitpointByKey({
+          environmentId,
+          projectId: environment.projectId,
+          organizationId: environment.organizationId,
+          idempotencyKey,
+          standaloneResidency: residency,
+          standaloneShardKey: shardKey,
+          standaloneStoreEligible: standaloneTokens(environment),
+        });
+      }
+      if (!waitpoint) return undefined;
+      return {
+        id: WaitpointId.toFriendlyId(waitpoint.id),
+        status: waitpoint.status === "COMPLETED" ? "COMPLETED" : "PENDING",
+        timeoutAt: waitpoint.completedAfter ?? undefined,
+        tags: waitpoint.tags,
+      };
+    });
   },
 
   async create({
@@ -93,24 +109,27 @@ export const webhookWaitpoints: WebhookWaitpointPorts = {
     tags,
   }) {
     const environment = await environmentOrThrow(environmentId);
-    const { residency, shardKey } = await standalonePlacement(environment);
+    return retryingStoreOutage(standaloneTokens(environment), async () => {
+      const { residency, shardKey } = await standalonePlacement(environment);
 
-    for (const tag of tags) {
-      await createWaitpointTag({ tag, environmentId, projectId, residency, shardKey });
-    }
+      for (const tag of tags) {
+        await createWaitpointTag({ tag, environmentId, projectId, residency, shardKey });
+      }
 
-    const result = await engine.createManualWaitpoint({
-      environmentId,
-      projectId,
-      organizationId: environment.organizationId,
-      idempotencyKey,
-      idempotencyKeyExpiresAt,
-      timeout: timeoutAt,
-      tags,
-      standaloneResidency: residency,
-      standaloneShardKey: shardKey,
+      const result = await engine.createManualWaitpoint({
+        environmentId,
+        projectId,
+        organizationId: environment.organizationId,
+        idempotencyKey,
+        idempotencyKeyExpiresAt,
+        timeout: timeoutAt,
+        tags,
+        standaloneResidency: residency,
+        standaloneShardKey: shardKey,
+        standaloneStoreEligible: standaloneTokens(environment),
+      });
+      return { id: WaitpointId.toFriendlyId(result.waitpoint.id), isCached: result.isCached };
     });
-    return { id: WaitpointId.toFriendlyId(result.waitpoint.id), isCached: result.isCached };
   },
 
   async complete({ environmentId, waitpointIds, output, deliveryFriendlyId }) {
@@ -159,7 +178,10 @@ export const webhookWaitpoints: WebhookWaitpointPorts = {
                 id,
                 ok: false,
                 error: webhookPortErrorMessage(error, "completeWaitpoint"),
-                infrastructure: isInfrastructureError(error),
+                infrastructure: completionFailureIsInfrastructure(
+                  error,
+                  standaloneTokens(environment)
+                ),
               }
             : { id, ok: true };
         })
@@ -177,18 +199,20 @@ export const webhookWaitpoints: WebhookWaitpointPorts = {
       (parsed.type === "DATETIME" || parsed.type === "MANUAL")
     ) {
       const environment = await environmentOrThrow(environmentId);
-      const waitpoint = await engine.getStoreDateTimeWaitpoint({
-        waitpointId: id,
-        environmentId,
-        projectId: environment.projectId,
-        organizationId: environment.organizationId,
-      });
-      if (!waitpoint) throw new Error("Waitpoint not found");
-      await engine.completeWaitpoint({
-        id,
-        organizationId: environment.organizationId,
-        onlyIfPending: true,
-        output: { value: JSON.stringify(error), isError: true },
+      await retryingStoreOutage(standaloneTokens(environment), async () => {
+        const waitpoint = await engine.getStoreDateTimeWaitpoint({
+          waitpointId: id,
+          environmentId,
+          projectId: environment.projectId,
+          organizationId: environment.organizationId,
+        });
+        if (!waitpoint) throw new Error("Waitpoint not found");
+        await engine.completeWaitpoint({
+          id,
+          organizationId: environment.organizationId,
+          onlyIfPending: true,
+          output: { value: JSON.stringify(error), isError: true },
+        });
       });
       return;
     }

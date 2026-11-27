@@ -4,6 +4,7 @@ import type { HeartbeatsManager } from "../heartbeats/types.js";
 import type { IdempotencyKeyCatalog } from "../idempotency-key-catalog/catalog.js";
 import type { InputStreamManager } from "../inputStreams/types.js";
 import type { SessionStreamManager } from "../sessionStreams/types.js";
+import type { SignalsManager } from "../signals/types.js";
 import type { LifecycleHooksManager } from "../lifecycleHooks/types.js";
 import type { LocalsManager } from "../locals/types.js";
 import type { RealtimeStreamsManager } from "../realtimeStreams/types.js";
@@ -82,4 +83,5 @@ type TriggerDotDevGlobalAPI = {
   ["realtime-streams"]?: RealtimeStreamsManager;
   ["input-streams"]?: InputStreamManager;
   ["session-streams"]?: SessionStreamManager;
+  ["signals"]?: SignalsManager;
 };

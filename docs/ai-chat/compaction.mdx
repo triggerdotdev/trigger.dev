@@ -245,7 +245,7 @@ export const myChat = chat.agent({
   onAction: async ({ action, uiMessages }) => {
     if (action.type !== "compact") return;
 
-    const summary = await summarize(convertToModelMessages(uiMessages));
+    const summary = await summarize(await convertToModelMessages(uiMessages));
 
     // Replace the full history with a single summary message.
     chat.history.set([
@@ -293,7 +293,7 @@ function ChatView({ chatId }: { chatId: string }) {
 }
 ```
 
-The call returns as soon as the backend accepts the action. Because `onTurnComplete` replaces the `uiMessages` with the summary, `useChat` receives the new state via the normal turn-complete flow — the UI updates automatically.
+The call returns as soon as the backend accepts the action. Because `onAction` replaces the history with the summary via `chat.history.set`, `useChat` receives the new state via the normal turn-complete flow — the UI updates automatically.
 
 ### Indicating compaction in the UI
 
@@ -304,7 +304,7 @@ onAction: async ({ action, uiMessages }) => {
   if (action.type !== "compact") return;
 
   chat.stream.append({ type: "data-compaction", data: { status: "compacting" } });
-  const summary = await summarize(convertToModelMessages(uiMessages));
+  const summary = await summarize(await convertToModelMessages(uiMessages));
   chat.stream.append({ type: "data-compaction", data: { status: "complete" } });
 
   chat.history.set([ /* ... */ ]);
@@ -368,15 +368,28 @@ const conversation = new chat.MessageAccumulator({
         model: anthropic("claude-haiku-5-5"),
         messages: [...messages, { role: "user", content: "Summarize this conversation concisely." }],
       }).then((r) => r.text),
-    compactUIMessages: ({ summary }) => [
+    // Keep the latest user message and reply next to the summary, so a
+    // regenerate right after compaction still has the question to answer
+    compactUIMessages: ({ uiMessages, summary }) => [
       { id: generateId(), role: "assistant",
         parts: [{ type: "text", text: `[Summary]\n\n${summary}` }] },
+      ...uiMessages.slice(-2),
     ],
   },
 });
 
+let currentPayload = payload;
+
 for (let turn = 0; turn < 100; turn++) {
-  const messages = await conversation.addIncoming(payload.messages, payload.trigger, turn);
+  // A regenerate carries no message, and addIncoming replaces the history on
+  // it: pass the history minus the assistant reply being regenerated.
+  const incoming =
+    currentPayload.trigger === "regenerate-message"
+      ? conversation.uiMessages.slice(0, -1)
+      : currentPayload.message
+        ? [currentPayload.message]
+        : [];
+  const messages = await conversation.addIncoming(incoming, currentPayload.trigger, turn);
 
   const result = streamText({
     model: anthropic("claude-sonnet-5-5"),
@@ -393,13 +406,24 @@ for (let turn = 0; turn < 100; turn++) {
   // AI SDK 7, so read it from `steps`, and pass the turn's sum separately.
   const lastStepUsage = (await result.steps).at(-1)?.usage;
   await conversation.compactIfNeeded(lastStepUsage, {
-    chatId: payload.chatId,
+    chatId: currentPayload.chatId,
     turn,
     turnUsage: await result.totalUsage,
   });
 
   await db.chat.update({ data: { messages: conversation.uiMessages } });
   await chat.writeTurnComplete();
+
+  // Wait for the next message, unless this was the last turn
+  if (turn === 99) break;
+  const next = await chat.messages.waitWithIdleTimeout({
+    idleTimeoutInSeconds: 60,
+    timeout: "1h",
+    spanName: "waiting for next message",
+  });
+  // A closed chat sends a `close` record: exit instead of running a turn
+  if (!next.ok || next.output.trigger === "close") break;
+  currentPayload = next.output;
 }
 ```
 

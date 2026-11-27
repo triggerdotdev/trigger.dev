@@ -73,6 +73,7 @@ type ScriptName =
   | "wpAckIdemReceipt"
   | "wpCompleteIdemReceipt"
   | "wpReleaseKeyedCandidate"
+  | "wpReleaseKeyedCandidateTimedManual"
   | "wpDiscard"
   | "wpFanoutIndex"
   | "runAbsorbBlockers"
@@ -113,9 +114,13 @@ export type WaitpointRecordInput = {
   completedAfter?: string;
   completedByTaskRunId?: string;
   completedByBatchId?: string;
+  /** Set only on a MANUAL token minted with no run. Absent on every run-bound record. */
+  standalone?: true;
 };
 
 function keyRetainUntil(record: WaitpointRecordInput): string {
+  // A standalone token retains from completion; its retirement job ends the reservation.
+  if (record.type === "MANUAL" && record.standalone) return "0";
   if ((record.type !== "DATETIME" && record.type !== "MANUAL") || !record.idempotencyKey)
     return "0";
   if (!record.idempotencyKeyExpiresAt) return "-1";
@@ -996,24 +1001,50 @@ export class WaitpointStoreCoordinator {
     };
   }
 
+  /**
+   * Up to `limit` history run ids from one command, so registrations cannot reorder the read the
+   * way they can between pages. Callers authorize the source first.
+   */
+  async readRelatedRunIdsSnapshot(waitpointId: string, limit: number): Promise<string[]> {
+    await this.beforeCommand?.();
+    // ZRANGE 0 -1 would read the whole set, so at least one id is asked for.
+    return this.redis.zrange(waitpointRelatedRunsKey(waitpointId), 0, Math.max(1, limit) - 1);
+  }
+
   /** Stable source-lifetime history; callers authorize the source before reading a page. */
   async readRelatedRunIds(
     waitpointId: string,
-    cursor?: string
+    cursor?: string,
+    standalone?: boolean
   ): Promise<{ runIds: string[]; nextCursor?: string }> {
     const pageSize = 25;
+    if (!standalone) {
+      await this.beforeCommand?.();
+      const runIds = await this.redis.zrangebylex(
+        waitpointRelatedRunsKey(waitpointId),
+        cursor ? `(${cursor}` : "-",
+        "+",
+        "LIMIT",
+        0,
+        pageSize
+      );
+      return {
+        runIds,
+        nextCursor: runIds.length === pageSize ? runIds[runIds.length - 1] : undefined,
+      };
+    }
+    // A standalone token's history is newest first. The cursor is the next page's start offset;
+    // it only passes between pages of one dashboard read.
+    const start = cursor ? Number(cursor) : 0;
     await this.beforeCommand?.();
-    const runIds = await this.redis.zrangebylex(
+    const runIds = await this.redis.zrange(
       waitpointRelatedRunsKey(waitpointId),
-      cursor ? `(${cursor}` : "-",
-      "+",
-      "LIMIT",
-      0,
-      pageSize
+      start,
+      start + pageSize - 1
     );
     return {
       runIds,
-      nextCursor: runIds.length === pageSize ? runIds[runIds.length - 1] : undefined,
+      nextCursor: runIds.length === pageSize ? String(start + pageSize) : undefined,
     };
   }
 
@@ -1208,6 +1239,21 @@ export class WaitpointStoreCoordinator {
     );
   }
 
+  /** Ends a removed token's reservation; one naming any other waitpoint is left in place. */
+  async releaseRemovedIdempotencyKey(
+    namespace: string,
+    key: string,
+    waitpointId: string
+  ): Promise<void> {
+    await this.beforeCommand?.();
+    await this.redis.eval(
+      `if redis.call('GET', KEYS[1]) == ARGV[1] then redis.call('DEL', KEYS[1]) end; return 1`,
+      1,
+      idempotencyKey(namespace, key),
+      waitpointId
+    );
+  }
+
   async beginIdempotencyKeyClaim(args: {
     environmentId: string;
     idempotencyKey: string;
@@ -1375,7 +1421,7 @@ export class WaitpointStoreCoordinator {
         expected = (await this.#call("wpCompleteIdemReceipt", [receipt], args.candidateId))[0]!;
       const keys = waitpointKeys(args.candidateId);
       await this.#call(
-        "wpReleaseKeyedCandidate",
+        "wpReleaseKeyedCandidateTimedManual",
         [keys.record, keys.fanout, waitpointRelatedRunsKey(args.candidateId)],
         String(this.terminalRetentionMs),
         args.pendingManual ? "pending-manual" : ""
@@ -1452,6 +1498,13 @@ export class WaitpointStoreCoordinator {
         return Date.now() + Math.max(1000, this.terminalRetentionMs);
       return; // Pending, fanout-pinned, or permanently keyed source.
     }
+    // Before retire: it deletes the manifest that names this reservation.
+    if (manifest.idempotencyKey !== undefined && manifest.idempotencyKeyScope !== undefined)
+      await this.releaseRemovedIdempotencyKey(
+        manifest.idempotencyKeyScope,
+        manifest.idempotencyKey,
+        waitpointId
+      );
     if (!(await this.manualCatalog.retire(manifest)))
       return Math.max(Date.now() + 1000, manifest.acceptUntil + 1);
     await this.retirePendingSource(waitpointId, organizationId);

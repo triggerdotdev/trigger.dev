@@ -594,10 +594,23 @@ export const dashboardAgent = chat.agent({
     if (clientData?.organizationId && clientData?.userId && responseMessage && shouldEvalTurn()) {
       try {
         const toolActivity = extractToolActivity(newMessages);
-        // A turn that read source is never judged at all: judging it either hands the
-        // customer's code to the judge or grades a source-grounded answer blind.
-        if (turnReadSource(toolActivity)) {
-          logger.debug("dashboard-agent turn eval skipped: the turn read source", { chatId, turn });
+        // Even redacted tool output can be quoted in the answer sent to the judge.
+        if (
+          turnReadSource(toolActivity) ||
+          toolActivity.some(({ toolName }) => toolName === "search_logs")
+        ) {
+          logger.debug("dashboard-agent turn eval skipped: the turn read source or logs", {
+            chatId,
+            turn,
+          });
+        } else if (
+          !(await store.chatAllowsEval({
+            chatId,
+            organizationId: clientData.organizationId,
+            userId: clientData.userId,
+          }))
+        ) {
+          logger.debug("dashboard-agent turn eval skipped: chat is excluded", { chatId, turn });
         } else if (
           // Fails closed: an org that opted out, or a setting we couldn't read, is not judged.
           !(await getEvalPolicyCheck()({

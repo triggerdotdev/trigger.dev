@@ -14,6 +14,7 @@ import { registerPrompts } from "../mcp/prompts.js";
 import { registerTools } from "../mcp/tools.js";
 import { printStandloneInitialBanner } from "../utilities/initialBanner.js";
 import { logger } from "../utilities/logger.js";
+import { handleInitialized } from "../mcp/startup.js";
 import { installMcpServer } from "./install-mcp.js";
 import { initiateSkillsInstallWizard } from "./skills.js";
 
@@ -64,11 +65,15 @@ async function mcpCommand(options: McpCommandOptions) {
     intro("Welcome to the Trigger.dev MCP server install wizard 🧙");
 
     const [installError] = await tryCatch(
-      installMcpServer({
-        yolo: false,
-        tag: VERSION as string,
-        logLevel: "log",
-      })
+      installMcpServer(
+        { yolo: false, tag: VERSION as string, logLevel: "log" },
+        {
+          source: "mcp",
+          skipTelemetry: options.skipTelemetry,
+          profile: options.profile,
+          apiUrl: options.apiUrl,
+        }
+      )
     );
 
     if (installError) {
@@ -95,7 +100,10 @@ async function mcpCommand(options: McpCommandOptions) {
 
   server.server.oninitialized = async () => {
     fileLogger?.log("initialized mcp command", { options, argv: process.argv });
-    await context.loadProjectProfile();
+    await handleInitialized({
+      loadProjectProfile: () => context.loadProjectProfile(),
+      sessionStarted: () => context.telemetry.sessionStarted(server.server.getClientVersion()),
+    });
   };
 
   // Start receiving messages on stdin and sending messages on stdout
@@ -111,4 +119,12 @@ async function mcpCommand(options: McpCommandOptions) {
   registerPrompts(context);
 
   await server.connect(transport);
+
+  // Clients kill stdio servers abruptly, so flush what is queued as soon as we are told to stop.
+  const flushTelemetry = () => context.telemetry.shutdown(1000);
+  process.stdin.on("close", () => void flushTelemetry());
+  for (const signal of ["SIGINT", "SIGTERM"] as const) {
+    process.removeAllListeners(signal);
+    process.on(signal, () => void flushTelemetry().finally(() => process.exit(0)));
+  }
 }

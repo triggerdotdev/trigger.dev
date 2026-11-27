@@ -1,6 +1,7 @@
 import { assertNonNullable, containerTest } from "@internal/testcontainers";
 import { trace } from "@internal/tracing";
 import { expect } from "vitest";
+import { ExecutionSnapshotNotFoundError } from "../errors.js";
 import { RunEngine } from "../index.js";
 import { setTimeout } from "node:timers/promises";
 import type { EventBusEventArgs } from "../eventBus.js";
@@ -1279,19 +1280,13 @@ describe("RunEngine Waitpoints", () => {
         assertNonNullable(sinceLatest);
         expect(sinceLatest.length).toBe(0);
 
-        // getSnapshotsSince with an invalid snapshotId should throw or return []
-        let threw = false;
-        try {
-          const sinceInvalid = await engine.getSnapshotsSince({
+        // An unknown since snapshot is a not-found, not a failed read.
+        await expect(
+          engine.getSnapshotsSince({
             runId: run.id,
             snapshotId: "invalid-id",
-          });
-          expect(sinceInvalid).toBeNull();
-        } catch (_e) {
-          threw = true;
-        }
-        // should never throw
-        expect(threw).toBe(false);
+          })
+        ).rejects.toBeInstanceOf(ExecutionSnapshotNotFoundError);
       } finally {
         await engine.quit();
       }

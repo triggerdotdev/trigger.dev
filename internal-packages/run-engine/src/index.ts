@@ -16,6 +16,7 @@ export type {
   ShutdownOperation,
 } from "./engine/shutdown.js";
 export {
+  ExecutionSnapshotNotFoundError,
   LatestExecutionSnapshotNotFoundError,
   RunDuplicateIdempotencyKeyError,
   RunOneTimeUseTokenError,
@@ -38,6 +39,7 @@ export { PassthroughControlPlaneResolver } from "./engine/controlPlaneResolver.j
 export type {
   ControlPlaneResolver,
   EnvDeletionState,
+  ResolvedDeploymentMachine,
   ResolvedDeploymentStatus,
   ResolvedEngineEnv,
   ResolvedAuthenticatedEnv,
@@ -98,7 +100,10 @@ export type {
   WaitpointStoreCoordinatorOptions,
   WatcherEntry,
 } from "./engine/waitpointCoordinator/storeCoordinator.js";
-export { StoreWaitpointCoordinator } from "./engine/waitpointCoordinator/storeWaitpointCoordinator.js";
+export {
+  StoreWaitpointCoordinator,
+  isStandaloneStoreWaitpoint,
+} from "./engine/waitpointCoordinator/storeWaitpointCoordinator.js";
 export { WaitpointFanoutWorker } from "./engine/waitpointCoordinator/fanoutWorker.js";
 export type {
   FanoutTickSummary,

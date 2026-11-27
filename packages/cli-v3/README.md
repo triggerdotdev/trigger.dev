@@ -1,9 +1,6 @@
 <div align="center">
-<picture>
-  <source media="(prefers-color-scheme: dark)" srcset="https://imagedelivery.net/3TbraffuDZ4aEf8KWOmI_w/a45d1fa2-0ae8-4a39-4409-f4f934bfae00/public">
-  <source media="(prefers-color-scheme: light)" srcset="https://imagedelivery.net/3TbraffuDZ4aEf8KWOmI_w/3f5ad4c1-c4c8-4277-b622-290e7f37bd00/public">
-  <img alt="Trigger.dev logo" src="https://imagedelivery.net/3TbraffuDZ4aEf8KWOmI_w/a45d1fa2-0ae8-4a39-4409-f4f934bfae00/public">
-</picture>
+
+![Trigger.dev logo](https://content.trigger.dev/github-header-banner.jpg)
 
 [![npm version](https://img.shields.io/npm/v/trigger.dev.svg)](https://www.npmjs.com/package/trigger.dev)
 [![npm downloads](https://img.shields.io/npm/dm/trigger.dev.svg)](https://www.npmjs.com/package/trigger.dev)
@@ -18,29 +15,39 @@
 
 # Trigger.dev CLI
 
-A CLI that allows you to create, run locally and deploy Trigger.dev background tasks.
-
-Note: this only works with Trigger.dev v3 projects and later. For older projects use the [@trigger.dev/cli](https://www.npmjs.com/package/@trigger.dev/cli) package.
+A CLI that allows you to create, run locally and deploy Trigger.dev tasks and AI agents.
 
 ## About Trigger.dev
 
-Trigger.dev is an open source platform for building and deploying fully-managed AI agents and workflows. Write workflows in normal async TypeScript for everything from simple tasks to long-running AI agents, heavy media processing, complex real-time systems and more. Complete with full observability, managed queues, and elastic infrastructure which handles the horizontal scaling.
+Trigger.dev is the open-source platform for building AI workflows in TypeScript. Build AI agents using all the frameworks, services and LLMs you're used to, deploy them to Trigger.dev and get durable, long-running agents with retries, queues, LLM observability, and elastic scaling out of the box.
 
 ## Commands
 
-| Command                                                              | Description                                                        |
-| :------------------------------------------------------------------- | :----------------------------------------------------------------- |
-| [login](https://trigger.dev/docs/cli-login-commands)                 | Login with Trigger.dev so you can perform authenticated actions.   |
-| [init](https://trigger.dev/docs/cli-init-commands)                   | Initialize your existing project for development with Trigger.dev. |
-| [dev](https://trigger.dev/docs/cli-dev-commands)                     | Run your Trigger.dev tasks locally.                                |
-| [deploy](https://trigger.dev/docs/cli-deploy-commands)               | Deploy your Trigger.dev v3 project to the cloud.                   |
-| [whoami](https://trigger.dev/docs/cli-whoami-commands)               | Display the current logged in user and project details.            |
-| [logout](https://trigger.dev/docs/cli-logout-commands)               | Logout of Trigger.dev.                                             |
-| [list-profiles](https://trigger.dev/docs/cli-list-profiles-commands) | List all of your CLI profiles.                                     |
-| [preview archive](https://trigger.dev/docs/cli-preview-archive)      | Archive a preview branch.                                          |
-| [promote](https://trigger.dev/docs/cli-promote-commands)             | Promote a previously deployed version to the current version.      |
-| [switch](https://trigger.dev/docs/cli-switch)                        | Switch between CLI profiles.                                       |
-| [update](https://trigger.dev/docs/cli-update-commands)               | Updates all `@trigger.dev/*` packages to match the CLI version.    |
+| Command | Description |
+| :-- | :-- |
+| [login](https://trigger.dev/docs/cli-login-commands) | Login with Trigger.dev so you can perform authenticated actions. |
+| [init](https://trigger.dev/docs/cli-init-commands) | Initialize your existing project for development with Trigger.dev. |
+| [dev](https://trigger.dev/docs/cli-dev-commands) | Run your Trigger.dev tasks locally. |
+| [deploy](https://trigger.dev/docs/cli-deploy-commands) | Deploy your Trigger.dev project to the cloud. |
+| [promote](https://trigger.dev/docs/cli-promote-commands) | Promote a previously deployed version to the current version. |
+| [env](https://trigger.dev/docs/cli-env-commands) | Manage environment variables for your Trigger.dev project. |
+| [projects](https://trigger.dev/docs/cli-projects-commands) | Manage Trigger.dev projects. |
+| orgs | Manage Trigger.dev organizations. |
+| [runs](https://trigger.dev/docs/cli-runs-commands) | Manage runs for your Trigger.dev project. |
+| [tasks](https://trigger.dev/docs/cli-tasks-commands) | Trigger tasks in your Trigger.dev project. |
+| [webhooks](https://trigger.dev/docs/cli-webhooks-commands) | Manage the signing secrets of your hosted webhook endpoints. |
+| [report](https://trigger.dev/docs/reports) | Print a health report for an environment: is work flowing, is it your code, is the telemetry fresh. |
+| [preview archive](https://trigger.dev/docs/cli-preview-archive) | Archive a preview branch. |
+| [dev archive](https://trigger.dev/docs/deployment/dev-branches#archive-a-branch) | Archive a dev branch. |
+| [mcp](https://trigger.dev/docs/mcp-introduction#client-configuration) | Run the Trigger.dev MCP server. |
+| [install-mcp](https://trigger.dev/docs/mcp-introduction) | Install the Trigger.dev MCP server into your AI coding assistant. |
+| [skills](https://trigger.dev/docs/skills) | Install the Trigger.dev agent skills into your coding agent. |
+| [whoami](https://trigger.dev/docs/cli-whoami-commands) | Display the current logged in user and project details. |
+| [mint-token](https://trigger.dev/docs/management/authentication#pat-expiry) | Mint a short-lived token that authenticates as you, from your stored personal access token. |
+| [logout](https://trigger.dev/docs/cli-logout-commands) | Logout of Trigger.dev. |
+| [list-profiles](https://trigger.dev/docs/cli-list-profiles-commands) | List all of your CLI profiles. |
+| [switch](https://trigger.dev/docs/cli-switch) | Switch between CLI profiles. |
+| [update](https://trigger.dev/docs/cli-update-commands) | Updates all `@trigger.dev/*` packages to match the CLI version. |
 
 ## CLI documentation
 

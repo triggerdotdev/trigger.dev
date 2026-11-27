@@ -73,6 +73,8 @@ const mySurface = chat.channels.custom({
 
 `send` is called to post the reply. Within a turn, `ctx.previousRef` is the ref you returned from the turn's earlier `send` (the acknowledgement, or the message being streamed), so later sends edit that message instead of posting a new one. Each turn starts without a ref: the next turn's answer is a new message. Return `null` from `outbound` to stay silent (a tool-only turn, say).
 
+On the final reply, `reply.text` is the turn's last non-empty run of text, where tool calls split the text into runs. That is usually the answer after the last tool call, so notes the model wrote before its tool calls are left out. When the model writes nothing after its last tool call, `reply.text` is the text it wrote just before that call. `reply.message` keeps every part.
+
 An event that `inbound` maps to an empty message (no text, and no file or data parts) runs no turn. A click or system event your surface sends to the same endpoint is dropped rather than answered with an empty prompt.
 
 List the connector in `chat.agent({ channels: [mySurface] })`, which subscribes the agent to the endpoint with the id `agentId:connectorId`. Other subscribers on the endpoint keep receiving its deliveries.

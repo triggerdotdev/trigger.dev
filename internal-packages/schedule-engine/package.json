@@ -20,7 +20,7 @@
     "@trigger.dev/core": "workspace:*",
     "@trigger.dev/database": "workspace:*",
     "cron-parser": "^4.9.0",
-    "zod": "4.5.4"
+    "zod": "4.6.7"
   },
   "devDependencies": {
     "@internal/testcontainers": "workspace:*",
@@ -28,7 +28,7 @@
   },
   "scripts": {
     "clean": "rimraf dist",
-    "typecheck": "tsc --noEmit -p tsconfig.build.json",
+    "typecheck": "tsrs --fast --noEmit -p tsconfig.build.json",
     "test": "vitest --sequence.concurrent=false --no-file-parallelism",
     "test:coverage": "vitest --sequence.concurrent=false --no-file-parallelism --coverage.enabled",
     "build": "pnpm run clean && tsc -p tsconfig.build.json",

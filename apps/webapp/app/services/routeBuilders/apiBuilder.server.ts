@@ -1,6 +1,7 @@
 import type { z } from "zod";
 import type {
   ApiAuthenticationResultSuccess,
+  AuthenticatedEnvironment,
   UserActorAuthenticatedActor,
 } from "../apiAuth.server";
 import type { ActionFunctionArgs, LoaderFunctionArgs } from "@remix-run/server-runtime";
@@ -24,6 +25,11 @@ import { safeJsonParse } from "~/utils/json";
 import { sanitizeHttpUrl } from "~/utils/sanitizeHttpUrl";
 import type { AuthenticatedWorkerInstance } from "~/v3/services/worker/workerGroupTokenService.server";
 import { WorkerGroupTokenService } from "~/v3/services/worker/workerGroupTokenService.server";
+import {
+  applyWorkerActionTokenGate,
+  type WorkerActionTokenStartVersion,
+} from "~/v3/services/worker/workerActionToken.server";
+import type { WorkerActionTokenRouteAction } from "~/v3/services/worker/workerActionTokenVerifier.server";
 import type { API_VERSIONS } from "~/api/versions";
 import { getApiVersion } from "~/api/versions";
 import { WORKER_HEADERS } from "@trigger.dev/core/v3/runEngineWorker";
@@ -34,6 +40,7 @@ import { publicTokenSecret } from "~/services/publicTokenSubject.server";
 import { unroutableIdResponse } from "./unroutableId.server";
 import { keyedWaitpointBudgetResponse } from "./keyedWaitpointBudget.server";
 import { tenantContext, tenantContextFromAuthEnvironment } from "~/services/tenantContext.server";
+import { organizationContext, type OrganizationContext } from "@internal/run-store";
 import { withRequestFeature, type RequestFeatureName } from "~/services/requestFeature.server";
 
 // Client aborts and service-level validation errors aren't bugs — they're
@@ -330,7 +337,8 @@ type ApiKeyRouteBuilderOptions<
       | z.ZodFirstPartySchemaTypes
       | z.ZodDiscriminatedUnion<any, any>
       ? z.infer<TSearchParamsSchema>
-      : undefined
+      : undefined,
+    subject: RbacSubject
   ) => Promise<TResource | undefined>;
   shouldRetryNotFound?: boolean;
   // Opt-in metrics label for the request and its ClickHouse queries.
@@ -378,6 +386,14 @@ type ApiKeyHandlerFunction<
   apiVersion: API_VERSIONS;
 }) => Promise<Response>;
 
+function organizationContextOf(environment: AuthenticatedEnvironment): OrganizationContext {
+  return {
+    organizationId: environment.organization.id,
+    environmentId: environment.id,
+    featureFlags: environment.organization.featureFlags,
+  };
+}
+
 export function createLoaderApiRoute<
   TParamsSchema extends AnyZodSchema | undefined = undefined,
   TSearchParamsSchema extends AnyZodSchema | undefined = undefined,
@@ -415,6 +431,7 @@ export function createLoaderApiRoute<
         );
       }
       const { authentication: authenticationResult, ability } = authResult;
+      const orgContext = organizationContextOf(authenticationResult.environment);
       const restrictedKeyRejection = await rejectRestrictedKeyWithoutAuthorization({
         request,
         restrictedApiKey: authResult.restrictedApiKey,
@@ -474,7 +491,9 @@ export function createLoaderApiRoute<
       }
 
       // Find the resource
-      const resource = await findResource(parsedParams, authenticationResult, parsedSearchParams);
+      const resource = await organizationContext.run(orgContext, () =>
+        findResource(parsedParams, authenticationResult, parsedSearchParams, authResult.subject)
+      );
 
       if (!resource) {
         return await wrapResponse(
@@ -521,16 +540,18 @@ export function createLoaderApiRoute<
           authenticationResult.actor
         ),
         () =>
-          handler({
-            params: parsedParams,
-            searchParams: parsedSearchParams,
-            headers: parsedHeaders,
-            authentication: authenticationResult,
-            ability,
-            request,
-            resource,
-            apiVersion,
-          })
+          organizationContext.run(orgContext, () =>
+            handler({
+              params: parsedParams,
+              searchParams: parsedSearchParams,
+              headers: parsedHeaders,
+              authentication: authenticationResult,
+              ability,
+              request,
+              resource,
+              apiVersion,
+            })
+          )
       );
       return await wrapResponse(request, result, corsStrategy !== "none");
     } catch (error) {
@@ -1215,7 +1236,8 @@ type ApiKeyActionRouteBuilderOptions<
       | z.ZodFirstPartySchemaTypes
       | z.ZodDiscriminatedUnion<any, any>
       ? z.infer<TSearchParamsSchema>
-      : undefined
+      : undefined,
+    subject: RbacSubject
   ) => Promise<TResource | undefined>;
   authorization?: {
     action: string;
@@ -1339,6 +1361,7 @@ export function createActionApiRoute<
         );
       }
       const { authentication: authenticationResult, ability } = authResult;
+      const orgContext = organizationContextOf(authenticationResult.environment);
       // The request's own context too, for what runs outside the handler.
       tenantContext.enrich(
         tenantContextFromAuthEnvironment(
@@ -1454,7 +1477,9 @@ export function createActionApiRoute<
       // for either form should authorize both URL forms). Mirrors the
       // ordering in `createLoaderApiRoute`.
       const resource = findResource
-        ? await findResource(parsedParams, authenticationResult, parsedSearchParams)
+        ? await organizationContext.run(orgContext, () =>
+            findResource(parsedParams, authenticationResult, parsedSearchParams, authResult.subject)
+          )
         : undefined;
 
       // Run authorization first — but with the resolved resource available
@@ -1507,18 +1532,20 @@ export function createActionApiRoute<
           authenticationResult.actor
         ),
         () =>
-          handler({
-            params: parsedParams,
-            searchParams: parsedSearchParams,
-            headers: parsedHeaders,
-            body: parsedBody,
-            authentication: authenticationResult,
-            restrictedApiKey: authResult.restrictedApiKey,
-            subject: authResult.subject,
-            ability,
-            request,
-            resource,
-          })
+          organizationContext.run(orgContext, () =>
+            handler({
+              params: parsedParams,
+              searchParams: parsedSearchParams,
+              headers: parsedHeaders,
+              body: parsedBody,
+              authentication: authenticationResult,
+              restrictedApiKey: authResult.restrictedApiKey,
+              subject: authResult.subject,
+              ability,
+              request,
+              resource,
+            })
+          )
       );
       return await wrapResponse(request, result, corsStrategy !== "none");
     } catch (error) {
@@ -1656,6 +1683,7 @@ export function createMultiMethodApiRoute<
         );
       }
       const { authentication: authenticationResult, ability } = authResult;
+      const orgContext = organizationContextOf(authenticationResult.environment);
       // The request's own context too, for what runs outside the handler.
       tenantContext.enrich(
         tenantContextFromAuthEnvironment(
@@ -1796,14 +1824,16 @@ export function createMultiMethodApiRoute<
           authenticationResult.actor
         ),
         () =>
-          methodConfig.handler({
-            params: parsedParams,
-            searchParams: parsedSearchParams,
-            headers: parsedHeaders,
-            body: parsedBody,
-            authentication: authenticationResult,
-            request,
-          })
+          organizationContext.run(orgContext, () =>
+            methodConfig.handler({
+              params: parsedParams,
+              searchParams: parsedSearchParams,
+              headers: parsedHeaders,
+              body: parsedBody,
+              authentication: authenticationResult,
+              request,
+            })
+          )
       );
       return await wrapResponse(request, result, corsStrategy !== "none");
     } catch (error) {
@@ -1858,30 +1888,63 @@ type WorkerLoaderRouteBuilderOptions<
   params?: TParamsSchema;
   searchParams?: TSearchParamsSchema;
   headers?: THeadersSchema;
+  workerActionToken?: WorkerActionTokenRouteAction;
 };
+
+type WorkerActionTokenHandlerArgs = {
+  environmentId?: string;
+  sandboxRunId?: string;
+  tokenEnvironmentId?: string;
+  startVersion?: WorkerActionTokenStartVersion;
+};
+
+async function workerActionTokenHandlerArgs(
+  action: WorkerActionTokenRouteAction | undefined,
+  request: Request,
+  worker: AuthenticatedWorkerInstance,
+  params: unknown,
+  plain: { environmentId?: string; sandboxRunId?: string }
+): Promise<WorkerActionTokenHandlerArgs> {
+  const runFriendlyId =
+    typeof params === "object" && params !== null && "runFriendlyId" in params
+      ? params.runFriendlyId
+      : undefined;
+
+  if (!action || typeof runFriendlyId !== "string") {
+    return plain;
+  }
+
+  return applyWorkerActionTokenGate({
+    action,
+    request,
+    worker,
+    runFriendlyId,
+    ...plain,
+  });
+}
 
 type WorkerLoaderHandlerFunction<
   TParamsSchema extends AnyZodSchema | undefined,
   TSearchParamsSchema extends AnyZodSchema | undefined,
   THeadersSchema extends AnyZodSchema | undefined = undefined,
-> = (args: {
-  params: TParamsSchema extends z.ZodFirstPartySchemaTypes | z.ZodDiscriminatedUnion<any, any>
-    ? z.infer<TParamsSchema>
-    : undefined;
-  searchParams: TSearchParamsSchema extends
-    | z.ZodFirstPartySchemaTypes
-    | z.ZodDiscriminatedUnion<any, any>
-    ? z.infer<TSearchParamsSchema>
-    : undefined;
-  authenticatedWorker: AuthenticatedWorkerInstance;
-  request: Request;
-  headers: THeadersSchema extends z.ZodFirstPartySchemaTypes | z.ZodDiscriminatedUnion<any, any>
-    ? z.infer<THeadersSchema>
-    : undefined;
-  runnerId?: string;
-  environmentId?: string;
-  sandboxRunId?: string;
-}) => Promise<Response>;
+> = (
+  args: {
+    params: TParamsSchema extends z.ZodFirstPartySchemaTypes | z.ZodDiscriminatedUnion<any, any>
+      ? z.infer<TParamsSchema>
+      : undefined;
+    searchParams: TSearchParamsSchema extends
+      | z.ZodFirstPartySchemaTypes
+      | z.ZodDiscriminatedUnion<any, any>
+      ? z.infer<TSearchParamsSchema>
+      : undefined;
+    authenticatedWorker: AuthenticatedWorkerInstance;
+    request: Request;
+    headers: THeadersSchema extends z.ZodFirstPartySchemaTypes | z.ZodDiscriminatedUnion<any, any>
+      ? z.infer<THeadersSchema>
+      : undefined;
+    runnerId?: string;
+  } & WorkerActionTokenHandlerArgs
+) => Promise<Response>;
 
 export function createLoaderWorkerApiRoute<
   TParamsSchema extends AnyZodSchema | undefined = undefined,
@@ -1896,6 +1959,7 @@ export function createLoaderWorkerApiRoute<
     params: paramsSchema,
     searchParams: searchParamsSchema,
     headers: headersSchema,
+    workerActionToken,
   } = options;
 
   return async function loader({ request, params }: LoaderFunctionArgs) {
@@ -1949,6 +2013,13 @@ export function createLoaderWorkerApiRoute<
       // `|| undefined` so a blank header can't become a zero-match snapshot filter (→ false reject).
       const environmentId = request.headers.get(WORKER_HEADERS.ENVIRONMENT_ID) || undefined;
       const sandboxRunId = request.headers.get(WORKER_HEADERS.SANDBOX_RUN_ID) || undefined;
+      const tokenArgs = await workerActionTokenHandlerArgs(
+        workerActionToken,
+        request,
+        authenticationResult,
+        parsedParams,
+        { environmentId, sandboxRunId }
+      );
 
       const result = await handler({
         params: parsedParams,
@@ -1957,8 +2028,7 @@ export function createLoaderWorkerApiRoute<
         request,
         headers: parsedHeaders,
         runnerId,
-        environmentId,
-        sandboxRunId,
+        ...tokenArgs,
       });
       return result;
     } catch (error) {
@@ -1992,6 +2062,7 @@ type WorkerActionRouteBuilderOptions<
   body?: TBodySchema;
   method?: "POST" | "PUT" | "DELETE" | "PATCH";
   bodyValidationErrorStatus?: 400 | 422 | ((error: z.ZodError) => 400 | 422);
+  workerActionToken?: WorkerActionTokenRouteAction;
 };
 
 type WorkerActionHandlerFunction<
@@ -1999,27 +2070,27 @@ type WorkerActionHandlerFunction<
   TSearchParamsSchema extends AnyZodSchema | undefined,
   THeadersSchema extends AnyZodSchema | undefined = undefined,
   TBodySchema extends AnyZodSchema | undefined = undefined,
-> = (args: {
-  params: TParamsSchema extends z.ZodFirstPartySchemaTypes | z.ZodDiscriminatedUnion<any, any>
-    ? z.infer<TParamsSchema>
-    : undefined;
-  searchParams: TSearchParamsSchema extends
-    | z.ZodFirstPartySchemaTypes
-    | z.ZodDiscriminatedUnion<any, any>
-    ? z.infer<TSearchParamsSchema>
-    : undefined;
-  authenticatedWorker: AuthenticatedWorkerInstance;
-  request: Request;
-  headers: THeadersSchema extends z.ZodFirstPartySchemaTypes | z.ZodDiscriminatedUnion<any, any>
-    ? z.infer<THeadersSchema>
-    : undefined;
-  body: TBodySchema extends z.ZodFirstPartySchemaTypes | z.ZodDiscriminatedUnion<any, any>
-    ? z.infer<TBodySchema>
-    : undefined;
-  runnerId?: string;
-  environmentId?: string;
-  sandboxRunId?: string;
-}) => Promise<Response>;
+> = (
+  args: {
+    params: TParamsSchema extends z.ZodFirstPartySchemaTypes | z.ZodDiscriminatedUnion<any, any>
+      ? z.infer<TParamsSchema>
+      : undefined;
+    searchParams: TSearchParamsSchema extends
+      | z.ZodFirstPartySchemaTypes
+      | z.ZodDiscriminatedUnion<any, any>
+      ? z.infer<TSearchParamsSchema>
+      : undefined;
+    authenticatedWorker: AuthenticatedWorkerInstance;
+    request: Request;
+    headers: THeadersSchema extends z.ZodFirstPartySchemaTypes | z.ZodDiscriminatedUnion<any, any>
+      ? z.infer<THeadersSchema>
+      : undefined;
+    body: TBodySchema extends z.ZodFirstPartySchemaTypes | z.ZodDiscriminatedUnion<any, any>
+      ? z.infer<TBodySchema>
+      : undefined;
+    runnerId?: string;
+  } & WorkerActionTokenHandlerArgs
+) => Promise<Response>;
 
 export function createActionWorkerApiRoute<
   TParamsSchema extends AnyZodSchema | undefined = undefined,
@@ -2048,6 +2119,7 @@ export function createActionWorkerApiRoute<
     headers: headersSchema,
     method,
     bodyValidationErrorStatus,
+    workerActionToken,
   } = options;
 
   return async function action({ request, params }: ActionFunctionArgs) {
@@ -2125,6 +2197,13 @@ export function createActionWorkerApiRoute<
       // `|| undefined` so a blank header can't become a zero-match snapshot filter (→ false reject).
       const environmentId = request.headers.get(WORKER_HEADERS.ENVIRONMENT_ID) || undefined;
       const sandboxRunId = request.headers.get(WORKER_HEADERS.SANDBOX_RUN_ID) || undefined;
+      const tokenArgs = await workerActionTokenHandlerArgs(
+        workerActionToken,
+        request,
+        authenticationResult,
+        parsedParams,
+        { environmentId, sandboxRunId }
+      );
 
       const result = await handler({
         params: parsedParams,
@@ -2134,8 +2213,7 @@ export function createActionWorkerApiRoute<
         body: parsedBody,
         headers: parsedHeaders,
         runnerId,
-        environmentId,
-        sandboxRunId,
+        ...tokenArgs,
       });
       return result;
     } catch (error) {

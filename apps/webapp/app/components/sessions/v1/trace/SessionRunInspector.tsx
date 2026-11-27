@@ -22,9 +22,7 @@ import {
   runFactsOf,
   runNotShown,
   spanNotLoaded,
-  startedBecauseText,
   startingEndsAtMs,
-  type RunFacts,
   type RunNotShown,
 } from "./sessionRunNote";
 import { SESSION_SPAN_TAB_PARAM, type SessionTraceSelection } from "./sessionTraceSelection";
@@ -147,11 +145,14 @@ export function SessionRunInspector({
       to={runPagePath}
       onClick={() => track("open_run_page", { from: "panel", reason: notShown?.kind })}
     >
-      Open run page
+      View run
     </LinkButton>
   ) : null;
-  const hasNote = facts !== undefined || notShown !== undefined || showSpanNotLoaded;
-  const runNote = <RunNote info={facts} notShown={notShown} spanNotLoaded={showSpanNotLoaded} />;
+  // The row's badge already says these; the panel doesn't repeat it above the run.
+  const noteShown =
+    notShown?.kind === "logsDeleted" || notShown?.kind === "unavailable" ? undefined : notShown;
+  const hasNote = noteShown !== undefined || showSpanNotLoaded;
+  const runNote = <RunNote notShown={noteShown} spanNotLoaded={showSpanNotLoaded} />;
 
   // The run's own span isn't known yet: its runs page hasn't loaded or it isn't in the run store.
   if (!spanId) {
@@ -212,7 +213,7 @@ export function SessionRunInspector({
       tabParam={SESSION_SPAN_TAB_PARAM}
       hideFocusOnRun
       closePanel={onClose}
-      headerAccessory={openRunPage}
+      statusAccessory={openRunPage}
     />
   );
   // The note belongs to the run panel; a span panel shows the span alone. Without a note the
@@ -226,26 +227,22 @@ export function SessionRunInspector({
   );
 }
 
-/** Session-only context above the run panel: the run's place in the session and, if its spans
- * can't be shown in the Trace tab, why. */
+/** Above the run panel when its spans, or the linked span, can't be shown in the Trace tab: why. */
 function RunNote({
-  info,
   notShown,
   spanNotLoaded,
 }: {
-  info: RunFacts | undefined;
   notShown: RunNotShown | undefined;
-  /** A linked span never loaded here; the header's "Open run page" goes to it. */
+  /** A linked span never loaded here; its "View run" goes to it. */
   spanNotLoaded: boolean;
 }) {
-  if (!info && !notShown && !spanNotLoaded) return null;
+  if (!notShown && !spanNotLoaded) return null;
   return (
     <div className="flex flex-col gap-0.5 border-b border-grid-dimmed bg-background-bright px-3 py-2">
-      {info && <Paragraph variant="small">{startedBecauseText(info)}</Paragraph>}
       {notShown && <Paragraph variant="small/dimmed">{notShownText(notShown)}</Paragraph>}
       {spanNotLoaded && (
         <Paragraph variant="small/dimmed">
-          This span isn't loaded here. Open run page to see it.
+          This span isn't loaded here. Use View run to see it.
         </Paragraph>
       )}
     </div>

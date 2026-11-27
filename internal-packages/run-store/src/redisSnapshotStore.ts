@@ -181,6 +181,8 @@ export type SnapshotEntryInput = {
   projectId: string;
   organizationId: string;
   checkpointId?: string;
+  // Set only for a state-held checkpoint of a MemoryDB-only run; absent means Postgres. No Postgres column: mirrored runs never carry it.
+  checkpointStore?: "state";
   workerId?: string;
   runnerId?: string;
   metadata?: unknown;
@@ -672,6 +674,35 @@ export class RedisSnapshotStore {
     await this.redis.dropSnapshotRun(keys.e, keys.idx, keys.cur, keys.seq);
   }
 
+  /**
+   * Writes a state-held checkpoint into the run's `:e` hash as the `<checkpointId>#cp` field, only
+   * when the run's keyspace is alive, and reports whether it was. The field expires and is removed
+   * with `:e`. Not retried: a timed-out write may have applied.
+   */
+  async writeCheckpoint(runId: string, checkpointId: string, raw: string): Promise<boolean> {
+    const k = snapshotKeys(runId);
+    return this.#timed("writeCheckpoint", async () => {
+      const written = await this.redis.writeSnapshotCheckpoint(
+        k.e,
+        k.idx,
+        k.cur,
+        k.seq,
+        checkpointId,
+        raw
+      );
+      return written === 1;
+    });
+  }
+
+  // Reads the state-held checkpoint writeCheckpoint stores; null when the field is absent.
+  async readCheckpoint(runId: string, checkpointId: string): Promise<string | null> {
+    return this.#timed("readCheckpoint", () =>
+      this.#retryingRead("readCheckpoint", () =>
+        this.redis.hget(snapshotKeys(runId).e, `${checkpointId}#cp`)
+      )
+    );
+  }
+
   async append(args: {
     entry: SnapshotEntryInput;
     kind: "birth" | "transition";
@@ -1011,11 +1042,27 @@ export class RedisSnapshotStore {
     snapshotId: string,
     opts?: { environmentId?: string; retry?: boolean }
   ): Promise<SnapshotRead | null> {
+    const read = await this.findById(runId, snapshotId, opts);
+    return read === "absent" ? null : read;
+  }
+
+  /**
+   * Like getById, but tells a snapshot the run does not have ("absent") from a keyspace that
+   * cannot answer (null: expired, evicted or gapped).
+   */
+  async findById(
+    runId: string,
+    snapshotId: string,
+    opts?: { environmentId?: string; retry?: boolean }
+  ): Promise<SnapshotRead | "absent" | null> {
     return this.#timed("getById", async () => {
       const k = snapshotKeys(runId);
-      const read = () => this.redis.readSnapshotById(k.e, k.idx, k.cur, k.seq, snapshotId);
+      const read = () => this.redis.readSnapshotByIdOrAbsent(k.e, k.idx, k.cur, k.seq, snapshotId);
       const reply = await (opts?.retry === false ? read() : this.#retryingRead("getById", read));
-      return this.#decode(reply, opts?.environmentId, runId, true);
+      if (!reply) return null;
+      // A live keyspace with no gaps never drops an entry, so a miss there is authoritative. So
+      // is another environment's entry, as the Postgres read scopes by environment.
+      return this.#decode(reply, opts?.environmentId, runId, true) ?? "absent";
     });
   }
 
@@ -1675,16 +1722,28 @@ export class RedisSnapshotStore {
       `,
     });
 
-    this.redis.defineCommand("readSnapshotById", {
+    this.redis.defineCommand("readSnapshotByIdOrAbsent", {
       numberOfKeys: 4,
       lua: `
         ${PRELUDE}
         if not keyspaceAlive() or gapped() then return nil end
         local id = ARGV[1]
         local vals = redis.call('HMGET', eKey, id, id .. '#s', id .. '#c')
-        if not vals[1] then return nil end
+        -- Empty, not nil: the keyspace can answer and does not hold this id.
+        if not vals[1] then return {} end
         -- Coerce every element: a Lua false truncates the returned array.
         return { id, vals[1], vals[2] or '', vals[3] or '', orderFor(vals[3]), distinctFor(vals[3]), danglingFor(vals[3]) }
+      `,
+    });
+
+    this.redis.defineCommand("writeSnapshotCheckpoint", {
+      numberOfKeys: 4,
+      lua: `
+        ${PRELUDE}
+        -- The liveness check stops HSET creating :e anew without its expiry.
+        if not keyspaceAlive() then return 0 end
+        redis.call('HSET', eKey, ARGV[1] .. '#cp', ARGV[2])
+        return 1
       `,
     });
 
@@ -1909,7 +1968,7 @@ declare module "@internal/redis" {
       birthMode: string,
       callback?: Callback<string[]>
     ): Result<string[], Context>;
-    readSnapshotById(
+    readSnapshotByIdOrAbsent(
       eKey: string,
       idxKey: string,
       curKey: string,
@@ -1917,6 +1976,15 @@ declare module "@internal/redis" {
       id: string,
       callback?: Callback<string[] | null>
     ): Result<string[] | null, Context>;
+    writeSnapshotCheckpoint(
+      eKey: string,
+      idxKey: string,
+      curKey: string,
+      seqKey: string,
+      checkpointId: string,
+      raw: string,
+      callback?: Callback<number>
+    ): Result<number, Context>;
     readLatestSnapshot(
       eKey: string,
       idxKey: string,

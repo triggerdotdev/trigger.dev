@@ -1,6 +1,6 @@
 import type { RunEngine } from "@internal/run-engine";
 import { TaskRunErrorCodes, type TaskRunError } from "@trigger.dev/core/v3";
-import { RunId } from "@trigger.dev/core/v3/isomorphic";
+import { resolveShard, RunId } from "@trigger.dev/core/v3/isomorphic";
 import type {
   PrismaClientOrTransaction,
   RuntimeEnvironmentType,
@@ -8,11 +8,13 @@ import type {
 } from "@trigger.dev/database";
 import type { AuthenticatedEnvironment } from "~/services/apiAuth.server";
 import { logger } from "~/services/logger.server";
+import { refuseMemoryDbParentNotFound } from "~/v3/runOpsMigration/memoryDbParent.server";
 import { mintFriendlyIdForKind } from "~/v3/runOpsMigration/mintAnchoredRunFriendlyId.server";
 import { resolveRunMintTarget } from "~/v3/runOpsMigration/resolveRunMintTarget.server";
+import { rootResidency } from "~/v3/runOpsMigration/resolveRootResidency.server";
 import { getEventRepository } from "~/v3/eventRepository/index.server";
 import { runStore as defaultRunStore } from "~/v3/runStore.server";
-import type { RunStore } from "@internal/run-store";
+import { MEMORYDB_SHARD_KEY, organizationContext, type RunStore } from "@internal/run-store";
 import type { IEventRepository } from "~/v3/eventRepository/eventRepository.types";
 import { PerformTaskRunAlertsService } from "~/v3/services/alerts/performTaskRunAlerts.server";
 import { DefaultQueueManager } from "../concerns/queues.server";
@@ -98,9 +100,23 @@ export class TriggerFailedTaskService {
     orgFeatureFlags?: unknown;
     parentRunFriendlyId?: string;
     runFriendlyId?: string;
+    batch?: { id: string; index: number };
   }): Promise<string> {
     if (args.runFriendlyId) {
       return args.runFriendlyId;
+    }
+
+    if (
+      !args.parentRunFriendlyId &&
+      !args.batch &&
+      (await rootResidency.allowsRootRun(args.orgFeatureFlags, {
+        keyed: false,
+        token: false,
+        delayed: false,
+        debounced: false,
+      }))
+    ) {
+      return mintFriendlyIdForKind({ kind: "runOpsId", shardChar: MEMORYDB_SHARD_KEY });
     }
 
     return mintFriendlyIdForKind(
@@ -134,8 +150,12 @@ export class TriggerFailedTaskService {
         orgFeatureFlags: request.environment.organization.featureFlags,
         parentRunFriendlyId: request.parentRunId,
         runFriendlyId: request.runFriendlyId,
+        batch: request.batch,
       });
       mintedFriendlyId = failedRunFriendlyId;
+      if (resolveShard(failedRunFriendlyId) === MEMORYDB_SHARD_KEY) {
+        organizationContext.markBornHere();
+      }
 
       const { repository, store } =
         this.eventRepository ??
@@ -155,6 +175,10 @@ export class TriggerFailedTaskService {
             this.prisma
           )
         : undefined;
+
+      if (request.parentRunId && !parentRun) {
+        refuseMemoryDbParentNotFound(request.parentRunId);
+      }
 
       const depth = parentRun ? parentRun.depth + 1 : 0;
       const rootTaskRunId = parentRun?.rootTaskRunId ?? parentRun?.id;
@@ -349,8 +373,12 @@ export class TriggerFailedTaskService {
         orgFeatureFlags: undefined,
         parentRunFriendlyId: opts.parentRunId,
         runFriendlyId: opts.runFriendlyId,
+        batch: opts.batch,
       });
       mintedFriendlyId = failedRunFriendlyId;
+      if (resolveShard(failedRunFriendlyId) === MEMORYDB_SHARD_KEY) {
+        organizationContext.markBornHere();
+      }
 
       // Best-effort parent run lookup for rootTaskRunId/depth
       let parentTaskRunId: string | undefined;

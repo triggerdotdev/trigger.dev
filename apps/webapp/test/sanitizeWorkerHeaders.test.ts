@@ -20,6 +20,14 @@ describe("sanitizeWorkerHeaders", () => {
     expect(out[WORKER_HEADERS.MANAGED_SECRET]).toBeUndefined();
   });
 
+  it("strips the forwarded workload token", () => {
+    const out = sanitizeWorkerHeaders(
+      new Headers({ [WORKER_HEADERS.WORKLOAD_TOKEN]: "header.payload.signature" })
+    );
+    expect(out[WORKER_HEADERS.WORKLOAD_TOKEN]).toBeUndefined();
+    expect(Object.keys(out)).toHaveLength(0);
+  });
+
   it("strips authorization and cookie", () => {
     const out = sanitizeWorkerHeaders(build());
     expect(out["authorization"]).toBeUndefined();

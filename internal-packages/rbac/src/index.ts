@@ -18,6 +18,7 @@ import type {
   RoleBaseAccessController,
   RoleBasedAccessControlPlugin,
   RoleMutationResult,
+  UserRoleAssignmentResult,
 } from "@trigger.dev/plugins";
 import type { PrismaClient } from "@trigger.dev/database";
 import { isAdditionalApiKey } from "@trigger.dev/core/v3/apiKeys";
@@ -545,7 +546,7 @@ class LazyController implements RoleBaseAccessController {
 
   async setUserRole(
     ...args: Parameters<RoleBaseAccessController["setUserRole"]>
-  ): Promise<RoleAssignmentResult> {
+  ): Promise<UserRoleAssignmentResult> {
     return (await this.c()).setUserRole(...args);
   }
 
@@ -553,6 +554,12 @@ class LazyController implements RoleBaseAccessController {
     ...args: Parameters<RoleBaseAccessController["removeUserRole"]>
   ): Promise<RoleAssignmentResult> {
     return (await this.c()).removeUserRole(...args);
+  }
+
+  async removeFormerMemberRoles(
+    ...args: Parameters<RoleBaseAccessController["removeFormerMemberRoles"]>
+  ): Promise<RoleAssignmentResult> {
+    return (await this.c()).removeFormerMemberRoles(...args);
   }
 
   async getTokenRole(

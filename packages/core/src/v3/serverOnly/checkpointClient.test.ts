@@ -97,6 +97,91 @@ it("authenticates a snapshot delete and sends the run's tenancy by project ID", 
   }
 });
 
+it("retries a suspend until the checkpoint service starts listening", async () => {
+  const server = createServer((_request, response) => {
+    response.writeHead(200, { "content-type": "application/json" });
+    response.end(JSON.stringify({ ok: true }));
+  });
+  await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+  const port = (server.address() as AddressInfo).port;
+  await new Promise<void>((resolve) => server.close(() => resolve()));
+  try {
+    const apiUrl = new URL(`http://127.0.0.1:${port}`);
+    const suspended = new CheckpointClient({
+      apiUrl,
+      orchestrator: "KUBERNETES",
+      workerClient: new SupervisorHttpClient({
+        apiUrl: apiUrl.href,
+        workerToken: "test-token",
+        instanceName: "test",
+      }),
+    }).suspendRun({
+      runFriendlyId: "run_1",
+      snapshotFriendlyId: "snapshot_1",
+      body: {
+        runId: "run_1",
+        snapshotId: "snapshot_1",
+        runnerId: "runner_1",
+        projectRef: "proj_1",
+        deploymentVersion: "1",
+      },
+    });
+    await new Promise((resolve) => setTimeout(resolve, 1_200));
+    await new Promise<void>((resolve) => server.listen(port, "127.0.0.1", resolve));
+    expect(await suspended).toBe(true);
+  } finally {
+    server.closeAllConnections();
+    await new Promise<void>((resolve) => server.close(() => resolve()));
+  }
+});
+
+it("drops a refused suspend retry once a newer suspend for the run is sent", async () => {
+  const received: string[] = [];
+  const server = createServer((request, response) => {
+    received.push(request.url ?? "");
+    response.writeHead(200, { "content-type": "application/json" });
+    response.end(JSON.stringify({ ok: true }));
+  });
+  await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+  const port = (server.address() as AddressInfo).port;
+  await new Promise<void>((resolve) => server.close(() => resolve()));
+  try {
+    const apiUrl = new URL(`http://127.0.0.1:${port}`);
+    const client = new CheckpointClient({
+      apiUrl,
+      orchestrator: "KUBERNETES",
+      workerClient: new SupervisorHttpClient({
+        apiUrl: apiUrl.href,
+        workerToken: "test-token",
+        instanceName: "test",
+      }),
+    });
+    const suspend = (snapshotFriendlyId: string) =>
+      client.suspendRun({
+        runFriendlyId: "run_1",
+        snapshotFriendlyId,
+        body: {
+          runId: "run_1",
+          snapshotId: snapshotFriendlyId,
+          runnerId: "runner_1",
+          projectRef: "proj_1",
+          deploymentVersion: "1",
+        },
+      });
+    const older = suspend("snapshot_1");
+    await new Promise((resolve) => setTimeout(resolve, 200));
+    const newer = suspend("snapshot_2");
+    await new Promise((resolve) => setTimeout(resolve, 1_000));
+    await new Promise<void>((resolve) => server.listen(port, "127.0.0.1", resolve));
+    expect(await older).toBe(false);
+    expect(await newer).toBe(true);
+    expect(received).toEqual(["/api/v1/runs/run_1/snapshots/snapshot_2/suspend"]);
+  } finally {
+    server.closeAllConnections();
+    await new Promise<void>((resolve) => server.close(() => resolve()));
+  }
+});
+
 describe("CheckpointClient.deleteSnapshots retries", () => {
   // Each request takes the next scripted reply (a status, or "drop" for a reset connection); the
   // last one repeats.

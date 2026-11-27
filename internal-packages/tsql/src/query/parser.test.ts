@@ -627,3 +627,45 @@ describe("TSQLParseTreeConverter", () => {
     });
   });
 });
+
+describe("boolean grouping", () => {
+  // Renders the WHERE tree as and(...)/or(...)/not(...) over bare column names
+  function shape(expr: any): string {
+    switch (expr.expression_type) {
+      case "and":
+      case "or":
+        return `${expr.expression_type}(${expr.exprs.map(shape).join(",")})`;
+      case "not":
+        return `not(${shape(expr.expr)})`;
+      case "compare_operation":
+        return shape(expr.left);
+      case "field":
+        return expr.chain.join(".");
+      case "call":
+        return `${expr.name.toLowerCase()}(${expr.args.map(shape).join(",")})`;
+      default:
+        return expr.expression_type;
+    }
+  }
+
+  function whereShape(where: string): string {
+    return shape((parseAndConvert(`SELECT * FROM t WHERE ${where}`) as any).where);
+  }
+
+  it.each([
+    ["a = 1 OR (b = 1 AND c = 1)", "or(a,and(b,c))"],
+    ["a = 1 AND (b = 1 OR c = 1)", "and(a,or(b,c))"],
+    ["(a = 1 AND b = 1) OR (c = 1 AND d = 1)", "or(and(a,b),and(c,d))"],
+    ["(a = 1 OR b = 1) AND (c = 1 OR d = 1)", "and(or(a,b),or(c,d))"],
+    ["a = 1 OR b = 1 AND c = 1", "or(a,and(b,c))"],
+    ["a = 1 AND b = 1 OR c = 1", "or(and(a,b),c)"],
+    ["NOT (a = 1 AND b = 1)", "not(and(a,b))"],
+    ["NOT a = 1 AND b = 1", "and(not(a),b)"],
+    ["a = 1 AND (b = 1 AND c = 1)", "and(a,b,c)"],
+    ["a = 1 OR (b = 1 OR c = 1)", "or(a,b,c)"],
+    ["a = 1 AND b = 1 AND c = 1", "and(a,b,c)"],
+    ["a = 1 OR (b = 1 AND (c = 1 OR d = 1))", "or(a,and(b,or(c,d)))"],
+  ])("%s → %s", (where, expected) => {
+    expect(whereShape(where)).toBe(expected);
+  });
+});

@@ -30,7 +30,7 @@ This is a pnpm 10.33.2 monorepo that uses turborepo @turbo.json. The following w
 
 ## Other
 
-- <root>/docs is our trigger.dev/docs mintlify documentation site
+- <root>/docs is our trigger.dev/docs documentation content (MDX), rendered by the docs site in <root>/apps/docs
 - <root>/docker/Dockerfile is the one that creates the main trigger.dev published image
 - <root>/docker/docker-compose.yml is the file we run locally to start postgresql, redis, and electric when we are doing local development. You can run it with `pnpm run docker`
 - <root>/CONTRIBUTING.md defines the steps it takes for OSS contributors to start contributing.

@@ -12,6 +12,7 @@ import {
   apiClientManager,
   ApiError,
   conditionallyExportPacket,
+  taskMachineMetadata,
   conditionallyImportPacket,
   convertToolParametersToSchema,
   createErrorFromCauses,
@@ -28,6 +29,9 @@ import {
   RateLimitError,
   resourceCatalog,
   runtime,
+  RUN_SCOPE_PLACEHOLDER,
+  SANDBOX_TRIGGER_SOURCE,
+  SESSION_SCOPE_PLACEHOLDER,
   SemanticInternalAttributes,
   stringifyIO,
   SubtaskUnwrapError,
@@ -74,6 +78,8 @@ import {
   type SchemaParseFn,
   type Task,
   type TaskIdentifier,
+  type TaskMetadata,
+  type PreviewTaskOptions,
   type TaskOptions,
   type TaskOptionsWithSchema,
   type TaskOutput,
@@ -111,6 +117,7 @@ export type {
   Task,
   TaskFromIdentifier,
   TaskIdentifier,
+  PreviewTaskOptions,
   TaskOptions,
   TaskOptionsWithSchema,
   TaskOutput,
@@ -239,6 +246,42 @@ export function concurrencyLimit(options: ConcurrencyLimitOptions): ConcurrencyL
   return options;
 }
 
+function sandboxTaskMetadata({
+  sandbox,
+  triggerSource,
+}: PreviewTaskOptions & Pick<TaskOptions<string>, "triggerSource">): Pick<
+  TaskMetadata,
+  "sandbox" | "triggerSource"
+> {
+  if (sandbox === undefined || sandbox === false) return { triggerSource };
+
+  const { envVars, scopes, network } = sandbox === true ? {} : sandbox;
+  const requestedScopes = typeof scopes === "string" ? [scopes] : (scopes ?? []);
+  return {
+    triggerSource: SANDBOX_TRIGGER_SOURCE,
+    sandbox: {
+      triggerSource,
+      envVars,
+      network,
+      scopes: requestedScopes.flatMap((scope) => {
+        switch (scope) {
+          case "basic":
+            return [
+              `read:runs:${RUN_SCOPE_PLACEHOLDER}`,
+              `write:runs:${RUN_SCOPE_PLACEHOLDER}`,
+              `read:sessions:${SESSION_SCOPE_PLACEHOLDER}:in`,
+              `write:sessions:${SESSION_SCOPE_PLACEHOLDER}:out`,
+            ];
+          case "oidc":
+            return ["write:oidc"];
+          default:
+            return [scope];
+        }
+      }),
+    },
+  };
+}
+
 // Overload: when payloadSchema is provided, payload type should be any
 export function createTask<
   TIdentifier extends string,
@@ -264,9 +307,11 @@ export function createTask<
   TOutput = unknown,
   TInitOutput extends InitOutput = any,
 >(
-  params:
+  params: (
     | TaskOptions<TIdentifier, TInput, TOutput, TInitOutput>
     | TaskOptionsWithSchema<TIdentifier, TOutput, TInitOutput>
+  ) &
+    PreviewTaskOptions
 ): Task<TIdentifier, TInput, TOutput> | Task<TIdentifier, any, TOutput> {
   const normalizedQueue = normalizeTaskQueue(params.queue);
 
@@ -359,8 +404,8 @@ export function createTask<
     queue: normalizedQueue.queue,
     concurrency: normalizeTaskConcurrency(params.id, params.concurrency),
     retry: params.retry ? { ...defaultRetryOptions, ...params.retry } : undefined,
-    machine: typeof params.machine === "string" ? { preset: params.machine } : params.machine,
-    triggerSource: params.triggerSource,
+    ...taskMachineMetadata(params.id, params.machine),
+    ...sandboxTaskMetadata(params),
     agentConfig: params.agentConfig,
     maxDuration: params.maxDuration,
     ttl: params.ttl,
@@ -427,6 +472,15 @@ export function createSchemaTask<
   TInitOutput extends InitOutput = any,
 >(
   params: TaskWithSchemaOptions<TIdentifier, TSchema, TOutput, TInitOutput>
+): TaskWithSchema<TIdentifier, TSchema, TOutput>;
+// The preview entry point passes its options through here.
+export function createSchemaTask<
+  TIdentifier extends string,
+  TSchema extends TaskSchema | undefined = undefined,
+  TOutput = unknown,
+  TInitOutput extends InitOutput = any,
+>(
+  params: TaskWithSchemaOptions<TIdentifier, TSchema, TOutput, TInitOutput> & PreviewTaskOptions
 ): TaskWithSchema<TIdentifier, TSchema, TOutput> {
   const parsePayload = params.schema
     ? getSchemaParseFn<inferSchemaIn<TSchema>>(params.schema)
@@ -523,8 +577,8 @@ export function createSchemaTask<
     queue: normalizedQueue.queue,
     concurrency: normalizeTaskConcurrency(params.id, params.concurrency),
     retry: params.retry ? { ...defaultRetryOptions, ...params.retry } : undefined,
-    machine: typeof params.machine === "string" ? { preset: params.machine } : params.machine,
-    triggerSource: params.triggerSource,
+    ...taskMachineMetadata(params.id, params.machine),
+    ...sandboxTaskMetadata(params),
     agentConfig: params.agentConfig,
     maxDuration: params.maxDuration,
     ttl: params.ttl,
@@ -739,7 +793,7 @@ export async function batchTrigger<TTask extends AnyTask>(
  * @param {TriggerApiRequestOptions} [requestOptions] - Optional API request configuration
  *
  * @returns {Promise<BatchRunHandleFromTypes<InferRunTypes<TTask>>>} A promise that resolves with the batch run handle
- * containing batch ID, cached status, idempotency info, runs, and public access token
+ * containing the batch ID, run count, and public access token
  *
  * @example
  * ```ts
@@ -1433,7 +1487,7 @@ export async function batchTriggerTasks<TTasks extends readonly AnyTask[]>(
       publicAccessToken: response.publicAccessToken,
     };
 
-    return handle as unknown as BatchTasksRunHandleFromTypes<TTasks>;
+    return handle as BatchTasksRunHandleFromTypes<TTasks>;
   } else {
     // Stream path: convert to AsyncIterable and transform
     const streamItems = items as
@@ -1476,7 +1530,7 @@ export async function batchTriggerTasks<TTasks extends readonly AnyTask[]>(
       publicAccessToken: response.publicAccessToken,
     };
 
-    return handle as unknown as BatchTasksRunHandleFromTypes<TTasks>;
+    return handle as BatchTasksRunHandleFromTypes<TTasks>;
   }
 }
 

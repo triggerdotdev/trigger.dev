@@ -60,6 +60,9 @@ import type { Callback, RedisClient, Result } from "@internal/redis";
 /** Hard ceiling for a single cleanup script's work and target reply. */
 export const RUN_CLEANUP_PAGE_SIZE = 128;
 
+/** The most runs a MANUAL waitpoint's related-runs history keeps: the most recently registered. */
+const MANUAL_RELATED_RUNS_CAP = 100;
+
 const STORED_COMPLETED = "COMPLETED";
 
 const MISSING = "missing";
@@ -193,7 +196,18 @@ export function registerWaitpointCommands(redis: RedisClient): void {
       end
       local function rememberRelatedRun()
         if source.type == 'DATETIME' or source.type == 'MANUAL' then
-          redis.call('ZADD', KEYS[4], 0, incoming.runId)
+          if source.type == 'MANUAL' and source.standalone == true then
+            -- Minus the server time in microseconds, so one ascending read lists a standalone token
+            -- newest first; every other history (all 0) keeps run id order. Microseconds keep two
+            -- registrations in one millisecond apart; the score is a string because Lua formats
+            -- numbers to 14 digits.
+            local now = redis.call('TIME')
+            redis.call('ZADD', KEYS[4], '-' .. now[1] .. string.format('%06d', tonumber(now[2])),
+              incoming.runId)
+            redis.call('ZREMRANGEBYRANK', KEYS[4], ${MANUAL_RELATED_RUNS_CAP}, -1)
+          else
+            redis.call('ZADD', KEYS[4], 0, incoming.runId)
+          end
           local ttl = redis.call('PTTL', record)
           if ttl >= 0 then redis.call('PEXPIRE', KEYS[4], ttl)
           else redis.call('PERSIST', KEYS[4]) end
@@ -809,16 +823,24 @@ export function registerWaitpointCommands(redis: RedisClient): void {
     `,
   });
 
-  redis.defineCommand("wpReleaseKeyedCandidate", {
-    numberOfKeys: 3,
-    lua: `
+  // wpReleaseKeyedCandidate keeps main's contract for old images: a pending MANUAL record with a
+  // timeout is rejected. wpReleaseKeyedCandidateTimedManual also releases that record.
+  for (const [name, timedManual] of [
+    ["wpReleaseKeyedCandidate", false],
+    ["wpReleaseKeyedCandidateTimedManual", true],
+  ] as const) {
+    const rejectTimed = timedManual
+      ? ""
+      : "or (token.completedAfter ~= nil and token.completedAfter ~= cjson.null)";
+    redis.defineCommand(name, {
+      numberOfKeys: 3,
+      lua: `
       local record = KEYS[1]
       if redis.call('EXISTS', record) == 0 then return { 'released' } end
       if redis.call('HGET', record, 'status') ~= '${STORED_COMPLETED}' then
         local token = cjson.decode(redis.call('HGET', record, 'r'))
-        if ARGV[2] ~= 'pending-manual' or token.type ~= 'MANUAL' or
-            (token.completedAfter ~= nil and token.completedAfter ~= cjson.null) then
-          return redis.error_reply('wpReleaseKeyedCandidate: winner is not completed')
+        if ARGV[2] ~= 'pending-manual' or token.type ~= 'MANUAL' ${rejectTimed} then
+          return redis.error_reply('${name}: winner is not completed')
         end
         redis.call('HDEL', record, 'ka')
         return { 'released' }
@@ -831,7 +853,8 @@ export function registerWaitpointCommands(redis: RedisClient): void {
       end
       return { 'released' }
     `,
-  });
+    });
+  }
 
   redis.defineCommand("wpAckIdemReceipt", {
     numberOfKeys: 1,
@@ -1890,6 +1913,13 @@ declare module "@internal/redis" {
     wpReadIdemReceipt(receiptKey: string): Result<string[], Context>;
     wpCompleteIdemReceipt(receiptKey: string, winnerId: string): Result<string[], Context>;
     wpReleaseKeyedCandidate(
+      recordKey: string,
+      fanoutKey: string,
+      relatedRunsKey: string,
+      retentionMs: string,
+      pendingManual?: string
+    ): Result<string[], Context>;
+    wpReleaseKeyedCandidateTimedManual(
       recordKey: string,
       fanoutKey: string,
       relatedRunsKey: string,

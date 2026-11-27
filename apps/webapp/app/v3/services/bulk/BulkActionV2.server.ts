@@ -15,6 +15,7 @@ import {
 import { BaseService } from "../baseService.server";
 import { ServiceValidationError } from "../common.server";
 import { commonWorker } from "~/v3/commonWorker.server";
+import { $transaction } from "~/db.server";
 import { env } from "~/env.server";
 import { publicAppOrigin } from "~/services/adminOrigin.server";
 import { logger } from "@trigger.dev/sdk";
@@ -27,6 +28,19 @@ import parseDuration from "parse-duration";
 import { v3BulkActionPath } from "~/utils/pathBuilder";
 import { formatDateTime } from "~/components/primitives/DateTime";
 import pMap from "p-map";
+import {
+  ALREADY_FINISHED_REASON,
+  bulkActionFailureReason,
+  type FailedBulkActionItem,
+  recordFailedBulkActionItems,
+} from "./BulkActionV2.failedItems.server";
+
+// A replay into another environment or onto a chosen version is stored under its own name. A
+// worker from before those options existed rejects any name but the first, so during a deploy it
+// fails the job (which is retried) instead of replaying into the source environment on the
+// current version.
+const BULK_ACTION_QUERY = "bulk_action_v1";
+const BULK_ACTION_QUERY_WITH_REPLAY_TARGET = "bulk_action_v2";
 
 export type CreateBulkActionInput = {
   organizationId: string;
@@ -37,6 +51,10 @@ export type CreateBulkActionInput = {
   filters: RunListInputFilters;
   title?: string;
   region?: string;
+  /** Replay only: "latest" (default), "original" (each run's own version) or a specific version. */
+  version?: string;
+  /** Replay only: replay into this environment of the same project instead of the source one. */
+  replayEnvironmentId?: string;
   emailNotification?: boolean;
   triggerSource?: string;
 };
@@ -107,9 +125,36 @@ export class BulkActionService extends BaseService {
       }
     }
 
+    const replayVersion =
+      input.action === "replay" && input.version && input.version !== "latest"
+        ? input.version
+        : undefined;
+    const replayEnvironmentId =
+      input.action === "replay" && input.replayEnvironmentId !== environmentId
+        ? input.replayEnvironmentId
+        : undefined;
+    if (replayEnvironmentId) {
+      const target = await this._prisma.runtimeEnvironment.findFirst({
+        where: { id: replayEnvironmentId, projectId, archivedAt: null },
+        select: { id: true },
+      });
+      if (!target) {
+        throw new ServiceValidationError("Replay environment not found in this project", 400);
+      }
+    }
+    // Version strings are per environment: another environment's run version is unrelated.
+    if (replayEnvironmentId && replayVersion === "original") {
+      throw new ServiceValidationError(
+        '"Same as original run" only works when replaying into the same environment. Pick Current version or one of that environment\'s versions.',
+        400
+      );
+    }
+
     const params = {
       ...filters,
       ...(replayRegion ? { replayRegion } : {}),
+      ...(replayVersion ? { replayVersion } : {}),
+      ...(replayEnvironmentId ? { replayEnvironmentId } : {}),
       ...(input.triggerSource ? { triggerSource: input.triggerSource } : {}),
     };
 
@@ -141,7 +186,10 @@ export class BulkActionService extends BaseService {
         name: input.title,
         type: input.action === "cancel" ? BulkActionType.CANCEL : BulkActionType.REPLAY,
         params,
-        queryName: "bulk_action_v1",
+        queryName:
+          replayVersion || replayEnvironmentId
+            ? BULK_ACTION_QUERY_WITH_REPLAY_TARGET
+            : BULK_ACTION_QUERY,
         totalCount: count,
         completionNotification:
           input.emailNotification === true
@@ -263,6 +311,15 @@ export class BulkActionService extends BaseService {
       "replayRegion" in rawParams && typeof (rawParams as any).replayRegion === "string"
         ? (rawParams as any).replayRegion
         : undefined;
+    const replayVersion =
+      "replayVersion" in rawParams && typeof (rawParams as any).replayVersion === "string"
+        ? ((rawParams as any).replayVersion as string)
+        : undefined;
+    const replayEnvironmentId =
+      "replayEnvironmentId" in rawParams &&
+      typeof (rawParams as any).replayEnvironmentId === "string"
+        ? ((rawParams as any).replayEnvironmentId as string)
+        : undefined;
     const triggerSource =
       "triggerSource" in rawParams && typeof (rawParams as any).triggerSource === "string"
         ? (rawParams as any).triggerSource
@@ -283,7 +340,10 @@ export class BulkActionService extends BaseService {
       prisma: this._replica as PrismaClient,
     });
 
-    if (group.queryName !== "bulk_action_v1") {
+    if (
+      group.queryName !== BULK_ACTION_QUERY &&
+      group.queryName !== BULK_ACTION_QUERY_WITH_REPLAY_TARGET
+    ) {
       throw new Error(`Bulk action group has invalid query name: ${group.queryName}`);
     }
 
@@ -305,6 +365,7 @@ export class BulkActionService extends BaseService {
     // 3. Process the runs
     let successCount = 0;
     let failureCount = 0;
+    const failedItems: FailedBulkActionItem[] = [];
 
     switch (group.type) {
       case BulkActionType.CANCEL: {
@@ -345,9 +406,19 @@ export class BulkActionService extends BaseService {
               });
 
               failureCount++;
+              failedItems.push({
+                sourceRunId: run.id,
+                error: bulkActionFailureReason(error, "Couldn't cancel this run"),
+              });
             } else {
               if (!result || result.alreadyFinished) {
                 failureCount++;
+                failedItems.push({
+                  sourceRunId: run.id,
+                  error: result?.alreadyFinished
+                    ? ALREADY_FINISHED_REASON
+                    : "Couldn't cancel this run",
+                });
               } else {
                 successCount++;
               }
@@ -375,6 +446,9 @@ export class BulkActionService extends BaseService {
                 bulkActionId: bulkActionId,
                 triggerSource,
                 region: replayRegion,
+                environmentId: replayEnvironmentId,
+                version:
+                  replayVersion === "original" ? (run.taskVersion ?? undefined) : replayVersion,
               })
             );
             if (error) {
@@ -385,6 +459,10 @@ export class BulkActionService extends BaseService {
               });
 
               failureCount++;
+              failedItems.push({
+                sourceRunId: run.id,
+                error: bulkActionFailureReason(error, "Couldn't replay this run"),
+              });
             } else {
               if (!result) {
                 logger.error("Failed to replay run, no result", {
@@ -393,6 +471,7 @@ export class BulkActionService extends BaseService {
                 });
 
                 failureCount++;
+                failedItems.push({ sourceRunId: run.id, error: "Couldn't replay this run" });
               } else {
                 successCount++;
               }
@@ -421,22 +500,32 @@ export class BulkActionService extends BaseService {
       isFinished,
     });
 
-    // 4. Update the bulk action group
-    const updatedGroup = await this._prisma.bulkActionGroup.update({
-      where: { id: bulkActionId },
-      data: {
-        // Json column: leave unchanged when there's no next cursor (finished).
-        cursor: nextCursor ?? undefined,
-        successCount: {
-          increment: successCount,
+    // 4. Record the failed runs and update the bulk action group together. If the update fails
+    // the job retries the batch, and a run that fails on one attempt can succeed on the next: its
+    // failed row must not outlive the attempt that wrote it.
+    const updatedGroup = await $transaction(this._prisma, "bulkAction.recordBatch", async (tx) => {
+      await recordFailedBulkActionItems(tx, bulkActionId, group.type, failedItems);
+
+      return tx.bulkActionGroup.update({
+        where: { id: bulkActionId },
+        data: {
+          // Json column: leave unchanged when there's no next cursor (finished).
+          cursor: nextCursor ?? undefined,
+          successCount: {
+            increment: successCount,
+          },
+          failureCount: {
+            increment: failureCount,
+          },
+          status: isFinished ? BulkActionStatus.COMPLETED : undefined,
+          completedAt: isFinished ? new Date() : undefined,
         },
-        failureCount: {
-          increment: failureCount,
-        },
-        status: isFinished ? BulkActionStatus.COMPLETED : undefined,
-        completedAt: isFinished ? new Date() : undefined,
-      },
+      });
     });
+
+    if (!updatedGroup) {
+      throw new Error(`Bulk action group batch wasn't recorded: ${bulkActionId}`);
+    }
 
     // 5. If finished, queue a notification and exit
     if (isFinished) {

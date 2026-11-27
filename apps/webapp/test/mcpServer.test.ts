@@ -8,6 +8,7 @@ import { describe, expect, vi } from "vitest";
 import { createMcpBearerAuthenticator } from "~/mcp/auth/bearer.server";
 import { createMcpProtectedResourceHandler } from "~/mcp/protectedResource.server";
 import { mcpTools, type McpToolDefinition } from "~/mcp/registry.server";
+import type { ReportToolCall } from "~/mcp/gate/reportToolCall.server";
 import { createMcpRouter } from "~/mcp/server.server";
 
 vi.setConfig({ testTimeout: 60_000 });
@@ -29,7 +30,8 @@ async function withServer(
   prisma: PrismaClient,
   fn: (server: TestServer) => Promise<void>,
   tools?: McpToolDefinition[],
-  allowedOrigin?: string | ((origin: string) => string)
+  allowedOrigin?: string | ((origin: string) => string),
+  report?: ReportToolCall
 ) {
   const limited: string[] = [];
   const touched: string[] = [];
@@ -69,6 +71,7 @@ async function withServer(
         audience: AUDIENCE,
       }),
       tools,
+      report,
       rateLimit: (req, _res, next) => {
         limited.push(req.headers.authorization ?? "");
         next();
@@ -265,6 +268,7 @@ describe("MCP server", () => {
         auth: { action: "read", subject: "runs" },
         handler,
       };
+      const reported: Parameters<ReportToolCall>[0][] = [];
       await withServer(
         prisma,
         async ({ baseUrl }) => {
@@ -283,6 +287,7 @@ describe("MCP server", () => {
             method: "tools/call",
             params: {
               name: "probe",
+              arguments: { secret_key_name: 1 },
               _meta: {
                 "io.modelcontextprotocol/protocolVersion": modern,
                 "io.modelcontextprotocol/clientCapabilities": {},
@@ -305,11 +310,73 @@ describe("MCP server", () => {
             expect.objectContaining({ tool: "probe", outcome: "insufficient_scope", userId })
           );
           expect(handler).not.toHaveBeenCalled();
+          expect(reported).toHaveLength(1);
+          expect(reported[0]).toMatchObject({
+            userId,
+            properties: {
+              $mcp_tool_name: "probe",
+              $mcp_is_error: false,
+              outcome: "insufficient_scope",
+              denyReason: "scope",
+              tokenKind: "uat",
+              clientId: "test",
+              $mcp_client_name: "t",
+              argKeys: [],
+            },
+            stitch: { client: { clientName: "t" } },
+          });
         },
-        [probe]
+        [probe],
+        undefined,
+        (call) => reported.push(call)
       );
     }
   );
+
+  // Mutation: ignore the envelope, or drop the 100-character bound on the client name.
+  postgresTest("modern tool calls carry the bounded client identity", async ({ prisma }) => {
+    const seen: unknown[] = [];
+    const probe: McpToolDefinition = {
+      name: "probe",
+      description: "Records the request extra",
+      inputSchema: {},
+      handler: async (_args, _identity, _request, extra) => {
+        seen.push(extra?.client);
+        return { content: [{ type: "text", text: "ok" }] };
+      },
+    };
+    await withServer(
+      prisma,
+      async ({ baseUrl }) => {
+        const { token } = await seedPat(prisma, null);
+        const modern = "2026-07-28";
+        const res = await postMcp(
+          baseUrl,
+          {
+            jsonrpc: "2.0",
+            id: 1,
+            method: "tools/call",
+            params: {
+              name: "probe",
+              _meta: {
+                "io.modelcontextprotocol/protocolVersion": modern,
+                "io.modelcontextprotocol/clientCapabilities": {},
+                "io.modelcontextprotocol/clientInfo": { name: "n".repeat(300), version: "2" },
+              },
+            },
+          },
+          token,
+          { "MCP-Protocol-Version": modern, "Mcp-Method": "tools/call", "Mcp-Name": "probe" }
+        );
+
+        expect(res.status).toBe(200);
+        expect(seen).toEqual([
+          { clientName: "n".repeat(100), clientVersion: "2", protocolVersion: modern },
+        ]);
+      },
+      [probe]
+    );
+  });
 
   // Mutation: verify user-actor tokens against the default API audience.
   postgresTest("UAT minted for the API gets 401", async ({ prisma }) => {

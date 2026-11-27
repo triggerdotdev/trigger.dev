@@ -121,7 +121,7 @@ export async function POST(req: Request) {
   const result = streamText({
     model: anthropic("claude-sonnet-5-5"),
     system: "You are a helpful assistant.",
-    messages: convertToModelMessages(messages),
+    messages: await convertToModelMessages(messages, { tools }),
     tools,
     stopWhen: stepCountIs(15),
     abortSignal: req.signal,
@@ -186,7 +186,7 @@ export const tools = {
     execute: async ({ spec }) => renderToPng(spec),
     toModelOutput: ({ output }) => ({
       type: "content",
-      value: [{ type: "media", mediaType: "image/png", data: output.base64 }],
+      value: [{ type: "file", mediaType: "image/png", data: { type: "data", data: output.base64 } }],
     }),
   }),
 };
@@ -448,7 +448,7 @@ Head Start brings the route handler back for exactly that first turn. It runs st
         execute: async ({ spec }) => renderToPng(spec),
         toModelOutput: ({ output }) => ({
           type: "content",
-          value: [{ type: "media", mediaType: "image/png", data: output.base64 }],
+          value: [{ type: "file", mediaType: "image/png", data: { type: "data", data: output.base64 } }],
         }),
       }),
     };

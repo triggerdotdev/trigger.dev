@@ -1,6 +1,7 @@
 import { setTimeout } from "node:timers/promises";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { generateFriendlyId } from "@trigger.dev/core/v3/isomorphic";
+import type { RunExecutionPolicy } from "@trigger.dev/core/v3";
+import { generateFriendlyId, generateRunOpsIdV2 } from "@trigger.dev/core/v3/isomorphic";
 import {
   RESTORE_LABEL,
   RunCrdWorkloadManager,
@@ -21,11 +22,11 @@ import {
   restoreOutcome,
   runnerBodyFor,
   runnerStartFailure,
-  runnerTokenSecretName,
   settleRestoreFailure,
   suspendOutcome,
   type RestoreOutcomeReport,
 } from "./runCrd.js";
+import { runnerTokenSecretName } from "./tokenSecret.js";
 import {
   ListWatch,
   type KubernetesObject,
@@ -232,6 +233,42 @@ describe("runnerBodyFor", () => {
     }
   );
 
+  it.each(["proxy", undefined] as const)(
+    "keeps the VM network mode on cold starts and restores (%s)",
+    (workloadNetwork) => {
+      const opts = createOptions({ workloadNetwork });
+      for (const restore of [undefined, { snapshotID: "snap-abc", node: "node-a" }]) {
+        expect(
+          runnerBodyFor(opts, { ...meta, runtime: "microvm", restore }).spec.networkPlugin
+        ).toBe(workloadNetwork === "proxy" ? true : undefined);
+      }
+    }
+  );
+
+  // Catches: a restricted sandbox's VM created without the CNI label and interceptor restriction, or
+  // keeping a PrivateLink punchthrough it must not have.
+  it.each<[RunExecutionPolicy["network"], boolean]>([
+    [{ allow: [] }, true],
+    ["unrestricted", false],
+  ])("restricts the VM only for a restricted policy (%j)", (network, restricted) => {
+    const opts = createOptions({
+      workloadNetwork: "proxy",
+      hasPrivateLink: true,
+      annotations: {
+        triggerSource: "api",
+        triggerAction: "trigger",
+        rootTriggerSource: "api",
+        executionMode: "SANDBOX",
+        executionPolicy: { version: 1, rootKey: false, scopes: [], envVars: [], network },
+      },
+    });
+    for (const restore of [undefined, { snapshotID: "snap-abc", node: "node-a" }]) {
+      const spec = runnerBodyFor(opts, { ...meta, runtime: "microvm", restore }).spec;
+      expect(spec.restrictedNetwork).toBe(restricted ? true : undefined);
+      expect(spec.hasPrivateLink).toBe(restricted ? undefined : true);
+    }
+  });
+
   it("omits the token reference when no token was issued", () => {
     expect(runnerBodyFor(createOptions(), meta).spec.deployment).not.toHaveProperty("token");
   });
@@ -408,6 +445,21 @@ describe("runnerBodyFor builds a resume", () => {
     expect(name).toMatch(DNS1123);
     expect(runnerTokenSecretName(name, "tok")).toMatch(DNS1123);
   });
+
+  // Catches: a runner or restore name built from a shard-m version-2 run id that is not a legal pod name.
+  it("names runners and restores of a shard-m version-2 run legally for a pod", () => {
+    const POD_NAME = /^[a-z]([a-z0-9-]{0,61}[a-z0-9])?$/;
+    const run = `run_${generateRunOpsIdV2("m")}`;
+
+    for (const name of [
+      getRunnerId(run, 1),
+      getRunnerId(run, 3),
+      getRestoreRunnerId(run, generateFriendlyId("checkpoint")),
+    ]) {
+      expect(name).toMatch(POD_NAME);
+      expect(name.length).toBeLessThanOrEqual(63);
+    }
+  });
 });
 
 describe("runnerTokenSecretName", () => {
@@ -484,6 +536,7 @@ describe("run-crd carries every shared create-option or excludes it on purpose",
     "deploymentVersion",
     "runtime",
     "deploymentToken",
+    "workloadNetwork",
     "runId",
     "runFriendlyId",
     "snapshotId",
@@ -540,6 +593,7 @@ describe("run-crd carries every shared create-option or excludes it on purpose",
     deploymentVersion: { deploymentVersion: "99.9.9" },
     runtime: { runtime: "bun" },
     deploymentToken: { deploymentToken: "tok_probe" },
+    workloadNetwork: { workloadNetwork: "proxy" },
     runId: { runId: "run_other_internal" },
     runFriendlyId: { runFriendlyId: "run_other" },
     snapshotId: { snapshotId: "snapshot_other_internal" },
@@ -751,6 +805,20 @@ describe("RunCrdWorkloadManager.create", () => {
 
       await vi.waitFor(() => expect(deleteSecret).toHaveBeenCalled());
       expect(patchObject).not.toHaveBeenCalled();
+    });
+
+    it("is adopted later when an unclear error first shows a Runner of another Secret", async () => {
+      const lost = new Error("socket hang up");
+      createRunner.mockRejectedValue(lost);
+      getRunner
+        .mockResolvedValueOnce(taken("runner-abc123-token-other"))
+        .mockResolvedValue(taken(SECRET));
+
+      await expect(manager().create(withToken())).rejects.toBe(lost);
+
+      expect(deleteSecret).not.toHaveBeenCalled();
+      await vi.waitFor(() => expect(patchObject).toHaveBeenCalled());
+      expect(deleteSecret).not.toHaveBeenCalled();
     });
 
     it("is looked at again when its Runner cannot be read at first, and adopted then", async () => {
@@ -2982,7 +3050,10 @@ describe("runnerStartFailure", () => {
 
   function failedRunner(
     reason: string,
-    overrides: { labels?: Record<string, string>; bootstrap?: object | null } = {}
+    overrides: {
+      labels?: Record<string, string>;
+      bootstrap?: object | null;
+    } = {}
   ) {
     return {
       metadata: {

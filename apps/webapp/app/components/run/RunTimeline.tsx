@@ -1,4 +1,3 @@
-import { ClockIcon } from "@heroicons/react/20/solid";
 import { formatDuration, nanosecondsToMilliseconds } from "@trigger.dev/core/v3/utils/durations";
 import type { ReactNode } from "react";
 import { Fragment } from "react";
@@ -6,14 +5,15 @@ import tileBgPath from "~/assets/images/error-banner-tile@2x.png";
 import { cn } from "~/utils/cn";
 import type { TimelineSpanEvent } from "~/utils/timelineSpanEvents";
 import { getHelpTextForEvent } from "~/utils/timelineSpanEvents";
-import { DateTime, DateTimeAccurate } from "../primitives/DateTime";
+import { DateTimeAccurate } from "../primitives/DateTime";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "../primitives/Tooltip";
 import { LiveTimer } from "../runs/v3/LiveTimer";
 
 // Types for the RunTimeline component
 export type TimelineEventState = "complete" | "error" | "inprogress" | "delayed";
 
-export type TimelineLineVariant = "light" | "normal";
+// "open": the dashed gap after Triggered while the run hasn't started; it has no end yet.
+export type TimelineLineVariant = "light" | "normal" | "open";
 
 type TimelineStyle = "normal" | "diminished";
 
@@ -69,17 +69,18 @@ export type TimelineSpanRun = {
   // Status flags
   isFinished: boolean; // Whether the run has completed
   isError: boolean; // Whether the run ended with an error
+  /** Set when the run was parked waiting for a version; the engine keeps it after the run starts. */
+  statusReason?: string | null;
 };
 
 export function RunTimeline({ run }: { run: TimelineSpanRun }) {
-  // Build timeline items based on the run state
-  const timelineItems = buildTimelineItems(run);
+  const visibleItems = buildTimelineItems(run).filter((item) => item.shouldRender);
+  return <div className="min-w-fit max-w-80">{renderItems(visibleItems)}</div>;
+}
 
-  // Filter out items that shouldn't be rendered
-  const visibleItems = timelineItems.filter((item) => item.shouldRender);
-
+function renderItems(visibleItems: TimelineItem[]) {
   return (
-    <div className="min-w-fit max-w-80">
+    <>
       {visibleItems.map((item) => {
         if (item.type === "event") {
           return (
@@ -107,7 +108,7 @@ export function RunTimeline({ run }: { run: TimelineSpanRun }) {
           );
         }
       })}
-    </div>
+    </>
   );
 }
 
@@ -139,30 +140,19 @@ function buildTimelineItems(run: TimelineSpanRun): TimelineItem[] {
     helpText: getHelpTextForEvent("Triggered"),
   });
 
-  // 2. Waiting to dequeue line
-  if (run.delayUntil && !run.startedAt && !run.expiredAt) {
-    // Delayed, not yet started
+  // 2. The gap between Triggered and Dequeued. Only events go on the timeline: while the run
+  // hasn't started the gap is open (dashed, live duration, no label); why it hasn't started is
+  // the run's status, shown above the timeline.
+  if (run.startedAt) {
     items.push({
       type: "line",
       id: "waiting-to-dequeue",
       title: (
-        <span className="flex items-center gap-1">
-          <ClockIcon className="size-4" />
-          <span>
-            Delayed until <DateTime date={run.delayUntil} /> {run.ttl && <>(TTL {run.ttl})</>}
-          </span>
-        </span>
+        <>
+          Waited {formatDuration(run.createdAt, run.startedAt)}
+          {run.statusReason ? <span className="text-text-faint"> (pending version)</span> : null}
+        </>
       ),
-      state,
-      shouldRender: true,
-      variant: "light",
-    });
-  } else if (run.startedAt) {
-    // Already dequeued - show the waiting duration
-    items.push({
-      type: "line",
-      id: "waiting-to-dequeue",
-      title: formatDuration(run.createdAt, run.startedAt),
       state,
       shouldRender: true,
       variant: "light",
@@ -177,23 +167,14 @@ function buildTimelineItems(run: TimelineSpanRun): TimelineItem[] {
       shouldRender: true,
       variant: "light",
     });
-  } else {
-    // Still waiting to be dequeued
+  } else if (!run.isFinished) {
     items.push({
       type: "line",
       id: "waiting-to-dequeue",
-      title: (
-        <>
-          <LiveTimer
-            startTime={run.createdAt}
-            endTime={run.startedAt ?? run.expiredAt ?? undefined}
-          />{" "}
-          {run.ttl && <>(TTL {run.ttl})</>}
-        </>
-      ),
+      title: <LiveTimer startTime={run.createdAt} />,
       state,
       shouldRender: true,
-      variant: "light",
+      variant: "open",
     });
   }
 
@@ -499,7 +480,12 @@ export function RunTimelineLine({
   roundedTop = false,
 }: RunTimelineLineProps) {
   return (
-    <div className="grid h-6 grid-cols-[1.125rem_1fr] gap-1 text-xs">
+    <div
+      className={cn(
+        "grid grid-cols-[1.125rem_1fr] gap-1 text-xs",
+        variant === "open" ? "h-10" : "h-6"
+      )}
+    >
       <div className="flex items-stretch justify-center">
         <LineMarker state={state} variant={variant} style={style} roundedTop={roundedTop} />
       </div>
@@ -539,6 +525,11 @@ function LineMarker({
   }
 
   switch (variant) {
+    case "open":
+      // No end yet: a dashed rail that fades out.
+      return (
+        <div className="w-px bg-[linear-gradient(to_bottom,var(--color-text-dimmed)_50%,transparent_50%)] bg-[length:1px_6px] [mask-image:linear-gradient(to_bottom,black_60%,transparent)]" />
+      );
     case "normal":
       return (
         <div className={cn("relative w-1.75", roundedTop && "rounded-t-xs", containerClass)}>

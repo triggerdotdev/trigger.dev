@@ -221,7 +221,7 @@ for (const clusterMode of [false, ...(hasLocalRedisServer() ? [true] : [])]) {
           direction: "forward",
           limit: 10,
         });
-        expect(catalog.map((item) => item.record.id)).toContain(manualId);
+        expect(catalog.records.map((item) => item.record.id)).toContain(manualId);
         expect(await redis.pttl(waitpointKeys(sourceId).record)).toBeGreaterThan(0);
         expect(await redis.hlen(waitpointKeys(sourceId).watchers)).toBe(0);
         // Registry ownership must not turn a lookup in the wrong database into abandonment.

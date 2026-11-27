@@ -208,6 +208,41 @@ describe("request audit context from bearer authentication", () => {
     expect(context.source).toBe("cli");
   });
 
+  // Catches: a build's platform-minted deploy key recorded as the customer's key, or losing the
+  // key that was used.
+  postgresTest(
+    "records a system-issued additional key as Trigger.dev infrastructure, keeping the key",
+    async ({ prisma }) => {
+      const { environment } = await createProductionEnvironment(prisma);
+      const deployKey = generateAdditionalApiKey("PRODUCTION").apiKey;
+      const row = await prisma.apiKey.create({
+        data: {
+          name: "Deploy key",
+          keyHash: createHash("sha256").update(deployKey).digest("hex"),
+          lastFour: deployKey.slice(-4),
+          runtimeEnvironmentId: environment.id,
+          createdByUserId: null,
+          presetId: "DEPLOY_ONLY",
+          scopes: ["read:deployments", "write:deployments", "read:envvars"],
+          issuedBy: "SYSTEM",
+        },
+      });
+
+      const context = await inRequest(() =>
+        authenticateBearerWithTelemetry(apiRequest(deployKey), {}, controllerFor(prisma))
+      );
+
+      expect(context.actor).toEqual({ type: "trigger_infra", id: null });
+      expect(context.credential).toEqual({
+        kind: "additional_api_key",
+        id: row.id,
+        last4: deployKey.slice(-4),
+        fingerprintId: null,
+      });
+      expect(context.onBehalfOf).toBeNull();
+    }
+  );
+
   postgresTest(
     "attributes a public JWT to the root key that signed it, and its acting user",
     async ({ prisma }) => {
@@ -419,7 +454,7 @@ describe("request audit context from other auth functions", () => {
     const context = await inRequest(async () =>
       noteOrganizationAccessTokenAuthentication(
         apiRequest("tr_oat_abcdefghijklmnopqrstuvwxyz0123456789"),
-        { tokenId: "oat_1" }
+        { tokenId: "oat_1", type: "USER" }
       )
     );
 

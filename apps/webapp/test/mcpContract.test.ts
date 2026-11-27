@@ -31,22 +31,140 @@ const LOCAL_ONLY = [
 
 const pendingWriteTools: string[] = [];
 
-const REMOTE_ONLY: Record<string, string> = {};
+const REMOTE_ONLY: Record<string, string> = {
+  list_run_tags: "the public API has no endpoint to list run tags",
+  search_logs: "the public API has no endpoint to search logs",
+  get_log: "the public API has no endpoint to read a log entry",
+  reset_run_idempotency_key: "the public API has no endpoint for it; it mirrors a dashboard action",
+  update_run_metadata: "the CLI has no tool for it yet",
+  add_run_tags: "the CLI has no tool for it yet",
+  reschedule_run: "the CLI has no tool for it yet",
+  read_run_stream: "the CLI has no tool for it yet",
+  list_bulk_actions: "the CLI has no tool for it yet",
+  get_bulk_action: "the CLI has no tool for it yet",
+  create_bulk_action: "the CLI has no tool for it yet",
+  abort_bulk_action: "the CLI has no tool for it yet",
+  batch_trigger_tasks: "the CLI has no tool for it yet",
+  search_webhook_endpoints:
+    "the public endpoints API has no subscriber, source, status or text filters",
+  get_task_webhook: "no public API returns a webhook task's file path and subscribed endpoints",
+  list_webhook_waiters: "no public API lists the waiters on an endpoint",
+  remove_webhook_secret: "the dashboard clears a secret; the public API has no route for it",
+  generate_webhook_verify_token: "verification tokens are only generated in the dashboard",
+  pause_webhook_endpoint: "the CLI has no MCP twin for the public disable route",
+  resume_webhook_endpoint: "the CLI has no MCP twin for the public enable route",
+  cancel_webhook_waiter: "the CLI has no MCP tool for the public waiter cancel route",
+  list_tasks: "the CLI's get_current_worker lists slugs only; this mirrors the Tasks page",
+  list_schedules: "the CLI has no schedule tools yet",
+  get_schedule_details: "the CLI has no schedule tools yet",
+  create_schedule: "the CLI has no schedule tools yet",
+  update_schedule: "the CLI has no schedule tools yet",
+  activate_schedule: "the CLI has no schedule tools yet",
+  deactivate_schedule: "the CLI has no schedule tools yet",
+  delete_schedule: "the CLI has no schedule tools yet",
+  get_deployment_details: "the CLI has no tool for it yet",
+  get_agent_details: "the public API has no endpoint for an agent's details and activity",
+  list_environment_variables: "names only, through OAuth; the CLI has no env var tools",
+  get_alert_details: "reads the Dashboard alert presenter, which only the server has",
+  list_alert_channels: "reads the Dashboard channel presenter, which only the server has",
+  update_alert: "edits through the Dashboard alert services, which only the server has",
+  stop_alert: "stops through the Dashboard alert services, which only the server has",
+  activate_alert: "activates through the Dashboard alert services, which only the server has",
+  delete_alert: "deletes through the Dashboard alert services, which only the server has",
+  create_alert_group: "groups through the Dashboard alert services, which only the server has",
+  ungroup_alert: "ungroups through the Dashboard alert services, which only the server has",
+  list_errors: "the CLI has no tool for it yet",
+  get_error_details: "the CLI has no tool for it yet",
+  resolve_error: "the CLI has no tool for it yet",
+  ignore_error: "the CLI has no tool for it yet",
+  unresolve_error: "the CLI has no tool for it yet",
+  get_dashboard: "the CLI has no tool for it yet",
+  list_query_history: "the public API has no endpoint for the Query page history",
+  list_models: "the public API has no endpoint for the model catalogue",
+  get_model: "the public API has no endpoint for a model's details",
+  get_model_usage: "the public API has no endpoint for model usage",
+  get_prompt: "the CLI has no tool for it yet",
+  list_prompt_generations: "the public API has no endpoint for a prompt's generations",
+  update_dashboard_widget: "the CLI has no tool for it yet",
+  update_dashboard: "the CLI has no tool for it yet",
+  delete_dashboard: "the CLI has no tool for it yet",
+  delete_playground_conversation: "playground conversations are only deleted in the dashboard",
+  list_sessions: "the CLI has no tool for it yet",
+  get_session_details: "no public API returns a session's runs and channel names",
+  read_session_transcript: "the CLI has no tool for it yet",
+  list_playground_conversations: "playground conversations are only listed in the dashboard",
+  update_session: "the CLI has no tool for it yet",
+  close_session: "the CLI has no tool for it yet",
+  list_batches: "the public API has no endpoint to list batches",
+  get_batch_details: "the CLI has no tool for it yet",
+  list_waitpoint_tokens: "the CLI has no tool for it yet",
+  get_waitpoint_token: "the CLI has no tool for it yet",
+  complete_waitpoint_token: "the CLI has no tool for it yet",
+  list_environments: "the CLI has no tool for it yet; it mirrors the dashboard environment list",
+  list_branches: "list_preview_branches is shared; this adds dev branches and the dashboard fields",
+  list_regions: "the public API has no endpoint to list regions",
+  promote_deployment: "the CLI has no MCP twin for the public promote route",
+  rollback_deployment: "the public API has no rollback route; it mirrors a dashboard action",
+  cancel_deployment: "the CLI has no MCP twin for the public cancel route",
+  redeploy_deployment: "the public API has no redeploy route; it mirrors a dashboard action",
+  deploy_tracked_branch: "the public API has no deploy-now route; it mirrors a dashboard action",
+  create_branch: "the CLI has no MCP twin for the public branch route",
+  archive_branch: "the CLI has no MCP twin for the public archive route",
+  set_preview_auto_archive: "the public API has no route for it; it mirrors a dashboard setting",
+  set_default_region: "the CLI has no MCP twin for the public default region route",
+  rename_project: "the CLI has no MCP twin for the public project rename route",
+  delete_project: "the CLI has no MCP twin for the public project delete route",
+  list_queues:
+    "the CLI has no queue tools; the public list has no limits, metrics or archive state",
+  get_queue_details: "no public API returns a queue's concurrency keys and metrics series",
+  get_environment_concurrency: "no public API returns an environment's concurrency and pause state",
+  get_limits: "no public API returns the limits page",
+  pause_queue: "the CLI has no MCP twin for the public queue pause route",
+  resume_queue: "the CLI has no MCP twin for the public queue pause route",
+  override_queue_concurrency: "the CLI has no MCP twin for the public override route",
+  reset_queue_concurrency: "the CLI has no MCP twin for the public reset route",
+  archive_queue: "queues are only archived in the dashboard",
+  unarchive_queue: "queues are only unarchived in the dashboard",
+  pause_environment: "environments are only paused in the dashboard",
+  resume_environment: "environments are only resumed in the dashboard",
+};
 
 const WRITE_TOOL_APPROVAL: Record<string, "required" | "configurable" | { none: string }> = {
   replay_webhook_delivery: "required",
   generate_webhook_secret: "required",
   set_webhook_secret: "required",
+  remove_webhook_secret: "required",
+  generate_webhook_verify_token: "required",
+  pause_webhook_endpoint: "configurable",
+  resume_webhook_endpoint: "configurable",
+  cancel_webhook_waiter: "configurable",
+  complete_waitpoint_token: "required",
   submit_feedback: { none: "only logs a report about the MCP server, touches no project data" },
   send_agent_message: { none: "covered by the start_agent_chat confirmation for that chat" },
   close_agent_chat: { none: "covered by the start_agent_chat confirmation for that chat" },
   cancel_run: "configurable",
   replay_run: "configurable",
+  reset_run_idempotency_key: "configurable",
+  update_run_metadata: "configurable",
+  add_run_tags: "configurable",
+  reschedule_run: "configurable",
+  create_bulk_action: "required",
+  abort_bulk_action: "configurable",
   trigger_task: "configurable",
+  batch_trigger_tasks: "required",
   create_alert: "configurable",
   resolve_alert: "configurable",
+  update_alert: "configurable",
+  stop_alert: "configurable",
+  activate_alert: "configurable",
+  delete_alert: "required",
+  create_alert_group: "configurable",
+  ungroup_alert: "required",
   create_dashboard: "configurable",
   set_dashboard_widgets: "configurable",
+  update_dashboard_widget: "configurable",
+  update_dashboard: "configurable",
+  delete_dashboard: "required",
   promote_prompt_version: "configurable",
   create_prompt_override: "configurable",
   update_prompt_override: "configurable",
@@ -54,7 +172,37 @@ const WRITE_TOOL_APPROVAL: Record<string, "required" | "configurable" | { none: 
   reactivate_prompt_override: "configurable",
   start_agent_chat: "configurable",
   write_session_channel: "configurable",
+  update_session: "configurable",
+  close_session: "configurable",
   create_project_in_org: "configurable",
+  delete_playground_conversation: "required",
+  create_schedule: "configurable",
+  update_schedule: "configurable",
+  activate_schedule: "configurable",
+  deactivate_schedule: "configurable",
+  delete_schedule: "required",
+  resolve_error: "configurable",
+  ignore_error: "configurable",
+  unresolve_error: "configurable",
+  promote_deployment: "configurable",
+  rollback_deployment: "configurable",
+  cancel_deployment: "configurable",
+  redeploy_deployment: "required",
+  deploy_tracked_branch: "required",
+  create_branch: "configurable",
+  archive_branch: "required",
+  set_preview_auto_archive: "required",
+  set_default_region: "configurable",
+  rename_project: "required",
+  delete_project: "required",
+  pause_queue: "configurable",
+  resume_queue: "configurable",
+  override_queue_concurrency: "configurable",
+  reset_queue_concurrency: "configurable",
+  archive_queue: "required",
+  unarchive_queue: "required",
+  pause_environment: "required",
+  resume_environment: "configurable",
 };
 
 type CliTool = {
@@ -101,6 +249,41 @@ function classifyHostedTools(hosted: string[], cli: string[], remoteOnly: string
 }
 
 const toJson = (shape: z.ZodRawShape) => z.toJSONSchema(z.object(shape), { io: "input" });
+
+// The formats JSON Schema 2020-12 defines. Anything else is a custom format a client may not know.
+const STANDARD_FORMATS = new Set([
+  "date-time",
+  "date",
+  "time",
+  "duration",
+  "email",
+  "idn-email",
+  "hostname",
+  "idn-hostname",
+  "ipv4",
+  "ipv6",
+  "uri",
+  "uri-reference",
+  "iri",
+  "iri-reference",
+  "uuid",
+  "uri-template",
+  "json-pointer",
+  "relative-json-pointer",
+  "regex",
+]);
+
+function formatsIn(node: unknown, found: string[] = []): string[] {
+  if (Array.isArray(node)) {
+    for (const item of node) formatsIn(item, found);
+  } else if (node && typeof node === "object") {
+    for (const [key, value] of Object.entries(node)) {
+      if (key === "format" && typeof value === "string") found.push(value);
+      else formatsIn(value, found);
+    }
+  }
+  return found;
+}
 
 describe("MCP remote/CLI contract", () => {
   // Catches: a hosted tool with no CLI twin slipping in undeclared, a REMOTE_ONLY entry with a CLI twin, or a stale REMOTE_ONLY entry.
@@ -168,5 +351,20 @@ describe("MCP remote/CLI contract", () => {
     );
     const registered = mcpTools.map((t) => t.name);
     for (const name of pendingWriteTools) expect(registered).not.toContain(name);
+  });
+
+  // Catches: a string check (startsWith, endsWith, includes, lowercase, ...) that zod prints as a
+  // custom `format`, which JSON Schema validators in strict mode refuse to compile.
+  it("advertises only standard JSON Schema formats in input schemas", () => {
+    const tools = [
+      ...mcpTools.map((t) => ({ name: `remote ${t.name}`, shape: t.inputSchema })),
+      ...[...cliAll].map(([name, t]) => ({ name: `cli ${name}`, shape: t.inputSchema })),
+    ];
+    const custom = tools.flatMap(({ name, shape }) =>
+      formatsIn(toJson(shape))
+        .filter((format) => !STANDARD_FORMATS.has(format))
+        .map((format) => `${name}: ${format}`)
+    );
+    expect(custom).toEqual([]);
   });
 });

@@ -3,6 +3,7 @@ import { RemixServer } from "@remix-run/react";
 import * as Sentry from "@sentry/remix";
 import { wrapHandleErrorWithSentry } from "@sentry/remix";
 import { addTenantContextToEvent } from "~/utils/sentryTenantContext.server";
+import { settleDeferredLoaderData } from "~/utils/deferredLoaderData.server";
 import { parseAcceptLanguage } from "intl-parse-accept-language";
 import isbot from "isbot";
 import { renderToPipeableStream } from "react-dom/server";
@@ -27,6 +28,9 @@ import { createMcpBearerAuthenticator } from "./mcp/auth/bearer.server";
 import { MCP_SCOPES, mcpResource } from "./services/oauth/metadata.server";
 import { createMcpProtectedResourceHandler } from "./mcp/protectedResource.server";
 import { createMcpRouter } from "./mcp/server.server";
+import { telemetrySessionStore } from "./mcp/telemetrySessionStore.server";
+import { warmTelemetrySessionStore } from "./mcp/telemetrySessionStore";
+import { telemetry } from "./services/telemetry.server";
 import {
   personalAccessTokenAuthFailureBody,
   resolveAndRecheckUserActorClaims,
@@ -76,6 +80,7 @@ import { workerRegionRegistry } from "./v3/workerRegions.server";
 (globalThis as Record<string, unknown>).__workerRegionRegistry = workerRegionRegistry;
 
 const ABORT_DELAY = 30000;
+const BOT_RENDER_MIN_MS = 1000;
 
 /**
  * Where a document may load images from. The markdown renderer that strips images
@@ -181,7 +186,7 @@ export default function handleRequest(
   );
 }
 
-function handleBotRequest(
+async function handleBotRequest(
   request: Request,
   responseStatusCode: number,
   responseHeaders: Headers,
@@ -189,6 +194,11 @@ function handleBotRequest(
   locales: string[],
   platform: OperatingSystemPlatform
 ) {
+  // This page goes out in one piece, so its deferred data settles before it renders. The wait
+  // and the render share one time limit.
+  const startedAt = Date.now();
+  await settleDeferredLoaderData(remixContext, ABORT_DELAY);
+
   return new Promise((resolve, reject) => {
     let shellRendered = false;
     // Timer handle is cleared in every terminal callback so the abort closure
@@ -235,7 +245,11 @@ function handleBotRequest(
       }
     );
 
-    abortTimer = setTimeout(abort, ABORT_DELAY);
+    // After a wait that used up the limit, the page still gets time to render before the abort.
+    abortTimer = setTimeout(
+      abort,
+      Math.max(ABORT_DELAY - (Date.now() - startedAt), BOT_RENDER_MIN_MS)
+    );
   });
 }
 
@@ -432,6 +446,12 @@ export const mcpRouter = env.MCP_SERVER_ENABLED
       }),
     })
   : undefined;
+if (env.MCP_SERVER_ENABLED) {
+  warmTelemetrySessionStore({
+    enabled: () => telemetry.mcp.isEnabled(),
+    open: telemetrySessionStore,
+  });
+}
 export const mcpProtectedResource = env.MCP_SERVER_ENABLED
   ? createMcpProtectedResourceHandler({
       origin: env.MCP_ORIGIN,

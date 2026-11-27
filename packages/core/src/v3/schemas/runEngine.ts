@@ -32,10 +32,31 @@ export const RunAnnotations = z.object({
   webhookDeliveryId: z.string().optional(),
   /** The endpoint (friendly id) that delivery arrived on. */
   webhookEndpointId: z.string().optional(),
+  /**
+   * For a session run: where the run-end check starts reading `.in` when the run wrote no turn of
+   * its own, so messages at or after it are ones this run is held to answer. It is the session's
+   * `.in` tail seq (the next seq) read just before the run was triggered, so those messages arrived
+   * after the run started; except for a session's first run not started for messages already on
+   * `.in` (no `sessionInFirstSeq`), which records 0 without a read: that run reads `.in` from the
+   * start, so every message already on it is its own.
+   */
+  sessionInSeq: z.number().int().nonnegative().optional(),
+  /**
+   * For a session run started for messages already on `.in` (a revive after an append, or the
+   * continuation the run-end check starts): the first `.in` seq it was started to answer, which is
+   * below `sessionInSeq`. A `turn-complete` on `.out` whose `.in` cursor is at or past it is this
+   * run's own. Absent when the run was started before its messages landed: `sessionInSeq` is then
+   * the first one.
+   */
+  sessionInFirstSeq: z.number().int().nonnegative().optional(),
   /** Where the most recently stamped attempt executed. Set by the supervisor at attempt start. */
   workerCell: z.string().optional().catch(undefined),
   workerLane: z.string().optional().catch(undefined),
   executionMode: z.enum(["STANDARD", "SANDBOX"]).optional(),
+  /** The run's organization runs deployed work only on microVM compute. Pinned at trigger. */
+  computeOnly: z.literal(true).optional(),
+  /** Server-owned provisioning requirement, pinned when the run is created. */
+  secretProxyRequired: z.literal(true).optional(),
   /** Set only for runs whose task declares a non-standard policy. Pinned for the run's lifetime. */
   executionPolicy: RunExecutionPolicy.optional(),
   /** The Session that triggered this run. Fills `$session` in policy scopes. */
@@ -43,6 +64,15 @@ export const RunAnnotations = z.object({
 });
 
 export type RunAnnotations = z.infer<typeof RunAnnotations>;
+
+export function requiresSecretProxy(annotations: unknown): boolean {
+  return (
+    typeof annotations === "object" &&
+    annotations !== null &&
+    "secretProxyRequired" in annotations &&
+    annotations.secretProxyRequired === true
+  );
+}
 
 /** Lenient read of the worker stamp: works on blobs that predate or fail RunAnnotations. */
 export const WorkerStampAnnotations = z.object({
@@ -251,6 +281,16 @@ export const RunExecutionData = z.object({
 });
 export type RunExecutionData = z.infer<typeof RunExecutionData>;
 
+/** The response to the Worker when it continues a run restored from a checkpoint */
+export const ContinueRunExecutionResult = ExecutionResult.extend({
+  /**
+   * The snapshot `continue` created, as `snapshots/since` returns it, so the runner can act on it
+   * without fetching. Older platforms don't send it.
+   */
+  executionData: RunExecutionData.optional(),
+});
+export type ContinueRunExecutionResult = z.infer<typeof ContinueRunExecutionResult>;
+
 export const CreateCheckpointResult = discriminatedUnion("ok", [
   z
     .object({
@@ -298,6 +338,8 @@ export const DequeuedMessage = z.object({
   image: z.string().optional(),
   /** Names a prebuilt template of `image`. */
   templateKey: z.string().optional(),
+  /** The named machine whose image `image` is, when the task runs on one. */
+  machineName: z.string().optional(),
   checkpoint: DequeueMessageCheckpoint.optional(),
   completedWaitpoints: z.array(CompletedWaitpoint),
   backgroundWorker: z.object({

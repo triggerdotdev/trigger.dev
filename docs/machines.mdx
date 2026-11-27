@@ -20,12 +20,14 @@ export const heavyTask = task({
 The default machine is `small-1x` which has 0.5 vCPU and 0.5 GB of RAM. You can change the default machine in your `trigger.config.ts` file:
 
 ```ts trigger.config.ts
-import type { TriggerConfig } from "@trigger.dev/sdk";
+import { defineConfig } from "@trigger.dev/sdk";
 
-export const config: TriggerConfig = {
+export default defineConfig({
+  project: "<project ref>",
   machine: "small-2x",
+  maxDuration: 3600,
   // ... other config
-};
+});
 ```
 
 ## Machine configurations
@@ -851,7 +853,8 @@ const kindName = (k: number | string) => {
 Then, in your task, you can create an instance of the `ResourceMonitor` class and start monitoring memory, disk, and CPU usage:
 
 ```ts /src/trigger/example.ts
-import { task, logger, wait } from "@trigger.dev/sdk";
+import { task, tasks, logger, wait } from "@trigger.dev/sdk";
+import { setTimeout } from "node:timers/promises";
 import { ResourceMonitor } from "../resourceMonitor.js";
 
 // Middleware to enable the resource monitor
@@ -873,11 +876,7 @@ tasks.middleware("resource-monitor", async ({ ctx, next }) => {
 export const resourceMonitorTest = task({
   id: "resource-monitor-test",
   run: async (payload: any, { ctx }) => {
-    const interval = createMemoryPressure();
-
     await setTimeout(180_000);
-
-    clearInterval(interval);
 
     return {
       message: "Hello, resources!",

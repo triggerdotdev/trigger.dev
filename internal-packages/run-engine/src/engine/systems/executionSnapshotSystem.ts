@@ -47,6 +47,7 @@ export interface EnhancedExecutionSnapshot extends TaskRunExecutionSnapshot {
   friendlyId: string;
   runFriendlyId: string;
   checkpoint: TaskRunCheckpoint | null;
+  checkpointStore?: "state";
   completedWaitpoints: CompletedWaitpoint[];
 }
 
@@ -617,6 +618,7 @@ export class ExecutionSnapshotSystem {
       projectId,
       organizationId,
       checkpointId,
+      checkpointStore,
       workerId,
       runnerId,
       completedWaitpoints,
@@ -643,6 +645,7 @@ export class ExecutionSnapshotSystem {
       projectId: string;
       organizationId: string;
       checkpointId?: string;
+      checkpointStore?: "state";
       workerId?: string;
       runnerId?: string;
       completedWaitpoints?: {
@@ -678,6 +681,7 @@ export class ExecutionSnapshotSystem {
         projectId,
         organizationId,
         checkpointId,
+        checkpointStore,
         workerId,
         runnerId,
         completedWaitpoints,
@@ -721,6 +725,7 @@ export class ExecutionSnapshotSystem {
     runId,
     snapshotId,
     organizationId,
+    environmentId,
     workerId,
     runnerId,
     tx,
@@ -728,6 +733,7 @@ export class ExecutionSnapshotSystem {
     runId: string;
     snapshotId: string;
     organizationId?: string;
+    environmentId?: string;
     workerId?: string;
     runnerId?: string;
     tx?: PrismaClientOrTransaction;
@@ -770,6 +776,9 @@ export class ExecutionSnapshotSystem {
         );
       }
       throw error;
+    }
+    if (environmentId !== undefined && latestSnapshot.environmentId !== environmentId) {
+      throw new LatestExecutionSnapshotNotFoundError(runId);
     }
     if (latestSnapshot.id !== snapshotId) {
       this.$.logger.log("heartbeatRun: no longer the latest snapshot, stopping the heartbeat.", {

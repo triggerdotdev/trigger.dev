@@ -38,19 +38,38 @@ export function isRunStarting(run: Pick<SessionTraceRun, "triggeredAt">, nowMs: 
   return nowMs - new Date(run.triggeredAt).getTime() < RUN_STARTING_WINDOW_MS;
 }
 
-const UNAVAILABLE_REASONS: Record<UnavailableReason, string | undefined> = {
-  legacyStore: "This run's spans are in an older store this view can't read.",
-  // Said once in the tab's bar instead.
-  emergencyCap: undefined,
-  chunkUnsupported: "This run's spans are stored in a way this view can't read in parts.",
-  noWriteTimes: "This run's spans are missing the details this view needs to read them in parts.",
-  anchorMissing: "The start of this run's trace is missing.",
-  noSpans: "This run didn't record any spans.",
-};
-
-export function unavailableReasonText(reason: UnavailableReason) {
-  return UNAVAILABLE_REASONS[reason];
-}
-
 export const EMERGENCY_CAP_NOTICE =
   "Traces can't load here right now. Open a run's page to see its trace.";
+
+/** One line in the tab's bar; the reason or what to do goes in `hint`, shown on hover. */
+export type BarNotice = { text: string; hint?: string; onRetry?: () => void };
+
+export const SESSION_LIMIT_NOTICE: BarNotice = {
+  text: "Session span limit reached",
+  hint: "Collapse runs to load more.",
+};
+
+/**
+ * The bar has room for one notice, so the most specific wins: a deep link that didn't load, then
+ * the emergency cap (from the runs route or any run's first chunk), then the session span limit.
+ */
+export function sessionBarNotice({
+  deepLink,
+  view,
+  loads,
+}: {
+  deepLink: BarNotice | undefined;
+  view: Readonly<Record<string, { unavailable?: string }>>;
+  loads: Readonly<Record<string, SessionRunLoad>>;
+}): BarNotice | undefined {
+  if (deepLink) return deepLink;
+  const runLoads = Object.values(loads);
+  const capped =
+    Object.values(view).some((entry) => entry.unavailable === "emergencyCap") ||
+    runLoads.some((load) => load.state === "unavailable" && load.reason === "emergencyCap");
+  if (capped) return { text: EMERGENCY_CAP_NOTICE };
+  if (runLoads.some((load) => load.state === "cutOff" && load.limit === "session")) {
+    return SESSION_LIMIT_NOTICE;
+  }
+  return undefined;
+}

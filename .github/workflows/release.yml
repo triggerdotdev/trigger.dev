@@ -62,7 +62,7 @@ jobs:
       )
     outputs:
       published: ${{ steps.changesets.outputs.published }}
-      published_packages: ${{ steps.changesets.outputs.publishedPackages }}
+      published_packages: ${{ steps.changesets.outputs.published-packages }}
       published_package_version: ${{ steps.get_version.outputs.package_version }}
       is_prerelease: ${{ steps.get_version.outputs.is_prerelease }}
     steps:
@@ -83,12 +83,12 @@ jobs:
           GITHUB_EVENT_INPUTS_REF: ${{ github.event.inputs.ref }}
 
       - name: Setup pnpm
-        uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6.0.10
+        uses: pnpm/action-setup@73e46992e05b19abd31f2f3c20e0e7370d762115 # v6.1.1
         with:
           version: 10.33.2
 
       - name: Setup node
-        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: 24.22.1
           cache: "pnpm"
@@ -112,12 +112,12 @@ jobs:
 
       - name: Publish
         id: changesets
-        uses: changesets/action@a45c4d594aa4e2c509dc14a9f2b3b67ba3780d0d # v1.9.0
+        uses: changesets/action@ae32849d5ba541f9ae29e40e22a623bc13562f51 # v2.1.2
         with:
-          publish: pnpm run changeset:release
-          createGithubReleases: false
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          publish-script: pnpm run changeset:release
+          create-github-releases: false
+          push-with-git-cli: true
 
       - name: Show package version
         if: steps.changesets.outputs.published == 'true'
@@ -132,7 +132,7 @@ jobs:
             echo "is_prerelease=false" >> "$GITHUB_OUTPUT"
           fi
         env:
-          STEPS_CHANGESETS_OUTPUTS_PUBLISHEDPACKAGES: ${{ steps.changesets.outputs.publishedPackages }}
+          STEPS_CHANGESETS_OUTPUTS_PUBLISHEDPACKAGES: ${{ steps.changesets.outputs.published-packages }}
 
       - name: Create unified GitHub release
         if: steps.changesets.outputs.published == 'true'
@@ -296,12 +296,12 @@ jobs:
           persist-credentials: false
 
       - name: Setup pnpm
-        uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6.0.10
+        uses: pnpm/action-setup@73e46992e05b19abd31f2f3c20e0e7370d762115 # v6.1.1
         with:
           version: 10.33.2
 
       - name: Setup node
-        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: 24.22.1
           cache: "pnpm"
@@ -337,7 +337,7 @@ jobs:
         run: pnpm run build --filter "@trigger.dev/*" --filter "trigger.dev"
 
       - name: Publish prerelease
-        run: pnpm exec changeset publish --no-git-tag --snapshot --tag "${GITHUB_EVENT_INPUTS_PRERELEASE_TAG}"
+        run: pnpm exec changeset publish --no-git-tag --tag "${GITHUB_EVENT_INPUTS_PRERELEASE_TAG}"
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GITHUB_EVENT_INPUTS_PRERELEASE_TAG: ${{ github.event.inputs.prerelease_tag }}

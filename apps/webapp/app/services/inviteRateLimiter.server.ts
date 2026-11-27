@@ -6,7 +6,7 @@ import { singleton } from "~/utils/singleton";
 /**
  * Rate limiting for organization invite sends (API create + dashboard
  * resend). Each sent invite is an email to an arbitrary address, so a
- * member with manage:members could otherwise mass-mail Trigger.dev-branded
+ * member with write:members could otherwise mass-mail Trigger.dev-branded
  * invites. Limits are per-organization (the blast radius is the org's
  * brand) and per-inviter (spreads a burst across collaborators sharing an
  * org).

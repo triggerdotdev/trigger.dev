@@ -223,11 +223,8 @@ containerTest(
     expect(result.rootApiKey).toEqual({
       id: environment.id,
       name: "Root API key",
-      value: null,
       obfuscated: "tr_prod_••••••••xQ9Z",
-      isHidden: true,
     });
-    expect(result.environment.apiKey).toBeNull();
     expect(result.apiKeys).toHaveLength(1);
     expect(result.apiKeys[0]?.name).toBe("Application key");
     expect(serialized).not.toContain(environment.apiKey);
@@ -236,39 +233,41 @@ containerTest(
   }
 );
 
-containerTest("returns a visible root key in full alongside its mask", async ({ prisma }) => {
-  const { organization, project, user } = await createTestOrgProjectWithMember(prisma);
-  const environment = await createRuntimeEnvironment(prisma, {
-    projectId: project.id,
-    organizationId: organization.id,
-    type: "PRODUCTION",
-    slug: uniqueId("prod"),
-    apiKey: `tr_prod_${uniqueId("visible-root")}_aB3c`,
-  });
-  const presenter = new ApiKeysPresenter(prisma, {
-    apiKeyAccessOptions: async () => null,
-    describeApiKeyPolicy: async () => ({}),
-  });
+containerTest(
+  "masks root keys for legacy environments without a visibility timestamp",
+  async ({ prisma }) => {
+    const { organization, project, user } = await createTestOrgProjectWithMember(prisma);
+    const environment = await createRuntimeEnvironment(prisma, {
+      projectId: project.id,
+      organizationId: organization.id,
+      type: "PRODUCTION",
+      slug: uniqueId("prod"),
+      apiKey: `tr_prod_${uniqueId("visible-root")}_aB3c`,
+      rootApiKeyHiddenAt: null,
+    });
+    const presenter = new ApiKeysPresenter(prisma, {
+      apiKeyAccessOptions: async () => null,
+      describeApiKeyPolicy: async () => ({}),
+    });
 
-  const result = await presenter.call({
-    userId: user.id,
-    organizationSlug: organization.slug,
-    projectSlug: project.slug,
-    environmentSlug: environment.slug,
-  });
+    const result = await presenter.call({
+      userId: user.id,
+      organizationSlug: organization.slug,
+      projectSlug: project.slug,
+      environmentSlug: environment.slug,
+    });
 
-  expect(result.rootApiKey).toEqual({
-    id: environment.id,
-    name: "Root API key",
-    value: environment.apiKey,
-    obfuscated: "tr_prod_••••••••aB3c",
-    isHidden: false,
-  });
-  expect(result.environment.apiKey).toBe(environment.apiKey);
-});
+    expect(result.rootApiKey).toEqual({
+      id: environment.id,
+      name: "Root API key",
+      obfuscated: "tr_prod_••••••••aB3c",
+    });
+    expect(JSON.stringify(result)).not.toContain(environment.apiKey);
+  }
+);
 
 containerTest(
-  "uses the parent environment's root key visibility for branches",
+  "shows only the parent environment's masked root key for branches",
   async ({ prisma }) => {
     const { organization, project, user } = await createTestOrgProjectWithMember(prisma);
     const parent = await createRuntimeEnvironment(prisma, {
@@ -303,11 +302,8 @@ containerTest(
 
     expect(result.rootApiKey).toMatchObject({
       id: parent.id,
-      value: null,
       obfuscated: `tr_preview_••••••••${parent.apiKey.slice(-4)}`,
-      isHidden: true,
     });
-    expect(result.environment.apiKey).toBeNull();
     expect(serialized).not.toContain(parent.apiKey);
     expect(serialized).not.toContain(branch.apiKey);
   }

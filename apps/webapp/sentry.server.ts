@@ -20,6 +20,8 @@ const FINGERPRINT_RULES: Array<{
   },
 ];
 
+const CREDENTIAL_HEADERS = ["authorization", "x-trigger-run-token"];
+
 if (process.env.SENTRY_DSN) {
   console.log("🔭 Initializing Sentry");
 
@@ -55,6 +57,11 @@ if (process.env.SENTRY_DSN) {
     includeLocalVariables: false,
 
     beforeSend(event, hint) {
+      // The request-data integration copies headers even without sendDefaultPii.
+      const headers = event.request?.headers;
+      if (headers) {
+        for (const name of CREDENTIAL_HEADERS) delete headers[name];
+      }
       const err = hint.originalException as
         | { code?: unknown; errorCode?: unknown; name?: unknown }
         | undefined;

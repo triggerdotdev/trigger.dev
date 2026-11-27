@@ -1,0 +1,218 @@
+---
+title: "Skew protection threshold"
+sidebarTitle: "Skew protection threshold"
+description: "Move sessions that run on an older deployment to the current one, for a whole environment or for one task, from the dashboard or the API."
+---
+
+**The skew protection threshold moves every session in an environment that runs on a version before it to the current deployment, the next time that session is used.** The dashboard calls this **Session upgrades**.
+
+Sessions are long-lived: a [chat agent](/ai-chat/overview) conversation, or any [session](/ai-chat/sessions), keeps running the version it started on, and [version skew protection](/deployment/atomic-deployment#chat-sessions) can pin it there on purpose. That's what you want until an old build is broken. Set the threshold on the deployment that fixed the problem and every older session moves forward, whatever it's pinned to and whatever its agent's [`versionSkew`](/ai-chat/patterns/version-upgrades#staying-put).
+
+A threshold is a one-time cutoff. It stays at the version you set it to: later deploys move nothing, and sessions at or above the threshold keep their version and their pins as before. To move sessions again after a later fix, set the threshold on that deployment.
+
+A threshold can also cover [one task](#a-threshold-for-one-task) instead of the whole environment, when only one agent's older versions have to stop answering.
+
+## What happens to a session
+
+Setting the threshold starts no runs. Each session on a version before it moves when it's next used:
+
+- **The next message.** The session gets a new run on the current deployment, which picks up the conversation's history and answers the message once. The old run is canceled with a reason that names the cause and links the new run: `Moved to 20261109.22 by the skew protection threshold. Continued in run_…`. When a task's own threshold moved it, the reason names the task: `…by the skew protection threshold for support-agent.`
+- **A reply in progress is never cut off.** It finishes on its old version. Messages sent during it, or within 10 seconds after it ends, are answered there too. The next message after that moves the session. An agent with [`versionSkew: "follow-mid-turn"`](/ai-chat/patterns/mid-turn-handover) moves a reply in progress instead: it finishes the step it is on, and the current deployment continues the reply from the next step. On a self-hosted instance, this needs S2 [realtime streams](/self-hosting/docker#realtime-streams); without them, replies in progress always finish on their old version.
+- **Opening a chat.** Calling `sessions.start` on an older session moves it right away, with no message.
+- **A chat with no new message** keeps its run and its version. Nothing is started or canceled for it, and nothing is written.
+- **Pins.** A `lockToVersion` or `externalDeploymentId` pin below the threshold is ignored for every run the session starts, and so is an `externalDeploymentId` that names a deployment that isn't deployed yet. The session's stored pins are never changed, so clearing the threshold brings them back. Until then, `sessions.retrieve()` returns an ignored pin as unset, so an agent that follows its session's pin doesn't ask for that deployment.
+
+Sessions move to the **current** deployment, not to the threshold's version. That's why the threshold can't be set above the current deployment.
+
+## Before a breaking change
+
+The threshold exists for the change old builds can't handle: a database migration, a removed tool, a changed API. It moves sessions, but it doesn't end runs, so check what's still running before you make that change. For the whole sequence from CI, see [deploy a breaking change to a chat agent](/guides/ai-agents/deploy-a-breaking-change).
+
+1. **Deploy and promote the fix first.** Sessions move to the current deployment, not to the threshold's version.
+2. **Set the threshold** on that deployment.
+3. **Wait for the old runs to end.** A chat nobody messages keeps its old run until it ends on its own (after the agent's idle timeout) or you cancel it. An idle chat run counts: it shows as **Executing** or **Waiting** on its old version.
+4. **Check that no run on an older version is still active**, then make the breaking change.
+
+On the **Runs** page, filter by **Version** (pick the versions before the threshold) and by **Status** (Queued, Dequeued, Executing and Waiting). The list should be empty. To check from a script, and cancel what's left, use the `old-runs.ts` script in [deploy a breaking change](/guides/ai-agents/deploy-a-breaking-change#4-check-that-nothing-older-is-running): it takes the threshold and lists every active run on a version below it.
+
+Canceling an idle chat's run loses nothing: the next message to that chat starts a run on the current deployment.
+
+Each moved session's new run needs a free concurrency slot like any other run. When many chats come back at once after the change, expect a burst of new runs, some of which queue until slots free up.
+
+## Before you set it
+
+<Warning>
+  A session task that isn't a `chat.agent` (a `task()` that loops on `session.in.wait()`) re-reads
+  the session's input from the start when it gets a new run, and the threshold gives every older
+  session one. Make sure those tasks skip input they've already handled. See [new runs of a raw
+  session task](/ai-chat/sessions#new-runs-of-a-raw-session-task).
+</Warning>
+
+- **Every task your sessions use must be in the current deployment.** A moved session gets a new run of its task on the current deployment. If that deployment doesn't have the task, the new run waits for a version that has it, and the session stops answering until one is deployed.
+- **Builds on SDK versions before 4.5.13** don't record how far a chat has read its input, so their sessions move only after the agent's idle timeout (30 seconds by default) rather than right after a reply. They still move.
+
+## Set it from the dashboard
+
+1. Open **Session upgrades** in the environment, under **Deployments** in the side menu.
+2. Choose **Upgrade sessions** in the page header.
+3. The dialog shows the threshold now (who set it and when). Pick the **Minimum version**: the version that fixed the problem or any deployed version up to the current one. Then choose **Upgrade sessions**, or **Raise threshold** when one is already set.
+
+The page header shows the threshold, who set it and when, and **Clear** beside it. Setting another version replaces it. On **Deployments**, the version gets a **Threshold** badge.
+
+Anyone who can promote and roll back deployments in the project can set and clear the threshold. Development environments don't have one: they always run the latest local version.
+
+## Set it from the API
+
+Use the environment's secret key, for example from CI after a fix deploys. A key from **Create API key** works too if its access includes **Deployments**: **Read** to read the threshold, **Read and write** to set or clear it. The **Deploy only** preset has both. Public keys and access tokens are refused. A key in its grace period after a rotation is refused for writes with `401` ("This API key has been rotated. Use the environment's current secret key."), so update the key in CI when you rotate it.
+
+```bash Set the threshold
+curl -X PUT "https://api.trigger.dev/api/v1/deployments/skew-protection-threshold" \
+  -H "Authorization: Bearer $TRIGGER_SECRET_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{"version":"20261109.22"}'
+```
+
+The response is the environment's state after the change:
+
+```json 200
+{
+  "currentVersion": "20261109.22",
+  "threshold": {
+    "version": "20261109.22",
+    "deploymentId": "deployment_exv9bt4gdbuun6mc24iuq",
+    "setAt": "2026-11-09T22:27:19.913Z",
+    "setBy": { "type": "api" }
+  },
+  "tasks": {}
+}
+```
+
+`tasks` holds each [threshold for one task](#a-threshold-for-one-task), by task id.
+
+`setBy.type` is `"api"`, `"user"` when it was set from the dashboard, or `"migrated"` when Trigger.dev set it for you. The dashboard shows who set it. Setting the version that's already the threshold changes nothing and returns the same state.
+
+`GET` on the same URL returns the state without changing it, and `DELETE` clears the threshold and returns the state with `"threshold": null`:
+
+```bash Clear the threshold
+curl -X DELETE "https://api.trigger.dev/api/v1/deployments/skew-protection-threshold" \
+  -H "Authorization: Bearer $TRIGGER_SECRET_KEY"
+```
+
+A `DELETE` is refused with `400`, with nothing changed, when the key belongs to a development environment, or when its `task` query parameter ([one task's threshold](#a-threshold-for-one-task)) is empty or over 256 characters.
+
+A `PUT` is refused, with nothing written, when:
+
+| Status | Cause | Example `error` |
+| --- | --- | --- |
+| `400` | The version isn't digits and dots, is over 64 characters, `task` is empty or over 256 characters, or the body isn't `{ "version": "..." }` | `"abc" isn't a deployment version. Versions look like 20261108.5.` |
+| `400` | The key belongs to a development environment | `Skew protection thresholds don't apply to development environments.` |
+| `404` | No deployment with that version has finished deploying in this environment | `No deployed deployment with version 99999999.1 in this environment.` |
+| `404` | `task` isn't in the current deployment | `No task "suport-agent" in the current deployment (20261109.22).` |
+| `409` | The version is above the current deployment, or nothing is current yet | `The current deployment (20261109.22) is below 20261109.23. Promote it first: sessions move to the current deployment, so a threshold can't be above it.` |
+| `409` | 50 tasks in the environment already have their own threshold | `At most 50 tasks in an environment can have their own skew protection threshold. Clear one first, or set the environment's threshold.` |
+
+See the [API reference](/management/deployments/set-skew-protection-threshold) for every field.
+
+## A threshold for one task
+
+A skew protection threshold can cover one task instead of the whole environment. Use it when one agent's older versions have to stop answering, and your other agents can keep their sessions where they are.
+
+Set it from the agent's page: choose **Upgrade sessions** in the page header, pick the version, and confirm. For a `chat.agent`, the dialog also shows its [`versionSkew`](/ai-chat/patterns/version-upgrades#staying-put) as its current deployment reports it. With the API, add `task`:
+
+```bash Set a threshold for one task
+curl -X PUT "https://api.trigger.dev/api/v1/deployments/skew-protection-threshold" \
+  -H "Authorization: Bearer $TRIGGER_SECRET_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{ "version": "20261118.4", "task": "support-agent" }'
+```
+
+From then on, a `support-agent` session on a version before `20261118.4` moves to the current deployment the next time it's used, with its history. Sessions of every other task are left alone.
+
+- The version must be a deployment at or below the current one, and the task must exist in the current deployment.
+- A task can have its own threshold while the environment has one too. A session moves when it is below the higher of the two.
+- Like the environment threshold, it is a one-time cutoff: later deploys move nothing until you raise it.
+- Rolling back to a version below a task's threshold clears that threshold. The rollback dialog lists what will be cleared.
+- Up to 50 tasks in an environment can have their own threshold.
+
+`GET` returns all of them:
+
+```json 200
+{
+  "currentVersion": "20261118.6",
+  "threshold": null,
+  "tasks": {
+    "support-agent": {
+      "version": "20261118.4",
+      "deploymentId": "deployment_exv9bt4gdbuun6mc24iuq",
+      "setAt": "2026-11-18T10:02:11.000Z",
+      "setBy": { "type": "user" }
+    }
+  }
+}
+```
+
+Clear one with `DELETE` and the task id. Without `task`, `DELETE` clears the environment's threshold and leaves each task's in place.
+
+```bash Clear a task's threshold
+curl -X DELETE "https://api.trigger.dev/api/v1/deployments/skew-protection-threshold?task=support-agent" \
+  -H "Authorization: Bearer $TRIGGER_SECRET_KEY"
+```
+
+You can also set and clear it from the agent's row menu on the **Session upgrades** page (**Upgrade sessions** and **Clear threshold**), or with **Clear** in the agent's **Upgrade sessions** dialog.
+
+## Rolling back below it clears it
+
+Promoting or rolling back to a version below a threshold clears it, since nothing at or above it would be current any more. That goes for the environment's threshold and for each task's own. The dashboard's rollback dialog lists what it will clear before you confirm, the confirmation toast reports the clear, and the [promote endpoint](/management/deployments/promote) adds what it cleared to its response:
+
+```json
+{
+  "id": "deployment_...",
+  "version": "20261109.20",
+  "shortCode": "...",
+  "skewProtectionThresholdCleared": {
+    "threshold": { "version": "20261109.22" },
+    "tasks": { "support-agent": { "version": "20261109.22" } }
+  }
+}
+```
+
+`threshold` is `null` when only task thresholds were cleared.
+
+Sessions already moved stay on their new runs. Set the threshold again once a fixed deployment is current.
+
+## See what it did
+
+- **Session upgrades.** The **Agents** tab lists each agent with what its `versionSkew` does (**In code**) and the threshold its sessions follow: its own, the environment's, or none. A task threshold on a task that isn't an agent gets a row too. The **History** tab lists the last changes in the environment: each threshold set, clear and clear by rollback, with the task it was for, who made it and from where.
+- **Agent and task pages.** The **Upgrade sessions** dialog shows the threshold that applies to the task's sessions: its own, or else the environment's. A task that isn't an agent shows the button once it has had a session.
+- **The run that was moved away from.** Its run page shows a **Session moved** notice with the version and a link to the run that continued the session.
+- **The session's runs.** The new run is labeled `Moved: skew protection threshold`.
+
+## Check that a session moved
+
+Send the chat a message from a script and read which deployment answers. To continue an existing chat from a new process, pass `AgentChat` the cursor saved from the chat's last turn. Without it, a new `AgentChat` for an existing chat id reads the session's output from the start and doesn't return the new answer, which looks like the move didn't happen.
+
+```ts scripts/continue-chat.ts
+import { existsSync, readFileSync, writeFileSync } from "node:fs";
+import { AgentChat } from "@trigger.dev/sdk/chat";
+
+const [, , chatId, ...words] = process.argv;
+const cursorFile = `.chat-${chatId}.json`;
+const saved = existsSync(cursorFile) ? JSON.parse(readFileSync(cursorFile, "utf8")) : undefined;
+
+const chat = new AgentChat({
+  agent: "my-chat",
+  id: chatId,
+  // Resume after the last turn this script read
+  session: saved ? { lastEventId: saved.lastEventId } : undefined,
+  onTurnComplete: async ({ lastEventId }) => {
+    writeFileSync(cursorFile, JSON.stringify({ lastEventId }));
+  },
+});
+
+const stream = await chat.sendMessage(words.join(" "));
+console.log(await stream.text());
+```
+
+Start the chat with this script too, so the cursor file exists before the deploy. In a request handler, store the cursor with the chat instead of in a file: see [stateless request handlers](/ai-chat/server-chat#stateless-request-handlers).
+
+To confirm the move without a script, open the old run (its **Session moved** notice links the new run), or filter the **Runs** page by the chat's tag (`chat:<chatId>`) and compare the versions of its runs.

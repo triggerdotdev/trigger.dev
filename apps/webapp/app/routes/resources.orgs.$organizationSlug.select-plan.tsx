@@ -40,7 +40,7 @@ import { clearPromoCodeCookie, getPromoCodeFromCookie } from "~/services/promoCo
 import { dashboardAction } from "~/services/routeBuilders/dashboardBuilder";
 import { engine } from "~/v3/runEngine.server";
 import { freeCardStepPath } from "~/components/billing/freeCardStepPath";
-import { freePlanButtonLabel } from "~/components/billing/freePlanLabel";
+import { planButton, type ScheduledPlan } from "~/components/billing/freePlanLabel";
 import { cn } from "~/utils/cn";
 import { sendToPlain } from "~/utils/plain.server";
 import { formatCurrency } from "~/utils/numberFormatter";
@@ -285,6 +285,10 @@ type PricingPlansProps = {
   periodEnd: Date;
   /** A Free org whose deploys wait on a verified card: its column asks for the card. */
   awaitsCardVerification?: boolean;
+  /** A downgrade waiting for the next 1st; the org keeps its plan until then. */
+  scheduledPlan?: ScheduledPlan;
+  /** When a downgrade picked now would start, for an org whose downgrades wait for the 1st. */
+  downgradesAt?: Date;
 };
 
 export function PricingPlans({
@@ -295,6 +299,8 @@ export function PricingPlans({
   hasPromotedPlan,
   periodEnd,
   awaitsCardVerification = false,
+  scheduledPlan,
+  downgradesAt,
 }: PricingPlansProps) {
   return (
     <div className="flex w-full flex-col">
@@ -305,18 +311,22 @@ export function PricingPlans({
           organizationSlug={organizationSlug}
           periodEnd={periodEnd}
           awaitsCardVerification={awaitsCardVerification}
+          scheduledPlan={scheduledPlan}
         />
         <TierHobby
           plan={plans.hobby}
           organizationSlug={organizationSlug}
           subscription={subscription}
           isHighlighted={hasPromotedPlan}
+          scheduledPlan={scheduledPlan}
+          downgradesAt={downgradesAt}
         />
         <TierPro
           plan={plans.pro}
           organizationSlug={organizationSlug}
           subscription={subscription}
           concurrencyAddOnPricing={concurrencyAddOnPricing}
+          scheduledPlan={scheduledPlan}
         />
       </div>
       <div className="mt-3">
@@ -358,12 +368,14 @@ export function TierFree({
   organizationSlug,
   periodEnd,
   awaitsCardVerification = false,
+  scheduledPlan,
 }: {
   plan: FreePlanDefinition;
   subscription?: SubscriptionResult;
   organizationSlug: string;
   periodEnd: Date;
   awaitsCardVerification?: boolean;
+  scheduledPlan?: ScheduledPlan;
 }) {
   const location = useLocation();
   const navigation = useNavigation();
@@ -378,19 +390,19 @@ export function TierFree({
   useEffect(() => {
     // oxlint-disable-next-line react/set-state-in-effect -- This effect intentionally synchronizes route state after an external or lifecycle change.
     setIsDialogOpen(false);
-  }, [subscription?.plan?.code, subscription?.canceledAt]);
+  }, [subscription?.plan?.code, subscription?.canceledAt, scheduledPlan?.code]);
+
+  const button = planButton(plan, subscription, scheduledPlan);
 
   return (
     <TierContainer>
       <PricingHeader title={plan.title} cost={0} />
-      {subscription?.plan !== undefined &&
-      subscription.plan.type !== "free" &&
-      subscription.canceledAt === undefined ? (
+      {button.confirm === "downgrade" ? (
         <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen} key="cancel">
           <DialogTrigger asChild>
             <div className="my-6">
               <Button variant="secondary/large" fullWidth className="text-md font-medium">
-                {`Downgrade to ${plan.title}`}
+                {button.label}
               </Button>
             </div>
           </DialogTrigger>
@@ -440,7 +452,11 @@ export function TierFree({
                 </div>
               </div>
               <DialogFooter className="mt-2">
-                <Button variant="secondary/medium" onClick={() => setIsDialogOpen(false)}>
+                <Button
+                  type="button"
+                  variant="secondary/medium"
+                  onClick={() => setIsDialogOpen(false)}
+                >
                   Dismiss
                 </Button>
                 <Button
@@ -476,16 +492,12 @@ export function TierFree({
             form="subscribe-verified"
             fullWidth
             className="text-md font-medium"
-            disabled={
-              isLoading ||
-              subscription?.plan?.type === plan.type ||
-              subscription?.canceledAt !== undefined
-            }
+            disabled={isLoading || button.disabled}
             LeadingIcon={
               isLoading && navigation.formData?.get("planCode") === null ? Spinner : undefined
             }
           >
-            {freePlanButtonLabel(subscription)}
+            {button.label}
           </Button>
         </Form>
       )}
@@ -528,11 +540,15 @@ export function TierHobby({
   organizationSlug,
   subscription,
   isHighlighted,
+  scheduledPlan,
+  downgradesAt,
 }: {
   plan: PaidPlanDefinition;
   organizationSlug: string;
   subscription?: SubscriptionResult;
   isHighlighted: boolean;
+  scheduledPlan?: ScheduledPlan;
+  downgradesAt?: Date;
 }) {
   const location = useLocation();
   const navigation = useNavigation();
@@ -544,7 +560,9 @@ export function TierHobby({
   useEffect(() => {
     // oxlint-disable-next-line react/set-state-in-effect -- This effect intentionally synchronizes route state after an external or lifecycle change.
     setIsDialogOpen(false);
-  }, [subscription?.plan?.code, subscription?.canceledAt]);
+  }, [subscription?.plan?.code, subscription?.canceledAt, scheduledPlan?.code]);
+
+  const button = planButton(plan, subscription, scheduledPlan);
 
   return (
     <TierContainer isHighlighted={isHighlighted}>
@@ -553,14 +571,11 @@ export function TierHobby({
         <input type="hidden" name="type" value="paid" />
         <input type="hidden" name="planCode" value={plan.code} />
         <input type="hidden" name="callerPath" value={location.pathname} />
-        {subscription?.plan !== undefined &&
-        subscription.plan.type !== "free" &&
-        subscription.canceledAt === undefined &&
-        subscription.plan.code !== plan.code ? (
+        {button.confirm === "downgrade" ? (
           <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen} key="downgrade">
             <DialogTrigger asChild>
               <Button variant="secondary/large" fullWidth className="text-md font-medium">
-                {`Downgrade to ${plan.title}`}
+                {button.label}
               </Button>
             </DialogTrigger>
             <DialogContent className="sm:max-w-md">
@@ -570,12 +585,24 @@ export function TierHobby({
                   <ArrowDownCircleIcon className="size-12 text-blue-500" />
                 </span>
                 <Paragraph variant="base/bright" className="text-text-bright">
-                  By downgrading you will lose access to your current plan's features and your
-                  included credits will be reduced.
+                  {downgradesAt ? (
+                    <>
+                      You'll stay on {subscription?.plan?.title} until{" "}
+                      <DateTime includeTime={false} date={downgradesAt} timeZone="UTC" />, then move
+                      to {plan.title} with its features and included credits. The rest of this month
+                      isn't refunded.
+                    </>
+                  ) : (
+                    "By downgrading you will lose access to your current plan's features and your included credits will be reduced."
+                  )}
                 </Paragraph>
               </div>
               <DialogFooter>
-                <Button variant="secondary/medium" onClick={() => setIsDialogOpen(false)}>
+                <Button
+                  type="button"
+                  variant="secondary/medium"
+                  onClick={() => setIsDialogOpen(false)}
+                >
                   Dismiss
                 </Button>
                 <Button
@@ -595,21 +622,12 @@ export function TierHobby({
             fullWidth
             className="text-md font-medium"
             form="subscribe-hobby"
-            disabled={
-              isLoading ||
-              (subscription?.plan?.code === plan.code && subscription.canceledAt === undefined)
-            }
+            disabled={isLoading || button.disabled}
             LeadingIcon={
               isLoading && navigation.formData?.get("planCode") === plan.code ? Spinner : undefined
             }
           >
-            {subscription?.plan === undefined
-              ? "Select plan"
-              : subscription.plan.type === "free" || subscription.canceledAt !== undefined
-                ? `Upgrade to ${plan.title}`
-                : subscription.plan.code === plan.code
-                  ? "Current plan"
-                  : `Upgrade to ${plan.title}`}
+            {button.label}
           </Button>
         )}
       </Form>
@@ -670,11 +688,13 @@ export function TierPro({
   concurrencyAddOnPricing,
   organizationSlug,
   subscription,
+  scheduledPlan,
 }: {
   plan: PaidPlanDefinition;
   concurrencyAddOnPricing: AddOnPricing;
   organizationSlug: string;
   subscription?: SubscriptionResult;
+  scheduledPlan?: ScheduledPlan;
 }) {
   const location = useLocation();
   const navigation = useNavigation();
@@ -686,7 +706,9 @@ export function TierPro({
   useEffect(() => {
     // oxlint-disable-next-line react/set-state-in-effect -- This effect intentionally synchronizes route state after an external or lifecycle change.
     setIsDialogOpen(false);
-  }, [subscription?.plan?.code, subscription?.canceledAt]);
+  }, [subscription?.plan?.code, subscription?.canceledAt, scheduledPlan?.code]);
+
+  const button = planButton(plan, subscription, scheduledPlan);
 
   return (
     <TierContainer>
@@ -696,10 +718,7 @@ export function TierPro({
           <input type="hidden" name="type" value="paid" />
           <input type="hidden" name="planCode" value={plan.code} />
           <input type="hidden" name="callerPath" value={location.pathname} />
-          {subscription?.plan !== undefined &&
-          subscription?.plan?.type === "paid" &&
-          subscription?.plan?.code !== plan.code &&
-          subscription.canceledAt === undefined ? (
+          {button.confirm === "upgrade" ? (
             <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen} key="upgrade">
               <DialogTrigger asChild>
                 <Button variant="secondary/large" fullWidth className="text-md font-medium">
@@ -718,7 +737,11 @@ export function TierPro({
                   </Paragraph>
                 </div>
                 <DialogFooter>
-                  <Button variant="secondary/medium" onClick={() => setIsDialogOpen(false)}>
+                  <Button
+                    type="button"
+                    variant="secondary/medium"
+                    onClick={() => setIsDialogOpen(false)}
+                  >
                     Dismiss
                   </Button>
                   <Button
@@ -738,23 +761,14 @@ export function TierPro({
               fullWidth
               form="subscribe-pro"
               className="text-md font-medium"
-              disabled={
-                isLoading ||
-                (subscription?.plan?.code === plan.code && subscription.canceledAt === undefined)
-              }
+              disabled={isLoading || button.disabled}
               LeadingIcon={
                 isLoading && navigation.formData?.get("planCode") === plan.code
                   ? Spinner
                   : undefined
               }
             >
-              {subscription?.plan === undefined
-                ? "Select plan"
-                : subscription.plan.type === "free" || subscription.canceledAt !== undefined
-                  ? `Upgrade to ${plan.title}`
-                  : subscription.plan.code === plan.code
-                    ? "Current plan"
-                    : `Upgrade to ${plan.title}`}
+              {button.label}
             </Button>
           )}
         </div>

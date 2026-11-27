@@ -1,7 +1,7 @@
 import { CheckIcon, PlusIcon } from "@heroicons/react/20/solid";
-import { BookOpenIcon } from "@heroicons/react/24/solid";
 import { useSearchParams } from "@remix-run/react";
 import { useCallback } from "react";
+import { DocsHeaderButton } from "~/components/DocsPanel";
 import { SearchInput } from "~/components/primitives/SearchInput";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import { BranchEnvironmentIconSmall } from "~/assets/icons/EnvironmentIcons";
@@ -39,7 +39,7 @@ import { logger } from "~/services/logger.server";
 import { dashboardLoader } from "~/services/routeBuilders/dashboardBuilder";
 import { resolveProjectAuthScope } from "~/services/projectAuthScope.server";
 import { cn } from "~/utils/cn";
-import { branchesDevPath, docsPath, ProjectParamSchema } from "~/utils/pathBuilder";
+import { branchesDevPath, ProjectParamSchema } from "~/utils/pathBuilder";
 import { ArchiveButton } from "../resources.branches.archive";
 import { NewBranchPanel } from "~/components/branches/NewBranchPanel";
 import { BranchesOptions } from "~/utils/branches";
@@ -128,13 +128,7 @@ export default function Page() {
           </AdminDebugTooltip>
 
           <WhenAgentUnavailable>
-            <LinkButton
-              variant={"docs/small"}
-              LeadingIcon={BookOpenIcon}
-              to={docsPath("deployment/dev-branches")}
-            >
-              Dev branches docs
-            </LinkButton>
+            <DocsHeaderButton path="deployment/dev-branches">Dev branches docs</DocsHeaderButton>
           </WhenAgentUnavailable>
 
           {limits.isAtLimit ? (

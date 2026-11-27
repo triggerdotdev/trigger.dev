@@ -59,6 +59,7 @@ import {
 import { runWithHttpContext } from "~/services/httpAsyncStorage.server";
 import { EnvironmentSecretStore } from "~/services/environmentEncryption/secretStore.server";
 import { getSecretStore } from "~/services/secrets/secretStore.server";
+import { SECRET_PROXY_MAX_CREDENTIAL_BYTES } from "~/services/secretProxy/placeholder.server";
 import { EnvironmentVariablesRepository } from "~/v3/environmentVariables/environmentVariablesRepository.server";
 import {
   enableAuditRecording,
@@ -76,6 +77,8 @@ vi.setConfig({ testTimeout: 60_000 });
 
 // Every value a test writes contains this, so one check covers them all.
 const VALUE_MARKER = "s3cr3t-value";
+// Over the Agent Vault credential limit: a write of it to a Vault value fails inside its transaction.
+const OVERSIZED_VALUE = `${VALUE_MARKER}${"x".repeat(SECRET_PROXY_MAX_CREDENTIAL_BYTES)}`;
 
 async function setup(prisma: PrismaClient) {
   db.client = prisma;
@@ -503,42 +506,58 @@ describe("env var audit events", () => {
       });
       const before = (await events()).length;
 
-      const response = await runWithHttpContext(
-        {
-          requestId: "req_envvar_import",
-          path: `/api/v1/projects/${project.externalRef}/envvars/preview/import`,
-          host: "api.trigger.dev",
-          method: "POST",
-          abortController: new AbortController(),
+      const sendImport = (body: {
+        variables: Record<string, string>;
+        parentVariables: Record<string, string>;
+        override?: boolean;
+      }) =>
+        runWithHttpContext(
+          {
+            requestId: "req_envvar_import",
+            path: `/api/v1/projects/${project.externalRef}/envvars/preview/import`,
+            host: "api.trigger.dev",
+            method: "POST",
+            abortController: new AbortController(),
+          },
+          () =>
+            importVariables({
+              params: { projectRef: project.externalRef, slug: "preview" },
+              context: {},
+              request: new Request(
+                `http://localhost/api/v1/projects/${project.externalRef}/envvars/preview/import`,
+                {
+                  method: "POST",
+                  headers: {
+                    authorization: `Bearer ${preview.apiKey}`,
+                    "content-type": "application/json",
+                    "x-trigger-branch": "feat-audit",
+                  },
+                  body: JSON.stringify(body),
+                }
+              ),
+            })
+        );
+      const branchKey = "B".repeat(257);
+      const parentKey = "P".repeat(257);
+      const rejected = await sendImport({
+        variables: { [branchKey]: VALUE_MARKER },
+        parentVariables: { [parentKey]: VALUE_MARKER },
+      });
+      expect(rejected.status).toBe(400);
+      const { variableErrors } = await rejected.json();
+      expect(variableErrors.map(({ key }: { key: string }) => key)).toEqual([branchKey, parentKey]);
+
+      const response = await sendImport({
+        variables: {
+          INHERITED_SECRET: `${VALUE_MARKER}-c`,
+          BRANCH_ONLY: `${VALUE_MARKER}-d`,
         },
-        () =>
-          importVariables({
-            params: { projectRef: project.externalRef, slug: "preview" },
-            context: {},
-            request: new Request(
-              `http://localhost/api/v1/projects/${project.externalRef}/envvars/preview/import`,
-              {
-                method: "POST",
-                headers: {
-                  authorization: `Bearer ${preview.apiKey}`,
-                  "content-type": "application/json",
-                  "x-trigger-branch": "feat-audit",
-                },
-                body: JSON.stringify({
-                  variables: {
-                    INHERITED_SECRET: `${VALUE_MARKER}-c`,
-                    BRANCH_ONLY: `${VALUE_MARKER}-d`,
-                  },
-                  parentVariables: {
-                    PARENT_SAME: `${VALUE_MARKER}-b`,
-                    PARENT_NEW: `${VALUE_MARKER}-e`,
-                  },
-                  override: true,
-                }),
-              }
-            ),
-          })
-      );
+        parentVariables: {
+          PARENT_SAME: `${VALUE_MARKER}-b`,
+          PARENT_NEW: `${VALUE_MARKER}-e`,
+        },
+        override: true,
+      });
       expect(response.status).toBe(200);
 
       const event = (key: string, id: string, environmentId: string, isSecret: boolean) => ({
@@ -1173,8 +1192,14 @@ describe("env var audit events", () => {
     const { project, production, staging, repository, events, variableId } = await setup(prisma);
     await repository.create(project.id, {
       override: true,
-      environmentIds: [production.id, staging.id],
+      environmentIds: [production.id],
       variables: [{ key: "PROXIED", value: `${VALUE_MARKER}-p` }],
+    });
+    // Ordinary in Staging, so it can hold a value too large for Vault.
+    await repository.create(project.id, {
+      override: true,
+      environmentIds: [staging.id],
+      variables: [{ key: "PROXIED", value: OVERSIZED_VALUE }],
     });
     const proxied = await variableId("PROXIED");
     await enrollProxyOnlyValue(prisma, {
@@ -1192,25 +1217,26 @@ describe("env var audit events", () => {
     });
     expect(conflict.success).toBe(false);
 
-    // Each of these fails inside its transaction, on the proxy-only guard, and rolls back.
+    // Each of these writes a credential too large for the Vault value, so it fails inside its
+    // transaction and rolls back.
     expect(
       await repository.create(project.id, {
         override: true,
         environmentIds: [production.id],
-        variables: [{ key: "PROXIED", value: `${VALUE_MARKER}-r` }],
+        variables: [{ key: "PROXIED", value: OVERSIZED_VALUE }],
       })
     ).toMatchObject({ success: false });
     expect(
       await repository.edit(project.id, {
         id: proxied,
-        values: [{ environmentId: production.id, value: `${VALUE_MARKER}-s` }],
+        values: [{ environmentId: production.id, value: OVERSIZED_VALUE }],
       })
     ).toMatchObject({ success: false });
     expect(
       await repository.editValue(project.id, {
         id: proxied,
         environmentId: production.id,
-        value: `${VALUE_MARKER}-t`,
+        value: OVERSIZED_VALUE,
       })
     ).toMatchObject({ success: false });
     expect(
@@ -1219,15 +1245,6 @@ describe("env var audit events", () => {
         targetEnvironmentId: production.id,
         variableIds: [proxied],
       })
-    ).toMatchObject({ success: false });
-    expect(
-      await repository.deleteValues(project.id, [
-        { id: proxied, environmentId: staging.id },
-        { id: proxied, environmentId: production.id },
-      ])
-    ).toMatchObject({ success: false });
-    expect(
-      await repository.deleteValue(project.id, { id: proxied, environmentId: production.id })
     ).toMatchObject({ success: false });
 
     expect(await prisma.environmentVariableValue.count({ where: { variableId: proxied } })).toBe(2);
@@ -1260,7 +1277,7 @@ describe("env var audit events", () => {
             environmentIds: [production.id],
             variables: [
               { key: "FIRST", value: `${VALUE_MARKER}-1` },
-              { key: "PROXIED", value: `${VALUE_MARKER}-2` },
+              { key: "PROXIED", value: OVERSIZED_VALUE },
             ],
           },
           { imported: true }

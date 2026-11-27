@@ -1,7 +1,6 @@
 import { ArrowsPointingOutIcon } from "@heroicons/react/20/solid";
 import { Clipboard, ClipboardCheck } from "lucide-react";
 import type { Language, PrismTheme } from "prism-react-renderer";
-import { Highlight, Prism } from "prism-react-renderer";
 import type { ReactNode } from "react";
 import { forwardRef, useCallback, useEffect, useState } from "react";
 import { TextWrapIcon } from "~/assets/icons/TextWrapIcon";
@@ -12,20 +11,25 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "../primitives/
 import { Paragraph } from "../primitives/Paragraph";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "../primitives/Tooltip";
 import { TextInlineIcon } from "~/assets/icons/TextInlineIcon";
+import type * as HighlighterExports from "./CodeBlockHighlight";
 
 //This is a fork of https://github.com/mantinedev/mantine/blob/master/src/mantine-prism/src/Prism/Prism.tsx
 //it didn't support highlighting lines by dimming the rest of the code, or animations on the highlighting
 
-async function setup() {
-  (typeof global !== "undefined" ? global : window).Prism = Prism;
-  //@ts-ignore
-  await import("prismjs/components/prism-json");
-  //@ts-ignore
-  await import("prismjs/components/prism-typescript");
-  //@ts-ignore
-  await import("prismjs/components/prism-sql.js");
+type HighlighterModule = typeof HighlighterExports;
+let highlighter: HighlighterModule | undefined;
+let highlighterLoading: Promise<HighlighterModule> | undefined;
+
+// prism-react-renderer and its grammars load after hydration; until they arrive the code shows
+// unhighlighted in the same box.
+function loadHighlighter() {
+  highlighterLoading ??= import("./CodeBlockHighlight").then(async (module) => {
+    await module.prismReady;
+    highlighter = module;
+    return module;
+  });
+  return highlighterLoading;
 }
-setup();
 
 type CodeBlockProps = {
   /** Code which will be highlighted */
@@ -74,7 +78,6 @@ type CodeBlockProps = {
   wrap?: boolean;
 };
 
-const dimAmount = 0.5;
 const extraLinesWhenClipping = 0.35;
 
 const defaultTheme: PrismTheme = {
@@ -479,18 +482,21 @@ function HighlightCode({
   isWrapped,
   searchTerm,
 }: HighlightCodeProps) {
-  const [isLoaded, setIsLoaded] = useState(false);
+  const [Highlighter, setHighlighter] = useState(highlighter);
 
   useEffect(() => {
-    Promise.all([
-      //@ts-ignore
-      import("prismjs/components/prism-json"),
-      //@ts-ignore
-      import("prismjs/components/prism-typescript"),
-      //@ts-ignore
-      import("prismjs/components/prism-sql.js"),
-    ]).then(() => setIsLoaded(true));
-  }, []);
+    if (Highlighter) return;
+    let cancelled = false;
+    loadHighlighter().then(
+      (module) => {
+        if (!cancelled) setHighlighter(() => module);
+      },
+      () => {}
+    );
+    return () => {
+      cancelled = true;
+    };
+  }, [Highlighter]);
 
   const containerClasses = cn(
     "min-h-0 flex-1 px-3 py-3 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-surface-control",
@@ -505,7 +511,7 @@ function HighlightCode({
     isWrapped && "[&_span]:whitespace-pre-wrap [&_span]:wrap-break-word"
   );
 
-  if (!isLoaded) {
+  if (!Highlighter) {
     return (
       <div dir="ltr" className={containerClasses}>
         <pre className={preClasses}>{code}</pre>
@@ -514,89 +520,17 @@ function HighlightCode({
   }
 
   return (
-    <Highlight theme={theme} code={code} language={language}>
-      {({
-        className: inheritedClassName,
-        style: inheritedStyle,
-        tokens,
-        getLineProps,
-        getTokenProps,
-      }) => (
-        <div dir="ltr" className={containerClasses}>
-          <pre className={cn(preClasses, inheritedClassName)} style={inheritedStyle} dir="ltr">
-            {tokens
-              .map((line, index) => {
-                if (index === tokens.length - 1 && line.length === 1 && line[0].content === "\n") {
-                  return null;
-                }
-
-                const lineNumber = index + 1;
-                const lineProps = getLineProps({ line });
-
-                let hasAnyHighlights = highlightLines ? highlightLines.length > 0 : false;
-
-                let shouldDim = hasAnyHighlights;
-                if (hasAnyHighlights && highlightLines?.includes(lineNumber)) {
-                  shouldDim = false;
-                }
-
-                return (
-                  <div
-                    key={lineNumber}
-                    {...lineProps}
-                    className={cn(
-                      "flex w-full justify-start transition-opacity duration-500",
-                      lineProps.className,
-                      isWrapped && "flex-wrap"
-                    )}
-                    style={{
-                      opacity: shouldDim ? dimAmount : undefined,
-                      ...lineProps.style,
-                    }}
-                  >
-                    {showLineNumbers && (
-                      <div
-                        className={cn(
-                          "mr-2 flex-none select-none text-right text-text-faint transition-opacity duration-500",
-                          isWrapped && "sticky left-0"
-                        )}
-                        style={{
-                          width: `calc(8 * ${(maxLineWidth as number) / 16}rem)`,
-                        }}
-                      >
-                        {lineNumber}
-                      </div>
-                    )}
-
-                    <div className="flex-1">
-                      {line.map((token, key) => {
-                        const tokenProps = getTokenProps({ token });
-
-                        // Highlight search term matches in token
-                        const content = highlightSearchText(token.content, searchTerm);
-
-                        return (
-                          <span
-                            key={key}
-                            {...tokenProps}
-                            style={{
-                              color: tokenProps?.style?.color as string,
-                              ...tokenProps.style,
-                            }}
-                          >
-                            {content}
-                          </span>
-                        );
-                      })}
-                    </div>
-                    <div className="w-4 flex-none" />
-                  </div>
-                );
-              })
-              .filter(Boolean)}
-          </pre>
-        </div>
-      )}
-    </Highlight>
+    <Highlighter.HighlightedCode
+      theme={theme}
+      code={code}
+      language={language}
+      showLineNumbers={showLineNumbers}
+      highlightLines={highlightLines}
+      maxLineWidth={maxLineWidth}
+      isWrapped={isWrapped}
+      searchTerm={searchTerm}
+      containerClasses={containerClasses}
+      preClasses={preClasses}
+    />
   );
 }

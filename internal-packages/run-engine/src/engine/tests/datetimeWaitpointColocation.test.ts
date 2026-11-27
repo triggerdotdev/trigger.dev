@@ -20,11 +20,28 @@ import {
   redisOptions,
 } from "@internal/testcontainers";
 import { trace } from "@internal/tracing";
-import { PostgresRunStore, RoutingRunStore, type CreateRunInput } from "@internal/run-store";
+import {
+  MEMORYDB_SHARD_KEY,
+  organizationContext,
+  PostgresRunStore,
+  RedisSnapshotStore,
+  RoutingRunStore,
+  WAITPOINT_KEY_TRANSACTION_POOL_SIZE,
+  WaitpointKeyTransactionLane,
+  registerWaitpointKeyTransactionLane,
+  type CreateRunInput,
+  type MemoryDbGate,
+  type RunStore,
+} from "@internal/run-store";
 import type { PrismaClient } from "@trigger.dev/database";
-import type { RunOpsPrismaClient } from "@internal/run-ops-database";
+import { RunOpsPrismaClient } from "@internal/run-ops-database";
+import { parseWaitpointId } from "@trigger.dev/core/v3/isomorphic";
 import { expect, vi } from "vitest";
 import { RunEngine } from "../index.js";
+import { workerCatalog } from "../workerCatalog.js";
+import { WaitpointStoreCoordinator } from "../waitpointCoordinator/storeCoordinator.js";
+import { registerTestKeyLane } from "./utils/keyedWaitpointTest.js";
+import { makeEngine } from "./utils/storeRunWaitpointLifecycleFixtures.js";
 
 const twoDbEngineTest = heteroRunOpsPostgresTest.extend<{
   redisContainer: any;
@@ -394,6 +411,483 @@ describe("DATETIME/MANUAL waitpoint co-location with the owning run (two physica
             where: { environmentId: env.environment.id, idempotencyKey },
           })
         ).toBe(1);
+      } finally {
+        await engine.quit();
+      }
+    }
+  );
+
+  twoDbEngineTest(
+    "standalone keyed MANUAL token follows the idempotency key namespace of its placement",
+    async ({ prisma14, prisma17, uri14, uri17, redisOptions }) => {
+      const p14 = prisma14 as unknown as PrismaClient;
+      // PostgresRunStore looks its key lane up when it is built, so register both first.
+      const legacyLane = registerTestKeyLane(p14, uri14);
+      const runOpsUrl = new URL(uri17);
+      runOpsUrl.searchParams.set("connection_limit", String(WAITPOINT_KEY_TRANSACTION_POOL_SIZE));
+      const runOpsLane = new WaitpointKeyTransactionLane(
+        () =>
+          new RunOpsPrismaClient({ datasources: { db: { url: runOpsUrl.toString() } } }) as never
+      );
+      registerWaitpointKeyTransactionLane(prisma17, runOpsLane);
+      const router = makeRouter(p14, prisma17);
+      const snapshots = new RedisSnapshotStore({ redisOptions, completedTtlMs: 60000 });
+      const store = new WaitpointStoreCoordinator({ redisOptions, terminalRetentionMs: 2000 });
+      const flagged = await seedControlPlaneEnv(p14, "kflag");
+      const unflagged = await seedControlPlaneEnv(p14, "kplain");
+      let enabled = true;
+      const engine = makeEngine(p14, redisOptions, {
+        runStore: router,
+        store,
+        snapshotStore: snapshots,
+        workerDisabled: true,
+        isWaitpointStoreEnabled: (organizationId) =>
+          organizationId === flagged.organization.id && enabled,
+      });
+      try {
+        for (const env of [flagged, unflagged]) {
+          const create = (idempotencyKey: string, standaloneResidency: "LEGACY" | "NEW") =>
+            engine.createManualWaitpoint({
+              environmentId: env.environment.id,
+              projectId: env.project.id,
+              organizationId: env.organization.id,
+              idempotencyKey,
+              standaloneResidency,
+              standaloneStoreEligible: true,
+            });
+          const rows = async (id: string) => [
+            await p14.waitpoint.count({ where: { id } }),
+            await prisma17.waitpoint.count({ where: { id } }),
+          ];
+          for (const key of ["k1", "k2"]) {
+            enabled = key === "k1";
+            const first = await create(key, "LEGACY");
+            enabled = true;
+            for (const again of [await create(key, "NEW"), await create(key, "NEW")])
+              expect(again).toMatchObject({
+                isCached: true,
+                waitpoint: { id: first.waitpoint.id },
+              });
+            if (env === flagged && key === "k1") {
+              expect(parseWaitpointId(first.waitpoint.id)).toMatchObject({
+                format: "b32hexW",
+                type: "MANUAL",
+              });
+              expect(await rows(first.waitpoint.id)).toEqual([0, 0]);
+            } else {
+              expect(await rows(first.waitpoint.id)).toEqual([1, 0]);
+            }
+          }
+        }
+
+        // A token removed at retention does not lend its key to the other placement.
+        const scope = {
+          environmentId: flagged.environment.id,
+          projectId: flagged.project.id,
+          organizationId: flagged.organization.id,
+        };
+        const create = (standaloneResidency: "LEGACY" | "NEW") =>
+          engine.createManualWaitpoint({
+            ...scope,
+            idempotencyKey: "k3",
+            standaloneResidency,
+            standaloneStoreEligible: true,
+          });
+        const removed = (await create("LEGACY")).waitpoint.id;
+        await engine.completeWaitpoint({
+          id: removed,
+          organizationId: scope.organizationId,
+          onlyIfPending: true,
+          output: { value: "done", isError: false },
+        });
+        const job = await engine["worker"].getJob(`recoverDateTimeWaitpoint:${removed}`);
+        const payload = workerCatalog.recoverDateTimeWaitpoint.schema.parse(job!.item);
+        await vi.waitFor(() => engine.waitpointSystem.recoverDateTimeWaitpoint(payload), {
+          timeout: 30_000,
+          interval: 250,
+        });
+        await expect
+          .poll(() => engine.getStoreDateTimeWaitpoint({ ...scope, waitpointId: removed }), {
+            timeout: 30_000,
+            interval: 100,
+          })
+          .toBeNull();
+        // Its reservation outlives the record until the retirement job, which is not run here.
+        expect(await store.readIdempotencyKey(`${scope.environmentId}:legacy`, "k3")).toBe(removed);
+        const fresh = await create("NEW");
+        expect(fresh.isCached).toBe(false);
+        expect(fresh.waitpoint.id).not.toBe(removed);
+      } finally {
+        await engine.quit();
+        await store.quit();
+        await snapshots.quit();
+        await legacyLane.close();
+        await runOpsLane.close();
+      }
+    }
+  );
+
+  twoDbEngineTest(
+    "the keyed store read finds a waiter under another placement only when W1 is on",
+    async ({ prisma14, prisma17, uri14, uri17, redisOptions }) => {
+      const p14 = prisma14 as unknown as PrismaClient;
+      const legacyLane = registerTestKeyLane(p14, uri14);
+      const runOpsUrl = new URL(uri17);
+      runOpsUrl.searchParams.set("connection_limit", String(WAITPOINT_KEY_TRANSACTION_POOL_SIZE));
+      const runOpsLane = new WaitpointKeyTransactionLane(
+        () =>
+          new RunOpsPrismaClient({ datasources: { db: { url: runOpsUrl.toString() } } }) as never
+      );
+      registerWaitpointKeyTransactionLane(prisma17, runOpsLane);
+      const router = makeRouter(p14, prisma17);
+      const snapshots = new RedisSnapshotStore({ redisOptions, completedTtlMs: 60000 });
+      const store = new WaitpointStoreCoordinator({ redisOptions });
+      const flagged = await seedControlPlaneEnv(p14, "rflag");
+      const unflagged = await seedControlPlaneEnv(p14, "rplain");
+      const engine = makeEngine(p14, redisOptions, {
+        runStore: router,
+        store,
+        snapshotStore: snapshots,
+        workerDisabled: true,
+        isWaitpointStoreEnabled: (organizationId) => organizationId === flagged.organization.id,
+      });
+      const out: Record<string, unknown> = {};
+      try {
+        for (const [name, env, eligible] of [
+          ["flagged", flagged, true],
+          ["unflagged", unflagged, false],
+        ] as const) {
+          const scope = {
+            environmentId: env.environment.id,
+            projectId: env.project.id,
+            organizationId: env.organization.id,
+          };
+          const idempotencyKey = "webhook-waiter:review-key";
+          // Waiter created while the env's placement is LEGACY.
+          const first = await engine.createManualWaitpoint({
+            ...scope,
+            idempotencyKey,
+            tags: ["webhook:endpoint-a"],
+            timeout: new Date(Date.now() + 3_600_000),
+            standaloneResidency: "LEGACY",
+            standaloneStoreEligible: eligible,
+          });
+          // The port's find after the placement changes to NEW: Postgres leg, then store leg.
+          const pg = await router.findWaitpoint(
+            { where: { environmentId: scope.environmentId, idempotencyKey } },
+            undefined,
+            { residency: "NEW" }
+          );
+          const storeNew = await engine.readExistingStoreDateTimeWaitpointByKey({
+            ...scope,
+            idempotencyKey,
+            standaloneResidency: "NEW",
+          });
+          const storeNewEligible = await engine.readExistingStoreDateTimeWaitpointByKey({
+            ...scope,
+            idempotencyKey,
+            standaloneResidency: "NEW",
+            standaloneStoreEligible: eligible,
+          });
+          const storeLegacy = await engine.readExistingStoreDateTimeWaitpointByKey({
+            ...scope,
+            idempotencyKey,
+            standaloneResidency: "LEGACY",
+          });
+          // The port's create after the placement change.
+          const again = await engine.createManualWaitpoint({
+            ...scope,
+            idempotencyKey,
+            tags: ["webhook:endpoint-b"],
+            timeout: new Date(Date.now() + 3_600_000),
+            standaloneResidency: "NEW",
+            standaloneStoreEligible: eligible,
+          });
+          out[name] = {
+            firstId: first.waitpoint.id,
+            format: parseWaitpointId(first.waitpoint.id).format,
+            pgFindAfterChange: pg?.id ?? null,
+            storeFindAfterChange: storeNew?.id ?? null,
+            eligibleFindAfterChange: storeNewEligible
+              ? { id: storeNewEligible.id, tags: storeNewEligible.tags }
+              : null,
+            storeFindSamePlacement: storeLegacy?.id ?? null,
+            createAfterChange: { id: again.waitpoint.id, isCached: again.isCached },
+          };
+        }
+        const f = out.flagged as any;
+        const u = out.unflagged as any;
+        expect(f.format).toBe("b32hexW");
+        expect(f.pgFindAfterChange).toBeNull();
+        expect(f.storeFindSamePlacement).toBe(f.firstId);
+        expect(f.storeFindAfterChange).toBeNull();
+        expect(f.eligibleFindAfterChange).toEqual({ id: f.firstId, tags: ["webhook:endpoint-a"] });
+        expect(f.createAfterChange).toEqual({ id: f.firstId, isCached: true });
+        expect(u.pgFindAfterChange).toBe(u.firstId);
+      } finally {
+        await engine.quit();
+        await store.quit();
+        await snapshots.quit();
+        await legacyLane.close();
+        await runOpsLane.close();
+      }
+    }
+  );
+});
+
+describe("the completion fan-out runs in the waitpoint's environment context", () => {
+  type Calls = {
+    gate: Array<string | undefined>;
+    standIn: Array<{ method: string; environmentId: string | undefined }>;
+  };
+
+  // The router of makeRouter plus, unless `withM` is false, a stand-in under m. The gate records the
+  // environment id of the context it is asked in; the stand-in records each call and its context.
+  function makeGatedRouter(
+    prisma14: PrismaClient,
+    prisma17: RunOpsPrismaClient,
+    options: { open: boolean; withM?: boolean }
+  ) {
+    const calls: Calls = { gate: [], standIn: [] };
+    const gate: MemoryDbGate = {
+      bornHere: () => false,
+      archiveFlagsOn: async () => false,
+      organizationOpens: async () => {
+        calls.gate.push(organizationContext.get()?.environmentId);
+        return options.open;
+      },
+    };
+    const record = (method: string) =>
+      calls.standIn.push({ method, environmentId: organizationContext.get()?.environmentId });
+    const standIn = {
+      findManyTaskRunWaitpoints: async () => {
+        record("findManyTaskRunWaitpoints");
+        return [];
+      },
+      // The resume job's edge read hydrates the edges' waitpoints through an open gate.
+      findManyWaitpoints: async () => {
+        record("findManyWaitpoints");
+        return [];
+      },
+    } as unknown as RunStore;
+    const router = new RoutingRunStore({
+      new: new PostgresRunStore({
+        prisma: prisma17 as never,
+        readOnlyPrisma: prisma17 as never,
+        schemaVariant: "dedicated",
+      }),
+      legacy: new PostgresRunStore({
+        prisma: prisma14,
+        readOnlyPrisma: prisma14,
+        schemaVariant: "legacy",
+      }),
+      shards: options.withM === false ? [] : [{ key: MEMORYDB_SHARD_KEY, store: standIn }],
+      memoryDbGate: gate,
+    });
+    return { router, calls };
+  }
+
+  // Seeds RUN_OPS_A executing on #new and blocks it on a DATETIME waitpoint completing at `at`.
+  async function blockOnDateTime(
+    engine: RunEngine,
+    p14: PrismaClient,
+    router: RoutingRunStore,
+    suffix: string,
+    at: Date
+  ) {
+    const runId = `run_${RUN_OPS_A}`;
+    const env = await seedExecutingRunOpsRun(p14, router, runId, suffix);
+    const { waitpoint } = await engine.createDateTimeWaitpoint({
+      runId,
+      projectId: env.project.id,
+      environmentId: env.environment.id,
+      completedAfter: at,
+    });
+    await engine.blockRunWithWaitpoint({
+      runId,
+      waitpoints: waitpoint.id,
+      projectId: env.project.id,
+      organizationId: env.organization.id,
+    });
+    const blocked = await engine.getRunExecutionData({ runId });
+    expect(blocked?.snapshot.executionStatus).toBe("EXECUTING_WITH_WAITPOINTS");
+    return { runId, env, waitpoint };
+  }
+
+  // Copies the calls when the completion enqueues the resume job: what the completion and its
+  // fan-out asked, before the resume job's own reads add to the lists. Install it before the
+  // waitpoint is created, so a timer that fires during set-up is still seen.
+  function callsAtResume(engine: RunEngine, calls: Calls) {
+    calls.gate.length = 0;
+    calls.standIn.length = 0;
+    const worker = engine["worker"];
+    const enqueue = worker.enqueue.bind(worker);
+    const seen: { calls?: Calls } = {};
+    vi.spyOn(worker, "enqueue").mockImplementation(async (options) => {
+      if (options.job === "continueRunIfUnblocked" && !seen.calls) {
+        seen.calls = { gate: [...calls.gate], standIn: [...calls.standIn] };
+      }
+      return enqueue(options);
+    });
+    return seen;
+  }
+
+  async function expectResumed(engine: RunEngine, runId: string) {
+    await vi.waitFor(
+      async () => {
+        const ed = await engine.getRunExecutionData({ runId });
+        expect(ed?.snapshot.executionStatus).toBe("EXECUTING");
+      },
+      { timeout: 10_000, interval: 100 }
+    );
+  }
+
+  // Catches: the fan-out of a finishWaitpoint job running with no environment in its context, so
+  // an open organisation's MemoryDB run is never found.
+  twoDbEngineTest(
+    "gate open: the finishWaitpoint fan-out asks the store under m in the waitpoint's environment",
+    async ({ prisma14, prisma17, redisOptions }) => {
+      const p14 = prisma14 as unknown as PrismaClient;
+      const { router, calls } = makeGatedRouter(p14, prisma17, { open: true });
+      const engine = new RunEngine({ store: router, ...baseEngineOptions(redisOptions, prisma14) });
+      try {
+        const seen = callsAtResume(engine, calls);
+        const { runId, env, waitpoint } = await blockOnDateTime(
+          engine,
+          p14,
+          router,
+          "gto",
+          new Date(Date.now() + 600)
+        );
+
+        await expectResumed(engine, runId);
+
+        expect(waitpoint.environmentId).toBe(env.environment.id);
+        expect(seen.calls?.standIn).toEqual([
+          { method: "findManyTaskRunWaitpoints", environmentId: env.environment.id },
+        ]);
+        expect(seen.calls?.gate).toEqual([env.environment.id]);
+      } finally {
+        await engine.quit();
+      }
+    }
+  );
+
+  // Catches: a closed gate still asking the store under m, or the job asking the gate with no
+  // environment.
+  twoDbEngineTest(
+    "gate closed: the finishWaitpoint fan-out leaves the store under m out and the run resumes",
+    async ({ prisma14, prisma17, redisOptions }) => {
+      const p14 = prisma14 as unknown as PrismaClient;
+      const { router, calls } = makeGatedRouter(p14, prisma17, { open: false });
+      const engine = new RunEngine({ store: router, ...baseEngineOptions(redisOptions, prisma14) });
+      try {
+        const seen = callsAtResume(engine, calls);
+        const { runId, env } = await blockOnDateTime(
+          engine,
+          p14,
+          router,
+          "gtc",
+          new Date(Date.now() + 600)
+        );
+
+        await expectResumed(engine, runId);
+
+        expect(calls.standIn).toEqual([]);
+        expect(seen.calls?.gate.length).toBeGreaterThan(0);
+        expect(seen.calls?.gate.every((id) => id === env.environment.id)).toBe(true);
+      } finally {
+        await engine.quit();
+      }
+    }
+  );
+
+  // Catches: the wrap replacing a request's context with the waitpoint's environment.
+  twoDbEngineTest(
+    "a completion inside a request keeps the request's context for the fan-out",
+    async ({ prisma14, prisma17, redisOptions }) => {
+      const p14 = prisma14 as unknown as PrismaClient;
+      const { router, calls } = makeGatedRouter(p14, prisma17, { open: true });
+      const engine = new RunEngine({ store: router, ...baseEngineOptions(redisOptions, prisma14) });
+      try {
+        const seen = callsAtResume(engine, calls);
+        // An hour out, so the finishWaitpoint timer cannot fire during the test.
+        const { runId, waitpoint } = await blockOnDateTime(
+          engine,
+          p14,
+          router,
+          "gtr",
+          new Date(Date.now() + 60 * 60 * 1000)
+        );
+
+        await organizationContext.run(
+          { organizationId: "org_request", environmentId: "env_request", featureFlags: null },
+          () => engine.completeWaitpoint({ id: waitpoint.id })
+        );
+        await expectResumed(engine, runId);
+
+        expect(seen.calls?.standIn).toEqual([
+          { method: "findManyTaskRunWaitpoints", environmentId: "env_request" },
+        ]);
+        expect(seen.calls?.gate).toEqual(["env_request"]);
+      } finally {
+        await engine.quit();
+      }
+    }
+  );
+
+  // Catches: the wrap keeping a context that names no environment (a worker route's empty scope)
+  // in place of the waitpoint's environment.
+  twoDbEngineTest(
+    "a completion inside a scope with no environment runs the fan-out in the waitpoint's environment",
+    async ({ prisma14, prisma17, redisOptions }) => {
+      const p14 = prisma14 as unknown as PrismaClient;
+      const { router, calls } = makeGatedRouter(p14, prisma17, { open: true });
+      const engine = new RunEngine({ store: router, ...baseEngineOptions(redisOptions, prisma14) });
+      try {
+        const seen = callsAtResume(engine, calls);
+        // An hour out, so the finishWaitpoint timer cannot fire during the test.
+        const { runId, env, waitpoint } = await blockOnDateTime(
+          engine,
+          p14,
+          router,
+          "gte",
+          new Date(Date.now() + 60 * 60 * 1000)
+        );
+
+        await organizationContext.run({}, () => engine.completeWaitpoint({ id: waitpoint.id }));
+        await expectResumed(engine, runId);
+
+        expect(seen.calls?.standIn).toEqual([
+          { method: "findManyTaskRunWaitpoints", environmentId: env.environment.id },
+        ]);
+        expect(seen.calls?.gate).toEqual([env.environment.id]);
+      } finally {
+        await engine.quit();
+      }
+    }
+  );
+
+  // Catches: the wrap asking the gate when no store is under m.
+  twoDbEngineTest(
+    "with no store under m the gate is never asked and the run resumes",
+    async ({ prisma14, prisma17, redisOptions }) => {
+      const p14 = prisma14 as unknown as PrismaClient;
+      const { router, calls } = makeGatedRouter(p14, prisma17, { open: true, withM: false });
+      const engine = new RunEngine({ store: router, ...baseEngineOptions(redisOptions, prisma14) });
+      try {
+        const { runId } = await blockOnDateTime(
+          engine,
+          p14,
+          router,
+          "gtn",
+          new Date(Date.now() + 600)
+        );
+
+        await expectResumed(engine, runId);
+
+        expect(calls.gate).toEqual([]);
+        expect(calls.standIn).toEqual([]);
       } finally {
         await engine.quit();
       }

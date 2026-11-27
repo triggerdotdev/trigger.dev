@@ -21,25 +21,41 @@ export class SelectBestEnvironmentPresenter {
     this.#prismaClient = prismaClient;
   }
 
-  public async call({ user }: { user: UserFromSession }) {
-    const { project, organization } = await this.getBestProject(user);
-    const environment = await this.selectBestEnvironment(project.id, user, project.environments);
+  public async call({
+    user,
+    projectRef,
+    devEnvironment,
+  }: {
+    user: UserFromSession;
+    projectRef?: string;
+    devEnvironment?: boolean;
+  }) {
+    const { project, organization } = await this.getBestProject(user, projectRef);
+    const environment = await this.selectBestEnvironment(
+      project.id,
+      user,
+      project.environments,
+      devEnvironment
+    );
 
     return {
       project,
       organization,
       environment,
+      // False when an explicit ref couldn't be reached and another project was picked instead.
+      projectRefMatched: !projectRef || project.externalRef === projectRef,
     };
   }
 
-  async getBestProject(user: UserFromSession) {
-    //try get current project from cookie
-    const projectId = user.dashboardPreferences.currentProjectId;
+  async getBestProject(user: UserFromSession, projectRef?: string) {
+    //an explicitly requested project (e.g. a docs link for the project the reader picked), else the
+    //current project from the cookie
+    const projectId = projectRef ? undefined : user.dashboardPreferences.currentProjectId;
 
-    if (projectId) {
+    if (projectRef || projectId) {
       const project = await this.#prismaClient.project.findFirst({
         where: {
-          id: projectId,
+          ...(projectRef ? { externalRef: projectRef } : { id: projectId }),
           deletedAt: null,
           organization: { members: { some: { userId: user.id } } },
         },
@@ -111,7 +127,7 @@ export class SelectBestEnvironmentPresenter {
     projectSlug,
     projects,
   }: {
-    user: UserFromSession;
+    user: Pick<UserFromSession, "dashboardPreferences">;
     projectSlug: string | undefined;
     projects: {
       id: string;
@@ -152,10 +168,17 @@ export class SelectBestEnvironmentPresenter {
       parentEnvironmentId: string | null;
       orgMember: { userId: string } | null;
     },
-  >(projectId: string, user: UserFromSession, environments: T[]): Promise<T> {
+  >(
+    projectId: string,
+    user: UserFromSession,
+    environments: T[],
+    //skip the remembered environment: the caller wants the user's own dev environment
+    devEnvironment = false
+  ): Promise<T> {
     //try get current environment from prefs
-    const currentEnvironmentId: string | undefined =
-      user.dashboardPreferences.projects[projectId]?.currentEnvironment.id;
+    const currentEnvironmentId: string | undefined = devEnvironment
+      ? undefined
+      : user.dashboardPreferences.projects[projectId]?.currentEnvironment.id;
 
     const currentEnvironment = selectAccessibleEnvironment(
       environments.filter((env) => env.id === currentEnvironmentId),

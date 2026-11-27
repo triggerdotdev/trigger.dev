@@ -39,7 +39,9 @@ export type WebhookReplicaDatabase = Pick<
 
 export { Decimal };
 
-function isTransactionClient(prisma: PrismaClientOrTransaction): prisma is PrismaTransactionClient {
+export function isTransactionClient(
+  prisma: PrismaClientOrTransaction
+): prisma is PrismaTransactionClient {
   return !("$transaction" in prisma);
 }
 

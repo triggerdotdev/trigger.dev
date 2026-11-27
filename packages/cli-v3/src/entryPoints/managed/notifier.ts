@@ -22,6 +22,8 @@ export class RunNotifier {
   private lastInvalidNotificationAt: Date | null = null;
   private invalidNotificationCount = 0;
 
+  private listening = false;
+
   constructor(opts: RunNotifierOptions) {
     this.runFriendlyId = opts.runFriendlyId;
     this.socket = opts.supervisorSocket;
@@ -32,6 +34,7 @@ export class RunNotifier {
   start(): RunNotifier {
     this.sendDebugLog("start");
 
+    this.listening = true;
     this.socket.on("run:notify", async ({ version, run }) => {
       // Generate a unique ID for the notification
       const notificationId = Math.random().toString(36).substring(2, 15);
@@ -65,7 +68,20 @@ export class RunNotifier {
 
   stop() {
     this.sendDebugLog("stop");
+    this.listening = false;
     this.socket.removeAllListeners("run:notify");
+  }
+
+  /** Moves the listener to a new socket, for when the runner is restored under another supervisor. */
+  updateSocket(socket: SupervisorSocket) {
+    const wasListening = this.listening;
+
+    this.stop();
+    this.socket = socket;
+
+    if (wasListening) {
+      this.start();
+    }
   }
 
   get metrics() {

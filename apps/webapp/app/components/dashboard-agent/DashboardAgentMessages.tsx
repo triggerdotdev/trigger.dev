@@ -16,6 +16,7 @@ import {
   ChatActionsRow,
   ChatCardSlot,
   ChatProgress,
+  ChatSeries,
   ChatText,
   ChatTranscript,
   ChatTurn,
@@ -28,6 +29,7 @@ import {
   useFollowedByPlan,
   useLiveProposal,
 } from "./MonitoringPlanBlock";
+import { activeTurnMessage } from "./active-turn";
 import { isProsePart } from "./prose-part";
 import { reportBlockFromToolPart } from "./report-block-adapter";
 import { shouldShowLiveTurnError } from "./turn-error";
@@ -246,13 +248,52 @@ function CitationButton({ url, label }: { url: string; label: string }) {
   );
 }
 
-function userText(message: UIMessage): string {
+function messageText(message: UIMessage): string {
   return (
     message.parts
       ?.filter((part) => part.type === "text")
       .map((part) => (part as { type: "text"; text: string }).text)
       .join("") ?? ""
   );
+}
+
+function copyableText(message: UIMessage): string {
+  return (
+    message.parts
+      ?.filter((part) => isProsePart(part as { type?: string; text?: string }))
+      .map((part) => stripModelImages((part as { text: string }).text))
+      .filter((chunk) => chunk.trim())
+      .join("\n\n") ?? ""
+  );
+}
+
+const turnTexts = new WeakMap<UIMessage, string>();
+
+function turnText(message: UIMessage): string {
+  let text = turnTexts.get(message);
+  if (text === undefined) {
+    text = copyableText(message);
+    turnTexts.set(message, text);
+  }
+  return text;
+}
+
+export function seriesCopyText(messages: UIMessage[]): string {
+  return messages
+    .map(turnText)
+    .filter((chunk) => chunk.trim())
+    .join("\n\n");
+}
+
+function rendersTurn(message: UIMessage): boolean {
+  return message.role === "user" || (message.role === "assistant" && !!message.parts?.length);
+}
+
+function hasLiveProposal(
+  message: UIMessage,
+  isLiveProposal: ReturnType<typeof useLiveProposal>
+): boolean {
+  return (message.parts ?? []).some((part, i) => isLiveProposal(part, i));
 }
 
 const DashboardAgentTurn = memo(function DashboardAgentTurn({
@@ -274,7 +315,7 @@ const DashboardAgentTurn = memo(function DashboardAgentTurn({
   if (message.role === "user") {
     return (
       <ChatTurn speaker="user">
-        <ChatText speaker="user" text={userText(message)} />
+        <ChatText speaker="user" text={messageText(message)} />
       </ChatTurn>
     );
   }
@@ -346,6 +387,49 @@ const DashboardAgentTurn = memo(function DashboardAgentTurn({
   );
 });
 
+function SeriesTurns({
+  messages,
+  working,
+  ...turnProps
+}: {
+  messages: UIMessage[];
+  working: boolean;
+  onIntent?: (intent: AgentIntent) => boolean | void;
+  resolveUri?: (uri: string) => ResolvedUri | null;
+  pagePaths?: Record<string, string>;
+  investigationWinners?: Map<string, string>;
+}) {
+  const isLiveProposal = useLiveProposal();
+  const series: UIMessage[][] = [];
+  for (const message of messages.filter(rendersTurn)) {
+    const last = series.at(-1);
+    if (last?.[0]?.role === message.role) last.push(message);
+    else series.push([message]);
+  }
+  const active = working ? activeTurnMessage(messages) : undefined;
+  const shown = active
+    ? messages
+        .slice(0, messages.indexOf(active) + 1)
+        .filter(rendersTurn)
+        .at(-1)
+    : undefined;
+  const streamingSeries = shown ? series.find((group) => group.includes(shown)) : undefined;
+  return series.map((group) => (
+    <ChatSeries
+      key={group[0]!.id}
+      copyText={
+        group === streamingSeries || group[0]!.role !== "assistant"
+          ? undefined
+          : seriesCopyText(group.filter((m) => !hasLiveProposal(m, isLiveProposal)))
+      }
+    >
+      {group.map((message) => (
+        <DashboardAgentTurn key={message.id} message={message} {...turnProps} />
+      ))}
+    </ChatSeries>
+  ));
+}
+
 export function DashboardAgentTurns({
   messages,
   activity,
@@ -371,16 +455,14 @@ export function DashboardAgentTurns({
   return (
     <PlanMessagesProvider messages={stripped}>
       <AlertActionsProvider messages={stripped}>
-        {stripped.map((message) => (
-          <DashboardAgentTurn
-            key={message.id}
-            message={message}
-            onIntent={onIntent}
-            resolveUri={resolveUri}
-            pagePaths={pagePaths}
-            investigationWinners={investigationWinners}
-          />
-        ))}
+        <SeriesTurns
+          messages={stripped}
+          working={activity !== null}
+          onIntent={onIntent}
+          resolveUri={resolveUri}
+          pagePaths={pagePaths}
+          investigationWinners={investigationWinners}
+        />
         {progress && (
           <ChatTurn>
             <ChatProgress>{progress.label}</ChatProgress>

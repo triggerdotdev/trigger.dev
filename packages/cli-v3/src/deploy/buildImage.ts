@@ -1,10 +1,13 @@
 import { logger } from "../utilities/logger.js";
 import { depot } from "@depot/cli";
 import { x } from "tinyexec";
-import type { BuildManifest, BuildRuntime } from "@trigger.dev/core/v3/schemas";
+import type { BuildManifest, BuildRuntime, NamedMachine } from "@trigger.dev/core/v3/schemas";
+import { BUILDS_MACHINE_IMAGES_ARG, machineImageTag } from "@trigger.dev/core/v3/schemas";
 import { isNodelessBunRuntime } from "@trigger.dev/core/v3/build";
 import { networkInterfaces } from "os";
 import { join } from "path";
+import { mkdtemp, readFile, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
 import { safeReadJSONFile } from "../utilities/fileSystem.js";
 import { readFileSync } from "fs";
 
@@ -51,6 +54,11 @@ export interface BuildImageOptions {
   apiClient: CliApiClient;
   branchName?: string;
   buildEnvVars?: Record<string, string | undefined>;
+  /**
+   * The server stores machine images, so a local build builds them. Tasks on a machine fail
+   * indexing without it.
+   */
+  buildsMachineImages?: boolean;
   onLog?: (log: string) => void;
 
   // Optional deployment spinner
@@ -89,6 +97,7 @@ export async function buildImage(options: BuildImageOptions): Promise<BuildImage
     cacheCompression,
     compressionLevel,
     forceCompression,
+    buildsMachineImages,
     onLog,
   } = options;
 
@@ -119,6 +128,7 @@ export async function buildImage(options: BuildImageOptions): Promise<BuildImage
       cacheCompression,
       compressionLevel,
       forceCompression,
+      buildsMachineImages,
       onLog,
     });
   }
@@ -185,6 +195,8 @@ type BuildImageSuccess = {
   imageSizeBytes: number;
   logs: string;
   digest?: string;
+  /** Each named machine's image digest, by machine id. */
+  machineDigests?: Record<string, string>;
 };
 
 type BuildImageFailure = {
@@ -351,6 +363,7 @@ interface SelfHostedBuildImageOptions {
   cacheCompression?: "zstd" | "gzip";
   compressionLevel?: number;
   forceCompression?: boolean;
+  buildsMachineImages?: boolean;
   onLog?: (log: string) => void;
 }
 
@@ -540,36 +553,50 @@ async function localBuildImage(options: SelfHostedBuildImageOptions): Promise<Bu
 
   const projectCacheRef = getProjectCacheRefFromImageTag(imageTag);
 
-  const outputOptions = getOutputOptions({
-    imageTag,
-    push,
-    load,
-    compression,
-    compressionLevel,
-    forceCompression,
-    isLocalBuild: true,
-  });
+  // Outside the build context: a file written there by one build would change the next one's
+  // `COPY . .` and rebuild (and re-index) every stage after it.
+  const metadataDir = await mkdtemp(join(tmpdir(), "trigger-build-metadata-"));
 
-  const args = [
+  // A machine build reuses the stages the first build just made; with --no-cache, only its own
+  // stage is rebuilt.
+  const buildArgsFor = (
+    containerfile: string,
+    target: string | undefined,
+    tag: string,
+    metadataFile: string,
+    /** True skips the cache for every stage; stage names skip it for those stages. */
+    noCache: boolean | string[] | undefined
+  ) => [
     "buildx",
     "build",
     "--builder",
     builder,
     "-f",
-    "Containerfile",
-    options.noCache ? "--no-cache" : undefined,
-    ...(useRegistryCache
+    containerfile,
+    ...(target ? ["--target", target] : []),
+    noCache === true ? "--no-cache" : undefined,
+    ...(Array.isArray(noCache) ? noCache.flatMap((stage) => ["--no-cache-filter", stage]) : []),
+    // Only the deployment's image writes the cache tag. It is the repository's one mutable tag, so
+    // a tag per machine could not be written again on the next deploy.
+    ...(useRegistryCache && !target
       ? [
           "--cache-to",
           `type=registry,mode=max,image-manifest=true,oci-mediatypes=true,ref=${projectCacheRef}${
             cacheCompression === "zstd" ? ",compression=zstd" : ""
           }`,
-          "--cache-from",
-          `type=registry,ref=${projectCacheRef}`,
         ]
       : []),
+    ...(useRegistryCache ? ["--cache-from", `type=registry,ref=${projectCacheRef}`] : []),
     "--output",
-    outputOptions.join(","),
+    getOutputOptions({
+      imageTag: tag,
+      push,
+      load,
+      compression,
+      compressionLevel,
+      forceCompression,
+      isLocalBuild: true,
+    }).join(","),
     "--platform",
     options.imagePlatform,
     options.network ? `--network=${options.network}` : undefined,
@@ -577,7 +604,7 @@ async function localBuildImage(options: SelfHostedBuildImageOptions): Promise<Bu
     "--provenance",
     "false",
     "--metadata-file",
-    "metadata.json",
+    join(metadataDir, metadataFile),
     "--build-arg",
     `SOURCE_DATE_EPOCH=0`,
     "--build-arg",
@@ -594,29 +621,61 @@ async function localBuildImage(options: SelfHostedBuildImageOptions): Promise<Bu
     `TRIGGER_PREVIEW_BRANCH=${options.branchName ?? ""}`,
     "--build-arg",
     `TRIGGER_SECRET_KEY=${options.apiKey}`,
+    ...(options.buildsMachineImages ? ["--build-arg", `${BUILDS_MACHINE_IMAGES_ARG}=1`] : []),
     ...(buildArgs || []),
     ...(options.extraCACerts ? ["--build-arg", `NODE_EXTRA_CA_CERTS=${options.extraCACerts}`] : []),
     "--progress",
     "plain",
     ".", // The build context
-  ].filter(Boolean) as string[];
+  ];
 
-  logger.debug(`docker ${formatCommandForDiagnostics(args)}`, { cwd: options.cwd });
+  // Builds one stage and returns its manifest (list) digest, or false when the build failed.
+  const buildTarget = async (
+    containerfile: string,
+    target: string | undefined,
+    tag: string,
+    metadataFile: string,
+    noCache?: boolean | string[]
+  ): Promise<string | undefined | false> => {
+    const args = buildArgsFor(containerfile, target, tag, metadataFile, noCache).filter(
+      Boolean
+    ) as string[];
 
-  const buildProcess = x("docker", args, {
-    nodeOptions: {
-      cwd: options.cwd,
-    },
-  });
+    logger.debug(`docker ${formatCommandForDiagnostics(args)}`, { cwd: options.cwd });
 
-  for await (const line of buildProcess) {
-    // line will be from stderr/stdout in the order you'd see it in a term
-    errors.push(line);
-    logger.debug(line);
-    options.onLog?.(line);
-  }
+    const buildProcess = x("docker", args, {
+      nodeOptions: {
+        cwd: options.cwd,
+      },
+    });
 
-  if (buildProcess.exitCode !== 0) {
+    for await (const line of buildProcess) {
+      // line will be from stderr/stdout in the order you'd see it in a term
+      errors.push(line);
+      logger.debug(line);
+      options.onLog?.(line);
+    }
+
+    if (buildProcess.exitCode !== 0) {
+      return false;
+    }
+
+    const metadataPath = join(metadataDir, metadataFile);
+    const meta = BuildKitMetadata.safeParse(await safeReadJSONFile(metadataPath));
+
+    if (!meta.success) {
+      logger.error("Failed to parse build metadata", {
+        errors: meta.error.message,
+        path: metadataPath,
+      });
+      return undefined;
+    }
+
+    logger.debug("Parsed build metadata", { metadata: meta.data, path: metadataPath });
+    return meta.data["containerimage.digest"];
+  };
+
+  const buildFailed = async () => {
     if (cloudRegistryHost) {
       logger.debug(`Logging out from docker registry: ${cloudRegistryHost}`);
       await x("docker", ["logout", cloudRegistryHost]);
@@ -627,24 +686,56 @@ async function localBuildImage(options: SelfHostedBuildImageOptions): Promise<Bu
       error: "Error building image",
       logs: extractLogs(errors),
     };
+  };
+
+  const digest = await buildTarget(
+    "Containerfile",
+    undefined,
+    imageTag,
+    "metadata.json",
+    options.noCache
+  );
+  if (digest === false) {
+    return buildFailed();
   }
 
-  const metadataPath = join(options.cwd, "metadata.json");
-  const rawMetadata = await safeReadJSONFile(metadataPath);
+  // The indexer, which ran in that build, registered the machines its tasks use.
+  let machines: NamedMachine[] = [];
+  if (options.buildsMachineImages) {
+    const deployment = await apiClient.getDeployment(deploymentId);
+    if (!deployment.success) {
+      errors.push(`Failed to read the deployment's machines: ${deployment.error}`);
+      return buildFailed();
+    }
+    machines = deployment.data.worker?.machines ?? [];
+  }
 
-  const meta = BuildKitMetadata.safeParse(rawMetadata);
+  // The deployment's Containerfile plus a stage per machine, kept out of the build context.
+  const machineContainerfile = join(metadataDir, "Containerfile");
+  if (machines.length > 0) {
+    const containerfile = await readFile(join(options.cwd, "Containerfile"), "utf8");
+    await writeFile(machineContainerfile, withMachineStages(containerfile, machines));
+  }
 
-  let digest: string | undefined;
-  if (!meta.success) {
-    logger.error("Failed to parse metadata.json", {
-      errors: meta.error.message,
-      path: metadataPath,
-    });
-  } else {
-    logger.debug("Parsed metadata.json", { metadata: meta.data, path: metadataPath });
-
-    // Always use the manifest (list) digest
-    digest = meta.data["containerimage.digest"];
+  // Each target reuses the stages already built, so only the machine's own layers are new.
+  const machineDigests: Record<string, string> = {};
+  for (const machine of machines) {
+    const stage = machineStageName(machine.id);
+    const machineDigest = await buildTarget(
+      machineContainerfile,
+      stage,
+      machineImageTag(imageTag, machine.id),
+      `metadata-${machine.id}.json`,
+      options.noCache ? [machineBaseStageName(machine.id), stage] : undefined
+    );
+    if (machineDigest === false) {
+      return buildFailed();
+    }
+    if (!machineDigest) {
+      errors.push(`Building machine "${machine.id}" did not report an image digest`);
+      return buildFailed();
+    }
+    machineDigests[machine.id] = machineDigest;
   }
 
   // Get the image size
@@ -676,6 +767,7 @@ async function localBuildImage(options: SelfHostedBuildImageOptions): Promise<Bu
     ok: true as const,
     imageSizeBytes,
     digest,
+    ...(machines.length > 0 ? { machineDigests } : {}),
     logs: extractLogs(errors),
   };
 }
@@ -713,6 +805,66 @@ export type GenerateContainerfileOptions = {
   };
   compileCacheDir?: string;
 };
+
+/** Set in a named machine's image, so its runners never take a warm start meant for another image. */
+const NAMED_MACHINE_ENV = "TRIGGER_NAMED_MACHINE";
+
+/** The Containerfile stage that builds a named machine's image. */
+function machineStageName(machineId: string): string {
+  return `machine-${machineId}`;
+}
+
+const FINAL_STAGE = "FROM base AS final\n";
+
+/**
+ * The stage with a machine's packages and instructions, which stays cached across deploys. Its
+ * prefix differs from `machineStageName`'s, so no two machine ids share a stage name.
+ */
+function machineBaseStageName(machineId: string): string {
+  return `machinebase-${machineId}`;
+}
+
+/**
+ * The deployment's Containerfile with two stages per machine. The customization goes on `base`,
+ * below the code, so its layers stay the same until the machine changes. The machine stage then
+ * repeats the final stage on top, so it runs exactly the deployment's code and index.
+ */
+export function withMachineStages(containerfile: string, machines: NamedMachine[]): string {
+  const finalStart = containerfile.lastIndexOf(FINAL_STAGE);
+  if (finalStart === -1) {
+    throw new Error("The Containerfile has no final stage to build machines from");
+  }
+  const finalStage = containerfile.slice(finalStart + FINAL_STAGE.length);
+  const stages = machines
+    .map((machine) => {
+      const pkgs = Array.from(new Set(machine.image?.pkgs ?? []))
+        .filter((pkg) => !DEFAULT_PACKAGES.includes(pkg))
+        .sort();
+      const instructions = (machine.image?.instructions ?? []).join("\n");
+      const customization = [
+        instructions,
+        pkgs.length > 0 ? aptInstall(pkgs, { repair: instructions.length > 0 }) : "",
+      ]
+        .filter(Boolean)
+        .join("\n\n");
+
+      return `
+FROM base AS ${machineBaseStageName(machine.id)}
+
+USER root
+ENV DEBIAN_FRONTEND=noninteractive
+
+${customization}
+
+FROM ${machineBaseStageName(machine.id)} AS ${machineStageName(machine.id)}
+${finalStage}
+ENV ${NAMED_MACHINE_ENV}=${machine.id}
+`;
+    })
+    .join("");
+
+  return `${containerfile}\n${stages}`;
+}
 
 // "bun" and "bun-legacy" are the same node + bun image
 const BUN_LEGACY_BASE_IMAGE =
@@ -979,6 +1131,7 @@ ARG NODE_EXTRA_CA_CERTS
 ARG TRIGGER_SECRET_KEY
 ARG TRIGGER_API_URL
 ARG TRIGGER_PREVIEW_BRANCH
+ARG ${BUILDS_MACHINE_IMAGES_ARG}
 
 ENV TRIGGER_PROJECT_ID=\${TRIGGER_PROJECT_ID} \
     TRIGGER_DEPLOYMENT_ID=\${TRIGGER_DEPLOYMENT_ID} \
@@ -988,6 +1141,7 @@ ENV TRIGGER_PROJECT_ID=\${TRIGGER_PROJECT_ID} \
     TRIGGER_SECRET_KEY=\${TRIGGER_SECRET_KEY} \
     TRIGGER_API_URL=\${TRIGGER_API_URL} \
     TRIGGER_PREVIEW_BRANCH=\${TRIGGER_PREVIEW_BRANCH} \
+    ${BUILDS_MACHINE_IMAGES_ARG}=\${${BUILDS_MACHINE_IMAGES_ARG}} \
     NODE_EXTRA_CA_CERTS=\${NODE_EXTRA_CA_CERTS} \
     NODE_ENV=production
 
@@ -1026,7 +1180,7 @@ COPY --from=indexer --chown=bun:bun /app/index.json ./
 
 ENTRYPOINT [ "dumb-init", "${controllerBinary}", "${options.entrypoint}" ]
 CMD []
-  `;
+`;
 }
 
 async function generateNodeContainerfile(options: GenerateContainerfileOptions) {
@@ -1095,6 +1249,7 @@ ARG NODE_EXTRA_CA_CERTS
 ARG TRIGGER_SECRET_KEY
 ARG TRIGGER_API_URL
 ARG TRIGGER_PREVIEW_BRANCH
+ARG ${BUILDS_MACHINE_IMAGES_ARG}
 
 ENV TRIGGER_PROJECT_ID=\${TRIGGER_PROJECT_ID} \
     TRIGGER_DEPLOYMENT_ID=\${TRIGGER_DEPLOYMENT_ID} \
@@ -1104,6 +1259,7 @@ ENV TRIGGER_PROJECT_ID=\${TRIGGER_PROJECT_ID} \
     TRIGGER_SECRET_KEY=\${TRIGGER_SECRET_KEY} \
     TRIGGER_API_URL=\${TRIGGER_API_URL} \
     TRIGGER_PREVIEW_BRANCH=\${TRIGGER_PREVIEW_BRANCH} \
+    ${BUILDS_MACHINE_IMAGES_ARG}=\${${BUILDS_MACHINE_IMAGES_ARG}} \
     TRIGGER_LOG_LEVEL=debug \
     NODE_EXTRA_CA_CERTS=\${NODE_EXTRA_CA_CERTS} \
     NODE_ENV=production \
@@ -1151,7 +1307,7 @@ COPY --from=indexer --chown=node:node ${options.compileCacheDir} ${options.compi
 }
 ENTRYPOINT [ "dumb-init", "node", "${options.entrypoint}" ]
 CMD []
-  `;
+`;
 }
 
 // If apiUrl is something like http://localhost:3030, we need to convert it to http://host.docker.internal:3030

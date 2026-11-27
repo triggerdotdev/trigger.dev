@@ -4,9 +4,14 @@ import { Prisma } from "@trigger.dev/database";
 import { z } from "zod";
 import { $replica, prisma } from "~/db.server";
 import {
+  SessionTriggerConfigSchema,
+  sessionPinsInEffect,
+} from "~/services/realtime/sessionRunManager.server";
+import {
   resolveSessionByIdOrExternalId,
   serializeSessionWithFriendlyRunId,
 } from "~/services/realtime/sessions.server";
+import { sessionUpdateData } from "~/services/realtime/sessionWrites.server";
 import {
   anyResource,
   createActionApiRoute,
@@ -40,8 +45,26 @@ export const loader = createLoaderApiRoute(
           : { type: "sessions", id: session.friendlyId },
     },
   },
-  async ({ resource: session }) => {
-    return json<RetrieveSessionResponseBody>(await serializeSessionWithFriendlyRunId(session));
+  async ({ resource: session, authentication }) => {
+    const body = await serializeSessionWithFriendlyRunId(session);
+    // A pin below the skew protection threshold is ignored when runs start, so it reads as unset:
+    // an agent that follows the pin would otherwise ask for a deployment it is never given.
+    const stored = SessionTriggerConfigSchema.safeParse(session.triggerConfig);
+    if (stored.success) {
+      const inEffect = await sessionPinsInEffect(
+        stored.data,
+        authentication.environment,
+        session.taskIdentifier
+      );
+      if (inEffect !== stored.data && body.triggerConfig) {
+        body.triggerConfig = {
+          ...body.triggerConfig,
+          lockToVersion: inEffect.lockToVersion,
+          externalDeploymentId: inEffect.externalDeploymentId,
+        };
+      }
+    }
+    return json<RetrieveSessionResponseBody>(body);
   }
 );
 
@@ -87,18 +110,7 @@ const { action } = createActionApiRoute(
     try {
       const updated = await prisma.session.update({
         where: { id: existing.id },
-        data: {
-          ...(body.tags !== undefined ? { tags: body.tags } : {}),
-          ...(body.metadata !== undefined
-            ? {
-                metadata:
-                  body.metadata === null
-                    ? Prisma.JsonNull
-                    : (body.metadata as Prisma.InputJsonValue),
-              }
-            : {}),
-          ...(body.externalId !== undefined ? { externalId: body.externalId } : {}),
-        },
+        data: sessionUpdateData(body),
       });
 
       return json<RetrieveSessionResponseBody>(await serializeSessionWithFriendlyRunId(updated));

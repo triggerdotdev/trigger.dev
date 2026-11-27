@@ -24,6 +24,9 @@ import {
 import {
   billingMovesToPlanOf,
   downgradeTakesEffectAt,
+  downgradesAtOf,
+  pendingPlanOf,
+  scheduledPlanOf,
   type MovesToPlan,
 } from "~/components/billing/freePlanLabel";
 import { PricingPlans } from "../resources.orgs.$organizationSlug.select-plan";
@@ -72,6 +75,8 @@ export const loader = dashboardLoader(
     const showSelfServe = currentPlan?.v3Subscription?.showSelfServe !== false;
     const billingMovesAt = billingMovesAtOf(currentPlan?.subscription);
     const billingMovesToPlan = billingMovesToPlanOf(currentPlan?.subscription);
+    const scheduledPlan = scheduledPlanOf(currentPlan?.subscription);
+    const downgradesAt = downgradesAtOf(currentPlan?.subscription);
 
     //periods
     const periodStart = new Date();
@@ -102,6 +107,8 @@ export const loader = dashboardLoader(
         message,
         billingMovesAt,
         billingMovesToPlan,
+        scheduledPlan,
+        downgradesAt,
       });
     }
 
@@ -126,6 +133,8 @@ export const loader = dashboardLoader(
       planProvisioning,
       billingMovesAt,
       billingMovesToPlan,
+      scheduledPlan,
+      downgradesAt,
     });
   }
 );
@@ -159,6 +168,8 @@ export default function ChoosePlanPage() {
     message,
     billingMovesAt,
     billingMovesToPlan,
+    scheduledPlan,
+    downgradesAt,
   } = loaderData;
 
   return (
@@ -207,7 +218,7 @@ export default function ChoosePlanPage() {
                   v3Subscription?.canceledAt !== undefined,
                   billingMovesAt && billingMovesToPlan
                     ? { ...billingMovesToPlan, startsAt: billingMovesAt }
-                    : undefined
+                    : scheduledPlan
                 )}
               </div>
               {v3Subscription?.isPaying ? (
@@ -232,6 +243,13 @@ export default function ChoosePlanPage() {
                 hasPromotedPlan={false}
                 periodEnd={periodEnd}
                 awaitsCardVerification={deploysAwaitCardVerification}
+                scheduledPlan={pendingPlanOf(
+                  scheduledPlan,
+                  billingMovesAt,
+                  billingMovesToPlan,
+                  v3Subscription?.plan?.code
+                )}
+                downgradesAt={downgradesAt ?? billingMovesAt}
               />
             </div>
           </div>

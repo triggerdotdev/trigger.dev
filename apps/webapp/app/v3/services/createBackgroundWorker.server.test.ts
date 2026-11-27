@@ -1,6 +1,9 @@
 import { ScheduleEngine } from "@internal/schedule-engine";
 import { containerTest } from "@internal/testcontainers";
-import type { BackgroundWorkerMetadata } from "@trigger.dev/core/v3";
+import {
+  CreateBackgroundWorkerRequestBody,
+  type BackgroundWorkerMetadata,
+} from "@trigger.dev/core/v3";
 import type { PrismaClient } from "@trigger.dev/database";
 import { describe, expect, vi } from "vitest";
 import type { AuthenticatedEnvironment } from "~/services/apiAuth.server";
@@ -369,37 +372,71 @@ describe("sandbox task registration", () => {
     "rejects sandboxes before persisting a worker and registers them once allowed",
     async ({ prisma }) => {
       const { project, devEnv } = await seedProjectWithEnvs(prisma);
-      const body = (task: Record<string, unknown>) =>
-        ({
+      const body = (tasks: Record<string, unknown>[]) =>
+        CreateBackgroundWorkerRequestBody.parse({
+          localOnly: true,
           engine: "V2",
           metadata: {
+            packageVersion: "4.8.10",
             contentHash: "sandbox-hash",
-            tasks: [
-              { id: "coder", filePath: "src/trigger/coder.ts", exportName: "coder", ...task },
-            ],
+            tasks: tasks.map((task) => ({
+              id: "coder",
+              filePath: "src/trigger/coder.ts",
+              exportName: "coder",
+              ...task,
+            })),
           },
-        }) as Parameters<CreateBackgroundWorkerService["call"]>[2];
-      const register = (task: Record<string, unknown>, flags: unknown) =>
+        });
+      const register = (tasks: Record<string, unknown>[], flags: unknown) =>
         new CreateBackgroundWorkerService(prisma, prisma).call(
           project.externalRef,
           { ...asEnv(devEnv, flags), project } as AuthenticatedEnvironment,
-          body(task)
+          body(tasks)
         );
       const sandbox = { triggerSource: "sandbox", sandbox: { envVars: ["API_KEY"] } };
+      const scheduled = {
+        id: "scheduled",
+        triggerSource: "sandbox",
+        sandbox: { triggerSource: "schedule", scopes: ["write:oidc"] },
+      };
       const enabled = { [FEATURE_FLAG.sandboxTasks]: true };
 
-      await expect(register({ triggerSource: "sandbox" }, enabled)).rejects.toThrow(
+      await expect(register([{ triggerSource: "sandbox" }], enabled)).rejects.toThrow(
         /dropped its sandbox configuration/
       );
-      await expect(register(sandbox, {})).rejects.toThrow(/not enabled for this organization/);
+      await expect(register([scheduled], {})).rejects.toThrow(/not enabled for this organization/);
       expect(await prisma.backgroundWorker.count({ where: { projectId: project.id } })).toBe(0);
 
-      const worker = await register(sandbox, enabled);
-      const task = await prisma.backgroundWorkerTask.findUniqueOrThrow({
-        where: { workerId_slug: { workerId: worker.id, slug: "coder" } },
+      const worker = await register([sandbox, scheduled], enabled);
+      const tasks = await prisma.backgroundWorkerTask.findMany({
+        where: { workerId: worker.id },
+        orderBy: { slug: "asc" },
       });
-      expect(task.executionMode).toBe("SANDBOX");
-      expect(task.executionPolicy).toMatchObject({ rootKey: false, envVars: ["API_KEY"] });
+      const baseline = ["read:runPayloads:$run", "write:runOutputs:$run"];
+      expect(tasks).toMatchObject([
+        {
+          slug: "coder",
+          executionMode: "SANDBOX",
+          triggerSource: "STANDARD",
+          executionPolicy: { rootKey: false, scopes: baseline, envVars: ["API_KEY"] },
+        },
+        {
+          slug: "scheduled",
+          executionMode: "SANDBOX",
+          triggerSource: "SCHEDULED",
+          executionPolicy: { rootKey: false, scopes: [...baseline, "write:oidc"], envVars: [] },
+        },
+      ]);
+
+      const identifiers = await prisma.taskIdentifier.findMany({
+        where: { runtimeEnvironmentId: devEnv.id },
+        select: { slug: true, currentTriggerSource: true },
+        orderBy: { slug: "asc" },
+      });
+      expect(identifiers).toEqual([
+        { slug: "coder", currentTriggerSource: "STANDARD" },
+        { slug: "scheduled", currentTriggerSource: "SCHEDULED" },
+      ]);
     }
   );
 });

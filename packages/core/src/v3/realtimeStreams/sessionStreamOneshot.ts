@@ -23,8 +23,22 @@ import type { StreamWriteResult } from "./types.js";
 
 type IO = "out" | "in";
 
-async function getS2Stream(apiClient: ApiClient, sessionId: string, io: IO, channel?: string) {
-  const response = await apiClient.initializeSessionStream(sessionId, io, undefined, channel);
+/**
+ * The channel's already-initialized S2 credentials, when the caller holds them
+ * (the SDK's output channel caches one per channel), so a one-shot write is a
+ * single S2 append rather than a server round trip plus the append.
+ */
+export type SessionStreamInit = Promise<{ headers?: Record<string, string> }>;
+
+async function getS2Stream(
+  apiClient: ApiClient,
+  sessionId: string,
+  io: IO,
+  channel?: string,
+  init?: SessionStreamInit
+) {
+  const response = await (init ??
+    apiClient.initializeSessionStream(sessionId, io, undefined, channel));
   const headers = response.headers ?? {};
   const accessToken = headers["x-s2-access-token"];
   const basin = headers["x-s2-basin"];
@@ -66,9 +80,10 @@ export async function writeSessionControlRecord(
   io: IO,
   subtype: TriggerControlSubtype | string,
   extraHeaders?: ReadonlyArray<readonly [string, string]>,
-  channel?: string
+  channel?: string,
+  init?: SessionStreamInit
 ): Promise<StreamWriteResult> {
-  const stream = await getS2Stream(apiClient, sessionId, io, channel);
+  const stream = await getS2Stream(apiClient, sessionId, io, channel, init);
   const headers: ReadonlyArray<readonly [string, string]> = [
     [TRIGGER_CONTROL_HEADER, subtype],
     ...(extraHeaders ?? []),
@@ -95,9 +110,10 @@ export async function trimSessionStream(
   apiClient: ApiClient,
   sessionId: string,
   earliestSeqNum: number,
-  channel?: string
+  channel?: string,
+  init?: SessionStreamInit
 ): Promise<void> {
-  const stream = await getS2Stream(apiClient, sessionId, "out", channel);
+  const stream = await getS2Stream(apiClient, sessionId, "out", channel, init);
   await stream.append(AppendInput.create([AppendRecord.trim(earliestSeqNum)]));
 }
 

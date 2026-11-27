@@ -1,6 +1,5 @@
 import { millisecondsToNanoseconds, nanosecondsToMilliseconds } from "@trigger.dev/core/v3";
 import { createContext, useContext, useEffect, useState } from "react";
-import * as Timeline from "~/components/primitives/Timeline";
 
 /** The time scale a span timeline row is drawn on. */
 export type TraceTimelineScale = {
@@ -32,28 +31,6 @@ export function TraceTimelineScaleProvider({
     <TraceTimelineScaleContext.Provider value={scale}>
       {children}
     </TraceTimelineScaleContext.Provider>
-  );
-}
-
-// A queued run has no duration yet; a zero range would put every bar at NaN.
-const MIN_ROW_DURATION_NS = 1_000_000;
-
-/** Gives the rows inside it their own scale and time range, e.g. one run among several. */
-export function TraceTimelineRowScale({
-  scale,
-  children,
-}: {
-  scale: TraceTimelineScale;
-  children: React.ReactNode;
-}) {
-  return (
-    <TraceTimelineScaleProvider scale={scale}>
-      <Timeline.Scale
-        durationMs={timelineDurationMs(Math.max(scale.durationNs, MIN_ROW_DURATION_NS))}
-      >
-        {children}
-      </Timeline.Scale>
-    </TraceTimelineScaleProvider>
   );
 }
 

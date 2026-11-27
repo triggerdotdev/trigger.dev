@@ -21,6 +21,13 @@ vi.mock("~/services/platform.v3.server", () => ({
   getLimit: vi.fn().mockResolvedValue(5),
 }));
 
+const { deleteEnvironmentSignalStreams } = vi.hoisted(() => ({
+  deleteEnvironmentSignalStreams: vi.fn(async (_environments: unknown[]) => undefined),
+}));
+vi.mock("~/services/realtime/environmentSignals.server", () => ({
+  deleteEnvironmentSignalStreams,
+}));
+
 vi.setConfig({ testTimeout: 60_000 });
 
 async function createDevRoot(
@@ -190,6 +197,50 @@ describe("UpsertBranchService — DEVELOPMENT parent", () => {
     }
   );
 
+  // Catches: a caller that must not archive (MCP) still archiving stale branches at the limit.
+  postgresTest(
+    "refuses at the limit without archiving when archiving to make room is off",
+    async ({ prisma }) => {
+      const { organization, project, user, orgMember } =
+        await createTestOrgProjectWithMember(prisma);
+      const devRoot = await createDevRoot(prisma, project.id, organization.id, orgMember.id);
+      const service = new UpsertBranchService(prisma);
+      const orgFilter = { type: "userMembership" as const, userId: user.id };
+      for (const branchName of ["old-1", "old-2", "old-3", "old-4"]) {
+        await service.call(orgFilter, { projectId: project.id, env: "development", branchName });
+      }
+      await prisma.runtimeEnvironment.updateMany({
+        where: { parentEnvironmentId: devRoot.id },
+        data: { createdAt: new Date(Date.now() - 2 * 60 * 60 * 1000) },
+      });
+      devPresence.getRecentBranchIds.mockResolvedValue(new Map());
+      devPresence.isConnectedMany.mockImplementation(
+        async (ids: string[]) => new Map(ids.map((id) => [id, false]))
+      );
+
+      const result = await service.call(
+        orgFilter,
+        { projectId: project.id, env: "development", branchName: "new-branch" },
+        { archiveToMakeRoom: false }
+      );
+
+      expect(result).toEqual({
+        success: false,
+        error:
+          "You've used all 5 of 5 branches for your plan. Use the CLI to view your existing branches and archive any you no longer need.",
+        limits: { used: 5, limit: 5, isAtLimit: true },
+      });
+      const branches = await prisma.runtimeEnvironment.findMany({
+        where: { parentEnvironmentId: devRoot.id },
+        select: { branchName: true, archivedAt: true },
+        orderBy: { branchName: "asc" },
+      });
+      expect(branches).toEqual(
+        ["old-1", "old-2", "old-3", "old-4"].map((branchName) => ({ branchName, archivedAt: null }))
+      );
+    }
+  );
+
   postgresTest(
     "rejects an invalid branch name without touching the database",
     async ({ prisma }) => {
@@ -233,6 +284,10 @@ describe("ArchiveBranchService — DEVELOPMENT", () => {
       expect(archived.branch.archivedAt).not.toBeNull();
       // Slug + shortcode are randomized on archive so the name can be reused.
       expect(archived.branch.slug).not.toBe(originalSlug);
+      // Catches: the signal stream left behind, or looked up by the renamed slug (a different stream).
+      expect(deleteEnvironmentSignalStreams).toHaveBeenCalledWith([
+        expect.objectContaining({ id: created.branch.id, slug: originalSlug }),
+      ]);
 
       // The same branch name can now be created again (new row, deterministic slug).
       const recreated = await new UpsertBranchService(prisma).call(orgFilter, {

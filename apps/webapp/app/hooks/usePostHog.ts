@@ -1,14 +1,24 @@
 import { useLocation } from "@remix-run/react";
-import posthog from "posthog-js";
-import { useCallback, useEffect, useRef } from "react";
+import type { PostHog } from "posthog-js";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useOptionalOrganization, useOrganizationChanged } from "./useOrganizations";
 import { useOptionalUser, useUserChanged } from "./useUser";
 import { useOptionalProject, useProjectChanged } from "./useProject";
 import { firstTouchFromPostHogProps, type FirstTouch } from "~/utils/firstTouch";
 import { PostHogCaptureQueue } from "~/utils/postHogCaptureQueue";
 
+// posthog-js is about 65 KB compressed and only starts after hydration, so it loads then
+// instead of holding up the first interactive render. Events captured before it's ready
+// wait in the capture queue.
+let posthogClient: PostHog | undefined;
+let posthogLoading: Promise<PostHog> | undefined;
+function loadPostHog() {
+  posthogLoading ??= import("posthog-js").then((module) => (posthogClient = module.default));
+  return posthogLoading;
+}
+
 const captureQueue = new PostHogCaptureQueue((event, properties) =>
-  posthog.capture(event, properties)
+  posthogClient?.capture(event, properties)
 );
 
 export const usePostHog = (
@@ -17,7 +27,9 @@ export const usePostHog = (
   logging = false,
   debug = false
 ): void => {
+  const postHogInitStarted = useRef(false);
   const postHogInitialized = useRef(false);
+  const [postHogReady, setPostHogReady] = useState(false);
   const location = useLocation();
   const user = useOptionalUser();
   const organization = useOptionalOrganization();
@@ -29,40 +41,48 @@ export const usePostHog = (
       captureQueue.disable();
       return;
     }
-    if (postHogInitialized.current === true) return;
+    if (postHogInitStarted.current === true) return;
+    postHogInitStarted.current = true;
     if (logging) console.log("Initializing PostHog");
-    posthog.init(apiKey, {
-      // Same-origin first-party proxy (see app/routes/ph.$.ts) that forwards to
-      // PostHog Cloud EU server-side.
-      api_host: "/ph",
-      // Point the toolbar at the real PostHog UI; without it, it falls back to /ph.
-      ui_host: uiHost,
-      cross_subdomain_cookie: true,
-      opt_in_site_apps: true,
-      person_profiles: "always",
-      persistence: "cookie",
-      capture_heatmaps: false,
-      capture_dead_clicks: false,
-      capture_exceptions: false,
-      capture_performance: { web_vitals: false },
-      disable_conversations: true,
-      debug,
-      loaded: function (posthog) {
-        if (logging) console.log("PostHog loaded");
-        if (user !== undefined) {
-          if (logging) console.log("Loaded: Identifying user", user);
-          posthog.identify(user.id, { email: user.email });
-        }
-        if (organization) posthog.group("organization", organization.id);
-        if (project) posthog.group("project", project.id);
-        captureQueue.ready();
+    loadPostHog().then(
+      (posthog) => {
+        posthog.init(apiKey, {
+          // Same-origin first-party proxy (see app/routes/ph.$.ts) that forwards to
+          // PostHog Cloud EU server-side.
+          api_host: "/ph",
+          // Point the toolbar at the real PostHog UI; without it, it falls back to /ph.
+          ui_host: uiHost,
+          cross_subdomain_cookie: true,
+          opt_in_site_apps: true,
+          person_profiles: "always",
+          persistence: "cookie",
+          capture_heatmaps: false,
+          capture_dead_clicks: false,
+          capture_exceptions: false,
+          capture_performance: { web_vitals: false },
+          disable_conversations: true,
+          debug,
+          loaded: function (posthog) {
+            if (logging) console.log("PostHog loaded");
+            if (user !== undefined) {
+              if (logging) console.log("Loaded: Identifying user", user);
+              posthog.identify(user.id, { email: user.email });
+            }
+            if (organization) posthog.group("organization", organization.id);
+            if (project) posthog.group("project", project.id);
+            captureQueue.ready();
+          },
+        });
+        postHogInitialized.current = true;
+        setPostHogReady(true);
       },
-    });
-    postHogInitialized.current = true;
+      () => captureQueue.disable()
+    );
   }, [apiKey, uiHost, logging, debug, user, organization, project]);
 
   useUserChanged((user) => {
-    if (postHogInitialized.current === false) return;
+    const posthog = posthogClient;
+    if (postHogInitialized.current === false || !posthog) return;
     if (logging) console.log("User changed");
     if (user) {
       if (logging) console.log("Identifying user", user);
@@ -74,7 +94,8 @@ export const usePostHog = (
   });
 
   useOrganizationChanged((org) => {
-    if (postHogInitialized.current === false) return;
+    const posthog = posthogClient;
+    if (postHogInitialized.current === false || !posthog) return;
     if (org) {
       if (logging) console.log(`Grouping by organization`, org);
       posthog.group("organization", org.id);
@@ -86,18 +107,19 @@ export const usePostHog = (
   });
 
   useProjectChanged((project) => {
-    if (postHogInitialized.current === false) return;
+    const posthog = posthogClient;
+    if (postHogInitialized.current === false || !posthog) return;
     if (project) {
       if (logging) console.log(`Grouping by project`, project);
       posthog.group("project", project.id);
     }
   });
 
-  //page view
+  //page view (the first one fires once PostHog has loaded)
   useEffect(() => {
-    if (postHogInitialized.current === false) return;
-    posthog.capture("$pageview");
-  }, [location, logging]);
+    if (!postHogReady) return;
+    posthogClient?.capture("$pageview");
+  }, [location, logging, postHogReady]);
 };
 
 export function usePostHogTracking() {
@@ -106,7 +128,7 @@ export function usePostHogTracking() {
   }, []);
 
   const startSessionRecording = useCallback(() => {
-    posthog.startSessionRecording();
+    posthogClient?.startSessionRecording();
   }, []);
 
   return { capture, startSessionRecording };
@@ -115,7 +137,8 @@ export function usePostHogTracking() {
 // The first touch PostHog stored for this browser; empty when PostHog isn't running or the user opted out.
 export function readPostHogFirstTouch(): FirstTouch {
   try {
-    if (!posthog.__loaded || posthog.has_opted_out_capturing()) return {};
+    const posthog = posthogClient;
+    if (!posthog?.__loaded || posthog.has_opted_out_capturing()) return {};
     return firstTouchFromPostHogProps(posthog.persistence?.get_initial_props());
   } catch {
     return {};

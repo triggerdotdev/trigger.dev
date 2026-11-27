@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { computeRunIdMintKind } from "./runOpsMintKind.server";
+import { computeRunIdMintKind, isFlipGraceTooShort } from "./runOpsMintKind.server";
 
 describe("computeRunIdMintKind (pure)", () => {
   it("mints cuid when the master switch is off (never reads the flag)", async () => {
@@ -57,5 +57,22 @@ describe("computeRunIdMintKind (pure)", () => {
       { masterEnabled: true, splitEnabled: async () => true, flag }
     );
     expect(kind).toBe("cuid"); // never arm a mint on a flag-read failure
+  });
+});
+
+describe("isFlipGraceTooShort (pure)", () => {
+  // Catches: the boot check leaving the global flags' reload interval out of the sum.
+  it("counts the global flags' reload interval with the two cache lifetimes", () => {
+    const caches = { mintFlagCacheTtlMs: 30_000, controlPlaneCacheTtlMs: 30_000 };
+    expect(
+      isFlipGraceTooShort({ graceMs: 90_000, ...caches, globalFlagsReloadIntervalMs: 5_000 })
+    ).toBe(false);
+    expect(
+      isFlipGraceTooShort({ graceMs: 90_000, ...caches, globalFlagsReloadIntervalMs: 31_000 })
+    ).toBe(true);
+    // At most: a grace equal to the sum is too short.
+    expect(
+      isFlipGraceTooShort({ graceMs: 90_000, ...caches, globalFlagsReloadIntervalMs: 30_000 })
+    ).toBe(true);
   });
 });

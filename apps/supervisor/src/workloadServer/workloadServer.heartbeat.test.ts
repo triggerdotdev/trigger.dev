@@ -61,6 +61,7 @@ describe("WorkloadServer run heartbeat", () => {
       { runToken },
       "runner_1",
       undefined,
+      undefined,
       undefined
     );
   });

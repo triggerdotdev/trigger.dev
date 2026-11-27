@@ -31,6 +31,7 @@ for proto in "${protos[@]}"; do
          --ts_proto_opt=env=node \
          --ts_proto_opt=removeEnumPrefix=true \
          --ts_proto_opt=lowerCaseServiceMethods=true \
+         --ts_proto_opt=useExactTypes=false \
          --ts_proto_opt=oneof=unions \
          "$protosPath/$proto"
 done

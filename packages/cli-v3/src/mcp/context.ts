@@ -12,6 +12,11 @@ import {
   hasSamplingCapability,
 } from "./capabilities.js";
 import type { FileLogger } from "./logger.js";
+import { rememberUserId } from "../utilities/knownUser.js";
+import { adoptProjectProfile } from "./startup.js";
+import { recordResolvedProjectRef } from "./callScope.js";
+import { createAuthHolder, createProjectLookup } from "./projectLookup.js";
+import { createMcpTelemetry, type McpTelemetry } from "./telemetry.js";
 import { fileURLToPath } from "node:url";
 
 const MCP_CONFIG_DIR = ".trigger";
@@ -52,15 +57,20 @@ export type McpContextOptions = {
 export class McpContext {
   public readonly server: McpServer;
   public readonly options: McpContextOptions;
+  public readonly telemetry: McpTelemetry;
   private _profileLoaded: Promise<void> | undefined;
   private _resolveProfileLoaded: (() => void) | undefined;
   // Concurrent tool calls share one authentication, so a lapsed login starts a single login
   // flow rather than one per call. Switching profile drops it, so the new profile gets its own.
+  private _auth = createAuthHolder();
   private _authInFlight: ReturnType<typeof mcpAuth> | undefined;
 
   constructor(server: McpServer, options: McpContextOptions) {
     this.server = server;
     this.options = options;
+    this.telemetry = createMcpTelemetry(options, {
+      lookupProject: createProjectLookup({ resolvedAuth: this._auth.get }),
+    });
     this._profileLoaded = new Promise((resolve) => {
       this._resolveProfileLoaded = resolve;
     });
@@ -73,6 +83,7 @@ export class McpContext {
   public async getAuth() {
     // Wait for project profile to be loaded before authenticating
     await this._profileLoaded;
+    const authToken = this._auth.begin();
     if (!this._authInFlight) {
       const promise: ReturnType<typeof mcpAuth> = mcpAuth({
         server: this.server,
@@ -92,6 +103,8 @@ export class McpContext {
     if (!auth.ok) {
       throw new Error(auth.error);
     }
+
+    if (this._auth.set(authToken, auth.auth)) rememberUserId(auth.userId, auth.auth.apiUrl);
 
     return auth;
   }
@@ -143,6 +156,7 @@ export class McpContext {
 
   public async getProjectRef(options: { projectRef?: string; cwd?: string }) {
     if (options.projectRef) {
+      recordResolvedProjectRef(options.projectRef);
       return options.projectRef;
     }
 
@@ -159,6 +173,7 @@ export class McpContext {
       typeof config.project === "string" &&
       config.project.startsWith("proj_")
     ) {
+      recordResolvedProjectRef(config.project);
       return config.project;
     }
 
@@ -220,6 +235,8 @@ export class McpContext {
   public switchProfile(profile: string, projectDir?: string) {
     this.options.profile = profile;
     this._authInFlight = undefined;
+    this._auth.clear();
+    this.telemetry.reset();
 
     // Persist to project-scoped config if we can resolve the project dir
     if (projectDir) {
@@ -243,9 +260,8 @@ export class McpContext {
       if (!cwd) return;
 
       const config = readMcpProjectConfig(cwd);
-      if (config?.profile) {
-        this.options.profile = config.profile;
-        this.logger?.log("Loaded project profile", { profile: config.profile, cwd });
+      if (adoptProjectProfile(this.options, config?.profile, () => this.telemetry.reset())) {
+        this.logger?.log("Loaded project profile", { profile: config?.profile, cwd });
       }
     } finally {
       this._resolveProfileLoaded?.();

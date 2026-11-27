@@ -14,6 +14,12 @@ import {
   writeTomlFile,
 } from "../utilities/fileSystem.js";
 import { printStandloneInitialBanner } from "../utilities/initialBanner.js";
+import {
+  cancelInstall,
+  installOutcomeFor,
+  reportMcpInstalled,
+  type McpInstallSource,
+} from "./installTelemetry.js";
 import { VERSION } from "../version.js";
 
 const cliVersion = VERSION as string;
@@ -120,6 +126,7 @@ const InstallMcpCommandOptions = z.object({
   logFile: z.string().optional(),
   apiUrl: z.string().optional(),
   logLevel: z.enum(["debug", "info", "log", "warn", "error", "none"]).default("log"),
+  skipTelemetry: z.boolean().optional(),
 });
 
 type InstallMcpCommandOptions = z.infer<typeof InstallMcpCommandOptions>;
@@ -155,6 +162,7 @@ export function configureInstallMcpCommand(program: Command) {
       "The CLI log level to use (debug, info, log, warn, error, none). This does not effect the log level of your trigger.dev tasks.",
       "log"
     )
+    .option("--skip-telemetry", "Opt-out of sending telemetry")
     .action(async (options) => {
       await printStandloneInitialBanner(true);
       await installMcpCommand(options);
@@ -175,7 +183,11 @@ async function installMcpCommand(options: unknown) {
 async function _installMcpCommand(options: InstallMcpCommandOptions) {
   intro("Welcome to the Trigger.dev MCP server install wizard 🧙");
 
-  await installMcpServer(options);
+  await installMcpServer(options, {
+    source: "install-mcp",
+    skipTelemetry: options.skipTelemetry,
+    apiUrl: options.apiUrl,
+  });
 }
 
 type InstallMcpServerResults = Array<InstallMcpServerResult>;
@@ -187,6 +199,29 @@ type InstallMcpServerResult = {
 };
 
 export async function installMcpServer(
+  options: InstallMcpCommandOptions,
+  telemetry: {
+    source: McpInstallSource;
+    skipTelemetry?: boolean;
+    profile?: string;
+    apiUrl?: string;
+  }
+): Promise<InstallMcpServerResults> {
+  let results: InstallMcpServerResults = [];
+  let outcome: "success" | "error" | "cancelled" = "success";
+
+  try {
+    results = await runInstallWizard(options);
+    return results;
+  } catch (error) {
+    outcome = installOutcomeFor(error);
+    throw error;
+  } finally {
+    await reportMcpInstalled({ ...telemetry, results, outcome });
+  }
+}
+
+async function runInstallWizard(
   options: InstallMcpCommandOptions
 ): Promise<InstallMcpServerResults> {
   const opts = InstallMcpCommandOptions.parse(options);
@@ -601,7 +636,7 @@ async function resolveScopeForClient(
   });
 
   if (isCancel(selectedScope)) {
-    throw new OutroCommandError("No scope selected");
+    throw cancelInstall("No scope selected");
   }
 
   return selectedScope;
@@ -674,7 +709,7 @@ async function resolveClients(options: InstallMcpCommandOptions): Promise<Resolv
   });
 
   if (isCancel(selectedClients)) {
-    throw new OutroCommandError("No clients selected");
+    throw cancelInstall("No clients selected");
   }
 
   return selectedClients;

@@ -345,7 +345,7 @@ describe("root API key fingerprints", () => {
             new Request("https://api.trigger.dev/api/v1/projects/proj/branches", {
               headers: { Authorization: "Bearer tr_oat_abcdefgh1234" },
             }),
-            { tokenId: "oat_ci" }
+            { tokenId: "oat_ci", type: "USER" }
           );
           return createBranch("ci-branch");
         }

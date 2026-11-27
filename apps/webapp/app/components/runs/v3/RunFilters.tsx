@@ -1,3 +1,5 @@
+import { StandingBadge } from "~/components/versions/VersionLabel";
+import type { VersionStanding } from "~/utils/versionLabel";
 import * as Ariakit from "@ariakit/react";
 import { GlobeLinesIcon } from "~/assets/icons/GlobeLinesIcon";
 import {
@@ -15,6 +17,7 @@ import { IconRotateClockwise2, IconToggleLeft } from "@tabler/icons-react";
 import { MachinePresetName } from "@trigger.dev/core/v3";
 import type { BulkActionType, TaskRunStatus, TaskTriggerSource } from "@trigger.dev/database";
 import { matchSorter } from "match-sorter";
+import parseDuration from "parse-duration";
 import { type ReactNode, useEffect, useMemo, useRef, useState } from "react";
 import { z } from "zod";
 import { BugIcon } from "~/assets/icons/BugIcon";
@@ -29,7 +32,6 @@ import {
   machines,
 } from "~/components/MachineLabelCombo";
 import { AppliedFilter } from "~/components/primitives/AppliedFilter";
-import { Badge } from "~/components/primitives/Badge";
 import { DateTime } from "~/components/primitives/DateTime";
 import { MiddleTruncate } from "~/components/primitives/MiddleTruncate";
 import { Paragraph } from "~/components/primitives/Paragraph";
@@ -65,6 +67,7 @@ import { useShortcutKeys } from "~/hooks/useShortcutKeys";
 import { type loader as tagsLoader } from "~/routes/resources.environments.$envId.runs.tags";
 import { type loader as queuesLoader } from "~/routes/resources.orgs.$organizationSlug.projects.$projectParam.env.$envParam.queues";
 import { type loader as versionsLoader } from "~/routes/resources.orgs.$organizationSlug.projects.$projectParam.env.$envParam.versions";
+import { apiStatusNameToRunStatuses } from "~/utils/apiRunStatus";
 import { makeFriendlyIdValidator } from "~/utils/friendlyId";
 import { Button } from "../../primitives/Buttons";
 import { AIFilterInput } from "./AIFilterInput";
@@ -296,65 +299,122 @@ export function filterIcon(filterKey: string): ReactNode | undefined {
   }
 }
 
-export function getRunFiltersFromSearchParams(
+export type IgnoredRunFilter = {
+  key: TaskRunListSearchFilterKey;
+  value: string;
+  reason: string;
+};
+
+export type ParsedRunFiltersFromSearchParams = {
+  filters: TaskRunListSearchFilters;
+  /** URL filters that couldn't be read and were left out, so the caller can say so. */
+  ignored: IgnoredRunFilter[];
+};
+
+const runStatusSet = new Set<string>(allTaskRunStatuses);
+
+/** Each filter is parsed on its own: a bad value drops only that value or field, and is reported. */
+export function parseRunFiltersFromSearchParams(
   searchParams: URLSearchParams
-): TaskRunListSearchFilters {
-  const params = {
+): ParsedRunFiltersFromSearchParams {
+  const all = (key: string) => {
+    const values = searchParams.getAll(key).filter((v) => v.length > 0);
+    return values.length > 0 ? values : undefined;
+  };
+
+  const raw: Partial<Record<TaskRunListSearchFilterKey, unknown>> = {
     cursor: searchParams.get("cursor") ?? undefined,
     direction: searchParams.get("direction") ?? undefined,
-    statuses:
-      searchParams.getAll("statuses").filter((v) => v.length > 0).length > 0
-        ? searchParams.getAll("statuses")
-        : undefined,
-    tasks:
-      searchParams.getAll("tasks").filter((v) => v.length > 0).length > 0
-        ? searchParams.getAll("tasks")
-        : undefined,
+    tasks: all("tasks"),
     period: searchParams.get("period") ?? undefined,
     bulkId: searchParams.get("bulkId") ?? undefined,
-    tags:
-      searchParams.getAll("tags").filter((v) => v.length > 0).length > 0
-        ? searchParams.getAll("tags")
-        : undefined,
+    tags: all("tags"),
     from: searchParams.get("from") ?? undefined,
     to: searchParams.get("to") ?? undefined,
     rootOnly: searchParams.has("rootOnly") ? searchParams.get("rootOnly") === "true" : undefined,
-    runId:
-      searchParams.getAll("runId").filter((v) => v.length > 0).length > 0
-        ? searchParams.getAll("runId")
-        : undefined,
+    runId: all("runId"),
     batchId: searchParams.get("batchId") ?? undefined,
     scheduleId: searchParams.get("scheduleId") ?? undefined,
-    queues:
-      searchParams.getAll("queues").filter((v) => v.length > 0).length > 0
-        ? searchParams.getAll("queues")
-        : undefined,
-    regions:
-      searchParams.getAll("regions").filter((v) => v.length > 0).length > 0
-        ? searchParams.getAll("regions")
-        : undefined,
-    machines:
-      searchParams.getAll("machines").filter((v) => v.length > 0).length > 0
-        ? searchParams.getAll("machines")
-        : undefined,
-    versions:
-      searchParams.getAll("versions").filter((v) => v.length > 0).length > 0
-        ? searchParams.getAll("versions")
-        : undefined,
+    queues: all("queues"),
+    regions: all("regions"),
+    versions: all("versions"),
     errorId: searchParams.get("errorId") ?? undefined,
-    sources:
-      searchParams.getAll("sources").filter((v) => v.length > 0).length > 0
-        ? searchParams.getAll("sources")
-        : undefined,
+    sources: all("sources"),
   };
 
-  const parsed = TaskRunListSearchFilters.safeParse(params);
+  const filters: Record<string, unknown> = {};
+  const ignored: IgnoredRunFilter[] = [];
 
-  if (!parsed.success) {
-    return {};
+  const statuses = all("statuses");
+  if (statuses) {
+    const parsed = new Set<TaskRunStatus>();
+    for (const value of statuses) {
+      if (runStatusSet.has(value)) {
+        parsed.add(value as TaskRunStatus);
+        continue;
+      }
+      // SDK/API names (FAILED, QUEUED, ...) are aliases for the dashboard's statuses
+      const aliased = apiStatusNameToRunStatuses(value.toUpperCase());
+      if (aliased) {
+        aliased.forEach((status) => parsed.add(status));
+      } else {
+        ignored.push({ key: "statuses", value, reason: "isn't a run status" });
+      }
+    }
+    if (parsed.size > 0) filters.statuses = Array.from(parsed);
   }
 
-  return parsed.data;
+  const machinesRaw = all("machines");
+  if (machinesRaw) {
+    const parsed: MachinePresetName[] = [];
+    for (const value of machinesRaw) {
+      const result = MachinePresetName.safeParse(value);
+      if (result.success) {
+        parsed.push(result.data);
+      } else {
+        ignored.push({ key: "machines", value, reason: "isn't a machine preset" });
+      }
+    }
+    if (parsed.length > 0) filters.machines = parsed;
+  }
+
+  // An unreadable period would otherwise be skipped downstream and select all time
+  if (typeof raw.period === "string" && raw.period !== "all" && !parseDuration(raw.period)) {
+    ignored.push({ key: "period", value: raw.period, reason: "isn't a time period" });
+    delete raw.period;
+  }
+
+  for (const [key, value] of Object.entries(raw) as [TaskRunListSearchFilterKey, unknown][]) {
+    if (value === undefined) continue;
+    const result = TaskRunListSearchFilters.shape[key].safeParse(value);
+    if (result.success) {
+      if (result.data !== undefined) filters[key] = result.data;
+    } else {
+      ignored.push({
+        key,
+        value: Array.isArray(value) ? value.join(", ") : String(value),
+        reason: key === "from" || key === "to" ? "isn't a timestamp" : "can't be read",
+      });
+    }
+  }
+
+  return { filters: filters as TaskRunListSearchFilters, ignored };
+}
+
+/** The tooltip for a filter chip whose values (any of `keys`) were ignored, or undefined. */
+function useIgnoredFilterWarning(...keys: string[]): string | undefined {
+  const location = useOptimisticLocation();
+  const ignored = parseRunFiltersFromSearchParams(
+    new URLSearchParams(location.search)
+  ).ignored.filter((f) => keys.includes(f.key));
+  if (ignored.length === 0) return undefined;
+  return ignored.map((f) => `"${f.value}" ${f.reason}, so this filter is ignored`).join(". ");
+}
+
+export function getRunFiltersFromSearchParams(
+  searchParams: URLSearchParams
+): TaskRunListSearchFilters {
+  return parseRunFiltersFromSearchParams(searchParams).filters;
 }
 
 type RunFiltersProps = {
@@ -394,13 +454,26 @@ export function RunsFilters(props: RunFiltersProps) {
     searchParams.has("versions") ||
     searchParams.has("errorId") ||
     searchParams.has("sources");
+  const timeWarning = useIgnoredFilterWarning("period", "from", "to");
+  const runIdWithoutTime =
+    searchParams.has("runId") &&
+    !searchParams.has("period") &&
+    !searchParams.has("from") &&
+    !searchParams.has("to");
 
   return (
     <div className="flex flex-row flex-wrap items-center gap-1.5">
       {!props.hideSearch && <AIFilterInput />}
       <PermanentStatusFilter />
       <PermanentTasksFilter possibleTasks={props.possibleTasks} />
-      <TimeFilter defaultPeriod={props.defaultPeriod} shortcut={{ key: "d" }} />
+      {/* Run IDs without an explicit time search all time, so the default period chip would mislead */}
+      {!runIdWithoutTime && (
+        <TimeFilter
+          defaultPeriod={props.defaultPeriod}
+          shortcut={{ key: "d" }}
+          warning={timeWarning}
+        />
+      )}
       <RootOnlyToggle defaultValue={props.rootOnlyDefault} />
       <AppliedFilters {...props} />
       <FilterMenu {...props} />
@@ -600,7 +673,11 @@ function StatusDropdown({
   }, [searchValue]);
 
   return (
-    <SelectProvider value={values("statuses")} setValue={handleChange} virtualFocus={true}>
+    <SelectProvider
+      value={normalizeStatusValues(values("statuses"))}
+      setValue={handleChange}
+      virtualFocus={true}
+    >
       {trigger}
       <SelectPopover
         className="min-w-0 max-w-[min(240px,var(--popover-available-width))]"
@@ -643,10 +720,29 @@ function StatusDropdown({
 
 const statusShortcut = { key: "s" };
 
+// The URL's statuses as dashboard statuses, so SDK names (FAILED, ...) show as checked.
+function normalizeStatusValues(values: string[]): string[] {
+  const normalized = values.flatMap((value) => {
+    if (runStatusSet.has(value)) return [value];
+    return apiStatusNameToRunStatuses(value.toUpperCase()) ?? [];
+  });
+  return Array.from(new Set(normalized));
+}
+
+// Dashboard titles for the URL's statuses, with SDK names shown as the statuses they cover.
+function statusFilterLabels(values: string[]): string[] {
+  return values.flatMap((value) => {
+    if (runStatusSet.has(value)) return [runStatusTitle(value as TaskRunStatus)];
+    const aliased = apiStatusNameToRunStatuses(value.toUpperCase());
+    return aliased ? aliased.map((status) => runStatusTitle(status)) : [value];
+  });
+}
+
 function PermanentStatusFilter() {
   const { values, del } = useSearchParams();
   const statuses = values("statuses");
   const hasStatuses = statuses.length > 0 && !statuses.every((v) => v === "");
+  const statusWarning = useIgnoredFilterWarning("statuses");
   const triggerRef = useRef<HTMLButtonElement>(null);
 
   useShortcutKeys({
@@ -677,7 +773,8 @@ function PermanentStatusFilter() {
                   <AppliedFilter
                     label="Status"
                     icon={filterIcon("statuses")}
-                    value={appliedSummary(statuses.map((v) => runStatusTitle(v as TaskRunStatus)))}
+                    value={appliedSummary(statusFilterLabels(statuses))}
+                    warning={statusWarning}
                     onRemove={() => del(["statuses", "cursor", "direction"])}
                     variant="secondary/small"
                     className="pl-1"
@@ -1493,6 +1590,7 @@ function MachinesDropdown({
 function AppliedMachinesFilter() {
   const { values, del } = useSearchParams();
   const machines = values("machines");
+  const warning = useIgnoredFilterWarning("machines");
 
   if (machines.length === 0 || machines.every((v) => v === "")) {
     return null;
@@ -1516,6 +1614,7 @@ function AppliedMachinesFilter() {
                     return formatMachinePresetName(parsed.data);
                   })
                 )}
+                warning={warning}
                 onRemove={() => del(["machines", "cursor", "direction"])}
                 variant="secondary/small"
               />
@@ -1575,14 +1674,14 @@ export function VersionsDropdown({
     250
   );
 
-  const items: { version: string; isCurrent: boolean }[] = [];
+  const items: { version: string; standing: VersionStanding }[] = [];
 
   for (const version of selected ?? []) {
     const versionItem = fetcher.data?.versions.find((v) => v.version === version);
     if (!versionItem) {
       items.push({
         version,
-        isCurrent: false,
+        standing: "older",
       });
     }
   }
@@ -1635,7 +1734,7 @@ export function VersionsDropdown({
                 >
                   <span className="flex items-center gap-2">
                     <span className="grow truncate">{version.version}</span>
-                    {version.isCurrent ? <Badge variant="extra-small">Current</Badge> : null}
+                    <StandingBadge standing={version.standing} />
                   </span>
                 </SelectItem>
               ))

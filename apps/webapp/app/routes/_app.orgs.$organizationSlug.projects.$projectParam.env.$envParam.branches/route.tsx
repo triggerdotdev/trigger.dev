@@ -2,12 +2,12 @@ import { AutoArchiveSettings } from "~/routes/resources.branches.auto-archive";
 import { getFormProps, getInputProps, useForm } from "@conform-to/react";
 import { parseWithZod } from "~/utils/conform";
 import { ArrowUpCircleIcon, CheckIcon, EnvelopeIcon, PlusIcon } from "@heroicons/react/20/solid";
-import { BookOpenIcon } from "@heroicons/react/24/solid";
 import { DialogClose } from "@radix-ui/react-dialog";
 import { useFetcher, useSearchParams } from "@remix-run/react";
 import { type ActionFunctionArgs, json } from "@remix-run/server-runtime";
 import { tryCatch } from "@trigger.dev/core/v3";
 import { type ReactNode, useCallback, useEffect, useState } from "react";
+import { DocsHeaderButton } from "~/components/DocsPanel";
 import { SearchInput } from "~/components/primitives/SearchInput";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import { z } from "zod";
@@ -69,7 +69,6 @@ import { resolveProjectAuthScope } from "~/services/projectAuthScope.server";
 import { cn } from "~/utils/cn";
 import {
   branchesPath,
-  docsPath,
   EnvironmentParamSchema,
   ProjectParamSchema,
   v3BillingPath,
@@ -279,13 +278,7 @@ export default function Page() {
           </AdminDebugTooltip>
 
           <WhenAgentUnavailable>
-            <LinkButton
-              variant={"docs/small"}
-              LeadingIcon={BookOpenIcon}
-              to={docsPath("deployment/preview-branches")}
-            >
-              Branches docs
-            </LinkButton>
+            <DocsHeaderButton path="deployment/preview-branches">Branches docs</DocsHeaderButton>
           </WhenAgentUnavailable>
           {!hasBranches && limits.isAtLimit && (
             <UpgradePanel

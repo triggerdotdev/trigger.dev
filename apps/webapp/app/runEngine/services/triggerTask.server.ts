@@ -18,6 +18,7 @@ import {
 import {
   parseNaturalLanguageDurationInMs,
   parseTraceparent,
+  resolveShard,
   RunId,
   serializeTraceparent,
   stringifyDuration,
@@ -31,6 +32,9 @@ import { handleMetadataPacket } from "~/utils/packets";
 import { startSpan } from "~/v3/tracing.server";
 import { mintFriendlyIdForKind } from "~/v3/runOpsMigration/mintAnchoredRunFriendlyId.server";
 import { resolveRunMintTarget } from "~/v3/runOpsMigration/resolveRunMintTarget.server";
+import { refuseMemoryDbParentNotFound } from "~/v3/runOpsMigration/memoryDbParent.server";
+import { rootResidency } from "~/v3/runOpsMigration/resolveRootResidency.server";
+import { MEMORYDB_SHARD_KEY, organizationContext } from "@internal/run-store";
 import type {
   TriggerTaskServiceOptions,
   TriggerTaskServiceResult,
@@ -54,6 +58,7 @@ import {
 } from "~/v3/workerRegions.server";
 import { globalFlagsRegistry } from "~/v3/globalFlagsRegistry.server";
 import { sandboxTasksEnabled } from "~/v3/sandboxTasksFlag.server";
+import { computeOnlyEnabled } from "~/v3/computeOnlyFlag.server";
 import {
   publishClaim as publishMollifierClaim,
   releaseClaim as releaseMollifierClaim,
@@ -221,9 +226,16 @@ export class RunEngineTriggerTaskService {
   // region — or the default char when the run targets the default region.
   private async mintRunFriendlyId(
     environment: AuthenticatedEnvironment,
-    parentRunFriendlyId?: string,
-    region?: string
+    parentRunFriendlyId: string | undefined,
+    region: string | undefined,
+    kind: { keyed: boolean; token: boolean; delayed: boolean; debounced: boolean }
   ): Promise<string> {
+    if (
+      !parentRunFriendlyId &&
+      (await rootResidency.allowsRootRun(environment.organization.featureFlags, kind))
+    ) {
+      return mintFriendlyIdForKind({ kind: "runOpsId", shardChar: MEMORYDB_SHARD_KEY });
+    }
     return mintFriendlyIdForKind(
       await resolveRunMintTarget({
         environment: {
@@ -270,8 +282,17 @@ export class RunEngineTriggerTaskService {
             (await this.mintRunFriendlyId(
               environment,
               body.options?.parentRunId,
-              body.options?.region
+              body.options?.region,
+              {
+                keyed: Boolean(options.idempotencyKey ?? body.options?.idempotencyKey),
+                token: Boolean(options.oneTimeUseToken),
+                delayed: Boolean(body.options?.delay),
+                debounced: Boolean(body.options?.debounce),
+              }
             ));
+          if (resolveShard(runFriendlyId) === MEMORYDB_SHARD_KEY) {
+            organizationContext.markBornHere();
+          }
           const triggerRequest = {
             taskId,
             friendlyId: runFriendlyId,
@@ -368,6 +389,10 @@ export class RunEngineTriggerTaskService {
                 this.prisma
               )
             : undefined;
+
+          if (body.options?.parentRunId && !parentRun) {
+            refuseMemoryDbParentNotFound(body.options.parentRunId);
+          }
 
           const parentRunValidation = this.validator.validateParentRun({
             taskId,
@@ -544,6 +569,11 @@ export class RunEngineTriggerTaskService {
             environmentId: environment.id,
             environmentType: environment.type,
           });
+          // Deployed runs of a compute-only org run only on microVMs, like sandboxes, whatever
+          // the env or org worker queue overrides say.
+          const computeOnly =
+            environment.type !== "DEVELOPMENT" && computeOnlyEnabled(orgFeatureFlags);
+          const pinnedToCompute = !!executionPolicy || computeOnly;
           const migrated = resolveComputeMigration({
             baseWorkerQueue,
             baseEnableFastPath: enableFastPath,
@@ -555,7 +585,7 @@ export class RunEngineTriggerTaskService {
             flags: globalFlagsRegistry.current(),
             envType: environment.type,
             // Sandboxes only run on microVMs, whatever the org's migration state.
-            environmentCompat: executionPolicy ? "compute" : environmentOverride.compat,
+            environmentCompat: pinnedToCompute ? "compute" : environmentOverride.compat,
             templateKey,
           });
 
@@ -570,15 +600,27 @@ export class RunEngineTriggerTaskService {
             workerGroups.find((group) => group.masterQueue === baseWorkerQueue)?.workloadType ===
               "MICROVM";
           if (
-            executionPolicy &&
+            pinnedToCompute &&
             environment.type !== "DEVELOPMENT" &&
             !migrated.compute &&
             !(onMicrovmGroup && templateKey)
           ) {
+            if (executionPolicy) {
+              throw new ServiceValidationError(
+                `Task "${taskId}" is a sandbox and needs microVM compute, which is not available ${
+                  templateKey ? "in this region" : "for this deployment (no compute template)"
+                }.`
+              );
+            }
+            // The reason stays in the log: the caller only learns what to do next.
+            logger.warn("Trigger refused: compute-only run has nowhere to start", {
+              organizationId: environment.organizationId,
+              environmentId: environment.id,
+              taskId,
+              reason: templateKey ? "no_compute_in_region" : "no_template",
+            });
             throw new ServiceValidationError(
-              `Task "${taskId}" is a sandbox and needs microVM compute, which is not available ${
-                templateKey ? "in this region" : "for this deployment (no compute template)"
-              }.`
+              "This task can't run on its current version. Deploy again and trigger the new version, or contact support if it keeps failing."
             );
           }
 
@@ -594,9 +636,17 @@ export class RunEngineTriggerTaskService {
             externalDeploymentId,
             webhookDeliveryId: options.webhookDeliveryId,
             webhookEndpointId: options.webhookEndpointId,
+            ...(options.sessionInSeq !== undefined ? { sessionInSeq: options.sessionInSeq } : {}),
+            ...(options.sessionInFirstSeq !== undefined
+              ? { sessionInFirstSeq: options.sessionInFirstSeq }
+              : {}),
+            ...(environment.type !== "DEVELOPMENT" && environment.project.secretProxyEnabled
+              ? { secretProxyRequired: true as const }
+              : {}),
             ...(executionPolicy
               ? { executionMode: "SANDBOX" as const, executionPolicy, sessionId: options.sessionId }
               : {}),
+            ...(computeOnly && { computeOnly: true as const }),
           };
 
           const workerQueue =
@@ -608,7 +658,7 @@ export class RunEngineTriggerTaskService {
                   orgFeatureFlags,
                   v2Enabled: env.TRIGGER_WORKER_QUEUE_V2_ENABLED === "1",
                   splitEnabled: env.TRIGGER_WORKER_QUEUE_SCHEDULED_SPLIT_ENABLED === "1",
-                  environmentOverride: executionPolicy
+                  environmentOverride: pinnedToCompute
                     ? { ...environmentOverride, compat: "compute" }
                     : environmentOverride,
                   workerGroups,
@@ -996,8 +1046,12 @@ export class RunEngineTriggerTaskService {
       rootScheduleId?: string | undefined;
       externalDeploymentId?: string | undefined;
       executionMode?: "SANDBOX";
+      computeOnly?: true;
+      secretProxyRequired?: true;
       executionPolicy?: RunExecutionPolicy;
       sessionId?: string;
+      sessionInSeq?: number;
+      sessionInFirstSeq?: number;
     };
     parkedOnExternalDeploymentId?: string;
     planType?: string;

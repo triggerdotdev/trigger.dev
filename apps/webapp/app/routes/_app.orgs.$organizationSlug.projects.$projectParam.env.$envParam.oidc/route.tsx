@@ -1,4 +1,5 @@
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
+import { useDocsLink } from "~/components/DocsPanel";
 import { PageContainer } from "~/components/layout/AppLayout";
 import { LinkButton } from "~/components/primitives/Buttons";
 import { NavBar, PageAccessories, PageTitle } from "~/components/primitives/PageHeader";
@@ -11,7 +12,7 @@ import {
 import { resolveProjectAuthScope } from "~/services/projectAuthScope.server";
 import { dashboardLoader } from "~/services/routeBuilders/dashboardBuilder";
 import { pageMeta } from "~/utils/pageTitle";
-import { docsPath, EnvironmentParamSchema } from "~/utils/pathBuilder";
+import { EnvironmentParamSchema } from "~/utils/pathBuilder";
 import { $replica } from "~/db.server";
 import { findOidcReplaceableValues } from "~/presenters/v3/environmentVariablesAttention.server";
 import { groupOidcReplaceable } from "~/v3/environmentVariables/oidcReplaceable";
@@ -67,13 +68,14 @@ export const loader = dashboardLoader(
 
 export default function OidcSetupPage() {
   const { state, setup, replaceable } = useTypedLoaderData<typeof loader>();
+  const docsLink = useDocsLink();
 
   return (
     <PageContainer>
       <NavBar>
         <PageTitle title="OpenID Connect (OIDC)" />
         <PageAccessories>
-          <LinkButton to={docsPath("oidc")} variant="secondary/small" target="_blank">
+          <LinkButton {...docsLink("oidc")} variant="secondary/small" target="_blank">
             OIDC documentation
           </LinkButton>
         </PageAccessories>

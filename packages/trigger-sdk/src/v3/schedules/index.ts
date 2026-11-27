@@ -79,7 +79,7 @@ export function task<
 >(
   params: ScheduleOptions<TIdentifier, TOutput, TInitOutput, TWindow>
 ): Task<TIdentifier, SchedulesAPI.ScheduledTaskPayload, TOutput> {
-  const task = createTask(params);
+  const task = createTask({ ...params, triggerSource: "schedule" });
 
   const cron = params.cron
     ? typeof params.cron === "string"
@@ -93,7 +93,6 @@ export function task<
   const window = params.cron && typeof params.cron !== "string" ? params.cron.window : undefined;
 
   resourceCatalog.updateTaskMetadata(task.id, {
-    triggerSource: "schedule",
     schedule: cron
       ? {
           cron: cron,

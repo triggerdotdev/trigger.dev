@@ -1,4 +1,8 @@
 import {
+  CONCURRENCY_LIMIT_NAME_PATTERN,
+  parseNaturalLanguageDurationInMs,
+} from "@trigger.dev/core/v3/isomorphic";
+import {
   ApiDeploymentListParams,
   DashboardWidgetInput,
   MachinePresetName,
@@ -64,6 +68,20 @@ export const CommonProjectsInput = z.object({
 
 export type CommonProjectsInput = z.output<typeof CommonProjectsInput>;
 
+const DURATION = /^(\d+(w|d|hr|h|m|s))+$/;
+const DURATION_MESSAGE = "Must be a duration like 5s, 1m or 2h30m";
+
+const TTL_UNIT_MS = { s: 1_000, m: 60_000, h: 3_600_000, d: 86_400_000 } as const;
+const LATEST_STORABLE_EXPIRY_MS = Date.UTC(9999, 11, 31, 23, 59, 59, 999);
+
+/** Whether the key's expiry, now plus `ttl`, is still a date the server can store. */
+const idempotencyKeyTtlFits = (ttl: string) => {
+  const match = /^(\d+)([smhd])$/.exec(ttl);
+  if (!match) return true;
+  const unitMs = TTL_UNIT_MS[match[2] as keyof typeof TTL_UNIT_MS];
+  return Date.now() + Number(match[1]) * unitMs <= LATEST_STORABLE_EXPIRY_MS;
+};
+
 export const TriggerTaskInput = CommonProjectsInput.extend({
   taskId: z
     .string()
@@ -92,6 +110,82 @@ export const TriggerTaskInput = CommonProjectsInput.extend({
         .describe("The delay before the task run is executed")
         .optional(),
       idempotencyKey: z.string().describe("The idempotency key to use for the task run").optional(),
+      idempotencyKeyTTL: z
+        .string()
+        .regex(/^\d+[smhd]$/, "Must be a number followed by s, m, h or d, like 30m")
+        .refine(
+          idempotencyKeyTtlFits,
+          "Too long: the key would expire after the latest date the server can store"
+        )
+        .describe(
+          "How long the idempotency key returns the same run instead of a new one: a number followed by s, m, h or d, like 30m or 1d. Defaults to 30 days. Only used with idempotencyKey"
+        )
+        .optional(),
+      concurrencyKey: z
+        .string()
+        .max(1024)
+        .describe(
+          "Gives each value of this key its own copy of the run's queue, so the queue's concurrency limit applies per key, e.g. per user id. It also keys the run's named concurrency limits"
+        )
+        .optional(),
+      concurrency: z
+        .array(
+          z
+            .string()
+            .regex(
+              CONCURRENCY_LIMIT_NAME_PATTERN,
+              "Concurrency limit names are 1-122 characters using only letters, numbers, underscores and hyphens"
+            )
+        )
+        .max(2)
+        .describe(
+          "Replaces the task's declared named concurrency limits for this run with these limit names, up to 2. An empty array removes all of them. The task's own inline concurrency limit still applies"
+        )
+        .optional(),
+      debounce: z
+        .object({
+          key: z
+            .string()
+            .max(512)
+            .describe("Triggers of this task with the same key are collapsed into one run"),
+          delay: z
+            .string()
+            .max(64)
+            .regex(DURATION, DURATION_MESSAGE)
+            .describe(
+              "How long the run waits before it starts, as a duration like 5s, 1m or 2h30m. Each new trigger with the same key moves the start to that trigger's time plus this delay"
+            ),
+          mode: z
+            .enum(["leading", "trailing"])
+            .describe(
+              "leading (the default) runs with the first trigger's data. trailing updates the run from each later trigger: payload, metadata, tags, maxAttempts, maxDuration and machine"
+            )
+            .optional(),
+          maxDelay: z
+            .string()
+            .max(64)
+            .regex(DURATION, DURATION_MESSAGE)
+            .describe(
+              "The longest the start can be pushed back from the first trigger, as a duration longer than delay, like 5m. Without it, steady triggers keep pushing the run back"
+            )
+            .optional(),
+        })
+        .refine(
+          (debounce) =>
+            debounce.maxDelay === undefined ||
+            (parseNaturalLanguageDurationInMs(debounce.maxDelay) ?? 0) >
+              (parseNaturalLanguageDurationInMs(debounce.delay) ?? 0),
+          { message: "debounce.maxDelay must be longer than debounce.delay", path: ["maxDelay"] }
+        )
+        .describe("Debounce triggers of this task that share a key into one run")
+        .optional(),
+      lockToVersion: z
+        .string()
+        .regex(/^\d{8}\.\d{1,9}$/, "Must be a deployed version like 20250101.1")
+        .describe(
+          "Run on this deployed version, e.g. 20250101.1, instead of the version that is current when the run starts"
+        )
+        .optional(),
       machine: MachinePresetName.describe("The machine preset to use for the task run").optional(),
       maxAttempts: z
         .number()
@@ -101,6 +195,16 @@ export const TriggerTaskInput = CommonProjectsInput.extend({
       maxDuration: z
         .number()
         .describe("The maximum duration in seconds of the task run")
+        .optional(),
+      metadata: z
+        .record(z.string(), z.any())
+        .describe("Metadata to attach to the task run, as a JSON object")
+        .optional(),
+      priority: z
+        .number()
+        .describe(
+          "Priority as a time offset in seconds: the run is dequeued as if triggered this many seconds earlier, so higher values run sooner. The server clamps very large values"
+        )
         .optional(),
       region: z
         .string()
@@ -118,9 +222,9 @@ export const TriggerTaskInput = CommonProjectsInput.extend({
         .string()
         .or(z.number().nonnegative().int())
         .describe(
-          "The time to live of the task run. If the run doesn't start executing within this time, it will be automatically cancelled."
+          "The time to live of the task run. If the run doesn't start executing within this time, it will be automatically cancelled. When omitted, the task's own ttl applies, otherwise 10 minutes in dev. If the server sets a maximum ttl (14 days on Trigger.dev Cloud), a run without a ttl gets that maximum and longer ttls are capped at it; without a maximum it never expires."
         )
-        .default("10m"),
+        .optional(),
     })
     .optional(),
 });
@@ -235,7 +339,18 @@ export const GetSpanDetailsInput = CommonRunsInput.extend({
 export type GetSpanDetailsInput = z.output<typeof GetSpanDetailsInput>;
 
 export const ListRunsInput = CommonProjectsInput.extend({
-  cursor: z.string().describe("The cursor to use for pagination, starts with run_").optional(),
+  cursor: z
+    .string()
+    .describe(
+      "The Next cursor from a previous page, passed exactly as returned, to list the next page"
+    )
+    .optional(),
+  before: z
+    .string()
+    .describe(
+      "The Previous cursor from a page, passed exactly as returned, to list the page before it. Do not combine with cursor"
+    )
+    .optional(),
   limit: z
     .number()
     .int()
@@ -245,14 +360,24 @@ export const ListRunsInput = CommonProjectsInput.extend({
   taskIdentifier: z.string().describe("Filter for runs that match this task identifier").optional(),
   version: z
     .string()
-    .describe("Filter for runs that match this version, e.g. 20250808.3")
+    .describe(
+      "Filter for runs that match this version, e.g. 20250808.3. Separate several versions with commas, e.g. 20250808.3,20250809.1"
+    )
     .optional(),
   tag: z.string().describe("Filter for runs that include this tag").optional(),
-  from: z.string().describe("Filter for runs created after this ISO 8601 timestamp").optional(),
-  to: z.string().describe("Filter for runs created before this ISO 8601 timestamp").optional(),
+  from: z
+    .string()
+    .describe("Filter for runs created after this ISO 8601 timestamp. Ignored when period is set")
+    .optional(),
+  to: z
+    .string()
+    .describe("Filter for runs created before this ISO 8601 timestamp. Ignored when period is set")
+    .optional(),
   period: z
     .string()
-    .describe("Filter for runs created in the last N time period. e.g. 7d, 30d, 365d")
+    .describe(
+      "Filter for runs created in the last N time period. e.g. 7d, 30d, 365d. Takes precedence: when period is set, from and to are ignored"
+    )
     .optional(),
   machine: MachinePresetName.describe("Filter for runs that match this machine preset").optional(),
   region: z
@@ -260,6 +385,19 @@ export const ListRunsInput = CommonProjectsInput.extend({
     .describe(
       "Filter for runs that executed in this region (the worker instance group masterQueue identifier, e.g. 'us-east-1' or 'main')"
     )
+    .optional(),
+  queue: z
+    .string()
+    .describe("Filter for runs in this queue, e.g. task/my-task or a custom queue name")
+    .optional(),
+  batch: z.string().describe("Filter for runs in this batch, starts with batch_").optional(),
+  schedule: z
+    .string()
+    .describe("Filter for runs triggered by this schedule, starts with sched_")
+    .optional(),
+  bulkAction: z
+    .string()
+    .describe("Filter for runs in this bulk action, starts with bulk_")
     .optional(),
 });
 
@@ -523,6 +661,20 @@ export const CreateAlertInput = CommonProjectsInput.extend({
     .min(1)
     .describe("Who to notify when the alert raises, e.g. [{ type: 'chat', chatId: '<id>' }]."),
   name: z.string().describe("An optional display name for the alert.").optional(),
+  query: z
+    .string()
+    .max(8192)
+    .describe("The TRQL query a custom.query alert watches. Only valid with custom.query.")
+    .optional(),
+  signal: z
+    .object({
+      mode: z.enum(["threshold", "absence", "match"]),
+      measure: z.string().max(128).optional(),
+    })
+    .describe(
+      "How a custom.query alert reads its query: threshold on a measure, absence of rows, or any matching row. Only valid with custom.query."
+    )
+    .optional(),
 });
 
 export type CreateAlertInput = z.output<typeof CreateAlertInput>;

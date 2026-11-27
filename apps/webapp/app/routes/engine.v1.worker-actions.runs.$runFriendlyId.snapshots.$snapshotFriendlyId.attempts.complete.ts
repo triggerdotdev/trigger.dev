@@ -14,6 +14,7 @@ export const action = createActionWorkerApiRoute(
       runFriendlyId: z.string(),
       snapshotFriendlyId: z.string(),
     }),
+    workerActionToken: "complete",
   },
   async ({
     authenticatedWorker,

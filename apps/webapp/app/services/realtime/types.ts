@@ -2,6 +2,8 @@ export type StreamRecord = {
   data: string;
   id: string;
   seqNum: number;
+  /** When the backend stored the record (ms since epoch). Only the S2 backend sets it. */
+  timestamp?: number;
   /**
    * S2 record headers, when the underlying backend is the v2 (S2) shape.
    * Undefined or empty for run-scoped Redis streams. First-header empty-name

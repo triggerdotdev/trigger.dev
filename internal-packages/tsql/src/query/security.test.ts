@@ -153,6 +153,25 @@ describe("Cross-Tenant Security", () => {
       expect(whereClause).toMatch(/and\([^)]*organization_id/);
     });
 
+    it.each([
+      [
+        "status = 'a' OR (task_identifier = 'x' AND status = 'b')",
+        "or(equals(status, ?), and(equals(task_identifier, ?), equals(status, ?)))",
+      ],
+      [
+        "task_identifier = 'x' AND (status = 'a' OR status = 'b')",
+        "equals(task_identifier, ?), or(equals(status, ?), equals(status, ?))",
+      ],
+    ])("keeps mixed AND/OR grouping inside the tenant guard: %s", (where, userFilter) => {
+      const { sql } = compile(`SELECT status FROM task_runs WHERE ${where}`);
+      const printed = sql.replace(/\{tsql_val_\d+: \w+\}/g, "?");
+
+      expect(printed).toContain(
+        "WHERE and(and(equals(task_runs.organization_id, ?), equals(task_runs.project_id, ?), " +
+          `equals(task_runs.environment_id, ?)), ${userFilter}) LIMIT`
+      );
+    });
+
     it("should not allow accessing other tenant's data via explicit condition", () => {
       const { sql: _sql, params } = compile(
         "SELECT * FROM task_runs WHERE organization_id = 'org_other_tenant'"

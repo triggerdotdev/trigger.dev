@@ -2,6 +2,7 @@ import { BookOpenIcon } from "@heroicons/react/20/solid";
 import { type LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { Suspense, useMemo } from "react";
 import { TypedAwait, typeddefer, useTypedLoaderData } from "remix-typedjson";
+import { useDocsLink } from "~/components/DocsPanel";
 import { PageBody, PageContainer } from "~/components/layout/AppLayout";
 import { LinkButton } from "~/components/primitives/Buttons";
 import { Card } from "~/components/primitives/charts/Card";
@@ -21,12 +22,7 @@ import {
   type DailyRunPoint,
 } from "~/presenters/v3/TasksDashboardPresenter.server";
 import { requireUserId } from "~/services/session.server";
-import {
-  docsPath,
-  EnvironmentParamSchema,
-  v3EnvironmentPath,
-  v3RunsPath,
-} from "~/utils/pathBuilder";
+import { EnvironmentParamSchema, v3EnvironmentPath, v3RunsPath } from "~/utils/pathBuilder";
 import { sectionAgentPageContext } from "~/components/dashboard-agent/suggested-prompts";
 import type { Handle } from "~/utils/handle";
 
@@ -130,7 +126,7 @@ export default function TasksDashboardPage() {
                     data={s.agents}
                     seriesColor="#be5eed"
                     listingPath={v3EnvironmentPath(organization, project, environment)}
-                    docsHref={docsPath("v3/agents")}
+                    docsPage="ai-chat/overview"
                     emptyTitle="You don't have any agents yet"
                     emptyDescription="Create an AI agent to call LLMs, use tools, and run multi-step conversations from a Trigger.dev task."
                     emptyCta="Create your first agent"
@@ -150,7 +146,7 @@ export default function TasksDashboardPage() {
                     data={s.standard}
                     seriesColor="#47b4eb"
                     listingPath={v3RunsPath(organization, project, environment)}
-                    docsHref={docsPath("v3/tasks-overview")}
+                    docsPage="v3/tasks-overview"
                     emptyTitle="You don't have any standard tasks yet"
                     emptyDescription="Standard tasks are the building block of Trigger.dev. Define one in your codebase and trigger it from anywhere."
                     emptyCta="Create your first task"
@@ -170,7 +166,7 @@ export default function TasksDashboardPage() {
                     data={s.scheduled}
                     seriesColor="#f5993d"
                     listingPath={v3EnvironmentPath(organization, project, environment)}
-                    docsHref={docsPath("v3/tasks-scheduled")}
+                    docsPage="v3/tasks-scheduled"
                     emptyTitle="You don't have any scheduled tasks yet"
                     emptyDescription="Schedule a task to run on a cron expression. Once you've defined a `schedules.task` you can attach one or many schedules to it."
                     emptyCta="Create your first scheduled task"
@@ -205,7 +201,7 @@ type TaskTypePanelProps = {
   data: DailyRunPoint[];
   seriesColor: string;
   listingPath: string;
-  docsHref: string;
+  docsPage: string;
   emptyTitle: string;
   emptyDescription: string;
   emptyCta: string;
@@ -213,6 +209,7 @@ type TaskTypePanelProps = {
 };
 
 function TaskTypePanel(props: TaskTypePanelProps) {
+  const docsLink = useDocsLink();
   const {
     title,
     count,
@@ -221,7 +218,7 @@ function TaskTypePanel(props: TaskTypePanelProps) {
     data,
     seriesColor,
     listingPath,
-    docsHref,
+    docsPage,
     emptyTitle,
     emptyDescription,
     emptyCta,
@@ -274,7 +271,7 @@ function TaskTypePanel(props: TaskTypePanelProps) {
               <LinkButton to={listingPath} variant="secondary/small">
                 View all
               </LinkButton>
-              <LinkButton to={docsHref} variant="docs/small" LeadingIcon={BookOpenIcon}>
+              <LinkButton {...docsLink(docsPage)} variant="docs/small" LeadingIcon={BookOpenIcon}>
                 Read docs
               </LinkButton>
             </div>
@@ -285,7 +282,7 @@ function TaskTypePanel(props: TaskTypePanelProps) {
             description={emptyDescription}
             example={example}
             listingPath={listingPath}
-            docsHref={docsHref}
+            docsPage={docsPage}
             cta={emptyCta}
             exampleCode={exampleCode}
           />
@@ -300,7 +297,7 @@ function EmptyContent({
   description,
   example,
   listingPath,
-  docsHref,
+  docsPage,
   cta,
   exampleCode,
 }: {
@@ -308,10 +305,11 @@ function EmptyContent({
   description: string;
   example: string;
   listingPath: string;
-  docsHref: string;
+  docsPage: string;
   cta: string;
   exampleCode: string;
 }) {
+  const docsLink = useDocsLink();
   const copyExample = () => {
     if (typeof navigator !== "undefined" && navigator.clipboard) {
       navigator.clipboard.writeText(exampleCode).catch(() => {
@@ -337,7 +335,7 @@ function EmptyContent({
         >
           Copy example code
         </button>
-        <LinkButton to={docsHref} variant="docs/small" LeadingIcon={BookOpenIcon}>
+        <LinkButton {...docsLink(docsPage)} variant="docs/small" LeadingIcon={BookOpenIcon}>
           Read docs
         </LinkButton>
       </div>

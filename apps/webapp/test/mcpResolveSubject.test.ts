@@ -78,6 +78,11 @@ describe("resolveMcpSubject branches", () => {
         args: { ...args, environment: "preview", branch: "feat-y" },
         id: previewChild.id,
       },
+      {
+        name: "preview branch with refs/heads prefix",
+        args: { ...args, environment: "preview", branch: "refs/heads/feat-y" },
+        id: previewChild.id,
+      },
       { name: "prod branch", args: { ...args, environment: "prod", branch: "feat-x" }, id: null },
     ];
     for (const c of cases) {

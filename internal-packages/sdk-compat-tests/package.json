@@ -6,13 +6,13 @@
   "scripts": {
     "test": "vitest",
     "test:watch": "vitest",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsrs --fast --noEmit"
   },
   "devDependencies": {
     "@trigger.dev/sdk": "workspace:*",
     "esbuild": "^0.24.0",
     "execa": "^9.3.0",
     "typescript": "catalog:",
-    "vitest": "4.1.11"
+    "vitest": "4.1.12"
   }
 }

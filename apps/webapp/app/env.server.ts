@@ -10,8 +10,10 @@ import { OidcIssuerSchema } from "./utils/oidcIssuer";
 import { isValidDatabaseUrl } from "./utils/db";
 import { parseDeployBaseImages } from "~/v3/deployBaseImages.server";
 import { parseRunOpsShards, validateShardListAgainstNewUrl } from "~/v3/runOpsShards.server";
+import { parseWorkerActionTokenConfig } from "~/v3/services/worker/workerActionTokenVerifier.server";
 import { isValidRegex } from "./utils/regex";
 import { isValidCronExpression } from "./utils/cron";
+import { DEFAULT_EVENT_RETENTION_DAYS } from "~/v3/eventRepository/eventRetention";
 import { isValidDuration } from "./services/realtime/duration.server";
 import { WorkerQueueSubscriptionPolicyEnv } from "./runEngine/concerns/workerQueueSubscriptions.server";
 
@@ -92,7 +94,7 @@ const GithubAppEnvSchema = z.preprocess(
       z.object({
         GITHUB_APP_ENABLED: z.literal("1"),
         GITHUB_APP_ID: z.string(),
-        GITHUB_APP_PRIVATE_KEY: z.string(),
+        GITHUB_APP_PRIVATE_KEY: z.string().transform((key) => key.replace(/\\n/g, "\n")),
         GITHUB_APP_WEBHOOK_SECRET: z.string(),
         GITHUB_APP_SLUG: z.string(),
         GITHUB_APP_CLIENT_ID: z.string().min(1).optional(),
@@ -131,6 +133,12 @@ const S2EnvSchema = z.preprocess(
         S2_ACCESS_TOKEN: z.string(),
         S2_DEPLOYMENT_LOGS_BASIN_NAME: z.string(),
         S2_DEPLOYMENT_STREAMS_LOCAL: z.string().default("0"),
+        // A self-hosted S2 (e.g. s2-lite), instead of s2.dev. The public endpoint is the one
+        // browsers read build logs from, when it differs from the server's.
+        S2_DEPLOYMENT_LOGS_ENDPOINT: z.string().url().optional(),
+        S2_DEPLOYMENT_LOGS_PUBLIC_ENDPOINT: z.string().url().optional(),
+        // s2-lite has no access tokens: read the logs without a scoped token.
+        S2_DEPLOYMENT_LOGS_SKIP_ACCESS_TOKENS: z.enum(["0", "1"]).default("0"),
         S2_DEPLOYMENT_LOGS_TOKEN_VALIDITY_MS: z.coerce
           .number()
           .int()
@@ -434,6 +442,9 @@ const EnvironmentSchema = z
     ENCRYPTION_KEYRING: z.string().transform(parseEncryptionKeyring).optional(),
     SECRET_PROXY_ENABLED: BoolEnv.default(false),
     SECRET_PROXY_RESOLVER_ENABLED: BoolEnv.default(false),
+    // Comma-separated HTTPS hosts every restricted sandbox may reach, beyond those derived from the
+    // platform's own URLs (API, streams, object storage, OTel).
+    SANDBOX_NETWORK_PLATFORM_HOSTS: z.string().optional(),
     SECRET_PROXY_PLACEHOLDER_KEYS: z.preprocess(
       (value) => (value === "" ? undefined : value),
       z.string().optional()
@@ -442,6 +453,24 @@ const EnvironmentSchema = z
       (value) => (value === "" ? undefined : value),
       z.string().min(32).optional()
     ),
+    // The relay's ServiceAccount, checked when WORKLOAD_IDENTITY_ISSUERS is set.
+    SECRET_PROXY_RELAY_SUBJECT: z
+      .string()
+      .min(1)
+      .default("system:serviceaccount:v4-infra:secret-proxy-relay"),
+    // Comma-separated Kubernetes ServiceAccount token issuers (cluster OIDC issuer URLs) whose
+    // workloads may authenticate to internal platform services. When set, those services accept
+    // only workload identity tokens, never their shared tokens.
+    WORKLOAD_IDENTITY_ISSUERS: z
+      .string()
+      .default("")
+      .transform((raw) =>
+        raw
+          .split(",")
+          .map((issuer) => issuer.trim())
+          .filter(Boolean)
+      )
+      .pipe(z.array(z.string().url().startsWith("https://"))),
     ENVIRONMENT_ENCRYPTION_ENABLED: BoolEnv.default(false),
     ENVIRONMENT_ENCRYPTION_KMS_KEY_ARN: z.preprocess(
       (value) => (value === "" ? undefined : value),
@@ -494,6 +523,24 @@ const EnvironmentSchema = z
     MAGIC_LINK_SAME_BROWSER_REQUIRED: BoolEnv.default(true),
     APP_ORIGIN: z.string().default("http://localhost:3030"),
     PUBLIC_APP_ORIGIN: z.url().optional(),
+    // Comma-separated origins of the docs site, the only origins that may read the signed-in
+    // reader (/resources/docs/*) with credentials and that the docs sign-in returns to.
+    DOCS_ORIGINS: z
+      .string()
+      .default("https://trigger.dev")
+      .transform((raw) =>
+        raw
+          .split(",")
+          .map((origin) => origin.trim())
+          .filter(Boolean)
+      )
+      // Each entry is an origin like https://trigger.dev; a bad one fails at startup, not per request.
+      // Normalized to the origin, since browsers send Origin without a trailing slash or path.
+      .pipe(
+        z
+          .array(z.url({ protocol: /^https?$/ }))
+          .transform((origins) => origins.map((o) => new URL(o).origin))
+      ),
     OIDC_ISSUER_URL: z.preprocess(
       (value) => (value === "" ? undefined : value),
       OidcIssuerSchema.optional()
@@ -1052,6 +1099,11 @@ const EnvironmentSchema = z
     // log-only mode before enforcement.
     DEPRECATE_V3_CLI_DEPLOYS_ENABLED: z.string().default("0"),
 
+    // Parsed in cliVersionPolicy.server.ts, where a bad value is logged instead of failing boot.
+    DEPLOY_MIN_CLI_VERSION: z.string().optional(),
+    DEPLOY_MIN_CLI_VERSION_ENFORCED_FROM: z.string().optional(),
+    DEPLOY_CLI_VERSION_WARNING_LOOKBACK_DAYS: z.coerce.number().int().positive().max(365).catch(30),
+
     // Verify the deploy image exists before promoting. Disable for out-of-band/air-gapped push. ECR only.
     DEPLOY_IMAGE_VERIFICATION_ENABLED: BoolEnv.default(true),
 
@@ -1113,6 +1165,9 @@ const EnvironmentSchema = z
     // cutoff pass (grandfathered). Default off = no run-row read, byte-for-byte today's behavior.
     WORKLOAD_CREATED_AT_GATE_ENABLED: z.string().default("0"),
     WORKLOAD_TOKEN_CUTOFF: z.string().datetime().optional(),
+    WORKLOAD_TOKEN_PUBLIC_KEYS: z.string().optional(),
+    WORKER_ACTION_TOKEN_MODES: z.string().optional(),
+    WORKER_ACTION_TOKEN_CUTOFF: z.string().datetime().optional(),
     // Free orgs without a verified card can't deploy to cloud. Off by default. With no cutoff, every
     // Free org is gated; with one, only orgs created at or after it.
     CARD_VERIFICATION_GATE_ENABLED: BoolEnv.default(false),
@@ -1605,6 +1660,14 @@ const EnvironmentSchema = z
     RUN_ENGINE_SNAPSHOT_STORE_REDIS_URL: z.string().optional(),
     // Infrastructure only; the global/org waitpointStoreEnabled flag owns activation.
     RUN_ENGINE_WAITPOINT_STORE_REDIS_URL: z.string().optional(),
+    // How long completed waitpoints (and finished runs' waitpoint state) stay in the waitpoint
+    // store. Keep it at least RUN_ENGINE_SNAPSHOT_STORE_COMPLETED_TTL_MS, so a run that can
+    // still read its snapshots also finds its waitpoints.
+    RUN_ENGINE_WAITPOINT_STORE_COMPLETED_TTL_MS: z.coerce
+      .number()
+      .int()
+      .positive()
+      .default(24 * 60 * 60 * 1_000),
     // How long a fetched org snapshotStoreMode override is reused per process. 0 disables caching.
     RUN_ENGINE_SNAPSHOT_STORE_DIAL_CACHE_MS: z.coerce.number().int().min(0).default(5000),
     // How long a finished run's snapshot state stays in the store. Redis-primary runs fail closed
@@ -1818,6 +1881,15 @@ const EnvironmentSchema = z
     TRIGGER_WORKER_QUEUE_SCHEDULED_SPLIT_ENABLED: z.string().default("0"),
     // Controls new assignments only; existing v2 runs retain their routing.
     TRIGGER_WORKER_QUEUE_V2_ENABLED: z.string().default("0"),
+    TRIGGER_WORKER_QUEUE_LEGACY_ON_V2: z
+      .string()
+      .default("")
+      .transform((raw) =>
+        raw
+          .split(",")
+          .map((queue) => queue.trim())
+          .filter(Boolean)
+      ),
 
     TRIGGER_MOLLIFIER_ENABLED: z.string().default("0"),
     // Separate switch for the drainer (consumer side) so it can be split
@@ -2476,8 +2548,9 @@ const EnvironmentSchema = z
     RUN_OPS_MINT_FLAG_CACHE_TTL_MS: z.coerce.number().int().default(30_000),
     RUN_OPS_MINT_FLAG_CACHE_MAX_ENTRIES: z.coerce.number().int().default(10_000),
     // Deterministic wall-clock cutover after a runOpsMintKind flip. Must exceed the sum
-    // of RUN_OPS_MINT_FLAG_CACHE_TTL_MS and the control-plane cache TTL so every process
-    // (stale or fresh) resolves to the same kind for the whole window. See mintFlipGrace.ts.
+    // of RUN_OPS_MINT_FLAG_CACHE_TTL_MS, the control-plane cache TTL and
+    // GLOBAL_FLAGS_RELOAD_INTERVAL_MS so every process (stale or fresh) resolves to the
+    // same kind for the whole window. See mintFlipGrace.ts.
     RUN_OPS_MINT_FLIP_GRACE_MS: z.coerce.number().int().default(90_000),
 
     // Session replication (Postgres → ClickHouse sessions_v1). Shares Redis
@@ -2788,6 +2861,11 @@ const EnvironmentSchema = z
     EVENTS_CLICKHOUSE_MAX_LIVE_RELOADING_SETTING: z.coerce.number().int().default(2000),
     EVENTS_CLICKHOUSE_TRACE_CHUNK_SIZE: z.coerce.number().int().positive().default(1_000),
     EVENTS_CLICKHOUSE_MAX_TRACE_VIEW_COUNT: z.coerce.number().int().positive().default(150_000),
+    EVENTS_CLICKHOUSE_RETENTION_DAYS: z.coerce
+      .number()
+      .int()
+      .positive()
+      .default(DEFAULT_EVENT_RETENTION_DAYS),
 
     // OTLP ingest transform worker pool (opt-in). When enabled, decode/convert/enrich run in a
     // worker_threads pool instead of the request event loop; the single consolidated insert path
@@ -3008,6 +3086,19 @@ const EnvironmentSchema = z
         path: ["RUN_OPS_SHARDS"],
         message:
           "RUN_OPS_SHARDS is non-empty but RUN_OPS_DATABASE_URL is unset; a shard requires the gen-1 new store",
+      });
+    }
+    try {
+      parseWorkerActionTokenConfig({
+        modes: env.WORKER_ACTION_TOKEN_MODES,
+        publicKeys: env.WORKLOAD_TOKEN_PUBLIC_KEYS,
+        cutoff: env.WORKER_ACTION_TOKEN_CUTOFF,
+      });
+    } catch (error) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["WORKER_ACTION_TOKEN_MODES"],
+        message: error instanceof Error ? error.message : String(error),
       });
     }
   });

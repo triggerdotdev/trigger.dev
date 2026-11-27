@@ -1,4 +1,6 @@
+import { Prisma } from "@trigger.dev/database";
 import { type PrismaClientOrTransaction, prisma } from "~/db.server";
+import { ServiceValidationError } from "./common.server";
 
 type ErrorGroupIdentifier = {
   organizationId: string;
@@ -7,6 +9,44 @@ type ErrorGroupIdentifier = {
   taskIdentifier: string;
   errorFingerprint: string;
 };
+
+/** The stored state's revision: its last update, or "none" while the group has no stored state. */
+export function errorGroupRevision(state: { updatedAt: Date } | null): string {
+  return state ? state.updatedAt.toISOString() : "none";
+}
+
+const CHANGED = "The error group was changed by another request. Fetch it again and retry.";
+
+/** Writes only if the stored state is still at `revision`; otherwise throws a 409. */
+async function writeAtRevision(
+  db: PrismaClientOrTransaction,
+  identifier: ErrorGroupIdentifier,
+  update: Prisma.ErrorGroupStateUpdateManyMutationInput,
+  create: Prisma.ErrorGroupStateUncheckedCreateInput,
+  revision: string
+) {
+  if (revision === "none") {
+    try {
+      await db.errorGroupState.create({ data: create });
+      return;
+    } catch (error) {
+      if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002") {
+        throw new ServiceValidationError(CHANGED, 409);
+      }
+      throw error;
+    }
+  }
+  const result = await db.errorGroupState.updateMany({
+    where: {
+      environmentId: identifier.environmentId,
+      taskIdentifier: identifier.taskIdentifier,
+      errorFingerprint: identifier.errorFingerprint,
+      updatedAt: new Date(revision),
+    },
+    data: update,
+  });
+  if (result.count === 0) throw new ServiceValidationError(CHANGED, 409);
+}
 
 export class ErrorGroupActions {
   constructor(private readonly _prisma: PrismaClientOrTransaction = prisma) {}
@@ -19,7 +59,8 @@ export class ErrorGroupActions {
       // API passes the `act.sub` user from a PAT/UAT-exchanged JWT, else null.
       userId?: string | null;
       resolvedInVersion?: string;
-    }
+    },
+    revision?: string
   ) {
     const where = {
       environmentId_taskIdentifier_errorFingerprint: {
@@ -30,34 +71,35 @@ export class ErrorGroupActions {
     };
 
     const now = new Date();
+    const update = {
+      status: "RESOLVED" as const,
+      resolvedAt: now,
+      resolvedInVersion: params.resolvedInVersion ?? null,
+      resolvedBy: params.userId ?? null,
+      ignoredUntil: null,
+      ignoredUntilOccurrenceRate: null,
+      ignoredUntilTotalOccurrences: null,
+      ignoredAtOccurrenceCount: null,
+      ignoredAt: null,
+      ignoredReason: null,
+      ignoredByUserId: null,
+    };
+    const create = {
+      organizationId: identifier.organizationId,
+      projectId: identifier.projectId,
+      environmentId: identifier.environmentId,
+      taskIdentifier: identifier.taskIdentifier,
+      errorFingerprint: identifier.errorFingerprint,
+      status: "RESOLVED" as const,
+      resolvedAt: now,
+      resolvedInVersion: params.resolvedInVersion ?? null,
+      resolvedBy: params.userId ?? null,
+    };
+    if (revision !== undefined) {
+      return writeAtRevision(this._prisma, identifier, update, create, revision);
+    }
 
-    return this._prisma.errorGroupState.upsert({
-      where,
-      update: {
-        status: "RESOLVED",
-        resolvedAt: now,
-        resolvedInVersion: params.resolvedInVersion ?? null,
-        resolvedBy: params.userId ?? null,
-        ignoredUntil: null,
-        ignoredUntilOccurrenceRate: null,
-        ignoredUntilTotalOccurrences: null,
-        ignoredAtOccurrenceCount: null,
-        ignoredAt: null,
-        ignoredReason: null,
-        ignoredByUserId: null,
-      },
-      create: {
-        organizationId: identifier.organizationId,
-        projectId: identifier.projectId,
-        environmentId: identifier.environmentId,
-        taskIdentifier: identifier.taskIdentifier,
-        errorFingerprint: identifier.errorFingerprint,
-        status: "RESOLVED",
-        resolvedAt: now,
-        resolvedInVersion: params.resolvedInVersion ?? null,
-        resolvedBy: params.userId ?? null,
-      },
-    });
+    return this._prisma.errorGroupState.upsert({ where, update, create });
   }
 
   async ignoreError(
@@ -69,7 +111,8 @@ export class ErrorGroupActions {
       totalOccurrencesThreshold?: number;
       occurrenceCountAtIgnoreTime?: number;
       reason?: string;
-    }
+    },
+    revision?: string
   ) {
     const where = {
       environmentId_taskIdentifier_errorFingerprint: {
@@ -96,21 +139,22 @@ export class ErrorGroupActions {
       resolvedBy: null,
     };
 
-    return this._prisma.errorGroupState.upsert({
-      where,
-      update: data,
-      create: {
-        organizationId: identifier.organizationId,
-        projectId: identifier.projectId,
-        environmentId: identifier.environmentId,
-        taskIdentifier: identifier.taskIdentifier,
-        errorFingerprint: identifier.errorFingerprint,
-        ...data,
-      },
-    });
+    const create = {
+      organizationId: identifier.organizationId,
+      projectId: identifier.projectId,
+      environmentId: identifier.environmentId,
+      taskIdentifier: identifier.taskIdentifier,
+      errorFingerprint: identifier.errorFingerprint,
+      ...data,
+    };
+    if (revision !== undefined) {
+      return writeAtRevision(this._prisma, identifier, data, create, revision);
+    }
+
+    return this._prisma.errorGroupState.upsert({ where, update: data, create });
   }
 
-  async unresolveError(identifier: ErrorGroupIdentifier) {
+  async unresolveError(identifier: ErrorGroupIdentifier, revision?: string) {
     const where = {
       environmentId_taskIdentifier_errorFingerprint: {
         environmentId: identifier.environmentId,
@@ -119,29 +163,31 @@ export class ErrorGroupActions {
       },
     };
 
-    return this._prisma.errorGroupState.upsert({
-      where,
-      update: {
-        status: "UNRESOLVED",
-        resolvedAt: null,
-        resolvedInVersion: null,
-        resolvedBy: null,
-        ignoredUntil: null,
-        ignoredUntilOccurrenceRate: null,
-        ignoredUntilTotalOccurrences: null,
-        ignoredAtOccurrenceCount: null,
-        ignoredAt: null,
-        ignoredReason: null,
-        ignoredByUserId: null,
-      },
-      create: {
-        organizationId: identifier.organizationId,
-        projectId: identifier.projectId,
-        environmentId: identifier.environmentId,
-        taskIdentifier: identifier.taskIdentifier,
-        errorFingerprint: identifier.errorFingerprint,
-        status: "UNRESOLVED",
-      },
-    });
+    const update = {
+      status: "UNRESOLVED" as const,
+      resolvedAt: null,
+      resolvedInVersion: null,
+      resolvedBy: null,
+      ignoredUntil: null,
+      ignoredUntilOccurrenceRate: null,
+      ignoredUntilTotalOccurrences: null,
+      ignoredAtOccurrenceCount: null,
+      ignoredAt: null,
+      ignoredReason: null,
+      ignoredByUserId: null,
+    };
+    const create = {
+      organizationId: identifier.organizationId,
+      projectId: identifier.projectId,
+      environmentId: identifier.environmentId,
+      taskIdentifier: identifier.taskIdentifier,
+      errorFingerprint: identifier.errorFingerprint,
+      status: "UNRESOLVED" as const,
+    };
+    if (revision !== undefined) {
+      return writeAtRevision(this._prisma, identifier, update, create, revision);
+    }
+
+    return this._prisma.errorGroupState.upsert({ where, update, create });
   }
 }

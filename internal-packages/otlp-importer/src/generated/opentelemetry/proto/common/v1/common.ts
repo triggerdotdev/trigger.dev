@@ -221,10 +221,10 @@ export const AnyValue = {
     return obj;
   },
 
-  create<I extends Exact<DeepPartial<AnyValue>, I>>(base?: I): AnyValue {
-    return AnyValue.fromPartial(base ?? ({} as any));
+  create(base?: DeepPartial<AnyValue>): AnyValue {
+    return AnyValue.fromPartial(base ?? {});
   },
-  fromPartial<I extends Exact<DeepPartial<AnyValue>, I>>(object: I): AnyValue {
+  fromPartial(object: DeepPartial<AnyValue>): AnyValue {
     const message = createBaseAnyValue();
     message.stringValue = object.stringValue ?? undefined;
     message.boolValue = object.boolValue ?? undefined;
@@ -294,10 +294,10 @@ const ArrayValue = {
     return obj;
   },
 
-  create<I extends Exact<DeepPartial<ArrayValue>, I>>(base?: I): ArrayValue {
-    return ArrayValue.fromPartial(base ?? ({} as any));
+  create(base?: DeepPartial<ArrayValue>): ArrayValue {
+    return ArrayValue.fromPartial(base ?? {});
   },
-  fromPartial<I extends Exact<DeepPartial<ArrayValue>, I>>(object: I): ArrayValue {
+  fromPartial(object: DeepPartial<ArrayValue>): ArrayValue {
     const message = createBaseArrayValue();
     message.values = object.values?.map((e) => AnyValue.fromPartial(e)) || [];
     return message;
@@ -355,10 +355,10 @@ export const KeyValueList = {
     return obj;
   },
 
-  create<I extends Exact<DeepPartial<KeyValueList>, I>>(base?: I): KeyValueList {
-    return KeyValueList.fromPartial(base ?? ({} as any));
+  create(base?: DeepPartial<KeyValueList>): KeyValueList {
+    return KeyValueList.fromPartial(base ?? {});
   },
-  fromPartial<I extends Exact<DeepPartial<KeyValueList>, I>>(object: I): KeyValueList {
+  fromPartial(object: DeepPartial<KeyValueList>): KeyValueList {
     const message = createBaseKeyValueList();
     message.values = object.values?.map((e) => KeyValue.fromPartial(e)) || [];
     return message;
@@ -428,10 +428,10 @@ export const KeyValue = {
     return obj;
   },
 
-  create<I extends Exact<DeepPartial<KeyValue>, I>>(base?: I): KeyValue {
-    return KeyValue.fromPartial(base ?? ({} as any));
+  create(base?: DeepPartial<KeyValue>): KeyValue {
+    return KeyValue.fromPartial(base ?? {});
   },
-  fromPartial<I extends Exact<DeepPartial<KeyValue>, I>>(object: I): KeyValue {
+  fromPartial(object: DeepPartial<KeyValue>): KeyValue {
     const message = createBaseKeyValue();
     message.key = object.key ?? "";
     message.value =
@@ -537,12 +537,10 @@ export const InstrumentationScope = {
     return obj;
   },
 
-  create<I extends Exact<DeepPartial<InstrumentationScope>, I>>(base?: I): InstrumentationScope {
-    return InstrumentationScope.fromPartial(base ?? ({} as any));
+  create(base?: DeepPartial<InstrumentationScope>): InstrumentationScope {
+    return InstrumentationScope.fromPartial(base ?? {});
   },
-  fromPartial<I extends Exact<DeepPartial<InstrumentationScope>, I>>(
-    object: I
-  ): InstrumentationScope {
+  fromPartial(object: DeepPartial<InstrumentationScope>): InstrumentationScope {
     const message = createBaseInstrumentationScope();
     message.name = object.name ?? "";
     message.version = object.version ?? "";
@@ -588,11 +586,6 @@ type DeepPartial<T> = T extends Builtin
       : T extends {}
         ? { [K in keyof T]?: DeepPartial<T[K]> }
         : Partial<T>;
-
-type KeysOfUnion<T> = T extends T ? keyof T : never;
-type Exact<P, I extends P> = P extends Builtin
-  ? P
-  : P & { [K in keyof P]: Exact<P[K], I[K]> } & { [K in Exclude<keyof I, KeysOfUnion<P>>]: never };
 
 function longToBigint(long: Long) {
   return BigInt(long.toString());

@@ -20,9 +20,9 @@ vi.setConfig({ testTimeout: 60_000, hookTimeout: 60_000 });
 
 let seq = 0;
 
-async function seedOrg(prisma: PrismaClient, suffix: string, featureFlags?: object) {
+async function seedOrg(prisma: PrismaClient, suffix: string) {
   const organization = await prisma.organization.create({
-    data: { title: `Org ${suffix}`, slug: `org-${suffix}`, featureFlags },
+    data: { title: `Org ${suffix}`, slug: `org-${suffix}` },
   });
   const project = await prisma.project.create({
     data: {
@@ -153,7 +153,7 @@ async function seedSessionWithRuns(
   runOverrides: (n: number) => RunOverrides = () => ({})
 ) {
   const suffix = `sr${seq++}`;
-  const seeded = await seedOrg(prisma, suffix, { sessionTraceEnabled: true });
+  const seeded = await seedOrg(prisma, suffix);
   const environment = await seedEnvironment(prisma, seeded, "prod");
   const session = await seedSession(prisma, seeded, environment, `session_${suffix}`);
   const store = new PostgresRunStore({ prisma, readOnlyPrisma: prisma });
@@ -185,11 +185,7 @@ async function seedSessionWithRuns(
   };
 
   const query = {
-    session: {
-      id: session.id,
-      projectId: session.projectId,
-      runtimeEnvironmentId: session.runtimeEnvironmentId,
-    },
+    session,
     pageSize: 20,
     showDeletedLogs: false,
   };
@@ -400,14 +396,63 @@ describe("SessionRunsPresenter", () => {
   postgresTest("an empty session returns no runs", async ({ prisma }) => {
     const { deps, query } = await seedSessionWithRuns(prisma, 0);
     const page = await new SessionRunsPresenter(deps).call(query);
-    expect(page).toEqual({ data: [], pagination: {}, totalCount: 0, view: {} });
+    expect(page).toMatchObject({ data: [], pagination: {}, totalCount: 0, view: {} });
+  });
+
+  // Catches: the session details missing a close or a new run, which only these fields carry.
+  postgresTest("every page carries the session's facts as of the read", async ({ prisma }) => {
+    const ctx = await seedSessionWithRuns(prisma, 2);
+    const presenter = new SessionRunsPresenter(ctx.deps);
+
+    const open = await presenter.call(ctx.query);
+    expect(open?.session).toEqual({
+      closedAt: null,
+      closedReason: null,
+      expiresAt: null,
+      updatedAt: ctx.session.updatedAt.toISOString(),
+      currentRunFriendlyId: null,
+    });
+
+    const closedAt = new Date("2026-10-03T00:00:00.000Z");
+    const expiresAt = new Date("2026-10-04T00:00:00.000Z");
+    const closed = await prisma.session.update({
+      where: { id: ctx.session.id },
+      data: { closedAt, closedReason: "done", expiresAt, currentRunId: `${ctx.suffix}r2` },
+    });
+    const page = await presenter.call({ ...ctx.query, session: closed });
+    expect(page?.session).toEqual({
+      closedAt: closedAt.toISOString(),
+      closedReason: "done",
+      expiresAt: expiresAt.toISOString(),
+      updatedAt: closed.updatedAt.toISOString(),
+      currentRunFriendlyId: `run_${ctx.suffix}r2`,
+    });
+
+    // The empty-page branch returns early, so it builds the facts too.
+    const empty = await seedSessionWithRuns(prisma, 0);
+    const emptyClosed = await prisma.session.update({
+      where: { id: empty.session.id },
+      data: { closedAt, closedReason: "done" },
+    });
+    const emptyPage = await new SessionRunsPresenter(empty.deps).call({
+      ...empty.query,
+      session: emptyClosed,
+    });
+    expect(emptyPage?.data).toEqual([]);
+    expect(emptyPage?.session).toEqual({
+      closedAt: closedAt.toISOString(),
+      closedReason: "done",
+      expiresAt: null,
+      updatedAt: emptyClosed.updatedAt.toISOString(),
+      currentRunFriendlyId: null,
+    });
   });
 });
 
 describe("findSessionForRunsView", () => {
-  async function seedAccess(prisma: PrismaClient, featureFlags?: object) {
+  async function seedAccess(prisma: PrismaClient) {
     const suffix = `ac${seq++}`;
-    const seeded = await seedOrg(prisma, suffix, featureFlags);
+    const seeded = await seedOrg(prisma, suffix);
     const owner = await seedMember(prisma, seeded.organization.id, `${suffix}-owner`);
     const teammate = await seedMember(prisma, seeded.organization.id, `${suffix}-mate`);
     const prod = await seedEnvironment(prisma, seeded, "prod");
@@ -421,21 +466,13 @@ describe("findSessionForRunsView", () => {
       data: { email: `${suffix}-out@example.com`, authenticationMethod: "MAGIC_LINK" },
     });
 
-    const request = (
-      userId: string,
-      environmentSlug: string,
-      sessionParam: string,
-      isAdmin = false,
-      isManagedCloud = true
-    ) =>
+    const request = (userId: string, environmentSlug: string, sessionParam: string) =>
       findSessionForRunsView({
         organizationSlug: seeded.organization.slug,
         projectSlug: seeded.project.slug,
         environmentSlug,
         sessionParam,
         userId,
-        isAdmin,
-        isManagedCloud,
         db: prisma,
       });
 
@@ -445,7 +482,8 @@ describe("findSessionForRunsView", () => {
   postgresTest(
     "members see the session; outsiders and other environments don't",
     async ({ prisma }) => {
-      const ctx = await seedAccess(prisma, { sessionTraceEnabled: true });
+      // Catches: access going back behind an org flag. The org has no flags set.
+      const ctx = await seedAccess(prisma);
 
       expect(
         await ctx.request(ctx.teammate.user.id, "prod", ctx.prodSession.friendlyId)
@@ -464,7 +502,7 @@ describe("findSessionForRunsView", () => {
   );
 
   postgresTest("a dev session is visible to its owner only", async ({ prisma }) => {
-    const ctx = await seedAccess(prisma, { sessionTraceEnabled: true });
+    const ctx = await seedAccess(prisma);
 
     expect(await ctx.request(ctx.owner.user.id, "dev", ctx.devSession.friendlyId)).toMatchObject({
       ok: true,
@@ -473,27 +511,6 @@ describe("findSessionForRunsView", () => {
       ok: false,
       error: "Environment not found",
     });
-  });
-
-  postgresTest("flag off hides it from members but not from admins", async ({ prisma }) => {
-    const ctx = await seedAccess(prisma);
-
-    expect(await ctx.request(ctx.teammate.user.id, "prod", ctx.prodSession.friendlyId)).toEqual({
-      ok: false,
-      error: "Not found",
-    });
-    expect(
-      await ctx.request(ctx.teammate.user.id, "prod", ctx.prodSession.friendlyId, true)
-    ).toMatchObject({ ok: true });
-  });
-
-  postgresTest("self-hosted instances never see it, even with the flag on", async ({ prisma }) => {
-    const ctx = await seedAccess(prisma, { sessionTraceEnabled: true });
-    const selfHosted = (isAdmin: boolean) =>
-      ctx.request(ctx.teammate.user.id, "prod", ctx.prodSession.friendlyId, isAdmin, false);
-
-    expect(await selfHosted(false)).toEqual({ ok: false, error: "Not found" });
-    expect(await selfHosted(true)).toEqual({ ok: false, error: "Not found" });
   });
 });
 

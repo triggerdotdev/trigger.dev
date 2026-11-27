@@ -1,3 +1,4 @@
+import { DEV_VERSION_HINT } from "~/utils/versionLabel";
 import { getFormProps, getInputProps, getSelectProps, useForm } from "@conform-to/react";
 import { parseWithZod } from "~/utils/conform";
 import { RectangleStackIcon } from "@heroicons/react/20/solid";
@@ -7,7 +8,7 @@ import { MachinePresetName } from "@trigger.dev/core/v3";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { type UseDataFunctionReturn, useTypedFetcher } from "remix-typedjson";
 import { TaskIcon } from "~/assets/icons/TaskIcon";
-import { JSONEditor } from "~/components/code/JSONEditor";
+import { LazyJSONEditor } from "~/components/code/LazyJSONEditor";
 import { EnvironmentCombo } from "~/components/environments/EnvironmentLabel";
 import { Badge } from "~/components/primitives/Badge";
 import { Button } from "~/components/primitives/Buttons";
@@ -35,6 +36,7 @@ import { type loader } from "~/routes/resources.taskruns.$runParam.replay";
 import { docsPath } from "~/utils/pathBuilder";
 import { ReplayRunData } from "~/v3/replayTask";
 import { RunTagInput } from "./RunTagInput";
+import { replayVersionChoices } from "./replayVersions";
 
 type ReplayRunDialogProps = {
   runFriendlyId: string;
@@ -184,6 +186,8 @@ function ReplayForm({
   const editablePayload =
     replayData.payloadType === "application/json" ||
     replayData.payloadType === "application/super+json";
+  const versionChoices = replayVersionChoices(replayData.latestVersions, replayData.currentVersion);
+  const offerCurrent = replayData.disableVersionSelection || replayData.taskInCurrentVersion;
 
   const [tab, setTab] = useState<"payload" | "metadata">(editablePayload ? "payload" : "metadata");
 
@@ -256,7 +260,7 @@ function ReplayForm({
       >
         <ResizablePanel id="payload" min="300px">
           <div className="mb-3 h-full min-h-40 overflow-y-auto rounded-sm bg-background-deep scrollbar-thin scrollbar-track-transparent scrollbar-thumb-surface-control">
-            <JSONEditor
+            <LazyJSONEditor
               className="h-full"
               autoFocus
               defaultValue={tab === "payload" ? defaultPayloadJson : defaultMetadataJson}
@@ -349,28 +353,42 @@ function ReplayForm({
                 <Label htmlFor={version.id} variant="small">
                   Version
                 </Label>
+                {/* Keyed by environment so changing it goes back to the current version. */}
                 <Select
                   {...getSelectProps(version)}
-                  defaultValue="latest"
+                  key={`${version.key ?? "version"}-${replayData.environment.id}`}
+                  defaultValue={offerCurrent ? "latest" : versionChoices.others[0]?.value}
                   variant="tertiary/small"
                   placeholder="Select version"
                   dropdownIcon
                   disabled={replayData.disableVersionSelection}
+                  text={(value) =>
+                    value === "latest"
+                      ? versionChoices.currentLabel
+                      : (versionChoices.others.find((v) => v.value === value)?.label ?? value)
+                  }
                 >
-                  {replayData.latestVersions.length === 0 ? (
-                    <SelectItem disabled>No versions available</SelectItem>
-                  ) : (
-                    replayData.latestVersions.map((version, i) => (
-                      <SelectItem key={version} value={i === 0 ? "latest" : version}>
-                        {version} {i === 0 && "(latest)"}
-                      </SelectItem>
-                    ))
-                  )}
+                  {offerCurrent ? (
+                    <SelectItem value="latest">{versionChoices.currentLabel}</SelectItem>
+                  ) : null}
+                  {versionChoices.others.map((v) => (
+                    <SelectItem key={v.value} value={v.value}>
+                      {v.label}
+                    </SelectItem>
+                  ))}
                 </Select>
                 {replayData.disableVersionSelection ? (
-                  <Hint>Only the latest version is available in the development environment.</Hint>
-                ) : (
+                  <Hint>{DEV_VERSION_HINT}</Hint>
+                ) : offerCurrent ? (
                   <Hint>Runs task on a specific version.</Hint>
+                ) : (
+                  <Hint>
+                    {versionChoices.others.length === 0
+                      ? "No version in this environment has this task yet, so the replay will wait for a deploy that includes it."
+                      : replayData.currentVersion
+                        ? `This task isn't in the current version (${replayData.currentVersion}). Pick a version that has it.`
+                        : "No version is promoted yet. Pick a version to run."}
+                  </Hint>
                 )}
                 <FormError id={version.errorId}>{version.errors}</FormError>
               </InputGroup>

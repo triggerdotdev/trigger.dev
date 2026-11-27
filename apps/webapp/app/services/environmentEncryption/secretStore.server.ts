@@ -154,13 +154,6 @@ export class EnvironmentSecretStore {
 
   async setSecret<T extends object>(key: string, value: T) {
     const context = this.#context(key);
-    const protectedKeys =
-      this.protectedKeys ??
-      (await protectedSecretKeys(this.db, this.projectId, [context.environmentId]));
-    if (protectedKeys.has(key)) {
-      recordSecretProxyFailure("guard", "policy");
-      throw new Error("Proxy-only variables require operator changes");
-    }
     const prepared = this.prepared.get(context.environmentId);
     if (!prepared)
       throw new Error("Environment encryption must be prepared before starting a transaction");
@@ -174,14 +167,7 @@ export class EnvironmentSecretStore {
   }
 
   async deleteSecret(key: string) {
-    const context = this.#context(key);
-    const protectedKeys =
-      this.protectedKeys ??
-      (await protectedSecretKeys(this.db, this.projectId, [context.environmentId]));
-    if (protectedKeys.has(key)) {
-      recordSecretProxyFailure("guard", "policy");
-      throw new Error("Proxy-only variables require operator changes");
-    }
+    this.#context(key);
     await this.db.secretStore.delete({ where: { key } });
   }
 }

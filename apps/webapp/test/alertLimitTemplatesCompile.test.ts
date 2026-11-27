@@ -34,6 +34,16 @@ describe("limits capability templates", () => {
     }
   });
 
+  it("limits.concurrency main template keeps the limited signal's AND inside the OR", () => {
+    const cap = LIMITS.find((c) => c.key === "limits.concurrency")!;
+    const { sql } = compile(cap.binding.template!, { utilisationPct: 80 });
+    expect(sql).toContain(
+      "or(if(greater(max(max_env_limit), 0), greaterOrEquals(divide(multiply(max(max_env_running), 100), " +
+        "max(max_env_limit)), 80), 0), and(greater(max(max_env_limit), 0), " +
+        "greaterOrEquals(max(max_env_running), max(max_env_limit))))"
+    );
+  });
+
   it("rejects a template referencing a column the table does not have", () => {
     const cap = LIMITS.find((c) => c.key === "limits.webhooks.endpoint_rate")!;
     expect(() =>

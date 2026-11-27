@@ -225,14 +225,14 @@ function localDeclarations(sf: ts.SourceFile): LocalDeclarations {
 }
 
 /**
- * Block bodies of the exported `loader`/`action` handlers, the region a whole-body wrapper wraps. Reads
+ * Bodies of the exported `loader`/`action` handlers, the region a whole-body wrapper wraps. Reads
  * the same four export forms `scan.ts` reads, and `wraps a body in every non-delegating entry point the
  * scanner finds` pins that so the harness cannot lag the scanner again.
  *
  * Not a retreat from the independence `collectNamedHandlers` keeps: that is about where a HANDLER sits
  * inside a builder's argument, which is a judgement. Which exports exist is not.
  */
-function entryBodies(sf: ts.SourceFile): ts.Block[] {
+function entryBodies(sf: ts.SourceFile): ts.ConciseBody[] {
   const functions: EntryFunction[] = [];
   const locals = localDeclarations(sf);
   const fromLocal = (name: string) => {
@@ -284,11 +284,11 @@ function entryBodies(sf: ts.SourceFile): ts.Block[] {
   // action of `const { loader, action } = createActionApiRoute({ handler })` resolve to the same
   // node. Wrapping it twice would splice the same text in twice at the same offset, because
   // `applyEdits` treats two zero-width inserts at one position as non-overlapping.
-  const bodies: ts.Block[] = [];
-  for (const fn of new Set(functions)) {
-    if (fn.body && ts.isBlock(fn.body)) bodies.push(fn.body);
-  }
-  return bodies;
+  return [...new Set(functions)].flatMap((fn) => (fn.body ? [fn.body] : []));
+}
+
+function entryBlocks(sf: ts.SourceFile): ts.Block[] {
+  return entryBodies(sf).filter(ts.isBlock);
 }
 
 // -- generic mutation shapes ----------------------------------------------------------------
@@ -416,9 +416,26 @@ function wrapEveryBody(
     apply(fileName, source) {
       const sf = parse(fileName, source);
       const edits: Edit[] = [];
-      for (const body of entryBodies(sf)) {
-        edits.push(insert(body.getStart() + 1, `\n${open}\n`));
-        edits.push(insert(body.end - 1, `\n${close}\n`));
+      const bodies = entryBodies(sf);
+      const hasBlock = bodies.some(ts.isBlock);
+      for (const body of bodies) {
+        if (ts.isBlock(body)) {
+          edits.push(insert(body.getStart() + 1, `\n${open}\n`));
+          edits.push(insert(body.end - 1, `\n${close}\n`));
+        } else {
+          const expression = unwrap(body);
+          // A redirect-only loader is not the substantive handler of a mixed route.
+          if (
+            hasBlock &&
+            ts.isCallExpression(expression) &&
+            ts.isIdentifier(expression.expression) &&
+            expression.expression.text === "redirect"
+          ) {
+            continue;
+          }
+          edits.push(insert(body.getStart(), `{\n${open}\nreturn (`));
+          edits.push(insert(body.end, `);\n${close}\n}`));
+        }
       }
       return applyEdits(source, edits);
     },
@@ -811,7 +828,7 @@ export const MUTATIONS: Mutation[] = [
     apply(fileName, source) {
       const sf = parse(fileName, source);
       const edits: Edit[] = [];
-      for (const body of entryBodies(sf)) {
+      for (const body of entryBlocks(sf)) {
         edits.push(
           insert(
             body.getStart() + 1,
@@ -831,7 +848,7 @@ export const MUTATIONS: Mutation[] = [
     apply(fileName, source) {
       const sf = parse(fileName, source);
       const edits: Edit[] = [];
-      for (const body of entryBodies(sf)) {
+      for (const body of entryBlocks(sf)) {
         edits.push(
           insert(
             body.getStart() + 1,
@@ -999,7 +1016,7 @@ export const MUTATIONS: Mutation[] = [
       const sf = parse(fileName, source);
       const edits: Edit[] = [];
       let n = 0;
-      for (const body of entryBodies(sf)) {
+      for (const body of entryBlocks(sf)) {
         forEachNode(body, (node) => {
           if (!ts.isTryStatement(node)) return;
           if (!node.parent || !ts.isBlock(node.parent)) return;

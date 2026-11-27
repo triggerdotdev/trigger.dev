@@ -70,6 +70,7 @@ export function toAuthenticated(
     // doing arithmetic. Lossless at this scale (Decimal(4,2)).
     concurrencyLimitBurstFactor: env.concurrencyLimitBurstFactor.toNumber(),
     builtInEnvironmentVariableOverrides: env.builtInEnvironmentVariableOverrides,
+    skewProtectionThresholds: env.skewProtectionThresholds,
     createdAt: env.createdAt,
     updatedAt: env.updatedAt,
     project: {
@@ -80,6 +81,7 @@ export function toAuthenticated(
       engine: env.project.engine,
       deletedAt: env.project.deletedAt,
       defaultWorkerGroupId: env.project.defaultWorkerGroupId,
+      secretProxyEnabled: env.project.secretProxyEnabled,
       organizationId: env.project.organizationId,
       builderProjectId: env.project.builderProjectId,
       defaultRuntime: BuildRuntime.nullable().safeParse(env.project.defaultRuntime).data ?? null,
@@ -454,8 +456,11 @@ export async function findEnvironmentByPublicApiKey(
   return toAuthenticated(environment);
 }
 
-export async function findEnvironmentById(id: string): Promise<AuthenticatedEnvironment | null> {
-  const environment = await $replica.runtimeEnvironment.findFirst({
+export async function findEnvironmentById(
+  id: string,
+  db: PrismaClientOrTransaction = $replica
+): Promise<AuthenticatedEnvironment | null> {
+  const environment = await db.runtimeEnvironment.findFirst({
     where: {
       id,
     },

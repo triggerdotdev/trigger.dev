@@ -73,6 +73,11 @@ async function loadAccessPolicyPlugin(): Promise<AccessPolicyController | null> 
           getBillingLimit: async () => billingLimit,
         });
       },
+      onBanCredentialsChanged: async (changes) => {
+        const { recordOrgBanCredentialChanges } =
+          await import("~/services/auditLogs/orgBanAuditEvents.server");
+        await recordOrgBanCredentialChanges(changes);
+      },
     });
   } catch (error) {
     const code = (error as NodeJS.ErrnoException)?.code;

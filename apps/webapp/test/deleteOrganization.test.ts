@@ -1,8 +1,18 @@
 import { postgresTest } from "@internal/testcontainers";
 import type { PrismaClient } from "@trigger.dev/database";
 import { beforeEach, describe, expect, vi } from "vitest";
-import { DeleteOrganizationService } from "~/services/deleteOrganization.server";
-import { createTestUser, uniqueId } from "./fixtures/environmentVariablesFixtures";
+import {
+  DeleteOrganizationService,
+  deleteOrganizationErrorMessage,
+  isDeleteOrganizationClientError,
+} from "~/services/deleteOrganization.server";
+import { DeleteProjectService } from "~/services/deleteProject.server";
+import {
+  createRuntimeEnvironment,
+  createTestOrgProjectWithMember,
+  createTestUser,
+  uniqueId,
+} from "./fixtures/environmentVariablesFixtures";
 
 const { getCurrentPlanOrThrowMock, cancelSubscriptionMock } = vi.hoisted(() => ({
   getCurrentPlanOrThrowMock: vi.fn(async (_orgId: string): Promise<unknown> => undefined),
@@ -30,6 +40,13 @@ vi.mock("~/models/vercelIntegration.server", () => ({
 
 vi.mock("~/v3/commonWorker.server", () => ({
   commonWorker: { enqueue: async () => undefined },
+}));
+
+const { deleteEnvironmentSignalStreams } = vi.hoisted(() => ({
+  deleteEnvironmentSignalStreams: vi.fn(async (_environments: unknown[]) => undefined),
+}));
+vi.mock("~/services/realtime/environmentSignals.server", () => ({
+  deleteEnvironmentSignalStreams,
 }));
 
 vi.setConfig({ testTimeout: 60_000 });
@@ -191,6 +208,53 @@ async function seedVercelIntegration(
   return { integration, projectIntegration };
 }
 
+describe("DeleteOrganizationService caller errors", () => {
+  beforeEach(() => {
+    getCurrentPlanOrThrowMock.mockReset();
+    cancelSubscriptionMock.mockReset();
+  });
+
+  // Catches: a deliberate error losing its marker and being reported as a server failure.
+  for (const [name, message] of [
+    ["not found", "Organization not found"],
+    ["already deleted", "Organization already deleted"],
+    ["cancel fails", "Couldn't cancel the subscription, try again"],
+  ] as const) {
+    postgresTest(`marks ${name} as a caller error`, async ({ prisma }) => {
+      const { user, organization } = await createOrg(prisma);
+      let slug = organization.slug;
+      if (name === "not found") slug = "missing";
+      if (name === "already deleted") {
+        await prisma.organization.update({
+          where: { id: organization.id },
+          data: { deletedAt: new Date() },
+        });
+      }
+      if (name === "cancel fails") {
+        getCurrentPlanOrThrowMock.mockResolvedValue(plan({ isPaying: true }));
+        cancelSubscriptionMock.mockResolvedValue({ success: false, error: "stripe_error" });
+      }
+
+      const error = await deleteOrg(prisma, slug, user.id).catch((e: unknown) => e);
+
+      expect(isDeleteOrganizationClientError(error)).toBe(true);
+      expect((error as Error).message).toBe(message);
+    });
+  }
+});
+
+describe("deleteOrganizationErrorMessage", () => {
+  postgresTest("shows a deliberate error as is and hides any other", async ({ prisma }) => {
+    const { user } = await createOrg(prisma);
+    const deliberate = await deleteOrg(prisma, "missing", user.id).catch((e: unknown) => e);
+
+    expect(deleteOrganizationErrorMessage(deliberate)).toBe("Organization not found");
+    const hidden = deleteOrganizationErrorMessage(new Error("NOPERM zrem denied"));
+    expect(hidden).not.toContain("NOPERM");
+    expect(hidden).not.toBe("NOPERM zrem denied");
+  });
+});
+
 describe("DeleteOrganizationService Vercel integration", () => {
   beforeEach(() => {
     getCurrentPlanOrThrowMock.mockReset();
@@ -274,5 +338,47 @@ describe("DeleteOrganizationService Vercel integration", () => {
       where: { organizationId: organization.id },
     });
     expect(rows.filter((r) => r.deletedAt instanceof Date)).toHaveLength(1);
+  });
+});
+
+// Catches: signal payloads outliving a deleted project or org in the environment's S2 stream.
+describe("signal streams on deletion", () => {
+  async function seed(prisma: PrismaClient) {
+    const seeded = await createTestOrgProjectWithMember(prisma);
+    const live = await createRuntimeEnvironment(prisma, {
+      projectId: seeded.project.id,
+      organizationId: seeded.organization.id,
+      type: "PRODUCTION",
+    });
+    const archived = await createRuntimeEnvironment(prisma, {
+      projectId: seeded.project.id,
+      organizationId: seeded.organization.id,
+      type: "PREVIEW",
+    });
+    await prisma.runtimeEnvironment.update({
+      where: { id: archived.id },
+      data: { archivedAt: new Date() },
+    });
+    return { ...seeded, live };
+  }
+
+  postgresTest("deleting a project deletes its live environments' streams", async ({ prisma }) => {
+    deleteEnvironmentSignalStreams.mockClear();
+    const { user, project, live } = await seed(prisma);
+    await new DeleteProjectService(prisma).call({ projectId: project.id, userId: user.id });
+    expect(deleteEnvironmentSignalStreams).toHaveBeenCalledTimes(1);
+    expect(deleteEnvironmentSignalStreams.mock.calls[0]![0]).toEqual([
+      expect.objectContaining({ id: live.id, slug: live.slug }),
+    ]);
+  });
+
+  postgresTest("deleting an org deletes each project's streams", async ({ prisma }) => {
+    deleteEnvironmentSignalStreams.mockClear();
+    getCurrentPlanOrThrowMock.mockResolvedValue(undefined);
+    const { user, organization, live } = await seed(prisma);
+    await deleteOrg(prisma, organization.slug, user.id);
+    expect(deleteEnvironmentSignalStreams.mock.calls.flatMap(([envs]) => envs)).toEqual([
+      expect.objectContaining({ id: live.id }),
+    ]);
   });
 });

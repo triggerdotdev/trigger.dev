@@ -98,7 +98,6 @@ describe("selection and tree rows", () => {
   });
 
   it("gives label rows no selection", () => {
-    expect(rowSelection({ kind: "gap", durationMs: 1 })).toBeUndefined();
     expect(rowSelection({ kind: "loadEarlier", count: 3 })).toBeUndefined();
     expect(
       rowSelection({

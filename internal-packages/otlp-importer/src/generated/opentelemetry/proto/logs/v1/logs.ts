@@ -429,10 +429,10 @@ const LogsData = {
     return obj;
   },
 
-  create<I extends Exact<DeepPartial<LogsData>, I>>(base?: I): LogsData {
-    return LogsData.fromPartial(base ?? ({} as any));
+  create(base?: DeepPartial<LogsData>): LogsData {
+    return LogsData.fromPartial(base ?? {});
   },
-  fromPartial<I extends Exact<DeepPartial<LogsData>, I>>(object: I): LogsData {
+  fromPartial(object: DeepPartial<LogsData>): LogsData {
     const message = createBaseLogsData();
     message.resourceLogs = object.resourceLogs?.map((e) => ResourceLogs.fromPartial(e)) || [];
     return message;
@@ -518,10 +518,10 @@ export const ResourceLogs = {
     return obj;
   },
 
-  create<I extends Exact<DeepPartial<ResourceLogs>, I>>(base?: I): ResourceLogs {
-    return ResourceLogs.fromPartial(base ?? ({} as any));
+  create(base?: DeepPartial<ResourceLogs>): ResourceLogs {
+    return ResourceLogs.fromPartial(base ?? {});
   },
-  fromPartial<I extends Exact<DeepPartial<ResourceLogs>, I>>(object: I): ResourceLogs {
+  fromPartial(object: DeepPartial<ResourceLogs>): ResourceLogs {
     const message = createBaseResourceLogs();
     message.resource =
       object.resource !== undefined && object.resource !== null
@@ -612,10 +612,10 @@ export const ScopeLogs = {
     return obj;
   },
 
-  create<I extends Exact<DeepPartial<ScopeLogs>, I>>(base?: I): ScopeLogs {
-    return ScopeLogs.fromPartial(base ?? ({} as any));
+  create(base?: DeepPartial<ScopeLogs>): ScopeLogs {
+    return ScopeLogs.fromPartial(base ?? {});
   },
-  fromPartial<I extends Exact<DeepPartial<ScopeLogs>, I>>(object: I): ScopeLogs {
+  fromPartial(object: DeepPartial<ScopeLogs>): ScopeLogs {
     const message = createBaseScopeLogs();
     message.scope =
       object.scope !== undefined && object.scope !== null
@@ -833,10 +833,10 @@ export const LogRecord = {
     return obj;
   },
 
-  create<I extends Exact<DeepPartial<LogRecord>, I>>(base?: I): LogRecord {
-    return LogRecord.fromPartial(base ?? ({} as any));
+  create(base?: DeepPartial<LogRecord>): LogRecord {
+    return LogRecord.fromPartial(base ?? {});
   },
-  fromPartial<I extends Exact<DeepPartial<LogRecord>, I>>(object: I): LogRecord {
+  fromPartial(object: DeepPartial<LogRecord>): LogRecord {
     const message = createBaseLogRecord();
     message.timeUnixNano = object.timeUnixNano ?? BigInt("0");
     message.observedTimeUnixNano = object.observedTimeUnixNano ?? BigInt("0");
@@ -891,11 +891,6 @@ type DeepPartial<T> = T extends Builtin
       : T extends {}
         ? { [K in keyof T]?: DeepPartial<T[K]> }
         : Partial<T>;
-
-type KeysOfUnion<T> = T extends T ? keyof T : never;
-type Exact<P, I extends P> = P extends Builtin
-  ? P
-  : P & { [K in keyof P]: Exact<P[K], I[K]> } & { [K in Exclude<keyof I, KeysOfUnion<P>>]: never };
 
 function longToBigint(long: Long) {
   return BigInt(long.toString());

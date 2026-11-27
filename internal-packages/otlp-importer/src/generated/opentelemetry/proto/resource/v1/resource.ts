@@ -86,10 +86,10 @@ export const Resource = {
     return obj;
   },
 
-  create<I extends Exact<DeepPartial<Resource>, I>>(base?: I): Resource {
-    return Resource.fromPartial(base ?? ({} as any));
+  create(base?: DeepPartial<Resource>): Resource {
+    return Resource.fromPartial(base ?? {});
   },
-  fromPartial<I extends Exact<DeepPartial<Resource>, I>>(object: I): Resource {
+  fromPartial(object: DeepPartial<Resource>): Resource {
     const message = createBaseResource();
     message.attributes = object.attributes?.map((e) => KeyValue.fromPartial(e)) || [];
     message.droppedAttributesCount = object.droppedAttributesCount ?? 0;
@@ -108,11 +108,6 @@ type DeepPartial<T> = T extends Builtin
       : T extends {}
         ? { [K in keyof T]?: DeepPartial<T[K]> }
         : Partial<T>;
-
-type KeysOfUnion<T> = T extends T ? keyof T : never;
-type Exact<P, I extends P> = P extends Builtin
-  ? P
-  : P & { [K in keyof P]: Exact<P[K], I[K]> } & { [K in Exclude<keyof I, KeysOfUnion<P>>]: never };
 
 function isSet(value: any): boolean {
   return value !== null && value !== undefined;

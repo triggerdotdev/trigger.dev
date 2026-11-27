@@ -172,7 +172,7 @@ Don't hold a client across a slow await, either. `pool.query()` checks a connect
 A chat agent runs one long-lived worker per conversation and suspends between messages, so its connection count tracks the conversations streaming a turn at the same moment. The global `tasks.onWait` handler above covers chat agents too. Two more specifics:
 
 - Don't hold a connection across `streamText()`. A turn spends most of its time waiting on the model, so query and release before the stream starts.
-- To release only when a conversation goes idle (rather than on every internal wait within a turn), use [`onChatSuspend`](/ai-chat/lifecycle-hooks#onchatsuspend--onchatresume) instead of the global handler.
+- To release only when a conversation goes idle (rather than on every internal wait within a turn), use [`onChatSuspend`](/ai-chat/lifecycle-hooks#onchatsuspend-/-onchatresume) instead of the global handler.
 
 ```ts /trigger/chat.ts
 import { chat } from "@trigger.dev/sdk/ai";
