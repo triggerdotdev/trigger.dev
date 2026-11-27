@@ -2728,11 +2728,9 @@ export class RunQueue {
         }
       });
 
-      stream.on("end", async () => {
-        if (matchingQueues.length > 0) {
-          await this.redis.zrem(masterQueue, matchingQueues);
-        }
-        resolve();
+      stream.on("end", () => {
+        if (matchingQueues.length === 0) return resolve();
+        this.redis.zrem(masterQueue, matchingQueues).then(() => resolve(), reject);
       });
 
       stream.on("error", (err) => reject(err));
