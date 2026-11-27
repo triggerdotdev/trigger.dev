@@ -6,8 +6,8 @@
   "packageManager": "pnpm@10.33.2",
   "scripts": {
     "dev": "vite --host 127.0.0.1",
-    "build": "tsc --noEmit && vite build",
-    "typecheck": "tsc --noEmit",
+    "build": "tsrs --fast --noEmit && vite build",
+    "typecheck": "tsrs --fast --noEmit",
     "test": "vitest run",
     "dev:convex": "convex dev",
     "deploy:convex": "convex deploy",
@@ -28,6 +28,7 @@
     "zod": "4.5.4"
   },
   "devDependencies": {
+    "tsrs": "7.1.0-beta.tsrs5",
     "@trigger.dev/build": "4.8.3",
     "@types/node": "24.13.3",
     "@types/react": "19.2.17",

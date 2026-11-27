@@ -13,7 +13,7 @@
     "@internal/webhook-engine": "workspace:*"
   },
   "scripts": {
-    "typecheck": "tsc --noEmit",
+    "typecheck": "tsrs --fast --noEmit",
     "test": "vitest",
     "ingest": "tsx src/ingest.ts",
     "catalog:status": "tsx catalog/status.ts",

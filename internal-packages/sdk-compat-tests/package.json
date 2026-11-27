@@ -6,7 +6,7 @@
   "scripts": {
     "test": "vitest",
     "test:watch": "vitest",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsrs --fast --noEmit"
   },
   "devDependencies": {
     "@trigger.dev/sdk": "workspace:*",

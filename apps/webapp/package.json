@@ -16,7 +16,7 @@
     "lint": "oxlint -c ../../.oxlintrc.json",
     "start": "cross-env NODE_ENV=production node --max-old-space-size=8192 ./build/server.js",
     "start:local": "cross-env varlock run --inject vars -- node --max-old-space-size=8192 ./build/server.js",
-    "typecheck": "cross-env NODE_OPTIONS=\"--max-old-space-size=8192\" tsc --noEmit -p ./tsconfig.check.json",
+    "typecheck": "tsrs --fast --noEmit -p ./tsconfig.check.json",
     "guard:runops-legacy": "cross-env NODE_OPTIONS=\"--max-old-space-size=8192\" tsx ./scripts/runOpsLegacyGuard.ts",
     "guard:fk-cascade-index": "tsx ./scripts/fkCascadeIndexGuard.ts",
     "guard:migrations": "tsx ./scripts/migrationSafetyGuard.ts --cutoff 20260918",

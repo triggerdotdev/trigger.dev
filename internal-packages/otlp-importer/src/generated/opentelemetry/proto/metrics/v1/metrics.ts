@@ -833,10 +833,10 @@ const MetricsData = {
     return obj;
   },
 
-  create<I extends Exact<DeepPartial<MetricsData>, I>>(base?: I): MetricsData {
-    return MetricsData.fromPartial(base ?? ({} as any));
+  create(base?: DeepPartial<MetricsData>): MetricsData {
+    return MetricsData.fromPartial(base ?? {});
   },
-  fromPartial<I extends Exact<DeepPartial<MetricsData>, I>>(object: I): MetricsData {
+  fromPartial(object: DeepPartial<MetricsData>): MetricsData {
     const message = createBaseMetricsData();
     message.resourceMetrics =
       object.resourceMetrics?.map((e) => ResourceMetrics.fromPartial(e)) || [];
@@ -923,10 +923,10 @@ export const ResourceMetrics = {
     return obj;
   },
 
-  create<I extends Exact<DeepPartial<ResourceMetrics>, I>>(base?: I): ResourceMetrics {
-    return ResourceMetrics.fromPartial(base ?? ({} as any));
+  create(base?: DeepPartial<ResourceMetrics>): ResourceMetrics {
+    return ResourceMetrics.fromPartial(base ?? {});
   },
-  fromPartial<I extends Exact<DeepPartial<ResourceMetrics>, I>>(object: I): ResourceMetrics {
+  fromPartial(object: DeepPartial<ResourceMetrics>): ResourceMetrics {
     const message = createBaseResourceMetrics();
     message.resource =
       object.resource !== undefined && object.resource !== null
@@ -1017,10 +1017,10 @@ export const ScopeMetrics = {
     return obj;
   },
 
-  create<I extends Exact<DeepPartial<ScopeMetrics>, I>>(base?: I): ScopeMetrics {
-    return ScopeMetrics.fromPartial(base ?? ({} as any));
+  create(base?: DeepPartial<ScopeMetrics>): ScopeMetrics {
+    return ScopeMetrics.fromPartial(base ?? {});
   },
-  fromPartial<I extends Exact<DeepPartial<ScopeMetrics>, I>>(object: I): ScopeMetrics {
+  fromPartial(object: DeepPartial<ScopeMetrics>): ScopeMetrics {
     const message = createBaseScopeMetrics();
     message.scope =
       object.scope !== undefined && object.scope !== null
@@ -1207,10 +1207,10 @@ export const Metric = {
     return obj;
   },
 
-  create<I extends Exact<DeepPartial<Metric>, I>>(base?: I): Metric {
-    return Metric.fromPartial(base ?? ({} as any));
+  create(base?: DeepPartial<Metric>): Metric {
+    return Metric.fromPartial(base ?? {});
   },
-  fromPartial<I extends Exact<DeepPartial<Metric>, I>>(object: I): Metric {
+  fromPartial(object: DeepPartial<Metric>): Metric {
     const message = createBaseMetric();
     message.name = object.name ?? "";
     message.description = object.description ?? "";
@@ -1289,10 +1289,10 @@ export const Gauge = {
     return obj;
   },
 
-  create<I extends Exact<DeepPartial<Gauge>, I>>(base?: I): Gauge {
-    return Gauge.fromPartial(base ?? ({} as any));
+  create(base?: DeepPartial<Gauge>): Gauge {
+    return Gauge.fromPartial(base ?? {});
   },
-  fromPartial<I extends Exact<DeepPartial<Gauge>, I>>(object: I): Gauge {
+  fromPartial(object: DeepPartial<Gauge>): Gauge {
     const message = createBaseGauge();
     message.dataPoints = object.dataPoints?.map((e) => NumberDataPoint.fromPartial(e)) || [];
     return message;
@@ -1380,10 +1380,10 @@ export const Sum = {
     return obj;
   },
 
-  create<I extends Exact<DeepPartial<Sum>, I>>(base?: I): Sum {
-    return Sum.fromPartial(base ?? ({} as any));
+  create(base?: DeepPartial<Sum>): Sum {
+    return Sum.fromPartial(base ?? {});
   },
-  fromPartial<I extends Exact<DeepPartial<Sum>, I>>(object: I): Sum {
+  fromPartial(object: DeepPartial<Sum>): Sum {
     const message = createBaseSum();
     message.dataPoints = object.dataPoints?.map((e) => NumberDataPoint.fromPartial(e)) || [];
     message.aggregationTemporality = object.aggregationTemporality ?? 0;
@@ -1459,10 +1459,10 @@ export const Histogram = {
     return obj;
   },
 
-  create<I extends Exact<DeepPartial<Histogram>, I>>(base?: I): Histogram {
-    return Histogram.fromPartial(base ?? ({} as any));
+  create(base?: DeepPartial<Histogram>): Histogram {
+    return Histogram.fromPartial(base ?? {});
   },
-  fromPartial<I extends Exact<DeepPartial<Histogram>, I>>(object: I): Histogram {
+  fromPartial(object: DeepPartial<Histogram>): Histogram {
     const message = createBaseHistogram();
     message.dataPoints = object.dataPoints?.map((e) => HistogramDataPoint.fromPartial(e)) || [];
     message.aggregationTemporality = object.aggregationTemporality ?? 0;
@@ -1537,12 +1537,10 @@ export const ExponentialHistogram = {
     return obj;
   },
 
-  create<I extends Exact<DeepPartial<ExponentialHistogram>, I>>(base?: I): ExponentialHistogram {
-    return ExponentialHistogram.fromPartial(base ?? ({} as any));
+  create(base?: DeepPartial<ExponentialHistogram>): ExponentialHistogram {
+    return ExponentialHistogram.fromPartial(base ?? {});
   },
-  fromPartial<I extends Exact<DeepPartial<ExponentialHistogram>, I>>(
-    object: I
-  ): ExponentialHistogram {
+  fromPartial(object: DeepPartial<ExponentialHistogram>): ExponentialHistogram {
     const message = createBaseExponentialHistogram();
     message.dataPoints =
       object.dataPoints?.map((e) => ExponentialHistogramDataPoint.fromPartial(e)) || [];
@@ -1602,10 +1600,10 @@ export const Summary = {
     return obj;
   },
 
-  create<I extends Exact<DeepPartial<Summary>, I>>(base?: I): Summary {
-    return Summary.fromPartial(base ?? ({} as any));
+  create(base?: DeepPartial<Summary>): Summary {
+    return Summary.fromPartial(base ?? {});
   },
-  fromPartial<I extends Exact<DeepPartial<Summary>, I>>(object: I): Summary {
+  fromPartial(object: DeepPartial<Summary>): Summary {
     const message = createBaseSummary();
     message.dataPoints = object.dataPoints?.map((e) => SummaryDataPoint.fromPartial(e)) || [];
     return message;
@@ -1774,10 +1772,10 @@ export const NumberDataPoint = {
     return obj;
   },
 
-  create<I extends Exact<DeepPartial<NumberDataPoint>, I>>(base?: I): NumberDataPoint {
-    return NumberDataPoint.fromPartial(base ?? ({} as any));
+  create(base?: DeepPartial<NumberDataPoint>): NumberDataPoint {
+    return NumberDataPoint.fromPartial(base ?? {});
   },
-  fromPartial<I extends Exact<DeepPartial<NumberDataPoint>, I>>(object: I): NumberDataPoint {
+  fromPartial(object: DeepPartial<NumberDataPoint>): NumberDataPoint {
     const message = createBaseNumberDataPoint();
     message.attributes = object.attributes?.map((e) => KeyValue.fromPartial(e)) || [];
     message.startTimeUnixNano = object.startTimeUnixNano ?? BigInt("0");
@@ -2045,10 +2043,10 @@ export const HistogramDataPoint = {
     return obj;
   },
 
-  create<I extends Exact<DeepPartial<HistogramDataPoint>, I>>(base?: I): HistogramDataPoint {
-    return HistogramDataPoint.fromPartial(base ?? ({} as any));
+  create(base?: DeepPartial<HistogramDataPoint>): HistogramDataPoint {
+    return HistogramDataPoint.fromPartial(base ?? {});
   },
-  fromPartial<I extends Exact<DeepPartial<HistogramDataPoint>, I>>(object: I): HistogramDataPoint {
+  fromPartial(object: DeepPartial<HistogramDataPoint>): HistogramDataPoint {
     const message = createBaseHistogramDataPoint();
     message.attributes = object.attributes?.map((e) => KeyValue.fromPartial(e)) || [];
     message.startTimeUnixNano = object.startTimeUnixNano ?? BigInt("0");
@@ -2350,14 +2348,10 @@ export const ExponentialHistogramDataPoint = {
     return obj;
   },
 
-  create<I extends Exact<DeepPartial<ExponentialHistogramDataPoint>, I>>(
-    base?: I
-  ): ExponentialHistogramDataPoint {
-    return ExponentialHistogramDataPoint.fromPartial(base ?? ({} as any));
+  create(base?: DeepPartial<ExponentialHistogramDataPoint>): ExponentialHistogramDataPoint {
+    return ExponentialHistogramDataPoint.fromPartial(base ?? {});
   },
-  fromPartial<I extends Exact<DeepPartial<ExponentialHistogramDataPoint>, I>>(
-    object: I
-  ): ExponentialHistogramDataPoint {
+  fromPartial(object: DeepPartial<ExponentialHistogramDataPoint>): ExponentialHistogramDataPoint {
     const message = createBaseExponentialHistogramDataPoint();
     message.attributes = object.attributes?.map((e) => KeyValue.fromPartial(e)) || [];
     message.startTimeUnixNano = object.startTimeUnixNano ?? BigInt("0");
@@ -2468,13 +2462,13 @@ const ExponentialHistogramDataPoint_Buckets = {
     return obj;
   },
 
-  create<I extends Exact<DeepPartial<ExponentialHistogramDataPoint_Buckets>, I>>(
-    base?: I
+  create(
+    base?: DeepPartial<ExponentialHistogramDataPoint_Buckets>
   ): ExponentialHistogramDataPoint_Buckets {
-    return ExponentialHistogramDataPoint_Buckets.fromPartial(base ?? ({} as any));
+    return ExponentialHistogramDataPoint_Buckets.fromPartial(base ?? {});
   },
-  fromPartial<I extends Exact<DeepPartial<ExponentialHistogramDataPoint_Buckets>, I>>(
-    object: I
+  fromPartial(
+    object: DeepPartial<ExponentialHistogramDataPoint_Buckets>
   ): ExponentialHistogramDataPoint_Buckets {
     const message = createBaseExponentialHistogramDataPoint_Buckets();
     message.offset = object.offset ?? 0;
@@ -2649,10 +2643,10 @@ export const SummaryDataPoint = {
     return obj;
   },
 
-  create<I extends Exact<DeepPartial<SummaryDataPoint>, I>>(base?: I): SummaryDataPoint {
-    return SummaryDataPoint.fromPartial(base ?? ({} as any));
+  create(base?: DeepPartial<SummaryDataPoint>): SummaryDataPoint {
+    return SummaryDataPoint.fromPartial(base ?? {});
   },
-  fromPartial<I extends Exact<DeepPartial<SummaryDataPoint>, I>>(object: I): SummaryDataPoint {
+  fromPartial(object: DeepPartial<SummaryDataPoint>): SummaryDataPoint {
     const message = createBaseSummaryDataPoint();
     message.attributes = object.attributes?.map((e) => KeyValue.fromPartial(e)) || [];
     message.startTimeUnixNano = object.startTimeUnixNano ?? BigInt("0");
@@ -2732,13 +2726,11 @@ const SummaryDataPoint_ValueAtQuantile = {
     return obj;
   },
 
-  create<I extends Exact<DeepPartial<SummaryDataPoint_ValueAtQuantile>, I>>(
-    base?: I
-  ): SummaryDataPoint_ValueAtQuantile {
-    return SummaryDataPoint_ValueAtQuantile.fromPartial(base ?? ({} as any));
+  create(base?: DeepPartial<SummaryDataPoint_ValueAtQuantile>): SummaryDataPoint_ValueAtQuantile {
+    return SummaryDataPoint_ValueAtQuantile.fromPartial(base ?? {});
   },
-  fromPartial<I extends Exact<DeepPartial<SummaryDataPoint_ValueAtQuantile>, I>>(
-    object: I
+  fromPartial(
+    object: DeepPartial<SummaryDataPoint_ValueAtQuantile>
   ): SummaryDataPoint_ValueAtQuantile {
     const message = createBaseSummaryDataPoint_ValueAtQuantile();
     message.quantile = object.quantile ?? 0;
@@ -2887,10 +2879,10 @@ const Exemplar = {
     return obj;
   },
 
-  create<I extends Exact<DeepPartial<Exemplar>, I>>(base?: I): Exemplar {
-    return Exemplar.fromPartial(base ?? ({} as any));
+  create(base?: DeepPartial<Exemplar>): Exemplar {
+    return Exemplar.fromPartial(base ?? {});
   },
-  fromPartial<I extends Exact<DeepPartial<Exemplar>, I>>(object: I): Exemplar {
+  fromPartial(object: DeepPartial<Exemplar>): Exemplar {
     const message = createBaseExemplar();
     message.filteredAttributes =
       object.filteredAttributes?.map((e) => KeyValue.fromPartial(e)) || [];
@@ -2939,11 +2931,6 @@ type DeepPartial<T> = T extends Builtin
       : T extends {}
         ? { [K in keyof T]?: DeepPartial<T[K]> }
         : Partial<T>;
-
-type KeysOfUnion<T> = T extends T ? keyof T : never;
-type Exact<P, I extends P> = P extends Builtin
-  ? P
-  : P & { [K in keyof P]: Exact<P[K], I[K]> } & { [K in Exclude<keyof I, KeysOfUnion<P>>]: never };
 
 function longToBigint(long: Long) {
   return BigInt(long.toString());

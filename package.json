@@ -58,6 +58,7 @@
     "storybook": "turbo run storybook"
   },
   "devDependencies": {
+    "tsrs": "7.1.0-beta.tsrs5",
     "@playwright/test": "^1.36.2",
     "@trigger.dev/database": "workspace:*",
     "@types/node": "24.13.3",

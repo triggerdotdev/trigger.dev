@@ -19,7 +19,7 @@ pnpm --filter docs-site check
 pnpm --filter docs-site test
 ```
 
-`pnpm exec tsc --noEmit` in `apps/docs` prints TS2307 errors (`@/.generated/*`, the SDK) on a fresh checkout. They go away once `build:sdk` and a `dev` or `build` have run, which write those files; they aren't from your change.
+`pnpm exec tsrs --fast --noEmit` in `apps/docs` prints TS2307 errors (`@/.generated/*`, the SDK) on a fresh checkout. They go away once `build:sdk` and a `dev` or `build` have run, which write those files; they aren't from your change.
 
 ## Configuration
 

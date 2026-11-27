@@ -13,7 +13,7 @@
     "superjson": "^2.2.1"
   },
   "scripts": {
-    "typecheck": "tsc --noEmit",
+    "typecheck": "tsrs --fast --noEmit",
     "test": "vitest",
     "test:watch": "vitest"
   }

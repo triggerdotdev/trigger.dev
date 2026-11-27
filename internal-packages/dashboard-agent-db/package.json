@@ -22,7 +22,7 @@
   "scripts": {
     "test": "vitest run",
     "test:watch": "vitest",
-    "typecheck": "tsc --noEmit",
+    "typecheck": "tsrs --fast --noEmit",
     "db:generate": "drizzle-kit generate",
     "env": "varlock run --inject vars --filter DATABASE_URL,DIRECT_URL,DASHBOARD_AGENT_DATABASE_URL,DASHBOARD_AGENT_DIRECT_URL --",
     "env:check": "varlock load --agent --filter DATABASE_URL,DIRECT_URL,DASHBOARD_AGENT_DATABASE_URL,DASHBOARD_AGENT_DIRECT_URL",

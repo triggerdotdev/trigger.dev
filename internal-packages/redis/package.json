@@ -10,7 +10,7 @@
     "@trigger.dev/core": "workspace:*"
   },
   "scripts": {
-    "typecheck": "tsc --noEmit",
+    "typecheck": "tsrs --fast --noEmit",
     "test": "vitest",
     "test:watch": "vitest"
   }

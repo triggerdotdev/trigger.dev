@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "node scripts/build-search-index.mjs && next dev --port 43000",
-    "build": "node scripts/build-search-index.mjs && next build --experimental-build-mode=compile && tsc --noEmit && next build --experimental-build-mode=generate",
+    "build": "node scripts/build-search-index.mjs && next build --experimental-build-mode=compile && tsrs --fast --noEmit && next build --experimental-build-mode=generate",
     "build:sdk": "cd ../.. && pnpm exec turbo run generate --filter=@trigger.dev/sdk... --filter=@trigger.dev/react-hooks... --filter=@trigger.dev/build... && pnpm exec turbo run build --filter=@trigger.dev/sdk... --filter=@trigger.dev/react-hooks... --filter=@trigger.dev/build...",
     "start": "next start --port 43000",
     "postinstall": "fumadocs-mdx",

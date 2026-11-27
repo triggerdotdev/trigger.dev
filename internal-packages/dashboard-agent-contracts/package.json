@@ -18,7 +18,7 @@
     "vitest": "4.1.12"
   },
   "scripts": {
-    "typecheck": "tsc --noEmit",
+    "typecheck": "tsrs --fast --noEmit",
     "test": "vitest run",
     "test:watch": "vitest"
   }

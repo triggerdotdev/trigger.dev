@@ -83,7 +83,8 @@ export default {
     },
     "packages/build": {
       ignoreFiles: ["src/**/*-cjs.cts"],
-      ignoreDependencies: ["@typescript/typescript6"],
+      // loadTypescript.test.ts resolves the compiler aliases dynamically.
+      ignoreDependencies: ["@typescript/typescript6", "typescript5", "typescript7"],
     },
     "packages/cli-v3": {
       entry: [

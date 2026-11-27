@@ -36,7 +36,7 @@
   "scripts": {
     "build": "rm -rf dist && tsc -p tsconfig.json",
     "test": "vitest run",
-    "typecheck": "tsc -p tsconfig.json --noEmit"
+    "typecheck": "tsrs --fast -p tsconfig.json --noEmit"
   },
   "peerDependencies": {
     "convex": "^1.48.0"
