@@ -73,7 +73,6 @@ export const FEATURE_FLAG = {
   runTokenInjection: "runTokenInjection",
   externalOidc: "externalOidc",
   trustedDeploysEnabled: "trustedDeploysEnabled",
-  sessionTraceEnabled: "sessionTraceEnabled",
   sandboxTasks: "sandboxTasks",
   namedMachines: "namedMachines",
   computeOnly: "computeOnly",
@@ -274,9 +273,6 @@ export const FeatureFlagCatalog = {
   // by default.
   [FEATURE_FLAG.namedMachines]: z.boolean(),
   [FEATURE_FLAG.trustedDeploysEnabled]: z.boolean(),
-  // Shows the session page's Trace tab and serves its routes. Org override wins over the global
-  // value; off by default. Admins always have it.
-  [FEATURE_FLAG.sessionTraceEnabled]: z.boolean(),
   // Records the org's audit events, behind the AUDIT_LOGS_RECORDING_ENABLED master switch. Org
   // override wins over the global value; off by default. Strict z.boolean(): coercion reads the
   // string "false" as true, which would record for an org meant to be off.

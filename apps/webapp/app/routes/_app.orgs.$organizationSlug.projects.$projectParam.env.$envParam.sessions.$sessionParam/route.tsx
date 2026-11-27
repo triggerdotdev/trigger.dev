@@ -64,11 +64,9 @@ import { useProject } from "~/hooks/useProject";
 import { useSearchParams } from "~/hooks/useSearchParam";
 import { useHasAdminAccess } from "~/hooks/useUser";
 import { redirectWithErrorMessage } from "~/models/message.server";
-import { findProjectWithOrgFlagsBySlug } from "~/models/project.server";
+import { findProjectBySlug } from "~/models/project.server";
 import { findEnvironmentBySlug } from "~/models/runtimeEnvironment.server";
 import { SessionPresenter } from "~/presenters/v3/SessionPresenter.server";
-import { featuresForRequest } from "~/features.server";
-import { canAccessSessionTrace } from "~/v3/canAccessSessionTrace.server";
 import { SessionTraceTab } from "~/components/sessions/v1/trace/SessionTraceTab";
 import { useSessionViewAnalytics } from "~/components/sessions/v1/trace/useSessionViewAnalytics";
 import { SessionRunInspector } from "~/components/sessions/v1/trace/SessionRunInspector";
@@ -136,16 +134,10 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   const userId = user.id;
   const { projectParam, organizationSlug, envParam, sessionParam } = ParamsSchema.parse(params);
 
-  const project = await findProjectWithOrgFlagsBySlug(organizationSlug, projectParam, userId);
+  const project = await findProjectBySlug(organizationSlug, projectParam, userId);
   if (!project) {
     return redirectWithErrorMessage("/", request, "Project not found");
   }
-
-  const sessionTraceEnabled = await canAccessSessionTrace({
-    isManagedCloud: featuresForRequest(request).isManagedCloud,
-    isAdmin: user.admin,
-    orgFeatureFlags: project.organization.featureFlags,
-  });
 
   const environment = await findEnvironmentBySlug(project.id, envParam, userId);
   if (!environment) {
@@ -159,7 +151,6 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
       view: searchParams.get("view") ?? undefined,
       raw: searchParams.get("raw") ?? undefined,
       channel: searchParams.get("channel") ?? undefined,
-      traceEnabled: sessionTraceEnabled,
     }) === "conversation";
 
   const presenter = new SessionPresenter($replica);
@@ -199,15 +190,12 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
     }
   }
 
-  const traceTreeSnapshot = sessionTraceEnabled
-    ? await getResizableSnapshot(request, SESSION_TREE_AUTOSAVE_ID)
-    : undefined;
+  const traceTreeSnapshot = await getResizableSnapshot(request, SESSION_TREE_AUTOSAVE_ID);
 
   return typedjson({
     session,
     channels,
     transcriptRead: opensOnConversation,
-    sessionTraceEnabled,
     traceTreeSnapshot,
     loadedAt: Date.now(),
   });
@@ -225,7 +213,7 @@ export default function Page() {
 }
 
 function SessionPage() {
-  const { session, channels, transcriptRead, sessionTraceEnabled, traceTreeSnapshot, loadedAt } =
+  const { session, channels, transcriptRead, traceTreeSnapshot, loadedAt } =
     useTypedLoaderData<typeof loader>();
   const organization = useOrganization();
   const project = useProject();
@@ -261,17 +249,13 @@ function SessionPage() {
       <PageBody scrollable={false}>
         <ResizablePanelGroup orientation="horizontal" className="max-h-full">
           <ResizablePanel id="session-conversation" min={"300px"}>
-            {sessionTraceEnabled ? (
-              <SessionLeftPane
-                session={session}
-                channels={channels}
-                transcriptRead={transcriptRead}
-                traceTreeSnapshot={traceTreeSnapshot}
-                sessionOpen={status === "ACTIVE"}
-              />
-            ) : (
-              <StandaloneConversationPane session={session} channels={channels} />
-            )}
+            <SessionLeftPane
+              session={session}
+              channels={channels}
+              transcriptRead={transcriptRead}
+              traceTreeSnapshot={traceTreeSnapshot}
+              sessionOpen={status === "ACTIVE"}
+            />
           </ResizablePanel>
           <ResizableHandle id="session-handle" />
           <ResizablePanel
@@ -285,7 +269,6 @@ function SessionPage() {
               details={details}
               status={status}
               isExpired={isExpired}
-              sessionTraceEnabled={sessionTraceEnabled}
             />
           </ResizablePanel>
         </ResizablePanelGroup>
@@ -296,7 +279,7 @@ function SessionPage() {
 
 type LoadedSession = ReturnType<typeof useTypedLoaderData<typeof loader>>["session"];
 
-// Trace and Conversation tabs, shown when the session trace is enabled.
+// Trace and Conversation tabs.
 function SessionLeftPane({
   session,
   channels,
@@ -315,7 +298,7 @@ function SessionLeftPane({
   const project = useProject();
   const environment = useEnvironment();
   const { replace } = useSearchParams();
-  const view = useSessionPageView(true);
+  const view = useSessionPageView();
   const track = useSessionViewAnalytics();
   // Kept here so switching tabs doesn't fetch it again.
   const transcript = useSessionTranscript({
@@ -389,7 +372,6 @@ function SessionLeftPane({
               session={session}
               channels={channels}
               transcript={transcript}
-              pinConversationView
               active={view === "conversation"}
             />
           </SessionTabPanel>
@@ -481,38 +463,15 @@ function useSessionTranscript({
   });
 }
 
-// The page without the Trace tab: the loader always reads the transcript.
-function StandaloneConversationPane({
-  session,
-  channels,
-}: {
-  session: LoadedSession;
-  channels: string[];
-}) {
-  const transcript = useSessionTranscript({ session, channels, transcriptRead: true, shown: true });
-
-  return (
-    <ConversationPane
-      session={session}
-      channels={channels}
-      transcript={transcript}
-      pinConversationView={false}
-    />
-  );
-}
-
 function ConversationPane({
   session,
   channels,
   transcript,
-  pinConversationView,
   active = true,
 }: {
   session: LoadedSession;
   channels: string[];
   transcript: ConversationTranscript;
-  /** Keep `?view=conversation` so clearing Raw or a channel doesn't switch to the Trace tab. */
-  pinConversationView: boolean;
   active?: boolean;
 }) {
   const organization = useOrganization();
@@ -529,15 +488,15 @@ function ConversationPane({
   const encodedSession = encodeURIComponent(sessionId);
   const sessionResourceBase = `/resources/orgs/${organization.slug}/projects/${project.slug}/env/${environment.slug}/sessions/${encodedSession}/realtime/v1`;
 
-  const conversationView = pinConversationView ? "conversation" : undefined;
+  // Both keep `?view=conversation` so clearing Raw or a channel doesn't switch to the Trace tab.
   const setView = useCallback(
     (raw: boolean) =>
-      replace({ raw: raw ? "1" : undefined, channel: undefined, view: conversationView }),
-    [replace, conversationView]
+      replace({ raw: raw ? "1" : undefined, channel: undefined, view: "conversation" }),
+    [replace]
   );
   const selectChannel = useCallback(
-    (channel: string) => replace({ channel, raw: undefined, view: conversationView }),
-    [replace, conversationView]
+    (channel: string) => replace({ channel, raw: undefined, view: "conversation" }),
+    [replace]
   );
 
   const utilityBarProps = {
@@ -1138,13 +1097,12 @@ function MergedStreamRow({
 }
 
 /** The tab the URL asks for; the loader works it out from the request the same way. */
-function useSessionPageView(traceEnabled: boolean) {
+function useSessionPageView() {
   const { value } = useSearchParams();
   return resolveSessionPageView({
     view: value("view"),
     raw: value("raw"),
     channel: value("channel"),
-    traceEnabled,
   });
 }
 
@@ -1153,21 +1111,19 @@ function InspectorPane({
   details,
   status,
   isExpired,
-  sessionTraceEnabled,
 }: {
   session: LoadedSession;
   details: SessionDetailsData;
   status: SessionStatus;
   isExpired: boolean;
-  sessionTraceEnabled: boolean;
 }) {
-  // A selected run or span replaces the session details; without the trace, the params mean nothing.
+  // A selected run or span replaces the session details.
   const { selection, setSelection } = useSessionTraceSelection();
   const organization = useOrganization();
   const project = useProject();
   const environment = useEnvironment();
-  const onTraceTab = useSessionPageView(sessionTraceEnabled) === "trace";
-  if (sessionTraceEnabled && selection.kind !== "session") {
+  const onTraceTab = useSessionPageView() === "trace";
+  if (selection.kind !== "session") {
     return (
       <SessionRunInspector
         selection={selection}

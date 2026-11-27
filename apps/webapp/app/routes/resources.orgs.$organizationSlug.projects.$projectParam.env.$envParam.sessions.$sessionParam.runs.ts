@@ -3,7 +3,6 @@ import { json } from "@remix-run/server-runtime";
 import { z } from "zod";
 import { $replica } from "~/db.server";
 import { env } from "~/env.server";
-import { featuresForRequest } from "~/features.server";
 import { runTraceUnavailableBeforeRead } from "~/presenters/v3/runTraceSetup.server";
 import {
   SessionRunsPresenter,
@@ -21,7 +20,7 @@ import { runStore } from "~/v3/runStore.server";
 
 const ParamsSchema = EnvironmentParamSchema.extend({ sessionParam: z.string() });
 
-// One body for every miss, so a response doesn't reveal whether the flag is on.
+// One body for every miss, so a response doesn't reveal which lookup failed.
 function notFound(reason: string) {
   trace.getActiveSpan()?.setAttribute("sessionRuns.notFoundReason", reason);
   return json({ error: "Not found" }, { status: 404 });
@@ -42,7 +41,7 @@ export const loader = dashboardLoader(
     authorization: { action: "read", resource: { type: "sessions" } },
     feature: "session.trace",
   },
-  async ({ params, searchParams, user, request }) => {
+  async ({ params, searchParams, user }) => {
     requestFeature.describe({ kind: runsPageRequestKind(searchParams), viewer: viewerOf(user) });
 
     const access = await findSessionForRunsView({
@@ -51,8 +50,6 @@ export const loader = dashboardLoader(
       environmentSlug: params.envParam,
       sessionParam: params.sessionParam,
       userId: user.id,
-      isAdmin: user.admin,
-      isManagedCloud: featuresForRequest(request).isManagedCloud,
     });
     if (!access.ok) return notFound(access.error);
 

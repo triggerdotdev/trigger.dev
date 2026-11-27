@@ -8,21 +8,18 @@ export type SessionPageView = "trace" | "conversation";
 export const SESSION_TREE_AUTOSAVE_ID = "panel-session-tree-v2";
 
 /**
- * Which left-hand tab the session page shows. Trace is the default when the feature is on;
- * links to the conversation's Raw view or a channel still open the conversation.
+ * Which left-hand tab the session page shows. Trace is the default; links to the conversation's
+ * Raw view or a channel still open the conversation.
  */
 export function resolveSessionPageView({
   view,
   raw,
   channel,
-  traceEnabled,
 }: {
   view: string | undefined;
   raw: string | undefined;
   channel: string | undefined;
-  traceEnabled: boolean;
 }): SessionPageView {
-  if (!traceEnabled) return "conversation";
   if (view === "trace" || view === "conversation") return view;
   if (raw === "1" || channel) return "conversation";
   return "trace";

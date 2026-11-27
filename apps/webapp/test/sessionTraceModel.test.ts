@@ -631,24 +631,11 @@ describe("sessionRunLoadsReducer: the load queue", () => {
 });
 
 describe("resolveSessionPageView", () => {
-  const resolve = (
-    params: { view?: string; raw?: string; channel?: string },
-    traceEnabled = true
-  ) =>
-    resolveSessionPageView({
-      view: params.view,
-      raw: params.raw,
-      channel: params.channel,
-      traceEnabled,
-    });
+  const resolve = (params: { view?: string; raw?: string; channel?: string }) =>
+    resolveSessionPageView({ view: params.view, raw: params.raw, channel: params.channel });
 
-  it("opens the Trace tab by default when the feature is on", () => {
+  it("opens the Trace tab by default", () => {
     expect(resolve({})).toBe("trace");
-  });
-
-  it("always shows the conversation when the feature is off, whatever the URL says", () => {
-    expect(resolve({}, false)).toBe("conversation");
-    expect(resolve({ view: "trace" }, false)).toBe("conversation");
   });
 
   it("opens the conversation for existing Raw and channel links", () => {

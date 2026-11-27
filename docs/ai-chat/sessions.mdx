@@ -80,7 +80,7 @@ A `task()` that loops on `session.in.wait()` reads the session's input from the 
 
 ### Seeing a session's runs in the dashboard
 
-On Trigger.dev Cloud, a session's page in the dashboard has a **Trace** tab next to **Conversation**. It shows every run of the session on one timeline:
+A session's page in the dashboard has a **Trace** tab next to **Conversation**. It shows every run of the session on one timeline:
 
 - Each run is a row, numbered from the session's first run, with when it started, how long it took and its status. A badge says why a run started when it wasn't a plain continuation, for example a crash restart or a move to a new version.
 - Runs share one time axis, so idle gaps between runs show at their real length. Drag across the timeline to zoom into a range, and use **Reset zoom** to see all the loaded runs again.
@@ -90,6 +90,8 @@ On Trigger.dev Cloud, a session's page in the dashboard has a **Trace** tab next
 - Select a run or span to see its details in the side panel. **View run** opens the run's own page.
 
 A run whose logs were deleted under your plan's log retention says so. A run whose trace can't be drawn here has a **Trace available on run page** badge that links to it.
+
+On a self-hosted instance, runs load their spans in the Trace tab only when run events are stored in ClickHouse. The default Docker setup stores them in PostgreSQL, so each run shows on the timeline and links to its run page instead. To see spans in the tab, [store task events in ClickHouse](/self-hosting/docker#task-events). Runs from before the switch keep linking to their run page.
 
 ## When to reach for Sessions directly
 
