@@ -62,6 +62,7 @@ import {
   startedSessionExternalId,
   traceRootRunId,
 } from "./startedSession.server";
+import { extractSessionStreamEntity } from "./sessionStreamEntity";
 
 export type PromptSpanData = {
   slug: string;
@@ -950,41 +951,30 @@ export class SpanPresenter extends BasePresenter {
         };
       }
       case "session-stream": {
-        if (!span.entity.id) {
-          logger.error(`SpanPresenter: No session stream id`, {
-            spanId,
-            sessionStreamId: span.entity.id,
-          });
+        const sessionStream = extractSessionStreamEntity({
+          entityId: span.entity.id,
+          entityMetadata: span.entity.metadata,
+          properties: span.properties,
+        });
+
+        if (!sessionStream) {
+          logger.error(
+            span.entity.id
+              ? `SpanPresenter: Invalid session stream id`
+              : `SpanPresenter: No session stream id`,
+            {
+              spanId,
+              sessionStreamId: span.entity.id,
+            }
+          );
           return { ...data, entity: null };
         }
-
-        const parts = span.entity.id.split(":");
-        const io = parts.at(-1);
-        const channel = parts.at(-2) ?? "";
-        const sessionId = parts.at(-3);
-
-        if (!sessionId || (io !== "out" && io !== "in")) {
-          logger.error(`SpanPresenter: Invalid session stream id`, {
-            spanId,
-            sessionStreamId: span.entity.id,
-          });
-          return { ...data, entity: null };
-        }
-
-        const metadata = span.entity.metadata
-          ? (safeJsonParse(span.entity.metadata) as Record<string, unknown> | undefined)
-          : undefined;
 
         return {
           ...data,
           entity: {
             type: "session-stream" as const,
-            object: {
-              sessionId,
-              channel: channel.length > 0 ? channel : undefined,
-              io,
-              metadata,
-            },
+            object: sessionStream,
           },
         };
       }
