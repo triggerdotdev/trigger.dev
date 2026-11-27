@@ -13,7 +13,12 @@ vi.mock("~/services/platform.v3.server", () => ({
   enqueueBuild: vi.fn(),
 }));
 vi.mock("./atomicProductionDeployment.server", () => ({ atomicProductionDeploymentUrl: vi.fn() }));
-vi.mock("./deployment.server", () => ({ DeploymentService: class {} }));
+const cancelDeployment = vi.hoisted(() => vi.fn());
+vi.mock("./deployment.server", () => ({
+  DeploymentService: class {
+    cancelDeployment = cancelDeployment;
+  },
+}));
 vi.mock("./initializeDeployment.server", () => ({ InitializeDeploymentService: class {} }));
 vi.mock("./failDeployment.server", () => ({
   FINAL_DEPLOYMENT_STATUSES: ["CANCELED", "DEPLOYED", "FAILED", "TIMED_OUT"],
@@ -385,6 +390,8 @@ describe("RedeployDeploymentService", () => {
     expect(await callErr()).toEqual({
       type: "failed_to_enqueue_build",
       message: "The commit no longer exists in the connected repository",
+      deployment: { version: "20260930.2", shortCode: "efgh" },
+      cancelled: true,
     });
     expect(deps.cancel).toHaveBeenCalledWith(
       "env_1",
@@ -404,6 +411,8 @@ describe("RedeployDeploymentService", () => {
     expect(await callErr()).toEqual({
       type: "failed_to_enqueue_build",
       message: "Another deployment of this commit was just started",
+      deployment: { version: "20260930.2", shortCode: "efgh" },
+      cancelled: true,
     });
     expect(deps.cancel).toHaveBeenCalledOnce();
   });
@@ -414,8 +423,40 @@ describe("RedeployDeploymentService", () => {
     expect(await callErr()).toEqual({
       type: "failed_to_enqueue_build",
       message: "The build service could not be reached",
+      deployment: { version: "20260930.2", shortCode: "efgh" },
+      cancelled: false,
     });
     expect(deps.cancel).toHaveBeenCalledOnce();
+  });
+
+  // The default cancel: a timeout job left queued fails after the row is already CANCELED.
+  it("counts a cancel whose only failure is the leftover timeout job as cancelled", async () => {
+    deps.enqueueGithub.mockReturnValue(errAsync({ type: "build_service_unreachable" }));
+    const withDefaultCancel = (type: string) => {
+      cancelDeployment.mockReset().mockReturnValue(errAsync({ type }));
+      mockLookups(githubDeployment());
+      return new RedeployDeploymentService({
+        prisma: { workerDeployment: { findFirst: deps.findFirst } } as never,
+        windowDays: 7,
+        now: () => NOW,
+        findEnvironment: deps.findEnvironment,
+        atomicProductionUrl: deps.atomicProductionUrl,
+        initialize: deps.initialize,
+        enqueueGithub: deps.enqueueGithub,
+        enqueueArtifact: deps.enqueueArtifact,
+      })
+        .call({ userId: "user_1", projectId: "proj_1", deploymentShortCode: "abcd" })
+        .then((result) => result._unsafeUnwrapErr());
+    };
+
+    expect(await withDefaultCancel("failed_to_delete_deployment_timeout")).toMatchObject({
+      type: "failed_to_enqueue_build",
+      cancelled: true,
+    });
+    expect(await withDefaultCancel("deployment_cannot_be_cancelled")).toMatchObject({
+      type: "failed_to_enqueue_build",
+      cancelled: false,
+    });
   });
 
   it("reports other with the cause when a dependency throws", async () => {

@@ -23,6 +23,7 @@ const hoisted = await vi.hoisted(async () => {
     V4_DEPLOY_REGISTRY_HOST: "registry.test",
     CLICKHOUSE_URL: "http://localhost:8123",
     COMMON_WORKER_ENABLED: "false",
+    DEPLOYMENTS_REDEPLOY_WINDOW_DAYS: "3",
   });
   const { createRedisContainer } =
     await import("../../../internal-packages/testcontainers/src/utils");
@@ -110,7 +111,16 @@ vi.mock("~/services/platform.v3.server", async (importOriginal) => ({
 import { $transaction, type PrismaTransactionClient } from "~/db.server";
 import type { McpIdentity } from "~/mcp/types";
 import type { McpToolDefinition } from "~/mcp/registry.server";
-import { deploymentsWriteTools, PREVIEW_PARENT } from "~/mcp/tools/deploymentsWrite.server";
+import {
+  createDeploymentsWriteTools,
+  deploymentsWriteTools,
+  PREVIEW_PARENT,
+} from "~/mcp/tools/deploymentsWrite.server";
+import { previewBranchRefusal } from "~/mcp/tools/previewBranch.server";
+import { RedeployDeploymentService } from "~/v3/services/redeployDeployment.server";
+import { TriggerDeployNowService } from "~/v3/services/triggerDeployNow.server";
+import { Pool } from "pg";
+import { errAsync, okAsync, ResultAsync } from "neverthrow";
 import {
   createEnvironmentsTools,
   READ_CANCELLED,
@@ -131,6 +141,38 @@ const BOUNDARY = /boundary="[0-9a-f]+"/g;
 const unbound = (text: string) => text.replace(BOUNDARY, 'boundary="B"');
 const STALE =
   "What this change would do has changed since it was approved. Call the tool again to get a new confirmation.";
+
+/**
+ * Runs `call` as a member whose role can't write preview deployments. Roles live in the RBAC
+ * plugin and caps can't name an environment type, so the PAT's ability is narrowed here.
+ */
+async function withoutPreviewDeployWrite<T>(call: () => Promise<T>): Promise<T> {
+  const real = hoisted.mocks.rbac;
+  hoisted.mocks.rbac = {
+    ...real,
+    authenticatePat: async (...args: unknown[]) => {
+      const result = await real.authenticatePat(...args);
+      const { ability } = result;
+      return {
+        ...result,
+        ability: {
+          ...ability,
+          can: (action: string, resource: { type: string; envType?: string }) =>
+            !(
+              action === "write" &&
+              resource.type === "deployments" &&
+              resource.envType === "PREVIEW"
+            ) && ability.can(action, resource),
+        },
+      };
+    },
+  };
+  try {
+    return await call();
+  } finally {
+    hoisted.mocks.rbac = real;
+  }
+}
 
 /** Runs `write` in a transaction left open until `commit`, so the row stays locked. */
 function holdRivalWrite(
@@ -801,6 +843,756 @@ describe("promote, rollback and cancel deployment", () => {
           "read:deployments",
         ])
       )
+    ).toBe("Insufficient scope: this tool requires write:deployments");
+  });
+});
+
+describe("redeploy_deployment", () => {
+  // The build service is external: the service's own enqueue seam records the call instead.
+  // "stuck": the build fails to queue and the new deployment already reached a final state, so the
+  // service's real cancel fails.
+  function redeployTools(fail?: "fail" | { stuck: PrismaClient }) {
+    const enqueued: string[] = [];
+    const enqueue = (_projectId: string, deploymentId: string) => {
+      enqueued.push(deploymentId);
+      if (!fail) return okAsync({ buildId: "build_1" });
+      const failed = errAsync({ type: "build_service_unreachable" as const });
+      if (fail === "fail") return failed;
+      return ResultAsync.fromSafePromise(
+        fail.stuck.workerDeployment.updateMany({
+          where: { friendlyId: deploymentId },
+          data: { status: "FAILED" },
+        })
+      ).andThen(() => failed);
+    };
+    const tools = createDeploymentsWriteTools(undefined, (opts) =>
+      new RedeployDeploymentService({ enqueueArtifact: enqueue, enqueueGithub: enqueue }).call(opts)
+    );
+    return { tools, enqueued };
+  }
+
+  async function seedRedeploy(prisma: PrismaClient) {
+    const s = await seed(prisma);
+    const source = await prisma.workerDeployment.update({
+      where: { id: (await s.deploy(s.prod, "20250101.1", "DEPLOYED")).id },
+      data: {
+        triggeredVia: "cli:manual",
+        buildServerMetadata: {
+          isNativeBuild: true,
+          artifactKey: "deployments/proj/prod/source.tar.gz",
+          configFilePath: "trigger.config.ts",
+        },
+      },
+    });
+    const current = await s.deploy(s.prod, "20250101.2", "DEPLOYED");
+    await s.makeCurrent(s.prod.id, current.id);
+    const deployments = () =>
+      prisma.workerDeployment.count({ where: { environmentId: s.prod.id } });
+    return { s, source, current, deployments };
+  }
+
+  // Catches: a redeploy whose preview hides the source or the replaced deployment, a wrong promote
+  // flag, a missing link to the source, or more than one build queued.
+  postgresTest("previews the source and starts one build", async ({ prisma }) => {
+    const { s, source, current } = await seedRedeploy(prisma);
+    const { tools, enqueued } = redeployTools();
+
+    const { preview, text } = await s.approved(
+      tools,
+      "redeploy_deployment",
+      prodArgs(source.shortCode)
+    );
+    const created = await prisma.workerDeployment.findFirstOrThrow({
+      where: { environmentId: s.prod.id, id: { notIn: [source.id, current.id] } },
+    });
+    expect({
+      source: preview.includes(`short code ${source.shortCode}`),
+      from: preview.includes("the source files uploaded for it"),
+      replaces: preview.includes(`replacing version 20250101.2 (short code ${current.shortCode}`),
+      started: text.includes(`short code ${created.shortCode}`),
+      follow: text.includes("get_deployment_details"),
+      metadata: created.buildServerMetadata,
+      status: created.status,
+      enqueued,
+    }).toEqual({
+      source: true,
+      from: true,
+      replaces: true,
+      started: true,
+      follow: true,
+      metadata: expect.objectContaining({ redeployOf: source.shortCode, skipPromotion: false }),
+      status: "PENDING",
+      enqueued: [created.friendlyId],
+    });
+  });
+
+  // Catches: a redeploy the service would refuse getting a confirmation first.
+  postgresTest("refuses what the service would refuse before confirmation", async ({ prisma }) => {
+    const { s, source, deployments } = await seedRedeploy(prisma);
+    const { tools, enqueued } = redeployTools();
+    const update = (data: object) =>
+      prisma.workerDeployment.update({ where: { id: source.id }, data });
+    const refusal = async () => {
+      const before = await deployments();
+      const text = await s.refused(tools, "redeploy_deployment", prodArgs(source.shortCode));
+      expect(await deployments()).toBe(before);
+      return text;
+    };
+
+    await update({ status: "BUILDING" });
+    expect(await refusal()).toContain("BUILDING");
+    // The window is set to 3 days for this suite, inside the 7-day default.
+    await update({ status: "DEPLOYED", createdAt: new Date(Date.now() - 4 * 86_400_000) });
+    expect(await refusal()).toContain("older than 3 days");
+    await update({ createdAt: new Date(Date.now() - 2 * 86_400_000), buildServerMetadata: {} });
+    expect(await refusal()).toContain("no stored source");
+    await update({
+      buildServerMetadata: {
+        isNativeBuild: true,
+        artifactKey: "deployments/proj/prod/source.tar.gz",
+      },
+    });
+    const building = await s.deploy(s.prod, "20250101.3", "BUILDING");
+    expect(await refusal()).toContain(building.shortCode);
+    await prisma.workerDeployment.update({
+      where: { id: building.id },
+      data: { status: "FAILED" },
+    });
+
+    const secret = await prisma.secretReference.create({ data: { key: uniqueId("secret") } });
+    const vercel = await prisma.organizationIntegration.create({
+      data: {
+        friendlyId: uniqueId("int"),
+        service: "VERCEL",
+        organizationId: s.a.organization.id,
+        tokenReferenceId: secret.id,
+        integrationData: {},
+      },
+    });
+    await prisma.organizationProjectIntegration.create({
+      data: {
+        organizationIntegrationId: vercel.id,
+        projectId: s.a.project.id,
+        externalEntityId: "prj_test",
+        integrationData: {
+          config: { atomicBuilds: ["prod"] },
+          vercelProjectName: "app",
+          vercelTeamId: "team",
+          vercelTeamSlug: "team",
+          vercelProjectId: "prj_test",
+          syncEnvVarsMapping: {},
+        },
+      },
+    });
+    expect(await refusal()).toContain("Vercel");
+    expect(enqueued).toEqual([]);
+  });
+
+  // Catches: a deployment started after approval leading to a second build.
+  postgresTest("refuses when a deployment started after approval", async ({ prisma }) => {
+    const { s, source, deployments } = await seedRedeploy(prisma);
+    const { tools, enqueued } = redeployTools();
+    const args = prodArgs(source.shortCode);
+
+    await s.held(tools, "redeploy_deployment", args);
+    await s.deploy(s.prod, "20250101.3", "BUILDING");
+    const before = await deployments();
+
+    const answer = await s.call(tools, "redeploy_deployment", args);
+    expect({
+      isError: !!answer.isError,
+      created: (await deployments()) - before,
+      enqueued,
+    }).toEqual({
+      isError: true,
+      created: 0,
+      enqueued: [],
+    });
+  });
+
+  // Catches: a build that could not be queued reported as started, or a failed cancel reported as done.
+  postgresTest("reports a build that could not be queued", async ({ prisma }) => {
+    for (const [fail, cancelled, status] of [
+      ["fail", true, "CANCELED"],
+      [{ stuck: prisma }, false, "FAILED"],
+    ] as const) {
+      const { s, source, current } = await seedRedeploy(prisma);
+      const { tools, enqueued } = redeployTools(fail);
+
+      const { text } = await s.approved(tools, "redeploy_deployment", prodArgs(source.shortCode));
+      const created = await prisma.workerDeployment.findFirstOrThrow({
+        where: { environmentId: s.prod.id, id: { notIn: [source.id, current.id] } },
+      });
+      expect({
+        cancelled: text.includes("created and then cancelled"),
+        notCancelled: text.includes("could not be cancelled"),
+        named: text.includes(`short code ${created.shortCode}`),
+        status: created.status,
+        enqueued: enqueued.length,
+        current: await s.currentOf(s.prod.id),
+      }).toEqual({
+        cancelled,
+        notCancelled: !cancelled,
+        named: true,
+        status,
+        enqueued: 1,
+        current: current.id,
+      });
+    }
+  });
+
+  // Catches: an approval used after the preview changed without a refusal (staleApproval dropped).
+  postgresTest("refuses an approval whose preview changed", async ({ prisma }) => {
+    const { s, source, deployments } = await seedRedeploy(prisma);
+    const { tools, enqueued } = redeployTools();
+    const args = prodArgs(source.shortCode);
+
+    await s.held(tools, "redeploy_deployment", args);
+    await s.makeCurrent(s.prod.id, source.id);
+    const before = await deployments();
+
+    expect(textOf(await s.call(tools, "redeploy_deployment", args))).toBe(STALE);
+    expect({ created: (await deployments()) - before, enqueued }).toEqual({
+      created: 0,
+      enqueued: [],
+    });
+  });
+
+  // Catches: an archived or unknown preview branch answered "Not authorized" instead of plainly,
+  // or the fallback skipping the preview write check.
+  postgresTest("names an archived or unknown preview branch", async ({ prisma }) => {
+    const { s } = await seedRedeploy(prisma);
+    const { tools, enqueued } = redeployTools();
+    const archived = await s.branch({ ...s.previewRoot, type: "PREVIEW" }, "old");
+    await prisma.runtimeEnvironment.update({
+      where: { id: archived.id },
+      data: { archivedAt: new Date() },
+    });
+    const args = (branch: string) => ({ environment: "preview", branch, shortCode: "abc" });
+
+    expect({
+      archived: (await s.refused(tools, "redeploy_deployment", args("old"))).includes(
+        "is archived"
+      ),
+      unknown: (await s.refused(tools, "redeploy_deployment", args("nope"))).includes(
+        "was not found in this project"
+      ),
+      noPreviewWrite: textOf(
+        await withoutPreviewDeployWrite(() => s.call(tools, "redeploy_deployment", args("old")))
+      ).startsWith("Not authorized"),
+      enqueued,
+    }).toEqual({ archived: true, unknown: true, noPreviewWrite: true, enqueued: [] });
+  });
+
+  // Catches: the plan reading the environment again for a preview branch the gate resolved.
+  postgresTest("reads a resolved preview branch once", async ({ prisma }) => {
+    const { s } = await seedRedeploy(prisma);
+    const { tools } = redeployTools();
+    await s.branch({ ...s.previewRoot, type: "PREVIEW" }, "feature");
+    let reads = 0;
+    hoisted.mocks.db = prisma.$extends({
+      query: {
+        runtimeEnvironment: {
+          async $allOperations({ args, query }) {
+            reads++;
+            return query(args);
+          },
+        },
+      },
+    }) as unknown as Record<string | symbol, unknown>;
+    const readsFor = async (args: object) => {
+      reads = 0;
+      await s.refused(tools, "redeploy_deployment", { ...args, shortCode: "nope" });
+      return reads;
+    };
+
+    const prod = await readsFor({ environment: "prod" });
+    // One more than prod: the gate's lookup of the branch under its parent.
+    expect((await readsFor({ environment: "preview", branch: "feature" })) - prod).toBe(1);
+  });
+
+  // Catches: a redeploy without promotion marked to promote.
+  postgresTest("keeps the current deployment when not promoting", async ({ prisma }) => {
+    const { s, source, current } = await seedRedeploy(prisma);
+    const { tools } = redeployTools();
+
+    const { preview } = await s.approved(tools, "redeploy_deployment", {
+      ...prodArgs(source.shortCode),
+      promote: false,
+    });
+    const created = await prisma.workerDeployment.findFirstOrThrow({
+      where: { environmentId: s.prod.id, id: { notIn: [source.id, current.id] } },
+    });
+    expect({
+      stays: preview.includes("is not made current"),
+      metadata: created.buildServerMetadata,
+    }).toEqual({ stays: true, metadata: expect.objectContaining({ skipPromotion: true }) });
+  });
+
+  // Catches: a redeploy in the preview parent, another environment, or without the write scope.
+  postgresTest("keeps the deployment scoping", async ({ prisma }) => {
+    const { s, source } = await seedRedeploy(prisma);
+    const { tools } = redeployTools();
+
+    expect(
+      await s.refused(tools, "redeploy_deployment", {
+        environment: "preview",
+        shortCode: source.shortCode,
+      })
+    ).toBe(PREVIEW_PARENT);
+    expect(
+      textOf(
+        await s.uatCall(
+          tools,
+          "redeploy_deployment",
+          prodArgs(source.shortCode),
+          ["write:deployments"],
+          s.staging.id
+        )
+      )
+    ).toBe("Not authorized");
+    expect(
+      textOf(
+        await s.uatCall(tools, "redeploy_deployment", prodArgs(source.shortCode), [
+          "read:deployments",
+        ])
+      )
+    ).toBe("Insufficient scope: this tool requires write:deployments");
+  });
+});
+
+// The deploy-now lock pool, on the test database and closed before it is.
+const deployNowTest = postgresTest.extend<{ lockPool: Pool }>({
+  lockPool: async ({ postgresContainer }, use) => {
+    const pool = new Pool({ connectionString: postgresContainer.getConnectionUri(), max: 3 });
+    try {
+      await use(pool);
+    } finally {
+      await pool.end();
+    }
+  },
+});
+
+describe("deploy_tracked_branch", () => {
+  // GitHub and the build service are external: the service's constructor seam takes the branch
+  // lookup and the platform trigger; its lock pool is real, on the test database.
+  function deployTools(
+    pool: Pool,
+    prisma: PrismaClient,
+    branch: "present" | "missing" = "present",
+    gates: Parameters<typeof createDeploymentsWriteTools>[3] = {}
+  ) {
+    const triggered: Array<{ environment: string; branch?: string }> = [];
+    const tools = createDeploymentsWriteTools(
+      undefined,
+      undefined,
+      (opts) =>
+        new TriggerDeployNowService(
+          async (_projectId, options) => {
+            triggered.push(options);
+            return { ok: true };
+          },
+          prisma,
+          pool,
+          () => okAsync(branch)
+        ).call(opts),
+      gates
+    );
+    return { tools, triggered };
+  }
+
+  async function seedTracked(prisma: PrismaClient) {
+    const s = await seed(prisma);
+    await prisma.organization.update({
+      where: { id: s.a.organization.id },
+      data: { featureFlags: { deployNowEnabled: true } },
+    });
+    const installation = await prisma.githubAppInstallation.create({
+      data: {
+        appInstallationId: BigInt(Math.floor(Math.random() * 1e9)),
+        targetId: BigInt(1),
+        targetType: "Organization",
+        accountHandle: "acme",
+        repositorySelection: "ALL",
+        organizationId: s.a.organization.id,
+      },
+    });
+    const repository = await prisma.githubRepository.create({
+      data: {
+        githubId: BigInt(Math.floor(Math.random() * 1e9)),
+        name: "app",
+        fullName: "acme/app",
+        htmlUrl: "https://github.com/acme/app",
+        private: true,
+        defaultBranch: "main",
+        installationId: installation.id,
+      },
+    });
+    await prisma.connectedGithubRepository.create({
+      data: {
+        projectId: s.a.project.id,
+        repositoryId: repository.id,
+        branchTracking: { prod: { branch: "main" }, staging: {} },
+      },
+    });
+    const current = await s.deploy(s.prod, "20250101.1", "DEPLOYED");
+    await s.makeCurrent(s.prod.id, current.id);
+    return { s, current };
+  }
+
+  const prodOnly = { environment: "prod" };
+
+  // Catches: a preview that hides the repository, branch or replaced deployment, or the wrong branch built.
+  deployNowTest("previews the tracked branch and starts it", async ({ prisma, lockPool: pool }) => {
+    const { s, current } = await seedTracked(prisma);
+    const { tools, triggered } = deployTools(pool, prisma);
+
+    const { preview, text } = await s.approved(tools, "deploy_tracked_branch", prodOnly);
+    expect({
+      branch: preview.includes('tracked branch "main" of "acme/app"'),
+      latest: preview.includes("latest commit on that branch on GitHub at the time it runs"),
+      replaces: preview.includes(`replacing version 20250101.1 (short code ${current.shortCode}`),
+      started: text.startsWith("Started a deployment"),
+      triggered,
+    }).toEqual({
+      branch: true,
+      latest: true,
+      replaces: true,
+      started: true,
+      triggered: [{ environment: "prod", branch: "main" }],
+    });
+  });
+
+  // Catches: a deploy the Dashboard would refuse getting a confirmation first.
+  deployNowTest(
+    "refuses what the Dashboard would refuse before confirmation",
+    async ({ prisma, lockPool: pool }) => {
+      const { s } = await seedTracked(prisma);
+      const { tools, triggered } = deployTools(pool, prisma);
+      const refusal = (args: object) => s.refused(tools, "deploy_tracked_branch", args);
+
+      expect(await refusal({ environment: "staging" })).toContain("No branch is tracked");
+      const building = await s.deploy(s.prod, "20250101.2", "BUILDING");
+      expect(await refusal(prodOnly)).toContain(building.shortCode);
+      await prisma.workerDeployment.update({
+        where: { id: building.id },
+        data: { status: "FAILED" },
+      });
+      await prisma.organization.update({
+        where: { id: s.a.organization.id },
+        data: { featureFlags: {} },
+      });
+      expect(await refusal(prodOnly)).toContain("Deploy now feature is not enabled");
+      await prisma.organization.update({
+        where: { id: s.a.organization.id },
+        data: { featureFlags: { deployNowEnabled: true } },
+      });
+      await prisma.connectedGithubRepository.deleteMany({ where: { projectId: s.a.project.id } });
+      expect(await refusal(prodOnly)).toContain("no connected GitHub repository");
+      expect(triggered).toEqual([]);
+    }
+  );
+
+  // Catches: a deployment started after approval leading to a second build, or a missing branch
+  // reported as started.
+  deployNowTest("answers truthfully after approval", async ({ prisma, lockPool: pool }) => {
+    const { s } = await seedTracked(prisma);
+    const started = deployTools(pool, prisma);
+    await s.held(started.tools, "deploy_tracked_branch", prodOnly);
+    await s.deploy(s.prod, "20250101.2", "BUILDING");
+    const inFlight = await s.call(started.tools, "deploy_tracked_branch", prodOnly);
+    expect({ isError: !!inFlight.isError, triggered: started.triggered }).toEqual({
+      isError: true,
+      triggered: [],
+    });
+
+    await prisma.workerDeployment.updateMany({
+      where: { environmentId: s.prod.id, status: "BUILDING" },
+      data: { status: "FAILED" },
+    });
+    const missing = deployTools(pool, prisma, "missing");
+    const { text } = await s.approved(missing.tools, "deploy_tracked_branch", prodOnly);
+    expect({
+      missing: text.includes("doesn't exist") && text.includes("nothing was started"),
+      triggered: missing.triggered,
+    }).toEqual({ missing: true, triggered: [] });
+  });
+
+  // Catches: an approval used after the preview changed without a refusal (staleApproval dropped).
+  // The preview binds the repository, the tracked branch and the deployment it would replace.
+  deployNowTest("refuses an approval whose preview changed", async ({ prisma, lockPool: pool }) => {
+    const { s } = await seedTracked(prisma);
+    const { tools, triggered } = deployTools(pool, prisma);
+    const other = await s.deploy(s.prod, "20250101.2", "DEPLOYED");
+
+    await s.held(tools, "deploy_tracked_branch", prodOnly);
+    await s.makeCurrent(s.prod.id, other.id);
+
+    expect(textOf(await s.call(tools, "deploy_tracked_branch", prodOnly))).toBe(STALE);
+    expect(triggered).toEqual([]);
+  });
+
+  // Catches: a Vercel-linked, access-denied or card-gated deploy getting a confirmation, or the
+  // gates checked in another order than the Dashboard's.
+  deployNowTest(
+    "refuses the remaining Dashboard gates in order",
+    async ({ prisma, lockPool: pool }) => {
+      const { s } = await seedTracked(prisma);
+      const denied = {
+        checkDeploy: async () => ({
+          allowed: false as const,
+          kind: "denied" as const,
+          message: "Deploys are paused",
+        }),
+      };
+      const gated = async () => "gated" as const;
+      const refusal = async (gates: Parameters<typeof deployTools>[3]) => {
+        const { tools, triggered } = deployTools(pool, prisma, "present", gates);
+        const text = await s.refused(tools, "deploy_tracked_branch", prodOnly);
+        expect(triggered).toEqual([]);
+        return text;
+      };
+
+      expect(await refusal({ controller: denied as never })).toContain("Deploys are paused");
+      expect(await refusal({ resolveCardGate: gated })).toContain("card");
+      expect(await refusal({ controller: denied as never, resolveCardGate: gated })).toContain(
+        "Deploys are paused"
+      );
+
+      const secret = await prisma.secretReference.create({ data: { key: uniqueId("secret") } });
+      const vercel = await prisma.organizationIntegration.create({
+        data: {
+          friendlyId: uniqueId("int"),
+          service: "VERCEL",
+          organizationId: s.a.organization.id,
+          tokenReferenceId: secret.id,
+          integrationData: {},
+        },
+      });
+      await prisma.organizationProjectIntegration.create({
+        data: {
+          organizationIntegrationId: vercel.id,
+          projectId: s.a.project.id,
+          externalEntityId: "prj_test",
+          integrationData: {
+            config: { atomicBuilds: ["prod"] },
+            vercelProjectName: "app",
+            vercelTeamId: "team",
+            vercelTeamSlug: "team",
+            vercelProjectId: "prj_test",
+            syncEnvVarsMapping: {},
+          },
+        },
+      });
+      expect(await refusal({})).toContain("Vercel");
+    }
+  );
+
+  // Catches: a preview branch whose stored name normalises to another branch being deployed,
+  // since the build service creates the preview environment by the normalised name.
+  deployNowTest(
+    "refuses a preview branch name that normalises to another",
+    async ({ prisma, lockPool: pool }) => {
+      const { s } = await seedTracked(prisma);
+      const { tools, triggered } = deployTools(pool, prisma);
+      await s.branch({ ...s.previewRoot, type: "PREVIEW" }, "refs/heads/feat");
+
+      const text = await s.refused(tools, "deploy_tracked_branch", {
+        environment: "preview",
+        branch: "refs/heads/feat",
+      });
+      expect({ refused: text.includes("would deploy to preview branch"), triggered }).toEqual({
+        refused: true,
+        triggered: [],
+      });
+    }
+  );
+
+  // Catches: a preview branch archived after approval and still resolved on a lagging replica
+  // being deployed, which would make the build service create a fresh environment for it.
+  deployNowTest(
+    "refuses a preview branch archived after approval",
+    async ({ prisma, lockPool: pool }) => {
+      const { s } = await seedTracked(prisma);
+      const { tools, triggered } = deployTools(pool, prisma);
+      const feature = await s.branch({ ...s.previewRoot, type: "PREVIEW" }, "feature");
+      const args = { environment: "preview", branch: "feature" };
+      await s.held(tools, "deploy_tracked_branch", args);
+
+      // A snapshot taken before the archive stands in for a lagging replica.
+      const frozen = Promise.withResolvers<PrismaTransactionClient>();
+      const thaw = Promise.withResolvers<void>();
+      const view = $transaction(
+        prisma,
+        "frozen replica",
+        async (tx) => {
+          await tx.$queryRaw`SELECT 1 FROM "RuntimeEnvironment" LIMIT 1`;
+          frozen.resolve(tx);
+          await thaw.promise;
+        },
+        { isolationLevel: "RepeatableRead", timeout: 30_000 }
+      );
+      try {
+        hoisted.mocks.replica = (await frozen.promise) as unknown as Record<
+          string | symbol,
+          unknown
+        >;
+        await prisma.runtimeEnvironment.update({
+          where: { id: feature.id },
+          data: { archivedAt: new Date() },
+        });
+        const answer = await s.call(tools, "deploy_tracked_branch", args);
+        expect({
+          archived: textOf(answer).includes("archived"),
+          isError: !!answer.isError,
+          triggered,
+        }).toEqual({ archived: true, isError: true, triggered: [] });
+      } finally {
+        hoisted.mocks.replica = undefined;
+        thaw.resolve();
+        await view;
+      }
+    }
+  );
+
+  // Catches: an approval surviving a change to a tracked branch that the preview clips.
+  deployNowTest("binds the full tracked branch name", async ({ prisma, lockPool: pool }) => {
+    const { s } = await seedTracked(prisma);
+    const { tools, triggered } = deployTools(pool, prisma);
+    const track = (branch: string) =>
+      prisma.connectedGithubRepository.updateMany({
+        where: { projectId: s.a.project.id },
+        data: { branchTracking: { prod: { branch }, staging: {} } },
+      });
+    const prefix = "b".repeat(220);
+
+    await track(`${prefix}-1`);
+    await s.held(tools, "deploy_tracked_branch", prodOnly);
+    await track(`${prefix}-2`);
+
+    expect(textOf(await s.call(tools, "deploy_tracked_branch", prodOnly))).toBe(STALE);
+    expect(triggered).toEqual([]);
+  });
+
+  // Catches: an archived or unknown preview branch answered "Not authorized" instead of plainly.
+  deployNowTest(
+    "names an archived or unknown preview branch",
+    async ({ prisma, lockPool: pool }) => {
+      const { s } = await seedTracked(prisma);
+      const { tools, triggered } = deployTools(pool, prisma);
+      const archived = await s.branch({ ...s.previewRoot, type: "PREVIEW" }, "billing-ok-test");
+      await prisma.runtimeEnvironment.update({
+        where: { id: archived.id },
+        data: { archivedAt: new Date() },
+      });
+      const answer = async (branch: string) =>
+        unbound(
+          await s.refused(tools, "deploy_tracked_branch", { environment: "preview", branch })
+        );
+
+      expect({
+        archived: await answer("billing-ok-test"),
+        unknown: await answer("nope"),
+        triggered,
+      }).toEqual({
+        archived:
+          'Preview branch <untrusted-data source="branch-name" boundary="B">billing-ok-test</untrusted-data boundary="B"> is archived; nothing changed.',
+        unknown:
+          'Preview branch <untrusted-data source="branch-name" boundary="B">nope</untrusted-data boundary="B"> was not found in this project; nothing changed.',
+        triggered: [],
+      });
+    }
+  );
+
+  // Catches: a legacy non-branchable preview root skipping the branch refusal and reaching the
+  // Deploy now gates.
+  deployNowTest(
+    "names an unknown branch of a non-branchable preview before the gates",
+    async ({ prisma, lockPool: pool }) => {
+      const { s } = await seedTracked(prisma);
+      await prisma.runtimeEnvironment.update({
+        where: { id: s.previewRoot.id },
+        data: { isBranchableEnvironment: false },
+      });
+      await prisma.organization.update({
+        where: { id: s.a.organization.id },
+        data: { featureFlags: {} },
+      });
+      const { tools, triggered } = deployTools(pool, prisma);
+
+      const text = await s.refused(tools, "deploy_tracked_branch", {
+        environment: "preview",
+        branch: "nope",
+      });
+      expect({ notFound: text.includes("was not found"), triggered }).toEqual({
+        notFound: true,
+        triggered: [],
+      });
+    }
+  );
+
+  // Catches: the archived-branch fallback skipping the preview write check or the token's
+  // environment limit, or applying to environments other than preview.
+  deployNowTest("authorizes the archived-branch fallback", async ({ prisma, lockPool: pool }) => {
+    const { s } = await seedTracked(prisma);
+    const { tools, triggered } = deployTools(pool, prisma);
+    const archived = await s.branch({ ...s.previewRoot, type: "PREVIEW" }, "old");
+    await prisma.runtimeEnvironment.update({
+      where: { id: archived.id },
+      data: { archivedAt: new Date() },
+    });
+    const preview = { environment: "preview", branch: "old" };
+    const prodBranch = { environment: "prod", branch: "old" };
+    const limited = (args: object) =>
+      s.uatCall(tools, "deploy_tracked_branch", args, ["write:deployments"], s.prod.id);
+
+    const gated = (text: string) => text.startsWith("Not authorized");
+    expect({
+      noPreviewWrite: gated(
+        textOf(
+          await withoutPreviewDeployWrite(() => s.call(tools, "deploy_tracked_branch", preview))
+        )
+      ),
+      limitedPreview: gated(textOf(await limited(preview))),
+      limitedProd: gated(textOf(await limited(prodBranch))),
+      triggered,
+    }).toEqual({ noPreviewWrite: true, limitedPreview: true, limitedProd: true, triggered: [] });
+  });
+
+  // Catches: a branch created or restored after the subject fell back to the preview parent
+  // being reported as archived.
+  postgresTest("does not call an active branch archived", async ({ prisma }) => {
+    const s = await seed(prisma);
+    await s.branch({ ...s.previewRoot, type: "PREVIEW" }, "fresh");
+    const text = (await previewBranchRefusal({ ...s.previewRoot, type: "PREVIEW" }, "fresh")) ?? "";
+    expect({
+      retry: text.includes("Call the tool again"),
+      archived: text.includes("archived"),
+      notFound: text.includes("not found"),
+    }).toEqual({ retry: true, archived: false, notFound: false });
+  });
+
+  // Catches: deploying in the preview parent, another environment, or without the write scope.
+  deployNowTest("keeps the deployment scoping", async ({ prisma, lockPool: pool }) => {
+    const { s } = await seedTracked(prisma);
+    const { tools } = deployTools(pool, prisma);
+
+    expect(await s.refused(tools, "deploy_tracked_branch", { environment: "preview" })).toBe(
+      PREVIEW_PARENT
+    );
+    expect(
+      textOf(
+        await s.uatCall(
+          tools,
+          "deploy_tracked_branch",
+          prodOnly,
+          ["write:deployments"],
+          s.staging.id
+        )
+      )
+    ).toBe("Not authorized");
+    expect(
+      textOf(await s.uatCall(tools, "deploy_tracked_branch", prodOnly, ["read:deployments"]))
     ).toBe("Insufficient scope: this tool requires write:deployments");
   });
 });

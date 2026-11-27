@@ -171,6 +171,19 @@ const TOOLS: Array<{
     ownText: deploymentNotFound,
   },
   {
+    tool: "redeploy_deployment",
+    args: { ...project, shortCode: "abc" },
+    scope: "write:deployments",
+    ownText: deploymentNotFound,
+  },
+  {
+    tool: "deploy_tracked_branch",
+    args: { ...project },
+    scope: "write:deployments",
+    ownText:
+      "The Deploy now feature is not enabled for this organization, and it can't be enabled from here; nothing changed.",
+  },
+  {
     tool: "create_branch",
     args: { environment: "preview", branchName: "x" },
     scope: "write:branches",

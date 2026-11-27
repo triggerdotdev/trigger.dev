@@ -62,7 +62,13 @@ export type RedeployDeploymentError =
   | { type: "deployment_expired" }
   | { type: "deployment_in_flight" }
   | { type: "atomic_production"; vercelUrl: string }
-  | { type: "failed_to_enqueue_build"; message: string }
+  | {
+      type: "failed_to_enqueue_build";
+      message: string;
+      /** The new deployment, and whether cancelling it after the failure worked. */
+      deployment: { version: string; shortCode: string };
+      cancelled: boolean;
+    }
   | { type: "deployment_access_denied"; message: string }
   | { type: "other"; cause: unknown };
 
@@ -117,7 +123,8 @@ const defaultDeps: RedeployDeploymentDeps = {
         canceledReason,
       }
     );
-    if (result.isErr()) {
+    // A timeout job left queued fails only after the row is already CANCELED.
+    if (result.isErr() && result.error.type !== "failed_to_delete_deployment_timeout") {
       throw new Error(`Failed to cancel deployment ${friendlyId}: ${result.error.type}`);
     }
   },
@@ -363,16 +370,22 @@ export class RedeployDeploymentService {
             cancel(environment.id, deployment.friendlyId, `Failed to queue the build: ${detail}`),
             (cancelError) => cancelError
           )
+            .map(() => true)
             .orElse((cancelError) => {
               logger.error("Failed to cancel deployment after failed redeploy enqueue", {
                 projectId: opts.projectId,
                 deploymentId: deployment.id,
                 error: cancelError,
               });
-              return okAsync(undefined);
+              return okAsync(false);
             })
-            .andThen(() =>
-              errAsync({ type: "failed_to_enqueue_build" as const, message: sentence(detail) })
+            .andThen((cancelled) =>
+              errAsync({
+                type: "failed_to_enqueue_build" as const,
+                message: sentence(detail),
+                deployment: { version: deployment.version, shortCode: deployment.shortCode },
+                cancelled,
+              })
             );
         });
     };

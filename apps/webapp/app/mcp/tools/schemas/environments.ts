@@ -35,6 +35,17 @@ export const DeploymentWriteInput = ProjectInput.extend({
     .describe("The deployment's short code, as shown by list_deploys."),
 });
 
+export const DeployTrackedBranchInput = DeploymentWriteInput.omit({ shortCode: true });
+
+export const RedeployInput = DeploymentWriteInput.extend({
+  promote: z
+    .boolean()
+    .describe(
+      "Make the new deployment current when its build finishes, like the Dashboard's Promote checkbox. Defaults to true."
+    )
+    .optional(),
+});
+
 export const CreateBranchInput = ProjectInput.extend({
   environment: BranchParent,
   branchName: BranchName.describe("The git branch name for the new branch."),
