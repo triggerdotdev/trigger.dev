@@ -111,9 +111,8 @@ API pages come from `openapi.yml` and `v3-openapi.yaml`. Each operation lists th
 
 ## Publishing
 
-- A PR that only changes `docs/` goes live a few minutes after merging, when the publish run has built and checked the site. Merge it once what it describes is live.
-- Docs in a PR that also changes code go live with the next `docs-release-*` tag.
-- A docs-only change that conflicts with unpublished docs, or links to an unpublished page, waits for the next tag. In chonk, a PR that will wait gets a "Docs publishing" comment before merging that says why, and the publish run comments on the commit after merging. No comment does not mean the change goes live right away.
+- Merging never publishes the docs site (until the switch, Mintlify still publishes docs-only merges from the public repo). Docs go live with the next `docs-release-*` tag that includes them, docs-only PRs and code PRs alike.
+- A docs-only change merged after the tagged commit that conflicts with unpublished docs, or links to an unpublished page, waits for a later tag, and the publish run comments on the commit.
 - Every published version is built and checked (every URL, the MCP endpoint, security headers) before it replaces the live site. If a check fails, the live site stays as it was.
 
 ## Checks on a docs PR
