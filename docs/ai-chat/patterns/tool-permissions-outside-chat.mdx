@@ -1,0 +1,130 @@
+---
+title: "Tool permissions outside a chat"
+sidebarTitle: "Outside a chat"
+description: "Check the user's grants in a task, pause with a wait token when there's none, and resume once the user approves, even days later."
+---
+
+import StoreGrants from "/snippets/tool-permissions-store-grants.mdx";
+
+Scheduled jobs and background agents have no chat to show buttons in. This guide checks the user's grant in the task, pauses with a [wait token](/wait-for-token) when there's none, and completes the token from your backend once the user answers. In a background agent, run the same check inside the tool's `execute`.
+
+## Store grants
+
+<StoreGrants />
+
+## Check the grant and wait for an answer
+
+If the user has no grant, create a wait token tagged with their ID, and tell the user what the task wants to do by email, Slack or your app. The run suspends until the token completes or times out. If the user chose "always allow", the task saves the grant from the answer it received.
+
+```ts trigger/send-digest.ts
+import { task, wait } from "@trigger.dev/sdk";
+import { gmail } from "@/lib/gmail";
+import { addGrant, hasGrant } from "@/lib/permissions";
+import { toolScopes } from "@/lib/tool-scopes";
+import { notifyUser } from "@/lib/notify";
+
+type Approval = { approved: boolean; always: boolean; decidedAt: string };
+
+export const sendDigest = task({
+  id: "send-digest",
+  run: async (payload: { userId: string; to: string; subject: string; body: string }, { ctx }) => {
+    const scope = toolScopes.sendEmail;
+
+    if (!(await hasGrant(payload.userId, scope))) {
+      const token = await wait.createToken({
+        timeout: "7d",
+        tags: [`user:${payload.userId}`],
+        // A retried attempt gets the same token back instead of asking again
+        idempotencyKey: ctx.run.id,
+      });
+      // Link to your own approval page with the token ID, never the token's URL.
+      // Skip a token ID you've already sent, so a retry can call this safely.
+      await notifyUser(payload.userId, {
+        action: `Send "${payload.subject}" to ${payload.to}`,
+        tokenId: token.id,
+      });
+
+      // The run suspends here and uses no compute until the token completes or times out
+      const result = await wait.forToken<Approval>(token);
+      if (!result.ok || !result.output.approved) return { sent: false };
+
+      // Uses the answer that completed the token, so a losing answer can't add a grant,
+      // and its decision time, so a retry can't undo a revoke made after it
+      if (result.output.always) await addGrant(payload.userId, scope, new Date(result.output.decidedAt));
+    }
+
+    // Your send function records this key and skips one it has already sent
+    await gmail.send(payload.userId, payload, { idempotencyKey: ctx.run.id });
+    return { sent: true };
+  },
+});
+```
+
+`wait.forToken` returns `ok: false` when the token times out, so a request nobody answers counts as not approved.
+
+## Complete the token from your backend
+
+Your approval page posts the user's answer to a route like this one. It checks that the token is waiting on the signed-in user, then completes it with the answer:
+
+```ts app/api/approve/route.ts
+import { wait } from "@trigger.dev/sdk";
+import { requireUser } from "@/lib/auth";
+
+export async function POST(req: Request) {
+  const user = await requireUser();
+  const { tokenId, approved, always } = await req.json();
+
+  // Only the user the request went to can answer it, and only while the run is waiting
+  const token = await wait.retrieveToken(tokenId).catch(() => null);
+  if (!token || !token.tags.includes(`user:${user.id}`) || token.status !== "WAITING") {
+    return Response.json({ error: "Not found" }, { status: 404 });
+  }
+
+  await wait.completeToken(tokenId, {
+    approved: approved === true,
+    always: always === true,
+    decidedAt: new Date().toISOString(),
+  });
+  return Response.json({ ok: true });
+}
+```
+
+<Warning>
+  The token's `url` completes it without an API key. Complete tokens from your authenticated backend, as above, and don't send the URL to anyone who shouldn't approve the action.
+</Warning>
+
+## Let users revoke grants
+
+List the user's grants on a settings page, one row per grant, with a revoke button that calls `revokeGrant` for the signed-in user. Revoking `gmail:send` leaves a `gmail:*` grant in place, so show both. The next run after a revoke asks again.
+
+## Verify it
+
+1. Trigger `send-digest` for a user with no grant. Confirm the run waits and the user gets a request.
+2. As that user, post `{ tokenId, approved: false }` to `/api/approve`. Confirm the run returns `{ sent: false }` and nothing is sent.
+3. Trigger it again and post `{ tokenId, approved: true, always: true }`. Confirm a `gmail:send` row appears in `ToolGrant` and the email sends.
+4. Trigger it once more. Confirm it sends without asking.
+5. Revoke the grant and trigger it again. Post the new token ID as a different user, and confirm the route returns 404 and the run keeps waiting. Then post it as the owner and confirm the email sends.
+
+## Common mistakes
+
+- **Completing any token ID you're sent.** Check that the token is tagged for the signed-in user and still waiting, or one user can approve another user's action.
+- **Sending the token URL in a notification.** Anyone with the URL can complete the token. Link to your own app instead.
+- **An idempotency key your send function ignores.** A retried run can send the same email twice, and Gmail doesn't deduplicate sends. Key it on the run ID, and skip a key you've already sent.
+- **Grants with no revoke path.** Give users a page where they can see and remove their grants.
+
+## Next steps
+
+<CardGroup cols={2}>
+  <Card title="In a chat" icon="message" href="/ai-chat/patterns/tool-permissions-chat">
+    Ask for permission inside a chat with approval buttons.
+  </Card>
+  <Card title="Wait for token" icon="clock" href="/wait-for-token">
+    Pause any task until your app or an external service completes a token.
+  </Card>
+  <Card title="Slack approvals" icon="slack" href="/webhooks/human-in-the-loop#slack-approvals">
+    Approve and Deny buttons for agents running in Slack.
+  </Card>
+  <Card title="Tool permissions" icon="shield" href="/ai-chat/patterns/tool-permissions">
+    How connections, grants and approvals fit together.
+  </Card>
+</CardGroup>

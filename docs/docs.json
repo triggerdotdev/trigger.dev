@@ -81,6 +81,14 @@
                   "ai-chat/patterns/branching-conversations",
                   "ai-chat/patterns/code-sandbox",
                   "ai-chat/patterns/human-in-the-loop",
+                  {
+                    "group": "Tool permissions",
+                    "pages": [
+                      "ai-chat/patterns/tool-permissions",
+                      "ai-chat/patterns/tool-permissions-chat",
+                      "ai-chat/patterns/tool-permissions-outside-chat"
+                    ]
+                  },
                   "ai-chat/patterns/tool-result-auditing",
                   "ai-chat/patterns/large-payloads",
                   "ai-chat/patterns/skills",
