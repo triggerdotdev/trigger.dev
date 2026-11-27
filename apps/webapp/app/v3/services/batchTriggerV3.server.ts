@@ -24,6 +24,7 @@ import { resolveRunIdMintKind, type RunIdMintKind } from "~/v3/engineVersion.ser
 import { resolveInheritedMintKind } from "~/v3/runOpsMigration/resolveInheritedMintKind.server";
 import { mintFriendlyIdForKind } from "~/v3/runOpsMigration/mintAnchoredRunFriendlyId.server";
 import { mintBatchFriendlyId } from "~/v3/runOpsMigration/mintBatchFriendlyId.server";
+import { resolveBatchParentRun } from "~/runEngine/services/resolveBatchParentRun.server";
 import { batchTriggerWorker } from "../batchTriggerWorker.server";
 import { guardQueueSizeLimitsForEnv } from "../queueSizeLimits.server";
 import { downloadPacketFromObjectStore, uploadPacketToObjectStore } from "../objectStore.server";
@@ -235,6 +236,14 @@ export class BatchTriggerV3Service extends BaseService {
               throw new OutOfEntitlementError();
             }
           }
+
+          // Refuses a MemoryDB parent that is not found; returns at once for any other parent.
+          await resolveBatchParentRun({
+            runStore: this.runStore,
+            environmentId: environment.id,
+            parentRunId: body.parentRunId,
+            resumeParentOnCompletion: false,
+          });
 
           const runs = await this.#prepareRunData(environment, body, batchId);
 

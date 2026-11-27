@@ -203,6 +203,10 @@ function tryResolveRunOpsHandles() {
   }
 }
 
+// True when `runStore` is the routing store, which routes a look-up by the id's shard. Split reads do
+// not affect it: both run-ops URLs set is enough.
+export const runStoreRoutesByShard = ROUTING_ENABLED && tryResolveRunOpsHandles() !== null;
+
 export const snapshotStoreRuntime = singleton("SnapshotStoreRuntime", () => {
   const endpoint = env.RUN_ENGINE_SNAPSHOT_STORE_REDIS_URL;
   if (!endpoint) return undefined;

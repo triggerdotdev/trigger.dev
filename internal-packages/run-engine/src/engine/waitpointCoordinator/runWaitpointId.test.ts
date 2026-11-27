@@ -6,7 +6,7 @@ import {
   parseWaitpointId,
   RunId,
 } from "@trigger.dev/core/v3/isomorphic";
-import { deriveRunWaitpointId } from "./runWaitpointId.js";
+import { deriveBatchWaitpointId, deriveRunWaitpointId } from "./runWaitpointId.js";
 
 describe("deriveRunWaitpointId", () => {
   it("preserves native anchors, deterministically maps CUID timestamp and rejects unsupported shapes", () => {
@@ -43,6 +43,15 @@ describe("deriveRunWaitpointId", () => {
     for (const anchor of [generateRunOpsIdV2("7"), generateRunOpsIdV2("m")]) {
       const id = deriveRunWaitpointId(`run_${anchor}`);
       expect(id).toBe(`${anchor.slice(0, 24)}rw`);
+    }
+  });
+
+  // Catches: a BATCH store waitpoint id of a shard-7 or shard-m batch losing the anchor's core or its bw tail.
+  it("derives a BATCH store waitpoint id from a version-2 anchor on shard 7 or m, with or without batch_", () => {
+    for (const anchor of [generateRunOpsIdV2("7"), generateRunOpsIdV2("m")]) {
+      for (const batchId of [anchor, `batch_${anchor}`]) {
+        expect(deriveBatchWaitpointId(batchId)).toBe(`${anchor.slice(0, 24)}bw`);
+      }
     }
   });
 });

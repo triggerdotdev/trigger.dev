@@ -31,6 +31,7 @@ import { handleMetadataPacket } from "~/utils/packets";
 import { startSpan } from "~/v3/tracing.server";
 import { mintFriendlyIdForKind } from "~/v3/runOpsMigration/mintAnchoredRunFriendlyId.server";
 import { resolveRunMintTarget } from "~/v3/runOpsMigration/resolveRunMintTarget.server";
+import { refuseMemoryDbParentNotFound } from "~/v3/runOpsMigration/memoryDbParent.server";
 import type {
   TriggerTaskServiceOptions,
   TriggerTaskServiceResult,
@@ -369,6 +370,10 @@ export class RunEngineTriggerTaskService {
                 this.prisma
               )
             : undefined;
+
+          if (body.options?.parentRunId && !parentRun) {
+            refuseMemoryDbParentNotFound(body.options.parentRunId);
+          }
 
           const parentRunValidation = this.validator.validateParentRun({
             taskId,

@@ -8,6 +8,7 @@ import type {
 } from "@trigger.dev/database";
 import type { AuthenticatedEnvironment } from "~/services/apiAuth.server";
 import { logger } from "~/services/logger.server";
+import { refuseMemoryDbParentNotFound } from "~/v3/runOpsMigration/memoryDbParent.server";
 import { mintFriendlyIdForKind } from "~/v3/runOpsMigration/mintAnchoredRunFriendlyId.server";
 import { resolveRunMintTarget } from "~/v3/runOpsMigration/resolveRunMintTarget.server";
 import { getEventRepository } from "~/v3/eventRepository/index.server";
@@ -155,6 +156,10 @@ export class TriggerFailedTaskService {
             this.prisma
           )
         : undefined;
+
+      if (request.parentRunId && !parentRun) {
+        refuseMemoryDbParentNotFound(request.parentRunId);
+      }
 
       const depth = parentRun ? parentRun.depth + 1 : 0;
       const rootTaskRunId = parentRun?.rootTaskRunId ?? parentRun?.id;

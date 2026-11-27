@@ -1,4 +1,5 @@
 import type { RbacAbility } from "@trigger.dev/rbac";
+import { refuseMemoryDbParentNotFound } from "~/v3/runOpsMigration/memoryDbParent.server";
 import { resolveRunForMutation } from "~/v3/mollifier/resolveRunForMutation.server";
 import { canWriteResolvedParentRun } from "./parentRunAuthorization";
 
@@ -21,7 +22,10 @@ export async function canWriteParentRun(
     organizationId,
     runParam: parentRunId,
   });
-  if (!run) return false;
+  if (!run) {
+    refuseMemoryDbParentNotFound(parentRunId);
+    return false;
+  }
 
   return canWriteResolvedParentRun(ability, run);
 }
