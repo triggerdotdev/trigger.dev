@@ -10,6 +10,7 @@ import {
   createJsonErrorObject,
   logger,
 } from "@trigger.dev/core/v3";
+import type { IOPacket } from "@trigger.dev/core/v3/utils/ioSerialization";
 import { parsePacketAsJson } from "@trigger.dev/core/v3/utils/ioSerialization";
 import { BatchId } from "@trigger.dev/core/v3/isomorphic";
 import { getUserProvidedIdempotencyKey } from "@trigger.dev/core/v3/serverOnly";
@@ -248,7 +249,7 @@ export class ApiRetrieveRunPresenter {
           });
         }
       } else {
-        $payload = await parsePacketAsJson(payloadPacket);
+        $payload = await parseRunPacket(payloadPacket);
       }
 
       if (taskRun.status === "COMPLETED_SUCCESSFULLY") {
@@ -277,7 +278,7 @@ export class ApiRetrieveRunPresenter {
             });
           }
         } else {
-          $output = await parsePacketAsJson(outputPacket);
+          $output = await parseRunPacket(outputPacket);
         }
       }
 
@@ -585,6 +586,11 @@ async function createCommonRunStructure(
     metadata,
     region: regionForDisplay(run.region, run.workerQueue),
   };
+}
+
+async function parseRunPacket(packet: IOPacket) {
+  if (packet.data === "" && packet.dataType === "text/plain") return "";
+  return parsePacketAsJson(packet);
 }
 
 function resolveTriggerFunction(run: CommonRelatedRun): TriggerFunction {
