@@ -208,7 +208,15 @@ export class RunLocker {
             [SemanticAttributes.LOCK_SUCCESS]: "false",
           });
 
-          this.logger.error("[RunLocker] Error locking resources", {
+          // Log at the level the error declares (`logLevel`), as the redis-worker does. An unmarked
+          // error, an unknown level or a non-object rejection is logged at error as before.
+          const declared =
+            typeof error === "object" && error !== null && "logLevel" in error
+              ? error.logLevel
+              : undefined;
+          const level =
+            declared === "warn" || declared === "info" || declared === "debug" ? declared : "error";
+          this.logger[level]("[RunLocker] Error locking resources", {
             error,
             resources,
             duration: this.duration,

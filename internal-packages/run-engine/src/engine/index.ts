@@ -71,6 +71,7 @@ import {
   RunDuplicateIdempotencyKeyError,
   RunOneTimeUseTokenError,
   ServiceValidationError,
+  WaitpointCompletionNotCommittedError,
 } from "./errors.js";
 import type { EventBus, EventBusEvents } from "./eventBus.js";
 import { RunLocker } from "./locking.js";
@@ -141,6 +142,9 @@ import {
   executeShutdownPhases,
   type RunEngineShutdownFailure,
 } from "./shutdown.js";
+
+/** The fanout delivery attempt that reports a still-uncommitted completion as an error, once. */
+export const WAITPOINT_FANOUT_REPORT_ATTEMPT = 5;
 
 export class RunEngine {
   private runLockRedis: Redis;
@@ -336,7 +340,7 @@ export class RunEngine {
             else if (id) await this.worker.queue.ack(id, deduplicationKey);
           });
         },
-        deliverWaitpointFanout: async ({ id, payload, deduplicationKey }) => {
+        deliverWaitpointFanout: async ({ id, payload, deduplicationKey, attempt }) => {
           if (!(await this.waitpointSystem.isWaitpointStoreEnabled(payload.organizationId))) return;
           const parsed = parseWaitpointId(payload.waitpointId);
           const completionLockedSource =
@@ -355,7 +359,9 @@ export class RunEngine {
               !expiredSource &&
               (completion.outcome !== "exists" || completion.status !== "COMPLETED")
             ) {
-              throw new Error("Waitpoint completion has not committed");
+              // Delivery often runs before its completion commits, so retries log at warn. See the
+              // report below for the one attempt logged as an error.
+              throw new WaitpointCompletionNotCommittedError(true);
             }
             this.waitpointFanout ??= new WaitpointFanoutWorker({
               coordinator: options.waitpointFanoutStore,
@@ -417,14 +423,26 @@ export class RunEngine {
             // The outer fenced ack cannot remove a replacement published after lock release.
             if (completionLockedSource && id) await this.worker.queue.ack(id, deduplicationKey);
           };
-          return completionLockedSource
-            ? this.waitpointSystem.withWaitpointCompletionLock(payload.waitpointId, async () => {
-                // Admission may have waited behind a producer while the org was disabled.
-                if (!(await this.waitpointSystem.isWaitpointStoreEnabled(payload.organizationId)))
-                  return;
-                return deliver();
-              })
-            : deliver();
+          try {
+            return await (completionLockedSource
+              ? this.waitpointSystem.withWaitpointCompletionLock(payload.waitpointId, async () => {
+                  // Admission may have waited behind a producer while the org was disabled.
+                  if (!(await this.waitpointSystem.isWaitpointStoreEnabled(payload.organizationId)))
+                    return;
+                  return deliver();
+                })
+              : deliver());
+          } catch (error) {
+            // Attempt WAITPOINT_FANOUT_REPORT_ATTEMPT (about 30-60 seconds of backoff) reports a stuck
+            // delivery as an error once. Unmark it only after the completion lock is released, so the
+            // worker logs it and RunLocker does not log it a second time.
+            if (
+              error instanceof WaitpointCompletionNotCommittedError &&
+              (attempt ?? 0) === WAITPOINT_FANOUT_REPORT_ATTEMPT
+            )
+              throw new WaitpointCompletionNotCommittedError(false);
+            throw error;
+          }
         },
         recoverRunWaitpoint: async ({ payload }) => {
           if (!(await this.waitpointSystem.isWaitpointStoreEnabled(payload.organizationId))) return;

@@ -1,11 +1,13 @@
 import { createRedisClient, type RedisOptions } from "@internal/redis";
 import { containerTestWithIsolatedRedis } from "@internal/testcontainers";
 import { trace } from "@internal/tracing";
+import { Logger } from "@trigger.dev/core/logger";
 import { generateWaitpointId } from "@trigger.dev/core/v3/isomorphic";
 import type { PrismaClient } from "@trigger.dev/database";
 import { setTimeout } from "node:timers/promises";
 import { describe, expect } from "vitest";
-import { RunEngine } from "../index.js";
+import { RunEngine, WAITPOINT_FANOUT_REPORT_ATTEMPT } from "../index.js";
+import { WaitpointCompletionNotCommittedError } from "../errors.js";
 import { WaitpointSystem, type WaitpointSystemOptions } from "../systems/waitpointSystem.js";
 import {
   fanoutIndexKeys,
@@ -367,6 +369,73 @@ describe("durable DATETIME fanout retirement", () => {
         await h.assertRetired(id);
       } finally {
         await native.auth("default", "");
+        await h.close();
+      }
+    }
+  );
+
+  // Catches: retries of an uncommitted completion going to error reporting, or a delivery that stays
+  // uncommitted never reaching it, or reaching it on every retry instead of once.
+  containerTestWithIsolatedRedis(
+    "an uncommitted completion is reported as an error once, and every other attempt at warn",
+    async ({ prisma, redisOptions }) => {
+      const h = await harness(prisma, redisOptions);
+      const id = generateWaitpointId("RUN");
+      try {
+        await h.arm(id);
+        const item = await h.worker.queue.getJob(h.jobId(id));
+        const failure = (attempt: number) =>
+          h.deliver({ ...item, attempt }).then(
+            () => undefined,
+            (error: unknown) => error as Error & { logLevel?: string }
+          );
+
+        const early = await failure(0);
+        expect(early).toBeInstanceOf(WaitpointCompletionNotCommittedError);
+        expect(early?.logLevel).toBe("warn");
+        expect((await failure(WAITPOINT_FANOUT_REPORT_ATTEMPT - 1))?.logLevel).toBe("warn");
+
+        const reported = await failure(WAITPOINT_FANOUT_REPORT_ATTEMPT);
+        expect(reported).toBeInstanceOf(WaitpointCompletionNotCommittedError);
+        expect(reported?.logLevel).toBeUndefined();
+
+        const later = await failure(WAITPOINT_FANOUT_REPORT_ATTEMPT + 1);
+        expect(later).toBeInstanceOf(WaitpointCompletionNotCommittedError);
+        expect(later?.logLevel).toBe("warn");
+        expect(await h.worker.queue.getJob(h.jobId(id))).not.toBeNull();
+      } finally {
+        await h.close();
+      }
+    }
+  );
+
+  // Catches: a locked source's reporting attempt logged at error by RunLocker as well as by the
+  // worker, which reports one stuck delivery twice.
+  containerTestWithIsolatedRedis(
+    "a locked source's reporting attempt is unmarked only after the completion lock is released",
+    async ({ prisma, redisOptions }) => {
+      const h = await harness(prisma, redisOptions);
+      const id = generateWaitpointId("DATETIME");
+      const logs: Record<string, unknown>[] = [];
+      Logger.onLog = (log) => logs.push(log);
+      try {
+        await h.create(id, "DATETIME", "PENDING");
+        await h.arm(id);
+        const item = await h.worker.queue.getJob(h.jobId(id));
+        const reported = await h
+          .deliver({ ...item, attempt: WAITPOINT_FANOUT_REPORT_ATTEMPT })
+          .then(
+            () => undefined,
+            (error: unknown) => error as Error & { logLevel?: string }
+          );
+        expect(reported).toBeInstanceOf(WaitpointCompletionNotCommittedError);
+        expect(reported?.logLevel).toBeUndefined();
+        // Any error-level log about this waitpoint, whatever its wording, would be a second report.
+        expect(logs.filter((l) => l.level === "error" && JSON.stringify(l).includes(id))).toEqual(
+          []
+        );
+      } finally {
+        Logger.onLog = undefined;
         await h.close();
       }
     }

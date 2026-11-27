@@ -220,6 +220,8 @@ export class StoreWaitpointBlockOperationIdentityRequired extends Error {
  * Legacy waits do not use this check.
  */
 export class StoreWaitpointBlockCycleAdvanced extends Error {
+  // Every caller catches this fence as an expected outcome, so loggers keep it out of error reporting.
+  readonly logLevel = "warn" as const;
   readonly runId: string;
   readonly waitpointIds: string[];
   readonly expectedCycleAnchor: string;
@@ -240,6 +242,16 @@ export class StoreWaitpointBlockCycleAdvanced extends Error {
     this.waitpointIds = params.waitpointIds;
     this.expectedCycleAnchor = params.expectedCycleAnchor;
     this.currentCycleAnchor = params.currentCycleAnchor;
+  }
+}
+
+/** Fanout delivery ran before its completion was visible; `expected` marks an early retry. */
+export class WaitpointCompletionNotCommittedError extends Error {
+  readonly logLevel?: "warn";
+  constructor(expected: boolean) {
+    super("Waitpoint completion has not committed");
+    this.name = "WaitpointCompletionNotCommittedError";
+    if (expected) this.logLevel = "warn";
   }
 }
 
