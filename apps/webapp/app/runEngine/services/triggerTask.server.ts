@@ -18,6 +18,7 @@ import {
 import {
   parseNaturalLanguageDurationInMs,
   parseTraceparent,
+  resolveShard,
   RunId,
   serializeTraceparent,
   stringifyDuration,
@@ -32,6 +33,8 @@ import { startSpan } from "~/v3/tracing.server";
 import { mintFriendlyIdForKind } from "~/v3/runOpsMigration/mintAnchoredRunFriendlyId.server";
 import { resolveRunMintTarget } from "~/v3/runOpsMigration/resolveRunMintTarget.server";
 import { refuseMemoryDbParentNotFound } from "~/v3/runOpsMigration/memoryDbParent.server";
+import { rootResidency } from "~/v3/runOpsMigration/resolveRootResidency.server";
+import { MEMORYDB_SHARD_KEY, organizationContext } from "@internal/run-store";
 import type {
   TriggerTaskServiceOptions,
   TriggerTaskServiceResult,
@@ -223,9 +226,16 @@ export class RunEngineTriggerTaskService {
   // region — or the default char when the run targets the default region.
   private async mintRunFriendlyId(
     environment: AuthenticatedEnvironment,
-    parentRunFriendlyId?: string,
-    region?: string
+    parentRunFriendlyId: string | undefined,
+    region: string | undefined,
+    kind: { keyed: boolean; token: boolean; delayed: boolean; debounced: boolean }
   ): Promise<string> {
+    if (
+      !parentRunFriendlyId &&
+      (await rootResidency.allowsRootRun(environment.organization.featureFlags, kind))
+    ) {
+      return mintFriendlyIdForKind({ kind: "runOpsId", shardChar: MEMORYDB_SHARD_KEY });
+    }
     return mintFriendlyIdForKind(
       await resolveRunMintTarget({
         environment: {
@@ -272,8 +282,17 @@ export class RunEngineTriggerTaskService {
             (await this.mintRunFriendlyId(
               environment,
               body.options?.parentRunId,
-              body.options?.region
+              body.options?.region,
+              {
+                keyed: Boolean(options.idempotencyKey ?? body.options?.idempotencyKey),
+                token: Boolean(options.oneTimeUseToken),
+                delayed: Boolean(body.options?.delay),
+                debounced: Boolean(body.options?.debounce),
+              }
             ));
+          if (resolveShard(runFriendlyId) === MEMORYDB_SHARD_KEY) {
+            organizationContext.markBornHere();
+          }
           const triggerRequest = {
             taskId,
             friendlyId: runFriendlyId,

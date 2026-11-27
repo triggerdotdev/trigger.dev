@@ -6,10 +6,14 @@ import { describe, expect, it, vi } from "vitest";
 import { json } from "@remix-run/server-runtime";
 import {
   MEMORYDB_SHARD_KEY,
+  organizationContext,
   PostgresRunStore,
   RoutingRunStore,
   UnknownShardKey,
 } from "@internal/run-store";
+import type * as RootResidencyModule from "~/v3/runOpsMigration/resolveRootResidency.server";
+import type * as ResolveRunMintTargetModule from "~/v3/runOpsMigration/resolveRunMintTarget.server";
+import type * as MintBatchFriendlyIdModule from "~/v3/runOpsMigration/mintBatchFriendlyId.server";
 import { unroutableIdResponse } from "~/services/routeBuilders/unroutableId.server";
 
 describe("unroutableIdResponse", () => {
@@ -44,6 +48,11 @@ describe("unroutableIdResponse", () => {
   });
 });
 
+// The mint master switch off for this suite, whatever the runner sets; env.server reads it at import.
+vi.hoisted(() => {
+  process.env.RUN_OPS_MINT_ENABLED = "0";
+});
+
 // ---- The routes, driven end to end: real route actions over a real routing store on two
 // databases and a real run engine. Shard `a` is configured (an alias of the run-ops store);
 // `m` and `z` are not. Only auth, request idempotency, trace events, entitlement, the batch
@@ -61,6 +70,15 @@ const holder = vi.hoisted(() => ({
   enqueue: undefined as any,
   // The method names the stand-in under `m` was called with, in order.
   standInCalls: [] as string[],
+  // Per stand-in call: whether the scope in force had been marked born here.
+  standInContexts: [] as { method: string; bornHere: boolean }[],
+  // The root residency decision's process inputs; an Error makes its reader throw.
+  residencyEnv: undefined as any,
+  split: true,
+  globalFlags: undefined as any,
+  unsupportedGroups: [] as any,
+  memoryDbRegistered: false,
+  ruleCalls: 0,
   waitpointStore: undefined as any,
 }));
 
@@ -142,6 +160,44 @@ vi.mock("~/v3/runEngine.server", () => ({
   ),
 }));
 
+// The decision with the residency switch's real rule; only the process inputs are the test's.
+vi.mock("~/v3/runOpsMigration/resolveRootResidency.server", async (importOriginal) => {
+  const actual = await importOriginal<typeof RootResidencyModule>();
+  const { createRunResidencyAllowedResolver } = await import("~/v3/utils/runResidency.server");
+  const read = (key: "globalFlags" | "unsupportedGroups") => {
+    const value = holder[key];
+    if (value instanceof Error) throw value;
+    return value;
+  };
+  return {
+    ...actual,
+    rootResidency: actual.createRootResidencyDecision({
+      isResidencyAllowed: (organizationFlags) => {
+        holder.ruleCalls++;
+        return createRunResidencyAllowedResolver({
+          env: holder.residencyEnv,
+          isSplitEnabled: async () => holder.split,
+          readGlobalFlags: () => read("globalFlags"),
+          graceMs: 90_000,
+        })(organizationFlags);
+      },
+      readGlobalFlags: () => read("globalFlags"),
+      readUnsupportedGroups: () => read("unsupportedGroups"),
+      memoryDbStoreRegistered: () => holder.memoryDbRegistered,
+    }),
+  };
+});
+
+vi.mock("~/v3/runOpsMigration/resolveRunMintTarget.server", async (importOriginal) => {
+  const actual = await importOriginal<typeof ResolveRunMintTargetModule>();
+  return { ...actual, resolveRunMintTarget: vi.fn(actual.resolveRunMintTarget) };
+});
+
+vi.mock("~/v3/runOpsMigration/mintBatchFriendlyId.server", async (importOriginal) => {
+  const actual = await importOriginal<typeof MintBatchFriendlyIdModule>();
+  return { ...actual, mintBatchFriendlyId: vi.fn(actual.mintBatchFriendlyId) };
+});
+
 vi.mock("~/v3/runOpsMigration/splitMode.server", async (importOriginal) => ({
   ...(await importOriginal<object>()),
   isSplitEnabled: async () => true,
@@ -199,6 +255,7 @@ import {
 import { setupAuthenticatedEnvironment, setupBackgroundWorker } from "@internal/run-engine/tests";
 import { heteroRunOpsWithRedisTest } from "@internal/testcontainers";
 import { trace } from "@opentelemetry/api";
+import { Prisma } from "@trigger.dev/database";
 import {
   AttemptId,
   BatchId,
@@ -206,6 +263,12 @@ import {
   generateRunOpsId,
   generateRunOpsIdV2,
 } from "@trigger.dev/core/v3/isomorphic";
+import { IdempotencyKeyConcern } from "~/runEngine/concerns/idempotencyKeys.server";
+import { RunEngineBatchTriggerService } from "~/runEngine/services/batchTrigger.server";
+import { logger } from "~/services/logger.server";
+import { mintBatchFriendlyId } from "~/v3/runOpsMigration/mintBatchFriendlyId.server";
+import { resolveRunMintTarget } from "~/v3/runOpsMigration/resolveRunMintTarget.server";
+import { TriggerTaskService } from "~/v3/services/triggerTask.server";
 import { getEntitlement } from "~/services/platform.v3.server";
 import { findEnvironmentById } from "~/models/runtimeEnvironment.server";
 import { BatchStreamGrants } from "~/runEngine/concerns/batchStreamGrants.server";
@@ -247,6 +310,10 @@ function standInStore(prisma17: any) {
       if (typeof value !== "function") return value;
       return (...callArgs: unknown[]) => {
         holder.standInCalls.push(String(prop));
+        holder.standInContexts.push({
+          method: String(prop),
+          bornHere: organizationContext.get()?.bornHere === true,
+        });
         return value.apply(t, callArgs);
       };
     },
@@ -277,6 +344,19 @@ async function harness({ prisma14, prisma17, redisOptions }: any, options: Harne
     ],
   });
   holder.standInCalls = [];
+  holder.standInContexts = [];
+  holder.residencyEnv = {
+    RUN_ENGINE_SNAPSHOT_STORE_REDIS_URL: "redis://snapshot-store.invalid",
+    RUN_ENGINE_WAITPOINT_STORE_REDIS_URL: "redis://waitpoint-store.invalid",
+    REALTIME_BACKEND_NATIVE_ENABLED: "1",
+    REALTIME_BACKEND_DEFAULT: "native",
+    TRIGGER_MOLLIFIER_ENABLED: "0",
+  };
+  holder.split = true;
+  holder.globalFlags = undefined;
+  holder.unsupportedGroups = [];
+  holder.memoryDbRegistered = options.standIn === true;
+  holder.ruleCalls = 0;
   holder.waitpointStore = options.waitpointStore
     ? new WaitpointStoreCoordinator({ redisOptions })
     : undefined;
@@ -1070,5 +1150,423 @@ describe("a generation 3 parent is found before its child or batch is created", 
       }
     },
     { standIn: true, flags: ON }
+  );
+});
+
+// ---- A new root of an enrolled organisation, in a process with a store under `m`: the decision at
+// the four mint sites, with the rule's process inputs the test's own.
+const ENROLLED = {
+  ...ON,
+  archiveStoreEnabled: false,
+  outflowEnabled: false,
+  idempotencyStoreEnabled: false,
+  batchStoreEnabled: false,
+};
+const GEN3 = /^(run|batch)_[a-z0-9]{24}m2$/;
+const GROUPS = [
+  "parentAndChild",
+  "batchMembership",
+  "idempotencyKeyFields",
+  "delayAndRescheduling",
+  "debounce",
+] as const;
+
+// Replaces the organisation's flags (undefined: the plain organisation's) and reloads the environment.
+async function useFlags(flags: Record<string, unknown> | undefined) {
+  await holder.prisma14.organization.update({
+    where: { id: holder.environment.organizationId },
+    data: { featureFlags: flags ?? Prisma.DbNull },
+  });
+  holder.environment = await findEnvironmentById(holder.environment.id);
+}
+
+let unique = 0;
+async function viaRoute(options: Record<string, unknown>, headers: Record<string, string> = {}) {
+  const request = post(`http://localhost/api/v1/tasks/${TASK}/trigger`, { payload: {}, options });
+  for (const [name, value] of Object.entries(headers)) request.headers.set(name, value);
+  const res = await answer(await triggerAction(args(request, { taskId: TASK })));
+  expect(res.status).toBe(200);
+  return res.body.id as string;
+}
+
+// As the webhook engine and other workers call it: no request scope.
+async function direct(options: Record<string, unknown>, body: Record<string, unknown> = {}) {
+  const result = await new TriggerTaskService().call(
+    TASK,
+    holder.environment,
+    { payload: {}, ...body },
+    options
+  );
+  return result!.run.friendlyId;
+}
+
+const WEBHOOK = {
+  triggerSource: "webhook",
+  triggerAction: "trigger",
+  customIcon: "webhook",
+  webhookDeliveryId: "whd_test",
+  webhookEndpointId: "whep_test",
+};
+
+const ROOTS: Record<string, () => Promise<string>> = {
+  simple: () => viaRoute({}),
+  "Idempotency-Key header": () => viaRoute({}, { "idempotency-key": `header-${++unique}` }),
+  "body idempotencyKey": () => viaRoute({ idempotencyKey: `body-${++unique}` }),
+  delayed: () => viaRoute({ delay: "1h" }),
+  debounced: () => viaRoute({ debounce: { key: `debounce-${++unique}`, delay: "1h" } }),
+  "delayed and debounced": () =>
+    viaRoute({ delay: "1h", debounce: { key: `debounce-${++unique}`, delay: "1h" } }),
+  token: () => direct({ oneTimeUseToken: `token-${++unique}` }),
+  "token and key": () =>
+    direct({ oneTimeUseToken: `token-${++unique}`, idempotencyKey: `token-key-${unique}` }),
+  webhook: () =>
+    direct(
+      {
+        ...WEBHOOK,
+        idempotencyKey: `whep_test:delivery-${++unique}`,
+        idempotencyKeyExpiresAt: new Date(Date.now() + 86_400_000),
+      },
+      { options: { tags: ["webhook:endpoint:whep_test"] } }
+    ),
+  // A delivery to a session target carries no idempotency key.
+  "session target": () => direct(WEBHOOK, { options: { tags: ["webhook:endpoint:whep_test"] } }),
+};
+
+async function shapesOf(names: string[]) {
+  const out: Record<string, string> = {};
+  for (const name of names) out[name] = shape(await ROOTS[name]!());
+  return out;
+}
+
+const every = (names: string[], value: string) =>
+  Object.fromEntries(names.map((name) => [name, value]));
+
+function rootRow(friendlyId: string) {
+  return Promise.all(
+    [holder.prisma14, holder.prisma17].map((client) =>
+      client.taskRun.findFirst({ where: { friendlyId }, select: { id: true } })
+    )
+  ).then(([legacy, runOps]) => ({ legacy: !!legacy, runOps: !!runOps }));
+}
+
+function batchRow(friendlyId: string) {
+  return Promise.all(
+    [holder.prisma14, holder.prisma17].map((client) =>
+      client.batchTaskRun.findFirst({ where: { friendlyId }, select: { id: true } })
+    )
+  ).then(([legacy, runOps]) => ({ legacy: !!legacy, runOps: !!runOps }));
+}
+
+// A root batch from each route; [batch shape, ...item shapes].
+const ROOT_BATCHES: Record<string, () => Promise<string[]>> = {
+  [V1_BATCH]: async () => {
+    const res = await answer(await ENTRIES[V1_BATCH]!(undefined as never, false));
+    expect(res.status).toBe(202);
+    return batchShapes(res.body.id);
+  },
+  [V1_TASK_BATCH]: async () => {
+    const res = await answer(await ENTRIES[V1_TASK_BATCH]!(undefined as never, false));
+    expect(res.status).toBe(200);
+    return batchShapes(res.body.batchId);
+  },
+  [V2_BATCH]: async () => {
+    const res = await answer(await ENTRIES[V2_BATCH]!(undefined as never, false));
+    expect(res.status).toBe(202);
+    return batchShapes(res.body.id);
+  },
+  [V3_BATCHES]: async () => batchShapes(await streamedBatch(undefined as never, false)),
+};
+
+async function rootBatchShapes(names: string[]) {
+  const out: Record<string, string[]> = {};
+  for (const name of names) out[name] = await ROOT_BATCHES[name]!();
+  return out;
+}
+
+const mintArgs = () => ({
+  environment: {
+    organizationId: holder.environment.organizationId,
+    id: holder.environment.id,
+    orgFeatureFlags: holder.environment.organization.featureFlags,
+  },
+  parentRunFriendlyId: undefined,
+});
+
+describe("a new root of an enrolled organisation, with a store under m", () => {
+  // Catches: the trigger API not minting a generation 3 simple root for the enrolled org, writing it
+  // anywhere but the store under m, depending on the mint master switch, or not marking the request.
+  routeTest(
+    "the trigger API: an enrolled simple root is generation 3 and born here; the plain org's is not",
+    async () => {
+      const seen: boolean[] = [];
+      const original = IdempotencyKeyConcern.prototype.handleTriggerRequest;
+      const spy = vi.spyOn(IdempotencyKeyConcern.prototype, "handleTriggerRequest");
+      spy.mockImplementation(function (this: IdempotencyKeyConcern, ...callArgs) {
+        seen.push(organizationContext.get()?.bornHere === true);
+        return original.apply(this, callArgs);
+      });
+      try {
+        const before = await counts();
+        const enrolled = await answer(await ENTRIES[TRIGGER]!(undefined as never, false));
+        expect(enrolled.body.id).toMatch(GEN3);
+        expect(holder.standInCalls).toContain("createRun");
+        expect(holder.standInContexts.every((call) => call.bornHere)).toBe(true);
+        expect(delta(before, await counts())).toEqual({ "runOps.taskRun": 1 });
+        expect(await rootRow(enrolled.body.id)).toEqual({ legacy: false, runOps: true });
+
+        await useFlags({ ...ENROLLED, idempotencyStoreEnabled: true });
+        holder.standInContexts = [];
+        const keyed = await ROOTS["Idempotency-Key header"]!();
+        expect(keyed).toMatch(GEN3);
+        expect(holder.standInContexts.length).toBeGreaterThan(0);
+        expect(holder.standInContexts.every((call) => call.bornHere)).toBe(true);
+        expect(seen).toEqual([true, true]);
+
+        await useFlags(undefined);
+        holder.standInCalls = [];
+        const plain = await answer(await ENTRIES[TRIGGER]!(undefined as never, false));
+        expect(plain.status).toBe(enrolled.status);
+        expect(shape(plain.body.id)).toBe("cuid");
+        expect(holder.standInCalls).toEqual([]);
+        expect(seen).toEqual([true, true, false]);
+      } finally {
+        spy.mockRestore();
+      }
+
+      // Inside a scope, as a request has one: a direct call marks it only for a generation 3 id.
+      const scoped = async (options: Record<string, unknown> = {}) => {
+        const ctx: { bornHere?: boolean } = {};
+        const id = await organizationContext.run(ctx, () => direct(options));
+        return { shape: shape(id), bornHere: ctx.bornHere === true };
+      };
+      expect(await scoped()).toEqual({ shape: "cuid", bornHere: false });
+      const supplied = RunId.toFriendlyId(generateRunOpsIdV2(MEMORYDB_SHARD_KEY));
+      expect(await scoped({ runFriendlyId: supplied })).toEqual({
+        shape: "gen2:m",
+        bornHere: true,
+      });
+      await useFlags(ENROLLED);
+      expect(await scoped()).toEqual({ shape: "gen2:m", bornHere: true });
+
+      // Catches: a caller-supplied id or a child asking the decision.
+      holder.ruleCalls = 0;
+      const verbatim = RunId.generate().friendlyId;
+      expect(await direct({ runFriendlyId: verbatim })).toBe(verbatim);
+      const parent = await parentRun(RunId.toFriendlyId(generateRunOpsId()));
+      const child = await answer(await ENTRIES[TRIGGER]!(parent, false));
+      expect(shape(child.body.id)).toBe("gen1");
+      expect(holder.ruleCalls).toBe(0);
+    },
+    { standIn: true, flags: ENROLLED }
+  );
+
+  // Catches: a keyed, token, delayed or debounced root admitted without its flag or group.
+  routeTest(
+    "single roots: each kind by its idempotency flag and its groups",
+    async () => {
+      const all = Object.keys(ROOTS);
+      await useFlags({ ...ENROLLED, idempotencyStoreEnabled: true });
+      expect(await shapesOf(all)).toEqual(every(all, "gen2:m"));
+
+      const keyed = ["Idempotency-Key header", "body idempotencyKey", "token", "token and key"];
+      await useFlags(ENROLLED);
+      expect(await shapesOf([...keyed, "webhook", "session target"])).toEqual({
+        ...every([...keyed, "webhook"], "cuid"),
+        "session target": "gen2:m",
+      });
+
+      await useFlags({ ...ENROLLED, idempotencyStoreEnabled: true });
+      holder.unsupportedGroups = ["idempotencyKeyFields"];
+      expect(await shapesOf(["body idempotencyKey"])).toEqual({ "body idempotencyKey": "cuid" });
+      // A debounced run is always delayed, so it needs this group too.
+      holder.unsupportedGroups = ["delayAndRescheduling"];
+      expect(await shapesOf(["delayed", "debounced", "delayed and debounced"])).toEqual(
+        every(["delayed", "debounced", "delayed and debounced"], "cuid")
+      );
+      holder.unsupportedGroups = ["debounce"];
+      expect(await shapesOf(["debounced"])).toEqual({ debounced: "cuid" });
+
+      holder.unsupportedGroups = undefined;
+      const published = all.filter((name) => name !== "simple" && name !== "session target");
+      expect(await shapesOf(all)).toEqual({
+        ...every(published, "cuid"),
+        simple: "gen2:m",
+        "session target": "gen2:m",
+      });
+    },
+    { standIn: true, flags: ENROLLED }
+  );
+
+  // Catches: a root batch admitted without the batches flag, a group or the idempotency condition,
+  // a version 1 endpoint minting generation 3, or items not taking the batch's shape.
+  routeTest(
+    "root batches: version 2 and streaming by the batches flag; version 1 keeps today's mint",
+    async () => {
+      const all = [V1_BATCH, V1_TASK_BATCH, V2_BATCH, V3_BATCHES];
+      const today = ["cuid", "cuid", "cuid"];
+      const gen3 = ["gen2:m", "gen2:m", "gen2:m"];
+      const mint = vi.mocked(mintBatchFriendlyId);
+      // Today's mint: one call of mintBatchFriendlyId with base's arguments.
+      const todayBatch = async (name: string) => {
+        mint.mockClear();
+        const shapes = await ROOT_BATCHES[name]!();
+        expect({ name, calls: mint.mock.calls }).toEqual({ name, calls: [[mintArgs()]] });
+        return shapes;
+      };
+
+      expect(await rootBatchShapes([V1_BATCH, V1_TASK_BATCH])).toEqual({
+        [V1_BATCH]: today,
+        [V1_TASK_BATCH]: today,
+      });
+      expect(await todayBatch(V2_BATCH)).toEqual(today);
+      expect(await todayBatch(V3_BATCHES)).toEqual(today);
+
+      await useFlags({ ...ENROLLED, batchStoreEnabled: true, idempotencyStoreEnabled: true });
+      holder.standInContexts = [];
+      expect(await rootBatchShapes(all)).toEqual({
+        [V1_BATCH]: today,
+        [V1_TASK_BATCH]: today,
+        [V2_BATCH]: gen3,
+        [V3_BATCHES]: gen3,
+      });
+      const created = holder.standInContexts.filter((c) => c.method === "createBatchTaskRun");
+      expect(created.map((c) => c.bornHere)).toEqual([true, true]);
+
+      await useFlags({ ...ENROLLED, batchStoreEnabled: true });
+      expect(await rootBatchShapes([V1_BATCH, V1_TASK_BATCH, V2_BATCH])).toEqual({
+        [V1_BATCH]: today,
+        [V1_TASK_BATCH]: today,
+        [V2_BATCH]: gen3,
+      });
+      expect(await todayBatch(V3_BATCHES)).toEqual(today);
+      mint.mockClear();
+      const keyedItem = await answer(
+        await v2BatchAction(
+          args(
+            post("http://localhost/api/v2/tasks/batch", {
+              items: [
+                { task: TASK, payload: {} },
+                { task: TASK, payload: {}, options: { idempotencyKey: `item-${++unique}` } },
+              ],
+            })
+          )
+        )
+      );
+      expect(keyedItem.status).toBe(202);
+      expect(await batchShapes(keyedItem.body.id)).toEqual(today);
+      expect(mint.mock.calls).toEqual([[mintArgs()]]);
+      mint.mockClear();
+      const token = await new RunEngineBatchTriggerService().call(
+        holder.environment,
+        { items: [{ task: TASK, payload: {} }] } as never,
+        { oneTimeUseToken: `batch-token-${++unique}` }
+      );
+      expect(shape(token.id)).toBe("cuid");
+      expect(mint.mock.calls).toEqual([[mintArgs()]]);
+
+      await useFlags({ ...ENROLLED, batchStoreEnabled: true, idempotencyStoreEnabled: true });
+      for (const group of GROUPS) {
+        holder.unsupportedGroups = [group];
+        expect({
+          group,
+          [V2_BATCH]: await todayBatch(V2_BATCH),
+          [V3_BATCHES]: await todayBatch(V3_BATCHES),
+        }).toEqual({ group, [V2_BATCH]: today, [V3_BATCHES]: today });
+      }
+
+      holder.unsupportedGroups = [];
+      const v2 = await answer(await ENTRIES[V2_BATCH]!(undefined as never, false));
+      expect(await batchRow(v2.body.id)).toEqual({ legacy: false, runOps: true });
+    },
+    { standIn: true, flags: ENROLLED }
+  );
+
+  // Catches: a condition of the rule ignored at the mint, a never-on org admitted, or a refused root
+  // not taking today's call with base's arguments.
+  routeTest(
+    "the rule's conditions at the mint, never-on, and a throw",
+    async () => {
+      const mint = vi.mocked(resolveRunMintTarget);
+      const simpleToday = async () => {
+        mint.mockClear();
+        const id = await ROOTS.simple!();
+        expect(mint.mock.calls).toEqual([[{ ...mintArgs(), region: undefined }]]);
+        return shape(id);
+      };
+      const cases: Array<[string, Record<string, unknown>, Record<string, unknown>, string]> = [
+        ["no snapshot store URL", { RUN_ENGINE_SNAPSHOT_STORE_REDIS_URL: "" }, {}, "cuid"],
+        ["no waitpoint store URL", { RUN_ENGINE_WAITPOINT_STORE_REDIS_URL: "" }, {}, "cuid"],
+        [
+          "native realtime off, not native-only",
+          { REALTIME_BACKEND_NATIVE_ENABLED: "0" },
+          { realtimeNativeOnly: false },
+          "cuid",
+        ],
+        ["native-only, backend electric", {}, { realtimeBackend: "electric" }, "gen2:m"],
+        ["native-only, backend shadow", {}, { realtimeBackend: "shadow" }, "gen2:m"],
+        [
+          "native-only, native realtime off",
+          { REALTIME_BACKEND_NATIVE_ENABLED: "0" },
+          {},
+          "gen2:m",
+        ],
+      ];
+      const defaults = { ...holder.residencyEnv };
+      for (const [name, envPatch, flagPatch, expected] of cases) {
+        holder.residencyEnv = { ...defaults, ...envPatch };
+        await useFlags({ ...ENROLLED, ...flagPatch });
+        const got = expected === "cuid" ? await simpleToday() : shape(await ROOTS.simple!());
+        expect({ name, got }).toEqual({ name, got: expected });
+      }
+      holder.residencyEnv = defaults;
+
+      await useFlags(NEVER_ON);
+      holder.standInCalls = [];
+      const keyed = async () => {
+        mint.mockClear();
+        const id = await ROOTS["body idempotencyKey"]!();
+        expect(mint.mock.calls).toEqual([[{ ...mintArgs(), region: undefined }]]);
+        return shape(id);
+      };
+      expect(await keyed()).toBe("cuid");
+      const batchMint = vi.mocked(mintBatchFriendlyId);
+      for (const name of [V2_BATCH, V3_BATCHES]) {
+        batchMint.mockClear();
+        expect(await ROOT_BATCHES[name]!()).toEqual(["cuid", "cuid", "cuid"]);
+        expect(batchMint.mock.calls).toEqual([[mintArgs()]]);
+      }
+      expect(holder.standInCalls).toEqual([]);
+
+      // Catches: a throw in the decision escaping, giving generation 3, or warning other than once.
+      await useFlags(ENROLLED);
+      const warn = vi.spyOn(logger, "warn");
+      try {
+        holder.unsupportedGroups = new Error("groups unreadable");
+        expect(shape(await ROOTS.delayed!())).toBe("cuid");
+        expect(
+          warn.mock.calls.filter(([message]) => message === "runResidency.root_decision_failed")
+        ).toEqual([["runResidency.root_decision_failed", { error: "groups unreadable" }]]);
+        holder.unsupportedGroups = [];
+        holder.globalFlags = new Error("global flags unreadable");
+        expect(shape(await ROOTS.simple!())).toBe("cuid");
+        expect(
+          warn.mock.calls.filter(([message]) => message === "runResidency.rule_failed")
+        ).toEqual([["runResidency.rule_failed", { error: "global flags unreadable" }]]);
+      } finally {
+        warn.mockRestore();
+        holder.globalFlags = undefined;
+      }
+    },
+    { standIn: true, flags: ENROLLED }
+  );
+
+  // Catches: a root born under m in a process with no store registered there.
+  routeTest(
+    "no store under m: an enrolled simple root gets today's id and the rule is not asked",
+    async () => {
+      expect(shape(await ROOTS.simple!())).toBe("cuid");
+      expect(holder.ruleCalls).toBe(0);
+    },
+    { flags: ENROLLED }
   );
 });

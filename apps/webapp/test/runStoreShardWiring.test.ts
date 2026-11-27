@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   MEMORYDB_SHARD_KEY,
   type MemoryDbGate,
@@ -185,5 +185,44 @@ describe("buildRunStore MemoryDB slot", () => {
     expect(() => buildRunStore({ ...baseSplit, memoryDbStore: standIn([]) })).toThrow(
       /memoryDbStore.*memoryDbGate/
     );
+  });
+
+  // A fresh runStore singleton built under the given run-ops URLs, over stub database handles.
+  async function freshSingleton(runOpsUrl: string | undefined) {
+    vi.resetModules();
+    const singletons = (globalThis as any).__trigger_singletons ?? {};
+    delete singletons.RunStore;
+    delete singletons.RunStoreMemoryDbRegistration;
+    vi.stubEnv("RUN_OPS_DATABASE_URL", runOpsUrl);
+    vi.stubEnv("RUN_OPS_LEGACY_DATABASE_URL", runOpsUrl);
+    vi.stubEnv("RUN_OPS_SHARDS", undefined);
+    vi.stubEnv("RUN_ENGINE_SNAPSHOT_STORE_REDIS_URL", undefined);
+    vi.stubEnv("RUN_ENGINE_WAITPOINT_STORE_REDIS_URL", undefined);
+    vi.doMock("~/db.server", () => ({
+      prisma: stub(),
+      $replica: stub(),
+      runOpsNewPrismaClient: stub(),
+      runOpsNewReplicaClient: stub(),
+      runOpsLegacyPrisma: stub(),
+      runOpsLegacyReplica: stub(),
+      runOpsShardHandles: [],
+    }));
+    return import("~/v3/runStore.server");
+  }
+
+  afterEach(() => {
+    vi.doUnmock("~/db.server");
+    vi.unstubAllEnvs();
+    vi.resetModules();
+  });
+
+  // Catches: either branch of the singleton reporting a store under m that its deps do not carry.
+  it.each([
+    ["split on", "postgresql://runops.invalid/db", "RoutingRunStore"],
+    ["split off", undefined, "PostgresRunStore"],
+  ])("the singleton built with %s registers no store under m", async (_name, url, store) => {
+    const module = await freshSingleton(url);
+    expect(module.runStore.constructor.name).toBe(store);
+    expect(module.memoryDbStoreRegistered()).toBe(false);
   });
 });

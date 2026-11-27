@@ -7,7 +7,7 @@ import {
   parsePacket,
   TaskRunErrorCodes,
 } from "@trigger.dev/core/v3";
-import { BatchId } from "@trigger.dev/core/v3/isomorphic";
+import { BatchId, resolveShard } from "@trigger.dev/core/v3/isomorphic";
 import { type BatchTaskRun, Prisma } from "@trigger.dev/database";
 import { Evt } from "evt";
 import { z } from "zod";
@@ -19,7 +19,12 @@ import { logger } from "~/services/logger.server";
 import { batchTriggerWorker } from "~/v3/batchTriggerWorker.server";
 import { controlPlaneResolver } from "~/v3/runOpsMigration/controlPlaneResolver.server";
 import { mintAnchoredRunFriendlyId } from "~/v3/runOpsMigration/mintAnchoredRunFriendlyId.server";
-import { mintBatchFriendlyId } from "~/v3/runOpsMigration/mintBatchFriendlyId.server";
+import {
+  batchIdForMintKind,
+  mintBatchFriendlyId,
+} from "~/v3/runOpsMigration/mintBatchFriendlyId.server";
+import { rootResidency } from "~/v3/runOpsMigration/resolveRootResidency.server";
+import { MEMORYDB_SHARD_KEY, organizationContext } from "@internal/run-store";
 import {
   downloadPacketFromObjectStore,
   uploadPacketToObjectStore,
@@ -98,14 +103,25 @@ export class RunEngineBatchTriggerService extends WithRunEngine {
             resumeParentOnCompletion: body.resumeParentOnCompletion,
           });
 
-          const { friendlyId } = await mintBatchFriendlyId({
-            environment: {
-              organizationId: environment.organizationId,
-              id: environment.id,
-              orgFeatureFlags: environment.organization.featureFlags,
-            },
-            parentRunFriendlyId: body.parentRunId,
-          });
+          const { friendlyId } =
+            !body.parentRunId &&
+            (await rootResidency.allowsRootBatch(environment.organization.featureFlags, {
+              endpoint: "v2",
+              token: Boolean(options.oneTimeUseToken),
+              itemKeyed: () => body.items.some((item) => Boolean(item.options?.idempotencyKey)),
+            }))
+              ? batchIdForMintKind({ kind: "runOpsId", shardChar: MEMORYDB_SHARD_KEY })
+              : await mintBatchFriendlyId({
+                  environment: {
+                    organizationId: environment.organizationId,
+                    id: environment.id,
+                    orgFeatureFlags: environment.organization.featureFlags,
+                  },
+                  parentRunFriendlyId: body.parentRunId,
+                });
+          if (resolveShard(friendlyId) === MEMORYDB_SHARD_KEY) {
+            organizationContext.markBornHere();
+          }
 
           span.setAttribute("batchId", friendlyId);
 

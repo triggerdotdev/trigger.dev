@@ -238,6 +238,11 @@ export const snapshotStoreRuntime = singleton("SnapshotStoreRuntime", () => {
   });
 });
 
+// Whether the runStore singleton registers a store under the MemoryDB key; read by the root residency decision.
+const memoryDbRegistration = singleton("RunStoreMemoryDbRegistration", () => ({
+  registered: false,
+}));
+
 export const runStore: RunStore = singleton("RunStore", () => {
   const decorateResults = (store: RunStore) =>
     waitpointStoreConnection
@@ -262,8 +267,14 @@ export const runStore: RunStore = singleton("RunStore", () => {
       })
     );
   }
-  return decorateResults(buildRunStore(splitRunStoreDeps(handles)));
+  const deps = splitRunStoreDeps(handles);
+  memoryDbRegistration.registered = deps.memoryDbStore !== undefined;
+  return decorateResults(buildRunStore(deps));
 });
+
+export function memoryDbStoreRegistered(): boolean {
+  return memoryDbRegistration.registered;
+}
 
 /** What the runStore singleton passes to buildRunStore once the run-ops handles resolve. */
 export function splitRunStoreDeps(
