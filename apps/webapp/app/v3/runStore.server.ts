@@ -1,4 +1,5 @@
 import {
+  MEMORYDB_SHARD_KEY,
   PostgresRunStore,
   RoutingRunStore,
   type RoutingStoreMetrics,
@@ -58,6 +59,8 @@ type BuildRunStoreDeps = {
   singleResilience?: TransactionResilienceConfig;
   newResilience?: TransactionResilienceConfig;
   legacyResilience?: TransactionResilienceConfig;
+  /** The store registered under the MemoryDB key; no production caller yet. */
+  memoryDbStore?: RunStore;
 };
 
 /**
@@ -122,10 +125,14 @@ export function buildRunStore(deps: BuildRunStoreDeps): RunStore {
     aliasOf: shard.aliasOf,
   }));
 
+  const routedShards = deps.memoryDbStore
+    ? [...shardStores, { key: MEMORYDB_SHARD_KEY, store: deps.memoryDbStore }]
+    : shardStores;
+
   return new RoutingRunStore({
     new: newStore,
     legacy: legacyStore,
-    shards: shardStores.length > 0 ? shardStores : undefined,
+    shards: routedShards.length > 0 ? routedShards : undefined,
     resolveShard: deps.resolveShard ?? resolveShard,
     metrics: routingStoreMetrics,
   });

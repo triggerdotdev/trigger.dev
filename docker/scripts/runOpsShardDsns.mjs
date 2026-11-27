@@ -33,6 +33,10 @@ function assertDescriptor(d) {
   if (typeof d.key !== "string" || !/^[a-z0-9]$/.test(d.key)) {
     throw new Error(`RUN_OPS_SHARDS[${key}]: key must be a single [a-z0-9] char`);
   }
+  // MEMORYDB_SHARD_KEY in @internal/run-store; plain node cannot import it.
+  if (d.key === "m") {
+    throw new Error(`RUN_OPS_SHARDS[${key}]: key "m" is reserved for the MemoryDB store`);
+  }
   if (typeof d.region !== "string" || d.region === "") {
     throw new Error(`RUN_OPS_SHARDS[${key}]: region is required`);
   }

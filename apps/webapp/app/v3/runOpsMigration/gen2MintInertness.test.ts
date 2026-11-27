@@ -1,5 +1,11 @@
 import { describe, expect, it, vi } from "vitest";
-import { classifyKind, mintWaitpointIdFor, resolveShard } from "@trigger.dev/core/v3/isomorphic";
+import {
+  classifyKind,
+  mintWaitpointIdFor,
+  parseRunId,
+  resolveShard,
+} from "@trigger.dev/core/v3/isomorphic";
+import { MEMORYDB_SHARD_KEY } from "@internal/run-store";
 import { resolveInheritedMintKind } from "./resolveInheritedMintKind.server";
 import {
   mintAnchoredRunFriendlyId,
@@ -108,5 +114,21 @@ describe("gate off — waitpoint paths", () => {
       expect(r.id.length).toBe(25);
       expect(resolveShard(r.id)).toBe("legacy");
     }
+  });
+});
+
+describe("the MemoryDB key mints a generation 3 run id", () => {
+  // Catches: the MemoryDB key minting an id today's parser cannot read, or the wrong key.
+  it("is today's core, then m, then 2, and parses with its mint time", () => {
+    const before = Date.now();
+    const friendlyId = mintFriendlyIdForKind({ kind: "runOpsId", shardChar: MEMORYDB_SHARD_KEY });
+    const after = Date.now();
+
+    expect(friendlyId).toMatch(/^run_[a-z0-9]{24}m2$/);
+    const parsed = parseRunId(friendlyId);
+    expect(parsed).toMatchObject({ format: "b32hexV2", shard: "m" });
+    const timestamp = parsed.format === "b32hexV2" ? parsed.timestamp.getTime() : NaN;
+    expect(timestamp).toBeGreaterThanOrEqual(before);
+    expect(timestamp).toBeLessThanOrEqual(after);
   });
 });

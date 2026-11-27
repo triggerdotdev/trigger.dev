@@ -13,7 +13,7 @@ import type { Logger } from "@trigger.dev/core/logger";
 import type { PrismaClient, PrismaClientOrTransaction, Waitpoint } from "@trigger.dev/database";
 import { boundedIn, Prisma } from "@trigger.dev/database";
 import { nanoid } from "nanoid";
-import { UnclassifiableWaitpointId } from "../errors.js";
+import { refusePostgresWaitpointOnMemoryDbAnchor, UnclassifiableWaitpointId } from "../errors.js";
 import type {
   AbandonRunBlockersParams,
   AbsorbBlockersParams,
@@ -321,6 +321,7 @@ export class LegacyPostgresWaitpointCoordinator implements WaitpointCoordinator 
     idempotencyKey,
     idempotencyKeyExpiresAt,
   }: CreateDateTimeWaitpointParams): Promise<CreateWaitpointResult> {
+    refusePostgresWaitpointOnMemoryDbAnchor(runId);
     // Co-location invariant: a DATETIME wait waitpoint lives on the same run-ops DB as the run that
     // blocks on it (so the block edge's local `Waitpoint` join resolves and completion/resume stay
     // local). The minted waitpoint id is always a cuid, so without `coLocateWithRunId` the upsert
@@ -405,6 +406,7 @@ export class LegacyPostgresWaitpointCoordinator implements WaitpointCoordinator 
     standaloneResidency,
     standaloneShardKey,
   }: CreateManualWaitpointParams): Promise<CreateWaitpointResult> {
+    refusePostgresWaitpointOnMemoryDbAnchor(runId);
     // Co-location invariant (see createDateTimeWaitpoint): when a `runId` is supplied the waitpoint
     // co-locates with that run's DB and the (env,idempotencyKey) dedup is per-run (co-resident). A
     // standalone token (api.v1.waitpoints.tokens.ts) passes no run id — it is created without an
@@ -524,6 +526,7 @@ export class LegacyPostgresWaitpointCoordinator implements WaitpointCoordinator 
     projectId,
     tx,
   }: CreateBatchWaitpointParams): Promise<CreateWaitpointResult> {
+    refusePostgresWaitpointOnMemoryDbAnchor(batchId);
     // From the batch, not the blocked run: the create passes only completedByBatchId, which is the owner
     // the router validates against. The id anchors to the batch id. A duplicate batch idempotency key
     // raises P2002, which the caller maps to its own "already created" contract.
@@ -553,6 +556,7 @@ export class LegacyPostgresWaitpointCoordinator implements WaitpointCoordinator 
     environmentId: string;
     anchorRunId: string;
   }): AssociatedWaitpointData {
+    refusePostgresWaitpointOnMemoryDbAnchor(anchorRunId);
     return {
       ...mintWaitpointIdFor(anchorRunId),
       type: "RUN" as const,

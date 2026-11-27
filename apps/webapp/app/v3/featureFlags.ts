@@ -56,6 +56,7 @@ export const FEATURE_FLAG = {
   runOpsMintShardSetFlippedAt: "runOpsMintShardSetFlippedAt",
   // Fleet-wide pin for the complete cutover. Beats every per-org and per-env pin.
   runOpsMintShardOverride: "runOpsMintShardOverride",
+  runResidencyEnabled: "runResidencyEnabled",
   queueMetricsUiEnabled: "queueMetricsUiEnabled",
   // Build path for CLI deploys, resolved by DeploymentService.getDeploySettings.
   deployBuildPath: "deployBuildPath",
@@ -245,6 +246,9 @@ export const FeatureFlagCatalog = {
   [FEATURE_FLAG.runOpsMintShardOverride]: z
     .string()
     .refine((v) => v === "new" || /^[a-z0-9]$/.test(v), 'must be a single [a-z0-9] char, or "new"'),
+  // Whether an organisation's new root runs are born in MemoryDB. Org override wins over the global
+  // value, off by default. Strict z.boolean(): coercion reads the string "false" as true.
+  [FEATURE_FLAG.runResidencyEnabled]: z.boolean(),
   // Per-org access to the Queue Metrics dashboard UI (view only; emission is global and
   // separate). Off unless enabled for the org.
   [FEATURE_FLAG.queueMetricsUiEnabled]: z.coerce.boolean(),

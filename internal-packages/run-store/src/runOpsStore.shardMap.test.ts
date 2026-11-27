@@ -1,5 +1,6 @@
+import { generateRunOpsIdV2, mintWaitpointIdFor } from "@trigger.dev/core/v3/isomorphic";
 import { describe, expect, it } from "vitest";
-import { RoutingRunStore, UnknownShardKey } from "./runOpsStore.js";
+import { MEMORYDB_SHARD_KEY, RoutingRunStore, UnknownShardKey } from "./runOpsStore.js";
 import type { ReadClient, RunStore } from "./types.js";
 
 // Pins the routing ALGEBRA: probe order, merge precedence, and the two id-less fallbacks that
@@ -1244,5 +1245,99 @@ describe("RoutingRunStore waitpoint writes: a stamped gen-2 id outranks a reside
       { coLocateWithRunId: GEN2, residency: "NEW" } as never
     );
     expect(trace(log)).toEqual(["a:upsertWaitpoint"]);
+  });
+});
+
+// One operation per id-routing path of the router, each carrying `id` as its routing id.
+function idRoutedOperations(router: RoutingRunStore, id: string) {
+  return {
+    findRun: () => router.findRun({ id }),
+    createRun: () => router.createRun({ data: { id } } as never),
+    createTaskRunCheckpoint: () => router.createTaskRunCheckpoint({ data: {} } as never, id),
+    findRuns: () => router.findRuns({ where: { id: { in: [id] } } }),
+    createWaitpoint: () =>
+      router.createWaitpoint({ data: { ...mintWaitpointIdFor(id) } } as never, undefined, {
+        coLocateWithRunId: id,
+      }),
+    updateBatchTaskRun: () =>
+      router.updateBatchTaskRun({ where: { id }, data: {}, select: { id: true } }),
+  };
+}
+
+// Catches a sync throw and an async rejection alike: some routing methods throw before any promise.
+async function outcome(call: () => unknown): Promise<unknown> {
+  try {
+    await call();
+    return undefined;
+  } catch (error) {
+    return error;
+  }
+}
+
+describe("the MemoryDB key routes like any other shard key", () => {
+  // Catches: a generation 3 id reaching a Postgres store instead of the store registered under m.
+  it("sends every id-routed operation with a generation 3 id to the store under m", async () => {
+    const log: Call[] = [];
+    const router = new RoutingRunStore({
+      new: fakeStore("new", log),
+      legacy: fakeStore("legacy", log),
+      shards: [
+        { key: "a", store: fakeStore("a", log) },
+        { key: MEMORYDB_SHARD_KEY, store: fakeStore("m", log) },
+      ],
+    });
+
+    const runId = generateRunOpsIdV2(MEMORYDB_SHARD_KEY);
+    const batchId = generateRunOpsIdV2(MEMORYDB_SHARD_KEY);
+    const ops = {
+      ...idRoutedOperations(router, runId),
+      updateBatchTaskRun: idRoutedOperations(router, batchId).updateBatchTaskRun,
+    };
+    for (const [name, call] of Object.entries(ops)) {
+      log.length = 0;
+      expect({ name, error: await outcome(call) }).toEqual({ name, error: undefined });
+      expect({ name, calls: trace(log) }).toEqual({ name, calls: [`m:${name}`] });
+    }
+
+    log.length = 0;
+    await router.findRun({ id: "clh4abcdefghijklmnopqrstu" });
+    await router.findRun({ id: `${"a".repeat(24)}01` });
+    await router.findRun({ id: generateRunOpsIdV2("a") });
+    expect(trace(log)).toEqual(["legacy:findRun", "new:findRun", "a:findRun"]);
+  });
+
+  // Catches: an id naming m being answered differently from an id naming any unconfigured key.
+  it("with no store under m, answers a generation 3 id as it answers any unconfigured key", async () => {
+    const log: Call[] = [];
+    const router = new RoutingRunStore({
+      new: fakeStore("new", log),
+      legacy: fakeStore("legacy", log),
+      shards: [{ key: "a", store: fakeStore("a", log) }],
+    });
+
+    const memoryDbId = generateRunOpsIdV2(MEMORYDB_SHARD_KEY);
+    const unconfiguredId = generateRunOpsIdV2("z");
+    const memoryDbOps = idRoutedOperations(router, memoryDbId);
+    const unconfiguredOps = idRoutedOperations(router, unconfiguredId);
+
+    for (const name of Object.keys(memoryDbOps) as Array<keyof typeof memoryDbOps>) {
+      const onM = await outcome(memoryDbOps[name]);
+      const onZ = await outcome(unconfiguredOps[name]);
+
+      expect(onM).toBeInstanceOf(UnknownShardKey);
+      expect(onZ).toBeInstanceOf(UnknownShardKey);
+      expect({ name, key: (onM as UnknownShardKey).shardKey }).toEqual({ name, key: "m" });
+      expect({ name, key: (onZ as UnknownShardKey).shardKey }).toEqual({ name, key: "z" });
+      expect({
+        name,
+        message: (onM as Error).message.replaceAll(memoryDbId, "<id>").replace('"m"', '"<key>"'),
+      }).toEqual({
+        name,
+        message: (onZ as Error).message
+          .replaceAll(unconfiguredId, "<id>")
+          .replace('"z"', '"<key>"'),
+      });
+    }
+    expect(trace(log)).toEqual([]);
   });
 });

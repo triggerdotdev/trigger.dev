@@ -68,6 +68,7 @@ import { QUEUED_SNAPSHOT_DESCRIPTION, QUEUED_SNAPSHOT_STATUS } from "./consts.js
 import {
   ExecutionSnapshotNotFoundError,
   NotImplementedError,
+  refusePostgresWaitpointOnMemoryDbAnchor,
   RunDuplicateIdempotencyKeyError,
   RunOneTimeUseTokenError,
   ServiceValidationError,
@@ -2831,6 +2832,7 @@ export class RunEngine {
       });
       if (native !== undefined) return native;
     }
+    refusePostgresWaitpointOnMemoryDbAnchor(batchId);
     const createWaitpointInput: Parameters<RunStore["createWaitpoint"]>[0] = {
       data: {
         // From the batch, not the blocked run: the create passes only completedByBatchId,

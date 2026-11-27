@@ -5,6 +5,7 @@ import {
   resolveBatchMintKind,
 } from "./mintBatchFriendlyId.server";
 import { classifyKind } from "@trigger.dev/core/v3/isomorphic";
+import { MEMORYDB_SHARD_KEY } from "@internal/run-store";
 
 describe("batchIdForMintKind (pure)", () => {
   it("'runOpsId' kind -> 26-char classifiable NEW batch id (no 21-char ids)", () => {
@@ -21,6 +22,13 @@ describe("batchIdForMintKind (pure)", () => {
     expect(r.id[24]).toBe("a");
     expect(r.id[25]).toBe("2");
     expect(classifyKind(r.id)).toBe("runOpsId");
+  });
+
+  // Catches: the MemoryDB key minting a batch id of a shape other than a generation 3 run id.
+  it("the MemoryDB key mints a generation 3 batch id", () => {
+    const r = batchIdForMintKind({ kind: "runOpsId", shardChar: MEMORYDB_SHARD_KEY });
+    expect(r.id).toMatch(/^[a-z0-9]{24}m2$/);
+    expect(r.friendlyId).toBe(`batch_${r.id}`);
   });
 
   it("cuid -> 25-char classifiable LEGACY batch id", () => {

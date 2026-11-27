@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { z } from "zod";
+import { MEMORYDB_SHARD_KEY } from "@internal/run-store";
 import {
   nonAliasedShards,
   parseRunOpsShards,
@@ -73,6 +74,17 @@ describe("parseRunOpsShards", () => {
     expect(run(JSON.stringify([{ key: "a", region: "x", url: "postgres://h/db" }])).success).toBe(
       false
     );
+  });
+  // Catches: a Postgres shard configured under the key the MemoryDB store routes by.
+  it("refuses the MemoryDB key, with url and replication or with aliasOf", () => {
+    const aliased = { key: "a", region: "x", aliasOf: "new" };
+    for (const descriptor of [valid, aliased]) {
+      const r = run(JSON.stringify([{ ...descriptor, key: MEMORYDB_SHARD_KEY }]));
+      expect(r.success ? [] : r.error.issues.map((i) => i.message)).toEqual([
+        'RUN_OPS_SHARDS[0.key]: shard key "m" is reserved for the MemoryDB store',
+      ]);
+      expect(run(JSON.stringify([descriptor])).success).toBe(true);
+    }
   });
 });
 

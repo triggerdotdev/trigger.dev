@@ -1,4 +1,6 @@
+import { MEMORYDB_SHARD_KEY } from "@internal/run-store";
 import { assertExhaustive } from "@trigger.dev/core";
+import { resolveShard } from "@trigger.dev/core/v3/isomorphic";
 import type { TaskRunError } from "@trigger.dev/core/v3";
 import type { RuntimeEnvironmentType, TaskRunStatus } from "@trigger.dev/database";
 
@@ -331,5 +333,23 @@ export class UnclassifiableWaitpointId extends Error {
     this.waitpointId = waitpointId;
     this.waitpointIdLength = waitpointId.length;
     this.cause = options?.cause;
+  }
+}
+
+export class PostgresWaitpointOnMemoryDbAnchor extends Error {
+  readonly anchorId: string;
+  constructor(anchorId: string) {
+    super(
+      `A Postgres waitpoint cannot be anchored on "${anchorId}": it is a MemoryDB run or batch`
+    );
+    this.name = "PostgresWaitpointOnMemoryDbAnchor";
+    this.anchorId = anchorId;
+  }
+}
+
+/** Reads only the id: a MemoryDB run or batch must never anchor a Postgres waitpoint. */
+export function refusePostgresWaitpointOnMemoryDbAnchor(anchorId: string | undefined): void {
+  if (anchorId !== undefined && resolveShard(anchorId) === MEMORYDB_SHARD_KEY) {
+    throw new PostgresWaitpointOnMemoryDbAnchor(anchorId);
   }
 }

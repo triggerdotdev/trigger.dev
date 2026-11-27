@@ -52,6 +52,8 @@ import { boundedIn } from "@trigger.dev/database";
 // never collide with them.
 const NEW_SHARD: ShardKey = "new";
 const LEGACY_SHARD: ShardKey = "legacy";
+// The routing key of the MemoryDB store, which no Postgres shard may use.
+export const MEMORYDB_SHARD_KEY: ShardKey = "m";
 
 /**
  * Run-ops routing substrate for the TaskRun-core method group. Implements {@link RunStore} over a

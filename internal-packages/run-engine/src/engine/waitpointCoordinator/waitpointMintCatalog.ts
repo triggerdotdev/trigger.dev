@@ -9,6 +9,8 @@ export type WaitpointMintSite = {
   symbol: string;
   /** Verbatim, counted per file, so a swapped anchor fails too. Empty if minted elsewhere. */
   mints: readonly string[];
+  /** The MemoryDB-anchor refusal: `call` verbatim, or `via` the entry whose mint gives this id. */
+  refusal: { call: string } | { via: string };
 };
 
 const COORDINATOR =
@@ -19,6 +21,7 @@ const RUN_STORE = "internal-packages/run-store/src/PostgresRunStore.ts";
 export const WAITPOINT_MINT_SITES: readonly WaitpointMintSite[] = [
   {
     id: "coordinator.datetime",
+    refusal: { call: "refusePostgresWaitpointOnMemoryDbAnchor(runId)" },
     mints: ["mintWaitpointIdFor(runId)"],
     type: "DATETIME",
     site: COORDINATOR,
@@ -26,6 +29,7 @@ export const WAITPOINT_MINT_SITES: readonly WaitpointMintSite[] = [
   },
   {
     id: "coordinator.manual",
+    refusal: { call: "refusePostgresWaitpointOnMemoryDbAnchor(runId)" },
     mints: ["mintWaitpointIdForShard(standaloneShard)", "mintWaitpointIdFor(runId)"],
     type: "MANUAL",
     site: COORDINATOR,
@@ -33,6 +37,7 @@ export const WAITPOINT_MINT_SITES: readonly WaitpointMintSite[] = [
   },
   {
     id: "coordinator.associated.mint",
+    refusal: { call: "refusePostgresWaitpointOnMemoryDbAnchor(anchorRunId)" },
     mints: ["mintWaitpointIdFor(anchorRunId)"],
     type: "RUN",
     site: COORDINATOR,
@@ -40,6 +45,7 @@ export const WAITPOINT_MINT_SITES: readonly WaitpointMintSite[] = [
   },
   {
     id: "coordinator.associated.create",
+    refusal: { via: "coordinator.associated.mint" },
     mints: [],
     type: "RUN",
     site: COORDINATOR,
@@ -47,6 +53,7 @@ export const WAITPOINT_MINT_SITES: readonly WaitpointMintSite[] = [
   },
   {
     id: "coordinator.batch",
+    refusal: { call: "refusePostgresWaitpointOnMemoryDbAnchor(batchId)" },
     mints: ["mintWaitpointIdFor(batchId)"],
     type: "BATCH",
     site: COORDINATOR,
@@ -54,6 +61,7 @@ export const WAITPOINT_MINT_SITES: readonly WaitpointMintSite[] = [
   },
   {
     id: "engine.batch",
+    refusal: { call: "refusePostgresWaitpointOnMemoryDbAnchor(batchId)" },
     mints: ["mintWaitpointIdFor(batchId)"],
     type: "BATCH",
     site: ENGINE,
@@ -62,6 +70,7 @@ export const WAITPOINT_MINT_SITES: readonly WaitpointMintSite[] = [
   // These bypass the routing store's stamp check, so a new writer here must be seen.
   {
     id: "runStore.createRun.nested",
+    refusal: { via: "coordinator.associated.mint" },
     mints: [],
     type: "RUN",
     site: RUN_STORE,
@@ -69,6 +78,7 @@ export const WAITPOINT_MINT_SITES: readonly WaitpointMintSite[] = [
   },
   {
     id: "runStore.createRun.dedicated",
+    refusal: { via: "coordinator.associated.mint" },
     mints: [],
     type: "RUN",
     site: RUN_STORE,
