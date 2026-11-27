@@ -67,7 +67,7 @@ export async function retryOutcomeFromCompletion(
 
     const delay = calculateNextRetryDelay(oomResult.retrySettings, attemptNumber ?? 1);
 
-    if (!delay) {
+    if (delay === undefined) {
       //no more retries left
       return { outcome: "fail_run", sanitizedError, wasOOMError: true };
     }
@@ -180,7 +180,7 @@ export function retrySettingsFromLockedConfig(
 
   const nextDelay = calculateNextRetryDelay(parsedRetryConfig.data, attemptNumber ?? 1);
 
-  if (!nextDelay) {
+  if (nextDelay === undefined) {
     return;
   }
 
