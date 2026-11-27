@@ -11,7 +11,7 @@ import {
 } from "~/v3/featureFlags";
 import { env } from "~/env.server";
 import { isAlertsEnabledEnv } from "~/v3/canUseAlertsList";
-import { stampMintKindFlip } from "~/v3/runOpsMigration/mintFlipGrace";
+import { stampBooleanFlagGroups, stampMintKindFlip } from "~/v3/runOpsMigration/mintFlipGrace";
 import { stampMintShardSetFlip } from "~/v3/runOpsMigration/mintShardGrace";
 import { $transaction, boundedIn, prisma, type PrismaClientOrTransaction } from "~/db.server";
 
@@ -253,7 +253,8 @@ async function lockGracedGroups(tx: PrismaClientOrTransaction): Promise<void> {
 async function stampGracedGroups(
   tx: PrismaClientOrTransaction,
   requestedFlags: Record<string, unknown>,
-  graceMs: number
+  graceMs: number,
+  replace: boolean
 ): Promise<Record<string, unknown>> {
   const existingRows = await tx.featureFlag.findMany({
     where: { key: { in: boundedIn(GRACED_GLOBAL_KEYS) } },
@@ -270,9 +271,13 @@ async function stampGracedGroups(
 
   let stamped: Record<string, unknown> = { ...requestedFlags };
   for (const group of GRACED_GLOBAL_GROUPS) {
+    if (group.booleanRule) continue;
     stamped = group.stamp(existingGlobal, stamped, now.getTime(), graceMs);
   }
-  return stamped;
+  // The stored global rows are both the record being written and the baseline.
+  return stampBooleanFlagGroups(existingGlobal, existingGlobal, stamped, now.getTime(), graceMs, {
+    replace,
+  });
 }
 
 // Merge-semantics write: sets what the caller asked for, stamps any graced group it changes, and
@@ -284,7 +289,7 @@ export async function applyGlobalGracedFlips(
 ): Promise<{ key: string; value: any }[]> {
   const applied = await $transaction(client, "applyGlobalGracedFlips", async (tx) => {
     await lockGracedGroups(tx);
-    const stamped = await stampGracedGroups(tx, withoutDerivedKeys(requestedFlags), graceMs);
+    const stamped = await stampGracedGroups(tx, withoutDerivedKeys(requestedFlags), graceMs, false);
     return makeSetMultipleFlags(tx)(stamped as Partial<z.infer<typeof FeatureFlagCatalogSchema>>);
   });
 
@@ -305,6 +310,8 @@ export async function applyGlobalGracedFlips(
 // without its primary keeps being served: {set: [], prevSet: [a], flippedAt: t} resolves to [a]
 // for the rest of the window, which would mint into a shard the operator just removed. The
 // delete ignores `isProtected` for the derived keys for the same reason.
+// A "keepOn" boolean group is the exception: its stamps outlive the primary, and record on when
+// an on primary is removed (stampBooleanRemoval).
 export async function replaceGlobalFeatureFlags(
   client: PrismaClient,
   params: {
@@ -325,7 +332,7 @@ export async function replaceGlobalFeatureFlags(
 
   const applied = await $transaction(client, "replaceGlobalFeatureFlags", async (tx) => {
     await lockGracedGroups(tx);
-    const stamped = await stampGracedGroups(tx, requestedFlags, params.graceMs);
+    const stamped = await stampGracedGroups(tx, requestedFlags, params.graceMs, true);
 
     const toWrite: Record<string, unknown> = {};
     const keysToDelete: string[] = [];
@@ -336,6 +343,13 @@ export async function replaceGlobalFeatureFlags(
       if (group) {
         if (requestedFlags[group.primary] !== undefined) {
           if (stamped[key] !== undefined) {
+            toWrite[key] = stamped[key];
+          }
+        } else if (group.booleanRule === "keepOn") {
+          // The primary goes unless protected; its stamps stay, so "has been on" survives removal.
+          if (key === group.primary) {
+            if (!isProtected(key)) keysToDelete.push(key);
+          } else if (stamped[key] !== undefined) {
             toWrite[key] = stamped[key];
           }
         } else if (!isProtected(group.primary)) {

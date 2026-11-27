@@ -32,6 +32,14 @@ const CATALOG_KEYS: FeatureFlagKey[] = [
   FEATURE_FLAG.mollifierEnabled,
 ];
 
+const SWITCH_KEYS: FeatureFlagKey[] = [
+  FEATURE_FLAG.runResidencyEnabled,
+  FEATURE_FLAG.runResidencyEnabledPrev,
+  FEATURE_FLAG.runResidencyEnabledFlippedAt,
+];
+
+const SWITCH_STAMPED_AT = "2026-01-01T00:00:00.000Z";
+
 // Self-hosted with the lock left on: locked flags survive omission, everything else sweeps.
 const SELF_HOSTED = { isManagedCloud: false, unlockLockedFlags: false } as const;
 
@@ -307,5 +315,115 @@ describe("replaceGlobalFeatureFlags — the admin page cannot bypass the stamp",
 
     const m = await readFlags(prisma, [FEATURE_FLAG.mollifierEnabled]);
     expect(m[FEATURE_FLAG.mollifierEnabled]).toBeUndefined();
+  });
+  // Catches: a switch change through the page written without its stamp.
+  postgresTest("a switch change through the page is stamped", async ({ prisma }) => {
+    await replaceGlobalFeatureFlags(prisma, {
+      requestedFlags: { [FEATURE_FLAG.runResidencyEnabled]: true },
+      catalogKeys: [...CATALOG_KEYS, ...SWITCH_KEYS],
+      ...SELF_HOSTED,
+      graceMs: 60_000,
+    });
+
+    const m = await readFlags(prisma, SWITCH_KEYS);
+    expect(m[FEATURE_FLAG.runResidencyEnabled]).toBe(true);
+    expect(m[FEATURE_FLAG.runResidencyEnabledPrev]).toBe(false);
+    expect(typeof m[FEATURE_FLAG.runResidencyEnabledFlippedAt]).toBe("string");
+  });
+
+  // Catches: removing an on switch deleting its stamps, or keeping them without recording on.
+  postgresTest(
+    "removing an on switch deletes it and leaves a stamp recording on",
+    async ({ prisma }) => {
+      await makeSetMultipleFlags(prisma)({
+        [FEATURE_FLAG.runResidencyEnabled]: true,
+        [FEATURE_FLAG.runResidencyEnabledPrev]: false,
+        [FEATURE_FLAG.runResidencyEnabledFlippedAt]: SWITCH_STAMPED_AT,
+      });
+
+      await replaceGlobalFeatureFlags(prisma, {
+        requestedFlags: {},
+        catalogKeys: [...CATALOG_KEYS, ...SWITCH_KEYS],
+        ...SELF_HOSTED,
+        graceMs: 60_000,
+      });
+
+      const m = await readFlags(prisma, SWITCH_KEYS);
+      expect(m[FEATURE_FLAG.runResidencyEnabled]).toBeUndefined();
+      expect(m[FEATURE_FLAG.runResidencyEnabledPrev]).toBe(true);
+      expect(m[FEATURE_FLAG.runResidencyEnabledFlippedAt]).toEqual(expect.any(String));
+      expect(m[FEATURE_FLAG.runResidencyEnabledFlippedAt]).not.toBe(SWITCH_STAMPED_AT);
+    }
+  );
+
+  // Catches: the keep-on group deleting its stamps with the primary.
+  postgresTest("removing an off switch leaves both stamp rows unchanged", async ({ prisma }) => {
+    await makeSetMultipleFlags(prisma)({
+      [FEATURE_FLAG.runResidencyEnabled]: false,
+      [FEATURE_FLAG.runResidencyEnabledPrev]: true,
+      [FEATURE_FLAG.runResidencyEnabledFlippedAt]: SWITCH_STAMPED_AT,
+    });
+
+    await replaceGlobalFeatureFlags(prisma, {
+      requestedFlags: {},
+      catalogKeys: [...CATALOG_KEYS, ...SWITCH_KEYS],
+      ...SELF_HOSTED,
+      graceMs: 60_000,
+    });
+
+    expect(await readFlags(prisma, SWITCH_KEYS)).toEqual({
+      [FEATURE_FLAG.runResidencyEnabledPrev]: true,
+      [FEATURE_FLAG.runResidencyEnabledFlippedAt]: SWITCH_STAMPED_AT,
+    });
+  });
+
+  // Catches: the switch's keep-on rule leaking into the mint kind, whose stamps go with it.
+  postgresTest(
+    "an omitted mint kind still loses its trio when the switch is omitted too",
+    async ({ prisma }) => {
+      await replaceGlobalFeatureFlags(prisma, {
+        requestedFlags: {
+          [FEATURE_FLAG.runOpsMintKind]: "runOpsId",
+          [FEATURE_FLAG.runResidencyEnabled]: true,
+        },
+        catalogKeys: [...CATALOG_KEYS, ...SWITCH_KEYS],
+        ...SELF_HOSTED,
+        graceMs: 60_000,
+      });
+
+      await replaceGlobalFeatureFlags(prisma, {
+        requestedFlags: {},
+        catalogKeys: [...CATALOG_KEYS, ...SWITCH_KEYS],
+        ...SELF_HOSTED,
+        graceMs: 60_000,
+      });
+
+      expect(await readFlags(prisma, MINT_KIND_KEYS)).toEqual({});
+      const m = await readFlags(prisma, SWITCH_KEYS);
+      expect(m[FEATURE_FLAG.runResidencyEnabled]).toBeUndefined();
+      expect(m[FEATURE_FLAG.runResidencyEnabledPrev]).toBe(true);
+    }
+  );
+
+  // Catches: an unlocked self-hosted save sweeping the switch's stamps as ordinary locked keys.
+  postgresTest("unlocking does not delete the switch's stamp rows", async ({ prisma }) => {
+    await makeSetMultipleFlags(prisma)({
+      [FEATURE_FLAG.runResidencyEnabled]: false,
+      [FEATURE_FLAG.runResidencyEnabledPrev]: true,
+      [FEATURE_FLAG.runResidencyEnabledFlippedAt]: SWITCH_STAMPED_AT,
+    });
+
+    await replaceGlobalFeatureFlags(prisma, {
+      requestedFlags: {},
+      catalogKeys: [...CATALOG_KEYS, ...SWITCH_KEYS],
+      isManagedCloud: false,
+      unlockLockedFlags: true,
+      graceMs: 60_000,
+    });
+
+    expect(await readFlags(prisma, SWITCH_KEYS)).toEqual({
+      [FEATURE_FLAG.runResidencyEnabledPrev]: true,
+      [FEATURE_FLAG.runResidencyEnabledFlippedAt]: SWITCH_STAMPED_AT,
+    });
   });
 });

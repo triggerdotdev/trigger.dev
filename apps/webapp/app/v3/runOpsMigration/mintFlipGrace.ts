@@ -1,3 +1,10 @@
+import { z } from "zod";
+import {
+  FeatureFlagCatalog,
+  type FeatureFlagKey,
+  GRACED_FLAG_GROUPS,
+  isPlainFlagObject,
+} from "~/v3/featureFlags";
 import type { RunIdMintKind } from "./runOpsMintKind.server";
 
 export type { RunIdMintKind };
@@ -113,6 +120,148 @@ export function stampMintKindFlip(
   }
   if (existingFlippedAt !== undefined) {
     outgoingFlags.runOpsMintKindFlippedAt = existingFlippedAt;
+  }
+  return outgoingFlags;
+}
+
+// Boolean flags graced by the same mechanism, chosen by a `booleanRule` on their entry in
+// GRACED_FLAG_GROUPS. The stamps of `<key>` are `<key>Prev` and `<key>FlippedAt`.
+
+type FlagRecord = Record<string, unknown> | null | undefined;
+
+// The record's value of `key` when it parses with the catalogue's schema (else a strict boolean).
+function readValidBoolean(key: string, flags: unknown): boolean | undefined {
+  if (!isPlainFlagObject(flags) || !Object.hasOwn(flags, key)) return undefined;
+  const schema: z.ZodTypeAny = Object.hasOwn(FeatureFlagCatalog, key)
+    ? FeatureFlagCatalog[key as FeatureFlagKey]
+    : z.boolean();
+  const parsed = schema.safeParse(flags[key]);
+  return parsed.success ? parsed.data === true : undefined;
+}
+
+function stampRecordsOn(key: string, flags: unknown): boolean {
+  return isPlainFlagObject(flags) && flags[`${key}Prev`] === true;
+}
+
+// effectiveMintKind's rule: the previous value until the change time plus the grace, when both
+// parts of the stamp count; otherwise the value; otherwise off.
+function servedBoolean(key: string, flags: unknown, nowMs: number, graceMs: number): boolean {
+  const value = readValidBoolean(key, flags) ?? false;
+  if (!isPlainFlagObject(flags)) return value;
+  const prev = flags[`${key}Prev`];
+  const flippedAtRaw = flags[`${key}FlippedAt`];
+  const flippedAtMs = typeof flippedAtRaw === "string" ? Date.parse(flippedAtRaw) : NaN;
+  if (typeof prev !== "boolean" || Number.isNaN(flippedAtMs)) return value;
+  return nowMs < flippedAtMs + graceMs ? prev : value;
+}
+
+// Source-consistent, as resolveMintFlag: a valid organisation value owns the value AND the stamp.
+export function readGracedBoolean(
+  key: string,
+  organizationFlags: unknown,
+  globalFlags: Record<string, unknown> | undefined,
+  nowMs: number,
+  graceMs: number
+): boolean {
+  const source =
+    readValidBoolean(key, organizationFlags) !== undefined
+      ? organizationFlags
+      : (globalFlags ?? {});
+  return servedBoolean(key, source, nowMs, graceMs);
+}
+
+// Whether the flag is on, or a stamp that counts for the organisation records it was on.
+export function hasBooleanBeenOn(
+  key: string,
+  organizationFlags: unknown,
+  globalFlags: Record<string, unknown> | undefined
+): boolean {
+  const own = readValidBoolean(key, organizationFlags);
+  if (own !== undefined) return own || stampRecordsOn(key, organizationFlags);
+  return (
+    readValidBoolean(key, globalFlags) === true ||
+    stampRecordsOn(key, organizationFlags) ||
+    stampRecordsOn(key, globalFlags)
+  );
+}
+
+function copyDefinedStamp(key: string, from: FlagRecord, outgoingFlags: Record<string, unknown>) {
+  for (const stampKey of [`${key}Prev`, `${key}FlippedAt`]) {
+    const value = from?.[stampKey];
+    if (value !== undefined) outgoingFlags[stampKey] = value;
+  }
+}
+
+// stampMintKindFlip's shape with the keep-on rule: a change to off always records on, and a save
+// that does not change the value keeps an own stamp that records on.
+export function stampBooleanFlip(
+  key: string,
+  ownFlags: FlagRecord,
+  globalFlags: FlagRecord,
+  outgoingFlags: Record<string, unknown>,
+  nowMs: number,
+  graceMs: number
+): Record<string, unknown> {
+  const outgoing = readValidBoolean(key, outgoingFlags);
+  if (outgoing === undefined) return outgoingFlags;
+
+  const baseline = readValidBoolean(key, ownFlags) !== undefined ? ownFlags : globalFlags;
+  const stored = readValidBoolean(key, baseline) ?? false;
+
+  if (outgoing !== stored) {
+    outgoingFlags[`${key}Prev`] = outgoing ? servedBoolean(key, baseline, nowMs, graceMs) : true;
+    outgoingFlags[`${key}FlippedAt`] = new Date(nowMs).toISOString();
+    return outgoingFlags;
+  }
+
+  copyDefinedStamp(key, stampRecordsOn(key, ownFlags) ? ownFlags : baseline, outgoingFlags);
+  return outgoingFlags;
+}
+
+// A replace save that drops the key: an own value of on records on; otherwise the own stamp stays.
+export function stampBooleanRemoval(
+  key: string,
+  ownFlags: FlagRecord,
+  outgoingFlags: Record<string, unknown>,
+  nowMs: number
+): Record<string, unknown> {
+  if (readValidBoolean(key, ownFlags) === true) {
+    outgoingFlags[`${key}Prev`] = true;
+    outgoingFlags[`${key}FlippedAt`] = new Date(nowMs).toISOString();
+    return outgoingFlags;
+  }
+  copyDefinedStamp(key, ownFlags, outgoingFlags);
+  return outgoingFlags;
+}
+
+const BOOLEAN_GRACED_GROUPS = GRACED_FLAG_GROUPS.filter((group) => group.booleanRule);
+
+// The stamps of every boolean group are computed server-side, never accepted from a caller.
+export function withoutBooleanFlagStamps(flags: Record<string, unknown>): Record<string, unknown> {
+  const out = { ...flags };
+  for (const group of BOOLEAN_GRACED_GROUPS) {
+    for (const derived of group.derived) {
+      delete out[derived];
+    }
+  }
+  return out;
+}
+
+// The one call every admin writer makes for the boolean groups.
+export function stampBooleanFlagGroups(
+  ownFlags: FlagRecord,
+  globalFlags: FlagRecord,
+  outgoingFlags: Record<string, unknown>,
+  nowMs: number,
+  graceMs: number,
+  options: { replace: boolean }
+): Record<string, unknown> {
+  for (const group of BOOLEAN_GRACED_GROUPS) {
+    if (readValidBoolean(group.primary, outgoingFlags) !== undefined) {
+      stampBooleanFlip(group.primary, ownFlags, globalFlags, outgoingFlags, nowMs, graceMs);
+    } else if (options.replace && group.booleanRule === "keepOn") {
+      stampBooleanRemoval(group.primary, ownFlags, outgoingFlags, nowMs);
+    }
   }
   return outgoingFlags;
 }

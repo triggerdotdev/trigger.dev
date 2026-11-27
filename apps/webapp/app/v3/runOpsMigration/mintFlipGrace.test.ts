@@ -1,10 +1,16 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   effectiveMintKind,
+  hasBooleanBeenOn,
+  readGracedBoolean,
   readMintResolution,
   resolveMintFlag,
   selectMintBaselineSource,
+  stampBooleanFlagGroups,
+  stampBooleanFlip,
+  stampBooleanRemoval,
   stampMintKindFlip,
+  withoutBooleanFlagStamps,
   type MintFlagResolution,
 } from "./mintFlipGrace";
 
@@ -318,5 +324,327 @@ describe("first per-org override stamps prev against the effective GLOBAL kind (
     expect(result.runOpsMintKind).toBe("runOpsId");
     expect(result.runOpsMintKindPrev).toBe("cuid");
     expect(result.runOpsMintKindFlippedAt).toBe(new Date(T).toISOString());
+  });
+});
+
+const SWITCH = "runResidencyEnabled";
+const at = (ms: number) => new Date(ms).toISOString();
+const EARLIER = at(T - 10_000);
+
+describe("stampBooleanFlip", () => {
+  const flip = (
+    own: Record<string, unknown> | null,
+    global: Record<string, unknown> | null,
+    outgoing: Record<string, unknown>
+  ) => stampBooleanFlip(SWITCH, own, global, outgoing, T, GRACE_MS);
+
+  // Catches: a change to on stamping the new value instead of the value the baseline served.
+  it("a change from off to on stamps the served off, with no baseline stamp", () => {
+    expect(flip({ runResidencyEnabled: false }, null, { runResidencyEnabled: true })).toEqual({
+      runResidencyEnabled: true,
+      runResidencyEnabledPrev: false,
+      runResidencyEnabledFlippedAt: at(T),
+    });
+  });
+
+  // Catches: a change to on dropping the on the baseline still serves inside its grace.
+  it("a change from off to on inside the grace of a change from on stamps the served on", () => {
+    const own = {
+      runResidencyEnabled: false,
+      runResidencyEnabledPrev: true,
+      runResidencyEnabledFlippedAt: EARLIER,
+    };
+    expect(flip(own, null, { runResidencyEnabled: true })).toEqual({
+      runResidencyEnabled: true,
+      runResidencyEnabledPrev: true,
+      runResidencyEnabledFlippedAt: at(T),
+    });
+  });
+
+  // Catches: a change to off that records off, losing the record that the switch was on.
+  it("a change from on to off stamps true", () => {
+    expect(flip({ runResidencyEnabled: true }, null, { runResidencyEnabled: false })).toEqual({
+      runResidencyEnabled: false,
+      runResidencyEnabledPrev: true,
+      runResidencyEnabledFlippedAt: at(T),
+    });
+  });
+
+  // Catches: a change to off stamping the served value, off inside the grace of a change to on.
+  it("a change from on to off inside the grace of a change to on still stamps true", () => {
+    const own = {
+      runResidencyEnabled: true,
+      runResidencyEnabledPrev: false,
+      runResidencyEnabledFlippedAt: EARLIER,
+    };
+    expect(flip(own, null, { runResidencyEnabled: false })).toEqual({
+      runResidencyEnabled: false,
+      runResidencyEnabledPrev: true,
+      runResidencyEnabledFlippedAt: at(T),
+    });
+  });
+
+  // Catches: a resave that resets the cutover clock or drops the baseline stamp.
+  it("a save that does not change the value carries the baseline stamp", () => {
+    const global = {
+      runResidencyEnabled: true,
+      runResidencyEnabledPrev: false,
+      runResidencyEnabledFlippedAt: EARLIER,
+    };
+    expect(flip({}, global, { runResidencyEnabled: true })).toEqual(global);
+  });
+
+  // Catches: the no-change branch dropping the own stamp that records on for the baseline's.
+  it("a save that does not change the value keeps an own stamp recording on over a baseline stamp recording off", () => {
+    const own = { runResidencyEnabledPrev: true, runResidencyEnabledFlippedAt: EARLIER };
+    const global = {
+      runResidencyEnabled: false,
+      runResidencyEnabledPrev: false,
+      runResidencyEnabledFlippedAt: at(T - 50_000),
+    };
+    expect(flip(own, global, { runResidencyEnabled: false })).toEqual({
+      runResidencyEnabled: false,
+      runResidencyEnabledPrev: true,
+      runResidencyEnabledFlippedAt: EARLIER,
+    });
+  });
+
+  // Catches: the no-change branch dropping the own stamp that records on when the baseline has none.
+  it("a save that does not change the value keeps an own stamp recording on over no baseline stamp", () => {
+    const own = { runResidencyEnabledPrev: true, runResidencyEnabledFlippedAt: EARLIER };
+    expect(flip(own, { runResidencyEnabled: false }, { runResidencyEnabled: false })).toEqual({
+      runResidencyEnabled: false,
+      runResidencyEnabledPrev: true,
+      runResidencyEnabledFlippedAt: EARLIER,
+    });
+  });
+
+  // Catches: the baseline taken from the global flags over a valid own value.
+  it("takes the own flags as the baseline when they hold a valid value", () => {
+    expect(
+      flip(
+        { runResidencyEnabled: true },
+        { runResidencyEnabled: false },
+        { runResidencyEnabled: true }
+      )
+    ).toEqual({ runResidencyEnabled: true });
+  });
+
+  // Catches: an own invalid value ("true") read as the stored value instead of the global one.
+  it("takes the global flags as the baseline when the own value is invalid", () => {
+    expect(
+      flip(
+        { runResidencyEnabled: "true" },
+        { runResidencyEnabled: false },
+        { runResidencyEnabled: true }
+      )
+    ).toEqual({
+      runResidencyEnabled: true,
+      runResidencyEnabledPrev: false,
+      runResidencyEnabledFlippedAt: at(T),
+    });
+  });
+
+  // Catches: a save that does not set the switch gaining a stamp.
+  it("returns outgoing flags with no valid value of the key unchanged", () => {
+    const outgoing = { runResidencyEnabled: "true", hasQueryAccess: true };
+    expect(flip({ runResidencyEnabled: true }, null, outgoing)).toBe(outgoing);
+    expect(outgoing).toEqual({ runResidencyEnabled: "true", hasQueryAccess: true });
+    expect(flip({ runResidencyEnabled: true }, null, {})).toEqual({});
+  });
+});
+
+describe("stampBooleanRemoval", () => {
+  // Catches: removing an on switch without recording that it was on.
+  it("own on records on at the change time", () => {
+    expect(stampBooleanRemoval(SWITCH, { runResidencyEnabled: true }, {}, T)).toEqual({
+      runResidencyEnabledPrev: true,
+      runResidencyEnabledFlippedAt: at(T),
+    });
+  });
+
+  // Catches: the removal stamp written for an own value of off.
+  it("own off carries the own stamp unchanged", () => {
+    const stamp = { runResidencyEnabledPrev: false, runResidencyEnabledFlippedAt: EARLIER };
+    expect(stampBooleanRemoval(SWITCH, { runResidencyEnabled: false, ...stamp }, {}, T)).toEqual(
+      stamp
+    );
+  });
+
+  // Catches: a removal dropping the stamp an org kept after its switch was removed.
+  it("own with no value and a stamp carries it", () => {
+    const stamp = { runResidencyEnabledPrev: true, runResidencyEnabledFlippedAt: EARLIER };
+    expect(stampBooleanRemoval(SWITCH, stamp, {}, T)).toEqual(stamp);
+  });
+
+  // Catches: a removal inventing a stamp where there was nothing.
+  it("own with neither writes no stamp key", () => {
+    expect(
+      stampBooleanRemoval(SWITCH, { hasQueryAccess: true }, { hasQueryAccess: true }, T)
+    ).toEqual({ hasQueryAccess: true });
+  });
+});
+
+describe("stampBooleanFlagGroups", () => {
+  // Catches: the helper not applying the set-key stamp to a save that sets the switch.
+  it("applies the set-key stamp when the outgoing flags hold the switch", () => {
+    const out = stampBooleanFlagGroups(
+      { runResidencyEnabled: false },
+      null,
+      { runResidencyEnabled: true },
+      T,
+      GRACE_MS,
+      { replace: false }
+    );
+    expect(out).toEqual({
+      runResidencyEnabled: true,
+      runResidencyEnabledPrev: false,
+      runResidencyEnabledFlippedAt: at(T),
+    });
+  });
+
+  // Catches: a merge save, which cannot remove a key, treated as a removal.
+  it("applies the removal stamp only with replace", () => {
+    const own = { runResidencyEnabled: true };
+    expect(stampBooleanFlagGroups(own, null, {}, T, GRACE_MS, { replace: false })).toEqual({});
+    expect(stampBooleanFlagGroups(own, null, {}, T, GRACE_MS, { replace: true })).toEqual({
+      runResidencyEnabledPrev: true,
+      runResidencyEnabledFlippedAt: at(T),
+    });
+  });
+
+  // Catches: the helper stamping, or carrying the stamps of, a group with no booleanRule.
+  it("touches no key of a group with no booleanRule", () => {
+    const own = {
+      runOpsMintKind: "cuid",
+      runOpsMintKindPrev: "runOpsId",
+      runOpsMintKindFlippedAt: EARLIER,
+      runOpsMintShardSet: "a",
+      runOpsMintShardSetPrev: "",
+      runOpsMintShardSetFlippedAt: EARLIER,
+    };
+    const outgoing = { runOpsMintKind: "runOpsId", runOpsMintShardSet: "a,b" };
+    for (const replace of [false, true]) {
+      expect(stampBooleanFlagGroups(own, own, { ...outgoing }, T, GRACE_MS, { replace })).toEqual(
+        outgoing
+      );
+    }
+  });
+});
+
+describe("withoutBooleanFlagStamps", () => {
+  // Catches: a body-supplied switch stamp kept, or another group's stamp stripped.
+  it("removes the switch's stamps, keeps the others, and does not mutate its input", () => {
+    const input = {
+      runResidencyEnabled: true,
+      runResidencyEnabledPrev: true,
+      runResidencyEnabledFlippedAt: EARLIER,
+      runOpsMintKindPrev: "cuid",
+      runOpsMintKindFlippedAt: EARLIER,
+      runOpsMintShardSetPrev: "a",
+      runOpsMintShardSetFlippedAt: EARLIER,
+    };
+    const snapshot = { ...input };
+    expect(withoutBooleanFlagStamps(input)).toEqual({
+      runResidencyEnabled: true,
+      runOpsMintKindPrev: "cuid",
+      runOpsMintKindFlippedAt: EARLIER,
+      runOpsMintShardSetPrev: "a",
+      runOpsMintShardSetFlippedAt: EARLIER,
+    });
+    expect(input).toEqual(snapshot);
+  });
+});
+
+describe("readGracedBoolean", () => {
+  const read = (org: unknown, global: Record<string, unknown> | undefined, nowMs: number) =>
+    readGracedBoolean(SWITCH, org, global, nowMs, GRACE_MS);
+  const offFromOn = {
+    runResidencyEnabled: false,
+    runResidencyEnabledPrev: true,
+    runResidencyEnabledFlippedAt: at(T),
+  };
+
+  // Catches: an organisation stamp not served for its grace, or served after it.
+  it("serves an organisation stamp's previous value inside the grace, then the value", () => {
+    expect(read(offFromOn, undefined, T + 1_000)).toBe(true);
+    expect(read(offFromOn, undefined, T + GRACE_MS)).toBe(false);
+  });
+
+  // Catches: a global stamp ignored when the organisation has no override.
+  it("serves a global stamp the same way with no override", () => {
+    expect(read({}, offFromOn, T + 1_000)).toBe(true);
+    expect(read({}, offFromOn, T + GRACE_MS)).toBe(false);
+  });
+
+  // Catches: the read taking the stamp from the global flags under an organisation override.
+  it("never takes the global stamp under a valid organisation override", () => {
+    expect(read({ runResidencyEnabled: false }, offFromOn, T + 1_000)).toBe(false);
+  });
+
+  // Catches: an invalid override ("true") owning the value or the stamp.
+  it("takes the global value and stamp under an invalid override", () => {
+    expect(read({ runResidencyEnabled: "true" }, offFromOn, T + 1_000)).toBe(true);
+    expect(read({ runResidencyEnabled: "true" }, offFromOn, T + GRACE_MS)).toBe(false);
+    expect(read({ runResidencyEnabled: "true" }, { runResidencyEnabled: true }, T)).toBe(true);
+  });
+
+  // Catches: a stamp that does not parse served as if it did.
+  it("serves the value when the change time does not parse or the previous value is not a boolean", () => {
+    expect(
+      read({ ...offFromOn, runResidencyEnabledFlippedAt: "yesterday" }, undefined, T + 1_000)
+    ).toBe(false);
+    expect(read({ ...offFromOn, runResidencyEnabledPrev: "true" }, undefined, T + 1_000)).toBe(
+      false
+    );
+  });
+
+  // Catches: a global switch removed while on cutting over with no grace.
+  it("serves a removed global switch's stamp recording on for its grace, then off", () => {
+    const removed = (flippedAtMs: number) => ({
+      runResidencyEnabledPrev: true,
+      runResidencyEnabledFlippedAt: at(flippedAtMs),
+    });
+    expect(read({}, removed(T), T)).toBe(true);
+    expect(read({}, removed(T - 2 * 60 * 60 * 1000), T)).toBe(false);
+  });
+});
+
+describe("hasBooleanBeenOn", () => {
+  const recordsOn = { runResidencyEnabledPrev: true, runResidencyEnabledFlippedAt: EARLIER };
+  const recordsOff = { runResidencyEnabledPrev: false, runResidencyEnabledFlippedAt: EARLIER };
+
+  // Catches: "has been on" missing a switch that is on, or a stamp that records on.
+  it.each<[string, Record<string, unknown>, Record<string, unknown> | undefined]>([
+    ["the switch on by override", { runResidencyEnabled: true }, undefined],
+    ["the switch on globally", {}, { runResidencyEnabled: true }],
+    [
+      "an organisation stamp recording on, switch off",
+      { runResidencyEnabled: false, ...recordsOn },
+      {},
+    ],
+    ["an organisation stamp recording on, switch removed", recordsOn, {}],
+    ["a global stamp recording on, no override", {}, recordsOn],
+    ["a global stamp recording on, invalid override", { runResidencyEnabled: "true" }, recordsOn],
+  ])("is true for %s", (_name, org, global) => {
+    expect(hasBooleanBeenOn(SWITCH, org, global)).toBe(true);
+  });
+
+  // Catches: the global stamp counted under a valid override, or a stamp recording off counted.
+  it.each<[string, Record<string, unknown>, Record<string, unknown> | undefined]>([
+    [
+      "a global stamp recording on under an override of off",
+      { runResidencyEnabled: false },
+      recordsOn,
+    ],
+    [
+      "the switch on globally under an override of off",
+      { runResidencyEnabled: false },
+      { runResidencyEnabled: true },
+    ],
+    ["stamps recording off", { runResidencyEnabled: false, ...recordsOff }, recordsOff],
+    ["no switch and no stamp", {}, undefined],
+  ])("is false for %s", (_name, org, global) => {
+    expect(hasBooleanBeenOn(SWITCH, org, global)).toBe(false);
   });
 });

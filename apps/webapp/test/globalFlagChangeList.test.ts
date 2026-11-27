@@ -42,6 +42,35 @@ describe("derivedFlagsClearedWith", () => {
   });
 });
 
+describe("derivedFlagsClearedWith — the run residency switch keeps its stamps", () => {
+  // Catches: the keep-on switch's stamps listed as cleared, or the mint kind's no longer listed.
+  it("names nothing for the switch and still names the mint kind's stamps", () => {
+    expect(derivedFlagsClearedWith(FEATURE_FLAG.runResidencyEnabled)).toEqual([]);
+    expect(derivedFlagsClearedWith(FEATURE_FLAG.runOpsMintKind)).toEqual([
+      FEATURE_FLAG.runOpsMintKindPrev,
+      FEATURE_FLAG.runOpsMintKindFlippedAt,
+    ]);
+  });
+
+  // Catches: the confirm dialog listing the switch's stamps as removed, when the save keeps them.
+  it("lists a removed switch alone, though its stamps are stored", () => {
+    const changes = buildFlagChangeList({
+      editableKeys: [FEATURE_FLAG.runResidencyEnabled],
+      lockedKeys: [FEATURE_FLAG.runResidencyEnabledPrev, FEATURE_FLAG.runResidencyEnabledFlippedAt],
+      initialValues: { runResidencyEnabled: true },
+      storedValues: {
+        runResidencyEnabled: true,
+        runResidencyEnabledPrev: false,
+        runResidencyEnabledFlippedAt: "2026-08-24T00:00:00.000Z",
+      },
+      newValues: {},
+    });
+    expect(changes).toEqual([
+      { key: FEATURE_FLAG.runResidencyEnabled, type: "removed", oldVal: "true" },
+    ]);
+  });
+});
+
 describe("buildFlagChangeList — what the confirm dialog must show", () => {
   it("lists an added, a changed and a removed flag", () => {
     const changes = buildFlagChangeList({

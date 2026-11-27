@@ -13,8 +13,10 @@ import {
   FEATURE_FLAG,
   FeatureFlagCatalog,
   GLOBAL_LOCKED_FLAGS,
-  ORG_LOCKED_FLAGS,
+  GRACED_FLAG_GROUPS,
   hasUnreadableTurnEvalsOverride,
+  ORG_LOCKED_FLAG_EFFECT,
+  ORG_LOCKED_FLAGS,
   parseStoredOrgFlags,
   validatePartialFeatureFlags,
 } from "~/v3/featureFlags";
@@ -22,6 +24,7 @@ import { flags, makeFlag, makeSetFlag } from "~/v3/featureFlags.server";
 import {
   createRunResidencyAllowedResolver,
   createRunResidencyEnabledResolver,
+  createRunResidencyHasBeenOnResolver,
 } from "~/v3/utils/runResidency.server";
 
 vi.setConfig({ testTimeout: 60_000 });
@@ -189,7 +192,36 @@ describe("runResidencyEnabled flag", () => {
     const partial = validatePartialFeatureFlags({ runResidencyEnabled: true });
     expect(partial.success && partial.data).toEqual({ runResidencyEnabled: true });
   });
+
+  // Catches: a coercing stamp schema, an editable stamp, or the switch missing from the grace table.
+  it("registers the switch's grace stamps as locked, derived keys of a keep-on group", () => {
+    const prev = FeatureFlagCatalog[FEATURE_FLAG.runResidencyEnabledPrev];
+    expect(prev.safeParse(true).success).toBe(true);
+    expect(prev.safeParse(false).success).toBe(true);
+    for (const value of ["true", 1, null]) {
+      expect(prev.safeParse(value).success).toBe(false);
+    }
+    const flippedAt = FeatureFlagCatalog[FEATURE_FLAG.runResidencyEnabledFlippedAt];
+    expect(flippedAt.safeParse("2026-01-01T00:00:00.000Z").success).toBe(true);
+    expect(flippedAt.safeParse("yesterday").success).toBe(false);
+
+    for (const key of [
+      FEATURE_FLAG.runResidencyEnabledPrev,
+      FEATURE_FLAG.runResidencyEnabledFlippedAt,
+    ]) {
+      expect(GLOBAL_LOCKED_FLAGS).toContain(key);
+      expect(ORG_LOCKED_FLAGS).toContain(key);
+      expect(ORG_LOCKED_FLAG_EFFECT[key]).toBe("derived");
+    }
+    expect(GRACED_FLAG_GROUPS.find((g) => g.primary === FEATURE_FLAG.runResidencyEnabled)).toEqual({
+      primary: FEATURE_FLAG.runResidencyEnabled,
+      derived: [FEATURE_FLAG.runResidencyEnabledPrev, FEATURE_FLAG.runResidencyEnabledFlippedAt],
+      booleanRule: "keepOn",
+    });
+  });
 });
+
+const HOUR_MS = 60 * 60 * 1000;
 
 type RuleDeps = Parameters<typeof createRunResidencyAllowedResolver>[0];
 
@@ -225,10 +257,12 @@ function enrolledRule({
   env = {},
   isSplitEnabled = async () => true,
   readGlobalFlags = () => ({}),
+  graceMs = HOUR_MS,
 }: {
   env?: Partial<RuleDeps["env"]>;
   isSplitEnabled?: RuleDeps["isSplitEnabled"];
   readGlobalFlags?: RuleDeps["readGlobalFlags"];
+  graceMs?: number;
 } = {}) {
   const calls = { readGlobalFlags: 0, isSplitEnabled: 0 };
   const rule = createRunResidencyAllowedResolver({
@@ -241,6 +275,7 @@ function enrolledRule({
       calls.readGlobalFlags++;
       return readGlobalFlags();
     },
+    graceMs,
   });
   return { rule, calls };
 }
@@ -261,8 +296,9 @@ describe("createRunResidencyEnabledResolver", () => {
     ['override "true", global true', { runResidencyEnabled: "true" }, true, true],
     ["flags in hand null, global true", null, true, true],
   ])("%s", (_name, organizationFlags, global, expected) => {
-    const enabled = createRunResidencyEnabledResolver(() =>
-      global === undefined ? undefined : { runResidencyEnabled: global }
+    const enabled = createRunResidencyEnabledResolver(
+      () => (global === undefined ? undefined : { runResidencyEnabled: global }),
+      HOUR_MS
     );
     expect(enabled(organizationFlags)).toBe(expected);
   });
@@ -276,7 +312,7 @@ describe("createRunResidencyEnabledResolver", () => {
       load: async () => ({ runResidencyEnabled: true }),
     });
     try {
-      const enabled = createRunResidencyEnabledResolver(() => registry.current());
+      const enabled = createRunResidencyEnabledResolver(() => registry.current(), HOUR_MS);
       expect(enabled({})).toBe(false);
       await registry.reload();
       expect(enabled({})).toBe(true);
@@ -291,7 +327,7 @@ describe("createRunResidencyEnabledResolver", () => {
     const enabled = createRunResidencyEnabledResolver(() => {
       reads++;
       return { runResidencyEnabled: true };
-    });
+    }, HOUR_MS);
     expect(enabled(undefined)).toBe(false);
     expect(reads).toBe(0);
   });
@@ -300,8 +336,64 @@ describe("createRunResidencyEnabledResolver", () => {
   it("lets a throwing global-flags reader throw", () => {
     const enabled = createRunResidencyEnabledResolver(() => {
       throw new Error("registry broken");
-    });
+    }, HOUR_MS);
     expect(() => enabled({})).toThrow("registry broken");
+  });
+
+  // Catches: the switch read without its grace, or the global flags read more than once per call.
+  it("serves an organisation stamp inside the grace of a change from on to off as on", () => {
+    let reads = 0;
+    const enabled = createRunResidencyEnabledResolver(() => {
+      reads++;
+      return {};
+    }, HOUR_MS);
+    const offFromOn = (flippedAtMs: number) => ({
+      runResidencyEnabled: false,
+      runResidencyEnabledPrev: true,
+      runResidencyEnabledFlippedAt: new Date(flippedAtMs).toISOString(),
+    });
+    expect(enabled(offFromOn(Date.now()))).toBe(true);
+    expect(enabled(offFromOn(Date.now() - 2 * HOUR_MS))).toBe(false);
+    expect(reads).toBe(2);
+  });
+});
+
+describe("createRunResidencyHasBeenOnResolver", () => {
+  // Catches: the reader not passing the organisation's stamp through, or reading globals once per key.
+  it("is true for an organisation stamp recording on with the switch off, reading once per call", () => {
+    let reads = 0;
+    const hasBeenOn = createRunResidencyHasBeenOnResolver(() => {
+      reads++;
+      return {};
+    });
+    expect(
+      hasBeenOn({
+        runResidencyEnabled: false,
+        runResidencyEnabledPrev: true,
+        runResidencyEnabledFlippedAt: "2026-01-01T00:00:00.000Z",
+      })
+    ).toBe(true);
+    expect(hasBeenOn({})).toBe(false);
+    expect(reads).toBe(2);
+  });
+
+  // Catches: the reader falling through to the global flags with no flags in hand.
+  it("is false with no flags in hand, without reading the global flags", () => {
+    let reads = 0;
+    const hasBeenOn = createRunResidencyHasBeenOnResolver(() => {
+      reads++;
+      return { runResidencyEnabled: true };
+    });
+    expect(hasBeenOn(undefined)).toBe(false);
+    expect(reads).toBe(0);
+  });
+
+  // Catches: the reader swallowing a failed read, which the gate's throw boundary owns.
+  it("lets a throwing global-flags reader throw", () => {
+    const hasBeenOn = createRunResidencyHasBeenOnResolver(() => {
+      throw new Error("registry broken");
+    });
+    expect(() => hasBeenOn({})).toThrow("registry broken");
   });
 });
 
@@ -453,6 +545,16 @@ describe("createRunResidencyAllowedResolver", () => {
     }
   );
 
+  // Catches: the rule passing no grace to the switch, so a change from on to off cuts over at once.
+  it("holds the switch condition inside the grace of a change from on to off", async () => {
+    const offFromOn = enrolledFlags({
+      runResidencyEnabled: false,
+      runResidencyEnabledPrev: true,
+      runResidencyEnabledFlippedAt: new Date().toISOString(),
+    });
+    expect(await enrolledRule({ graceMs: HOUR_MS }).rule(offFromOn)).toBe(true);
+  });
+
   // Catches: null flags treated as "no flags in hand" by the rule, which then ignores the global values.
   it("treats null flags as flags in hand and reads the global values", async () => {
     const { rule } = enrolledRule({ readGlobalFlags: globals(ENROLLED_FLAGS) });
@@ -499,6 +601,7 @@ describe("createRunResidencyAllowedResolver", () => {
       env,
       isSplitEnabled: async () => false,
       readGlobalFlags: () => ({}),
+      graceMs: HOUR_MS,
     });
     expect(await splitOff(enrolledFlags())).toBe(false);
     expect(urlReads).toEqual([]);

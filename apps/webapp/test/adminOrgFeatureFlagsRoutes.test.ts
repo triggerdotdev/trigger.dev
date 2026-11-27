@@ -106,6 +106,49 @@ const STAMPED = {
   runOpsMintKindFlippedAt: "2026-01-01T00:00:00.000Z",
 };
 
+const SWITCH_STAMP_ON = {
+  runResidencyEnabledPrev: true,
+  runResidencyEnabledFlippedAt: "2026-01-01T00:00:00.000Z",
+};
+
+async function seedGlobalFlags(prisma: PrismaClient, values: Record<string, unknown>) {
+  for (const [key, value] of Object.entries(values)) {
+    await prisma.featureFlag.create({ data: { key, value: value as any } });
+  }
+}
+
+async function dbNowMs(prisma: PrismaClient) {
+  const [{ now }] = await prisma.$queryRaw<{ now: Date }[]>`SELECT now() AS now`;
+  return now.getTime();
+}
+
+// Runs the route with the process clock in 2001 and returns the database clock around it, so a
+// stored change time between the two came from the database.
+async function withProcessClockIn2001(prisma: PrismaClient, call: () => Promise<unknown>) {
+  const before = await dbNowMs(prisma);
+  vi.useFakeTimers({ toFake: ["Date"] });
+  vi.setSystemTime(new Date("2001-01-01T00:00:00.000Z"));
+  try {
+    await call();
+  } finally {
+    vi.useRealTimers();
+  }
+  return { before, after: await dbNowMs(prisma) };
+}
+
+async function expectSwitchStampFromDbClock(
+  prisma: PrismaClient,
+  orgId: string,
+  clock: { before: number; after: number }
+) {
+  const stored = (await storedFlags(prisma, orgId)) as Record<string, unknown>;
+  expect(stored.runResidencyEnabled).toBe(true);
+  expect(stored.runResidencyEnabledPrev).toBe(false);
+  const flippedAtMs = Date.parse(stored.runResidencyEnabledFlippedAt as string);
+  expect(flippedAtMs).toBeGreaterThanOrEqual(clock.before);
+  expect(flippedAtMs).toBeLessThanOrEqual(clock.after);
+}
+
 const MIXED = {
   hasLogsPageAccess: true,
   taskEventRepository: "clickhouse",
@@ -262,6 +305,118 @@ describe("v2 org flags action", () => {
     }
   );
 
+  // Catches: a v2 switch change stamped from the process clock, or not stamped.
+  postgresTest(
+    "a runResidencyEnabled change is grace-stamped from the database clock",
+    async ({ prisma }) => {
+      const orgId = await seedOrg(prisma, { runResidencyEnabled: false });
+
+      const clock = await withProcessClockIn2001(prisma, () =>
+        callV2Action(orgId, { runResidencyEnabled: true })
+      );
+
+      await expectSwitchStampFromDbClock(prisma, orgId, clock);
+    }
+  );
+
+  // Catches: the v2 route storing a switch stamp the caller sent instead of computing it.
+  postgresTest("does not store a body-supplied switch grace stamp", async ({ prisma }) => {
+    const orgId = await seedOrg(prisma, { hasLogsPageAccess: true });
+
+    const res = await callV2Action(orgId, { hasLogsPageAccess: true, ...SWITCH_STAMP_ON });
+
+    expect(res.status).toBe(200);
+    expect(await storedFlags(prisma, orgId)).toEqual({ hasLogsPageAccess: true });
+  });
+
+  // Catches: removing an on switch without a stamp recording on (a merge-style removal).
+  postgresTest(
+    "removing an on switch stores no switch and a stamp recording on",
+    async ({ prisma }) => {
+      const orgId = await seedOrg(prisma, { runResidencyEnabled: true, hasQueryAccess: true });
+
+      await callV2Action(orgId, { hasQueryAccess: true });
+
+      const stored = (await storedFlags(prisma, orgId)) as Record<string, unknown>;
+      expect(stored).not.toHaveProperty("runResidencyEnabled");
+      expect(stored.runResidencyEnabledPrev).toBe(true);
+      expect(Date.parse(stored.runResidencyEnabledFlippedAt as string)).toBeGreaterThan(
+        Date.now() - 60_000
+      );
+    }
+  );
+
+  // Catches: a save that leaves the switch unset dropping the organisation's stamp.
+  postgresTest(
+    "a save that leaves the switch unset carries the organisation's stamp",
+    async ({ prisma }) => {
+      const orgId = await seedOrg(prisma, { ...SWITCH_STAMP_ON, hasQueryAccess: true });
+
+      await callV2Action(orgId, { hasQueryAccess: false });
+
+      expect(await storedFlags(prisma, orgId)).toEqual({
+        ...SWITCH_STAMP_ON,
+        hasQueryAccess: false,
+      });
+    }
+  );
+
+  // Catches: an override of off equal to the global value replacing the stamp that records on.
+  postgresTest(
+    "an override of off equal to the global value keeps a stamp recording on",
+    async ({ prisma }) => {
+      const orgId = await seedOrg(prisma, SWITCH_STAMP_ON);
+      await seedGlobalFlags(prisma, { runResidencyEnabled: false });
+
+      await callV2Action(orgId, { runResidencyEnabled: false });
+
+      expect(await storedFlags(prisma, orgId)).toEqual({
+        runResidencyEnabled: false,
+        ...SWITCH_STAMP_ON,
+      });
+    }
+  );
+
+  // Catches: a change to off inside the grace of a change to on recording off.
+  postgresTest(
+    "a change from on to off inside the grace of a change to on records on",
+    async ({ prisma }) => {
+      const flippedAt = new Date().toISOString();
+      const orgId = await seedOrg(prisma, {
+        runResidencyEnabled: true,
+        runResidencyEnabledPrev: false,
+        runResidencyEnabledFlippedAt: flippedAt,
+      });
+
+      await callV2Action(orgId, { runResidencyEnabled: false });
+
+      const stored = (await storedFlags(prisma, orgId)) as Record<string, unknown>;
+      expect(stored.runResidencyEnabled).toBe(false);
+      expect(stored.runResidencyEnabledPrev).toBe(true);
+      expect(stored.runResidencyEnabledFlippedAt).not.toBe(flippedAt);
+    }
+  );
+
+  // Catches: a save of another flag writing a switch key for an organisation that has none.
+  postgresTest(
+    "a save of another flag stores no switch key for an org with no switch",
+    async ({ prisma }) => {
+      const orgId = await seedOrg(prisma, { hasQueryAccess: true });
+      await seedGlobalFlags(prisma, {
+        runResidencyEnabled: true,
+        runResidencyEnabledPrev: false,
+        runResidencyEnabledFlippedAt: "2026-01-01T00:00:00.000Z",
+      });
+
+      await callV2Action(orgId, { hasQueryAccess: false, hasLogsPageAccess: true });
+
+      expect(await storedFlags(prisma, orgId)).toEqual({
+        hasQueryAccess: false,
+        hasLogsPageAccess: true,
+      });
+    }
+  );
+
   postgresTest("clear-all clears every known flag", async ({ prisma }) => {
     const orgId = await seedOrg(prisma, {
       hasLogsPageAccess: true,
@@ -379,4 +534,87 @@ describe("v1 org flags API", () => {
 
     expect(await storedFlags(prisma, orgId)).toEqual(STAMPED);
   });
+  // Catches: a v1 switch change stamped from the process clock, or not stamped.
+  postgresTest(
+    "a runResidencyEnabled change is grace-stamped from the database clock",
+    async ({ prisma }) => {
+      const orgId = await seedOrg(prisma, { runResidencyEnabled: false });
+
+      const clock = await withProcessClockIn2001(prisma, () =>
+        callV1(v1Action, orgId, { runResidencyEnabled: true })
+      );
+
+      await expectSwitchStampFromDbClock(prisma, orgId, clock);
+    }
+  );
+
+  // Catches: the v1 route storing a switch stamp the caller sent instead of computing it.
+  postgresTest("does not store a body-supplied switch grace stamp", async ({ prisma }) => {
+    const orgId = await seedOrg(prisma, { hasLogsPageAccess: true });
+
+    const res = await callV1(v1Action, orgId, SWITCH_STAMP_ON);
+
+    expect(res.status).toBe(200);
+    expect(await storedFlags(prisma, orgId)).toEqual({ hasLogsPageAccess: true });
+  });
+
+  // Catches: an override of off equal to the global value replacing the stamp that records on.
+  postgresTest(
+    "an override of off equal to the global value keeps a stamp recording on",
+    async ({ prisma }) => {
+      const orgId = await seedOrg(prisma, SWITCH_STAMP_ON);
+      await seedGlobalFlags(prisma, { runResidencyEnabled: false });
+
+      await callV1(v1Action, orgId, { runResidencyEnabled: false });
+
+      expect(await storedFlags(prisma, orgId)).toEqual({
+        runResidencyEnabled: false,
+        ...SWITCH_STAMP_ON,
+      });
+    }
+  );
+
+  // Catches: v1 stamping against the global flags as the own record, so a resave of an on switch reads as a change.
+  postgresTest(
+    "a resave of an on switch with the global off stores no stamp",
+    async ({ prisma }) => {
+      const orgId = await seedOrg(prisma, { runResidencyEnabled: true });
+      await seedGlobalFlags(prisma, { runResidencyEnabled: false });
+
+      const res = await callV1(v1Action, orgId, { runResidencyEnabled: true });
+
+      expect(res.status).toBe(200);
+      expect(await storedFlags(prisma, orgId)).toEqual({ runResidencyEnabled: true });
+    }
+  );
+
+  // Catches: a merge save of another flag re-stamping or dropping the stored switch stamp.
+  postgresTest("a save of another flag keeps the switch and its stamps", async ({ prisma }) => {
+    const seeded = { runResidencyEnabled: false, ...SWITCH_STAMP_ON };
+    const orgId = await seedOrg(prisma, seeded);
+
+    await callV1(v1Action, orgId, { hasQueryAccess: true });
+
+    expect(await storedFlags(prisma, orgId)).toEqual({ ...seeded, hasQueryAccess: true });
+  });
+
+  // Catches: a save of another flag writing a switch key for an organisation that has none.
+  postgresTest(
+    "a save of another flag stores no switch key for an org with no switch",
+    async ({ prisma }) => {
+      const orgId = await seedOrg(prisma, { hasLogsPageAccess: true });
+      await seedGlobalFlags(prisma, {
+        runResidencyEnabled: true,
+        runResidencyEnabledPrev: false,
+        runResidencyEnabledFlippedAt: "2026-01-01T00:00:00.000Z",
+      });
+
+      await callV1(v1Action, orgId, { hasQueryAccess: true });
+
+      expect(await storedFlags(prisma, orgId)).toEqual({
+        hasLogsPageAccess: true,
+        hasQueryAccess: true,
+      });
+    }
+  );
 });

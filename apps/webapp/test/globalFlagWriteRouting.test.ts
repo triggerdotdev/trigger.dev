@@ -72,6 +72,32 @@ describe("withoutDerivedKeys — a stamp is never taken from a request body", ()
   });
 });
 
+describe("the run residency switch's group in the global save routing", () => {
+  // Catches: the switch's group missing from the table, so a switch save skips the stamped path.
+  it("routes a switch save to the stamped path, and a stamp-only body not", () => {
+    expect(touchesGracedGroup({ [FEATURE_FLAG.runResidencyEnabled]: false })).toBe(true);
+    expect(touchesGracedGroup({ [FEATURE_FLAG.runResidencyEnabledPrev]: true })).toBe(false);
+  });
+
+  // Catches: a switch stamp taken from a global request body.
+  it("strips both switch stamps from a body", () => {
+    expect(
+      withoutDerivedKeys({
+        [FEATURE_FLAG.runResidencyEnabled]: true,
+        [FEATURE_FLAG.runResidencyEnabledPrev]: false,
+        [FEATURE_FLAG.runResidencyEnabledFlippedAt]: "1999-01-01T00:00:00.000Z",
+      } as Record<string, unknown>)
+    ).toEqual({ [FEATURE_FLAG.runResidencyEnabled]: true });
+  });
+
+  // Catches: the global page accepting a switch stamp on managed cloud.
+  it("refuses a switch stamp on managed cloud", () => {
+    expect(lockedFlagsInPayload([FEATURE_FLAG.runResidencyEnabledFlippedAt], true)).toEqual([
+      FEATURE_FLAG.runResidencyEnabledFlippedAt,
+    ]);
+  });
+});
+
 describe("lockedFlagsInPayload — what the global page refuses", () => {
   it("refuses a locked flag on managed cloud, where the page never offers one", () => {
     const refused = lockedFlagsInPayload(

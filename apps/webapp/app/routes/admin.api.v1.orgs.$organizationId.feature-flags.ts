@@ -7,7 +7,12 @@ import { env } from "~/env.server";
 import { prisma } from "~/db.server";
 import { requireAdminApiRequest } from "~/services/personalAccessToken.server";
 import { controlPlaneResolver } from "~/v3/runOpsMigration/controlPlaneResolver.server";
-import { selectMintBaselineSource, stampMintKindFlip } from "~/v3/runOpsMigration/mintFlipGrace";
+import {
+  selectMintBaselineSource,
+  stampBooleanFlagGroups,
+  stampMintKindFlip,
+  withoutBooleanFlagStamps,
+} from "~/v3/runOpsMigration/mintFlipGrace";
 import {
   isPlainFlagObject,
   parseStoredOrgFlags,
@@ -73,7 +78,7 @@ async function handleAction({ request, params }: ActionFunctionArgs) {
       runOpsMintKindPrev: _ignoredPrev,
       runOpsMintKindFlippedAt: _ignoredFlippedAt,
       ...requestedFlags
-    } = validationResult.data;
+    } = withoutBooleanFlagStamps(validationResult.data);
 
     // Seed the flip baseline from the current GLOBAL mint flags so an org's FIRST per-org override
     // is graced from the currently-effective global kind, not the hardcoded default "cuid".
@@ -98,7 +103,7 @@ async function handleAction({ request, params }: ActionFunctionArgs) {
       // one authoritative time source, not whichever webapp process handled this request.
       const [{ now: controlPlaneNow }] = await tx.$queryRaw<{ now: Date }[]>`SELECT now() AS now`;
 
-      const mergedFlags = stampMintKindFlip(
+      const mintStamped = stampMintKindFlip(
         selectMintBaselineSource(existingRaw, globalFlags),
         {
           ...existingData,
@@ -106,6 +111,14 @@ async function handleAction({ request, params }: ActionFunctionArgs) {
         },
         controlPlaneNow.getTime(),
         env.RUN_OPS_MINT_FLIP_GRACE_MS
+      );
+      const mergedFlags = stampBooleanFlagGroups(
+        existingRaw,
+        globalFlags,
+        mintStamped,
+        controlPlaneNow.getTime(),
+        env.RUN_OPS_MINT_FLIP_GRACE_MS,
+        { replace: false }
       );
 
       return tx.organization.update({

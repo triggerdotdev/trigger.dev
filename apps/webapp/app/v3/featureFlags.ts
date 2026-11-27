@@ -57,6 +57,9 @@ export const FEATURE_FLAG = {
   // Fleet-wide pin for the complete cutover. Beats every per-org and per-env pin.
   runOpsMintShardOverride: "runOpsMintShardOverride",
   runResidencyEnabled: "runResidencyEnabled",
+  // Grace stamp carried alongside runResidencyEnabled on change. See mintFlipGrace.ts.
+  runResidencyEnabledPrev: "runResidencyEnabledPrev",
+  runResidencyEnabledFlippedAt: "runResidencyEnabledFlippedAt",
   queueMetricsUiEnabled: "queueMetricsUiEnabled",
   // Build path for CLI deploys, resolved by DeploymentService.getDeploySettings.
   deployBuildPath: "deployBuildPath",
@@ -249,6 +252,10 @@ export const FeatureFlagCatalog = {
   // Whether an organisation's new root runs are born in MemoryDB. Org override wins over the global
   // value, off by default. Strict z.boolean(): coercion reads the string "false" as true.
   [FEATURE_FLAG.runResidencyEnabled]: z.boolean(),
+  // Grace stamp: the previously-effective value and the change time, written by
+  // stampBooleanFlip on a change. Display-only (see ORG_LOCKED_FLAGS).
+  [FEATURE_FLAG.runResidencyEnabledPrev]: z.boolean(),
+  [FEATURE_FLAG.runResidencyEnabledFlippedAt]: z.string().datetime(),
   // Per-org access to the Queue Metrics dashboard UI (view only; emission is global and
   // separate). Off unless enabled for the org.
   [FEATURE_FLAG.queueMetricsUiEnabled]: z.coerce.boolean(),
@@ -307,6 +314,8 @@ export const GLOBAL_LOCKED_FLAGS: FeatureFlagKey[] = [
   FEATURE_FLAG.runOpsMintKindFlippedAt,
   FEATURE_FLAG.runOpsMintShardSetPrev,
   FEATURE_FLAG.runOpsMintShardSetFlippedAt,
+  FEATURE_FLAG.runResidencyEnabledPrev,
+  FEATURE_FLAG.runResidencyEnabledFlippedAt,
   FEATURE_FLAG.deployCliVersionEnforcedFrom,
   FEATURE_FLAG.computeOnly,
 ];
@@ -323,6 +332,8 @@ export const ORG_LOCKED_FLAGS: FeatureFlagKey[] = [
   FEATURE_FLAG.runOpsMintShardSetPrev,
   FEATURE_FLAG.runOpsMintShardSetFlippedAt,
   FEATURE_FLAG.runOpsMintShardOverride,
+  FEATURE_FLAG.runResidencyEnabledPrev,
+  FEATURE_FLAG.runResidencyEnabledFlippedAt,
   // Read per dequeue from the global flag snapshot only; the org's flags aren't loaded there.
   FEATURE_FLAG.deploymentStatusMode,
   // Read per deploy access check from the global flag snapshot only.
@@ -348,6 +359,8 @@ export const ORG_LOCKED_FLAG_EFFECT: Partial<Record<FeatureFlagKey, OrgLockedFla
   [FEATURE_FLAG.computeOnlyDeploys]: "ignored",
   [FEATURE_FLAG.runOpsMintKindPrev]: "derived",
   [FEATURE_FLAG.runOpsMintKindFlippedAt]: "derived",
+  [FEATURE_FLAG.runResidencyEnabledPrev]: "derived",
+  [FEATURE_FLAG.runResidencyEnabledFlippedAt]: "derived",
 };
 
 /**
@@ -358,6 +371,9 @@ export const ORG_LOCKED_FLAG_EFFECT: Partial<Record<FeatureFlagKey, OrgLockedFla
 export const GRACED_FLAG_GROUPS: ReadonlyArray<{
   primary: FeatureFlagKey;
   derived: readonly FeatureFlagKey[];
+  // A boolean primary, stamped by stampBooleanFlagGroups. "keepOn": once a stamp records on, a
+  // later save keeps it, and removing the primary keeps its stamps.
+  booleanRule?: "keepOn";
 }> = [
   {
     primary: FEATURE_FLAG.runOpsMintKind,
@@ -367,12 +383,17 @@ export const GRACED_FLAG_GROUPS: ReadonlyArray<{
     primary: FEATURE_FLAG.runOpsMintShardSet,
     derived: [FEATURE_FLAG.runOpsMintShardSetPrev, FEATURE_FLAG.runOpsMintShardSetFlippedAt],
   },
+  {
+    primary: FEATURE_FLAG.runResidencyEnabled,
+    derived: [FEATURE_FLAG.runResidencyEnabledPrev, FEATURE_FLAG.runResidencyEnabledFlippedAt],
+    booleanRule: "keepOn",
+  },
 ];
 
-/** The stamps deleted alongside `primary`. Empty unless `primary` is a graced primary. */
+/** The stamps deleted alongside `primary`. Empty unless `primary` is a graced primary; a "keepOn" group keeps them. */
 export function derivedFlagsClearedWith(primary: string): FeatureFlagKey[] {
   const group = GRACED_FLAG_GROUPS.find((g) => g.primary === primary);
-  return group ? [...group.derived] : [];
+  return group && group.booleanRule !== "keepOn" ? [...group.derived] : [];
 }
 
 /**

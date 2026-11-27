@@ -7,6 +7,7 @@ import {
   isPlainFlagObject,
 } from "~/v3/featureFlags";
 import { logger } from "~/services/logger.server";
+import { hasBooleanBeenOn, readGracedBoolean } from "~/v3/runOpsMigration/mintFlipGrace";
 
 type ReadGlobalFlags = () => Partial<FeatureFlagCatalog> | undefined;
 
@@ -45,11 +46,31 @@ function readFlagByName(
   return typeof global === "boolean" ? global : false;
 }
 
-/** No flags in hand reads as off, with no read of the global flags. */
-export function createRunResidencyEnabledResolver(readGlobalFlags: ReadGlobalFlags) {
+/** Read through its grace stamp. No flags in hand reads as off, with no read of the global flags. */
+export function createRunResidencyEnabledResolver(
+  readGlobalFlags: ReadGlobalFlags,
+  graceMs: number
+) {
   return (organizationFlags?: unknown): boolean =>
     organizationFlags !== undefined &&
-    readFlagByName(FEATURE_FLAG.runResidencyEnabled, organizationFlags, readGlobalFlags);
+    readGracedBoolean(
+      FEATURE_FLAG.runResidencyEnabled,
+      organizationFlags,
+      readGlobalFlags() as Record<string, unknown> | undefined,
+      Date.now(),
+      graceMs
+    );
+}
+
+/** Whether the switch is, or has been, on for the organisation. No flags in hand reads as no. */
+export function createRunResidencyHasBeenOnResolver(readGlobalFlags: ReadGlobalFlags) {
+  return (organizationFlags?: unknown): boolean =>
+    organizationFlags !== undefined &&
+    hasBooleanBeenOn(
+      FEATURE_FLAG.runResidencyEnabled,
+      organizationFlags,
+      readGlobalFlags() as Record<string, unknown> | undefined
+    );
 }
 
 type RunResidencyAllowedDeps = {
@@ -63,6 +84,7 @@ type RunResidencyAllowedDeps = {
   >;
   isSplitEnabled: () => Promise<boolean>;
   readGlobalFlags: ReadGlobalFlags;
+  graceMs: number;
 };
 
 /** The switch and the enrolment rule, from memory only, in order; a throw reads as not allowed. */
@@ -74,7 +96,7 @@ export function createRunResidencyAllowedResolver(deps: RunResidencyAllowedDeps)
       const read = (key: string) => readFlagByName(key, organizationFlags, () => globalFlags);
 
       return (
-        createRunResidencyEnabledResolver(() => globalFlags)(organizationFlags) &&
+        createRunResidencyEnabledResolver(() => globalFlags, deps.graceMs)(organizationFlags) &&
         (await deps.isSplitEnabled()) &&
         !!deps.env.RUN_ENGINE_SNAPSHOT_STORE_REDIS_URL &&
         !!deps.env.RUN_ENGINE_WAITPOINT_STORE_REDIS_URL &&
