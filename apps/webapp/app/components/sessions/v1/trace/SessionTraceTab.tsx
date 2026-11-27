@@ -1227,14 +1227,16 @@ function SessionTraceTree({
     );
   };
   // Nothing opens on its own, so the live run is one click away: open, zoom to, select and show
-  // it. Once open the button says "Live run" and still brings you back to it. It stays in place,
-  // greyed out with a reason, when there's no live run or during a search.
+  // it. Like "N new runs", the button only shows while there's a live run you're not viewing:
+  // zoomed to it with its row showing (collapsing the Session row keeps the zoom but hides it).
+  // A queued run has no length yet, so its zoom still shows the whole session.
   const liveRunOpen = !!liveRunId && expandedRunIds.includes(liveRunId);
-  const liveRunDisabledReason = !liveRunId
-    ? "No run is running"
-    : filtering
-      ? "Clear the search to view the live run"
-      : undefined;
+  const viewingLiveRun =
+    !wholeSession &&
+    zoom.kind === "run" &&
+    zoom.runFriendlyId === liveRunId &&
+    !!nodes[runNodeId(zoom.runFriendlyId)]?.visible;
+  const showViewLiveRun = !!liveRunId && !viewingLiveRun;
   const viewLiveRun = () => {
     if (!liveRunId) return;
     const id = runNodeId(liveRunId);
@@ -1332,28 +1334,25 @@ function SessionTraceTree({
             )
           )}
         </div>
-        {/* Both stay in place, greyed out with the reason in their tooltip when they can't act. */}
-        <Button
-          variant="secondary/small"
-          // Blue, the running colour, while the live run is open.
-          className={
-            liveRunOpen && !liveRunDisabledReason
-              ? "shrink-0 border-blue-500 group-hover/button:border-blue-400"
-              : "shrink-0"
-          }
-          LeadingIcon={liveRunDisabledReason ? undefined : <PulsingDot className="h-2 w-2" />}
-          disabled={!!liveRunDisabledReason}
-          tooltip={liveRunDisabledReason}
-          onClick={viewLiveRun}
-        >
-          {/* Both labels share one cell so the button keeps the wider one's width. */}
-          <span className="inline-grid">
-            <span className="invisible col-start-1 row-start-1">View live run</span>
-            <span className="col-start-1 row-start-1 text-center">
-              {liveRunOpen && !liveRunDisabledReason ? "Live run" : "View live run"}
-            </span>
+        {showViewLiveRun && (
+          <span className="flex shrink-0 duration-150 animate-in fade-in-0">
+            <Button
+              variant="secondary/small"
+              className="text-text-bright"
+              LeadingIcon={MagnifyingGlassPlusIcon}
+              disabled={filtering}
+              tooltip={
+                filtering
+                  ? "Clear the search to view the live run"
+                  : "Zoom to the run that's running"
+              }
+              onClick={viewLiveRun}
+            >
+              View live run
+            </Button>
           </span>
-        </Button>
+        )}
+        {/* Stays in place, greyed out with the reason in its tooltip when it can't act. */}
         <Button
           variant="secondary/small"
           // A lavender outline while zoomed, so a zoomed view isn't mistaken for the whole session.

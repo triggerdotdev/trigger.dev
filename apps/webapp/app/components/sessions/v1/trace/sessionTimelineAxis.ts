@@ -41,7 +41,7 @@ export type TimelineZoom =
 export type TimelineZoomEvent =
   /** The open runs, read from the tree, so a click, an arrow key and a deep link do the same. */
   | { type: "openRunsChanged"; before: string[]; after: string[] }
-  /** "View live run" / "Live run": back to that run, whatever the zoom was. */
+  /** "View live run": back to that run, whatever the zoom was. */
   | { type: "showRun"; runFriendlyId: string }
   /** A drag or a sideways scroll, in epoch ms. */
   | { type: "range"; startMs: number; endMs: number }
