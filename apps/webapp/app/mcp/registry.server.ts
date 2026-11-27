@@ -62,6 +62,7 @@ import { dashboardsWriteTools } from "./tools/dashboardsWrite.server";
 import { errorsWriteTools } from "./tools/errorsWrite.server";
 import { feedbackTools } from "./tools/feedback.server";
 import { orgsWriteTools } from "./tools/orgsWrite.server";
+import { projectsWriteTools } from "./tools/projectsWrite.server";
 import { playgroundWriteTools } from "./tools/playgroundWrite.server";
 import { promptsWriteTools } from "./tools/promptsWrite.server";
 import { runsEditTools } from "./tools/runsEdit.server";
@@ -150,6 +151,7 @@ export const mcpTools: McpToolDefinition[] = assertUniqueToolNames([
   ...dashboardsEditTools,
   ...feedbackTools,
   ...orgsWriteTools,
+  ...projectsWriteTools,
   ...playgroundWriteTools,
   ...promptsWriteTools,
   ...runsWriteTools,

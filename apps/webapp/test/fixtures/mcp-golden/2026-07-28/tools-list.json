@@ -5003,6 +5003,55 @@
             }
           },
           {
+            "name": "rename_project",
+            "title": "Rename Project",
+            "description": "Rename a project, like Rename on the project's General settings page. The name is trimmed and must then be 3 to 50 characters. Its ref and slug do not change.",
+            "inputSchema": {
+              "type": "object",
+              "$schema": "https://json-schema.org/draft/2020-12/schema",
+              "properties": {
+                "projectRef": {
+                  "type": "string",
+                  "minLength": 1,
+                  "description": "The project ref, starts with proj_. list_projects lists your projects."
+                },
+                "name": {
+                  "type": "string",
+                  "maxLength": 1000,
+                  "description": "The new project name, 3 to 50 characters. Leading and trailing spaces are removed."
+                }
+              },
+              "required": ["projectRef", "name"]
+            },
+            "annotations": {
+              "title": "Rename Project",
+              "readOnlyHint": false,
+              "destructiveHint": true
+            }
+          },
+          {
+            "name": "delete_project",
+            "title": "Delete Project",
+            "description": "Delete a project, like Delete project on the project's General settings page. Its schedules stop and its API keys stop working. Queued runs are cancelled when picked up, but one picked up by a process that still holds cached project state may start. This cannot be undone.",
+            "inputSchema": {
+              "type": "object",
+              "$schema": "https://json-schema.org/draft/2020-12/schema",
+              "properties": {
+                "projectRef": {
+                  "type": "string",
+                  "minLength": 1,
+                  "description": "The project ref, starts with proj_. list_projects lists your projects."
+                }
+              },
+              "required": ["projectRef"]
+            },
+            "annotations": {
+              "title": "Delete Project",
+              "readOnlyHint": false,
+              "destructiveHint": true
+            }
+          },
+          {
             "name": "delete_playground_conversation",
             "title": "Delete Playground Conversation",
             "description": "Delete one of your own playground conversations, like the delete button in the agent's Playground conversation list. It removes the conversation and its saved messages from the playground; the session behind it and its runs are kept. It cannot be undone.",

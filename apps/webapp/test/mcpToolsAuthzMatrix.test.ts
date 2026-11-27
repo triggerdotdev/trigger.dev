@@ -126,6 +126,9 @@ const notBranchable =
 const deploymentNotFound =
   "Deployment abc was not found in this environment. Use list_deploys to see the deployments in this environment.";
 const regionsOff = "Regions are not available on this server.";
+// autoApprove consumes a placeholder preview, so a tool that rebuilds its preview answers stale and changes nothing.
+const stale =
+  "What this change would do has changed since it was approved. Call the tool again to get a new confirmation.";
 
 const TOOLS: Array<{
   tool: string;
@@ -192,6 +195,13 @@ const TOOLS: Array<{
     scope: "manage:project",
     ownText: regionsOff,
   },
+  {
+    tool: "rename_project",
+    args: { name: "Renamed project" },
+    scope: "manage:project",
+    ownText: stale,
+  },
+  { tool: "delete_project", args: {}, scope: "manage:project", ownText: stale },
   { tool: "get_current_worker", args: project, scope: "read:deployments" },
   { tool: "get_task_schema", args: { ...project, taskSlug: "my-task" }, scope: "read:deployments" },
   {

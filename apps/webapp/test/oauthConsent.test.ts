@@ -153,6 +153,11 @@ describe("OAuth consent", () => {
     expect(labels.filter((label, i) => label === MCP_SCOPES[i])).toEqual([]);
   });
 
+  // Catches: a manage:project grant that does not tell the user it can delete projects.
+  it("says manage:project can rename and delete projects", () => {
+    expect(describeScopes(["manage:project"])[0]).toMatch(/rename and delete projects/);
+  });
+
   postgresTest(
     "identity comes from the OAuthClient row, never from the URL",
     async ({ prisma }) => {

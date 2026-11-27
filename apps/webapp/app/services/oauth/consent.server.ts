@@ -76,7 +76,7 @@ export async function describeOAuthClientName(clientId: string): Promise<string>
 }
 
 const SCOPE_LABEL_OVERRIDES: Record<string, string> = {
-  "manage:project": "Manage project settings",
+  "manage:project": "Manage project settings, and rename and delete projects",
   "read:batch": "Read batches",
   "read:envvars": "Read environment variable names",
   "read:query": "Run read-only queries",

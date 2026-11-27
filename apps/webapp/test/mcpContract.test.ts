@@ -110,6 +110,8 @@ const REMOTE_ONLY: Record<string, string> = {
   archive_branch: "the CLI has no MCP twin for the public archive route",
   set_preview_auto_archive: "the public API has no route for it; it mirrors a dashboard setting",
   set_default_region: "the CLI has no MCP twin for the public default region route",
+  rename_project: "the CLI has no MCP twin for the public project rename route",
+  delete_project: "the CLI has no MCP twin for the public project delete route",
   list_queues:
     "the CLI has no queue tools; the public list has no limits, metrics or archive state",
   get_queue_details: "no public API returns a queue's concurrency keys and metrics series",
@@ -187,6 +189,8 @@ const WRITE_TOOL_APPROVAL: Record<string, "required" | "configurable" | { none: 
   archive_branch: "required",
   set_preview_auto_archive: "required",
   set_default_region: "configurable",
+  rename_project: "required",
+  delete_project: "required",
   pause_queue: "configurable",
   resume_queue: "configurable",
   override_queue_concurrency: "configurable",
