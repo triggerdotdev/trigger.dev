@@ -28,6 +28,9 @@
 /ai-chat/patterns/redacting-telemetry
 /ai-chat/patterns/skills
 /ai-chat/patterns/sub-agents
+/ai-chat/patterns/tool-permissions
+/ai-chat/patterns/tool-permissions-chat
+/ai-chat/patterns/tool-permissions-outside-chat
 /ai-chat/patterns/tool-result-auditing
 /ai-chat/patterns/trusted-edge-signals
 /ai-chat/patterns/version-upgrades
@@ -291,6 +294,7 @@
 /migration-mergent
 /migration-n8n
 /observability/dashboards
+/observability/logs
 /observability/query
 /oidc
 /oidc/anthropic
@@ -356,6 +360,7 @@
 /troubleshooting-uptime-status
 /troubleshooting-zod
 /upgrading-packages
+/vault
 /vercel-integration
 /versioning
 /video-walkthrough
