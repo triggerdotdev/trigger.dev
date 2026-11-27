@@ -3389,6 +3389,7 @@ export class RunEngine {
     return this.runAttemptSystem.resolveTaskRunContext(runId);
   }
 
+  /** Throws `ExecutionSnapshotNotFoundError` when the since snapshot does not exist for this run. */
   async getSnapshotsSince({
     runId,
     snapshotId,
@@ -3465,6 +3466,14 @@ export class RunEngine {
           });
           return result;
         } catch (retryError) {
+          if (retryError instanceof ExecutionSnapshotNotFoundError) {
+            this.logger.error("getSnapshotsSince: since snapshot not found", {
+              runId,
+              snapshotId,
+              failedDuring: "primary_fallback",
+            });
+            throw retryError;
+          }
           this.#rethrowIfSnapshotReadRetriable(retryError, runId, snapshotId);
           this.logger.error("Failed to getSnapshotsSince", {
             message: retryError instanceof Error ? retryError.message : retryError,
@@ -3476,6 +3485,12 @@ export class RunEngine {
         }
       }
 
+      // Logged apart from failed reads so it alerts on its own: runners only send snapshot IDs the
+      // engine gave them, so a miss means a forged or corrupted request. Alerting matches this exact message.
+      if (e instanceof ExecutionSnapshotNotFoundError) {
+        this.logger.error("getSnapshotsSince: since snapshot not found", { runId, snapshotId });
+        throw e;
+      }
       this.#rethrowIfSnapshotReadRetriable(e, runId, snapshotId);
       this.logger.error("Failed to getSnapshotsSince", {
         message: e instanceof Error ? e.message : e,

@@ -1129,6 +1129,30 @@ describe("environment scoping", () => {
     }
   });
 
+  // Catches: a whole keyspace's miss read as unanswerable (the since route then alerts as a failed
+  // read), or a keyspace that cannot answer read as authoritative.
+  redisTest(
+    "findById reports absent only when the keyspace is live and has no gaps",
+    async ({ redisOptions }) => {
+      const store = new RedisSnapshotStore({ redisOptions, completedTtlMs: 1000 });
+      try {
+        await store.append({ entry: entry({ id: "s1" }), kind: "birth", isTerminal: false });
+
+        expect(await store.findById("run_1", "s1")).toMatchObject({ id: "s1" });
+        expect(await store.findById("run_1", "nope")).toBe("absent");
+        expect(await store.findById("run_1", "s1", { environmentId: "env_other" })).toBe("absent");
+        expect(await store.getById("run_1", "nope")).toBeNull();
+        expect(await store.findById("run_absent", "nope")).toBeNull();
+
+        await store.markGaps("run_1");
+        expect(await store.findById("run_1", "nope")).toBeNull();
+        expect(await store.findById("run_1", "s1")).toBeNull();
+      } finally {
+        await store.quit();
+      }
+    }
+  );
+
   redisTest("getLatest returns null for a run with no keys", async ({ redisOptions }) => {
     const store = new RedisSnapshotStore({ redisOptions, completedTtlMs: 1000 });
     try {

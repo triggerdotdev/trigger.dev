@@ -16,6 +16,7 @@ export type {
   ShutdownOperation,
 } from "./engine/shutdown.js";
 export {
+  ExecutionSnapshotNotFoundError,
   LatestExecutionSnapshotNotFoundError,
   RunDuplicateIdempotencyKeyError,
   RunOneTimeUseTokenError,

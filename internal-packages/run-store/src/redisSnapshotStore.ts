@@ -1042,11 +1042,27 @@ export class RedisSnapshotStore {
     snapshotId: string,
     opts?: { environmentId?: string; retry?: boolean }
   ): Promise<SnapshotRead | null> {
+    const read = await this.findById(runId, snapshotId, opts);
+    return read === "absent" ? null : read;
+  }
+
+  /**
+   * Like getById, but tells a snapshot the run does not have ("absent") from a keyspace that
+   * cannot answer (null: expired, evicted or gapped).
+   */
+  async findById(
+    runId: string,
+    snapshotId: string,
+    opts?: { environmentId?: string; retry?: boolean }
+  ): Promise<SnapshotRead | "absent" | null> {
     return this.#timed("getById", async () => {
       const k = snapshotKeys(runId);
-      const read = () => this.redis.readSnapshotById(k.e, k.idx, k.cur, k.seq, snapshotId);
+      const read = () => this.redis.readSnapshotByIdOrAbsent(k.e, k.idx, k.cur, k.seq, snapshotId);
       const reply = await (opts?.retry === false ? read() : this.#retryingRead("getById", read));
-      return this.#decode(reply, opts?.environmentId, runId, true);
+      if (!reply) return null;
+      // A live keyspace with no gaps never drops an entry, so a miss there is authoritative. So
+      // is another environment's entry, as the Postgres read scopes by environment.
+      return this.#decode(reply, opts?.environmentId, runId, true) ?? "absent";
     });
   }
 
@@ -1706,14 +1722,15 @@ export class RedisSnapshotStore {
       `,
     });
 
-    this.redis.defineCommand("readSnapshotById", {
+    this.redis.defineCommand("readSnapshotByIdOrAbsent", {
       numberOfKeys: 4,
       lua: `
         ${PRELUDE}
         if not keyspaceAlive() or gapped() then return nil end
         local id = ARGV[1]
         local vals = redis.call('HMGET', eKey, id, id .. '#s', id .. '#c')
-        if not vals[1] then return nil end
+        -- Empty, not nil: the keyspace can answer and does not hold this id.
+        if not vals[1] then return {} end
         -- Coerce every element: a Lua false truncates the returned array.
         return { id, vals[1], vals[2] or '', vals[3] or '', orderFor(vals[3]), distinctFor(vals[3]), danglingFor(vals[3]) }
       `,
@@ -1951,7 +1968,7 @@ declare module "@internal/redis" {
       birthMode: string,
       callback?: Callback<string[]>
     ): Result<string[], Context>;
-    readSnapshotById(
+    readSnapshotByIdOrAbsent(
       eKey: string,
       idxKey: string,
       curKey: string,

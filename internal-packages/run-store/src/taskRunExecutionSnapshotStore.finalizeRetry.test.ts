@@ -223,7 +223,7 @@ describe("TaskRunExecutionSnapshotStore finalize after Postgres commit", () => {
       const store = new RedisSnapshotStore({ client, completedTtlMs: 60_000 });
       try {
         const run = await bornRun(prisma, store, ["timeout", "timeout"]);
-        const reads = vi.spyOn(client, "readSnapshotById").mockImplementation(async () => {
+        const reads = vi.spyOn(client, "readSnapshotByIdOrAbsent").mockImplementation(async () => {
           await sleep(CLIENT_TIMEOUT_MS);
           throw new Error(TIMEOUT);
         });
@@ -258,7 +258,7 @@ describe("TaskRunExecutionSnapshotStore finalize after Postgres commit", () => {
       const store = new RedisSnapshotStore({ client, completedTtlMs: 60_000 });
       try {
         const run = await bornRun(prisma, store, ["applyThenThrow", "real"]);
-        vi.spyOn(client, "readSnapshotById").mockRejectedValue(new Error(TIMEOUT));
+        vi.spyOn(client, "readSnapshotByIdOrAbsent").mockRejectedValue(new Error(TIMEOUT));
 
         const error = await run.transition().then(
           () => {

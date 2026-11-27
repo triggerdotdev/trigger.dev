@@ -1085,7 +1085,7 @@ export class TaskRunExecutionSnapshotStore extends DelegatingRunStore {
   }
 
   // A point read of one snapshot (the window cursor lookup). Only a redis-primary run reads
-  // MemoryDB, and a miss fails closed.
+  // MemoryDB. A miss fails closed unless the run's history is whole, which makes it a not-found.
   override async findExecutionSnapshot<T extends Prisma.TaskRunExecutionSnapshotFindFirstArgs>(
     args: Prisma.SelectSubset<T, Prisma.TaskRunExecutionSnapshotFindFirstArgs>,
     client?: ReadClient,
@@ -1122,9 +1122,9 @@ export class TaskRunExecutionSnapshotStore extends DelegatingRunStore {
     }
     const environmentId = environmentIdFromWhere(where);
     await this.#resolvePendingBeforeRead(runId);
-    let read: SnapshotRead | null;
+    let read: SnapshotRead | "absent" | null;
     try {
-      read = await this.#store.getById(
+      read = await this.#store.findById(
         runId,
         snapshotId,
         environmentId ? { environmentId } : undefined
@@ -1132,6 +1132,8 @@ export class TaskRunExecutionSnapshotStore extends DelegatingRunStore {
     } catch (error) {
       throw new SnapshotReadUnavailableError(runId, "getById failed", { cause: error });
     }
+    // The run's history is whole and lacks this snapshot: not-found, as for a Postgres run.
+    if (read === "absent") return null;
     if (read === null) {
       throw await this.#redisPrimaryMissingError(runId, "redis-primary snapshot missing");
     }

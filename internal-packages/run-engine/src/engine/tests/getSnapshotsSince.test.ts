@@ -1,8 +1,10 @@
 import { containerTest } from "@internal/testcontainers";
 import { trace } from "@internal/tracing";
+import { Logger } from "@trigger.dev/core/logger";
 import {
   PostgresRunStore,
   RedisSnapshotStore,
+  SnapshotReadUnavailableError,
   TaskRunExecutionSnapshotStore,
   type CompletedWaitpointResolver,
 } from "@internal/run-store";
@@ -15,6 +17,7 @@ import {
 import { setTimeout } from "node:timers/promises";
 import { describe, expect } from "vitest";
 import type { PrismaClient, Waitpoint } from "@trigger.dev/database";
+import { ExecutionSnapshotNotFoundError } from "../errors.js";
 import { RunEngine } from "../index.js";
 import { getExecutionSnapshotsSince } from "../systems/executionSnapshotSystem.js";
 import { copySnapshotsToReplica, createTestMetricsMeter } from "./helpers/replicaTestHelpers.js";
@@ -390,9 +393,8 @@ describe("RunEngine getSnapshotsSince", () => {
     }
   );
 
-  containerTest("returns null for invalid snapshot ID", async ({ prisma, redisOptions }) => {
+  containerTest("rejects an unknown snapshot ID", async ({ prisma, redisOptions }) => {
     const authenticatedEnvironment = await setupAuthenticatedEnvironment(prisma, "PRODUCTION");
-
     const engine = new RunEngine({
       prisma,
       worker: {
@@ -447,21 +449,24 @@ describe("RunEngine getSnapshotsSince", () => {
         prisma
       );
 
-      // Query with invalid snapshot ID
-      const result = await engine.getSnapshotsSince({
-        runId: run.id,
-        snapshotId: "invalid-snapshot-id",
-      });
-
-      // Should return null (caught by getSnapshotsSince error handler)
-      expect(result).toBeNull();
+      // Catches: an unknown since snapshot read as a failed read (null), which the route answers with 500.
+      const logs = await captureLogs(() =>
+        expect(
+          engine.getSnapshotsSince({
+            runId: run.id,
+            snapshotId: "invalid-snapshot-id",
+          })
+        ).rejects.toBeInstanceOf(ExecutionSnapshotNotFoundError)
+      );
+      // Catches: a not-found logged as a failed read, or losing its own error line.
+      expectNotFoundLoggedSeparately(logs);
     } finally {
       await engine.quit();
     }
   });
 
   containerTest(
-    "returns null when the since snapshot belongs to a different run",
+    "rejects with not-found when the since snapshot belongs to a different run",
     async ({ prisma, redisOptions }) => {
       const authenticatedEnvironment = await setupAuthenticatedEnvironment(prisma, "PRODUCTION");
 
@@ -559,12 +564,12 @@ describe("RunEngine getSnapshotsSince", () => {
         const runASnapshot = runASnapshots[0];
 
         // Poll run B using a snapshot id that belongs to run A.
-        const result = await engine.getSnapshotsSince({
-          runId: runB.id,
-          snapshotId: runASnapshot.id,
-        });
-
-        expect(result).toBeNull();
+        await expect(
+          engine.getSnapshotsSince({
+            runId: runB.id,
+            snapshotId: runASnapshot.id,
+          })
+        ).rejects.toBeInstanceOf(ExecutionSnapshotNotFoundError);
       } finally {
         await engine.quit();
       }
@@ -1060,10 +1065,9 @@ describe("RunEngine getSnapshotsSince", () => {
   );
 
   containerTest(
-    "returns null when the snapshot is missing on both replica and primary",
+    "rejects with not-found when the snapshot is missing on both replica and primary",
     async ({ prisma, schemaOnlyPrisma, redisOptions }) => {
       const { meter, getCounterValue } = createTestMetricsMeter();
-
       const engine = new RunEngine({
         prisma,
         readOnlyPrisma: schemaOnlyPrisma,
@@ -1099,12 +1103,15 @@ describe("RunEngine getSnapshotsSince", () => {
 
       try {
         // runId is never consulted - the since-snapshot lookup throws on the bogus id first.
-        const result = await engine.getSnapshotsSince({
-          runId: "run_does_not_exist",
-          snapshotId: "snapshot_does_not_exist",
-        });
-
-        expect(result).toBeNull();
+        const logs = await captureLogs(() =>
+          expect(
+            engine.getSnapshotsSince({
+              runId: "run_does_not_exist",
+              snapshotId: "snapshot_does_not_exist",
+            })
+          ).rejects.toBeInstanceOf(ExecutionSnapshotNotFoundError)
+        );
+        expectNotFoundLoggedSeparately(logs);
 
         // Permanent misses are deliberately NOT counted - the counter only tracks
         // reads actually served by the primary fallback.
@@ -1704,6 +1711,29 @@ describe("RunEngine getSnapshotsSince", () => {
   );
 });
 
+// Records the structured lines the engine's Logger emits, the same JSON the log alarms match on.
+async function captureLogs(fn: () => Promise<unknown>) {
+  const logs: Record<string, unknown>[] = [];
+  const original = Logger.onLog;
+  Logger.onLog = (log) => logs.push(log);
+  try {
+    await fn();
+  } finally {
+    Logger.onLog = original;
+  }
+  return logs;
+}
+
+function expectNotFoundLoggedSeparately(logs: Record<string, unknown>[]) {
+  expect(logs.filter((log) => log.message === "Failed to getSnapshotsSince")).toEqual([]);
+  expect(logs).toContainEqual(
+    expect.objectContaining({
+      message: "getSnapshotsSince: since snapshot not found",
+      level: "error",
+    })
+  );
+}
+
 // Counts the checkpoint lookups a since read makes through the run store, and records the client
 // each one used.
 class CheckpointLookupCountingStore extends PostgresRunStore {
@@ -2032,6 +2062,45 @@ describe("getExecutionSnapshotsSince checkpoint lookups for a MemoryDB-only run"
         expect(seeded.delegate.checkpointLookups).toBe(0);
       } finally {
         await counting.quit();
+        await seeded.store.quit();
+      }
+    }
+  );
+
+  // Catches: an unknown since snapshot on a MemoryDB-only run read as a failed read (a 503 and the
+  // failed-read alarm), or a gapped history read as not-found.
+  containerTest(
+    "an unknown since snapshot is not-found while the run's history is whole, and fails closed once gapped",
+    async ({ prisma, redisOptions }) => {
+      const seeded = await seed(prisma, redisOptions);
+      try {
+        const reader = new TaskRunExecutionSnapshotStore(seeded.delegate, {
+          store: seeded.store,
+          mode: "redis-only",
+          logicalRunStoreRoute: "logical:1",
+          resolveCompletedWaitpoints: resolverReturning(() => false),
+        });
+        const since = (snapshotId: string) =>
+          getExecutionSnapshotsSince(
+            prisma,
+            seeded.runId,
+            snapshotId,
+            reader,
+            undefined,
+            seeded.env.id,
+            seeded.env.organizationId,
+            () => true
+          );
+
+        await expect(since("snapshot_doesnotexist")).rejects.toBeInstanceOf(
+          ExecutionSnapshotNotFoundError
+        );
+
+        await seeded.store.markGaps(seeded.runId);
+        await expect(since("snapshot_doesnotexist")).rejects.toBeInstanceOf(
+          SnapshotReadUnavailableError
+        );
+      } finally {
         await seeded.store.quit();
       }
     }

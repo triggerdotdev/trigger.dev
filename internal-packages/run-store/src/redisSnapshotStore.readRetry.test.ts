@@ -115,7 +115,9 @@ describe("RedisSnapshotStore read retry", () => {
 
   redisTest("getById returns the entry after one command timeout", async ({ redisOptions }) => {
     await withStore(redisOptions, async (store, client) => {
-      const spy = vi.spyOn(client, "readSnapshotById").mockRejectedValueOnce(commandTimeout());
+      const spy = vi
+        .spyOn(client, "readSnapshotByIdOrAbsent")
+        .mockRejectedValueOnce(commandTimeout());
       const read = await store.getById("run_1", "snap_1");
       expect(read?.entry).toMatchObject({ id: "snap_1" });
       expect(attempts(spy, client)).toBe(2);
@@ -125,7 +127,7 @@ describe("RedisSnapshotStore read retry", () => {
   redisTest("getById with retry off rejects on the first timeout", async ({ redisOptions }) => {
     await withStore(redisOptions, async (store, client) => {
       const timeout = commandTimeout();
-      const spy = vi.spyOn(client, "readSnapshotById").mockRejectedValueOnce(timeout);
+      const spy = vi.spyOn(client, "readSnapshotByIdOrAbsent").mockRejectedValueOnce(timeout);
       await expect(store.getById("run_1", "snap_1", { retry: false })).rejects.toBe(timeout);
       expect(attempts(spy, client)).toBe(1);
     });
