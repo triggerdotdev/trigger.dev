@@ -714,6 +714,91 @@ describe("RoutingRunStore probe at N", () => {
       ).rejects.toThrow(`${failing} is down`);
     }
   });
+
+  // Catches: an open gate failing unlike base on a down store under m, or a closed gate asking it.
+  it("treats a failing store under m as base treats a failing shard, and never asks it when closed", async () => {
+    const outcome = (promise: Promise<unknown>) =>
+      promise.then(
+        (value) => ({ value }),
+        (error: Error) => ({ error: error.message })
+      );
+    // Every method of the store under m rejects.
+    const failing = (log: Call[], slot: Slot) =>
+      new Proxy(
+        {},
+        {
+          get: (_t, prop) =>
+            prop === "then"
+              ? undefined
+              : () => {
+                  log.push({ slot, method: String(prop) });
+                  return Promise.reject(new Error("the store under m is down"));
+                },
+        }
+      ) as unknown as RunStore;
+    const calls: Array<[string, (r: RoutingRunStore) => Promise<unknown>]> = [
+      ["findRun by a predicate", (r) => r.findRun({ spanId: "span_x" })],
+      ["findRuns over every store", (r) => r.findRuns({ where: { spanId: "span_x" } } as never)],
+      [
+        "clearIdempotencyKey by predicate",
+        (r) =>
+          r.clearIdempotencyKey({
+            byPredicate: { runtimeEnvironmentId: "env_1", idempotencyKey: "k" },
+          } as never),
+      ],
+    ];
+    const router = (
+      matching: boolean,
+      under: "m" | "b" | "none",
+      gate: MemoryDbGate | undefined,
+      log: Call[]
+    ) => {
+      const config = matching ? { runs: [{ id: "r1" }], clearCount: 1 } : { clearCount: 0 };
+      return new RoutingRunStore({
+        new: fakeStore("new", log, config),
+        legacy: fakeStore("legacy", log, { clearCount: 0 }),
+        shards: [
+          { key: "a", store: fakeStore("a", log, { clearCount: 0 }) },
+          ...(under === "none"
+            ? []
+            : [{ key: under === "m" ? MEMORYDB_SHARD_KEY : "b", store: failing(log, under) }]),
+        ],
+        resolveShard: (id: string) => id.split(":")[0]!,
+        ...(gate ? { memoryDbGate: gate } : {}),
+      });
+    };
+    for (const matching of [true, false]) {
+      for (const [name, call] of calls) {
+        const open = await outcome(call(router(matching, "m", countingGate([], true, false), [])));
+        const base = await outcome(call(router(matching, "b", undefined, [])));
+        expect({ name, matching, open }).toEqual({ name, matching, open: base });
+        // A rejection is the store's own error, not one of the fan-out's. findRuns and the clear
+        // by predicate always ask every store, so they must reject.
+        if (
+          "error" in open ||
+          ["findRuns over every store", "clearIdempotencyKey by predicate"].includes(name)
+        ) {
+          expect({ name, matching, open }).toEqual({
+            name,
+            matching,
+            open: { error: "the store under m is down" },
+          });
+        }
+
+        const log: Call[] = [];
+        const closed = await outcome(
+          call(router(matching, "m", countingGate([], false, false), log))
+        );
+        const without = await outcome(call(router(matching, "none", undefined, [])));
+        expect({ name, matching, closed, askedM: log.some((c) => c.slot === "m") }).toEqual({
+          name,
+          matching,
+          closed: without,
+          askedM: false,
+        });
+      }
+    }
+  });
 });
 
 describe("RoutingRunStore merge precedence and duplicate alarm", () => {

@@ -1570,3 +1570,61 @@ describe("a new root of an enrolled organisation, with a store under m", () => {
     { flags: ENROLLED }
   );
 });
+
+// ---- The parent rule for an enrolled organisation: a generation 3 root's children and batches
+// keep its shape whatever the switch and the run record flag say, and a generation 3 parent that
+// names no run gets base's answer.
+describe("the parent rule for an enrolled organisation, across the switch", () => {
+  // Catches: a gen 3 root's child or batch losing its shape, or a missing gen 3 parent making one.
+  routeTest(
+    "an enrolled root's children and batches stay generation 3; a missing generation 3 parent gets base's answer",
+    async () => {
+      const root = await answer(await ENTRIES[TRIGGER]!(undefined as never, false));
+      expect(root.status).toBe(200);
+      expect(root.body.id).toMatch(GEN3);
+      const gen3 = ["gen2:m", "gen2:m", "gen2:m"];
+      const states: Array<[string, Record<string, unknown>, string]> = [
+        ["enrolled", ENROLLED, "gen2:m"],
+        [
+          "switch off, stamp recording on",
+          {
+            ...ENROLLED,
+            runResidencyEnabled: false,
+            runResidencyEnabledPrev: true,
+            runResidencyEnabledFlippedAt: "2026-01-01T00:00:00.000Z",
+          },
+          "cuid",
+        ],
+        ["run record flag off", { ...ENROLLED, activeRunStoreEnabled: false }, "cuid"],
+      ];
+      for (const [state, flags, simple] of states) {
+        await useFlags(flags);
+        const child = await answer(await ENTRIES[TRIGGER]!(root.body.id, false));
+        expect({ state, status: child.status }).toEqual({ state, status: 200 });
+        const v2 = await answer(await ENTRIES[V2_BATCH]!(root.body.id, false));
+        expect({ state, status: v2.status }).toEqual({ state, status: 202 });
+        expect({
+          state,
+          child: shape(child.body.id),
+          v2: await batchShapes(v2.body.id),
+          streaming: await batchShapes(await streamedBatch(root.body.id, false)),
+          simple: shape(await ROOTS.simple!()),
+        }).toEqual({ state, child: "gen2:m", v2: gen3, streaming: gen3, simple });
+      }
+
+      await useFlags(ENROLLED);
+      for (const [name, entry] of Object.entries(ENTRIES)) {
+        for (const wait of [false, true]) {
+          holder.standInCalls = [];
+          expect({ name, wait, ...(await drive(entry, runOn("m"), wait)) }).toEqual({
+            name,
+            wait,
+            ...(UNCONFIGURED[name] as object),
+          });
+          expectStandInWroteNothing();
+        }
+      }
+    },
+    { standIn: true, flags: ENROLLED }
+  );
+});
