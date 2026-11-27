@@ -1,0 +1,63 @@
+Give each tool a scope string, and store one row per grant. A scope ending in `:*` covers every tool in that integration.
+
+```prisma prisma/schema.prisma
+model ToolGrant {
+  id        String    @id @default(cuid())
+  userId    String
+  scope     String    // "gmail:send", or "gmail:*" for every Gmail tool
+  createdAt DateTime  @default(now())
+  revokedAt DateTime?
+
+  @@unique([userId, scope])
+}
+```
+
+Run `npx prisma migrate dev` to create the table.
+
+Keep the scope map in its own file with no database imports, so your approval buttons can import it in the browser:
+
+```ts lib/tool-scopes.ts
+// Maps each tool that asks for approval to the scope a grant must cover
+export const toolScopes = {
+  sendEmail: "gmail:send",
+} as const;
+
+export type ScopedTool = keyof typeof toolScopes;
+
+// The scopes a user can grant: one tool, or every tool in its integration
+export const grantableScopes = new Set<string>(
+  Object.values(toolScopes).flatMap((scope) => [scope, `${scope.split(":")[0]}:*`])
+);
+```
+
+```ts lib/permissions.ts
+import { db } from "@/lib/db";
+
+export async function hasGrant(userId: string, scope: string) {
+  const [integration] = scope.split(":");
+  const grant = await db.toolGrant.findFirst({
+    where: { userId, scope: { in: [scope, `${integration}:*`] }, revokedAt: null },
+  });
+  return grant !== null;
+}
+
+// decidedAt is when the user chose "always allow". A revoke after that wins,
+// so replaying an older answer can't restore a grant the user removed.
+export async function addGrant(userId: string, scope: string, decidedAt: Date) {
+  // The revoke check is part of the write, so a revoke that lands in between still wins
+  const restored = await db.toolGrant.updateMany({
+    where: { userId, scope, OR: [{ revokedAt: null }, { revokedAt: { lt: decidedAt } }] },
+    data: { revokedAt: null },
+  });
+  if (restored.count === 0) {
+    // No row yet, or one revoked after decidedAt, which skipDuplicates leaves alone
+    await db.toolGrant.createMany({ data: [{ userId, scope }], skipDuplicates: true });
+  }
+}
+
+export async function revokeGrant(userId: string, scope: string) {
+  await db.toolGrant.updateMany({ where: { userId, scope }, data: { revokedAt: new Date() } });
+}
+```
+
+The examples use Prisma with Postgres. On SQLite, which doesn't support `skipDuplicates`, catch the unique constraint error instead. They import your Prisma client from `@/lib/db`, a `gmail` wrapper around the user's Gmail connection from `@/lib/gmail`, and `requireUser` from `@/lib/auth`, which returns the signed-in user. Swap in your own.

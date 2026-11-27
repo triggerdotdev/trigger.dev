@@ -1,0 +1,40 @@
+---
+title: "Manage tool permissions"
+sidebarTitle: "Overview"
+description: "Build permission flows for the tools your agents use: connections, grants, and long waits for human approval."
+---
+
+You can use Trigger.dev's [human-in-the-loop](/ai-chat/patterns/human-in-the-loop) features to build permission flows for the tools your agents use.
+
+There are two main parts to this: connections and grants.
+
+| Part | What it does | Example |
+| --- | --- | --- |
+| Connections | Holds the OAuth tokens that let your agent act on the user's Gmail, Slack or GitHub | The user connected their Gmail account, so the agent can send email as them |
+| Grants | Records which tools each user has allowed to run without asking, such as "always allow sending email" | The user clicked "Always allow" on sending email, so you saved a `gmail:send` grant for them |
+
+You can manage these in your database or using tools like Composio.
+
+Trigger.dev can help you with the long waits for human approval. Your agent might request permission to send an email but not hear back for days. Trigger.dev helps you suspend that workflow and continue it once the user approves, without being charged while it's suspended.
+
+## How it works
+
+Before each tool call, check whether the user has a grant that covers it. If they do, the tool runs. If not, the agent asks the user and waits for an answer.
+
+## Where the agent waits
+
+- **In a chat**, a `chat.agent` [tool approval](/ai-chat/patterns/human-in-the-loop#approve-a-tool-before-execution) ends the turn with the call waiting for an answer. The run [releases compute](/ai-chat/patterns/human-in-the-loop#duration-and-cost-while-paused) while it waits.
+- **Outside a chat**, such as in a scheduled job or a background agent, a [wait token](/wait-for-token) suspends the run. Ask the user by email, Slack or your app, and complete the token from your backend when they answer.
+
+## Choose a guide
+
+Both guides cover grants and approvals. They assume you already store the user's connections.
+
+<CardGroup cols={2}>
+  <Card title="In a chat" icon="message" href="/ai-chat/patterns/tool-permissions-chat">
+    Check grants before each tool call and add approve once, always allow and deny buttons.
+  </Card>
+  <Card title="Outside a chat" icon="clock" href="/ai-chat/patterns/tool-permissions-outside-chat">
+    Check grants in a task and wait for an answer with a wait token.
+  </Card>
+</CardGroup>
