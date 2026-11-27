@@ -8,7 +8,7 @@ import {
   type ScopeChallengeHandler,
   type ToolAnnotations,
 } from "@modelcontextprotocol/server";
-import { z } from "zod";
+import type { z } from "zod";
 import { logger } from "~/services/logger.server";
 import { MCP_SCOPES } from "~/services/oauth/metadata.server";
 import type { McpRequestExtra, McpToolAuth } from "./gate/types";
@@ -21,6 +21,7 @@ import {
   userAgentOf,
 } from "./sessionTelemetry";
 import type { McpIdentity } from "./types";
+import { toolArgumentsSchema } from "./toolArguments.server";
 import { agentsTools } from "./tools/agents.server";
 import { alertsTools } from "./tools/alerts.server";
 import { batchesTools } from "./tools/batches.server";
@@ -182,7 +183,7 @@ export function registerMcpTools(
       {
         title: tool.title,
         description: tool.description,
-        inputSchema: z.object(tool.inputSchema),
+        inputSchema: toolArgumentsSchema(tool.inputSchema),
         annotations: tool.annotations,
         scopeChallenge:
           ctx.era === "modern" && tool.auth
