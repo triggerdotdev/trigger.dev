@@ -1408,6 +1408,7 @@ const CREATED: Record<Slot, Date> = {
   a: new Date("2026-01-02T00:00:00Z"),
   new: new Date("2026-01-03T00:00:00Z"),
   legacy: new Date("2026-01-04T00:00:00Z"),
+  archive: new Date("2026-01-01T12:00:00Z"),
 };
 
 // Every store holds one row shared by id with the others and one of its own, for every method.
@@ -1587,7 +1588,8 @@ const gen3IdArguments = (id: string): Entry[] => [
 function countingGate(
   calls: string[],
   bornHere: boolean,
-  organizationOpens: boolean | Error
+  organizationOpens: boolean | Error,
+  archiveFlagsOn: boolean | Error = false
 ): MemoryDbGate {
   return {
     bornHere: () => {
@@ -1599,6 +1601,12 @@ function countingGate(
       return organizationOpens instanceof Error
         ? Promise.reject(organizationOpens)
         : Promise.resolve(organizationOpens);
+    },
+    archiveFlagsOn: () => {
+      calls.push("archiveFlagsOn");
+      return archiveFlagsOn instanceof Error
+        ? Promise.reject(archiveFlagsOn)
+        : Promise.resolve(archiveFlagsOn);
     },
   };
 }
@@ -1621,6 +1629,8 @@ type Shape = {
   three: boolean;
   // The key the stand-in is registered under; none when absent.
   standIn?: "m" | "b";
+  // The archive stand-in (slot "archive"): the `archive` option, or a generation 2 shard keyed "z".
+  archive?: "option" | "shard";
   gate?: MemoryDbGate;
   failingSlot?: Slot;
   config?: Partial<Record<Slot, FakeConfig>>;
@@ -1634,6 +1644,7 @@ function gatedRouter(shape: Shape) {
   };
   const shards: Array<{ key: string; store: RunStore }> = [];
   if (shape.three) shards.push({ key: "a", store: make("a") });
+  if (shape.archive === "shard") shards.push({ key: "z", store: make("archive") });
   if (shape.standIn) {
     shards.push({ key: shape.standIn === "m" ? MEMORYDB_SHARD_KEY : "b", store: make("m") });
   }
@@ -1642,6 +1653,7 @@ function gatedRouter(shape: Shape) {
     legacy: make("legacy"),
     shards,
     memoryDbGate: shape.gate,
+    archive: shape.archive === "option" ? make("archive") : undefined,
   });
   return { router, log };
 }
@@ -2019,8 +2031,13 @@ describe("the gate on the store under m", () => {
     for (const three of [false, true]) {
       for (const entry of defaults) {
         const calls: string[] = [];
-        const gate = countingGate(calls, false, true);
-        const { calls: log } = await observe(entry, { three, standIn: "m", gate }, undefined, true);
+        const gate = countingGate(calls, false, true, true);
+        const { calls: log } = await observe(
+          entry,
+          { three, standIn: "m", archive: "option", gate },
+          undefined,
+          true
+        );
         expect({ entry: entry.name, three, log, calls }).toEqual({
           entry: entry.name,
           three,
@@ -2030,8 +2047,13 @@ describe("the gate on the store under m", () => {
       }
       for (const entry of fallBacks) {
         const calls: string[] = [];
-        const gate = countingGate(calls, false, true);
-        const withM = await observe(entry, { three, standIn: "m", gate }, undefined, false);
+        const gate = countingGate(calls, false, true, true);
+        const withM = await observe(
+          entry,
+          { three, standIn: "m", archive: "option", gate },
+          undefined,
+          false
+        );
         const without = await observe(entry, { three }, undefined, false);
         expect({ entry: entry.name, three, asked: calls, ...withM }).toEqual({
           entry: entry.name,
@@ -2040,6 +2062,383 @@ describe("the gate on the store under m", () => {
           ...without,
         });
       }
+    }
+  });
+});
+
+// ---------------------------------------------------------------------------------------------
+// The archive behind the gate. The archive stand-in's slot is always "archive", so a router with it
+// as the `archive` option compares directly with one with it as a generation 2 shard keyed "z".
+// With m and the archive a router has four or more legs, so it is parallel: compare slot multisets.
+// ---------------------------------------------------------------------------------------------
+
+const isSummedWrite = (entry: Entry) =>
+  /^(clearIdempotencyKey|deleteManyTaskRunWaitpoints|updateManyBatchTaskRun)/.test(entry.name);
+const reads = matrix.filter((entry) => !isSummedWrite(entry));
+const summedWrites = matrix.filter(isSummedWrite);
+
+describe("the archive behind the gate", () => {
+  // Catches: an open gate with both flags on leaving the archive out, or ranking it unlike a shard
+  // placed directly below m.
+  it("with the gate open and both flags on, asks the archive as a shard ranked below m", async () => {
+    expect([reads.length, summedWrites.length]).toEqual([20, 5]);
+    for (const three of [false, true]) {
+      for (const failingSlot of [undefined, "archive"]) {
+        for (const entry of reads) {
+          const calls: string[] = [];
+          const gate = countingGate(calls, false, true, true);
+          const shape = { three, failingSlot, standIn: "m" as const };
+          const withArchive = await observe(
+            entry,
+            { ...shape, archive: "option", gate },
+            undefined,
+            false
+          );
+          const asShard = await observe(
+            entry,
+            { ...shape, archive: "shard", gate: countingGate([], false, true) },
+            undefined,
+            false
+          );
+          const label = { entry: entry.name, three, failingSlot };
+          expect({ ...label, ...withArchive }).toEqual({ ...label, ...asShard });
+          expect({ ...label, asked: withArchive.calls.includes("archive"), calls }).toEqual({
+            ...label,
+            asked: true,
+            calls: ["bornHere", "organizationOpens", "archiveFlagsOn"],
+          });
+        }
+      }
+    }
+  });
+
+  // Catches: the archive ranked above m, or its rows dropped from a merge.
+  it("answers an id m holds with m's row, and an id m lacks with the archive's", async () => {
+    const findRun = (r: RoutingRunStore) => r.findRun({ spanId: "s" });
+    const findRuns = (r: RoutingRunStore) => r.findRuns({ where: { status: "PENDING" } });
+    for (const three of [false, true]) {
+      const open = () => countingGate([], false, true, true);
+      let { router } = gatedRouter({ three, standIn: "m", archive: "option", gate: open() });
+      expect(await findRun(router)).toEqual({ id: "run_dup", from: "m" });
+      const merged = (await findRuns(router)) as Array<Record<string, unknown>>;
+      expect(merged.find((row) => row.id === "run_dup")).toEqual({ id: "run_dup", from: "m" });
+      expect(merged).toContainEqual({ id: "run_archive", from: "archive" });
+
+      ({ router } = gatedRouter({
+        three,
+        standIn: "m",
+        archive: "option",
+        gate: open(),
+        config: { m: { runs: [{ id: "run_m", from: "m" }] } },
+      }));
+      const withoutDupOnM = (await findRuns(router)) as Array<Record<string, unknown>>;
+      expect(withoutDupOnM.find((row) => row.id === "run_dup")).toEqual({
+        id: "run_dup",
+        from: "archive",
+      });
+      expect(withoutDupOnM).toContainEqual({ id: "run_archive", from: "archive" });
+      expect(withoutDupOnM).toContainEqual({ id: "run_m", from: "m" });
+    }
+  });
+
+  // Catches: the archive asked without an open gate and both flags, or registered where no store is
+  // under m.
+  it("adds no leg unless the gate is open and both flags are on", async () => {
+    const gen3 = generateRunOpsIdV2(MEMORYDB_SHARD_KEY);
+    for (const three of [false, true]) {
+      for (const entry of reads) {
+        const label = { entry: entry.name, three };
+
+        // (a) Open by the organisation, the archive's flags off.
+        let calls: string[] = [];
+        const flagsOff = await observe(
+          entry,
+          { three, standIn: "m", archive: "option", gate: countingGate(calls, false, true, false) },
+          undefined,
+          false
+        );
+        const withoutArchive = await observe(
+          entry,
+          { three, standIn: "m", gate: countingGate([], false, true) },
+          undefined,
+          false
+        );
+        expect({ ...label, case: "a", ...flagsOff, asked: calls }).toEqual({
+          ...label,
+          case: "a",
+          ...withoutArchive,
+          asked: ["bornHere", "organizationOpens", "archiveFlagsOn"],
+        });
+
+        // (b) Closed: no gate, and a gate answering false with the archive's flags on.
+        for (const gated of [false, true]) {
+          calls = [];
+          const gate = gated ? countingGate(calls, false, false, true) : undefined;
+          const closed = await observe(entry, { three, standIn: "m", archive: "option", gate });
+          const base = await observe(entry, {
+            three,
+            standIn: "m",
+            gate: gated ? countingGate([], false, false) : undefined,
+          });
+          expect({
+            ...label,
+            case: "b",
+            gated,
+            ...closed,
+            asked: calls.includes("archiveFlagsOn"),
+          }).toEqual({
+            ...label,
+            case: "b",
+            gated,
+            ...base,
+            asked: false,
+          });
+        }
+
+        // (c) Open by a generation 3 id in the predicate, with no gate injected.
+        if (entry.gen3Key !== undefined) {
+          const where = { [entry.gen3Key]: gen3 };
+          const byId = await observe(
+            entry,
+            { three, standIn: "m", archive: "option" },
+            where,
+            false
+          );
+          const base = await observe(entry, { three, standIn: "m" }, where, false);
+          expect({ ...label, case: "c", ...byId }).toEqual({ ...label, case: "c", ...base });
+          expect(byId.calls).toContain("m");
+        }
+
+        // (d) No store under m: the archive is registered but never asked, and the gate is not asked.
+        calls = [];
+        const noM = await observe(entry, {
+          three,
+          archive: "option",
+          gate: countingGate(calls, false, true, true),
+        });
+        const neither = await observe(entry, { three });
+        expect({ ...label, case: "d", ...noM, asked: calls }).toEqual({
+          ...label,
+          case: "d",
+          ...neither,
+          asked: [],
+        });
+
+        for (const observed of [flagsOff, noM]) {
+          expect({
+            ...label,
+            archive: observed.calls.some((c) => c.startsWith("archive")),
+          }).toEqual({
+            ...label,
+            archive: false,
+          });
+        }
+      }
+    }
+  });
+
+  // Catches: a write summed over stores reaching the archive, or asking for its flags.
+  it("never asks the archive, or its flags, for a write summed over stores", async () => {
+    for (const three of [false, true]) {
+      for (const entry of summedWrites) {
+        const calls: string[] = [];
+        const shape = { three, standIn: "m" as const };
+        const withArchive = await observe(
+          entry,
+          { ...shape, archive: "option", gate: countingGate(calls, false, true, true) },
+          undefined,
+          false
+        );
+        const without = await observe(
+          entry,
+          { ...shape, gate: countingGate([], false, true) },
+          undefined,
+          false
+        );
+        const label = { entry: entry.name, three };
+        expect({ ...label, ...withArchive, flagsAsked: calls.includes("archiveFlagsOn") }).toEqual({
+          ...label,
+          ...without,
+          flagsAsked: false,
+        });
+        expect(withArchive.calls).not.toContain("archive");
+        expect(withArchive.calls).toContain("m");
+      }
+    }
+  });
+
+  // Catches: the archive's flags asked before the gate opened, or more than once in one call.
+  it("asks archiveFlagsOn last, and once per call", async () => {
+    const gen3 = generateRunOpsIdV2(MEMORYDB_SHARD_KEY);
+    const asks = async (entry: Entry, gate: MemoryDbGate, where?: Where) => {
+      const { calls } = await observe(
+        entry,
+        { three: false, standIn: "m", archive: "option", gate },
+        where,
+        false
+      );
+      return calls.includes("archive");
+    };
+    for (const entry of reads) {
+      let calls: string[] = [];
+      let asked = await asks(entry, countingGate(calls, false, true, true));
+      expect({ entry: entry.name, asked, calls }).toEqual({
+        entry: entry.name,
+        asked: true,
+        calls: ["bornHere", "organizationOpens", "archiveFlagsOn"],
+      });
+
+      calls = [];
+      asked = await asks(entry, countingGate(calls, true, false, true));
+      expect({ entry: entry.name, asked, calls }).toEqual({
+        entry: entry.name,
+        asked: true,
+        calls: ["bornHere", "archiveFlagsOn"],
+      });
+
+      if (entry.gen3Key !== undefined) {
+        calls = [];
+        asked = await asks(entry, countingGate(calls, false, false, true), {
+          [entry.gen3Key]: gen3,
+        });
+        expect({ entry: entry.name, asked, calls }).toEqual({
+          entry: entry.name,
+          asked: true,
+          calls: ["archiveFlagsOn"],
+        });
+      }
+    }
+
+    // The fan-out and the edge hydration share one decision.
+    const withRelation: Entry = {
+      name: "findManyTaskRunWaitpoints with the waitpoint relation",
+      call: (r) =>
+        r.findManyTaskRunWaitpoints({
+          where: { waitpointId: "wp_1" },
+          include: { waitpoint: true },
+        } as never),
+    };
+    const calls: string[] = [];
+    const { router, log } = gatedRouter({
+      three: false,
+      standIn: "m",
+      archive: "option",
+      gate: countingGate(calls, false, true, true),
+    });
+    await withRelation.call(router);
+    expect({ calls, hydrated: slots(log, "findManyWaitpoints") }).toEqual({
+      calls: ["bornHere", "organizationOpens", "archiveFlagsOn"],
+      hydrated: ["archive", "legacy", "m", "new"],
+    });
+  });
+
+  // Catches: a rejected archiveFlagsOn() swallowed, read as off, or followed by a store call.
+  it("fails a read with the rejection of archiveFlagsOn, asking no store after it", async () => {
+    for (const three of [false, true]) {
+      for (const entry of reads) {
+        const rejection = new Error("archive flags failed");
+        const { router, log } = gatedRouter({
+          three,
+          standIn: "m",
+          archive: "option",
+          gate: countingGate([], false, true, rejection),
+          config: entry.config,
+        });
+        const error = await outcome(() => entry.call(router));
+        expect({ entry: entry.name, three, same: error === rejection, calls: trace(log) }).toEqual({
+          entry: entry.name,
+          three,
+          same: true,
+          calls: entry.beforeGate ?? [],
+        });
+      }
+    }
+  });
+
+  // Catches: a gen-1 fall-back probe that walks on to the archive when neither gen-1 store has the id.
+  it("ends an id-carrying fall-back on the gen-1 pair when neither holds the id", async () => {
+    const nowhere = { new: { waitpoint: null }, legacy: { waitpoint: null } };
+    const fallBacks: Entry[] = [
+      {
+        name: "updateWaitpoint by a cuid on neither gen-1 store",
+        call: (r) => r.updateWaitpoint({ where: { id: CUID }, data: {} } as never),
+        config: nowhere,
+      },
+      {
+        name: "forWaitpointCompletion by a cuid on neither gen-1 store",
+        call: async (r) => ((await r.forWaitpointCompletion(CUID, {} as never)) as FakeStore).slot,
+        config: nowhere,
+      },
+    ];
+    for (const three of [false, true]) {
+      for (const entry of fallBacks) {
+        const calls: string[] = [];
+        const gate = countingGate(calls, false, true, true);
+        const shape = { three, standIn: "m" as const };
+        const withArchive = await observe(
+          entry,
+          { ...shape, archive: "option", gate },
+          undefined,
+          true
+        );
+        const without = await observe(entry, shape, undefined, true);
+        expect({ entry: entry.name, three, asked: calls, ...withArchive }).toEqual({
+          entry: entry.name,
+          three,
+          asked: [],
+          ...without,
+        });
+      }
+    }
+  });
+
+  // Catches: the archive's reserved key accepted as a shard key or as an alias target.
+  it("refuses a shard keyed archive, and an alias naming the archive", () => {
+    const log: Call[] = [];
+    const base = { new: fakeStore("new", log), legacy: fakeStore("legacy", log) };
+    const archive = fakeStore("archive", log);
+    expect(
+      () => new RoutingRunStore({ ...base, archive, shards: [{ key: "archive", store: archive }] })
+    ).toThrow("shard keys must be unique");
+    expect(
+      () =>
+        new RoutingRunStore({
+          ...base,
+          archive,
+          shards: [{ key: "a", store: fakeStore("a", log), aliasOf: "archive" }],
+        })
+    ).toThrow('declares aliasOf "archive", which is not configured');
+  });
+
+  // Catches: the archive ranked by position (before the last key) rather than directly below m.
+  it("ranks the archive directly below m when m is not the last shard", async () => {
+    const log: Call[] = [];
+    const make = (slot: Slot, config: FakeConfig = holding(slot)) => fakeStore(slot, log, config);
+    const router = new RoutingRunStore({
+      new: make("new"),
+      legacy: make("legacy"),
+      // "a" outranks m but does not hold run_dup, so m must outrank the archive for run_dup.
+      shards: [
+        { key: MEMORYDB_SHARD_KEY, store: make("m") },
+        { key: "a", store: make("a", { runs: [{ id: "run_a", from: "a" }] }) },
+      ],
+      archive: make("archive"),
+      memoryDbGate: countingGate([], false, true, true),
+    });
+    const rows = (await router.findRuns({ where: { status: "PENDING" } })) as Array<
+      Record<string, unknown>
+    >;
+    expect(rows.find((row) => row.id === "run_dup")).toEqual({ id: "run_dup", from: "m" });
+    expect(slots(log)).toEqual(["a", "archive", "legacy", "m", "new"]);
+  });
+
+  // Catches: the archive's read rank leaking a "shard:archive" scope that keyed waitpoint reads probe.
+  it("leaves the waitpoint key scopes as they are without an archive", () => {
+    for (const three of [false, true]) {
+      const scopes = (archive?: "option") =>
+        gatedRouter({ three, standIn: "m", archive }).router.getWaitpointKeyScopes();
+      expect(scopes("option")).toEqual(scopes());
+      expect(scopes("option")).not.toContain("shard:archive");
     }
   });
 });

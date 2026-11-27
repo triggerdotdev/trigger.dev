@@ -54,6 +54,8 @@ const NEW_SHARD: ShardKey = "new";
 const LEGACY_SHARD: ShardKey = "legacy";
 // The routing key of the MemoryDB store, which no Postgres shard may use.
 export const MEMORYDB_SHARD_KEY: ShardKey = "m";
+// The archive's reserved key. It is multi-char, so no id resolves to it.
+const ARCHIVE_SHARD: ShardKey = "archive";
 
 /**
  * Run-ops routing substrate for the TaskRun-core method group. Implements {@link RunStore} over a
@@ -97,9 +99,15 @@ export class UnknownShardKey extends Error {
  * The decision whether an id-less operation also asks the store under {@link MEMORYDB_SHARD_KEY}.
  * `bornHere()` answers whether the call creates a generation 3 run, `organizationOpens()` whether
  * the caller's organisation opens it. Both read the caller's context, so the routing passes no
- * argument.
+ * argument. `archiveFlagsOn()` answers whether the caller's organisation has the archive's flag and
+ * the read path's flag on; it is asked only when an archive is registered, the gate is open and the
+ * operation is a read.
  */
-export type MemoryDbGate = { bornHere(): boolean; organizationOpens(): Promise<boolean> };
+export type MemoryDbGate = {
+  bornHere(): boolean;
+  organizationOpens(): Promise<boolean>;
+  archiveFlagsOn(): Promise<boolean>;
+};
 
 type Legs = ReadonlyArray<{ key: ShardKey; store: RunStore }>;
 
@@ -118,6 +126,8 @@ export class RoutingRunStore implements RunStore {
   readonly #memoryDbGate: MemoryDbGate | undefined;
   readonly #hasMemoryDb: boolean;
   readonly #storesWithoutMemoryDb: Legs;
+  // #distinctStores with the archive at its rank; undefined when no archive is registered.
+  readonly #storesWithArchive: Legs | undefined;
   // The two id-less defaults. They differ by role on purpose: a route with no id lands on the
   // steady-state home, a waitpoint read with no id lands on the legacy store.
   readonly #idlessRouteShard: ShardKey;
@@ -139,6 +149,7 @@ export class RoutingRunStore implements RunStore {
     resolveShard?: (id: string) => ShardKey;
     shards?: ReadonlyArray<{ key: ShardKey; store: RunStore; aliasOf?: ShardKey }>;
     memoryDbGate?: MemoryDbGate;
+    archive?: RunStore;
     metrics?: RoutingStoreMetrics;
     logger?: Logger;
   }) {
@@ -147,7 +158,8 @@ export class RoutingRunStore implements RunStore {
     // "legacy" would overwrite the reserved #shards entry; a repeated custom key would appear twice
     // in #precedence and #distinctStores, so a fan-out would query one database twice.
     const shardKeys = [NEW_SHARD, LEGACY_SHARD, ...shards.map((s) => s.key)];
-    if (new Set(shardKeys).size !== shardKeys.length) {
+    const uniqueKeys = options.archive ? [...shardKeys, ARCHIVE_SHARD] : shardKeys;
+    if (new Set(uniqueKeys).size !== uniqueKeys.length) {
       throw new Error(
         "RoutingRunStore: shard keys must be unique and cannot reuse the reserved 'new' or 'legacy' keys"
       );
@@ -179,9 +191,15 @@ export class RoutingRunStore implements RunStore {
       [NEW_SHARD, options.new],
       [LEGACY_SHARD, options.legacy],
       ...shards.map((s) => [s.key, s.store] as const),
+      ...(options.archive ? [[ARCHIVE_SHARD, options.archive] as const] : []),
     ]);
 
     const gen2Keys = shards.map((s) => s.key);
+    if (options.archive) {
+      // The archive ranks directly below m, so m's row wins a merge.
+      const atM = gen2Keys.indexOf(MEMORYDB_SHARD_KEY);
+      gen2Keys.splice(atM === -1 ? gen2Keys.length : atM, 0, ARCHIVE_SHARD);
+    }
     this.#probeOrder = [NEW_SHARD, LEGACY_SHARD, ...gen2Keys];
     this.#precedence = [LEGACY_SHARD, NEW_SHARD, ...gen2Keys];
     this.#idlessRouteShard = NEW_SHARD;
@@ -204,9 +222,13 @@ export class RoutingRunStore implements RunStore {
     // an unassigned #metrics at construction, in every deployment, at boot.
     this.#metrics = options.metrics ?? noopRoutingStoreMetrics;
 
-    this.#distinctStores = this.#precedence
+    const legs = this.#precedence
       .filter((key) => !aliasedKeys.has(key))
       .map((key) => ({ key, store: this.#shards.get(key)! }));
+    // Only #gatedStores hands out the archive's leg: every call site reads #distinctStores directly
+    // when no store is under m.
+    this.#storesWithArchive = options.archive ? legs : undefined;
+    this.#distinctStores = options.archive ? legs.filter((s) => s.key !== ARCHIVE_SHARD) : legs;
     this.#memoryDbGate = options.memoryDbGate;
     this.#hasMemoryDb = this.#distinctStores.some((s) => s.key === MEMORYDB_SHARD_KEY);
     this.#storesWithoutMemoryDb = this.#distinctStores.filter((s) => s.key !== MEMORYDB_SHARD_KEY);
@@ -374,13 +396,22 @@ export class RoutingRunStore implements RunStore {
 
   // The legs of one id-less operation when a store is under m. The gate opens on a generation 3 id
   // in the predicate, then `bornHere()`, then `organizationOpens()`, each asked only if the one
-  // before did not open it. A rejection of `organizationOpens()` fails the operation.
-  async #gatedStores(where: unknown, ids?: ReadonlyArray<unknown>): Promise<Legs> {
+  // before did not open it. A rejection of `organizationOpens()` fails the operation. An open read
+  // also asks the registered archive when `archiveFlagsOn()` resolves true; its rejection fails it too.
+  async #gatedStores(
+    where: unknown,
+    ids?: ReadonlyArray<unknown>,
+    operation: "read" | "write" = "read"
+  ): Promise<Legs> {
     const open =
       this.#namesMemoryDbId(where, ids) ||
       this.#memoryDbGate?.bornHere() === true ||
       (await this.#memoryDbGate?.organizationOpens()) === true;
-    return open ? this.#distinctStores : this.#storesWithoutMemoryDb;
+    if (!open) return this.#storesWithoutMemoryDb;
+    if (this.#storesWithArchive === undefined || operation === "write") return this.#distinctStores;
+    return (await this.#memoryDbGate?.archiveFlagsOn()) === true
+      ? this.#storesWithArchive
+      : this.#distinctStores;
   }
 
   // `stores` sorted by `order`. Shared by #probeFirst and #fanOut so every ordered walk over a
@@ -589,13 +620,16 @@ export class RoutingRunStore implements RunStore {
   }
 
   getWaitpointKeyScopes(): string[] {
-    const scopes = this.#probeOrder.map((key) => {
-      const canonical =
-        this.#waitpointKeyAliasShards.find((shard) => shard.key === key)?.aliasOf ?? key;
-      return canonical === NEW_SHARD || canonical === LEGACY_SHARD
-        ? canonical
-        : `shard:${canonical}`;
-    });
+    // The archive ranks in #probeOrder for run reads only; no waitpoint key is ever published under it.
+    const scopes = this.#probeOrder
+      .filter((key) => key !== ARCHIVE_SHARD)
+      .map((key) => {
+        const canonical =
+          this.#waitpointKeyAliasShards.find((shard) => shard.key === key)?.aliasOf ?? key;
+        return canonical === NEW_SHARD || canonical === LEGACY_SHARD
+          ? canonical
+          : `shard:${canonical}`;
+      });
     return [...new Set(scopes)];
   }
 
@@ -985,7 +1019,9 @@ export class RoutingRunStore implements RunStore {
       if (fromNew.count > 0) {
         return fromNew;
       }
-      const stores = this.#hasMemoryDb ? await this.#gatedStores(undefined) : this.#distinctStores;
+      const stores = this.#hasMemoryDb
+        ? await this.#gatedStores(undefined, undefined, "write")
+        : this.#distinctStores;
       const rest = await Promise.all(
         this.#shardsExcept(stores, NEW_SHARD).map(({ store }) => store.clearIdempotencyKey(params))
       );
@@ -994,7 +1030,8 @@ export class RoutingRunStore implements RunStore {
     const stores = this.#hasMemoryDb
       ? await this.#gatedStores(
           undefined,
-          "byFriendlyIds" in params ? params.byFriendlyIds : undefined
+          "byFriendlyIds" in params ? params.byFriendlyIds : undefined,
+          "write"
         )
       : this.#distinctStores;
     return this.#sumCounts(stores, (store) => store.clearIdempotencyKey(params));
@@ -2029,7 +2066,9 @@ export class RoutingRunStore implements RunStore {
     if (taskRunId !== undefined) {
       return (await this.#routeOrNewForWrite(taskRunId)).deleteManyTaskRunWaitpoints(args);
     }
-    const stores = this.#hasMemoryDb ? await this.#gatedStores(args.where) : this.#distinctStores;
+    const stores = this.#hasMemoryDb
+      ? await this.#gatedStores(args.where, undefined, "write")
+      : this.#distinctStores;
     return this.#sumCounts(stores, (store) => store.deleteManyTaskRunWaitpoints(args));
   }
 
@@ -2223,7 +2262,9 @@ export class RoutingRunStore implements RunStore {
       const store = this.#routeOrNew(id);
       return store.updateManyBatchTaskRun(args, undefined);
     }
-    const stores = this.#hasMemoryDb ? await this.#gatedStores(args.where) : this.#distinctStores;
+    const stores = this.#hasMemoryDb
+      ? await this.#gatedStores(args.where, undefined, "write")
+      : this.#distinctStores;
     return this.#sumCounts(stores, (store) => store.updateManyBatchTaskRun(args));
   }
 

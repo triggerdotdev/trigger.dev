@@ -1,5 +1,6 @@
 import {
   DelegatingRunStore,
+  organizationContext,
   type RunStore,
   type WaitpointColocationOptions,
 } from "@internal/run-store";
@@ -302,12 +303,14 @@ export class LegacyPostgresWaitpointCoordinator implements WaitpointCoordinator 
     // with its RUN, not this token, so it can live on the OTHER run-ops DB: read via the router
     // (which fans the waitpointId lookup across both DBs) rather than the token's own `store`,
     // or a cross-DB blocked run is never found and hangs forever.
-    const blockedRuns = await this.runStore.findManyTaskRunWaitpoints(
-      {
-        where: { waitpointId },
-        select: { taskRunId: true, spanIdToComplete: true, createdAt: true },
-      },
-      this.prisma
+    const blockedRuns = await organizationContext.withEnvironment(waitpoint.environmentId, () =>
+      this.runStore.findManyTaskRunWaitpoints(
+        {
+          where: { waitpointId },
+          select: { taskRunId: true, spanIdToComplete: true, createdAt: true },
+        },
+        this.prisma
+      )
     );
 
     return { waitpoint, blockedRuns };

@@ -61,6 +61,10 @@ function countingGate(calls: string[], bornHere: boolean, opens: boolean): Memor
       calls.push("organizationOpens");
       return opens;
     },
+    archiveFlagsOn: async () => {
+      calls.push("archiveFlagsOn");
+      return false;
+    },
   };
 }
 

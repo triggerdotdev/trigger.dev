@@ -28,7 +28,13 @@ import {
 } from "~/v3/utils/runResidency.server";
 import { createRunResidencyGate } from "~/v3/utils/runResidencyGate.server";
 import { splitRunStoreDeps } from "~/v3/runStore.server";
-import { organizationContext, type OrganizationContext } from "@internal/run-store";
+import {
+  MEMORYDB_SHARD_KEY,
+  organizationContext,
+  RoutingRunStore,
+  type OrganizationContext,
+  type RunStore,
+} from "@internal/run-store";
 
 vi.setConfig({ testTimeout: 60_000 });
 
@@ -861,6 +867,169 @@ describe("createRunResidencyGate", () => {
     } finally {
       warn.mockRestore();
     }
+  });
+
+  const ARCHIVE_ON = { archiveStoreEnabled: true, archiveReadPathEnabled: true };
+
+  // Catches: the archive decision reading one flag, reading it by truthiness, or reading the switch.
+  it("archiveFlagsOn() reads both archive flags by name, override then global", async () => {
+    const switches: Array<Record<string, unknown>> = [
+      {},
+      { runResidencyEnabled: true, activeRunStoreEnabled: true },
+      { runResidencyEnabled: false, activeRunStoreEnabled: false },
+    ];
+    const cases: Array<[string, Record<string, unknown>, unknown, boolean]> = [
+      ["both on", {}, ARCHIVE_ON, true],
+      ["store flag absent", {}, { archiveReadPathEnabled: true }, false],
+      ["read path flag absent", {}, { archiveStoreEnabled: true }, false],
+      ["store flag false", {}, { ...ARCHIVE_ON, archiveStoreEnabled: false }, false],
+      ["read path flag false", {}, { ...ARCHIVE_ON, archiveReadPathEnabled: false }, false],
+      ["store flag a string", {}, { ...ARCHIVE_ON, archiveStoreEnabled: "true" }, false],
+      ["read path flag a string", {}, { ...ARCHIVE_ON, archiveReadPathEnabled: "true" }, false],
+      ["null flags", {}, null, false],
+      ["no override, both on globally", ARCHIVE_ON, {}, true],
+      ["store flag overridden off", ARCHIVE_ON, { archiveStoreEnabled: false }, false],
+      ["read path flag overridden off", ARCHIVE_ON, { archiveReadPathEnabled: false }, false],
+    ];
+    for (const [name, global, featureFlags, expected] of cases) {
+      for (const flagsOfSwitch of switches) {
+        const { gate, lookups } = countingGate({ global });
+        const flags = featureFlags === null ? null : { ...flagsOfSwitch, ...featureFlags };
+        const ctx = { organizationId: "org_1", environmentId: "env_1", featureFlags: flags };
+        const answer = await inScope(ctx, () => gate.archiveFlagsOn());
+        expect({ name, flags, answer, lookups }).toEqual({
+          name,
+          flags,
+          answer: expected,
+          lookups: [],
+        });
+      }
+    }
+  });
+
+  // Catches: the archive decision answering, or looking up, for a call with no environment.
+  it.each<[string, OrganizationContext | undefined]>([
+    ["no scope", undefined],
+    ["an empty scope", {}],
+    [
+      "a scope with flags but no environment",
+      { organizationId: "org_1", featureFlags: ARCHIVE_ON },
+    ],
+  ])("archiveFlagsOn() is false with %s", async (_name, ctx) => {
+    const { gate, lookups } = countingGate({
+      global: ARCHIVE_ON,
+      resolve: async () => ({ organization: { featureFlags: ARCHIVE_ON } }),
+    });
+    await expect(inScope(ctx, () => gate.archiveFlagsOn())).resolves.toBe(false);
+    expect(lookups).toEqual([]);
+  });
+
+  // Catches: archiveFlagsOn() looking up apart from organizationOpens(), or caching across scopes.
+  it("archiveFlagsOn() shares the scope's one look-up with organizationOpens()", async () => {
+    for (const [looked, expected] of [
+      [{ runResidencyEnabled: true, activeRunStoreEnabled: true, ...ARCHIVE_ON }, true],
+      [{ runResidencyEnabled: true, activeRunStoreEnabled: true }, false],
+    ] as const) {
+      const { gate, lookups } = countingGate({
+        resolve: async () => ({ organization: { featureFlags: looked } }),
+      });
+      const ask = async () => [await gate.organizationOpens(), await gate.archiveFlagsOn()];
+      await expect(inScope({ environmentId: "env_1" }, ask)).resolves.toEqual([true, expected]);
+      expect(lookups).toEqual(["env_1"]);
+      await expect(inScope({ environmentId: "env_1" }, ask)).resolves.toEqual([true, expected]);
+      expect(lookups).toEqual(["env_1", "env_1"]);
+    }
+
+    const missing = countingGate({ global: ARCHIVE_ON });
+    await expect(
+      inScope({ environmentId: "env_gone" }, () => missing.gate.archiveFlagsOn())
+    ).resolves.toBe(false);
+    expect(missing.lookups).toEqual(["env_gone"]);
+
+    const failure = new Error("control plane down");
+    const failing = countingGate({ resolve: () => Promise.reject(failure) });
+    await expect(
+      inScope({ environmentId: "env_1" }, () => failing.gate.archiveFlagsOn())
+    ).rejects.toBe(failure);
+  });
+
+  // Catches: a throw while reading the archive flags failing the read, or passing without one warning.
+  it("archiveFlagsOn() resolves false and warns once when the global-flags reader throws", async () => {
+    const warn = vi.spyOn(logger, "warn");
+    try {
+      const { gate } = countingGate({
+        readGlobalFlags: () => {
+          throw new Error("registry broken");
+        },
+      });
+      const ctx = { environmentId: "env_1", featureFlags: ARCHIVE_ON };
+      await expect(inScope(ctx, () => gate.archiveFlagsOn())).resolves.toBe(false);
+      expect(warn).toHaveBeenCalledTimes(1);
+      expect(warn).toHaveBeenCalledWith("runResidency.gate_failed", { error: "registry broken" });
+
+      warn.mockClear();
+      const quiet = countingGate({});
+      for (const featureFlags of [ARCHIVE_ON, {}, null]) {
+        await inScope({ environmentId: "env_1", featureFlags }, () => quiet.gate.archiveFlagsOn());
+      }
+      expect(warn).toHaveBeenCalledTimes(0);
+    } finally {
+      warn.mockRestore();
+    }
+  });
+
+  // Catches: the routing and the real gate together asking the archive without both flags, for an
+  // organisation whose switch was never on, or more than once per read.
+  it("asks a registered archive on an id-less read only when the gate is open and both flags are on", async () => {
+    const read = async (featureFlags: unknown, resolved?: unknown) => {
+      const log: string[] = [];
+      const standIn = (slot: string) =>
+        ({
+          findRuns: async () => {
+            log.push(slot);
+            return [];
+          },
+        }) as unknown as RunStore;
+      const { gate, lookups } = countingGate({
+        resolve: async () => ({ organization: { featureFlags: resolved } }),
+      });
+      const router = new RoutingRunStore({
+        new: standIn("new"),
+        legacy: standIn("legacy"),
+        shards: [{ key: MEMORYDB_SHARD_KEY, store: standIn("m") }],
+        archive: standIn("archive"),
+        memoryDbGate: gate,
+      });
+      const ctx: OrganizationContext = { environmentId: "env_1", featureFlags };
+      await organizationContext.run(ctx, () => router.findRuns({ where: { status: "PENDING" } }));
+      return { asked: [...log].sort(), lookups };
+    };
+    const on = { runResidencyEnabled: true, activeRunStoreEnabled: true };
+
+    expect(await read({ ...on, ...ARCHIVE_ON })).toEqual({
+      asked: ["archive", "legacy", "m", "new"],
+      lookups: [],
+    });
+    for (const flags of [
+      { ...on, archiveStoreEnabled: true },
+      { ...on, archiveReadPathEnabled: true },
+      { ...on, ...ARCHIVE_ON, archiveStoreEnabled: false },
+      { ...on, ...ARCHIVE_ON, archiveReadPathEnabled: false },
+    ]) {
+      expect({ flags, ...(await read(flags)) }).toEqual({
+        flags,
+        asked: ["legacy", "m", "new"],
+        lookups: [],
+      });
+    }
+    expect(await read({ activeRunStoreEnabled: true, ...ARCHIVE_ON })).toEqual({
+      asked: ["legacy", "new"],
+      lookups: [],
+    });
+    expect(await read(undefined, { ...on, ...ARCHIVE_ON })).toEqual({
+      asked: ["archive", "legacy", "m", "new"],
+      lookups: ["env_1"],
+    });
   });
 });
 

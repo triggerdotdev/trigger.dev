@@ -54,5 +54,21 @@ export function createRunResidencyGate(deps: RunResidencyGateDeps): MemoryDbGate
         return false;
       }
     },
+    async archiveFlagsOn() {
+      const flags = await flagsOf(organizationContext.get());
+      if (flags === undefined) return false;
+      try {
+        const globalFlags = deps.readGlobalFlags();
+        return (
+          readFlagByName(OTHER_PROJECT_FLAGS.archiveStoreEnabled, flags, () => globalFlags) &&
+          readFlagByName(OTHER_PROJECT_FLAGS.archiveReadPathEnabled, flags, () => globalFlags)
+        );
+      } catch (error) {
+        logger.warn("runResidency.gate_failed", {
+          error: error instanceof Error ? error.message : String(error),
+        });
+        return false;
+      }
+    },
   };
 }

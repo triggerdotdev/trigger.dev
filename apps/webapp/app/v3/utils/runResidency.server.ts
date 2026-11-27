@@ -17,6 +17,8 @@ export const OTHER_PROJECT_FLAGS = {
   checkpointStoreEnabled: "checkpointStoreEnabled",
   clickhouseFeedEnabled: "clickhouseFeedEnabled",
   realtimeNativeOnly: "realtimeNativeOnly",
+  archiveStoreEnabled: "archiveStoreEnabled",
+  archiveReadPathEnabled: "archiveReadPathEnabled",
 } as const;
 
 function readOverride(organizationFlags: unknown, key: string): unknown {
