@@ -1,7 +1,7 @@
 import type {
   CheckpointInput,
+  ContinueRunExecutionResult,
   CreateCheckpointResult,
-  ExecutionResult,
 } from "@trigger.dev/core/v3";
 import { validateCheckpointLocation } from "@trigger.dev/core/v3";
 import { encodeCheckpointMetadata } from "../checkpointMetadata.js";
@@ -12,6 +12,7 @@ import { isCheckpointable, isPendingExecuting } from "../statuses.js";
 import type { ExecutionSnapshotSystem } from "./executionSnapshotSystem.js";
 import {
   getLatestExecutionSnapshot,
+  executionDataFromSnapshot,
   executionResultFromSnapshot,
 } from "./executionSnapshotSystem.js";
 import type { SystemResources } from "./systems.js";
@@ -366,7 +367,7 @@ export class CheckpointSystem {
     runnerId?: string;
     environmentId?: string;
     tx?: PrismaClientOrTransaction;
-  }): Promise<ExecutionResult> {
+  }): Promise<ContinueRunExecutionResult> {
     const prisma = tx ?? this.$.prisma;
 
     return await this.$.runLock.lock("continueRunExecution", [runId], async () => {
@@ -400,7 +401,10 @@ export class CheckpointSystem {
           await this.executionSnapshotSystem.enqueueHeartbeatIfNeeded(snapshot);
           await sendNotificationToWorker({ runId, snapshot, eventBus: this.$.eventBus });
 
-          return executionResultFromSnapshot(snapshot);
+          return {
+            ...executionResultFromSnapshot(snapshot),
+            executionData: executionDataFromSnapshot(snapshot),
+          } satisfies ContinueRunExecutionResult;
         }
 
         throw new ServiceValidationError(
@@ -499,7 +503,14 @@ export class CheckpointSystem {
 
       return {
         ...executionResultFromSnapshot(newSnapshot),
-      } satisfies ExecutionResult;
+        // What `snapshots/since` would return for the new snapshot, read from the primary, so the
+        // runner can resume without fetching it. It carries the waitpoints it was created with.
+        executionData: executionDataFromSnapshot({
+          ...newSnapshot,
+          checkpoint: null,
+          completedWaitpoints: snapshot.completedWaitpoints,
+        }),
+      } satisfies ContinueRunExecutionResult;
     });
   }
 }

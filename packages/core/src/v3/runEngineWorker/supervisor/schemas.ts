@@ -9,7 +9,7 @@ import {
   CompleteRunAttemptResult,
   RunExecutionData,
   CheckpointInput,
-  ExecutionResult,
+  ContinueRunExecutionResult,
 } from "../../schemas/runEngine.js";
 import { RunTokenHeartbeatReport } from "../runTokenRefresh.js";
 
@@ -54,7 +54,7 @@ export const WorkerApiSuspendRunResponseBody = z.object({
 });
 export type WorkerApiSuspendRunResponseBody = z.infer<typeof WorkerApiSuspendRunResponseBody>;
 
-export const WorkerApiContinueRunExecutionRequestBody = ExecutionResult;
+export const WorkerApiContinueRunExecutionRequestBody = ContinueRunExecutionResult;
 export type WorkerApiContinueRunExecutionRequestBody = z.infer<
   typeof WorkerApiContinueRunExecutionRequestBody
 >;
@@ -179,7 +179,7 @@ export const SecretProxyExecution = z.object({
 });
 export type SecretProxyExecution = z.infer<typeof SecretProxyExecution>;
 
-export const WorkerApiContinueRunExecutionResponseBody = ExecutionResult.extend({
+export const WorkerApiContinueRunExecutionResponseBody = ContinueRunExecutionResult.extend({
   runToken: z.string().optional(),
   secretProxy: SecretProxyExecution.optional(),
 });

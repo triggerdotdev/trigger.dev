@@ -479,6 +479,12 @@ export class ManagedRunController {
         runId: this.runFriendlyId,
         message: "Socket connected to supervisor",
       });
+
+      // After a reconnect the supervisor has a new socket that isn't bound to the run, so it
+      // would drop the run's notifications. Subscribing again is harmless on a first connect.
+      if (this.runFriendlyId && this.snapshotFriendlyId) {
+        this.subscribeToRunNotifications(this.runFriendlyId, this.snapshotFriendlyId);
+      }
     });
 
     socket.on("connect_error", (error) => {
@@ -563,6 +569,9 @@ export class ManagedRunController {
 
           // Create a new socket with the updated URL and headers
           this.socket = this.createSupervisorSocket();
+
+          // The execution listens for run notifications on its socket, so hand it the new one
+          this.currentExecution?.updateSupervisorSocket(this.socket);
 
           // Re-subscribe to notifications if we have an active execution
           if (this.runFriendlyId && this.snapshotFriendlyId) {

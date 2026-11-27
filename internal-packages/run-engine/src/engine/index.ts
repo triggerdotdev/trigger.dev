@@ -16,6 +16,7 @@ import { tryCatch } from "@trigger.dev/core/utils";
 import {
   type CheckpointInput,
   type CompleteRunAttemptResult,
+  type ContinueRunExecutionResult,
   type CreateCheckpointResult,
   type DequeuedMessage,
   type ExecutionResult,
@@ -3226,7 +3227,7 @@ export class RunEngine {
     runnerId?: string;
     environmentId?: string;
     tx?: PrismaClientOrTransaction;
-  }): Promise<ExecutionResult> {
+  }): Promise<ContinueRunExecutionResult> {
     return this.checkpointSystem.continueRunExecution({
       runId,
       snapshotId,

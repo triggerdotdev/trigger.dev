@@ -1148,7 +1148,12 @@ export class WorkloadServer extends EventEmitter<WorkloadServerEvents> {
                     return;
                   }
                 }
-                reply.json(continuation as WorkloadContinueRunExecutionResponseBody);
+                const { executionData } = continuation;
+                reply.json({
+                  ...continuation,
+                  // Same form as `snapshots/since` returns, so the runner can use it instead.
+                  executionData: executionData && legacifyCheckpointType(executionData),
+                } satisfies WorkloadContinueRunExecutionResponseBody);
 
                 await this.cancelCheckpointsAfterReply(params.runFriendlyId);
               }

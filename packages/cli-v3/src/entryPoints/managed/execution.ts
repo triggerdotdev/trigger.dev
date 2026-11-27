@@ -33,6 +33,12 @@ import { UsageJwtRefresher } from "./usageJwtRefresh.js";
 
 const CREDENTIAL_RESUME_RETRY_DELAYS_MS = [0, 1_000, 3_000];
 
+// Only for a platform whose continue response doesn't carry the new snapshot. Gaps before each
+// fetch of it: snapshots/since can be served from a read replica that hasn't got it yet. Replica
+// lag is usually well under 100ms, so the first fetch nearly always finds it; the second, 600ms
+// after continue, covers a slow replica. Then the poll or a notification takes over.
+const CONTINUED_SNAPSHOT_FETCH_DELAYS_MS = [100, 500];
+
 class ExecutionAbortError extends Error {
   constructor(message: string) {
     super(message);
@@ -892,6 +898,8 @@ export class RunExecution {
       throw new Error("Cannot restore: missing run or snapshot manager");
     }
 
+    const continuedFromSnapshotId = this.snapshotManager.snapshotId;
+
     // Short delay to give websocket time to reconnect
     await sleep(100);
 
@@ -903,7 +911,7 @@ export class RunExecution {
     // No billing report here: the restored runner does not own the suspended snapshot yet.
     if (this.runToken?.isDue) await this.sendHeartbeat("restore", { reportUsageJwt: false });
 
-    const continuationResult = await this.httpClient.continueRunExecution(
+    let continuationResult = await this.httpClient.continueRunExecution(
       this.runFriendlyId,
       this.snapshotManager.snapshotId
     );
@@ -923,6 +931,8 @@ export class RunExecution {
         if (!retryResult.success) {
           throw new Error(retryResult.error);
         }
+
+        continuationResult = retryResult;
       } else {
         throw new Error(continuationResult.error);
       }
@@ -930,6 +940,42 @@ export class RunExecution {
 
     // Track restore count
     this.restoreCount++;
+
+    // Continuing created the EXECUTING snapshot that carries the completed waitpoints. Take it in
+    // now instead of leaving it to the next poll, which can be seconds away, or to a notification
+    // a restored runner may not be subscribed to yet. Not awaited: we are inside the snapshot
+    // queue, which processes it once this change is done.
+    const { executionData } = continuationResult.data;
+
+    if (executionData) {
+      this.enqueueSnapshotChangesAndWait([executionData]).catch((error) => {
+        this.sendDebugLog("restore: failed to process the continued snapshot", {
+          error: error instanceof Error ? error.message : String(error),
+        });
+      });
+      return;
+    }
+
+    // An older platform doesn't return it, so fetch it.
+    this.fetchContinuedSnapshot(continuedFromSnapshotId).catch(() => {});
+  }
+
+  /**
+   * Fetches snapshot changes until the snapshot manager moves past the snapshot the run was
+   * continued from. snapshots/since can be served from a read replica that doesn't have the
+   * snapshot continue created yet, and then returns an empty list. After the last try the poll or
+   * a notification takes over, as for any other snapshot change.
+   */
+  private async fetchContinuedSnapshot(continuedFromSnapshotId: string) {
+    for (const delayMs of CONTINUED_SNAPSHOT_FETCH_DELAYS_MS) {
+      await sleep(delayMs);
+
+      if (this.isShuttingDown || this.currentSnapshotFriendlyId !== continuedFromSnapshotId) {
+        return;
+      }
+
+      await this.fetchAndProcessSnapshotChanges("continue");
+    }
   }
 
   private async exitTaskRunProcessWithoutFailingRun({
@@ -943,6 +989,15 @@ export class RunExecution {
 
     // No services should be left running after this line - let's make sure of it
     this.shutdownExecution(`exitTaskRunProcessWithoutFailingRun: ${reason}`);
+  }
+
+  /**
+   * Called by the RunController when it replaces its socket after a restore under a different
+   * supervisor, so run notifications are received on the new socket.
+   */
+  public updateSupervisorSocket(supervisorSocket: SupervisorSocket) {
+    this.supervisorSocket = supervisorSocket;
+    this.notifier?.updateSocket(supervisorSocket);
   }
 
   /**

@@ -134,8 +134,55 @@ async function restoreFromCheckpoint(
   assertNonNullable(restored[0]);
   expect(restored[0].snapshot.executionStatus).toBe("PENDING_EXECUTING");
 
-  return { run, pendingSnapshotId: restored[0].snapshot.id };
+  return { run, pendingSnapshotId: restored[0].snapshot.id, waitpointId: waitpoint.waitpoint.id };
 }
+
+describe("RunEngine continueRunExecution", () => {
+  // Catches: a continue response without the completed waitpoints, which leaves the restored
+  // runner to fetch the snapshot it just created (from a read replica that may not have it yet).
+  containerTest(
+    "returns the snapshot it created as snapshots/since does, with the completed waitpoints",
+    async ({ prisma, redisOptions }) => {
+      const environment = await setupAuthenticatedEnvironment(prisma, "PRODUCTION");
+      const engine = createEngine(prisma, redisOptions);
+
+      try {
+        const { run, pendingSnapshotId, waitpointId } = await restoreFromCheckpoint(
+          engine,
+          prisma,
+          environment
+        );
+
+        const continued = await engine.continueRunExecution({
+          runId: run.id,
+          snapshotId: pendingSnapshotId,
+          runnerId: "runner_a",
+        });
+
+        assertNonNullable(continued.executionData);
+        expect(continued.executionData.snapshot.id).toBe(continued.snapshot.id);
+        expect(continued.executionData.snapshot.executionStatus).toBe("EXECUTING");
+        expect(continued.executionData.completedWaitpoints.map((w) => w.id)).toEqual([waitpointId]);
+
+        const since = await engine.getSnapshotsSince({
+          runId: run.id,
+          snapshotId: pendingSnapshotId,
+        });
+        expect(continued.executionData).toEqual(since?.at(-1));
+
+        // A retry of the same continue returns the same.
+        const retry = await engine.continueRunExecution({
+          runId: run.id,
+          snapshotId: pendingSnapshotId,
+          runnerId: "runner_a",
+        });
+        expect(retry.executionData).toEqual(continued.executionData);
+      } finally {
+        await engine.quit();
+      }
+    }
+  );
+});
 
 describe("RunEngine continueRunExecution retries", () => {
   containerTest(

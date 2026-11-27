@@ -281,6 +281,16 @@ export const RunExecutionData = z.object({
 });
 export type RunExecutionData = z.infer<typeof RunExecutionData>;
 
+/** The response to the Worker when it continues a run restored from a checkpoint */
+export const ContinueRunExecutionResult = ExecutionResult.extend({
+  /**
+   * The snapshot `continue` created, as `snapshots/since` returns it, so the runner can act on it
+   * without fetching. Older platforms don't send it.
+   */
+  executionData: RunExecutionData.optional(),
+});
+export type ContinueRunExecutionResult = z.infer<typeof ContinueRunExecutionResult>;
+
 export const CreateCheckpointResult = discriminatedUnion("ok", [
   z
     .object({
