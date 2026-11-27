@@ -53,6 +53,12 @@ vi.mock("~/v3/runEngine.server", () => ({
   engine: {
     waitpointSystem: { isWaitpointStoreEnabled: async () => false },
     canReadStoreManualWaitpoints: () => false,
+    lengthOfQueues: async () => ({}),
+    currentConcurrencyOfQueues: async () => ({}),
+    totalConcurrencyOfQueues: async () => ({}),
+    gateQueuedCountOfQueues: async () => ({}),
+    lengthOfEnvQueue: async () => 0,
+    concurrencyOfEnvQueue: async () => 0,
   },
 }));
 vi.mock("~/v3/runStore.server", () => ({
@@ -72,6 +78,23 @@ vi.mock("~/services/clickhouse/clickhouseFactoryInstance.server", () => ({
     getClickhouseForOrganization: async () => {
       throw new Error("no ClickHouse in this test");
     },
+  },
+}));
+vi.mock("~/presenters/v3/LimitsPresenter.server", () => ({
+  LimitsPresenter: class {
+    async call() {
+      const rate = { config: { type: "fixedWindow", window: "10s", tokens: 1 }, currentTokens: 1 };
+      return {
+        planName: null,
+        rateLimits: { api: { name: "API", ...rate }, batch: { name: "Batch", ...rate } },
+        quotas: {},
+        features: {
+          hasStagingEnvironment: { name: "Staging", enabled: false },
+          support: { name: "Support", enabled: true, value: "Community" },
+          includedUsage: { name: "Included", enabled: false, value: 0 },
+        },
+      };
+    }
   },
 }));
 vi.mock("~/services/rbac.server", () => ({
@@ -96,6 +119,7 @@ const endpoint = { ...project, endpointId: "payments" };
 const prompt = { ...project, slug: "my-prompt" };
 const sched = { ...project, scheduleId: "sched_1" };
 const errorGroup = { ...project, errorId: "error_abc123" };
+const queue = { ...project, queueId: "queue_1" };
 
 const notBranchable =
   "This environment has no branches. Use preview (with preview branches enabled in the dashboard) or dev; nothing changed.";
@@ -108,6 +132,7 @@ const TOOLS: Array<{
   args: Record<string, unknown>;
   scope: string;
   ownText?: string;
+  served?: string | RegExp;
 }> = [
   {
     tool: "list_environments",
@@ -352,6 +377,74 @@ const TOOLS: Array<{
   { tool: "activate_schedule", args: sched, scope: "write:tasks" },
   { tool: "deactivate_schedule", args: sched, scope: "write:tasks" },
   { tool: "delete_schedule", args: sched, scope: "write:tasks" },
+  { tool: "list_queues", args: project, scope: "read:queues", served: /^No queues match\./ },
+  {
+    tool: "get_queue_details",
+    args: queue,
+    scope: "read:queues",
+    served:
+      "Queue queue_1 was not found in this environment. Use list_queues to see the queues in this environment.",
+  },
+  {
+    tool: "get_environment_concurrency",
+    args: project,
+    scope: "read:queues",
+    served: /^## Environment concurrency\n/,
+  },
+  { tool: "get_limits", args: project, scope: "read:projects", served: /^## Limits\n/ },
+  {
+    tool: "pause_queue",
+    args: queue,
+    scope: "write:tasks",
+    served: "Upgrade to v4+ to pause/resume queues; nothing changed.",
+  },
+  {
+    tool: "resume_queue",
+    args: queue,
+    scope: "write:tasks",
+    served: "Upgrade to v4+ to pause/resume queues; nothing changed.",
+  },
+  {
+    tool: "override_queue_concurrency",
+    args: { ...queue, limit: 1 },
+    scope: "write:tasks",
+    served:
+      "Queue queue_1 was not found in this environment. Use list_queues to see the queues in this environment; nothing changed.",
+  },
+  {
+    tool: "reset_queue_concurrency",
+    args: queue,
+    scope: "write:tasks",
+    served:
+      "Queue queue_1 was not found in this environment. Use list_queues to see the queues in this environment; nothing changed.",
+  },
+  {
+    tool: "archive_queue",
+    args: queue,
+    scope: "write:tasks",
+    served:
+      "Queue queue_1 was not found in this environment. Use list_queues to see the queues in this environment; nothing changed.",
+  },
+  {
+    tool: "unarchive_queue",
+    args: queue,
+    scope: "write:tasks",
+    served:
+      "Queue queue_1 was not found in this environment. Use list_queues to see the queues in this environment; nothing changed.",
+  },
+  {
+    tool: "pause_environment",
+    args: project,
+    scope: "write:tasks",
+    served:
+      "What this change would do has changed since it was approved. Call the tool again to get a new confirmation.",
+  },
+  {
+    tool: "resume_environment",
+    args: project,
+    scope: "write:tasks",
+    served: "This environment is not paused; nothing changed.",
+  },
   {
     tool: "batch_trigger_tasks",
     args: { ...project, items: [{ taskId: "my-task", payload: {} }] },
@@ -501,8 +594,10 @@ describe("mcp tools authorization matrix", () => {
     const all = [...new Set(TOOLS.map((t) => t.scope))];
 
     const outcomes: Record<string, { own: boolean | string; withoutOwn: string }> = {};
-    for (const { tool, args, scope, ownText } of TOOLS) {
+    const served: Record<string, string> = {};
+    for (const { tool, args, scope, ownText, served: expected } of TOOLS) {
       const own = textOf(await uatCall(tool, args, [scope]));
+      if (expected !== undefined) served[tool] = own;
       const withoutOwn = textOf(
         await uatCall(
           tool,
@@ -524,5 +619,10 @@ describe("mcp tools authorization matrix", () => {
         ])
       )
     );
+    for (const { tool, served: expected } of TOOLS) {
+      if (expected === undefined) continue;
+      if (typeof expected === "string") expect(served[tool], tool).toBe(expected);
+      else expect(served[tool], tool).toMatch(expected);
+    }
   });
 });

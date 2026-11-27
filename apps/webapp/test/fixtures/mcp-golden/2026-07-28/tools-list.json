@@ -7487,6 +7487,514 @@
               "readOnlyHint": false,
               "destructiveHint": true
             }
+          },
+          {
+            "name": "list_queues",
+            "title": "List Queues",
+            "description": "List the queues and named concurrency limits of an environment, like the Concurrency page in the dashboard: running and queued runs, paused and archived state, per-key and total limits with any override. With queue metrics, each queue also shows its scheduling delay p50/p95, peak backlog and throttling over a period (default 1h), and queues can be ordered by activity. 25 per page; archived queues that still have runs are listed too.",
+            "inputSchema": {
+              "type": "object",
+              "$schema": "https://json-schema.org/draft/2020-12/schema",
+              "properties": {
+                "projectRef": {
+                  "type": "string",
+                  "description": "The trigger.dev project ref, starts with proj_. We will attempt to automatically detect the project ref if running inside a directory that includes a trigger.config.ts file, or if you pass the --project-ref option to the MCP server."
+                },
+                "configPath": {
+                  "type": "string",
+                  "description": "The path to the trigger.config.ts file. Only used when the trigger.config.ts file is not at the root dir (like in a monorepo setup). If not provided, we will try to find the config file in the current working directory"
+                },
+                "environment": {
+                  "default": "dev",
+                  "type": "string",
+                  "enum": ["dev", "staging", "prod", "preview"],
+                  "description": "The environment to get tasks for"
+                },
+                "branch": {
+                  "type": "string",
+                  "description": "The branch to get tasks for, only used for preview environments and branchable development environments"
+                },
+                "query": {
+                  "type": "string",
+                  "maxLength": 200,
+                  "description": "Only queues whose name contains this text."
+                },
+                "sort": {
+                  "type": "string",
+                  "enum": ["busiest", "queued", "name"],
+                  "description": "Order: busiest (default, most recent activity first), queued (largest backlog first) or name. Without queue metrics the order is always name."
+                },
+                "includeArchived": {
+                  "type": "boolean",
+                  "description": "Also list archived queues."
+                },
+                "page": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 10000,
+                  "description": "The page to return (25 per page)."
+                },
+                "period": {
+                  "type": "string",
+                  "maxLength": 8,
+                  "pattern": "^\\d{1,5}[mhd]$",
+                  "description": "The metrics window ending now, e.g. \"15m\", \"1h\", \"1d\" or \"7d\" (default 1h). It is held within the plan's query period and the 30-day retention."
+                }
+              }
+            },
+            "annotations": {
+              "readOnlyHint": true,
+              "destructiveHint": false,
+              "title": "List Queues"
+            }
+          },
+          {
+            "name": "get_queue_details",
+            "title": "Get Queue Details",
+            "description": "Get one queue in full, like its page in the dashboard: running and queued runs, limits and overrides. With queue metrics, also the oldest queue position (priority counts as waiting time), the concurrency keys with queued runs now (most-starved first), also its scheduling delay p50/p95, peak backlog, throttling, and the backlog and throttling series over a period (default 1h, about 48 points).",
+            "inputSchema": {
+              "type": "object",
+              "$schema": "https://json-schema.org/draft/2020-12/schema",
+              "properties": {
+                "projectRef": {
+                  "type": "string",
+                  "description": "The trigger.dev project ref, starts with proj_. We will attempt to automatically detect the project ref if running inside a directory that includes a trigger.config.ts file, or if you pass the --project-ref option to the MCP server."
+                },
+                "configPath": {
+                  "type": "string",
+                  "description": "The path to the trigger.config.ts file. Only used when the trigger.config.ts file is not at the root dir (like in a monorepo setup). If not provided, we will try to find the config file in the current working directory"
+                },
+                "environment": {
+                  "default": "dev",
+                  "type": "string",
+                  "enum": ["dev", "staging", "prod", "preview"],
+                  "description": "The environment to get tasks for"
+                },
+                "branch": {
+                  "type": "string",
+                  "description": "The branch to get tasks for, only used for preview environments and branchable development environments"
+                },
+                "queueId": {
+                  "type": "string",
+                  "maxLength": 71,
+                  "pattern": "^queue_[a-zA-Z0-9]{1,64}$",
+                  "description": "The queue ID, starting with queue_. Use list_queues to find it."
+                },
+                "period": {
+                  "type": "string",
+                  "maxLength": 8,
+                  "pattern": "^\\d{1,5}[mhd]$",
+                  "description": "The metrics window ending now, e.g. \"15m\", \"1h\", \"1d\" or \"7d\" (default 1h). It is held within the plan's query period and the 30-day retention."
+                }
+              },
+              "required": ["queueId"]
+            },
+            "annotations": {
+              "readOnlyHint": true,
+              "destructiveHint": false,
+              "title": "Get Queue Details"
+            }
+          },
+          {
+            "name": "get_environment_concurrency",
+            "title": "Get Environment Concurrency",
+            "description": "Get an environment's concurrency now, like the header of the Concurrency page in the dashboard: runs running and queued across all queues, the concurrency limit and burst factor, the queued-runs limit per queue, whether the environment is paused and why, and how much of the limit queues have reserved for themselves.",
+            "inputSchema": {
+              "type": "object",
+              "$schema": "https://json-schema.org/draft/2020-12/schema",
+              "properties": {
+                "projectRef": {
+                  "type": "string",
+                  "description": "The trigger.dev project ref, starts with proj_. We will attempt to automatically detect the project ref if running inside a directory that includes a trigger.config.ts file, or if you pass the --project-ref option to the MCP server."
+                },
+                "configPath": {
+                  "type": "string",
+                  "description": "The path to the trigger.config.ts file. Only used when the trigger.config.ts file is not at the root dir (like in a monorepo setup). If not provided, we will try to find the config file in the current working directory"
+                },
+                "environment": {
+                  "default": "dev",
+                  "type": "string",
+                  "enum": ["dev", "staging", "prod", "preview"],
+                  "description": "The environment to get tasks for"
+                },
+                "branch": {
+                  "type": "string",
+                  "description": "The branch to get tasks for, only used for preview environments and branchable development environments"
+                }
+              }
+            },
+            "annotations": {
+              "readOnlyHint": true,
+              "destructiveHint": false,
+              "title": "Get Environment Concurrency"
+            }
+          },
+          {
+            "name": "get_limits",
+            "title": "Get Limits",
+            "description": "Get the limits that apply to an environment and its organization, like the Limits page in the dashboard: API and batch rate limits with the tokens available now; quotas with current usage, always projects, batch trigger concurrency and queued runs per queue, and schedules, team members, alert channels, preview branches, log retention, query period, dashboards and webhook limits when the plan sets them; and the plan's features.",
+            "inputSchema": {
+              "type": "object",
+              "$schema": "https://json-schema.org/draft/2020-12/schema",
+              "properties": {
+                "projectRef": {
+                  "type": "string",
+                  "description": "The trigger.dev project ref, starts with proj_. We will attempt to automatically detect the project ref if running inside a directory that includes a trigger.config.ts file, or if you pass the --project-ref option to the MCP server."
+                },
+                "configPath": {
+                  "type": "string",
+                  "description": "The path to the trigger.config.ts file. Only used when the trigger.config.ts file is not at the root dir (like in a monorepo setup). If not provided, we will try to find the config file in the current working directory"
+                },
+                "environment": {
+                  "default": "dev",
+                  "type": "string",
+                  "enum": ["dev", "staging", "prod", "preview"],
+                  "description": "The environment to get tasks for"
+                },
+                "branch": {
+                  "type": "string",
+                  "description": "The branch to get tasks for, only used for preview environments and branchable development environments"
+                }
+              }
+            },
+            "annotations": {
+              "readOnlyHint": true,
+              "destructiveHint": false,
+              "title": "Get Limits"
+            }
+          },
+          {
+            "name": "pause_queue",
+            "title": "Pause Queue",
+            "description": "Pause a queue or named concurrency limit (an ID from list_queues). No new run starts on it until it is resumed; runs already executing finish normally, and waiting or newly triggered runs stay queued. Deploys do not resume it.",
+            "inputSchema": {
+              "type": "object",
+              "$schema": "https://json-schema.org/draft/2020-12/schema",
+              "properties": {
+                "projectRef": {
+                  "type": "string",
+                  "description": "The trigger.dev project ref, starts with proj_. We will attempt to automatically detect the project ref if running inside a directory that includes a trigger.config.ts file, or if you pass the --project-ref option to the MCP server."
+                },
+                "configPath": {
+                  "type": "string",
+                  "description": "The path to the trigger.config.ts file. Only used when the trigger.config.ts file is not at the root dir (like in a monorepo setup). If not provided, we will try to find the config file in the current working directory"
+                },
+                "environment": {
+                  "default": "dev",
+                  "type": "string",
+                  "enum": ["dev", "staging", "prod", "preview"],
+                  "description": "The environment to get tasks for"
+                },
+                "branch": {
+                  "type": "string",
+                  "description": "The branch to get tasks for, only used for preview environments and branchable development environments"
+                },
+                "queueId": {
+                  "type": "string",
+                  "maxLength": 71,
+                  "pattern": "^queue_[a-zA-Z0-9]{1,64}$",
+                  "description": "The queue ID, starting with queue_. Use list_queues to find it."
+                }
+              },
+              "required": ["queueId"]
+            },
+            "annotations": {
+              "title": "Pause Queue",
+              "readOnlyHint": false,
+              "destructiveHint": true
+            }
+          },
+          {
+            "name": "resume_queue",
+            "title": "Resume Queue",
+            "description": "Resume a paused queue or named concurrency limit, so its waiting runs start again up to its limits. It also releases the saved pause of a task's inline limit that is not listed.",
+            "inputSchema": {
+              "type": "object",
+              "$schema": "https://json-schema.org/draft/2020-12/schema",
+              "properties": {
+                "projectRef": {
+                  "type": "string",
+                  "description": "The trigger.dev project ref, starts with proj_. We will attempt to automatically detect the project ref if running inside a directory that includes a trigger.config.ts file, or if you pass the --project-ref option to the MCP server."
+                },
+                "configPath": {
+                  "type": "string",
+                  "description": "The path to the trigger.config.ts file. Only used when the trigger.config.ts file is not at the root dir (like in a monorepo setup). If not provided, we will try to find the config file in the current working directory"
+                },
+                "environment": {
+                  "default": "dev",
+                  "type": "string",
+                  "enum": ["dev", "staging", "prod", "preview"],
+                  "description": "The environment to get tasks for"
+                },
+                "branch": {
+                  "type": "string",
+                  "description": "The branch to get tasks for, only used for preview environments and branchable development environments"
+                },
+                "queueId": {
+                  "type": "string",
+                  "maxLength": 71,
+                  "pattern": "^queue_[a-zA-Z0-9]{1,64}$",
+                  "description": "The queue ID, starting with queue_. Use list_queues to find it."
+                }
+              },
+              "required": ["queueId"]
+            },
+            "annotations": {
+              "title": "Resume Queue",
+              "readOnlyHint": false,
+              "destructiveHint": true
+            }
+          },
+          {
+            "name": "override_queue_concurrency",
+            "title": "Override Queue Concurrency",
+            "description": "Override the concurrency limits of a queue or named concurrency limit, replacing the limits set in code until reset_queue_concurrency. Pass limit (per concurrency key, or the whole queue when it has no keys) or percent (of the environment limit), and/or totalLimit (across all keys). Neither may exceed the environment limit. Running runs are not stopped.",
+            "inputSchema": {
+              "type": "object",
+              "$schema": "https://json-schema.org/draft/2020-12/schema",
+              "properties": {
+                "projectRef": {
+                  "type": "string",
+                  "description": "The trigger.dev project ref, starts with proj_. We will attempt to automatically detect the project ref if running inside a directory that includes a trigger.config.ts file, or if you pass the --project-ref option to the MCP server."
+                },
+                "configPath": {
+                  "type": "string",
+                  "description": "The path to the trigger.config.ts file. Only used when the trigger.config.ts file is not at the root dir (like in a monorepo setup). If not provided, we will try to find the config file in the current working directory"
+                },
+                "environment": {
+                  "default": "dev",
+                  "type": "string",
+                  "enum": ["dev", "staging", "prod", "preview"],
+                  "description": "The environment to get tasks for"
+                },
+                "branch": {
+                  "type": "string",
+                  "description": "The branch to get tasks for, only used for preview environments and branchable development environments"
+                },
+                "queueId": {
+                  "type": "string",
+                  "maxLength": 71,
+                  "pattern": "^queue_[a-zA-Z0-9]{1,64}$",
+                  "description": "The queue ID, starting with queue_. Use list_queues to find it."
+                },
+                "limit": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 100000,
+                  "description": "The new per-key concurrency limit: how many runs of each concurrency key may run at once (the whole queue's limit when it has no keys). 0 stops new runs from starting."
+                },
+                "percent": {
+                  "type": "number",
+                  "minimum": 0.01,
+                  "maximum": 100,
+                  "multipleOf": 0.01,
+                  "description": "Set the per-key limit as a percentage of the environment's concurrency limit instead of a number, from 0.01 to 100 with at most two decimals. It follows later changes to the environment limit."
+                },
+                "totalLimit": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 100000,
+                  "description": "The new total limit: how many runs may run at once across all concurrency keys."
+                }
+              },
+              "required": ["queueId"]
+            },
+            "annotations": {
+              "title": "Override Queue Concurrency",
+              "readOnlyHint": false,
+              "destructiveHint": true
+            }
+          },
+          {
+            "name": "reset_queue_concurrency",
+            "title": "Reset Queue Concurrency",
+            "description": "Remove the concurrency override of a queue or named concurrency limit, restoring the per-key and total limits set in code. With no override, it applies the stored per-key and total limits again (a per-key limit of 0 while the queue is paused) if the running queue enforces different ones. Running runs are not stopped.",
+            "inputSchema": {
+              "type": "object",
+              "$schema": "https://json-schema.org/draft/2020-12/schema",
+              "properties": {
+                "projectRef": {
+                  "type": "string",
+                  "description": "The trigger.dev project ref, starts with proj_. We will attempt to automatically detect the project ref if running inside a directory that includes a trigger.config.ts file, or if you pass the --project-ref option to the MCP server."
+                },
+                "configPath": {
+                  "type": "string",
+                  "description": "The path to the trigger.config.ts file. Only used when the trigger.config.ts file is not at the root dir (like in a monorepo setup). If not provided, we will try to find the config file in the current working directory"
+                },
+                "environment": {
+                  "default": "dev",
+                  "type": "string",
+                  "enum": ["dev", "staging", "prod", "preview"],
+                  "description": "The environment to get tasks for"
+                },
+                "branch": {
+                  "type": "string",
+                  "description": "The branch to get tasks for, only used for preview environments and branchable development environments"
+                },
+                "queueId": {
+                  "type": "string",
+                  "maxLength": 71,
+                  "pattern": "^queue_[a-zA-Z0-9]{1,64}$",
+                  "description": "The queue ID, starting with queue_. Use list_queues to find it."
+                }
+              },
+              "required": ["queueId"]
+            },
+            "annotations": {
+              "title": "Reset Queue Concurrency",
+              "readOnlyHint": false,
+              "destructiveHint": true
+            }
+          },
+          {
+            "name": "archive_queue",
+            "title": "Archive Queue",
+            "description": "Archive a queue that is no longer used: it is hidden from the queue list and nothing else changes. Only a queue with no waiting or running runs, not paused, without a limit of 0 and not declared by the current deploy can be archived. unarchive_queue undoes it.",
+            "inputSchema": {
+              "type": "object",
+              "$schema": "https://json-schema.org/draft/2020-12/schema",
+              "properties": {
+                "projectRef": {
+                  "type": "string",
+                  "description": "The trigger.dev project ref, starts with proj_. We will attempt to automatically detect the project ref if running inside a directory that includes a trigger.config.ts file, or if you pass the --project-ref option to the MCP server."
+                },
+                "configPath": {
+                  "type": "string",
+                  "description": "The path to the trigger.config.ts file. Only used when the trigger.config.ts file is not at the root dir (like in a monorepo setup). If not provided, we will try to find the config file in the current working directory"
+                },
+                "environment": {
+                  "default": "dev",
+                  "type": "string",
+                  "enum": ["dev", "staging", "prod", "preview"],
+                  "description": "The environment to get tasks for"
+                },
+                "branch": {
+                  "type": "string",
+                  "description": "The branch to get tasks for, only used for preview environments and branchable development environments"
+                },
+                "queueId": {
+                  "type": "string",
+                  "maxLength": 71,
+                  "pattern": "^queue_[a-zA-Z0-9]{1,64}$",
+                  "description": "The queue ID, starting with queue_. Use list_queues to find it."
+                }
+              },
+              "required": ["queueId"]
+            },
+            "annotations": {
+              "title": "Archive Queue",
+              "readOnlyHint": false,
+              "destructiveHint": true
+            }
+          },
+          {
+            "name": "unarchive_queue",
+            "title": "Unarchive Queue",
+            "description": "Unarchive a queue so it shows in the queue list again. Nothing else changes.",
+            "inputSchema": {
+              "type": "object",
+              "$schema": "https://json-schema.org/draft/2020-12/schema",
+              "properties": {
+                "projectRef": {
+                  "type": "string",
+                  "description": "The trigger.dev project ref, starts with proj_. We will attempt to automatically detect the project ref if running inside a directory that includes a trigger.config.ts file, or if you pass the --project-ref option to the MCP server."
+                },
+                "configPath": {
+                  "type": "string",
+                  "description": "The path to the trigger.config.ts file. Only used when the trigger.config.ts file is not at the root dir (like in a monorepo setup). If not provided, we will try to find the config file in the current working directory"
+                },
+                "environment": {
+                  "default": "dev",
+                  "type": "string",
+                  "enum": ["dev", "staging", "prod", "preview"],
+                  "description": "The environment to get tasks for"
+                },
+                "branch": {
+                  "type": "string",
+                  "description": "The branch to get tasks for, only used for preview environments and branchable development environments"
+                },
+                "queueId": {
+                  "type": "string",
+                  "maxLength": 71,
+                  "pattern": "^queue_[a-zA-Z0-9]{1,64}$",
+                  "description": "The queue ID, starting with queue_. Use list_queues to find it."
+                }
+              },
+              "required": ["queueId"]
+            },
+            "annotations": {
+              "title": "Unarchive Queue",
+              "readOnlyHint": false,
+              "destructiveHint": true
+            }
+          },
+          {
+            "name": "pause_environment",
+            "title": "Pause Environment",
+            "description": "Pause a whole environment: no new run starts in any of its queues until it is resumed. Runs already executing finish normally; queued and newly triggered runs wait.",
+            "inputSchema": {
+              "type": "object",
+              "$schema": "https://json-schema.org/draft/2020-12/schema",
+              "properties": {
+                "projectRef": {
+                  "type": "string",
+                  "description": "The trigger.dev project ref, starts with proj_. We will attempt to automatically detect the project ref if running inside a directory that includes a trigger.config.ts file, or if you pass the --project-ref option to the MCP server."
+                },
+                "configPath": {
+                  "type": "string",
+                  "description": "The path to the trigger.config.ts file. Only used when the trigger.config.ts file is not at the root dir (like in a monorepo setup). If not provided, we will try to find the config file in the current working directory"
+                },
+                "environment": {
+                  "default": "dev",
+                  "type": "string",
+                  "enum": ["dev", "staging", "prod", "preview"],
+                  "description": "The environment to get tasks for"
+                },
+                "branch": {
+                  "type": "string",
+                  "description": "The branch to get tasks for, only used for preview environments and branchable development environments"
+                }
+              }
+            },
+            "annotations": {
+              "title": "Pause Environment",
+              "readOnlyHint": false,
+              "destructiveHint": true
+            }
+          },
+          {
+            "name": "resume_environment",
+            "title": "Resume Environment",
+            "description": "Resume a paused environment so queued runs start again. An environment paused because the organization reached its billing limit, or by an administrator, cannot be resumed here.",
+            "inputSchema": {
+              "type": "object",
+              "$schema": "https://json-schema.org/draft/2020-12/schema",
+              "properties": {
+                "projectRef": {
+                  "type": "string",
+                  "description": "The trigger.dev project ref, starts with proj_. We will attempt to automatically detect the project ref if running inside a directory that includes a trigger.config.ts file, or if you pass the --project-ref option to the MCP server."
+                },
+                "configPath": {
+                  "type": "string",
+                  "description": "The path to the trigger.config.ts file. Only used when the trigger.config.ts file is not at the root dir (like in a monorepo setup). If not provided, we will try to find the config file in the current working directory"
+                },
+                "environment": {
+                  "default": "dev",
+                  "type": "string",
+                  "enum": ["dev", "staging", "prod", "preview"],
+                  "description": "The environment to get tasks for"
+                },
+                "branch": {
+                  "type": "string",
+                  "description": "The branch to get tasks for, only used for preview environments and branchable development environments"
+                }
+              }
+            },
+            "annotations": {
+              "title": "Resume Environment",
+              "readOnlyHint": false,
+              "destructiveHint": true
+            }
           }
         ],
         "resultType": "complete",

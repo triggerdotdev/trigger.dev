@@ -110,6 +110,19 @@ const REMOTE_ONLY: Record<string, string> = {
   archive_branch: "the CLI has no MCP twin for the public archive route",
   set_preview_auto_archive: "the public API has no route for it; it mirrors a dashboard setting",
   set_default_region: "the CLI has no MCP twin for the public default region route",
+  list_queues:
+    "the CLI has no queue tools; the public list has no limits, metrics or archive state",
+  get_queue_details: "no public API returns a queue's concurrency keys and metrics series",
+  get_environment_concurrency: "no public API returns an environment's concurrency and pause state",
+  get_limits: "no public API returns the limits page",
+  pause_queue: "the CLI has no MCP twin for the public queue pause route",
+  resume_queue: "the CLI has no MCP twin for the public queue pause route",
+  override_queue_concurrency: "the CLI has no MCP twin for the public override route",
+  reset_queue_concurrency: "the CLI has no MCP twin for the public reset route",
+  archive_queue: "queues are only archived in the dashboard",
+  unarchive_queue: "queues are only unarchived in the dashboard",
+  pause_environment: "environments are only paused in the dashboard",
+  resume_environment: "environments are only resumed in the dashboard",
 };
 
 const WRITE_TOOL_APPROVAL: Record<string, "required" | "configurable" | { none: string }> = {
@@ -174,6 +187,14 @@ const WRITE_TOOL_APPROVAL: Record<string, "required" | "configurable" | { none: 
   archive_branch: "required",
   set_preview_auto_archive: "required",
   set_default_region: "configurable",
+  pause_queue: "configurable",
+  resume_queue: "configurable",
+  override_queue_concurrency: "configurable",
+  reset_queue_concurrency: "configurable",
+  archive_queue: "required",
+  unarchive_queue: "required",
+  pause_environment: "required",
+  resume_environment: "configurable",
 };
 
 type CliTool = {

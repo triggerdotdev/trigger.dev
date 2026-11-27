@@ -39,6 +39,8 @@ import { orgsTools } from "./tools/orgs.server";
 import { promptsTools } from "./tools/prompts.server";
 import { promptsReadTools } from "./tools/promptsRead.server";
 import { queryTools } from "./tools/query.server";
+import { queuesTools } from "./tools/queues.server";
+import { queuesWriteTools } from "./tools/queuesWrite.server";
 import { reportTools } from "./tools/report.server";
 import { logsTools } from "./tools/logs.server";
 import { runsTools } from "./tools/runs.server";
@@ -163,6 +165,8 @@ export const mcpTools: McpToolDefinition[] = assertUniqueToolNames([
   ...waitpointsWriteTools,
   ...deploymentsWriteTools,
   ...environmentsWriteTools,
+  ...queuesTools,
+  ...queuesWriteTools,
 ]);
 
 export function registerMcpTools(

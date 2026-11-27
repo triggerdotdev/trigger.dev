@@ -456,8 +456,11 @@ export async function findEnvironmentByPublicApiKey(
   return toAuthenticated(environment);
 }
 
-export async function findEnvironmentById(id: string): Promise<AuthenticatedEnvironment | null> {
-  const environment = await $replica.runtimeEnvironment.findFirst({
+export async function findEnvironmentById(
+  id: string,
+  db: PrismaClientOrTransaction = $replica
+): Promise<AuthenticatedEnvironment | null> {
+  const environment = await db.runtimeEnvironment.findFirst({
     where: {
       id,
     },

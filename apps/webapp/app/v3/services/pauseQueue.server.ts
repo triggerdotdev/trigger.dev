@@ -1,5 +1,5 @@
 import { type QueueItem, type RetrieveQueueParam } from "@trigger.dev/core/v3";
-import { type TaskQueueRole } from "@trigger.dev/database";
+import { Prisma, type TaskQueueRole } from "@trigger.dev/database";
 import { getQueue, toQueueItem } from "~/presenters/v3/QueueRetrievePresenter.server";
 import { type AuthenticatedEnvironment } from "~/services/apiAuth.server";
 import { logger } from "~/services/logger.server";
@@ -18,7 +18,7 @@ export type PauseQueueResult =
     }
   | {
       success: false;
-      code: "queue-not-found" | "unknown-error" | "engine-version";
+      code: "queue-not-found" | "queue-changed" | "unknown-error" | "engine-version";
       error?: string;
     };
 
@@ -34,7 +34,8 @@ export class PauseQueueService extends BaseService {
     environment: AuthenticatedEnvironment,
     queueInput: RetrieveQueueParam,
     action: PauseStatus,
-    opts?: { roles?: TaskQueueRole[] }
+    /** `expectedUpdatedAt`: change only while the row is still at it; else `queue-changed`. */
+    opts?: { roles?: TaskQueueRole[]; expectedUpdatedAt?: Date }
   ): Promise<PauseQueueResult> {
     try {
       //check the engine is the correct version
@@ -62,6 +63,7 @@ export class PauseQueueService extends BaseService {
       const updatedQueue = await this._prisma.taskQueue.update({
         where: {
           id: queue.id,
+          ...(opts?.expectedUpdatedAt ? { updatedAt: opts.expectedUpdatedAt } : {}),
         },
         data: {
           paused: action === "paused",
@@ -169,6 +171,13 @@ export class PauseQueueService extends BaseService {
         }),
       };
     } catch (error) {
+      if (
+        opts?.expectedUpdatedAt &&
+        error instanceof Prisma.PrismaClientKnownRequestError &&
+        error.code === "P2025"
+      ) {
+        return { success: false, code: "queue-changed" };
+      }
       logger.error("PauseQueueService: error updating queue state", {
         error,
         environmentId: environment.id,

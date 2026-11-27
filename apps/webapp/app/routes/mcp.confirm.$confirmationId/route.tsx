@@ -73,7 +73,24 @@ export async function loader({ request, params }: LoaderFunctionArgs) {
   );
 }
 
-export async function action({ request, params }: ActionFunctionArgs) {
+// The root error handler logs at debug only, so an approve or deny that fails is logged here;
+// ignoreError keeps it out of Sentry, which gets the rethrown exception once.
+export async function action(args: ActionFunctionArgs) {
+  try {
+    return await decide(args);
+  } catch (error) {
+    if (!(error instanceof Response)) {
+      logger.error("mcp.confirmation failed", {
+        confirmationId: args.params.confirmationId,
+        error: error instanceof Error ? error.name : typeof error,
+        ignoreError: true,
+      });
+    }
+    throw error;
+  }
+}
+
+async function decide({ request, params }: ActionFunctionArgs) {
   if (request.method !== "POST") {
     throw new Response("Method not allowed", { status: 405, headers: { Allow: "POST" } });
   }
