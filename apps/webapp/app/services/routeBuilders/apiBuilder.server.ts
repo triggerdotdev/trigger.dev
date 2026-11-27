@@ -1,6 +1,7 @@
 import type { z } from "zod";
 import type {
   ApiAuthenticationResultSuccess,
+  AuthenticatedEnvironment,
   UserActorAuthenticatedActor,
 } from "../apiAuth.server";
 import type { ActionFunctionArgs, LoaderFunctionArgs } from "@remix-run/server-runtime";
@@ -39,6 +40,7 @@ import { publicTokenSecret } from "~/services/publicTokenSubject.server";
 import { unroutableIdResponse } from "./unroutableId.server";
 import { keyedWaitpointBudgetResponse } from "./keyedWaitpointBudget.server";
 import { tenantContext, tenantContextFromAuthEnvironment } from "~/services/tenantContext.server";
+import { organizationContext, type OrganizationContext } from "@internal/run-store";
 import { withRequestFeature, type RequestFeatureName } from "~/services/requestFeature.server";
 
 // Client aborts and service-level validation errors aren't bugs — they're
@@ -384,6 +386,14 @@ type ApiKeyHandlerFunction<
   apiVersion: API_VERSIONS;
 }) => Promise<Response>;
 
+function organizationContextOf(environment: AuthenticatedEnvironment): OrganizationContext {
+  return {
+    organizationId: environment.organization.id,
+    environmentId: environment.id,
+    featureFlags: environment.organization.featureFlags,
+  };
+}
+
 export function createLoaderApiRoute<
   TParamsSchema extends AnyZodSchema | undefined = undefined,
   TSearchParamsSchema extends AnyZodSchema | undefined = undefined,
@@ -421,6 +431,7 @@ export function createLoaderApiRoute<
         );
       }
       const { authentication: authenticationResult, ability } = authResult;
+      const orgContext = organizationContextOf(authenticationResult.environment);
       const restrictedKeyRejection = await rejectRestrictedKeyWithoutAuthorization({
         request,
         restrictedApiKey: authResult.restrictedApiKey,
@@ -480,11 +491,8 @@ export function createLoaderApiRoute<
       }
 
       // Find the resource
-      const resource = await findResource(
-        parsedParams,
-        authenticationResult,
-        parsedSearchParams,
-        authResult.subject
+      const resource = await organizationContext.run(orgContext, () =>
+        findResource(parsedParams, authenticationResult, parsedSearchParams, authResult.subject)
       );
 
       if (!resource) {
@@ -532,16 +540,18 @@ export function createLoaderApiRoute<
           authenticationResult.actor
         ),
         () =>
-          handler({
-            params: parsedParams,
-            searchParams: parsedSearchParams,
-            headers: parsedHeaders,
-            authentication: authenticationResult,
-            ability,
-            request,
-            resource,
-            apiVersion,
-          })
+          organizationContext.run(orgContext, () =>
+            handler({
+              params: parsedParams,
+              searchParams: parsedSearchParams,
+              headers: parsedHeaders,
+              authentication: authenticationResult,
+              ability,
+              request,
+              resource,
+              apiVersion,
+            })
+          )
       );
       return await wrapResponse(request, result, corsStrategy !== "none");
     } catch (error) {
@@ -1351,6 +1361,7 @@ export function createActionApiRoute<
         );
       }
       const { authentication: authenticationResult, ability } = authResult;
+      const orgContext = organizationContextOf(authenticationResult.environment);
       // The request's own context too, for what runs outside the handler.
       tenantContext.enrich(
         tenantContextFromAuthEnvironment(
@@ -1466,11 +1477,8 @@ export function createActionApiRoute<
       // for either form should authorize both URL forms). Mirrors the
       // ordering in `createLoaderApiRoute`.
       const resource = findResource
-        ? await findResource(
-            parsedParams,
-            authenticationResult,
-            parsedSearchParams,
-            authResult.subject
+        ? await organizationContext.run(orgContext, () =>
+            findResource(parsedParams, authenticationResult, parsedSearchParams, authResult.subject)
           )
         : undefined;
 
@@ -1524,18 +1532,20 @@ export function createActionApiRoute<
           authenticationResult.actor
         ),
         () =>
-          handler({
-            params: parsedParams,
-            searchParams: parsedSearchParams,
-            headers: parsedHeaders,
-            body: parsedBody,
-            authentication: authenticationResult,
-            restrictedApiKey: authResult.restrictedApiKey,
-            subject: authResult.subject,
-            ability,
-            request,
-            resource,
-          })
+          organizationContext.run(orgContext, () =>
+            handler({
+              params: parsedParams,
+              searchParams: parsedSearchParams,
+              headers: parsedHeaders,
+              body: parsedBody,
+              authentication: authenticationResult,
+              restrictedApiKey: authResult.restrictedApiKey,
+              subject: authResult.subject,
+              ability,
+              request,
+              resource,
+            })
+          )
       );
       return await wrapResponse(request, result, corsStrategy !== "none");
     } catch (error) {
@@ -1673,6 +1683,7 @@ export function createMultiMethodApiRoute<
         );
       }
       const { authentication: authenticationResult, ability } = authResult;
+      const orgContext = organizationContextOf(authenticationResult.environment);
       // The request's own context too, for what runs outside the handler.
       tenantContext.enrich(
         tenantContextFromAuthEnvironment(
@@ -1813,14 +1824,16 @@ export function createMultiMethodApiRoute<
           authenticationResult.actor
         ),
         () =>
-          methodConfig.handler({
-            params: parsedParams,
-            searchParams: parsedSearchParams,
-            headers: parsedHeaders,
-            body: parsedBody,
-            authentication: authenticationResult,
-            request,
-          })
+          organizationContext.run(orgContext, () =>
+            methodConfig.handler({
+              params: parsedParams,
+              searchParams: parsedSearchParams,
+              headers: parsedHeaders,
+              body: parsedBody,
+              authentication: authenticationResult,
+              request,
+            })
+          )
       );
       return await wrapResponse(request, result, corsStrategy !== "none");
     } catch (error) {

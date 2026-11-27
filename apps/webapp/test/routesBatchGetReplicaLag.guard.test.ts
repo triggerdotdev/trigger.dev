@@ -14,9 +14,17 @@
 import { heteroRunOpsPostgresTest, laggingReplica } from "@internal/testcontainers";
 import type { PrismaClient } from "@trigger.dev/database";
 import type { RunOpsPrismaClient } from "@internal/run-ops-database";
-import { PostgresRunStore, RoutingRunStore } from "@internal/run-store";
-import type { CreateBatchTaskRunData } from "@internal/run-store";
-import { describe, expect, vi } from "vitest";
+import {
+  MEMORYDB_SHARD_KEY,
+  organizationContext,
+  PostgresRunStore,
+  RoutingRunStore,
+  type CreateBatchTaskRunData,
+  type OrganizationContext,
+  type RunStore,
+} from "@internal/run-store";
+import { json } from "@remix-run/server-runtime";
+import { describe, expect, it, vi } from "vitest";
 
 vi.setConfig({ testTimeout: 60_000, hookTimeout: 60_000 });
 
@@ -110,6 +118,17 @@ import { loader as loaderV2 } from "~/routes/api.v2.batches.$batchId";
 import { loader as loaderRealtime } from "~/routes/realtime.v1.batches.$batchId";
 import { action as actionTasksBatch } from "~/routes/api.v2.tasks.batch";
 import { action as actionCreateBatch } from "~/routes/api.v3.batches";
+import {
+  createActionApiRoute,
+  createLoaderApiRoute,
+  createMultiMethodApiRoute,
+} from "~/services/routeBuilders/apiBuilder.server";
+import {
+  tenantContext,
+  tenantContextFromAuthEnvironment,
+  type TenantContext,
+} from "~/services/tenantContext.server";
+import { createRunResidencyGate } from "~/v3/utils/runResidencyGate.server";
 
 // A cuid (25 chars after the `batch_` prefix) classifies LEGACY, so the batch is owned by the legacy
 // (control-plane) store; the client-less reads then land on the LEGACY leg.
@@ -397,6 +416,355 @@ describe("routes-batch-get callers under a lagging replica", () => {
       expect(legacyReplica.wasHit("batchTaskRun")).toBe(false);
       expect(res.status).toBe(200);
       expect(await res.json()).toEqual({ id: friendlyId, runCount: 3, isCached: true });
+    }
+  );
+});
+
+// The organisations, by their feature flags, and whether the gate opens for them.
+const STAMP_AT = "2026-01-01T00:00:00.000Z";
+const ORGANIZATIONS: Record<string, { featureFlags: unknown; opens: boolean }> = {
+  plain: { featureFlags: null, opens: false },
+  "never-on": { featureFlags: { activeRunStoreEnabled: true }, opens: false },
+  "on-record-off": {
+    featureFlags: { runResidencyEnabled: true, activeRunStoreEnabled: false },
+    opens: false,
+  },
+  on: { featureFlags: { runResidencyEnabled: true, activeRunStoreEnabled: true }, opens: true },
+  "was-on": {
+    featureFlags: {
+      runResidencyEnabled: false,
+      runResidencyEnabledPrev: true,
+      runResidencyEnabledFlippedAt: STAMP_AT,
+      activeRunStoreEnabled: true,
+    },
+    opens: true,
+  },
+};
+
+function environmentOf(seed: Awaited<ReturnType<typeof seedEnvironment>>, featureFlags: unknown) {
+  const environment = authEnv(seed);
+  return { ...environment, organization: { ...environment.organization, featureFlags } };
+}
+
+// Records each call of a store method as "<name>:<method>", forwarding it bound to the store
+// (PostgresRunStore's private fields fail an unbound call). Other properties pass through.
+function recorded<T extends object>(store: T, name: string, log: string[]): T {
+  return new Proxy(store, {
+    get(target, prop) {
+      const value = Reflect.get(target, prop, target);
+      if (typeof value !== "function") return value;
+      return (...args: unknown[]) => {
+        log.push(`${name}:${String(prop)}`);
+        return value.apply(target, args);
+      };
+    },
+  });
+}
+
+// The router without m, and the router buildRunStore's split arm builds with a stand-in under m
+// and the webapp's gate, both over the same recorded Postgres stores.
+function buildRouters(prisma14: PrismaClient, prisma17: RunOpsPrismaClient) {
+  const log: string[] = [];
+  const lookups: string[] = [];
+  const legacy = recorded(
+    new PostgresRunStore({ prisma: prisma14, readOnlyPrisma: prisma14, schemaVariant: "legacy" }),
+    "legacy",
+    log
+  );
+  const newStore = recorded(
+    new PostgresRunStore({
+      prisma: prisma17 as never,
+      readOnlyPrisma: prisma17 as never,
+      schemaVariant: "dedicated",
+    }),
+    "new",
+    log
+  );
+  const standIn = {
+    findBatchTaskRunByFriendlyId: async () => {
+      log.push("m:findBatchTaskRunByFriendlyId");
+      return null;
+    },
+    findBatchTaskRunById: async () => {
+      log.push("m:findBatchTaskRunById");
+      return null;
+    },
+  } as unknown as RunStore;
+  const withoutM = new RoutingRunStore({ new: newStore, legacy });
+  const gated = new RoutingRunStore({
+    new: newStore,
+    legacy,
+    shards: [{ key: MEMORYDB_SHARD_KEY, store: standIn }],
+    memoryDbGate: createRunResidencyGate({
+      readGlobalFlags: () => ({}),
+      resolveAuthenticatedEnv: async (environmentId) => {
+        lookups.push(environmentId);
+        return null;
+      },
+    }),
+  });
+  return { log, lookups, withoutM, gated, legacy };
+}
+
+type Routers = ReturnType<typeof buildRouters>;
+
+// One request on each router, clearing the log between them.
+async function onBothRouters(routers: Routers, request: () => Promise<Response>) {
+  const results = [];
+  for (const router of [routers.withoutM, routers.gated]) {
+    routers.log.length = 0;
+    holder.store = router;
+    const res = await request();
+    results.push({ status: res.status, body: await res.json(), log: [...routers.log] });
+  }
+  const [withoutM, gated] = results;
+  return { withoutM, gated };
+}
+
+const memoryDbCalls = (log: string[]) => log.filter((entry) => entry.startsWith("m:"));
+
+async function seedBatch(routers: Routers, prisma14: PrismaClient, suffix: string) {
+  const seed = await seedEnvironment(prisma14, suffix);
+  const friendlyId = `batch_${suffix}_f`;
+  const batchId = `batch_${CUID_25}`;
+  await routers.legacy.createBatchTaskRun(
+    batchData({ id: batchId, friendlyId, runtimeEnvironmentId: seed.environment.id, runCount: 2 })
+  );
+  return { seed, friendlyId, batchId };
+}
+
+function batchGet(friendlyId: string, apiKey: string) {
+  return async () =>
+    (await loaderV1({
+      request: getRequest(`http://localhost/api/v1/batches/${friendlyId}`, apiKey),
+      params: { batchId: friendlyId },
+      context: {} as never,
+    })) as Response;
+}
+
+function batchTriggerDedup(apiKey: string) {
+  return async () => {
+    const body = JSON.stringify({ items: [{ task: "my-task" }] });
+    return (await actionTasksBatch({
+      request: new Request("http://localhost/api/v2/tasks/batch", {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          "content-length": String(Buffer.byteLength(body)),
+          authorization: `Bearer ${apiKey}`,
+          "x-trigger-request-idempotency-key": REQUEST_IDEMPOTENCY_KEY,
+        },
+        body,
+      }),
+      params: {},
+      context: {} as never,
+    })) as Response;
+  };
+}
+
+describe("organisation context on request paths", () => {
+  // Catches: a builder that runs findResource or the handler outside the organisation context,
+  // or leaves the context in force after the request.
+  it("each of the three builders carries the environment's organisation context", async () => {
+    const featureFlags = { runResidencyEnabled: true, activeRunStoreEnabled: true };
+    const environment = {
+      id: "env_1",
+      apiKey: "tr_dev_1",
+      type: "DEVELOPMENT",
+      slug: "dev",
+      organization: { id: "org_1", slug: "org-1", title: "Org 1", featureFlags },
+      project: { id: "project_1", slug: "project-1", externalRef: "proj_1" },
+    };
+    holder.environment = environment;
+    const expectedTenant = tenantContextFromAuthEnvironment(environment as never);
+    const seen: Array<{ at: string; org?: OrganizationContext; tenant?: TenantContext }> = [];
+    const observe = (at: string) =>
+      seen.push({ at, org: organizationContext.get(), tenant: tenantContext.get() });
+    const handler = async () => {
+      observe("handler");
+      return json({ ok: true });
+    };
+    const findResource = async () => {
+      observe("findResource");
+      return { id: "resource" };
+    };
+
+    const loader = createLoaderApiRoute({ findResource }, handler);
+    const { action } = createActionApiRoute({ findResource }, handler);
+    const multi = createMultiMethodApiRoute({ methods: { POST: { handler } } });
+    const request = (method: string) =>
+      new Request("http://localhost/api/synthetic", {
+        method,
+        headers: { authorization: "Bearer tr_dev_1" },
+      });
+
+    for (const [name, call] of [
+      ["loader", () => loader({ request: request("GET"), params: {}, context: {} } as never)],
+      ["action", () => action({ request: request("POST"), params: {}, context: {} } as never)],
+      ["multi", () => multi.action({ request: request("POST"), params: {}, context: {} } as never)],
+    ] as const) {
+      seen.length = 0;
+      const res = (await call()) as Response;
+      expect({ name, status: res.status }).toEqual({ name, status: 200 });
+      expect(seen.map((s) => s.at)).toEqual(
+        name === "multi" ? ["handler"] : ["findResource", "handler"]
+      );
+      for (const s of seen) {
+        expect(s.org).toEqual({ organizationId: "org_1", environmentId: "env_1", featureFlags });
+        expect(s.org?.featureFlags).toBe(featureFlags);
+        expect(s.tenant).toEqual(s.at === "handler" ? expectedTenant : undefined);
+      }
+      expect(organizationContext.get()).toBeUndefined();
+    }
+  });
+
+  // Catches: a builder that keeps one context per environment across requests, so a flag change,
+  // "born here" or a look-up carries over from an earlier request.
+  it("gives each request for the same environment its own organisation context", async () => {
+    const lookups: string[] = [];
+    const gate = createRunResidencyGate({
+      readGlobalFlags: () => ({}),
+      resolveAuthenticatedEnv: async (environmentId) => {
+        lookups.push(environmentId);
+        return { organization: { featureFlags: ORGANIZATIONS.on.featureFlags } };
+      },
+    });
+    const answers: Array<{ opens: boolean; bornHere: boolean }> = [];
+    const loader = createLoaderApiRoute(
+      { findResource: async () => ({ id: "resource" }) },
+      async () => {
+        answers.push({ opens: await gate.organizationOpens(), bornHere: gate.bornHere() });
+        organizationContext.markBornHere();
+        return json({ ok: true });
+      }
+    );
+    const requestWith = async (organization: Record<string, unknown>) => {
+      holder.environment = {
+        id: "env_same",
+        apiKey: "tr_dev_same",
+        type: "DEVELOPMENT",
+        slug: "dev",
+        organization: { id: "org_same", slug: "org-same", title: "Org same", ...organization },
+        project: { id: "project_same", slug: "project-same", externalRef: "proj_same" },
+      };
+      const res = (await loader({
+        request: new Request("http://localhost/api/synthetic", {
+          headers: { authorization: "Bearer tr_dev_same" },
+        }),
+        params: {},
+        context: {},
+      } as never)) as Response;
+      expect(res.status).toBe(200);
+    };
+
+    await requestWith({ featureFlags: ORGANIZATIONS.plain.featureFlags });
+    await requestWith({ featureFlags: ORGANIZATIONS.on.featureFlags });
+    await requestWith({ featureFlags: ORGANIZATIONS["never-on"].featureFlags });
+    // No flags in hand: each request looks up for itself.
+    await requestWith({});
+    await requestWith({});
+
+    expect(answers).toEqual([
+      { opens: false, bornHere: false },
+      { opens: true, bornHere: false },
+      { opens: false, bornHere: false },
+      { opens: true, bornHere: false },
+      { opens: true, bornHere: false },
+    ]);
+    expect(lookups).toEqual(["env_same", "env_same"]);
+  });
+
+  // Catches: a closed gate that still asks the store under m, changes the Postgres legs, or looks
+  // up flags a request already holds.
+  heteroRunOpsPostgresTest(
+    "a closed gate leaves the request as on the router without m",
+    async ({ prisma14, prisma17 }) => {
+      const routers = buildRouters(prisma14, prisma17);
+      const { seed, friendlyId, batchId } = await seedBatch(routers, prisma14, `org_ctx_c${seq++}`);
+      holder.cachedRequest = { id: batchId };
+
+      for (const name of ["plain", "never-on", "on-record-off"]) {
+        holder.environment = environmentOf(seed, ORGANIZATIONS[name].featureFlags);
+        for (const [route, request] of [
+          ["batch get", batchGet(friendlyId, seed.environment.apiKey)],
+          ["batch trigger dedup", batchTriggerDedup(seed.environment.apiKey)],
+        ] as const) {
+          const { withoutM, gated } = await onBothRouters(routers, request);
+          expect({ name, route, status: withoutM.status }).toEqual({ name, route, status: 200 });
+          expect(withoutM.log.some((entry) => entry.startsWith("legacy:"))).toBe(true);
+          expect({ name, route, ...gated }).toEqual({ name, route, ...withoutM });
+          expect(memoryDbCalls(gated.log)).toEqual([]);
+        }
+      }
+
+      // No context: no scope, an empty scope, and a scope with flags but no environment.
+      const on = ORGANIZATIONS.on.featureFlags;
+      const noContext: Array<[string, <T>(fn: () => T) => T]> = [
+        ["no scope", (fn) => fn()],
+        ["empty scope", (fn) => organizationContext.run({}, fn)],
+        [
+          "no environment",
+          (fn) => organizationContext.run({ organizationId: "org_x", featureFlags: on }, fn),
+        ],
+      ];
+      for (const [name, inScope] of noContext) {
+        const results = [];
+        for (const router of [routers.withoutM, routers.gated]) {
+          routers.log.length = 0;
+          const row = await inScope(() =>
+            router.findBatchTaskRunByFriendlyId(friendlyId, seed.environment.id)
+          );
+          results.push({ friendlyId: row?.friendlyId, log: [...routers.log] });
+        }
+        expect(results[0].friendlyId).toBe(friendlyId);
+        expect({ name, ...results[1] }).toEqual({ name, ...results[0] });
+        expect(memoryDbCalls(results[1].log)).toEqual([]);
+      }
+
+      expect(routers.lookups).toEqual([]);
+    }
+  );
+
+  // Catches: an open gate that does not reach the store under m from a request, or changes the
+  // answer when the store under m has no row.
+  heteroRunOpsPostgresTest(
+    "an open gate asks the store under m once per request, with the same answer",
+    async ({ prisma14, prisma17 }) => {
+      const routers = buildRouters(prisma14, prisma17);
+      const { seed, friendlyId, batchId } = await seedBatch(routers, prisma14, `org_ctx_o${seq++}`);
+      holder.cachedRequest = { id: batchId };
+
+      for (const name of ["on", "was-on"]) {
+        holder.environment = environmentOf(seed, ORGANIZATIONS[name].featureFlags);
+        for (const [route, request, method] of [
+          [
+            "batch get",
+            batchGet(friendlyId, seed.environment.apiKey),
+            "m:findBatchTaskRunByFriendlyId",
+          ],
+          [
+            "batch trigger dedup",
+            batchTriggerDedup(seed.environment.apiKey),
+            "m:findBatchTaskRunById",
+          ],
+        ] as const) {
+          const { withoutM, gated } = await onBothRouters(routers, request);
+          expect({ name, route, status: withoutM.status }).toEqual({ name, route, status: 200 });
+          expect({ name, route, status: gated.status, body: gated.body }).toEqual({
+            name,
+            route,
+            status: withoutM.status,
+            body: withoutM.body,
+          });
+          expect({ name, route, m: memoryDbCalls(gated.log) }).toEqual({
+            name,
+            route,
+            m: [method],
+          });
+        }
+      }
+
+      expect(routers.lookups).toEqual([]);
     }
   );
 });

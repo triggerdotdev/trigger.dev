@@ -15,6 +15,7 @@ import {
   hasAdminDisplayAccess,
   requireUser,
 } from "~/services/session.server";
+import { organizationContext } from "~/services/organizationContext.server";
 import { tenantContext } from "~/services/tenantContext.server";
 import { selectAccessibleEnvironment } from "~/utils/environmentAccess";
 import { onlyDetailTabChanged } from "~/utils/detailTabRevalidation";
@@ -85,6 +86,11 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
     projectRef: project.externalRef,
     envId: environmentId,
     envType: environmentType,
+  });
+  organizationContext.enrich({
+    organizationId: project.organization.id,
+    environmentId,
+    featureFlags: project.organization.featureFlags,
   });
 
   await updateCurrentProjectEnvironmentId({ user: user, projectId: project.id, environmentId });

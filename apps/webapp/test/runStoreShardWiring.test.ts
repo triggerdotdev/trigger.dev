@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   MEMORYDB_SHARD_KEY,
+  type MemoryDbGate,
   RoutingRunStore,
   UnknownShardKey,
   type RunStore,
@@ -49,6 +50,20 @@ describe("buildRunStore shard wiring", () => {
   });
 });
 
+// A gate that records which of its members were asked and answers the case's values.
+function countingGate(calls: string[], bornHere: boolean, opens: boolean): MemoryDbGate {
+  return {
+    bornHere: () => {
+      calls.push("bornHere");
+      return bornHere;
+    },
+    organizationOpens: async () => {
+      calls.push("organizationOpens");
+      return opens;
+    },
+  };
+}
+
 describe("buildRunStore MemoryDB slot", () => {
   const standIn = (calls: string[]) =>
     ({
@@ -62,7 +77,12 @@ describe("buildRunStore MemoryDB slot", () => {
   it("registers memoryDbStore under m, with or without configured shards", async () => {
     for (const shards of [undefined, [{ key: "a", writer: stub(), replica: stub() }]]) {
       const calls: string[] = [];
-      const store = buildRunStore({ ...baseSplit, shards, memoryDbStore: standIn(calls) });
+      const store = buildRunStore({
+        ...baseSplit,
+        shards,
+        memoryDbStore: standIn(calls),
+        memoryDbGate: countingGate([], false, false),
+      });
       await store.findRun({ id: generateRunOpsIdV2(MEMORYDB_SHARD_KEY) });
       expect({ shards: shards?.length ?? 0, calls }).toEqual({
         shards: shards?.length ?? 0,
@@ -92,6 +112,7 @@ describe("buildRunStore MemoryDB slot", () => {
         return leafRows(route);
       },
       memoryDbStore: standIn,
+      memoryDbGate: countingGate([], false, false),
     });
 
     expect(decorated).toEqual(["new", "legacy", "shard:a"]);
@@ -116,5 +137,49 @@ describe("buildRunStore MemoryDB slot", () => {
     }
     expect(thrown).toBeInstanceOf(UnknownShardKey);
     expect((thrown as UnknownShardKey).shardKey).toBe("m");
+  });
+
+  // Leaf stores that answer an id-less findRuns, since the stub handles cannot query.
+  const idlessStore = (gate: MemoryDbGate, withMemoryDb: boolean, calls: string[]) =>
+    buildRunStore({
+      ...baseSplit,
+      decorateLeaf: () => ({ findRuns: async () => [] }) as unknown as RunStore,
+      memoryDbStore: withMemoryDb
+        ? ({
+            findRuns: async () => {
+              calls.push("m:findRuns");
+              return [];
+            },
+          } as unknown as RunStore)
+        : undefined,
+      memoryDbGate: gate,
+    });
+
+  // Catches: buildRunStore not passing memoryDbGate to the router.
+  it("passes memoryDbGate to the router, which asks it only with a store under m", async () => {
+    const opened: string[] = [];
+    await idlessStore(countingGate(opened, false, true), true, opened).findRuns({
+      where: { status: "PENDING" },
+    });
+    expect(opened).toEqual(["bornHere", "organizationOpens", "m:findRuns"]);
+
+    const closed: string[] = [];
+    await idlessStore(countingGate(closed, false, false), true, closed).findRuns({
+      where: { status: "PENDING" },
+    });
+    expect(closed).toEqual(["bornHere", "organizationOpens"]);
+
+    const noStore: string[] = [];
+    await idlessStore(countingGate(noStore, true, true), false, noStore).findRuns({
+      where: { status: "PENDING" },
+    });
+    expect(noStore).toEqual([]);
+  });
+
+  // Catches: a store under m registered with no gate, joining every id-less fan-out.
+  it("refuses memoryDbStore without memoryDbGate", () => {
+    expect(() => buildRunStore({ ...baseSplit, memoryDbStore: standIn([]) })).toThrow(
+      /memoryDbStore.*memoryDbGate/
+    );
   });
 });

@@ -16,3 +16,4 @@ export * from "./taskRunExecutionSnapshotStore.js";
 export * from "./completedWaitpointHydratingRunStore.js";
 export * from "./waitpointKeyTransactionLane.js";
 export * from "./waitpointAnnotations.js";
+export * from "./organizationContext.js";

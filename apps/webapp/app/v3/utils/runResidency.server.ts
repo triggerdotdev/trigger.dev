@@ -12,7 +12,7 @@ import { hasBooleanBeenOn, readGracedBoolean } from "~/v3/runOpsMigration/mintFl
 type ReadGlobalFlags = () => Partial<FeatureFlagCatalog> | undefined;
 
 // Other projects' flags, read by name until each project adds its own to the catalogue.
-const OTHER_PROJECT_FLAGS = {
+export const OTHER_PROJECT_FLAGS = {
   activeRunStoreEnabled: "activeRunStoreEnabled",
   checkpointStoreEnabled: "checkpointStoreEnabled",
   clickhouseFeedEnabled: "clickhouseFeedEnabled",
@@ -29,7 +29,7 @@ function readOverride(organizationFlags: unknown, key: string): unknown {
  * Organisation override, then the global value, then off. A key outside the catalogue is parsed as
  * a strict boolean; once its project adds it, its catalogue schema and global value apply.
  */
-function readFlagByName(
+export function readFlagByName(
   key: string,
   organizationFlags: unknown,
   readGlobalFlags: ReadGlobalFlags

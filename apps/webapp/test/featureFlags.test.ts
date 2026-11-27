@@ -26,6 +26,9 @@ import {
   createRunResidencyEnabledResolver,
   createRunResidencyHasBeenOnResolver,
 } from "~/v3/utils/runResidency.server";
+import { createRunResidencyGate } from "~/v3/utils/runResidencyGate.server";
+import { splitRunStoreDeps } from "~/v3/runStore.server";
+import { organizationContext, type OrganizationContext } from "@internal/run-store";
 
 vi.setConfig({ testTimeout: 60_000 });
 
@@ -43,7 +46,8 @@ vi.mock("~/db.server", async (importOriginal) => {
       },
     }
   );
-  return { ...actual, prisma: client };
+  // The control-plane resolver reads the replica when split mode is on: forward it too.
+  return { ...actual, prisma: client, $replica: client };
 });
 
 const KEY = FEATURE_FLAG.dashboardAgentTurnEvalsEnabled;
@@ -666,6 +670,255 @@ describe("createRunResidencyAllowedResolver", () => {
       warn.mockRestore();
     }
   });
+});
+
+describe("createRunResidencyGate", () => {
+  const STAMP_AT = "2026-01-01T00:00:00.000Z";
+  const organizations: Array<[string, unknown, boolean]> = [
+    ["plain", null, false],
+    ["never-on", { activeRunStoreEnabled: true }, false],
+    ["on-record-off", { runResidencyEnabled: true, activeRunStoreEnabled: false }, false],
+    ["on", { runResidencyEnabled: true, activeRunStoreEnabled: true }, true],
+    [
+      "was-on",
+      {
+        runResidencyEnabled: false,
+        runResidencyEnabledPrev: true,
+        runResidencyEnabledFlippedAt: STAMP_AT,
+        activeRunStoreEnabled: true,
+      },
+      true,
+    ],
+  ];
+
+  function countingGate(options: {
+    global?: Record<string, unknown>;
+    readGlobalFlags?: () => Partial<FeatureFlagCatalog> | undefined;
+    resolve?: (
+      environmentId: string
+    ) => Promise<{ organization: { featureFlags: unknown } } | null>;
+  }) {
+    const lookups: string[] = [];
+    const gate = createRunResidencyGate({
+      readGlobalFlags: options.readGlobalFlags ?? globals(options.global ?? {}),
+      resolveAuthenticatedEnv: (environmentId) => {
+        lookups.push(environmentId);
+        return options.resolve?.(environmentId) ?? Promise.resolve(null);
+      },
+    });
+    return { gate, lookups };
+  }
+
+  const inScope = <T>(ctx: OrganizationContext | undefined, fn: () => T): T =>
+    ctx === undefined ? fn() : organizationContext.run(ctx, fn);
+
+  // Catches: the gate reading the switch's current value instead of "has been on", or opening
+  // without the run record flag.
+  it.each(organizations)("%s, flags in hand", async (_name, featureFlags, expected) => {
+    const { gate, lookups } = countingGate({});
+    const ctx = { organizationId: "org_1", environmentId: "env_1", featureFlags };
+    await expect(inScope(ctx, () => gate.organizationOpens())).resolves.toBe(expected);
+    expect(lookups).toEqual([]);
+  });
+
+  // Catches: a look-up whose flags are read differently from the flags in hand.
+  it.each(organizations)("%s, through the look-up", async (_name, featureFlags, expected) => {
+    const { gate, lookups } = countingGate({
+      resolve: async () => ({ organization: { featureFlags } }),
+    });
+    const ctx = { environmentId: "env_1" };
+    await expect(inScope(ctx, () => gate.organizationOpens())).resolves.toBe(expected);
+    expect(lookups).toEqual(["env_1"]);
+  });
+
+  // Catches: the global value or the global stamp of the switch being ignored.
+  it.each<[string, Record<string, unknown>, unknown, boolean]>([
+    ["global switch on", { runResidencyEnabled: true }, { activeRunStoreEnabled: true }, true],
+    [
+      "global stamp on",
+      { runResidencyEnabledPrev: true, runResidencyEnabledFlippedAt: STAMP_AT },
+      { activeRunStoreEnabled: true },
+      true,
+    ],
+    [
+      "global stamp on, organisation override off",
+      { runResidencyEnabledPrev: true, runResidencyEnabledFlippedAt: STAMP_AT },
+      { runResidencyEnabled: false, activeRunStoreEnabled: true },
+      false,
+    ],
+  ])("%s", async (_name, global, featureFlags, expected) => {
+    const { gate } = countingGate({ global });
+    const ctx = { organizationId: "org_1", environmentId: "env_1", featureFlags };
+    await expect(inScope(ctx, () => gate.organizationOpens())).resolves.toBe(expected);
+  });
+
+  // Catches: a gate that opens, or looks up, for a call with no environment in its context.
+  it.each<[string, OrganizationContext | undefined]>([
+    ["no scope", undefined],
+    ["an empty scope", {}],
+    [
+      "a scope with flags but no environment",
+      {
+        organizationId: "org_1",
+        featureFlags: { runResidencyEnabled: true, activeRunStoreEnabled: true },
+      },
+    ],
+  ])("is closed with %s", async (_name, ctx) => {
+    const { gate, lookups } = countingGate({
+      global: { runResidencyEnabled: true, activeRunStoreEnabled: true },
+      resolve: async () => ({ organization: { featureFlags: null } }),
+    });
+    await expect(inScope(ctx, () => gate.organizationOpens())).resolves.toBe(false);
+    expect(lookups).toEqual([]);
+  });
+
+  // Catches: a missing environment read as an organisation with no overrides.
+  it("is closed for an environment the resolver does not find", async () => {
+    const { gate, lookups } = countingGate({
+      global: { runResidencyEnabled: true, activeRunStoreEnabled: true },
+    });
+    await expect(
+      inScope({ environmentId: "env_gone" }, () => gate.organizationOpens())
+    ).resolves.toBe(false);
+    expect(lookups).toEqual(["env_gone"]);
+  });
+
+  // Catches: bornHere() reading anything but the scope's mark.
+  it("bornHere() answers the scope's mark alone, with no look-up", () => {
+    const { gate, lookups } = countingGate({});
+    expect(
+      inScope({ environmentId: "env_1", featureFlags: null, bornHere: true }, () => gate.bornHere())
+    ).toBe(true);
+    expect(inScope({ bornHere: true }, () => gate.bornHere())).toBe(true);
+    expect(gate.bornHere()).toBe(false);
+    expect(inScope({ environmentId: "env_1" }, () => gate.bornHere())).toBe(false);
+    expect(lookups).toEqual([]);
+  });
+
+  // Catches: a look-up per operation instead of per scope, or a cache kept across scopes.
+  it("looks up once per scope, and again in a new scope", async () => {
+    const on = { runResidencyEnabled: true, activeRunStoreEnabled: true };
+    const { gate, lookups } = countingGate({
+      resolve: async () => ({ organization: { featureFlags: on } }),
+    });
+    const ask = () =>
+      Promise.all([gate.organizationOpens(), gate.organizationOpens(), gate.organizationOpens()]);
+    await expect(inScope({ environmentId: "env_1" }, ask)).resolves.toEqual([true, true, true]);
+    expect(lookups).toEqual(["env_1"]);
+    await expect(inScope({ environmentId: "env_1" }, ask)).resolves.toEqual([true, true, true]);
+    expect(lookups).toEqual(["env_1", "env_1"]);
+  });
+
+  // Catches: null flags read as no flags in hand, which would add a look-up to every request.
+  it("does not look up when the flags in hand are null", async () => {
+    const { gate, lookups } = countingGate({
+      resolve: async () => ({
+        organization: { featureFlags: { runResidencyEnabled: true, activeRunStoreEnabled: true } },
+      }),
+    });
+    await expect(
+      inScope({ environmentId: "env_1", featureFlags: null }, () => gate.organizationOpens())
+    ).resolves.toBe(false);
+    expect(lookups).toEqual([]);
+  });
+
+  // Catches: a failed look-up read as a closed gate, which would hide an enrolled organisation's runs.
+  it("rejects with the look-up's error", async () => {
+    const failure = new Error("control plane down");
+    const { gate } = countingGate({ resolve: () => Promise.reject(failure) });
+    await expect(inScope({ environmentId: "env_1" }, () => gate.organizationOpens())).rejects.toBe(
+      failure
+    );
+  });
+
+  // Catches: a throw while deciding failing the operation, or passing without its one warning.
+  it("resolves false and warns once when the global-flags reader throws", async () => {
+    const warn = vi.spyOn(logger, "warn");
+    try {
+      const { gate } = countingGate({
+        readGlobalFlags: () => {
+          throw new Error("registry broken");
+        },
+      });
+      const ctx = { environmentId: "env_1", featureFlags: { activeRunStoreEnabled: true } };
+      await expect(inScope(ctx, () => gate.organizationOpens())).resolves.toBe(false);
+      expect(warn).toHaveBeenCalledTimes(1);
+      expect(warn).toHaveBeenCalledWith("runResidency.gate_failed", { error: "registry broken" });
+    } finally {
+      warn.mockRestore();
+    }
+  });
+
+  // Catches: the gate warning on a decision that did not throw.
+  it("logs nothing when opening or closing without a throw", async () => {
+    const warn = vi.spyOn(logger, "warn");
+    try {
+      const { gate } = countingGate({});
+      for (const [, featureFlags] of organizations) {
+        await inScope({ environmentId: "env_1", featureFlags }, () => gate.organizationOpens());
+      }
+      expect(warn).toHaveBeenCalledTimes(0);
+    } finally {
+      warn.mockRestore();
+    }
+  });
+});
+
+describe("splitRunStoreDeps", () => {
+  // Catches: the runStore singleton building its router with no gate, or a gate whose look-up
+  // does not reach the control-plane resolver.
+  postgresTest(
+    "gives the singleton a gate that looks up an environment's flags through the control-plane resolver",
+    async ({ prisma }) => {
+      db.client = prisma;
+      const organization = await prisma.organization.create({
+        data: {
+          title: "Gate org",
+          slug: "gate-org",
+          featureFlags: { runResidencyEnabled: true, activeRunStoreEnabled: true },
+        },
+      });
+      const project = await prisma.project.create({
+        data: {
+          name: "Gate project",
+          slug: "gate-project",
+          externalRef: "proj_gate",
+          organizationId: organization.id,
+        },
+      });
+      const environment = await prisma.runtimeEnvironment.create({
+        data: {
+          type: "DEVELOPMENT",
+          slug: "dev",
+          projectId: project.id,
+          organizationId: organization.id,
+          apiKey: "tr_dev_gate",
+          pkApiKey: "pk_dev_gate",
+          shortcode: "short_gate",
+        },
+      });
+      const stub = {} as never;
+      const deps = splitRunStoreDeps({
+        newWriter: stub,
+        newReplica: stub,
+        legacyWriter: stub,
+        legacyReplica: stub,
+        shardHandles: [],
+      });
+
+      expect(deps.memoryDbGate).toBeDefined();
+      await expect(
+        organizationContext.run({ environmentId: environment.id }, () =>
+          deps.memoryDbGate!.organizationOpens()
+        )
+      ).resolves.toBe(true);
+      await expect(
+        organizationContext.run({ environmentId: "env_missing" }, () =>
+          deps.memoryDbGate!.organizationOpens()
+        )
+      ).resolves.toBe(false);
+    }
+  );
 });
 
 describe("checkpointStoreEnabled flag", () => {

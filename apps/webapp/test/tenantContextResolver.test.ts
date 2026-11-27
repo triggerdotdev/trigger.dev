@@ -6,6 +6,7 @@ import {
   type PathResolver,
 } from "../app/services/tenantContextResolver.server";
 import { tenantContext, type TenantContext } from "../app/services/tenantContext.server";
+import { organizationContext, type OrganizationContext } from "@internal/run-store";
 
 const sampleCtx: TenantContext = {
   orgSlug: "acme",
@@ -145,5 +146,43 @@ describe("createTenantContextMiddleware", () => {
     ]);
     expect(a?.orgSlug).toBe("a");
     expect(b?.orgSlug).toBe("b");
+  });
+
+  // Catches: a middleware that opens no organisation scope, so nothing a request sets survives.
+  it("opens an empty organisation scope around the tenant scope", () => {
+    const middleware = createTenantContextMiddleware(vi.fn().mockReturnValue(sampleCtx));
+
+    let before: OrganizationContext | undefined;
+    let after: OrganizationContext | undefined;
+    let tenant: TenantContext | undefined;
+    middleware(makeReq("/orgs/acme/projects/web/env/prod"), {} as never, () => {
+      before = { ...organizationContext.get() };
+      tenant = tenantContext.get();
+      organizationContext.enrich({ organizationId: "org_1" });
+      after = organizationContext.get();
+    });
+
+    expect(before).toEqual({});
+    expect(after).toEqual({ organizationId: "org_1" });
+    expect(tenant).toEqual(sampleCtx);
+    expect(organizationContext.get()).toBeUndefined();
+    expect(tenantContext.get()).toBeUndefined();
+  });
+
+  // Catches: one organisation scope shared by concurrent requests.
+  it("keeps separate organisation contexts for concurrent requests", async () => {
+    const middleware = createTenantContextMiddleware(vi.fn().mockReturnValue({}));
+    const observe = (organizationId: string, delay: number) =>
+      new Promise<OrganizationContext | undefined>((resolve) => {
+        middleware(makeReq("/"), {} as never, async () => {
+          organizationContext.enrich({ organizationId });
+          await new Promise((r) => setTimeout(r, delay));
+          resolve(organizationContext.get());
+        });
+      });
+
+    const [a, b] = await Promise.all([observe("org_a", 10), observe("org_b", 5)]);
+    expect(a).toEqual({ organizationId: "org_a" });
+    expect(b).toEqual({ organizationId: "org_b" });
   });
 });

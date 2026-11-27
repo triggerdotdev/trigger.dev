@@ -33,6 +33,7 @@ import { RUNNING_STATUSES } from "~/components/runs/v3/TaskRunStatus";
 import { findRunHandovers } from "./runHandovers.server";
 import { baseWorkerQueue } from "~/runEngine/concerns/workerQueueSplit.server";
 import { logger } from "~/services/logger.server";
+import { organizationContext } from "~/services/organizationContext.server";
 import { safeJsonParse } from "~/utils/json";
 import { rehydrateAttribute } from "~/v3/eventRepository/eventRepository.server";
 import type { IEventRepository } from "~/v3/eventRepository/eventRepository.types";
@@ -208,56 +209,60 @@ export class SpanPresenter extends BasePresenter {
       return { type: "run" as const, run: synth };
     }
 
-    const { traceId } = parentRun;
+    // The span panel is its own resource request with an empty organisation context; the reads
+    // below by spanId and parentSpanId carry no run id, so they need the environment to reach MemoryDB.
+    return organizationContext.withEnvironment(parentRun.runtimeEnvironmentId, async () => {
+      const { traceId } = parentRun;
 
-    const repository = await getEventRepositoryForStore(
-      parentRun.taskEventStore,
-      project.organizationId
-    );
+      const repository = await getEventRepositoryForStore(
+        parentRun.taskEventStore,
+        project.organizationId
+      );
 
-    const eventStore = getTaskEventStoreTableForRun(parentRun);
+      const eventStore = getTaskEventStoreTableForRun(parentRun);
 
-    const run = await this.getRun({
-      eventStore,
-      traceId,
-      eventRepository: repository,
-      spanId,
-      linkedRunId,
-      createdAt: parentRun.createdAt,
-      completedAt: parentRun.completedAt,
-      environmentId: parentRun.runtimeEnvironmentId,
-    });
-    if (run) {
+      const run = await this.getRun({
+        eventStore,
+        traceId,
+        eventRepository: repository,
+        spanId,
+        linkedRunId,
+        createdAt: parentRun.createdAt,
+        completedAt: parentRun.completedAt,
+        environmentId: parentRun.runtimeEnvironmentId,
+      });
+      if (run) {
+        return {
+          type: "run" as const,
+          run,
+        };
+      }
+
+      const span = await this.#getSpan({
+        eventStore,
+        spanId,
+        traceId,
+        environmentId: parentRun.runtimeEnvironmentId,
+        projectId: parentRun.projectId,
+        createdAt: parentRun.createdAt,
+        endCreatedAt: getTraceStartTimeEnd(parentRun),
+        insertedAtEnd: getTraceInsertedAtEnd(parentRun),
+        eventRepository: repository,
+        organizationId: project.organizationId,
+        showDebug,
+        rootRunId: traceRootRunId(parentRun),
+        userId,
+      });
+
+      if (!span) {
+        throw new Error("Span not found");
+      }
+
       return {
-        type: "run" as const,
-        run,
+        type: "span" as const,
+        span,
       };
-    }
-
-    const span = await this.#getSpan({
-      eventStore,
-      spanId,
-      traceId,
-      environmentId: parentRun.runtimeEnvironmentId,
-      projectId: parentRun.projectId,
-      createdAt: parentRun.createdAt,
-      endCreatedAt: getTraceStartTimeEnd(parentRun),
-      insertedAtEnd: getTraceInsertedAtEnd(parentRun),
-      eventRepository: repository,
-      organizationId: project.organizationId,
-      showDebug,
-      rootRunId: traceRootRunId(parentRun),
-      userId,
     });
-
-    if (!span) {
-      throw new Error("Span not found");
-    }
-
-    return {
-      type: "span" as const,
-      span,
-    };
   }
 
   async getRun({
