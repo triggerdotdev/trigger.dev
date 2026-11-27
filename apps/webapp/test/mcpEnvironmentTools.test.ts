@@ -251,6 +251,33 @@ async function waitsOn(prisma: PrismaClient, table: string, ms: number) {
   return false;
 }
 
+/** Runs `call` while the replica still shows the database as it is now, as a lagging replica would. */
+async function withFrozenReplica<T>(prisma: PrismaClient, call: () => Promise<T>): Promise<T> {
+  const frozen = Promise.withResolvers<PrismaTransactionClient>();
+  const thaw = Promise.withResolvers<void>();
+  const view = $transaction(
+    prisma,
+    "frozen replica",
+    async (tx) => {
+      await tx.$queryRaw`SELECT 1 FROM "RuntimeEnvironment" LIMIT 1`;
+      frozen.resolve(tx);
+      await thaw.promise;
+    },
+    { isolationLevel: "RepeatableRead", timeout: 30_000 }
+  ).catch((error) => {
+    frozen.reject(error);
+    throw error;
+  });
+  try {
+    hoisted.mocks.replica = (await frozen.promise) as unknown as Record<string | symbol, unknown>;
+    return await call();
+  } finally {
+    hoisted.mocks.replica = undefined;
+    thaw.resolve();
+    await view;
+  }
+}
+
 async function seed(prisma: PrismaClient) {
   hoisted.mocks.db = prisma as unknown as Record<string | symbol, unknown>;
   hoisted.mocks.rbac = plugin.create(
@@ -458,6 +485,152 @@ async function seed(prisma: PrismaClient) {
     refused,
   };
 }
+
+describe.each(["promote_deployment", "rollback_deployment", "cancel_deployment"] as const)(
+  "%s on a preview branch",
+  (tool) => {
+    async function seedBranch(prisma: PrismaClient) {
+      const s = await seed(prisma);
+      const feature = await s.branch({ ...s.previewRoot, type: "PREVIEW" }, "feature");
+      const older = await s.deploy(feature, "20250101.1", "DEPLOYED");
+      const current = await s.deploy(feature, "20250101.2", "DEPLOYED");
+      const newer = await s.deploy(feature, "20250101.3", "DEPLOYED");
+      const building = await s.deploy(feature, "20250101.4", "BUILDING");
+      await s.makeCurrent(feature.id, current.id);
+      const target = {
+        promote_deployment: newer,
+        rollback_deployment: older,
+        cancel_deployment: building,
+      }[tool];
+      const args = (branch: string) => ({
+        environment: "preview",
+        branch,
+        shortCode: target.shortCode,
+      });
+      const archive = () =>
+        prisma.runtimeEnvironment.update({
+          where: { id: feature.id },
+          data: { archivedAt: new Date() },
+        });
+      const state = async () => ({
+        current: await s.currentOf(feature.id),
+        statuses: await prisma.workerDeployment.findMany({
+          where: { environmentId: feature.id },
+          select: { id: true, status: true },
+          orderBy: { version: "asc" },
+        }),
+      });
+      return { s, args, archive, state };
+    }
+
+    postgresTest("names an archived or unknown branch", async ({ prisma }) => {
+      const { s, args, archive, state } = await seedBranch(prisma);
+      await archive();
+      const before = await state();
+
+      expect({
+        archived: (await s.refused(deploymentsWriteTools, tool, args("feature"))).includes(
+          "is archived"
+        ),
+        unknown: (await s.refused(deploymentsWriteTools, tool, args("nope"))).includes(
+          "was not found in this project"
+        ),
+        state: await state(),
+      }).toEqual({ archived: true, unknown: true, state: before });
+    });
+
+    postgresTest("keeps the gate in front of the branch reason", async ({ prisma }) => {
+      const { s, args, archive } = await seedBranch(prisma);
+      await archive();
+
+      expect({
+        otherEnvironment: textOf(
+          await s.uatCall(
+            deploymentsWriteTools,
+            tool,
+            args("feature"),
+            ["write:deployments"],
+            s.staging.id
+          )
+        ),
+        noPreviewWrite: textOf(
+          await withoutPreviewDeployWrite(() =>
+            s.call(deploymentsWriteTools, tool, args("feature"))
+          )
+        ).startsWith("Not authorized"),
+      }).toEqual({ otherEnvironment: "Not authorized", noPreviewWrite: true });
+    });
+
+    postgresTest(
+      "confirms a live branch and refuses the approval once it is archived",
+      async ({ prisma }) => {
+        const { s, args, archive, state } = await seedBranch(prisma);
+        const before = await state();
+
+        resetConfirmations({ autoApprove: false });
+        await expect(s.call(deploymentsWriteTools, tool, args("feature"))).rejects.toThrow();
+        const [record] = pending();
+        await approveAll();
+        await archive();
+        const answer = await s.call(deploymentsWriteTools, tool, args("feature"));
+
+        expect({
+          archived: textOf(answer).includes("is archived"),
+          isError: !!answer.isError,
+          approved: !!record!.approvedAt,
+          consumed: !!record!.consumedAt,
+          state: await state(),
+        }).toEqual({
+          archived: true,
+          isError: true,
+          approved: true,
+          consumed: false,
+          state: before,
+        });
+      }
+    );
+
+    postgresTest(
+      "refuses a branch archived while the replica still shows it live",
+      async ({ prisma }) => {
+        const { s, args, archive, state } = await seedBranch(prisma);
+        const before = await state();
+
+        const answer = await withFrozenReplica(prisma, async () => {
+          await archive();
+          return s.call(deploymentsWriteTools, tool, args("feature"));
+        });
+
+        expect({
+          archived: textOf(answer).includes("is archived"),
+          isError: !!answer.isError,
+          state: await state(),
+        }).toEqual({ archived: true, isError: true, state: before });
+      }
+    );
+
+    postgresTest("does not apply the branch fallback outside preview", async ({ prisma }) => {
+      const { s, args, state } = await seedBranch(prisma);
+      const before = await state();
+
+      for (const environment of ["prod", "staging"]) {
+        expect(
+          await s.refused(deploymentsWriteTools, tool, { ...args("feature"), environment })
+        ).toBe("Not authorized");
+      }
+      expect(await state()).toEqual(before);
+    });
+
+    postgresTest("names an archived branch given with a refs/heads/ prefix", async ({ prisma }) => {
+      const { s, args, archive } = await seedBranch(prisma);
+      await archive();
+
+      expect(await s.refused(deploymentsWriteTools, tool, args("refs/heads/feature"))).toContain(
+        "is archived"
+      );
+    });
+  }
+);
 
 const prodArgs = (shortCode: string) => ({ environment: "prod", shortCode });
 
@@ -1084,6 +1257,34 @@ describe("redeploy_deployment", () => {
     }).toEqual({ archived: true, unknown: true, noPreviewWrite: true, enqueued: [] });
   });
 
+  postgresTest(
+    "refuses a branch archived while the replica still shows it live",
+    async ({ prisma }) => {
+      const { s } = await seedRedeploy(prisma);
+      const { tools, enqueued } = redeployTools();
+      const feature = await s.branch({ ...s.previewRoot, type: "PREVIEW" }, "feature");
+      const source = await s.deploy(feature, "20250101.1", "DEPLOYED");
+
+      const answer = await withFrozenReplica(prisma, async () => {
+        await prisma.runtimeEnvironment.update({
+          where: { id: feature.id },
+          data: { archivedAt: new Date() },
+        });
+        return s.call(tools, "redeploy_deployment", {
+          environment: "preview",
+          branch: "feature",
+          shortCode: source.shortCode,
+        });
+      });
+
+      expect({
+        archived: textOf(answer).includes("is archived"),
+        isError: !!answer.isError,
+        enqueued,
+      }).toEqual({ archived: true, isError: true, enqueued: [] });
+    }
+  );
+
   // Catches: the plan reading the environment again for a preview branch the gate resolved.
   postgresTest("reads a resolved preview branch once", async ({ prisma }) => {
     const { s } = await seedRedeploy(prisma);
@@ -1419,39 +1620,18 @@ describe("deploy_tracked_branch", () => {
       const args = { environment: "preview", branch: "feature" };
       await s.held(tools, "deploy_tracked_branch", args);
 
-      // A snapshot taken before the archive stands in for a lagging replica.
-      const frozen = Promise.withResolvers<PrismaTransactionClient>();
-      const thaw = Promise.withResolvers<void>();
-      const view = $transaction(
-        prisma,
-        "frozen replica",
-        async (tx) => {
-          await tx.$queryRaw`SELECT 1 FROM "RuntimeEnvironment" LIMIT 1`;
-          frozen.resolve(tx);
-          await thaw.promise;
-        },
-        { isolationLevel: "RepeatableRead", timeout: 30_000 }
-      );
-      try {
-        hoisted.mocks.replica = (await frozen.promise) as unknown as Record<
-          string | symbol,
-          unknown
-        >;
+      const answer = await withFrozenReplica(prisma, async () => {
         await prisma.runtimeEnvironment.update({
           where: { id: feature.id },
           data: { archivedAt: new Date() },
         });
-        const answer = await s.call(tools, "deploy_tracked_branch", args);
-        expect({
-          archived: textOf(answer).includes("archived"),
-          isError: !!answer.isError,
-          triggered,
-        }).toEqual({ archived: true, isError: true, triggered: [] });
-      } finally {
-        hoisted.mocks.replica = undefined;
-        thaw.resolve();
-        await view;
-      }
+        return s.call(tools, "deploy_tracked_branch", args);
+      });
+      expect({
+        archived: textOf(answer).includes("archived"),
+        isError: !!answer.isError,
+        triggered,
+      }).toEqual({ archived: true, isError: true, triggered: [] });
     }
   );
 
@@ -1733,21 +1913,7 @@ describe("branches", () => {
     await create();
     await s.approved(tools, "archive_branch", { environment: "preview", branchName: "x" });
 
-    // A snapshot taken now, before the recreate, stands in for a lagging replica.
-    const frozen = Promise.withResolvers<PrismaTransactionClient>();
-    const thaw = Promise.withResolvers<void>();
-    const view = $transaction(
-      prisma,
-      "frozen replica",
-      async (tx) => {
-        await tx.$queryRaw`SELECT 1 FROM "RuntimeEnvironment" LIMIT 1`;
-        frozen.resolve(tx);
-        await thaw.promise;
-      },
-      { isolationLevel: "RepeatableRead", timeout: 30_000 }
-    );
-    try {
-      hoisted.mocks.replica = (await frozen.promise) as unknown as Record<string | symbol, unknown>;
+    await withFrozenReplica(prisma, async () => {
       await create();
       const recreated = await live();
 
@@ -1756,11 +1922,7 @@ describe("branches", () => {
       expect(
         await s.held(tools, "archive_branch", { environment: "preview", branchName: "x" })
       ).toContain(`Branch id ${recreated.id}:`);
-    } finally {
-      hoisted.mocks.replica = undefined;
-      thaw.resolve();
-      await view;
-    }
+    });
   });
 
   // Catches: a listed name that exists only archived falling through to the live branch its normalised form names.

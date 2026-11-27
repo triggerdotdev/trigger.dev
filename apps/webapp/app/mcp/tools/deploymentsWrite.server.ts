@@ -53,7 +53,7 @@ import {
 } from "~/v3/services/triggerDeployNow.server";
 
 type Direction = "promote" | "rollback";
-type DeploymentArgs = { shortCode: string };
+type DeploymentArgs = { shortCode: string; branch?: string };
 type CancelOutcome = "canceled" | "final" | "not_found";
 
 const IS_FINAL: Record<WorkerDeploymentStatus, boolean> = {
@@ -94,6 +94,7 @@ const environmentSelect = {
   branchName: true,
   parentEnvironmentId: true,
   isBranchableEnvironment: true,
+  archivedAt: true,
   organization: { select: { featureFlags: true } },
 } as const;
 
@@ -122,6 +123,12 @@ async function locate(
   if (!environment) return { refuse: deploymentNotFoundText(args.shortCode) };
   const branchRefusal = await previewBranchRefusal(environment, fallbackBranch);
   if (branchRefusal) return { refuse: branchRefusal };
+  // The gate may have resolved the branch on a lagging replica; the primary decides.
+  if (environment.archivedAt && environment.type === "PREVIEW") {
+    return {
+      refuse: `Preview branch ${agentFence(environment.branchName ?? "", "branch-name")} is archived; nothing changed.`,
+    };
+  }
   if (isBranchableEnvironment(environment)) return { refuse: PREVIEW_PARENT };
 
   const deployment = await prisma.workerDeployment.findFirst({
@@ -184,7 +191,7 @@ async function planChange(
   subject: McpSubject | null,
   fingerprintKey: string
 ): Promise<ChangePlan | { refuse: string }> {
-  const located = await locate(args, subject);
+  const located = await locate(args, subject, args.branch);
   if ("refuse" in located) return located;
   const { deployment, environment } = located;
   const verb = direction === "promote" ? "promoted" : "rolled back";
@@ -282,7 +289,7 @@ async function planCancel(
   args: DeploymentArgs,
   subject: McpSubject | null
 ): Promise<(Located & { preview: string }) | { refuse: string }> {
-  const located = await locate(args, subject);
+  const located = await locate(args, subject, args.branch);
   if ("refuse" in located) return located;
   const { deployment, environment } = located;
   const target = describeDeploymentForAgent(deployment);
@@ -312,7 +319,7 @@ function changeTool(direction: Direction, fingerprintKey: () => Promise<string>)
       : "Make an older deployed version the current deployment of an environment again, like Rollback on the Deployments page. New runs use it from then on. Identify it by its short code from list_deploys; for preview pass the branch.",
     shape: DeploymentWriteInput.shape,
     approval: "configurable",
-    auth,
+    auth: { ...auth, resolveSubject: resolvePreviewBranchSubject },
     confirm: {
       preview: async (args, subject) => {
         const plan = await planChange(direction, args, subject, await fingerprintKey());
@@ -352,7 +359,7 @@ const IN_PROGRESS: WorkerDeploymentStatus[] = ["PENDING", "INSTALLING", "BUILDIN
 type Redeploy = RedeployDeploymentService["call"];
 const defaultRedeploy: Redeploy = (opts) => new RedeployDeploymentService().call(opts);
 
-type RedeployArgs = DeploymentArgs & { promote?: boolean; branch?: string };
+type RedeployArgs = DeploymentArgs & { promote?: boolean };
 
 async function planRedeploy(
   args: RedeployArgs,
@@ -539,7 +546,6 @@ async function planDeployTracked(
     where: { id: subject.environmentId, projectId: subject.projectId },
     select: {
       ...environmentSelect,
-      archivedAt: true,
       organization: { select: { id: true, slug: true, title: true, featureFlags: true } },
     },
   });
@@ -744,7 +750,7 @@ export const createDeploymentsWriteTools = (
       "Cancel a deployment that is still being built or deployed, like Cancel on the Deployments page. It never becomes current and this cannot be undone. Identify it by its short code from list_deploys; for preview pass the branch.",
     shape: DeploymentWriteInput.shape,
     approval: "configurable",
-    auth,
+    auth: { ...auth, resolveSubject: resolvePreviewBranchSubject },
     confirm: {
       preview: async (args, subject) => {
         const plan = await planCancel(args, subject);
