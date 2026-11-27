@@ -2,7 +2,7 @@
   "$schema": "https://mintlify.com/docs.json",
   "theme": "maple",
   "name": "Trigger.dev",
-  "description": "Trigger.dev is an open source background jobs framework that lets you write reliable workflows in plain async code. Run long-running AI tasks, handle complex background jobs, and build AI agents with built-in queuing, automatic retries, and real-time monitoring. No timeouts, elastic scaling, and zero infrastructure management required.",
+  "description": "Build and run durable AI agents and workflows in TypeScript. Long-running tasks with retries, queues, webhooks, observability, and elastic scaling. Open source and self-hostable.",
   "colors": {
     "primary": "#A8FF53",
     "light": "#A8FF53",
@@ -21,13 +21,86 @@
         "groups": [
           {
             "group": "Getting started",
+            "pages": ["introduction", "quick-start", "manual-setup", "how-it-works", "limits"]
+          },
+          {
+            "group": "Agents",
             "pages": [
-              "introduction",
-              "quick-start",
-              "manual-setup",
-              "video-walkthrough",
-              "how-it-works",
-              "limits"
+              "ai-chat/overview",
+              "ai-chat/quick-start",
+              "ai-chat/migrating-from-a-route-handler",
+              {
+                "group": "Building agents",
+                "pages": [
+                  "ai-chat/anatomy",
+                  "ai-chat/backend",
+                  "ai-chat/lifecycle-hooks",
+                  "ai-chat/tools",
+                  "ai-chat/frontend",
+                  "ai-chat/server-chat",
+                  "ai-chat/sessions",
+                  "ai-chat/side-channels",
+                  "ai-chat/chat-local",
+                  "ai-chat/types",
+                  "ai-chat/custom-agents",
+                  "ai-chat/how-it-works"
+                ]
+              },
+              {
+                "group": "Features",
+                "pages": [
+                  "ai/prompts",
+                  "ai/observability",
+                  "ai-chat/fast-starts",
+                  "ai-chat/compaction",
+                  "ai-chat/prompt-caching",
+                  "ai-chat/pending-messages",
+                  "ai-chat/background-injection",
+                  "ai-chat/actions",
+                  "ai-chat/transcript-storage",
+                  "ai-chat/migrating-from-hydrate-messages",
+                  "ai-chat/error-handling"
+                ]
+              },
+              {
+                "group": "Channels",
+                "pages": [
+                  "webhooks/channels",
+                  "webhooks/slack",
+                  "webhooks/linear",
+                  "webhooks/human-in-the-loop"
+                ]
+              },
+              {
+                "group": "Patterns",
+                "pages": [
+                  "ai-chat/patterns/sub-agents",
+                  "ai-chat/patterns/version-upgrades",
+                  "ai-chat/patterns/database-persistence",
+                  "ai-chat/patterns/persistence-and-replay",
+                  "ai-chat/patterns/branching-conversations",
+                  "ai-chat/patterns/code-sandbox",
+                  "ai-chat/patterns/human-in-the-loop",
+                  "ai-chat/patterns/tool-result-auditing",
+                  "ai-chat/patterns/large-payloads",
+                  "ai-chat/patterns/skills",
+                  "ai-chat/patterns/oom-resilience",
+                  "ai-chat/patterns/recovery-boot",
+                  "ai-chat/patterns/trusted-edge-signals",
+                  "ai-chat/patterns/redacting-telemetry",
+                  "ai-chat/patterns/native-compaction"
+                ]
+              },
+              {
+                "group": "Reference",
+                "pages": [
+                  "ai-chat/reference",
+                  "ai-chat/client-protocol",
+                  "ai-chat/testing",
+                  "ai-chat/mcp",
+                  "ai-chat/upgrade-guide"
+                ]
+              }
             ]
           },
           {
@@ -106,87 +179,6 @@
               "runs/priority",
               "hidden-tasks",
               "runs/bulk-actions"
-            ]
-          },
-          {
-            "group": "Agents",
-            "pages": [
-              "ai-chat/overview",
-              "ai-chat/quick-start",
-              "ai-chat/migrating-from-a-route-handler",
-              {
-                "group": "Building agents",
-                "pages": [
-                  "ai-chat/anatomy",
-                  "ai-chat/backend",
-                  "ai-chat/lifecycle-hooks",
-                  "ai-chat/tools",
-                  "ai-chat/frontend",
-                  "ai-chat/server-chat",
-                  "ai-chat/sessions",
-                  "ai-chat/side-channels",
-                  "ai-chat/chat-local",
-                  "ai-chat/types",
-                  "ai-chat/custom-agents",
-                  "ai-chat/how-it-works"
-                ]
-              },
-              {
-                "group": "Features",
-                "pages": [
-                  "ai/prompts",
-                  "ai/observability",
-                  "ai-chat/fast-starts",
-                  "ai-chat/compaction",
-                  "ai-chat/prompt-caching",
-                  "ai-chat/pending-messages",
-                  "ai-chat/background-injection",
-                  "ai-chat/actions",
-                  "ai-chat/transcript-storage",
-                  "ai-chat/migrating-from-hydrate-messages",
-                  "ai-chat/error-handling"
-                ]
-              },
-              {
-                "group": "Channels",
-                "pages": [
-                  "webhooks/channels",
-                  "webhooks/slack",
-                  "webhooks/linear",
-                  "webhooks/human-in-the-loop"
-                ]
-              },
-              {
-                "group": "Patterns",
-                "pages": [
-                  "ai-chat/patterns/sub-agents",
-                  "ai-chat/patterns/version-upgrades",
-                  "ai-chat/patterns/database-persistence",
-                  "ai-chat/patterns/persistence-and-replay",
-                  "ai-chat/patterns/branching-conversations",
-                  "ai-chat/patterns/code-sandbox",
-                  "ai-chat/patterns/human-in-the-loop",
-                  "ai-chat/patterns/tool-result-auditing",
-                  "ai-chat/patterns/large-payloads",
-                  "ai-chat/patterns/skills",
-                  "ai-chat/patterns/oom-resilience",
-                  "ai-chat/patterns/recovery-boot",
-                  "ai-chat/patterns/trusted-edge-signals",
-                  "ai-chat/patterns/redacting-telemetry",
-                  "ai-chat/patterns/native-compaction"
-                ]
-              },
-              {
-                "group": "Reference",
-                "pages": [
-                  "ai-chat/reference",
-                  "ai-chat/client-protocol",
-                  "ai-chat/testing",
-                  "ai-chat/mcp",
-                  "ai-chat/upgrade-guide",
-                  "ai-chat/changelog"
-                ]
-              }
             ]
           },
           {
@@ -622,37 +614,33 @@
             "pages": ["guides/introduction"]
           },
           {
+            "group": "AI agents",
+            "pages": [
+              "guides/ai-agents/overview",
+              "guides/ai-agents/chat-agent",
+              "guides/ai-agents/generate-translate-copy",
+              "guides/ai-agents/route-question",
+              "guides/ai-agents/respond-and-check-content",
+              "guides/ai-agents/translate-and-refine",
+              "guides/ai-agents/verify-news-article",
+              "guides/ai-agents/claude-code-trigger"
+            ]
+          },
+          {
             "group": "Frameworks",
             "pages": [
-              "guides/frameworks/bun",
               "guides/frameworks/nextjs",
               "guides/frameworks/nodejs",
-              "guides/frameworks/remix",
+              "guides/frameworks/bun",
               "guides/frameworks/nextjs-webhooks",
-              "guides/frameworks/remix-webhooks",
-              "guides/community/sveltekit"
+              "guides/community/sveltekit",
+              "guides/frameworks/remix",
+              "guides/frameworks/remix-webhooks"
             ]
           },
           {
             "group": "Guides",
             "pages": [
-              {
-                "group": "AI Agents",
-                "icon": {
-                  "name": "microchip-ai",
-                  "style": "regular"
-                },
-                "pages": [
-                  "guides/ai-agents/overview",
-                  "guides/ai-agents/chat-agent",
-                  "guides/ai-agents/generate-translate-copy",
-                  "guides/ai-agents/route-question",
-                  "guides/ai-agents/respond-and-check-content",
-                  "guides/ai-agents/translate-and-refine",
-                  "guides/ai-agents/verify-news-article"
-                ]
-              },
-              "guides/ai-agents/claude-code-trigger",
               "guides/frameworks/drizzle",
               "guides/frameworks/prisma",
               "guides/frameworks/nango",
@@ -673,10 +661,6 @@
             ]
           },
           {
-            "group": "Migration guides",
-            "pages": ["migrating-from-v3", "migration-mergent", "migration-n8n"]
-          },
-          {
             "group": "Use cases",
             "pages": [
               "guides/use-cases/overview",
@@ -694,7 +678,6 @@
               "guides/example-projects/batch-llm-evaluator",
               "guides/example-projects/claude-changelog-generator",
               "guides/example-projects/claude-github-wiki",
-              "guides/example-projects/claude-thinking-chatbot",
               "guides/example-projects/clickhouse-chat-agent",
               "guides/example-projects/cursor-background-agent",
               "guides/example-projects/elevenlabs-voice-agent",
@@ -702,7 +685,6 @@
               "guides/example-projects/grok-ai-teammates",
               "guides/example-projects/human-in-the-loop-workflow",
               "guides/example-projects/mastra-agents-with-memory",
-              "guides/example-projects/meme-generator-human-in-the-loop",
               "guides/example-projects/openai-agents-sdk-typescript-playground",
               "guides/example-projects/product-image-generator",
               "guides/example-projects/realtime-csv-importer",
@@ -711,8 +693,7 @@
               "guides/example-projects/resend-email-agent",
               "guides/example-projects/smart-spreadsheet",
               "guides/example-projects/turborepo-monorepo-prisma",
-              "guides/example-projects/vercel-ai-sdk-deep-research",
-              "guides/example-projects/vercel-ai-sdk-image-generator"
+              "guides/example-projects/vercel-ai-sdk-deep-research"
             ]
           },
           {
@@ -728,7 +709,6 @@
           {
             "group": "Example tasks",
             "pages": [
-              "guides/examples/dall-e3-generate-image",
               "guides/examples/deepgram-transcribe-audio",
               "guides/examples/fal-ai-image-to-cartoon",
               "guides/examples/fal-ai-realtime",
@@ -761,6 +741,18 @@
               "guides/community/fatima",
               "guides/community/rate-limiter",
               "guides/community/sveltekit"
+            ]
+          },
+          {
+            "group": "Migration guides",
+            "pages": [
+              "migration-n8n",
+              {
+                "group": "Legacy",
+                "hidden": true,
+                "searchable": true,
+                "pages": ["migrating-from-v3"]
+              }
             ]
           }
         ]

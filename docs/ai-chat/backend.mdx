@@ -118,6 +118,79 @@ async function runAgentLoop(messages: ModelMessage[], streamText: ChatStreamText
 }
 ```
 
+### Using an AI SDK ToolLoopAgent
+
+If you already have an AI SDK [`ToolLoopAgent`](https://ai-sdk.dev/docs/agents/building-agents), return `agent.stream()` from `run`. It returns a `StreamTextResult`, so it's auto-piped to the frontend the same way a `streamText` result is.
+
+The agent doesn't call the `streamText` from `run()`'s argument, so it misses the managed options: the agent's system prompt, telemetry, skill tools, and the `prepareStep` that delivers [compaction](/ai-chat/compaction), [steering](/ai-chat/pending-messages) and [background injection](/ai-chat/background-injection). Merge them in with `prepareCall`, which runs on every `agent.stream()` call:
+
+```ts trigger/weather-chat.ts
+import { chat } from "@trigger.dev/sdk/ai";
+import { anthropic } from "@ai-sdk/anthropic";
+import { ToolLoopAgent, stepCountIs, tool, type SystemModelMessage } from "ai";
+import { z } from "zod";
+
+const tools = {
+  getWeather: tool({
+    description: "Get the current weather for a city.",
+    inputSchema: z.object({ city: z.string() }),
+    execute: async ({ city }) => ({ city, tempC: 15, conditions: "sunny" }),
+  }),
+};
+
+const weatherAgent = new ToolLoopAgent({
+  model: anthropic("claude-sonnet-5-5"),
+  tools,
+  stopWhen: stepCountIs(10),
+  prepareCall: ({ tools, ...settings }) => {
+    // `managed.tools` is your tools merged with any skill tools
+    const { system, ...managed } = chat.toStreamTextOptions({ tools });
+    return {
+      ...settings,
+      ...managed,
+      // ToolLoopAgent takes the system prompt as `instructions`
+      instructions: (system as SystemModelMessage | string | undefined) ?? settings.instructions,
+    };
+  },
+});
+
+export const weatherChat = chat.agent({
+  id: "weather-chat",
+  system: "You are a weather assistant. Keep answers short.",
+  tools,
+  run: async ({ messages, signal }) => weatherAgent.stream({ messages, abortSignal: signal }),
+});
+```
+
+Don't set `tools` again after spreading `managed`. That replaces the merged set, and the model loses the [skill](/ai-chat/patterns/skills) tools.
+
+If your `ToolLoopAgent` has its own `prepareStep` (to switch models or narrow tools per step), the spread replaces it. Run both instead: the managed hook first, then yours on its result, the same order the managed `streamText` uses:
+
+```ts
+prepareCall: ({ tools, prepareStep, ...settings }) => {
+  const { system, prepareStep: managedPrepareStep, ...managed } = chat.toStreamTextOptions({ tools });
+  return {
+    ...settings,
+    ...managed,
+    instructions: (system as SystemModelMessage | string | undefined) ?? settings.instructions,
+    // Run the managed hook first, then yours on its result
+    prepareStep: async (step) => {
+      const first = await (managedPrepareStep as typeof prepareStep)?.(step);
+      const second = await prepareStep?.({ ...step, ...first });
+      return { ...first, ...second };
+    },
+  };
+},
+```
+
+Your hook can change per-step settings such as `model`, `activeTools` or `toolChoice`. Don't return `messages` from it: the managed hook keeps its own message changes for the rest of the turn, so message changes from your hook can be dropped on later steps. To edit messages per step, use the managed `streamText` from `run()`, which keeps both.
+
+The example needs `ai` 7.0.60 or later, where `prepareCall` is typed to take and return `prepareStep`. On earlier versions, AI SDK 6 included, `prepareStep` still passes through at runtime but the example doesn't typecheck. There, build the agent inside `run` on each turn and pass the combined hook to the `ToolLoopAgent` constructor.
+
+Pass `signal` as `abortSignal` so a stop from the frontend ends the turn, including mid-tool. Declare `tools` on `chat.agent` as well, for the reasons in [Tools](/ai-chat/tools). Tool approvals and questions answered from the frontend work as described in [Human-in-the-loop](/ai-chat/patterns/human-in-the-loop).
+
+`ToolLoopAgent` needs AI SDK 6 or later.
+
 ### Custom data parts
 
 Add custom `data-*` parts to the assistant's response message via `chat.response.write()` (from `run()`) or the `writer` parameter in lifecycle hooks. Non-transient `data-*` chunks are automatically added to `responseMessage.parts` and surface in `onTurnComplete` for persistence:
