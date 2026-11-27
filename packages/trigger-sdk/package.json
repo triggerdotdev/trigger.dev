@@ -37,7 +37,8 @@
       "./ai/test": "./src/v3/test/index.ts",
       "./chat": "./src/v3/chat.ts",
       "./chat/react": "./src/v3/chat-react.ts",
-      "./chat-server": "./src/v3/chat-server.ts"
+      "./chat-server": "./src/v3/chat-server.ts",
+      "./preview": "./src/v3/preview.ts"
     },
     "sourceDialects": [
       "@triggerdotdev/source"
@@ -71,6 +72,9 @@
       ],
       "chat-server": [
         "dist/commonjs/v3/chat-server.d.ts"
+      ],
+      "preview": [
+        "dist/commonjs/v3/preview.d.ts"
       ]
     }
   },
@@ -239,6 +243,17 @@
       "require": {
         "types": "./dist/commonjs/v3/chat-server.d.ts",
         "default": "./dist/commonjs/v3/chat-server.js"
+      }
+    },
+    "./preview": {
+      "import": {
+        "@triggerdotdev/source": "./src/v3/preview.ts",
+        "types": "./dist/esm/v3/preview.d.ts",
+        "default": "./dist/esm/v3/preview.js"
+      },
+      "require": {
+        "types": "./dist/commonjs/v3/preview.d.ts",
+        "default": "./dist/commonjs/v3/preview.js"
       }
     }
   },

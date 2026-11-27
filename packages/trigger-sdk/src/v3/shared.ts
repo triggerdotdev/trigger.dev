@@ -79,6 +79,7 @@ import {
   type Task,
   type TaskIdentifier,
   type TaskMetadata,
+  type PreviewTaskOptions,
   type TaskOptions,
   type TaskOptionsWithSchema,
   type TaskOutput,
@@ -116,6 +117,7 @@ export type {
   Task,
   TaskFromIdentifier,
   TaskIdentifier,
+  PreviewTaskOptions,
   TaskOptions,
   TaskOptionsWithSchema,
   TaskOutput,
@@ -247,7 +249,7 @@ export function concurrencyLimit(options: ConcurrencyLimitOptions): ConcurrencyL
 function sandboxTaskMetadata({
   sandbox,
   triggerSource,
-}: Pick<TaskOptions<string>, "sandbox" | "triggerSource">): Pick<
+}: PreviewTaskOptions & Pick<TaskOptions<string>, "triggerSource">): Pick<
   TaskMetadata,
   "sandbox" | "triggerSource"
 > {
@@ -305,9 +307,11 @@ export function createTask<
   TOutput = unknown,
   TInitOutput extends InitOutput = any,
 >(
-  params:
+  params: (
     | TaskOptions<TIdentifier, TInput, TOutput, TInitOutput>
     | TaskOptionsWithSchema<TIdentifier, TOutput, TInitOutput>
+  ) &
+    PreviewTaskOptions
 ): Task<TIdentifier, TInput, TOutput> | Task<TIdentifier, any, TOutput> {
   const normalizedQueue = normalizeTaskQueue(params.queue);
 
@@ -468,6 +472,15 @@ export function createSchemaTask<
   TInitOutput extends InitOutput = any,
 >(
   params: TaskWithSchemaOptions<TIdentifier, TSchema, TOutput, TInitOutput>
+): TaskWithSchema<TIdentifier, TSchema, TOutput>;
+// The preview entry point passes its options through here.
+export function createSchemaTask<
+  TIdentifier extends string,
+  TSchema extends TaskSchema | undefined = undefined,
+  TOutput = unknown,
+  TInitOutput extends InitOutput = any,
+>(
+  params: TaskWithSchemaOptions<TIdentifier, TSchema, TOutput, TInitOutput> & PreviewTaskOptions
 ): TaskWithSchema<TIdentifier, TSchema, TOutput> {
   const parsePayload = params.schema
     ? getSchemaParseFn<inferSchemaIn<TSchema>>(params.schema)

@@ -172,17 +172,8 @@ export type HandleErrorArgs = {
 
 export type HandleErrorFunction = AnyOnCatchErrorHookFunction;
 
-type CommonTaskOptions<
-  TIdentifier extends string,
-  TPayload = void,
-  TOutput = unknown,
-  TInitOutput extends InitOutput = any,
-> = {
-  /** An id for your task. This must be unique inside your project and not change between versions.  */
-  id: TIdentifier;
-
-  description?: string;
-
+/** Task options in preview, accepted by `task()` from `@trigger.dev/sdk/preview`. */
+export type PreviewTaskOptions = {
   /**
    * Run deployed tasks in a sandbox with access to only their own payload and output by default.
    * `trigger dev` still runs locally with development credentials and is not an isolation boundary.
@@ -202,6 +193,21 @@ type CommonTaskOptions<
          */
         network?: SandboxNetwork;
       };
+
+  /** A preset or size, or a machine from `defineMachine()`: the task runs on its image. */
+  machine?: CommonTaskOptions<string>["machine"] | NamedMachine;
+};
+
+type CommonTaskOptions<
+  TIdentifier extends string,
+  TPayload = void,
+  TOutput = unknown,
+  TInitOutput extends InitOutput = any,
+> = {
+  /** An id for your task. This must be unique inside your project and not change between versions.  */
+  id: TIdentifier;
+
+  description?: string;
 
   /** The retry settings when an uncaught error is thrown.
        *
@@ -305,10 +311,10 @@ type CommonTaskOptions<
 
         /** Preset to use for the machine. Defaults to small-1x */
         preset?: MachinePresetName;
+        /** A machine from `defineMachine()` is set from `@trigger.dev/sdk/preview`. */
+        id?: never;
       }
-    | MachinePresetName
-    /** A machine from `defineMachine()`: the task runs on its image. */
-    | NamedMachine;
+    | MachinePresetName;
 
   /**
    * The maximum duration in compute-time seconds that a task run is allowed to run. If the task run exceeds this duration, it will be stopped.

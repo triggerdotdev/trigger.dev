@@ -1,9 +1,10 @@
 import { resourceCatalog, TaskManifest, TaskResource } from "@trigger.dev/core/v3";
 import { StandardResourceCatalog } from "@trigger.dev/core/v3/workers";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, expectTypeOf, it } from "vitest";
 import { z } from "zod/v4";
-import * as schedules from "./schedules/index.js";
-import { schemaTask, task, toolTask } from "./tasks.js";
+import { defineMachine, schedules, schemaTask, task } from "./preview.js";
+import type { Task } from "./shared.js";
+import { task as stableTask } from "./tasks.js";
 
 function indexedTask(id: string) {
   return TaskResource.parse(TaskManifest.parse(resourceCatalog.getTaskManifest(id)));
@@ -44,7 +45,7 @@ describe("task sandbox registration", () => {
     }
   });
 
-  it("indexes expanded presets and explicit scope templates for schema and tool tasks", () => {
+  it("indexes expanded presets and explicit scope templates for schema tasks", () => {
     const schema = z.object({ value: z.string() });
     schemaTask({
       id: "schema",
@@ -52,9 +53,9 @@ describe("task sandbox registration", () => {
       sandbox: { scopes: "basic" },
       run: async (payload) => payload.value,
     });
-    toolTask({
+    schemaTask({
       id: "tool",
-      parameters: schema,
+      schema,
       sandbox: { envVars: "all", scopes: ["basic", "oidc", "read:tasks:allowed"] },
       run: async (payload) => payload.value,
     });
@@ -85,5 +86,24 @@ describe("task sandbox registration", () => {
       sandbox: { triggerSource: "schedule", envVars: ["API_KEY"] },
       schedule: { cron: "0 * * * *" },
     });
+  });
+
+  // Catches: `sandbox` or a `defineMachine()` machine leaking back onto the stable `task()` while
+  // they are in preview
+  it("accepts sandbox and a defineMachine() machine only from the preview entry point", () => {
+    const box = defineMachine({ id: "box", preset: "medium-1x" });
+    // @ts-expect-error sandbox is a preview option
+    stableTask({ id: "stable-sandbox", sandbox: true, run: async () => undefined });
+    // @ts-expect-error a defineMachine() machine is a preview option
+    stableTask({ id: "stable-machine", machine: box, run: async () => undefined });
+
+    const preview = task({
+      id: "preview-machine",
+      machine: box,
+      run: async (payload: { value: string }) => payload.value,
+    });
+    expectTypeOf(preview).toEqualTypeOf<Task<"preview-machine", { value: string }, string>>();
+
+    expect(indexedTask("preview-machine").machine).toEqual({ preset: "medium-1x", name: "box" });
   });
 });

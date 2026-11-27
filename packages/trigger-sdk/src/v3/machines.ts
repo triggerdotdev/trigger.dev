@@ -11,6 +11,8 @@ export type { NamedMachine };
  *
  * @example
  * ```ts
+ * import { defineMachine, task } from "@trigger.dev/sdk/preview";
+ *
  * export const codingBox = defineMachine({
  *   id: "coding-box",
  *   preset: "medium-2x",
