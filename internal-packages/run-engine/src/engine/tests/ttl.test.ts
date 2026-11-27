@@ -1638,6 +1638,7 @@ describe("RunEngine ttl", () => {
           return null;
         },
         resolveDeploymentStatus: passthrough.resolveDeploymentStatus.bind(passthrough),
+        resolveDeploymentMachine: passthrough.resolveDeploymentMachine.bind(passthrough),
         resolveWorkerVersion: passthrough.resolveWorkerVersion.bind(passthrough),
         resolveWorkerVersionFromPrimary:
           passthrough.resolveWorkerVersionFromPrimary.bind(passthrough),

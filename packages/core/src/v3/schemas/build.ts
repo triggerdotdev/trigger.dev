@@ -1,5 +1,6 @@
 import { z } from "zod/v4";
 import { ConfigManifest } from "./config.js";
+import { NamedMachines } from "./machines.js";
 import {
   PromptManifest,
   QueueManifest,
@@ -139,6 +140,8 @@ export const WorkerManifest = z.object({
   unclaimedSessionWebhooks: z.array(z.string()).optional(), // session.webhook descriptors no agent listed
   queues: QueueManifest.array().optional(),
   concurrencyLimits: ConcurrencyLimitManifest.array().optional(),
+  /** The machines from `defineMachine()` the tasks use, one per id. Deploys only. */
+  machines: NamedMachines.optional(),
   workerEntryPoint: z.string(),
   compiledWorkerPath: z.string().optional(),
   controllerEntryPoint: z.string().optional(),

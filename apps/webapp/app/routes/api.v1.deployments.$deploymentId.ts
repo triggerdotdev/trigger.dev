@@ -1,5 +1,6 @@
 import { type LoaderFunctionArgs, json } from "@remix-run/server-runtime";
 import { type GetDeploymentResponseBody } from "@trigger.dev/core/v3";
+import { workerMachinesOf } from "@trigger.dev/core/v3/schemas";
 import { z } from "zod";
 import { prisma } from "~/db.server";
 import { env } from "~/env.server";
@@ -63,6 +64,7 @@ export async function loader({ request, params }: LoaderFunctionArgs) {
       version: deployment.version,
       imageReference: deployment.imageReference,
       imagePlatform: deployment.imagePlatform,
+      supportsMachineImages: true,
       commitSHA: deployment.commitSHA,
       externalId: deployment.externalId ?? undefined,
       createdAt: deployment.createdAt.toISOString(),
@@ -84,6 +86,7 @@ export async function loader({ request, params }: LoaderFunctionArgs) {
               filePath: task.filePath,
               exportName: task.exportName ?? "@deprecated",
             })),
+            machines: workerMachinesOf(deployment.worker.metadata),
           }
         : undefined,
       integrationDeployments:

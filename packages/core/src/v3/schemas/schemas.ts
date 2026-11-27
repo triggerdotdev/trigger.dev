@@ -15,6 +15,7 @@ import {
 } from "./common.js";
 import { ScheduleWindow } from "./scheduleWindow.js";
 import { SandboxTaskConfig } from "./executionPolicy.js";
+import { NamedMachine } from "./machines.js";
 
 export * from "./scheduleWindow.js";
 
@@ -251,6 +252,8 @@ const taskMetadata = {
   concurrency: TaskConcurrencyManifest.optional(),
   retry: RetryOptions.optional(),
   machine: MachineConfig.optional(),
+  /** The task's `defineMachine()` machine, which the deploy indexer collects into `machines`. */
+  namedMachine: NamedMachine.optional(),
   triggerSource: z.string().optional(),
   agentConfig: AgentConfig.optional(),
   sandbox: SandboxTaskConfig.optional(),

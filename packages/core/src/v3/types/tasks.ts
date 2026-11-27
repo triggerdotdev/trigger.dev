@@ -21,6 +21,7 @@ import type {
   MachineCpu,
   MachineMemory,
   MachinePresetName,
+  NamedMachine,
   RetryOptions,
   PromptMetadata,
   TaskMetadata,
@@ -305,7 +306,9 @@ type CommonTaskOptions<
         /** Preset to use for the machine. Defaults to small-1x */
         preset?: MachinePresetName;
       }
-    | MachinePresetName;
+    | MachinePresetName
+    /** A machine from `defineMachine()`: the task runs on its image. */
+    | NamedMachine;
 
   /**
    * The maximum duration in compute-time seconds that a task run is allowed to run. If the task run exceeds this duration, it will be stopped.

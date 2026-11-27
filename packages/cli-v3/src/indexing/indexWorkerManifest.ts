@@ -6,8 +6,12 @@ import {
   TaskMetadataParseError,
   UncaughtExceptionError,
 } from "@trigger.dev/core/v3/errors";
-import type { BuildRuntime, WorkerManifest } from "@trigger.dev/core/v3/schemas";
-import { indexerToWorkerMessages } from "@trigger.dev/core/v3/schemas";
+import {
+  type BuildRuntime,
+  INDEXER_COLLECTS_MACHINES_ENV,
+  indexerToWorkerMessages,
+  type WorkerManifest,
+} from "@trigger.dev/core/v3/schemas";
 import { parseMessageFromCatalog } from "@trigger.dev/core/v3/zodMessageHandler";
 import { fork } from "node:child_process";
 
@@ -49,6 +53,7 @@ export async function indexWorkerManifest({
         TRIGGER_BUILD_MANIFEST_PATH: buildManifestPath,
         NODE_OPTIONS: nodeOptions,
         TRIGGER_INDEXING: "1",
+        [INDEXER_COLLECTS_MACHINES_ENV]: "1",
       },
       execPath: execPathForRuntime(runtime),
     });

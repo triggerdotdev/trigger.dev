@@ -9,6 +9,7 @@ import {
 } from "./schemas.js";
 import { MachineConfig } from "./common.js";
 import { SandboxTaskConfig } from "./executionPolicy.js";
+import { NamedMachines } from "./machines.js";
 import {
   WebhookVerifierArtifact,
   WebhookRoutingTarget,
@@ -102,6 +103,8 @@ export const BackgroundWorkerMetadata = z.object({
   webhookSubscribers: z.array(WebhookSubscriberResource).optional(),
   queues: z.array(QueueManifest).optional(),
   concurrencyLimits: z.array(ConcurrencyLimitManifest).optional(),
+  /** The machines from `defineMachine()` the tasks use; the CLI builds an image for each. */
+  machines: NamedMachines.optional(),
   sourceFiles: z.array(BackgroundWorkerSourceFileMetadata).optional(),
   runtime: z.string().optional(),
   runtimeVersion: z.string().optional(),

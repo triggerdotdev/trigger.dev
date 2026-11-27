@@ -75,6 +75,7 @@ export const FEATURE_FLAG = {
   trustedDeploysEnabled: "trustedDeploysEnabled",
   sessionTraceEnabled: "sessionTraceEnabled",
   sandboxTasks: "sandboxTasks",
+  namedMachines: "namedMachines",
   computeOnly: "computeOnly",
   auditLogsRecording: "auditLogsRecording",
   hasAuditLogsAccess: "hasAuditLogsAccess",
@@ -267,7 +268,11 @@ export const FeatureFlagCatalog = {
   [FEATURE_FLAG.runTokenInjection]: z.boolean(),
   // Org override wins over the global value; off by default.
   [FEATURE_FLAG.externalOidc]: z.boolean(),
+  // Lets tasks be sandboxes. Org override wins over the global value; off by default.
   [FEATURE_FLAG.sandboxTasks]: z.boolean(),
+  // Lets tasks run on a machine from defineMachine(). Org override wins over the global value; off
+  // by default.
+  [FEATURE_FLAG.namedMachines]: z.boolean(),
   [FEATURE_FLAG.trustedDeploysEnabled]: z.boolean(),
   // Shows the session page's Trace tab and serves its routes. Org override wins over the global
   // value; off by default. Admins always have it.
@@ -302,7 +307,6 @@ export const GLOBAL_LOCKED_FLAGS: FeatureFlagKey[] = [
   FEATURE_FLAG.runOpsMintKindFlippedAt,
   FEATURE_FLAG.runOpsMintShardSetPrev,
   FEATURE_FLAG.runOpsMintShardSetFlippedAt,
-  FEATURE_FLAG.sandboxTasks,
   FEATURE_FLAG.deployCliVersionEnforcedFrom,
   FEATURE_FLAG.computeOnly,
 ];

@@ -1,6 +1,7 @@
 import {
   ExternalBuildData,
   type FinalizeDeploymentRequestBody,
+  machineImageTag,
 } from "@trigger.dev/core/v3/schemas";
 import type { AuthenticatedEnvironment } from "~/services/apiAuth.server";
 import { logger } from "~/services/logger.server";
@@ -18,7 +19,7 @@ import { tryCatch } from "@trigger.dev/core";
 import { getRegistryConfig, type RegistryConfig } from "../registryConfig.server";
 import { ecrImageExists } from "./verifyDeploymentImage.server";
 import { computeOnlyEnabled, loadOrgFeatureFlags } from "~/v3/computeOnlyFlag.server";
-import { TemplatePrebuildService } from "./templatePrebuild.server";
+import { type MachineImage, TemplatePrebuildService } from "./templatePrebuild.server";
 
 export class FinalizeDeploymentV2Service extends BaseService {
   public async call(
@@ -109,12 +110,14 @@ export class FinalizeDeploymentV2Service extends BaseService {
       // Runs before the template build.
       const gate = await this.#gate(authenticatedEnv, deployment, id, body);
       const checkedBody = withCheckedDigest(body, gate);
+      const machineImages = await this.#storeMachineImages(deployment, body);
       await this.#prebuildTemplate(
         deployment,
         id,
         checkedBody,
         computeOnlyEnabled(orgFeatureFlags),
-        writer
+        writer,
+        machineImages
       );
 
       return finalizeService.call(authenticatedEnv, id, checkedBody, orgFeatureFlags, gate);
@@ -225,6 +228,51 @@ export class FinalizeDeploymentV2Service extends BaseService {
     return gate;
   }
 
+  // Only local builds push machine images, each tagged next to the deployment's image. Verified,
+  // then stored once: a repeated finalize with the same images keeps their template keys.
+  async #storeMachineImages(
+    deployment: { id: string; imageReference: string | null; type: string | null },
+    body: FinalizeDeploymentRequestBody
+  ): Promise<MachineImage[]> {
+    const digests = Object.entries(body.machineImageDigests ?? {});
+    if (!deployment.imageReference || digests.length === 0) {
+      return [];
+    }
+
+    const machines: MachineImage[] = [];
+    for (const [machineId, digest] of digests) {
+      const tag = machineImageTag(deployment.imageReference, machineId);
+      await this.#assertImagePullable(
+        { ...deployment, imageReference: tag },
+        { imageDigest: digest },
+        `Machine "${machineId}" image`
+      );
+      machines.push({ machineId, imageReference: `${tag}@${digest}` });
+    }
+
+    await this._prisma.workerDeploymentMachine.createMany({
+      data: machines.map((machine) => ({ ...machine, deploymentId: deployment.id })),
+      skipDuplicates: true,
+    });
+
+    const stored = await this._prisma.workerDeploymentMachine.findMany({
+      where: { deploymentId: deployment.id },
+      select: { machineId: true, imageReference: true },
+    });
+    const same =
+      stored.length === machines.length &&
+      machines.every((machine) =>
+        stored.some(
+          (row) =>
+            row.machineId === machine.machineId && row.imageReference === machine.imageReference
+        )
+      );
+    if (!same) {
+      throw new ServiceValidationError("This deployment was already finalized with other images");
+    }
+    return machines;
+  }
+
   // Waits for the build when the deployment contains sandbox tasks or the org is compute-only;
   // the finalizer rejects it if no template was stored.
   async #prebuildTemplate(
@@ -236,7 +284,8 @@ export class FinalizeDeploymentV2Service extends BaseService {
     deploymentFriendlyId: string,
     body: FinalizeDeploymentRequestBody,
     computeOnly: boolean,
-    writer?: WritableStreamDefaultWriter
+    writer?: WritableStreamDefaultWriter,
+    machineImages?: MachineImage[]
   ): Promise<void> {
     if (!deployment.imageReference || !deployment.worker) {
       return;
@@ -257,12 +306,14 @@ export class FinalizeDeploymentV2Service extends BaseService {
       writer,
       requireTemplate: sandboxTask !== null || computeOnly,
       workerId: deployment.worker.id,
+      machineImages,
     });
   }
 
   async #assertImagePullable(
     deployment: { imageReference: string | null; type: string | null },
-    body: FinalizeDeploymentRequestBody
+    body: Pick<FinalizeDeploymentRequestBody, "imageDigest">,
+    imageName = "Deployment image"
   ): Promise<void> {
     if (!env.DEPLOY_IMAGE_VERIFICATION_ENABLED) {
       return;
@@ -287,13 +338,13 @@ export class FinalizeDeploymentV2Service extends BaseService {
 
     if (result === "missing") {
       throw new ServiceValidationError(
-        "Deployment image was not found in the registry. It may not have been pushed (for example a local build without a push, or a push to a different registry). Aborting the deploy to avoid promoting a version that cannot start."
+        `${imageName} was not found in the registry. It may not have been pushed (for example a local build without a push, or a push to a different registry). Aborting the deploy to avoid promoting a version that cannot start.`
       );
     }
 
     if (result === "nonconformant") {
       throw new ServiceValidationError(
-        "Deployment image is not runnable: it contains zstd-compressed layers inside a Docker (v2s2) manifest, which the container runtime cannot pull. This typically comes from an outdated CLI version. Please upgrade to the latest trigger.dev CLI and re-deploy."
+        `${imageName} is not runnable: it contains zstd-compressed layers inside a Docker (v2s2) manifest, which the container runtime cannot pull. This typically comes from an outdated CLI version. Please upgrade to the latest trigger.dev CLI and re-deploy.`
       );
     }
 
@@ -301,7 +352,7 @@ export class FinalizeDeploymentV2Service extends BaseService {
     // that might not start. Set DEPLOY_IMAGE_VERIFICATION_ENABLED=0 for out-of-band pushes.
     if (result === "unknown") {
       throw new ServiceValidationError(
-        "Could not verify the deployment image exists in the registry. Aborting the deploy."
+        `Could not verify that the ${imageName.toLowerCase()} exists in the registry. Aborting the deploy.`
       );
     }
   }

@@ -338,6 +338,8 @@ export const DequeuedMessage = z.object({
   image: z.string().optional(),
   /** Names a prebuilt template of `image`. */
   templateKey: z.string().optional(),
+  /** The named machine whose image `image` is, when the task runs on one. */
+  machineName: z.string().optional(),
   checkpoint: DequeueMessageCheckpoint.optional(),
   completedWaitpoints: z.array(CompletedWaitpoint),
   backgroundWorker: z.object({

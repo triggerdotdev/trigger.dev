@@ -12,6 +12,7 @@ import {
   TOOLCHAIN_PACKAGES,
   formatCommandForDiagnostics,
   generateContainerfile,
+  withMachineStages,
 } from "./buildImage.js";
 import { EMSIGN_COMPROMISE_REJECTED_INTERMEDIATES } from "./emsignRejectedIntermediates.js";
 
@@ -67,6 +68,54 @@ const images: Array<[BuildRuntime, string, string]> = [
 ];
 
 describe("generateContainerfile", () => {
+  // Catches: a machine image that drops the deployment's code, runs as root, or puts its packages
+  // above the code, where every deploy reinstalls them
+  it.each(["node", "bun"] as BuildRuntime[])(
+    "builds each machine's packages below the code on %s",
+    async (runtime) => {
+      const containerfile = withMachineStages(
+        await generateContainerfile({
+          runtime,
+          build: {},
+          image: undefined,
+          indexScript: "index.js",
+          entrypoint: "entrypoint.js",
+        }),
+        [{ id: "coding-box", image: { pkgs: ["ripgrep"] } }]
+      );
+
+      const base = containerfile.slice(
+        containerfile.indexOf("FROM base AS machinebase-coding-box"),
+        containerfile.indexOf("FROM machinebase-coding-box AS machine-coding-box")
+      );
+      const machine = containerfile.slice(
+        containerfile.indexOf("FROM machinebase-coding-box AS machine-coding-box")
+      );
+      expect(base).toContain("ripgrep");
+      expect(base).not.toContain("COPY");
+      expect(machine).toContain("COPY --from=indexer");
+      expect(machine).toContain(`USER ${runtime === "bun" ? "bun" : "node"}`);
+      expect(machine).toContain("ENTRYPOINT");
+    }
+  );
+
+  // Catches: two machine ids sharing a stage name, so one machine's image ships without the code
+  it("gives every machine its own stage names", async () => {
+    const containerfile = withMachineStages(
+      await generateContainerfile({
+        runtime: "node",
+        build: {},
+        image: undefined,
+        indexScript: "index.js",
+        entrypoint: "entrypoint.js",
+      }),
+      [{ id: "tools-base" }, { id: "tools" }, { id: "base-tools" }]
+    );
+
+    const stageNames = [...containerfile.matchAll(/^FROM \S+ AS (\S+)$/gm)].map((m) => m[1]);
+    expect(new Set(stageNames).size).toBe(stageNames.length);
+  });
+
   it.each(images)("uses the pinned published base images for %s", async (runtime, base, build) => {
     const containerfile = await generateContainerfile({
       runtime,

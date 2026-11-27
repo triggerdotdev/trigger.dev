@@ -66,6 +66,7 @@ export async function action({ request, params }: ActionFunctionArgs) {
       version: deployment.version,
       imageTag: imageRef,
       imagePlatform: deployment.imagePlatform,
+      supportsMachineImages: true,
       externalId: deployment.externalId ?? undefined,
       outcome: result.outcome,
       ...(result.outcome === "created"

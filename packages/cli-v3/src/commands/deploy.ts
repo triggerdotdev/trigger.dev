@@ -819,6 +819,7 @@ async function _deployCommand(dir: string, options: DeployCommandOptions) {
     authAccessToken: authorization.auth.accessToken,
     compilationPath: destination.path,
     buildEnvVars: buildManifest.build.env,
+    buildsMachineImages: isLocalBuild && deployment.supportsMachineImages,
     compression: options.compression,
     cacheCompression: options.cacheCompression,
     compressionLevel: options.compressionLevel,
@@ -938,6 +939,7 @@ async function _deployCommand(dir: string, options: DeployCommandOptions) {
     deployment.id,
     {
       imageDigest: buildResult.digest,
+      machineImageDigests: buildResult.machineDigests,
       skipPromotion: options.skipPromotion,
       skipPushToRegistry: skipServerSideRegistryPush,
     },
@@ -2045,6 +2047,7 @@ async function buildAndFinalizeFromBundle({
     authAccessToken,
     compilationPath,
     buildEnvVars,
+    buildsMachineImages: isLocalBuild && deployment.supportsMachineImages,
     compression: options.compression,
     cacheCompression: options.cacheCompression,
     compressionLevel: options.compressionLevel,
@@ -2164,6 +2167,7 @@ async function buildAndFinalizeFromBundle({
     deployment.id,
     {
       imageDigest: buildResult.digest,
+      machineImageDigests: buildResult.machineDigests,
       skipPromotion: options.skipPromotion,
       skipPushToRegistry: skipServerSideRegistryPush,
     },

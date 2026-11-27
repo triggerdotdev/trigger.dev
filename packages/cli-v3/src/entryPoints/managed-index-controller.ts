@@ -1,5 +1,6 @@
 import type { CreateBackgroundWorkerRequestBody } from "@trigger.dev/core/v3";
 import { BuildManifest, serializeIndexingError } from "@trigger.dev/core/v3";
+import { BUILDS_MACHINE_IMAGES_ARG } from "@trigger.dev/core/v3/schemas";
 import { execOptionsForRuntime } from "@trigger.dev/core/v3/build";
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
@@ -87,6 +88,12 @@ async function indexDeployment({
       },
     });
 
+    if (workerManifest.machines?.length && env[BUILDS_MACHINE_IMAGES_ARG] !== "1") {
+      throw new Error(
+        "Tasks on a machine from defineMachine() need a native build (--native-build) or a local build (--local-build), on a server that supports machines."
+      );
+    }
+
     console.log("Writing index.json", process.cwd());
 
     const { timings, ...manifestWithoutTimings } = workerManifest;
@@ -125,6 +132,7 @@ async function indexDeployment({
         prompts: workerManifest.prompts,
         queues: workerManifest.queues,
         concurrencyLimits: workerManifest.concurrencyLimits,
+        machines: workerManifest.machines,
         webhookEndpoints: workerManifest.webhookEndpoints,
         webhookSubscribers: workerManifest.webhookSubscribers,
         sourceFiles,

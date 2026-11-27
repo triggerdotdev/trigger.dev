@@ -5,6 +5,8 @@ import type { PrismaClientOrTransaction } from "@trigger.dev/database";
 import { expect } from "vitest";
 import { setTimeout } from "node:timers/promises";
 import type { MinimalAuthenticatedEnvironment } from "../../shared/index.js";
+import type { ControlPlaneResolver } from "../controlPlaneResolver.js";
+import { PassthroughControlPlaneResolver } from "../controlPlaneResolver.js";
 import { RunEngine } from "../index.js";
 import { setupAuthenticatedEnvironment, setupBackgroundWorker } from "./setup.js";
 
@@ -12,9 +14,14 @@ vi.setConfig({ testTimeout: 60_000 });
 
 const TEMPLATE_KEY = "4f2b1c0e9d8a7b6c5d4e3f2a1b0c9d8e7f6a5b4c3d2e1f0a9b8c7d6e5f4a3b2c";
 
-function createEngine(prisma: PrismaClientOrTransaction, redisOptions: any) {
+function createEngine(
+  prisma: PrismaClientOrTransaction,
+  redisOptions: any,
+  controlPlaneResolver?: ControlPlaneResolver
+) {
   return new RunEngine({
     prisma: prisma as any,
+    controlPlaneResolver,
     worker: {
       redis: redisOptions,
       workers: 1,
@@ -188,4 +195,140 @@ describe("RunEngine dequeue carries the deployment's template key", () => {
       await engine.quit();
     }
   });
+
+  // Catches: a task on a named machine starting on the deployment's default image
+  containerTest(
+    "sends a named machine's image and template for a task on it",
+    async ({ prisma, redisOptions }) => {
+      const environment = await setupAuthenticatedEnvironment(prisma, "PRODUCTION");
+      const engine = createEngine(prisma, redisOptions);
+
+      try {
+        const taskIdentifier = "test-task";
+        const { deployment } = await setupBackgroundWorker(engine, environment, taskIdentifier, {
+          preset: "small-1x",
+          name: "coding-box",
+        });
+        assertNonNullable(deployment);
+        const machineImage = `${deployment.imageReference}.coding-box@sha256:${"c".repeat(64)}`;
+        await prisma.workerDeployment.update({
+          where: { id: deployment.id },
+          data: {
+            templateKey: TEMPLATE_KEY,
+            machines: {
+              create: {
+                machineId: "coding-box",
+                imageReference: machineImage,
+                templateKey: "d".repeat(64),
+              },
+            },
+          },
+        });
+
+        const { message } = await triggerAndDequeue(engine, prisma, environment, taskIdentifier);
+
+        expect(message.image).toBe(machineImage);
+        expect(message.templateKey).toBe("d".repeat(64));
+        expect(message.machineName).toBe("coding-box");
+      } finally {
+        await engine.quit();
+      }
+    }
+  );
+
+  // Catches: a valid run failed because the replica has not replayed its machine row yet
+  containerTest(
+    "confirms a missing machine image on the primary before failing the run",
+    async ({ prisma, redisOptions }) => {
+      const passthrough = new PassthroughControlPlaneResolver({ prisma: prisma as any });
+      const laggingReplica: ControlPlaneResolver = {
+        resolveEnv: passthrough.resolveEnv.bind(passthrough),
+        resolveEnvDeletionState: passthrough.resolveEnvDeletionState.bind(passthrough),
+        resolveDeploymentStatus: passthrough.resolveDeploymentStatus.bind(passthrough),
+        resolveAuthenticatedEnv: passthrough.resolveAuthenticatedEnv.bind(passthrough),
+        resolveWorkerVersion: passthrough.resolveWorkerVersion.bind(passthrough),
+        resolveWorkerVersionFromPrimary:
+          passthrough.resolveWorkerVersionFromPrimary.bind(passthrough),
+        assertEnvExists: passthrough.assertEnvExists.bind(passthrough),
+        resolveDeploymentMachine: async (deploymentId, machineId, options) =>
+          options?.fromPrimary
+            ? passthrough.resolveDeploymentMachine(deploymentId, machineId)
+            : null,
+      };
+      const environment = await setupAuthenticatedEnvironment(prisma, "PRODUCTION");
+      const engine = createEngine(prisma, redisOptions, laggingReplica);
+
+      try {
+        const taskIdentifier = "test-task";
+        const { deployment } = await setupBackgroundWorker(engine, environment, taskIdentifier, {
+          preset: "small-1x",
+          name: "coding-box",
+        });
+        assertNonNullable(deployment);
+        const machineImage = `${deployment.imageReference}.coding-box@sha256:${"c".repeat(64)}`;
+        await prisma.workerDeploymentMachine.create({
+          data: {
+            deploymentId: deployment.id,
+            machineId: "coding-box",
+            imageReference: machineImage,
+          },
+        });
+
+        const { message } = await triggerAndDequeue(engine, prisma, environment, taskIdentifier);
+
+        expect(message.image).toBe(machineImage);
+      } finally {
+        await engine.quit();
+      }
+    }
+  );
+
+  // Catches: a run whose machine image is missing falling back to the default image
+  containerTest(
+    "fails a run whose named machine has no image",
+    async ({ prisma, redisOptions }) => {
+      const environment = await setupAuthenticatedEnvironment(prisma, "PRODUCTION");
+      const engine = createEngine(prisma, redisOptions);
+
+      try {
+        const taskIdentifier = "test-task";
+        await setupBackgroundWorker(engine, environment, taskIdentifier, {
+          preset: "small-1x",
+          name: "coding-box",
+        });
+
+        const run = await engine.trigger(
+          {
+            number: 1,
+            friendlyId: generateFriendlyId("run"),
+            environment,
+            taskIdentifier,
+            payload: "{}",
+            payloadType: "application/json",
+            context: {},
+            traceContext: {},
+            traceId: "t12345",
+            spanId: "s12345",
+            workerQueue: "main",
+            queue: `task/${taskIdentifier}`,
+            isTest: false,
+            tags: [],
+          },
+          prisma
+        );
+        await setTimeout(500);
+
+        const dequeued = await engine.dequeueFromWorkerQueue({
+          consumerId: "test_12345",
+          workerQueue: "main",
+        });
+        expect(dequeued).toHaveLength(0);
+
+        const failed = await prisma.taskRun.findUniqueOrThrow({ where: { id: run.id } });
+        expect(failed.status).toBe("SYSTEM_FAILURE");
+      } finally {
+        await engine.quit();
+      }
+    }
+  );
 });

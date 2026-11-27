@@ -39,6 +39,8 @@ const Env = z.object({
   TRIGGER_WARM_START_KEEPALIVE_MS: z.coerce.number().default(300_000),
   TRIGGER_MACHINE_CPU: z.string().default("0"),
   TRIGGER_MACHINE_MEMORY: z.string().default("0"),
+  // Set in a named machine's image
+  TRIGGER_NAMED_MACHINE: z.string().optional(),
   TRIGGER_RUNNER_ID: z.string(),
   TRIGGER_METADATA_URL: z.string().optional(),
 
@@ -120,6 +122,11 @@ export class RunnerEnv {
     return this.env.TRIGGER_ENV_ID;
   }
   get TRIGGER_WARM_START_URL() {
+    // Warm starts are keyed by deployment and machine size, not image, so a runner on a named
+    // machine's image could be handed a run for another image.
+    if (this.env.TRIGGER_NAMED_MACHINE) {
+      return undefined;
+    }
     return this.env.TRIGGER_WARM_START_URL;
   }
   get TRIGGER_WARM_START_CONNECTION_TIMEOUT_MS() {

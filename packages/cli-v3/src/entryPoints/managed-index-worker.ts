@@ -13,6 +13,7 @@ import {
   TracingSDK,
 } from "@trigger.dev/core/v3/workers";
 import { sendMessageInCatalog, ZodSchemaParsedError } from "@trigger.dev/core/v3/zodMessageHandler";
+import { collectTaskMachines } from "@trigger.dev/core/v3/schemas";
 import { readFile } from "node:fs/promises";
 import sourceMapSupport from "source-map-support";
 import { registerResources } from "../indexing/registerResources.js";
@@ -129,6 +130,10 @@ if (await reportTaskIdCollisions(safeSend)) {
 
 let tasks = await convertSchemasToJsonSchemas(resourceCatalog.listTaskManifests());
 
+// One image is built per machine, so its definition goes to the manifest once, not on each task.
+const machines = collectTaskMachines(tasks);
+tasks = tasks.map(({ namedMachine: _, ...task }) => task);
+
 // If the config has retry defaults, we need to apply them to all tasks that don't have any retry settings
 if (config.retries?.default) {
   tasks = tasks.map((task) => {
@@ -178,6 +183,7 @@ if (typeof config.machine === "string") {
       return {
         ...task,
         machine: {
+          ...task.machine,
           preset: config.machine,
         },
       } satisfies TaskManifest;
@@ -202,6 +208,7 @@ await sendMessageInCatalog(
       unclaimedSessionWebhooks: resourceCatalog.listUnclaimedSessionWebhooks(),
       queues: resourceCatalog.listQueueManifests(),
       concurrencyLimits: resourceCatalog.listConcurrencyLimitManifests(),
+      machines: machines.length > 0 ? machines : undefined,
       configPath: buildManifest.configPath,
       runtime: buildManifest.runtime,
       runtimeVersion: detectRuntimeVersion(),

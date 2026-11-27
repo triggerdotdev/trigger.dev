@@ -2765,6 +2765,7 @@ model WorkerDeployment {
   updatedAt DateTime @updatedAt
 
   promotions             WorkerDeploymentPromotion[]
+  machines               WorkerDeploymentMachine[]
   alerts                 ProjectAlert[]
   workerInstance         WorkerInstance[]
   integrationDeployments IntegrationDeployment[]
@@ -2790,6 +2791,26 @@ enum WorkerDeploymentStatus {
   CANCELED
   /// This is the status when the image is built and indexing does not finish in time
   TIMED_OUT
+}
+
+/// The image of a machine from defineMachine() that a deployment built, and its microVM template
+model WorkerDeploymentMachine {
+  id String @id @default(cuid())
+
+  deployment   WorkerDeployment @relation(fields: [deploymentId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  deploymentId String
+
+  /// The id given to defineMachine(), e.g. "coding-box"
+  machineId      String
+  /// Pinned by digest
+  imageReference String
+  /// Key of the microVM template prebuilt from this image, set when the builder succeeds
+  templateKey    String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([deploymentId, machineId])
 }
 
 model WorkerDeploymentPromotion {

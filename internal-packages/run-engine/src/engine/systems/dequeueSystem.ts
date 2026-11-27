@@ -4,6 +4,8 @@ import type { DequeuedMessage, TaskRunInternalError } from "@trigger.dev/core/v3
 import {
   computeOnlyReason,
   isSandboxRun,
+  machineNameOf,
+  resolveTaskImage,
   RetryOptions,
   RunAnnotations,
 } from "@trigger.dev/core/v3";
@@ -732,11 +734,58 @@ export class DequeueSystem {
                 }
               }
 
+              // A task on a named machine runs on that machine's image and template. Only those
+              // tasks read the machine's row.
+              const machineName = machineNameOf(result.task.machineConfig);
+              const taskImage = result.deployment
+                ? resolveTaskImage(
+                    result.deployment,
+                    machineName,
+                    machineName
+                      ? await this.#resolveDeploymentMachine(result.deployment.id, machineName)
+                      : undefined
+                  )
+                : undefined;
+
+              // A deployment stores its machine images at finalize, after its worker indexes, so a
+              // run pinned to a version that is still deploying waits for them.
+              if (
+                taskImage &&
+                !taskImage.ok &&
+                result.deployment &&
+                result.deployment.status !== "DEPLOYED" &&
+                !UNDEPLOYABLE_DEPLOYMENT_STATUSES.has(result.deployment.status)
+              ) {
+                span.setAttribute("result", "MACHINE_IMAGE_WAIT");
+                await this.$.runQueue.nackMessage({
+                  orgId,
+                  messageId: runId,
+                  retryAt: Date.now() + this.deploymentWaitRetryMs,
+                  incrementAttemptCount: false,
+                });
+                return;
+              }
+
+              if (taskImage && !taskImage.ok) {
+                span.setAttribute("result", "MACHINE_IMAGE_MISSING");
+                await this.runAttemptSystem.systemFailure({
+                  runId,
+                  organizationId: orgId,
+                  error: {
+                    type: "INTERNAL_ERROR",
+                    code: "CONFIGURED_INCORRECTLY",
+                    message: `Task ${result.task.slug} runs on machine "${taskImage.machineName}", but version ${result.worker.version} has no image for it.`,
+                  },
+                  tx: prisma,
+                });
+                return;
+              }
+
               if (
                 templateFallbackWorkerQueue &&
                 result.environmentType !== "DEVELOPMENT" &&
                 !snapshot.checkpointId &&
-                !result.deployment?.templateKey
+                !taskImage?.templateKey
               ) {
                 // A run that must stay on compute (a sandbox, or a compute-only org's run)
                 // waits for a template instead of moving to a container lane.
@@ -968,8 +1017,9 @@ export class DequeueSystem {
                   description: "Run was dequeued for execution",
                   createdAt: snapshotCreatedAt,
                 },
-                image: result.deployment?.imageReference ?? undefined,
-                templateKey: result.deployment?.templateKey ?? undefined,
+                image: taskImage?.imageReference ?? undefined,
+                templateKey: taskImage?.templateKey ?? undefined,
+                machineName: taskImage?.machineName,
                 checkpoint: dequeueCheckpointFromRow(snapshot.checkpoint),
                 completedWaitpoints: snapshot.completedWaitpoints,
                 backgroundWorker: {
@@ -1393,6 +1443,17 @@ export class DequeueSystem {
         error: promoteError,
       });
     }
+  }
+
+  // A miss fails the run, and the replica can lag a worker version read from the primary, so
+  // confirm it there.
+  async #resolveDeploymentMachine(deploymentId: string, machineName: string) {
+    return (
+      (await this.$.controlPlaneResolver.resolveDeploymentMachine(deploymentId, machineName)) ??
+      (await this.$.controlPlaneResolver.resolveDeploymentMachine(deploymentId, machineName, {
+        fromPrimary: true,
+      }))
+    );
   }
 
   async #getRunWithBackgroundWorkerTasks(

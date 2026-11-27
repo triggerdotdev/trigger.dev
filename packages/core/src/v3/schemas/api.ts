@@ -15,6 +15,7 @@ import { DequeuedMessage, MachineResources } from "./runEngine.js";
 import { QueueTypeName } from "./queues.js";
 import { ScheduleWindow } from "./schemas.js";
 import { BuildRuntime } from "./build.js";
+import { MachineImageDigests, NamedMachines } from "./machines.js";
 
 export const RunEngineVersion = z.union([z.literal("V1"), z.literal("V2")]);
 
@@ -779,6 +780,8 @@ export type StartDeploymentIndexingResponseBody = z.infer<
 export const FinalizeDeploymentRequestBody = z.object({
   skipPromotion: z.boolean().optional(),
   imageDigest: z.string().optional(),
+  /** Each named machine's image digest, by machine id. */
+  machineImageDigests: MachineImageDigests.optional(),
   skipPushToRegistry: z.boolean().optional(),
 });
 
@@ -927,6 +930,8 @@ export const InitializeDeploymentResponseBody = z.object({
   isPromoted: z.boolean().optional(),
   externalBuildData: ExternalBuildData.optional().nullable(),
   baseImages: DeployBaseImages.optional(),
+  /** The server stores and runs images of machines from `defineMachine()`. */
+  supportsMachineImages: z.boolean().optional(),
   canceledDeployments: z.array(z.object({ version: z.string(), shortCode: z.string() })).optional(),
   eventStream: z
     .object({
@@ -1117,6 +1122,8 @@ export const GetDeploymentResponseBody = z.object({
   createdAt: z.string().optional(),
   externalBuildData: ExternalBuildData.optional().nullable(),
   baseImages: DeployBaseImages.optional(),
+  /** The server stores and runs images of machines from `defineMachine()`. */
+  supportsMachineImages: z.boolean().optional(),
   errorData: DeploymentErrorData.nullish(),
   canceledReason: z.string().nullish(),
   worker: z
@@ -1131,6 +1138,8 @@ export const GetDeploymentResponseBody = z.object({
           exportName: z.string().optional(),
         })
       ),
+      /** The machines the worker's tasks use, which the CLI builds images for. */
+      machines: NamedMachines.optional(),
     })
     .optional(),
   integrationDeployments: z

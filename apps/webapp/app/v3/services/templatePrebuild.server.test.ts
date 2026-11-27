@@ -1339,4 +1339,61 @@ describe("requestBuilds", () => {
       await server.close();
     }
   });
+
+  // Catches: a machine's template key landing on the deployment's own key, or on no machine
+  postgresTest(
+    "builds each machine image and stores its key under the machine",
+    async ({ prisma }) => {
+      const machineKey = "f".repeat(64);
+      const machineImage = `${IMAGE}.coding-box@${DIGEST}`;
+      const server = await builder((req, body, res) =>
+        reply(201, {
+          template_id: JSON.parse(body).image === machineImage ? machineKey : TEMPLATE_KEY,
+        })(req, body, res)
+      );
+      try {
+        const project = await createProject(prisma, {
+          workloadType: "MICROVM",
+          orgFlags: { [FEATURE_FLAG.computeTemplatePrebuildWait]: true },
+        });
+        const row = await createDeployment(prisma, project);
+        const machineImages = [{ machineId: "coding-box", imageReference: machineImage }];
+        await prisma.workerDeploymentMachine.createMany({
+          data: machineImages.map((machine) => ({ ...machine, deploymentId: row.id })),
+        });
+        const workerId = await createWorker(prisma, row, [
+          { machineConfig: { preset: "medium-1x", name: "coding-box" }, retryConfig: null },
+        ]);
+        const service = new TemplatePrebuildService(prisma, config({ url: server.url }));
+
+        await service.prebuild({
+          projectId: project.id,
+          deploymentId: row.id,
+          deploymentFriendlyId: row.friendlyId,
+          imageReference: IMAGE,
+          imageDigest: DIGEST,
+          workerId,
+          machineImages,
+        });
+
+        const machineRequest = server.requests
+          .map((request) => JSON.parse(request.body))
+          .find((body) => body.image === machineImage);
+        expect(machineRequest.machines).toEqual([{ name: "medium-1x", cpu: "1", memory: "2G" }]);
+        const stored = await prisma.workerDeployment.findFirst({
+          where: { id: row.id },
+          select: {
+            templateKey: true,
+            machines: { select: { machineId: true, imageReference: true, templateKey: true } },
+          },
+        });
+        expect(stored.templateKey).toBe(TEMPLATE_KEY);
+        expect(stored.machines).toEqual([
+          { machineId: "coding-box", imageReference: machineImage, templateKey: machineKey },
+        ]);
+      } finally {
+        await server.close();
+      }
+    }
+  );
 });

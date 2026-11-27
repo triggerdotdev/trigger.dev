@@ -1187,7 +1187,12 @@ class ManagedSupervisor {
     dequeuedMessage: DequeuedMessage,
     traceparent: string | undefined
   ): Promise<boolean> {
-    if (!this.warmStartUrl || !mayWarmStart(dequeuedMessage.run.annotations)) {
+    // Warm runners are keyed by deployment and machine size, not image.
+    if (
+      !this.warmStartUrl ||
+      dequeuedMessage.machineName ||
+      !mayWarmStart(dequeuedMessage.run.annotations)
+    ) {
       return false;
     }
 

@@ -1,4 +1,4 @@
-import type { FinalizeDeploymentRequestBody } from "@trigger.dev/core/v3/schemas";
+import { type FinalizeDeploymentRequestBody, machineNameOf } from "@trigger.dev/core/v3/schemas";
 import type { AuthenticatedEnvironment } from "~/services/apiAuth.server";
 import { logger } from "~/services/logger.server";
 import { updateEnvConcurrencyLimits } from "../runQueue.server";
@@ -55,6 +55,7 @@ export class FinalizeDeploymentService extends BaseService {
             tasks: true,
           },
         },
+        machines: { select: { machineId: true, templateKey: true } },
       },
     });
 
@@ -114,6 +115,18 @@ export class FinalizeDeploymentService extends BaseService {
         error,
       });
       throw new ServiceValidationError(error.message);
+    }
+
+    const machineImageError = missingMachineImage(
+      deployment.machines,
+      deployment.worker.tasks,
+      computeOnlyEnabled(orgFeatureFlags)
+    );
+    if (machineImageError) {
+      await failRefusedDeployment(this._prisma, authenticatedEnv, deployment.friendlyId, {
+        name: "MissingMachineImage",
+        message: machineImageError,
+      });
     }
 
     // The finalize-time step, on every route.
@@ -279,6 +292,27 @@ export async function failRefusedDeployment(
 ): Promise<never> {
   await new FailDeploymentService(prisma).call(authenticatedEnv, deploymentFriendlyId, { error });
   throw new ServiceValidationError(error.message);
+}
+
+/** Why a task on a named machine could not run on this deployment, if it could not. */
+function missingMachineImage(
+  machines: { machineId: string; templateKey: string | null }[],
+  tasks: { slug: string; machineConfig: unknown; executionMode: string }[],
+  computeOnly: boolean
+): string | undefined {
+  for (const task of tasks) {
+    const machineName = machineNameOf(task.machineConfig);
+    if (!machineName) {
+      continue;
+    }
+    const image = machines.find((machine) => machine.machineId === machineName);
+    if (!image) {
+      return `Task "${task.slug}" runs on machine "${machineName}", which this deployment did not build. Deploy with --native-build or --local-build.`;
+    }
+    if (!image.templateKey && (task.executionMode === "SANDBOX" || computeOnly)) {
+      return `Task "${task.slug}" needs microVM compute, but machine "${machineName}" has no compute template.`;
+    }
+  }
 }
 
 function validatedImageDigest(imageDigest?: string): string | undefined {

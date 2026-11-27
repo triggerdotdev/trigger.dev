@@ -39,7 +39,7 @@ import { sanitizeQueueName } from "~/models/taskQueue.server";
 import type { AuthenticatedEnvironment } from "~/services/apiAuth.server";
 import { logger } from "~/services/logger.server";
 import { organizationHasWebhooksAccess } from "~/v3/webhooksAccess.server";
-import { sandboxTasksEnabled } from "~/v3/sandboxTasksFlag.server";
+import { namedMachinesEnabled, sandboxTasksEnabled } from "~/v3/sandboxTasksFlag.server";
 import { safeEnvironmentLogFields } from "~/services/safeEnvironmentLog";
 import { syncTaskIdentifiers } from "~/services/taskIdentifierRegistry.server";
 import {
@@ -803,7 +803,10 @@ function taskTriggerSource(task: TaskResource): string | undefined {
     : task.triggerSource;
 }
 
-/** Rejects a sandbox whose config was dropped, or whose organization lacks the flag. */
+/**
+ * Rejects a sandbox whose config was dropped, or a sandbox or named machine whose organization
+ * lacks the flag.
+ */
 export function validateSandboxTask(task: TaskResource, environment: AuthenticatedEnvironment) {
   if (task.triggerSource === SANDBOX_TRIGGER_SOURCE && !task.sandbox) {
     throw new ServiceValidationError(
@@ -813,6 +816,11 @@ export function validateSandboxTask(task: TaskResource, environment: Authenticat
   if (task.sandbox && !sandboxTasksEnabled(environment.organization.featureFlags)) {
     throw new ServiceValidationError(
       `Task "${task.id}" is a sandbox, but sandbox tasks are not enabled for this organization.`
+    );
+  }
+  if (task.machine?.name && !namedMachinesEnabled(environment.organization.featureFlags)) {
+    throw new ServiceValidationError(
+      `Task "${task.id}" uses machine "${task.machine.name}" from defineMachine(), but named machines are not enabled for this organization.`
     );
   }
 }

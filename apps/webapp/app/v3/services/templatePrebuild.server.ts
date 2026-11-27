@@ -1,7 +1,7 @@
 import { setTimeout as sleep } from "node:timers/promises";
 import { z } from "zod";
 import { getMeter, type Meter } from "@internal/tracing";
-import { RetryOptions, type MachinePresetName } from "@trigger.dev/core/v3";
+import { machineNameOf, RetryOptions, type MachinePresetName } from "@trigger.dev/core/v3";
 import type { Prisma, RuntimeEnvironmentType } from "@trigger.dev/database";
 import { prisma as defaultPrisma, type PrismaClientOrTransaction } from "~/db.server";
 import { env } from "~/env.server";
@@ -22,6 +22,9 @@ import {
   selfBackingWorkerGroups,
   workerRegionRegistry,
 } from "~/v3/workerRegions.server";
+
+/** A named machine's image, which gets its own template. */
+export type MachineImage = { machineId: string; imageReference: string };
 
 // wait: hold finalisation until the builder replies or times out. shadow: fire and
 // forget. Neither ever fails the deploy.
@@ -263,6 +266,8 @@ export class TemplatePrebuildService {
     requireTemplate?: boolean;
     /** The deployed worker, whose tasks' presets are built after the configured ones. */
     workerId?: string;
+    /** Images of the deployment's named machines, each built into its own template. */
+    machineImages?: MachineImage[];
   }): Promise<{
     mode: TemplatePrebuildMode;
     reason?: TemplatePrebuildReason;
@@ -301,7 +306,11 @@ export class TemplatePrebuildService {
         warmupCommand: warmupCommandFromMetadata(options.workerMetadata),
       };
       const build = this.build(image, mode, deployment);
-      void build.then(() => this.buildTaskPresets(image, deployment, options.workerId));
+      // After the deployment's own build, which holds fcrun's node-wide lock while it runs.
+      const machineBuilds = build.then(() =>
+        this.buildMachineImages(mode, deployment, options.workerId, options.machineImages)
+      );
+      void machineBuilds.then(() => this.buildTaskPresets(image, deployment, options.workerId));
       if (mode === "shadow") {
         return { mode, reason };
       }
@@ -311,6 +320,8 @@ export class TemplatePrebuildService {
           `event: log\ndata: ${JSON.stringify({ message: "Building compute template..." })}\n\n`
         )
         .catch(() => {});
+      // The finalizer checks each machine's template, so wait mode waits for them too.
+      await machineBuilds;
       return { mode, reason, outcome: (await build).outcome };
     } catch (error) {
       logger.error("Template prebuild failed before calling the builder", {
@@ -489,6 +500,7 @@ export class TemplatePrebuildService {
       shortCode: true,
       imageReference: true,
       templateKey: true,
+      machines: { select: { machineId: true, imageReference: true, templateKey: true } },
       worker: { select: { id: true, metadata: true } },
       project: { select: { externalRef: true } },
       environment: { select: { type: true } },
@@ -524,7 +536,8 @@ export class TemplatePrebuildService {
     if (!this.config.url) {
       return { ...base, outcome: "skipped", reason: "no_builder" };
     }
-    if (deployment.templateKey && !force) {
+    const unbuiltMachines = deployment.machines.filter((machine) => force || !machine.templateKey);
+    if (deployment.templateKey && !force && unbuiltMachines.length === 0) {
       return { ...base, outcome: "skipped", reason: "has_key" };
     }
     // Finalisation stores the image pinned by digest; without one there is nothing to build.
@@ -546,6 +559,19 @@ export class TemplatePrebuildService {
       },
       timeoutMs
     );
+    // Before the task presets: a machine without a template cannot start on compute, while a
+    // preset left unbuilt only starts cold.
+    const machineOutcomes = await this.buildMachineImages(
+      "shadow",
+      {
+        id: deployment.id,
+        friendlyId: deployment.friendlyId,
+        warmupCommand: warmupCommandFromMetadata(deployment.worker?.metadata),
+      },
+      deployment.worker?.id,
+      unbuiltMachines,
+      deadline - performance.now()
+    );
     // Awaited so a caller that waits for rebuilds to settle (compute migration) waits for these
     // too, inside the batch's concurrency limit. Their failures leave shapes cold, so the
     // outcome stays the configured build's.
@@ -559,6 +585,13 @@ export class TemplatePrebuildService {
       deployment.worker?.id,
       deadline
     );
+    // A machine without a template cannot start on compute, so its failure is the deployment's.
+    const machineFailure = machineOutcomes.find(
+      (outcome) => outcome !== "built" && outcome !== "already_there"
+    );
+    if (machineFailure && result.outcome !== "failed") {
+      return { ...base, outcome: machineFailure };
+    }
     return { ...base, ...result };
   }
 
@@ -587,7 +620,9 @@ export class TemplatePrebuildService {
         where: { workerId },
         select: { machineConfig: true, retryConfig: true },
       });
-      const presets = deploymentPresets(tasks).filter((p) => !this.config.presets.includes(p));
+      const presets = deploymentPresets(
+        tasks.filter((task) => !machineNameOf(task.machineConfig))
+      ).filter((p) => !this.config.presets.includes(p));
       for (const [index, preset] of presets.entries()) {
         if (spent()) {
           logger.info("Template prebuild ran out of time for task presets", {
@@ -607,6 +642,55 @@ export class TemplatePrebuildService {
   }
 
   /**
+   * Builds each named machine's image with the presets of the tasks on it, one after another, as
+   * fcrun locks a node for a whole request. Each key is stored on the deployment under its
+   * machine. Never rejects.
+   */
+  private async buildMachineImages(
+    mode: Exclude<TemplatePrebuildMode, "skip">,
+    deployment: { id: string; friendlyId: string; warmupCommand?: string[] },
+    workerId: string | undefined,
+    machines: MachineImage[] | undefined = [],
+    timeoutMs?: number
+  ): Promise<TemplateBuildOutcome[]> {
+    if (!workerId || machines.length === 0) {
+      return [];
+    }
+    const deadline = timeoutMs === undefined ? undefined : performance.now() + timeoutMs;
+    const remaining = () => (deadline === undefined ? undefined : deadline - performance.now());
+    try {
+      const tasks = await this.prisma.backgroundWorkerTask.findMany({
+        where: { workerId },
+        select: { machineConfig: true, retryConfig: true },
+      });
+      const outcomes: TemplateBuildOutcome[] = [];
+      for (const { machineId, imageReference } of machines) {
+        if ((remaining() ?? 1) <= 0) {
+          outcomes.push("timeout");
+          continue;
+        }
+        const presets = deploymentPresets(
+          tasks.filter((task) => machineNameOf(task.machineConfig) === machineId)
+        );
+        const result = await this.build(
+          imageReference,
+          mode,
+          { ...deployment, presets: presets.length > 0 ? presets : undefined, machineId },
+          remaining()
+        );
+        outcomes.push(result.outcome);
+      }
+      return outcomes;
+    } catch (error) {
+      logger.warn("Template prebuild of machine images failed", {
+        deploymentId: deployment.friendlyId,
+        error: error instanceof Error ? error.message : String(error),
+      });
+      return machines.map(() => "failed");
+    }
+  }
+
+  /**
    * Call the builder once and store the template key on success. Resolves with
    * the outcome, which is `failed` when the key was not written; never rejects.
    */
@@ -618,6 +702,8 @@ export class TemplatePrebuildService {
       friendlyId: string;
       warmupCommand?: string[];
       presets?: MachinePresetName[];
+      /** Builds this named machine's image, whose key is stored under the machine. */
+      machineId?: string;
     },
     timeoutMs: number = this.config.timeoutMs
   ): Promise<TemplateBuildResult> {
@@ -629,7 +715,12 @@ export class TemplatePrebuildService {
       deployment.warmupCommand,
       this.config.deploySnapshots
     );
-    const log = { deploymentId: deployment.friendlyId, image, mode };
+    const log = {
+      deploymentId: deployment.friendlyId,
+      image,
+      mode,
+      machineId: deployment.machineId,
+    };
 
     let outcome: TemplateBuildOutcome;
     let reason: TemplateKeyStoreFailure | undefined;
@@ -676,9 +767,18 @@ export class TemplatePrebuildService {
           squashfsMs: parsed?.squashfs_ms,
         });
         // The write keeps going if it outlasts the timeout, but wait mode stops waiting.
-        const write = this.storeTemplateKey(deployment.id, image, parsed?.template_id, log);
+        const write = deployment.machineId
+          ? this.storeMachineTemplateKey(
+              deployment.id,
+              deployment.machineId,
+              image,
+              parsed?.template_id,
+              log
+            )
+          : this.storeTemplateKey(deployment.id, image, parsed?.template_id, log);
+        // The task metadata cache holds only the deployment's own template key.
         const cached = write.then((result) =>
-          result === "stored"
+          result === "stored" && !deployment.machineId
             ? this.cacheTemplateKey(deployment.id, parsed?.template_id as string, log)
             : undefined
         );
@@ -748,6 +848,44 @@ export class TemplatePrebuildService {
       }
     } catch (error) {
       logger.error("Template prebuild could not store the template key", {
+        ...log,
+        error: error instanceof Error ? error.message : String(error),
+      });
+      return "store_error";
+    }
+    return "stored";
+  }
+
+  // Only into the machine's row while it still holds this image.
+  private async storeMachineTemplateKey(
+    deploymentId: string,
+    machineId: string,
+    image: string,
+    templateId: unknown,
+    log: Record<string, unknown>
+  ): Promise<"stored" | TemplateKeyStoreFailure> {
+    const templateKey = validTemplateKey(templateId);
+    if (!templateKey) {
+      logger.warn("Template prebuild returned no valid template id", {
+        ...log,
+        templateId: typeof templateId === "string" ? templateId.slice(0, 100) : templateId,
+      });
+      return "invalid_template_id";
+    }
+    try {
+      const { count } = await this.prisma.workerDeploymentMachine.updateMany({
+        where: { deploymentId, machineId, imageReference: image },
+        data: { templateKey },
+      });
+      if (count === 0) {
+        logger.warn("Template prebuild did not store the machine's template key", {
+          ...log,
+          templateKey,
+        });
+        return "not_stored";
+      }
+    } catch (error) {
+      logger.error("Template prebuild could not store the machine's template key", {
         ...log,
         error: error instanceof Error ? error.message : String(error),
       });

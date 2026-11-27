@@ -39,6 +39,7 @@ export { PassthroughControlPlaneResolver } from "./engine/controlPlaneResolver.j
 export type {
   ControlPlaneResolver,
   EnvDeletionState,
+  ResolvedDeploymentMachine,
   ResolvedDeploymentStatus,
   ResolvedEngineEnv,
   ResolvedAuthenticatedEnv,

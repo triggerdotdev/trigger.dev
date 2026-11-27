@@ -161,6 +161,8 @@ export const MachineConfig = z.object({
   cpu: MachineCpu.optional(),
   memory: MachineMemory.optional(),
   preset: MachinePresetName.optional(),
+  /** The `id` of the `defineMachine()` machine whose image the task runs on. */
+  name: z.string().optional(),
 });
 
 export type MachineConfig = z.infer<typeof MachineConfig>;
