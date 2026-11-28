@@ -2,7 +2,7 @@ import path from "node:path";
 import { visit } from "unist-util-visit";
 import type { Root } from "mdast";
 import type { VFile } from "vfile";
-import { basePath } from "./base-path";
+import { withBase } from "./base-path";
 import { contentDir } from "./content-files";
 
 // Mintlify fence flags that are not part of the title.
@@ -61,12 +61,15 @@ export function remarkMintlify() {
     visit(tree, ["mdxJsxFlowElement", "mdxJsxTextElement"] as never, (node: JsxNode) => {
       if (!node.name || !["img", "video", "source"].includes(node.name)) return;
       for (const attr of node.attributes) {
-        if (
-          attr.name === "src" &&
-          typeof attr.value === "string" &&
-          /^\/(?!\/|docs\/)/.test(attr.value)
-        )
-          attr.value = `${basePath}${attr.value}`;
+        const value = attr.value;
+        if (typeof value !== "string") continue;
+        if (attr.name === "src" || attr.name === "poster") attr.value = withBase(value);
+        // `srcSet` is a comma-separated list of "url [descriptor]" candidates.
+        if (attr.name === "srcSet")
+          attr.value = value
+            .split(",")
+            .map((c) => c.trim().replace(/^\S+/, (u) => withBase(u)))
+            .join(", ");
       }
     });
 

@@ -1,6 +1,7 @@
 import type { Folder, Item, Node, Root } from "fumadocs-core/page-tree";
+import { createElement, Fragment } from "react";
 import docsJsonFile from "../../../docs/docs.json";
-import { source } from "./source";
+import { parseOpenapiRef, source } from "./source";
 
 // The sidebar is read straight from docs.json, the one nav file writers edit today.
 type NavEntry = string | NavGroup;
@@ -15,6 +16,33 @@ const docsJson = docsJsonFile as unknown as {
 /** The top-level docs sections (docs.json dropdowns), in nav order. */
 export const sections = docsJson.navigation.dropdowns.map((d) => d.dropdown);
 
+// The colors of fumadocs-openapi's method labels, which it only adds to trees it builds itself.
+const methodColors: Record<string, string> = {
+  GET: "text-green-600 dark:text-green-400",
+  POST: "text-blue-600 dark:text-blue-400",
+  PUT: "text-yellow-600 dark:text-yellow-400",
+  PATCH: "text-orange-600 dark:text-orange-400",
+  DELETE: "text-red-600 dark:text-red-400",
+};
+
+/** An API page's sidebar name, with its HTTP method after it. */
+function withMethod(name: string, openapi: string | undefined) {
+  if (!openapi) return name;
+  const method = parseOpenapiRef(openapi).method.toUpperCase();
+  const color = methodColors[method] ?? "text-fd-muted-foreground";
+  return createElement(
+    Fragment,
+    null,
+    name,
+    " ",
+    createElement(
+      "span",
+      { className: `ms-auto font-mono text-xs font-medium text-nowrap ${color}` },
+      method
+    )
+  );
+}
+
 function pageItem(slug: string, section: string): Item | undefined {
   const page = source.getPage(slug.split("/"));
   if (!page) {
@@ -24,7 +52,7 @@ function pageItem(slug: string, section: string): Item | undefined {
   if (page.data.hidden) return;
   const name = page.data.sidebarTitle ?? page.data.title;
   if (page.data.url) return { type: "page", name, url: page.data.url, external: true };
-  return { type: "page", name, url: page.url };
+  return { type: "page", name: withMethod(name, page.data.openapi), url: page.url };
 }
 
 function entries(list: NavEntry[], section: string): Node[] {
@@ -106,3 +134,6 @@ export const sectionTabs = (pageTree.children as Folder[]).map((f) => ({
   url: firstUrl(f.children) ?? "/",
   urls: allUrls(f.children),
 }));
+
+/** Sidebar page URLs in nav order. */
+export const navUrls = sectionTabs.flatMap((t) => [...t.urls]);

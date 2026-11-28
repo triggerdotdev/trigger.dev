@@ -2,6 +2,8 @@
 
 import { createContext, useContext, useEffect, useState, type ComponentProps } from "react";
 import { createOpenAPIPage } from "fumadocs-openapi/ui";
+import { createCodeUsageGeneratorRegistry } from "fumadocs-openapi/requests/generators";
+import { registerDefault } from "fumadocs-openapi/requests/generators/all";
 import {
   Custom,
   DefaultResultDisplay,
@@ -17,6 +19,7 @@ import { personalizationEnabled } from "@/lib/dashboard-link";
 import { forgetRejectedKey, playgroundKey, useCoveringKey, useDocsKeys } from "@/lib/docs-keys";
 import { useReaderProject } from "@/lib/reader";
 import { basePath } from "@/lib/base-path";
+import { orderedCodeSamples } from "@/lib/api-reference";
 
 // The access this page's endpoint needs (`x-trigger-access`), for the playground's auth row.
 const EndpointAccess = createContext<string[] | null>(null);
@@ -110,7 +113,17 @@ function ProjectRefField({ fieldName, ctx }: { fieldName: FieldKey; ctx: Paramet
   return ctx.renderDefault();
 }
 
+// fumadocs lists its generated samples (cURL, JavaScript, ...) before an operation's own, so they're
+// passed per operation instead, after the hand-written SDK samples.
+const generatedSamples = Array.from(
+  registerDefault(createCodeUsageGeneratorRegistry()).map(),
+  ([id, { lang, label, generate }]) => ({ id, lang, label, source: generate })
+);
+
 const OpenAPIPage = createOpenAPIPage({
+  codeUsages: createCodeUsageGeneratorRegistry(),
+  generateCodeSamples: ({ operation }) =>
+    orderedCodeSamples(operation["x-codeSamples"], generatedSamples),
   playground: {
     authProviders,
     // app/api/proxy: many API routes don't answer CORS preflights.

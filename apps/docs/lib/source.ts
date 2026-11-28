@@ -2,10 +2,11 @@ import { loader } from "fumadocs-core/source";
 import type { TOCItemType } from "fumadocs-core/toc";
 import type { MDXContent } from "mdx/types";
 import { createOpenAPI } from "fumadocs-openapi/server";
-import path from "node:path";
 import { docs } from "fumadocs-mdx:collections/server";
+import { specs } from "@/.generated/openapi.js";
 import docsJsonFile from "../../../docs/docs.json";
-import { contentDir } from "./content-files";
+import { withSchemaExamples } from "./api-reference";
+import { parseOpenapiRef } from "./openapi-slice";
 import { redirectTarget } from "./slug";
 
 export const siteUrl = "https://trigger.dev";
@@ -49,18 +50,23 @@ export function loadPage(page: DocPage): Promise<LoadedPage> {
   return data.load ? data.load() : Promise.resolve(data);
 }
 
-// `openapi: "v3-openapi GET /api/v1/runs"` frontmatter names the spec by file stem.
-export const openapi = createOpenAPI({
-  input: {
-    openapi: path.join(contentDir, "openapi.yml"),
-    "v3-openapi": path.join(contentDir, "v3-openapi.yaml"),
-  },
-});
+// `openapi: "v3-openapi GET /api/v1/runs"` frontmatter names the spec by file stem. The specs come
+// from the build, not the disk: MCP and Ask AI read API pages at request time, without trigger.dev/docs.
+export const openapi = createOpenAPI({ input: specs });
 
-export function parseOpenapiRef(ref: string) {
-  const [spec, method, ...rest] = ref.trim().split(/\s+/);
-  const document = spec!.replace(/\.(ya?ml|json)$/, "");
-  return { document, method: method!.toLowerCase(), path: rest.join(" ") };
+export { parseOpenapiRef };
+
+// Each spec as API pages render it (see withSchemaExamples), made once.
+type Spec = Awaited<ReturnType<typeof openapi.getSchema>>["bundled"];
+const pageSchemas = new Map<string, Promise<Spec>>();
+function pageSchema(document: string) {
+  let schema = pageSchemas.get(document);
+  if (!schema)
+    pageSchemas.set(
+      document,
+      (schema = openapi.getSchema(document).then((d) => withSchemaExamples(d.bundled)))
+    );
+  return schema;
 }
 
 export type PageApi = NonNullable<Awaited<ReturnType<typeof pageApi>>>;
@@ -69,7 +75,7 @@ export type PageApi = NonNullable<Awaited<ReturnType<typeof pageApi>>>;
 export async function pageApi(page: DocPage) {
   if (!page.data.openapi) return undefined;
   const api = parseOpenapiRef(page.data.openapi);
-  const schema = withApiServer((await openapi.getSchema(api.document)).bundled);
+  const schema = withApiServer(await pageSchema(api.document));
   const op = operation(schema, api.path, api.method);
   const access = op?.["x-trigger-access"];
   // `x-trigger-access-also`: hand-written scopes the handler checks beyond the route gate.
@@ -78,6 +84,8 @@ export async function pageApi(page: DocPage) {
     ...api,
     schema,
     access: typeof access === "string" ? [access, ...also] : null,
+    // The endpoint's description, under the playground, unless the page has its own.
+    showDescription: !page.data.description,
     // Only a personal access token works: every listed alternative is `personalAccessToken` (the
     // env var operations also take a project's API key, so they keep the API keys link).
     pat:

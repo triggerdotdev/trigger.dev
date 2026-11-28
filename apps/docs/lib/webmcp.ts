@@ -60,7 +60,7 @@ export const webMcpTools: WebMcpTool[] = [
         .map((h) =>
           h.type === "page"
             ? `\n# ${h.content}\n${location.origin}${basePath}${h.url}`
-            : `- ${h.breadcrumbs?.[0] ? `${h.breadcrumbs[0]}: ` : ""}${h.content} (${location.origin}${basePath}${h.url})`
+            : `- ${h.content} (${location.origin}${basePath}${h.url})`
         )
         .join("\n")
         .trim();

@@ -109,10 +109,12 @@ export class Searcher {
   private df = new Map<string, number>();
   private index: SearchIndex;
   private headingTerms = new Map<IndexedPage, string[]>();
+  private titleTerms = new Map<IndexedPage, string[]>();
 
   constructor(index: SearchIndex) {
     this.index = index;
     for (const page of index.pages) {
+      this.titleTerms.set(page, tokenize(page.title));
       this.headingTerms.set(
         page,
         page.sections.flatMap((s) => (s.heading ? [` ${tokenize(s.heading).join(" ")} `] : []))
@@ -130,7 +132,7 @@ export class Searcher {
   }
 
   search(query: string, { limit = 10, tag }: { limit?: number; tag?: string } = {}): Hit[] {
-    const terms = queryTerms(query);
+    const terms = queryTerms(query).map((t) => this.correct(t));
     if (!terms.length) return [];
     const q = normalize(query);
     const wantsApi = terms.some((t) => t === "api" || t === "endpoint" || t === "rest");
@@ -151,13 +153,18 @@ export class Searcher {
         if (!wtf) continue;
         matched++;
         if (count(page.tf.title, t) || count(page.tf.slug, t)) named++;
+        else if (count(page.tf.headings, t)) named += 0.5;
         score += (this.idf(t) * wtf) / (K1 + wtf);
       }
       if (!matched) continue;
       // Pages that match every query term, and pages named by the query, come first.
       score *= (matched / terms.length) ** 2;
       score *= 1 + named / terms.length;
-      if (normalize(page.title) === q) score *= 1.5;
+      // The query names the page: its title words are all in the query ("retry only on certain
+      // errors" names Errors & Retrying).
+      const title = this.titleTerms.get(page)!;
+      if (normalize(page.title) === q) score *= 2.5;
+      else if (title.length && title.every((t) => terms.includes(t))) score *= 2.5;
       else if (terms.length > 1 && this.headingHasPhrase(page, terms)) score *= 1.3;
       if (!page.inNav) score *= 0.6;
       // Conceptual pages before reference and examples, unless the query asks for the API.
@@ -169,6 +176,25 @@ export class Searcher {
     const top = hits.slice(0, limit);
     for (const hit of top) hit.sections = this.bestSections(hit.page, terms);
     return top;
+  }
+
+  /**
+   * A term no page has is taken for a typo: the closest indexed term one edit away (two for words
+   * of 7+ letters), the most common on a tie. "idempotancy" finds idempotency, "machien" machines.
+   */
+  private correct(term: string): string {
+    if (this.df.has(term) || term.length < 4 || /\d/.test(term)) return term;
+    const max = term.length < 7 ? 1 : 2;
+    let best = term;
+    let bestDist = max + 1;
+    let bestDf = 0;
+    for (const [word, df] of this.df) {
+      if (Math.abs(word.length - term.length) > max) continue;
+      const d = editDistance(term, word, max);
+      if (d > max) continue;
+      if (d < bestDist || (d === bestDist && df > bestDf)) [best, bestDist, bestDf] = [word, d, df];
+    }
+    return best;
   }
 
   /** A heading contains all the query terms, in order and next to each other. */
@@ -191,6 +217,26 @@ export class Searcher {
       .sort((a, b) => b.score - a.score || a.i - b.i)
       .map((x) => x.s);
   }
+}
+
+/** Edits (insert, delete, substitute, swap two neighbours) from a to b; anything over max is max + 1. */
+export function editDistance(a: string, b: string, max: number): number {
+  let prev2: number[] = [];
+  let prev = Array.from({ length: b.length + 1 }, (_, j) => j);
+  for (let i = 1; i <= a.length; i++) {
+    const row = [i];
+    let rowMin = i;
+    for (let j = 1; j <= b.length; j++) {
+      let d = Math.min(prev[j] + 1, row[j - 1] + 1, prev[j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1));
+      if (i > 1 && j > 1 && a[i - 1] === b[j - 2] && a[i - 2] === b[j - 1])
+        d = Math.min(d, prev2[j - 2] + 1);
+      row.push(d);
+      rowMin = Math.min(rowMin, d);
+    }
+    if (rowMin > max) return max + 1;
+    [prev2, prev] = [prev, row];
+  }
+  return Math.min(prev[b.length], max + 1);
 }
 
 /** A readable excerpt of `text`, starting near the first query term. */

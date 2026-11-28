@@ -1,10 +1,11 @@
 #!/usr/bin/env node
 // Builds the search index from the MDX in trigger.dev/docs into .generated/search-index.js, and
-// .generated/snippets.js (snippet sources and each page's snippet imports) for lib/source.ts, so
-// nothing reads trigger.dev/docs at request time. Runs before `next build` and `next dev`.
+// .generated/snippets.js (snippet sources and each page's snippet imports) and .generated/openapi.js
+// (the bundled OpenAPI specs) for lib/source.ts, so nothing reads trigger.dev/docs at request time. Runs before `next build` and `next dev`.
 import { execFileSync } from "node:child_process";
 import { cpSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import path from "node:path";
+import { createOpenAPI } from "fumadocs-openapi/server";
 import { FIELDS, termFrequencies } from "../lib/search-core.ts";
 import { inlineSnippets, snippetImports } from "../lib/snippets.ts";
 import { tokenCss } from "../lib/shiki-themes.ts";
@@ -23,6 +24,7 @@ import {
   stripFrontmatter,
 } from "../lib/content-files.ts";
 import { askModelId } from "../lib/ask-config.ts";
+import { parseOpenapiRef } from "../lib/openapi-slice.ts";
 
 // A production build without these still builds and passes every check, then quietly ships
 // without Ask AI, its limits, analytics or personalization. Previews and local builds may skip them.
@@ -99,7 +101,8 @@ function plain(text) {
       .replace(/^\s*>\s?/gm, "")
       .replace(/\|/g, " ")
       .replace(/^\s*:?-{3,}:?(?:\s+:?-{3,}:?)*\s*$/gm, "")
-      .replace(/[*_`]+/g, "")
+      // Emphasis marks; underscores inside words stay (TRIGGER_SECRET_KEY).
+      .replace(/[*`]+|(?<![A-Za-z0-9])_+|_+(?![A-Za-z0-9])/g, "")
       .replace(/[ \t]+/g, " ")
       .replace(/\n{3,}/g, "\n\n")
       .trim()
@@ -138,6 +141,26 @@ function parse(body) {
 const snippets = readSnippets(contentDir);
 const pageImports = {};
 
+// API pages' `openapi:` frontmatter names a spec by file stem.
+const openapi = createOpenAPI({
+  input: {
+    openapi: path.join(contentDir, "openapi.yml"),
+    "v3-openapi": path.join(contentDir, "v3-openapi.yaml"),
+  },
+});
+const specs = Object.fromEntries(
+  await Promise.all(
+    ["openapi", "v3-openapi"].map(async (id) => [id, (await openapi.getSchema(id)).bundled])
+  )
+);
+// An API page's body is only the playground: its endpoint description is what search can show.
+function apiDescription(ref) {
+  const { document, method, path: route } = parseOpenapiRef(ref);
+  const op = specs[document]?.paths?.[route]?.[method];
+  const text = op?.description ?? op?.summary;
+  return text ? plain(text) : undefined;
+}
+
 const pages = [];
 for (const file of mdxFiles(contentDir)) {
   const raw = readFileSync(path.join(contentDir, file), "utf8");
@@ -148,11 +171,16 @@ for (const file of mdxFiles(contentDir)) {
   if (imports) pageImports[file] = imports;
   const body = inlineSnippets(stripFrontmatter(raw), imports, snippets);
   const { sections, headings, code } = parse(body);
+  const description = fm.description || (fm.openapi && apiDescription(fm.openapi)) || "";
   const fields = {
     title: [fm.title, fm.sidebarTitle].filter(Boolean).join(" "),
-    slug: slug.replace(/[/_-]/g, " "),
+    // Hyphenated segments also joined ("quick-start" answers "quickstart"), plus the page's
+    // `keywords` (other words readers search for it by, as on Mintlify).
+    slug: [slug.replace(/[/_-]/g, " "), slug.replace(/[/_]/g, " ").replace(/-/g, ""), fm.keywords]
+      .filter(Boolean)
+      .join(" "),
     headings: headings.join("\n"),
-    description: fm.description ?? "",
+    description,
     body: [fm.openapi ?? "", ...sections.map((s) => s.text)].join("\n"),
     code,
   };
@@ -162,7 +190,7 @@ for (const file of mdxFiles(contentDir)) {
   pages.push({
     url: `/${slug}`,
     title: fm.title,
-    description: fm.description || undefined,
+    description: description || undefined,
     tag: sectionOf.get(slug),
     inNav: navSlugs.has(slug) && !fm.hidden,
     kind: fm.openapi
@@ -198,6 +226,15 @@ writeFileSync(
 writeFileSync(
   snippetsFile.replace(/\.js$/, ".d.ts"),
   `export declare const snippets: Record<string, string>;\nexport declare const pageImports: Record<string, string>;\n`
+);
+const openapiFile = path.join(appDir, ".generated/openapi.js");
+writeFileSync(
+  openapiFile,
+  `export const specs = JSON.parse(${JSON.stringify(JSON.stringify(specs))});\n`
+);
+writeFileSync(
+  openapiFile.replace(/\.js$/, ".d.ts"),
+  'export declare const specs: Record<string, import("fumadocs-openapi").Document>;\n'
 );
 // Classes for highlighted code tokens (lib/shiki-themes.ts), imported by app/global.css.
 writeFileSync(path.join(appDir, ".generated/shiki-tokens.css"), `${tokenCss}\n`);

@@ -51,3 +51,10 @@ export function operationSlice(spec: Spec, path: string, method: string): Obj | 
     ...(Object.keys(components).length ? { components } : {}),
   };
 }
+
+/** The spec, method and path in an API page's `openapi:` frontmatter (`v3-openapi GET /api/v1/runs`). */
+export function parseOpenapiRef(ref: string) {
+  const [spec, method, ...rest] = ref.trim().split(/\s+/);
+  const document = spec!.replace(/\.(ya?ml|json)$/, "");
+  return { document, method: method!.toLowerCase(), path: rest.join(" ") };
+}

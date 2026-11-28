@@ -6,6 +6,9 @@ description: "Send a small message to every executing run in an environment that
 **A signal is a small message sent to an environment: every run executing there that listens for the signal's name receives it.** Each run that starts listening also gets the latest signal of that name sent before it started, so a run that starts late still learns the current state.
 
 <Note>
+  Signals need the next SDK release after 4.8.10: `unstable_signals` isn't in `@trigger.dev/sdk`
+  4.8.10 or earlier.
+
   Signals are unstable. The SDK exports them as `unstable_signals`, and names and behavior may
   change before they are released as stable. Use the SDK rather than the HTTP routes behind it,
   which may also change.

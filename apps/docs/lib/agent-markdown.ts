@@ -1,4 +1,5 @@
 import { pageImports, snippets } from "@/.generated/snippets.js";
+import { agentMarkdown } from "./agent-mdx";
 import { sectionFile } from "./agent-surface";
 import { queryChoices, type Chosen } from "./choices";
 import { expandDashboardFigures } from "./dashboard-figures";
@@ -96,7 +97,8 @@ function pageFrontmatter(page: DocPage) {
 
 /**
  * The markdown an agent gets for a page: title, description and the body with snippets, SDK type
- * tables and dashboard figure descriptions inlined, keeping only the `chosen` variant of each tab group.
+ * tables and dashboard figure descriptions inlined, keeping only the `chosen` variant of each tab group,
+ * then components turned into plain markdown with absolute links (lib/agent-mdx.ts).
  */
 export async function pageMarkdown(page: DocPage, chosen: Chosen = {}) {
   // Snippet sources come from the build, not the disk: the deployed app has no trigger.dev/docs.
@@ -109,7 +111,12 @@ export async function pageMarkdown(page: DocPage, chosen: Chosen = {}) {
   const description = page.data.description ?? api?.description;
   const head = [`# ${page.data.title}`, description ? `> ${description}` : ""];
   const parts = [...head.filter(Boolean), "", body, ...(api ? ["", api.markdown] : [])];
-  return selectVariants(parts.join("\n"), chosen);
+  return agentMarkdown(selectVariants(parts.join("\n"), chosen), {
+    docsUrl,
+    pageUrl: page.url,
+    pagePath: page.path,
+    external: externalPages(),
+  });
 }
 
 /** An API page's endpoint as an OpenAPI section (its body is only the playground component). */
@@ -144,10 +151,19 @@ export const markdownResponse = (body: string, type = "text/markdown", cacheCont
     headers: {
       "Content-Type": `${type}; charset=utf-8`,
       ...(cacheControl ? { "Cache-Control": cacheControl } : {}),
+      // A page's markdown twin stays out of search results; its URL may also serve the HTML page.
+      ...(type === "text/markdown" ? { "X-Robots-Tag": "noindex", Vary: "Accept" } : {}),
     },
   });
 
 /** Pages for /llms-full.txt. */
+let external: Map<string, string> | undefined;
+/** Stub pages whose `url` frontmatter sends readers elsewhere (e.g. /community to Discord). */
+const externalPages = () =>
+  (external ??= new Map(
+    source.getPages().flatMap((p) => (p.data.url ? [[p.url, p.data.url] as const] : []))
+  ));
+
 export const allPages = () => source.getPages().filter((p) => !p.data.url);
 
 /** Pages of one docs section (a top-level tab), or undefined for an unknown section file name. */

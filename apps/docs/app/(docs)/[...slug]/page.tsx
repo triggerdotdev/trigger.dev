@@ -16,12 +16,26 @@ import { PageBody } from "@/components/page-body";
 import { PageFreshness } from "@/components/page-freshness";
 import { pageDescription, pageJsonLd, pageLastModified, pageMetadata } from "@/lib/seo";
 import { docsUrl, githubUrl, loadPage, pageApi, source } from "@/lib/source";
+import { fallbackRedirect } from "@/lib/fallback-redirect";
+import { navUrls } from "@/lib/nav";
 
 type Props = { params: Promise<{ slug: string[] }> };
 
+/** The page at `slug`, or a redirect to its lowercase page or folder's first page, or 404. */
+function getPage(slug: string[]) {
+  const page = source.getPage(slug);
+  if (page) return page;
+  const to = fallbackRedirect(
+    `/${slug.join("/")}`,
+    source.getPages().map((p) => p.url),
+    navUrls
+  );
+  if (to) redirect(to);
+  notFound();
+}
+
 export default async function Page({ params }: Props) {
-  const page = source.getPage((await params).slug);
-  if (!page) notFound();
+  const page = getPage((await params).slug);
   // `url:` stub pages are external links in the nav; Mintlify redirects them too.
   if (page.data.url) redirect(page.data.url);
 
@@ -78,7 +92,6 @@ export function generateStaticParams() {
 }
 
 export async function generateMetadata({ params }: Props): Promise<Metadata> {
-  const page = source.getPage((await params).slug);
-  if (!page) notFound();
+  const page = getPage((await params).slug);
   return pageMetadata(page);
 }

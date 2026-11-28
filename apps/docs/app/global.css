@@ -175,6 +175,13 @@ figure.shiki code {
   font-variant-ligatures: none; /* show => and !== as typed */
 }
 
+/* Sidebar links: fumadocs fades the hover background out over 150ms, which trails behind the
+   pointer when moving down the list. Change it instantly instead. */
+#nd-sidebar a,
+#nd-sidebar button {
+  transition-property: none;
+}
+
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,

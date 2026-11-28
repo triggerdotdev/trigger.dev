@@ -26,7 +26,8 @@ export function inlineSnippets(
       const src = snippets[imports.get(name) ?? ""];
       if (src === undefined) return all;
       const props = Object.fromEntries(
-        [...attrs.matchAll(/(\w+)="([^"]*)"/g)].map((m) => [m[1]!, m[2]!])
+        // `packages="x"` or `packages={"x"}`
+        [...attrs.matchAll(/(\w+)=(?:"([^"]*)"|\{"([^"]*)"\})/g)].map((m) => [m[1]!, m[2] ?? m[3]!])
       );
       const body = stripFrontmatter(src)
         .replace(SNIPPET_IMPORT, "")

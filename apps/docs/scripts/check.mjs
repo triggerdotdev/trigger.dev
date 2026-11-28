@@ -2,8 +2,8 @@
 // `pnpm --filter docs-site check`: the docs checks CI runs on every docs PR.
 //   1. heading id tests, internal links and dashboard figure tags (source only, no build needed;
 //      stale figures are warnings, see check-figures.mjs)
-//   2. against the built site, served here on a free port: the URL contract, the MCP shape and
-//      the security headers
+//   2. against the built site, served here on a free port: the URL contract, the MCP shape, the
+//      security headers and absolute links in the agent markdown
 // Run `pnpm --filter docs-site build` first; `check --links` runs step 1 only.
 import { spawn, spawnSync } from "node:child_process";
 import { existsSync } from "node:fs";
@@ -55,6 +55,7 @@ if (!process.argv.includes("--links")) {
       run("scripts/check-urls.mjs", base) &
       run("scripts/check-mcp.mjs", base) &
       run("scripts/check-headers.mjs", base) &
+      run("scripts/check-md-links.mjs", base) &
       ok;
   } finally {
     server.kill();

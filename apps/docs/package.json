@@ -39,6 +39,9 @@
     "posthog-js": "1.407.3",
     "react": "19.2.9",
     "react-dom": "19.2.9",
+    "remark": "15.0.1",
+    "remark-gfm": "4.0.1",
+    "remark-mdx": "3.1.1",
     "shiki": "4.6.0",
     "unist-util-visit": "5.2.0",
     "zod": "4.6.7"
