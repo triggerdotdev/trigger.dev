@@ -1,5 +1,23 @@
 # trigger.dev
 
+## 4.9.0
+
+### Patch Changes
+
+- Upgrade the CLI's `zod` dependency to 4.6.7. ([`a093664ec1c4f07b2430b497eca1445630f33405`](https://github.com/triggerdotdev/trigger.dev/commit/a093664ec1c4f07b2430b497eca1445630f33405))
+- When you use Trigger.dev Cloud, the CLI and its MCP server now report usage analytics tied to your logged-in account: which commands run and which MCP tools are called, never the arguments you pass. Nothing is reported for self-hosted or local instances. Turn it off with `--skip-telemetry` or the `TRIGGER_TELEMETRY_DISABLED` environment variable. ([`9cc017fff59ca645e313c69addfa6264715b38eb`](https://github.com/triggerdotdev/trigger.dev/commit/9cc017fff59ca645e313c69addfa6264715b38eb))
+- The MCP server's `list_runs` tool now accepts `before` to list the page before a given cursor, using the previous cursor it shows. ([`37efe87e254c2d2abba6674ecb201d71cb8943a2`](https://github.com/triggerdotdev/trigger.dev/commit/37efe87e254c2d2abba6674ecb201d71cb8943a2))
+- The MCP server's `trigger_task` tool now accepts `metadata`, `idempotencyKeyTTL`, `concurrencyKey`, `concurrency`, `debounce`, `lockToVersion` and `priority`, matching the options you can pass when triggering from the SDK or the dashboard. Calls without them behave as before. ([`ea9405ed624126adb741eb3667c8f9a7b1219cb8`](https://github.com/triggerdotdev/trigger.dev/commit/ea9405ed624126adb741eb3667c8f9a7b1219cb8))
+
+  `trigger_task` no longer sets a 10 minute ttl on its own when you pass any option, including existing ones such as `tags`. A run now gets the ttl you pass, otherwise the task's ttl, otherwise 10 minutes in dev and the server's maximum ttl elsewhere (14 days on Trigger.dev Cloud; no expiry on a self-hosted server without one), and a ttl longer than the server's maximum is capped at it. Pass `ttl: "10m"` to keep the old behaviour.
+- Add `defineMachine()` for tasks that need their own image. A machine adds apt packages or Containerfile instructions on top of the project image and sets a default preset. Set it as a task's `machine` and the deploy builds its image. Available only to early testers. ([`cef33425c683fbd21992996739bea36fdc4040b5`](https://github.com/triggerdotdev/trigger.dev/commit/cef33425c683fbd21992996739bea36fdc4040b5))
+- Resume a deployed task as soon as its run is restored after a wait. A run that was suspended during a wait (`wait.for`, `triggerAndWait`, a waitpoint token or session input) could take up to 5 seconds longer than needed to continue, and the waits it finished after that, or a cancellation, could reach the task with the same delay. ([`27b8200f5d977f9d3a3a78822772c0afdbe2d5a9`](https://github.com/triggerdotdev/trigger.dev/commit/27b8200f5d977f9d3a3a78822772c0afdbe2d5a9))
+- Add `unstable_signals`: send a small message to every executing run in an environment that listens for its name, with `unstable_signals.send(name, payload)`, listen inside a task with `unstable_signals.on(name, handler)`, read the current latest once with `unstable_signals.latest(name)`, and forget the latest with `unstable_signals.clear(name)`. A run that starts listening receives the latest signal of that name first. Unstable: names and behavior may change. ([`7662a2f83274a47f070ac1970b44f6f633e3d177`](https://github.com/triggerdotdev/trigger.dev/commit/7662a2f83274a47f070ac1970b44f6f633e3d177))
+- Updated dependencies:
+  - `@trigger.dev/core@4.9.0`
+  - `@trigger.dev/build@4.9.0`
+  - `@trigger.dev/schema-to-json@4.9.0`
+
 ## 4.8.10
 
 ### Patch Changes
